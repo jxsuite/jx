@@ -16,7 +16,7 @@ void mock.module("../src/services/ai-models", () => ({
   proxyActionOffer: () => null,
 }));
 
-const { UNANSWERED_TOOL_RESULT, pruneOrphanToolMessages, trimContext } =
+const { UNANSWERED_TOOL_RESULT, pruneOrphanToolMessages, shedToolResults, trimContext } =
   await import("../src/services/context-manager");
 
 beforeEach(() => {
@@ -368,6 +368,152 @@ describe("context-manager — the model's context window", () => {
     reportedWindows["gpt-4o"] = 0;
     const cs = stateWith("gpt-4o", 30, 300);
     expect(trimContext(cs, longContent(500))!.droppedCount).toBe(0);
+  });
+});
+
+describe("context-manager — shedToolResults", () => {
+  /** A turn on a 100k window: rounds of one call, each answered with `tokens` tokens of result. */
+  function turn(results: number[]) {
+    reportedWindows.small = 100_000;
+    const chatState = createChatState({ model: "small" });
+    pushMessages(chatState, [{ role: "user", content: "Look around." }]);
+    for (const [index, tokens] of results.entries()) {
+      pushMessages(chatState, [
+        {
+          role: "assistant",
+          content: "",
+          toolCalls: [{ id: `c${index}`, name: "read_file", arguments: "{}", result: null }],
+        },
+        {
+          role: "tool",
+          toolCallId: `c${index}`,
+          content: JSON.stringify({
+            success: true,
+            summary: `Read file ${index}.`,
+            data: longContent(tokens),
+          }),
+        },
+      ]);
+    }
+    return chatState;
+  }
+  const toolContents = (chatState: ReturnType<typeof createChatState>) =>
+    chatState.messages.filter((m) => m.role === "tool").map((m) => JSON.parse(m.content));
+
+  test("under the budget, nothing changes", () => {
+    const chatState = turn([30_000, 30_000]);
+    const before = chatState.messages.map((m) => m.content);
+    expect(shedToolResults(chatState, "")).toBe(0);
+    expect(chatState.messages.map((m) => m.content)).toEqual(before);
+  });
+
+  test("past the budget, the oldest results go first, down to the target", () => {
+    const chatState = turn([30_000, 30_000, 30_000]);
+    expect(shedToolResults(chatState, "")).toBe(2);
+    const [first, second, third] = toolContents(chatState);
+    expect(first).toEqual({
+      success: true,
+      summary: "Read file 0.",
+      shed: expect.stringContaining("Call the tool again"),
+    });
+    expect(second.data).toBeUndefined();
+    expect(third.data).toHaveLength(120_000);
+  });
+
+  test("stops as soon as the context is back under the target", () => {
+    const chatState = turn([60_000, 30_000, 10_000]);
+    expect(shedToolResults(chatState, "")).toBe(1);
+    expect(toolContents(chatState)[1].data).toHaveLength(120_000);
+  });
+
+  test("the latest round is never shed, because the model has not read it yet", () => {
+    const chatState = turn([200_000]);
+    expect(shedToolResults(chatState, "")).toBe(0);
+    expect(toolContents(chatState)[0].data).toHaveLength(800_000);
+  });
+
+  test("the latest round is still recognised behind the placeholder of the next", () => {
+    const chatState = turn([50_000, 50_000]);
+    pushMessages(chatState, [{ role: "assistant", content: "" }]);
+    expect(shedToolResults(chatState, "")).toBe(1);
+    const [first, latest] = toolContents(chatState);
+    expect(first.data).toBeUndefined();
+    expect(latest.data).toHaveLength(200_000);
+  });
+
+  test("a small reply stays: it is mostly its stub, and may be an answer worth keeping", () => {
+    const chatState = turn([85_000]);
+    const answer = JSON.stringify({ success: true, data: { answer: "Blog" } });
+    chatState.messages.splice(1, 0, {
+      id: "ask",
+      role: "assistant",
+      content: "",
+      timestamp: 1,
+      toolCalls: [{ id: "q", name: "ask_user", arguments: "{}", result: null }],
+    });
+    chatState.messages.splice(2, 0, {
+      id: "reply",
+      role: "tool",
+      toolCallId: "q",
+      content: answer,
+      timestamp: 1,
+    });
+    pushMessages(chatState, [
+      {
+        role: "assistant",
+        content: "",
+        toolCalls: [{ id: "n", name: "read_file", arguments: "{}", result: null }],
+      },
+      { role: "tool", toolCallId: "n", content: "{}" },
+    ]);
+    expect(shedToolResults(chatState, "")).toBe(1);
+    expect(chatState.messages[2]!.content).toBe(answer);
+  });
+
+  test("a failure keeps its error, and an unreadable reply keeps only the note", () => {
+    const chatState = turn([85_000, 1]);
+    chatState.messages[2]!.content = JSON.stringify({
+      success: false,
+      error: "It broke.",
+      data: longContent(85_000),
+    });
+    expect(shedToolResults(chatState, "")).toBe(1);
+    expect(toolContents(chatState)[0]).toMatchObject({ success: false, error: "It broke." });
+
+    const other = turn([85_000, 1]);
+    other.messages[2]!.content = longContent(85_000);
+    expect(shedToolResults(other, "")).toBe(1);
+    expect(toolContents(other)[0]).toEqual({
+      success: true,
+      shed: expect.stringContaining("Call the tool again"),
+    });
+  });
+
+  test("the pairs survive, and a restored chip still has the call's outcome", () => {
+    const chatState = turn([50_000, 50_000]);
+    shedToolResults(chatState, "");
+    expect(pruneOrphanToolMessages(chatState)).toEqual({ dropped: 0, moved: 0, sealed: 0 });
+    expect(toolContents(chatState)[0].summary).toBe("Read file 0.");
+  });
+
+  test("a provider's count stops being reused, and the panel hears the new estimate", () => {
+    const chatState = turn([50_000, 50_000]);
+    chatState.recordUsage(
+      { type: "usage", inputTokens: 90_000, outputTokens: 10 },
+      { systemTokens: 0 },
+    );
+    expect(shedToolResults(chatState, "")).toBe(1);
+    expect(chatState.usage).toBeNull();
+    expect(chatState.tokenCount).toBeLessThan(90_000);
+    expect(chatState.contextWarning).toBe(true);
+  });
+
+  test("once shed, a result is not shed again", () => {
+    const chatState = turn([50_000, 50_000]);
+    shedToolResults(chatState, "");
+    const once = chatState.messages.map((m) => m.content);
+    expect(shedToolResults(chatState, "")).toBe(0);
+    expect(chatState.messages.map((m) => m.content)).toEqual(once);
   });
 });
 

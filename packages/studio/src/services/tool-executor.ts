@@ -22,15 +22,15 @@
 import type { InteractionStore } from "./harness/interaction-store";
 import type { createChatState } from "@jxsuite/ai/chat-state";
 import { DEFAULT_TURN_POLICY, assistantActorId, runTurn } from "@jxsuite/ai/harness";
-import type { TurnInput, TurnRun } from "@jxsuite/ai/harness";
-import { toChatMessages, toOpenAITools } from "@jxsuite/ai/messages";
+import type { TurnInput, TurnPolicy, TurnRun } from "@jxsuite/ai/harness";
+import { toChatMessages, toOpenAIMessages, toOpenAITools } from "@jxsuite/ai/messages";
 import type { StreamingClient } from "@jxsuite/ai/streaming-client";
 import { createSessionFacts } from "@jxsuite/ai/tools";
 import type { SessionFacts, ToolRegistry } from "@jxsuite/ai/tools";
 
 import type { Tab } from "../tabs/tab";
 import { openBatchLane } from "../tabs/transact";
-import { estimatePromptTokens } from "./context-manager";
+import { estimatePromptTokens, shedToolResults } from "./context-manager";
 import { fileTurn, openTurnLedger, turnAnchor } from "./ai-writes";
 import { applyHarnessEvent } from "./harness/chat-reducer";
 import { studioTurnHooks } from "./harness/turn-hooks";
@@ -52,6 +52,8 @@ interface RunAgentLoopOptions {
   session?: SessionFacts;
   /** Where a call that needs the author waits on them. Without one, such a call is refused. */
   interactions?: InteractionStore;
+  /** Overrides on Studio's policy, for a run with bounds of its own. */
+  policy?: Partial<TurnPolicy>;
 }
 
 /**
@@ -67,6 +69,7 @@ export async function runAgentLoop({
   getTab,
   session = createSessionFacts(),
   interactions,
+  policy,
 }: RunAgentLoopOptions): Promise<void> {
   /* The ledger is filed under the turn's last DRAWN assistant message (see services/ai-writes), so
      the scan starts at the message this turn answers. */
@@ -103,9 +106,13 @@ export async function runAgentLoop({
       system: [{ text: systemPrompt }],
       /* Projected from the chat store, the transcript of record. The streaming client is read on
          every round, and the turn's own signal is the host's, so a request is the one it was. */
-      model: (request) =>
-        streamingClient.streamChat(
-          chatState.toMessagesArray(),
+      model: (request) => {
+        /* A long turn must not outgrow the window between two sends: the trim only runs at a send. */
+        shedToolResults(chatState, systemPrompt);
+        const messages = chatState.toMessagesArray();
+        return streamingClient.streamChat(
+          /* A closing round's note is on no transcript, so it joins here, for this request only. */
+          request.closing ? [...messages, ...toOpenAIMessages([request.closing])] : messages,
           toOpenAITools(request.tools),
           systemPrompt,
           /* SAFETY: the one production caller, `document-assistant.ts`, always passes its turn
@@ -113,11 +120,12 @@ export async function runAgentLoop({
              doubles record the absent signal rather than reading it — which the agent-trace
              goldens (`signal: "none"`) pin. */
           signal as AbortSignal,
-        ),
+        );
+      },
       modelInfo: { family: "openai-compat", model: chatState.model },
       tools: toolRegistry,
       turnId: ledger.turnId,
-      policy: { estimateTokens: estimatePromptTokens },
+      policy: { estimateTokens: estimatePromptTokens, parallelReadOnly: true, ...policy },
       hooks: studioTurnHooks({
         superseded: () =>
           turnUserId !== undefined && !chatState.messages.some((m) => m.id === turnUserId),

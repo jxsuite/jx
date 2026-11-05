@@ -125,7 +125,7 @@ const body = {
 
 ## Running a turn
 
-`runTurn` from `@jxsuite/ai/harness` runs one user turn to its end: it streams a round from the model, runs the tool calls the model made, feeds their results back, and repeats until the model stops calling tools or the turn runs out of work rounds. It is the loop Studio's own assistant runs, so a turn you run is held to the same rules: a stopped round runs nothing, a turn that changed something before running out of rounds ends on a message saying what it changed, and a reply with neither text nor a tool call is reported rather than left blank.
+`runTurn` from `@jxsuite/ai/harness` runs one user turn to its end: it streams a round from the model, runs the tool calls the model made, feeds their results back, and repeats until the model stops calling tools or the turn runs out of work rounds. It is the loop Studio's own assistant runs, so a turn you run is held to the same rules: a stopped round runs nothing, a turn that runs out of rounds gets one last round to reply, and one that changed something but gave no reply ends on a message saying what it changed, and a reply with neither text nor a tool call is reported rather than left blank.
 
 Give it the conversation so far, the system prompt, a model function and your tool registry. For an OpenAI-compatible backend, `fromStreamingClient` makes the model function from a streaming client:
 
@@ -145,6 +145,10 @@ const outcome = await turn.outcome;
 ```
 
 Every step of the turn reaches `onEvent` as it happens, in order: the round starting, each piece of text, each tool call and its result, and finally `turn_end`. Apply them to your own transcript there, or iterate the run (`for await (const event of turn)`) to read them later; every reader sees the whole turn. The outcome says how the turn ended (`complete`, `cap_partial`, `cap_failed`, `error`, `cancelled` or `empty`), which message to show the turn's changes under, and every message the turn added.
+
+`policy` bounds the turn: `maxWorkRounds` (30), `maxRounds` (60) and `maxIdenticalRounds` (3, the same calls with the same results). At any of them the turn runs one closing round, in which the model is told to reply and any tool call it makes is ignored, so a turn that spent its budget reading still answers. The note that tells it arrives as `request.closing`, and is already the last of `request.messages`. If your model function builds its request from your own transcript rather than from `request.messages`, add it yourself, and do not save it. Set `parallelReadOnly: true` to run neighbouring tools with `readOnlyHint` at once; their results still arrive in call order.
+
+The engine does not watch the size of a request, because only you know your model's window. A host that allows many rounds should shrink old tool results before a request outgrows it, as Studio does.
 
 To keep two turns from running at once, pass the same `createTurnLock()` to each: a turn started while another holds the lock throws `LaneBusyError` straight away, before it sends anything.
 

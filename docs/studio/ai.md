@@ -42,7 +42,7 @@ Every command the assistant can run is listed in the **Assistant** column of the
 
 In every state it also answers questions ("what does this page's state do?", "which component renders the header?") by reading the same files you see.
 
-Each request gets five working rounds: five turns of thinking and calling tools before it must reply. If a big request runs out, the assistant stops and lists what it finished and what went wrong; send another message to continue, or split the request into smaller ones.
+Each request gets up to 30 working rounds of thinking and calling tools. If a big request runs out, or the assistant keeps getting the same results from the same calls, it stops calling tools and replies with what it found, what it changed and what is left. Send another message to continue. When a long request nears the model's context limit, the oldest large tool results are dropped from the conversation, and the assistant reads them again if it still needs them.
 
 ## Connect a provider
 

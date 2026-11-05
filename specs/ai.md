@@ -191,6 +191,8 @@ An assistant that edits documents must be able to say what it changed, and the a
 
 **A tool chip states its outcome, not just its name.** A chip that cannot fail looks identical to one that did. The loop attaches each call's result to the call's own record, on the request that made it, as the call finishes, and the chip renders that record while the turn is still running; a restore backfills the same outcome from the `tool` reply (§3.4).
 
+**A turn that stops working still answers.** Exhausting the tool-call budget does not end the turn on a canned sentence: the model gets one closing round to say what it found, what it changed and what is left (§3.8), so a turn that spent its budget reading still answers the question it was asked. What follows governs a turn whose closing round gave no reply.
+
 **Partial success is not failure.** Exhausting the tool-call budget after applying changes ends the turn with an ordinary message describing what was applied. Rendering it as an error is wrong twice over: it misreports the turn, and the error path _deletes the streaming message_, destroying the only account of the edits that did land. A stream error is what that path is for: it removes the failed round's partial message, which may carry a tool call cut off mid-arguments and would otherwise go out on the next send, and keeps every round before it with the calls they ran. **Applied means a change was recorded**: a call counts as applied when it succeeded with a summary **and** the write ledger grew by an `ok` write while it ran. A summary alone is not enough, because a read (`list_files`, `search_files`, an answered question) reports in a sentence too. A change the tool itself reports back as a problem (one that introduced schema errors, say) is not applied either: it stays in the document, and it is the error the model is asked to fix. Creating or importing a project is a write, recorded as one to disk, since the project exists on disk from then on and no undo reaches it. A turn that only looked around and exhausted the budget applied nothing, so it ends as an error, and the message it would have written lists only the calls that changed something.
 
 **A turn that drew nothing says so.** When the model answers with neither text nor a tool call, and nothing earlier in the turn was drawn either, the turn ends on an error row ("The model sent back an empty reply.") with Retry, rather than leaving the author's message without a reply. A stopped turn is never empty: the author ended it.
@@ -265,21 +267,21 @@ A registry that wraps another (the availability gate, the union with the command
 
 > **Status: Implemented.** `packages/ai/src/harness/` (`@jxsuite/ai/harness`) and `invokeTool` in `packages/ai/src/tools.ts`; Studio's adapter is `packages/studio/src/services/tool-executor.ts` with `services/harness/`. `packages/ai/tests/harness.test.ts` holds the contract below, and Studio's recorded agent traces (`packages/studio/tests/fixtures/agent-traces/`) hold the adapter to the loop it replaced, call for call.
 
-One turn of the assistant (stream a round, run the calls it made, feed the results back, until the model stops calling tools) is one engine, `runTurn`, that any host can run: a Studio window, a Worker, a headless test. The rules of §2 and §3.2 to §3.4 are the engine's, so a host cannot run a turn that breaks them. Seven properties are normative.
+One turn of the assistant (stream a round, run the calls it made, feed the results back, until the model stops calling tools) is one engine, `runTurn`, that any host can run: a Studio window, a Worker, a headless test. The rules of §2 and §3.2 to §3.4 are the engine's, so a host cannot run a turn that breaks them. Nine properties are normative.
 
 **A host hears every step, synchronously and in order.** `runTurn(input)` starts the turn at once and returns a `TurnRun`. Every step is a `HarnessEvent` carrying `v: 1`, the turn's id and a `seq` that increases by one from zero, and the host's `onEvent` is called with each before the engine takes its next step, so a host that keeps its own transcript applies the turn as it happens. The events of a turn follow one grammar:
 
 - `turn_start`, then `transcript_repaired` when the turn's history needed the repair of §3.4, then rounds, then exactly one `turn_end`, after which nothing is emitted.
 - A round is `round_start`; the streamed `text`, `reasoning`, `tool_call_start`, `tool_call_delta`, `tool_call_end` and `usage`; then `round_end`.
-- After a round that made calls, each call in stream order is `tool_start`, its `tool_progress` and `write`s, then exactly one `tool_result`. A call that never ran (the turn stopped first) has none.
+- After a round that made calls, each call in stream order is `tool_start`, its `tool_progress` and `write`s, then exactly one `tool_result`. A call that never ran (the turn stopped first) has none. Calls run at once (see below) have their `tool_start`s and `tool_progress` before any of their `tool_result`s, which keep stream order.
 
 The same events can also be iterated from the run, by any number of readers, each from the start of the turn whenever it begins.
 
 **A turn ends one of six ways**, each a `TurnOutcome`:
 
 - `complete`: the model stopped calling tools.
-- `cap_partial`: the work budget ran out after something was applied. The turn ends on a message from the harness saying what (§3.2).
-- `cap_failed`: the work budget ran out with nothing applied.
+- `cap_partial`: the turn stopped working and ended on a message: the model's closing reply, or, when it gave none after something was applied, a message from the harness saying what (§3.2).
+- `cap_failed`: the turn stopped working, nothing was applied, and the model gave no closing reply.
 - `error`: the provider sent an error frame with a message. The round's message is dropped. A frame with no message is not a failure, as it never was.
 - `cancelled`: the turn was stopped.
 - `empty`: the model answered with neither text nor a tool call, and nothing earlier in the turn was drawn. The round's message is dropped.
@@ -294,7 +296,18 @@ Something the host supplied that throws is not a provider failure: when the mode
 
 **One turn holds a lock at a time, and Stop is armed before anything else.** The run's signal exists before `runTurn` returns, aborted by `cancel` and by the host's signal with the host's reason, and each call's signal is linked to it only while the call runs (§3.7). A turn started on a `TurnLock` another turn holds throws `LaneBusyError` synchronously. The lock is released before `turn_end` is heard, so a host that starts its next turn on that event is not refused.
 
+**A turn that stops working gets one closing round.** A turn stops working when it has spent its work budget (`maxWorkRounds`, 30 by default), when it has run `maxRounds` rounds of any kind (60 by default), or when a round has made the same calls and got the same results `maxIdenticalRounds` times (3 by default). A round whose calls were all interactive counts towards neither the work budget nor the repeats. The engine then runs one more round, marked `closing` on its `round_start`:
+
+- The request ends on a harness note (`ModelRequest.closing`, already the last of `messages`) telling the model that no further call will run and to reply to the author. The note is a `user` message on no transcript: it is in neither the outcome's `appended` nor anything a host shows or saves, so a host projecting its request from its own transcript sends it from `closing`.
+- The tools stay listed. A provider may refuse a history holding calls with no listing beside it, and an unchanged listing keeps the prompt cache for the last request.
+- A call the model makes anyway is not run and not reported, so a transcript never holds a call this turn already decided to leave unanswered.
+- A reply with text ends the turn `cap_partial` with no `cap` member, the model's message being the anchor. A round with no text, or a provider error (which `onStreamError` still hears), loses nothing: the turn ends as it would have without a closing round, with `policy.capText` as a `cap_partial` message when something was applied and a `cap_failed` error otherwise. A Stop is a Stop.
+
+**Read-only calls may run at once.** With `parallelReadOnly` a run of neighbouring calls whose definition has `readOnlyHint` and is neither `interactive` nor an `interaction` runs concurrently, each with its own signal. Results are appended and reported in stream order, so the next request is byte for byte what a serial turn would send. A write or a question never joins such a run, so it still sees everything before it and everything after it sees its effects. It is off by default; Studio turns it on.
+
 **A call reaches a registry one way.** `invokeTool` parses the call's arguments (an empty string is no arguments), executes it with its context, and returns the result as JSON would carry it. It never throws: arguments that do not parse, or parse to something other than an object, are answered `Failed to parse arguments: <reason>`, a result JSON cannot carry (a cycle, a `BigInt`) is answered as one that cannot be serialized, and the registry keeps its own texts for an unknown tool, failed validation, a gate and a tool that threw.
+
+**A long turn stays inside its window.** The engine does not budget a request's size, because only a host knows its window; a host that gives a turn many rounds keeps it inside. Studio's trim (§2.1) runs only when a message is sent, so before each round `shedToolResults` (`packages/studio/src/services/context-manager.ts`) checks the context against the trim's own budget, 80% of the window. Past it, the oldest tool results of 1 KiB or more are replaced in the transcript by what they ended as (`success`, `summary`, `error`) and a note saying to call the tool again, until the context is under 60%. The latest round's results are never shed, because the model has not read them, and a pair is never broken, because only a reply's content changes. A shed result stays shed: a later send measures what it will really send, a restored chip still has the call's outcome, and the prompt cache breaks once per batch rather than on every round past the budget.
 
 ### 3.9 Portable document tools
 
