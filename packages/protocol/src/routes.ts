@@ -371,12 +371,20 @@ export const STUDIO_ROUTES = {
   ),
 
   // ─── Git ──────────────────────────────────────────────────────────────────
-  gitStatus: route("GET", "/__studio/git/status", "Working-tree status (GitStatusResult)"),
+  gitStatus: route(
+    "GET",
+    "/__studio/git/status",
+    "The project's working-tree status (GitStatusResult), project-relative",
+  ),
   gitBranches: route("GET", "/__studio/git/branches", "Branch list (GitBranchesResult)"),
   gitLog: route("GET", "/__studio/git/log", "Recent commits (GitLogEntry[])"),
   gitStage: route("POST", "/__studio/git/stage", "Stage files"),
   gitUnstage: route("POST", "/__studio/git/unstage", "Unstage files"),
-  gitCommit: route("POST", "/__studio/git/commit", "Commit staged (else all dirty) files"),
+  gitCommit: route(
+    "POST",
+    "/__studio/git/commit",
+    "Commit the project's staged (else all its dirty) files",
+  ),
   gitPush: route("POST", "/__studio/git/push", "Push (cloud: sync check — commits land on push)"),
   gitPull: route("POST", "/__studio/git/pull", "Pull/fast-forward; 409 {conflicts} on overlap"),
   gitFetch: route("POST", "/__studio/git/fetch", "Refresh remote tracking state"),
