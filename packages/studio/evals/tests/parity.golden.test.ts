@@ -134,6 +134,8 @@ interface Scenario {
   task: string;
   what: string;
   rounds: StreamEvent[][];
+  /** The scenario's own bounds, so a capped turn stays a few rounds. */
+  policy?: { maxWorkRounds: number };
 }
 
 const SCENARIOS: Scenario[] = [
@@ -352,7 +354,8 @@ const SCENARIOS: Scenario[] = [
   {
     id: "style-card--round-cap",
     task: "style-card",
-    what: "five work rounds with edits applied and errors seen: the cap as an assistant message",
+    what: "five work rounds with edits applied and errors seen: the model's closing reply ends it",
+    policy: { maxWorkRounds: 5 },
     rounds: [
       toolRound(
         call("cap-1", "set_style", { path: [], property: "backgroundColor", value: "white" }),
@@ -367,12 +370,14 @@ const SCENARIOS: Scenario[] = [
         }),
       ),
       toolRound(call("cap-5", "read_document", { path: ["children", 0] })),
+      textRound("I styled the card and could not finish the rest; ask me to continue."),
     ],
   },
   {
     id: "counter-button--round-cap-nothing-applied",
     task: "counter-button",
-    what: "five failing work rounds (truncated args, missing key/node/arg): the cap as an error",
+    what: "five failing work rounds (truncated args, missing key/node/arg), no closing reply: the cap as an error",
+    policy: { maxWorkRounds: 5 },
     rounds: [
       [
         { type: "tool_call_start", id: "nop-1", name: "update_state" },
@@ -390,6 +395,7 @@ const SCENARIOS: Scenario[] = [
       ),
       toolRound(call("nop-4", "set_style", { path: [], value: "red" })),
       toolRound(call("nop-5", "update_state", { key: "counter", value: 1 })),
+      toolRound(call("nop-6", "read_document", {})),
     ],
   },
 ];
@@ -665,7 +671,10 @@ describe("eval parity goldens", () => {
   for (const scenario of SCENARIOS) {
     test(`${scenario.id}: ${scenario.what}`, async () => {
       const client = scriptedClient(scenario.rounds);
-      const trial = await runTrial(taskFor(scenario.task), { client });
+      const trial = await runTrial(taskFor(scenario.task), {
+        client,
+        policy: scenario.policy ?? {},
+      });
 
       // The loop consumed the whole script and asked for nothing past it.
       expect(client.requests).toHaveLength(scenario.rounds.length);
@@ -694,7 +703,10 @@ describe("eval parity goldens", () => {
 
       // Isolation: each trial inside runTask equals the same script run alone on a fresh trial.
       for (const [i, scenario] of scripts.entries()) {
-        const alone = await runTrial(task, { client: scriptedClient(scenario.rounds) });
+        const alone = await runTrial(task, {
+          client: scriptedClient(scenario.rounds),
+          policy: scenario.policy ?? {},
+        });
         const inTask = result.trials[i];
         expect(inTask && normalizeDeep(inTask.finalDoc)).toEqual(normalizeDeep(alone.finalDoc));
         // The whole raw wire transcript, compared as normalized JSON text.

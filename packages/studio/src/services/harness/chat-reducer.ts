@@ -39,10 +39,15 @@ export function isImportProgressEvent(value: unknown): value is ImportProgressEv
 function applyOutcome(chat: ChatStore, outcome: TurnOutcome): void {
   switch (outcome.kind) {
     case "cap_partial": {
-      // A partial success is said as the assistant, not as a failure (specs/ai.md §3.2).
-      chat.beginAssistantTurn();
-      chat.appendDelta(outcome.cap?.text ?? "");
-      chat.finishStream("length");
+      /* The model's closing reply has already been drawn, and there is nothing to add. Otherwise a
+         partial success is said as the assistant, not as a failure (specs/ai.md §3.2), after
+         removing whatever the closing round that gave no reply left behind. */
+      if (outcome.cap) {
+        chat.cancelStream();
+        chat.beginAssistantTurn();
+        chat.appendDelta(outcome.cap.text);
+        chat.finishStream("length");
+      }
       break;
     }
     case "cap_failed":

@@ -315,6 +315,8 @@ function loop(
     toolRegistry: opts.toolRegistry,
     // The author's side of every question these scenarios put, answered through `./harness/ask`.
     interactions: askStore,
+    // Small bounds, so a capped turn's trace stays small, and a repeating model runs them out.
+    policy: { maxIdenticalRounds: Number.POSITIVE_INFINITY, maxRounds: 25, maxWorkRounds: 5 },
   };
   if (opts.signal) {
     run.signal = opts.signal;
@@ -620,7 +622,7 @@ const LOOPT = inSuite("loopt", [
       );
       chatState.sendMessage("loop forever");
       await loop(rec, { chatState, client, toolRegistry });
-      expect(client.calls()).toBe(5);
+      expect(client.calls()).toBe(6);
       expect(chatState.error).toBeNull();
       expect(chatState.messages.at(-1)!.content).toContain("Changes applied so far");
       return settleTab(chatState, tab);
@@ -770,7 +772,7 @@ const LOOPT = inSuite("loopt", [
       h.chatState.sendMessage("ask me things");
       await loop(rec, { chatState: h.chatState, client, toolRegistry: h.toolRegistry });
       expect(h.answered()).toBe(3);
-      expect(client.calls()).toBe(8);
+      expect(client.calls()).toBe(9);
       return h.finish();
     },
   },
@@ -791,7 +793,7 @@ const LOOPT = inSuite("loopt", [
       );
       h.chatState.sendMessage("ask and work");
       await loop(rec, { chatState: h.chatState, client, toolRegistry: h.toolRegistry });
-      expect(client.calls()).toBe(5);
+      expect(client.calls()).toBe(6);
       return h.finish();
     },
   },
@@ -804,7 +806,7 @@ const LOOPT = inSuite("loopt", [
       );
       h.chatState.sendMessage("ask forever");
       await loop(rec, { chatState: h.chatState, client, toolRegistry: h.toolRegistry });
-      expect(client.calls()).toBe(25);
+      expect(client.calls()).toBe(26);
       return h.finish();
     },
   },
@@ -980,7 +982,7 @@ const LOOPT = inSuite("loopt", [
       );
       chatState.sendMessage("look at everything");
       await loop(rec, { chatState, client, toolRegistry });
-      expect(client.calls()).toBe(5);
+      expect(client.calls()).toBe(6);
       expect(chatState.status).toBe("error");
       expect(chatState.error).not.toContain("Changes applied so far");
       return settleTab(chatState, tab);

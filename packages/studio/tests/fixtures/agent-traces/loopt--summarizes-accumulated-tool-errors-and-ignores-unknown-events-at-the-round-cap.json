@@ -40,6 +40,8 @@
     "finishStream(\"tool_calls\")",
     "appendToolResult(\"c\", {\"success\":false,\"error\":\"No node exists at path [\\\"children\\\",9].\"})",
     "pushToolResultMessage(\"c\", \"{\\\"success\\\":false,\\\"error\\\":\\\"No node exists at path [\\\\\\\"children\\\\\\\",9].\\\"}\")",
+    "beginAssistantTurn()",
+    "toMessagesArray()",
     "setError(\"I ran out of tool-call rounds (5) before finishing.\\n\\nErrors encountered:\\n- No node exists at path [\\\"children\\\",9].\\n\\nYou can continue by sending another message, or try a more specific request.\")"
   ],
   "clientCalls": [
@@ -189,6 +191,40 @@
           }
         ],
         "carried": 7
+      },
+      "systemPrompt": "= previous",
+      "tools": "= previous"
+    },
+    {
+      "round": 6,
+      "signal": "none",
+      "messages": {
+        "added": [
+          {
+            "role": "assistant",
+            "content": null,
+            "tool_calls": [
+              {
+                "id": "c",
+                "type": "function",
+                "function": {
+                  "name": "set_text",
+                  "arguments": "{\"path\":[\"children\",9],\"value\":\"x\"}"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "tool_call_id": "c",
+            "content": "{\"success\":false,\"error\":\"No node exists at path [\\\"children\\\",9].\"}"
+          },
+          {
+            "role": "user",
+            "content": "This turn has used its whole tool budget. No further tool call will run. This note is from the system, not the author. Reply to the author now in plain text: answer as much as you can from what you already found, say what you changed, and say what is left. They can ask you to continue in their next message."
+          }
+        ],
+        "carried": 9
       },
       "systemPrompt": "= previous",
       "tools": "= previous"

@@ -19,7 +19,8 @@ import {
   toChatMessages,
   toLiveMessages,
 } from "@jxsuite/ai/messages";
-import { isString } from "@jxsuite/schema/guards";
+import { isJsonObject, isString } from "@jxsuite/schema/guards";
+import type { JsonObject, JsonValue } from "@jxsuite/schema/types";
 import { modelContextWindow } from "./ai-models";
 
 /** How many tool messages {@link pruneOrphanToolMessages} dropped, moved and sealed. */
@@ -161,6 +162,17 @@ function contextTokens(
   chatState: ReturnType<typeof createChatState>,
   systemTokens: number,
 ): number {
+  return (
+    countedTokens(chatState, systemTokens) ??
+    systemTokens + estimateTokens(chatState.toMessagesArray())
+  );
+}
+
+/** The provider's count carried forward to this transcript, when there is one it still covers. */
+function countedTokens(
+  chatState: ReturnType<typeof createChatState>,
+  systemTokens: number,
+): number | null {
   const { usage, messages } = chatState;
   const boundary = usage ? messages[usage.messageCount - 1] : undefined;
   if (usage && boundary && boundary.id === usage.lastMessageId) {
@@ -180,7 +192,7 @@ function contextTokens(
       return reused;
     }
   }
-  return systemTokens + estimateTokens(chatState.toMessagesArray());
+  return null;
 }
 
 /**
@@ -280,6 +292,102 @@ export function trimContext(
   chatState.setContextWarning(true);
 
   return { estimatedTokens: newTotal, droppedCount };
+}
+
+// ─── Shed ───────────────────────────────────────────────────────────────────
+
+/** What {@link shedToolResults} sheds down to, as a fraction of the window. */
+const SHED_TARGET_FRACTION = 0.6;
+
+/** A result smaller than this is mostly its stub already, and is often an answer worth keeping. */
+const SHED_MIN_CHARS = 1024;
+
+/** What a shed result tells the model. */
+const SHED_NOTE =
+  "This result was removed to save space. Call the tool again if you still need it.";
+
+/** A tool's reply as an object, or an empty one when it is not a result this module can read. */
+function parsedReply(content: string): JsonObject {
+  try {
+    /* SAFETY: JSON.parse without a reviver turns text into nothing but JSON values. */
+    const parsed = JSON.parse(content) as JsonValue;
+    return isJsonObject(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * What is left of a tool's reply once its output is shed: how it ended and what it said it did, so
+ * the model and a restored chip keep the outcome and lose only the bulk.
+ */
+function shedReply(content: string): string {
+  const { success = true, summary, error } = parsedReply(content);
+  return JSON.stringify({ success, summary, error, shed: SHED_NOTE });
+}
+
+/**
+ * Keep a turn inside the model's window between its rounds (specs/ai.md §3.8).
+ *
+ * {@link trimContext} runs when a message is sent, so nothing else bounds what one turn's own tool
+ * results add, and a turn with room to work could fill the window and have its request refused.
+ * Past the same budget the trim uses, this replaces the oldest large tool results with a stub until
+ * the context is back under {@link SHED_TARGET_FRACTION}. The results of the latest round are never
+ * touched, because the model has not read them yet, and the pairs are never broken, because only a
+ * reply's content changes.
+ *
+ * It changes the transcript rather than one request, so a shed result stays shed: the next send
+ * measures what it will really send, and the provider's prompt cache breaks once for a whole batch
+ * rather than on every round after the budget is reached.
+ *
+ * @param {ReturnType<typeof createChatState>} chatState
+ * @param {string} systemPrompt
+ * @returns {number} How many results it shed.
+ */
+export function shedToolResults(
+  chatState: ReturnType<typeof createChatState>,
+  systemPrompt: string,
+): number {
+  const window = contextWindowFor(chatState.model);
+  const systemTokens = estimateTokens(systemPrompt);
+  const { messages } = chatState;
+  let total =
+    countedTokens(chatState, systemTokens) ??
+    systemTokens + estimateTokens(messages.map((message) => wireEntry(message)));
+  if (total <= Math.floor(window * BUDGET_FRACTION)) {
+    return 0;
+  }
+  const target = Math.floor(window * SHED_TARGET_FRACTION);
+  /* The latest round is the trailing run of replies, with the placeholder of the round about to
+     stream after it when there is one. */
+  let latest = messages.length;
+  while (
+    latest > 0 &&
+    messages[latest - 1]!.role === "assistant" &&
+    !messages[latest - 1]!.toolCalls
+  ) {
+    latest -= 1;
+  }
+  while (latest > 0 && messages[latest - 1]!.role === "tool") {
+    latest -= 1;
+  }
+  let shed = 0;
+  for (let i = 0; i < latest && total > target; i++) {
+    const message = messages[i]!;
+    if (message.role === "tool" && message.content.length >= SHED_MIN_CHARS) {
+      const before = estimateTokens(message.content);
+      message.content = shedReply(message.content);
+      total -= before - estimateTokens(message.content);
+      shed += 1;
+    }
+  }
+  if (shed > 0) {
+    // The provider counted the longer transcript; the estimate is all there is until it next counts.
+    chatState.clearUsage();
+    chatState.setTokenCount(total);
+    chatState.setContextWarning(true);
+  }
+  return shed;
 }
 
 // ─── Orphaned tool calls ────────────────────────────────────────────────────

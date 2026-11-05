@@ -1,13 +1,14 @@
 {
   "scenario": "style-card--round-cap",
   "task": "style-card",
-  "what": "five work rounds with edits applied and errors seen: the cap as an assistant message",
+  "what": "five work rounds with edits applied and errors seen: the model's closing reply ends it",
   "modelRequests": [
     "user",
     "user assistant tool",
     "user assistant tool assistant tool",
     "user assistant tool assistant tool assistant tool",
-    "user assistant tool assistant tool assistant tool assistant tool"
+    "user assistant tool assistant tool assistant tool assistant tool",
+    "user assistant tool assistant tool assistant tool assistant tool assistant tool user"
   ],
   "rounds": 6,
   "toolCallCount": 5,
@@ -157,7 +158,7 @@
     },
     {
       "role": "assistant",
-      "content": "I ran out of tool-call rounds (5) before finishing.\n\nChanges applied so far:\n- Set style \"backgroundColor\" at [].\n- Set style \"padding\" at [].\n- Set style \"borderRadius\" at [].\n\nErrors encountered:\n- No node exists at path [\"children\",1].\n\nYou can continue by sending another message, or try a more specific request."
+      "content": "I styled the card and could not finish the rest; ask me to continue."
     }
   ]
 }

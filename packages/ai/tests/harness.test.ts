@@ -564,16 +564,422 @@ describe("how a turn ends", () => {
   });
 });
 
+describe("a turn that stops working still answers", () => {
+  const budgetOfTwo = { policy: { maxWorkRounds: 2 } };
+  const twoReads = [callRound(["a", "look", `{"n":1}`]), callRound(["b", "look", `{"n":2}`])];
+
+  test("running out opens one closing round, and the model's reply ends the turn", async () => {
+    const { model, requests } = scripted([...twoReads, textRound("Here is what I found.")]);
+    const { outcome, events } = await run({
+      model,
+      tools: registry({ look: {} }),
+      ...budgetOfTwo,
+    });
+    expect(requests).toHaveLength(3);
+    expect(outcome.kind).toBe("cap_partial");
+    expect(outcome.cap).toBeUndefined();
+    expect(outcome.error).toBeUndefined();
+    const last = outcome.appended.at(-1)!;
+    expect(last.blocks).toEqual([{ type: "text", text: "Here is what I found." }]);
+    expect(outcome.anchorMessageId).toBe(last.id);
+    const starts = events.filter((e) => e.type === "round_start");
+    expect(starts.map((e) => e.closing)).toEqual([undefined, undefined, "budget"]);
+  });
+
+  test("the closing request ends on the note and still lists the tools", async () => {
+    const { model, requests } = scripted([...twoReads, textRound("Done.")]);
+    await run({ model, tools: registry({ look: {} }), ...budgetOfTwo });
+    expect(requests[1]!.closing).toBeUndefined();
+    const closing = requests[2]!;
+    expect(closing.tools.map((tool) => tool.name)).toEqual(["look"]);
+    expect(closing.messages.at(-1)).toBe(closing.closing!);
+    expect(closing.closing).toMatchObject({
+      role: "user",
+      blocks: [{ type: "text", text: DEFAULT_TURN_POLICY.closingText("budget") }],
+      meta: { origin: "harness", kind: "round_cap" },
+    });
+  });
+
+  test("the note is on no transcript", async () => {
+    const { model, requests } = scripted([...twoReads, textRound("Done.")]);
+    const { outcome } = await run({ model, tools: registry({ look: {} }), ...budgetOfTwo });
+    expect(outcome.appended.map((message) => message.id)).not.toContain(requests[2]!.closing!.id);
+  });
+
+  test("a call in the closing round neither runs nor shows", async () => {
+    const ran: string[] = [];
+    const { model } = scripted([
+      ...twoReads,
+      [{ type: "delta", content: "Wrapping up." }, ...callRound(["c", "edit"])],
+    ]);
+    const { outcome, events } = await run({
+      model,
+      tools: registry({
+        edit: {
+          run: () => {
+            ran.push("edit");
+          },
+        },
+        look: {},
+      }),
+      ...budgetOfTwo,
+    });
+    expect(ran).toEqual([]);
+    expect(outcome.kind).toBe("cap_partial");
+    expect(outcome.appended.at(-1)!.blocks).toEqual([{ type: "text", text: "Wrapping up." }]);
+    expect(events.filter((e) => e.type === "tool_call_start").map((e) => e.callId)).toEqual([
+      "a",
+      "b",
+    ]);
+  });
+
+  test("a closing round that only called tools falls back on the harness's words", async () => {
+    const { model } = scripted([...twoReads, callRound(["c", "look"])]);
+    const { outcome, events } = await run({ model, tools: registry({ look: {} }), ...budgetOfTwo });
+    expect(outcome.kind).toBe("cap_failed");
+    expect(outcome.error?.message).toContain("I ran out of tool-call rounds (2)");
+    expect(events.findLast((e) => e.type === "round_end")).toMatchObject({ dropped: true });
+  });
+
+  test("a closing round that says only whitespace gave no reply", async () => {
+    const { model } = scripted([...twoReads, textRound("  \n")]);
+    const { outcome } = await run({ model, tools: registry({ look: {} }), ...budgetOfTwo });
+    expect(outcome.kind).toBe("cap_failed");
+  });
+
+  test("a provider error in the closing round does not lose the turn's account", async () => {
+    const errors: string[] = [];
+    const { model } = scripted([
+      callRound(["a", "edit", `{"n":1}`]),
+      callRound(["b", "edit", `{"n":2}`]),
+      [{ type: "error", message: "upstream 500" }],
+    ]);
+    const { outcome, events } = await run({
+      model,
+      tools: registry({ edit: { writes: true } }),
+      hooks: {
+        onStreamError: (error) => {
+          errors.push(error.message);
+        },
+      },
+      ...budgetOfTwo,
+    });
+    expect(errors).toEqual(["upstream 500"]);
+    expect(outcome.kind).toBe("cap_partial");
+    expect(outcome.cap?.text).toContain("Changes applied so far");
+    expect(events.findLast((e) => e.type === "round_end")).toMatchObject({ dropped: true });
+  });
+
+  test("a closing round the author stops is a stopped turn", async () => {
+    const controller = new AbortController();
+    const model: ModelFn = async function* model(request) {
+      if (request.closing) {
+        controller.abort("user");
+        yield { type: "done", stopReason: "cancelled" };
+        return;
+      }
+      yield* callRound(["a", "look", `{"n":${request.messages.length}}`]);
+    };
+    const { outcome } = await run({
+      model,
+      signal: controller.signal,
+      tools: registry({ look: {} }),
+      policy: { maxWorkRounds: 1 },
+    });
+    expect(outcome.kind).toBe("cancelled");
+  });
+
+  test("an error frame in a closing round the author stopped is the turn's error", async () => {
+    const controller = new AbortController();
+    const model: ModelFn = async function* model(request) {
+      if (request.closing) {
+        controller.abort("user");
+        yield { type: "error", message: "aborted" };
+        return;
+      }
+      yield* callRound(["a", "look"]);
+    };
+    const { outcome } = await run({
+      model,
+      signal: controller.signal,
+      tools: registry({ look: {} }),
+      policy: { maxWorkRounds: 1 },
+    });
+    expect(outcome.kind).toBe("error");
+  });
+
+  test("the same calls with the same results, three times, close the turn early", async () => {
+    const same = () => callRound(["a", "look", `{"q":1}`]);
+    const { model, requests } = scripted([same(), same(), same(), textRound("I am stuck.")]);
+    const { outcome, events } = await run({ model, tools: registry({ look: {} }) });
+    expect(requests).toHaveLength(4);
+    expect(requests[3]!.closing).toMatchObject({
+      blocks: [{ type: "text", text: DEFAULT_TURN_POLICY.closingText("repeating") }],
+    });
+    expect(outcome.kind).toBe("cap_partial");
+    expect(events.findLast((e) => e.type === "round_start")).toMatchObject({
+      closing: "repeating",
+    });
+  });
+
+  test("a stuck turn with no closing reply says it was stuck, not that it ran out", async () => {
+    const same = () => callRound(["a", "look", `{"q":1}`]);
+    const { model } = scripted([same(), same(), same()]);
+    const { outcome } = await run({ model, tools: registry({ look: {} }) });
+    expect(outcome.kind).toBe("cap_failed");
+    expect(outcome.error?.message).toContain("kept returning the same results");
+    expect(outcome.error?.message).not.toContain("ran out");
+  });
+
+  test("the same call with a different result is not repeating", async () => {
+    let count = 0;
+    const tools = createToolRegistry();
+    tools.register(
+      createToolDefinition({
+        name: "look",
+        description: "look",
+        parameters: { type: "object", properties: {} },
+        execute() {
+          count += 1;
+          return { success: true, data: { count } };
+        },
+      }),
+    );
+    const same = () => callRound(["a", "look", `{"q":1}`]);
+    const { model, requests } = scripted([same(), same(), same(), same(), textRound("Settled.")]);
+    const { outcome } = await run({ model, tools });
+    expect(requests.every((request) => request.closing === undefined)).toBe(true);
+    expect(outcome.kind).toBe("complete");
+  });
+
+  test("different calls with the same result are not repeating", async () => {
+    const rounds = [1, 2, 3, 4].map((n) => callRound(["a", "look", `{"q":${n}}`]));
+    const { model, requests } = scripted([...rounds, textRound("Settled.")]);
+    const { outcome } = await run({ model, tools: registry({ look: {} }) });
+    expect(requests.every((request) => request.closing === undefined)).toBe(true);
+    expect(outcome.kind).toBe("complete");
+  });
+
+  test("the same question three times is the person's to end, not a repeat", async () => {
+    const same = () => callRound(["q", "ask"]);
+    const { model, requests } = scripted([same(), same(), same(), textRound("Understood.")]);
+    const { outcome } = await run({ model, tools: registry({ ask: { interactive: true } }) });
+    expect(requests.every((request) => request.closing === undefined)).toBe(true);
+    expect(outcome.kind).toBe("complete");
+  });
+});
+
+describe("parallel read-only calls", () => {
+  const READ = {
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+    readOnlyHint: true,
+  };
+  const WRITE = { ...READ, readOnlyHint: false };
+
+  /** Tools that note when they start and finish, each waiting on a gate the test opens. */
+  function gated(reads: string[], writes: string[] = []) {
+    const log: string[] = [];
+    const gates = new Map<string, () => void>();
+    const reg = createToolRegistry();
+    for (const name of [...reads, ...writes]) {
+      reg.register(
+        createToolDefinition({
+          name,
+          description: name,
+          parameters: { type: "object", properties: {} },
+          annotations: reads.includes(name) ? READ : WRITE,
+          async execute() {
+            log.push(`start ${name}`);
+            await new Promise<void>((open) => {
+              gates.set(name, open);
+              /* A write never overlaps anything, so nothing would open its gate. */
+              if (writes.includes(name) || name.endsWith("-now")) {
+                open();
+              }
+            });
+            log.push(`end ${name}`);
+            return { success: true, summary: name };
+          },
+        }),
+      );
+    }
+    return { gates, log, reg };
+  }
+
+  async function until(condition: () => boolean) {
+    while (!condition()) {
+      await Promise.resolve();
+    }
+  }
+
+  test("neighbouring reads run at once, and report in the order they were called", async () => {
+    const { gates, log, reg } = gated(["first", "second"]);
+    const { model } = scripted([callRound(["a", "first"], ["b", "second"]), textRound("ok")]);
+    const seen: HarnessEvent[] = [];
+    const turn = runTurn({
+      history: [USER],
+      system: [],
+      model,
+      tools: reg,
+      policy: { parallelReadOnly: true },
+      onEvent: (event) => seen.push(event),
+    });
+    await until(() => gates.has("first") && gates.has("second"));
+    expect(log).toEqual(["start first", "start second"]);
+    // The second call finishes first, and still reports second.
+    gates.get("second")!();
+    await until(() => log.includes("end second"));
+    gates.get("first")!();
+    const outcome = await turn.outcome;
+    expect(log).toEqual(["start first", "start second", "end second", "end first"]);
+    expect(seen.flatMap((e) => (e.type === "tool_result" ? [e.callId] : []))).toEqual(["a", "b"]);
+    const replies = outcome.appended.filter((m) => m.role === "tool");
+    expect(replies.flatMap((m) => m.blocks)).toMatchObject([{ callId: "a" }, { callId: "b" }]);
+  });
+
+  test("a write waits for the reads before it, and the reads after it wait for the write", async () => {
+    const { gates, log, reg } = gated(["before", "after-now"], ["write"]);
+    const { model } = scripted([
+      callRound(["a", "before"], ["b", "write"], ["c", "after-now"]),
+      textRound("ok"),
+    ]);
+    const turn = runTurn({
+      history: [USER],
+      system: [],
+      model,
+      tools: reg,
+      policy: { parallelReadOnly: true },
+    });
+    await until(() => gates.has("before"));
+    expect(log).toEqual(["start before"]);
+    gates.get("before")!();
+    await turn.outcome;
+    expect(log).toEqual([
+      "start before",
+      "end before",
+      "start write",
+      "end write",
+      "start after-now",
+      "end after-now",
+    ]);
+  });
+
+  test("a read-only call that puts a question to a person runs alone", async () => {
+    const log: string[] = [];
+    const reg = createToolRegistry();
+    for (const [name, interactive] of [
+      ["ask", true],
+      ["look-now", false],
+    ] as const) {
+      reg.register(
+        createToolDefinition({
+          name,
+          description: name,
+          parameters: { type: "object", properties: {} },
+          annotations: READ,
+          interactive,
+          async execute() {
+            log.push(`start ${name}`);
+            await Promise.resolve();
+            log.push(`end ${name}`);
+            return { success: true, summary: name };
+          },
+        }),
+      );
+    }
+    const { model } = scripted([callRound(["a", "ask"], ["b", "look-now"]), textRound("ok")]);
+    await runTurn({
+      history: [USER],
+      system: [],
+      model,
+      tools: reg,
+      policy: { parallelReadOnly: true },
+    }).outcome;
+    expect(log).toEqual(["start ask", "end ask", "start look-now", "end look-now"]);
+  });
+
+  test("off by default: reads run one after another", async () => {
+    const { gates, log, reg } = gated(["first", "second-now"]);
+    const { model } = scripted([callRound(["a", "first"], ["b", "second-now"]), textRound("ok")]);
+    const turn = runTurn({ history: [USER], system: [], model, tools: reg });
+    await until(() => gates.has("first"));
+    expect(log).toEqual(["start first"]);
+    gates.get("first")!();
+    await turn.outcome;
+    expect(log).toEqual(["start first", "end first", "start second-now", "end second-now"]);
+  });
+
+  test("an unknown call is a run of its own", async () => {
+    const { reg } = gated(["look-now"]);
+    const { model } = scripted([callRound(["a", "missing"], ["b", "look-now"]), textRound("ok")]);
+    const outcome = await runTurn({
+      history: [USER],
+      system: [],
+      model,
+      tools: reg,
+      policy: { parallelReadOnly: true },
+    }).outcome;
+    expect(outcome.kind).toBe("complete");
+  });
+
+  test("a Stop reaches every read in the run, and the turn opens no further round", async () => {
+    const reg = createToolRegistry();
+    for (const name of ["first", "second"]) {
+      reg.register(
+        createToolDefinition({
+          name,
+          description: name,
+          parameters: { type: "object", properties: {} },
+          annotations: READ,
+          async execute(_args, ctx) {
+            await new Promise<void>((settled) => {
+              ctx.signal.addEventListener("abort", () => {
+                settled();
+              });
+            });
+            return { success: false, error: "stopped" };
+          },
+        }),
+      );
+    }
+    const { model, requests } = scripted([callRound(["a", "first"], ["b", "second"])]);
+    const seen: HarnessEvent[] = [];
+    const turn = runTurn({
+      history: [USER],
+      system: [],
+      model,
+      tools: reg,
+      policy: { parallelReadOnly: true },
+      onEvent: (event) => {
+        seen.push(event);
+      },
+    });
+    await until(() => seen.filter((e) => e.type === "tool_start").length === 2);
+    turn.cancel();
+    const outcome = await turn.outcome;
+    expect(outcome.kind).toBe("cancelled");
+    expect(requests).toHaveLength(1);
+    expect(seen.filter((e) => e.type === "tool_result")).toHaveLength(2);
+  });
+});
+
 describe("the work budget", () => {
-  test("running out after applying something ends on the cap message, as the assistant", async () => {
-    const rounds = Array.from({ length: 5 }, (_, i) => callRound([`c${i}`, "edit"]));
+  test("running out after applying something, with no closing reply, ends on the cap message", async () => {
+    const rounds = Array.from({ length: 5 }, (_, i) => callRound([`c${i}`, "edit", `{"n":${i}}`]));
     const { model } = scripted(rounds);
-    const { outcome } = await run({ model, tools: registry({ edit: { writes: true } }) });
+    const { outcome } = await run({
+      model,
+      tools: registry({ edit: { writes: true } }),
+      policy: { maxWorkRounds: 5 },
+    });
     expect(outcome.kind).toBe("cap_partial");
     expect(outcome.workRounds).toBe(5);
     expect(outcome.cap?.text).toBe(
       DEFAULT_TURN_POLICY.capText({
         maxWorkRounds: 5,
+        reason: "budget",
         applied: Array.from({ length: 5 }, () => "edit done."),
         errors: [],
       }),
@@ -588,9 +994,13 @@ describe("the work budget", () => {
   });
 
   test("applied means it wrote: a read with a summary applies nothing", async () => {
-    const rounds = Array.from({ length: 5 }, (_, i) => callRound([`c${i}`, "look"]));
+    const rounds = Array.from({ length: 5 }, (_, i) => callRound([`c${i}`, "look", `{"n":${i}}`]));
     const { model } = scripted(rounds);
-    const { outcome } = await run({ model, tools: registry({ look: {} }) });
+    const { outcome } = await run({
+      model,
+      tools: registry({ look: {} }),
+      policy: { maxWorkRounds: 5 },
+    });
     expect(outcome.kind).toBe("cap_failed");
     expect(outcome.error?.message).toContain("I ran out of tool-call rounds (5)");
   });
@@ -598,6 +1008,7 @@ describe("the work budget", () => {
   test("the cap lists each error once", () => {
     const text = DEFAULT_TURN_POLICY.capText({
       maxWorkRounds: 2,
+      reason: "budget",
       applied: [],
       errors: ["bad", "bad", "worse"],
     });
@@ -605,6 +1016,13 @@ describe("the work budget", () => {
       "I ran out of tool-call rounds (2) before finishing.\n\nErrors encountered:\n- bad\n- worse" +
         "\n\nYou can continue by sending another message, or try a more specific request.",
     );
+  });
+
+  test("the defaults leave a turn room to find its way around a project", () => {
+    expect(DEFAULT_TURN_POLICY.maxWorkRounds).toBe(30);
+    expect(DEFAULT_TURN_POLICY.maxRounds).toBe(60);
+    expect(DEFAULT_TURN_POLICY.maxIdenticalRounds).toBe(3);
+    expect(DEFAULT_TURN_POLICY.parallelReadOnly).toBe(false);
   });
 
   test("a round whose calls were all interactive spends no work budget", async () => {
@@ -631,7 +1049,8 @@ describe("the work budget", () => {
       tools: registry({ ask: { interactive: true } }),
       policy: { maxRounds: 3 },
     });
-    expect(requests).toHaveLength(3);
+    // Three rounds, and the closing round, which the script leaves empty.
+    expect(requests).toHaveLength(4);
     expect(outcome.kind).toBe("cap_failed");
   });
 

@@ -29,6 +29,7 @@ import { registerAiTools } from "../src/services/ai-tools";
 import { registerProjectTools } from "../src/services/ai-project-tools";
 import { createCommandToolRegistry } from "../src/services/ai-command-tools";
 import { assistantToolRegistry } from "../src/services/harness/assistant-tools";
+import type { TurnPolicy } from "@jxsuite/ai/harness";
 import { runAgentLoop } from "../src/services/tool-executor";
 import { validateDoc } from "../src/services/jx-validate";
 import { buildSystemPrompt } from "../src/services/ai-system-prompt";
@@ -239,7 +240,16 @@ function outputDocument(task: Task, files: Map<string, string>): TrialOutput {
  */
 export async function runTrial(
   task: Task,
-  { client, trial = 1 }: { client?: StreamingClient | undefined; trial?: number } = {},
+  {
+    client,
+    trial = 1,
+    policy = {},
+  }: {
+    client?: StreamingClient | undefined;
+    trial?: number;
+    /** Overrides on the turn's policy, for a scripted trial with bounds of its own. */
+    policy?: Partial<TurnPolicy>;
+  } = {},
 ): Promise<TrialResult> {
   const cfg = resolveConfig();
   const usage: TrialUsage = { cachedInputTokens: 0, inputTokens: 0, outputTokens: 0, requests: 0 };
@@ -269,6 +279,7 @@ export async function runTrial(
       registerAiTools(toolRegistry, { getTab: () => tab });
       await runAgentLoop({
         chatState,
+        policy,
         streamingClient,
         toolRegistry,
         systemPrompt: buildSystemPrompt({ document: structuredClone(task.initialDoc) }),
@@ -303,6 +314,7 @@ export async function runTrial(
       );
       await runAgentLoop({
         chatState,
+        policy,
         streamingClient,
         toolRegistry,
         systemPrompt: buildSystemPrompt({ hasProject: true, projectRoot: `/eval/${task.id}` }),
