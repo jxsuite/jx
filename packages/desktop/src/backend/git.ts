@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { projectCommitArgs, projectRelativePath, readGitPrefix } from "@jxsuite/protocol/git-scope";
 import type {
   GitBranchesResult,
   GitFileStatus,
@@ -176,10 +177,16 @@ export function createGitOps(session: { readonly projectRoot: string | null }) {
 
     const branchRaw = await git("branch", "--show-current");
     const branch = branchRaw.trim();
-    // Every untracked FILE, not its collapsed folder: see the dev server's status route.
-    const files = parsePorcelainV1(
-      await git("status", "--porcelain=v1", "-z", "--untracked-files=all"),
-    );
+    // Every untracked FILE, not its collapsed folder, and only the project's, in the coordinates
+    // Every other verb reads: see the dev server's status route.
+    const [out, prefix] = await Promise.all([
+      git("status", "--porcelain=v1", "-z", "--untracked-files=all", "--", "."),
+      readGitPrefix((args) => git(...args)),
+    ]);
+    const files = parsePorcelainV1(out);
+    for (const file of files) {
+      file.path = projectRelativePath(prefix, file.path);
+    }
 
     let ahead = 0;
     let behind = 0;
@@ -242,7 +249,9 @@ export function createGitOps(session: { readonly projectRoot: string | null }) {
   }
 
   async function gitCommit(params: { message: string }): Promise<void> {
-    await repoGit("commit", "-m", params.message);
+    // RepoGit first, so a folder that is not a repository fails as every other verb does.
+    await repoGit("rev-parse", "--git-dir");
+    await git(...(await projectCommitArgs((args) => git(...args), params.message)));
   }
 
   async function gitPush(params?: { setUpstream?: boolean }): Promise<void> {

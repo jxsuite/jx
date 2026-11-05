@@ -14,6 +14,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./git-scope": "./src/git-scope.ts",
     "./problem": "./src/problem.ts",
     "./problems": "./src/problems.ts",
     "./routes": "./src/routes.ts",

@@ -20,6 +20,7 @@ import {
   missingExtensionsNotice,
 } from "@jxsuite/compiler/format-host";
 import { readBundledProjectSchemas } from "@jxsuite/compiler/schema-command";
+import { projectCommitArgs, projectRelativePath, readGitPrefix } from "@jxsuite/protocol/git-scope";
 import { handleDataApi } from "./data-api.ts";
 import { containedPath } from "./net-guard.ts";
 import { startSitePreview } from "./site-preview.ts";
@@ -1792,12 +1793,26 @@ export async function handleStudioApi(
         /* `--untracked-files=all`: every untracked FILE, not its collapsed folder. By default git
            reports a wholly untracked `content/` as one entry, so a fresh repository listed a
            handful of folders that no group, comparison or checkbox could treat as a file, and the
-           count jumped to the real one the moment staging expanded them (studio.md §22.8). */
-        const [out, remotesOut] = await Promise.all([
-          runGit(["status", "--porcelain=v2", "--branch", "-z", "--untracked-files=all"]),
+           count jumped to the real one the moment staging expanded them (studio.md §22.8).
+           `-- .` and the prefix: the project's changes only, in the coordinates every other verb
+           reads. Porcelain prints from the repository root whatever the cwd is (git-scope.ts). */
+        const [out, remotesOut, prefix] = await Promise.all([
+          runGit([
+            "status",
+            "--porcelain=v2",
+            "--branch",
+            "-z",
+            "--untracked-files=all",
+            "--",
+            ".",
+          ]),
           runGit(["remote"]),
+          readGitPrefix(runGit),
         ]);
         const status = parseGitStatus(out);
+        for (const file of status.files) {
+          file.path = projectRelativePath(prefix, file.path);
+        }
         const fullStatus = {
           ...status,
           isRepo: true,
@@ -1908,12 +1923,7 @@ export async function handleStudioApi(
         if (!message || !isString(message)) {
           return problem("invalidRequest", "Missing message");
         }
-        const statusOut = await runGit(["status", "--porcelain"]);
-        const hasStaged = statusOut
-          .split("\n")
-          .some((l) => l.length > 0 && l[0] !== " " && l[0] !== "?");
-        const args = hasStaged ? ["commit", "-m", message] : ["commit", "-a", "-m", message];
-        const out = await runGit(args);
+        const out = await runGit(await projectCommitArgs(runGit, message));
         const hashMatch = out.match(/\[[\w/]+ ([a-f0-9]+)\]/);
         return Response.json({ hash: hashMatch?.[1] || "", ok: true });
       }
@@ -1947,13 +1957,15 @@ export async function handleStudioApi(
         try {
           await runGit(["pull"]);
         } catch (error) {
-          const conflicts =
+          const conflicting =
             error instanceof GitCommandError
               ? conflictingPaths(`${error.stdout}\n${error.stderr}`)
               : [];
-          if (conflicts.length === 0) {
+          if (conflicting.length === 0) {
             throw error;
           }
+          const prefix = await readGitPrefix(runGit);
+          const conflicts = conflicting.map((conflict) => projectRelativePath(prefix, conflict));
           return problem(
             "conflict",
             `Pull stopped: ${conflicts.length} file(s) changed on both sides.`,
@@ -2010,9 +2022,9 @@ export async function handleStudioApi(
           return problem("invalidRequest", "Invalid path");
         }
         /* `./` IS LOAD-BEARING. `git show <rev>:<path>` resolves <path> from the REPOSITORY ROOT,
-           whatever the cwd is; only a `./` prefix makes it relative to the cwd. Every other verb
-           here — status, diff, checkout — is cwd-relative, and so is the `readFile` the studio
-           pairs this with, so without it a project nested inside its repo compared two DIFFERENT
+           whatever the cwd is; only a `./` prefix makes it relative to the cwd. The paths this API
+           answers and accepts are project-relative, and so is the `readFile` the studio pairs this
+           with, so without it a project nested inside its repo compared two DIFFERENT
            FILES: the working copy of `examples/package.json` against the committed root
            `package.json`, with no error anywhere and a plausible-looking diff. */
         const content = await runGit(["show", `${ref}:./${fp}`]);
