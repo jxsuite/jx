@@ -1026,6 +1026,12 @@ The studio loads any registered format file (e.g. `.md` with the `Markdown` clas
 
 **An open tab is rebuilt, not reloaded.** A reload sets the document and never the source format, so the tab would keep the old format's modes and the next save would write the wrong format. It is re-keyed to the new path and reopened under it, which disposes the stale tab while keeping its pane slot.
 
+### 8.5 `.jx` Documents
+
+> **Status: Pending.** Studio opens and saves `.json` and format-extension files. A `.jx` file (spec.md §22) has no path through it yet.
+
+A `.jx` file opens, edits and saves through the same tabs and modes as any other document, and a save keeps the comments and layout of the text it started from.
+
 ---
 
 ## 9. File Management
@@ -1957,6 +1963,12 @@ Every finding that can be repaired carries the command that repairs it, and the 
 **A Problem key names a FINDING, not a rule and a node.** A key dedupes by replacing, so two records sharing one are one record — and one element can break three aria references at once, or one panel can set `display` inside two `@media` blocks, which is several findings of one rule at one path. Keyed by rule and path alone the report named the last of them and silently dropped the rest, while the count in its own toast still said three. The key carries an ordinal for the second and later occurrence at a node; the first keeps the bare key, so nothing already distinct moves.
 
 **A run says what it could NOT check.** Colour contrast between computed colours, target size in rendered pixels, focus order and reading order are all properties of built output in a browser, not of a document tree; answering them means running the page with an engine like axe-core. Two Problems name that absence on every run, because a report that lists nothing otherwise reads as "this page is accessible" — a claim the run cannot make. This is the `redirects-grid.ts` idiom, for the same reason it exists there.
+
+### 16.7 Type Errors in Document Code
+
+> **Status: Pending.** The function editor reports no type errors.
+
+The code surface marks type errors in a document's bodies and modules (spec.md §23.3) at their real positions, with no `tsc` or Node process on the machine, and files them as **Problems**.
 
 ---
 
