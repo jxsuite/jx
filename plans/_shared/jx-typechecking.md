@@ -7,7 +7,8 @@ claims:
 requires:
   - spec/typescript-function-bodies
   - spec/document-scripts
-  - _shared/jx-document-format
+  - spec/jx-document-format
+  - studio/jx-documents
 workspaces:
   - packages/schema
   - packages/studio
@@ -68,9 +69,11 @@ size: L
 - **Decided:** what `State` says. `(export)` entries are `typeof import` of the script's export. Server entries are `Awaited<ReturnType<…>> | null`. An empty array is `any[]`, not `never[]`. Anything the document cannot determine (`Request`, `ContentEntry`, `$expression`, inherited layout state) is `any`, not an error. A false error in code the author can't fix would teach people to ignore the checker.
 - **Decided:** event types come from the `on*` binding, including `event.target` typed from the element carrying the handler where that is unambiguous.
 - **Decided:** the mapper config is never in the root `tsconfig.json`. tsgolint fails on the unknown option, and `lint:typecheck` would go red. It goes in a separate `tsconfig.jx.json`, here and in scaffolds, and the root `include` is unchanged. Inline code stays outside the lint gates until tsgolint supports mappers, and docs say so.
+- **Decided:** a mapper claims every `.jx`, so the generator answers a project file with empty virtual text, using `classifyJx` from `plan:spec/jx-document-format`. Reading one as a document would report grammar errors on every project in `tsc`. Studio does not need this, since a project file has no Code-view type check.
 - **Decided:** Studio's limits are stated, not hidden. It checks one document's bodies and client script against its own state. An import it cannot resolve in the worker is `any` and suppresses TS2307. Whole-project checking is `tsc`'s job. This is a real limit, and §16.7 says so.
-- **Decided:** two new workspaces, created by their slices: `packages/content-mapper` (`@jxsuite/content-mapper`, run with `node`, `dynamicConfig: true` so it watches `project.json`) and `packages/vscode`. Each needs a `bunfig.toml`. The mapper needs a release-config entry (`scripts/release-config.test.ts:67`), a npm trusted publisher and template version pins. VS Code needs a marketplace lane. The publisher and marketplace accounts are owner actions.
+- **Decided:** two new workspaces, created by their slices: `packages/content-mapper` (`@jxsuite/content-mapper`, run with `node`, `dynamicConfig: true` so it watches the project file) and `packages/vscode`. Each needs a `bunfig.toml`. The mapper needs a release-config entry (`scripts/release-config.test.ts:67`), a npm trusted publisher and template version pins. VS Code needs a marketplace lane. The publisher and marketplace accounts are owner actions.
 - **Decided:** the recommendation flips last, and only after a release that contains all of this. A starter pins published `@jxsuite/*` versions (`AGENTS.md` "Starter Roots"), so it cannot use `.jx` before those are out.
+- **Open:** should the grammar and schema completion of JTC.4 leave this plan? Neither needs a mapper, and `project.jx` loses `project.json`'s no-tooling completion in VS Code (`plan:site-architecture/project-jx`). Because `requires` holds a whole plan, that half now waits for TypeScript 7.1 and `plan:spec/document-scripts`, which it has no use for. Recommendation: split it into its own plan requiring only `plan:spec/jx-document-format`, leaving `registerContentMappers` here, once someone is ready to take on the marketplace account.
 - **Open:** how an author types what the checker cannot derive. Recommendation: a `$type` key on a state entry holding a TypeScript type, such as `"Task[]"`, resolved against the client script and globals, and ignored by every tier but the checker. Parameters would use a `name: Type` string in `(fn)` nodes, read the same way. The 47 measured errors include real cases that need this.
 - **Open:** whether `tsc` checks bodies in `.json` documents. A mapper claims files by extension, and claiming `.json` would capture every data file and has not been tried. Recommendation: not in this plan. Studio checks both formats through the generator, and `jx convert` moves a file into `tsc`'s reach. A `jx typecheck` that writes the generator's output to temporary `.ts` files could cover `.json` later, with no design change.
 - **Open:** whether `--runExternalCode` trusts every mapper in a project or only the named one. If every one, a scaffold's `typecheck` script makes that trust decision for the user, and docs must state it. Answer it in JTC.2 by test.
@@ -83,7 +86,7 @@ size: L
 4. **Mapper depth.** Event types, `${}` template expressions, `$ref` checks, `$map` scope, `$props` from imported `.jx` components, `$defs`.
 5. **Editors and format.** The VS Code extension: TextMate grammar, TypeScript injection, `registerContentMappers`, and completion from the schema through the span map. Studio's `.jx` Code view gets the same completion provider. `jx format` wraps `serializeJx` and runs `oxfmt` on code strings. `oxfmt` and `oxlint` do not see `.jx` otherwise.
 6. **Scaffolds and the flip.**
-   - `packages/create/generate.ts`: `.jx` pages, `tsconfig.jx.json`, `typescript`, the mapper and a `typecheck` script. `studio/src/create/add-new.ts:700`, `:717` create `.jx`.
+   - `packages/create/generate.ts`: `.jx` pages (the project file is already `project.jx`, from `plan:site-architecture/project-jx`), `tsconfig.jx.json`, `typescript`, the mapper and a `typecheck` script. `studio/src/create/add-new.ts:700`, `:717` create `.jx`.
    - `packages/starters` and `examples` convert with `jx convert`. `starters/tests/validate-projects.test.ts:51` globs `.jx`, or it would pass with nothing to check.
    - `packages/ai` prompts and `.claude/commands/jx.md` read and write `.jx`.
    - The premise changes where it is written: `AGENTS.md` line 3, the "JSON Edition" subtitle in `specs/spec.md`, `README.md` line 6, and §2.3's framing.

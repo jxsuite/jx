@@ -71,7 +71,7 @@ The owner's direction: TypeScript is the default scripting language from the fir
 | `amaro`               | 3.04 MB / 1.13 MB | unverified    | needs a wrapper    | needs a wrapper    | ok                 | not measured              |
 | `Bun.Transpiler`      | Bun only          | n/a           | ok                 | fails              | ok                 | none                      |
 
-`ts-blank-space` 0.9.0 declares `typescript: "5.1.6 - 6.0.x"`, while the repository pins `^7.0.2`. Installing it therefore nests a second, JavaScript TypeScript compiler. Whether that installs and bundles cleanly here has not been tried.
+`ts-blank-space` 0.9.0 declares `typescript: "5.1.6 - 6.0.x"`, while the repository pins `^7.0.2`. Installing it therefore nests a second, JavaScript TypeScript compiler. In a scratch project on 2026-11-06, with `typescript` 7.0.2 at the root: Bun nests 6.0.3 under `ts-blank-space`, it erases `event.target as HTMLInputElement` correctly, and `bun build --target=browser` produces 8.85 MB unminified with no error. This has not been tried inside this repository's workspace, and Dependabot's view of two TypeScript majors has not been looked at.
 
 **The stripper does not run on the cloud host.** That host (a private repository) composes live previews with `@jxsuite/site` inside a Cloudflare Worker, with no bundler. Run on 2026-11-05 under `wrangler dev` with `nodejs_compat`, bundled by wrangler: the Worker fails at startup with `__filename is not defined`, in `getNodeSystem`, because `process` makes TypeScript take itself for Node. Size is not the problem: 3.5 MB minified against a 64 MiB limit. A workaround was not tried, because the design below does not need one.
 

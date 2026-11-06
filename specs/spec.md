@@ -2467,7 +2467,7 @@ That settles the staging question by removing it. The shell is not a deployment 
 
 > **Status: Pending.** No host reads `.jx` yet: a document is `.json` or a format-extension file.
 
-A Jx document may be written as a `.jx` file, in KDL 2. `.jx` and `.json` are two spellings of one data model: both parse to the same `JxDocument`, and the schema, the runtime, the compiler and Studio's document model all work on that object. `.jx` is a native format, so no extension has to be enabled to use it. `project.json`, `*.class.json`, `jx-extension.json`, JSON Schemas and data files stay JSON.
+A Jx document may be written as a `.jx` file, in KDL 2. `.jx` and `.json` are two spellings of one data model: both parse to the same `JxDocument`, and the schema, the runtime, the compiler and Studio's document model all work on that object. `.jx` is a native format, so no extension has to be enabled to use it. A project's configuration may be written the same way, as `project.jx` (`site-architecture.md` §2.3). `*.class.json`, `jx-extension.json`, JSON Schemas and data files stay JSON.
 
 ---
 

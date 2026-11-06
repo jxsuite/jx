@@ -6,7 +6,9 @@ claims:
 requires:
   - spec/typescript-function-bodies
   - spec/function-entry-tier-parity
-  - _shared/jx-document-format
+  - spec/jx-document-format
+  - studio/jx-documents
+  - desktop/open-from-os
 workspaces:
   - packages/schema
   - packages/compiler
@@ -39,6 +41,7 @@ A body compiles with `new Function`, so it cannot `import`, hold module state or
 - **Calling a `$src` function differs by tier.** With `bump(state, by)`, `state.bump(3)` throws, `state.bump(state, 3)` works when interpreted, `compile-element` emits `(state) => bump(state)`, and `compile-client` emits a computed with no listener. `plan:spec/function-entry-tier-parity` closes this, which is why it is required here.
 - **`.jx` importing `.jx`.** `tsc` passes, and both bundlers fail.
 - **Live Preview leaks server code.** `packages/site/src/shell.ts:68`, `:94` embed the whole document in the page, which would include `$script.server`. `$script` is not in `RESERVED_KEYS` (`runtime.ts:1586`), and no slice edited the schema. `serveSite`'s file lane is a second path: it would serve `components/x.jx` as raw bytes on an origin running project script, which is the hole `packages/site/src/paths.ts` exists to refuse, and a cloud preview is readable by anyone holding its link.
+- **A document becomes a self-contained program.** Today a `timing: "server"` entry needs a sidecar, so one forwarded file cannot run anything on the backend. `script timing=server` removes that: on an editing host, a single `.jx` runs its own module in Node through `/__jx_server__` when the canvas renders it, which `packages/server/src/project-server.ts:297` already labels RCE-capable. With `.jx` associated with the desktop app, that is one double-click from an email attachment. `plan:desktop/open-from-os` is required for this reason, so this plan cannot ship ahead of the prompt.
 - **Concurrent edits to a script are lost.** A `$script` value is whole-value last-writer-wins (`packages/collab/src/schema.ts:109`, `:123`). String `body` values are too, which matters more now that they can run to many lines.
 
 ## Outcome
@@ -123,7 +126,7 @@ my-counter {
 
 - `packages/compiler`: two documents with same-named client exports each get their own; a page and its layout keep both modules; eager and `$lazy` from one script; bundling under both backends; no server import in any client bundle; same-named server exports across documents fail the build naming both files; `.jx` importing `.jx`.
 - `packages/erase`, `packages/runtime`: the loader on a script with relative `.ts` imports, including with the entry and the runtime built as two files, a shared import loaded once, the named errors for a cycle and a bare import, and each qualified specifier resolving to its own document.
-- `packages/site`, `packages/server`, `packages/desktop`: neither Live Preview HTML nor a document fetched through the file lane contains `$script.server`; the mount-time data call receives declared arguments.
+- `packages/site`, `packages/server`, `packages/desktop`: neither Live Preview HTML nor a document fetched through the file lane contains `$script.server`; the mount-time data call receives declared arguments; on desktop, no server module runs in a folder the user has not answered for.
 - `packages/collab`: concurrent edits to one script merge.
 - `packages/schema`: `$script` validates; advisories fire on a relative `$src` and not on `npm:` or the kit; corpus round trip with synthetic scripts.
 - Chrome MCP pass on a component with `script` in the canvas and Live Preview. Coverage thresholds ratchet. `bun test --isolate` throughout.

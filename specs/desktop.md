@@ -459,6 +459,33 @@ A live preview under the fields shows the resolved destination (`/home/you/Sites
 - **A breakpoint's styles are what the site declared there, not what the viewport measured.** `getComputedStyle` returns used values, so a fluid element reports the pixels it happens to occupy and every one of them differs from the base capture. Sampling once per breakpoint therefore recorded the viewport's own width as the element's: two thirds of a real import's responsive declarations, which do not merely waste space but PIN the layout the breakpoint existed to reflow. Each kept breakpoint is sampled twice within its own band — downward for `max-width`, upward for `min-width`, or the second sample leaves the band it is meant to characterise — and only declarations both samples agree on are emitted. A property that reverts to its element's default at a breakpoint is a change like any other and is emitted with the value measured there; iterating only the breakpoint's own surviving declarations made `display: flex` returning to `block` invisible, which is most of what "stack on mobile" means.
 - **Downloaded assets are referenced the way an author would write them.** `public/` is served from the site root, so a file at `public/assets/images/hero.jpg` is referenced `/assets/images/hero.jpg`. A reference without a leading slash resolves against the referencing DOCUMENT's directory, so emitting the file path made every imported image resolve to a path under `pages/` — broken on the canvas and in the build alike.
 
+### 4.6 Opening a Path From the Operating System
+
+> **Status: Pending.** `open-file`, `second-instance` and the launch's arguments go through `projectDirOf` (`packages/desktop/src/main/app.ts`), which maps a file named `project.json` to its folder and returns any other path unchanged, so a page the OS hands over is posted as a project root that is a file. Only the first bare argument is read. On macOS a cold `open-file` lands beside the launch's own `open-project` with no root, so it also opens a welcome window.
+
+Every path the operating system hands the application resolves by one rule, in the backend, whichever way it arrived:
+
+| The path is                       | It opens                                                                                         |
+| --------------------------------- | ------------------------------------------------------------------------------------------------ |
+| A project file, or a project root | That project                                                                                     |
+| A file inside a project           | Its project, with the file in a tab. A window already holding the project is raised and shown it |
+| A document in no project          | §4.3                                                                                             |
+| Anything else                     | Nothing, and the application says why, naming the file. It never opens a blank or wrong window   |
+
+Several paths in one launch each resolve in turn. A launch that was handed a path opens no welcome window, and one that ends with no window at all exits. A path may arrive as a `file:` URL.
+
+A file named like a project file is believed only if its content agrees (`site-architecture.md` §2.3), so `pages/project.jx` opens the project above it with that page in a tab.
+
+### 4.7 Trusting a Project
+
+> **Status: Pending.** Nothing asks. Opening a project runs its code with the user's privileges, from a double-click as from a picker.
+
+A document is executable input (`spec.md` §21.4). On the desktop that reaches past the canvas: `/__jx_resolve__` and `/__jx_server__` import project modules into the backend (`server.md` §4.2), and the token gating them is in the canvas's own URL by design (§9.7), because the canvas calls them. A file association makes that one click on a file whose origin the user may not have thought about.
+
+So the first time a folder would open, by any path, the application asks in a native dialog, before anything from the folder runs and before a window binds to it. Until the answer, it reads at most the project file, as data. The dialog names the folder by its path, not by the project's own `name`, which is the folder's to choose, and says that opening runs the project's code. Cancel is the default, and declining opens nothing.
+
+The answer is kept per user and per folder, by real path. A project the application created, and a project already in Recent when this ships, count as answered. Trust is not inherited by subfolders. This is consent and not a sandbox. An opened project still runs with the user's privileges, as `spec.md` §21.4 states, and the answer is about a folder and not its contents: a `git pull` or a re-extracted archive at the same path runs without asking again.
+
 ---
 
 ## 5. Backend API Contract
@@ -768,6 +795,23 @@ The Mac App Store is a second macOS channel beside the notarized DMG of §7.6, b
 **Review.** The store's guideline 2.5.2 forbids an app that downloads or runs code that changes its features. Studio runs the user's own project and installs the npm packages the user asks for, as an editor or an IDE does; the review notes say so.
 
 **Updates are releases.** Each desktop release uploads its build to App Store Connect for TestFlight. Submitting a build to App Review is a person's decision and no lane makes it.
+
+### 7.8 File Associations
+
+> **Status: Pending.** `electron-builder.yml` registers the application for every `.json`, which on Windows writes the class of `.json` itself, and the desktop entries list `application/json` and `text/markdown`. No channel declares `.jx`.
+
+Jx Studio owns `.jx`, in both of its meanings (a project file and a document), and §4.6 decides what each opens. It may appear under **Open With** for `.json` and `.md`, and it never makes itself the default for a type another application uses.
+
+| Channel              | `.jx` is declared by                                                                                                                                                                        |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| macOS, Mac App Store | An exported uniform type that conforms to `public.plain-text`, and an `Owner` document type                                                                                                 |
+| Windows installer    | A registered file class, with a document icon                                                                                                                                               |
+| Microsoft Store      | A file type association in the package manifest                                                                                                                                             |
+| Nix package          | `share/mime/packages` and the desktop entry                                                                                                                                                 |
+| AppImage             | A command the user runs, which registers the type and a desktop entry for the current user                                                                                                  |
+| Snap                 | The desktop entry names the type, which does nothing until the host knows it. A strict snap cannot add a type to the host's MIME database, so `.jx` opens from inside the application there |
+
+The MIME type is `text/x-jx`, a subclass of `text/plain`, so a file manager still offers text editors. The type names no HTTP behaviour: a site origin answers a `.jx` document as JSON (`spec.md` §22).
 
 ---
 
