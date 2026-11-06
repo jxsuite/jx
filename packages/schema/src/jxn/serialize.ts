@@ -38,6 +38,11 @@ const isObject = (value: JsonValue | undefined): value is JsonObject => isJsonOb
 const isRef = (value: JsonValue | undefined): value is { $ref: string } =>
   isObject(value) && isString(value.$ref) && Object.keys(value).length === 1;
 
+/** Whether a string has no lone surrogate. A `u` regular expression sees one as a code point. */
+function isWellFormed(value: string): boolean {
+  return !/\p{Cs}/u.test(value);
+}
+
 /** Whether a string reads back as itself from this spelling. */
 function survives(spelling: string, value: string): boolean {
   try {
@@ -102,7 +107,7 @@ function multiline(value: string, indent: string): string | null {
  * @param where The JSON Pointer, which a refusal names.
  */
 function writeString(value: string, indent: string, where: string): string {
-  if (!value.isWellFormed()) {
+  if (!isWellFormed(value)) {
     throw new JxnError(`${where} holds a lone surrogate, which Jx Notation has no way to spell`);
   }
   if (BARE.test(value)) {
@@ -125,7 +130,7 @@ function writeString(value: string, indent: string, where: string): string {
 
 /** A key, as a node or property name. Never multi-line: a name is one line. */
 function writeName(key: string, where: string): string {
-  if (!key.isWellFormed()) {
+  if (!isWellFormed(key)) {
     throw new JxnError(`${where} is a key with a lone surrogate, which Jx Notation cannot spell`);
   }
   return BARE.test(key) ? key : quoted(key);

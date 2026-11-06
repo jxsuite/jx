@@ -43,6 +43,12 @@ describe("a .jxn document", () => {
     expect(parser).toHaveBeenCalledWith("main", source);
   });
 
+  test("the parser may load itself first", async () => {
+    answer("main", "text/plain");
+    setDocumentParser(() => Promise.resolve({ tagName: "loaded" }));
+    expect(await resolve(url(".jxn"))).toEqual({ tagName: "loaded" });
+  });
+
   test("with a query string is still one", async () => {
     answer("main", "text/plain");
     setDocumentParser(() => ({ tagName: "parsed" }));

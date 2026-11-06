@@ -416,7 +416,8 @@ export async function resolve(source: string | JxDocument, ctx?: JxContext): Pro
 const JXN_URL = /\.jxn(?:[?#]|$)/iu;
 
 /** What reads a `.jxn` file's text. Absent, the runtime refuses one rather than guessing. */
-let _documentParser: ((text: string, source: string) => JxDocument) | null = null;
+let _documentParser: ((text: string, source: string) => JxDocument | Promise<JxDocument>) | null =
+  null;
 
 /**
  * Supply what reads a `.jxn` file, for a host that serves one as its text.
@@ -424,10 +425,11 @@ let _documentParser: ((text: string, source: string) => JxDocument) | null = nul
  * A compiled site never needs this, and a `$ref` from a Jx site origin does not: both get JSON.
  * Studio's canvas does, because an editing server answers a file as it is.
  *
- * @param parser `parseJxn` from `@jxsuite/schema/jxn`, or null to take it away again.
+ * @param parser `parseJxn` from `@jxsuite/schema/jxn`, or a function that loads it first, or null
+ *   to take it away again.
  */
 export function setDocumentParser(
-  parser: ((text: string, source: string) => JxDocument) | null,
+  parser: ((text: string, source: string) => JxDocument | Promise<JxDocument>) | null,
 ): void {
   _documentParser = parser;
 }
