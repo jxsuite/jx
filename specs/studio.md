@@ -2,9 +2,9 @@
 
 ## Visual Builder for Jx Documents
 
-**Version:** 0.16.9-draft\
+**Version:** 0.16.15-draft\
 **Status:** Partial\
-**Updated:** 2026-11-04\
+**Updated:** 2026-11-06\
 **License:** MIT
 
 ---
@@ -2380,6 +2380,12 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.16.15-draft** (2026-11-06) — §14 tab strip: the chip's pill states a project's hold rule rather than a draft flag.
+- **0.16.14-draft** (2026-11-06) — Call the format Jx Notation, with the extension .jxn.
+- **0.16.13-draft** (2026-11-06) — §6.8: an element's content row offers item.$children, stored as computed children, and the canvas draws it as a label closed to the caret.
+- **0.16.12-draft** (2026-11-06) — §6.8: inside a repeater template the From data… picker offers the item's fields, deduced from collection schemas, relationships, $defs, sample values and enclosing repeaters; a nested repeater's Items and formula operands offer them too.
+- **0.16.11-draft** (2026-11-06) — Reserve sections for .jxn documents and for type errors in document code, both pending.
+- **0.16.10-draft** (2026-11-06) — A project that is a folder of a larger repository: Review changes lists its own changes under project-relative paths, and a commit leaves other folders' staged changes staged.
 - **0.16.9-draft** (2026-11-04) — The Content home's Duplicate is the Media workspace's byte-exact copy, so it keeps non-UTF-8 bytes and never overwrites, and writes valid UTF-8 as a document so a backend that files uploads as binaries can still open the copy; a folder that cannot be listed makes no copy, a backend without readFileBytes is not offered it, and an upload's collision-free name no longer depends on case (§9.3).
 - **0.16.8-draft** (2026-11-04) — The Rename field in the Files panel and on the Content home refuses a name already in the folder, a path and a leading dot, in place, and refuses to open when the folder cannot be read, because a rename replaces its destination in silence; a Files panel drag refuses the same collision, and renaming a folder takes the open tabs inside it along (§9.1.1).
 - **0.16.7-draft** (2026-11-04) — §9.3, §22.6: a media file can be renamed and duplicated from the Media workspace's detail pane and tile menu (media.rename, media.duplicate); a rename keeps the file's folder and format and refuses to land on another file, because the backend's rename replaces its destination in silence, and a duplicate copies the bytes through readFileBytes and the upload core.
@@ -2591,4 +2597,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_`@jxsuite/studio` Specification v0.16.9-draft_
+_`@jxsuite/studio` Specification v0.16.15-draft_

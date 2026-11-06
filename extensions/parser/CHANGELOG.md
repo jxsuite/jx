@@ -1,5 +1,23 @@
 # Changelog
 
+## [4.3.0](https://github.com/jxsuite/jx/compare/parser-v4.2.0...parser-v4.3.0) (2026-11-06)
+
+
+### Features
+
+* **content:** let a project say what holds an entry back ([#548](https://github.com/jxsuite/jx/issues/548)) ([f71a439](https://github.com/jxsuite/jx/commit/f71a43929ca7d2aa5834d6552ea485db4b2dcdac))
+* **studio:** offer a repeater item's fields in the From data picker ([#539](https://github.com/jxsuite/jx/issues/539)) ([e9ee027](https://github.com/jxsuite/jx/commit/e9ee027322ef01fd2d42c39e7864af1e70556410))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/markup bumped to 1.0.4
+    * @jxsuite/schema bumped to 5.2.0
+  * devDependencies
+    * @jxsuite/runtime bumped to 6.1.0
+
 ## [4.2.0](https://github.com/jxsuite/jx/compare/parser-v4.1.2...parser-v4.2.0) (2026-11-04)
 
 
