@@ -437,6 +437,23 @@ describe("the document draws the four kinds", () => {
     expect(m.host.querySelector('[data-action="act:[]#0:else"]')).toBeTruthy();
   });
 
+  test("a repeater's fields reach both an operand row and a nested expression", async () => {
+    const statements: JxStatement[] = [
+      { if: { $ref: "" }, then: [{ operator: "=", target: { $ref: "" }, value: null }] },
+    ];
+    const m = await mount(statements, {
+      extraRefs: [{ label: "item.data.title", value: "$map/item/data/title" }],
+    });
+    // Each operand mounts its own editor, and the next mount repaints every host left standing.
+    await m.update(statements);
+    const offered = (scope: string) =>
+      [...m.host.querySelectorAll(`${scope} [part="ref"] option`)].map((o) =>
+        o.getAttribute("value"),
+      );
+    expect(offered('[data-prop="if"]')).toContain("$map/item/data/title");
+    expect(offered('[data-prop="target"]')).toContain("$map/item/data/title");
+  });
+
   test("if card with an else renders that lane with a remove button instead", async () => {
     const m = await mount([{ else: [], if: { $ref: "#/state/count" }, then: [] }]);
     expect(lanes(m.host).map((l) => l.textContent!.trim())).toContain("Else");

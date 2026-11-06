@@ -347,7 +347,7 @@ export interface JxElement {
    * `isMappedArray`). The bare `| JxMappedArray` form (whole children slot is one repeater) is
    * retained for backward compatibility with legacy docs.
    */
-  children?: (JxElement | string)[] | JxMappedArray;
+  children?: (JxElement | string)[] | JxMappedArray | ComputedChildren;
   style?: JxStyle;
   attributes?: Record<string, JxAttributeValue>;
   className?: string;
@@ -821,7 +821,7 @@ export interface JxMutableNode {
    * here. The bare `| JxMappedArray` form (whole children slot is one repeater) is retained for
    * backward compatibility.
    */
-  children?: (JxMutableNode | string)[] | JxMappedArray;
+  children?: (JxMutableNode | string)[] | JxMappedArray | ComputedChildren;
   style?: JxStyle;
   attributes?: Record<string, JxAttributeValue>;
   className?: string;
@@ -908,6 +908,13 @@ export type ContentFieldValue =
   | ContentLoaderEntry
   | ContentFieldValue[]
   | { [key: string]: ContentFieldValue };
+
+/**
+ * A `${…}` template holding an element's whole child list (spec.md §8.4), as `"${item.$children ??
+ * []}"`. A plain string is not a `children` value, so the type asks for the opening of a template
+ * rather than any string.
+ */
+export type ComputedChildren = `${string}\${${string}`;
 
 /** One loaded content entry, as produced by a format class's `load` capability. */
 export interface ContentLoaderEntry {

@@ -47,9 +47,34 @@ Select the repeater and click **Edit template →** in the **Repeating list** se
 Inside the template, each item's data is in scope:
 
 - While editing text, the **Insert data** button on the block action bar offers `item` (the current item) and `index`, its position, alongside the item's own fields: `item.data.title` for a content collection's fields, or `item.name`-style fields for lists of records. The same insertion is a command, **Insert Data**, so you can reach it from :kbd[⌘K] with the token typed rather than picked.
-- In the Inspector, any row whose **value source** is set to **From data…** offers the current item and its position alongside the document's own signals.
+- In the Inspector, any row whose **value source** is set to **From data…** offers `item`, `index` and the item's own fields alongside the document's signals, so you can pick `item.data.title` from the list instead of typing a template. The same fields appear under **List item** in a formula's operands, including in event handlers.
+
+Studio works out those fields without running anything, from whichever of these the list reads:
+
+- A content collection: the fields its schema declares, plus `item.id` and `item.body`. A field that references another collection also lists that entry's fields, such as `item.data.author.data.name`.
+- A signal with a declared schema, including a shared type from `$defs`.
+- A signal holding a sample value, or an inline list: every field found in its first rows.
+- A field of an outer item, for a list inside a list. A nested list's **Items** offers the outer item's list fields, and its template then offers the fields of each entry in that list.
+
+When the shape can't be deduced, as with a list computed by a formula, the picker offers `item` and `index` alone. You can still reach a field Studio doesn't know about with **Mixed text**, and a binding to one keeps showing in the picker as you wrote it.
 
 Bind the template's text and attributes to item fields and every rendered copy fills itself in from its own item.
+
+### Show an item's body
+
+A Markdown entry's body can fill any empty element in the template, such as the biography area of a team card:
+
+1. Select the empty element in the template.
+2. In the Inspector's **Content** tab, open the **Element** section and set the **Text Content** row's value source to **From data…**.
+3. Pick `item.$children`.
+
+The row now reads **Content**. The design canvas shows the binding as `❪ item.$children ❫`, which you can select but not type into, and **Preview** draws each entry's own headings, paragraphs and links. To go back to text, pick another field or switch the row to **Fixed value**.
+
+`item.$children` is only offered on this row, because the rest of Studio's bindings hold a single value and a body is a tree of elements. It is not offered for a collection in a format with no parsed body, such as CSV, or on an element that already has children of its own.
+
+:::doc-note
+The pick is stored as computed children rather than as a pointer, so in a Markdown page it reads `::div{children="${item.$children ?? []}"}`. Keep `@jxsuite/parser` current in a site that uses this: versions from before Studio offered this binding drop the attribute on save.
+:::
 
 On the design canvas, text the template draws shows its binding, such as `❪ item.data.title ❫`, so you can see and edit what it reads. A component in the template is handed the list's first item instead: a card component shows the first entry's title, dates and picture, because a component that formats a date or a language needs a real value to draw at all.
 

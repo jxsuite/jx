@@ -41,7 +41,7 @@ Each card has a header naming its kind, a delete button, and a drag handle (⠿)
 
 An **If / Else** card holds:
 
-1. An **If** row holding the condition, written as an operand: a state value, or a nested comparison formula.
+1. An **If** row holding the condition, written as an operand: a state value, or a nested comparison formula. Inside a **[repeater](/docs/studio/design/repeaters)** template, an operand can also read the current item's fields.
 2. A **Then** lane holding an indented list of steps with its own **Add statement** button, run when the condition holds.
 3. Optionally an **Else** lane. Click **Add else** to add it, or the remove button on the lane to drop it.
 

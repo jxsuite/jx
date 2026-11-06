@@ -59,6 +59,7 @@ import { livePreviewExpression } from "../services/live-preview";
 import { closeFunctionEditor, syncFunctionEditor } from "./editors";
 import { registerPanel } from "./panel-registry";
 import { dataTypeLabel, paintDataTree, unwrapSignal } from "./data-explorer";
+import { mapSignalsFor } from "./properties-panel";
 import { disposeDetachedDataTrees } from "../surfaces/panel-data";
 import { emptyLogicWorkspaceView, mountLogicWorkspace } from "../surfaces/logic-workspace";
 
@@ -72,6 +73,7 @@ import {
 
 import type { AnyCommand, CommandRegistry } from "../commands/registry";
 import type { PanelBody } from "./panel-registry";
+import type { SurfaceOption } from "../ui/surface";
 import type { ExpressionPreview } from "../services/preview-eval";
 import type { FormulaEditDef, FunctionEditDef } from "../types";
 import type { Tab } from "../tabs/tab";
@@ -314,6 +316,8 @@ interface Resolved {
   stateEntries: Record<string, JxStateDefinition>;
   preview: ExpressionPreview | null;
   allowEventRef: boolean;
+  /** The repeater item's fields, for an event handler inside a template. */
+  extraRefs: SurfaceOption[] | null;
   /** Chip key → node path, so a chip click needs no path parsing (a `switch` case may hold "/"). */
   chipPaths: Map<string, NodePath>;
   /** Rail entry name → the value its tree draws. */
@@ -475,6 +479,10 @@ export function workspaceView(): LogicWorkspaceView {
     allowEventRef: editing.type === "event",
     chipPaths,
     editing,
+    extraRefs:
+      editing.type === "event" && editing.path
+        ? mapSignalsFor(tab.doc.document, editing.path)
+        : null,
     preview,
     root,
     scopeValues: rail.values,
@@ -528,6 +536,7 @@ function paintEditor(): void {
   mountExpressionEditor(host, held.selected, writeSelected, {
     allowEventRef: held.allowEventRef,
     depth: 1,
+    extraRefs: held.extraRefs,
     onInsertDef: insertDef,
     path: held.selectedPath,
     preview: held.preview,

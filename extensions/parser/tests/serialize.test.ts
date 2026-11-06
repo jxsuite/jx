@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { jxToMdast, mdastToJx, serializeJxMarkdown } from "../src/serialize";
-import type { JsonValue, JxDocument, JxElement } from "@jxsuite/schema/types";
+import { transpileJxMarkdown } from "../src/transpile";
+import type { JsonObject, JsonValue, JxDocument, JxElement } from "@jxsuite/schema/types";
 
 const jxDocToMd = (doc: JxDocument) => serializeJxMarkdown(doc);
 
@@ -10,6 +11,10 @@ const jxDocToMd = (doc: JxDocument) => serializeJxMarkdown(doc);
    drop those nulls, and that tolerance is what the tests using this pin. */
 const authoredChildren = (children: (JsonValue | undefined)[]) =>
   children as (JxElement | string)[];
+
+/* SAFETY: deliberately outside JxElement["children"], which admits a string only as a template. A
+   hand-edited document can hold one, and nothing checks it before the serializer. */
+const handEdited = (json: JsonObject) => json as JxElement;
 
 // ─── Helpers — build mdast nodes ─────────────────────────────────────────────
 
@@ -446,6 +451,43 @@ describe("jxToMd bare text nodes", () => {
 });
 
 // ─── Jx props → directive routing ───────────────────────────────────────────
+
+/*
+ * A computed-children template has no Markdown body to be, so it lives in the directive's
+ * attributes. A save used to drop it: `::div{children="${item.$children ?? []}"}` came back as
+ * `::div`, which draws nothing and says nothing.
+ */
+describe("computed children survive a round trip", () => {
+  const template = "${item.$children ?? []}";
+
+  test("on a div", () => {
+    const md = jxDocToMd({ children: [{ children: template, tagName: "div" }] });
+    expect(md).toContain('::div{children="${item.$children ?? []}"}');
+    expect(transpileJxMarkdown(md).children).toEqual([{ children: template, tagName: "div" }]);
+  });
+
+  test("on a tag that is otherwise plain Markdown", () => {
+    const md = jxDocToMd({ children: [{ children: template, tagName: "p" }] });
+    expect(md).toContain('::p{children="${item.$children ?? []}"}');
+    expect(transpileJxMarkdown(md).children).toEqual([{ children: template, tagName: "p" }]);
+  });
+
+  test("inside a repeater's template, in a component", () => {
+    const children: JxElement[] = [
+      {
+        $prototype: "Array",
+        items: { $ref: "#/state/team" },
+        map: { children: [{ children: template, tagName: "div" }], tagName: "av-card" },
+      },
+    ];
+    expect(transpileJxMarkdown(jxDocToMd({ children })).children).toEqual(children);
+  });
+
+  test("a plain string is no children value, and is not written", () => {
+    const el = handEdited({ children: "plain", tagName: "section" });
+    expect(jxDocToMd({ children: [el] })).not.toContain("plain");
+  });
+});
 
 describe("jxToMd Jx props trigger directive", () => {
   test("plain p stays as paragraph", () => {

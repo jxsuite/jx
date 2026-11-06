@@ -803,16 +803,19 @@ Three consequences are normative:
 
 ### 6.8 The `From data…` picker addresses only what it can list
 
-> **Status: Partial.** The picker lists the document's top-level state signals and writes `#/state/<name>` verbatim (`packages/studio/src/panels/properties-panel.ts`, `panels/events-panel.ts`, `ui/schema-form.ts`, `ui/dynamic-slot.ts`, `ui/expression-editor.ts`), so it cannot address a path into a signal's value. Nothing in Studio calls `escapeToken`, so a signal named `a/b` is listed and written as `#/state/a/b`, which reads back as `a` then `b` and breaks rule 1 below rather than being merely unreachable; a dotted name already round-trips, so that row's ❌ is stale.
+> **Status: Partial.** The picker lists the document's top-level state signals and writes `#/state/<name>` verbatim (`packages/studio/src/panels/properties-panel.ts`, `panels/events-panel.ts`, `ui/schema-form.ts`, `ui/dynamic-slot.ts`, `ui/expression-editor.ts`), so it cannot address a path into a signal's value. Nothing there calls `escapeToken`, so a signal named `a/b` is listed and written as `#/state/a/b`, which reads back as `a` then `b` and breaks rule 1 below rather than being merely unreachable; a dotted name already round-trips, so that row's ❌ is stale. Inside a repeater template it also lists the item's fields, escaped, as below (`src/editor/repeater-scope.ts`). Evidence: `packages/studio/tests/repeater-scope.test.ts`, `tests/properties-panel.test.ts`, `tests/events-panel.test.ts`.
+
+An element's content row also offers `item.$children`, the Jx tree a Markdown entry's body parsed into, on an element with no children of its own. A tree of nodes cannot be text, so no other position lists it (attributes, component props, formula operands, Insert data), it is not listed for a content type whose format has no parsed body, and the pick is stored as the computed-children form rather than as a `$ref`: `"children": "${item.$children ?? []}"` (`spec.md` §8.4). The row reads a template it can name back as that field, labels itself Content rather than Text Content while it holds computed children, and shows a template it cannot name (`${state.entry.$children}`) as Mixed text, which stays computed as it is edited. The canvas draws the binding as a label, `❪ item.$children ❫`, closed to the caret, because activating it would commit its words as the element's `textContent`; Preview draws the nodes.
 
 The rung writes a JSON Pointer (`spec.md` §7.1), and JSON Pointer addresses strictly more than a flat list of signals. RFC 6901 §3 excludes exactly two characters from a reference token, `/` and `~`; every other character is ordinary. Three consequences the picker does not yet cover:
 
-| Pointer                     | Addresses                              | Picker |
-| --------------------------- | -------------------------------------- | ------ |
-| `#/state/count`             | one state signal                       | ✅     |
-| `#/state/nav/data/sections` | a path into a signal's value           | ❌     |
-| `#/state/user.name`         | one signal whose name contains a dot   | ❌     |
-| `#/state/a~1b`              | one signal whose name contains a slash | ❌     |
+| Pointer                     | Addresses                                | Picker |
+| --------------------------- | ---------------------------------------- | ------ |
+| `#/state/count`             | one state signal                         | ✅     |
+| `#/state/nav/data/sections` | a path into a signal's value             | ❌     |
+| `#/state/user.name`         | one signal whose name contains a dot     | ❌     |
+| `#/state/a~1b`              | one signal whose name contains a slash   | ❌     |
+| `$map/item/data/title`      | a field of the enclosing repeater's item | ✅     |
 
 The first gap is the common one: 3 of the repository's 227 `#/state/` refs walk into a signal's value, and the docs site's own layout is one of them. The other two are legal and unused — no document here has such a key — but "unused" is not "invalid", and the picker currently makes them authorable only by editing JSON by hand.
 
@@ -822,6 +825,21 @@ Two rules for whatever closes this:
 2.  **Escaping is the writer's job, not the author's.** An author who names a signal `a/b` types `a/b`; `~1` is an encoding detail of the pointer and must not surface in the UI. The encoder exists — `escapeToken` in `@jxsuite/runtime/pointer` — and is what any path-aware picker builds its segments with.
 
 Until then the gap is stated rather than hidden, because the alternative is a picker that silently implies the pointer grammar is flatter than it is.
+
+**Inside a repeater template the rung offers the item's fields**, wherever the item's shape can be deduced without running anything. One walk (`repeaterItemFields`) answers for every picker and for Insert data, and each field carries both spellings: the `$map/item/data/title` a `$ref` holds and the `item.data.title` a template reads. The second is what the picker, the bound chip, Insert data and the canvas glyph all show, so an author meets one name for a field rather than two grammars; `item` and `index` read the same way. A shape comes from:
+
+| The repeater's `items`                 | The item's shape                                                       |
+| -------------------------------------- | ---------------------------------------------------------------------- |
+| a `ContentCollection` state entry      | `id`, `body`, and the fields of `content.<type>.schema` under `data`   |
+| a state entry declaring a schema       | its `items`, through `#/$defs/…` in the document and then the project  |
+| a state entry with a value             | the union of the first rows of the value or its `default`              |
+| an inline list                         | the union of its first rows                                            |
+| a deep pointer (`#/state/post/data/x`) | the walk of the entry's shape, so a `ContentEntry`'s list field is one |
+| `$map/item/…` in a nested repeater     | the walk of the enclosing repeater's item                              |
+
+A field holding an object is offered with its members, because a component can take the whole value. A `#/content/<type>` relationship is walked as the entry the loader resolves it to, and stops at a content type the branch already passed through. A list is offered and not entered: one member has no single value to bind. Fields are listed nearest the item first, so the cap of 50 cuts the deepest and never a top-level one. Anything else, a computed entry or a server function, offers `item` and `index` alone, because guessing would write a pointer that reads nothing.
+
+**A nested repeater's Items offers the lists on the outer item**, and only those: the position takes a list, so the index or a text field would render nothing. **A formula operand offers the same fields** as a **List item** group, on the Inspector's rungs, in event handlers and statements, and in the formula workspace. A `$ref` to a field no schema declares is still legal and still reads back, as the select's stand-in row.
 
 ## 7. Project Styles
 

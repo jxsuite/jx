@@ -26,6 +26,17 @@ setSlashController({ dismiss: dismissSlashMenu, isOpen: isSlashMenuOpen, show: s
 // ─── Pure function tests ─────────────────────────────────────────────────────
 
 describe("isEditableBlock", () => {
+  /*
+   * Edit mode draws computed children as a label. Activating it commits the label's words as the
+   * element's `textContent` when the caret leaves, which destroys the binding without a key pressed.
+   */
+  test("an element closed to the caret is not editable, whatever its tag", () => {
+    const el = document.createElement("p");
+    expect(isEditableBlock(el)).toBe(true);
+    el.setAttribute("contenteditable", "false");
+    expect(isEditableBlock(el)).toBe(false);
+  });
+
   test("returns true for text-bearing block elements", () => {
     for (const tag of [
       "h1",

@@ -711,6 +711,57 @@ describe("workspaceView", () => {
   });
 });
 
+describe("the operands of a formula inside a repeater", () => {
+  const repeaterDoc = (): JxMutableNode => ({
+    children: [
+      {
+        $prototype: "Array",
+        items: { $ref: "#/state/rows" },
+        map: {
+          onclick: {
+            $expression: { operator: "=", target: { $ref: "#/state/picked" }, value: 1 },
+          },
+          tagName: "button",
+        },
+      },
+    ],
+    state: { picked: "", rows: [{ name: "a" }] },
+    tagName: "div",
+  });
+  const offered = () =>
+    [...dock.querySelectorAll('[part="ref"] option')].map((o) => o.getAttribute("value"));
+
+  test("an event handler in the template offers the item's fields", async () => {
+    const tab = resetWorkspaceWithTab(repeaterDoc(), { id: "fw-tab" });
+    tab.session.ui.editingFormula = {
+      eventKey: "onclick",
+      path: ["children", 0, "map"],
+      type: "event",
+    };
+    await paint();
+    expect(offered()).toContain("$map/item/name");
+  });
+
+  test("a formula in state has no item to read", async () => {
+    const tab = resetWorkspaceWithTab(
+      {
+        ...repeaterDoc(),
+        state: {
+          picked: "",
+          rows: [{ name: "a" }],
+          total: { $expression: { operator: "=", target: { $ref: "#/state/picked" }, value: 1 } },
+        },
+      },
+      { id: "fw-tab" },
+    );
+    tab.session.ui.editingFormula = { defName: "total", type: "def" };
+    await paint();
+    const refs = offered();
+    expect(refs).toContain("#/state/picked");
+    expect(refs).not.toContain("$map/item/name");
+  });
+});
+
 // ─── The target, and the reveal ───────────────────────────────────────────────
 
 describe("logicTarget", () => {

@@ -444,6 +444,8 @@ export function expressionHint(node: ExpressionValue | undefined) {
 export interface ExpressionEditorOpts {
   stateDefs: string[];
   allowEventRef: boolean;
+  /** Pointers beyond the document's own signals: inside a repeater, its item and that item's fields. */
+  extraRefs?: readonly SurfaceOption[] | null | undefined;
   depth?: number;
   preview?: ExpressionPreview | null;
   path?: (string | number)[];
@@ -608,7 +610,7 @@ function walkOperand(
   commit: (next: ExpressionValue) => void,
   slot: OperandSlot,
 ): void {
-  const { allowEventRef, stateDefs } = walk.opts;
+  const { allowEventRef, extraRefs, stateDefs } = walk.opts;
   const stateRefs = stateDefs.map((k) => `#/state/${k}`);
   // Shown as written: a malformed (non-string) pointer is coerced the way the picker would show it.
   const refValue = String(fieldsOf(operand)?.$ref ?? "");
@@ -631,9 +633,12 @@ function walkOperand(
     leadValue: slot.leadValue ?? "",
     nested: slot.depth > 0 ? "true" : "false",
     prop: slot.prop,
-    refGroups: allowEventRef
-      ? [{ id: "event", label: "Event", rows: EVENT_REFS.map((r) => ({ label: r, value: r })) }]
-      : [],
+    refGroups: [
+      ...(extraRefs?.length ? [{ id: "item", label: "List item", rows: [...extraRefs] }] : []),
+      ...(allowEventRef
+        ? [{ id: "event", label: "Event", rows: EVENT_REFS.map((r) => ({ label: r, value: r })) }]
+        : []),
+    ],
     refOptions: stateRefs.map((r) => ({ label: r.replace("#/state/", ""), value: r })),
     removable: Boolean(slot.removable),
     title: slot.title ?? "",
@@ -642,7 +647,7 @@ function walkOperand(
 
   /* Nothing to pick and nothing already picked: a picker whose only entry is a disabled "No state
      defined" is a dead end. Say what a binding IS instead, in the shell's one empty-state voice. */
-  const nothingToBind = stateRefs.length === 0 && !allowEventRef && !refValue;
+  const nothingToBind = stateRefs.length === 0 && !extraRefs?.length && !allowEventRef && !refValue;
 
   if (slot.mustBeRef) {
     walk.plans.set(slot.key, plan);

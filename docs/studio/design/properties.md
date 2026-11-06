@@ -22,7 +22,7 @@ Every element starts with the same basics:
 
 - **Tag**: the element's type. Change it to turn a `div` into a `section`, a `p` into an `h2`. Like other fields, it carries a **value-source** chip: switch it from **Fixed value** to **Formula** and the element becomes an `a` when it has somewhere to go and a `div` when it doesn't, wrapping the same content either way. You build that formula in the same operator editor you use everywhere else, with one difference: a tag has to be a name the page can be built from before it runs, so the editor offers only the two operators that choose between names, `?:` and `switch`, and no formula catalog. There is no _Mixed text_ option here either, because a tag is a name and not something you assemble from other text. The tag is settled when the element is created; see [Choosing an element's tag](/docs/framework/concepts/expressions#choosing-an-elements-tag).
 - **ID** and **Class**: the element's identifier and CSS classes.
-- **Text Content**: the element's text, shown when it has no child elements.
+- **Text Content**: the element's text, shown when it has no child elements. Inside a repeater it can also draw an item's body instead, and then reads **Content**. See **[Show an item's body](/docs/studio/design/repeaters#show-an-items-body)**.
 - **Hidden**: a checkbox that removes the element from the rendered page without deleting it.
 
 ## Where a value came from
@@ -63,7 +63,7 @@ Beside the label of every bindable row sits a **value source** chip naming, in p
 
 Those four names are the same everywhere a value can be produced from something else: the Content tab, the [Style tab](/docs/studio/design/style-inspector), the [Logic tab](/docs/studio/logic/events) and the operands inside a formula all say them the same way. Which of them a given row offers follows what the document format accepts in that position: an attribute, a component setting or the text content take **Fixed value**, **From data…** or **Mixed text**. A row with only one possible source shows its name and nothing to click.
 
-Studio remembers what you had at each source for the rest of the session, so switching away and back restores your value rather than resetting it, and typing a `${` into a fixed value doesn't swap the widget out from under your cursor. **From data…** is dropped from the picker when the document has nothing to point at yet; the signals it offers come from the document's state, so declare them first in the **[Data panel](/docs/studio/logic/data)**.
+Studio remembers what you had at each source for the rest of the session, so switching away and back restores your value rather than resetting it, and typing a `${` into a fixed value doesn't swap the widget out from under your cursor. **From data…** is dropped from the picker when the document has nothing to point at yet; the signals it offers come from the document's state, so declare them first in the **[Data panel](/docs/studio/logic/data)**. Inside a **[repeating list](/docs/studio/design/repeaters)** it also offers the current item and its fields.
 
 ## Component settings
 

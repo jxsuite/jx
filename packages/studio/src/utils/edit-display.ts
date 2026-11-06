@@ -15,6 +15,7 @@ import {
   isNumber,
   isRef,
   isString,
+  isTemplateString,
 } from "@jxsuite/schema/guards";
 import { isDocumentContainer } from "./strip-events";
 import type { RebuiltNode } from "./strip-events";
@@ -201,6 +202,10 @@ export function computeEmptyPlaceholderClass(node: JxMutableNode): string | null
   if (Array.isArray(node.children) && node.children.length > 0) {
     return null;
   }
+  // Computed children: not empty, only not known until the page runs. The canvas names the binding.
+  if (isTemplateString(node.children)) {
+    return null;
+  }
   if (fixesItsOwnSize(node)) {
     return null;
   }
@@ -221,6 +226,16 @@ export function computeEmptyPlaceholderClass(node: JxMutableNode): string | null
  */
 export function templateToEditDisplay(str: string) {
   return str.replaceAll(/\$\{([^}]+)\}/g, "\u276A $1 \u276B");
+}
+
+/**
+ * The binding a node's computed children show in edit mode. An `?? []` fallback is plumbing, so it
+ * reads as the field it guards: `❪ item.$children ❫`.
+ *
+ * @param {string} template
+ */
+function computedChildrenDisplay(template: string): string {
+  return templateToEditDisplay(template.replaceAll(/\s*\?\?\s*\[\s*\]\s*(?=\})/gu, ""));
 }
 
 /**
@@ -543,7 +558,7 @@ function prepareNode(
       } else if (isNodeObject(v) && v.$prototype === "Array") {
         // Legacy whole-children repeater → a single perimeter as the sole child.
         out.children = [prepareNode(v, row)];
-      } else {
+      } else if (!isTemplateString(v)) {
         out.children = prepareNode(v, row);
       }
     } else if (k === "cases" && obj.$switch && isDocumentContainer(v)) {
@@ -629,6 +644,17 @@ function prepareNode(
     } else {
       out[k] = prepareNode(v, row);
     }
+  }
+
+  /* Computed children (spec.md §8.4) are shown as their binding, like text is, but they are not
+     text: the words here are a label of what the page draws, and a caret placed in them would
+     commit that label as the element's `textContent`. So the label is closed to the caret. */
+  if (isTemplateString(obj.children)) {
+    out.textContent = computedChildrenDisplay(obj.children);
+    const { attributes } = out;
+    out.attributes = isDocumentContainer(attributes)
+      ? { ...attributes, contenteditable: "false" }
+      : { contenteditable: "false" };
   }
 
   // Mark empty elements with placeholder classes for design-mode visibility

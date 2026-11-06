@@ -742,7 +742,7 @@ Every renderer applies this identically — the static compiler writing HTML sou
 
 ### 8.4 Child Arrays
 
-> **Status: Partial.** Element and text-node children, and computed children resolved at build time, ship. Content a computed-children template splices in is not kept literal: the template pass (`resolveDocTemplates` in `packages/compiler/src/site/site-build.ts`) recurses into the resolved nodes and evaluates every `${…}` in their text and attributes, so a content entry's prose or inline code that contains `${` renders its evaluation (`Clicked ${state.count} times` in `docs/start/first-component.md` renders as "Clicked undefined times"), and one left for the client can make the page's module a syntax error.
+> **Status: Partial.** Element and text-node children, and computed children resolved at build time and by the interpreter, ship. Content a computed-children template splices in is not kept literal: the template pass (`resolveDocTemplates` in `packages/compiler/src/site/site-build.ts`) recurses into the resolved nodes and evaluates every `${…}` in their text and attributes, so a content entry's prose or inline code that contains `${` renders its evaluation (`Clicked ${state.count} times` in `docs/start/first-component.md` renders as "Clicked undefined times"), and one left for the client can make the page's module a syntax error.
 
 Children are expressed as a JSON array of element definitions and/or bare text nodes:
 
@@ -785,7 +785,15 @@ The entire `children` value may be a `${…}` template string that resolves **at
 { "tagName": "bl-prose", "children": "${state.entry.$children}" }
 ```
 
-The compiler's template pass replaces `children` with the resolved array and recurses into it. Scope of the feature: the template must resolve to an array during the site build (e.g. from `$paths`-bound state or a compiler-timing prototype). A computed-children string is **not** re-evaluated at runtime — runtime-reactive content swapping is not supported through this form — and a plain non-template string is not a valid `children` value at all (text children must be array items, per above).
+Inside a repeater the template reads the row, which is how a card draws its own entry's body:
+
+```json
+{ "tagName": "div", "children": "${item.$children ?? []}" }
+```
+
+The compiler's template pass replaces `children` with the resolved array and recurses into it. Scope of the feature: for a built page the template must resolve to an array during the site build (e.g. from `$paths`-bound state or a compiler-timing prototype). The compiled targets do not evaluate one left unresolved, so runtime-reactive content swapping is not available to a built page through this form. The interpreter (`renderNode` in `packages/runtime/src/runtime.ts`), which renders the source document rather than the build's output, does evaluate it, and redraws the children when the value changes: that is what Studio's Preview draws. A result that is not an array draws nothing, and a plain non-template string is not a valid `children` value at all (text children must be array items, per above).
+
+A format with no way to spell this as its body keeps it as an attribute: Markdown writes `::div{children="${item.$children ?? []}"}` (`parser.md` §3).
 
 ### 8.5 Slot Support
 
