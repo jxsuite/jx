@@ -17,7 +17,6 @@
  */
 
 import { existsSync, readFileSync, statSync } from "node:fs";
-import { resolve } from "node:path";
 import { buildProjectExtensionRegistry } from "@jxsuite/compiler/format-host";
 import { isString } from "@jxsuite/schema/guards";
 import { projectDevEnv } from "./dev-vars.ts";
@@ -25,6 +24,7 @@ import type { ProjectDevEnv } from "./dev-vars.ts";
 import type { ExtensionRegistry } from "@jxsuite/schema/extension-registry";
 import type { ImplementationExport, MountHandler } from "@jxsuite/schema/format-registry";
 import type { JxDocumentValue, ProjectConfig } from "@jxsuite/schema/types";
+import { projectFilePath } from "@jxsuite/schema/project-file/node";
 
 interface MountRuntime {
   handlers: { basePath: string; handler: MountHandler }[];
@@ -81,7 +81,7 @@ export async function handleJxMounts(
 
 /** Load (or reuse) the mount runtime for a project root. */
 function getRuntime(projectRoot: string): Promise<MountRuntime | null> {
-  const projectJsonPath = resolve(projectRoot, "project.json");
+  const projectJsonPath = projectFilePath(projectRoot);
   if (!existsSync(projectJsonPath)) {
     return Promise.resolve(null);
   }

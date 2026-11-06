@@ -188,7 +188,7 @@ The property the tests hold: any single `doc-ops` operation changes only the lin
 
 - **Studio, minimum.** The built-in entry through `format/format-host.ts` and a Monarch grammar with TypeScript embedded in strings, here because `plan:site-architecture/project-jxn` opens a project file in the Code view with no other part of Studio's document path.
 
-**Related, no edge.** `plan:schema/parse-boundary-readers` changes `parse.ts`, and whichever lands second shares the NFC and key-collision code. `plan:_shared/formats-from-extensions` rewrites nearby messages in `format-registry.ts` and `format-host.ts`, and owns studio.md §8.1. `plan:_shared/component-discovery` rewrites the component listing at `documentExtensions`. `plan:_shared/project-file-access` owns the project file's call sites, so this plan's discovery and glob work must not treat a root `project.jxn` as a document.
+**Related, no edge.** `plan:schema/parse-boundary-readers` changes `parse.ts`, and whichever lands second shares the NFC and key-collision code. `plan:_shared/formats-from-extensions` rewrites nearby messages in `format-registry.ts` and `format-host.ts`, and owns studio.md §8.1. `plan:_shared/component-discovery` rewrites the component listing at `documentExtensions`. Hosts reach the project file through `@jxsuite/schema/project-file`, so this plan's discovery and glob work must not treat a root `project.jxn` as a document.
 
 **Integration contract.** Once this lands: `parseJxn(serializeJxn(doc))` deep-equals `doc`, with `style` order equal, for every valid document. Errors carry offsets. Pointer-to-span lookup works for any parsed node. `script` is reserved. `plan:spec/document-scripts` adds grammar rows and `plan:_shared/jx-typechecking` reads the span map.
 

@@ -7,18 +7,7 @@
 
 import { mkdir, readFile, readdir, rename, rm, rmdir, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
-import {
-  accessSync,
-  closeSync,
-  constants,
-  existsSync,
-  fstatSync,
-  lstatSync,
-  openSync,
-  readFileSync,
-  realpathSync,
-  statSync,
-} from "node:fs";
+import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { handleResolve, handleServerFunction } from "@jxsuite/server/resolve";
 import {
   deleteDataRow,
@@ -51,8 +40,13 @@ import {
 } from "@jxsuite/compiler/format-host";
 import { readBundledProjectSchemas } from "@jxsuite/compiler/schema-command";
 import { componentMetaFrom } from "@jxsuite/schema/component-meta";
-import { classifyProjectFile, findEnclosingProject } from "@jxsuite/schema/project-file";
-import type { ProjectWalkIo } from "@jxsuite/schema/project-file";
+import { PROJECT_FILE_NAME, classifyProjectFile } from "@jxsuite/schema/project-file";
+import {
+  findEnclosingProjectOnDisk,
+  hasProjectFile,
+  projectFilePath,
+  readProjectFile,
+} from "@jxsuite/schema/project-file/node";
 import type { AuthorizedRoot } from "./roots";
 import type { ExtensionsPayloadEntry } from "@jxsuite/compiler/format-host";
 import type {
@@ -229,7 +223,7 @@ export async function pickProjectFile(): Promise<{
   }
 
   const filePath = resolve(selectedPath);
-  if (!existsSync(filePath) || basename(filePath) !== "project.json") {
+  if (!existsSync(filePath) || basename(filePath) !== PROJECT_FILE_NAME) {
     throw new Error("Selected file is not a project.json");
   }
 
@@ -264,65 +258,6 @@ const REFUSE_EVERY_ROOT: RootGate = {
   grant: () => Promise.reject(new Error("This session has no way to bind a project.")),
 };
 
-/** Larger than any real project file, and small enough to read before anyone has answered. */
-const MAX_PROJECT_FILE_BYTES = 4 * 1024 * 1024;
-
-/**
- * Read a candidate project file, before the user has answered for the folder it is in.
- *
- * So the file is not to be trusted, and neither is what it is: a FIFO would block this process,
- * which serves every window, and a link to `/dev/zero` would never end. It is opened without
- * blocking and read only if it is an ordinary file of a sane size.
- *
- * @returns Its text; "" when it is there and cannot be read, which `classifyProjectFile` reads as
- *   unreadable, so the walk stops and says so rather than opening some ancestor instead; and null
- *   when it is not there or is not a file.
- */
-function readCandidate(path: string): string | null {
-  let descriptor: number;
-  try {
-    // Read-only is zero, so this is read-only and non-blocking. Windows has no such flag, or FIFOs here.
-    descriptor = openSync(path, constants.O_NONBLOCK);
-  } catch {
-    return isDeniedHere(path) ? "" : null;
-  }
-  try {
-    const stats = fstatSync(descriptor);
-    if (!stats.isFile()) {
-      return null;
-    }
-    return stats.size > MAX_PROJECT_FILE_BYTES ? "" : readFileSync(descriptor, "utf8");
-  } catch {
-    return "";
-  } finally {
-    closeSync(descriptor);
-  }
-}
-
-/**
- * Whether a failure to open means the file is there and this process may not read it.
- *
- * Being denied is not enough. Under a strict snap or the App Sandbox the same denial answers for
- * places this process may not look at all, like `/home/project.json` on the way up to the root, and
- * believing those would make a parent folder a project. Only a file that can be seen counts.
- */
-function isDeniedHere(path: string): boolean {
-  try {
-    lstatSync(path);
-  } catch {
-    return false;
-  }
-  try {
-    accessSync(path, constants.R_OK);
-    return false;
-  } catch {
-    return true;
-  }
-}
-
-/** The walk over the real filesystem. */
-const PROJECT_WALK_IO: ProjectWalkIo = { dirname, join, readText: readCandidate };
-
 /** What a path the operating system handed over turned out to be (specs/desktop.md §4.6). */
 export type OpenTarget =
   | {
@@ -352,9 +287,8 @@ export function resolveOpenTarget(path: string): OpenTarget {
   } catch {
     return { kind: "refused", reason: `Jx Studio can't find ${absolute}.` };
   }
-  const found = findEnclosingProject(
+  const found = findEnclosingProjectOnDisk(
     isDirectory ? absolute : dirname(absolute),
-    PROJECT_WALK_IO,
     isDirectory ? absolute : undefined,
   );
   if (!found) {
@@ -429,13 +363,11 @@ function assertUnderRoot(absPath: string, root: string) {
  * declared a moment ago is reachable at once; a project with no readable `project.json` has none.
  */
 function collectionSourceRoots(root: string): string[] {
-  let config: unknown;
-  try {
-    config = JSON.parse(readFileSync(join(root, "project.json"), "utf8"));
-  } catch {
+  const read = readProjectFile(root);
+  if (!read || "error" in read) {
     return [];
   }
-  const content = isNonNullObject(config) && "content" in config ? config.content : null;
+  const content = "content" in read.config ? read.config.content : null;
   if (!isNonNullObject(content)) {
     return [];
   }
@@ -770,16 +702,14 @@ export function createProjectSession(
     if (extensionRegistry?.root === root && !anyNowInstalled(root, extensionRegistry.missing)) {
       return extensionRegistry.registry;
     }
-    let projectConfig: ProjectConfig | undefined;
-    try {
-      /* SAFETY: project.json is this project's config by definition, and every ProjectConfig member
-         is optional; a file that does not parse lands in the catch and builds with no config. */
-      projectConfig = JSON.parse(
-        readFileSync(resolve(root, "project.json"), "utf8"),
-      ) as ProjectConfig;
-    } catch {
-      projectConfig = undefined;
+    const read = readProjectFile(root);
+    if (read && "error" in read) {
+      // Said here, or every Markdown page reports an unknown format and nothing names the file.
+      console.warn(
+        `[desktop] ${read.path} does not parse, so no extension is enabled: ${read.error}`,
+      );
     }
+    const projectConfig = read && "config" in read ? read.config : undefined;
     /* The editor's registry: a package project.json enables but the project has not installed yet
        is skipped and said once, rather than failing every listFormats with a resolution stack. The
        app ships no extension (specs/extensions.md §3), so a fresh project resolves none until its
@@ -843,7 +773,7 @@ export function createProjectSession(
     if (!projectRoot || (!fileEventSink && !livePreviewOrigin(projectRoot))) {
       return;
     }
-    if (!existsSync(resolve(projectRoot, "project.json"))) {
+    if (!hasProjectFile(projectRoot)) {
       // Once per root: startWatching runs again on every re-root and every sink registration.
       if (unwatchableRoot !== projectRoot) {
         unwatchableRoot = projectRoot;
@@ -1125,9 +1055,7 @@ export function createProjectSession(
 
     /* SAFETY: generateProject has just written this project.json from the options above, so it is a
        ProjectConfig by construction. */
-    const config = JSON.parse(
-      await readFile(resolve(destPath, "project.json"), "utf8"),
-    ) as ProjectConfig;
+    const config = JSON.parse(await readFile(projectFilePath(destPath), "utf8")) as ProjectConfig;
     // The application just wrote this folder, which `generateProject` refuses unless it was empty.
     reroot(await gate.grant(destPath));
 
@@ -1288,7 +1216,7 @@ export function createProjectSession(
       return { sitePath: null };
     }
     // Never past the project root, and a page named project.json is not a site.
-    const found = findEnclosingProject(start, PROJECT_WALK_IO, resolve(root));
+    const found = findEnclosingProjectOnDisk(start, resolve(root));
     if (found) {
       return { sitePath: relPosix(root, found.root) || "." };
     }

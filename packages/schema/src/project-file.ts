@@ -9,14 +9,32 @@
  * typo in a project file must not make its folder stop being a project, or a double-click on a page
  * there would walk past it to some ancestor and open the wrong thing.
  *
- * Pure, with no Node import: a walker takes its filesystem as a parameter.
+ * It is also the one place that knows what a project file is called and how to read and write one,
+ * so that changing either is one change. Pure, with no Node import, because Studio and a Worker use
+ * it: a walker takes its filesystem as a parameter, and `./project-file/node` supplies the real
+ * one.
  *
  * @docs studio/desktop
  */
 import { isNonNullObject } from "./guards.ts";
+import { rewriteJson } from "./json-layout.ts";
+import { parseProjectConfig } from "./parse.ts";
+import type { ProjectConfig } from "../types.ts";
 
 /** The file that declares a project. */
 export const PROJECT_FILE_NAME = "project.json";
+
+/**
+ * Whether a project-relative path is the project's own file.
+ *
+ * Exact, on purpose: `endsWith` also answers for `new-project.json`, and `pages/project.json` is a
+ * page.
+ *
+ * @param path A path relative to the project's root.
+ */
+export function isProjectConfigPath(path: string | null | undefined): boolean {
+  return path === PROJECT_FILE_NAME;
+}
 
 /**
  * Members only a document has, and no project configuration does. `tagName` alone would not do: it
@@ -109,4 +127,37 @@ export function findEnclosingProject(
   return startDirectory === stopAt || parent === startDirectory
     ? null
     : findEnclosingProject(parent, io, stopAt);
+}
+
+/** A project file as read: its configuration, or what is wrong with it. */
+export type ProjectFileRead =
+  | { config: ProjectConfig; path: string; text: string }
+  | { error: string; path: string; text: string };
+
+/**
+ * Parse a project file's text, reporting what is wrong rather than throwing it.
+ *
+ * Each host decides what a broken file means. `jx build` refuses, Studio shows a Problem, and a
+ * live preview carries on, because refusing would hide the one error the author can act on behind a
+ * blank origin. So this answers with the problem, and does not throw on a host's behalf.
+ *
+ * @param path The file's path, which a problem names.
+ * @param text The file's text.
+ */
+export function parseProjectFile(path: string, text: string): ProjectFileRead {
+  try {
+    return { config: parseProjectConfig(text, path), path, text };
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : String(error), path, text };
+  }
+}
+
+/**
+ * Write a project's configuration, keeping as much of the text it replaces as can be kept.
+ *
+ * @param config The configuration.
+ * @param previous The file's current text, or null for a new one.
+ */
+export function serializeProjectFile(config: ProjectConfig, previous: string | null): string {
+  return rewriteJson(config, previous);
 }

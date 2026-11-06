@@ -231,7 +231,7 @@ Four properties are load-bearing, and each is a real attack or a real failure if
 
 ### 4.1 The project.json Contract
 
-A project is identified by its `project.json` file. This is the single point of entry for all deployment targets:
+A project is identified by its `project.json` file, and a search for one believes the name only if the content agrees (§4.6). This is the single point of entry for all deployment targets:
 
 - **Desktop:** User selects `project.json` via native file dialog. The parent directory becomes the project root.
 - **Dev server:** The window's `?project=` URL parameter names the folder containing `project.json` by its absolute path (§8.2). There is no picker.

@@ -28,6 +28,7 @@
     "./ijson": "./src/ijson.ts",
     "./parse": "./src/parse.ts",
     "./project-file": "./src/project-file.ts",
+    "./project-file/node": "./src/project-file-node.ts",
     "./doc-ops": "./src/doc-ops.ts",
     "./json-layout": "./src/json-layout.ts",
     "./defs": "./defs/index.ts",

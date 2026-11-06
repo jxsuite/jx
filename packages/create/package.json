@@ -37,6 +37,7 @@
     "test:coverage": "bun test --isolate --coverage"
   },
   "dependencies": {
+    "@jxsuite/schema": "workspace:^",
     "@jxsuite/starters": "workspace:^"
   }
 }
