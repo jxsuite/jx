@@ -60,6 +60,22 @@ When the shape can't be deduced, as with a list computed by a formula, the picke
 
 Bind the template's text and attributes to item fields and every rendered copy fills itself in from its own item.
 
+### Show an item's body
+
+A Markdown entry's body can fill any empty element in the template, such as the biography area of a team card:
+
+1. Select the empty element in the template.
+2. In the Inspector's **Content** tab, open the **Element** section and set the **Text Content** row's value source to **From data…**.
+3. Pick `item.$children`.
+
+The row now reads **Content**. The design canvas shows the binding as `❪ item.$children ❫`, which you can select but not type into, and **Preview** draws each entry's own headings, paragraphs and links. To go back to text, pick another field or switch the row to **Fixed value**.
+
+`item.$children` is only offered on this row, because the rest of Studio's bindings hold a single value and a body is a tree of elements. It is not offered for a collection in a format with no parsed body, such as CSV, or on an element that already has children of its own.
+
+:::doc-note
+The pick is stored as computed children rather than as a pointer, so in a Markdown page it reads `::div{children="${item.$children ?? []}"}`. Keep `@jxsuite/parser` current in a site that uses this: versions from before Studio offered this binding drop the attribute on save.
+:::
+
 On the design canvas, text the template draws shows its binding, such as `❪ item.data.title ❫`, so you can see and edit what it reads. A component in the template is handed the list's first item instead: a card component shows the first entry's title, dates and picture, because a component that formats a date or a language needs a real value to draw at all.
 
 :::doc-warning

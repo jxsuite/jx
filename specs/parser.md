@@ -67,6 +67,8 @@ The same table is where YAML's media type lives. Frontmatter is YAML, and so is 
 
 `$studio` declares the full editing control surface: editor modes, `documentMode` (content by default; component when frontmatter `tagName` matches `.+-.+`), `newFileTemplate`, and the element allowlist + nesting constraints that gate structural editing. The element sets are asserted in tests to match `MD_ELEMENTS` in `serialize.ts` (the source of truth).
 
+`serialize` keeps a computed-children template (`spec.md` §8.4) as a directive attribute, because it has no body to be: `::div{children="${item.$children ?? []}"}`. It forces a directive on a tag that would otherwise be plain Markdown, so a `p` holding one is written `::p{children="…"}`.
+
 ### 3.1 Jx Usage (runtime)
 
 ```json

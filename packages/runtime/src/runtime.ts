@@ -1857,9 +1857,72 @@ export function renderNode(
         el.append(renderNode(child, localState, childOpts));
       }
     }
+  } else if (isTemplateString(kids)) {
+    renderComputedChildren(el, kids, localState, {
+      ...options,
+      _ns: childNs,
+      _path: [...path, "children"],
+    });
   }
 
   return el;
+}
+
+/**
+ * Draw a whole-`children` template, the way the site build's template pass expands one (spec.md
+ * §8.4). This is what an item's or an entry's parsed body looks like to something that renders the
+ * source document rather than the build's output: Studio's Preview, chiefly.
+ *
+ * A result that is not an array draws nothing, because a plain string is not a `children` value.
+ * The children are rendered in a detached scope of their own, replaced when the template's value
+ * changes (a collection that was still loading), and with tracking paused for the reason
+ * {@link renderSwitch} gives: the bindings inside track for themselves.
+ *
+ * @param {Element} el - The element whose children these are
+ * @param {string} template - The `children` value
+ * @param {JxScope} state
+ * @param {JxRenderOptions} options - `_path` is the `children` position of `el`
+ */
+function renderComputedChildren(
+  el: Element,
+  template: string,
+  state: JxScope,
+  options: JxRenderOptions,
+): void {
+  const path = options._path ?? [];
+  let live: EffectScope | null = null;
+  const retire = (): void => {
+    // Detached before it is stopped, for the reason `teardown` in `renderMappedArray` gives.
+    el.replaceChildren();
+    live?.stop();
+    live = null;
+  };
+  bindTemplate(
+    template,
+    () => {
+      const nodes = evaluateValueTemplate(template, state);
+      retire();
+      if (!Array.isArray(nodes)) {
+        return;
+      }
+      const scope = effectScope(true);
+      live = scope;
+      pauseTracking();
+      try {
+        scope.run(() => {
+          /* SAFETY: a children template that yields an array stands for the child list itself, the
+             same reading the site build's template pass gives it. */
+          for (const [i, child] of (nodes as (JxElement | string)[]).entries()) {
+            el.append(renderNode(child, state, { ...options, _path: [...path, i] }));
+          }
+        });
+      } finally {
+        resetTracking();
+      }
+    },
+    retire,
+  );
+  onScopeDispose(() => live?.stop(), true);
 }
 
 // ─── Template string utilities ────────────────────────────────────────────────

@@ -29,7 +29,7 @@ Edit is for writing. The canvas becomes the page itself: click any text and type
 ![Jx Studio editing markdown content inline with a WYSIWYG editor](../../images/mode-edit.png)
 
 :::doc-note
-**Bound values show their real data in Edit and Design.** A style, a class, an image or a component setting that is bound to state renders with the value the page will have. Two things show their binding instead, written like `❪ state.title ❫`: bound text, so that editing it changes the binding rather than overwriting it, and anything inside a repeater that reads the current item, since the canvas draws the repeater's template once with no item to read.
+**Bound values show their real data in Edit and Design.** A style, a class, an image or a component setting that is bound to state renders with the value the page will have. Two things show their binding instead, written like `❪ state.title ❫`: bound text, so that editing it changes the binding rather than overwriting it, and anything inside a repeater that reads the current item, since the canvas draws the repeater's template once with no item to read. An element drawing a list of child nodes, such as `❪ item.$children ❫` for [an item's body](/docs/studio/design/repeaters#show-an-items-body), shows its binding too. That label can be selected but not typed into, and **Preview** draws the nodes themselves.
 :::
 
 ## Design

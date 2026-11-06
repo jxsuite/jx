@@ -4,7 +4,9 @@
  *
  * Two surfaces ask. Inline text edited INSIDE a repeater inserts a `${item.data.title}` token, and
  * the `From data…` rung binds a `$map/item/data/title` pointer. They are the same field spelled for
- * two grammars, so there is one walk and each field carries both spellings.
+ * two grammars, so there is one walk and each field carries both spellings. A third surface asks
+ * for the one field that is neither text nor a value: `$children`, which an element draws by
+ * holding it as computed children (spec.md §8.4).
  *
  * There is no live `$map` in edit mode: `prepareForEditMode` renders a mapped array as a
  * `repeater-perimeter` wrapping one glyph-ified template instance, so `renderMappedArrayInto`
@@ -79,7 +81,15 @@ export interface RepeaterField {
   pointer: string;
   /** Whether the field holds a list, which is all a nested repeater's Items can read. */
   isArray: boolean;
+  /** Whether the field holds child nodes, which only an element's computed children can draw. */
+  holdsNodes: boolean;
 }
+
+/** The one `$`-prefixed member an item offers: the Jx tree a parsed body came out as. */
+const NODES_MEMBER = "$children";
+
+/** The content format whose loader parses an entry's body into {@link NODES_MEMBER}. */
+const NODES_FORMAT = "Markdown";
 
 /** What every step of the walk reads from. */
 interface ItemSources {
@@ -109,10 +119,14 @@ function entrySchema(contentType: string, ctx: ItemSources): JsonObject {
   const content: unknown = ctx.config?.content;
   const type = isJsonObject(content) ? content[contentType] : undefined;
   const data = isJsonObject(type) && isJsonObject(type.schema) ? type.schema : {};
+  // A CSV row has no body to parse. A type naming no format is not known to lack one.
+  const format = isJsonObject(type) ? type.format : undefined;
+  const hasNodes = !isString(format) || format === NODES_FORMAT;
   // Built from entries because the order is what the picker lists: id and body, then the fields.
   const members: [string, JsonValue][] = [
     ["id", {}],
     ["body", {}],
+    ...(hasNodes ? ([[NODES_MEMBER, {}]] satisfies [string, JsonValue][]) : []),
     ["data", { ...data, [ENTRY_DATA]: true }],
   ];
   return { [ENTRY_TYPE]: contentType, properties: Object.fromEntries(members) };
@@ -292,15 +306,20 @@ function fieldToken(path: readonly string[]): string {
  * entered unless the branch already passed through that content type, which ends a post → author →
  * post cycle.
  *
+ * `$children` is left out unless asked for: it is a tree of nodes, so a text position, an attribute
+ * or a formula operand that read it would draw `[object Object]`.
+ *
  * @param doc - The tab's document root (`tab.doc.document`).
  * @param path - The path of the node asking.
  * @param projectConfig - Parsed `project.json` (`projectState?.projectConfig`).
+ * @param options - `withNodes` also lists the fields that hold child nodes.
  * @returns The fields, empty outside a repeater and wherever the item's shape cannot be deduced.
  */
 export function repeaterItemFields(
   doc: JxMutableNode,
   path: JxPath | null | undefined,
   projectConfig: ProjectConfig | null | undefined,
+  { withNodes = false }: { withNodes?: boolean } = {},
 ): RepeaterField[] {
   if (!Array.isArray(path)) {
     return [];
@@ -315,13 +334,15 @@ export function repeaterItemFields(
     const passed = entryType === null ? via : [...via, entryType];
     const members = isJsonObject(schema?.properties) ? Object.entries(schema.properties) : [];
     for (const [key, member] of members) {
-      if (key.startsWith("$") || fields.length >= FIELD_CAP) {
+      const holdsNodes = key === NODES_MEMBER;
+      if ((key.startsWith("$") && !(holdsNodes && withNodes)) || fields.length >= FIELD_CAP) {
         continue;
       }
       const memberPath = [...at, key];
       const resolved = followPointers(member, ctx);
       if (resolved?.[ENTRY_DATA] !== true) {
         fields.push({
+          holdsNodes,
           isArray: resolved?.type === "array" || isJsonObject(resolved?.items),
           path: memberPath,
           pointer: `$map/item/${memberPath.map((m) => escapeToken(m)).join("/")}`,
@@ -349,6 +370,26 @@ export function resolveRepeaterItemFields(
   projectConfig: ProjectConfig | null | undefined,
 ): string[] {
   return ["item", "index", ...repeaterItemFields(doc, path, projectConfig).map((f) => f.token)];
+}
+
+/**
+ * The `children` template that draws a field's nodes. The fallback is part of it because the field
+ * is only known to be possible: an entry loaded without a body has no `$children` to read.
+ */
+export function childrenTemplate(field: RepeaterField): string {
+  return `\${${field.token} ?? []}`;
+}
+
+/**
+ * The field a `children` template reads, with or without the fallback {@link childrenTemplate}
+ * writes. Anything more than the bare field is the author's own expression and is left as theirs.
+ */
+export function fieldOfChildrenTemplate(
+  template: string,
+  fields: readonly RepeaterField[],
+): RepeaterField | undefined {
+  const token = /^\$\{\s*(.+?)\s*(?:\?\?\s*\[\s*\]\s*)?\}$/u.exec(template)?.[1];
+  return fields.find((field) => field.token === token);
 }
 
 /**

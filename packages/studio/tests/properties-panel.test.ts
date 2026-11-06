@@ -29,6 +29,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { initLayers } from "../src/ui/layers";
 import { capsForPosition } from "../src/ui/value-source";
 import { projectState, setProjectState } from "../src/store";
+import { undo } from "../src/tabs/transact";
 import {
   bindContentHost,
   invalidatePageRouteCache,
@@ -1016,6 +1017,205 @@ describe("what Content no longer draws", () => {
     const c = await renderPanel();
     expect(sectionLabels(c)).not.toContain("Page");
     expect(c.querySelector('[data-prop="$layout"]')).toBeNull();
+  });
+});
+
+// ─── An item's child nodes, on the content row (§6.8) ──────────────────────────
+
+/*
+ * `item.$children` is a tree of nodes, so a text position that read it would draw `[object Object]`.
+ * The Text Content row offers it anyway, and stores the pick as the computed-children form the
+ * compiler expands: `${item.$children ?? []}`, as `avunu.net`'s team page writes it by hand.
+ */
+describe("an item's child nodes", () => {
+  /* SAFETY: `resetStudioState` seeded the deliberately partial project the harness documents, and
+     this adds one member to it. */
+  const useMarkdownTeam = () =>
+    setProjectState({
+      ...projectState,
+      projectConfig: { content: { team: { format: "Markdown" } } },
+    } as NonNullable<typeof projectState>);
+
+  const inRepeater = (template: JxMutableNode) => {
+    useMarkdownTeam();
+    openDoc(
+      {
+        children: [{ $prototype: "Array", items: { $ref: "#/state/team" }, map: template }],
+        state: { team: { $prototype: "ContentCollection", contentType: "team" } },
+        tagName: "div",
+      },
+      ["children", 0, "map"],
+    );
+  };
+  const template = () => firstChild().map!;
+
+  test("the content row offers item.$children, stored as computed children", async () => {
+    inRepeater({ tagName: "div" });
+    const c = await renderPanel();
+    await chooseValueSource(c, "textContent", "ref");
+    await renderPanel();
+    const picker = control(c, "textContent");
+    expect(options(picker)).toContain("$map/item/$children");
+    expect([...picker.querySelectorAll("option")].map((o) => o.textContent.trim())).toContain(
+      "item.$children",
+    );
+
+    commit(picker, "$map/item/$children");
+    await renderPanel();
+    expect(template().children).toBe("${item.$children ?? []}");
+    expect(template().textContent).toBeUndefined();
+  });
+
+  test("an element already holding the template reads as that field, From data…", async () => {
+    inRepeater({ children: "${item.$children ?? []}", tagName: "div" });
+    const c = await renderPanel();
+    expect(sourceLabel(c, "textContent")).toBe("From data…");
+    expect(control(c, "textContent").value).toBe("$map/item/$children");
+    expect(row(c, "textContent").textContent).toContain("Content");
+    expect(row(c, "textContent").textContent).not.toContain("Text Content");
+  });
+
+  test("picking it over text clears the text, in one undo step", async () => {
+    inRepeater({ tagName: "div", textContent: "Bio" });
+    const c = await renderPanel();
+    await chooseValueSource(c, "textContent", "ref");
+    await renderPanel();
+    expect(template().textContent).toEqual({ $ref: "#/state/team" });
+    commit(control(c, "textContent"), "$map/item/$children");
+    await renderPanel();
+    expect(template().children).toBe("${item.$children ?? []}");
+    expect(template().textContent).toBeUndefined();
+
+    undo(activeTab.value!);
+    expect(template().children).toBeUndefined();
+    expect(template().textContent).toEqual({ $ref: "#/state/team" });
+  });
+
+  test("choosing a text field instead moves the binding back to textContent", async () => {
+    inRepeater({ children: "${item.$children ?? []}", tagName: "div" });
+    const c = await renderPanel();
+    commit(control(c, "textContent"), "$map/item/id");
+    await renderPanel();
+    expect(template().children).toBeUndefined();
+    expect(template().textContent).toEqual({ $ref: "$map/item/id" });
+    expect(row(c, "textContent").textContent).toContain("Text Content");
+  });
+
+  test("unpicking clears the binding", async () => {
+    inRepeater({ children: "${item.$children ?? []}", tagName: "div" });
+    const c = await renderPanel();
+    commit(control(c, "textContent"), "");
+    await renderPanel();
+    expect(template().children).toBeUndefined();
+    expect(template().textContent).toBeUndefined();
+  });
+
+  test("the chip clears the children, in the row's own words", async () => {
+    inRepeater({ children: "${item.$children ?? []}", tagName: "div" });
+    const c = await renderPanel();
+    const dot = chip(c, "textContent")!;
+    expect(dot.getAttribute("title")).toBe("Clear content");
+    dot.click();
+    await renderPanel();
+    expect(template().children).toBeUndefined();
+  });
+
+  test("Mixed text leaves the children for a text template", async () => {
+    inRepeater({ children: "${item.$children ?? []}", tagName: "div" });
+    const c = await renderPanel();
+    await chooseValueSource(c, "textContent", "template");
+    await renderPanel();
+    expect(template().children).toBeUndefined();
+    expect(sourceLabel(c, "textContent")).toBe("Mixed text");
+  });
+
+  test("a template typed by hand that reads the field goes where it can be drawn", async () => {
+    inRepeater({ tagName: "div" });
+    const c = await renderPanel();
+    await chooseValueSource(c, "textContent", "template");
+    await renderPanel();
+    commit(control(c, "textContent"), "${item.$children}");
+    await renderPanel();
+    expect(template().children).toBe("${item.$children}");
+    expect(template().textContent).toBeUndefined();
+    expect(sourceLabel(c, "textContent")).toBe("From data…");
+  });
+
+  test("a template reading anything else stays text", async () => {
+    inRepeater({ tagName: "div" });
+    const c = await renderPanel();
+    await chooseValueSource(c, "textContent", "template");
+    await renderPanel();
+    commit(control(c, "textContent"), "${item.id}");
+    await renderPanel();
+    expect(template().textContent).toBe("${item.id}");
+    expect(template().children).toBeUndefined();
+  });
+
+  test("any other field of the item stays a text binding", async () => {
+    inRepeater({ tagName: "div" });
+    const c = await renderPanel();
+    await chooseValueSource(c, "textContent", "ref");
+    await renderPanel();
+    commit(control(c, "textContent"), "$map/index");
+    await renderPanel();
+    expect(template().textContent).toEqual({ $ref: "$map/index" });
+    expect(template().children).toBeUndefined();
+  });
+
+  test("attributes and props do not offer it", async () => {
+    registerCard();
+    inRepeater({ tagName: "my-card" });
+    const c = await renderPanel();
+    await chooseValueSource(c, "title", "ref");
+    await renderPanel();
+    const offered = options(control(c, "title"));
+    expect(offered).not.toContain("$map/item/$children");
+    expect(offered).toContain("$map/item/id");
+  });
+
+  /*
+   * A computed template the picker cannot name, on a page reading its own entry: it used to draw an
+   * empty Fixed value row, so the binding could not be seen and typing there wrote dead text.
+   */
+  describe("outside a repeater", () => {
+    const entryPage = () =>
+      openDoc(
+        {
+          children: [{ children: "${state.entry.$children}", tagName: "article" }],
+          tagName: "div",
+        },
+        ["children", 0],
+      );
+
+    test("shows as Mixed text, and an edit stays computed", async () => {
+      entryPage();
+      const c = await renderPanel();
+      expect(sourceLabel(c, "textContent")).toBe("Mixed text");
+      expect(control(c, "textContent").value).toBe("${state.entry.$children}");
+      commit(control(c, "textContent"), "${state.other.$children}");
+      await renderPanel();
+      expect(firstChild().children).toBe("${state.other.$children}");
+      expect(firstChild().textContent).toBeUndefined();
+    });
+
+    test("typing plain text replaces it", async () => {
+      entryPage();
+      const c = await renderPanel();
+      commit(control(c, "textContent"), "Words");
+      await renderPanel();
+      expect(firstChild().children).toBeUndefined();
+      expect(firstChild().textContent).toBe("Words");
+    });
+  });
+
+  test("a stale textContent beside the template is cleared when the field is picked again", async () => {
+    inRepeater({ children: "${item.$children}", tagName: "div", textContent: "stale" });
+    const c = await renderPanel();
+    commit(control(c, "textContent"), "$map/item/$children");
+    await renderPanel();
+    expect(template().children).toBe("${item.$children ?? []}");
+    expect(template().textContent).toBeUndefined();
   });
 });
 

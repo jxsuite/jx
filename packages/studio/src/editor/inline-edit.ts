@@ -234,7 +234,12 @@ export function setEditableVerdicts(verdicts: EditableVerdicts): void {
  * {@link file://./editable-tags.ts}.
  */
 export function isEditableBlock(el: HTMLElement) {
-  return isEditableTag(el.tagName, editableVerdicts);
+  /* Closed explicitly, whatever its tag. Edit mode closes the label it draws for computed children
+     (`prepareForEditMode`), because activating that label commits its words as the element's
+     `textContent` when the caret leaves, and the binding is gone without a key being pressed. */
+  return (
+    el.getAttribute("contenteditable") !== "false" && isEditableTag(el.tagName, editableVerdicts)
+  );
 }
 
 /**

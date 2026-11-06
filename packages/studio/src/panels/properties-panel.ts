@@ -50,6 +50,7 @@ import {
   isRef,
   isString,
   isTagExpression,
+  isTemplateString,
 } from "@jxsuite/schema/guards";
 import type { JsonValue } from "../types";
 import {
@@ -114,7 +115,13 @@ import type { LinkKind } from "../utils/link-target";
 import { clickAnythingTo, openPageAction, staleSelectionMessage } from "./empty-state";
 import { mountMediaPicker, unmountMediaPicker } from "../ui/media-picker";
 import { colorTokens, resolvedColor } from "../ui/color-selector";
-import { mapRefLabel, repeaterItemFields } from "../editor/repeater-scope";
+import {
+  childrenTemplate,
+  fieldOfChildrenTemplate,
+  mapRefLabel,
+  repeaterItemFields,
+} from "../editor/repeater-scope";
+import type { RepeaterField } from "../editor/repeater-scope";
 import { mountExpressionEditor } from "../ui/expression-editor";
 import type { ExpressionEditorOpts } from "../ui/expression-editor";
 import {
@@ -192,12 +199,18 @@ function nodeAtPath(doc: JxMutableNode, path: JxPath): JxMutableNode | undefined
  * Exported because Content and Logic both offer them and there is one right answer: a `$switch`
  * inside a `$map` can read `$map/item/data/title`, and so can the `alt` attribute two nodes below
  * it. `$map/item` stays first, because a fresh binding lands on the first signal offered.
+ *
+ * `withNodes` adds the fields holding child nodes, for the one position that can draw them.
  */
-export function mapSignalsFor(doc: JxMutableNode, path: JxPath): SurfaceOption[] | null {
+export function mapSignalsFor(
+  doc: JxMutableNode,
+  path: JxPath,
+  options: { withNodes?: boolean } = {},
+): SurfaceOption[] | null {
   if (!path.includes("map")) {
     return null;
   }
-  const fields = repeaterItemFields(doc, path, projectState?.projectConfig);
+  const fields = repeaterItemFields(doc, path, projectState?.projectConfig, options);
   return [
     { label: "item", value: "$map/item" },
     ...fields.map((field) => ({ label: field.token, value: field.pointer })),
@@ -1297,7 +1310,7 @@ function sectionsFor(node: JxMutableNode, path: JxPath): ContentSectionView[] {
   const sections: ContentSectionView[] = [
     sectionView("__element", "Element", isInspectorSectionOpen("__element", false), [], 0),
   ];
-  sections[0]!.rows = elementRows(node, path, tagName, mapSignals, bindableSignals);
+  sections[0]!.rows = elementRows(node, path, tagName, bindableSignals);
 
   if (isCustomInstance) {
     const definitionOfThis = isComponentDefinitionOpen(node);
@@ -1387,11 +1400,90 @@ function draftKey(path: JxPath, name: string): string {
   return `prop:${path.join("/")}:${name}`;
 }
 
+/**
+ * What a write to the content row leaves in `children`: the template to hold, or `null` for none.
+ *
+ * `$children` is a list of nodes, so it cannot be held in `textContent`, which would draw it as
+ * `[object Object]`. Picking it, or typing a template that reads it, moves the binding to the
+ * computed-children form the compiler already expands (spec.md §8.4). A template the row already
+ * held there that names no such field (`${state.entry.$children}`) stays there as it is edited.
+ */
+function computedChildrenFrom(
+  value: JsonValue | undefined,
+  nodeFields: readonly RepeaterField[],
+  keepsTemplate: boolean,
+): string | null {
+  if (isRef(value)) {
+    const field = nodeFields.find((f) => f.pointer === value.$ref);
+    return field ? childrenTemplate(field) : null;
+  }
+  if (!isTemplateString(value)) {
+    return null;
+  }
+  return keepsTemplate || fieldOfChildrenTemplate(value, nodeFields) ? value : null;
+}
+
+/**
+ * The Text Content row, which is also where an element's child nodes are bound.
+ *
+ * One row for two properties, because they are one question: what fills this element. A node with
+ * computed children has no text to show, and it used to draw this row empty and on Fixed value, so
+ * the binding could not be seen and typing here wrote text the compiled page never drew.
+ */
+function contentRow(
+  node: JxMutableNode,
+  path: JxPath,
+  bindableSignals: string[],
+  propertyChip: (name: string, human: string) => FieldProvenance,
+): ContentRowView {
+  const doc = activeTab.value!.doc.document;
+  const nodeFields = repeaterItemFields(doc, path, projectState?.projectConfig, {
+    withNodes: true,
+  }).filter((field) => field.holdsNodes);
+  const computed = isTemplateString(node.children) ? node.children : null;
+  const bound = computed === null ? undefined : fieldOfChildrenTemplate(computed, nodeFields);
+  const value = bound ? { $ref: bound.pointer } : (computed ?? node.textContent);
+  const write = (next?: JsonValue): void => {
+    const template = computedChildrenFrom(next, nodeFields, computed !== null && !bound);
+    transactDoc(activeTab.value, (t) => {
+      if (template === null || node.textContent !== undefined) {
+        mutateUpdateProperty(t, path, "textContent", template === null ? next : undefined);
+      }
+      if (template !== computed) {
+        mutateUpdateProperty(t, path, "children", template ?? undefined);
+      }
+    });
+  };
+
+  const textDraft = draft(draftKey(path, "textContent"));
+  const text = blankRow(
+    "prop|textContent",
+    "textContent",
+    computed === null ? "Text Content" : "Content",
+  );
+  text.kind = "textarea";
+  text.value = getFieldValue(textDraft, isString(value) ? value : "");
+  const plan: RowPlan = { commit: write, debounceMs: LIVE_PREVIEW, draft: textDraft };
+  applyLadder(text, plan, {
+    caps: "textProperty",
+    extraSignals: mapSignalsFor(doc, path, { withNodes: true }),
+    fieldKey: `prop|${path.join("/")}|textContent`,
+    onChange: write,
+    stateDefs: bindableSignals,
+    value,
+  });
+  if (computed !== null) {
+    applyChip(text, plan, "textContent", propertyChip("children", "content"));
+  } else if (node.textContent !== undefined) {
+    applyChip(text, plan, "textContent", propertyChip("textContent", "text"));
+  }
+  return withPlan(text, plan);
+}
+
 function elementRows(
   node: JxMutableNode,
   path: JxPath,
   tagName: string,
-  mapSignals: SurfaceOption[] | null,
   bindableSignals: string[],
 ): ContentRowView[] {
   const chosenTag = isTagExpression(node.tagName) ? node.tagName.$expression : null;
@@ -1480,28 +1572,7 @@ function elementRows(
   rows.push(withPlan(cls.row, cls.plan));
 
   if (!Array.isArray(node.children) || node.children.length === 0) {
-    const textDraft = draft(draftKey(path, "textContent"));
-    const text = blankRow("prop|textContent", "textContent", "Text Content");
-    text.kind = "textarea";
-    text.value = getFieldValue(textDraft, isString(node.textContent) ? node.textContent : "");
-    const plan: RowPlan = {
-      commit: writeProperty("textContent"),
-      debounceMs: LIVE_PREVIEW,
-      draft: textDraft,
-    };
-    applyLadder(text, plan, {
-      caps: "textProperty",
-      extraSignals: mapSignals,
-      fieldKey: `prop|${path.join("/")}|textContent`,
-      onChange: (v) =>
-        transactDoc(activeTab.value, (t) => mutateUpdateProperty(t, path, "textContent", v)),
-      stateDefs: bindableSignals,
-      value: node.textContent,
-    });
-    if (node.textContent !== undefined) {
-      applyChip(text, plan, "textContent", propertyChip("textContent", "text"));
-    }
-    rows.push(withPlan(text, plan));
+    rows.push(contentRow(node, path, bindableSignals, propertyChip));
   }
 
   const hidden = blankRow("prop|hidden", "hidden", "Hidden");

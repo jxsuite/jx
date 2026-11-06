@@ -8,6 +8,8 @@
 import { describe, expect, test } from "bun:test";
 import { isMappedArray } from "@jxsuite/schema/guards";
 import {
+  childrenTemplate,
+  fieldOfChildrenTemplate,
   findEnclosingRepeater,
   mapRefLabel,
   repeaterItemFields,
@@ -167,6 +169,18 @@ describe("resolveRepeaterItemFields", () => {
     expect(fieldsOf(arr, {}, null)).toEqual(["item", "index", "item.done", "item.title"]);
   });
 
+  test("items that are neither a list nor a pointer say nothing", () => {
+    // SAFETY: deliberately outside the type, as a hand-edited document can be.
+    const asNode = (json: JsonObject) => json as JxMutableNode;
+    const handEdited = asNode({ $prototype: "Array", items: "${state.rows}" });
+    const doc: JxMutableNode = {
+      children: [handEdited],
+      state: { rows: [{ title: "x" }] },
+      tagName: "div",
+    };
+    expect(resolveRepeaterItemFields(doc, ["children", 0, "map"], null)).toEqual(["item", "index"]);
+  });
+
   test("(e) fallback → exactly ['item','index'] for unresolvable/primitive/empty bindings", () => {
     // Ref target missing from state.
     expect(fieldsOf(repeater({ $ref: "#/state/gone" }), {}, null)).toEqual(["item", "index"]);
@@ -214,6 +228,7 @@ describe("repeaterItemFields", () => {
       content: { team: { schema: { properties: { role: { type: "string" } } } } },
     };
     expect(repeaterItemFields(doc, inside, config).at(-1)).toEqual({
+      holdsNodes: false,
       isArray: false,
       path: ["data", "role"],
       pointer: "$map/item/data/role",
@@ -312,6 +327,38 @@ describe("repeaterItemFields", () => {
         $defs: { Row: { properties: { sku: { type: "string" } } } },
       };
       expect(tokens(doc, inside, config)).toEqual(["item.sku"]);
+    });
+
+    test("a $defs pointer naming no type, and a pointer to no known place, say nothing", () => {
+      const docOf = (pointer: string): JxMutableNode => ({
+        children: [repeater({ $ref: "#/state/rows" })],
+        state: { rows: { default: [], items: { $ref: pointer } } },
+        tagName: "div",
+      });
+      expect(tokens(docOf("#/$defs/"), inside)).toEqual([]);
+      expect(tokens(docOf("./member.schema.json"), inside)).toEqual([]);
+    });
+
+    test("a list of lists keeps the fields of every row's members", () => {
+      const doc = docWith("#/state/rows", {
+        rows: [{ tags: [[{ a: 1 }]] }, { tags: [[{ b: 2 }]] }],
+      });
+      const rows = docWith("#/state/rows", { rows: [[{ a: 1 }], [{ b: 2 }]] });
+      expect(tokens(doc, inside)).toEqual(["item.tags"]);
+      // A row of the outer list is itself a list, so its shape has `items` and no fields to offer.
+      expect(tokens(rows, inside)).toEqual([]);
+      const nested: JxMutableNode = {
+        children: [
+          repeater(
+            { $ref: "#/state/rows" },
+            { children: [repeater({ $ref: "$map/item" })], tagName: "ul" },
+          ),
+        ],
+        state: { rows: [[{ a: 1 }], [{ b: 2 }]] },
+        tagName: "div",
+      };
+      const innerTemplate = ["children", 0, "map", "children", 0, "map"];
+      expect(tokens(nested, innerTemplate)).toEqual(["item.a", "item.b"]);
     });
 
     test("a pointer loop in $defs ends rather than hanging", () => {
@@ -481,6 +528,102 @@ describe("repeaterItemFields", () => {
     const doc = docWith("#/state/rows", { rows: [leaf as JsonObject] });
     const deepest = tokens(doc, inside).at(-1) ?? "";
     expect(deepest.split(".")).toHaveLength(7);
+  });
+
+  /*
+   * `$children` is what a Markdown entry's parsed body comes out as. It is a tree of nodes, so only
+   * an element's content can draw it: every text position and operand must go on not seeing it.
+   */
+  describe("the field holding an item's child nodes", () => {
+    const withNodes = { withNodes: true };
+    const team = docWith("#/state/team", { team: { contentType: "team" } });
+    const markdown: ProjectConfig = {
+      content: {
+        team: { format: "Markdown", schema: { properties: { role: { type: "string" } } } },
+      },
+    };
+
+    test("is left out unless it is asked for", () => {
+      expect(tokens(team, inside, markdown)).not.toContain("item.$children");
+      expect(resolveRepeaterItemFields(team, inside, markdown)).not.toContain("item.$children");
+    });
+
+    test("is listed beside the body when asked for, and flagged", () => {
+      const fields = repeaterItemFields(team, inside, markdown, withNodes);
+      expect(fields.map((field) => field.token)).toEqual([
+        "item.id",
+        "item.body",
+        "item.$children",
+        "item.data.role",
+      ]);
+      expect(fields[2]).toEqual({
+        holdsNodes: true,
+        isArray: false,
+        path: ["$children"],
+        pointer: "$map/item/$children",
+        token: "item.$children",
+      });
+      expect(fields.filter((field) => field.holdsNodes)).toHaveLength(1);
+    });
+
+    test("is offered for a type naming no format, and not for a format with no body", () => {
+      const tokensFor = (format?: string) =>
+        repeaterItemFields(
+          team,
+          inside,
+          { content: { team: format === undefined ? {} : { format } } },
+          withNodes,
+        ).map((field) => field.token);
+      expect(tokensFor()).toContain("item.$children");
+      expect(tokensFor("Csv")).toEqual(["item.id", "item.body"]);
+    });
+
+    test("is reached through a relationship", () => {
+      const doc = docWith("#/state/posts", { posts: { contentType: "posts" } });
+      const config: ProjectConfig = {
+        content: {
+          authors: { format: "Markdown" },
+          posts: {
+            format: "Csv",
+            schema: { properties: { author: { $ref: "#/content/authors" } } },
+          },
+        },
+      };
+      const nodes = repeaterItemFields(doc, inside, config, withNodes).filter((f) => f.holdsNodes);
+      expect(nodes.map((field) => field.token)).toEqual(["item.data.author.$children"]);
+    });
+
+    test("is found in a sample, and no other $-key is", () => {
+      const doc = docWith("#/state/rows", {
+        rows: [{ $children: [{ tagName: "p" }], $other: 1, title: "A" }],
+      });
+      expect(repeaterItemFields(doc, inside, null, withNodes).map((f) => f.token)).toEqual([
+        "item.$children",
+        "item.title",
+      ]);
+    });
+
+    test("a template names the field, with its fallback, and reads back to it", () => {
+      const nodes = repeaterItemFields(team, inside, markdown, withNodes).filter(
+        (field) => field.holdsNodes,
+      );
+      const [field] = nodes;
+      expect(childrenTemplate(field!)).toBe("${item.$children ?? []}");
+      for (const template of [
+        "${item.$children ?? []}",
+        "${item.$children}",
+        "${ item.$children ?? [ ] }",
+      ]) {
+        expect(fieldOfChildrenTemplate(template, nodes)).toBe(field);
+      }
+    });
+
+    test("any other expression is the author's own and names no field", () => {
+      const nodes = repeaterItemFields(team, inside, markdown, withNodes);
+      expect(fieldOfChildrenTemplate("${item.$children.slice(1)}", nodes)).toBeUndefined();
+      expect(fieldOfChildrenTemplate("${state.entry.$children}", nodes)).toBeUndefined();
+      expect(fieldOfChildrenTemplate("plain", nodes)).toBeUndefined();
+    });
   });
 });
 
