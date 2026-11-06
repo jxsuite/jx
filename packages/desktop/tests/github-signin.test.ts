@@ -140,6 +140,37 @@ describe("githubSignIn", () => {
     expect(signIn).rejects.toThrow("stopped before the sign-in completed");
   });
 
+  test("a completed sign-in exchanges the code, stores the token, and answers with it", async () => {
+    const authorizer = createLoopbackAuthorizer();
+    setAuthorizationHost({ authorizer, port: 4321 });
+    const requests: { body: string; url: string }[] = [];
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = Object.assign(
+      (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+        requests.push({ body: String(init?.body), url: String(input) });
+        return Promise.resolve(Response.json({ access_token: "gho_real", token_type: "bearer" }));
+      },
+      { preconnect: realFetch.preconnect },
+    );
+    try {
+      const signIn = githubSignIn({ force: true });
+      await Bun.sleep(1);
+      const state = new URL(opened[0]!).searchParams.get("state");
+      const callback = new URL(
+        `http://127.0.0.1:4321/__jx_oauth__/callback?code=c0de&state=${state}`,
+      );
+      expect(authorizer.handleCallback(callback)?.status).toBe(200);
+
+      expect(await signIn).toEqual({ token: "gho_real" });
+      expect(await readCredential(GITHUB_CREDENTIAL)).toBe("gho_real");
+      expect(requests).toHaveLength(1);
+      expect(requests[0]!.url).toContain("github.com");
+      expect(requests[0]!.body).toContain("c0de");
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  });
+
   test("a browser that will not open abandons the authorization rather than hanging", async () => {
     const authorizer = createLoopbackAuthorizer();
     setAuthorizationHost({ authorizer, port: 4321 });
