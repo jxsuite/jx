@@ -2,9 +2,9 @@
 
 ## Content Formats and the Reference Format-Extension Classes
 
-**Version:** 0.3.3-draft\
+**Version:** 0.3.5-draft\
 **Status:** Partial\
-**Updated:** 2026-10-21\
+**Updated:** 2026-11-06\
 **License:** MIT
 
 ---
@@ -361,6 +361,8 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.3.5-draft** (2026-11-06) — §9: projectData leaves out entries a type's hold rules match unless its host passes includeHeld.
+- **0.3.4-draft** (2026-11-06) — The Markdown serializer keeps a computed-children template as a directive attribute instead of dropping it on save.
 - **0.3.3-draft** (2026-10-21) — Roundtrip serialization writes an element as markdown only when markdown can say all of it: attributes markdown cannot spell, block-level images and tables GFM cannot read back stay directives, and frontmatter is written unfolded with YAML 1.1 quoting.
 - **0.3.2-draft** (2026-10-21) — §5: serializeJxMarkdown takes the source text in roundtrip mode and keeps the spelling of every unchanged frontmatter key and the body's emphasis, strong and bullet markers.
 - **0.3.1-draft** (2026-10-17) — §9: a lazily requested `content` section loads each collection on first use with frontmatter only, and parses an entry's body only when it is returned (`ContentStore`; `Markdown.load` `deferBody`, §3); §9.6: on-demand link reporting.
@@ -387,4 +389,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_`@jxsuite/parser` Specification v0.3.3-draft_
+_`@jxsuite/parser` Specification v0.3.5-draft_
