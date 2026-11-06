@@ -798,6 +798,70 @@ describe("array-of-objects fields", () => {
     ]);
   });
 
+  /*
+   * A `hold` rule's `when` is the case this exists for. Stored as text, a rule the form had just
+   * written failed its own schema, and a build refused the project.
+   */
+  describe("a cell holding JSON", () => {
+    const rulesSchema: JsonSchema = {
+      properties: {
+        hold: {
+          items: {
+            properties: {
+              label: { type: "string" },
+              tags: { type: "array" },
+              when: { type: "object" },
+            },
+            type: "object",
+          },
+          type: "array",
+        },
+      },
+    };
+    const rule = { label: "Draft", when: { draft: true } };
+    /* The text input in the row's `when` cell. */
+    const whenInput = (m: Awaited<ReturnType<typeof mountForm>>) => {
+      const cells = row(m, "hold").querySelectorAll('[part="cell-text"] [part="input"]');
+      return [...cells].find((cell) =>
+        cell instanceof HTMLInputElement ? cell.value.includes("draft") : false,
+      )!;
+    };
+
+    test("shows the value as JSON, never as [object Object]", async () => {
+      const m = await mountForm(rulesSchema, { hold: [rule] });
+      const input = whenInput(m);
+      if (!(input instanceof HTMLInputElement)) {
+        throw new TypeError("expected a text input");
+      }
+      expect(JSON.parse(input.value)).toEqual({ draft: true });
+    });
+
+    test("saves what was typed as the object it spells", async () => {
+      const m = await mountForm(rulesSchema, { hold: [rule] });
+      type(whenInput(m), '{ "hidden": true }');
+      expect(m.patches).toEqual([{ hold: [{ label: "Draft", when: { hidden: true } }] }]);
+    });
+
+    test("keeps the last value while the text is half typed", async () => {
+      const m = await mountForm(rulesSchema, { hold: [rule] });
+      type(whenInput(m), '{ "hidden": ');
+      expect(m.patches).toEqual([{ hold: [rule] }]);
+    });
+
+    test("clearing the cell clears the member", async () => {
+      const m = await mountForm(rulesSchema, { hold: [rule] });
+      type(whenInput(m), "");
+      // Serialized, because a cleared member is what JSON omits, and that is what reaches the file.
+      expect(JSON.stringify(m.patches)).toBe('[{"hold":[{"label":"Draft"}]}]');
+    });
+
+    test("a list cell parses too", async () => {
+      const m = await mountForm(rulesSchema, { hold: [{ tags: ["draft"] }] });
+      type(whenInput(m), '["a", "b"]');
+      expect(m.patches).toEqual([{ hold: [{ tags: ["a", "b"] }] }]);
+    });
+  });
+
   test("add seeds item defaults; remove takes a row out and clears the last one", async () => {
     const m = await mountForm(columnsSchema, {}, { withRerender: true });
     pointer(part(m, "columns", "row-add").querySelector('[part="control"]')!, "click");

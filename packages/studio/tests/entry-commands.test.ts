@@ -45,7 +45,7 @@ mockFiles();
 const { ENTRY_MODE, openEntryEditor } = await import("../src/content/entry-editor");
 const { contentCommands, createEntry, registerContentCommands } =
   await import("../src/content/entry-commands");
-const { draftView } = await import("../src/content/draft-state");
+const { holdView } = await import("../src/content/hold-state");
 const { createCommandRegistry } = await import("../src/commands/registry");
 const { makeContext } = await import("../src/commands/context");
 
@@ -81,13 +81,18 @@ beforeEach(() => {
   created.length = 0;
   opened.length = 0;
   createResult = "content/blog/first-post.json";
-  draftView.includeDrafts = false;
+  holdView.includeHeld = false;
   mockFiles();
   closeAllTabs();
   resetStudioState({
     projectConfig: {
       content: {
-        blog: { format: "json", schema: BLOG_SCHEMA, source: "./content/blog/" },
+        blog: {
+          format: "json",
+          hold: [{ label: "Draft", when: { draft: true } }],
+          schema: BLOG_SCHEMA,
+          source: "./content/blog/",
+        },
         products: { schema: {}, source: "./content/catalog.csv" },
       },
     },
@@ -216,7 +221,7 @@ describe("openEntryEditor", () => {
 describe("the records", () => {
   test("every one is level-filed and reachable from the palette", () => {
     const ids = contentCommands().map((c) => c.id);
-    expect(ids).toEqual(["content.openEntry", "content.setDraft", "content.setIncludeDrafts"]);
+    expect(ids).toEqual(["content.openEntry", "content.setHold", "content.setIncludeHeld"]);
     for (const record of contentCommands()) {
       expect(record.menus).toContain("palette");
       expect(record.requires ?? "").not.toBe("");
@@ -227,20 +232,20 @@ describe("the records", () => {
     for (const record of contentCommands()) {
       expect(record.id).not.toContain("toggle");
     }
-    expect(command("content.setDraft").args?.required).toEqual(["draft"]);
+    expect(command("content.setHold").args?.required).toEqual(["hold"]);
   });
 
-  test("setIncludeDrafts reaches the shared perspective, idempotently", async () => {
+  test("setIncludeHeld reaches the shared perspective, idempotently", async () => {
     const registry = liveRegistry();
-    await registry.run("content.setIncludeDrafts", { include: true });
-    expect(draftView.includeDrafts).toBe(true);
-    await registry.run("content.setIncludeDrafts", { include: true });
-    expect(draftView.includeDrafts).toBe(true);
-    await registry.run("content.setIncludeDrafts", { include: false });
-    expect(draftView.includeDrafts).toBe(false);
+    await registry.run("content.setIncludeHeld", { include: true });
+    expect(holdView.includeHeld).toBe(true);
+    await registry.run("content.setIncludeHeld", { include: true });
+    expect(holdView.includeHeld).toBe(true);
+    await registry.run("content.setIncludeHeld", { include: false });
+    expect(holdView.includeHeld).toBe(false);
   });
 
-  test("setDraft writes the flag on the active entry, in the store that entry saves from", async () => {
+  test("setHold writes the flag on the active entry, in the store that entry saves from", async () => {
     // A JSON collection's entry is opened by `files/files.ts` as `document = JSON.parse(text)` with
     // No frontmatter at all — so the flag has to land on the document, which is what gets written.
     const path = "content/blog/hello.json";
@@ -252,32 +257,32 @@ describe("the records", () => {
     });
     await flush();
     const registry = liveRegistry();
-    expect(command("content.setDraft").enablement?.(makeContext())).toBe(true);
-    await registry.run("content.setDraft", { draft: true });
+    expect(command("content.setHold").enablement?.(makeContext())).toBe(true);
+    await registry.run("content.setHold", { hold: true });
     expect(tab.doc.document.draft).toBe(true);
     expect(tab.doc.content.frontmatter.draft).toBeUndefined();
   });
 
-  test("setDraft refuses when the active document is not an entry", async () => {
+  test("setHold refuses when the active document is not an entry", async () => {
     openTab({
       document: { children: [], tagName: "div" },
       documentPath: "pages/index.json",
       id: "pages/index.json",
     });
     await flush();
-    expect(command("content.setDraft").enablement?.(makeContext())).toBe(false);
+    expect(command("content.setHold").enablement?.(makeContext())).toBe(false);
     // The registry refuses with the record's own `requires` sentence — the disabled button's
     // Tooltip, the palette's grey subtitle and the assistant's refusal are this one string.
     // The refusal is synchronous: an unavailable command never starts.
-    expect(() => liveRegistry().run("content.setDraft", { draft: true })).toThrow(
-      "a content entry open",
+    expect(() => liveRegistry().run("content.setHold", { hold: true })).toThrow(
+      "a content entry whose collection has a one-field hold rule",
     );
     // And the run body refuses too, for the caller that reaches it without the gate.
     /* SAFETY: `contentCommands()` answers `AnyCommand`, which erases the argument type to `never`
        for storage; at runtime every `run` receives the registry's coerced `CommandArgValues`, the
-       record `content.setDraft` reads `draft` from with `booleanArg`. */
-    const setDraft = command("content.setDraft") as Command<CommandArgValues>;
-    expect(() => setDraft.run(makeContext(), { draft: true })).toThrow("not a content entry");
+       record `content.setHold` reads `hold` from with `booleanArg`. */
+    const setHold = command("content.setHold") as Command<CommandArgValues>;
+    expect(() => setHold.run(makeContext(), { hold: true })).toThrow("not a content entry");
   });
 
   test("openEntry takes a project path and opens the form", async () => {

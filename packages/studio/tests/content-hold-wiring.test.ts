@@ -1,14 +1,14 @@
 /**
- * The draft perspective, END TO END — command → flag → collection listing → the open grid.
+ * The hold perspective, END TO END — command → flag → collection listing → the open grid.
  *
  * This file exists because every part of this feature already had a passing unit test while the
- * feature did nothing. `applyDraftFilter` was tested and had no caller; `content.setIncludeDrafts`
- * was tested and set a flag no list read. A unit test cannot see that, because it imports the
- * module it is testing and therefore proves only that the module works when someone calls it.
+ * feature did nothing. `applyHoldFilter` was tested and had no caller; `content.setIncludeHeld` was
+ * tested and set a flag no list read. A unit test cannot see that, because it imports the module it
+ * is testing and therefore proves only that the module works when someone calls it.
  *
  * So every assertion below crosses at least one module boundary the app crosses: the command comes
  * out of the registry by id, the rows come out of the controller the grid tab renders, and nothing
- * reaches into `draftView` to set it.
+ * reaches into `holdView` to set it.
  */
 import { installMockPlatform, resetStudioState } from "./harness";
 import { beforeEach, describe, expect, mock, test } from "bun:test";
@@ -16,7 +16,7 @@ import { mockFormatAction, seedMarkdownFormat } from "./format-fixture";
 import { closeAllTabs, workspace } from "../src/workspace/workspace";
 import { createCommandRegistry } from "../src/commands/registry";
 import { emptyContext } from "../src/commands/context";
-import { draftView } from "../src/content/draft-state";
+import { holdView } from "../src/content/hold-state";
 import type { CommandRegistry } from "../src/commands/registry";
 import type { JsonObject } from "@jxsuite/schema/types";
 
@@ -47,7 +47,14 @@ function setup(schema: JsonObject | null = POSTS_SCHEMA) {
   );
   resetStudioState({
     projectConfig: {
-      content: { posts: { format: "Markdown", schema, source: "./content/posts/" } },
+      content: {
+        posts: {
+          format: "Markdown",
+          hold: [{ label: "Draft", when: { draft: true } }],
+          schema,
+          source: "./content/posts/",
+        },
+      },
     },
   });
 }
@@ -68,10 +75,10 @@ function contentRegistry(): CommandRegistry {
 beforeEach(() => {
   closeAllTabs();
   seedMarkdownFormat();
-  draftView.includeDrafts = false;
+  holdView.includeHeld = false;
 });
 
-describe("content.setIncludeDrafts reaches the collection listing", () => {
+describe("content.setIncludeHeld reaches the collection listing", () => {
   test("the open collection grid gains and loses the draft row as the command runs", async () => {
     setup();
     const registry = contentRegistry();
@@ -83,11 +90,11 @@ describe("content.setIncludeDrafts reaches the collection listing", () => {
     expect(titles()).toEqual(["Live post"]);
     expect(controller.state.total).toBe(1);
 
-    await registry.run("content.setIncludeDrafts", { include: true });
+    await registry.run("content.setIncludeHeld", { include: true });
     expect(titles()).toEqual(["Draft post", "Live post"]);
     expect(controller.state.total).toBe(2);
 
-    await registry.run("content.setIncludeDrafts", { include: false });
+    await registry.run("content.setIncludeHeld", { include: false });
     expect(titles()).toEqual(["Live post"]);
   });
 
@@ -99,7 +106,7 @@ describe("content.setIncludeDrafts reaches the collection listing", () => {
     await controller.load();
     expect(controller.state.rows).toHaveLength(1);
 
-    await registry.run("content.setIncludeDrafts", { include: true });
+    await registry.run("content.setIncludeHeld", { include: true });
     const draftRow = controller.state.rows.find((row) => row.cells.draft === true)!;
     expect(draftRow.cells[PATH_FIELD]).toBe("content/posts/draft.md");
     expect(draftRow.fingerprint).toBe(DRAFT_MD);
@@ -142,7 +149,7 @@ describe("content.setIncludeDrafts reaches the collection listing", () => {
 
     expect(controller.state.columns.map((c) => c.field)).not.toContain("draft");
     const before = controller.state.rows.length;
-    await registry.run("content.setIncludeDrafts", { include: true });
+    await registry.run("content.setIncludeHeld", { include: true });
     expect(controller.state.rows).toHaveLength(before);
   });
 
@@ -150,7 +157,7 @@ describe("content.setIncludeDrafts reaches the collection listing", () => {
     setup();
     const registry = contentRegistry();
     expect(workspace.tabs.size).toBe(0);
-    await registry.run("content.setIncludeDrafts", { include: true });
-    expect(draftView.includeDrafts).toBe(true);
+    await registry.run("content.setIncludeHeld", { include: true });
+    expect(holdView.includeHeld).toBe(true);
   });
 });

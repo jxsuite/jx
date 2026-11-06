@@ -25,12 +25,17 @@ export interface EntryInspectorView {
   region: string;
   /** What the entry is, said in the singular: "Post". */
   kind: string;
-  /** "Draft", "Published", or "" for a collection with no draft workflow. */
+  /** A `hold` rule's label, "Published", or "" for a collection with no rules. */
   status: string;
-  /** Whether the collection has a draft workflow at all. */
-  draftAxis: "hidden" | "shown";
-  draft: boolean;
-  draftHint: string;
+  /** Whether the collection's rules offer a switch: one boolean field. */
+  holdSwitch: "hidden" | "shown";
+  /** Whether a rule holds the entry, whichever it is. */
+  held: boolean;
+  /** Whether the switch is on. */
+  holdOn: boolean;
+  /** The word beside the switch: its rule's label. */
+  holdLabel: string;
+  holdHint: string;
   /** `form` draws the field form's host; `none` says the collection declares no fields. */
   fieldsState: "form" | "none";
   /**
@@ -47,8 +52,8 @@ export interface EntryInspectorView {
 
 /** What the tab's controls do. */
 export interface EntryInspectorActions {
-  /** The draft switch moved. A setter, never a toggle. */
-  setDraft: (draft: boolean) => void;
+  /** The hold switch moved. A setter, never a toggle. */
+  setHold: (on: boolean) => void;
   /** **Edit** opens Project Settings › Content types on this collection. */
   openFields: () => void;
   /** **Search appearance…** runs `document.openSeo` over this entry, as the Page tab's does. */
@@ -76,9 +81,11 @@ function project(scope: EntryInspectorScope, view: EntryInspectorView): void {
   scope.region = view.region;
   scope.kind = view.kind;
   scope.status = view.status;
-  scope.draftAxis = view.draftAxis;
-  scope.draft = view.draft;
-  scope.draftHint = view.draftHint;
+  scope.holdSwitch = view.holdSwitch;
+  scope.holdOn = view.holdOn;
+  scope.holdLabel = view.holdLabel;
+  scope.holdHint = view.holdHint;
+  scope.held = view.held;
   scope.fieldsState = view.fieldsState;
   scope.urlState = view.urlState;
   scope.url = view.url;

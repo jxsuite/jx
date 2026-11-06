@@ -268,6 +268,12 @@ export interface ProjectDataContext {
    * Absent means everything now, which is what a build needs (specs/extensions.md §8).
    */
   lazy?: boolean;
+  /**
+   * Keep entries a content type's `hold` rules match, labelled, rather than leaving them out
+   * (site-architecture.md §7.6). A host that shows authors their work asks for this. Absent means a
+   * production build: leaving an entry out is the default, so a host that forgets cannot leak one.
+   */
+  includeHeld?: boolean;
 }
 
 /**

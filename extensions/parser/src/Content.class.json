@@ -78,6 +78,10 @@
               "properties": {
                 "projectConfig": { "type": "object" },
                 "root": { "type": "string" },
+                "includeHeld": {
+                  "type": "boolean",
+                  "description": "Keep entries a type's `hold` rules match, labelled, rather than leaving them out"
+                },
                 "registry": { "type": "object" },
                 "io": { "type": "object" }
               }

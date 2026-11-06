@@ -84,7 +84,12 @@ function project(files: Record<string, string>, withPage = true): void {
     projectConfig: {
       content: {
         authors: { format: "json", source: "./content/authors" },
-        posts: { format: "Markdown", schema: POSTS_SCHEMA, source: "./content/posts" },
+        posts: {
+          format: "Markdown",
+          hold: [{ label: "Draft", when: { draft: true } }],
+          schema: POSTS_SCHEMA,
+          source: "./content/posts",
+        },
       },
     },
     projectRoot: "/demo",
@@ -139,8 +144,10 @@ describe("the view", () => {
     const tab = await openPost();
     await collectionPages();
     expect(entryInspectorView(tab)).toMatchObject({
-      draft: false,
-      draftAxis: "shown",
+      held: false,
+      holdLabel: "Draft",
+      holdOn: false,
+      holdSwitch: "shown",
       fieldsState: "form",
       kind: "Post",
       path: "content/posts/spring-planting.md",
@@ -187,7 +194,7 @@ describe("the view", () => {
       id: "content/authors/ada.json",
     });
     const view = entryInspectorView(tab);
-    expect([view.fieldsState, view.draftAxis, view.status, view.kind, view.storage]).toEqual([
+    expect([view.fieldsState, view.holdSwitch, view.status, view.kind, view.storage]).toEqual([
       "none",
       "hidden",
       "",
@@ -215,10 +222,10 @@ describe("the mounted tab", () => {
     expect(tab.doc.content.frontmatter.title).toBe("Spring planting");
   });
 
-  test("the draft switch writes the flag and the status follows", async () => {
+  test("the hold switch writes the flag and the status follows", async () => {
     const tab = await openPost();
     await mount(tab);
-    const input = host.querySelector<HTMLInputElement>('[part="draft"] [part="input"]')!;
+    const input = host.querySelector<HTMLInputElement>('[part="hold"] [part="input"]')!;
     input.checked = true;
     input.dispatchEvent(new Event("change", { bubbles: true }));
     await flush(8);

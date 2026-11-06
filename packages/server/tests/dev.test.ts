@@ -1,6 +1,6 @@
 /** Tests for src/dev.ts — the `jx dev` entry: arg parsing, dist middleware, startDev boot. */
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import {
@@ -247,6 +247,48 @@ describe("startDev", () => {
     const html = await res.text();
     expect(html).toContain("Hello startDev");
     expect(html).toContain("EventSource('/__reload')");
+  });
+
+  /* A dev server is the author's view of their own work, so what a build would hold back stays in. */
+  test("keeps an entry a production build would leave out", async () => {
+    const HELD = resolve(import.meta.dir, "__test-dev-held__");
+    rmSync(HELD, { force: true, recursive: true });
+    mkdirSync(join(HELD, "content/work"), { recursive: true });
+    mkdirSync(join(HELD, "pages/work"), { recursive: true });
+    writeFileSync(
+      join(HELD, "project.json"),
+      JSON.stringify({
+        content: {
+          work: {
+            format: "Markdown",
+            hold: [{ label: "Draft", when: { draft: true } }],
+            source: "./content/work/",
+          },
+        },
+        extensions: ["@jxsuite/parser"],
+        name: "Held",
+      }),
+    );
+    writeFileSync(join(HELD, "content/work/secret.md"), "---\ndraft: true\n---\n\nHeld body\n");
+    writeFileSync(
+      join(HELD, "pages/work/[slug].json"),
+      JSON.stringify({
+        $paths: { contentType: "work", field: "id", param: "slug" },
+        tagName: "main",
+        textContent: "Entry ${$page.params.slug}",
+      }),
+    );
+    const info = spyOn(console, "info").mockImplementation(() => {});
+    try {
+      const server = await startDev({ port: 0, root: HELD });
+      servers.push(server);
+      const res = await fetch(`http://localhost:${server.port}/work/secret/`);
+      expect(res.status).toBe(200);
+      expect(info).not.toHaveBeenCalled();
+    } finally {
+      info.mockRestore();
+      rmSync(HELD, { force: true, recursive: true });
+    }
   });
 
   test("a source change rebuilds the site before broadcasting the reload", async () => {

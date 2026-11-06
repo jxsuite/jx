@@ -80,6 +80,8 @@ import {
   titleFieldOf,
 } from "../content/entry-summaries";
 import { entryCollection } from "../content/entry-model";
+import { NOT_HELD, holdSwitch } from "../content/hold-state";
+import type { HoldBearer } from "../content/hold-state";
 import { isString } from "@jxsuite/schema/guards";
 import type { ContentTypeSchema } from "@jxsuite/schema/types";
 import { openEntry } from "../content/entry-open";
@@ -976,13 +978,12 @@ function entryFactsFor(collection: ContentCollection, layout: LibraryLayout): En
 
 /**
  * What each page says about itself in the Pages table: its name, as the Site panel gives it (Home,
- * About, "Post page" for a collection's page), its template, and Draft for a page marked one.
+ * About, "Post page" for a collection's page) and its template.
  *
- * The name comes from the route, so it is there before any file is read; the template and the draft
- * flag arrive with the page summaries. A page's Status reads Published only when some page in the
- * project is a draft: with none, pages have no draft workflow, and a column of "Published" would be
- * a state nobody defined. Only the Table draws a template or a status, so only the Table reads the
- * pages: Cards, Calendar and Board name a page by its route and read nothing.
+ * The name comes from the route, so it is there before any file is read; the template arrives with
+ * the page summaries. A page has no status: `hold` rules are written on a content type and a page
+ * belongs to none, so nothing in a build could act on one. Only the Table draws a template, so only
+ * the Table reads the pages: Cards, Calendar and Board name a page by its route and read nothing.
  */
 function pageFactsFor(readPages: boolean): EntryFactsOf {
   const paths = collectionEntryPaths(PAGES_COLLECTION);
@@ -990,7 +991,6 @@ function pageFactsFor(readPages: boolean): EntryFactsOf {
   const declared = new Set(Object.keys(projectState?.projectConfig?.content ?? {}));
   const fallback = defaultLayoutPath();
   const { i18n } = resolveI18n(projectState?.projectConfig ?? {});
-  const anyDraft = [...(summaries?.values() ?? [])].some((page) => page.draft);
   const byPath = new Map<string, EntryFacts>(
     paths.map((path) => {
       const summary = summaries?.get(path);
@@ -1000,7 +1000,7 @@ function pageFactsFor(readPages: boolean): EntryFactsOf {
         path,
         {
           date: "",
-          status: summary === undefined || !anyDraft ? "" : summary.draft ? "Draft" : "Published",
+          status: "",
           template:
             layout === undefined ? "" : layout === false ? "None" : templateDisplayName(layout),
           title:
@@ -1028,11 +1028,15 @@ function collectionSchema(key: string): ContentTypeSchema | null {
 }
 
 /** The fields the Table names in a column of their own already: what an entry is called, its date. */
-function listedElsewhere(schema: ContentTypeSchema | null): ReadonlySet<string> {
+function listedElsewhere(
+  schema: ContentTypeSchema | null,
+  def?: HoldBearer | null,
+): ReadonlySet<string> {
   const skip = new Set<string>();
   const title = titleFieldOf(schema);
   const date = declaredDateField(schema);
-  for (const name of [title, date]) {
+  // The Status column already says what a hold switch says.
+  for (const name of [title, date, holdSwitch(def)?.field ?? null]) {
     if (name !== null) {
       skip.add(name);
     }
@@ -1065,10 +1069,10 @@ export interface FilterField {
 }
 
 /**
- * What the Filter narrows by: an entry's **status** where the collection has a draft workflow, else
- * the field its Board groups by (`boardFieldOf`: the first field with an `enum`, else the first
- * whose values repeat; a list field by each of its items). The same choice the Board makes, so the
- * Filter offers exactly the columns the Board draws. `null` when nothing groups the entries.
+ * What the Filter narrows by: an entry's **status** where the collection has `hold` rules, else the
+ * field its Board groups by (`boardFieldOf`: the first field with an `enum`, else the first whose
+ * values repeat; a list field by each of its items). The same choice the Board makes, so the Filter
+ * offers exactly the columns the Board draws. `null` when nothing groups the entries.
  */
 export function filterFieldOf(
   facts: readonly (EntryFacts | undefined)[],
@@ -1079,8 +1083,9 @@ export function filterFieldOf(
     return {
       matches: (entry, value) => (entry?.status ?? "") === value,
       title: "Status",
+      // Held work first, which is what someone filtering by status has come to find.
       values: statuses.toSorted((a, b) =>
-        a === "Draft" ? -1 : b === "Draft" ? 1 : a.localeCompare(b),
+        a === NOT_HELD ? 1 : b === NOT_HELD ? -1 : a.localeCompare(b),
       ),
     };
   }
@@ -1111,7 +1116,8 @@ function homeView(panel: ActiveLibraryPane | null, paneId: string): LibraryView 
   const factsOf = entryFactsFor(collection, layout);
   const facts = all.map((file) => factsOf(file));
   const schema = collection.kind === "collection" ? collectionSchema(collection.key) : null;
-  const fieldColumns = entryFieldColumns(schema, listedElsewhere(schema));
+  const def = collection.kind === "collection" ? entryCollection(collection.key)?.def : null;
+  const fieldColumns = entryFieldColumns(schema, listedElsewhere(schema, def));
   const boardField = boardFieldOf(fieldColumns, fieldEnums(schema), facts);
   // Pages are listed by route; the Filter is a collection's, over what its entries say.
   const filterField = collection.kind === "collection" ? filterFieldOf(facts, boardField) : null;
