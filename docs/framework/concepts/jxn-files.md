@@ -6,10 +6,13 @@ spec:
 code:
   - packages/schema/src/jxn/parse.ts
   - packages/schema/src/jxn/serialize.ts
+  - packages/schema/src/jxn/reconcile.ts
   - packages/schema/src/jxn/document.ts
   - packages/schema/src/jxn/lint.ts
   - packages/server/src/convert.ts
   - packages/site/src/serve.ts
+  - packages/studio/src/services/jxn-language.ts
+  - packages/studio/src/format/format-host.ts
 ---
 
 # Jx Notation (`.jxn`)
@@ -90,8 +93,16 @@ See [`jx convert`](/docs/framework/build/cli#jx-convert) for what it refuses. Da
 
 A build never ships Jx Notation: components become modules and pages become HTML. If a browser asks a Jx site for a `.jxn` file directly, the site answers JSON, so pages never load a KDL parser.
 
+## Saving keeps your comments
+
+Saving a `.jxn` file changes only what you changed. A node that still means the same keeps its exact text, including its comments and blank lines, whether the save came from Studio or from a rename repairing a reference. A comment directly above a node belongs to that node, so deleting the node deletes it.
+
+## In Studio
+
+Studio opens a `.jxn` file on the canvas and in the Code view, and saves it without losing comments.
+
 :::doc-note
-Studio does not open `.jxn` files yet. Edit them in your own editor, and `jx dev` and `jx build` will read them. Studio's own surfaces and the kit stay `.json`, and so do `*.class.json`, `jx-extension.json`, schemas and data files.
+New documents are still `.json`, and pickers do not offer `.jxn` yet. Some panels list only `.json` too: a `.jxn` layout does not appear under Templates. To move a file in the other direction, use `jx convert`. Studio's own surfaces and the kit stay `.json`, and so do `*.class.json`, `jx-extension.json`, schemas and data files.
 :::
 
 ## Related

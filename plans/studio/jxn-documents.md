@@ -3,8 +3,7 @@ status: drafted
 disposition: implement
 claims:
   - studio.md#8.5
-requires:
-  - spec/jxn-format
+requires: []
 workspaces:
   - packages/studio
   - packages/collab
@@ -19,7 +18,7 @@ size: M
 
 ## Context
 
-`specs/studio.md` §8.5 is Pending. `plan:spec/jxn-format` provides the reader, reconcile, the built-in format entry and a Monarch grammar. This plan is the rest of Studio's path, and was split from that plan so that the collaboration question below does not hold up `plan:site-architecture/project-jxn`, which needs neither (`collab/collab-session.ts:664` keeps the project file out of replication).
+`specs/studio.md` §8.5 is Pending. `spec.md` §22 provides the reader, reconcile, an in-process format entry that lets Studio open and save a `.jxn` file, and a Monarch grammar. A new document is still `.json` and pickers do not offer `.jxn`, because that entry is deliberately not in `getFormats()`. This plan is the rest of Studio's path, and was split from that plan so that the collaboration question below does not hold up `plan:site-architecture/project-jxn`, which needs neither (`collab/collab-session.ts:664` keeps the project file out of replication).
 
 Corrected against the code on 2026-11-05:
 
@@ -38,10 +37,10 @@ Corrected against the code on 2026-11-05:
 
 ## Implementation
 
-- **Studio.** The built-in entry through `format/format-host.ts`, a Monarch grammar with TypeScript embedded in strings, and `format/convert-file.ts` gaining the pair through its existing derivation. `create/add-new.ts:700`, `:717` keep creating `.json` until the last slice of `plan:_shared/jx-typechecking`.
+- **Studio.** `format/convert-file.ts` gaining the pair through its existing derivation. `create/add-new.ts:700`, `:717` keep creating `.json` until the last slice of `plan:_shared/jx-typechecking`.
 - **Collaboration.** `collab/collab-session.ts:399`, `:634` serialize against the current `Y.Text` and write a minimal text diff in one transaction. `:456` surfaces a Code view parse error as a Problem and keeps the text, instead of swallowing it and discarding the edit. `parseCollabSource` already refreshes `tab.doc.source` for a format path.
 
-The named sites below are each a silent failure if missed. `plan:spec/jxn-format` classifies the others:
+The named sites below are each a silent failure if missed. `spec.md` §22 classifies the others:
 
 - Layouts vanish: `panels/head-panel.ts:95`, `panels/site-model.ts:338`. Loud failure: `compiler/src/site/layout-resolver.ts:29`.
 - No `$layout`: `content/page-summaries.ts:53`, `content/collection-pages.ts:149`.

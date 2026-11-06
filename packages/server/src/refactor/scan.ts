@@ -10,7 +10,9 @@
 import { extname } from "node:path";
 import { readFile } from "node:fs/promises";
 import type { FormatRegistry, ValueEdit } from "@jxsuite/schema/format-registry";
-import type { JsonValue } from "@jxsuite/schema/types";
+import { isJsonObject } from "@jxsuite/schema/guards";
+import { isJxnPath, parseJxn, serializeJxn } from "@jxsuite/schema/jxn";
+import type { JsonValue, JxDocument } from "@jxsuite/schema/types";
 
 /** Normalise a path to forward slashes (Windows `path` returns backslashes). */
 export const fwd = (p: string) => p.replaceAll("\\", "/");
@@ -84,6 +86,17 @@ export async function loadDoc(fp: string, registry: FormatRegistry): Promise<Loa
       rewrite: null,
       serialize: (doc) =>
         Promise.resolve(JSON.stringify(doc, null, 2) + (trailingNewline ? "\n" : "")),
+    };
+  }
+  if (isJxnPath(fp)) {
+    /* The one format whose writer can be told what it is replacing, so repairing a reference in a
+       `.jxn` file changes that reference and leaves its comments where they were. */
+    const document = parseJxn(raw);
+    return {
+      doc: isJsonObject(document) ? document : null,
+      rewrite: null,
+      // SAFETY: the document this just read, with reference values replaced by reference values.
+      serialize: (doc) => Promise.resolve(serializeJxn(doc as JxDocument, raw)),
     };
   }
   const ext = extname(fp);
