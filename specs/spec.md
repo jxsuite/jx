@@ -32,7 +32,7 @@
 19. [Declarative Expressions](#19-declarative-expressions-expression)
 20. [Structured Function Bodies](#20-structured-function-bodies-statements)
 21. [Evaluation Surface](#21-evaluation-surface)
-22. [The `.jx` Document Format](#22-the-jx-document-format)
+22. [Jx Notation (`.jxn`)](#22-jx-notation-jxn)
 23. [TypeScript in Documents](#23-typescript-in-documents)
 
 ---
@@ -2471,11 +2471,11 @@ That settles the staging question by removing it. The shell is not a deployment 
 
 ---
 
-## 22. The `.jx` Document Format
+## 22. Jx Notation (`.jxn`)
 
-> **Status: Pending.** No host reads `.jx` yet: a document is `.json` or a format-extension file.
+> **Status: Pending.** No host reads `.jxn` yet: a document is `.json` or a format-extension file.
 
-A Jx document may be written as a `.jx` file, in KDL 2. `.jx` and `.json` are two spellings of one data model: both parse to the same `JxDocument`, and the schema, the runtime, the compiler and Studio's document model all work on that object. `.jx` is a native format, so no extension has to be enabled to use it. `project.json`, `*.class.json`, `jx-extension.json`, JSON Schemas and data files stay JSON.
+A Jx document may be written in Jx Notation, as a `.jxn` file. Jx Notation is KDL 2 with Jx's own rules for what each node means. `.jxn` and `.json` are two spellings of one data model: both parse to the same `JxDocument`, and the schema, the runtime, the compiler and Studio's document model all work on that object. `.jxn` is a native format, so no extension has to be enabled to use it. A project's configuration may be written the same way, as `project.jxn` (`site-architecture.md` §2.3). `*.class.json`, `jx-extension.json`, JSON Schemas and data files stay JSON.
 
 ---
 
