@@ -708,7 +708,12 @@ function createController(): FormController {
        are all serialized), where an undefined member is simply omitted. */
     rows[idx] = {
       ...target,
-      [cell]: coerceCell(cellSchema, next, plan.refCells?.has(`${field}/${row}/${cell}`) ?? false),
+      [cell]: coerceCell(
+        cellSchema,
+        next,
+        plan.refCells?.has(`${field}/${row}/${cell}`) ?? false,
+        target[cell],
+      ),
     } as JsonObject;
     patchRows(plan, rows);
   }
@@ -718,6 +723,7 @@ function createController(): FormController {
     cellSchema: JsonSchema | undefined,
     next: JsonValue | undefined,
     isPointer: boolean,
+    previous: JsonValue | undefined,
   ): JsonValue | undefined {
     if (isBoolean(next)) {
       return next;
@@ -733,6 +739,17 @@ function createController(): FormController {
     }
     if (raw === NONE || raw === "") {
       return undefined;
+    }
+    if (cellSchema?.type === "object" || cellSchema?.type === "array") {
+      /* The rule a whole JSON field follows: a half-typed object is not a refusal, the last parsable
+         value is what the document keeps. Stored as text, it would be a string where the schema asks
+         for an object, and the row would be invalid however it read. */
+      try {
+        // SAFETY: `JSON.parse` with no reviver yields only JSON values, which is all a JsonValue is.
+        return JSON.parse(raw) as JsonValue;
+      } catch {
+        return previous;
+      }
     }
     return raw;
   }

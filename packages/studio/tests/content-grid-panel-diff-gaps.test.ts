@@ -48,7 +48,7 @@ const { activeTab, closeAllTabs, openTab, workspace } = await import("../src/wor
 const { createCommandRegistry } = await import("../src/commands/registry");
 const { makeContext } = await import("../src/commands/context");
 const { setActiveRegistry } = await import("../src/commands/active-registry");
-const { detachEntryPane, entryPaneMounted, renderEntryMode, setEntryDraft } =
+const { detachEntryPane, entryPaneMounted, renderEntryMode, setEntryHold } =
   await import("../src/content/entry-editor");
 const { getGridController } = await import("../src/grid/grid-controller");
 const {
@@ -203,6 +203,7 @@ describe("the entry form's repaints, and the pane that stops owning it", () => {
         content: {
           notes: {
             format: "json",
+            hold: [{ label: "Draft", when: { draft: true } }],
             schema: {
               properties: { draft: { type: "boolean" }, title: { type: "string" } },
               type: "object",
@@ -231,13 +232,13 @@ describe("the entry form's repaints, and the pane that stops owning it", () => {
     // The form's effect owns the repaint: nothing calls `draw()` after a commit, the entry's own
     // Fields do. Inverting the effect's `activeIn(paneId) !== panel` guard blanks the pane on the
     // FIRST render, so both this line and the one above it fail.
-    setEntryDraft(tab, true);
+    setEntryHold(tab, true);
     await flush(4);
-    expect(el.querySelector('[part="note"]')?.textContent).toContain("Marked a draft");
-    expect(el.querySelector('[part="draft"]')).not.toBeNull();
+    expect(el.querySelector('[part="note"]')?.textContent).toContain("Held: Draft");
+    expect(el.querySelector('[part="hold"]')).not.toBeNull();
 
     detachEntryPane("primary");
-    setEntryDraft(tab, false);
+    setEntryHold(tab, false);
     await flush(4);
     /* The pane has stopped owning a form at all. The lit version left its markup behind and this
        line asserted it was FROZEN; a mounted document is TAKEN DOWN by the detach, which states

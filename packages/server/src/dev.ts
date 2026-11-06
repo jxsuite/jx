@@ -195,7 +195,8 @@ export async function startDev({ port, root }: DevArgs): Promise<DevServerHandle
   const rebuild = () => {
     building = building.then(async () => {
       const { buildSite } = await import("@jxsuite/compiler/site");
-      const result = await buildSite(root, { verbose: false });
+      // A dev server shows authors their work, so entries a project holds back stay in it.
+      const result = await buildSite(root, { includeHeld: true, verbose: false });
       ({ serverEntries } = result);
       if (result.errors.length > 0) {
         for (const err of result.errors) {

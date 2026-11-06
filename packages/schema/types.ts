@@ -927,6 +927,8 @@ export interface ContentLoaderEntry {
     toc?: TocEntry[];
     readingTime?: number;
     wordCount?: number;
+    /** The label of the `hold` rule that holds this entry, on a host that keeps held entries. */
+    hold?: string;
     /**
      * The source file's modification time, RFC 3339. The fallback a feed uses when an entry carries
      * no authored date, and what lets the sitemap give a generated page its own `<lastmod>` rather

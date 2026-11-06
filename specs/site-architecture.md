@@ -942,16 +942,54 @@ Markdown files (`.md`) open in **content mode** — a centered column WYSIWYG ca
 | **Delete**      | **Implemented** | Context menu → Delete, behind a confirmation that states the reference count (§9.4).                                                                                      |
 | **Rename/Move** | **Implemented** | Context menu → Rename. Updates the filename, and therefore the entry id and slug.                                                                                         |
 
-### 7.6 Draft Workflow
+### 7.6 Holding Entries Back
 
-> **Status: Partial.** The Studio half ships: the badge, the tab pill, the Library column and filter, and the explicit including-drafts perspective (`packages/studio/src/content/draft-state.ts`, `packages/studio/src/panels/tab-strip.ts`, `packages/studio/src/grid/sources/content-source.ts`). Production builds do not exclude drafts: neither the compiler nor the parser and feed extensions filter `draft: true`, as `DRAFT_MEANING` in `draft-state.ts` says in Studio's own words.
+> **Status: Implemented.** `compileHold` in `packages/schema/src/content-query.ts` is the one rule. The loader applies it where `where` runs (`finishEntries` in `extensions/parser/src/content-loader.ts`), and Studio's badge, switch, column and perspective read the same rules (`packages/studio/src/content/hold-state.ts`). Evidence: `packages/schema/tests/content-query.test.ts`, `extensions/parser/tests/content-hold.test.ts`, `packages/compiler/tests/site-build-hold.test.ts`, `packages/studio/tests/hold-state.test.ts`.
 
-Entries with `"draft": true` (a conventional boolean field in the schema):
+No web standard defines an entry's publication state for a build to act on. AtomPub's `app:draft` (RFC 5023 §13.1.1) is a request a server may ignore, iCalendar's `STATUS:DRAFT` (RFC 5545 §3.8.1.11) describes a journal entry, and schema.org's `creativeWorkStatus` gives its values only as examples. So Jx gives no field a meaning of its own. A project names its own fields in its schema and says what they imply, per content type, in `hold`:
 
-- Shown with a "Draft" badge in the collection browser, **and on the pane tab of an open entry** — the failure this guards against is publishing something the author believed was private, and that belief is formed while editing, not while browsing
-- Excluded from production builds by default
-- Included in dev server builds for preview
-- A column and a filter in the Library, with an explicit "including drafts" perspective rather than a hidden default
+```json
+{
+  "content": {
+    "work": {
+      "source": "./content/work/",
+      "hold": [
+        { "label": "Draft", "when": { "draft": true } },
+        {
+          "label": "Pending client review",
+          "when": { "client_review": { "$nin": ["approved", "not-needed"] } }
+        },
+        { "label": "Scheduled", "when": { "publishDate": { "$gt": { "$now": true } } } },
+        { "label": "Expired", "when": { "expiryDate": { "$lte": { "$now": true } } } }
+      ]
+    }
+  }
+}
+```
+
+**An entry is held when any rule matches**, and the first match names why. `when` has the grammar of `where` (§6) and each rule's `label` is the words every surface shows. A type with no `hold` holds nothing, and `draft: true` on such a type is a field like any other.
+
+| Host                                  | Held entries                                                                                                                                                                  |
+| ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `jx build`                            | Left out when the type loads, so every consumer agrees: pages, `$paths`, queries, search, feeds and the sitemap. This is the default, and a host has to ask for anything else |
+| `jx build --include-held`             | Kept, for a preview deploy                                                                                                                                                    |
+| `jx dev`, Studio's canvas and Preview | Kept                                                                                                                                                                          |
+
+A kept entry carries the label as `_meta.hold`, which a page can read to draw a chip. A build reports what it held and why, because an entry that disappears from a site with no message reads as a bug. A held entry's documents are not served from its type's asset mount, and files only it references are not published (§6). A published entry's reference to a held one stays its id, with a warning, as an id that matches no entry does (§6.3), because resolving it would embed the held entry's fields in a published page.
+
+**Only a clean build is clean of them.** `jx dev` builds held entries into the same `dist/`, and a build that does not clean its output (`jx build --no-clean`, Studio's Build Site) writes no held page but does not delete one already there, exactly as it keeps a page whose source was deleted. A deploy runs `jx build`, which cleans by default.
+
+**Three filters answer three questions.** `where` decides what exists, for everyone. `hold` decides what authors can see and production cannot. A `ContentCollection`'s `filter` is one page's query.
+
+**`$now`** is an operand of `$gt`, `$gte`, `$lt` and `$lte`, in `where` as well as `when`: the moment the rule is evaluated. Three rules follow from it:
+
+1. **A value parses by ECMAScript's `Date.parse`.** A date alone is the start of that day in UTC, and a date-time with no offset is the local time of the machine running the build.
+2. **A missing field does not match,** so an entry with no `publishDate` is not scheduled.
+3. **A value that is not a date fails closed.** A mistyped `publishDate` holds the entry under `hold` and leaves it out under `where`, rather than publishing it early.
+
+`$now` is the build machine's real clock and never `SOURCE_DATE_EPOCH`, because rebuilding one commit must still publish what has come due. **Pages are prerendered, so a date takes effect at the first build after it.** A site that publishes on a schedule runs a build on a schedule.
+
+**In Studio,** a type with a `hold` shows each entry's state: the rule's label or Published, on the tab chip, in the Inspector, in the entry form and on the Library's rows, because publishing something the author believed was private is a mistake made while editing, not while browsing. A rule whose `when` is one field equal to `true` is also a switch that writes that field; a rule on a date or a list of values is shown but set by editing its field. The collection grid leaves held entries out until the author turns on the including-held perspective, which is explicit rather than a hidden default. The Content home always lists every entry with its state, because that is where an author goes to find one.
 
 ---
 
@@ -1073,7 +1111,7 @@ A page that has a Markdown twin also gets a `<link rel="alternate">` to it (§8.
 When `url` is set in `project.json`, the build emits `dist/sitemap.xml` from the route table — one `<url>` entry per compiled page, each with a `<loc>` (absolute, built from `url` + the route as `build.trailingSlash` serves it via `new URL(route, url)`, so it is identical to the page's `<link rel="canonical">`) and a `<lastmod>` — the page source file's modification time as a **full RFC 3339 timestamp**. The W3C Datetime profile sitemaps.org cites admits both that and a bare `YYYY-MM-DD`; the date-only form threw away any way to tell two edits on one day apart.
 
 - **Requires `url`.** Absolute `<loc>` values cannot be built without it; if `url` is absent the sitemap is skipped with a build warning.
-- **Per-page opt-out.** A page sets `$sitemap: false` at its root to be excluded (e.g. thank-you pages, or drafts while build-time draft filtering is still pending). Two kinds of page are left out without it: a page whose built `<head>` carries `<meta name="robots">` with `noindex` (or `none`), because a sitemap that lists a page the page itself disowns gives a crawler two answers to one question, and the not-found page (§8.4.2). Both are still built and served. Every other page is included.
+- **Per-page opt-out.** A page sets `$sitemap: false` at its root to be excluded (e.g. thank-you pages). A held entry (§7.6) generates no page, so it needs no opt-out. Two kinds of page are left out without it: a page whose built `<head>` carries `<meta name="robots">` with `noindex` (or `none`), because a sitemap that lists a page the page itself disowns gives a crawler two answers to one question, and the not-found page (§8.4.2). Both are still built and served. Every other page is included.
 - **Disable entirely.** Set `build.sitemap: false` (§14.1.1).
 - **Dynamic routes** are listed by their expanded concrete URLs, each dated by **the entry it was generated from** rather than by the template. A route's `sourcePath` is the `[slug]` file that rendered it, and a template is edited far more often than the posts beneath it — so dating by the template made an entire archive announce itself as changed whenever the template moved, which is the opposite of what `<lastmod>` is for. A `resolvePaths` result therefore carries the entry's `_meta` (`parser.md` §9.3) beside its route parameters; `_meta` is reserved, is never a route parameter, and is stripped before URL substitution. A route with no entry behind it — an authored page, or a `$paths` shape describing only parameter values — still uses its own file's modification time, which for those is the right answer.
 - **Paged routes** (§4.3) are dated by the newest of their template and every item of the paged list that carries `_meta`, because one new or edited entry can move every page.
@@ -1626,7 +1664,7 @@ The compiler currently processes one document at a time. Site-level builds requi
 project.json
     ↓
 Discover pages/         → route table
-Discover content/       → content index
+Discover content/       → content index, held entries left out (§7.6)
 Resolve $paths          → expand dynamic routes
     ↓
 Compile components/     → element modules + CSS
@@ -1693,6 +1731,7 @@ jx dev                   # Build, then serve with live reload (rebuilds before e
 
 # Production build
 jx build                 # Full static site build
+jx build --include-held  # The same, keeping held entries (§7.6)
 
 # Preview production build
 jx preview               # Serve an already-built dist/ (default port 4173)
