@@ -16,7 +16,7 @@
  *
  * **This module is the FLOW; `surfaces/entry-editor.json` is the markup.** Everything below decides
  * something — which pane holds which tab, which collection a path belongs to, which record the
- * fields live in, which required keys are absent, what a draft flag commits into — and hands the
+ * fields live in, which required keys are absent, what a hold switch commits into — and hands the
  * surface a projection with no decisions left in it. The form itself is an island the surface
  * renders empty: `ui/schema-form.ts` hands back a host ELEMENT, and {@link renderEntryMode} places
  * it in the node the document announces.
@@ -51,7 +51,7 @@ import { paneRegion } from "../ui/regions";
 import { activateTab, workspace } from "../workspace/workspace";
 import { commitEntryFields, entryFields, mutateEntryField } from "./entry-fields";
 import type { EntryFields } from "./entry-fields";
-import { DRAFT_FIELD, DRAFT_MEANING, hasDraftAxis, isDraftEntry } from "./draft-state";
+import { hasHold, holdMeaning, holdOf, holdStatus, holdSwitch } from "./hold-state";
 import { collectionOfPath, missingRequired, recordCollectionOfPath } from "./entry-model";
 import { ENTRY_MODE, isRecordTab, recordPlace, showRecord } from "./record-entry";
 import { requestGridReveal } from "../grid/grid-reveal";
@@ -115,56 +115,55 @@ export function detachEntryPane(paneId: string): void {
   _active.delete(paneId);
 }
 
-// ─── Drafts ──────────────────────────────────────────────────────────────────
+// ─── Holds ───────────────────────────────────────────────────────────────────
 
 /**
- * Set this entry's draft flag. A setter, never a toggle — the pill, the command and the assistant
- * all reach the same state whatever it was before.
+ * Flip the switch this entry's collection offers (`holdSwitch`). A setter, never a toggle: the
+ * pill, the command and the assistant all reach the same state whatever it was before. Does nothing
+ * on a collection whose rules offer no switch.
  *
- * `draft: false` is written rather than removed. The absence of the key and the value `false` mean
- * the same thing to a reader, but only one of them survives a glance at the file, and an author who
- * has explicitly published something should be able to see that they did.
+ * `false` is written rather than removed. The absence of the key and the value `false` mean the
+ * same thing to a reader, but only one of them survives a glance at the file, and an author who has
+ * explicitly released something should be able to see that they did.
  */
-export function setEntryDraft(tab: Tab, draft: boolean): void {
-  transactDoc(tab, (t) => mutateEntryField(t, DRAFT_FIELD, draft));
+export function setEntryHold(tab: Tab, on: boolean): void {
+  const toggle = holdSwitch(entryCollectionOf(tab)?.def);
+  if (toggle) {
+    transactDoc(tab, (t) => mutateEntryField(t, toggle.field, on));
+  }
 }
 
-/** What the tab chip's draft pill says. A value, drawn by `surfaces/tab-strip.json`. */
-export interface DraftPill {
-  /** The word on the pill: "Draft" or "Published". */
+/** What the tab chip's pill says. A value, drawn by `surfaces/tab-strip.json`. */
+export interface HoldPill {
+  /** The word on the pill: the rule's label, or "Published". */
   text: string;
-  /** Its tooltip: what being a draft actually excludes, or that it is not one. */
+  /** Its tooltip: what being held actually does, or that it is not. */
   title: string;
-  draft: boolean;
+  held: boolean;
 }
 
 /**
- * The draft pill for a tab, or `null` when its document has no draft axis at all.
+ * The pill for a tab, or `null` when its collection states no rules.
  *
  * Drawn on the pane's tab chip (`panels/tab-strip.ts`) rather than only inside the editor, because
- * the failure this exists to prevent is publishing something you thought was private — and that
- * mistake is made while looking at a tab, not while looking at a form. It states its two words for
- * any entry whose collection declares the field, so "Published" is as visible as "Draft"; a
- * collection with no draft workflow states neither, which is what `null` means.
+ * the failure this exists to prevent is publishing something you thought was private, and that
+ * mistake is made while looking at a tab, not while looking at a form. It states its state for any
+ * entry whose collection has rules, so "Published" is as visible as "Draft"; a collection with none
+ * states neither, which is what `null` means.
  *
  * **It was the ONE piece of markup left in this file, and it was not this surface's.** It was a
- * fragment of the tab CHIP — a `<span>` lit interpolated into a `repeat()` that rebuilt on every
- * strip repaint — and it said so, and that it would convert when `panels/tab-strip.ts` converted.
- * The strip is a Jx document now, so this is a projection: two strings and a flag, drawn by the
- * chip's `status` slot, and `.entry-pill`'s rules in `styles/overlays.css` are dead with it.
+ * fragment of the tab CHIP, a `<span>` lit interpolated into a `repeat()` that rebuilt on every
+ * strip repaint. The strip is a Jx document now, so this is a projection: two strings and a flag,
+ * drawn by the chip's `status` slot.
  */
-export function entryDraftPill(tab: Tab): DraftPill | null {
-  const collection = entryCollectionOf(tab);
-  const fields = entryFields(tab);
-  if (!collection || !hasDraftAxis(collection.schema, fields)) {
+export function entryHoldPill(tab: Tab): HoldPill | null {
+  const def = entryCollectionOf(tab)?.def;
+  if (!hasHold(def)) {
     return null;
   }
-  const draft = isDraftEntry(fields);
-  return {
-    draft,
-    text: draft ? "Draft" : "Published",
-    title: draft ? DRAFT_MEANING : "Not marked a draft.",
-  };
+  const fields = entryFields(tab);
+  const label = holdOf(def, fields);
+  return { held: label !== null, text: holdStatus(def, fields), title: holdMeaning(label) };
 }
 
 // ─── The form ────────────────────────────────────────────────────────────────
@@ -255,11 +254,12 @@ function entryView(paneId: string, tab: Tab, collection: EntryCollection | null)
   if (!collection) {
     return {
       collection: "",
-      draft: false,
-      draftAxis: "hidden",
-      draftHint: DRAFT_MEANING,
       emptyLine: emptyLine(tab),
       fieldsRegion,
+      holdHint: holdMeaning(null),
+      holdLabel: "",
+      holdOn: false,
+      holdSwitch: "hidden",
       name: "",
       nextDisabled: true,
       note: "",
@@ -272,23 +272,25 @@ function entryView(paneId: string, tab: Tab, collection: EntryCollection | null)
     };
   }
   const fields = entryFields(tab);
-  const draft = isDraftEntry(fields);
+  const label = holdOf(collection.def, fields);
+  const toggle = holdSwitch(collection.def);
   const record = isRecordTab(tab);
   const place = recordPlace(tab);
   return {
     collection: collection.name,
-    draft,
-    draftAxis: hasDraftAxis(collection.schema, fields) ? "shown" : "hidden",
-    draftHint: DRAFT_MEANING,
     emptyLine: "",
     fieldsRegion,
+    holdHint: holdMeaning(label),
+    holdLabel: toggle?.label ?? "",
+    holdOn: toggle !== null && fields[toggle.field] === true,
+    holdSwitch: toggle ? "shown" : "hidden",
     // A record is called what the Content home calls it: its title field, else its row.
     name: record
       ? recordName(collection, fields, place.index)
       : (tab.documentPath?.split("/").pop() ?? "Untitled"),
     nextDisabled: place.next === null,
-    note: DRAFT_MEANING,
-    noteState: draft ? "shown" : "hidden",
+    note: holdMeaning(label),
+    noteState: label === null ? "hidden" : "shown",
     place: place.index === -1 ? "" : `${place.index + 1} of ${place.total}`,
     previousDisabled: place.previous === null,
     recordNav: record ? "shown" : "hidden",
@@ -401,7 +403,7 @@ export function renderEntryMode(surface: CanvasSurface, tab: Tab): void {
         }
         tab.session.ui.canvasMode = "grid";
       },
-      setDraft: (draft) => setEntryDraft(tab, draft),
+      setHold: (on) => setEntryHold(tab, on),
       showNext: () => {
         const { next } = recordPlace(tab);
         if (next !== null) {

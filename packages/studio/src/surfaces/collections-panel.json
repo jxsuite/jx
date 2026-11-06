@@ -130,7 +130,7 @@
     "& [part=\"entry-locale\"]:empty": {
       "display": "none"
     },
-    "& [part=\"entry-status\"][data-status=\"Draft\"]": {
+    "& [part=\"entry-status\"]:not([data-status=\"Published\"], [data-status=\"\"])": {
       "color": "var(--warning)"
     },
     "& [part=\"note\"], & [part=\"no-project\"]": {

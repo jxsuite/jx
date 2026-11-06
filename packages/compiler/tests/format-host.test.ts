@@ -215,6 +215,7 @@ describe("buildExtensionsPayload", () => {
         "source",
         "exclude",
         "where",
+        "hold",
         "idField",
         "route",
         "indexRoute",

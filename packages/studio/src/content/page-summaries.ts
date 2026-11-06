@@ -1,13 +1,13 @@
 /**
  * What the Content workspace's Pages list says about each page beyond its file: the template it is
- * drawn in, the collection a dynamic page expands over, and whether it is marked a draft
- * (`specs/studio.md` §22.5, the Content-Pages board: Title, URL, Template, Status, Edited).
+ * drawn in, the collection a dynamic page expands over (`specs/studio.md` §22.5, the Content-Pages
+ * board: Title, URL, Template, Status, Edited).
  *
- * The scan behind the Content home knows each page's FILE; its `$layout`, `$paths` and `draft` are
- * inside it. So this reads each page once, through the same parse the editor uses, and keeps the
- * answer until a file event drops it ({@link invalidatePageSummaries}, wired beside the
- * template-page index in `studio.ts`). The read never rejects: a page that cannot be read states
- * nothing, and is listed by its route alone.
+ * The scan behind the Content home knows each page's FILE; its `$layout` and `$paths` are inside
+ * it. So this reads each page once, through the same parse the editor uses, and keeps the answer
+ * until a file event drops it ({@link invalidatePageSummaries}, wired beside the template-page
+ * index in `studio.ts`). The read never rejects: a page that cannot be read states nothing, and is
+ * listed by its route alone.
  *
  * @docs studio/projects/browse
  */
@@ -15,7 +15,6 @@
 import { isNonNullObject } from "@jxsuite/schema/guards";
 import { getPlatform, hasPlatform } from "../platform";
 import { pageFactsOf } from "./collection-pages";
-import { DRAFT_FIELD } from "./draft-state";
 import type { FormatFrontmatter } from "../format/format-host";
 import type { JxMutableNode } from "@jxsuite/schema/types";
 
@@ -26,13 +25,11 @@ export interface PageSummary {
   layout: string | false | undefined;
   /** The collection its `$paths` expands over, or `null` for a page of its own. */
   contentType: string | null;
-  /** Whether the page carries `draft: true`, the one draft marker a page can have. */
-  draft: boolean;
 }
 
 /** What a page that could not be read states: nothing. */
 function unread(path: string): PageSummary {
-  return { contentType: null, draft: false, layout: undefined, path };
+  return { contentType: null, layout: undefined, path };
 }
 
 /** The summary a parsed page states. Exported so the rule is assertable without a platform. */
@@ -42,8 +39,7 @@ export function pageSummaryOf(
   frontmatter: FormatFrontmatter | null,
 ): PageSummary {
   const { contentType, layout } = pageFactsOf(document, frontmatter);
-  const draft = frontmatter?.[DRAFT_FIELD] === true || document?.[DRAFT_FIELD] === true;
-  return { contentType, draft, layout, path };
+  return { contentType, layout, path };
 }
 
 /** Read one page. */
@@ -61,7 +57,7 @@ async function readSummary(path: string): Promise<PageSummary> {
     const { parseSourceForPath } = await import("../files/file-ops");
     const parsed = await parseSourceForPath(path, source);
     /* SAFETY: a format class's parser returns its file as a Jx element tree (the format contract);
-       only `$layout`, `$paths` and `draft` are read off it. */
+       only `$layout` and `$paths` are read off it. */
     return pageSummaryOf(path, parsed.document as JxMutableNode, parsed.frontmatter);
   } catch {
     return unread(path);

@@ -1,7 +1,7 @@
 /**
  * Tests for src/content/entry-editor.ts — the Entry editor kind: what it draws for an entry, what
  * it draws for a document that is not one, how a field commit reaches the transaction log, and the
- * draft pill both the editor and the tab strip render.
+ * hold pill both the editor and the tab strip render.
  *
  * **Every fixture opens a real file through `files/files.ts`.** The predecessor built its tabs with
  * `openTab({ frontmatter })` for paths ending `.json` — handing the fixture a record the real open
@@ -11,7 +11,7 @@
  *
  * **The editor is a document now** (`src/surfaces/entry-editor.json`), so everything inside it is
  * addressed by `part` or by REGION: there is no `.entry-editor-header`, `.entry-editor-note` or
- * `sp-action-button` left to find. The draft PILL was the one exception, a lit `<span>` because it
+ * `sp-action-button` left to find. The hold PILL was the one exception, a lit `<span>` because it
  * belongs to the tab chip rather than to this surface; the tab strip is a document too now, so the
  * pill is a projection and the test that named its class names its values.
  */
@@ -27,15 +27,15 @@ import { paneRegion } from "../src/ui/regions";
 import {
   ENTRY_MODE,
   detachEntryPane,
-  entryDraftPill,
+  entryHoldPill,
   entryPaneMounted,
   fieldLabels,
   renderEntryMode,
-  setEntryDraft,
+  setEntryHold,
 } from "../src/content/entry-editor";
 import { mountEntryEditorSurface } from "../src/surfaces/entry-editor";
 import type { EntryEditorView } from "../src/surfaces/entry-editor";
-import { DRAFT_MEANING } from "../src/content/draft-state";
+import { holdMeaning } from "../src/content/hold-state";
 import type { Tab } from "../src/tabs/tab";
 import type { JsonObject } from "@jxsuite/schema/types";
 
@@ -76,8 +76,18 @@ function seedProject(): void {
     name: "Demo",
     projectConfig: {
       content: {
-        authors: { format: "json", schema: AUTHOR_SCHEMA, source: "./content/authors/" },
-        blog: { format: "Markdown", schema: BLOG_SCHEMA, source: "./content/blog/" },
+        authors: {
+          format: "json",
+          hold: [{ label: "Draft", when: { draft: true } }],
+          schema: AUTHOR_SCHEMA,
+          source: "./content/authors/",
+        },
+        blog: {
+          format: "Markdown",
+          hold: [{ label: "Draft", when: { draft: true } }],
+          schema: BLOG_SCHEMA,
+          source: "./content/blog/",
+        },
       },
       name: "Demo",
     },
@@ -164,9 +174,9 @@ function typeInto(host: HTMLElement, prop: string, value: string): void {
   el.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
-/** The native checkbox inside the draft switch — where a reader actually clicks. */
-function draftInput(host: HTMLElement): HTMLInputElement | null {
-  return host.querySelector<HTMLInputElement>('[part="draft"] [part="input"]');
+/** The native checkbox inside the hold switch — where a reader actually clicks. */
+function holdInput(host: HTMLElement): HTMLInputElement | null {
+  return host.querySelector<HTMLInputElement>('[part="hold"] [part="input"]');
 }
 
 /** The form engine debounces text commits. */
@@ -372,25 +382,25 @@ describe("a field edit reaches the file that gets saved", () => {
     const json = await openAda();
     const jsonHost = await mount(json);
     expect(part(jsonHost, "note")).toBeNull();
-    setEntryDraft(json, true);
+    setEntryHold(json, true);
     await flush(4);
-    expect(part(jsonHost, "note")?.textContent).toContain("Marked a draft");
+    expect(part(jsonHost, "note")?.textContent).toContain("Held: Draft");
 
     detachEntryPane("primary");
     const md = await openPost();
     const mdHost = await mount(md);
     expect(part(mdHost, "note")).toBeNull();
-    setEntryDraft(md, true);
+    setEntryHold(md, true);
     await flush(4);
-    expect(part(mdHost, "note")?.textContent).toContain("Marked a draft");
+    expect(part(mdHost, "note")?.textContent).toContain("Held: Draft");
   });
 });
 
-describe("drafts", () => {
+describe("holds", () => {
   test("the switch writes the flag into the entry's own store", async () => {
     const tab = await openAda();
     const host = await mount(tab);
-    const input = draftInput(host);
+    const input = holdInput(host);
     expect(input).not.toBeNull();
     input!.checked = true;
     input!.dispatchEvent(new Event("change", { bubbles: true }));
@@ -401,13 +411,14 @@ describe("drafts", () => {
   });
 
   /**
-   * The switch's tooltip is the whole contract the pill carries: it names what a draft IS, and
-   * deliberately does not promise the build excludes it. `jx-switch` draws an enabled `hint` as a
-   * `jx-tooltip` child (ui.md §5.1), which is what `hintOf` reads.
+   * The switch's tooltip is the whole contract the pill carries: it says what being held does,
+   * which the build now does. `jx-switch` draws an enabled `hint` as a `jx-tooltip` child (ui.md
+   * §5.1), which is what `hintOf` reads.
    */
-  test("the switch says what a draft means, and appears on no collection without the axis", async () => {
+  test("the switch says what a hold means, and appears on no collection without a rule", async () => {
     const withAxis = await mount(await openAda());
-    expect(hintOf(part(withAxis, "draft"))).toContain("does not exclude");
+    expect(hintOf(part(withAxis, "hold"))).toContain("production build");
+    expect(part(withAxis, "hold")?.textContent).toContain("Draft");
 
     detachEntryPane("primary");
     resetStudioState({
@@ -429,18 +440,18 @@ describe("drafts", () => {
       await openEntry("content/notes/one.json", JSON.stringify({ body: "Hi" })),
     );
     expect(part(noAxis, "collection")?.textContent).toBe("notes");
-    expect(part(noAxis, "draft")).toBeNull();
+    expect(part(noAxis, "hold")).toBeNull();
   });
 
-  test("setEntryDraft is a setter: false is written, not deleted — in both stores", async () => {
+  test("setEntryHold is a setter: false is written, not deleted — in both stores", async () => {
     const json = await openAda({ draft: true });
-    setEntryDraft(json, false);
+    setEntryHold(json, false);
     expect(json.doc.document.draft).toBe(false);
-    setEntryDraft(json, false);
+    setEntryHold(json, false);
     expect(json.doc.document.draft).toBe(false);
 
     const md = await openPost("title: Hello\ndraft: true\n");
-    setEntryDraft(md, false);
+    setEntryHold(md, false);
     expect(md.doc.content.frontmatter.draft).toBe(false);
   });
 
@@ -454,20 +465,20 @@ describe("drafts", () => {
    * `tab-strip.test.ts`'s to say; that it says the right words is this one's.
    */
   test("the pill names both states, and appears on no document without the axis", async () => {
-    expect(entryDraftPill(await openAda({ draft: true }))).toEqual({
-      draft: true,
+    expect(entryHoldPill(await openAda({ draft: true }))).toEqual({
+      held: true,
       text: "Draft",
-      title: DRAFT_MEANING,
+      title: holdMeaning("Draft"),
     });
 
-    const published = entryDraftPill(await openAda());
+    const published = entryHoldPill(await openAda());
     expect(published?.text).toBe("Published");
-    expect(published?.draft).toBe(false);
-    expect(published?.title).toBe("Not marked a draft.");
+    expect(published?.held).toBe(false);
+    expect(published?.title).toBe(holdMeaning(null));
 
-    // No draft axis at all is `null`, which is how the chip draws NEITHER word — a document that
-    // Has no draft workflow must not be given a state it does not have.
-    expect(entryDraftPill(await openEntry("pages/index.json", "{}"))).toBeNull();
+    // No rules at all is `null`, which is how the chip draws NEITHER word: a document with none must
+    // Not be given a state it does not have.
+    expect(entryHoldPill(await openEntry("pages/index.json", "{}"))).toBeNull();
   });
 });
 
@@ -489,9 +500,10 @@ describe("openEntryEditor over the real open path", () => {
 describe("mountEntryEditorSurface — dispose lifecycle", () => {
   const emptyView: EntryEditorView = {
     collection: "",
-    draft: false,
-    draftAxis: "hidden",
-    draftHint: "",
+    holdHint: "",
+    holdLabel: "",
+    holdOn: false,
+    holdSwitch: "hidden",
     emptyLine: "Nothing to edit.",
     fieldsRegion: "",
     name: "",
@@ -507,7 +519,7 @@ describe("mountEntryEditorSurface — dispose lifecycle", () => {
   const actions = {
     openContentTypes: () => {},
     openGrid: () => {},
-    setDraft: () => {},
+    setHold: () => {},
     showNext: () => {},
     showPrevious: () => {},
   };

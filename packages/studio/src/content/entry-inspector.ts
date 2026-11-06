@@ -3,9 +3,9 @@
  * The Inspector's Entry tab: what the Page tab draws while a collection entry is the focused
  * document (`specs/studio.md` §6, §22.5; the Content-Entry board's sidebar).
  *
- * Four things, in the board's order: the entry's **status** (its draft flag, when the collection
- * has a draft workflow, `content/draft-state.ts`), its **fields** as the collection's schema types
- * them (`ui/schema-form.ts` over `content/entry-fields.ts`, the same form and the same transacted
+ * Four things, in the board's order: the entry's **status** (what its collection's `hold` rules
+ * say, `content/hold-state.ts`), its **fields** as the collection's schema types them
+ * (`ui/schema-form.ts` over `content/entry-fields.ts`, the same form and the same transacted
  * commits as the form-only editor, so ⌘Z undoes a field here exactly as it does there), the **URL**
  * its collection page publishes it at (`content/collection-pages.ts`), and the **file** it is
  * stored in, with what that file holds.
@@ -30,13 +30,13 @@ import {
   peekCollectionPage,
 } from "./collection-pages";
 import { commitEntryFields, entryFields } from "./entry-fields";
-import { DRAFT_MEANING, hasDraftAxis, isDraftEntry } from "./draft-state";
+import { holdMeaning, holdOf, holdStatus, holdSwitch } from "./hold-state";
 import { entryCollection } from "./entry-model";
 import {
   absentRequiredErrors,
   fieldLabels,
   formContext,
-  setEntryDraft,
+  setEntryHold,
   titleFirst,
 } from "./entry-editor";
 import { mountEntryInspectorSurface } from "../surfaces/entry-inspector";
@@ -64,20 +64,23 @@ export function entryInspectorView(tab: Tab): EntryInspectorView {
   const name = match?.name ?? "";
   const collection = entryCollection(name);
   const fields = entryFields(tab);
-  const draftAxis = hasDraftAxis(collection?.schema, fields);
-  const draft = isDraftEntry(fields);
+  const def = collection?.def;
+  const label = holdOf(def, fields);
+  const toggle = holdSwitch(def);
   const page = name === "" ? null : peekCollectionPage(name, entryLocale(path));
   const url = page ? entryUrl(page, path, fields) : null;
   const isJson = path.endsWith(".json");
   return {
-    draft,
-    draftAxis: draftAxis ? "shown" : "hidden",
-    draftHint: DRAFT_MEANING,
     fieldsState: collection?.schema ? "form" : "none",
+    held: label !== null,
+    holdHint: holdMeaning(label),
+    holdLabel: toggle?.label ?? "",
+    holdOn: toggle !== null && fields[toggle.field] === true,
+    holdSwitch: toggle ? "shown" : "hidden",
     kind: capitalise(contentCollection(name)?.item ?? "entry"),
     path,
     region: ENTRY_INSPECTOR_REGION,
-    status: draftAxis ? (draft ? "Draft" : "Published") : "",
+    status: holdStatus(def, fields),
     storage: isJson
       ? ". Its fields are the file itself."
       : ". Fields are its frontmatter, and the body is its Markdown.",
@@ -194,7 +197,7 @@ export function renderEntryInspector(host: HTMLElement, tab: Tab): void {
         openSeo: () => {
           void runActiveReported("document.openSeo", undefined, "Entry");
         },
-        setDraft: (draft) => setEntryDraft(tab, draft),
+        setHold: (on) => setEntryHold(tab, on),
       },
       {
         fieldsSlot: (element) => {

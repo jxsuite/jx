@@ -1064,7 +1064,7 @@ describe("per-pane strips", () => {
  * `jx-tab`'s slots.
  *
  * `studio-ui-guidelines.md` §14's `gap:apg-coverage` said the pane strip carried no tab semantics
- * "because a Studio tab chip carries a pin toggle, an origin marker and a draft pill and `jx-tab`
+ * "because a Studio tab chip carries a pin toggle, an origin marker and a hold pill and `jx-tab`
  * accepts no slotted content". It does now (`ui.md` §5.4), so the strip is one stop in the tab
  * order with a roving caret inside it — and Delete closes a document, which the × has never had a
  * keyboard path to.
@@ -1138,6 +1138,7 @@ describe("the strip is a real tablist", () => {
         content: {
           notes: {
             format: "json",
+            hold: [{ label: "Draft", when: { draft: true } }],
             schema: { properties: { draft: { type: "boolean" } }, type: "object" },
             source: "./content/notes/",
           },
@@ -1169,8 +1170,8 @@ describe("the strip is a real tablist", () => {
     expect(chip.querySelector('[part="origin"]:not([hidden])')!.textContent).toBe("↳");
     const pill = chip.querySelector<HTMLElement>('[part="pill"]:not([hidden])')!;
     expect(pill.textContent).toBe("Draft");
-    expect(pill.dataset.draft).toBe("");
-    expect(pill.getAttribute("title")).toContain("does not exclude");
+    expect(pill.dataset.held).toBe("");
+    expect(pill.getAttribute("title")).toContain("production build leaves it out");
     expect(chip.querySelector('[part="pin"]')!.getAttribute("title")).toBe("Pin");
     // The tab still names itself with exactly the string it draws: `aria-label` beats
     // Name-from-content, so "↳", "Draft" and "Pin" never join the document's name.
@@ -1213,7 +1214,7 @@ describe("the strip is a real tablist", () => {
 
 /**
  * `context/tab` is a DECLARED placement, and six records declare it. Until the strip rendered it,
- * right-click — the gesture the placement exists to describe — reached none of them: `Set Draft`,
+ * right-click — the gesture the placement exists to describe — reached none of them: `Set Hold`,
  * `Reopen Closed Document`, `Pin / Unpin Document`, `Keep Document Open`, `Split Right` and `Close
  * Document` all shipped with a menu entry no surface drew. Every case below goes through the real
  * records, so a record that loses its placement fails here rather than shipping unreachable.
@@ -1290,6 +1291,7 @@ describe("tab context menu", () => {
         content: {
           posts: {
             format: "json",
+            hold: [{ label: "Draft", when: { draft: true } }],
             schema: { properties: { draft: { type: "boolean" }, title: { type: "string" } } },
             source: "./posts/",
           },
@@ -1332,7 +1334,7 @@ describe("tab context menu", () => {
       "Keep Document Open",
       "Pin / Unpin Document",
       "Reopen Closed Document",
-      "Set Draft",
+      "Set Hold",
       "Split Right",
     ]);
     // A group change draws a divider: 1_file → 3_document → 5_pane is two of them. The kit menu
@@ -1410,19 +1412,19 @@ describe("tab context menu", () => {
     expect([...workspace.tabs.keys()]).toEqual(["b"]);
   });
 
-  test("Set Draft is offered only on a content entry, shows the state it is in, and lands on the other", async () => {
+  test("Set Hold is offered only where a rule offers a switch, shows the state it is in, and lands on the other", async () => {
     const entry = open("posts/first.json", "posts/first.json");
     publishRegistry();
     await flush();
 
     rightClick(tabs()[0]!);
     await flush(3);
-    const row = rowFor("Set Draft");
+    const row = rowFor("Set Hold");
     /* A setter names the state it REACHES, so the row says where the tab is now and the click takes
        it to the other one. It states that as a real checkbox row, which it could not under
        Spectrum: `sp-menu` reassigned every item's role one frame after connect whenever the menu
        declared no `selects`, so `menuitemcheckbox` did not survive in a real browser and the state
-       had to be printed as a sentence ("Draft: no") in the description line. `jx-menu-item` derives
+       had to be printed as a sentence ("Held: no") in the description line. `jx-menu-item` derives
        both `role` and `aria-checked` from `checked` and nothing rewrites them. */
     expect(row.getAttribute("role")).toBe("menuitemcheckbox");
     expect(row.getAttribute("aria-checked")).toBe("false");
@@ -1434,10 +1436,10 @@ describe("tab context menu", () => {
     rightClick(tabs()[0]!);
     await flush(3);
     // Re-opened, the row states the value the click produced — and now offers the way back.
-    expect(rowFor("Set Draft").getAttribute("aria-checked")).toBe("true");
+    expect(rowFor("Set Hold").getAttribute("aria-checked")).toBe("true");
   });
 
-  test("a tab that is no collection's entry states no `draft`, so the row is absent, not refusing", async () => {
+  test("a tab that is no collection's entry has no hold rules, so the row is absent, not refusing", async () => {
     open("styles/site.css", "styles/site.css");
     publishRegistry();
     await flush();
@@ -1445,7 +1447,7 @@ describe("tab context menu", () => {
     rightClick(tabs()[0]!);
     await flush(3);
     const rows = labels();
-    expect(rows).not.toContain("Set Draft");
+    expect(rows).not.toContain("Set Hold");
     // The rows that need nothing of the tab are still there.
     expect(rows).toContain("Close Document");
     /* A no-arg row names no state, so it stays a plain `menuitem` with no `aria-checked` at all —

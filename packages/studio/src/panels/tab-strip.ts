@@ -16,7 +16,7 @@
  * **The chip is a `jx-tab` now, and three of the things it used to draw by hand are the kit's**:
  * the selected state (`aria-selected` on a real `tab` inside a real `tablist`, where an `.active`
  * class used to be), the close button, and the dirty dot. The three that are Studio's own live in
- * `jx-tab`'s slots — the drill-in marker in `icon`, the draft pill in `status`, the pin toggle in
+ * `jx-tab`'s slots — the drill-in marker in `icon`, the hold pill in `status`, the pin toggle in
  * `actions` — which is the gap that kept this strip out of the tab pattern (`ui.md` §5.4). With it
  * closed the strip is one stop in the tab order, the arrows walk it, Home and End reach its ends,
  * and Delete closes a tab: a keyboard contract the × has never had.
@@ -57,8 +57,8 @@ import { gridTabLabel } from "../grid/grid-source";
 import { workspaceTabOrder } from "../workspace/tab-workspace";
 import { workspaceHomeLabel } from "../workspace/workspace-ids";
 import { shell, workspaceDrawsTabStrip } from "../shell";
-import { entryDraftPill } from "../content/entry-editor";
-import { DRAFT_FIELD, isDraftEntry } from "../content/draft-state";
+import { entryHoldPill } from "../content/entry-editor";
+import { holdFields, holdSwitch } from "../content/hold-state";
 import { entryFields } from "../content/entry-fields";
 import { collectionOfPath } from "../content/entry-model";
 import { activeRegistry } from "../commands/active-registry";
@@ -262,9 +262,11 @@ export function mount(host: HTMLElement) {
         void tab.pinned;
         void tab.preview;
         void tab.session.openedFrom;
-        // The draft pill is on the chip, so the chip has to repaint when the flag changes — reading
-        // The absent key tracks its ADDITION too, which is the transition that matters most.
-        void tab.doc.content.frontmatter[DRAFT_FIELD];
+        // The hold pill is on the chip, so the chip has to repaint when a field its rules read
+        // Changes. Reading an absent key tracks its ADDITION too, which matters most.
+        for (const field of holdFields(collectionOfPath(tab.documentPath)?.def)) {
+          void tab.doc.content.frontmatter[field];
+        }
       }
       // An edit is a commitment: a preview tab with unsaved changes is no longer disposable, and
       // The dirty flags this effect already tracks are exactly the signal.
@@ -685,15 +687,15 @@ function chipView(
   if (!tab) {
     return [];
   }
-  /* The draft pill (`site-architecture.md` §7.6). On the CHIP, not only inside the entry editor:
+  /* The hold pill (`site-architecture.md` §7.6). On the CHIP, not only inside the entry editor:
      the mistake this prevents — publishing something you believed was private — is made while
      glancing at a row of tabs, and it is made about a document that may not even be the active
      one. */
-  const pill = entryDraftPill(tab);
+  const pill = entryHoldPill(tab);
   return [
     {
       dirty: tab.doc.dirty || imageEditorDirty(tab),
-      draft: pill?.draft ?? false,
+      held: pill?.held ?? false,
       index,
       key: id,
       label: labels.get(id) ?? "Untitled",
@@ -1011,24 +1013,25 @@ export function dismissTabContextMenu() {
  * A tab addresses ONE document, and this is everything the chip can say about it — keyed by the
  * ARGUMENT NAME that asks for it.
  *
- * The whole `context/tab` placement asks for exactly one argument today: `content.setDraft
- * {draft}`. The other five records take none, because they read the ACTIVE document — which is why
+ * The whole `context/tab` placement asks for exactly one argument today: `content.setHold {hold}`.
+ * The other five records take none, because they read the ACTIVE document — which is why
  * {@link openTabContextMenu} activates the chip before it builds a single row.
  *
  * A fact is stated ONLY when it is true of this tab, and that is what decides whether a command
- * appears at all: `styles/main.css` is an entry of no collection, so it states no `draft`, so "Set
- * Draft" is not offered on it. The condition is `collectionOfPath` — the same question
- * `content.setDraft`'s own `enablement` asks — so the menu never invents a rule the command does
- * not have, and never renders a row into a refusal.
+ * appears at all: `styles/main.css` is an entry of no collection, so it has no hold rules, so "Set
+ * Hold" is not offered on it. The condition is `collectionOfPath` — the same question
+ * `content.setHold`'s own `enablement` asks — so the menu never invents a rule the command does not
+ * have, and never renders a row into a refusal.
  *
  * The VALUE is the state the row would reach, not the state the tab is in: a setter is named for
- * where it lands (`content/draft-state.ts` says why), so the row offers the flip of what is true
- * now and {@link statedChecked} reads the current state back out of it for the checkmark.
+ * where it lands (`content/hold-state.ts` says why), so the row offers the flip of what is true now
+ * and {@link statedChecked} reads the current state back out of it for the checkmark.
  */
 function tabRowFacts(tab: Tab): CommandArgValues {
   const facts: CommandArgValues = {};
-  if (collectionOfPath(tab.documentPath)) {
-    facts.draft = !isDraftEntry(entryFields(tab));
+  const toggle = holdSwitch(collectionOfPath(tab.documentPath)?.def);
+  if (toggle) {
+    facts.hold = entryFields(tab)[toggle.field] !== true;
   }
   return facts;
 }
@@ -1040,16 +1043,16 @@ function tabRowFacts(tab: Tab): CommandArgValues {
  * A menu is the one surface that is READ before it is used, so it is the one surface that can show
  * a boolean instead of asking the author to remember it. That is an argument for the SETTER over
  * the toggle, and it is why this is derived from the args rather than from a list of command ids:
- * `content.setDraft {draft}` names the state it reaches, so the row can say which state the tab is
- * in now and still land somewhere definite when clicked. `document.togglePinned` names no state —
- * "Pin / Unpin Document" is a title that admits it does not know which it will do — so it renders
- * as a plain row here. Its idempotent sibling `document.setPinned {pinned}` would state its own
- * value, with no edit to this file, on the day its record declares `context/tab`; that declaration
- * lives in `workspace/workspace.ts`, which is the only place it can be made.
+ * `content.setHold {hold}` names the state it reaches, so the row can say which state the tab is in
+ * now and still land somewhere definite when clicked. `document.togglePinned` names no state — "Pin
+ * / Unpin Document" is a title that admits it does not know which it will do — so it renders as a
+ * plain row here. Its idempotent sibling `document.setPinned {pinned}` would state its own value,
+ * with no edit to this file, on the day its record declares `context/tab`; that declaration lives
+ * in `workspace/workspace.ts`, which is the only place it can be made.
  *
  * **It is a real checkbox row now, which it could not be under Spectrum.** `sp-menu` reassigned
  * every item's role one frame after connect whenever the menu declared no `selects`, so
- * `role="menuitemcheckbox"` did not survive and the state had to be printed as a sentence ("Draft:
+ * `role="menuitemcheckbox"` did not survive and the state had to be printed as a sentence ("Held:
  * no") in the description line instead. `jx-menu-item` derives `role` and `aria-checked` from
  * `checked` and nothing rewrites them, so the row states the boolean the way a screen reader
  * already knows how to announce — and the five rows that carry no state stay plain `menuitem`s,

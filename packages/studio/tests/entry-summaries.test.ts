@@ -36,6 +36,7 @@ const {
 
 const POSTS = {
   format: "markdown",
+  hold: [{ label: "Draft", when: { draft: true } }],
   schema: { properties: { draft: { type: "boolean" }, title: { type: "string" } } },
   source: "./content/posts",
 };
@@ -135,7 +136,7 @@ describe("summarize", () => {
     expect(titles).toEqual(["Hello", "b"]);
   });
 
-  test("a collection with a draft workflow says Draft or Published; one without says nothing", () => {
+  test("a collection with hold rules says what they say; one without says nothing", () => {
     expect(summarize("content/posts/a.md", "posts", { draft: true }).status).toBe("Draft");
     expect(summarize("content/posts/a.md", "posts", {}).status).toBe("Published");
     expect(summarize("content/notes/a.md", "notes", {}).status).toBe("");

@@ -55,8 +55,8 @@ import {
   traversalReason,
 } from "./content-routes.ts";
 import type { RouteSpec } from "./content-routes.ts";
-import { compileExclude, compileWhere } from "./content-rules.ts";
-import type { ExcludeMatcher, WherePredicate } from "./content-rules.ts";
+import { compileExclude, compileHold, compileWhere } from "./content-rules.ts";
+import type { ExcludeMatcher, HoldPredicate, WherePredicate } from "./content-rules.ts";
 import { coerceEntryDates, isCoercedDate, isDateFormat } from "./dates.ts";
 import type { ContentNodes } from "./inert.ts";
 import type { ContentLoaderEntry, ContentTypeDef } from "./types.ts";
@@ -260,16 +260,22 @@ const DOCUMENT_EXTENSIONS = new Set([".md", ".markdown", ".mdx"]);
  * What a content type's asset mount may serve, or `undefined` for "everything under the directory"
  * (today's behavior, which every type that declares none of the vault options keeps).
  *
- * A type that declares `exclude`, `where` or `route` is publishing a folder of notes, and there the
- * mount is the collection's front door, so it must not be a way around the collection's own rules:
- * a file `exclude` names is not served however a page refers to it, nothing whose path has a dot
- * segment is (`.git`, `.env` and `.obsidian` are what a source set to the repository root also
- * contains), and a document is not (a note `where` left out would otherwise leave as a raw
+ * A type that declares `exclude`, `where`, `hold` or `route` is publishing a folder of notes, and
+ * there the mount is the collection's front door, so it must not be a way around the collection's
+ * own rules: a file `exclude` names is not served however a page refers to it, nothing whose path
+ * has a dot segment is (`.git`, `.env` and `.obsidian` are what a source set to the repository root
+ * also contains), and a document is not (a note `where` left out would otherwise leave as a raw
  * download, frontmatter and all). The paths it is asked about are relative to the mount directory,
  * which is the source directory.
  */
 function mountFilterFor(def: ContentTypeDef | undefined): ((path: string) => boolean) | undefined {
-  if (!def || (def.exclude === undefined && def.where === undefined && def.route === undefined)) {
+  if (
+    !def ||
+    (def.exclude === undefined &&
+      def.where === undefined &&
+      def.hold === undefined &&
+      def.route === undefined)
+  ) {
     return undefined;
   }
   let exclude: ExcludeMatcher;
@@ -551,6 +557,8 @@ export function loadContentConfig(projectRoot: string, projectConfig?: ProjectCo
  * @param {ContentSection} section - The project.json `content` section value
  * @param {string} root - Project root directory
  * @param {FormatRegistry} formats - Format-dispatch view of the extension registry
+ * @param {ProjectConfig} [projectConfig]
+ * @param {boolean} [includeHeld] - Keep entries the `hold` rules match, labelled
  * @returns {Promise<Map<string, ContentLoaderEntry[]>>} Map of content type name → entries
  */
 export async function loadContentSection(
@@ -558,13 +566,14 @@ export async function loadContentSection(
   root: string,
   formats: FormatRegistry,
   projectConfig?: ProjectConfig,
+  includeHeld?: boolean,
 ): Promise<Map<string, ContentLoaderEntry[]>> {
   const contentTypes = new Map<string, ContentLoaderEntry[]>();
   const mounts = sectionMounts(section, root, projectConfig);
   for (const name of Object.keys(section)) {
     contentTypes.set(
       name,
-      await loadSectionType(name, { formats, mounts, projectConfig, root, section }),
+      await loadSectionType(name, { formats, includeHeld, mounts, projectConfig, root, section }),
     );
   }
   return contentTypes;
@@ -601,6 +610,8 @@ export interface SectionTypeSource {
   mounts: Map<string, AssetMount>;
   /** Leave entry bodies for later, reporting each deferred entry here. */
   onDeferred?: DeferredBodyHandler | undefined;
+  /** Keep entries the type's `hold` rules match, labelled, rather than leaving them out. */
+  includeHeld?: boolean | undefined;
 }
 
 /**
@@ -614,7 +625,7 @@ export async function loadSectionType(
   name: string,
   source: SectionTypeSource,
 ): Promise<ContentLoaderEntry[]> {
-  const { section, root, formats, projectConfig, mounts, onDeferred } = source;
+  const { section, root, formats, projectConfig, mounts, onDeferred, includeHeld } = source;
   const contentTypeDef = section[name];
   if (!contentTypeDef) {
     return [];
@@ -623,6 +634,7 @@ export async function loadSectionType(
   const typeSource = contentTypeDef.source;
   if (!isString(typeSource) || !typeSource.includes(LOCALE_PLACEHOLDER)) {
     return await loadContentType(name, contentTypeDef, root, formats, {
+      includeHeld,
       mount: mounts.get(name),
       projectConfig,
       ...deferral,
@@ -645,6 +657,7 @@ export async function loadSectionType(
   for (const locale of locales) {
     const localized = { ...contentTypeDef, source: localeSource(root, typeSource, locale) };
     const entries = await loadContentType(name, localized, root, formats, {
+      includeHeld,
       locale,
       mount: mounts.get(`${name}/${locale}`),
       projectConfig,
@@ -686,6 +699,7 @@ type LinkMode = "warn" | "error" | "ignore";
 interface TypeRules {
   exclude: ExcludeMatcher;
   where: WherePredicate | null;
+  hold: HoldPredicate | null;
   idField: string | undefined;
   route: RouteSpec | null;
   links: LinkMode;
@@ -706,6 +720,7 @@ const KNOWN_TYPE_KEYS = [
   "alerts",
   "exclude",
   "format",
+  "hold",
   "idField",
   "indexRoute",
   "links",
@@ -792,6 +807,7 @@ function compileTypeRules(name: string, def: ContentTypeDef): TypeRules {
       links,
       route: parseRouteConfig(def.route, def.indexRoute, name),
       where: def.where === undefined ? null : compileWhere(def.where),
+      hold: def.hold === undefined ? null : compileHold(def.hold),
     };
   } catch (error) {
     const message = errorMessage(error);
@@ -831,6 +847,8 @@ interface FinishContext {
   reload?: ((filePath: string) => Promise<ContentLoaderEntry[]>) | undefined;
   /** Told of each entry whose body was deferred, with what completes it. */
   onDeferred?: DeferredBodyHandler | undefined;
+  /** Keep entries `hold` matches, labelled, rather than leaving them out. */
+  includeHeld?: boolean | undefined;
 }
 
 /**
@@ -845,10 +863,11 @@ export type DeferredBodyHandler = (
 /**
  * The collection-wide pass every source kind goes through once its files are loaded.
  *
- * Order matters and is the whole design. `where` runs first, so an entry that is not published is
- * never validated, coerced, given a route or counted as a duplicate. Ids are settled before
- * anything keyed by id (relationships, duplicate checks, routes that read `{id}`). Routes are
- * computed before links, because a link can only be resolved once the page it points at has a URL.
+ * Order matters and is the whole design. `where` and `hold` run first, so an entry that is not
+ * published is never validated, coerced, given a route or counted as a duplicate. Ids are settled
+ * before anything keyed by id (relationships, duplicate checks, routes that read `{id}`). Routes
+ * are computed before links, because a link can only be resolved once the page it points at has a
+ * URL.
  *
  * @returns {ContentLoaderEntry[]} The kept entries, in load order
  */
@@ -858,6 +877,7 @@ function finishEntries(files: LoadedFile[], ctx: FinishContext): ContentLoaderEn
   // 1. where: split every file's entries into kept and left out.
   const kept: LoadedFile[] = [];
   const unpublished = new Map<string, string>();
+  const held: string[] = [];
   let loadedCount = 0;
   for (const file of files) {
     const keep: ContentLoaderEntry[] = [];
@@ -867,8 +887,19 @@ function finishEntries(files: LoadedFile[], ctx: FinishContext): ContentLoaderEn
         if (file.rel !== null && file.entries.length === 1) {
           unpublished.set(file.rel, `left out by where.${rules.where.why(entry.data) ?? "filter"}`);
         }
-      } else {
+        continue;
+      }
+      const hold = rules.hold?.(entry.data);
+      if (hold === undefined) {
         keep.push(entry);
+      } else if (ctx.includeHeld === true) {
+        entry._meta = { ...entry._meta, hold };
+        keep.push(entry);
+      } else {
+        held.push(`${file.rel ?? entry.id} (${hold})`);
+        if (file.rel !== null && file.entries.length === 1) {
+          unpublished.set(file.rel, `held: ${hold}`);
+        }
       }
     }
     if (keep.length > 0) {
@@ -883,6 +914,14 @@ function finishEntries(files: LoadedFile[], ctx: FinishContext): ContentLoaderEn
       `Content type "${name}": "where" left out all ${loadedCount} entries, so the collection is ` +
         `empty (it failed on "${first ? (rules.where.why(first.data) ?? "?") : "?"}" for the first one). ` +
         `Check the field names and the value types: YAML \`true\` is a boolean, "true" is text.`,
+    );
+  }
+
+  /* Said, not warned: holding an entry is the project's own rule working. It is still said, because
+     an entry that disappears from a site with no message reads as a bug. */
+  if (held.length > 0) {
+    console.info(
+      `Content type "${name}": holding ${held.length} from this build: ${held.join(", ")}`,
     );
   }
 
@@ -1302,6 +1341,8 @@ interface LoadOptions {
    */
   deferBody?: boolean | undefined;
   onDeferred?: DeferredBodyHandler | undefined;
+  /** Keep entries the type's `hold` rules match, labelled, rather than leaving them out. */
+  includeHeld?: boolean | undefined;
 }
 
 /**
@@ -1325,12 +1366,13 @@ async function loadContentType(
   if (!source) {
     return [];
   }
-  const { mount, projectConfig, locale, deferBody, onDeferred } = options;
+  const { mount, projectConfig, locale, deferBody, onDeferred, includeHeld } = options;
   const { schema } = contentTypeDef;
   const rules = compileTypeRules(name, contentTypeDef);
   const finishContext = (extra: Partial<FinishContext>): FinishContext => ({
     coerceDates: false,
     entryExtensions: new Set<string>(),
+    includeHeld,
     locale,
     mount,
     name,
@@ -1822,6 +1864,8 @@ export interface ContentStoreSource {
   root: string;
   formats: FormatRegistry;
   projectConfig: ProjectConfig | undefined;
+  /** Keep entries the type's `hold` rules match, labelled, rather than leaving them out. */
+  includeHeld?: boolean | undefined;
 }
 
 export class ContentStore extends Map<string, ContentLoaderEntry[]> implements ContentSectionData {
@@ -1852,6 +1896,7 @@ export class ContentStore extends Map<string, ContentLoaderEntry[]> implements C
       source.root,
       source.formats,
       source.projectConfig,
+      source.includeHeld,
     );
     for (const [name, entries] of loaded) {
       store.#adopt(name, entries);
@@ -1964,8 +2009,9 @@ export class ContentStore extends Map<string, ContentLoaderEntry[]> implements C
   #loadType(name: string): Promise<void> {
     let load = this.#loads.get(name);
     if (!load) {
-      const { section, root, formats, projectConfig } = this.#source;
+      const { section, root, formats, projectConfig, includeHeld } = this.#source;
       load = loadSectionType(name, {
+        includeHeld,
         formats,
         mounts: this.#mounts,
         onDeferred: (entry, completeBody) => {
@@ -2045,6 +2091,7 @@ export class Content {
   ): Promise<ContentStore> {
     const source = {
       formats: ctx.registry.formats,
+      includeHeld: ctx.includeHeld,
       projectConfig: ctx.projectConfig,
       root: ctx.root,
       section: sectionValue ?? {},

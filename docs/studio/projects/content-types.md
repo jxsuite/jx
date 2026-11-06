@@ -64,7 +64,7 @@ The fields you add here become the form every entry fills in. Each field row has
 An **object** field opens a nested area where you add sub-fields the same way. A **reference** field gets a **Target** picker naming another content type, which is how a post points at its author. The trash icon deletes a field.
 
 :::doc-tip
-One field name is special by convention: a boolean called `draft` gives the collection the [draft workflow](#drafts) below.
+No field name is special. To give a collection a draft workflow, name a field and write a [hold rule](#holding-entries-back) for it.
 :::
 
 ## Rename or delete a type
@@ -113,21 +113,29 @@ Open a file that belongs to no collection and the form says exactly that, and of
 
 A Markdown entry's frontmatter is reachable while you write it on the canvas, too, from the Inspector's **Entry** tab, the one place an entry's fields are edited (the canvas shows only the writing banner above the entry). See **[Frontmatter and page metadata](/docs/studio/editing/frontmatter)**.
 
-## Drafts
+## Holding entries back
 
-Give a type a boolean field named `draft` and its entries get a draft workflow:
+A collection's `hold` rules say what keeps an entry out of a production build, in your own fields and your own words. Studio has no built-in idea of a draft: `draft: true` means nothing until a rule says so. Write rules in the type's **hold** option in the Content Types section, each with a label and a JSON condition, or in `project.json`. See **[Holding entries back](/docs/framework/site/content-collections#holding-entries-back)** for the format, including publishing on a date.
 
-- a **Draft** switch in the Inspector's **Entry** tab, and in the entry form's header;
-- a **Draft** or **Published** pill on the document's tab, so the state is visible while you are looking at the tab strip and not only while you are looking at the form;
-- the **Set Draft** command (:kbd[⌘K], **Set Draft**, then **on** or **off**), which writes `draft: true` or `draft: false` on the open entry;
-- a **Draft** column in the collection's grid: right-click the collection's folder in the Files panel and choose **Edit Collection in Grid**, where every schema field is a column you can sort and group by. See **[The grid](/docs/studio/editing/grid)**.
+A collection with rules shows each entry's state:
 
-**Include Drafts** (:kbd[⌘K], **Include Drafts**, **on** or **off**) sets whether Studio's content listings include entries marked `draft: true`. It is one setting for the whole project rather than one per list: whether you want drafts in view is a fact about you, not about the surface you happen to be looking at.
+- the matching rule's label, or **Published**, as a pill on the document's tab, so the state is visible while you are looking at the tab strip and not only while you are looking at the form;
+- the same state on the Inspector's **Entry** tab, and on the Content home's rows.
 
-A collection whose schema does not declare `draft` shows none of this: painting "Published" on entries of a project that never defined the state would be inventing one.
+A rule on one field equal to `true`, such as `{ "label": "Draft", "when": { "draft": true } }`, is also a switch you can flip:
 
-:::doc-warning
-Marking an entry a draft filters it out of Studio's own listings. It does **not** keep the entry out of a build: a page that queries the collection will still render it unless the page's own query excludes it. To keep entries out of the build for good, give the content type a `where` filter in `project.json`, such as `{ "draft": { "$ne": true } }`; see [Content collections](/docs/framework/site/content-collections#choosing-which-files-are-entries).
+- a switch with that label in the Inspector's **Entry** tab and in the entry form's header;
+- the **Set Hold** command (:kbd[⌘K], **Set Hold**, then **on** or **off**), which writes the field on the open entry;
+- the field's column moved to just after **Path** in the collection's grid: right-click the collection's folder in the Files panel and choose **Edit Collection in Grid**. See **[The grid](/docs/studio/editing/grid)**.
+
+A rule on a date or on a list of values has no switch, because there is no single other state to flip to. Edit its field in the form, and the state follows.
+
+**Include Held Entries** (:kbd[⌘K], **Include Held Entries**, **on** or **off**) sets whether a collection's grid includes entries a rule holds. The Content home always lists every entry, with its state. It is one setting for the whole project rather than one per list: whether you want them in view is a fact about what you are doing, not about any one list.
+
+A collection with no rules shows none of this: painting "Published" on entries of a project that never defined the state would be inventing one.
+
+:::doc-note
+A held entry still renders on the canvas and in **Preview**, because you are the one writing it. It is `jx build` that leaves it out, and pages, routes, search, feeds and the sitemap all agree.
 :::
 
 :::doc-note

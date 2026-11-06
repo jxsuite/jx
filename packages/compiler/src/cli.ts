@@ -2,8 +2,8 @@
 /**
  * Jx — Unified CLI for the Jx platform
  *
- * Commands: jx build [project-root] [--verbose] [--no-clean] jx schema [project-root] jx validate
- * [project-root]
+ * Commands: jx build [project-root] [--verbose] [--no-clean] [--include-held] jx schema
+ * [project-root] jx validate [project-root]
  *
  * @module jx-cli
  */
@@ -34,6 +34,7 @@ Commands:
 Options:
   --verbose      Print detailed build progress
   --no-clean     Don't clean outDir before building
+  --include-held Keep entries a content type's hold rules match, for a preview
   --port <n>     dev/preview: port to listen on (default 3000 / 4173)
   --dry-run      db push: print the statements without executing them
   --connection   db push: restrict to one connection name
@@ -110,12 +111,13 @@ Options:
   if (command === "build") {
     const verbose = flags.has("--verbose");
     const clean = !flags.has("--no-clean");
+    const includeHeld = flags.has("--include-held");
 
     console.log(`Building site from ${projectRoot}...`);
 
     try {
       const { buildSite } = await import("./site/site-build.ts");
-      const result = await buildSite(projectRoot, { clean, verbose });
+      const result = await buildSite(projectRoot, { clean, includeHeld, verbose });
 
       if (result.errors.length > 0) {
         console.error(`\nBuild completed with ${result.errors.length} error(s):`);

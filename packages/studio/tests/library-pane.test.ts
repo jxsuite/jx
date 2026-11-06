@@ -217,6 +217,7 @@ function file(name: string, path: string): DirEntry {
 /** The one content collection the fixture project declares. */
 const POSTS = {
   format: "Markdown",
+  hold: [{ label: "Draft", when: { draft: true } }],
   schema: {
     properties: {
       draft: { default: false, type: "boolean" },
@@ -1351,11 +1352,11 @@ describe("views", () => {
     const rows = parts("table-row").map((row) =>
       [...row.querySelectorAll('[part="cell"]')].map((cell) => cell.textContent),
     );
-    expect(part("table-head")!.textContent).toBe("TitleURLTemplateStatusEdited");
+    expect(part("table-head")!.textContent).toBe("TitleURLTemplateEdited");
     expect(part("table")!.getAttribute("aria-label")).toBe("Pages");
-    expect(rows.map((cells) => cells.slice(0, 4))).toEqual([
-      ["Home", "/", "None", "Published"],
-      ["About", "/about", "Main", "Draft"],
+    expect(rows.map((cells) => cells.slice(0, 3))).toEqual([
+      ["Home", "/", "None"],
+      ["About", "/about", "Main"],
     ]);
   });
 

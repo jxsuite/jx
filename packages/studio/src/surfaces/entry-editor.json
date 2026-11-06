@@ -1,14 +1,14 @@
 {
   "$schema": "https://jxsuite.com/schema/v1",
   "$id": "StudioEntryEditor",
-  "$description": "The Entry editor (site-architecture.md §7.4) — one content entry's fields, in a pane, as a Jx document over the kit. The adapter (`surfaces/entry-editor.ts`) hands in a projection; `content/entry-editor.ts` decides everything in it — which collection the file belongs to, which record its fields live in, which required keys are absent and what a draft flag commits into. The FORM is an island: a schema is `ui/schema-form.ts`'s subject, so this document renders an empty `fields` node and the flow places the element that engine hands back (studio-ui-guidelines.md §9.3, §9.4). That is the whole of the difference between this and the card the lit version drew, and it is why the engine converting in batch 7 is what unblocked this one.",
+  "$description": "The Entry editor (site-architecture.md §7.4) — one content entry's fields, in a pane, as a Jx document over the kit. The adapter (`surfaces/entry-editor.ts`) hands in a projection; `content/entry-editor.ts` decides everything in it — which collection the file belongs to, which record its fields live in, which required keys are absent and what a hold switch commits into. The FORM is an island: a schema is `ui/schema-form.ts`'s subject, so this document renders an empty `fields` node and the flow places the element that engine hands back (studio-ui-guidelines.md §9.3, §9.4). That is the whole of the difference between this and the card the lit version drew, and it is why the engine converting in batch 7 is what unblocked this one.",
   "tagName": "div",
   "attributes": {
     "part": "entry",
     "data-jx-region": "${state.region}"
   },
   "style": {
-    "$description": "What `.entry-editor`, `.entry-editor-header`, `.entry-editor-collection`, `.entry-draft-switch`, `.entry-editor-fields`, `.entry-editor-note` and `.entry-editor-empty` said in `styles/overlays.css`, keyed on `part` and re-pointed at the studio token layer. This editor was the only emitter of all seven, so those rules are dead in the stylesheet from here; a central sweep removes them rather than this change, which owns no stylesheet. Every `--spectrum-font-size-*` reference is gone rather than renamed: those names resolve only inside `<sp-theme>`, and a pane editor is mounted outside it, so each would silently have taken its hard-coded fallback.",
+    "$description": "What `.entry-editor`, `.entry-editor-header`, `.entry-editor-collection`, `.entry-hold-switch`, `.entry-editor-fields`, `.entry-editor-note` and `.entry-editor-empty` said in `styles/overlays.css`, keyed on `part` and re-pointed at the studio token layer. This editor was the only emitter of all seven, so those rules are dead in the stylesheet from here; a central sweep removes them rather than this change, which owns no stylesheet. Every `--spectrum-font-size-*` reference is gone rather than renamed: those names resolve only inside `<sp-theme>`, and a pane editor is mounted outside it, so each would silently have taken its hard-coded fallback.",
     "height": "100%",
     "padding": "var(--jx-space-5)",
     "overflowY": "auto",
@@ -32,7 +32,7 @@
       "color": "var(--fg-dim)",
       "fontSize": "var(--jx-text-sm)"
     },
-    "& [part=\"draft\"]": {
+    "& [part=\"hold\"]": {
       "$description": "Pushed to the far end of the header rather than placed there: the heading and the collection chip are both content-width, so `margin-left: auto` is what keeps the switch on the right edge whatever the entry is called.",
       "marginLeft": "auto"
     },
@@ -241,27 +241,27 @@
                 {
                   "tagName": "div",
                   "attributes": {
-                    "part": "draft-slot",
+                    "part": "hold-slot",
                     "role": "none"
                   },
                   "style": {
                     "display": "contents"
                   },
                   "$switch": {
-                    "$ref": "#/state/draftAxis"
+                    "$ref": "#/state/holdSwitch"
                   },
                   "cases": {
                     "shown": {
                       "$description": "No `label`: the slotted word is on screen and carries the name, so an aria-label would be read twice. The tooltip is `hint`, which is what DRAFT_MEANING has always been.",
                       "tagName": "jx-switch",
                       "attributes": {
-                        "part": "draft"
+                        "part": "hold"
                       },
                       "$props": {
                         "checked": {
-                          "$ref": "#/state/draft"
+                          "$ref": "#/state/holdOn"
                         },
-                        "hint": "${state.draftHint}",
+                        "hint": "${state.holdHint}",
                         "size": "sm"
                       },
                       "onchange": {
@@ -270,7 +270,7 @@
                           {
                             "operator": "call",
                             "target": {
-                              "$ref": "#/state/setDraft"
+                              "$ref": "#/state/setHold"
                             },
                             "value": [
                               {
@@ -283,7 +283,7 @@
                       "children": [
                         {
                           "tagName": "span",
-                          "textContent": "Draft"
+                          "textContent": "${state.holdLabel}"
                         }
                       ]
                     }

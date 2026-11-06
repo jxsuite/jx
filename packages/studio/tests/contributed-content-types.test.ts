@@ -290,6 +290,7 @@ describe("parser contribution fixture", () => {
       "source",
       "exclude",
       "where",
+      "hold",
       "idField",
       "route",
       "indexRoute",

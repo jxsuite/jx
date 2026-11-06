@@ -332,17 +332,23 @@ describe("entries say what they are", () => {
     expect(groups[1]!.files.map((file) => file.name)).toEqual(["Hello world", "Grid mode rocks"]);
   });
 
-  test("Board orders an unknown status after the known ones, and names a missing one", () => {
+  test("Board stands held states by name, then Published, and names a missing one", () => {
     const odd = entryFactsFrom(
       new Map<string, EntryFacts>([
         ["content/posts/a.md", { date: "", status: "Archived", title: "A" }],
         ["content/posts/b.md", { date: "", status: "Draft", title: "B" }],
         ["content/posts/c.md", { date: "", status: "", title: "C" }],
         ["content/posts/d.md", { date: "", status: "Draft", title: "D" }],
+        ["content/posts/e.md", { date: "", status: "Published", title: "E" }],
       ]),
     );
-    const groups = boardView([post("a"), post("b"), post("c"), post("d")], odd);
-    expect(groups.map((group) => group.title)).toEqual(["Draft", "Archived", "No status"]);
+    const groups = boardView([post("a"), post("b"), post("c"), post("d"), post("e")], odd);
+    expect(groups.map((group) => group.title)).toEqual([
+      "Archived",
+      "Draft",
+      "No status",
+      "Published",
+    ]);
   });
 
   test("Board with no statuses falls back to folders", () => {
@@ -402,7 +408,7 @@ describe("a collection's own fields", () => {
           tags: { items: { type: "string" }, type: "array" },
         },
       },
-      new Set(["name", "date"]),
+      new Set(["name", "date", "draft"]),
     );
     // A gallery is pictures, not row text; a list says so; a number or a date is a measure.
     expect(columns).toEqual([

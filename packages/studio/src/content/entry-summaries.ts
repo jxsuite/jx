@@ -25,7 +25,7 @@ import {
 import { getPlatform, hasPlatform } from "../platform";
 import { isImage } from "../files/media-upload";
 import { previewFileSrc } from "../files/media-paths";
-import { hasDraftAxis, isDraftEntry } from "./draft-state";
+import { holdStatus } from "./hold-state";
 import { entryCollection } from "./entry-model";
 import { PAGES_COLLECTION, collectionKeyOfPath } from "./content-collections";
 import type { EntryFields } from "./entry-fields";
@@ -36,7 +36,7 @@ export interface EntrySummary {
   path: string;
   /** The entry's `title`, or its file name without the extension. */
   title: string;
-  /** "Draft", "Published", or "" for a collection with no draft workflow. */
+  /** A `hold` rule's label, "Published", or "" for a collection with no rules. */
   status: string;
   /** A preview URL for the entry's first image field, or "" for none. */
   thumb: string;
@@ -278,16 +278,16 @@ export function entryThumb(
 
 /** One entry's summary, from its fields. Pure. */
 export function summarize(path: string, collection: string, fields: EntryFields): EntrySummary {
-  const schema = entryCollection(collection)?.schema ?? null;
+  const definition = entryCollection(collection);
+  const schema = definition?.schema ?? null;
   const titleField = titleFieldOf(schema, fields);
   const title = titleField === null ? undefined : fields[titleField];
-  const draft = isDraftEntry(fields);
   const dateField = dateFieldOf(schema, fields);
   return {
     date: dateField === null ? "" : entryDay(fields[dateField]),
     fields: fieldTexts(schema, fields),
     path,
-    status: hasDraftAxis(schema, fields) ? (draft ? "Draft" : "Published") : "",
+    status: holdStatus(definition?.def, fields),
     thumb: entryThumb(path, fields, schema),
     title: isString(title) && title.trim() !== "" ? title : entryStem(path),
   };

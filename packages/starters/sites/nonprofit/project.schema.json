@@ -1050,27 +1050,95 @@
                           "type": "boolean"
                         },
                         "$gt": {
-                          "type": [
-                            "string",
-                            "number"
+                          "anyOf": [
+                            {
+                              "type": [
+                                "string",
+                                "number"
+                              ]
+                            },
+                            {
+                              "type": "object",
+                              "description": "The moment the rule is evaluated: the build machine's real clock.",
+                              "properties": {
+                                "$now": {
+                                  "const": true
+                                }
+                              },
+                              "required": [
+                                "$now"
+                              ],
+                              "additionalProperties": false
+                            }
                           ]
                         },
                         "$gte": {
-                          "type": [
-                            "string",
-                            "number"
+                          "anyOf": [
+                            {
+                              "type": [
+                                "string",
+                                "number"
+                              ]
+                            },
+                            {
+                              "type": "object",
+                              "description": "The moment the rule is evaluated: the build machine's real clock.",
+                              "properties": {
+                                "$now": {
+                                  "const": true
+                                }
+                              },
+                              "required": [
+                                "$now"
+                              ],
+                              "additionalProperties": false
+                            }
                           ]
                         },
                         "$lt": {
-                          "type": [
-                            "string",
-                            "number"
+                          "anyOf": [
+                            {
+                              "type": [
+                                "string",
+                                "number"
+                              ]
+                            },
+                            {
+                              "type": "object",
+                              "description": "The moment the rule is evaluated: the build machine's real clock.",
+                              "properties": {
+                                "$now": {
+                                  "const": true
+                                }
+                              },
+                              "required": [
+                                "$now"
+                              ],
+                              "additionalProperties": false
+                            }
                           ]
                         },
                         "$lte": {
-                          "type": [
-                            "string",
-                            "number"
+                          "anyOf": [
+                            {
+                              "type": [
+                                "string",
+                                "number"
+                              ]
+                            },
+                            {
+                              "type": "object",
+                              "description": "The moment the rule is evaluated: the build machine's real clock.",
+                              "properties": {
+                                "$now": {
+                                  "const": true
+                                }
+                              },
+                              "required": [
+                                "$now"
+                              ],
+                              "additionalProperties": false
+                            }
                           ]
                         }
                       }
@@ -1099,6 +1167,194 @@
                       "$ne": "draft"
                     }
                   }
+                ]
+              },
+              "hold": {
+                "description": "What keeps an entry out of a production build while authors still see it. Any rule matching holds the entry, and the first names why. `jx build` leaves held entries out, `jx build --include-held`, `jx dev` and Studio keep them. Jx gives no field a meaning of its own: a project names its fields and says here what they imply.",
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "label",
+                    "when"
+                  ],
+                  "properties": {
+                    "label": {
+                      "description": "The words every surface shows for an entry this rule holds.",
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "when": {
+                      "type": "object",
+                      "propertyNames": {
+                        "pattern": "^[^$]"
+                      },
+                      "additionalProperties": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "propertyNames": {
+                              "enum": [
+                                "$eq",
+                                "$ne",
+                                "$in",
+                                "$nin",
+                                "$exists",
+                                "$gt",
+                                "$gte",
+                                "$lt",
+                                "$lte"
+                              ]
+                            },
+                            "minProperties": 1,
+                            "properties": {
+                              "$eq": {},
+                              "$ne": {},
+                              "$in": {
+                                "type": "array"
+                              },
+                              "$nin": {
+                                "type": "array"
+                              },
+                              "$exists": {
+                                "type": "boolean"
+                              },
+                              "$gt": {
+                                "anyOf": [
+                                  {
+                                    "type": [
+                                      "string",
+                                      "number"
+                                    ]
+                                  },
+                                  {
+                                    "type": "object",
+                                    "description": "The moment the rule is evaluated: the build machine's real clock.",
+                                    "properties": {
+                                      "$now": {
+                                        "const": true
+                                      }
+                                    },
+                                    "required": [
+                                      "$now"
+                                    ],
+                                    "additionalProperties": false
+                                  }
+                                ]
+                              },
+                              "$gte": {
+                                "anyOf": [
+                                  {
+                                    "type": [
+                                      "string",
+                                      "number"
+                                    ]
+                                  },
+                                  {
+                                    "type": "object",
+                                    "description": "The moment the rule is evaluated: the build machine's real clock.",
+                                    "properties": {
+                                      "$now": {
+                                        "const": true
+                                      }
+                                    },
+                                    "required": [
+                                      "$now"
+                                    ],
+                                    "additionalProperties": false
+                                  }
+                                ]
+                              },
+                              "$lt": {
+                                "anyOf": [
+                                  {
+                                    "type": [
+                                      "string",
+                                      "number"
+                                    ]
+                                  },
+                                  {
+                                    "type": "object",
+                                    "description": "The moment the rule is evaluated: the build machine's real clock.",
+                                    "properties": {
+                                      "$now": {
+                                        "const": true
+                                      }
+                                    },
+                                    "required": [
+                                      "$now"
+                                    ],
+                                    "additionalProperties": false
+                                  }
+                                ]
+                              },
+                              "$lte": {
+                                "anyOf": [
+                                  {
+                                    "type": [
+                                      "string",
+                                      "number"
+                                    ]
+                                  },
+                                  {
+                                    "type": "object",
+                                    "description": "The moment the rule is evaluated: the build machine's real clock.",
+                                    "properties": {
+                                      "$now": {
+                                        "const": true
+                                      }
+                                    },
+                                    "required": [
+                                      "$now"
+                                    ],
+                                    "additionalProperties": false
+                                  }
+                                ]
+                              }
+                            }
+                          },
+                          {
+                            "type": [
+                              "string",
+                              "number",
+                              "boolean",
+                              "null",
+                              "array"
+                            ]
+                          },
+                          {
+                            "type": "object",
+                            "propertyNames": {
+                              "pattern": "^[^$]"
+                            }
+                          }
+                        ]
+                      },
+                      "description": "The frontmatter that matches this rule, with the grammar of `where`.",
+                      "minProperties": 1
+                    }
+                  }
+                },
+                "examples": [
+                  [
+                    {
+                      "label": "Draft",
+                      "when": {
+                        "draft": true
+                      }
+                    },
+                    {
+                      "label": "Scheduled",
+                      "when": {
+                        "publishDate": {
+                          "$gt": {
+                            "$now": true
+                          }
+                        }
+                      }
+                    }
+                  ]
                 ]
               },
               "idField": {

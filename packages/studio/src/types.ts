@@ -904,6 +904,8 @@ export interface ContentSectionEntry {
   /** The field a file-backed collection's records are identified by (the loader's `idField`). */
   idField?: string;
   $elements?: unknown[];
+  /** What keeps an entry back from production (site-architecture.md §7.6), read by `hold-state`. */
+  hold?: unknown;
 }
 
 export interface CanvasPanel {

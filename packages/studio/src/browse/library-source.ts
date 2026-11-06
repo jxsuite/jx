@@ -21,7 +21,6 @@ import { PAGES_COLLECTION, capitalise, humanName } from "../content/content-coll
 import { fileToRoute } from "@jxsuite/site/routes";
 import { libraryScanDirs, scanLibrary } from "./library-model";
 import { routedPageExtensions } from "../format/format-host";
-import { DRAFT_FIELD } from "../content/draft-state";
 import { isString } from "@jxsuite/schema/guards";
 import { collectionForFile } from "../content/collection-match";
 import { fileRecords, recordKey } from "../content/file-records";
@@ -44,7 +43,7 @@ export const LIBRARY_READ_ONLY =
 
 /** Which of an entry's own facts a collection's entries carry, so the Table draws a column for each. */
 export interface EntryColumnFacts {
-  /** Some entry says Draft or Published: the collection has a draft workflow. */
+  /** Some entry states a status: the collection has `hold` rules. */
   status: boolean;
   /** Some entry is dated by a field of its own. */
   date: boolean;
@@ -96,7 +95,7 @@ export function fieldTitle(name: string): string {
 
 /**
  * The schema fields a collection's Table draws, in declaration order: every scalar field except the
- * ones the Table already names some other way (the title, the date, the draft flag) and the ones
+ * ones the Table already names some other way (the title, the date, the hold switch) and the ones
  * whose value is not text to read in a row (an image, a body, an object).
  *
  * @param schema The collection's schema.
@@ -108,7 +107,7 @@ export function entryFieldColumns(
 ): EntryFieldColumn[] {
   return Object.entries(schema?.properties ?? {})
     .filter(([name, field]) => {
-      if (skip.has(name) || name === DRAFT_FIELD) {
+      if (skip.has(name)) {
         return false;
       }
       if (

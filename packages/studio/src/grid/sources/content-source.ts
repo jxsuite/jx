@@ -12,22 +12,18 @@
  * Collections type their columns from the content-type schema (plus inferred extras found in the
  * data); the pages grid is fully inference-driven.
  *
- * **A collection listing obeys the draft perspective (site-architecture.md §7.6).**
- * `content/draft-state.ts` owns both the one flag and the one definition of what a draft is, and
- * this source calls it rather than testing `draft === true` itself — which is what makes "including
- * drafts" mean the same thing here as it does on the tab chip. It can, because that module imports
- * nothing but `reactivity`: the richer `content/entry-model.ts` asks THIS file where a collection's
- * entries live, so an edge back to it would be the cycle `import/no-cycle` rejects.
+ * **A collection listing obeys the hold perspective (site-architecture.md §7.6).**
+ * `content/hold-state.ts` owns both the one flag and the reading of a project's rules, and this
+ * source calls it rather than reading fields itself, which is what makes "including held entries"
+ * mean the same thing here as it does on the tab chip. It can, because that module does not import
+ * the richer `content/entry-model.ts`, which asks THIS file where a collection's entries live, so
+ * an edge back to it would be the cycle `import/no-cycle` rejects.
  */
 import { getPlatform } from "../../platform";
 import { projectState } from "../../store";
 import { workspace } from "../../workspace/workspace";
-import {
-  DRAFT_FIELD,
-  applyDraftFilter,
-  hasDraftAxis,
-  includingDrafts,
-} from "../../content/draft-state";
+import { applyHoldFilter, holdSwitch, includingHeld } from "../../content/hold-state";
+import type { HoldBearer } from "../../content/hold-state";
 import { getGridController } from "../grid-controller";
 import { isRecentLocal, markLocalMutation } from "../../files/fs-events";
 import {
@@ -275,39 +271,38 @@ interface EntryFileSourceOptions {
   /** Inferred columns to front-load, in order (e.g. title/description for pages). */
   priorityFields?: string[];
   /**
-   * Whether this listing is subject to the draft perspective (site-architecture.md §7.6) —
-   * collections are, the pages tree is not. A draft is a property of a content ENTRY: a page
-   * carrying `draft: true` would vanish from the only tree that lists it, with no collection schema
-   * to explain why.
+   * The collection's definition, when this listing is subject to the hold perspective
+   * (site-architecture.md §7.6). Collections are and the pages tree is not: `hold` rules are
+   * written on a content type, and a page belongs to none.
    */
-  drafts?: boolean;
+  holdDef?: () => HoldBearer | null | undefined;
 }
 
 /**
- * The live sources that obey the draft perspective.
+ * The live sources that obey the hold perspective.
  *
  * A `WeakSet` of the source objects rather than a list of tab-id prefixes: whether a listing is
- * draft filtered is decided by one `drafts: true` in this file, and re-deriving it from
- * `"grid://collection/"` in {@link reloadDraftAwareGrids} would be a second answer free to drift.
- * Membership is added by the engine off that same option, so the two cannot disagree. Weak, so a
- * closed tab's source is collectable.
+ * filtered is decided by one `holdDef` in this file, and re-deriving it from `"grid://collection/"`
+ * in {@link reloadHoldAwareGrids} would be a second answer free to drift. Membership is added by the
+ * engine off that same option, so the two cannot disagree. Weak, so a closed tab's source is
+ * collectable.
  */
-const draftAwareSources = new WeakSet<GridSource>();
+const holdAwareSources = new WeakSet<GridSource>();
 
 /**
- * Reload every open grid whose rows depend on the draft perspective.
+ * Reload every open grid whose rows depend on the hold perspective.
  *
  * The perspective is a flag, and a grid holds its rows in controller state that was loaded once —
- * so `content.setIncludeDrafts` changing the flag has to say so. `load()` (not `refresh()`) is the
+ * so `content.setIncludeHeld` changing the flag has to say so. `load()` (not `refresh()`) is the
  * right verb: it re-pulls columns and rows and leaves the edit buffer alone, whereas `refresh()`
  * would stop to ask an author with pending edits whether to discard them, which is not a question a
  * change of perspective should provoke.
  */
-export async function reloadDraftAwareGrids(): Promise<void> {
+export async function reloadHoldAwareGrids(): Promise<void> {
   const reloads: Promise<void>[] = [];
   for (const tab of workspace.tabs.values()) {
     const controller = getGridController(tab);
-    if (controller && draftAwareSources.has(controller.source)) {
+    if (controller && holdAwareSources.has(controller.source)) {
       reloads.push(controller.load());
     }
   }
@@ -317,8 +312,8 @@ export async function reloadDraftAwareGrids(): Promise<void> {
 /** Shared engine for frontmatter-file sources (collections, pages). */
 function createEntryFileSource(opts: EntryFileSourceOptions): GridSource {
   const source = buildEntryFileSource(opts);
-  if (opts.drafts) {
-    draftAwareSources.add(source);
+  if (opts.holdDef) {
+    holdAwareSources.add(source);
   }
   return source;
 }
@@ -420,43 +415,26 @@ function buildEntryFileSource(opts: EntryFileSourceOptions): GridSource {
       extraColumns.sort((a, b) => rank(a) - rank(b));
     }
 
-    columnsCache = withDraftColumn([pathColumn, ...schemaColumns, ...extraColumns]);
+    columnsCache = withHoldColumn([pathColumn, ...schemaColumns, ...extraColumns]);
     return columnsCache;
   };
 
-  /** Whether this listing has a draft axis at all — the schema declares one, or an entry claims one. */
-  const draftAxis = (): boolean => {
-    if (!opts.drafts) {
-      return false;
-    }
-    const schema = opts.schema();
-    return (
-      hasDraftAxis(schema) ||
-      [...entries.values()].some((entry) => hasDraftAxis(schema, entry.frontmatter))
-    );
-  };
-
   /**
-   * Put the Draft column immediately after Path, when this collection has a draft axis.
+   * Put the hold switch's column immediately after Path, when the collection's rules offer one.
    *
-   * A MOVE, and deliberately not a synthesis: wherever there is an axis there is already a column.
-   * A schema that declares `draft` gave `columnsFromSchema` one, and an entry that carries the
-   * field without the schema declaring it gave `inferColumnsFromRows` one — the two conditions of
-   * {@link hasDraftAxis} are exactly the two conditions that produce a column. Building a third here
-   * would be an unreachable branch pretending to be a safety net.
-   *
+   * A MOVE, and deliberately not a synthesis: a field the rules name but neither the schema nor any
+   * entry states has no column to move, and inventing one would show a state nobody wrote down.
    * What the move buys is that the one field deciding whether an entry appears in its own list is
    * not sitting out at column nine, where declaration order or first-sight order happened to put
-   * it. A collection whose entries only ever say `draft: false` has NO axis and is left alone: the
-   * column is ordinary data there, and promoting it would invent a workflow the project never
-   * declared.
+   * it.
    */
-  const withDraftColumn = (columns: GridColumn[]): GridColumn[] => {
-    const index = columns.findIndex((column) => column.field === DRAFT_FIELD);
-    if (index < 1 || !draftAxis()) {
+  const withHoldColumn = (columns: GridColumn[]): GridColumn[] => {
+    const field = holdSwitch(opts.holdDef?.())?.field;
+    const index = columns.findIndex((column) => column.field === field);
+    if (index < 1) {
       return columns;
     }
-    const rest = columns.filter((column) => column.field !== DRAFT_FIELD);
+    const rest = columns.filter((column) => column.field !== field);
     return [rest[0]!, columns[index]!, ...rest.slice(1)];
   };
 
@@ -661,15 +639,13 @@ function buildEntryFileSource(opts: EntryFileSourceOptions): GridSource {
     async rows(): Promise<GridRowsResult> {
       await load();
       // The perspective is applied to the LISTING, not the load: `entries` keeps every parsed file,
-      // So the Draft column still knows the collection has an axis while its drafts are hidden, and
-      // Turning the perspective back on is a re-list rather than a re-read of the directory.
-      const listed = opts.drafts
-        ? applyDraftFilter(
-            [...entries.entries()],
-            ([, entry]) => entry.frontmatter,
-            includingDrafts(),
-          )
-        : [...entries.entries()];
+      // So turning the perspective back on is a re-list rather than a re-read of the directory.
+      const listed = applyHoldFilter(
+        [...entries.entries()],
+        opts.holdDef?.(),
+        ([, entry]) => entry.frontmatter,
+        includingHeld(),
+      );
       const rows = listed.map(([path, entry]) => rowFor(path, entry));
       return { rows, total: rows.length };
     },
@@ -687,7 +663,7 @@ export function createCollectionSource(typeName: string): GridSource {
   };
 
   return createEntryFileSource({
-    drafts: true,
+    holdDef: () => collectionInfo(typeName)?.def,
     id: makeGridTabId({ kind: "collection", name: typeName }),
     insertFormatName: (path) => {
       const info = requireInfo();

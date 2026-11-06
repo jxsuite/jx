@@ -47,7 +47,7 @@ Run it with `bun run server.js` and open `http://localhost:3000/`. The full opti
 | `middleware` | —          | Your own routes as `(req, url) => Response \| null`, checked before static file serving.                                                         |
 
 :::doc-note
-For a site project, [`jx dev`](/docs/framework/build/cli) is the front door: it runs this server under Bun with a site-aware wrapper that builds the project up front, serves the built pages from `dist/`, and rebuilds before each live-reload broadcast. A hand-written `server.js` like the one above is for embedding the server with custom options.
+For a site project, [`jx dev`](/docs/framework/build/cli) is the front door: it runs this server under Bun with a site-aware wrapper that builds the project up front, serves the built pages from `dist/`, and rebuilds before each live-reload broadcast. A hand-written `server.js` like the one above is for embedding the server with custom options. Its builds keep [held content entries](/docs/framework/site/content-collections#holding-entries-back), which `jx build` leaves out.
 :::
 
 ## Live reload

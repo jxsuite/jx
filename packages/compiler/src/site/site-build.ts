@@ -188,6 +188,8 @@ const ADAPTER_REMEDY =
  * @param {object} [options]
  * @param {boolean} [options.clean] - Remove outDir before building
  * @param {boolean} [options.verbose] - Log progress
+ * @param {boolean} [options.includeHeld] - Keep entries a content type's `hold` rules match, for a
+ *   preview. Left off, a build leaves them out (site-architecture.md §7.6).
  * @returns {Promise<{ routes: number; files: number; errors: string[] }>}
  */
 export async function buildSite(
@@ -195,9 +197,10 @@ export async function buildSite(
   options: {
     clean?: boolean;
     verbose?: boolean;
+    includeHeld?: boolean;
   } = {},
 ) {
-  const { clean = true, verbose = false } = options;
+  const { clean = true, includeHeld = false, verbose = false } = options;
   const errors: string[] = [];
   const log = verbose ? console.log.bind(console) : () => {};
 
@@ -395,7 +398,7 @@ export async function buildSite(
 
   // ── 3b. Load extension-contributed project sections ────────────────────
   log("Loading project sections...");
-  const sections = await loadProjectSections(projectRoot, projectConfig, registry);
+  const sections = await loadProjectSections(projectRoot, projectConfig, registry, { includeHeld });
   const sectionKeys = Object.keys(sections);
   if (sectionKeys.length > 0) {
     log(`  Loaded ${sectionKeys.length} section(s): ${sectionKeys.join(", ")}`);
@@ -1706,8 +1709,7 @@ async function compilePage(
 
   return {
     doc: layoutDoc,
-    // A page opts out of the sitemap by setting `$sitemap: false` (interim escape hatch
-    // Until draft filtering lands in the build pipeline).
+    // A page opts out of the sitemap by setting `$sitemap: false`.
     excludeFromSitemap: pageDoc.$sitemap === false,
     files: result.files,
     html: result.html,

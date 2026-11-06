@@ -35,7 +35,7 @@ import type { LibraryGroup, LibraryRow } from "../surfaces/library-pane";
 /** What a collection entry says about itself, once read: its title, status and date. */
 export interface EntryFacts {
   title: string;
-  /** "Draft", "Published", or "" for a collection with no draft workflow. */
+  /** A `hold` rule's label, "Published", or "" for a collection with no rules. */
   status: string;
   /** `YYYY-MM-DD`, or "". */
   date: string;
@@ -361,10 +361,10 @@ export function calendarView(
 
 // ─── Board ───────────────────────────────────────────────────────────────────
 
-/** The order a status Board's columns stand in: the work in progress first. */
-const STATUS_ORDER = ["Draft", "Published"];
+/** The order a status Board's columns stand in: held work first, by name, then what is live. */
+const STATUS_LAST = "Published";
 
-/** Group entries by their status, in {@link STATUS_ORDER}, then any other status by name. */
+/** Group entries by their status: by name, with {@link STATUS_LAST} after every held state. */
 function groupByStatus(
   files: readonly LibraryFile[],
   factsOf: EntryFactsOf,
@@ -379,10 +379,7 @@ function groupByStatus(
       byStatus.set(status, [file]);
     }
   }
-  const rank = (status: string) => {
-    const at = STATUS_ORDER.indexOf(status);
-    return at === -1 ? STATUS_ORDER.length : at;
-  };
+  const rank = (status: string) => (status === STATUS_LAST ? 1 : 0);
   return [...byStatus.entries()]
     .map(([group, grouped]) => ({ files: grouped, group }))
     .toSorted((a, b) => rank(a.group) - rank(b.group) || a.group.localeCompare(b.group));
@@ -421,10 +418,10 @@ function groupByField(
 }
 
 /**
- * Board: one column per status when the collection's entries have one (Draft, Published), else one
- * per value of the field the collection is grouped by ({@link boardFieldOf}: a menu's `course`),
- * else one per folder present; each capped and each stating its own total. A flat collection
- * grouped by folder is one column, which says nothing, so a field is preferred to it.
+ * Board: one column per status when the collection's entries have one (a rule's label, Published),
+ * else one per value of the field the collection is grouped by ({@link boardFieldOf}: a menu's
+ * `course`), else one per folder present; each capped and each stating its own total. A flat
+ * collection grouped by folder is one column, which says nothing, so a field is preferred to it.
  *
  * @param factsOf What each entry says about itself.
  * @param field The field to group by when the entries have no status.
