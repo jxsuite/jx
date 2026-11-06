@@ -144,17 +144,17 @@ pages/
 
 > **Status: Pending.** A project is declared by `project.json`, and no host reads anything else.
 
-A project is declared by one file at its root, either `project.jx` (KDL 2, `spec.md` §22) or `project.json`. Both parse to the same `ProjectConfig`. A folder holding both is refused, naming both files, rather than one silently winning.
+A project is declared by one file at its root, either `project.jxn` (Jx Notation, `spec.md` §22) or `project.json`. Both parse to the same `ProjectConfig`. A folder holding both is refused, naming both files, rather than one silently winning.
 
-A `project.jx` declares itself: its first node after any `$` metadata is `project`, whose one optional value is the project's `name`. So a file named `project.jx` with no such node is an ordinary document, which is what keeps `pages/project.jx` a page with the route `/project` rather than a false project root for everything beneath it. A file that does not parse is still identified by that node, so a typo does not stop its folder being a project.
+A `project.jxn` declares itself: its first node after any `$` metadata is `project`, whose one optional value is the project's `name`. So a file named `project.jxn` with no such node is an ordinary document, which is what keeps `pages/project.jxn` a page with the route `/project` rather than a false project root for everything beneath it. A file that does not parse is still identified by that node, so a typo does not stop its folder being a project.
 
-Comments and layout in a `project.jx` survive every save, whether the save came from Studio's settings, a rename that repaired a reference, or a tool. A file that does not parse is reported at its line and column and is never overwritten.
+Comments and layout in a `project.jxn` survive every save, whether the save came from Studio's settings, a rename that repaired a reference, or a tool. A file that does not parse is reported at its line and column and is never overwritten.
 
 ### 2.4 Provisioning a Project
 
 > **Status: Pending.** `create-jxsuite`, Studio's New Project, the site import and the starters all write `project.json`.
 
-Every new project is provisioned with a `project.jx`, whichever way it is created. Its documents remain `.json` until `.jx` is the recommended document format (`spec.md` §23.3). An existing project is never converted without being asked, and `project.json` keeps working.
+Every new project is provisioned with a `project.jxn`, whichever way it is created. Its documents remain `.json` until `.jxn` is the recommended document format (`spec.md` §23.3). An existing project is never converted without being asked, and `project.json` keeps working.
 
 ---
 

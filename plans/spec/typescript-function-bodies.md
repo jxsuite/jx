@@ -27,7 +27,7 @@ size: L
 
 > **Status: Pending.** A string `body` is JavaScript today, and every tier passes it to `new Function` or splices it into an emitted module as written.
 
-The owner's direction: TypeScript is the default scripting language from the first iteration, in `.json` as well as `.jx`. A `.json` document already needs tooling to run at all, so there is no tooling-free path to protect. This plan does not depend on KDL and can land first.
+The owner's direction: TypeScript is the default scripting language from the first iteration, in `.json` as well as `.jxn`. A `.json` document already needs tooling to run at all, so there is no tooling-free path to protect. This plan does not depend on KDL and can land first.
 
 **What is there to convert** (measured 2026-11-05 at `d51e05cf`, 484 documents)
 
@@ -84,7 +84,7 @@ The owner's direction: TypeScript is the default scripting language from the fir
 
 ## Decisions
 
-- **Decided (owner):** one language in every format, so `.jx` and `.json` stay two spellings of one document and types survive conversion both ways.
+- **Decided (owner):** one language in every format, so `.jxn` and `.json` stay two spellings of one document and types survive conversion both ways.
 - **Decided (owner):** a `${}` template stays a JavaScript expression. Templates compile separately in every tier, and `${state.x as number}` renders `""` today. `plan:_shared/jx-typechecking` flags TypeScript syntax there.
 - **Decided (owner):** `ts-blank-space` is the stripper. It alone is correct on every test case and leaves existing bodies byte-identical, which is what lets `.json` output stay unchanged. It replaces types with spaces, so a line and column in a stack trace match the authored body. Its size is confined to build hosts, server class resolution, Studio, and the browser of a reader whose preview has typed bodies.
 - **Decided:** erase once, at load, before analysis. The compiler calls `eraseDocument` as it reads a document, so analysis and every emitter see JavaScript and none of them changes signature or becomes asynchronous. Erasing twice changes nothing, so a document that crosses two hosts is safe.
@@ -99,7 +99,7 @@ The owner's direction: TypeScript is the default scripting language from the fir
 - **Decided:** `a < b > (c)` is a generic call, because a body is TypeScript. In JavaScript it is a comparison, so this is the one known change of meaning. No tracked body is affected. `eraseBody` reports the exact case, where the text compiles as JavaScript and erasing still changed it, and `jx validate` and `jx build` print that as a warning. A runtime with no eraser keeps the JavaScript reading, which is a documented difference.
 - **Decided:** analysis reads masked text. `maskCode(body)` in `@jxsuite/schema/guards` returns the body with comments and string contents blanked, same length, keeping `${}` contents. `bodyReturnsValue`, `STATE_ASSIGNMENT_RE`, `STATE_MUTATING_METHOD_RE` and every `state.` rewrite read it. It is a small scanner and not a parser, because the interpreter must give the same answer and cannot carry a parser. A regex literal containing a quote can still mislead it, and a test pins that as a known limit.
 - **Decided:** every emitter ends a spliced body with a newline, and every `state.` rewrite matches `(?<![\w$.])state\b` through one helper.
-- **Decided:** Studio stops minifying a string body when its editor closes, in every format, because the minifier deletes types. Compiled output is still minified. A body is stored as written, so a multi-line body in `.json` holds `\n` escapes. That cost is one reason `.jx` exists. Format parses as `fn.ts`, and lint receives `.ts`. The `minify` action goes with its last caller.
+- **Decided:** Studio stops minifying a string body when its editor closes, in every format, because the minifier deletes types. Compiled output is still minified. A body is stored as written, so a multi-line body in `.json` holds `\n` escapes. That cost is one reason `.jxn` exists. Format parses as `fn.ts`, and lint receives `.ts`. The `minify` action goes with its last caller.
 - **Decided:** `.class.json` bodies are erased but not type-checked, since those files stay JSON and no checker reads them.
 - **Decided:** what the cloud host has to do is small, and lands in its own repository after the release carrying this: build the eraser into its preview assets beside the runtime bundle, serve it same-origin, pass `eraserUrl`, and raise its runtime version floor, because a runtime without the seam would otherwise fail on typed bodies with no sign why. Its Studio tree needs nothing, since the canvas chunk is staged with the rest of Studio, and `jx build` runs in the project's own CI.
 

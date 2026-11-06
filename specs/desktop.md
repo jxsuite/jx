@@ -474,7 +474,7 @@ Every path the operating system hands the application resolves by one rule, in t
 
 Several paths in one launch each resolve in turn. A launch that was handed a path opens no welcome window, and one that ends with no window at all exits. A path may arrive as a `file:` URL.
 
-A file named like a project file is believed only if its content agrees (`site-architecture.md` §2.3), so `pages/project.jx` opens the project above it with that page in a tab.
+A file named like a project file is believed only if its content agrees (`site-architecture.md` §2.3), so `pages/project.jxn` opens the project above it with that page in a tab.
 
 ### 4.7 Trusting a Project
 
@@ -798,20 +798,20 @@ The Mac App Store is a second macOS channel beside the notarized DMG of §7.6, b
 
 ### 7.8 File Associations
 
-> **Status: Pending.** No channel declares `.jx`.
+> **Status: Pending.** No channel declares `.jxn`.
 
-Jx Studio owns `.jx`, in both of its meanings (a project file and a document), and §4.6 decides what each opens. It may appear under **Open With** for `.json` and `.md`, and it never makes itself the default for a type another application uses.
+Jx Studio owns `.jxn`, in both of its meanings (a project file and a document), and §4.6 decides what each opens. It may appear under **Open With** for `.json` and `.md`, and it never makes itself the default for a type another application uses.
 
-| Channel              | `.jx` is declared by                                                                                                                                                                        |
-| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| macOS, Mac App Store | An exported uniform type that conforms to `public.plain-text`, and an `Owner` document type                                                                                                 |
-| Windows installer    | A registered file class, with a document icon                                                                                                                                               |
-| Microsoft Store      | A file type association in the package manifest                                                                                                                                             |
-| Nix package          | `share/mime/packages` and the desktop entry                                                                                                                                                 |
-| AppImage             | A command the user runs, which registers the type and a desktop entry for the current user                                                                                                  |
-| Snap                 | The desktop entry names the type, which does nothing until the host knows it. A strict snap cannot add a type to the host's MIME database, so `.jx` opens from inside the application there |
+| Channel              | `.jxn` is declared by                                                                                                                                                                        |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| macOS, Mac App Store | An exported uniform type that conforms to `public.plain-text`, and an `Owner` document type                                                                                                  |
+| Windows installer    | A registered file class, with a document icon                                                                                                                                                |
+| Microsoft Store      | A file type association in the package manifest                                                                                                                                              |
+| Nix package          | `share/mime/packages` and the desktop entry                                                                                                                                                  |
+| AppImage             | A command the user runs, which registers the type and a desktop entry for the current user                                                                                                   |
+| Snap                 | The desktop entry names the type, which does nothing until the host knows it. A strict snap cannot add a type to the host's MIME database, so `.jxn` opens from inside the application there |
 
-The MIME type is `text/x-jx`, a subclass of `text/plain`, so a file manager still offers text editors. The type names no HTTP behaviour: a site origin answers a `.jx` document as JSON (`spec.md` §22).
+The MIME type is `text/x-jxn`, a subclass of `text/plain`, so a file manager still offers text editors. The type names no HTTP behaviour: a site origin answers a `.jxn` document as JSON (`spec.md` §22).
 
 ---
 

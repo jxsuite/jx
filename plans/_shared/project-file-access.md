@@ -22,7 +22,7 @@ size: M
 
 ## Context
 
-This plan has no spec marker, and it is the prerequisite that decides whether `plan:site-architecture/project-jx` is a change to one module or to sixty sites. A census of production code on 2026-11-06, read by hand:
+This plan has no spec marker, and it is the prerequisite that decides whether `plan:site-architecture/project-jxn` is a change to one module or to sixty sites. A census of production code on 2026-11-06, read by hand:
 
 | Fact                                                                                                                       | Evidence                                                                                                                                                 |
 | -------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -43,7 +43,7 @@ No shared helper covers the name. `PROJECT_CONFIG_PATH` (`studio/tabs/tab.ts:23`
 ## Outcome
 
 - One module answers what a project file is. Afterwards no production file outside it spells the name, except a message string.
-- `plan:site-architecture/project-jx` changes the module and adds a format, and no caller.
+- `plan:site-architecture/project-jxn` changes the module and adds a format, and no caller.
 - No observable change for a well-formed project except the defects above.
 
 ## Decisions
@@ -53,7 +53,7 @@ No shared helper covers the name. `PROJECT_CONFIG_PATH` (`studio/tabs/tab.ts:23`
 - **Decided:** `PROJECT_CONFIG_PATH` becomes `projectConfigPath()`, read from the open project's state, because Studio's tab id is that path and it will stop being constant. It still returns `project.json` when this lands.
 - **Decided:** a malformed file is data that each caller sees and decides about, never a silent `undefined`. `project-session.ts:620`, `studio-api.ts:118` and `format-host` swallow a parse failure and build with no extensions, which then reports every Markdown page as unknown rather than naming the file, and that has to become a Problem. A live preview stays lenient on purpose: `site/compose.ts:107` says refusing "would hide the one error", and `resolve.ts` never rejects. So the module reports, and it does not throw on a host's behalf. Hand-written KDL will fail to parse more often than generated JSON, so this has to be right before that lands.
 - **Decided:** the rename pass's `serialize` keeps layout, for every JSON document and not just this one. A general fix is the same size, and the special case would be stranger.
-- **Decided:** `packages/ui/project.json` stays, and is not read through the module: `ui/src/theme.ts:15` imports it statically at build, and it is in `ui/package.json:17`'s publish list. The kit is excluded from `.jx` by the owner's earlier decision, so this constraint costs nothing.
+- **Decided:** `packages/ui/project.json` stays, and is not read through the module: `ui/src/theme.ts:15` imports it statically at build, and it is in `ui/package.json:17`'s publish list. The kit is excluded from `.jxn` by the owner's earlier decision, so this constraint costs nothing.
 - **Decided:** a test holds the line. `scripts/project-file-literals.test.ts` scans `packages/*/src`, `packages/create/*.ts` (which keeps its source at the package root) and `extensions/*/src` for the literal in code, with a budget that only goes down, because 61 sites came from nothing stopping a 62nd.
 
 ## Implementation
@@ -72,7 +72,7 @@ Gates: one `projectRootsIn` in `scripts/lib/workspaces.ts`.
 
 **Related, no edge.** `plan:schema/parse-boundary-readers` changes the same read sites and shares `parse.ts`. Whichever lands second merges.
 
-**Integration contract.** Once this lands, `plan:site-architecture/project-jx` may rely on: the literal budget at its floor, every read returning the source text and the path, every write passing through `serializeProjectFile` with the previous text, and `isProjectConfigPath` answering every identity question.
+**Integration contract.** Once this lands, `plan:site-architecture/project-jxn` may rely on: the literal budget at its floor, every read returning the source text and the path, every write passing through `serializeProjectFile` with the previous text, and `isProjectConfigPath` answering every identity question.
 
 ## Tests
 

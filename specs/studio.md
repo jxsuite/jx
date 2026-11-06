@@ -1026,11 +1026,11 @@ The studio loads any registered format file (e.g. `.md` with the `Markdown` clas
 
 **An open tab is rebuilt, not reloaded.** A reload sets the document and never the source format, so the tab would keep the old format's modes and the next save would write the wrong format. It is re-keyed to the new path and reopened under it, which disposes the stale tab while keeping its pane slot.
 
-### 8.5 `.jx` Documents
+### 8.5 `.jxn` Documents
 
-> **Status: Pending.** Studio opens and saves `.json` and format-extension files. A `.jx` file (spec.md §22) has no path through it yet.
+> **Status: Pending.** Studio opens and saves `.json` and format-extension files. A `.jxn` file (spec.md §22) has no path through it yet.
 
-A `.jx` file opens, edits and saves through the same tabs and modes as any other document, and a save keeps the comments and layout of the text it started from.
+A `.jxn` file opens, edits and saves through the same tabs and modes as any other document, and a save keeps the comments and layout of the text it started from.
 
 ---
 

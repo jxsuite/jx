@@ -18,7 +18,7 @@ size: M
 
 ## Context
 
-`specs/desktop.md` §4.6 and §4.7 are both Pending. This plan has no dependency on `.jx` and fixes three defects in shipped builds. `plan:desktop/jx-file-association` adds `.jx` on top of it.
+`specs/desktop.md` §4.6 and §4.7 are both Pending. This plan has no dependency on `.jxn` and fixes three defects in shipped builds. `plan:desktop/jxn-file-association` adds `.jxn` on top of it.
 
 **Installing Jx Studio takes over `.json` on Windows.** `packages/desktop/electron-builder.yml:58` declares `ext: json`. electron-builder 26.18 expands that to `APP_ASSOCIATE`, whose first line is `WriteRegStr SHELL_CONTEXT "Software\Classes\.json" "" "Jx Project"` (`templates/nsis/include/FileAssociation.nsh:66`). `oneClick: false` with `perMachine: false` shows a per-user or per-machine page, and either way this writes the class of `.json`, which takes the default unless the user has set one in Windows Settings. `APP_UNASSOCIATE` removes the class and leaves that value behind, so uninstalling does not restore anything. macOS gets the same claim at rank `Default`.
 
@@ -30,7 +30,7 @@ size: M
 
 **Nothing asks before a project's code runs.** The repository already calls these routes what they are: "Privileged HTTP routes (RCE-capable: dynamic import())" (`packages/server/src/project-server.ts:297`). They are gated by a token, and `backend/window-hub.ts:11` records that the canvas "carries that token in its URL" so that it "can drive its own project". `spec.md` §21.4 says a document is executable input and is not sandboxed. Format extensions also import a project's own modules (`packages/compiler/src/site/format-host.ts:57`). The loader is lazy: registry construction reads only JSON (`schema/extension-registry.ts:224`), so the first format action on a Markdown page is what imports it. Combined, opening an unknown folder is running its code, and today an association lets one click do that with no prompt.
 
-`plan:desktop/single-file-mode` makes this sharper by binding a loose file's whole directory as the session root, and `plan:spec/document-scripts` makes it sharper still, because a single `.jx` file can then carry its own server module with no sidecar.
+`plan:desktop/single-file-mode` makes this sharper by binding a loose file's whole directory as the session root, and `plan:spec/document-scripts` makes it sharper still, because a single `.jxn` file can then carry its own server module with no sidecar.
 
 ## Outcome
 
