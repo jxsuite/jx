@@ -83,7 +83,7 @@ function mockExit() {
 
 /*
  * ONE evaluation of `main.ts` drives every line of it. Evaluating it twice under two query strings
- * gives Bun two modules, but Bun 1.4.2 (the repository's pin, `.bun-version`) keeps one coverage
+ * gives Bun two modules, but Bun keeps one coverage
  * record per path, so the lines only the first evaluation ran (the no-channel branch) were
  * reported uncovered and failed this workspace's per-file gate. The entry reads `process.send` at
  * load and again at every send, so a channel that appears after a load without one reaches the
