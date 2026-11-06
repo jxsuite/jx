@@ -12,15 +12,17 @@ workspaces:
   - specs
   - docs
 size: M
+prs:
+  - jxsuite/jx#547
 ---
 
-# What the operating system hands Jx Studio opens the right thing, only after the user has agreed to run that folder's code, and Studio stops taking over `.json`
+# What the operating system hands Jx Studio opens the right thing, only after the user has agreed to run that folder's code
 
 ## Context
 
-`specs/desktop.md` §4.6 and §4.7 are both Pending. This plan has no dependency on `.jxn` and fixes three defects in shipped builds. `plan:desktop/jxn-file-association` adds `.jxn` on top of it.
+`specs/desktop.md` §4.6 and §4.7 are both Pending. This plan has no dependency on `.jxn` and fixes defects in shipped builds. `plan:desktop/jxn-file-association` adds `.jxn` on top of it.
 
-**Installing Jx Studio takes over `.json` on Windows.** `packages/desktop/electron-builder.yml:58` declares `ext: json`. electron-builder 26.18 expands that to `APP_ASSOCIATE`, whose first line is `WriteRegStr SHELL_CONTEXT "Software\Classes\.json" "" "Jx Project"` (`templates/nsis/include/FileAssociation.nsh:66`). `oneClick: false` with `perMachine: false` shows a per-user or per-machine page, and either way this writes the class of `.json`, which takes the default unless the user has set one in Windows Settings. `APP_UNASSOCIATE` removes the class and leaves that value behind, so uninstalling does not restore anything. macOS gets the same claim at rank `Default`.
+**Installing Jx Studio took over `.json` on Windows, which jxsuite/jx#547 fixed.** A top-level `ext: json` made electron-builder write the class of `.json` itself, and uninstalling left the value behind. That pull request moved every channel to Open With and takes the old claim back on install. Its registry behaviour has not yet run on a real Windows machine, so Acceptance keeps that pass.
 
 **Most of what the association hands over is mishandled.** `projectDirOf` (`packages/desktop/src/main/app.ts:165`) returns any path not named `project.json` unchanged, and `post` sends it as a root. So a double-clicked `card.json`, or a `.md` on Linux, is posted as a project root that is a file. `projectRootFrom` reads one bare argument, though `jx-studio.desktop` passes `%F`. The only `open-file` test uses a `project.json` (`tests/electron-app.test.ts:487`).
 
@@ -36,11 +38,11 @@ size: M
 
 - desktop.md §4.6 → Implemented for projects. A document in no project is refused with a sentence until `plan:desktop/single-file-mode` makes it a window.
 - desktop.md §4.7 → Implemented.
-- Installing Jx Studio changes no default for `.json` on any channel, and upgrading removes the claim an earlier install made.
+- Installing Jx Studio changes no default for `.json` on any channel, and upgrading removes the claim an earlier install made. Landed, pending the Windows pass below.
 
 ## Decisions
 
-- **Decided (owner):** the first slice ships now, as jxsuite/jx#547, ahead of this plan, because the takeover hurts people today and the slice needs nothing else. When it merges, this plan's OOS.1 is done: it took `.md` out of scope on macOS until OOS.2 can open one.
+- **Decided (owner):** the first slice shipped ahead of this plan, as jxsuite/jx#547, because the takeover was hurting people and the slice needed nothing else. It left `.md` out on macOS until OOS.2 can open one.
 - **Decided:** `.json` is an **Open With** entry and never a default. macOS: `LSHandlerRank: Alternate`, through `mac.extendInfo`, because `fileAssociations` cannot express a content type. Windows: `OpenWithProgids` only, written by `nsis.include`, because the `fileAssociations` path always writes the extension's class. Microsoft Store: `appx.customExtensionsPath`, because removing `fileAssociations` removes it from the manifest too, and a package association does not take the default. Linux: `MimeType` stays, since a desktop entry is a candidate and not a claim.
 - **Decided:** the installer removes the old claim from both `HKCU` and `HKLM`, since an install may have changed mode, and only when the value is exactly `Jx Project`, so a class the user or another application set stays. Nothing else repairs existing machines. On upgrade the old uninstaller runs first (`installSection.nsh:52`) and `customInstall` last (`:81`), so the value is still there to find. `FileAssociation.nsh` is included only when `fileAssociations` is non-empty (`NsisTarget.js:740`), so the script calls `SHChangeNotify` itself rather than through its macros.
 - **Decided:** `resolveOpenTarget`, the `open-path` message and raising a window with a document move here from `plan:desktop/single-file-mode`, which then builds on them. They are what make a file inside a project open correctly, and they do not need project-less editing, so they should not wait for that plan's own prerequisites.
@@ -63,11 +65,7 @@ size: M
 
 ## Implementation
 
-Slice OOS.1, installer claims:
-
-- `packages/desktop/electron-builder.yml`: delete the top-level `fileAssociations`. Add `mac.extendInfo.CFBundleDocumentTypes` for `public.json` at `Alternate`; `.md` joins it in OOS.2, once a Markdown file can open correctly; `mas` gets it because `macPackager.js:433` reads the mac block's `extendInfo`, so a `mas.extendInfo` would be ignored. Add `nsis.include` and `appx.customExtensionsPath`. electron-builder resolves the latter against `appDir`, which is the generated `build/app`, so the test pins the relative path.
-- `packages/desktop/build-resources/installer.nsh`: `customInstall` removes the old value and registers `OpenWithProgids`, and `customUnInstall` removes its own.
-- Keep the `jx-studio.desktop` and `snap/gui/jx-studio.desktop` `MimeType` lines as they are. `docs/studio/desktop.md:65` and `:92` change.
+Slice OOS.1 landed in jxsuite/jx#547. `mac.extendInfo` gains `net.daringfireball.markdown` at `Alternate` in OOS.2.
 
 Slice OOS.2, one resolver, moved from `plan:desktop/single-file-mode`:
 
@@ -111,6 +109,6 @@ Slice OOS.3, trust:
 
 | Slice | Scope                                                    | Claims         | State |
 | ----- | -------------------------------------------------------- | -------------- | ----- |
-| OOS.1 | Stop claiming `.json`, repair installed machines         |                | open  |
+| OOS.1 | Stop claiming `.json`, repair installed machines         |                | done  |
 | OOS.2 | The resolver, `open-path`, raise with a document, grants | desktop.md#4.6 | open  |
 | OOS.3 | The trust prompt and store; closes both markers          | desktop.md#4.7 | open  |
