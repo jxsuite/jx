@@ -698,8 +698,8 @@ A session resolves every path against its own project root and refuses one that 
 
 ```
 packages/desktop/
-├── electron-builder.yml          # Installer ids and targets, signing, the update feed, the file association
-├── build-resources/              # Committed inputs: macOS entitlements, the Store's logos
+├── electron-builder.yml          # Installer ids and targets, signing, the update feed, Open With
+├── build-resources/              # Committed inputs: macOS entitlements, the Store's logos, installer hooks
 ├── scripts/
 │   ├── stage-app.ts              # Assembles build/ for electron-builder
 │   ├── package-app.ts            # Stage, then electron-builder
@@ -729,6 +729,8 @@ Resources/
 **A bundle is a different program from its sources.** The backend is one bundle built for Node, `resources/backend/index.js`, and inlined modules find their own data and their dependencies by path (`import.meta.dirname`, `createRequire`), none of which survives bundling by accident. Three kinds of thing are therefore staged beside the bundle, listed in `scripts/lib/backend-bundle.ts` and nowhere else: static data (`BACKEND_DATA`: `@jxsuite/create`'s `template` and `templates`, `@jxsuite/starters`' `registry.json` and `sites`, and `@jxsuite/catalog`'s `catalog.json`); packages the compiler resolves BY NAME from the backend's own directory because what it finds is files to serve (`lit-html`, `@vue/reactivity`, `@vue/shared`, which a built site's import map needs locally or falls back to a third-party CDN that a `default-src 'self'` policy blocks); and packages that must stay real files with their own dependencies, because they load native binaries or locate files at run time (`BACKEND_NATIVES`: npm's installer, esbuild and sharp, each copied with its installed dependency closure, for the build host's platform only). The 6.1.0 bundle inlined sharp with nothing staged, so image optimization never worked in a packaged build before this. The same bundling function serves `bun run stage`, the checkout's `bun run desktop` and the Nix package, so the three run one program. That list was found by starting the result, not by reading code, and `bun run smoke` is what keeps it true: it starts the STAGED backend under Node (the packaged Electron run as Node in the release lanes), through the IPC a forked child has, and asks it to create a project, read the catalog, build a site, preview it, resolve the client runtime, and add and remove a package. It runs on every pull request that reaches the package and in every release lane.
 
 **Bun folds module-identity globals, so a bundle cannot ask for its own path.** `__filename`, `module.filename` and `import.meta.filename` become the SOURCE file's name at build time, `import.meta` is a syntax error in the CommonJS main-process bundle, and `require.main` is Electron's own internal module. The application finds its directory with `app.getAppPath()`, and `tests/electron-shell-bundle.test.ts` fails if the bundle relies on any of them or carries a source path at all.
+
+**Installing changes no default.** Jx Studio appears under **Open With** for `.json` and never makes itself the default for a type another application uses. A top-level `fileAssociations` cannot say that, because on Windows it writes the class of the extension itself, which takes the default unless the user has chosen one, and uninstalling leaves the value behind. So each channel declares it in its own terms: macOS at `LSHandlerRank: Alternate`, the Windows installer through `OpenWithProgids` in `build-resources/installer.nsh`, and the Microsoft Store through a package association. Earlier builds did write that class, as `Jx Project`, so the installer also removes the value when it still holds exactly that name, from both hives, and leaves any other value alone.
 
 ### 7.5 Self-Updates
 

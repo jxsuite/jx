@@ -62,7 +62,7 @@ To open an existing project:
 3. A native file dialog opens. Select the project's `project.json` file, the file that marks a folder as a Jx project.
 4. The project opens with the folder around `project.json` as the project root.
 
-You can also open a project straight from your file manager: if your system associates it with Jx Studio, double-clicking a `project.json` opens that project.
+You can also open a project straight from your file manager: right-click its `project.json` and choose **Open With > Jx Studio**. Installing Studio doesn't change what opens your `.json` files by default.
 
 :::doc-note
 `project.json` is the project's settings file, and Studio creates it for every new project. What's inside is described in **[Project settings](/docs/studio/projects/settings)**.
@@ -89,7 +89,7 @@ Studio itself is identical in both, and every page in this documentation applies
 
 - **Nothing to run.** In the browser, Studio is served by a local dev server you start from a terminal (see **[The dev server](/docs/framework/build/dev-server)**). The desktop app carries its own backend, so you launch it like any other application.
 - **Native dialogs.** Opening projects and picking folders use your operating system's file dialogs instead of the browser's folder picker.
-- **Windows, menus, and file associations.** One window per project, `project.json` opening from the file manager, and on macOS a real _File_ menu in the menu bar. On Windows and Linux, Studio draws its own menu in the command bar.
+- **Windows, menus, and Open With.** One window per project, Jx Studio listed under **Open With** for `.json` files, and on macOS a real _File_ menu in the menu bar. On Windows and Linux, Studio draws its own menu in the command bar.
 - **Right-click in text.** Where Studio leaves a right-click to the browser (in a text field, inside the text you are editing on the canvas, on a link in Preview), the app shows its own menu: spelling suggestions for a misspelled word, the edit commands (Undo, Redo, Cut, Copy, Paste, Select All), **Copy** for selected text and **Copy Link Address** for a link. Studio's own menus, such as the canvas element menu, are the same in both.
 - **Built-in updates.** The app updates itself in the background; a dev-server setup, and the NixOS build below, updates with your package manager.
 
