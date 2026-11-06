@@ -79,7 +79,7 @@ function normalizeIdentifiers(value: JsonValue): JsonValue {
 }
 
 /** {@link normalizeIdentifiers} for an object, keeping the object type for the parse helpers. */
-function normalizeObject(value: JsonObject): JsonObject {
+export function normalizeObject(value: JsonObject): JsonObject {
   const out: JsonObject = {};
   for (const [key, entry] of Object.entries(value)) {
     /*
