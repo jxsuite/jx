@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.11.6](https://github.com/jxsuite/jx/compare/collab-v0.11.5...collab-v0.11.6) (2026-11-06)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/schema bumped to 5.2.0
+
 ## [0.11.5](https://github.com/jxsuite/jx/compare/collab-v0.11.4...collab-v0.11.5) (2026-11-04)
 
 
