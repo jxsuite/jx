@@ -552,6 +552,23 @@ describe("jxServerFunction", () => {
 // ─── discoverComponents prop edge cases ──────────────────────────────────────
 
 describe("discoverComponents prop edge cases", () => {
+  test("a .jxn component is found, and a .jxn file that does not read is skipped", async () => {
+    setup();
+    try {
+      writeFileSync(
+        join(FIXTURES, "x-notation.jxn"),
+        'x-notation {\n  state {\n    label "hi"\n  }\n}',
+      );
+      writeFileSync(join(FIXTURES, "x-broken.jxn"), "a\nb");
+      const components = await discoverComponents({ dir: "." });
+      const tags = components.map((c: ComponentMeta) => c.tagName);
+      expect(tags).toContain("x-notation");
+      expect(tags).not.toContain("x-broken");
+    } finally {
+      cleanup();
+    }
+  });
+
   test("filters out null state entries and surfaces format hints", async () => {
     setup();
     try {

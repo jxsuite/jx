@@ -505,7 +505,7 @@ export async function buildSite(
           resolveElementPath: (refPath: string, currentDir: string | null) => {
             const depPath = currentDir ? resolve(currentDir, refPath) : resolve(refPath);
             const depTag = componentTagByPath.get(depPath);
-            return depTag ? `./${depTag}.js` : refPath.replace(/\.json$/, ".js");
+            return depTag ? `./${depTag}.js` : refPath.replace(/\.(?:json|jxn)$/i, ".js");
           },
           rewriteSrc: (specifier: string, docDir: string | null) =>
             withBase(componentBase, rewriteSidecarSrc(specifier, docDir)),

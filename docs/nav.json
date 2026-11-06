@@ -378,6 +378,10 @@
               "label": "Documents"
             },
             {
+              "path": "framework/concepts/jxn-files",
+              "label": "Jx Notation (.jxn)"
+            },
+            {
               "path": "framework/concepts/elements",
               "label": "Elements"
             },

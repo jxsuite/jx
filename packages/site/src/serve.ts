@@ -13,6 +13,8 @@
  * site legitimately asks for that this package cannot produce.
  */
 
+import { isJxnPath, parseJxn } from "@jxsuite/schema/jxn";
+import { errorMessage } from "@jxsuite/schema/parse";
 import { candidatePaths, contentTypeFor, normalizeRequestPath } from "./paths.ts";
 import { ComposeError, composeRoute, readProjectConfig, routeTable } from "./compose.ts";
 import type { PageRoute, SiteIO } from "./compose.ts";
@@ -104,6 +106,9 @@ export async function serveSite(
   // A file the tree really has, at the path the published site would serve it from.
   for (const candidate of candidatePaths(requestPath)) {
     const bytes = await assets.bytes(candidate);
+    if (bytes && isJxnPath(candidate)) {
+      return jxnAsJson(bytes, candidate);
+    }
     if (bytes) {
       return new Response(bytes, {
         headers: siteHeaders(contentTypeFor(candidate)),
@@ -139,6 +144,25 @@ export async function serveSite(
  * A render that 500s tells the author nothing they can act on. A page naming the file and the
  * reason is the difference between "the preview is broken" and "this page needs a `.json` layout".
  */
+/**
+ * A `.jxn` file, as the JSON a reader expects.
+ *
+ * The runtime fetches a `$ref` and calls `res.json()`, on any origin, so answering JSON here keeps
+ * a KDL parser out of every page. A file that does not read answers 422 with the reason, because
+ * the runtime reports a failed fetch by its status and this one is the author's to fix.
+ */
+function jxnAsJson(bytes: Uint8Array<ArrayBuffer>, path: string): Response {
+  try {
+    const document = parseJxn(new TextDecoder().decode(bytes), path);
+    return Response.json(document, { headers: siteHeaders("application/json;charset=utf-8") });
+  } catch (error) {
+    return new Response(errorMessage(error), {
+      headers: siteHeaders("text/plain;charset=utf-8"),
+      status: 422,
+    });
+  }
+}
+
 async function composeSafely(
   io: SiteIO,
   context: SiteContext,

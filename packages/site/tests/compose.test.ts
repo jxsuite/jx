@@ -467,6 +467,14 @@ describe("component auto-discovery", () => {
   });
 
   // Only `.json`: a `$ref` is fetched and parsed by the BROWSER, which has no extension parser.
+  test("a .jxn component is found, because this origin answers it as JSON", async () => {
+    const page = await compose({
+      "components/x-card.jxn": "x-card",
+      "pages/index.jxn": "main { x-card }",
+    });
+    expect(refsOf(page)).toEqual(["./components/x-card.jxn"]);
+  });
+
   test("a component in a format the browser cannot parse is not pointed at", async () => {
     const page = await compose({
       "components/site-card.md": "# card",

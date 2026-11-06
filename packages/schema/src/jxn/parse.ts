@@ -551,11 +551,16 @@ function readDocument(reader: Reader): JxDocument {
  * Read a `.jxn` document.
  *
  * @param text The file.
+ * @param path Its path, when an error should name it.
  * @returns The same `JxDocument` a `.json` spelling of it would give.
  * @throws {JxnError} When it is not one, naming the line and column where it can.
  */
-export function parseJxn(text: string): JxDocument {
-  return readDocument({ spans: null, text });
+export function parseJxn(text: string, path?: string): JxDocument {
+  try {
+    return readDocument({ spans: null, text });
+  } catch (error) {
+    throw path !== undefined && error instanceof JxnError ? error.inFile(path) : error;
+  }
 }
 
 /**

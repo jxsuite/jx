@@ -388,6 +388,19 @@ export async function resolve(source: string | JxDocument, ctx?: JxContext): Pro
           `app shell (a single-page fallback), so this path is not served.`,
       );
     }
+    /* A site origin answers `.jxn` as JSON, so only an editing server or a bare file host gets here
+       with KDL, and the parser is the host's to supply: a lazy import here would be inlined by any
+       host that bundles the runtime into one file, and ship the parser to every reader. */
+    if (JXN_URL.test(source) && !contentType.includes("json")) {
+      if (!_documentParser) {
+        throw new Error(
+          `Jx: ${source} is a .jxn file and this page has no parser for it. Serve it from a Jx ` +
+            `site, which answers JSON, or call setDocumentParser(parseJxn) with parseJxn from ` +
+            `@jxsuite/schema/jxn.`,
+        );
+      }
+      return _documentParser(await res.text(), source);
+    }
     /* SAFETY: trust boundary. `resolve` fetches only URLs that name a Jx document (a `Jx()` source,
        an `$elements` entry, a `$switch` case), and the host answered 2xx with a non-HTML body, so
        the JSON is that document; the runtime does not schema-validate documents by design. */
@@ -398,6 +411,26 @@ export async function resolve(source: string | JxDocument, ctx?: JxContext): Pro
 }
 
 // ─── Step 2: Build scope ──────────────────────────────────────────────────────
+
+/** The path part of a URL naming a `.jxn` file. */
+const JXN_URL = /\.jxn(?:[?#]|$)/iu;
+
+/** What reads a `.jxn` file's text. Absent, the runtime refuses one rather than guessing. */
+let _documentParser: ((text: string, source: string) => JxDocument) | null = null;
+
+/**
+ * Supply what reads a `.jxn` file, for a host that serves one as its text.
+ *
+ * A compiled site never needs this, and a `$ref` from a Jx site origin does not: both get JSON.
+ * Studio's canvas does, because an editing server answers a file as it is.
+ *
+ * @param parser `parseJxn` from `@jxsuite/schema/jxn`, or null to take it away again.
+ */
+export function setDocumentParser(
+  parser: ((text: string, source: string) => JxDocument) | null,
+): void {
+  _documentParser = parser;
+}
 
 /** JSON Schema keywords used to identify pure type definitions (Shape 2b). */
 const SCHEMA_KEYWORDS = new Set([

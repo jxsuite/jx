@@ -24,11 +24,13 @@ import {
   setCanvasDelinkCommands,
   setCanvasDelinkPopovers,
   setCanvasViewportTranspose,
+  setDocumentParser,
   setRootMedia,
   setSkipAutoRequests,
   setSkipServerFunctions,
   setStampPropBindings,
 } from "@jxsuite/runtime";
+import { parseJxn } from "@jxsuite/schema/jxn";
 import { resolveAssetRef } from "./asset-resolve";
 import { fillPreviewImages } from "./preview-placeholder";
 import { classifyRenderNode, jxPathSelector, serializeJxPath } from "./path-mapping";
@@ -1070,6 +1072,8 @@ export async function renderResolvedDocument(opts: {
   const assets = opts.assets ?? null;
   setCanvasAssetResolver(assets ? (value) => resolveAssetRef(value, assets) : null);
   setSkipServerFunctions(opts.mode !== "preview");
+  // The editing server answers a file as it is, so a `.jxn` `$ref` arrives here as its text.
+  setDocumentParser(parseJxn);
   // Same gate for automatic `$prototype: "Request"` state entries. `buildScope` re-resolves every
   // State entry on each full render, so without this an escalating authoring action (a signals-panel
   // Edit, or Enter inside component-wrapped content) issued an HTTP request per render. Edit/design

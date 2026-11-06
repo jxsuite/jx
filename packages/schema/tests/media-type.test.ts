@@ -158,6 +158,7 @@ describe("MEDIA_TYPE_BY_EXTENSION", () => {
    */
   test("holds only the extensions whose platform answer is wrong", () => {
     expect(Object.keys(MEDIA_TYPE_BY_EXTENSION).toSorted()).toEqual([
+      ".jxn",
       ".markdown",
       ".md",
       ".yaml",
@@ -186,6 +187,10 @@ describe("MEDIA_TYPE_BY_EXTENSION", () => {
 });
 
 describe("mediaTypeForPath", () => {
+  test("a .jxn file is text", () => {
+    expect(mediaTypeForPath("pages/a.jxn")).toBe("text/plain; charset=utf-8");
+  });
+
   test("answers for the extensions it corrects, in any case", () => {
     expect(mediaTypeForPath("/site/post.md")).toBe(
       `text/markdown; variant=GFM; charset=${CHARSET}`,
