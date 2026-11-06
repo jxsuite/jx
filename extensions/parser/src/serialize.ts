@@ -27,6 +27,7 @@ import {
   isNumber,
   isRef,
   isString,
+  isTemplateString,
   tagNameCandidates,
 } from "@jxsuite/schema/guards";
 import type { TagNameSlot } from "@jxsuite/schema/guards";
@@ -561,6 +562,10 @@ function normalizeAllowlist(allowlist?: ReadonlySet<string> | string[]): Readonl
 
 /** Check if a Jx element has properties beyond the mdast-compatible ones. */
 function hasJxProps(el: JxElement) {
+  // A computed-children template has no Markdown spelling, so even a `p` needs a directive to hold it.
+  if (isTemplateString(el.children)) {
+    return true;
+  }
   for (const key of Object.keys(el)) {
     if (
       key === "tagName" ||
@@ -923,7 +928,11 @@ function collectDirectiveAttrs(el: JxElement) {
       continue;
     }
     if (key === "children") {
-      if (isJsonObject(value)) {
+      /* An array is the directive's body. A legacy repeater object and a computed-children template
+         (spec.md §8.4) have no body to be, so the attribute is the only place they can survive a
+         save. Dropping the template wrote `::div` for `::div{children="${item.$children ?? []}"}`,
+         and the element lost what it draws with no error anywhere. */
+      if (isJsonObject(value) || isTemplateString(value)) {
         propsObj.children = value;
       }
       continue;

@@ -360,6 +360,70 @@ describe("prepareForEditMode $props", () => {
   });
 });
 
+/*
+ * Computed children are a binding with nothing to draw until the page runs, so the canvas names it.
+ * The element is not empty, and the name is not text a caret may edit: committing it would write the
+ * label into `textContent`.
+ */
+describe("prepareForEditMode computed children", () => {
+  test("names the binding, without the fallback that is only plumbing", () => {
+    const out = prepareForEditMode({ children: "${item.$children ?? []}", tagName: "div" });
+    expect(out.textContent).toBe("\u276A item.$children \u276B");
+    expect(out.children).toBeUndefined();
+    expect(out.className).toBeUndefined();
+  });
+
+  test("a binding with no fallback, or any other expression, reads as it is written", () => {
+    const glyph = (children: `\${${string}`) =>
+      prepareForEditMode({ children, tagName: "div" }).textContent;
+    expect(glyph("${state.entry.$children}")).toBe("\u276A state.entry.$children \u276B");
+    expect(glyph("${item.$children.slice(1)}")).toBe("\u276A item.$children.slice(1) \u276B");
+  });
+
+  test("closes the label to the caret, keeping the element's own attributes", () => {
+    const bare = prepareForEditMode({ children: "${item.$children}", tagName: "p" });
+    expect(bare.attributes).toEqual({ contenteditable: "false" });
+    const out = prepareForEditMode({
+      attributes: { title: "Bio" },
+      children: "${item.$children}",
+      tagName: "p",
+    });
+    expect(out.attributes).toEqual({ contenteditable: "false", title: "Bio" });
+  });
+
+  test("is drawn inside a repeater's perimeter", () => {
+    const out = prepareForEditMode({
+      children: [
+        {
+          $prototype: "Array",
+          items: { $ref: "#/state/team" },
+          map: { children: "${item.$children ?? []}", tagName: "div" },
+        },
+      ],
+      tagName: "div",
+    });
+    const [perimeter] = elementChildren(out);
+    const [template] = elementChildren(perimeter);
+    expect(template!.textContent).toBe("\u276A item.$children \u276B");
+  });
+
+  test("a plain string in `children` is not a binding, and is left as it was", () => {
+    // `prep` takes any document value, because a hand-edited document can be outside the node type.
+    const out: { children?: unknown; textContent?: unknown } = prep({
+      children: "text",
+      tagName: "div",
+    });
+    expect(out.children).toBe("text");
+    expect(out.textContent).toBeUndefined();
+  });
+
+  test("a node holding a template is not empty, so the patcher gives it no placeholder", () => {
+    expect(
+      computeEmptyPlaceholderClass({ children: "${item.$children}", tagName: "div" }),
+    ).toBeNull();
+  });
+});
+
 describe("prepareForEditMode children", () => {
   test("recurses into array children", () => {
     const out = prep({

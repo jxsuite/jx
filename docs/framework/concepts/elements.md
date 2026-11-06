@@ -146,6 +146,8 @@ Bare strings and numbers are valid `children` items. They produce DOM `Text` nod
 
 That is the HTML `<p>Hello <strong>world</strong>!</p>`. Template strings in text nodes are reactive: `{ "children": ["Welcome, ${state.name}!"] }`.
 
+The whole `children` value can also be one `${…}` template that resolves to an array of child definitions, which is how an element draws parsed content such as a content entry's body: `{ "tagName": "div", "children": "${item.$children ?? []}" }`. The site build expands it into the page. On a built page it must resolve during the build, because the compiled output does not evaluate a template left unresolved. The runtime, which renders the source document, does evaluate it, and a result that is not an array draws nothing.
+
 ## Slots
 
 Custom elements use the standard HTML `slot` mechanism for content composition. A component's template places `<slot>` elements; content the instance provides is distributed to them by `name`:

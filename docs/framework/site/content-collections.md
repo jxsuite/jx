@@ -269,7 +269,7 @@ A resolved entry has this shape:
 }
 ```
 
-Frontmatter and data fields live under `data` (`${state.post.data.title}`); for Markdown entries, `body` is the raw source and `$children` is the parsed Jx tree, rendered with `"children": "${state.post.$children ?? []}"`.
+Frontmatter and data fields live under `data` (`${state.post.data.title}`); for Markdown entries, `body` is the raw source and `$children` is the parsed Jx tree, rendered with `"children": "${state.post.$children ?? []}"`. Inside a repeater over the collection, the same form reads the row: `"children": "${item.$children ?? []}"`.
 
 Markdown headings in `$children` carry automatic anchor `id`s: the heading text lowercased, punctuation stripped, spaces hyphenated, with `-2`, `-3` suffixes deduplicating repeats in document order. The entry's table of contents (`_meta.toc`: `depth`, `text`, `id` per heading) uses the same ids, so TOC links, search results, and hand-written `#fragment` URLs all land on the rendered section.
 

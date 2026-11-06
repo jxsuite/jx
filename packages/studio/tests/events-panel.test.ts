@@ -32,6 +32,7 @@ import type {
   JxMappedArray,
   JxMutableNode,
   JxPath,
+  JxRef,
 } from "@jxsuite/schema/types";
 
 /**
@@ -927,6 +928,27 @@ describe("Logic tab — condition", () => {
     expect(options).toContain("$map/index");
   });
 
+  test("inside a map template the expression offers the item's fields too", async () => {
+    const doc: JxMutableNode = {
+      children: [
+        {
+          $prototype: "Array",
+          items: { $ref: "#/state/rows" },
+          map: { $switch: "${item.type}", cases: { a: { tagName: "div" } }, tagName: "li" },
+        },
+      ],
+      state: { rows: [{ type: "a" }] },
+      tagName: "ul",
+    };
+    const c = await logic(doc, inMap);
+    await pick(row(c, "$switch")!.querySelector('[part="source"]'), "ref");
+
+    const options = [...row(c, "$switch")!.querySelectorAll('[part="select"] [part="option"]')].map(
+      (o) => o.getAttribute("value"),
+    );
+    expect(options).toEqual(["#/state/rows", "$map/item", "$map/item/type", "$map/index"]);
+  });
+
   test("the Expression row offers no Fixed value rung — a $switch is inherently dynamic", async () => {
     const c = await logic(switchDoc(), inMap);
     press(row(c, "$switch")!.querySelector('[part="source"]'));
@@ -1047,5 +1069,40 @@ describe("Logic tab — the custom element's outward contract", () => {
     await openSection(section(c, "repeater")!, false);
     expect(activeTab.value!.session.ui.inspectorSections["__repeater"]).toBe(false);
     expect(detailsIn(section(c, "repeater")!).open).toBe(false);
+  });
+});
+
+describe("Logic tab — a repeater inside a repeater", () => {
+  beforeEach(() => {
+    resetSlotModeMemory();
+  });
+
+  const nested = (items: JxRef): JxMutableNode => ({
+    children: [
+      {
+        $prototype: "Array",
+        items: { $ref: "#/state/trips" },
+        map: { children: [{ $prototype: "Array", items, map: { tagName: "li" } }], tagName: "ul" },
+      },
+    ],
+    state: { trips: [{ name: "x", stops: [{ city: "y" }] }] },
+    tagName: "div",
+  });
+  const innerPath: JxPath[] = [["children", 0, "map", "children", 0]];
+
+  test("its Items offers the lists on the outer item and nothing else of it", async () => {
+    const c = await logic(nested({ $ref: "#/state/trips" }), innerPath);
+    const options = [...row(c, "items")!.querySelectorAll('[part="select"] [part="option"]')].map(
+      (o) => o.getAttribute("value"),
+    );
+    expect(options).toEqual(["#/state/trips", "$map/item/stops"]);
+  });
+
+  test("a top-level repeater's Items has no outer item to read", async () => {
+    const c = await logic(nested({ $ref: "#/state/trips" }), [["children", 0]]);
+    const options = [...row(c, "items")!.querySelectorAll('[part="select"] [part="option"]')].map(
+      (o) => o.getAttribute("value"),
+    );
+    expect(options).toEqual(["#/state/trips"]);
   });
 });
