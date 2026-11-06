@@ -29,7 +29,7 @@ $elements:
 # Terms of Service
 
 **Effective date:** 2 October 2026\
-**Last updated:** 2 October 2026
+**Last updated:** 6 November 2026
 
 These terms are an agreement between you and **Avunu LLC** ("Avunu", "we", "us"), a Pennsylvania limited liability company at 948 E Philadelphia St, York Pennsylvania 17403, United States. They cover the jxsuite.com website, the hosted Jx Publishing Platform at studio.jxsuite.com ("Jx Cloud"), and the Jx Studio Cloud subscription that unlocks it. By signing in to Jx Cloud, or by starting a subscription, you agree to them. If you use Jx Cloud for an organization, you agree on its behalf and confirm you may.
 
@@ -103,6 +103,16 @@ Payments are non-refundable except where the law requires otherwise or we decide
 ### 6.7 Price changes
 
 We will give you at least 30 days' notice, by email and in the studio, before a price change applies to your subscription. It takes effect from your next renewal after the notice period, and you can cancel before then.
+
+### 6.8 Contributor credit
+
+If a pull request you opened is merged into the default branch of the [jxsuite/jx](https://github.com/jxsuite/jx) repository and earns credit, Jx Studio Cloud is free for you for 30 days from the merge. A later merge restarts the 30 days rather than adding to them. You do not need a subscription or a payment method. This is not the free trial in 6.3 and does not use yours up. When the 30 days end, so does your access, unless you have subscribed.
+
+If you also hold a subscription that will renew, the merge places a credit worth one month's price on your billing account, at most once in any 30 days. It comes off your next invoice. It has no cash value, we do not refund it, and it is lost if your subscription ends before it is used.
+
+A pull request earns credit only if it reaches the project's automated tests, was opened by a person rather than an automated account, and does not carry our `no-credit` label when it is merged. Whether to merge a pull request, and whether to apply that label, is our decision alone.
+
+Credit is a thank-you, not payment for work. A contribution does not make you our employee or contractor, and it is licensed under the repository's MIT License like any other. You are responsible for any tax on what you receive. We may change or end this offer at any time, which does not take away a free period or credit you have already earned.
 
 ## 7. Changes to the service
 
