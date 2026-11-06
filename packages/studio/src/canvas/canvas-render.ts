@@ -175,8 +175,13 @@ export function initCanvasRender(ctx: CanvasRenderCtx) {
  */
 function sourceLang(tab: Tab) {
   const format = formatByName(tab.doc.sourceFormat);
+  if (!format) {
+    return "json";
+  }
   // The essence: splitting the declared type would yield `markdown; variant=GFM` as a language id.
-  return format ? (mediaTypeEssence(format.mediaType)?.split("/").pop() ?? "plaintext") : "json";
+  const fromType = mediaTypeEssence(format.mediaType)?.split("/").pop();
+  // `.jxn` has no media type to read a language from, and its path says everything it needs to.
+  return fromType ?? monacoLangForPath(tab.documentPath ?? "");
 }
 
 /**

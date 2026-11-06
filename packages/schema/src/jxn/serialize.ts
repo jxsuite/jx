@@ -8,6 +8,9 @@ import { parse } from "@bgotink/kdl";
 import type { JsonObject, JsonValue, JxDocument } from "../../types.ts";
 import { isJsonObject, isNumber, isString } from "../guards.ts";
 import { JxnError } from "./errors.ts";
+import { parseJxnWithSpans } from "./parse.ts";
+import { reconcileJxn } from "./reconcile.ts";
+import type { JxnReading } from "./reconcile.ts";
 
 const INDENT = "    ";
 
@@ -484,13 +487,27 @@ function writeHeadBlock(head: JsonValue[], indent: string): string[] {
   ];
 }
 
+/** Read a file the way {@link reconcileJxn} wants to be told about it. */
+function readDocument(text: string): JxnReading {
+  const { document, spans } = parseJxnWithSpans(text);
+  return { document: isJsonObject(document) ? document : null, spans };
+}
+
 /**
- * Write a document in its canonical form.
+ * Write a document.
  *
  * @param document The document.
+ * @param previous The file it is replacing. Everything that still means the same keeps its exact
+ *   text, comments and blank lines included. Without one, the whole file is canonical.
  * @throws {JxnError} When it holds what Jx Notation cannot spell, naming the JSON Pointer.
  */
-export function serializeJxn(document: JxDocument): string {
+export function serializeJxn(document: JxDocument, previous?: string): string {
+  const canonical = writeCanonical(document);
+  return previous === undefined ? canonical : reconcileJxn(previous, canonical, readDocument);
+}
+
+/** A document in its canonical form. */
+function writeCanonical(document: JxDocument): string {
   if (!isJsonObject(document)) {
     throw new JxnError("A document is an object");
   }

@@ -30,7 +30,7 @@ size: L
 
 - `packages/desktop/src/chromium/` and `src/handlers.ts` no longer exist: the per-window launcher was removed (desktop.md §9.2). Every chromium step, test and acceptance line below is void, so SFM1.1 step 5 is deleted in effect, step 2's target is `backend/handlers.ts`, and "the development chromium launcher" in the first Open is gone. Rewrite these when this plan is next taken up.
 - `resolveOpenTarget`, the `open-path` message and raising a window with a document now land in `plan:desktop/open-from-os`, along with the removal of the `.json` claim from `electron-builder.yml` that this plan's Context objects to. So SFM1.1 steps 1 (the resolver's project half), 4 and 16 shrink to adding `kind: "file"`, and this plan is no longer where the association's defects get fixed.
-- `.jxn` is a document format now (`plan:spec/jxn-format`, `plan:studio/jxn-documents`). Everywhere this plan says "a `.json` with none", read "a `.json` or `.jxn` with none". Finding the enclosing project goes through `findEnclosingProject`, which checks content, so `pages/project.json` stops being read as a project.
+- `.jxn` is a document format now (`spec.md` §22, `plan:studio/jxn-documents`). Everywhere this plan says "a `.json` with none", read "a `.json` or `.jxn` with none". Finding the enclosing project goes through `findEnclosingProject`, which checks content, so `pages/project.json` stops being read as a project.
 - **New, and not addressed below:** a file-bound session's root is the file's whole directory, and desktop.md §4.7 asks per folder. So a loose file in `~/Downloads` would ask to trust `~/Downloads`, and everything else in it could then import through `/__jx_server__`. See the new Open under Decisions.
 
 `specs/desktop.md` §4.3, line 335:
