@@ -42,7 +42,7 @@ export interface CollectionRow {
 export interface CollectionEntryRow {
   path: string;
   title: string;
-  /** "Draft", "Published", or "". */
+  /** A `hold` rule's label, "Published", or "". */
   status: string;
   /** Whether a thumbnail is drawn, or the document glyph. */
   art: "image" | "glyph";

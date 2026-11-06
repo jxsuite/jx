@@ -11,7 +11,7 @@ import {
   listCollectionEntryIds,
   PATH_FIELD,
 } from "../src/grid/sources/content-source";
-import { setIncludeDrafts } from "../src/content/draft-state";
+import { setIncludeHeld } from "../src/content/hold-state";
 import type { StudioPlatform } from "../src/types";
 
 const HELLO_MD = `---
@@ -60,7 +60,12 @@ function setup(
     projectConfig: {
       content: {
         authors: { format: "Markdown", schema: {}, source: "./content/authors/" },
-        posts: { format: "Markdown", schema: POSTS_SCHEMA, source: "./content/posts/" },
+        posts: {
+          format: "Markdown",
+          hold: [{ label: "Draft", when: { draft: true } }],
+          schema: POSTS_SCHEMA,
+          source: "./content/posts/",
+        },
         products: { format: "Csv", schema: {}, source: "./data/products.csv" },
       },
     },
@@ -71,7 +76,7 @@ function setup(
 beforeEach(() => {
   closeAllTabs();
   seedMarkdownFormat();
-  setIncludeDrafts(false);
+  setIncludeHeld(false);
 });
 
 describe("collection resolution", () => {
@@ -456,10 +461,10 @@ describe("refresh and backing paths", () => {
   });
 });
 
-describe("the draft perspective (site-architecture.md §7.6)", () => {
+describe("the hold perspective (site-architecture.md §7.6)", () => {
   const DRAFTED_MD = "---\ntitle: Drafted\ndraft: true\n---\n\nNot ready\n";
 
-  test("the Draft column sits immediately after Path, and is the schema's own column", async () => {
+  test("the hold switch's column sits immediately after Path, and is the schema's own column", async () => {
     setup();
     const columns = await createCollectionSource("posts").columns();
     expect(columns.map((c) => c.field).slice(0, 2)).toEqual([PATH_FIELD, "draft"]);
@@ -468,20 +473,51 @@ describe("the draft perspective (site-architecture.md §7.6)", () => {
     expect(columns.find((c) => c.field === "draft")!.kind).toBe("boolean");
   });
 
-  test("a collection with no draft axis gets no Draft column", async () => {
+  test("a collection with no rules gets no such column", async () => {
     setup();
     // `authors` declares `schema: {}` and none of its entries exist, so there is no axis at all.
     const columns = await createCollectionSource("authors").columns();
     expect(columns.map((c) => c.field)).not.toContain("draft");
   });
 
-  test("an entry that carries `draft: true` without a schema saying so still gets the column", async () => {
-    setup({ "content/authors/ada.md": DRAFTED_MD });
-    const columns = await createCollectionSource("authors").columns();
-    expect(columns.map((c) => c.field).slice(0, 2)).toEqual([PATH_FIELD, "draft"]);
+  /* `draft` is a field like any other until a rule says otherwise: this is the convention gone. */
+  test("an entry that says `draft: true` on a collection with no rules is listed, unmoved", async () => {
+    setup({
+      "content/authors/ada.md": DRAFTED_MD,
+      "content/authors/bob.md": "---\ntitle: Bob\n---\n",
+    });
+    const source = createCollectionSource("authors");
+    const columns = await source.columns();
+    expect(columns.map((c) => c.field).slice(0, 3)).toEqual([PATH_FIELD, "title", "draft"]);
+    const { total } = await source.rows();
+    expect(total).toBe(2);
   });
 
-  test("drafts are hidden by default and listed when the perspective says so", async () => {
+  test("a rule on a date hides what it holds and offers no switch", async () => {
+    setup({
+      "content/events/later.md": "---\ntitle: Later\nstarts: 2999-01-01\n---\n",
+      "content/events/past.md": "---\ntitle: Past\nstarts: 2001-01-01\n---\n",
+    });
+    resetStudioState({
+      projectConfig: {
+        content: {
+          events: {
+            format: "Markdown",
+            hold: [{ label: "Scheduled", when: { starts: { $gt: { $now: true } } } }],
+            schema: {},
+            source: "./content/events/",
+          },
+        },
+      },
+    });
+    const source = createCollectionSource("events");
+    const { rows } = await source.rows();
+    expect(rows.map((r) => r.key)).toEqual(["content/events/past.md"]);
+    const [, afterPath] = await source.columns();
+    expect(afterPath?.field).toBe("title");
+  });
+
+  test("held entries are hidden by default and listed when the perspective says so", async () => {
     setup({ "content/posts/drafted.md": DRAFTED_MD });
     const source = createCollectionSource("posts");
 
@@ -489,7 +525,7 @@ describe("the draft perspective (site-architecture.md §7.6)", () => {
     expect(hidden.rows.map((r) => r.key)).not.toContain("content/posts/drafted.md");
     expect(hidden.total).toBe(2);
 
-    setIncludeDrafts(true);
+    setIncludeHeld(true);
     const shown = await source.rows();
     expect(shown.rows.map((r) => r.key)).toContain("content/posts/drafted.md");
     expect(shown.total).toBe(3);
@@ -504,7 +540,7 @@ describe("the draft perspective (site-architecture.md §7.6)", () => {
     expect([...source.backingPaths!().keys()]).toContain("content/posts/drafted.md");
   });
 
-  test("the pages tree is NOT draft-filtered — a page has no collection to explain the gap", async () => {
+  test("the pages tree is NOT filtered — a page belongs to no content type, so no rule covers it", async () => {
     setup({
       "pages/hidden.md": DRAFTED_MD,
       "pages/index.md": "---\ntitle: Home\n---\n",

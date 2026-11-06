@@ -15,10 +15,11 @@ import type { ProjectConfig } from "@jxsuite/schema/types";
 interface Calls {
   completed: number;
   lazy: (boolean | undefined)[];
+  includeHeld: (boolean | undefined)[];
   registry: number;
   sections: number;
 }
-const calls: Calls = { completed: 0, lazy: [], registry: 0, sections: 0 };
+const calls: Calls = { completed: 0, includeHeld: [], lazy: [], registry: 0, sections: 0 };
 let failSections = false;
 
 void mock.module("@jxsuite/compiler/project-sections", () => ({
@@ -26,10 +27,11 @@ void mock.module("@jxsuite/compiler/project-sections", () => ({
     _root: string,
     config: ProjectConfig,
     _registry: ExtensionRegistry,
-    options: { lazy?: boolean } = {},
+    options: { lazy?: boolean; includeHeld?: boolean } = {},
   ) => {
     calls.sections += 1;
     calls.lazy.push(options.lazy);
+    calls.includeHeld.push(options.includeHeld);
     await Promise.resolve();
     if (failSections) {
       throw new Error("sections failed");
@@ -120,6 +122,7 @@ afterAll(() => {
 beforeEach(() => {
   calls.completed = 0;
   calls.lazy = [];
+  calls.includeHeld = [];
   calls.registry = 0;
   calls.sections = 0;
   failSections = false;
@@ -225,6 +228,13 @@ describe("sections loaded on demand", () => {
     const root = project({ name: "lazy" });
     await probe(root);
     expect(calls.lazy).toEqual([true]);
+  });
+
+  /* This host draws the canvas and Preview: an author has to be able to see what they hold back. */
+  test("the server keeps held entries, for the author looking at them", async () => {
+    const root = project({ name: "held" });
+    await probe(root);
+    expect(calls.includeHeld).toEqual([true]);
   });
 
   test("a class that reads them synchronously gets them completed first", async () => {

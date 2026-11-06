@@ -4,9 +4,8 @@
  *
  * This is the adapter. `content/entry-editor.ts` keeps the editor — which pane holds which tab,
  * which collection a path belongs to, which record the fields live in, which required keys the
- * entry does not HAVE, and what the draft switch commits into — and hands this module one
- * projection whose every field is already a string or a flag. The document draws it and decides
- * nothing.
+ * entry does not HAVE, and what the hold switch commits into — and hands this module one projection
+ * whose every field is already a string or a flag. The document draws it and decides nothing.
  *
  * **The form is an ISLAND, and that is the whole shape of this conversion.** A form built from a
  * JSON Schema is `ui/schema-form.ts`'s surface rather than this one's, and that engine hands back a
@@ -53,13 +52,15 @@ export interface EntryEditorView {
   name: string;
   /** The collection's name, in the chip beside it. */
   collection: string;
-  /** Whether this collection has a draft workflow at all; with none, neither state is drawn. */
-  draftAxis: "hidden" | "shown";
-  /** Whether the entry is marked a draft. */
-  draft: boolean;
-  /** The switch's tooltip: what a draft IS, in `content/draft-state.ts`'s one sentence. */
-  draftHint: string;
-  /** Whether the sentence under the header is drawn — only while the entry IS a draft. */
+  /** Whether the collection's rules offer a switch: one boolean field. */
+  holdSwitch: "hidden" | "shown";
+  /** Whether the switch is on. */
+  holdOn: boolean;
+  /** The word beside the switch: its rule's label. */
+  holdLabel: string;
+  /** The switch's tooltip: what being held does, in `content/hold-state.ts`'s one sentence. */
+  holdHint: string;
+  /** Whether the sentence under the header is drawn — only while a rule holds the entry. */
   noteState: "hidden" | "shown";
   note: string;
   /** The `empty` stage's first sentence, naming the document it is about. */
@@ -74,8 +75,8 @@ export interface EntryEditorView {
 
 /** What the reader can do here. Both are decisions the editor owns. */
 export interface EntryEditorActions {
-  /** The draft switch moved. A setter, never a toggle. */
-  setDraft: (draft: boolean) => void;
+  /** The hold switch moved. A setter, never a toggle. */
+  setHold: (on: boolean) => void;
   /** Open Project Settings › Content types — the door out of the `empty` stage. */
   openContentTypes: () => void;
   /** A record: show the file's previous record, its next one, or the whole file in its grid. */
@@ -109,9 +110,10 @@ function project(scope: EntryEditorScope, view: EntryEditorView): void {
   scope.stage = view.stage;
   scope.name = view.name;
   scope.collection = view.collection;
-  scope.draftAxis = view.draftAxis;
-  scope.draft = view.draft;
-  scope.draftHint = view.draftHint;
+  scope.holdSwitch = view.holdSwitch;
+  scope.holdOn = view.holdOn;
+  scope.holdLabel = view.holdLabel;
+  scope.holdHint = view.holdHint;
   scope.noteState = view.noteState;
   scope.note = view.note;
   scope.emptyLine = view.emptyLine;
@@ -149,9 +151,10 @@ export function mountEntryEditorSurface(
   host.replaceChildren();
   const scope: EntryEditorScope = reactive<EntryEditorScope>({
     collection: "",
-    draft: false,
-    draftAxis: "hidden",
-    draftHint: "",
+    holdHint: "",
+    holdLabel: "",
+    holdOn: false,
+    holdSwitch: "hidden",
     emptyLine: "",
     fieldsRegion: "",
     name: "",
@@ -164,7 +167,7 @@ export function mountEntryEditorSurface(
     previousDisabled: true,
     recordNav: "hidden",
     region: "",
-    setDraft: actions.setDraft,
+    setHold: actions.setHold,
     showNext: actions.showNext,
     showPrevious: actions.showPrevious,
     stage: "empty",

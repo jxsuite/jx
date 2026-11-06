@@ -57,10 +57,10 @@ export interface TabChipView {
   /** "Pin" or "Unpin" — the pin button's whole accessible name. */
   pinTitle: string;
   pinGlyph: string;
-  /** The draft pill's word, or the empty string when this document has no draft axis. */
+  /** The hold pill's word, or the empty string when this document's collection has no rules. */
   pill: string;
   pillTitle: string;
-  draft: boolean;
+  held: boolean;
   /** "0" while this is the pane's current tab, "-1" otherwise. The pin's roving stop. */
   tabindex: string;
   /** This chip's slot in the pane's order, which is the drop target index. */

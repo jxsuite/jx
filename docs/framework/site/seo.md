@@ -177,7 +177,7 @@ Redirect sources are not pages and never appear.
 
 Two kinds of page are left out without any setting. One is a page whose `<head>` asks crawlers for `noindex`, a `<meta name="robots">` whose content includes `noindex` or `none`, whether it comes from your layout, your state or `$head`: a sitemap that lists a page the page itself disowns gives a crawler two answers to one question. The other is the [404 page](/docs/framework/site/deployment#the-404-page). Both are still built and served.
 
-To opt a single page out (a thank-you page, a draft), set `"$sitemap": false` at the page root. To disable the sitemap entirely, set `"build": { "sitemap": false }`. Without `url` the sitemap is skipped with a build warning, because absolute `<loc>` values can't be built.
+To opt a single page out (a thank-you page, say), set `"$sitemap": false` at the page root. A [held content entry](/docs/framework/site/content-collections#holding-entries-back) has no page to opt out, because the build leaves it out entirely. To disable the sitemap entirely, set `"build": { "sitemap": false }`. Without `url` the sitemap is skipped with a build warning, because absolute `<loc>` values can't be built.
 
 ## robots.txt
 

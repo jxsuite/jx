@@ -174,12 +174,12 @@ void mock.module("../src/content/entry-editor.js", () => ({
   absentRequiredErrors: () => ({}),
   detachEntryPane: entry.detach,
   formContext: () => ({}),
-  entryDraftPill: () => null,
+  entryHoldPill: () => null,
   entryPaneMounted: (paneId: string, tab: Tab) => entry.mounted.get(paneId) === tab,
   fieldLabels: () => ({}),
   openEntryEditor: () => Promise.resolve(null),
   renderEntryMode: entry.render,
-  setEntryDraft: () => {},
+  setEntryHold: () => {},
   titleFirst: (schema: JsonSchema) => schema,
 }));
 

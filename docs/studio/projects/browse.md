@@ -36,7 +36,7 @@ The panel on the left lists **Pages** first, then every collection your project 
 - A collection's **saved grid views** are listed under it. Click one to open the collection's grid with that view applied. You save a view from the grid's **View** menu; see [Data grids](/docs/studio/data/grid).
 - **+ New collection** at the foot opens **Add new** on **Collection**: a name, the fields each entry has, and whether each entry gets a page of its own. See [Content types](/docs/studio/projects/content-types).
 
-While you are writing an entry, the panel lists that collection's entries instead, each with its thumbnail (the entry's first image field), its title, whether it is a draft and, in a [multilingual project](/docs/framework/site/i18n), the language it is written in. When the collection is filtered to one **Language**, the list keeps to that language. An entry's title is its `title` field, or its `name`, `label` or `heading` when the collection has no `title`, and its file name only when it has none of these. **‹ Posts** at the top takes you back to the collection, and **+ New post** at the foot adds another entry to it.
+While you are writing an entry, the panel lists that collection's entries instead, each with its thumbnail (the entry's first image field), its title, its status and, in a [multilingual project](/docs/framework/site/i18n), the language it is written in. When the collection is filtered to one **Language**, the list keeps to that language. An entry's title is its `title` field, or its `name`, `label` or `heading` when the collection has no `title`, and its file name only when it has none of these. **‹ Posts** at the top takes you back to the collection, and **+ New post** at the foot adds another entry to it.
 
 ## One collection at a time
 
@@ -45,7 +45,7 @@ The middle of the window shows the collection you chose, under its title. The to
 - the **view switch**: **Table**, **Cards**, **Calendar** and **Board**;
 - **Search**, matched against each file's name and its path, so `2026` narrows to this year's posts and `hero` to a name;
 - **Language**, on a [multilingual project](/docs/framework/site/i18n) whose collection holds more than one language;
-- **Filter**, which narrows every view to one value of what **Board** groups by: a status (**Draft** or **Published**), or one value of a field, such as one category. It appears when that grouping has at least two values;
+- **Filter**, which narrows every view to one value of what **Board** groups by: a status (a hold rule's label, or **Published**), or one value of a field, such as one category. It appears when that grouping has at least two values;
 - **Edit in grid**, which opens the collection as a [grid](/docs/studio/data/grid), one row per entry (a collection only);
 - **Fields**, which opens [Project Settings](/docs/studio/projects/settings) on this collection's fields (a collection only; pages have none);
 - **New page** or **New post** (the collection's own word for one item), which opens **Add new** on that collection.
@@ -55,7 +55,7 @@ Each collection keeps its own view, search, filter and language. Pages in **Tabl
 Every control is a command too, so the toolbar is never the only way in: :kbd[⌘K] → **Content: Show Collection** shows a collection by name, and **Content: Set View**, **Content: Search Collection**, **Content: Show Language** and **Content: Rescan Files** are the rest. They are listed with everything else on **[Commands](/docs/studio/interface/commands)**.
 
 :::doc-note
-A collection lists its entry files, so a draft sits beside a published entry. Being a draft is a property of the entry: the switch, the pill on its tab and the project-wide **Include Drafts** perspective are covered in **[Content types](/docs/studio/projects/content-types#drafts)**.
+A collection lists its entry files, so an entry a rule holds back sits beside a published one. The pill on its tab, the switch and the project-wide **Include Held Entries** perspective are covered in **[Content types](/docs/studio/projects/content-types#holding-entries-back)**.
 :::
 
 ### A collection stored in one file
@@ -82,7 +82,7 @@ All four draw the same scan, so switching view repaints. It never re-scans your 
 | **Table**    | For pages, in the order your site matches their addresses: **Title** (the name the address gives the page, as the Site panel names it: Home, About, Post page, and Home (ar) for a page in a language folder), **URL**, **Template**, **Status** when some page is marked a draft, **Language** when pages come in more than one, and **Edited**. For entries: each entry's **Title**, its **Status** when it has one and its **Date** when the collection declares one, then up to six of the collection's own fields (a menu's Course and Price), **Locale** when entries come in more than one language, then its file. The densest way to find one |
 | **Cards**    | Every page or entry with its title (or file name) underneath: an entry with a picture (its `cover`, or whichever field the collection declares an image) shows that picture, and anything else a live preview                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | **Calendar** | Entries grouped by day, newest first: dated posts, in the order you published them                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| **Board**    | One column per status (**Draft**, **Published**) when the collection has a draft workflow, otherwise one per value of a field the entries share (a menu's Course), otherwise one per folder, each with a count                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| **Board**    | One column per status (each hold rule's label, then **Published**) when the collection has hold rules, otherwise one per value of a field the entries share (a menu's Course), otherwise one per folder, each with a count                                                                                                                                                                                                                                                                                                                                                                                                                             |
 
 Every column keeps a minimum width, and the title a readable one, so a collection with many fields scrolls sideways rather than squeezing its titles. A modification date is the day it was in your own time zone.
 
@@ -102,7 +102,7 @@ Click an entry to open it. An entry with a body, such as a Markdown post, opens 
 
 The header, the footer and everything else the template draws are shown, dimmed and locked, so you write in context without being able to break the layout. The button opens the collection's template page in the Design workspace, with the same words as the line above the collection. A collection with no page of its own names the template instead: **Edit the Base template in Design**.
 
-The Inspector on the right shows the **Entry** tab while you write: the entry's **status** (a **Draft** switch, when the collection has a draft workflow), its **fields** as the collection's schema types them, the **URL** its page publishes it at, and the **file** it is stored in. The Element tab is there too, because writing still selects elements.
+The Inspector on the right shows the **Entry** tab while you write: the entry's **status** (a hold rule's label or **Published**, with a switch when a rule offers one), its **fields** as the collection's schema types them, the **URL** its page publishes it at, and the **file** it is stored in. The Element tab is there too, because writing still selects elements.
 
 An entry with no body (a JSON entry is nothing but its fields, and a CSV record is one row of its file) opens in the [entry form](/docs/studio/projects/content-types#edit-an-entrys-fields) instead.
 
@@ -141,6 +141,6 @@ An unreadable directory and an empty one mean very different things: one is a co
 
 ## Next
 
-- **[Content types](/docs/studio/projects/content-types)**: collections, their fields, entries and drafts
+- **[Content types](/docs/studio/projects/content-types)**: collections, their fields, entries and hold rules
 - **[Pages, layouts, and components](/docs/studio/projects/pages-layouts-components)**: which kind of file you want
 - **[Media](/docs/studio/projects/media)**: where every image, video, document and font is uploaded, replaced and deleted

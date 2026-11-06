@@ -1,7 +1,7 @@
 {
   "$schema": "https://jxsuite.com/schema/v1",
   "$id": "StudioEntryInspector",
-  "$description": "The Inspector's Entry tab (specs/studio.md §6, §22.5): one collection entry's own settings while it is written on the canvas, the Content-Entry board's sidebar. Its status (draft or published), its fields as the collection's schema types them, the URL its collection page publishes it at, and the file it is stored in. `content/entry-inspector.ts` keeps every decision; the field form is an island it fills, `ui/schema-form.ts`'s, the same form the form-only entry editor draws.",
+  "$description": "The Inspector's Entry tab (specs/studio.md §6, §22.5): one collection entry's own settings while it is written on the canvas, the Content-Entry board's sidebar. Its status (a hold rule's label, or Published), its fields as the collection's schema types them, the URL its collection page publishes it at, and the file it is stored in. `content/entry-inspector.ts` keeps every decision; the field form is an island it fills, `ui/schema-form.ts`'s, the same form the form-only entry editor draws.",
   "tagName": "div",
   "attributes": {
     "part": "entry",
@@ -42,7 +42,7 @@
       "fontSize": "var(--jx-text-sm)",
       "color": "var(--fg-dim)"
     },
-    "& [part=\"status\"][data-draft=\"true\"]": {
+    "& [part=\"status\"][data-held=\"true\"]": {
       "color": "var(--warning)"
     },
     "& [part=\"note\"]": {
@@ -94,7 +94,7 @@
               "tagName": "span",
               "attributes": {
                 "part": "status",
-                "data-draft": "${state.draft ? 'true' : 'false'}"
+                "data-held": "${state.held ? 'true' : 'false'}"
               },
               "textContent": "${state.status}"
             }
@@ -110,27 +110,27 @@
         {
           "tagName": "div",
           "attributes": {
-            "part": "draft-slot",
+            "part": "hold-slot",
             "role": "none"
           },
           "style": {
             "display": "contents"
           },
           "$switch": {
-            "$ref": "#/state/draftAxis"
+            "$ref": "#/state/holdSwitch"
           },
           "cases": {
             "shown": {
-              "$description": "The entry's draft state, the one field every collection with a draft workflow shares (site-architecture.md §7.6). A setter: the switch names the state it reaches.",
+              "$description": "The entry's hold switch, on a collection whose rules offer one: the one field every such collection has in common. The state this shares (site-architecture.md §7.6). A setter: the switch names the state it reaches.",
               "tagName": "jx-switch",
               "attributes": {
-                "part": "draft"
+                "part": "hold"
               },
               "$props": {
                 "checked": {
-                  "$ref": "#/state/draft"
+                  "$ref": "#/state/holdOn"
                 },
-                "hint": "${state.draftHint}",
+                "hint": "${state.holdHint}",
                 "size": "sm"
               },
               "onchange": {
@@ -139,7 +139,7 @@
                   {
                     "operator": "call",
                     "target": {
-                      "$ref": "#/state/setDraft"
+                      "$ref": "#/state/setHold"
                     },
                     "value": [
                       {
@@ -152,7 +152,7 @@
               "children": [
                 {
                   "tagName": "span",
-                  "textContent": "Draft"
+                  "textContent": "${state.holdLabel}"
                 }
               ]
             }

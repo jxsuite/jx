@@ -1,6 +1,8 @@
 /**
- * Content rules — the two declarative filters a content type can carry: `exclude` (which files are
- * never read) and `where` (which entries are kept once their frontmatter is known).
+ * Content rules — the declarative filters a content type can carry: `exclude` (which files are
+ * never read), here, and `where` and `hold` (what is kept once frontmatter is known), which live in
+ * `@jxsuite/schema/content-query` because Studio has to answer them too and a core package may not
+ * import an extension.
  *
  * Both are **data, never code**. A `project.json` is read by Studio, by the dev server and by CI,
  * so a filter that needed `eval` or a function would make every one of those a place that executes
@@ -16,8 +18,10 @@
  * @docs framework/site/content-collections
  */
 
-import { isBoolean, isNumber, isString } from "@jxsuite/schema/guards";
-import type { ContentFieldValue, ContentLoaderEntry, JsonValue } from "@jxsuite/schema/types";
+import { isString } from "@jxsuite/schema/guards";
+
+export { compileHold, compileWhere, readField } from "@jxsuite/schema/content-query";
+export type { HoldPredicate, HoldRule, WherePredicate } from "@jxsuite/schema/content-query";
 
 // ─── exclude: globs relative to the source root ─────────────────────────────
 
@@ -266,220 +270,4 @@ export function compileExclude(patterns?: readonly string[]): ExcludeMatcher {
     excludesDir: (dir) => everything || dirs.some((re) => re.test(dir)),
     excludedBy: (path) => files.find((f) => f.re.test(path))?.pattern,
   };
-}
-
-// ─── where: a declarative frontmatter filter ────────────────────────────────
-
-/** An entry's frontmatter as a filter reads it: field name → value, absent when it is not set. */
-type FieldData = ContentLoaderEntry["data"];
-
-/** A field value, or an operand, in the form a filter compares; `undefined` is a missing field. */
-type FieldValue = ContentFieldValue | undefined;
-
-/** Whether an entry's frontmatter passes a compiled `where`. */
-export interface WherePredicate {
-  (data: FieldData): boolean;
-  /**
-   * The first field whose condition `data` fails, for a message that says why an entry was left
-   * out.
-   */
-  why: (data: FieldData) => string | undefined;
-}
-
-/** The query operators. Closed on purpose: see the module comment. */
-const OPERATORS = new Set(["$eq", "$ne", "$in", "$nin", "$exists", "$gt", "$gte", "$lt", "$lte"]);
-
-function isPlainObject(value: FieldValue | FieldData): value is FieldData {
-  return (
-    typeof value === "object" && value !== null && !Array.isArray(value) && !(value instanceof Date)
-  );
-}
-
-/** A frontmatter value in the form a filter compares: YAML dates become RFC 3339 text. */
-function comparable(value: FieldValue): FieldValue {
-  if (value instanceof Date) {
-    if (Number.isNaN(value.getTime())) {
-      return undefined;
-    }
-    const iso = value.toISOString();
-    return iso.endsWith("T00:00:00.000Z") ? iso.slice(0, 10) : iso.replace(/\.\d{3}Z$/, "Z");
-  }
-  return value;
-}
-
-function deepEqual(a: FieldValue, b: FieldValue): boolean {
-  if (a === b) {
-    return true;
-  }
-  if (Array.isArray(a) && Array.isArray(b)) {
-    return (
-      a.length === b.length && a.every((item, i) => deepEqual(comparable(item), comparable(b[i])))
-    );
-  }
-  if (isPlainObject(a) && isPlainObject(b)) {
-    const keys = Object.keys(a);
-    return (
-      keys.length === Object.keys(b).length &&
-      keys.every((key) => key in b && deepEqual(comparable(a[key]), comparable(b[key])))
-    );
-  }
-  return false;
-}
-
-/**
- * Equality, with one convenience that earns its keep: a scalar matches an array field that CONTAINS
- * it, so `{"tags": "frappe"}` selects every entry tagged frappe without a second operator. An array
- * or object operand compares as a whole value.
- */
-function sameValue(actual: FieldValue, expected: JsonValue | undefined): boolean {
-  const a = comparable(actual);
-  if (Array.isArray(expected) || isPlainObject(expected)) {
-    return deepEqual(a, expected);
-  }
-  if (Array.isArray(a)) {
-    return a.some((item) => comparable(item) === expected);
-  }
-  return a === expected;
-}
-
-/** Read a frontmatter field: a literal key first, then a dotted path into nested data. */
-export function readField(data: FieldData, key: string): FieldValue {
-  // Own properties only: `constructor` and `toString` are not frontmatter, whatever `in` says.
-  if (Object.hasOwn(data, key)) {
-    return data[key];
-  }
-  if (!key.includes(".")) {
-    return undefined;
-  }
-  return readPath(data, key.split("."));
-}
-
-/** Follow a dotted path's parts through nested objects, own properties only like {@link readField}. */
-function readPath(holder: FieldValue | FieldData, [part, ...rest]: readonly string[]): FieldValue {
-  if (part === undefined || !isPlainObject(holder) || !Object.hasOwn(holder, part)) {
-    return undefined;
-  }
-  const value = holder[part];
-  return rest.length === 0 ? value : readPath(value, rest);
-}
-
-/** Order two comparable values; undefined when they are not the same kind of thing. */
-function order(actual: FieldValue, operand: string | number): number | undefined {
-  const a = comparable(actual);
-  if (isNumber(a) && isNumber(operand)) {
-    return a - operand;
-  }
-  if (isString(a) && isString(operand)) {
-    return a < operand ? -1 : a > operand ? 1 : 0;
-  }
-  return undefined;
-}
-
-type FieldTest = (actual: FieldValue) => boolean;
-
-function operatorTest(where: string, op: string, operand: JsonValue | undefined): FieldTest {
-  switch (op) {
-    case "$eq": {
-      return (actual) => sameValue(actual, operand);
-    }
-    case "$ne": {
-      return (actual) => !sameValue(actual, operand);
-    }
-    case "$in":
-    case "$nin": {
-      if (!Array.isArray(operand)) {
-        throw new TypeError(`${where}.${op}: expected an array, got ${JSON.stringify(operand)}`);
-      }
-      const hit: FieldTest = (actual) => operand.some((candidate) => sameValue(actual, candidate));
-      return op === "$in" ? hit : (actual) => !hit(actual);
-    }
-    case "$exists": {
-      if (!isBoolean(operand)) {
-        throw new TypeError(
-          `${where}.$exists: expected true or false, got ${JSON.stringify(operand)}`,
-        );
-      }
-      // An empty YAML key is null, and "set to nothing" is not a value an author means by "exists".
-      return (actual) => (actual !== undefined && actual !== null) === operand;
-    }
-    default: {
-      if (!isString(operand) && !isNumber(operand)) {
-        throw new TypeError(
-          `${where}.${op}: expected a string or number, got ${JSON.stringify(operand)}`,
-        );
-      }
-      const test = (diff: number) =>
-        op === "$gt" ? diff > 0 : op === "$gte" ? diff >= 0 : op === "$lt" ? diff < 0 : diff <= 0;
-      return (actual) => {
-        const diff = order(actual, operand);
-        return diff !== undefined && test(diff);
-      };
-    }
-  }
-}
-
-/** A condition object is an operator set when every key is `$`-prefixed. */
-function operatorKeys(condition: FieldData): string[] | null {
-  const keys = Object.keys(condition);
-  const dollars = keys.filter((key) => key.startsWith("$"));
-  if (dollars.length === 0) {
-    return null;
-  }
-  return dollars.length === keys.length ? keys : [];
-}
-
-function compileCondition(key: string, condition: JsonValue): FieldTest {
-  const where = `where.${key}`;
-  if (!isPlainObject(condition)) {
-    return (actual) => sameValue(actual, condition);
-  }
-  const ops = operatorKeys(condition);
-  if (ops === null) {
-    // A plain object with no operators is a literal value to compare whole.
-    return (actual) => deepEqual(comparable(actual), condition);
-  }
-  if (ops.length === 0) {
-    throw new TypeError(`${where}: cannot mix $operators with plain keys in one condition`);
-  }
-  const tests = ops.map((op) => {
-    if (!OPERATORS.has(op)) {
-      throw new TypeError(`${where}: unknown operator "${op}" (use ${[...OPERATORS].join(", ")})`);
-    }
-    return operatorTest(where, op, condition[op]);
-  });
-  return (actual) => tests.every((test) => test(actual));
-}
-
-/**
- * Compile a `where` filter into a predicate over an entry's frontmatter.
- *
- * Every key is a frontmatter field (a dotted path reaches into nested data), keys combine with AND,
- * and a value is either a literal to equal or an operator object (`$eq`, `$ne`, `$in`, `$nin`,
- * `$exists`, `$gt`, `$gte`, `$lt`, `$lte`; several in one object combine with AND too). There is no
- * OR and no evaluation of text: a project that needs "either" splits it into two content types.
- *
- * @param {JsonValue} [where]
- * @returns {WherePredicate}
- */
-export function compileWhere(where?: JsonValue): WherePredicate {
-  if (where === undefined) {
-    return Object.assign(() => true, { why: nothing });
-  }
-  if (!isPlainObject(where)) {
-    throw new TypeError(`"where" must be an object mapping frontmatter fields to conditions`);
-  }
-  const tests = Object.entries(where).map(([key, condition]) => {
-    if (key.startsWith("$")) {
-      throw new TypeError(
-        `where.${key}: top-level operators are not supported, conditions on different fields already combine with AND`,
-      );
-    }
-    return { key, test: compileCondition(key, condition) };
-  });
-  return Object.assign(
-    (data: FieldData) => tests.every(({ key, test }) => test(readField(data, key))),
-    {
-      why: (data: FieldData) => tests.find(({ key, test }) => !test(readField(data, key)))?.key,
-    },
-  );
 }

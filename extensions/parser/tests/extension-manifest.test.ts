@@ -156,12 +156,35 @@ describe("project fragment", () => {
       "source",
       "exclude",
       "where",
+      "hold",
       "idField",
       "route",
       "indexRoute",
       "links",
       "alerts",
     ]);
+  });
+
+  test("accepts hold rules, including the clock, and refuses a rule that cannot mean anything", () => {
+    const validate = makeAjv().compile(fragment);
+    const valid = (hold: JsonValue) =>
+      validate({ content: { kb: { format: "Markdown", hold, source: "./kb" } } });
+    expect(
+      valid([
+        { label: "Draft", when: { draft: true } },
+        { label: "Pending", when: { review: { $nin: ["approved"] } } },
+        { label: "Scheduled", when: { publishDate: { $gt: { $now: true } } } },
+        { label: "Expired", when: { expiryDate: { $lte: "2026-01-01" } } },
+      ]),
+    ).toBe(true);
+    expect(valid([{ when: { draft: true } }])).toBe(false);
+    expect(valid([{ label: "", when: { draft: true } }])).toBe(false);
+    expect(valid([{ label: "Draft" }])).toBe(false);
+    expect(valid([{ label: "Draft", when: {} }])).toBe(false);
+    expect(valid([{ label: "Draft", when: { $or: [] } }])).toBe(false);
+    expect(valid([{ label: "Draft", when: { a: { $gt: { $now: false } } } }])).toBe(false);
+    expect(valid([{ extra: 1, label: "Draft", when: { draft: true } }])).toBe(false);
+    expect(valid({ label: "Draft", when: { draft: true } })).toBe(false);
   });
 
   test("accepts the whole alerts option as a boolean and a where filter with a literal object", () => {

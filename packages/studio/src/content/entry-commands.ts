@@ -1,6 +1,6 @@
 /**
- * The content-entry verbs: open one where it is written, mark one a draft, and choose whether
- * drafts are listed at all — and {@link createEntry}, the New File tree's route into a collection
+ * The content-entry verbs: open one where it is written, hold one back, and choose whether held
+ * entries are listed at all — and {@link createEntry}, the New File tree's route into a collection
  * folder.
  *
  * Creating an entry from anywhere else is Add new's (`file.new { kind: "entry", collection }`,
@@ -9,10 +9,10 @@
  *
  * Each is a record in its owning module, so the palette row, the assistant's tool, the automation
  * step and (for the two that declare one) the context-menu item are renderings of the same
- * declaration. Two of them are **setters and not toggles** — `content.setDraft {draft}` and
- * `content.setIncludeDrafts {include}` name the state they reach, because "toggle the draft flag"
- * run twice by a script leaves the entry exactly where it started and run once against an unknown
- * default publishes something private.
+ * declaration. Two of them are **setters and not toggles** — `content.setHold {hold}` and
+ * `content.setIncludeHeld {include}` name the state they reach, because "toggle the hold" run twice
+ * by a script leaves the entry exactly where it started and run once against an unknown default
+ * publishes something private.
  */
 
 import {
@@ -33,13 +33,13 @@ import { notify } from "../services/notify";
 import { activeTab } from "../workspace/workspace";
 import { serializeJson } from "@jxsuite/schema/json-layout";
 import { invalidateReferenceEntries } from "../ui/form-controls";
-import { reloadDraftAwareGrids } from "../grid/sources/content-source";
-import { setIncludeDrafts } from "./draft-state";
+import { reloadHoldAwareGrids } from "../grid/sources/content-source";
+import { holdSwitch, setIncludeHeld } from "./hold-state";
 import { collectionOfPath, entryCollection } from "./entry-model";
 import { entryBody } from "../create/add-new";
 import { collectionForDirectory } from "./collection-match";
 import { LOCALE_PLACEHOLDER } from "../canvas/asset-resolve";
-import { setEntryDraft } from "./entry-editor";
+import { setEntryHold } from "./entry-editor";
 import { openEntry } from "./entry-open";
 import { errorMessage } from "@jxsuite/schema/parse";
 import type { EntryCollection } from "./entry-model";
@@ -188,6 +188,11 @@ function activeEntryTab(): Tab | null {
   return tab && collectionOfPath(tab.documentPath) ? tab : null;
 }
 
+/** The collection of the entry in front of the author, or null. */
+function activeEntryCollection(): EntryCollection | null {
+  return collectionOfPath(activeEntryTab()?.documentPath ?? null);
+}
+
 /** The content-entry command records. */
 export function contentCommands(): AnyCommand[] {
   return [
@@ -212,41 +217,41 @@ export function contentCommands(): AnyCommand[] {
     },
     {
       args: argsSchema({
-        draft: booleanProperty(
-          "True marks the open entry a draft; false marks it published. Written as a `draft` " +
-            "field on the entry.",
+        hold: booleanProperty(
+          "True holds the open entry back from production; false releases it. Written to the " +
+            "one-field `hold` rule its collection declares.",
         ),
       }),
       category: "Document",
-      id: "content.setDraft",
+      id: "content.setHold",
       level: "document",
       menus: ["context/tab", "palette"],
       group: "3_document",
-      requires: "a content entry open",
+      requires: "a content entry whose collection has a one-field hold rule",
       when: (ctx) => ctx.document.open,
-      enablement: () => activeEntryTab() !== null,
+      enablement: () => holdSwitch(activeEntryCollection()?.def) !== null,
       undo: "document",
-      /* No `aiTool`, by studio-ui-guidelines.md §12.4's fourth deletion rule: the draft flag is ONE
+      /* No `aiTool`, by studio-ui-guidelines.md §12.4's fourth deletion rule: the hold switch is ONE
          FIELD on the entry, and the model already writes fields — `set_property` at the root path
          for a JSON entry (`mutateDocumentField` is the same `set-key` at `[]`), `write_file` for a
          frontmatter one. The state is reachable — `open_document` opens a collection file as
          readily as `content.openEntry` does — so the reason is redundancy, not reach. Six lines to
-         re-enter should a task want the flag by name rather than by key. */
+         re-enter should a task want the state by name rather than by key. */
       run: (_ctx, args) => {
         const tab = activeEntryTab();
         if (!tab) {
-          throw new Error("content.setDraft: the active document is not a content entry");
+          throw new Error("content.setHold: the active document is not a content entry");
         }
-        setEntryDraft(tab, booleanArg("content.setDraft", args, "draft"));
+        setEntryHold(tab, booleanArg("content.setHold", args, "hold"));
       },
-      title: "Set Draft",
+      title: "Set Hold",
     },
     {
       args: argsSchema({
-        include: booleanProperty("True lists entries marked `draft: true` alongside the rest."),
+        include: booleanProperty("True lists entries a `hold` rule matches alongside the rest."),
       }),
       category: "View",
-      id: "content.setIncludeDrafts",
+      id: "content.setIncludeHeld",
       level: "project",
       menus: ["palette"],
       group: "2_view",
@@ -258,16 +263,16 @@ export function contentCommands(): AnyCommand[] {
        * Set the flag, then repaint what reads it.
        *
        * The second half is the wiring, and without it this command sets a value nobody looks at
-       * again: a collection grid holds the rows it loaded once, so an author who asks to see their
-       * drafts watches an unchanged table. `draft-state.ts` cannot do it — it is imported BY the
+       * again: a collection grid holds the rows it loaded once, so an author who asks to see held
+       * entries watches an unchanged table. `hold-state.ts` cannot do it — it is imported BY the
        * listings and reaching back into the workspace from there is the cycle. The command can,
        * because a command is exactly the place where "the state changed" becomes "the app changed".
        */
       run: async (_ctx, args) => {
-        setIncludeDrafts(booleanArg("content.setIncludeDrafts", args, "include"));
-        await reloadDraftAwareGrids();
+        setIncludeHeld(booleanArg("content.setIncludeHeld", args, "include"));
+        await reloadHoldAwareGrids();
       },
-      title: "Include Drafts",
+      title: "Include Held Entries",
     },
   ];
 }
