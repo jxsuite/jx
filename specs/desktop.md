@@ -798,7 +798,7 @@ The Mac App Store is a second macOS channel beside the notarized DMG of §7.6, b
 
 ### 7.8 File Associations
 
-> **Status: Pending.** `electron-builder.yml` registers the application for every `.json`, which on Windows writes the class of `.json` itself, and the desktop entries list `application/json` and `text/markdown`. No channel declares `.jx`.
+> **Status: Pending.** No channel declares `.jx`.
 
 Jx Studio owns `.jx`, in both of its meanings (a project file and a document), and §4.6 decides what each opens. It may appear under **Open With** for `.json` and `.md`, and it never makes itself the default for a type another application uses.
 
