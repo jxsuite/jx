@@ -1,4 +1,5 @@
 // oxlint-disable typescript/await-thenable -- bun test .resolves/.rejects matchers are typed `void` but return real Promises at runtime; the await is required.
+import type * as Electron from "electron";
 import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
 import type { BackendMessage, ShellMessage } from "../src/shared/protocol";
 import { SHELL_CHANNELS } from "../src/shared/bridge";

@@ -74,7 +74,9 @@ const BINDERS: {
   name: string;
 }[] = [
   {
-    bind: (f, root) => f.hub.openProject(root),
+    bind: async (f, root) => {
+      await f.hub.openProject(root);
+    },
     name: "hub.openProject (the menu, a switch, a window)",
   },
   {
@@ -247,6 +249,50 @@ describe("everything stays clickable while a prompt is up", () => {
     expect([held, welcomeHeld].flat()).toEqual(["page.json"]);
   });
 
+  describe("a window that binds on the same answer, through the picker", () => {
+    /** The openProject RPC, held at the prompt for `root`. */
+    async function pickedAndAsking(f: Fixture, root: string, socket: WindowSocket) {
+      const picking = socket.call("openProject");
+      const dialog = await sentOf(f, "dialog");
+      f.hub.handle({
+        path: join(root, "project.json"),
+        requestId: dialog.requestId,
+        type: "dialog-result",
+      });
+      const prompt = await sentOf(f, "confirm-trust");
+      return { picking, prompt };
+    }
+
+    test("takes a document asked for meanwhile, rather than a second window opening", async () => {
+      const f = start();
+      const root = f.makeProject("site");
+      writeFileSync(join(root, "page.json"), "{}");
+      const socket = await welcomeSocket(f);
+      const { picking, prompt } = await pickedAndAsking(f, root, socket);
+      f.hub.handle({ path: join(root, "page.json"), type: "open-path" });
+      answer(f, prompt, true);
+      await picking;
+      await f.hub.idle();
+      expect(f.opened()).toHaveLength(1);
+      const held = await socket.call("takeOpenDocuments");
+      expect(held).toEqual(["page.json"]);
+    });
+
+    test("is raised for an open that names no document", async () => {
+      const f = start();
+      const root = f.makeProject("site");
+      const socket = await welcomeSocket(f);
+      const { picking, prompt } = await pickedAndAsking(f, root, socket);
+      const joining = f.hub.openProject(root);
+      answer(f, prompt, true);
+      await picking;
+      const outcome = await joining;
+      expect(outcome).toEqual({ focused: true });
+      expect(f.opened()).toHaveLength(1);
+      expect(f.sent).toContainEqual({ id: 1, type: "focus-window" });
+    });
+  });
+
   test("a window closed during its prompt is not brought back by the answer", async () => {
     const f = start();
     const root = f.makeProject("site");
@@ -363,6 +409,42 @@ describe("while a prompt is up", () => {
     expect(() =>
       f.hub.handle({ requestId: 99, trusted: true, type: "trust-answer" }),
     ).not.toThrow();
+  });
+});
+
+describe("when the hub cannot go on", () => {
+  test("after it has gone, nothing is asked and nothing opens", async () => {
+    const f = start();
+    const root = f.makeProject("site");
+    f.hub.dispose();
+    const outcome = await f.hub.openProject(root);
+    expect(outcome).toEqual({ declined: true, focused: false });
+    expect(prompts(f)).toEqual([]);
+  });
+
+  test("a store that cannot answer opens nothing, says so, and ends a cold launch", async () => {
+    const errors = spyOn(console, "error").mockImplementation(() => {});
+    const f = start({
+      grant: () => Promise.resolve(),
+      isTrusted: () => Promise.reject(new Error("no store")),
+    });
+    const root = f.makeProject("site");
+    const outcome = await f.hub.openProject(root);
+    expect(outcome).toEqual({ focused: false });
+    expect(f.hub.windows()).toEqual([]);
+    expect(String(errors.mock.calls[0]?.[0])).toContain("opening a window failed");
+    errors.mockRestore();
+    await sentOf(f, "quit");
+  });
+
+  test("several refused paths in a row end the launch once", async () => {
+    const f = start();
+    f.hub.handle({ path: "/definitely/not/here/a.json", type: "open-path" });
+    f.hub.handle({ path: "/definitely/not/here/b.json", type: "open-path" });
+    await sentOf(f, "quit");
+    await Bun.sleep(350);
+    expect(f.sent.filter((message) => message.type === "quit")).toHaveLength(1);
+    expect(f.sent.filter((message) => message.type === "notice")).toHaveLength(2);
   });
 });
 

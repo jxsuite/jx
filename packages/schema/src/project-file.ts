@@ -99,20 +99,14 @@ export function findEnclosingProject(
   io: ProjectWalkIo,
   stopAt?: string,
 ): EnclosingProject | null {
-  let directory = startDirectory;
-  for (;;) {
-    const projectFile = io.join(directory, PROJECT_FILE_NAME);
-    const text = io.readText(projectFile);
-    if (text !== null) {
-      const verdict = classifyProjectFile(text);
-      if (verdict !== "other") {
-        return { projectFile, root: directory, verdict };
-      }
-    }
-    const parent = io.dirname(directory);
-    if (directory === stopAt || parent === directory) {
-      return null;
-    }
-    directory = parent;
+  const projectFile = io.join(startDirectory, PROJECT_FILE_NAME);
+  const text = io.readText(projectFile);
+  const verdict = text === null ? "other" : classifyProjectFile(text);
+  if (verdict !== "other") {
+    return { projectFile, root: startDirectory, verdict };
   }
+  const parent = io.dirname(startDirectory);
+  return startDirectory === stopAt || parent === startDirectory
+    ? null
+    : findEnclosingProject(parent, io, stopAt);
 }
