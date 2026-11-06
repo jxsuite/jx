@@ -1,5 +1,5 @@
 {
-  "$comment": "The standards LEXICON: what each identifier IS (issuing body, title, canonical URL). It is not the registry \u2014 the specs' `## N. Standards Alignment` tables say what Jx DOES about each standard, and scripts/docs/check-standards.ts joins the two. An id no spec cites fails (catalog-stale); an id no entry vouches for fails (id-unknown). That is the only offline way a typo'd RFC number can fail, since a wrong-but-well-formed rfc-editor.org URL is indistinguishable from a right one. Keep entries sorted by id (codepoint order).",
+  "$comment": "The standards LEXICON: what each identifier IS (issuing body, title, canonical URL). It is not the registry — the specs' `## N. Standards Alignment` tables say what Jx DOES about each standard, and scripts/docs/check-standards.ts joins the two. An id no spec cites fails (catalog-stale); an id no entry vouches for fails (id-unknown). That is the only offline way a typo'd RFC number can fail, since a wrong-but-well-formed rfc-editor.org URL is indistinguishable from a right one. Keep entries sorted by id (codepoint order).",
   "standards": [
     {
       "id": "ATAG 2.0",
@@ -155,7 +155,7 @@
     {
       "id": "Gitignore",
       "org": "Git",
-      "title": "gitignore(5) \u2014 Specifies intentionally untracked files to ignore",
+      "title": "gitignore(5) — Specifies intentionally untracked files to ignore",
       "url": "https://git-scm.com/docs/gitignore"
     },
     {
@@ -187,6 +187,18 @@
       "org": "W3C",
       "title": "JSON-LD 1.1",
       "url": "https://www.w3.org/TR/json-ld11/"
+    },
+    {
+      "id": "JSON-in-KDL",
+      "org": "Other",
+      "title": "JSON-in-KDL (JiK), a data model for JSON in KDL",
+      "url": "https://github.com/kdl-org/kdl/blob/main/JSON-IN-KDL.md"
+    },
+    {
+      "id": "KDL 2.0.0",
+      "org": "Other",
+      "title": "The KDL Document Language, version 2.0.0",
+      "url": "https://kdl.dev/spec/"
     },
     {
       "id": "MCP 2026-07-28",
