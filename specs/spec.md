@@ -2,9 +2,9 @@
 
 ## Declarative Document Object Model — JSON Edition
 
-**Version:** 0.8.0-draft\
+**Version:** 0.8.5-draft\
 **Status:** Partial\
-**Updated:** 2026-10-27\
+**Updated:** 2026-11-06\
 **License:** MIT
 
 ---
@@ -2722,6 +2722,11 @@ This rewrites the mutating handlers of Appendix A's idiom using `$expression`, l
 
 ## Changelog
 
+- **0.8.5-draft** (2026-11-06) — Say that a project's configuration may be written as project.jxn.
+- **0.8.4-draft** (2026-11-06) — Name the format Jx Notation, with the extension .jxn.
+- **0.8.3-draft** (2026-11-06) — §8.4: the interpreter evaluates a computed-children template and redraws when its value changes, a repeater row can read its item's $children, and Markdown holds the template as a directive attribute.
+- **0.8.2-draft** (2026-11-06) — §6.1: a throwing template's console warning waits for lookups in flight, so a read that only came too early is never reported.
+- **0.8.1-draft** (2026-11-06) — Reserve sections for the .jxn document format and for TypeScript in documents, both pending.
 - **0.8.0-draft** (2026-10-27) — §5.3 and §11.4: a server-timed entry is served only by the site worker and so requires build.adapter; the per-page handler is gone.
 - **0.7.9-draft** (2026-10-27) — §11.4: a built page calls its server entries over HTTP at the site worker route, and jx dev on a site project answers the same route.
 - **0.7.8-draft** (2026-10-27) — §11.4: the site worker collects server entries from pages, their layouts and project.json state as well as components, and two modules exporting one name fail the build; the no-adapter per-page handler and interpreting hosts resolving a layout or project.json $src against the page remain open.
@@ -2825,4 +2830,4 @@ This rewrites the mutating handlers of Appendix A's idiom using `$expression`, l
 
 ---
 
-_Jx Specification v0.8.0-draft — subject to revision_
+_Jx Specification v0.8.5-draft — subject to revision_

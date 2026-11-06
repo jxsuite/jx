@@ -1,5 +1,25 @@
 # Changelog
 
+## [8.2.0](https://github.com/jxsuite/jx/compare/compiler-v8.1.0...compiler-v8.2.0) (2026-11-06)
+
+
+### Features
+
+* **content:** let a project say what holds an entry back ([#548](https://github.com/jxsuite/jx/issues/548)) ([f71a439](https://github.com/jxsuite/jx/commit/f71a43929ca7d2aa5834d6552ea485db4b2dcdac))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/create bumped to 1.5.4
+    * @jxsuite/runtime bumped to 6.1.0
+    * @jxsuite/schema bumped to 5.2.0
+    * @jxsuite/site bumped to 2.3.1
+  * devDependencies
+    * @jxsuite/connector bumped to 0.8.4
+    * @jxsuite/parser bumped to 4.3.0
+
 ## [8.1.0](https://github.com/jxsuite/jx/compare/compiler-v8.0.2...compiler-v8.1.0) (2026-11-04)
 
 

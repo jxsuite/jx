@@ -1,5 +1,29 @@
 # Changelog
 
+## [8.0.5](https://github.com/jxsuite/jx/compare/desktop-v8.0.4...desktop-v8.0.5) (2026-11-06)
+
+
+### Bug Fixes
+
+* **desktop,server:** keep git paths and commits inside a nested project ([#540](https://github.com/jxsuite/jx/issues/540)) ([79b017a](https://github.com/jxsuite/jx/commit/79b017af1abf5a26d97544fb688f5bd85ee60507))
+* **desktop:** stop taking over .json on install ([#547](https://github.com/jxsuite/jx/issues/547)) ([f3e82cf](https://github.com/jxsuite/jx/commit/f3e82cf4b6085e81c93061506bf69b5293448a35))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/compiler bumped to 8.2.0
+    * @jxsuite/create bumped to 1.5.4
+    * @jxsuite/protocol bumped to 6.2.2
+    * @jxsuite/schema bumped to 5.2.0
+    * @jxsuite/server bumped to 8.3.0
+    * @jxsuite/starters bumped to 3.3.0
+    * @jxsuite/studio bumped to 10.5.0
+  * devDependencies
+    * @jxsuite/server bumped to 8.3.0
+    * @jxsuite/ui bumped to 0.10.1
+
 ## [8.0.4](https://github.com/jxsuite/jx/compare/desktop-v8.0.3...desktop-v8.0.4) (2026-11-04)
 
 

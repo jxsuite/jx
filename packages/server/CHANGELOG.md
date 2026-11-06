@@ -1,5 +1,39 @@
 # Changelog
 
+## [8.3.0](https://github.com/jxsuite/jx/compare/server-v8.2.1...server-v8.3.0) (2026-11-06)
+
+
+### Features
+
+* **content:** let a project say what holds an entry back ([#548](https://github.com/jxsuite/jx/issues/548)) ([f71a439](https://github.com/jxsuite/jx/commit/f71a43929ca7d2aa5834d6552ea485db4b2dcdac))
+
+
+### Bug Fixes
+
+* **desktop,server:** keep git paths and commits inside a nested project ([#540](https://github.com/jxsuite/jx/issues/540)) ([79b017a](https://github.com/jxsuite/jx/commit/79b017af1abf5a26d97544fb688f5bd85ee60507))
+* **server:** resolve a relative class from the base Studio's canvas sends ([#543](https://github.com/jxsuite/jx/issues/543)) ([5a9faf5](https://github.com/jxsuite/jx/commit/5a9faf5b131c451d787f6890e5c8a993281ef7b3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/ai bumped to 0.43.0
+    * @jxsuite/catalog bumped to 0.1.8
+    * @jxsuite/collab bumped to 0.11.6
+    * @jxsuite/compiler bumped to 8.2.0
+    * @jxsuite/create bumped to 1.5.4
+    * @jxsuite/import bumped to 0.42.4
+    * @jxsuite/protocol bumped to 6.2.2
+    * @jxsuite/runtime bumped to 6.1.0
+    * @jxsuite/schema bumped to 5.2.0
+    * @jxsuite/site bumped to 2.3.1
+    * @jxsuite/starters bumped to 3.3.0
+  * devDependencies
+    * @jxsuite/auth bumped to 0.8.4
+    * @jxsuite/connector bumped to 0.8.4
+    * @jxsuite/parser bumped to 4.3.0
+
 ## [8.2.1](https://github.com/jxsuite/jx/compare/server-v8.2.0...server-v8.2.1) (2026-11-04)
 
 
