@@ -29,6 +29,7 @@ import { loadProjectConfig } from "./site-loader.ts";
 import type { ExtensionInfo } from "@jxsuite/schema/extension-registry";
 import type { SchemaJsonLoader } from "@jxsuite/schema/project-schemas";
 import type { JsonObject, JsonValue } from "@jxsuite/schema/types";
+import { projectFilePath } from "@jxsuite/schema/project-file/node";
 
 const CORE_PROJECT_SPECIFIER = "@jxsuite/schema/schemas/project.core.schema.json";
 const CORE_DOCUMENT_SPECIFIER = "@jxsuite/schema/schema.json";
@@ -95,7 +96,7 @@ export async function readBundledProjectSchemas(
 ) {
   const { write = true } = options;
   const root = resolve(projectRoot);
-  const projectJsonPath = resolve(root, "project.json");
+  const projectJsonPath = projectFilePath(root);
   const projectSchemaPath = resolve(root, "project.schema.json");
   const documentSchemaPath = resolve(root, "document.schema.json");
 

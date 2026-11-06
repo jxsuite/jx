@@ -31,6 +31,7 @@ import type { JsonObject, JsonValue, JxElement } from "@jxsuite/schema/types";
 import { buildProjectExtensionRegistry } from "./format-host.ts";
 import { loadProjectConfig } from "./site-loader.ts";
 import { readBundledProjectSchemas } from "./schema-command.ts";
+import { PROJECT_FILE_NAME } from "@jxsuite/schema/project-file";
 
 /** Directories that hold Jx documents validated against the document schema. */
 const DOCUMENT_DIRS = ["components", "pages", "layouts"] as const;
@@ -175,7 +176,7 @@ export async function validateProjectTree(
   const projectResult = await validateProjectFile(root);
   checked += 1;
   if (!projectResult.valid) {
-    issues.push({ errors: projectResult.errors ?? [], file: "project.json" });
+    issues.push({ errors: projectResult.errors ?? [], file: PROJECT_FILE_NAME });
   }
 
   const { addFormats, Ajv } = await loadAjv();

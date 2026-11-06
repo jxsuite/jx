@@ -71,6 +71,7 @@ import type {
   SiteSectionState,
 } from "../surfaces/site-panel";
 import type { SiteComponentRow, SiteMediaRow, SitePageFact } from "./site-model";
+import { isProjectConfigPath } from "@jxsuite/schema/project-file";
 
 // ─── The project index ───────────────────────────────────────────────────────
 
@@ -213,7 +214,7 @@ export function mayDefineComponent(path: string): boolean {
   }
   return (
     path.endsWith(".json") &&
-    path !== "project.json" &&
+    !isProjectConfigPath(path) &&
     !NON_COMPONENT_DIRS.some((dir) => path.startsWith(dir))
   );
 }
