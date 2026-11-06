@@ -90,6 +90,18 @@ function toNotation(root: string): number {
   return documents.length;
 }
 
+/** Where two files first part, with enough on each side to read. */
+function firstDifference(left: string, right: string): string {
+  const a = readFileSync(left, "utf8");
+  const b = readFileSync(right, "utf8");
+  let index = 0;
+  while (index < a.length && a[index] === b[index]) {
+    index += 1;
+  }
+  const around = (text: string) => JSON.stringify(text.slice(Math.max(0, index - 60), index + 120));
+  return `${left}@${index}: ${around(a)} / ${around(b)}`;
+}
+
 describe("a starter written in Jx Notation", () => {
   test.each(readdirSync(STARTERS))(
     "%s builds to the same bytes",
@@ -122,7 +134,12 @@ describe("a starter written in Jx Notation", () => {
             readFileSync(join(notation, "dist", file)),
           ),
       );
-      expect(changed).toEqual([]);
+      // What differs, when something does: which file is not enough to act on.
+      expect(
+        changed.map((file) =>
+          firstDifference(join(json, "dist", file), join(notation, "dist", file)),
+        ),
+      ).toEqual([]);
       expect(out(notation).filter((file) => file.endsWith(".jxn"))).toEqual([]);
     },
     120_000,
