@@ -43,7 +43,7 @@ The section's **value schema is not duplicated here**. It lives in the package's
 Behavior attaches through [capability methods](/docs/extending/extensions/capabilities) on the same class. The `projectData` capability turns the raw section value into loaded data:
 
 ```text
-projectData(sectionValue, { projectConfig, root, registry, io, lazy? }) → unknown
+projectData(sectionValue, { projectConfig, root, registry, io, lazy?, includeHeld? }) → unknown
 ```
 
 The compiler's site build and the dev server's resolve path both call it, storing the result as `_project[<key>]` in resolved scope, so the parser's `projectData` loads content types through the format registry and pages see the entries as `config._project.content`. The auth extension's `projectData` is nearly a passthrough: it exposes the section's identifiers under `_project.auth` (never secrets).
@@ -51,6 +51,8 @@ The compiler's site build and the dev server's resolve path both call it, storin
 ### Loading on demand
 
 A build reads every part of every section, so it calls `projectData` without `lazy` and gets everything at once. The dev server and Studio serve one page at a time, so they pass `lazy: true`. An owner may then return data that loads each part the first time a class asks for it, with the same shape a whole load has, plus a `complete()` method that loads the rest. An owner that ignores `lazy` returns whole data, and every host reads it unchanged.
+
+`includeHeld` says the host shows authors their work. The dev server and Studio pass `true`, and a build passes nothing unless asked. A section whose entries can be [held back](/docs/framework/site/content-collections#holding-entries-back) leaves them out unless it is `true`, before anything else reads them, so a host that forgets cannot publish one. A section with no such idea ignores it.
 
 The parser's `content` section uses this. With `lazy`, `_project.content` starts empty: a collection loads the first time it is asked for, with only its frontmatter, and an entry's Markdown body is parsed only when that entry is returned. A page that shows four case studies parses four bodies instead of every collection in the project.
 

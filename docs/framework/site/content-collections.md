@@ -13,6 +13,7 @@ code:
   - extensions/parser/src/content-loader.ts
   - extensions/parser/src/content.ts
   - extensions/parser/src/content-rules.ts
+  - packages/schema/src/content-query.ts
   - extensions/parser/src/content-routes.ts
   - extensions/parser/src/content-links.ts
   - extensions/parser/src/walk.ts
@@ -120,6 +121,60 @@ A plain value also matches an array that contains it, so `{ "tags": "frappe" }` 
 `where` is not the `filter` of a `ContentCollection`. `where` runs once, when the collection loads, and decides what exists; `filter` runs on a page and chooses among what exists, with the rule form `{ "field": "tags", "op": "contains", "value": "frappe" }` or the shorthand `{ "category": "Frappe" }`. The two differ on arrays on purpose: `where: { "tags": "frappe" }` matches an entry whose `tags` array contains `frappe`, while the shorthand `filter` compares with `==`, which an array never equals, so use the `contains` op to match inside an array on a page.
 
 An entry that fails `where`, and a file that matches `exclude`, are gone for every consumer at once: they are not validated, so their missing frontmatter never warns, and they never appear in `ContentCollection` or `ContentEntry` results, `$paths` expansion, the sitemap, the [search index](/docs/framework/site/search), a [feed](/docs/framework/site/feeds), or a [relationship](/docs/framework/site/relationships). Files are read in sorted order (by name, folder by folder), so a collection loads in the same order on every machine. A symlinked folder is followed, as it always was, so a monorepo can mount shared documentation into a collection; a link back into a folder the walk is already inside is skipped. Symlinks in a source are trusted like any other file in it. A file that cannot be read, such as one with invalid YAML frontmatter, fails the build with its path, and `exclude` is how a folder of templates stays out.
+
+## Holding entries back
+
+`hold` keeps an entry out of a production build while authors can still see and edit it. Jx gives no field a meaning of its own: `draft: true` means nothing until a rule says so. You name your own fields in the schema and say what they imply:
+
+```json
+{
+  "content": {
+    "work": {
+      "source": "./content/work/",
+      "format": "Markdown",
+      "hold": [
+        { "label": "Draft", "when": { "draft": true } },
+        {
+          "label": "Pending client review",
+          "when": { "client_review": { "$nin": ["approved", "not-needed"] } }
+        },
+        { "label": "Scheduled", "when": { "publishDate": { "$gt": { "$now": true } } } },
+        { "label": "Expired", "when": { "expiryDate": { "$lte": { "$now": true } } } }
+      ]
+    }
+  }
+}
+```
+
+An entry is held when **any** rule matches, and the first match names why. `when` has the same grammar as `where`, and `label` is the words Studio and the build report show. A type with no `hold` holds nothing.
+
+| Where it runs                         | Held entries                                                                                       |
+| ------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `jx build`                            | Left out when the type loads, so pages, `$paths`, queries, search, feeds and the sitemap all agree |
+| `jx build --include-held`             | Kept, for a preview deploy                                                                         |
+| `jx dev`, Studio's canvas and Preview | Kept                                                                                               |
+
+Leaving entries out is the default, so a build script that forgets a flag cannot publish one. Only a clean build is clean of them, though: `jx dev` builds held entries into the same `dist/`, and `jx build --no-clean` does not delete a page already there. A reference to a held entry stays its id, with a warning, so a published page never carries a held entry's fields. The build log says what it held and why:
+
+```text
+Content type "work": holding 2 from this build: pet-food.md (Pending client review), launch.md (Scheduled)
+```
+
+A kept entry carries its rule's label as `_meta.hold`, so a page can draw a chip: `${state.entry._meta.hold ?? ''}`.
+
+Each filter answers one question: `where` decides what exists for everyone, `hold` decides what authors can see and production cannot, and a `ContentCollection`'s `filter` is one page's query.
+
+### Publishing on a date
+
+`{ "$now": true }` is the moment the rule is evaluated. It works with `$gt`, `$gte`, `$lt` and `$lte`, in `where` as well as `when`. A date range is two rules, as in the example above.
+
+- **A date alone is the start of that day in UTC.** A date-time with no offset is the local time of the machine running the build. Both are how ECMAScript's `Date.parse` reads them. Write a full timestamp with an offset for an exact moment: `2026-12-01T09:00:00-05:00`.
+- **A missing field does not match,** so an entry with no `publishDate` is not scheduled.
+- **A value that is not a date fails closed.** A mistyped `publishDate` holds the entry rather than publishing it early.
+
+:::doc-warning
+Pages are prerendered, so a date takes effect at the first build after it: a scheduled entry stays unpublished, and an expired page stays up, until the next build. To publish on a schedule, run a build on a schedule, such as a deploy hook on a timer.
+:::
 
 ## Ids and routes
 

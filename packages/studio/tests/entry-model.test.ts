@@ -1,7 +1,7 @@
 /**
  * Tests for src/content/entry-model.ts — collection resolution and schema-defaults seeding. Pure
  * module, so these run without a DOM beyond the harness's import-time bootstrap. The draft rules
- * moved to src/content/draft-state.ts; tests/draft-state.test.ts asserts them.
+ * moved to src/content/hold-state.ts; tests/hold-state.test.ts asserts them.
  */
 import { resetStudioState } from "./harness";
 import { beforeEach, describe, expect, test } from "bun:test";

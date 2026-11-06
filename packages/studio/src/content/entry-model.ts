@@ -18,9 +18,9 @@
  *    `grid/sources/content-source.ts`'s `collectionInfo`, and `browse/library-model.ts`'s
  *    `contentTypeFor`, since deleted); this module adds no fourth and calls the exported ones.
  *
- * **The draft axis is NOT here.** `content/draft-state.ts` owns what a draft is and whether drafts
- * are listed, because this module imports `content-source.ts` and the grid source must be able to
- * ask what a draft is — the reverse edge would be a cycle, and `import/no-cycle` is an error here.
+ * **The hold axis is NOT here.** `content/hold-state.ts` owns what a hold is and whether hrafts are
+ * listed, because this module imports `content-source.ts` and the grid source must be able to ask
+ * what a draft is — the reverse edge would be a cycle, and `import/no-cycle` is an error here.
  */
 
 import { collectionInfo } from "../grid/sources/content-source";

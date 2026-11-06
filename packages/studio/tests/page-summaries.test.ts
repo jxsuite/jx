@@ -1,6 +1,6 @@
 /**
  * Tests for src/content/page-summaries.ts — what the Content workspace's Pages table says about
- * each page beyond its file: its template, the collection it expands over, and its draft flag.
+ * each page beyond its file: its template and the collection it expands over.
  */
 import { installMockPlatform, resetStudioState } from "./harness";
 import { beforeEach, describe, expect, mock, test } from "bun:test";
@@ -55,7 +55,7 @@ beforeEach(() => {
 });
 
 describe("pageSummaryOf", () => {
-  test("reads the layout, the collection and the draft flag off a page", () => {
+  test("reads the layout and the collection off a page", () => {
     expect(
       pageSummaryOf(
         "pages/blog/[slug].json",
@@ -64,18 +64,15 @@ describe("pageSummaryOf", () => {
       ),
     ).toEqual({
       contentType: "posts",
-      draft: false,
       layout: "./layouts/post.json",
       path: "pages/blog/[slug].json",
     });
+    // A page has no status: `hold` is written on a content type, and a page belongs to none.
     expect(pageSummaryOf("pages/a.md", null, { $layout: false, draft: true })).toEqual({
       contentType: null,
-      draft: true,
       layout: false,
       path: "pages/a.md",
     });
-    // Only the literal `true` is a draft.
-    expect(pageSummaryOf("pages/b.json", { draft: "yes", tagName: "div" }, null).draft).toBe(false);
   });
 });
 
@@ -97,11 +94,10 @@ describe("peekPageSummaries", () => {
       contentType: "posts",
       layout: "./layouts/post.json",
     });
-    expect(read.get("pages/notes.md")).toMatchObject({ draft: true, layout: false });
+    expect(read.get("pages/notes.md")).toMatchObject({ layout: false });
     // A page that cannot be read or parsed, or is not an object, states nothing.
     const nothing = (path: string) => ({
       contentType: null,
-      draft: false,
       layout: undefined,
       path,
     });
@@ -145,7 +141,6 @@ describe("peekPageSummaries", () => {
     try {
       expect(peekPageSummaries(["pages/a.json"])?.get("pages/a.json")).toEqual({
         contentType: null,
-        draft: false,
         layout: undefined,
         path: "pages/a.json",
       });

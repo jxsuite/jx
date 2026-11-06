@@ -44,6 +44,11 @@ export interface ContentTypeDef {
   exclude?: string[];
   /** Declarative frontmatter filter: only entries that satisfy it are kept. */
   where?: JsonObject;
+  /**
+   * What keeps an entry out of a production build and shows it to authors (site-architecture.md
+   * §7.6). Any rule matching holds the entry, and the first names why.
+   */
+  hold?: JsonObject[];
   /** Frontmatter field whose value is the entry id (the path-derived id when absent). */
   idField?: string;
   /** Route template giving each entry its URL. */

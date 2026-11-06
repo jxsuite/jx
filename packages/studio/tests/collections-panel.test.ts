@@ -116,6 +116,7 @@ function project(tree: Record<string, DirEntry[]> = TREE): void {
       content: {
         posts: {
           format: "markdown",
+          hold: [{ label: "Draft", when: { draft: true } }],
           schema: { properties: { draft: { type: "boolean" }, title: { type: "string" } } },
           source: "./content",
         },
