@@ -91,7 +91,9 @@ describe("the installer script", () => {
     expect(compare).toBeGreaterThan(-1);
     // `+2` skips exactly one instruction, so the delete must be the very next line.
     expect(lines[compare + 1]).toBe('DeleteRegValue ${HIVE} "Software\\Classes\\.json" ""');
-    expect(lines.filter((line) => line.endsWith(String.raw`"Software\Classes\.json" ""`))).toHaveLength(2);
+    expect(
+      lines.filter((line) => line.endsWith(String.raw`"Software\Classes\.json" ""`)),
+    ).toHaveLength(2);
   });
 
   test("restores the register it borrows", () => {
@@ -106,8 +108,12 @@ describe("the installer script", () => {
 
   test("uninstalls what it added, and tells the shell both times", () => {
     const uninstall = macro("customUnInstall");
-    expect(uninstall).toContain(String.raw`"Software\Classes\.json\OpenWithProgids" "JxStudio.Json"`);
-    expect(uninstall).toContain(String.raw`DeleteRegKey SHELL_CONTEXT "Software\Classes\JxStudio.Json"`);
+    expect(uninstall).toContain(
+      String.raw`"Software\Classes\.json\OpenWithProgids" "JxStudio.Json"`,
+    );
+    expect(uninstall).toContain(
+      String.raw`DeleteRegKey SHELL_CONTEXT "Software\Classes\JxStudio.Json"`,
+    );
     for (const body of [install, uninstall]) {
       expect(body).toContain("shell32::SHChangeNotify");
     }
