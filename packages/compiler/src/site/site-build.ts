@@ -463,9 +463,12 @@ export async function buildSite(
   if (existsSync(componentsDir)) {
     log("Compiling components...");
     const componentExtensions = [".json", ...formatRegistry.documentExtensions("component")];
-    const componentFiles = readdirSync(componentsDir).filter((f: string) =>
-      componentExtensions.some((ext) => f.endsWith(ext)),
-    );
+    /* Sorted, because this order is the order of the sheets in every page's `<head>`, and readdir
+       has none of its own: on ext4 it follows a hash of the name, so the same project built to
+       different bytes on different machines. */
+    const componentFiles = readdirSync(componentsDir)
+      .filter((f: string) => componentExtensions.some((ext) => f.endsWith(ext)))
+      .toSorted();
     const componentOutDir = resolve(outDir, "components");
     mkdirSync(componentOutDir, { recursive: true });
 
@@ -505,7 +508,7 @@ export async function buildSite(
           resolveElementPath: (refPath: string, currentDir: string | null) => {
             const depPath = currentDir ? resolve(currentDir, refPath) : resolve(refPath);
             const depTag = componentTagByPath.get(depPath);
-            return depTag ? `./${depTag}.js` : refPath.replace(/\.json$/, ".js");
+            return depTag ? `./${depTag}.js` : refPath.replace(/\.(?:json|jxn)$/i, ".js");
           },
           rewriteSrc: (specifier: string, docDir: string | null) =>
             withBase(componentBase, rewriteSidecarSrc(specifier, docDir)),

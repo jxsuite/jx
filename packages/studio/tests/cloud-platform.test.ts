@@ -2128,6 +2128,19 @@ describe("discoverComponents", () => {
   const dir = (name: string, path: string): DirEntry => ({ name, path, type: "directory" });
   const file = (name: string, path: string): DirEntry => ({ name, path, type: "file" });
 
+  test("a .jxn component is found through the same walk", async () => {
+    session(
+      {
+        "": [dir("components", "components")],
+        components: [file("x-note.jxn", "components/x-note.jxn")],
+      },
+      // The stub answers each file JSON-quoted, and a quoted name is still a KDL node's name.
+      { "components/x-note.jxn": "x-note" },
+    );
+    const found = await createCloudPlatform(PROJECT).discoverComponents();
+    expect(found.map((component) => component.tagName)).toEqual(["x-note"]);
+  });
+
   test("finds a component nested in the tree, and reports its props", async () => {
     session(
       {

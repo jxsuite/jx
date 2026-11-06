@@ -30,7 +30,7 @@ import type { HeadMergeContext } from "./head-merger.ts";
 import { injectContext } from "./context.ts";
 import { isNonNullObject, isString } from "@jxsuite/schema/guards";
 import { localeDirection, localeOfRoute, resolveI18n } from "@jxsuite/schema/locale";
-import { parseJxDocument } from "@jxsuite/schema/parse";
+import { isNativeDocumentPath, parseNativeDocument } from "@jxsuite/schema/jxn";
 import type { JxDocument, JxElement, JxHeadEntry, ProjectConfig } from "@jxsuite/schema/types";
 
 /** Everything the composer settled about a page before a renderer sees it. */
@@ -88,8 +88,8 @@ async function readDocument(io: SiteIO, path: string): Promise<JxDocument | null
   if (text === null) {
     return null;
   }
-  if (path.endsWith(".json")) {
-    return parseJxDocument(text, path);
+  if (isNativeDocumentPath(path)) {
+    return parseNativeDocument(text, path);
   }
   return io.parse ? ((await io.parse(path, text)) ?? null) : null;
 }
@@ -137,7 +137,7 @@ export function unionElements(
 }
 
 /** A component file in the project's own library, keyed by the tag it defines. */
-const COMPONENT_FILE = /^components\/([^/]+-[^/]*)\.json$/;
+const COMPONENT_FILE = /^components\/([^/]+-[^/]*)\.(?:json|jxn)$/;
 
 /**
  * A `$ref`'s project path, so the same file written from two places is one key.
@@ -188,9 +188,10 @@ function collectTagNames(node: JxElement | string, into: Set<string>): void {
  * for free by scanning HTML it has already rendered; here the definition has to be opened. It is
  * bounded by the components a page actually reaches, and each is opened once.
  *
- * Only `.json` components are discoverable, because a `$ref` is resolved by the browser: the
- * runtime fetches the file and parses it as a document, so a component in a format needing an
- * extension's parser cannot be registered this way whoever discovers it.
+ * Only native components are discoverable, because a `$ref` is resolved by the browser: the runtime
+ * fetches the file and parses it as a document, so a component in a format needing an extension's
+ * parser cannot be registered this way whoever discovers it. A `.jxn` component qualifies because
+ * this origin answers it as JSON (`serve.ts`).
  */
 async function discoverElements(io: SiteIO, doc: JxDocument): Promise<{ $ref: string }[]> {
   const available = new Map<string, string>();
@@ -294,7 +295,7 @@ export async function composePage(
   const pageDoc = await readDocument(io, route.sourcePath);
   if (!pageDoc) {
     throw new ComposeError(
-      `${route.sourcePath} could not be read as a page. Only .json pages render here; other formats need their extension's parser, which this host does not run.`,
+      `${route.sourcePath} could not be read as a page. Only .json and .jxn pages render here; other formats need their extension's parser, which this host does not run.`,
     );
   }
 

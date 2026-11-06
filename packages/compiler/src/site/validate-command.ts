@@ -18,6 +18,8 @@
  */
 
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { isJxnPath, isNativeDocumentPath, lintJxn, parseJxn } from "@jxsuite/schema/jxn";
+import { errorMessage } from "@jxsuite/schema/parse";
 import { createRequire } from "node:module";
 import { join, relative, resolve } from "node:path";
 import { generateClassSchema } from "@jxsuite/schema";
@@ -63,8 +65,8 @@ export interface ProjectTreeLintFinding {
   file: string;
   /** The node's path inside the document. */
   path: (string | number)[];
-  /** Which lint: `popover`, `dialog` or `accessibility`. */
-  source: "popover" | "dialog" | "accessibility";
+  /** Which lint: `popover`, `dialog`, `accessibility`, or `notation` for a `.jxn` file's text. */
+  source: "popover" | "dialog" | "accessibility" | "notation";
   rule: string;
   message: string;
   detail: string;
@@ -212,7 +214,13 @@ export async function validateProjectTree(
         continue; // Validated against the class schema below.
       }
       checked += 1;
-      const doc = readJson(file);
+      const read = readDocumentFile(file, relative(root, file));
+      lint.push(...read.warnings);
+      if (read.failure !== null) {
+        issues.push(read.failure);
+        continue;
+      }
+      const doc = read.document;
       if (validateDoc(doc)) {
         /*
          * Only a well-formed document is judged; a schema error is the report for the rest.
@@ -268,6 +276,49 @@ export async function validateProjectTree(
 
   const fatalLint = options.strict === true && lint.some((finding) => finding.severity === "error");
   return { checked, issues, lint, valid: issues.length === 0 && !fatalLint };
+}
+
+/** A document file as the validator takes it: its value, or why it has none. */
+interface ReadDocumentFile {
+  document: JsonValue;
+  failure: ProjectTreeIssue | null;
+  warnings: ProjectTreeLintFinding[];
+}
+
+/**
+ * Read a document file for checking. A `.jxn` file that does not read is a finding with a line and
+ * column, and not a stack trace, and an escape that changes what its code means is reported whether
+ * or not the rest of the file reads.
+ */
+function readDocumentFile(file: string, name: string): ReadDocumentFile {
+  if (!isJxnPath(file)) {
+    return { document: readJson(file), failure: null, warnings: [] };
+  }
+  const text = readFileSync(file, "utf8");
+  const warnings = lintJxn(text).map((warning): ProjectTreeLintFinding => ({
+    detail: warning.message,
+    file: name,
+    message: `line ${warning.line}, column ${warning.column}: ${warning.message}`,
+    path: [],
+    rule: "escape",
+    severity: "warn",
+    source: "notation",
+  }));
+  try {
+    return { document: readJxnValue(text), failure: null, warnings };
+  } catch (error) {
+    return {
+      document: null,
+      failure: { errors: [{ message: errorMessage(error) }], file: name },
+      warnings,
+    };
+  }
+}
+
+/** A `.jxn` file's document, as the JSON value it is. */
+function readJxnValue(text: string): JsonValue {
+  const document = parseJxn(text);
+  return isJsonObject(document) ? document : null;
 }
 
 /**
@@ -431,7 +482,7 @@ const SUBSCHEMA_KEYWORDS = new Set([
   "unevaluatedProperties",
 ]);
 
-/** Recursively list `.json` files under a directory (absent directories yield nothing). */
+/** Recursively list document files under a directory (absent directories yield nothing). */
 function walkJsonFiles(dir: string): string[] {
   if (!existsSync(dir)) {
     return [];
@@ -441,7 +492,7 @@ function walkJsonFiles(dir: string): string[] {
     const path = join(dir, name);
     if (statSync(path).isDirectory()) {
       out.push(...walkJsonFiles(path));
-    } else if (name.endsWith(".json")) {
+    } else if (isNativeDocumentPath(name)) {
       out.push(path);
     }
   }
