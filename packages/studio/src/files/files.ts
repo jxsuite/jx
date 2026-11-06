@@ -286,6 +286,25 @@ export async function loadProject() {
   }
 }
 
+/**
+ * Show the documents the operating system asks of this window, now and from here on.
+ *
+ * Called once the window has finished loading whatever it holds, so a document opens on top of the
+ * restored session rather than being replaced by it. Called whether or not there is a project yet,
+ * because a welcome window can be given one later and then be asked for a document in it.
+ */
+export function followOpenDocuments(): void {
+  getPlatform().subscribeOpenDocument?.((path) => {
+    // A window whose project did not load has been told why, and has nowhere to put a tab.
+    if (!projectState) {
+      return;
+    }
+    openFileInTab(path).catch((error: Error) => {
+      console.error(`[studio] opening ${path} failed:`, error);
+    });
+  });
+}
+
 // ─── Open Project (PAL-based) ─────────────────────────────────────────────
 
 /**

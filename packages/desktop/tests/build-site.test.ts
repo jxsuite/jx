@@ -6,6 +6,7 @@
  * project server, whose paths mean the project's SOURCES — a built page addresses its own output by
  * the same paths, so the reader on that origin gets the source file wherever both exist.
  */
+import { authorized } from "./_authorized";
 import { describe, expect, mock, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -33,7 +34,7 @@ function withProject() {
   const root = mkdtempSync(join(tmpdir(), "jx-build-site-"));
   mkdirSync(root, { recursive: true });
   writeFileSync(join(root, "project.json"), JSON.stringify({ name: "p", version: "1.0.0" }));
-  return { root, session: createProjectSession(root) };
+  return { root, session: createProjectSession(authorized(root)) };
 }
 
 describe("buildSite", () => {

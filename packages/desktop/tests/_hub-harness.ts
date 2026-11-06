@@ -11,6 +11,7 @@ import type { JsonValue } from "@jxsuite/schema/types";
 import { createWindowHub } from "../src/backend/window-hub";
 import type { WindowHub, WindowHubOptions } from "../src/backend/window-hub";
 import type { OpenOutcome } from "../src/backend/handlers";
+import type { TrustStore } from "../src/backend/trust-store";
 import type { BackendMessage } from "../src/shared/protocol";
 
 /** A message the hub sent, narrowed by its `type`. */
@@ -63,8 +64,20 @@ export interface Fixture {
   teardown: () => void;
 }
 
-/** Build the fixture; `importApi` turns on the site-import route, as a found browser does. */
-export function hubFixture(importApi?: ImportApiOptions): Fixture {
+/** A store that has agreed to everything, for tests that are about something else. */
+export const TRUST_EVERYTHING: TrustStore = {
+  grant: () => Promise.resolve(),
+  isTrusted: () => Promise.resolve(true),
+};
+
+/**
+ * Build the fixture; `importApi` turns on the site-import route, as a found browser does. Tests of
+ * the prompt itself pass their own `trust`; no test ever touches the user's real store.
+ */
+export function hubFixture(
+  importApi?: ImportApiOptions,
+  trust: TrustStore = TRUST_EVERYTHING,
+): Fixture {
   const scratch = mkdtempSync(join(tmpdir(), "jx-hub-test-"));
   const studioDir = join(scratch, "studio");
   mkdirSync(studioDir);
@@ -76,6 +89,7 @@ export function hubFixture(importApi?: ImportApiOptions): Fixture {
     appInfo: () => appInfo,
     send: (message) => sent.push(message),
     studioDir,
+    trust,
     watchSettings: (listener) => {
       settings.listeners.push(listener);
       return () => {

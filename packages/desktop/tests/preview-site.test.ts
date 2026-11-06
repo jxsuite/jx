@@ -6,6 +6,7 @@
  * caller untouched, that a preview arms the filesystem watcher even when no shell subscribed for
  * the sidebar, and that re-rooting lets go of the last project's unsaved bytes.
  */
+import { authorized } from "./_authorized";
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -77,7 +78,7 @@ describe("previewSite", () => {
   test("reports the origin, the route count, and that it is not a build", async () => {
     const root = project();
     try {
-      const session = createProjectSession(root);
+      const session = createProjectSession(authorized(root));
       expect(await session.previewSite({ route: "/" })).toEqual({
         errors: ["pages/huge.json is too large to preview unsaved."],
         // A live preview writes nothing, so there are no files to count.
@@ -96,7 +97,7 @@ describe("previewSite", () => {
   test("the route travels to the retarget", async () => {
     const root = project();
     try {
-      await createProjectSession(root).previewSite({ route: "/blog/hello/" });
+      await createProjectSession(authorized(root)).previewSite({ route: "/blog/hello/" });
       expect(navigateLivePreview.mock.calls.at(-1)).toEqual([root, "/blog/hello/"]);
     } finally {
       rmSync(root, { force: true, recursive: true });
@@ -107,7 +108,9 @@ describe("previewSite", () => {
     const root = project();
     try {
       navigateLivePreview.mockImplementation(() => Promise.resolve(true));
-      const result = await createProjectSession(root).previewSite({ route: "/blog/hello/" });
+      const result = await createProjectSession(authorized(root)).previewSite({
+        route: "/blog/hello/",
+      });
       expect(result.reused).toBe(true);
     } finally {
       navigateLivePreview.mockImplementation(() => Promise.resolve(false));
@@ -118,7 +121,7 @@ describe("previewSite", () => {
   test("with no route asked for, nothing is retargeted", async () => {
     const root = project();
     try {
-      const result = await createProjectSession(root).previewSite({ route: "" });
+      const result = await createProjectSession(authorized(root)).previewSite({ route: "" });
       expect(navigateLivePreview).not.toHaveBeenCalled();
       expect(result.reused).toBe(false);
     } finally {
@@ -139,7 +142,7 @@ describe("the watcher a preview needs", () => {
        have had a live preview that never noticed a git checkout or an external editor. */
     const root = project();
     try {
-      const session = createProjectSession(root);
+      const session = createProjectSession(authorized(root));
       expect(watchedRoots).toEqual([]);
       hasOrigin = true;
       await session.previewSite({ route: "/" });
@@ -152,7 +155,7 @@ describe("the watcher a preview needs", () => {
   test("one watcher, two consumers: a filesystem event reaches the preview AND the sink", () => {
     const root = project();
     try {
-      const session = createProjectSession(root);
+      const session = createProjectSession(authorized(root));
       const seen: unknown[][] = [];
       session.setFileEventSink((events) => seen.push(events));
       emit?.([{ kind: "change", path: "pages/index.json" }]);
@@ -166,7 +169,7 @@ describe("the watcher a preview needs", () => {
   test("with a preview but no sink, an event still reaches the preview", async () => {
     const root = project();
     try {
-      const session = createProjectSession(root);
+      const session = createProjectSession(authorized(root));
       hasOrigin = true;
       await session.previewSite({ route: "/" });
       emit?.([{ kind: "change", path: "pages/index.json" }]);
@@ -181,7 +184,7 @@ describe("the overlay", () => {
   test("publishes the bytes a save would write, against this session's project", () => {
     const root = project();
     try {
-      createProjectSession(root).setPreviewOverlay({
+      createProjectSession(authorized(root)).setPreviewOverlay({
         contents: '{"tagName":"main"}',
         path: "pages/index.json",
       });
@@ -198,7 +201,7 @@ describe("the overlay", () => {
   test("clears one document, or the whole project when it names none", () => {
     const root = project();
     try {
-      const session = createProjectSession(root);
+      const session = createProjectSession(authorized(root));
       session.clearPreviewOverlay({ path: "pages/index.json" });
       expect(clearLivePreviewOverlay.mock.calls.at(-1)).toEqual([root, "pages/index.json"]);
       session.clearPreviewOverlay({});
@@ -223,8 +226,8 @@ describe("re-rooting", () => {
     const first = project();
     const second = project();
     try {
-      const session = createProjectSession(first);
-      session.setProjectRoot(second);
+      const session = createProjectSession(authorized(first));
+      session.setProjectRoot(authorized(second));
       expect(clearLivePreviewOverlay.mock.calls.at(-1)).toEqual([first]);
     } finally {
       rmSync(first, { force: true, recursive: true });
@@ -235,8 +238,8 @@ describe("re-rooting", () => {
   test("re-rooting to the SAME project keeps its unsaved bytes", () => {
     const root = project();
     try {
-      const session = createProjectSession(root);
-      session.setProjectRoot(root);
+      const session = createProjectSession(authorized(root));
+      session.setProjectRoot(authorized(root));
       expect(session.projectRoot).toBe(root);
       expect(clearLivePreviewOverlay).not.toHaveBeenCalled();
     } finally {
@@ -248,7 +251,7 @@ describe("re-rooting", () => {
     const root = project();
     try {
       const session = createProjectSession(null);
-      session.setProjectRoot(root);
+      session.setProjectRoot(authorized(root));
       expect(session.projectRoot).toBe(root);
       expect(clearLivePreviewOverlay).not.toHaveBeenCalled();
     } finally {

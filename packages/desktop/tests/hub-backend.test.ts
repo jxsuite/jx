@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { importOptions, startBackend } from "../src/backend/backend";
 import type { BackendIo } from "../src/backend/backend";
+import { TRUST_EVERYTHING } from "./_hub-harness";
 import type { BackendMessage, ShellMessage } from "../src/shared/protocol";
 import type { WindowHub } from "../src/backend/window-hub";
 
@@ -42,6 +43,7 @@ describe("startBackend", () => {
       findBrowser: () => null,
       onMessage: (listener) => listeners.push(listener),
       send: (message) => sent.push(message),
+      trust: TRUST_EVERYTHING,
     };
     const deliver = (message: ShellMessage): void => {
       for (const listener of listeners) {
@@ -106,13 +108,15 @@ describe("main.ts", () => {
         sent.push(message);
         return true;
       }) as NonNullable<typeof original>;
-      process.emit("message", { root, type: "open-project" }, null);
+      process.emit("message", { root: null, type: "open-project" }, null);
       // The window is announced once its server has bound, which is a turn or two later.
       for (let tries = 0; !sent.some((message) => message.type === "open-window"); tries += 1) {
         expect(tries).toBeLessThan(200);
         await Bun.sleep(5);
       }
-      expect(sent.at(-1)).toMatchObject({ title: "site — Jx Studio", type: "open-window" });
+      expect(sent.find((message) => message.type === "open-window")).toMatchObject({
+        title: "Jx Studio",
+      });
       // A frame that is not one of the shell's messages is dropped at the channel.
       const before = sent.length;
       for (const frame of [null, "open-project", { type: "open-project" }, { type: "mystery" }]) {

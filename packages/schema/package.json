@@ -26,6 +26,7 @@
     "./a11y": "./src/a11y.ts",
     "./ijson": "./src/ijson.ts",
     "./parse": "./src/parse.ts",
+    "./project-file": "./src/project-file.ts",
     "./doc-ops": "./src/doc-ops.ts",
     "./json-layout": "./src/json-layout.ts",
     "./defs": "./defs/index.ts",

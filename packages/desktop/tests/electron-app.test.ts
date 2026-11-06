@@ -3,9 +3,12 @@ import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
 import type { BackendMessage, ShellMessage } from "../src/shared/protocol";
 import { SHELL_CHANNELS } from "../src/shared/bridge";
 import {
+  launchPathsFrom,
   parseAppArgs as parseAppArgsRaw,
   projectDirOf,
+  isLaunchRequest,
   projectRootFrom as projectRootFromRaw,
+  trustPrompt,
   startApp,
 } from "../src/main/app";
 import type { AppDeps } from "../src/main/app";
@@ -148,26 +151,22 @@ describe("projectRootFrom", () => {
     expect(projectRootFrom(["--jx-project=rel"], {}, "/cwd", none)).toBe("/cwd/rel");
   });
 
-  test("a bare argument names the project, resolved against the working directory", () => {
-    expect(projectRootFrom(["site"], {}, "/cwd", none)).toBe("/cwd/site");
-    expect(projectRootFrom(["/abs/site"], {}, "/cwd", none)).toBe("/abs/site");
+  test("a bare argument is a path to open and not a project to assume, so it names no root", () => {
+    expect(projectRootFrom(["site"], {}, "/cwd", none)).toBeNull();
+    // Not even a working directory that holds a project: the launch said what it wants.
+    expect(projectRootFrom(["site"], {}, "/cwd", () => true)).toBeNull();
   });
 
-  test("the app's own script is the one bare argument that is not a project", () => {
+  test("the app's own script is the one bare argument that is not a path", () => {
     const appPath = "/b";
-    /* `electron <script> site`: the script lies inside the app's directory, so the next bare
-       argument is the project. */
-    expect(projectRootFrom(["/b/app-main.js", "site"], {}, "/cwd", none, appPath)).toBe(
-      "/cwd/site",
-    );
     expect(projectRootFrom(["/b/app-main.js"], {}, "/cwd", none, appPath)).toBeNull();
     // However the script was spelled: relative paths resolve against the directory it was run in.
     expect(projectRootFrom(["app-main.js"], {}, "/b", none, appPath)).toBeNull();
-    // A project beside the app's directory, not inside it, is still a project.
-    expect(projectRootFrom(["/bsite"], {}, "/cwd", none, appPath)).toBe("/bsite");
+    // So with nothing but the script, the working directory can still answer.
+    expect(projectRootFrom(["/b/app-main.js"], {}, "/cwd", () => true, appPath)).toBe("/cwd");
   });
 
-  test("switches are never taken for a path, and a named project beats a bare one", () => {
+  test("switches are never taken for a path, and a named project still names itself", () => {
     expect(projectRootFrom(["-psn_0_1", "--jx-icon=/i"], {}, "/cwd", none)).toBeNull();
     expect(projectRootFrom(["site", "--jx-project=/named"], {}, "/cwd", none)).toBe("/named");
   });
@@ -184,6 +183,62 @@ describe("projectRootFrom", () => {
   });
 });
 
+describe("launchPathsFrom", () => {
+  const paths = (args: string[], cwd = "/cwd", appPath?: string): string[] =>
+    launchPathsFrom(args, cwd, appPath).map((path) => posix(path));
+
+  test("every bare argument, resolved against the working directory", () => {
+    expect(paths(["site", "/abs/page.json", "../up.md"])).toEqual([
+      "/cwd/site",
+      "/abs/page.json",
+      "/up.md",
+    ]);
+  });
+
+  test("switches, and what Chromium and macOS append, are not paths", () => {
+    expect(paths(["--jx-project=/p", "-psn_0_1", "--allow-file-access-from-files"])).toEqual([]);
+  });
+
+  test("the app's own script is not a path, and a folder beside the app's still is", () => {
+    expect(paths(["/b/app-main.js", "/bsite"], "/cwd", "/b")).toEqual(["/bsite"]);
+    expect(paths(["app-main.js"], "/b", "/b")).toEqual([]);
+  });
+
+  test("a file: URL is decoded, which is how an AppImage's desktop entry passes a path", () => {
+    expect(paths(["file:///home/u/a%20b/project.json"])).toEqual(["/home/u/a b/project.json"]);
+  });
+
+  test("a URL it cannot decode is kept, so the user hears it can't open rather than nothing", () => {
+    if (process.platform !== "win32") {
+      expect(paths(["file://server/share/project.json"])).toHaveLength(1);
+    }
+  });
+});
+
+describe("trustPrompt", () => {
+  test("defaults to Cancel, which is also what closing it means", () => {
+    const prompt = trustPrompt("/p/site");
+    expect(prompt.buttons[prompt.defaultId]).toBe("Cancel");
+    expect(prompt.buttons[prompt.cancelId]).toBe("Cancel");
+    expect(prompt.buttons[0]).toBe("Open");
+  });
+
+  test("names the folder, and says what opening it does and what the answer covers", () => {
+    const { detail, message } = trustPrompt("/p/site");
+    expect(detail).toContain("/p/site");
+    expect(message).toContain("run its code");
+    expect(detail).toContain("even if its files change later");
+  });
+
+  test("a folder's name cannot lay out text of its own in the prompt", () => {
+    for (const name of ["/p/a\n\nVerified safe", "/p/a\u202Efig.exe", "/p/a\u2028b", "/p/a\tb"]) {
+      const shownPath = trustPrompt(name).detail.split("\n\n")[0] ?? "";
+      expect(shownPath).toContain("\uFFFD");
+      expect(shownPath).not.toMatch(/[\n\t\u202E\u2028]/u);
+    }
+  });
+});
+
 describe("projectDirOf", () => {
   test("a project.json means its folder; anything else is already a folder", () => {
     expect(projectDirOf("/p/site/project.json")).toBe("/p/site");
@@ -193,9 +248,10 @@ describe("projectDirOf", () => {
 
 describe("parseAppArgs", () => {
   test("reads every switch", () => {
-    expect(parseAppArgs(ARGV, {}, "/cwd", () => false)).toEqual({
+    expect(parseAppArgs(ARGV.slice(1), {}, "/cwd", () => false, "/b")).toEqual({
       backend: "/build/backend/index.js",
       icon: "/share/icon.png",
+      paths: [],
       preload: "/b/preload.js",
       root: "/proj/alpha",
       studio: null,
@@ -443,8 +499,19 @@ describe("the app's life", () => {
 
 describe("launches and files", () => {
   /** Fire the app's `second-instance` event. */
-  function secondLaunch(fake: FakeElectron, argv: string[], cwd: string): void {
-    fake.emitApp("second-instance", { preventDefault: () => {} }, argv, cwd);
+  /** A second launch as it reaches the first: what it worked out for itself, from its own argv. */
+  function secondLaunch(
+    fake: FakeElectron,
+    argv: string[],
+    cwd: string,
+    exists: (path: string) => boolean = () => false,
+  ): void {
+    const args = argv.slice(1);
+    const request = {
+      paths: launchPathsFrom(args, cwd, "/b"),
+      root: projectRootFromRaw(args, {}, cwd, exists, "/b"),
+    };
+    fake.emitApp("second-instance", { preventDefault: () => {} }, argv, cwd, request);
   }
 
   test("a second launch opens the project it names, in this process", async () => {
@@ -455,13 +522,12 @@ describe("launches and files", () => {
   });
 
   test("a second launch from inside a project opens that project; from anywhere else, a welcome window", async () => {
-    const { backend, fake } = await started({
-      deps: { exists: (path) => path === "/proj/gamma/project.json" },
-    });
+    const isProject = (path: string): boolean => posix(path) === "/proj/gamma/project.json";
+    const { backend, fake } = await started({ deps: { exists: isProject } });
     backend.emit({ type: "ready" });
-    secondLaunch(fake, ["/bin/electron", "/b/app-main.js"], "/proj/gamma");
+    secondLaunch(fake, ["/bin/electron", "/b/app-main.js"], "/proj/gamma", isProject);
     expect(backend.sent.at(-1)).toEqual({ root: "/proj/gamma", type: "open-project" });
-    secondLaunch(fake, ["/bin/electron", "/b/app-main.js"], "/home/u");
+    secondLaunch(fake, ["/bin/electron", "/b/app-main.js"], "/home/u", isProject);
     expect(backend.sent.at(-1)).toEqual({ root: null, type: "open-project" });
   });
 
@@ -469,19 +535,112 @@ describe("launches and files", () => {
     // Unpackaged, as the Nix wrapper runs it: the script is in argv, and so is the project.
     const unpackaged = await started({ argv: [...ARGV.slice(0, -1), "site"] });
     unpackaged.backend.emit({ type: "ready" });
-    expect(unpackaged.backend.sent).toEqual([{ root: "/work/site", type: "open-project" }]);
+    expect(unpackaged.backend.sent).toEqual([{ path: "/work/site", type: "open-path" }]);
     secondLaunch(unpackaged.fake, ["/bin/electron", "/b/app-main.js", "other"], "/w2");
-    expect(unpackaged.backend.sent.at(-1)).toEqual({ root: "/w2/other", type: "open-project" });
+    expect(unpackaged.backend.sent.at(-1)).toEqual({ path: "/w2/other", type: "open-path" });
 
     // Packaged: no script, so the first bare argument is the project.
     const packaged = await started({
       argv: ["/Applications/Jx Studio", "--jx-backend=/m", "--jx-preload=/p", "site"],
     });
     packaged.backend.emit({ type: "ready" });
-    expect(packaged.backend.sent).toEqual([{ root: "/work/site", type: "open-project" }]);
+    expect(packaged.backend.sent).toEqual([{ path: "/work/site", type: "open-path" }]);
   });
 
-  test("a file the OS opens is a project to open, even before the backend is up", async () => {
+  test("every path of a multi-selection is posted, with no welcome window beside them", async () => {
+    const { backend, fake } = await started({
+      argv: [
+        "/bin/electron",
+        "/b/app-main.js",
+        "--jx-backend=/m",
+        "--jx-preload=/p",
+        "a.json",
+        "b.md",
+      ],
+    });
+    backend.emit({ type: "ready" });
+    expect(backend.sent).toEqual([
+      { path: "/work/a.json", type: "open-path" },
+      { path: "/work/b.md", type: "open-path" },
+    ]);
+    secondLaunch(fake, ["/bin/electron", "/b/app-main.js", "c.json", "d.json"], "/w2");
+    expect(backend.sent.slice(-2)).toEqual([
+      { path: "/w2/c.json", type: "open-path" },
+      { path: "/w2/d.json", type: "open-path" },
+    ]);
+  });
+
+  test("a second launch naming a project and a path does both", async () => {
+    const { backend, fake } = await started();
+    backend.emit({ type: "ready" });
+    secondLaunch(
+      fake,
+      ["/bin/electron", "/b/app-main.js", "--jx-project=/named", "page.json"],
+      "/w",
+    );
+    expect(backend.sent.slice(-2)).toEqual([
+      { path: "/w/page.json", type: "open-path" },
+      { root: "/named", type: "open-project" },
+    ]);
+  });
+
+  test("a first launch hands its request over with the lock, worked out from its own argv", async () => {
+    const fake = fakeElectron();
+    fake.lock = false;
+    const seen: (Electron.LaunchData | undefined)[] = [];
+    const { requestSingleInstanceLock } = fake.api.app;
+    fake.api.app.requestSingleInstanceLock = (data) => {
+      seen.push(data);
+      return requestSingleInstanceLock(data);
+    };
+    await startApp(fake.api, ["/bin/electron", "/b/app-main.js", "page.json"], {
+      cwd: "/work",
+      exists: () => false,
+      spawn: mock(() => fakeBackend().process),
+    });
+    expect(seen).toHaveLength(1);
+    const [request] = seen;
+    expect(isLaunchRequest(request)).toBe(true);
+    expect(request?.root).toBeNull();
+    const paths = isLaunchRequest(request) ? request.paths.map((path) => posix(path)) : [];
+    expect(paths.at(-1)).toBe("/work/page.json");
+  });
+
+  test("a second launch whose script is not the first's does not open its script", async () => {
+    // A checkout's launches can each bundle somewhere else, so only the launch itself knows.
+    const { backend, fake } = await started();
+    backend.emit({ type: "ready" });
+    const before = backend.sent.length;
+    fake.emitApp(
+      "second-instance",
+      { preventDefault: () => {} },
+      ["/bin/electron", "/tmp/other/app-main.js", "page.json"],
+      "/w",
+      {
+        paths: ["/w/page.json"],
+        root: null,
+      },
+    );
+    expect(backend.sent.slice(before)).toEqual([{ path: "/w/page.json", type: "open-path" }]);
+  });
+
+  test.each([
+    ["nothing", undefined],
+    ["the wrong shape", { paths: "a", root: null }],
+    ["a path that is not a string", { paths: [5], root: null }],
+    ["a root that is not a string", { paths: [], root: 5 }],
+    ["no root", { paths: [] }],
+  ])("a second launch handing over %s falls back to its argv", async (_label, data) => {
+    const { backend, fake } = await started();
+    backend.emit({ type: "ready" });
+    const argv = ["/bin/electron", "/b/app-main.js", "page.json"];
+    // SAFETY: deliberately not the shape, which is what this test is about: it came from another process.
+    const handed = data as Electron.LaunchData | undefined;
+    fake.emitApp("second-instance", { preventDefault: () => {} }, argv, "/w", handed);
+    expect(backend.sent.at(-1)).toEqual({ path: "/w/page.json", type: "open-path" });
+  });
+
+  test("a file the OS opens is a path to resolve, even before the backend is up", async () => {
     const { backend, fake } = await started();
     let prevented = 0;
     fake.emitApp("open-file", { preventDefault: () => (prevented += 1) }, "/p/site/project.json");
@@ -489,8 +648,153 @@ describe("launches and files", () => {
     backend.emit({ type: "ready" });
     expect(backend.sent).toEqual([
       { root: "/proj/alpha", type: "open-project" },
-      { root: "/p/site", type: "open-project" },
+      { path: "/p/site/project.json", type: "open-path" },
     ]);
+  });
+
+  test("a cold double-click opens the file and no welcome window beside it", async () => {
+    const welcomeLaunch = ["/bin/electron", "/b/app-main.js", "--jx-backend=/m", "--jx-preload=/p"];
+    // Before `whenReady`: the launch never asks for a welcome window.
+    const early = await started({
+      argv: welcomeLaunch,
+      configure: (fake) => {
+        const { whenReady } = fake.api.app;
+        fake.api.app.whenReady = () => {
+          fake.emitApp("open-file", { preventDefault: () => {} }, "/p/site/page.json");
+          return whenReady();
+        };
+      },
+    });
+    early.backend.emit({ type: "ready" });
+    expect(early.backend.sent).toEqual([{ path: "/p/site/page.json", type: "open-path" }]);
+
+    // After it, but before the backend listens: the queued welcome window is called off.
+    const late = await started({ argv: welcomeLaunch });
+    late.fake.emitApp("open-file", { preventDefault: () => {} }, "/p/site/page.json");
+    late.backend.emit({ type: "ready" });
+    expect(late.backend.sent).toEqual([{ path: "/p/site/page.json", type: "open-path" }]);
+
+    // A plain launch still gets its window, which a file arriving afterwards leaves alone.
+    const plain = await started({ argv: welcomeLaunch });
+    plain.backend.emit({ type: "ready" });
+    expect(plain.backend.sent).toEqual([{ root: null, type: "open-project" }]);
+    plain.fake.emitApp("open-file", { preventDefault: () => {} }, "/p/site/page.json");
+    expect(plain.backend.sent).toEqual([
+      { root: null, type: "open-project" },
+      { path: "/p/site/page.json", type: "open-path" },
+    ]);
+  });
+});
+
+describe("what the backend asks of the shell", () => {
+  test("confirm-trust shows the prompt and answers with what the user chose", async () => {
+    const { backend, fake } = await started();
+    backend.emit({ type: "ready" });
+    backend.sent.length = 0;
+
+    fake.messageAnswer = 0;
+    backend.emit({ requestId: 4, root: "/p/site", type: "confirm-trust" });
+    await Bun.sleep(0);
+    expect(fake.messageBoxes.at(-1)?.detail).toContain("/p/site");
+    expect(backend.sent.at(-1)).toEqual({ requestId: 4, trusted: true, type: "trust-answer" });
+
+    fake.messageAnswer = 1;
+    backend.emit({ requestId: 5, root: "/p/site", type: "confirm-trust" });
+    await Bun.sleep(0);
+    expect(backend.sent.at(-1)).toEqual({ requestId: 5, trusted: false, type: "trust-answer" });
+  });
+
+  test("a prompt that cannot be shown is answered no", async () => {
+    const { backend, fake } = await started();
+    backend.emit({ type: "ready" });
+    fake.api.dialog.showMessageBox = () => Promise.reject(new Error("no display"));
+    const errors = spyOn(console, "error").mockImplementation(() => {});
+    try {
+      backend.emit({ requestId: 6, root: "/p/site", type: "confirm-trust" });
+      await Bun.sleep(0);
+      expect(backend.sent.at(-1)).toEqual({ requestId: 6, trusted: false, type: "trust-answer" });
+    } finally {
+      errors.mockRestore();
+    }
+  });
+
+  test("the prompt sits over the window that asked, when there is one", async () => {
+    const { backend, fake } = await started();
+    backend.emit({ requestId: 1, root: "/p/site", type: "confirm-trust" });
+    await Bun.sleep(0);
+    expect(fake.messageBoxesParented.at(-1)).toBe(false);
+
+    backend.emit({ id: 1, partition: "p", title: "T", type: "open-window", url: "http://x" });
+    fake.focusedWindow = fake.windows[0] ?? null;
+    backend.emit({ requestId: 2, root: "/p/site", type: "confirm-trust" });
+    await Bun.sleep(0);
+    expect(fake.messageBoxesParented.at(-1)).toBe(true);
+  });
+
+  test("a later launch calls off the quit a dismissed notice would have caused", async () => {
+    const { backend, fake } = await started();
+    let dismiss: () => void = () => {};
+    fake.api.dialog.showMessageBox = () =>
+      new Promise((resolve) => {
+        dismiss = () => resolve({ response: 0 });
+      });
+    backend.emit({ message: "That file can't be opened.", type: "notice" });
+    backend.emit({ type: "quit" });
+    fake.emitApp("open-file", { preventDefault: () => {} }, "/p/site/page.json");
+    dismiss();
+    await Bun.sleep(0);
+    expect(fake.quit.mock.calls.length).toBe(0);
+  });
+
+  test("a window opening calls it off too", async () => {
+    const { backend, fake } = await started();
+    let dismiss: () => void = () => {};
+    fake.api.dialog.showMessageBox = () =>
+      new Promise((resolve) => {
+        dismiss = () => resolve({ response: 0 });
+      });
+    backend.emit({ message: "No.", type: "notice" });
+    backend.emit({ type: "quit" });
+    backend.emit({ id: 1, partition: "p", title: "T", type: "open-window", url: "http://x" });
+    dismiss();
+    await Bun.sleep(0);
+    expect(fake.quit.mock.calls.length).toBe(0);
+  });
+
+  test("a notice is shown with no window needed, and blocks nothing", async () => {
+    const { backend, fake } = await started();
+    backend.emit({ message: "That file can't be opened.", type: "notice" });
+    expect(fake.messageBoxes.at(-1)?.message).toBe("That file can't be opened.");
+  });
+
+  test("a quit waits until the notice has been read", async () => {
+    const { backend, fake } = await started();
+    let dismiss: () => void = () => {};
+    fake.api.dialog.showMessageBox = () =>
+      new Promise((resolve) => {
+        dismiss = () => resolve({ response: 0 });
+      });
+    backend.emit({ message: "That file can't be opened.", type: "notice" });
+    backend.emit({ type: "quit" });
+    await Bun.sleep(0);
+    const quitsWhileShowing = fake.quit.mock.calls.length;
+    dismiss();
+    await Bun.sleep(0);
+    expect(quitsWhileShowing).toBe(0);
+    expect(fake.quit.mock.calls.length).toBe(1);
+  });
+
+  test("a quit with no notice up is immediate, and a notice that cannot show still lets it", async () => {
+    const { backend, fake } = await started();
+    const errors = spyOn(console, "error").mockImplementation(() => {});
+    fake.api.dialog.showMessageBox = () => Promise.reject(new Error("no display"));
+    backend.emit({ message: "No.", type: "notice" });
+    await Bun.sleep(0);
+    const reported = errors.mock.calls.length;
+    errors.mockRestore();
+    backend.emit({ type: "quit" });
+    expect(reported).toBe(1);
+    expect(fake.quit.mock.calls.length).toBe(1);
   });
 });
 
@@ -520,7 +824,7 @@ describe("the macOS File menu", () => {
     expect(backend.sent.at(-1)).toEqual({ root: null, type: "open-project" });
   });
 
-  test("Open Project opens the folder of the project.json chosen, and nothing else", async () => {
+  test("Open Project hands over the project.json chosen, and nothing else", async () => {
     const { backend, fake } = await started({
       configure: (f) => {
         f.openAnswer = { canceled: false, filePaths: ["/p/site/project.json"] };
@@ -530,9 +834,14 @@ describe("the macOS File menu", () => {
     backend.emit({ type: "ready" });
     fileMenu(fake).openProject();
     await Bun.sleep(0);
-    expect(backend.sent.at(-1)).toEqual({ root: "/p/site", type: "open-project" });
+    expect(backend.sent.at(-1)).toEqual({ path: "/p/site/project.json", type: "open-path" });
 
     const before = backend.sent.length;
+    // Only that file name: a longer one ending the same way is not a project file.
+    fake.openAnswer = { canceled: false, filePaths: ["/p/site/new-project.json"] };
+    fileMenu(fake).openProject();
+    await Bun.sleep(0);
+    expect(backend.sent).toHaveLength(before);
     fake.openAnswer = { canceled: false, filePaths: ["/p/site/notes.txt"] };
     fileMenu(fake).openProject();
     await Bun.sleep(0);
@@ -567,44 +876,44 @@ describe("app-main.ts", () => {
   });
 });
 
-describe("a project.json path names its project's folder", () => {
-  const none = (): boolean => false;
-
-  test("whether it arrives by switch or as a bare argument, as a file association delivers it", () => {
+describe("a --jx-project switch naming a project.json", () => {
+  test("names its folder; a bare path is the backend's to make sense of", () => {
+    const none = (): boolean => false;
     expect(projectRootFrom(["--jx-project=/p/site/project.json"], {}, "/cwd", none)).toBe(
       "/p/site",
     );
-    expect(projectRootFrom(["/p/site/project.json"], {}, "/cwd", none)).toBe("/p/site");
-    expect(projectRootFrom(["site/project.json"], {}, "/cwd", none)).toBe("/cwd/site");
-    // Only that file name: another .json is just a path the user chose.
-    expect(projectRootFrom(["/p/site/other.json"], {}, "/cwd", none)).toBe("/p/site/other.json");
+    expect(projectRootFrom(["--jx-project=/p/site/other.json"], {}, "/cwd", none)).toBe(
+      "/p/site/other.json",
+    );
   });
 });
 
 describe("parseAppArgs for a packaged app", () => {
   const layout = packagedLayout("/R", "/R/app.asar", "linux");
 
-  test("takes everything from the layout when no switch says otherwise", () => {
+  test("takes everything from the layout", () => {
     expect(parseAppArgs([], {}, "/cwd", () => false, "/R/app.asar", layout)).toEqual({
       backend: "/R/backend/index.js",
       icon: "/R/icon.png",
+      paths: [],
       preload: "/R/app.asar/preload.js",
       root: null,
       studio: "/R/studio",
     });
   });
 
-  test("lets a switch override the layout", () => {
+  test("runs what it was packaged with, whatever a shortcut's arguments say", () => {
     const args = parseAppArgs(
-      ["--jx-backend=/mine/index.js"],
+      ["--jx-backend=/mine/index.js", "--jx-preload=/mine/preload.js", "--jx-icon=/mine.png"],
       {},
       "/cwd",
       () => false,
       "/R/app.asar",
       layout,
     );
-    expect(args.backend).toBe("/mine/index.js");
+    expect(args.backend).toBe("/R/backend/index.js");
     expect(args.preload).toBe("/R/app.asar/preload.js");
+    expect(args.icon).toBe("/R/icon.png");
   });
 
   test("macOS gets no window icon, because the bundle draws its own", () => {
@@ -791,7 +1100,9 @@ describe("a Mac App Store build, which the App Sandbox lets into a folder only a
   ];
 
   /** Start the app as a Mac App Store build over fakes, with a new fake backend per spawn. */
-  async function sandboxed(options: { argv?: string[]; granted?: Grant[] } = {}) {
+  async function sandboxed(
+    options: { argv?: string[]; configure?: (fake: FakeElectron) => void; granted?: Grant[] } = {},
+  ) {
     const backends: ReturnType<typeof fakeBackend>[] = [];
     const written: Grant[][] = [];
     const accessedAtSpawn: string[][] = [];
@@ -800,6 +1111,7 @@ describe("a Mac App Store build, which the App Sandbox lets into a folder only a
       argv: options.argv ?? BARE,
       configure: (fake) => {
         fakeRef = fake;
+        options.configure?.(fake);
       },
       deps: {
         grantStore: {
@@ -886,6 +1198,7 @@ describe("a Mac App Store build, which the App Sandbox lets into a folder only a
 
   test("with a project open it asks first, and Cancel leaves everything as it was", async () => {
     const app = await sandboxed({ argv: ARGV });
+    app.backends[0]?.emit({ id: 1, root: "/proj/alpha", type: "window-root" });
     app.fake.messageAnswer = 1;
     ask(app, "file", { bookmarks: ["B"], filePaths: ["/p/other"] });
     await Bun.sleep(0);
@@ -899,6 +1212,7 @@ describe("a Mac App Store build, which the App Sandbox lets into a folder only a
     const app = await sandboxed({ argv: ARGV });
     app.backends[0]?.emit({ type: "ready" });
     app.backends[0]?.emit(openWindow);
+    app.backends[0]?.emit({ id: 1, root: "/proj/alpha", type: "window-root" });
     app.fake.messageAnswer = 0;
     ask(app, "file", { bookmarks: ["B"], filePaths: ["/p/other"] });
     await Bun.sleep(0);
@@ -909,6 +1223,151 @@ describe("a Mac App Store build, which the App Sandbox lets into a folder only a
       { root: "/proj/alpha", type: "open-project" },
       { root: "/p/other", type: "open-project" },
     ]);
+  });
+
+  test("a window opened from a path counts as open: Restart asks first, and reopens it", async () => {
+    const app = await sandboxed({ argv: ARGV });
+    app.backends[0]?.emit({ type: "ready" });
+    app.backends[0]?.emit(openWindow);
+    // Never asked for by `open-project`: this is the backend reporting what the window holds.
+    app.backends[0]?.emit({ id: 1, root: "/from/a/path", type: "window-root" });
+    app.fake.messageAnswer = 0;
+    ask(app, "file", { bookmarks: ["B"], filePaths: ["/p/other"] });
+    await Bun.sleep(0);
+    expect(app.fake.messageBoxes).toHaveLength(1);
+    app.backends[1]?.emit({ type: "ready" });
+    expect(app.backends[1]?.sent).toEqual([
+      { root: "/from/a/path", type: "open-project" },
+      { root: "/p/other", type: "open-project" },
+    ]);
+  });
+
+  test("an answer meant for a replaced backend never reaches the one that took its place", async () => {
+    const app = await sandboxed({ argv: ARGV });
+    app.backends[0]?.emit({ type: "ready" });
+    let answerPrompt: (value: { response: number }) => void = () => {};
+    const { showMessageBox } = app.fake.api.dialog;
+    app.fake.api.dialog.showMessageBox = () =>
+      new Promise((resolve) => {
+        answerPrompt = resolve;
+      });
+    // The old backend asks about a folder, and its ids start at 1, as the next one's will.
+    app.backends[0]?.emit({ requestId: 1, root: "/a/untrusted", type: "confirm-trust" });
+    app.fake.api.dialog.showMessageBox = showMessageBox;
+    ask(app, "file", { bookmarks: ["B"], filePaths: ["/p/other"] });
+    await Bun.sleep(0);
+    expect(app.backends).toHaveLength(2);
+    app.backends[1]?.emit({ type: "ready" });
+    // The user clicks Open on the prompt that named the first folder.
+    answerPrompt({ response: 0 });
+    await Bun.sleep(0);
+    const answers = app.backends[1]?.sent.filter((message) => message.type === "trust-answer");
+    expect(answers).toEqual([]);
+  });
+
+  test("a window closed, or holding nothing, is not reopened and asks nothing", async () => {
+    const app = await sandboxed({ argv: ARGV });
+    app.backends[0]?.emit({ type: "ready" });
+    app.backends[0]?.emit(openWindow);
+    app.backends[0]?.emit({ id: 1, root: null, type: "window-root" });
+    ask(app, "file", { bookmarks: ["B"], filePaths: ["/p/other"] });
+    await Bun.sleep(0);
+    expect(app.fake.messageBoxes).toEqual([]);
+    app.backends[1]?.emit({ type: "ready" });
+    expect(app.backends[1]?.sent).toEqual([{ root: "/p/other", type: "open-project" }]);
+  });
+
+  describe("a file the OS hands over", () => {
+    const welcomeLaunch = ["/bin/electron", "/b/app-main.js", "--jx-backend=/m", "--jx-preload=/p"];
+    const openFile = (app: Awaited<ReturnType<typeof sandboxed>>, path: string): void => {
+      app.fake.emitApp("open-file", { preventDefault: () => {} }, path);
+    };
+
+    test("inside a folder already granted, opens with no question", async () => {
+      const app = await sandboxed({ argv: welcomeLaunch });
+      ask(app, "file", { bookmarks: ["B"], filePaths: ["/p/site"] });
+      await Bun.sleep(0);
+      const backend = app.backends.at(-1);
+      backend?.emit({ type: "ready" });
+      const dialogs = app.fake.openDialogs.length;
+      openFile(app, "/p/site/pages/a.json");
+      expect(backend?.sent.at(-1)).toEqual({ path: "/p/site/pages/a.json", type: "open-path" });
+      expect(app.fake.openDialogs).toHaveLength(dialogs);
+    });
+
+    test("anywhere else, asks for the folder beside it, then opens the file itself", async () => {
+      const app = await sandboxed({ argv: welcomeLaunch });
+      app.backends[0]?.emit({ type: "ready" });
+      app.fake.openAnswer = { bookmarks: ["B"], canceled: false, filePaths: ["/p/site"] };
+      openFile(app, "/p/site/pages/a.json");
+      await Bun.sleep(0);
+      await Bun.sleep(0);
+      expect(posix(app.fake.openDialogs.at(-1)?.options.defaultPath ?? "")).toBe("/p/site/pages");
+      expect(app.written.at(-1)).toEqual([{ bookmark: "B", path: "/p/site" }]);
+      expect(app.backends).toHaveLength(2);
+      app.backends[1]?.emit({ type: "ready" });
+      expect(app.backends[1]?.sent.at(-1)).toEqual({
+        path: "/p/site/pages/a.json",
+        type: "open-path",
+      });
+    });
+
+    test("on a cold launch, waits for the backend before asking, so only one ever starts", async () => {
+      const app = await sandboxed({
+        argv: welcomeLaunch,
+        configure: (fake) => {
+          fake.openAnswer = { bookmarks: ["B"], canceled: false, filePaths: ["/p/site"] };
+          const { whenReady } = fake.api.app;
+          fake.api.app.whenReady = () => {
+            fake.emitApp("open-file", { preventDefault: () => {} }, "/p/site/a.json");
+            return whenReady();
+          };
+        },
+      });
+      await Bun.sleep(0);
+      await Bun.sleep(0);
+      // The first backend, then the one that replaced it to read the folder: never one more.
+      expect(app.backends).toHaveLength(2);
+      app.backends[1]?.emit({ type: "ready" });
+      expect(app.backends[1]?.sent).toEqual([{ path: "/p/site/a.json", type: "open-path" }]);
+    });
+
+    test("cancelling the folder prompt with nothing open ends the app", async () => {
+      const app = await sandboxed({ argv: welcomeLaunch });
+      app.backends[0]?.emit({ type: "ready" });
+      app.fake.openAnswer = { canceled: true, filePaths: [] };
+      openFile(app, "/p/site/a.json");
+      await Bun.sleep(0);
+      await Bun.sleep(0);
+      expect(app.backends).toHaveLength(1);
+      expect(app.fake.quit.mock.calls.length).toBe(1);
+    });
+
+    test("cancelling with a window open leaves it alone", async () => {
+      const app = await sandboxed({ argv: welcomeLaunch });
+      app.backends[0]?.emit({ type: "ready" });
+      app.backends[0]?.emit(openWindow);
+      app.fake.openAnswer = { canceled: true, filePaths: [] };
+      openFile(app, "/p/site/a.json");
+      await Bun.sleep(0);
+      await Bun.sleep(0);
+      expect(app.fake.quit.mock.calls.length).toBe(0);
+      expect(app.backends).toHaveLength(1);
+    });
+
+    test("choosing a folder the file is not in says so, and opens nothing", async () => {
+      const app = await sandboxed({ argv: welcomeLaunch });
+      app.backends[0]?.emit({ type: "ready" });
+      app.fake.openAnswer = { bookmarks: ["B"], canceled: false, filePaths: ["/elsewhere"] };
+      openFile(app, "/p/site/a.json");
+      await Bun.sleep(0);
+      await Bun.sleep(0);
+      expect(app.fake.messageBoxes.at(-1)?.message).toContain("a.json isn't inside the folder");
+      expect(app.backends).toHaveLength(1);
+      // Nothing else is open, so the app ends, once that has been read.
+      await Bun.sleep(0);
+      expect(app.fake.quit).toHaveBeenCalled();
+    });
   });
 
   test("the handle answers with the live backend, which a restart replaces", async () => {

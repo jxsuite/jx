@@ -854,6 +854,28 @@ describe("chromium desktop platform", () => {
    * Every chromium window is its own process with its own browser profile, so this push is the only
    * way one window hears that another changed a setting.
    */
+  test("documents the OS asked for reach the page, those from before it subscribed included", async () => {
+    responses.set("takeOpenDocuments", ["pages/early.json"]);
+    const seen: string[] = [];
+    const unsubscribe = platform.subscribeOpenDocument((path) => seen.push(path));
+    try {
+      await until(() => seen.length === 1);
+      expect(seen).toEqual(["pages/early.json"]);
+
+      responses.set("takeOpenDocuments", ["pages/a.json", "pages/b.json"]);
+      pushToClient({ method: "documentsPending", params: {} });
+      await until(() => seen.length === 3);
+      expect(seen.slice(1)).toEqual(["pages/a.json", "pages/b.json"]);
+    } finally {
+      unsubscribe();
+    }
+    // With nobody subscribed the queue is left for whoever comes next, not drained into nothing.
+    const asked = methodLog.filter((entry) => entry.method === "takeOpenDocuments").length;
+    pushToClient({ method: "documentsPending", params: {} });
+    await Bun.sleep(40);
+    expect(methodLog.filter((entry) => entry.method === "takeOpenDocuments")).toHaveLength(asked);
+  });
+
   test("a pushed settings change reaches the kernel's subscriber", async () => {
     const seen: Record<string, string>[] = [];
     const unsubscribe = platform.subscribeSettings!((settings) => seen.push(settings));

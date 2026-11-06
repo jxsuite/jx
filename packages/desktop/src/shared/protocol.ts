@@ -29,17 +29,35 @@ export type BackendMessage =
   | { type: "set-title"; id: number; title: string }
   /** Ask the user for a path; answered by a {@link ShellMessage} `dialog-result` with the same id. */
   | { type: "dialog"; kind: DialogKind; requestId: number; title: string }
+  /**
+   * Ask whether to run a folder's code (specs/desktop.md §4.7); answered by a {@link ShellMessage}
+   * `trust-answer` with the same id. Asked in the main process, because a Studio window is already
+   * a page on that project's server.
+   */
+  | { type: "confirm-trust"; requestId: number; root: string }
+  /** Tell the user something with no window to say it in: a path that cannot be opened. */
+  | { type: "notice"; message: string }
+  /** What a window holds now, which is what a restarted backend is told to open again. */
+  | { type: "window-root"; id: number; root: string | null }
   /** The backend is finished and the app should end. */
   | { type: "quit" };
 
 /** Shell → backend. */
 export type ShellMessage =
-  /** Open a project (or a welcome window, for null): argv, a second launch, a file association. */
+  /** Open a project by its folder (or a welcome window, for null): the menu, a launch's switch. */
   | { type: "open-project"; root: string | null }
+  /**
+   * Open whatever a path turns out to be, which the backend decides because it can read the tree
+   * (specs/desktop.md §4.6): a bare argument, a second launch, a file the operating system handed
+   * over.
+   */
+  | { type: "open-path"; path: string }
   /** The user closed a window; its session and server are no longer wanted. */
   | { type: "window-closed"; id: number }
   /** The answer to a `dialog`: the chosen path, or null when the user cancelled. */
   | { type: "dialog-result"; path: string | null; requestId: number }
+  /** The answer to a `confirm-trust`. */
+  | { type: "trust-answer"; requestId: number; trusted: boolean }
   /** What the updater last found, in words, for the About screen. */
   | { type: "update-status"; text: string };
 
@@ -94,6 +112,22 @@ export function isBackendMessage(value: unknown): value is BackendMessage {
         isString(value.title)
       );
     }
+    case "confirm-trust": {
+      return (
+        "requestId" in value && isNumber(value.requestId) && "root" in value && isString(value.root)
+      );
+    }
+    case "notice": {
+      return "message" in value && isString(value.message);
+    }
+    case "window-root": {
+      return (
+        "id" in value &&
+        isNumber(value.id) &&
+        "root" in value &&
+        (value.root === null || isString(value.root))
+      );
+    }
     default: {
       return false;
     }
@@ -113,8 +147,19 @@ export function isShellMessage(value: unknown): value is ShellMessage {
     case "open-project": {
       return "root" in value && (value.root === null || isString(value.root));
     }
+    case "open-path": {
+      return "path" in value && isString(value.path);
+    }
     case "window-closed": {
       return "id" in value && isNumber(value.id);
+    }
+    case "trust-answer": {
+      return (
+        "requestId" in value &&
+        isNumber(value.requestId) &&
+        "trusted" in value &&
+        typeof value.trusted === "boolean"
+      );
     }
     case "dialog-result": {
       return (
