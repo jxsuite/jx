@@ -1,0 +1,7 @@
+<uap:Extension Category="windows.fileTypeAssociation">
+  <uap:FileTypeAssociation Name="json">
+    <uap:SupportedFileTypes>
+      <uap:FileType>.json</uap:FileType>
+    </uap:SupportedFileTypes>
+  </uap:FileTypeAssociation>
+</uap:Extension>

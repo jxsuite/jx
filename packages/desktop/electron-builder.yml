@@ -55,10 +55,9 @@ publish:
   provider: generic
   url: https://github.com/jxsuite/jx/releases/latest/download/
 
-fileAssociations:
-  - ext: json
-    name: Jx Project
-    role: Editor
+# There is no top-level `fileAssociations`, on purpose. Jx Studio appears under Open With for .json
+# and never makes itself the default, and that key cannot say so: on Windows it writes the class of
+# `.json` itself. Each channel declares it in its own terms below (specs/desktop.md §7.4).
 
 mac:
   category: public.app-category.developer-tools
@@ -71,6 +70,14 @@ mac:
   artifactName: macos-${arch}-JxStudio.${ext}
   hardenedRuntime: true
   gatekeeperAssess: false
+  # The Mac App Store build reads this too: electron-builder takes `extendInfo` from the mac block.
+  extendInfo:
+    CFBundleDocumentTypes:
+      - CFBundleTypeName: JSON file
+        CFBundleTypeRole: Editor
+        LSHandlerRank: Alternate
+        LSItemContentTypes:
+          - public.json
   entitlements: build-resources/entitlements.mac.plist
   entitlementsInherit: build-resources/entitlements.mac.plist
   # Notarizes when APPLE_API_KEY, APPLE_API_KEY_ID and APPLE_API_ISSUER are set, and says it skipped
@@ -104,6 +111,7 @@ nsis:
   oneClick: false
   perMachine: false
   allowToChangeInstallationDirectory: true
+  include: build-resources/installer.nsh
   artifactName: win-${arch}-JxStudio-Setup.${ext}
 
 # The Microsoft Store package. These three values are the Partner Center identity, which the Store
@@ -115,6 +123,9 @@ appx:
   publisherDisplayName: Avunu
   displayName: Jx Studio
   applicationId: JxStudio
+  # Resolved against the app directory, build/app. A package association offers Jx Studio under Open
+  # With and does not take the default.
+  customExtensionsPath: ../../build-resources/msix-json-association.xml
   artifactName: win-${arch}-JxStudio.${ext}
 
 linux:
