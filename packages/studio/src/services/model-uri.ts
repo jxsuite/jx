@@ -95,6 +95,9 @@ export function monacoLangForPath(path: string): string {
     case "json": {
       return "json";
     }
+    case "jxn": {
+      return "jxn";
+    }
     case "md": {
       return "markdown";
     }
