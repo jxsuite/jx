@@ -213,6 +213,20 @@ describe("listFormats", () => {
     }
   });
 
+  test("a project.json that does not parse enables nothing, and the log names the file", async () => {
+    setup();
+    const warn = spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      writeFileSync(join(FIXTURES, "project.json"), "{ oops");
+      await listFormats();
+      expect(mockBuildRegistry.mock.calls[0]?.[1]).toBeUndefined();
+      expect(String(warn.mock.calls[0]?.[0])).toContain("project.json does not parse");
+    } finally {
+      warn.mockRestore();
+      cleanup();
+    }
+  });
+
   test("passes undefined config when project.json is missing", async () => {
     setup();
     try {

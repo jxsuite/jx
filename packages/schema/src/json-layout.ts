@@ -511,3 +511,24 @@ function fill(
   lines.push(line);
   return lines.join("\n");
 }
+
+/**
+ * Write a value over the JSON text it replaces, so that only what changed shows up in a diff.
+ *
+ * The layout a formatter chose carries over, because `serializeJson` reproduces it. Its indent does
+ * not, and a tab-indented file (`bun create` wrote them for a long time) would come back as one
+ * whole-file change, so one of those is written as it was written.
+ *
+ * @param value The value.
+ * @param previous The current text, or null when there is none.
+ */
+export function rewriteJson(value: SerializableValue, previous: string | null): string {
+  if (previous === null) {
+    return serializeJson(value, null);
+  }
+  if (/^\t/mu.test(previous)) {
+    return `${JSON.stringify(value, null, "\t")}${previous.endsWith("\n") ? "\n" : ""}`;
+  }
+  const text = serializeJson(value, deriveJsonLayout(previous));
+  return previous.endsWith("\n") ? text : text.replace(/\n$/u, "");
+}

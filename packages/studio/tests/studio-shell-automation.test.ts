@@ -19,7 +19,7 @@ import { getPlatform } from "../src/platform";
 import { shell } from "../src/shell";
 import { isJsonObject } from "@jxsuite/schema/guards";
 import { workspaceHomeTabId } from "../src/workspace/workspace-ids";
-import { PROJECT_CONFIG_PATH } from "../src/tabs/tab";
+import { projectConfigPath, isProjectConfigPath } from "../src/tabs/tab";
 import type { AutomationApi } from "../src/services/automation";
 import type { CommandArgValues } from "../src/commands/command-args";
 
@@ -230,7 +230,7 @@ describe("view.setWorkspace reaches the bootstrap's homes", () => {
     // Selects the Inspector's Style tab ON that document, through the bootstrap's `setInspectorTab`.
     await api().run("view.setWorkspace", { workspace: "styles" });
     expect(shell.workspace).toBe("styles");
-    expect(activeTab.value?.id).toBe(PROJECT_CONFIG_PATH);
+    expect(activeTab.value?.id).toBe(projectConfigPath());
     expect(activeTab.value?.session.ui.canvasMode).toBe("tokens");
     expect(activeTab.value?.session.ui.rightTab).toBe("style");
 
@@ -243,15 +243,15 @@ describe("view.setWorkspace reaches the bootstrap's homes", () => {
      its opener so a compared document of ANOTHER workspace is revealed (entering that workspace)
      rather than left hidden by that pane's strip. */
   test("comparing with another workspace's document enters that workspace", async () => {
-    await getPlatform().writeFile(PROJECT_CONFIG_PATH, JSON.stringify({ name: "x" }));
+    await getPlatform().writeFile(projectConfigPath(), JSON.stringify({ name: "x" }));
     expect(shell.workspace).toBe("design");
-    await api().run("pane.compareWith", { path: PROJECT_CONFIG_PATH });
+    await api().run("pane.compareWith", { path: projectConfigPath() });
     await flush();
-    const compared = [...workspace.tabs.values()].find(
-      (tab) => tab.documentPath === PROJECT_CONFIG_PATH,
+    const compared = [...workspace.tabs.values()].find((tab) =>
+      isProjectConfigPath(tab.documentPath),
     );
     expect(compared).toBeDefined();
     expect(shell.workspace).toBe("styles");
-    expect(activeTab.value?.documentPath).toBe(PROJECT_CONFIG_PATH);
+    expect(activeTab.value?.documentPath).toBe(projectConfigPath());
   });
 });

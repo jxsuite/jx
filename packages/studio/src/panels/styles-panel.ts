@@ -34,7 +34,7 @@ import { effect, effectScope } from "../reactivity";
 import { projectState } from "../store";
 import { setDockCollapsed, shell } from "../shell";
 import { workspace } from "../workspace/workspace";
-import { PROJECT_CONFIG_PATH } from "../tabs/tab";
+import { projectConfigPath } from "../tabs/tab";
 import { componentRegistry } from "../files/components";
 import { runActiveReported } from "../commands/run-reported";
 import { showSettingsDocument } from "../settings/settings-document";
@@ -88,7 +88,7 @@ export interface StylesPanelInput {
  * opened with.
  */
 export function stylesConfig(): StylesPanelInput["config"] {
-  const tab = workspace.tabs.get(PROJECT_CONFIG_PATH);
+  const tab = workspace.tabs.get(projectConfigPath());
   return (tab ? tab.doc.document : projectState?.projectConfig) ?? null;
 }
 

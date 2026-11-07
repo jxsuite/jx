@@ -37,6 +37,7 @@ import {
 } from "./shell";
 import { DEFAULT_SCHEDULE, startUpdates, updatesEnabled } from "./updater";
 import type { AutoUpdater, UpdateSchedule } from "./updater";
+import { PROJECT_FILE_NAME } from "@jxsuite/schema/project-file";
 
 /**
  * What the app is told: `--jx-<name>=<value>` switches (an unpackaged run's only source) or,
@@ -161,7 +162,7 @@ export function projectRootFrom(
   if (env.JSONSX_PROJECT_ROOT) {
     return resolve(cwd, env.JSONSX_PROJECT_ROOT);
   }
-  return exists(resolve(cwd, "project.json")) ? cwd : null;
+  return exists(resolve(cwd, PROJECT_FILE_NAME)) ? cwd : null;
 }
 
 /** What a launch wants opened, worked out by the launch that knows its own argv. */
@@ -228,7 +229,7 @@ export function parseAppArgs(
 
 /** The project a `--jx-project` switch names: a `project.json`'s folder, or the folder. */
 export function projectDirOf(path: string): string {
-  return basename(path) === "project.json" ? dirname(path) : path;
+  return basename(path) === PROJECT_FILE_NAME ? dirname(path) : path;
 }
 
 /**
@@ -554,8 +555,8 @@ export async function startApp(
         }
         // A sandboxed build is handed the project's folder; the others, its project.json.
         const isProject = grants
-          ? exists(join(picked.path, "project.json"))
-          : basename(picked.path) === "project.json";
+          ? exists(join(picked.path, PROJECT_FILE_NAME))
+          : basename(picked.path) === PROJECT_FILE_NAME;
         if (isProject) {
           void openPicked(picked, "file");
         }
@@ -713,7 +714,7 @@ export async function startApp(
       return null;
     }
     if (grants && kind === "file") {
-      const file = join(picked.path, "project.json");
+      const file = join(picked.path, PROJECT_FILE_NAME);
       return exists(file) ? file : null;
     }
     return picked.path;

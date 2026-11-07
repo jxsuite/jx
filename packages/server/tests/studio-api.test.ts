@@ -1179,6 +1179,54 @@ describe("unmatched endpoint", () => {
 
 // ─── resolve-site endpoint ───────────────────────────────────────────────────
 
+describe("what a file named project.json has to be", () => {
+  const resolveSite = async (path: string) => {
+    const url = new URL(`http://localhost/__studio/resolve-site?path=${encodeURIComponent(path)}`);
+    const res = await callApi(new Request(url, { method: "GET" }), url, FIXTURES);
+    return res.json();
+  };
+
+  test("a page by that name is walked past, and keeps its own path in the project", async () => {
+    const root = resolve(FIXTURES, "named-page");
+    mkdirSync(resolve(root, "pages"), { recursive: true });
+    writeFileSync(resolve(root, "project.json"), JSON.stringify({ name: "Real" }), "utf8");
+    const page = resolve(root, "pages/project.json");
+    writeFileSync(page, JSON.stringify({ tagName: "main" }), "utf8");
+    const data = await resolveSite(page);
+    expect(data.sitePath).toBe(root);
+    expect(data.projectConfig.name).toBe("Real");
+    expect(data.fileRelPath).toBe("pages/project.json");
+  });
+
+  test("Nx's file by that name is walked past, to the project around it", async () => {
+    const root = resolve(FIXTURES, "named-nx");
+    mkdirSync(resolve(root, "apps/web"), { recursive: true });
+    writeFileSync(resolve(root, "project.json"), JSON.stringify({ name: "Real" }), "utf8");
+    const nx = resolve(root, "apps/web/project.json");
+    writeFileSync(nx, JSON.stringify({ name: "web", targets: {} }), "utf8");
+    const data = await resolveSite(resolve(root, "apps/web/data.json"));
+    expect(data.sitePath).toBe(root);
+  });
+
+  test("the project list does not count a page by that name as a project", async () => {
+    const url = new URL("http://localhost/__studio/sites");
+    const res = await callApi(new Request(url, { method: "GET" }), url, FIXTURES);
+    const sites: { path: string }[] = await res.json();
+    const paths = sites.map((site) => site.path);
+    expect(paths.some((path) => path.endsWith("named-page"))).toBe(true);
+    expect(paths.some((path) => path.endsWith("named-page/pages"))).toBe(false);
+    expect(paths.some((path) => path.endsWith("named-nx/apps/web"))).toBe(false);
+  });
+
+  test("a project's info does not call a folder a site because of a page by that name", async () => {
+    const dir = resolve(FIXTURES, "named-page/pages");
+    const url = new URL(`http://localhost/__studio/project-info?dir=${encodeURIComponent(dir)}`);
+    const res = await callApi(new Request(url, { method: "GET" }), url, dir);
+    const data = await res.json();
+    expect(data.isSiteProject).toBe(false);
+  });
+});
+
 describe("resolve-site", () => {
   test("finds ancestor project.json for a file path", async () => {
     // SITE_PROJECT already has project.json at _studio_fixtures/my-site/project.json

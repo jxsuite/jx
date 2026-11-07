@@ -32,6 +32,7 @@ import { isNonNullObject, isString } from "@jxsuite/schema/guards";
 import { localeDirection, localeOfRoute, resolveI18n } from "@jxsuite/schema/locale";
 import { parseJxDocument } from "@jxsuite/schema/parse";
 import type { JxDocument, JxElement, JxHeadEntry, ProjectConfig } from "@jxsuite/schema/types";
+import { PROJECT_FILE_NAME } from "@jxsuite/schema/project-file";
 
 /** Everything the composer settled about a page before a renderer sees it. */
 export interface ComposedPage {
@@ -96,7 +97,7 @@ async function readDocument(io: SiteIO, path: string): Promise<JxDocument | null
 
 /** The project's configuration, or an empty one when it has none this host can read. */
 export async function readProjectConfig(io: SiteIO): Promise<ProjectConfig> {
-  const text = await io.read("project.json");
+  const text = await io.read(PROJECT_FILE_NAME);
   if (text === null) {
     return {};
   }
