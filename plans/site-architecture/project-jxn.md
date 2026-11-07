@@ -23,6 +23,7 @@ workspaces:
 size: L
 prs:
   - jxsuite/jx#560
+  - jxsuite/jx#561
 ---
 
 # A project can be declared by a commented `project.jxn`, which every host reads and every writer keeps intact
