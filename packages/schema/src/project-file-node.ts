@@ -58,21 +58,24 @@ function isDeniedHere(path: string): boolean {
  *   when it is not there or is not a file.
  */
 function readCandidate(path: string): string | null {
-  let descriptor: number | null = null;
+  let descriptor: number;
   try {
     // Read-only is zero, so this is read-only and non-blocking. Windows has no such flag, or FIFOs here.
     descriptor = openSync(path, constants.O_NONBLOCK);
+  } catch {
+    return isDeniedHere(path) ? "" : null;
+  }
+  try {
     const stats = fstatSync(descriptor);
     if (!stats.isFile()) {
       return null;
     }
     return stats.size > MAX_PROJECT_FILE_BYTES ? "" : readFileSync(descriptor, "utf8");
   } catch {
-    return isDeniedHere(path) ? "" : null;
+    // It opened, so it is there: a failure now is a read error, never an absence.
+    return "";
   } finally {
-    if (descriptor !== null) {
-      closeSync(descriptor);
-    }
+    closeSync(descriptor);
   }
 }
 
