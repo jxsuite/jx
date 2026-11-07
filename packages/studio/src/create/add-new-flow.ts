@@ -386,7 +386,7 @@ async function performCollection(creation: Creation): Promise<AddNewResult | nul
   if (!committed.ok) {
     return null;
   }
-  const wrote = [projectConfigPath()];
+  const wrote: string[] = [projectConfigPath()];
   const missed: string[] = [];
   for (const write of [{ body: creation.content, path: creation.path }, ...creation.extraWrites]) {
     try {

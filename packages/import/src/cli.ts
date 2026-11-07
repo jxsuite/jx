@@ -10,7 +10,7 @@ import {
   MIN_BREAKPOINT_WIDTH,
 } from "./breakpoint-plan.ts";
 import type { BreakpointPolicy, BreakpointRounding } from "./breakpoint-plan.ts";
-import { PROJECT_FILE_NAME } from "@jxsuite/schema/project-file";
+import { NEW_PROJECT_FILE_NAME } from "@jxsuite/schema/project-file";
 
 function usage(): never {
   console.log(`Usage: jx-import <url> [options]
@@ -247,7 +247,7 @@ async function main(siteUrl: string) {
 
     console.log(`\nDone! Open in Studio:`);
     console.log(
-      `  http://localhost:3000/packages/studio/index.html?project=${outDir}/${PROJECT_FILE_NAME}`,
+      `  http://localhost:3000/packages/studio/index.html?project=${outDir}/${NEW_PROJECT_FILE_NAME}`,
     );
   } catch (error) {
     console.error(`Error: ${error instanceof Error ? error.message : error}`);

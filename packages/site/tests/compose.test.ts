@@ -72,6 +72,16 @@ describe("readProjectConfig", () => {
     expect(await readProjectConfig(treeIO({}))).toEqual({});
   });
 
+  test("reads project.jxn", async () => {
+    const config = await readProjectConfig(treeIO({ "project.jxn": 'project "Acme"\n' }));
+    expect(config.name).toBe("Acme");
+  });
+
+  test("a tree holding both composes against an empty config, as no host chooses", async () => {
+    const io = treeIO({ "project.json": '{"name":"A"}', "project.jxn": 'project "B"\n' });
+    expect(await readProjectConfig(io)).toEqual({});
+  });
+
   test("a project.json that does not parse still leaves the pages renderable", async () => {
     // Refusing every page would hide the one error the author can act on behind a blank origin.
     expect(await readProjectConfig(treeIO({ "project.json": "{ oops" }))).toEqual({});

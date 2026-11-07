@@ -30,13 +30,13 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { isJsonObject, isString } from "@jxsuite/schema/guards";
-import type { JsonValue } from "@jxsuite/schema/types";
 
 import { serveContained } from "./net-guard.ts";
-import { projectFilePath } from "@jxsuite/schema/project-file/node";
+import { parseProjectSource } from "@jxsuite/schema/project-file";
+import { isSameStamp, projectFileStamp } from "@jxsuite/schema/project-file/node";
 
 /** What `project.json` says the build writes to, cached per root against its mtime. */
-const outDirCache = new Map<string, { mtime: number; outDir: string | null }>();
+const outDirCache = new Map<string, { mtime: number; outDir: string | null; path: string }>();
 
 /** Reset the output-directory cache (test hook). */
 export function resetSiteOutput(): void {
@@ -52,32 +52,27 @@ export function resetSiteOutput(): void {
  * file read.
  */
 export function siteOutDir(projectRoot: string): string | null {
-  const configPath = projectFilePath(projectRoot);
-  if (!existsSync(configPath)) {
+  // Both project files is no project until the editor's report is acted on, so this declines.
+  const stamp = projectFileStamp(projectRoot);
+  if (!stamp) {
     return null;
   }
-  const { mtimeMs } = statSync(configPath);
   const cached = outDirCache.get(projectRoot);
-  if (cached && cached.mtime === mtimeMs) {
+  if (cached && isSameStamp(cached, stamp)) {
     return cached.outDir;
   }
   let outDir: string | null = null;
   try {
-    // SAFETY: JSON.parse without a reviver only ever yields a JSON value; its `any` says no more.
-    const config = JSON.parse(readFileSync(configPath, "utf8")) as JsonValue;
+    const config: unknown = parseProjectSource(readFileSync(stamp.path, "utf8"), stamp.path);
     const build = isJsonObject(config) ? config.build : undefined;
     const declared = isJsonObject(build) ? build.outDir : undefined;
-    // A `null` document has no settings to read at all, so it declines like an unparseable one.
-    outDir =
-      config === null
-        ? null
-        : resolve(projectRoot, isString(declared) && declared ? declared : "dist");
+    outDir = resolve(projectRoot, isString(declared) && declared ? declared : "dist");
   } catch {
-    // An unparseable project.json is the editor's problem to report, not this server's to guess
+    // An unparseable project file is the editor's problem to report, not this server's to guess
     // At. No output directory means this fallback simply declines, and the request 404s as before.
     outDir = null;
   }
-  outDirCache.set(projectRoot, { mtime: mtimeMs, outDir });
+  outDirCache.set(projectRoot, { ...stamp, outDir });
   return outDir;
 }
 

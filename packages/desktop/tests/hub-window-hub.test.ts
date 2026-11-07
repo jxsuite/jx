@@ -244,7 +244,7 @@ describe("window hub", () => {
       const picking = socket.call("pickProject");
       await Bun.sleep(50);
       const request = fixture.sent.find((m): m is Sent<"dialog"> => m.type === "dialog");
-      expect(request).toMatchObject({ kind: "file", title: "Open project.json" });
+      expect(request).toMatchObject({ kind: "file", title: "Open project file" });
       fixture.hub.handle({
         path: join(root, "project.json"),
         requestId: request?.requestId ?? -1,

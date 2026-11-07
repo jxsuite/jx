@@ -10,7 +10,8 @@ import { cpSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { CONVENTIONAL_PROJECT_CORE_REF, emitProjectSchema } from "../src/project-schemas";
-import { validateProjectFile } from "../src/validate-project";
+import { explainJxnLists, validateProjectFile } from "../src/validate-project";
+import { serializeProject } from "../src/jxn/index.ts";
 import type { JsonObject } from "../types";
 
 const CORE_FRAGMENT_SRC = resolve(import.meta.dir, "../schemas/project.core.schema.json");
@@ -218,6 +219,73 @@ describe("validateProjectFile", () => {
     ROOTS.push(root);
     mkdirSync(root, { recursive: true });
     // oxlint-disable-next-line typescript/await-thenable -- Bun types `.rejects.toThrow` as void, but it resolves a Promise at runtime; the await is required.
-    await expect(validateProjectFile(root)).rejects.toThrow("project.json not found");
+    await expect(validateProjectFile(root)).rejects.toThrow("No project.jxn or project.json");
+  });
+});
+
+describe("validateProjectFile on a project.jxn", () => {
+  /** A project whose file is this Jx Notation instead of its project.json. */
+  function makeNotationProject(text: string): string {
+    const root = makeProject({});
+    rmSync(join(root, "project.json"));
+    writeFileSync(join(root, "project.jxn"), text);
+    return root;
+  }
+
+  test("reads it, and names it", async () => {
+    const root = makeNotationProject(serializeProject(validProject()));
+    const result = await validateProjectFile(root);
+    expect(result).toEqual({ errors: null, file: "project.jxn", valid: true });
+  });
+
+  test("a list of one written as a value is said in Jx Notation's own terms", async () => {
+    const root = makeNotationProject(
+      '$schema "./project.schema.json"\nproject "Site"\nextensions "@jxsuite/parser"\n',
+    );
+    const result = await validateProjectFile(root);
+    expect(result.valid).toBe(false);
+    expect(JSON.stringify(result.errors)).toContain(
+      String.raw`must be a list, written as extensions { - \"@jxsuite/parser\" }`,
+    );
+  });
+
+  test("a file that does not read throws with its line and column", async () => {
+    const root = makeNotationProject('project "Site"\ndefaults {\n');
+    // oxlint-disable-next-line typescript/await-thenable -- Bun types `.rejects.toThrow` as void, but it resolves a Promise at runtime; the await is required.
+    await expect(validateProjectFile(root)).rejects.toThrow(
+      "project.jxn: Invalid node children at end of input (line 3, column 1)",
+    );
+  });
+});
+
+describe("explainJxnLists", () => {
+  const typeError = (instancePath: string) => ({
+    instancePath,
+    keyword: "type",
+    message: "must be array",
+    params: { type: "array" },
+  });
+
+  test("leaves what it cannot explain as it was", () => {
+    const others = [
+      null,
+      "text",
+      { keyword: "required" },
+      { keyword: "type", params: null },
+      { keyword: "type", params: { type: "string" } },
+      { keyword: "type", params: { type: "array" } },
+      typeError("/build"),
+      typeError(""),
+      typeError("/multi"),
+    ];
+    const project = { build: { a: 1 }, multi: "a\nb" };
+    expect(explainJxnLists(others, project)).toEqual(others);
+  });
+
+  test("explains a scalar, reaching into a list on the way", () => {
+    const [explained] = explainJxnLists([typeError("/images/0/widths")], {
+      images: [{ widths: 320 }],
+    });
+    expect(explained).toMatchObject({ message: "must be a list, written as widths { - 320 }" });
   });
 });

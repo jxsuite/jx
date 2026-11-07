@@ -1,6 +1,6 @@
 /**
- * What makes a file named `project.json` a project's configuration, and which project encloses a
- * path.
+ * What makes a file named `project.jxn` or `project.json` a project's configuration, and which
+ * project encloses a path (`site-architecture.md` §2.3).
  *
  * A name is not enough. `pages/project.json` is a legal page with the route `/project`, and Nx
  * keeps its own `project.json` in every package of a workspace, so a walker that believes the name
@@ -18,11 +18,35 @@
  */
 import { isNonNullObject } from "./guards.ts";
 import { rewriteJson } from "./json-layout.ts";
+import { classifyJxn } from "./jxn/classify.ts";
+import { isJxnPath } from "./jxn/document.ts";
+import { parseProject, serializeProject } from "./jxn/project.ts";
 import { parseProjectConfig } from "./parse.ts";
 import type { ProjectConfig } from "../types.ts";
 
-/** The file that declares a project. */
-export const PROJECT_FILE_NAME = "project.json";
+/**
+ * The names a project file may have. Neither is preferred: a folder holding both is refused,
+ * because silently reading one would leave the other looking live and not being so.
+ */
+export const PROJECT_FILE_NAMES = ["project.jxn", "project.json"] as const;
+
+/** One of {@link PROJECT_FILE_NAMES}. */
+export type ProjectFileName = (typeof PROJECT_FILE_NAMES)[number];
+
+/**
+ * What a new project's file is called (`site-architecture.md` §2.4). Never what an existing
+ * project's is: that is whichever of {@link PROJECT_FILE_NAMES} its folder holds.
+ */
+export const NEW_PROJECT_FILE_NAME: ProjectFileName = "project.json";
+
+/**
+ * Whether a file name is one a project file may have.
+ *
+ * @param name A bare file name, with no folder.
+ */
+export function isProjectFileName(name: string | null | undefined): name is ProjectFileName {
+  return name === "project.jxn" || name === "project.json";
+}
 
 /**
  * Whether a project-relative path is the project's own file.
@@ -33,7 +57,50 @@ export const PROJECT_FILE_NAME = "project.json";
  * @param path A path relative to the project's root.
  */
 export function isProjectConfigPath(path: string | null | undefined): boolean {
-  return path === PROJECT_FILE_NAME;
+  return isProjectFileName(path);
+}
+
+/**
+ * The file name at the end of a path, in either separator.
+ *
+ * @param path A path.
+ */
+export function baseName(path: string): string {
+  return path.slice(Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\")) + 1);
+}
+
+/**
+ * What a folder holding both project files is told.
+ *
+ * @param root The folder, as the person will recognise it.
+ */
+export function projectFileConflict(root: string): string {
+  return `${root} holds both project.jxn and project.json, and a project has one. Keep the one you edit and delete the other`;
+}
+
+/** A folder holding both project files. */
+export class ProjectFileConflictError extends Error {
+  /** @param root The folder. */
+  constructor(root: string) {
+    super(projectFileConflict(root));
+    this.name = "ProjectFileConflictError";
+  }
+}
+
+/**
+ * Which project file a folder holds, from the names in it.
+ *
+ * @param has Whether the folder holds a file by this name.
+ * @returns The name; "conflict" when it holds both; null when neither.
+ */
+export function pickProjectFileName(
+  has: (name: ProjectFileName) => boolean,
+): ProjectFileName | "conflict" | null {
+  const found = PROJECT_FILE_NAMES.filter((name) => has(name));
+  if (found.length > 1) {
+    return "conflict";
+  }
+  return found[0] ?? null;
 }
 
 /**
@@ -55,21 +122,30 @@ const DOCUMENT_KEYS = [
 const NX_KEYS = ["projectType", "sourceRoot", "targets"] as const;
 
 /**
- * What a file named `project.json` turned out to be.
+ * What a file named `project.jxn` or `project.json` turned out to be.
  *
  * - `project`: a project's configuration.
- * - `other`: valid JSON that is something else, so the search goes on past it.
- * - `unreadable`: not JSON. Believed, and reported, because this is most likely a project with a typo
+ * - `other`: something else, such as a page by that name, so the search goes on past it.
+ * - `unreadable`: neither. Believed, and reported, because this is most likely a project with a typo
  *   in it, and the person who made the typo needs to hear about it.
  */
 export type ProjectFileVerdict = "other" | "project" | "unreadable";
 
 /**
- * Classify the text of a file named `project.json`.
+ * Classify the text of a project file candidate.
+ *
+ * A `project.jxn` says what it is with its first node (`spec.md` §22.5), which is read without
+ * parsing the file, so a typo further down still leaves its folder a project. A `project.json` is
+ * judged by its members, because JSON has no way to say.
  *
  * @param text The file's text.
+ * @param path The file's name or path, which decides the format.
  */
-export function classifyProjectFile(text: string): ProjectFileVerdict {
+export function classifyProjectFile(text: string, path = "project.json"): ProjectFileVerdict {
+  if (isJxnPath(path)) {
+    const kind = classifyJxn(text);
+    return kind === "document" ? "other" : kind;
+  }
   let parsed: unknown;
   try {
     parsed = JSON.parse(text);
@@ -97,11 +173,12 @@ export interface ProjectWalkIo {
 
 /** The project a walk found. */
 export interface EnclosingProject {
-  /** The project file's path. */
+  /** The project file's path; with a conflict, the `project.jxn` of the two. */
   projectFile: string;
   /** The folder holding it. */
   root: string;
-  verdict: Exclude<ProjectFileVerdict, "other">;
+  /** What it is: a project, a project that cannot be read, or a folder holding both files. */
+  verdict: Exclude<ProjectFileVerdict, "other"> | "conflict";
 }
 
 /**
@@ -117,11 +194,15 @@ export function findEnclosingProject(
   io: ProjectWalkIo,
   stopAt?: string,
 ): EnclosingProject | null {
-  const projectFile = io.join(startDirectory, PROJECT_FILE_NAME);
-  const text = io.readText(projectFile);
-  const verdict = text === null ? "other" : classifyProjectFile(text);
-  if (verdict !== "other") {
-    return { projectFile, root: startDirectory, verdict };
+  const found = PROJECT_FILE_NAMES.flatMap((name) => {
+    const projectFile = io.join(startDirectory, name);
+    const text = io.readText(projectFile);
+    const verdict = text === null ? "other" : classifyProjectFile(text, name);
+    return verdict === "other" ? [] : [{ projectFile, root: startDirectory, verdict }];
+  });
+  const [first] = found;
+  if (first) {
+    return found.length > 1 ? { ...first, verdict: "conflict" } : first;
   }
   const parent = io.dirname(startDirectory);
   return startDirectory === stopAt || parent === startDirectory
@@ -146,18 +227,40 @@ export type ProjectFileRead =
  */
 export function parseProjectFile(path: string, text: string): ProjectFileRead {
   try {
-    return { config: parseProjectConfig(text, path), path, text };
+    return { config: parseProjectSource(text, path), path, text };
   } catch (error) {
     return { error: error instanceof Error ? error.message : String(error), path, text };
   }
 }
 
 /**
+ * Parse a project file's text in the format its name says.
+ *
+ * @param text The file's text.
+ * @param path The file's path, which decides the format and names it in an error.
+ * @throws {Error} When it does not read: a `JxnError`, with a line and column, for `project.jxn`.
+ */
+export function parseProjectSource(text: string, path: string): ProjectConfig {
+  return isJxnPath(path) ? parseProject(text, path) : parseProjectConfig(text, path);
+}
+
+/**
  * Write a project's configuration, keeping as much of the text it replaces as can be kept.
+ *
+ * A `project.jxn` keeps its comments through the merge `spec.md` §22.4 describes, and a
+ * `project.json` keeps its layout.
  *
  * @param config The configuration.
  * @param previous The file's current text, or null for a new one.
+ * @param path The file's path, which decides the format. A new project's name without one.
+ * @throws {Error} When a `project.jxn` holds what Jx Notation cannot spell, naming the pointer.
  */
-export function serializeProjectFile(config: ProjectConfig, previous: string | null): string {
-  return rewriteJson(config, previous);
+export function serializeProjectFile(
+  config: ProjectConfig,
+  previous: string | null,
+  path: string = NEW_PROJECT_FILE_NAME,
+): string {
+  return isJxnPath(path)
+    ? serializeProject(config, previous ?? undefined)
+    : rewriteJson(config, previous);
 }

@@ -125,7 +125,7 @@ describe("site-loader", () => {
   });
 
   it("throws on missing project.json", async () => {
-    expect(() => loadProjectConfig("/nonexistent")).toThrow("project.json not found");
+    expect(() => loadProjectConfig("/nonexistent")).toThrow("No project.jxn or project.json");
   });
 });
 
