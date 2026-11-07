@@ -17,7 +17,7 @@ Insert is the palette of things you can add to the page: the standard HTML build
 
 Insert has no button on the Navigator rail, because it is a palette you reach for at the moment you need it rather than a view you sit in. Two doors:
 
-- Press :kbd[⌘K] and run **Show Insert**.
+- Press :kbd[⌘K] and type `>Show Insert`.
 - In the **[Outline](/docs/studio/design/layers)** panel of an empty page, click **Add an element**.
 
 It opens in the Navigator, under an **INSERT · document** header. Unlike the other document panels it is happy with no document open, because an element palette still means something before you have chosen where to put anything.

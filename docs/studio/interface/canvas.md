@@ -106,7 +106,7 @@ Three ways to add something to the page:
 
 - **The + affordance.** Move the pointer between two elements and a **+** appears at the insertion point. Click it and pick an element from the menu; the new element lands right there, selected.
 - **The slash menu.** While editing text, type `/` at the start of a line to insert headings, lists, images, buttons, and more without leaving the keyboard. See [Edit mode](/docs/studio/editing).
-- **The Insert panel.** Run **Show Insert** from the command palette (:kbd[⌘K] / :kbd[Ctrl+K]) and drag an element or component card onto the canvas.
+- **The Insert panel.** Press :kbd[⌘K] / :kbd[Ctrl+K], type `>Show Insert`, and drag an element or component card onto the canvas.
 
 ## Drag and drop
 

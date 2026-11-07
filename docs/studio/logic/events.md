@@ -18,7 +18,7 @@ The tab draws only the sections that apply to what you have selected:
 - **Events**: what happens when the element is clicked, typed into, submitted, or hovered.
 - **Observed Attributes**, **CSS Properties**, **CSS Parts**: a component's outward contract, on the root of a component file.
 
-![The Logic tab with an onclick binding in Expression mode](../../images/events-panel.png)
+![The Logic tab with an onclick binding set to Formula](../../images/events-panel.png)
 
 ## Repeating list
 

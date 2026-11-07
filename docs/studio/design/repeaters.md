@@ -65,7 +65,7 @@ Bind the template's text and attributes to item fields and every rendered copy f
 A Markdown entry's body can fill any empty element in the template, such as the biography area of a team card:
 
 1. Select the empty element in the template.
-2. In the Inspector's **Content** tab, open the **Element** section and set the **Text Content** row's value source to **From data…**.
+2. In the Inspector's **Content** view, open the **Element** section and set the **Text Content** row's value source to **From data…**.
 3. Pick `item.$children`.
 
 The row now reads **Content**. The design canvas shows the binding as `❪ item.$children ❫`, which you can select but not type into, and **Preview** draws each entry's own headings, paragraphs and links. To go back to text, pick another field or switch the row to **Fixed value**.

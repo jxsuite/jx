@@ -11,7 +11,7 @@ code:
 
 # Props and scope
 
-> **Studio writes this format for you.** Editing an instance's props in the Inspector's **Content** tab (see [Working with components](/docs/studio/design/components)) writes the `$props` objects on this page.
+> **Studio writes this format for you.** Editing an instance's props in the Inspector's **Content** view (see [Working with components](/docs/studio/design/components)) writes the `$props` objects on this page.
 
 Scope is where a name can be seen. Within one document, every `state` entry is visible to every descendant element, with no passing required. Across a component boundary, nothing is visible unless it is passed explicitly through `$props`. That single rule makes data flow statically knowable: you can read a file and see exactly what it depends on.
 

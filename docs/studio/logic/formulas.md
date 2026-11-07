@@ -32,7 +32,7 @@ Studio remembers what you had at each source for the rest of your session, so sw
 
 ![A Content tab value row with its value source chip beside the label](../../images/field-mode-button.png)
 
-Formulas also appear as their own state entries (_+ Add… > Expression_ in the Data panel) and as event handlers (the **Expression** mode on the **[Logic tab](/docs/studio/logic/events)**).
+Formulas also appear as their own state entries (_+ Add… > Expression_ in the Data panel) and as event handlers (the **Formula** source in the **[Logic view](/docs/studio/logic/events)**).
 
 ## The formula editor
 

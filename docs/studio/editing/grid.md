@@ -26,7 +26,7 @@ Grid turns tabular content into a spreadsheet on the canvas: rows and columns, r
 - **A CSV file**: open it from **Files** (or Quick Access); spreadsheet files open straight into Grid.
 - **A content collection**: right-click the collection's folder in **Files** and choose **Edit Collection in Grid**.
 - **All pages**: right-click the `pages` folder and choose **Edit Pages in Grid**.
-- **The redirect table**: press :kbd[⌘K] and run **Edit Redirects**. Your site's redirect rules are a table, so they open as one; everything on this page applies to them. The rules themselves are described in **[Project settings](/docs/studio/projects/settings)**.
+- **The redirect table**: press :kbd[⌘K] and type `>Edit Redirects`. Your site's redirect rules are a table, so they open as one; everything on this page applies to them. The rules themselves are described in **[Project settings](/docs/studio/projects/settings)**.
 - **From Project settings**: the **Open Data Grid** button in the data sections opens a picker that lists pages, every collection, and connected database tables in one place.
 
 ## Edit cells

@@ -24,17 +24,17 @@ Together they cover the whole range: most interactions never need code, and the 
 
 Here is the shape of the workflow, end to end:
 
-1. Open a component and click **Data** on the Navigator rail. Choose _+ Add… > Value_, name it `$count`, set its **Type** to `integer` and its **Default** to `0`. The component now knows a number.
-2. Add a button to the canvas and set its text to show `$count`. Click the **value source** chip beside **Text Content** on the Content tab, pick **From data…**, and choose `$count`.
-3. With the button selected, open the Inspector's **Logic** tab and click **Add Event**. Set the event to `onclick`, choose the **Expression** mode, and build the one-step formula `$count += 1`.
-4. Pick **Preview** in the **View** control on the context bar and click the button. The number climbs, and in the **Data** panel you can watch `$count` change in real time.
+1. Open a component and click **Data** on the Navigator rail. Choose _+ Add… > Value_, name it `count`, set its **Type** to `integer` and its **Default** to `0`. The component now knows a number.
+2. Add a button to the canvas and set its text to show `count`. Click the **value source** chip beside **Text Content** in the Inspector's **Content** view, pick **From data…**, and choose `count`.
+3. With the button selected, open the Inspector's **Logic** view and click **Add Event**. A binding appears on `onclick`. Click its value source chip, pick **Formula**, and build the one-step formula `count += 1`.
+4. Click **Preview**, the toggle beside the **View** control on the context bar, and click the button. The number climbs, and in the **Data** panel you can watch `count` change in real time.
 
 No files were written by hand: Studio stored the value, the binding, and the handler inside the component's own JSON file.
 
 ## When each surface applies
 
 - Reach for **Data** first, because every other surface refers back to what you declare there.
-- Use the Inspector's **Logic** tab whenever behavior belongs to one element ("this button submits", "this list repeats per product", "this field filters the list").
+- Use the Inspector's **Logic** view whenever behavior belongs to one element ("this button submits", "this list repeats per product", "this field filters the list").
 - Use **formulas** for values that are calculated rather than typed, and **[statements](/docs/studio/logic/statements)** when a handler needs several steps in order.
 - Prefer the plainest value source a field will accept. A signal (**From data…**) is easier to read and to revisit than a formula that only fetches one value.
 - Come back to **Data** whenever something looks wrong. It shows what the page actually sees, not what you hoped it sees.

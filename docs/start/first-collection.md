@@ -18,7 +18,7 @@ In this tutorial you give your site a blog the structured way: a `posts` content
 
 A content type is your CMS schema: where a collection's entries live, and what fields each one carries.
 
-1. Open the **Settings** menu in the Command Bar and pick **Open Project Settings › Content Types**. (:kbd[⌘K] and **Open Project Settings** gets you to the same place.)
+1. Open the **Settings** menu in the Command Bar and pick **Open Project Settings › Content Types**. (:kbd[⌘K] and `>Open Project Settings` gets you to the same place.)
 2. Click **New content type** at the bottom of the type list.
 3. Type `Posts` and click **Create**.
 
@@ -106,9 +106,9 @@ You should see the empty page on the design canvas, once per breakpoint.
 
 Design a single card, which the repeater will copy per post:
 
-1. Press :kbd[⌘K] and run **Show Insert**. With nothing selected, click the **article** card.
+1. Press :kbd[⌘K] and type `>Show Insert`. With nothing selected, click the **article** card.
 2. With the article selected, click the **h3** card, then the **p** card twice. Each new element lands inside the selection.
-3. Select each of the three in turn and give it placeholder text via **Text Content** in the Inspector's **Content** tab: `Post title`, `A line about the post.`, and `2026-01-01`.
+3. Select each of the three in turn and give it placeholder text via **Text Content** in the Inspector's **Content** view: `Post title`, `A line about the post.`, and `2026-01-01`.
 
 ![The design canvas with one article card holding a heading and two placeholder paragraphs](../images/blog-card.png)
 
@@ -151,7 +151,7 @@ Each text now holds a placeholder that fills itself from the current post. (A co
 
 ## 13. Preview and save
 
-Pick **Preview** in the **View** control on the context bar.
+Click **Preview**, the toggle beside the **View** control on the context bar.
 
 ![Preview on, the single card expanded into three post cards with real titles, dates, and descriptions](../images/blog-preview.png)
 
