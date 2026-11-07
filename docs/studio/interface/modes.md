@@ -34,7 +34,7 @@ Edit is for writing. The canvas becomes the page itself: click any text and type
 
 ## Design
 
-Design is for structure and style. The canvas shows a live panel per breakpoint, phone and tablet and desktop side by side, and the **Style** tab of the Inspector becomes a full visual inspector for the selected element. A page's title, layout and frontmatter are on the Inspector's **Page** tab, in Design as in Edit. Full guide: **[Design mode](/docs/studio/design)**.
+Design is for structure and style. The canvas shows a live panel per breakpoint, phone and tablet and desktop side by side, and the **Style** view of the Inspector becomes a full visual inspector for the selected element. A page's title, layout and frontmatter are on the Inspector's **Page** tab, in Design as in Edit. Full guide: **[Design mode](/docs/studio/design)**.
 
 ![Jx Studio design canvas showing one component across four responsive breakpoints with a style inspector](../../images/mode-design.png)
 
@@ -76,7 +76,7 @@ The full guide is **[Source control](/docs/studio/publish/source-control#read-a-
 
 ## Project Styles
 
-Project Styles is the Styles workspace's two style editors over your project file. **Elements** is the catalog of your project's element defaults: every heading, button, and link rendered with its base style, so you set the look of each element type once for the whole site. Selecting an element switches the Inspector to the **Style** tab automatically. **Variables** lists your site's CSS custom properties by group, each editable in place. See **[Project Styles](/docs/studio/design/stylebook)** and **[Design tokens](/docs/studio/design/tokens)**.
+Project Styles is the Styles workspace's two style editors over your project file. **Elements** is the catalog of your project's element defaults: every heading, button, and link rendered with its base style, so you set the look of each element type once for the whole site. Selecting an element switches the Inspector to the **Style** view automatically. **Variables** lists your site's CSS custom properties by group, each editable in place. See **[Project Styles](/docs/studio/design/stylebook)** and **[Design tokens](/docs/studio/design/tokens)**.
 
 ![Jx Studio Project Styles showing element defaults across breakpoints](../../images/stylebook.png)
 
