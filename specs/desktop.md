@@ -2,9 +2,9 @@
 
 ## Platform Abstraction, Project Loading, and Component Scoping
 
-**Version:** 0.7.10-draft\
+**Version:** 0.7.13-draft\
 **Status:** Partial\
-**Updated:** 2026-10-31\
+**Updated:** 2026-11-06\
 **License:** MIT
 
 ---
@@ -93,7 +93,7 @@ The canonical `StudioPlatform` interface is `packages/studio/src/types.ts` — r
 | **Publish / identity**   | `getUser?`, `getAccountStatus?`, `listRepos?`, `listRepoProjects?`, `importProject?`, `cfConnection?`, `cfConnect?`, `cfApi?`                                                                                                   |
 | **Site preview / build** | `previewSite?`, `setPreviewOverlay?`, `clearPreviewOverlay?`, `buildSite?` (specs/studio.md §10.1, §10.2)                                                                                                                       |
 | **Code services / AI**   | `codeService` (§5.3), `resolveClass?`, `aiChatUrl`                                                                                                                                                                              |
-| **Multi-window / shell** | `openProjectInNewWindow?`, `pickProject?`, `newWindow?`, `setWindowProject?`, `getProjectRoot?`, `getAppInfo?`, `getSettings?`, `patchSettings?`                                                                                |
+| **Multi-window / shell** | `openProjectInNewWindow?`, `pickProject?`, `newWindow?`, `setWindowProject?`, `subscribeOpenDocument?`, `getProjectRoot?`, `getAppInfo?`, `getSettings?`, `patchSettings?`                                                      |
 | **Canvas**               | `canvasUrl?`, `canvasUrlDeferred?`, `documentBaseUrl?`, `assetSpace?`, `assetCapabilities?`                                                                                                                                     |
 
 **Every path across the PAL is project-relative, in both directions.** A caller passes `components/card.json`, and a member that reports paths reports them in that same space — including the refactor members, whose reports name files the sweep found. Where a backend speaks a different space, the adapter translates, and it translates in ONE direction only: an adapter that both prefixes a request and strips a prefix off the reply is asserting that the backend echoes its own input space, which is a property of a particular route rather than of the protocol. The dev server's own convention is stated in `server.md` §4.1.
@@ -231,7 +231,7 @@ Four properties are load-bearing, and each is a real attack or a real failure if
 
 ### 4.1 The project.json Contract
 
-A project is identified by its `project.json` file. This is the single point of entry for all deployment targets:
+A project is identified by its `project.json` file, and a search for one believes the name only if the content agrees (§4.6). This is the single point of entry for all deployment targets:
 
 - **Desktop:** User selects `project.json` via native file dialog. The parent directory becomes the project root.
 - **Dev server:** The window's `?project=` URL parameter names the folder containing `project.json` by its absolute path (§8.2). There is no picker.
@@ -461,30 +461,34 @@ A live preview under the fields shows the resolved destination (`/home/you/Sites
 
 ### 4.6 Opening a Path From the Operating System
 
-> **Status: Pending.** `open-file`, `second-instance` and the launch's arguments go through `projectDirOf` (`packages/desktop/src/main/app.ts`), which maps a file named `project.json` to its folder and returns any other path unchanged, so a page the OS hands over is posted as a project root that is a file. Only the first bare argument is read. On macOS a cold `open-file` lands beside the launch's own `open-project` with no root, so it also opens a welcome window.
-
 Every path the operating system hands the application resolves by one rule, in the backend, whichever way it arrived:
 
 | The path is                       | It opens                                                                                         |
 | --------------------------------- | ------------------------------------------------------------------------------------------------ |
 | A project file, or a project root | That project                                                                                     |
 | A file inside a project           | Its project, with the file in a tab. A window already holding the project is raised and shown it |
-| A document in no project          | §4.3                                                                                             |
+| A document in no project          | Nothing yet, and the application says why. §4.3 is what will open it                             |
 | Anything else                     | Nothing, and the application says why, naming the file. It never opens a blank or wrong window   |
 
-Several paths in one launch each resolve in turn. A launch that was handed a path opens no welcome window, and one that ends with no window at all exits. A path may arrive as a `file:` URL.
+The shell does not decide what a path means. It posts the raw path as `open-path`, and `resolveOpenTarget` in the backend answers, because the backend can read the tree. It reads at most project files there, as data, so it is safe before anyone has answered for the folder (§4.7).
 
-A file named like a project file is believed only if its content agrees (`site-architecture.md` §2.3), so `pages/project.jxn` opens the project above it with that page in a tab.
+Several paths in one launch each resolve in turn, and files asked of a window that is still opening wait for it. A launch that was handed a path opens no welcome window, and one that ends with no window at all exits once any notice has been dismissed. A path may arrive as a `file:` URL. A second launch works out what it wants for itself and hands it over with the instance lock (`additionalData`), because only it knows which bare argument is its own script.
+
+A document reaches a window through a queue the page drains (`takeOpenDocuments`, with `documentsPending` to say there is something to take), and not as a pushed path, because a window can be asked before its page has booted. A project file that does not parse, or that is there and cannot be read, is still that project, and the user is told: a typo must not make a page's double-click walk past its project to some ancestor. A candidate is read only if it is an ordinary file of a sane size, so a FIFO or a link to a device cannot hold up the backend before anyone has answered.
+
+A file named like a project file is believed only if its content agrees (`site-architecture.md` §2.3), so `pages/project.json` opens the project above it with that page in a tab. A `project.json` holding a document's members, or the members of Nx's file of that name, is not a project (`classifyProjectFile` in `@jxsuite/schema/project-file`).
+
+On the Mac App Store build the sandbox grants the one file the OS handed over and none of the project around it, so the application asks for the folder, starting beside the file, and then replaces the backend as §7.7 describes. How much a Finder open grants has not been measured on a signed build.
 
 ### 4.7 Trusting a Project
 
-> **Status: Pending.** Nothing asks. Opening a project runs its code with the user's privileges, from a double-click as from a picker.
-
 A document is executable input (`spec.md` §21.4). On the desktop that reaches past the canvas: `/__jx_resolve__` and `/__jx_server__` import project modules into the backend (`server.md` §4.2), and the token gating them is in the canvas's own URL by design (§9.7), because the canvas calls them. A file association makes that one click on a file whose origin the user may not have thought about.
 
-So the first time a folder would open, by any path, the application asks in a native dialog, before anything from the folder runs and before a window binds to it. Until the answer, it reads at most the project file, as data. The dialog names the folder by its path, not by the project's own `name`, which is the folder's to choose, and says that opening runs the project's code. Cancel is the default, and declining opens nothing.
+So the first time a folder would open, by any path, the application asks in a native dialog, before anything from the folder runs and before a window binds to it. Until the answer, it reads at most the project file, as data. The dialog names the folder by its path, not by the project's own `name`, which is the folder's to choose, and says that opening runs the project's code. It sits over the window that asked, so nothing can be edited there that the answer would discard. Cancel is the default, and declining opens nothing.
 
-The answer is kept per user and per folder, by real path. A project the application created, and a project already in Recent when this ships, count as answered. Trust is not inherited by subfolders. This is consent and not a sandbox. An opened project still runs with the user's privileges, as `spec.md` §21.4 states, and the answer is about a folder and not its contents: a `git pull` or a re-extracted archive at the same path runs without asking again.
+The answer is kept per user and per folder, by real path. A project the application created counts as answered, because it was an empty folder a moment ago. An imported site does not: what the import wrote came from the web. The store starts from Recent, so nobody who upgrades is asked about a project they have been working in. Trust is not inherited by subfolders, and a symlink is the folder it points at. A store that cannot be read asks again.
+
+**The prompt is a property of the program and not a list of callers.** A session binds only to an `AuthorizedRoot`, and the only source of one is the hub's gate, so a new way of opening a project that forgets to ask does not compile. Every path answers: Open Project, Recent, a new window, a double-click, a bare argument and a second launch. A decline is an outcome each caller reports (`declined`), and it opens nothing. There is no switch to skip the prompt, and a packaged build ignores `--jx-backend` and `--jx-preload`, because a shortcut file can carry arguments. This is consent and not a sandbox. An opened project still runs with the user's privileges, as `spec.md` §21.4 states, and the answer is about a folder and not its contents: a `git pull` or a re-extracted archive at the same path runs without asking again.
 
 ---
 
@@ -757,7 +761,7 @@ Resources/
 
 **Bun folds module-identity globals, so a bundle cannot ask for its own path.** `__filename`, `module.filename` and `import.meta.filename` become the SOURCE file's name at build time, `import.meta` is a syntax error in the CommonJS main-process bundle, and `require.main` is Electron's own internal module. The application finds its directory with `app.getAppPath()`, and `tests/electron-shell-bundle.test.ts` fails if the bundle relies on any of them or carries a source path at all.
 
-**Installing changes no default.** Jx Studio appears under **Open With** for `.json` and never makes itself the default for a type another application uses. A top-level `fileAssociations` cannot say that, because on Windows it writes the class of the extension itself, which takes the default unless the user has chosen one, and uninstalling leaves the value behind. So each channel declares it in its own terms: macOS at `LSHandlerRank: Alternate`, the Windows installer through `OpenWithProgids` in `build-resources/installer.nsh`, and the Microsoft Store through a package association. Earlier builds did write that class, as `Jx Project`, so the installer also removes the value when it still holds exactly that name, from both hives, and leaves any other value alone.
+**Installing changes no default.** Jx Studio appears under **Open With** for `.json` and never makes itself the default for a type another application uses. A top-level `fileAssociations` cannot say that, because on Windows it writes the class of the extension itself, which takes the default unless the user has chosen one, and uninstalling leaves the value behind. So each channel declares it in its own terms: macOS at `LSHandlerRank: Alternate`, the Windows installer through `OpenWithProgids` in `build-resources/installer.nsh`, and the Microsoft Store through a package association. Markdown joins JSON at `Alternate` on macOS. Earlier builds did write that class, as `Jx Project`, so the installer also removes the value when it still holds exactly that name, from both hives, and leaves any other value alone.
 
 ### 7.5 Self-Updates
 
@@ -1004,7 +1008,7 @@ The snap cannot use the Chromium snap a user already has: a strictly confined sn
         Studio page ◄──────────── token-gated WebSocket RPC ─────┘
 ```
 
-**The two processes speak a small protocol** (`shared/protocol.ts`), over the message port Electron opens when it forks the backend with `utilityProcess.fork` (`process.parentPort` on the backend's side). The backend also answers on a plain Node IPC channel (`process.send`) when it was forked by `child_process` instead, which is how the smoke test drives the staged bundle under Node. Backend to shell: `ready`, `open-window`, `focus-window`, `set-title`, `dialog` and `quit`. Shell to backend: `open-project`, `window-closed` and `dialog-result`. Project I/O never crosses it. Each side validates what it receives against a guard at the channel (`isBackendMessage`, `isShellMessage`), so nothing past the boundary handles an untyped frame, and a frame that is not one of the protocol's messages is dropped rather than guessed at.
+**The two processes speak a small protocol** (`shared/protocol.ts`), over the message port Electron opens when it forks the backend with `utilityProcess.fork` (`process.parentPort` on the backend's side). The backend also answers on a plain Node IPC channel (`process.send`) when it was forked by `child_process` instead, which is how the smoke test drives the staged bundle under Node. Backend to shell: `ready`, `open-window`, `focus-window`, `set-title`, `dialog`, `confirm-trust`, `notice`, `window-root` and `quit`. Shell to backend: `open-project`, `open-path`, `window-closed`, `dialog-result`, `trust-answer` and `update-status`. Project I/O never crosses it. Each side validates what it receives against a guard at the channel (`isBackendMessage`, `isShellMessage`), so nothing past the boundary handles an untyped frame, and a frame that is not one of the protocol's messages is dropped rather than guessed at.
 
 **A window is a `ProjectSession`, a loopback server and a token.** The hub (`backend/window-hub.ts`) never draws a window: it asks the shell to. Each window has a server of its own rather than a route on a shared one, so a canvas iframe, which is cross-origin by construction and carries its window's token in its URL, can drive its own project and no other. `backend/handlers.ts` builds the RPC map for one window over that window's session, and `tests/hub-handlers.test.ts` holds its names to `rpc-schema.ts`. Window ids are not reused.
 
@@ -1149,6 +1153,9 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.7.13-draft** (2026-11-06) — Reserve sections for opening a path from the operating system, trusting a project, and file associations, all pending.
+- **0.7.12-draft** (2026-11-06) — Installing Jx Studio changes no default: it appears under Open With for .json, and an install removes the claim earlier builds made.
+- **0.7.11-draft** (2026-11-06) — Source-control paths are project-relative: the status route covers the project and strips its prefix, pull conflicts name project files the same way, and the commit route commits only the project's changes.
 - **0.7.10-draft** (2026-10-31) — §5.1: a pull adopts a dirty file whose working copy is already the remote's instead of reporting a conflict, and git/commit-branch creates a branch off the session's base, refusing an existing name, then discards what it committed.
 - **0.7.9-draft** (2026-10-29) — The Electron shell draws the native context menu Electron leaves out: spelling, edit commands, Copy and Copy Link Address where Studio leaves a right-click to the platform.
 - **0.7.8-draft** (2026-10-29) — Corrects the Linux x64 AppImage's distribution name to linux-x86_64-JxStudio.AppImage, the name electron-builder gives an x64 AppImage.
@@ -1244,4 +1251,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_Jx Studio Desktop Architecture Specification v0.7.10-draft_
+_Jx Studio Desktop Architecture Specification v0.7.13-draft_

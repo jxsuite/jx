@@ -48,6 +48,12 @@ import type { JsonObject, JsonPrimitive, JsonValue, ProjectConfig } from "@jxsui
 import { isFunction, isJsonObject, isNonNullObject, isString } from "@jxsuite/schema/guards";
 import { problem } from "./problem.ts";
 import { scanFiles } from "./fs-glob.ts";
+import { PROJECT_FILE_NAME, classifyProjectFile } from "@jxsuite/schema/project-file";
+import {
+  findEnclosingProjectOnDisk,
+  hasProjectFile,
+  projectFilePath,
+} from "@jxsuite/schema/project-file/node";
 
 /** Normalise a path to forward slashes (Windows `path` module returns backslashes). */
 const fwd = (p: string) => p.replaceAll("\\", "/");
@@ -115,7 +121,7 @@ const extensionRegistryCache = new Map<
  * @returns {Promise<ExtensionRegistry>}
  */
 async function getExtensionRegistry(projectRoot: string): Promise<ExtensionRegistry> {
-  const projectJsonPath = resolve(projectRoot, "project.json");
+  const projectJsonPath = projectFilePath(projectRoot);
   let mtime = 0;
   let projectConfig: ProjectConfig | undefined;
   try {
@@ -211,7 +217,7 @@ export function isOwnedProjectDir(dir: string): boolean {
   if (containedPath(dir, resolve(home)) === null) {
     return false;
   }
-  return existsSync(resolve(dir, "project.json"));
+  return hasProjectFile(dir);
 }
 
 /**
@@ -510,11 +516,10 @@ export async function handleStudioApi(
       let isSiteProject = false;
       let projectConfig: ProjectConfig | null = null;
       try {
+        const text = await readFile(projectFilePath(absDir), "utf8");
         // SAFETY: JSON.parse without a reviver only ever produces JSON values.
-        const raw = JSON.parse(
-          await readFile(resolve(absDir, "project.json"), "utf8"),
-        ) as JsonValue;
-        if (isJsonObject(raw)) {
+        const raw = JSON.parse(text) as JsonValue;
+        if (classifyProjectFile(text) === "project" && isJsonObject(raw)) {
           isSiteProject = true;
           /* SAFETY: `raw` is a JSON object and every ProjectConfig member is optional; the config
              is only relayed to the client here, never interpreted. */
@@ -551,30 +556,22 @@ export async function handleStudioApi(
       } catch {}
       if (isDir) {
         dir = absFile;
-        absFile = resolve(absFile, "project.json");
+        absFile = projectFilePath(absFile);
       } else {
         dir = dirname(absFile);
       }
-      while (dir) {
-        const candidate = resolve(dir, "project.json");
-        if (existsSync(candidate)) {
-          /* SAFETY: the config is relayed to the client verbatim and not interpreted here, so its
-             member types are the client's to check; malformed JSON throws into the catch below. */
-          const config = JSON.parse(readFileSync(candidate, "utf8")) as ProjectConfig;
-          const relPath = fwd(dir);
-          const fileRelPath = fwd(relative(dir, absFile));
-          return Response.json({
-            fileRelPath,
-            projectConfig: config,
-            relPath,
-            sitePath: dir,
-          });
-        }
-        const parent = dirname(dir);
-        if (parent === dir) {
-          break;
-        }
-        dir = parent;
+      // A page named project.json is not a project, and neither is Nx's file of that name.
+      const found = findEnclosingProjectOnDisk(dir);
+      if (found) {
+        /* SAFETY: the config is relayed to the client verbatim and not interpreted here, so its
+           member types are the client's to check; malformed JSON throws into the catch below. */
+        const config = JSON.parse(readFileSync(found.projectFile, "utf8")) as ProjectConfig;
+        return Response.json({
+          fileRelPath: fwd(relative(found.root, absFile)),
+          projectConfig: config,
+          relPath: fwd(found.root),
+          sitePath: found.root,
+        });
       }
       return Response.json({ sitePath: null });
     } catch (error) {
@@ -586,7 +583,7 @@ export async function handleStudioApi(
   if (path === "/__studio/sites" && req.method === "GET") {
     try {
       const sites = [];
-      for await (const match of scanFiles("**/project.json", root)) {
+      for await (const match of scanFiles(`**/${PROJECT_FILE_NAME}`, root)) {
         if (
           match.includes("node_modules") ||
           fwd(match).includes("dist/") ||
@@ -596,9 +593,10 @@ export async function handleStudioApi(
         }
         const fp = resolve(root, match);
         try {
+          const text = await readFile(fp, "utf8");
           // SAFETY: JSON.parse without a reviver only ever produces JSON values.
-          const raw = JSON.parse(await readFile(fp, "utf8")) as JsonValue;
-          if (isJsonObject(raw)) {
+          const raw = JSON.parse(text) as JsonValue;
+          if (classifyProjectFile(text) === "project" && isJsonObject(raw)) {
             const projectDir = fwd(dirname(fp));
             /* SAFETY: `raw` is a JSON object and every ProjectConfig member is optional; the site
                list only relays the config to the client. */
@@ -694,9 +692,7 @@ export async function handleStudioApi(
 
       /* SAFETY: generateProject just wrote this project.json from its own template, so it is a
          project config; it is relayed to the client, not interpreted here. */
-      const config = JSON.parse(
-        await readFile(resolve(destPath, "project.json"), "utf8"),
-      ) as ProjectConfig;
+      const config = JSON.parse(await readFile(projectFilePath(destPath), "utf8")) as ProjectConfig;
       // Root-relative while the project happens to sit under the server root (the historical
       // Shape every caller already handles); absolute otherwise.
       const inRoot = containedPath(destPath, root) !== null;
@@ -939,7 +935,7 @@ export async function handleStudioApi(
    */
   if (path === "/__studio/build" && req.method === "POST") {
     const dir = activeProjectRoot ?? root;
-    if (!existsSync(resolve(dir, "project.json"))) {
+    if (!hasProjectFile(dir)) {
       return problem("invalidRequest", "Not a site project");
     }
     try {
@@ -971,7 +967,7 @@ export async function handleStudioApi(
    */
   if (path === "/__studio/preview" && req.method === "POST") {
     const dir = activeProjectRoot ?? root;
-    if (!existsSync(resolve(dir, "project.json"))) {
+    if (!hasProjectFile(dir)) {
       return problem("invalidRequest", "Not a site project");
     }
     let body: { route?: string };

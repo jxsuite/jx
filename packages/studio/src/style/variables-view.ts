@@ -36,7 +36,7 @@ import { projectState } from "../store";
 import { shell } from "../shell";
 import { runActiveReported } from "../commands/run-reported";
 import { projectConfigDocument } from "../tabs/project-config";
-import { PROJECT_CONFIG_PATH } from "../tabs/tab";
+import { isProjectConfigPath } from "../tabs/tab";
 import { paneRegion } from "../ui/regions";
 import { focusCssVar, focusCssVarGroup, renderCssVarsEditor } from "../settings/css-vars-editor";
 import { variablesFocus } from "./variables-focus";
@@ -126,7 +126,7 @@ function manageContexts(): void {
  * place is the tab's own. A no-op with no project, and for any other document.
  */
 function bindConfiguration(tab: Tab): void {
-  if (projectState && tab.documentPath === PROJECT_CONFIG_PATH) {
+  if (projectState && isProjectConfigPath(tab.documentPath)) {
     projectConfigDocument();
   }
 }

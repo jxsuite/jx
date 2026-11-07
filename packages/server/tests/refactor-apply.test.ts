@@ -8,6 +8,7 @@ import { applyRename, deriveTag, findReferences } from "../src/refactor/index";
 import type { AssetMount } from "@jxsuite/schema/asset-paths";
 import type { FormatHostIO } from "@jxsuite/schema/format-registry";
 import type { JsonValue, ProjectConfig } from "@jxsuite/schema/types";
+import { rewriteJson } from "@jxsuite/schema/json-layout";
 
 let root = "";
 const tmpRoots: string[] = [];
@@ -304,7 +305,8 @@ describe("applyRename and the usage cache", () => {
 });
 
 /** The bytes `loadDoc`'s JSON serializer writes for `doc` (two-space, no trailing newline). */
-const serialized = (doc: JsonValue) => JSON.stringify(doc, null, 2);
+/** A document as these fixtures write it, compact, and as a rename leaves it: still compact. */
+const serialized = (doc: JsonValue) => rewriteJson(doc, JSON.stringify(doc));
 
 /*
  * Issue 239, on the write side and asserted on the bytes.
@@ -612,5 +614,34 @@ describe("applyRename — write-back capabilities", () => {
       { error: 'No serializer for "content/rows.csv"', path: "content/rows.csv" },
     ]);
     expect(read("content/rows.csv")).toBe(rows);
+  });
+});
+
+describe("applyRename keeps the formatting of what it repairs", () => {
+  test("a formatted file changes only on the line holding the reference", async () => {
+    const text = `{
+  "tagName": "main",
+  "$layout": "./layouts/base.json",
+  "style": { "color": "red", "margin": "0" },
+
+  "children": [{ "tagName": "p", "textContent": "Kept as it was" }]
+}
+`;
+    write("pages/index.json", text);
+    write("layouts/base.json", '{ "tagName": "main" }');
+    await move("layouts/base.json", "layouts/main.json");
+    expect(read("pages/index.json")).toBe(
+      text.replace("./layouts/base.json", "./layouts/main.json"),
+    );
+  });
+
+  test("a tab-indented file stays tab-indented", async () => {
+    const value = { $layout: "./layouts/base.json", tagName: "main" };
+    write("pages/index.json", `${JSON.stringify(value, null, "\t")}\n`);
+    write("layouts/base.json", '{ "tagName": "main" }');
+    await move("layouts/base.json", "layouts/main.json");
+    expect(read("pages/index.json")).toBe(
+      `${JSON.stringify({ ...value, $layout: "./layouts/main.json" }, null, "\t")}\n`,
+    );
   });
 });

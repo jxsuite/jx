@@ -1,6 +1,6 @@
 {
   "name": "@jxsuite/create",
-  "version": "1.5.3",
+  "version": "1.5.4",
   "description": "Scaffold a new Jx project",
   "license": "MIT",
   "repository": {
@@ -37,6 +37,7 @@
     "test:coverage": "bun test --isolate --coverage"
   },
   "dependencies": {
+    "@jxsuite/schema": "workspace:^",
     "@jxsuite/starters": "workspace:^"
   }
 }

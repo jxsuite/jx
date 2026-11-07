@@ -31,6 +31,7 @@ import { validateDoc, validateProjectConfig } from "./jx-validate";
 import { flagHardcodedTokens, formatTokenHints } from "./token-lint";
 import type { CandidateDocument, RenderProbe } from "./ai-write-report";
 import { invalidPathResult, normalizeRelPath } from "./project-path";
+import { isProjectConfigPath } from "@jxsuite/schema/project-file";
 
 /** Directories the file tools never descend into or report. */
 const EXCLUDED_DIRS = new Set(["node_modules", "dist", ".git", ".jx-cache"]);
@@ -301,7 +302,7 @@ export function registerProjectTools(
         // Pre-validate Jx documents — disk writes have no undo to lean on.
         let parsed: JsonValue | undefined;
         const isJxn = isJxnPath(relPath) && classifyJxn(content) !== "project";
-        const isJson = relPath.endsWith(".json") && relPath !== "project.json";
+        const isJson = relPath.endsWith(".json") && !isProjectConfigPath(relPath);
         if (isJxn) {
           try {
             const document = parseJxn(content);
@@ -357,7 +358,7 @@ export function registerProjectTools(
         /* Parsed as `unknown` because that is what it is until the schema says otherwise — this is
            model-authored text, and the gate below is the whole reason we do not trust its shape. */
         let projectConfig: ProjectConfig | undefined;
-        if (relPath === "project.json") {
+        if (isProjectConfigPath(relPath)) {
           let parsedConfig: JsonValue;
           try {
             // SAFETY: `JSON.parse` without a reviver yields nothing but JSON values.

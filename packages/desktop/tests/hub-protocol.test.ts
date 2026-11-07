@@ -11,6 +11,10 @@ describe("isBackendMessage", () => {
       { id: 3, title: "T", type: "set-title" },
       { kind: "file", requestId: 4, title: "T", type: "dialog" },
       { kind: "directory", requestId: 5, title: "T", type: "dialog" },
+      { requestId: 6, root: "/p", type: "confirm-trust" },
+      { message: "No.", type: "notice" },
+      { id: 7, root: "/p", type: "window-root" },
+      { id: 7, root: null, type: "window-root" },
     ]) {
       expect(isBackendMessage(message)).toBe(true);
     }
@@ -28,6 +32,14 @@ describe("isBackendMessage", () => {
       { kind: "folder", requestId: 1, title: "T", type: "dialog" },
       { kind: "file", title: "T", type: "dialog" },
       { kind: "file", requestId: 1, type: "dialog" },
+      { root: "/p", type: "confirm-trust" },
+      { requestId: 1, type: "confirm-trust" },
+      { requestId: 1, root: 5, type: "confirm-trust" },
+      { type: "notice" },
+      { message: 5, type: "notice" },
+      { root: "/p", type: "window-root" },
+      { id: 1, type: "window-root" },
+      { id: 1, root: 5, type: "window-root" },
     ]) {
       expect(isBackendMessage(message)).toBe(false);
     }
@@ -51,6 +63,9 @@ describe("isShellMessage", () => {
       { path: "/p/project.json", requestId: 2, type: "dialog-result" },
       { path: null, requestId: 3, type: "dialog-result" },
       { text: "Update ready (1.2.3)", type: "update-status" },
+      { path: "/p/page.json", type: "open-path" },
+      { requestId: 4, trusted: true, type: "trust-answer" },
+      { requestId: 5, trusted: false, type: "trust-answer" },
     ]) {
       expect(isShellMessage(message)).toBe(true);
     }
@@ -68,6 +83,11 @@ describe("isShellMessage", () => {
       { path: 5, requestId: 1, type: "dialog-result" },
       { type: "update-status" },
       { text: 5, type: "update-status" },
+      { type: "open-path" },
+      { path: 5, type: "open-path" },
+      { requestId: 1, type: "trust-answer" },
+      { trusted: true, type: "trust-answer" },
+      { requestId: 1, trusted: "yes", type: "trust-answer" },
     ]) {
       expect(isShellMessage(message)).toBe(false);
     }

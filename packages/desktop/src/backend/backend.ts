@@ -13,8 +13,9 @@ import type { ImportApiOptions } from "@jxsuite/server/import-api";
 import { appInfo } from "./app-info";
 import { findChromium } from "./import-browser";
 import type { BackendMessage, ShellMessage } from "../shared/protocol";
+import type { TrustStore } from "./trust-store";
 import { createWindowHub } from "./window-hub";
-import type { WindowHub } from "./window-hub";
+import type { WindowHub, WindowHubOptions } from "./window-hub";
 
 /** The backend's whole outside world. */
 export interface BackendIo {
@@ -25,6 +26,8 @@ export interface BackendIo {
   onMessage: (listener: (message: ShellMessage) => void) => void;
   /** Speak to the shell. */
   send: (message: BackendMessage) => void;
+  /** Which folders the user has agreed to run; the real store by default. */
+  trust?: TrustStore;
 }
 
 /**
@@ -60,7 +63,11 @@ export function startBackend(io: BackendIo): WindowHub {
   /* The site import's headless browser: puppeteer cannot open a page in Electron, which answers
      `Target.createTarget` with "Not supported", so an installed Chromium or Chrome does it. */
   const importApi = importOptions((io.findBrowser ?? findChromium)(io.env));
-  const hub = createWindowHub({ appInfo, importApi, send: io.send, studioDir });
+  const options: WindowHubOptions = { appInfo, importApi, send: io.send, studioDir };
+  if (io.trust) {
+    options.trust = io.trust;
+  }
+  const hub = createWindowHub(options);
   io.onMessage((message) => hub.handle(message));
   io.send({ type: "ready" });
   return hub;

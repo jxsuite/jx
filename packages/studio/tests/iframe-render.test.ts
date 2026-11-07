@@ -182,6 +182,37 @@ describe("renderResolvedDocument", () => {
     expect(container.querySelector("article")?.textContent).toBe("two");
   });
 
+  test("a handler in preview updates what the document binds", async () => {
+    // Studio gives every render document a `$head`. The runtime reads a node's `$` key as a local
+    // Binding, which puts the whole tree in a child scope, and a write from there used to shadow the
+    // State instead of changing it: the counter in the first tutorial never counted.
+    const container = document.createElement("div");
+    const doc: JxDocument = {
+      $head: [],
+      children: [
+        {
+          onclick: {
+            $expression: { operator: "+=", target: { $ref: "#/state/count" }, value: 1 },
+          },
+          tagName: "button",
+        },
+        { tagName: "p", textContent: "${state.count}" },
+      ],
+      state: { count: { default: 3, type: "integer" } },
+      tagName: "counter-card",
+    };
+    const handle = await renderResolvedDocument({
+      container,
+      doc,
+      docBase: "http://localhost:3000/components/counter-card.json",
+      mapperCtx: ctx,
+      mode: "preview",
+    });
+    rendered(container, "button").click();
+    expect(rendered(container, "p").textContent).toBe("4");
+    handle.dispose();
+  });
+
   test("dispose() actually stops the render's reactive effects", async () => {
     // The runtime's renderNode creates its effects with the RUNTIME's copy of @vue/reactivity, and
     // Scope collection is per module instance — a studio-instance effectScope wrap around renderNode

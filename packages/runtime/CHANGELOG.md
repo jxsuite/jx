@@ -1,5 +1,20 @@
 # Changelog
 
+## [6.1.0](https://github.com/jxsuite/jx/compare/runtime-v6.0.2...runtime-v6.1.0) (2026-11-06)
+
+
+### Features
+
+* **runtime,studio:** hold template warnings for data in flight, and render-check pages as built ([#544](https://github.com/jxsuite/jx/issues/544)) ([5d97c6c](https://github.com/jxsuite/jx/commit/5d97c6c163d0ab2b40b17ad50a2c5620beb4c9a3))
+* **studio:** offer a repeater item's fields in the From data picker ([#539](https://github.com/jxsuite/jx/issues/539)) ([e9ee027](https://github.com/jxsuite/jx/commit/e9ee027322ef01fd2d42c39e7864af1e70556410))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/schema bumped to 5.2.0
+
 ## [6.0.2](https://github.com/jxsuite/jx/compare/runtime-v6.0.1...runtime-v6.0.2) (2026-11-04)
 
 

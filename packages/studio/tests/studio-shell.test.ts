@@ -1852,6 +1852,21 @@ describe("multi-window project routing", () => {
     }
   });
 
+  test("a project whose code the user declined to run leaves this window as it was", async () => {
+    platform.setWindowProject = mock(async (_root: string) => ({
+      config: null,
+      declined: true as const,
+      deduped: false,
+    }));
+    try {
+      const before = state.calls.filter((c) => c[0] === "readFile").length;
+      await toolbarCtx.openRecentProject("/recent/site");
+      expect(state.calls.filter((c) => c[0] === "readFile").length).toBe(before);
+    } finally {
+      delete platform.setWindowProject;
+    }
+  });
+
   /* THE TARGET, HONOURED — the half `editor/shortcuts.ts` asks for and this file has to deliver.
      `openProjectFlow` puts the choice to the user and hands the answer to this hook, which was
      wired as `openProject: () => openProject()` against a function that declared no parameter: the
@@ -1894,6 +1909,22 @@ describe("multi-window project routing", () => {
       const { openInNew } = installNewWindowPlatform(true);
       try {
         expect(await runHook("newWindow")).toBe("focused");
+        expect(openInNew).toHaveBeenCalledWith("/other/site");
+      } finally {
+        delete platform.openProjectInNewWindow;
+        delete platform.pickProject;
+      }
+    });
+
+    test('"newWindow" declined at the trust prompt reports a cancel', async () => {
+      const openInNew = mock(async (_root: string) => ({
+        declined: true as const,
+        focused: false,
+      }));
+      platform.openProjectInNewWindow = openInNew;
+      platform.pickProject = mock(async () => ({ name: "Other", root: "/other/site" }));
+      try {
+        expect(await runHook("newWindow")).toBe("cancelled");
         expect(openInNew).toHaveBeenCalledWith("/other/site");
       } finally {
         delete platform.openProjectInNewWindow;

@@ -49,6 +49,8 @@ export interface FakeElectron {
   messageAnswer: number;
   /** Each `dialog.showMessageBox` call's options. */
   messageBoxes: Electron.MessageBoxOptions[];
+  /** Whether each of those named a window to sit over. */
+  messageBoxesParented: boolean[];
   /** Whether `app.isPackaged` reads true. */
   packaged: boolean;
   /** Each `dialog.showOpenDialog` call: its options, and whether it named a parent window. */
@@ -176,6 +178,7 @@ export function fakeElectron(): FakeElectron {
     menuTemplates: [],
     messageAnswer: 0,
     messageBoxes: [],
+    messageBoxesParented: [],
     names: [],
     openAnswer: { canceled: true, filePaths: [] },
     openError: null,
@@ -348,8 +351,14 @@ export function fakeElectron(): FakeElectron {
       },
     },
     dialog: {
-      showMessageBox: (options) => {
+      showMessageBox: (
+        first: Electron.BrowserWindow | Electron.MessageBoxOptions,
+        second?: Electron.MessageBoxOptions,
+      ) => {
+        // SAFETY: the two overloads differ only in the leading window, which `second` marks.
+        const options = (second ?? first) as Electron.MessageBoxOptions;
         record.messageBoxes.push(options);
+        record.messageBoxesParented.push(second !== undefined);
         return Promise.resolve({ response: record.messageAnswer });
       },
       showMessageBoxSync: () => record.dialogAnswer,

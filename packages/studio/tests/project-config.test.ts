@@ -44,7 +44,7 @@ void mock.module("../src/format/format-host.js", () => ({
 }));
 
 const {
-  PROJECT_CONFIG_PATH,
+  projectConfigPath,
   adoptProjectConfig,
   commitProjectConfig,
   projectConfigDocument,
@@ -101,7 +101,7 @@ function parseConfig(text: string): ProjectConfig {
 /** Project.json writes the mock platform saw, newest last. */
 function writes(state: MockPlatformState): string[] {
   return state.calls.flatMap(([method, path, content]) =>
-    method === "writeFile" && path === PROJECT_CONFIG_PATH && isString(content) ? [content] : [],
+    method === "writeFile" && path === projectConfigPath() && isString(content) ? [content] : [],
   );
 }
 
@@ -119,7 +119,7 @@ function setup(
   }
   const { state } = installMockPlatform(
     overrides,
-    opts.onDisk === undefined ? {} : { [PROJECT_CONFIG_PATH]: opts.onDisk },
+    opts.onDisk === undefined ? {} : { [projectConfigPath()]: opts.onDisk },
   );
   resetStudioState({ projectConfig: cfg });
   return state;
@@ -158,7 +158,7 @@ describe("serializeProjectConfig", () => {
     const onDisk =
       '{\n  "name": "site",\n  "style": { "--a": "1" },\n  "locales": ["en", "fr"]\n}\n';
     const { document, layout } = parseJsonDocument(onDisk);
-    openTab({ document, documentPath: PROJECT_CONFIG_PATH, id: PROJECT_CONFIG_PATH, layout });
+    openTab({ document, documentPath: projectConfigPath(), id: projectConfigPath(), layout });
     const cfg: ProjectConfig = { ...document, name: "renamed" };
     expect(serializeProjectConfig(cfg)).toBe(onDisk.replace('"site"', '"renamed"'));
   });
@@ -240,14 +240,14 @@ describe("a no-op settings edit produces an empty diff", () => {
       let state = setup(structuredClone(parsed), { onDisk });
       await updateSiteConfig({ name: parsed.name });
       expect(writes(state), `${path} rewritten by updateSiteConfig`).toHaveLength(0);
-      expect(state.files.get(PROJECT_CONFIG_PATH)).toBe(onDisk);
+      expect(state.files.get(projectConfigPath())).toBe(onDisk);
 
       // The in-place door: commit without having changed anything.
       resetProjectConfigDocument();
       state = setup(structuredClone(parsed), { onDisk });
       await commitProjectConfig();
       expect(writes(state), `${path} rewritten by commitProjectConfig`).toHaveLength(0);
-      expect(state.files.get(PROJECT_CONFIG_PATH)).toBe(onDisk);
+      expect(state.files.get(projectConfigPath())).toBe(onDisk);
     }
   });
 
@@ -259,7 +259,7 @@ describe("a no-op settings edit produces an empty diff", () => {
     await updateSiteConfig({ name: "Renamed" });
 
     expect(writes(state)).toHaveLength(1);
-    const written = state.files.get(PROJECT_CONFIG_PATH)!;
+    const written = state.files.get(projectConfigPath())!;
     expect(JSON.parse(written).name).toBe("Renamed");
     /* The file's own layout, read by the chokepoint when it seeded, is what the write honours: the
        only line that differs is the name's. (`project-config.ts`'s header, "A real edit is a
@@ -325,7 +325,7 @@ describe("a rejected write", () => {
 
     const failure = problems.find((p) => p.message.includes("Could not save project.json"));
     expect(failure?.source).toBe("Settings");
-    expect(failure?.path).toBe(PROJECT_CONFIG_PATH);
+    expect(failure?.path).toBe(projectConfigPath());
     expect(projectConfigDocument().doc.dirty).toBe(true);
   });
 
@@ -379,13 +379,13 @@ describe("binding", () => {
 
     const opened = openTab({
       document: { name: "Site" },
-      documentPath: PROJECT_CONFIG_PATH,
-      id: PROJECT_CONFIG_PATH,
+      documentPath: projectConfigPath(),
+      id: projectConfigPath(),
     });
     const bound = projectConfigDocument();
     expect(bound).not.toBe(detached);
     expect(bound.id).toBe(opened.id);
-    expect(bound.documentPath).toBe(PROJECT_CONFIG_PATH);
+    expect(bound.documentPath).toBe(projectConfigPath());
     expect(bound.capabilities.modes).toEqual(["stylebook", "tokens", "source"]);
     // The same list the Styles workspace names its views by, in its order: one list, two holders.
     expect(bound.capabilities.modes).toEqual([...STYLES_TAB_MODES]);
@@ -399,8 +399,8 @@ describe("binding", () => {
     setup({ name: "Site" });
     openTab({
       document: { name: "Site" },
-      documentPath: PROJECT_CONFIG_PATH,
-      id: PROJECT_CONFIG_PATH,
+      documentPath: projectConfigPath(),
+      id: projectConfigPath(),
     });
     const bound = projectConfigDocument();
 
@@ -434,8 +434,8 @@ describe("binding", () => {
 function openConfigTabWithOwnParse(onDisk: string) {
   return openTab({
     document: parseJsonDocument(onDisk).document,
-    documentPath: PROJECT_CONFIG_PATH,
-    id: PROJECT_CONFIG_PATH,
+    documentPath: projectConfigPath(),
+    id: projectConfigPath(),
   });
 }
 
@@ -607,7 +607,7 @@ describe("adoptProjectConfig", () => {
     // The file as first read: every object expanded, which is `JSON.stringify`'s layout.
     const before = { name: "Site", style: { "--a": "1" } };
     const state = setup(structuredClone(before), { onDisk: serializeJson(before, null) });
-    expect(state.files.get(PROJECT_CONFIG_PATH)).toContain('"style": {\n');
+    expect(state.files.get(projectConfigPath())).toContain('"style": {\n');
     // Seed from that file — a commit that changes nothing reads the record and writes nothing.
     await commitProjectConfig();
     expect(writes(state)).toHaveLength(0);
@@ -654,8 +654,8 @@ describe("adoptProjectConfig", () => {
     const { document, layout } = parseJsonDocument(onDisk);
     const tab = openTab({
       document,
-      documentPath: PROJECT_CONFIG_PATH,
-      id: PROJECT_CONFIG_PATH,
+      documentPath: projectConfigPath(),
+      id: projectConfigPath(),
       layout,
     });
     expect(tab.doc.layout?.inline.get("/style")).toBe(false);

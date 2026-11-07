@@ -4,7 +4,6 @@ disposition: implement
 claims:
   - site-architecture.md#2.3
 requires:
-  - _shared/project-file-access
   - spec/jxn-format
 workspaces:
   - packages/schema
@@ -48,7 +47,7 @@ size: L
 
 These are prototype numbers and need committed evidence before anyone quotes them. The prototype has no span map, no reconcile, and only `$head` rows with attributes and text.
 
-**Where the reader and writers go.** `plan:_shared/project-file-access` is required first, because it reduces 61 spellings of the name, 23 reads and 8 writers to one module. Nothing in this plan should then touch those call sites except to pass new data through.
+**Where the reader and writers go.** Every host already goes through `@jxsuite/schema/project-file` and its `/node` half, and `scripts/project-file-literals.test.ts` keeps it that way: `PROJECT_FILE_NAME`, `isProjectConfigPath`, `findEnclosingProject`, `readProjectFile`, `parseProjectFile` and `serializeProjectFile`, plus `projectConfigPath()` in Studio, which still returns a constant. Nothing in this plan should touch the call sites except to pass new data through.
 
 ## Outcome
 
@@ -61,7 +60,7 @@ These are prototype numbers and need committed evidence before anyone quotes the
 
 - **Decided:** one grammar, not a second language. A project file is the `spec.md` §22 grammar with a different top level: no root element, and every node a member. `$head` uses element rows, `style` and `$media` use style rows, and everything else is §22's JSON block. So the reader reuses `$ref`, duplicate-key, NFC and rejection rules without restating them, and a person who can write one can write the other.
 - **Decided:** the file declares itself with a `project` node, whose optional value is `name`. It comes first after any `$` metadata. Filename alone cannot decide, because a page at `pages/project.jxn` is legal and routes to `/project`, and the shape cannot decide, because `name "x"` alone has one non-`$` node and reads as an element. Wrapping the file in `project { … }` would also work, and indents the entire file for nothing.
-- **Decided:** both the name and the node are required, and `classifyJxn` (`plan:spec/jxn-format`) decides from a prescan that tolerates later syntax errors, because `@bgotink/kdl` throws on the whole of `project "x"\ndefaults {` and the walker must still know what it is looking at. So a hand-edit typo leaves the folder a project, reported at its line and column. `project.jxn` without the node is a document, so `pages/project.jxn` stays a page; at a project root, `jx validate` says so and names the fix. A `project` node in any other filename is an error naming the rename, because a repository scan selects candidates by name before it reads them. An `unreadable` file named `project.jxn` is believed and reported, as `plan:desktop/open-from-os` decides for `project.json`.
+- **Decided:** both the name and the node are required, and `classifyJxn` (`plan:spec/jxn-format`) decides from a prescan that tolerates later syntax errors, because `@bgotink/kdl` throws on the whole of `project "x"\ndefaults {` and the walker must still know what it is looking at. So a hand-edit typo leaves the folder a project, reported at its line and column. `project.jxn` without the node is a document, so `pages/project.jxn` stays a page; at a project root, `jx validate` says so and names the fix. A `project` node in any other filename is an error naming the rename, because a repository scan selects candidates by name before it reads them. An `unreadable` file named `project.jxn` is believed and reported, as desktop.md §4.6 decides for `project.json`.
 - **Decided:** `project` is reserved at the top level of a `.jxn` document, and `$element project` is the escape. No tracked document uses that tag. `plan:spec/jxn-format` reserves it in JDF.1 along with `script`, so no `.jxn` file written before this lands can break.
 - **Decided:** a folder with both files is refused, naming both. Silently preferring one would make the other a file that looks live and is not. Git makes the merge case loud on its own: one branch converting while another edits gives a modify/delete conflict.
 - **Decided:** `project.json` stays supported indefinitely, as `.json` documents do. There is no reason to break a project that works, and `jx convert` is the only migration anyone needs.
@@ -152,7 +151,7 @@ data {
 
 - **`packages/schema/src/jxn/project.ts`**: `parseProject`, `serializeProject`, and the span map from JDF.1, built on its JSON block and rows.
 - **`packages/schema/src/project-file.ts`**: the name list, `findProjectFile` preferring neither and refusing both, and `findEnclosingProject` asking `classifyJxn`. It imports the parser statically and exposes it synchronously, because `@bgotink/kdl` is synchronous and several readers are too. A lazy import would save nothing, since `bundleBackend` and wrangler both inline it, the same reason `plan:spec/jxn-format` gives for the runtime. So a host carries the 10.3 KB whether or not a project uses `.jxn`. The compiled site and the runtime core do not.
-- **Hosts** need no new call sites after `plan:_shared/project-file-access`, with these exceptions: the mtime caches pick up whichever file exists, `site/paths.ts` as above, `schema-command.ts`, and the native picker. `main/app.ts:232` filters to `["json"]`, and `:356` and `backend/window-hub.ts:301` say `Open project.json`, so without this a project on `project.jxn` cannot be picked. It belongs in PJX.2, because this repository's own sites convert there.
+- **Hosts** need no new call sites, with these exceptions: the mtime caches pick up whichever file exists, `site/paths.ts` as above, `schema-command.ts`, and the native picker. `main/app.ts:232` filters to `["json"]`, and `:356` and `backend/window-hub.ts:301` say `Open project.json`, so without this a project on `project.jxn` cannot be picked. It belongs in PJX.2, because this repository's own sites convert there.
 - **`jx convert`** gains the project file, including the case where the rename is `project.json` to `project.jxn` in place, and refuses if the target exists.
 - **Studio**: `projectConfigPath()` reads the real name; `tabs/project-config.ts` seeds through `parseProject`; `services/monaco-setup.ts:208`; JDF.3's Monarch grammar; Problems through the span map; the visible labels in `surfaces/*.json` (19 surfaces mention the file, some only in `$description`) and the message strings.
 - **`packages/ai`**, **`services/ai-system-prompt.ts:150`, `:461`, `:1017`**, the tool descriptions, `.claude/commands/jx.md` and `packages/studio/evals/tasks/*`: tell the model which file it has. The prompt must not teach `project.json` to a model looking at `project.jxn`.

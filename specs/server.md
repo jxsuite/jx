@@ -2,9 +2,9 @@
 
 ## Development Server with Live Reload, Proxy Resolution, and Studio API
 
-**Version:** 0.3.4-draft\
+**Version:** 0.3.6-draft\
 **Status:** Partial\
-**Updated:** 2026-11-04\
+**Updated:** 2026-11-06\
 **License:** MIT
 
 ---
@@ -364,6 +364,8 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.3.6-draft** (2026-11-06) — §3.2: `POST /__jx_resolve__` reads `$base` as `POST /__jx_server__` does, so a relative class resolves from the absolute-path base Studio's canvas sends.
+- **0.3.5-draft** (2026-11-06) — A project nested in a larger repository gets paths relative to itself, and a status and commit that cover only itself.
 - **0.3.4-draft** (2026-11-04) — The dev server drops every project's usage answers on any change it sees, and watches an active project outside its root or in an ignored folder, so a usage count and Studio's Files panel follow the disk wherever the project is (§3.1).
 - **0.3.3-draft** (2026-11-03) — §4 the AI proxy's policy is per provider family: X-Api-Provider: anthropic is served by the Anthropic Messages API with ANTHROPIC_API_KEY and ANTHROPIC_BASE_URL under the same key-provenance rule, and an unknown family is refused.
 - **0.3.2-draft** (2026-10-29) — §3.2: a bare $src resolves from the project's node_modules only, never the server's own graph.
@@ -423,4 +425,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_`@jxsuite/server` Specification v0.3.4-draft_
+_`@jxsuite/server` Specification v0.3.6-draft_
