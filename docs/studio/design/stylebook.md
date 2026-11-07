@@ -56,7 +56,7 @@ A page or a component has an **Elements** view of its own, in the Design workspa
 
 ## Style an element type
 
-1. Click a specimen card on the canvas, or its row in the **Styles** panel. The specimen is outlined on the canvas, the Inspector switches to the **Style** tab on its own, and the Command Bar's path and the Inspector header both name the tag you picked (`project.json › h1`, **Element · h1**).
+1. Click a specimen card on the canvas, or its row in the **Styles** panel. The specimen is outlined on the canvas, the Inspector switches to the **Style** view on its own, and the Command Bar's path and the Inspector header both name the tag you picked (`project.json › h1`, **Element · h1**).
 2. Read the Target Line before you type. Its scope chip reads **all `<h1>` in this document**. You are editing the element type, not one element. See **[Style inspector](/docs/studio/design/style-inspector)**.
 3. Edit styles with the full inspector: sections, provenance chips, and all.
 4. Watch every panel update: you're styling the element type, so every specimen of it changes at once, and so does every matching element the chip named.

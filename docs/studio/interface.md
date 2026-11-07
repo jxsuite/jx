@@ -118,7 +118,7 @@ Two panels are for working with the project as files and packages, and they stay
 
 With the switch off, both are still one palette row away: **Show Files** and **Show Packages**.
 
-**Insert**, the palette of elements and components you can add to a page, is not on the rail either, because you reach for it at the moment you're placing something, and it is not a view you sit in. Run **Show Insert** from the palette (:kbd[⌘K]) to open it in the Navigator. Source control is not a Navigator panel: it is the **Publish** workspace, whose tab in the Command Bar counts your changes. See [Publish](/docs/studio/publish).
+**Insert**, the palette of elements and components you can add to a page, is not on the rail either, because you reach for it at the moment you're placing something, and it is not a view you sit in. Press :kbd[⌘K] and type `>Show Insert` to open it in the Navigator. Source control is not a Navigator panel: it is the **Publish** workspace, whose tab in the Command Bar counts your changes. See [Publish](/docs/studio/publish).
 
 ### The Site panel
 
