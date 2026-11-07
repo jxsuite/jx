@@ -7,6 +7,7 @@
  * decision itself is what is under test, rather than a real inotify race.
  */
 
+import { authorized } from "./_authorized";
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -59,7 +60,7 @@ beforeEach(() => {
 
 describe("the session watches a project", () => {
   test("registering the sink starts the watcher on a root holding a project.json", () => {
-    const session = createProjectSession(PROJECT);
+    const session = createProjectSession(authorized(PROJECT));
     const logs = capturingLogs(() => session.setFileEventSink(() => {}));
     expect(watched).toEqual([PROJECT]);
     expect(logs.filter((line) => line.includes("not watching"))).toEqual([]);
@@ -67,7 +68,7 @@ describe("the session watches a project", () => {
   });
 
   test("a sink is what starts it — a root alone watches nothing", () => {
-    const session = createProjectSession(PROJECT);
+    const session = createProjectSession(authorized(PROJECT));
     expect(watched).toEqual([]);
     void session.dispose();
   });
@@ -75,7 +76,7 @@ describe("the session watches a project", () => {
 
 describe("the session refuses a root that is not a project", () => {
   test("no project.json means no watcher, and a line saying why", () => {
-    const session = createProjectSession(BARE);
+    const session = createProjectSession(authorized(BARE));
     const logs = capturingLogs(() => session.setFileEventSink(() => {}));
     expect(watched).toEqual([]);
     expect(logs.some((line) => line.includes("not watching") && line.includes(BARE))).toBe(true);
@@ -83,34 +84,34 @@ describe("the session refuses a root that is not a project", () => {
   });
 
   test("the refusal is logged once per root, not once per attempt to arm", () => {
-    const session = createProjectSession(BARE);
+    const session = createProjectSession(authorized(BARE));
     const logs = capturingLogs(() => {
       session.setFileEventSink(() => {});
       // Re-arming the same root — what a second sink registration or a no-op re-root does.
       session.setFileEventSink(() => {});
-      session.setProjectRoot(BARE);
+      session.setProjectRoot(authorized(BARE));
     });
     expect(logs.filter((line) => line.includes("not watching"))).toHaveLength(1);
     void session.dispose();
   });
 
   test("re-rooting onto a real project arms the watcher that the bare root did not", () => {
-    const session = createProjectSession(BARE);
+    const session = createProjectSession(authorized(BARE));
     capturingLogs(() => {
       session.setFileEventSink(() => {});
       expect(watched).toEqual([]);
-      session.setProjectRoot(PROJECT);
+      session.setProjectRoot(authorized(PROJECT));
     });
     expect(watched).toEqual([PROJECT]);
     void session.dispose();
   });
 
   test("leaving a project for a bare root closes the watcher it had", () => {
-    const session = createProjectSession(PROJECT);
+    const session = createProjectSession(authorized(PROJECT));
     capturingLogs(() => {
       session.setFileEventSink(() => {});
       expect(watched).toEqual([PROJECT]);
-      session.setProjectRoot(BARE);
+      session.setProjectRoot(authorized(BARE));
     });
     expect(closed).toHaveBeenCalled();
     void session.dispose();
@@ -125,7 +126,7 @@ describe("the session refuses a root that is not a project", () => {
  */
 describe("renameFile degrades to a bare report when the refactor pass fails", () => {
   test("the move already happened, so a failed reference rewrite still reports success", async () => {
-    const session = createProjectSession(PROJECT);
+    const session = createProjectSession(authorized(PROJECT));
     writeFileSync(resolve(PROJECT, "old.txt"), "content");
     applyRename.mockImplementationOnce(() => Promise.reject(new Error("refactor engine blew up")));
     try {

@@ -7,7 +7,18 @@
 
 import { mkdir, readFile, readdir, rename, rm, rmdir, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
-import { existsSync, readFileSync, realpathSync } from "node:fs";
+import {
+  accessSync,
+  closeSync,
+  constants,
+  existsSync,
+  fstatSync,
+  lstatSync,
+  openSync,
+  readFileSync,
+  realpathSync,
+  statSync,
+} from "node:fs";
 import { handleResolve, handleServerFunction } from "@jxsuite/server/resolve";
 import {
   deleteDataRow,
@@ -40,6 +51,9 @@ import {
 } from "@jxsuite/compiler/format-host";
 import { readBundledProjectSchemas } from "@jxsuite/compiler/schema-command";
 import { componentMetaFrom } from "@jxsuite/schema/component-meta";
+import { classifyProjectFile, findEnclosingProject } from "@jxsuite/schema/project-file";
+import type { ProjectWalkIo } from "@jxsuite/schema/project-file";
+import type { AuthorizedRoot } from "./roots";
 import type { ExtensionsPayloadEntry } from "@jxsuite/compiler/format-host";
 import type {
   CodeServiceResult,
@@ -220,12 +234,146 @@ export async function pickProjectFile(): Promise<{
   }
 
   const raw = await readFile(filePath, "utf8");
-  /* SAFETY: the file is a project.json by name (checked above), and every ProjectConfig member is
+  if (classifyProjectFile(raw) === "other") {
+    throw new Error("Selected file is not a project's configuration");
+  }
+  /* SAFETY: the file is a project.json by name and by content (checked above), and every ProjectConfig member is
      optional. Only `name` is read here, and a falsy one falls back to the folder name; member-level
      checking is `validateProject`'s job, not the picker's. */
   const config = JSON.parse(raw) as ProjectConfig;
   const root = dirname(filePath);
   return { config, name: config.name || basename(root), root };
+}
+
+/**
+ * What a session is allowed to bind to, and the only source of an {@link AuthorizedRoot}.
+ *
+ * The hub implements it (`window-hub.ts`). A session has no other way to move to a project it was
+ * not created with, so every opening path passes through here whether it knows about trust or not.
+ */
+export interface RootGate {
+  /** Ask whether this folder may run; null when the user declined. */
+  authorize: (root: string) => Promise<AuthorizedRoot | null>;
+  /** A folder the application itself just created: remember it, with nothing to ask. */
+  grant: (root: string) => Promise<AuthorizedRoot>;
+}
+
+/** A session with no gate can open nothing, which is the safe way to get this wrong. */
+const REFUSE_EVERY_ROOT: RootGate = {
+  authorize: () => Promise.resolve(null),
+  grant: () => Promise.reject(new Error("This session has no way to bind a project.")),
+};
+
+/** Larger than any real project file, and small enough to read before anyone has answered. */
+const MAX_PROJECT_FILE_BYTES = 4 * 1024 * 1024;
+
+/**
+ * Read a candidate project file, before the user has answered for the folder it is in.
+ *
+ * So the file is not to be trusted, and neither is what it is: a FIFO would block this process,
+ * which serves every window, and a link to `/dev/zero` would never end. It is opened without
+ * blocking and read only if it is an ordinary file of a sane size.
+ *
+ * @returns Its text; "" when it is there and cannot be read, which `classifyProjectFile` reads as
+ *   unreadable, so the walk stops and says so rather than opening some ancestor instead; and null
+ *   when it is not there or is not a file.
+ */
+function readCandidate(path: string): string | null {
+  let descriptor: number;
+  try {
+    // Read-only is zero, so this is read-only and non-blocking. Windows has no such flag, or FIFOs here.
+    descriptor = openSync(path, constants.O_NONBLOCK);
+  } catch {
+    return isDeniedHere(path) ? "" : null;
+  }
+  try {
+    const stats = fstatSync(descriptor);
+    if (!stats.isFile()) {
+      return null;
+    }
+    return stats.size > MAX_PROJECT_FILE_BYTES ? "" : readFileSync(descriptor, "utf8");
+  } catch {
+    return "";
+  } finally {
+    closeSync(descriptor);
+  }
+}
+
+/**
+ * Whether a failure to open means the file is there and this process may not read it.
+ *
+ * Being denied is not enough. Under a strict snap or the App Sandbox the same denial answers for
+ * places this process may not look at all, like `/home/project.json` on the way up to the root, and
+ * believing those would make a parent folder a project. Only a file that can be seen counts.
+ */
+function isDeniedHere(path: string): boolean {
+  try {
+    lstatSync(path);
+  } catch {
+    return false;
+  }
+  try {
+    accessSync(path, constants.R_OK);
+    return false;
+  } catch {
+    return true;
+  }
+}
+
+/** The walk over the real filesystem. */
+const PROJECT_WALK_IO: ProjectWalkIo = { dirname, join, readText: readCandidate };
+
+/** What a path the operating system handed over turned out to be (specs/desktop.md §4.6). */
+export type OpenTarget =
+  | {
+      /** The document to show, relative to the root; null for the project alone. */
+      file: string | null;
+      kind: "project";
+      /** Something the user should hear: the project file does not parse. */
+      problem: string | null;
+      root: string;
+    }
+  | { kind: "refused"; reason: string };
+
+/**
+ * Decide what a path means, whichever way it arrived.
+ *
+ * One rule for every entry point, because several entry points with their own rules is how a
+ * double-clicked page came to be posted as a project root. This reads at most project files, as
+ * data, and imports and runs nothing, so it is safe before the user has answered for the folder.
+ *
+ * @param path The path, absolute or relative to this process's working directory.
+ */
+export function resolveOpenTarget(path: string): OpenTarget {
+  const absolute = resolve(path);
+  let isDirectory: boolean;
+  try {
+    isDirectory = statSync(absolute).isDirectory();
+  } catch {
+    return { kind: "refused", reason: `Jx Studio can't find ${absolute}.` };
+  }
+  const found = findEnclosingProject(
+    isDirectory ? absolute : dirname(absolute),
+    PROJECT_WALK_IO,
+    isDirectory ? absolute : undefined,
+  );
+  if (!found) {
+    return {
+      kind: "refused",
+      reason: isDirectory
+        ? `${absolute} isn't a Jx project: it has no project.json.`
+        : `${basename(absolute)} isn't inside a Jx project, so Jx Studio can't open it yet.`,
+    };
+  }
+  return {
+    file: isDirectory || absolute === found.projectFile ? null : relPosix(found.root, absolute),
+    kind: "project",
+    problem:
+      found.verdict === "unreadable"
+        ? `Jx Studio can't read ${found.projectFile}, so the project won't load. Fix the file, then close its window and open the project again.`
+        : null,
+    root: found.root,
+  };
 }
 
 // ─── Pure helpers (no session state) ──────────────────────────────────────────
@@ -488,8 +636,13 @@ function byPathOrder<T extends { path: string }>(entries: T[]): T[] {
   return entries.toSorted((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
 }
 
-export function createProjectSession(initialRoot: string | null) {
+export function createProjectSession(
+  initialRoot: AuthorizedRoot | null,
+  gate: RootGate = REFUSE_EVERY_ROOT,
+) {
   let projectRoot: string | null = initialRoot;
+  /** Set when the window is gone, after which no answer can bind this session to anything. */
+  let closed = false;
   let extensionRegistry: { root: string; missing: string[]; registry: ExtensionRegistry } | null =
     null;
 
@@ -599,7 +752,11 @@ export function createProjectSession(initialRoot: string | null) {
    * bytes until its next keystroke republishes them. That is self-healing and bounded, which is why
    * it is preferred to leaving every root a session ever held populated forever.
    */
-  function reroot(next: string | null): void {
+  function reroot(next: AuthorizedRoot | null): void {
+    // A prompt can outlive the window that asked. Its answer must not bring a closed session back.
+    if (closed && next !== null) {
+      return;
+    }
     if (projectRoot && projectRoot !== next) {
       clearLivePreviewOverlay(projectRoot);
     }
@@ -707,6 +864,12 @@ export function createProjectSession(initialRoot: string | null) {
   }
 
   /** Register (or clear) the sink that receives batched filesystem events for the active project. */
+  /** The window is gone: let go of the project, and accept no other. */
+  function close(): void {
+    reroot(null);
+    closed = true;
+  }
+
   function setFileEventSink(sink: ((events: FsEventPayload[]) => void) | null): void {
     fileEventSink = sink;
     startWatching();
@@ -847,8 +1010,13 @@ export function createProjectSession(initialRoot: string | null) {
       return null;
     }
 
-    // Binding is the part `pickProjectFile` deliberately leaves out — see its docstring.
-    reroot(picked.root);
+    /* Binding is the part `pickProjectFile` deliberately leaves out — see its docstring. A folder
+       the user declines to trust reads as a cancelled pick, which is the answer they gave. */
+    const authorized = await gate.authorize(picked.root);
+    if (!authorized) {
+      return null;
+    }
+    reroot(authorized);
 
     return {
       config: picked.config,
@@ -960,7 +1128,8 @@ export function createProjectSession(initialRoot: string | null) {
     const config = JSON.parse(
       await readFile(resolve(destPath, "project.json"), "utf8"),
     ) as ProjectConfig;
-    reroot(destPath);
+    // The application just wrote this folder, which `generateProject` refuses unless it was empty.
+    reroot(await gate.grant(destPath));
 
     return { config, root: destPath };
   }
@@ -1112,22 +1281,16 @@ export function createProjectSession(initialRoot: string | null) {
     filePath: string;
   }): Promise<{ sitePath: string | null }> {
     const root = requireRoot();
-    let dir = resolve(root, dirname(params.filePath));
-    let rel = relative(root, dir);
-
-    // Walk up from the file's directory, never past the project root.
-    while (!rel.startsWith("..") && !rel.startsWith("/")) {
-      const candidate = join(dir, "project.json");
-      if (existsSync(candidate)) {
-        return { sitePath: relPosix(root, dir) || "." };
-      }
-
-      const parent = dirname(dir);
-      if (parent === dir) {
-        break;
-      }
-      dir = parent;
-      rel = relative(root, dir);
+    const start = resolve(root, dirname(params.filePath));
+    const rel = relative(root, start);
+    // A file outside this project has no site in it.
+    if (rel.startsWith("..") || isAbsolute(rel)) {
+      return { sitePath: null };
+    }
+    // Never past the project root, and a page named project.json is not a site.
+    const found = findEnclosingProject(start, PROJECT_WALK_IO, resolve(root));
+    if (found) {
+      return { sitePath: relPosix(root, found.root) || "." };
     }
 
     return { sitePath: null };
@@ -1388,6 +1551,7 @@ export function createProjectSession(initialRoot: string | null) {
       return projectRoot;
     },
     setProjectRoot: reroot,
+    close,
     setFileEventSink,
     dispose: stopWatching,
     listFormats,

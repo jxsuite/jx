@@ -2,6 +2,7 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import type { AppInfo } from "@jxsuite/protocol";
 import type { HubControl, HubWindow } from "../src/backend/handlers";
+import type { AuthorizedRoot } from "../src/backend/roots";
 import type { ProjectSession, pickProjectFile } from "../src/backend/project-session";
 import { rpcParity } from "./_rpc-parity";
 
@@ -137,6 +138,11 @@ function fakeHub(): FakeHub {
     raised: [],
     retitled: [],
     appInfo: (): AppInfo => ({ channel: "c", hash: "h", version: "v" }),
+    authorize: (root: string) => {
+      calls.push({ args: [root], name: "hub.authorize" });
+      // SAFETY: a stand-in's answer about a stand-in's path, which nothing will run.
+      return Promise.resolve(root === "/declined" ? null : (root as AuthorizedRoot));
+    },
     findWindowByRoot: (root: string, except?: HubWindow) => {
       calls.push({ args: [root, except], name: "hub.findWindowByRoot" });
       return hub.held;
@@ -144,10 +150,11 @@ function fakeHub(): FakeHub {
     focus: (window: HubWindow) => {
       hub.raised.push(window);
     },
+    isOpening: (root: string) => root === "/opening",
     listOpenWindows: () => [{ id: 7, projectRoot: "/x" }],
     openProject: (root: string | null) => {
       calls.push({ args: [root], name: "hub.openProject" });
-      return { focused: root === "/held" };
+      return Promise.resolve({ focused: root === "/held" });
     },
     retitle: (window: HubWindow) => {
       hub.retitled.push(window);
@@ -160,7 +167,7 @@ function fakeHub(): FakeHub {
 function build() {
   const hub = fakeHub();
   const { root, session } = fakeSession();
-  const window: HubWindow = { id: 3, session };
+  const window: HubWindow = { id: 3, pendingDocuments: [], session };
   return { handlers: buildWindowHandlers(window, hub), hub, root, window };
 }
 
@@ -316,7 +323,8 @@ describe("window-level handlers", () => {
   test("getProjectRoot reports the session's root as it changes", async () => {
     const { handlers, window } = build();
     expect(await handlers.getProjectRoot()).toEqual({ root: "/proj" });
-    window.session.setProjectRoot("/next");
+    // SAFETY: a stand-in session, which runs nothing from the path it is given.
+    window.session.setProjectRoot("/next" as AuthorizedRoot);
     expect(await handlers.getProjectRoot()).toEqual({ root: "/next" });
   });
 
@@ -376,9 +384,39 @@ describe("window-level handlers", () => {
     expect(callsTo("hub.findWindowByRoot")[0]?.args).toEqual(["/free", window]);
   });
 
+  test("setWindowProject binds nothing when the user declines, and says so", async () => {
+    const { handlers, hub, root, window } = build();
+    expect(await handlers.setWindowProject({ root: "/declined" })).toEqual({
+      config: null,
+      declined: true,
+      deduped: false,
+    });
+    expect(root()).not.toBe("/declined");
+    expect(callsTo("session.setProjectRoot")).toEqual([]);
+    expect(hub.retitled).not.toContain(window);
+  });
+
+  test("setWindowProject defers to a window on its way that the same answer let through", async () => {
+    const { handlers, root } = build();
+    expect(await handlers.setWindowProject({ root: "/opening" })).toEqual({
+      config: null,
+      deduped: true,
+    });
+    expect(root()).not.toBe("/opening");
+  });
+
+  test("takeOpenDocuments hands over what is queued, once", async () => {
+    const { handlers, window } = build();
+    window.pendingDocuments.push("pages/a.json", "pages/b.json");
+    const first = await handlers.takeOpenDocuments();
+    const second = await handlers.takeOpenDocuments();
+    expect(first).toEqual(["pages/a.json", "pages/b.json"]);
+    expect(second).toEqual([]);
+  });
+
   test("setWindowProject raises the window that holds the project and binds nothing", async () => {
     const { handlers, hub, root } = build();
-    const holder: HubWindow = { id: 9, session: fakeSession().session };
+    const holder: HubWindow = { id: 9, pendingDocuments: [], session: fakeSession().session };
     hub.held = holder;
     expect(await handlers.setWindowProject({ root: "/held" })).toEqual({
       config: null,

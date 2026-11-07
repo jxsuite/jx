@@ -98,7 +98,10 @@ describe("window hub", () => {
     test("a second open of the same project waits for the first instead of opening twice", async () => {
       fixture = hubFixture();
       const root = fixture.makeProject("a");
-      const outcomes = [fixture.hub.openProject(root), fixture.hub.openProject(root)];
+      const outcomes = await Promise.all([
+        fixture.hub.openProject(root),
+        fixture.hub.openProject(root),
+      ]);
       expect(outcomes).toEqual([{ focused: false }, { focused: true }]);
       await fixture.hub.idle();
       expect(fixture.opened()).toHaveLength(1);
@@ -106,15 +109,15 @@ describe("window hub", () => {
 
     test("two welcome windows opening together take different slots", async () => {
       fixture = hubFixture();
-      fixture.hub.openProject(null);
-      fixture.hub.openProject(null);
+      void fixture.hub.openProject(null);
+      void fixture.hub.openProject(null);
       await fixture.hub.idle();
       expect(new Set(fixture.opened().map((window) => window.partition)).size).toBe(2);
     });
 
     test("a window whose server binds after the hub is disposed is never announced", async () => {
       fixture = hubFixture();
-      fixture.hub.openProject(fixture.makeProject("a"));
+      void fixture.hub.openProject(fixture.makeProject("a"));
       fixture.hub.dispose();
       await fixture.hub.idle();
       expect(fixture.opened()).toHaveLength(0);

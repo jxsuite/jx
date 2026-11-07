@@ -46,7 +46,7 @@ describe("electronAppCommand", () => {
         "--jx-backend=/build/backend/index.js",
         "--jx-preload=/b/preload.js",
         "--jx-icon=/share/icon.png",
-        "--jx-project=/proj",
+        "/proj",
       ],
       bin: "/bin/electron",
     });
@@ -57,16 +57,14 @@ describe("electronAppCommand", () => {
     expect(args.slice(0, 2)).toEqual(["--class=jx-studio", "/b/app-main.js"]);
   });
 
-  test("names the project by switch, because an unpackaged argv has no position that is the user's", () => {
+  test("passes the path bare, as a file manager would, so a checkout resolves it as an installed app does", () => {
     const { args } = electronAppCommand("/bin/electron", files, "/proj");
-    expect(args.filter((arg) => !arg.startsWith("-"))).toEqual(["/b/app-main.js"]);
+    expect(args.filter((arg) => !arg.startsWith("-"))).toEqual(["/b/app-main.js", "/proj"]);
   });
 
   test("leaves the icon and the project out when there are none", () => {
     const { args } = electronAppCommand("/bin/electron", { ...files, icon: null }, null);
-    expect(
-      args.some((arg) => arg.startsWith("--jx-icon=") || arg.startsWith("--jx-project=")),
-    ).toBe(false);
+    expect(args.some((arg) => arg.startsWith("--jx-icon=") || arg === "/proj")).toBe(false);
   });
 });
 

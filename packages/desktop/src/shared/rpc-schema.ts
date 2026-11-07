@@ -477,11 +477,15 @@ export interface StudioRPC {
         // A window was created for the project, or one already had it and came to the front.
         // The response says which, so the caller can report what actually happened.
         params: { root: string };
-        response: { focused: boolean };
+        response: { declined?: true; focused: boolean };
       };
       setWindowProject: {
         params: { root: string };
-        response: { deduped: boolean; config: ProjectConfig | null };
+        response: { declined?: true; deduped: boolean; config: ProjectConfig | null };
+      };
+      takeOpenDocuments: {
+        params: void;
+        response: string[];
       };
       getProjectRoot: {
         params: void;
@@ -541,6 +545,7 @@ export interface StudioRPC {
     messages: {
       /** The user-level settings changed — in this window, another window, or by hand. */
       settingsChanged: { settings: Record<string, string> };
+      documentsPending: Record<string, never>;
       fileChanged: { path: string };
       onFileEvents: { events: FsEventPayload[] };
     };

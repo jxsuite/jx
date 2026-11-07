@@ -34,6 +34,7 @@ describe("electron-builder.yml", () => {
     const mac = block("mac");
     expect(mac).toContain("LSHandlerRank: Alternate");
     expect(mac).toContain("- public.json");
+    expect(mac).toContain("- net.daringfireball.markdown");
     expect(mac).not.toContain("LSHandlerRank: Owner");
     expect(mac).not.toContain("LSHandlerRank: Default");
   });

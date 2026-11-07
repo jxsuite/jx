@@ -15,8 +15,10 @@
  */
 import { existsSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import type * as Electron from "electron";
 import type { BrowserWindow } from "electron";
+import { isString } from "@jxsuite/schema/guards";
 import { shellEnv } from "./command";
 import type { BackendMessage, DialogKind, ShellMessage } from "../shared/protocol";
 import { utilityBackend } from "./backend-process";
@@ -38,16 +40,18 @@ import type { AutoUpdater, UpdateSchedule } from "./updater";
 
 /**
  * What the app is told: `--jx-<name>=<value>` switches (an unpackaged run's only source) or,
- * packaged, the layout of its own resources, and one bare project path.
+ * packaged, the layout of its own resources, and any bare paths to open.
  */
 export interface AppArgs {
   /** The backend bundle, run as a utility process. */
   backend: string;
   /** The window icon. */
   icon: string | null;
+  /** The paths the launch was handed, for the backend to make sense of. */
+  paths: string[];
   /** The preload bundle every window shares. */
   preload: string;
-  /** The project to open first, or null for a welcome window. */
+  /** The project to open first when no path says otherwise, or null for a welcome window. */
   root: string | null;
   /** The studio assets directory, when the launch names one (a packaged app always does). */
   studio: string | null;
@@ -90,19 +94,49 @@ function isWithin(directory: string, path: string): boolean {
 }
 
 /**
- * The project a launch names: `--jx-project=<path>`, else the first bare argument, else
+ * The paths a launch was handed: every bare argument, absolute.
+ *
+ * Every one, because a file manager passes all of a multi-selection (`%F`), and a `file:` URL is
+ * one too, because an AppImage's bundled desktop entry says `%U`. The rest of the argv is switches,
+ * the app's own script, and whatever Chromium appends, all of which this tells apart.
+ *
+ * The bare argument has to work whether or not the app is packaged. An unpackaged run is `electron
+ * <switches> <script> …`, so no position in argv is the user's; what is known is where the app
+ * lives, and the script is the one bare argument inside that directory. (Not the script's own path:
+ * a bundle cannot ask for it. Bun folds `__filename`, `module.filename` and `import.meta.filename`
+ * to the source file's name at build time, and `require.main` is Electron's own internal module.) A
+ * packaged app's argv has no script, and nothing then lies inside `appPath`.
+ *
+ * @param args The launch's arguments: everything after the program.
+ * @param cwd The launch's working directory.
+ * @param appPath The directory the app lives in (`app.getAppPath()`), which holds no project.
+ */
+export function launchPathsFrom(args: readonly string[], cwd: string, appPath = ""): string[] {
+  const paths: string[] = [];
+  for (const arg of args) {
+    if (arg.startsWith("-")) {
+      continue;
+    }
+    let path: string;
+    try {
+      path = arg.startsWith("file:") ? fileURLToPath(arg) : resolve(cwd, arg);
+    } catch {
+      // `file://server/share`, or a URL that does not decode. Kept, so the user is told it can't open.
+      path = resolve(cwd, arg);
+    }
+    if (!isWithin(appPath, path)) {
+      paths.push(path);
+    }
+  }
+  return paths;
+}
+
+/**
+ * The project a launch names when it names no path: `--jx-project=<path>`, else
  * `JSONSX_PROJECT_ROOT`, else the working directory but only when it holds a `project.json`.
  *
  * A path nobody typed has to prove itself. A launch from a desktop entry or a shell sitting in
  * `$HOME` must not adopt the home directory as a project, so that window is a welcome window.
- *
- * The bare argument is what `jx-studio ./site` passes, and it has to work whether or not the app is
- * packaged. An unpackaged run is `electron <switches> <script> …`, so no position in argv is the
- * user's; what is known is where the app lives, and the script is the one bare argument inside that
- * directory. (Not the script's own path: a bundle cannot ask for it. Bun folds `__filename`,
- * `module.filename` and `import.meta.filename` to the source file's name at build time, and
- * `require.main` is Electron's own internal module.) A packaged app's argv has no script, and
- * nothing then lies inside `appPath`.
  *
  * @param args The launch's arguments: everything after the program.
  * @param env The launch's environment.
@@ -117,15 +151,42 @@ export function projectRootFrom(
   exists: (path: string) => boolean,
   appPath = "",
 ): string | null {
-  const bare = args.find((arg) => !arg.startsWith("-") && !isWithin(appPath, resolve(cwd, arg)));
-  const named = switchValue(args, "project") ?? bare;
+  const named = switchValue(args, "project");
   if (named) {
     return projectDirOf(resolve(cwd, named));
+  }
+  if (launchPathsFrom(args, cwd, appPath).length > 0) {
+    return null;
   }
   if (env.JSONSX_PROJECT_ROOT) {
     return resolve(cwd, env.JSONSX_PROJECT_ROOT);
   }
   return exists(resolve(cwd, "project.json")) ? cwd : null;
+}
+
+/** What a launch wants opened, worked out by the launch that knows its own argv. */
+export interface LaunchRequest {
+  paths: string[];
+  root: string | null;
+}
+
+/**
+ * Whether a value handed over by a second launch is one of these.
+ *
+ * @param value What arrived with `second-instance`.
+ */
+export function isLaunchRequest(
+  value: Electron.LaunchData | undefined,
+): value is LaunchRequest & Electron.LaunchData {
+  if (!value) {
+    return false;
+  }
+  const { paths, root } = value;
+  return (
+    Array.isArray(paths) &&
+    paths.every((path) => isString(path)) &&
+    (root === null || isString(root))
+  );
 }
 
 /**
@@ -136,7 +197,7 @@ export function projectRootFrom(
  * @param cwd The launch's working directory.
  * @param exists Whether a path exists.
  * @param appPath The directory the app lives in (`app.getAppPath()`), which holds no project.
- * @param layout A packaged app's own layout, which the switches override.
+ * @param layout A packaged app's own layout, which is all it is told.
  * @throws {Error} When neither a switch nor a layout says where something is.
  */
 export function parseAppArgs(
@@ -147,21 +208,25 @@ export function parseAppArgs(
   appPath = "",
   layout: AppLayout | null = null,
 ): AppArgs {
-  const backend = switchValue(args, "backend") ?? layout?.backend;
-  const preload = switchValue(args, "preload") ?? layout?.preload;
+  /* A packaged app runs what it was packaged with. `--jx-backend=` names a script to run as the
+     backend, and a shortcut file can carry arguments, so honouring it there would let a file on the
+     desktop run anything inside a signed application. */
+  const backend = layout ? layout.backend : switchValue(args, "backend");
+  const preload = layout ? layout.preload : switchValue(args, "preload");
   if (!backend || !preload) {
     throw new Error("The Jx Studio app needs --jx-backend and --jx-preload.");
   }
   return {
     backend,
-    icon: switchValue(args, "icon") ?? layout?.icon ?? null,
+    icon: (layout ? layout.icon : switchValue(args, "icon")) ?? null,
+    paths: launchPathsFrom(args, cwd, appPath),
     preload,
     root: projectRootFrom(args, env, cwd, exists, appPath),
     studio: layout?.studio ?? null,
   };
 }
 
-/** The project directory a path the OS handed us names: a `project.json`'s folder, or the folder. */
+/** The project a `--jx-project` switch names: a `project.json`'s folder, or the folder. */
 export function projectDirOf(path: string): string {
   return basename(path) === "project.json" ? dirname(path) : path;
 }
@@ -204,6 +269,32 @@ export async function loadAutoUpdater(): Promise<AutoUpdater> {
   };
 }
 
+/**
+ * The prompt before a folder's code first runs (specs/desktop.md §4.7).
+ *
+ * It names the folder by its path and never by the project's `name`, which is the folder's to
+ * choose, and a prompt reading "Open Acme Corp's site?" is worse than none. A folder's name is the
+ * folder's to choose too, so anything that could lay out the text differently (a newline that
+ * starts a line of its own, a bidirectional override) is drawn as a replacement character. Cancel
+ * is the default, because this is the one answer that cannot be taken back by anything the folder
+ * does.
+ *
+ * @param root The folder.
+ */
+export function trustPrompt(root: string): Electron.MessageBoxOptions {
+  const shown = root.replaceAll(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu, "\uFFFD");
+  return {
+    buttons: ["Open", "Cancel"],
+    cancelId: 1,
+    defaultId: 1,
+    detail: `${shown}\n\nA Jx project runs code on this computer with your permissions, so only open a folder you trust. Jx Studio remembers your answer for this folder and doesn't ask again, even if its files change later.`,
+    message: "Open this folder and run its code?",
+    noLink: true,
+    title: "Jx Studio",
+    type: "warning",
+  };
+}
+
 /** What the open dialog returned: the path, and the bookmark that regains it after a relaunch. */
 interface Picked {
   bookmark: string | undefined;
@@ -220,6 +311,7 @@ async function choosePath(
   kind: DialogKind,
   title: string,
   sandboxed = false,
+  defaultPath?: string,
 ): Promise<Picked | null> {
   /* Under the App Sandbox a pick grants exactly what was picked: a project.json would grant that
      one file, and none of the pages beside it. So a sandboxed build asks for the folder. */
@@ -228,6 +320,9 @@ async function choosePath(
     properties: folder ? ["openDirectory", "createDirectory"] : ["openFile"],
     title: sandboxed && kind === "file" ? "Open project folder" : title,
   };
+  if (defaultPath) {
+    options.defaultPath = defaultPath;
+  }
   if (kind === "file" && !sandboxed) {
     options.filters = [{ extensions: ["json"], name: "Project files" }];
   }
@@ -286,7 +381,15 @@ export async function startApp(
 
   /* The lock comes before the switches are read: a second launch has no backend of its own to
      describe, only a project to hand to the first, which has already been told by this call. */
-  if (!app.requestSingleInstanceLock()) {
+  /* Handed over with the lock rather than left in argv for the first instance to parse. Only this
+     process knows which bare argument is its own script: in a checkout, each launch's bundle may be
+     a different path. And Electron warns that the argv the first instance sees can be reordered. */
+  const handedOver: LaunchRequest = {
+    paths: launchPathsFrom(userArgs(argv), cwd, app.getAppPath()),
+    // Not this launch's environment: the first instance's project is not this one's to change.
+    root: projectRootFrom(userArgs(argv), {}, cwd, exists, app.getAppPath()),
+  };
+  if (!app.requestSingleInstanceLock({ ...handedOver })) {
     app.quit();
     return null;
   }
@@ -304,8 +407,21 @@ export async function startApp(
   let ready = false;
   let restarting = false;
   const queue: ShellMessage[] = [];
-  /** The project folders asked for, in order: what a restarted backend is told to open again. */
-  const openRoots: string[] = [];
+  /** What each window holds, as the backend reports it: what a restarted one is told to reopen. */
+  const heldRoots = new Map<number, string | null>();
+  /** How many paths have arrived from outside, which replace the window a launch would open. */
+  let pathsFromOutside = 0;
+  /** The welcome window the launch asked for, while it can still be called off. */
+  let launchWelcome: ShellMessage | null = null;
+  /** Whether the first backend has started, before which nothing can restart it. */
+  let backendStarted = false;
+  /** Files that arrived before then and need a folder the user has not granted. */
+  const awaitingGrant: string[] = [];
+  /** One folder prompt at a time, each of which may replace the backend. */
+  let grantChain: Promise<void> = Promise.resolve();
+  /** Notices on screen, which a `quit` waits for, or the user would never get to read them. */
+  let noticesShowing = 0;
+  let quitAfterNotices = false;
 
   /* A Mac App Store build is sandboxed: it reads a folder only after the user picks it, and the
      permission reaches the backend only if the backend started after it was given. Picked folders
@@ -320,9 +436,6 @@ export async function startApp(
 
   /** Tell the backend, or hold the message until it says it is listening. */
   function post(message: ShellMessage): void {
-    if (message.type === "open-project" && message.root !== null) {
-      openRoots.push(message.root);
-    }
     if (ready && backend) {
       backend.send(message);
     } else {
@@ -330,15 +443,87 @@ export async function startApp(
     }
   }
 
+  /**
+   * Tell the user something, with no window needed and none held up: a dialog that blocks the main
+   * process would stop every open project from drawing until it is dismissed.
+   */
+  function notify(message: string): void {
+    noticesShowing += 1;
+    electron.dialog
+      .showMessageBox({
+        buttons: ["OK"],
+        cancelId: 0,
+        defaultId: 0,
+        detail: "",
+        message,
+        noLink: true,
+        title: "Jx Studio",
+        type: "warning",
+      })
+      .catch((error: Error) => {
+        console.error("[electron-app]", error);
+      })
+      .finally(() => {
+        noticesShowing -= 1;
+        if (quitAfterNotices && noticesShowing === 0) {
+          app.quit();
+        }
+      });
+  }
+
+  /** Hand a path to the backend, once a sandboxed build has the folder it lies in. */
+  function openPath(path: string): void {
+    if (!grants || grants.covers(path)) {
+      post({ path, type: "open-path" });
+    } else if (backendStarted) {
+      grantChain = grantChain
+        .then(() => grantFolderFor(path))
+        .catch((error: Error) => {
+          // One failed folder prompt must not stop every file after it.
+          console.error("[electron-app]", error);
+        });
+    } else {
+      // A cold launch: asking now would restart a backend that has not started yet.
+      awaitingGrant.push(path);
+    }
+  }
+
+  /** A path arrived from outside: it replaces the welcome window a launch would otherwise open. */
+  function openFromOutside(path: string): void {
+    pathsFromOutside += 1;
+    // Something is being opened now, so an earlier launch's reason to end no longer holds.
+    quitAfterNotices = false;
+    if (launchWelcome) {
+      const queued = queue.indexOf(launchWelcome);
+      if (queued !== -1) {
+        queue.splice(queued, 1);
+      }
+      launchWelcome = null;
+    }
+    openPath(path);
+  }
+
   // A second launch is another request to open something, not another app.
-  app.on("second-instance", (_event, secondArgv, secondCwd) => {
-    const root = projectRootFrom(userArgs(secondArgv), {}, secondCwd, exists, app.getAppPath());
-    post({ root, type: "open-project" });
+  app.on("second-instance", (_event, secondArgv, secondCwd, additionalData) => {
+    // What the launch worked out for itself. Its argv is the fallback, and not the first choice.
+    const { paths, root } = isLaunchRequest(additionalData)
+      ? additionalData
+      : {
+          paths: launchPathsFrom(userArgs(secondArgv), secondCwd, app.getAppPath()),
+          root: projectRootFrom(userArgs(secondArgv), {}, secondCwd, exists, app.getAppPath()),
+        };
+    quitAfterNotices = false;
+    for (const path of paths) {
+      openFromOutside(path);
+    }
+    if (paths.length === 0 || root !== null) {
+      post({ root, type: "open-project" });
+    }
   });
-  // The OS hands a double-clicked project.json here (on macOS), possibly before the app is ready.
+  // The OS hands a double-clicked file here (on macOS), possibly before the app is ready.
   app.on("open-file", (event, path) => {
     event.preventDefault();
-    post({ root: projectDirOf(path), type: "open-project" });
+    openFromOutside(path);
   });
   // One window per project, and the app ends with the last of them.
   app.on("window-all-closed", () => {
@@ -347,9 +532,19 @@ export async function startApp(
     }
   });
   app.on("will-quit", () => backend?.kill());
-  post({ root: args.root, type: "open-project" });
 
+  /* After `whenReady`, so a macOS double-click that launched the app has had its `open-file` first:
+     without that the launch's own welcome window opens beside the project. An `open-file` that comes
+     later still can call the window off until the backend is listening. */
   await app.whenReady();
+  for (const path of args.paths) {
+    openFromOutside(path);
+  }
+  if (args.root !== null || pathsFromOutside === 0) {
+    const first: ShellMessage = { root: args.root, type: "open-project" };
+    launchWelcome = args.root === null ? first : null;
+    post(first);
+  }
   installApplicationMenu(electron, platform, {
     newWindow: () => post({ root: null, type: "open-project" }),
     openProject: () => {
@@ -360,7 +555,7 @@ export async function startApp(
         // A sandboxed build is handed the project's folder; the others, its project.json.
         const isProject = grants
           ? exists(join(picked.path, "project.json"))
-          : picked.path.endsWith("project.json");
+          : basename(picked.path) === "project.json";
         if (isProject) {
           void openPicked(picked, "file");
         }
@@ -388,8 +583,10 @@ export async function startApp(
           url: message.url,
         });
         windows.set(id, window);
+        quitAfterNotices = false;
         window.on("closed", () => {
           windows.delete(id);
+          heldRoots.delete(id);
           post({ id, type: "window-closed" });
         });
         window.loadURL(message.url).catch((error: Error) => {
@@ -409,6 +606,7 @@ export async function startApp(
         break;
       }
       case "dialog": {
+        const asker = backend;
         void choosePath(electron, message.kind, message.title, grants !== null).then(
           async (picked) => {
             if (picked && grants && (await needsRestart(picked, message.kind))) {
@@ -416,17 +614,61 @@ export async function startApp(
               await restartBackend(picked, message.kind);
               return;
             }
-            post({
-              path: answerPath(picked, message.kind),
-              requestId: message.requestId,
-              type: "dialog-result",
-            });
+            // A replaced backend's ids start again, so its answer could land on another's question.
+            if (backend === asker) {
+              post({
+                path: answerPath(picked, message.kind),
+                requestId: message.requestId,
+                type: "dialog-result",
+              });
+            }
           },
         );
         break;
       }
+      case "confirm-trust": {
+        const { requestId, root } = message;
+        const asker = backend;
+        /* A replaced backend's ids start again, so an answer about one folder could land on another
+           folder's question and trust it. Dropping it opens nothing, which is the safe way to be
+           wrong: the user can open the file again. */
+        const answer = (trusted: boolean): void => {
+          if (backend === asker) {
+            post({ requestId, trusted, type: "trust-answer" });
+          }
+        };
+        const parent = electron.BrowserWindow.getFocusedWindow();
+        const prompt = trustPrompt(root);
+        // Over the window that asked, so nothing can be edited there that its answer would discard.
+        const shown = parent
+          ? electron.dialog.showMessageBox(parent, prompt)
+          : electron.dialog.showMessageBox(prompt);
+        shown.then(
+          ({ response }) => {
+            answer(response === 0);
+          },
+          (error: Error) => {
+            // A prompt that could not be shown was not answered yes.
+            console.error("[electron-app]", error);
+            answer(false);
+          },
+        );
+        break;
+      }
+      case "notice": {
+        notify(message.message);
+        break;
+      }
+      case "window-root": {
+        heldRoots.set(message.id, message.root);
+        break;
+      }
       case "quit": {
-        app.quit();
+        if (noticesShowing > 0) {
+          quitAfterNotices = true;
+        } else {
+          app.quit();
+        }
         break;
       }
       default: {
@@ -486,8 +728,40 @@ export async function startApp(
   async function openPicked(picked: Picked, kind: DialogKind): Promise<void> {
     if (grants && (await needsRestart(picked, kind))) {
       await restartBackend(picked, kind);
+    } else if (kind === "file" && !grants) {
+      post({ path: picked.path, type: "open-path" });
     } else {
       post({ root: folderOf(picked, kind), type: "open-project" });
+    }
+  }
+
+  /**
+   * Ask for the folder around a file the OS handed a sandboxed build, then open the file.
+   *
+   * It asks for a folder because the sandbox grants what was handed over, which is that one file
+   * and none of the project around it. It starts the dialog beside the file, and it cannot look for
+   * the project first, because it cannot read there yet.
+   */
+  async function grantFolderFor(path: string): Promise<void> {
+    if (grants?.covers(path)) {
+      post({ path, type: "open-path" });
+      return;
+    }
+    const picked = await choosePath(electron, "file", "Open project folder", true, dirname(path));
+    if (picked && isWithin(picked.path, path)) {
+      await restartBackend(picked, "file", path);
+      return;
+    }
+    if (picked) {
+      notify(`${basename(path)} isn't inside the folder you chose, so Jx Studio can't open it.`);
+    }
+    // Nothing else is open or on its way, so this launch has nothing left to do.
+    if (windows.size === 0 && queue.length === 0) {
+      if (noticesShowing > 0) {
+        quitAfterNotices = true;
+      } else {
+        app.quit();
+      }
     }
   }
 
@@ -497,9 +771,15 @@ export async function startApp(
    * Every open window belongs to the old backend, so they close. Unsaved work is the user's to
    * keep, so when a project is open this asks first and does nothing on Cancel.
    */
-  async function restartBackend(picked: Picked, kind: DialogKind): Promise<void> {
+  async function restartBackend(
+    picked: Picked,
+    kind: DialogKind,
+    thenOpen?: string,
+  ): Promise<void> {
     const folder = folderOf(picked, kind);
-    const reopen = [...new Set(openRoots)];
+    const reopen = [
+      ...new Set([...heldRoots.values()].filter((root): root is string => root !== null)),
+    ];
     if (reopen.length > 0) {
       const { response } = await electron.dialog.showMessageBox({
         buttons: ["Restart", "Cancel"],
@@ -526,7 +806,7 @@ export async function startApp(
       window.destroy();
     }
     windows.clear();
-    openRoots.length = 0;
+    heldRoots.clear();
     queue.length = 0;
     old?.kill();
     startBackend();
@@ -534,11 +814,19 @@ export async function startApp(
     for (const root of reopen) {
       post({ root, type: "open-project" });
     }
+    if (thenOpen) {
+      post({ path: thenOpen, type: "open-path" });
+      return;
+    }
     // A project file opens its project; a folder picked for somewhere to create one opens nothing.
     post({ root: kind === "file" ? folder : null, type: "open-project" });
   }
 
   startBackend();
+  backendStarted = true;
+  for (const path of awaitingGrant.splice(0)) {
+    openPath(path);
+  }
 
   if (updatesEnabled({ appImage: env.APPIMAGE, macAppStore, packaged, platform, windowsStore })) {
     loadUpdater()

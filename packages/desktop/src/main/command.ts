@@ -62,13 +62,13 @@ export interface ElectronAppFiles {
  *
  * @param bin The Electron executable.
  * @param files What the app is made of.
- * @param root The project to open first, or null for a welcome window.
+ * @param path What to open first, or null for a welcome window.
  * @param platform The OS the app will run on; `process.platform` by default.
  */
 export function electronAppCommand(
   bin: string,
   files: ElectronAppFiles,
-  root: string | null,
+  path: string | null,
   platform: NodeJS.Platform = process.platform,
 ): ShellCommand {
   const args = [
@@ -81,9 +81,9 @@ export function electronAppCommand(
   if (files.icon) {
     args.push(`--jx-icon=${files.icon}`);
   }
-  if (root) {
-    // A switch, not a bare path: an unpackaged argv has no position that is the user's.
-    args.push(`--jx-project=${root}`);
+  if (path) {
+    // Bare, as a file manager would pass it, so a checkout resolves it as an installed app does.
+    args.push(path);
   }
   return { args, bin };
 }

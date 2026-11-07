@@ -78,6 +78,11 @@ mac:
         LSHandlerRank: Alternate
         LSItemContentTypes:
           - public.json
+      - CFBundleTypeName: Markdown file
+        CFBundleTypeRole: Editor
+        LSHandlerRank: Alternate
+        LSItemContentTypes:
+          - net.daringfireball.markdown
   entitlements: build-resources/entitlements.mac.plist
   entitlementsInherit: build-resources/entitlements.mac.plist
   # Notarizes when APPLE_API_KEY, APPLE_API_KEY_ID and APPLE_API_ISSUER are set, and says it skipped

@@ -8,14 +8,22 @@
 import { createGitOps } from "../src/backend/git";
 import { createPackageOps } from "../src/backend/packages";
 import { createProjectSession } from "../src/backend/project-session";
+import type { RootGate } from "../src/backend/project-session";
+import { authorized } from "./_authorized";
 
 export { pickProjectFile, setDirectoryDialog, setFileDialog } from "../src/backend/project-session";
 export type { ProjectSession, ProxyResult, StudioSchema } from "../src/backend/project-session";
 
-const session = createProjectSession(null);
+/** A gate that agrees to everything, for tests that are about something else. */
+export const OPEN_GATE: RootGate = {
+  authorize: (root) => Promise.resolve(authorized(root)),
+  grant: (root) => Promise.resolve(authorized(root)),
+};
+
+const session = createProjectSession(null, OPEN_GATE);
 
 export function setProjectRoot(root: string | null): void {
-  session.setProjectRoot(root);
+  session.setProjectRoot(authorized(root));
 }
 
 export function getProjectRoot(): string | null {

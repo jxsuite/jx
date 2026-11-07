@@ -6,7 +6,7 @@
  * the first.
  */
 import { expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { BackendMessage } from "../src/shared/protocol";
@@ -16,9 +16,6 @@ type Frame = { readonly type?: string } | null;
 
 test("talks to the shell over the utility process's port, and drops frames that are not messages", async () => {
   const scratch = mkdtempSync(join(tmpdir(), "jx-backend-port-"));
-  const root = join(scratch, "site");
-  mkdirSync(root, { recursive: true });
-  writeFileSync(join(root, "project.json"), '{"name":"site"}');
   const posted: BackendMessage[] = [];
   const listeners: ((event: { data: Frame }) => void)[] = [];
   process.parentPort = {
@@ -42,12 +39,14 @@ test("talks to the shell over the utility process's port, and drops frames that 
     deliver(null);
     expect(posted).toHaveLength(1);
     // SAFETY: an `open-project` message, the shape the shell sends; the port types frames loosely.
-    deliver({ root, type: "open-project" } as Frame);
+    deliver({ root: null, type: "open-project" } as Frame);
     for (let tries = 0; !posted.some((message) => message.type === "open-window"); tries += 1) {
       expect(tries).toBeLessThan(200);
       await Bun.sleep(5);
     }
-    expect(posted.at(-1)).toMatchObject({ title: "site — Jx Studio", type: "open-window" });
+    expect(posted.find((message) => message.type === "open-window")).toMatchObject({
+      title: "Jx Studio",
+    });
   } finally {
     delete process.parentPort;
     rmSync(scratch, { force: true, recursive: true });
