@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.0.29](https://github.com/jxsuite/jx/compare/formulas-v0.0.28...formulas-v0.0.29) (2026-11-07)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/schema bumped to 5.3.0
+  * devDependencies
+    * @jxsuite/runtime bumped to 6.2.0
+
 ## [0.0.28](https://github.com/jxsuite/jx/compare/formulas-v0.0.27...formulas-v0.0.28) (2026-11-06)
 
 

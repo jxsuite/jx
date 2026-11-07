@@ -2,9 +2,9 @@
 
 ## Visual Builder for Jx Documents
 
-**Version:** 0.16.15-draft\
+**Version:** 0.16.18-draft\
 **Status:** Partial\
-**Updated:** 2026-11-06\
+**Updated:** 2026-11-07\
 **License:** MIT
 
 ---
@@ -2387,6 +2387,9 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.16.18-draft** (2026-11-07) — §5.1, §5.3 and §22.4: Insert is the Document group's first rail button in Design, and a card dropped on the blank canvas around the content lands at the nearest edge of the root's blocks instead of nowhere.
+- **0.16.17-draft** (2026-11-07) — §5.3: the Insert panel splits into Elements and Components tabs; element cards are named in the reader's language from a per-language catalog, with the tag beside the name; the categories lead with Text, Lists, Media and Layout, the document and head-only elements are no longer offered, and Inline text and Advanced start closed. §5.3 is Implemented.
+- **0.16.16-draft** (2026-11-07) — §8.4: a layout's clause says what its readers do now.
 - **0.16.15-draft** (2026-11-06) — §14 tab strip: the chip's pill states a project's hold rule rather than a draft flag.
 - **0.16.14-draft** (2026-11-06) — Call the format Jx Notation, with the extension .jxn.
 - **0.16.13-draft** (2026-11-06) — §6.8: an element's content row offers item.$children, stored as computed children, and the canvas draws it as a label closed to the caret.
@@ -2604,4 +2607,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_`@jxsuite/studio` Specification v0.16.15-draft_
+_`@jxsuite/studio` Specification v0.16.18-draft_

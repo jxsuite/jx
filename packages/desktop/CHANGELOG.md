@@ -1,5 +1,29 @@
 # Changelog
 
+## [8.1.0](https://github.com/jxsuite/jx/compare/desktop-v8.0.5...desktop-v8.1.0) (2026-11-07)
+
+
+### Features
+
+* **desktop:** open what the OS hands over, after asking to run a folder's code ([#549](https://github.com/jxsuite/jx/issues/549)) ([5e4878d](https://github.com/jxsuite/jx/commit/5e4878db6b293c5aee3f47a30b72ccb5285b8205))
+* every host reads Jx Notation ([#554](https://github.com/jxsuite/jx/issues/554)) ([230382e](https://github.com/jxsuite/jx/commit/230382e4072184ab042a328e25e9f68f1d94de83))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/compiler bumped to 8.3.0
+    * @jxsuite/create bumped to 1.5.5
+    * @jxsuite/protocol bumped to 6.2.3
+    * @jxsuite/schema bumped to 5.3.0
+    * @jxsuite/server bumped to 8.4.0
+    * @jxsuite/starters bumped to 3.3.1
+    * @jxsuite/studio bumped to 10.6.0
+  * devDependencies
+    * @jxsuite/server bumped to 8.4.0
+    * @jxsuite/ui bumped to 0.10.2
+
 ## [8.0.5](https://github.com/jxsuite/jx/compare/desktop-v8.0.4...desktop-v8.0.5) (2026-11-06)
 
 

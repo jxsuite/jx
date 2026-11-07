@@ -2,9 +2,9 @@
 
 ## Platform Abstraction, Project Loading, and Component Scoping
 
-**Version:** 0.7.13-draft\
+**Version:** 0.7.15-draft\
 **Status:** Partial\
-**Updated:** 2026-11-06\
+**Updated:** 2026-11-07\
 **License:** MIT
 
 ---
@@ -1153,6 +1153,8 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.7.15-draft** (2026-11-07) — A search for a project believes the file's name only if its content agrees.
+- **0.7.14-draft** (2026-11-07) — What the operating system opens resolves by one rule, and a folder is trusted once before its code runs.
 - **0.7.13-draft** (2026-11-06) — Reserve sections for opening a path from the operating system, trusting a project, and file associations, all pending.
 - **0.7.12-draft** (2026-11-06) — Installing Jx Studio changes no default: it appears under Open With for .json, and an install removes the claim earlier builds made.
 - **0.7.11-draft** (2026-11-06) — Source-control paths are project-relative: the status route covers the project and strips its prefix, pull conflicts name project files the same way, and the commit route commits only the project's changes.
@@ -1251,4 +1253,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_Jx Studio Desktop Architecture Specification v0.7.13-draft_
+_Jx Studio Desktop Architecture Specification v0.7.15-draft_
