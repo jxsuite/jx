@@ -43,7 +43,7 @@ Jx is a schema and runtime for building reactive web applications using plain JS
 
 The core premise: **structure and state are data; the shape of each `state` entry determines its type and behavior — no additional flags required in the common case.**
 
-A Jx component is a single `.json` file that can be fully self-describing:
+A Jx component is a single `.json` or `.jxn` file (§22) that can be fully self-describing:
 
 ```
 component.json   ← structure, styling, state declarations, functions, bindings
@@ -70,9 +70,9 @@ Following [Tim Berners-Lee's Rule of Least Power](https://www.w3.org/DesignIssue
 - Template expressions over handler functions wherever possible
 - Handler functions only when logic cannot be expressed otherwise
 
-### 2.3 JSON as the Authoritative Format
+### 2.3 The JSON Data Model Is Authoritative
 
-Jx documents are valid JSON. They are not JavaScript object literals, not JSX, not a template DSL. This distinction is intentional and load-bearing:
+A Jx document is a JSON value. It is not a JavaScript object literal, not JSX, not a template DSL. A file holds that value as `.json`, or as Jx Notation in a `.jxn` file (§22), and both spellings read to the same object, so everything below the reader works on JSON whichever one the file used. This distinction is intentional and load-bearing:
 
 - JSON is fully serializable and deserializable without code execution
 - JSON has no `this` ambiguity — self-references use explicit `$ref` pointers
@@ -146,7 +146,7 @@ Standard JSON Schema 2020-12 keywords (`type`, `format`, `properties`, `items`, 
 
 ### 4.1 Self-Describing Components
 
-A Jx component is a single `.json` file. All state, computed values, and functions are declared in `state`. Simple components are fully self-describing — no sidecar file required:
+A Jx component is a single `.json` or `.jxn` file (§22). All state, computed values, and functions are declared in `state`. Simple components are fully self-describing — no sidecar file required:
 
 ```json
 {
@@ -1875,6 +1875,8 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 | [RFC 6901](https://www.rfc-editor.org/rfc/rfc6901)                                        | **Divergent** | §7          | packages/runtime/src/pointer.ts                                                                                                              | Pointer syntax is implemented as written, `~0`/`~1` escapes included, with `/` as the only separator. Four enumerated deviations: a `$ref` binds a live value off the reactive scope rather than resolving a node of a JSON document; a token matching nothing yields `undefined` instead of failing evaluation (§4); the `-` array token (§4) is not special and reads a member named `-`; and the `#`-fragment schemes (`window#/`, `parent#/`, `event#/`) are Jx extensions, not the URI fragment representation of §6 — they are not percent-decoded.                                              |
 | [CSP Level 3](https://www.w3.org/TR/CSP3/)                                                | **Divergent** | §21         | packages/compiler/tests/no-eval.test.ts                                                                                                      | Compiled output contains no `new Function` and no `eval`, proven by a committed test, so it runs under a policy without `'unsafe-eval'`. The **interpreting** runtime compiles templates and function bodies at load time and therefore requires `'unsafe-eval'` permanently — §21.3 states this as a property, not a defect.                                                                                                                                                                                                                                                                          |
 | [Trusted Types](https://www.w3.org/TR/trusted-types/)                                     | **Subset**    | §21.5       | packages/studio/src/services/trusted-types.ts, packages/studio/tests/trusted-types.test.ts, packages/compiler/src/targets/compile-element.ts | The injection-sink half only. No `innerHTML` write remains in code Jx ships — the runtime's four and the one the compiler emitted became `replaceChildren()` — and the shell's markdown goes through a policy that asserts and throws naming what it found, with `createScript`/`createScriptURL` refusing. **Enforcement is declined, not deferred**: `require-trusted-types-for 'script'` gates `eval` and `new Function`, which the interpreter is made of (§21.3), and the shell's remaining sinks belong to its dependencies. A report-only run established this and was removed with its header. |
+| [KDL 2.0.0](https://kdl.dev/spec/)                                                        | **Subset**    | §22         | packages/schema/src/jxn/parse.ts, packages/schema/tests/jxn.test.ts                                                                          | Parsed by a conforming library, then narrowed: what JSON cannot hold, an annotation the grammar does not define, and a raw control character are refused (§22.2).                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| [JSON-in-KDL](https://github.com/kdl-org/kdl/blob/main/JSON-IN-KDL.md)                    | **Borrowed**  | §22         | packages/schema/src/jxn/parse.ts                                                                                                             | The `-` item and `(array)`/`(object)` shapes are taken. The reader is a superset that also understands `(ref)` and `(fn)`, and a list of one needs no annotation.                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 
 ---
 
@@ -2473,9 +2475,113 @@ That settles the staging question by removing it. The shell is not a deployment 
 
 ## 22. Jx Notation (`.jxn`)
 
-> **Status: Pending.** No host reads `.jxn` yet: a document is `.json` or a format-extension file.
+> **Status: Implemented.** Every host reads and writes `.jxn`. What Studio still treats as `.json` only is `studio.md` §8.5.
 
 A Jx document may be written in Jx Notation, as a `.jxn` file. Jx Notation is KDL 2 with Jx's own rules for what each node means. `.jxn` and `.json` are two spellings of one data model: both parse to the same `JxDocument`, and the schema, the runtime, the compiler and Studio's document model all work on that object. `.jxn` is a native format, so no extension has to be enabled to use it. A project's configuration may be written the same way, as `project.jxn` (`site-architecture.md` §2.3). `*.class.json`, `jx-extension.json`, JSON Schemas and data files stay JSON.
+
+### 22.1 Grammar
+
+```kdl
+/- kdl-version 2
+$schema "https://jxsuite.com/schema/v1"
+$id Counter
+
+// Comments stay in the file.
+my-counter {
+    state {
+        count 0
+        label ""
+        max type=number default=10 attribute=max
+        (fn)reset #"""
+            state.count = 0
+            """#
+        (fn)rename event #"""
+            state.label = event.target.value
+            """#
+    }
+
+    style display=inline-flex gap="6px" {
+        "&:hover" color="var(--color-action)"
+        #"&[data-kind="urgent"]"# backgroundColor="var(--chip-urgent-bg)"
+    }
+
+    span part=value aria-live=polite "${state.count}"
+    button type=button onclick=(ref)"#/state/reset" "Reset"
+    input .value="${state.label}" oninput=(ref)"#/state/rename"
+    p {
+        - "Hello "
+        strong "world"
+        - "!"
+    }
+    ul {
+        $array items=(ref)"#/state/rows" key=(ref)"$map/item/id" {
+            li (ref)"$map/item/name"
+        }
+    }
+    slot
+}
+```
+
+| Written                                       | Means                                                                                                                   |
+| --------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| Top-level `$x` nodes                          | Document metadata. `$head`'s rows are elements                                                                          |
+| The one other top-level node                  | The root element                                                                                                        |
+| Node name                                     | `tagName`                                                                                                               |
+| One positional value                          | `textContent`                                                                                                           |
+| `name=value`                                  | `attributes.name`                                                                                                       |
+| `.name=value`, or a `.name` child             | The member `name`: a DOM property, `map`, `cases`, or a value that has no plainer form                                  |
+| `on*=(ref)"pointer"`                          | Event handler. A non-ref value is refused on a real handler name, and is an attribute on any other `on*` name           |
+| `(fn)on* [params] body`, `(on)on* { … }`      | Event handler in block form. Without the annotation, a node named `on…` is an element                                   |
+| `$x=value`, or a `$x` child                   | Jx member                                                                                                               |
+| `state`, `style`, `attributes` child nodes    | Those members                                                                                                           |
+| Any other child node                          | Child element                                                                                                           |
+| `- value`                                     | Text or `$ref` child, or a list item in a JSON block                                                                    |
+| `(ref)"pointer"`                              | `{ "$ref": "pointer" }`, in any value position, JSON blocks included                                                    |
+| `(fn)name [params] body`                      | `$prototype: "Function"`. A last string is always the body; a child block of `-` items is a structured body (§20)       |
+| `$array items= key= [filter=] [sort=] { el }` | `$prototype: "Array"`, with `el` as `map`                                                                               |
+| `$element [tag] [text]`                       | Escape for a tagless node, or a reserved tag: `state`, `style`, `attributes`, `script`, `project`, `-`, or one with `$` |
+| `(object)name`, `(array)name`                 | A JSON block that is an object or a list, where its contents would not say which                                        |
+| Everything else                               | A JSON block: JSON-in-KDL plus `(ref)` and `(fn)`                                                                       |
+
+Some forms follow from that table and are worth stating:
+
+- A lone `$array` child is a list of one, which is the common case. When the whole of `children` is one mapped array or one `$switch`, the object form is spelled `.children { $array … }`.
+- `script` and a top-level `project` are reserved. `$element "script"` and `$element "project"` are those tags as elements.
+- Inside `.map` and each value of `.cases`, the element grammar applies, and each holds exactly one element.
+- A `style` value may be a list, which is what `@font-face` needs. A style key that needs quoting has to be quoted: `> li` is a node `>` with the value `li`, and the reader refuses it rather than misreading it.
+- `div {}` equals `div`. `state {}` is `{}`. Empty `children` is `(array).children`. Parameters without a body have no sugar and use a JSON block.
+
+### 22.2 What a reader refuses
+
+A `.jxn` file reads to the object its `.json` spelling reads to, or it does not read. An error carries a line and column where the file has one. These are refused because they would otherwise lose or change data silently:
+
+- **A key written twice, after NFC.** This covers `div a=1 a=2`, which KDL allows with the rightmost winning, and `div a=1 { attributes { a 2 } }`, two `style` blocks, and `$id A` with `div $id=B`.
+- **A `__proto__` key,** which would not be data.
+- **What JSON cannot hold:** `#inf`, `#nan`, a number that overflows, and an integer outside the safe range.
+- **An annotation the grammar does not define,** and `(ref)` on anything but a string.
+- **A raw control character,** other than the whitespace KDL treats as such.
+- **More than one positional value** on an element, and **more than one root.**
+- **A non-ref value on a real event-handler name.** `button onclick="state.x++"` would otherwise reach the prerender as a live inline handler with no `state` in scope. `attributes { onclick "…" }` is the explicit escape. Any other `on*` name with a non-ref value is an attribute, so `once="x"` stays one.
+- **A file whose first node is `project`,** which is a project file. `classifyJxn` answers `project`, `document` or `unreadable` from a lexical prescan of the first node that is not `$` metadata, and it tolerates syntax errors after that node, so a broken file still has an identity.
+
+### 22.3 What a writer guarantees
+
+`parseJxn(serializeJxn(doc))` deep-equals `doc` for every valid document, and source order within `style`, nested blocks included, is unchanged. Order is significant nowhere else, so the writer is free to hoist leading scalars.
+
+A string is written raw when it holds a backslash and read back before it is kept: a whitespace-only line, CRLF, U+2028, a control character or a bidirectional control can change or fail to parse in a raw multi-line string, and a string that does not survive falls back to an escaped one. A lone surrogate has no KDL spelling, so the writer refuses the document and names the pointer.
+
+KDL's `\s` is a space and its `\b` a backspace, so `span "${state.x.replace(/\s+/g, '')}"` reads cleanly as `/ +/g`. Hosts report `lintJxn`'s warning for `\s` or `\b` in any non-raw string. The parsed value has lost the evidence, so the warning reads the source text.
+
+### 22.4 Saving
+
+`serializeJxn(document, previous)` keeps what did not change. It merges the previous file with the writer's canonical text as KDL trees, so a node that means the same in both keeps its exact text, comments and blank lines included. The tests hold this property over every tracked document: a single `doc-ops` operation changes only the lines of the node it touched.
+
+- **What a node continues.** Children are matched by a longest common subsequence over nodes that did not change, then by name and declared `$id` or `key` in the gaps. A node with an exact twin elsewhere has moved, and takes its comments with it.
+- **What a comment belongs to.** A comment before a node goes with that node, so deleting the node deletes it. What follows an opening brace on its line belongs to the brace.
+- **Spelling.** The writer folds `state { count 0 }` into `state count=0` where it can. A key the author kept in a block stays there, because the two have one JSON Pointer.
+- **The guarantee.** A merged file that does not read back to the writer's meaning, with `style` order compared, is discarded for the writer's text. A merge can cost comments and never data. The merge knows no Jx rule and takes its reader as a parameter, so a project file can use it (`site-architecture.md` §2.3).
+
+The rename refactor and Studio's save both pass the previous file, so repairing a reference in a `.jxn` file changes that reference and nothing else.
 
 ---
 

@@ -1,0 +1,61 @@
+/** What is wrong with a `.jxn` file, and where. */
+
+/** A place in a `.jxn` file. Offsets count UTF-16 code units, as a JavaScript string does. */
+export interface JxnSpan {
+  /** One past the last character. */
+  end: number;
+  start: number;
+}
+
+/** A `.jxn` file that is not a Jx document. */
+export class JxnError extends Error {
+  /** One-based, when the problem has a place. */
+  readonly column: number | null;
+  /** One-based, when the problem has a place. */
+  readonly line: number | null;
+  /** The offset of the problem, when it has a place. */
+  readonly offset: number | null;
+  /** What is wrong, without the place. */
+  readonly reason: string;
+
+  /**
+   * @param message What is wrong.
+   * @param where Where, when known.
+   */
+  constructor(
+    message: string,
+    where: { column: number; line: number; offset: number } | null = null,
+  ) {
+    super(where ? `${message} (line ${where.line}, column ${where.column})` : message);
+    this.name = "JxnError";
+    this.column = where?.column ?? null;
+    this.line = where?.line ?? null;
+    this.offset = where?.offset ?? null;
+    this.reason = message;
+  }
+
+  /**
+   * The same error, naming the file it is in.
+   *
+   * @param file The file's path.
+   */
+  inFile(file: string): JxnError {
+    const where =
+      this.line !== null && this.column !== null && this.offset !== null
+        ? { column: this.column, line: this.line, offset: this.offset }
+        : null;
+    return new JxnError(`${file}: ${this.reason}`, where);
+  }
+}
+
+/**
+ * The line and column of an offset.
+ *
+ * @param text The file.
+ * @param offset The offset.
+ */
+export function locate(text: string, offset: number) {
+  const before = text.slice(0, offset);
+  const line = before.split("\n").length;
+  return { column: offset - before.lastIndexOf("\n"), line, offset };
+}

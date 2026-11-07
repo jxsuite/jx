@@ -17,6 +17,7 @@
 import { JX_TOOL_FACTS } from "@jxsuite/ai/jx-tools";
 import { createToolDefinition } from "@jxsuite/ai/tools";
 import { isJsonObject, isNumber } from "@jxsuite/schema/guards";
+import { classifyJxn, isJxnPath, isNativeDocumentPath, parseJxn } from "@jxsuite/schema/jxn";
 import type { CreateProjectDestination, StudioPlatform } from "../types";
 import type { ToolRegistry } from "@jxsuite/ai/tools";
 import type { JsonValue, JxMutableNode, ProjectConfig } from "@jxsuite/schema/types";
@@ -30,6 +31,7 @@ import { validateDoc, validateProjectConfig } from "./jx-validate";
 import { flagHardcodedTokens, formatTokenHints } from "./token-lint";
 import type { CandidateDocument, RenderProbe } from "./ai-write-report";
 import { invalidPathResult, normalizeRelPath } from "./project-path";
+import { isProjectConfigPath } from "@jxsuite/schema/project-file";
 
 /** Directories the file tools never descend into or report. */
 const EXCLUDED_DIRS = new Set(["node_modules", "dist", ".git", ".jx-cache"]);
@@ -49,7 +51,7 @@ const NOT_UNDOABLE = "(saved to disk; not undoable with Cmd+Z)";
  * {@link looksLikeJxDoc} sniff.
  */
 function isJxDocPath(path: string): boolean {
-  return /^(pages|layouts|components|elements)\//.test(path) && path.endsWith(".json");
+  return /^(pages|layouts|components|elements)\//.test(path) && isNativeDocumentPath(path);
 }
 
 /** Structural sniff for Jx-document-shaped JSON values. */
@@ -299,8 +301,19 @@ export function registerProjectTools(
 
         // Pre-validate Jx documents — disk writes have no undo to lean on.
         let parsed: JsonValue | undefined;
-        const isJson = relPath.endsWith(".json") && relPath !== "project.json";
-        if (isJson) {
+        const isJxn = isJxnPath(relPath) && classifyJxn(content) !== "project";
+        const isJson = relPath.endsWith(".json") && !isProjectConfigPath(relPath);
+        if (isJxn) {
+          try {
+            const document = parseJxn(content);
+            parsed = isJsonObject(document) ? document : null;
+          } catch (error) {
+            return {
+              success: false,
+              error: `Content is not valid Jx Notation: ${error instanceof Error ? error.message : String(error)}`,
+            };
+          }
+        } else if (isJson) {
           try {
             // SAFETY: `JSON.parse` without a reviver yields nothing but JSON values.
             parsed = JSON.parse(content) as JsonValue;
@@ -312,7 +325,7 @@ export function registerProjectTools(
           }
         }
         let tokenHints = "";
-        // The parse above sets `parsed` exactly when `isJson` holds: it never yields `undefined`.
+        // The parse above sets `parsed` exactly when one of those holds: it never yields `undefined`.
         if (parsed !== undefined && (isJxDocPath(relPath) || looksLikeJxDoc(parsed))) {
           const errors = await validate(parsed);
           if (errors.length > 0) {
@@ -345,7 +358,7 @@ export function registerProjectTools(
         /* Parsed as `unknown` because that is what it is until the schema says otherwise — this is
            model-authored text, and the gate below is the whole reason we do not trust its shape. */
         let projectConfig: ProjectConfig | undefined;
-        if (relPath === "project.json") {
+        if (isProjectConfigPath(relPath)) {
           let parsedConfig: JsonValue;
           try {
             // SAFETY: `JSON.parse` without a reviver yields nothing but JSON values.

@@ -35,7 +35,7 @@
  *   schema completion with it.
  */
 
-import "monaco-editor/editor";
+import * as monacoApi from "monaco-editor/editor";
 // Core widget, icons, tokenization.
 import "monaco-editor/features/codeEditor/register";
 import "monaco-editor/features/codicon/register";
@@ -83,6 +83,8 @@ import projectSchema from "@jxsuite/schema/project-schema.json";
 import type { JsonObject } from "@jxsuite/schema/types";
 import type { ProjectSchemasResponse } from "../types";
 import { bundleUrl } from "./bundle-base";
+import { PROJECT_FILE_NAME } from "@jxsuite/schema/project-file";
+import { registerJxnLanguage } from "./jxn-language";
 
 /* Re-exported for the modules that already imported it from here. New callers should reach for
    `./model-uri` directly — it is Monaco-free, and importing this module loads the editor. */
@@ -150,6 +152,8 @@ if (documentFonts?.ready) {
   });
 }
 
+registerJxnLanguage(monacoApi.languages);
+
 /** Folder globs whose JSON files validate against the (per-project or core) document schema. */
 const DOCUMENT_FILE_MATCH = [
   "pages/*.json",
@@ -205,7 +209,7 @@ function applyJsonSchemas(documentSchema: JsonObject, projectJsonSchema: JsonObj
         uri: "https://jxsuite.com/schema/v1",
       },
       {
-        fileMatch: ["project.json"],
+        fileMatch: [PROJECT_FILE_NAME],
         schema: projectJsonSchema,
         uri: "https://jxsuite.com/schema/project/v1",
       },

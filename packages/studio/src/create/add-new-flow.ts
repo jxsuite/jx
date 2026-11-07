@@ -101,6 +101,7 @@ import type {
   AddNewView,
 } from "../surfaces/add-new";
 import type { JsonObject, JxMutableNode } from "@jxsuite/schema/types";
+import { projectConfigPath } from "../tabs/tab";
 
 /** The `source` every Problem this flow files carries. */
 const SOURCE = "Add new";
@@ -385,7 +386,7 @@ async function performCollection(creation: Creation): Promise<AddNewResult | nul
   if (!committed.ok) {
     return null;
   }
-  const wrote = ["project.json"];
+  const wrote = [projectConfigPath()];
   const missed: string[] = [];
   for (const write of [{ body: creation.content, path: creation.path }, ...creation.extraWrites]) {
     try {

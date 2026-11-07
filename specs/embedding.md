@@ -154,6 +154,10 @@ A host that ships its documents inside its own bundle imports them as JSON. Two 
 
 Both are process-wide, like the caches they seed. A host that must serve one URL differently per mount uses `resolver` (§5) instead.
 
+### 6.1 Reading a `.jxn` Reference
+
+A site origin answers a `.jxn` file as JSON (`server.md`), so a page never needs a parser for it. A host that serves one as its text supplies the parser with `setDocumentParser(parseJxn)`, where `parseJxn` is from `@jxsuite/schema/jxn`, and Studio's canvas does this. The parser may answer a promise, so a host can load it when one turns up, as Studio's canvas does. It is a setting and not a lazy import in the core because a host that bundles the runtime into one file would inline that import and ship the parser to every reader. With no parser, a `.jxn` URL answered as anything but JSON is refused with an error naming that import. Like the custom-element registry, the parser is per realm.
+
 ## 7. Redefinition
 
 > **Status: Implemented.** `redefineElement(doc, base)` and `elementDefinition(tag)` in `@jxsuite/runtime`; the generated class reads its definition through the registry at connection. Exercised by `packages/runtime/tests/redefine.test.ts`.

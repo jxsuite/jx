@@ -1037,7 +1037,7 @@ The studio loads any registered format file (e.g. `.md` with the `Markdown` clas
 4. The target format differs from the source's, compared by format rather than by extension.
 5. Neither the file nor its directory belongs to a content collection, and the file is not a layout.
 
-**A layout is JSON, and that clause is hand-written.** Both readers of a layout parse it as JSON and neither dispatches through the registry, and there is no `"layout"` document kind for a format to declare — so unlike every other clause here, this one cannot be derived and says so where it is written.
+**A layout is not offered, and that clause is hand-written.** The build reads a layout in either native format (`compiler.md` §2.3), Studio's reader parses it as JSON, neither dispatches through a format class, and there is no `"layout"` document kind for a format to declare — so unlike every other clause here, this one cannot be derived and says so where it is written.
 
 **A collection's files refuse in BOTH directions.** Converting an entry drops it out of its collection's discovery glob; converting a file that merely sits beside the entries INTO the collection's format enlists it as an entry nobody seeded. Source and target share a directory, so one rule covers both sides.
 

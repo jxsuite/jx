@@ -27,7 +27,7 @@ import { invalidateReferenceEntries } from "../src/ui/form-controls";
 import { seedPublishConnected } from "../src/publish/publish-panel";
 import { initLayers } from "../src/ui/layers";
 import {
-  PROJECT_CONFIG_PATH,
+  projectConfigPath,
   projectConfigDocument,
   resetProjectConfigDocument,
 } from "../src/tabs/project-config";
@@ -259,8 +259,8 @@ describe("the project.json bind effect", () => {
     resetStudioState({ projectConfig: alpha });
     const tab = openTab({
       document: alpha,
-      documentPath: PROJECT_CONFIG_PATH,
-      id: PROJECT_CONFIG_PATH,
+      documentPath: projectConfigPath(),
+      id: projectConfigPath(),
     });
     projectConfigDocument();
 
@@ -408,6 +408,9 @@ describe("the bootstrap's saveDocument hook", () => {
       Uri: { parse: (u: string) => ({ toString: () => u }) },
       editor: { setModelMarkers: mock(() => {}) },
       languages: {
+        register: () => {},
+        setLanguageConfiguration: () => ({ dispose: () => {} }),
+        setMonarchTokensProvider: () => ({ dispose: () => {} }),
         CompletionItemKind: { Function: 1, Property: 9, Variable: 4 },
         registerCompletionItemProvider: mock(() => ({ dispose: noop })),
       },

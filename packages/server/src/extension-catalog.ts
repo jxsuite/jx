@@ -31,6 +31,7 @@ import { isJsonObject, isString } from "@jxsuite/schema/guards";
 import { createNodeFormatIO, probeExtension } from "@jxsuite/compiler/format-host";
 import type { ExtensionCatalogEntry, ExtensionSectionInfo } from "@jxsuite/protocol";
 import type { JsonValue } from "@jxsuite/schema/types";
+import { projectFilePath } from "@jxsuite/schema/project-file/node";
 
 interface PackageJson {
   dependencies?: Record<string, string>;
@@ -91,7 +92,7 @@ async function loadEntry(
     const registry = await buildExtensionRegistry(
       [name],
       createNodeFormatIO(projectRoot),
-      resolve(projectRoot, "project.json"),
+      projectFilePath(projectRoot),
     );
     const [info] = registry.extensions;
     if (!info) {

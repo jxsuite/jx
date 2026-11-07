@@ -25,7 +25,7 @@ import { runActiveReported } from "../commands/run-reported";
 import { getPlatform } from "../platform";
 import { mountOverviewSurface } from "../surfaces/settings-overview";
 import { previewAssetSrcFor } from "../canvas/asset-refs";
-import { PROJECT_CONFIG_PATH } from "../tabs/tab";
+import { projectConfigPath } from "../tabs/tab";
 
 import type {
   OverviewActions,
@@ -191,7 +191,7 @@ function values(container: HTMLElement): OverviewValues {
     error: errors.get(container) ?? null,
     favicon: readFavicon(cfg),
     // `project.json` authored it, whatever tab is in front: the section is project-level.
-    faviconSrc: previewAssetSrcFor(readFavicon(cfg), PROJECT_CONFIG_PATH),
+    faviconSrc: previewAssetSrcFor(readFavicon(cfg), projectConfigPath()),
     name: cfg.name ?? "",
     stylesDisabled: command === undefined,
     stylesTitle: command?.title ?? "",

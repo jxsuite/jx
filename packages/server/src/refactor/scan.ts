@@ -10,7 +10,10 @@
 import { extname } from "node:path";
 import { readFile } from "node:fs/promises";
 import type { FormatRegistry, ValueEdit } from "@jxsuite/schema/format-registry";
-import type { JsonValue } from "@jxsuite/schema/types";
+import { isJsonObject } from "@jxsuite/schema/guards";
+import { rewriteJson } from "@jxsuite/schema/json-layout";
+import { isJxnPath, parseJxn, serializeJxn } from "@jxsuite/schema/jxn";
+import type { JsonValue, JxDocument } from "@jxsuite/schema/types";
 
 /** Normalise a path to forward slashes (Windows `path` returns backslashes). */
 export const fwd = (p: string) => p.replaceAll("\\", "/");
@@ -77,13 +80,23 @@ export function documentGlob(registry: FormatRegistry): string {
 export async function loadDoc(fp: string, registry: FormatRegistry): Promise<LoadedDoc> {
   const raw = await readFile(fp, "utf8");
   if (isJsonPath(fp)) {
-    const trailingNewline = raw.endsWith("\n");
     return {
       // SAFETY: JSON.parse without a reviver only ever yields a JSON value; its `any` says no more.
       doc: JSON.parse(raw) as JsonValue,
       rewrite: null,
-      serialize: (doc) =>
-        Promise.resolve(JSON.stringify(doc, null, 2) + (trailingNewline ? "\n" : "")),
+      // Over the text it replaces, so a rename changes the references and not the formatting.
+      serialize: (doc) => Promise.resolve(rewriteJson(doc, raw)),
+    };
+  }
+  if (isJxnPath(fp)) {
+    /* The one format whose writer can be told what it is replacing, so repairing a reference in a
+       `.jxn` file changes that reference and leaves its comments where they were. */
+    const document = parseJxn(raw);
+    return {
+      doc: isJsonObject(document) ? document : null,
+      rewrite: null,
+      // SAFETY: the document this just read, with reference values replaced by reference values.
+      serialize: (doc) => Promise.resolve(serializeJxn(doc as JxDocument, raw)),
     };
   }
   const ext = extname(fp);
