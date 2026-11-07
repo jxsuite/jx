@@ -61,6 +61,26 @@ describe("to .jxn", () => {
   });
 });
 
+describe("a reference inside a .jxn file", () => {
+  test("is repaired, and the file keeps its comments", async () => {
+    write("components/x-card.json", JSON.stringify({ tagName: "x-card" }));
+    const source = [
+      "// keep this one",
+      '$elements (ref)"../components/x-card.json"',
+      "",
+      "main {",
+      "    // and this one",
+      '    x-card "hi"',
+      "}",
+      "",
+    ].join("\n");
+    write("pages/index.jxn", source);
+    const [row] = await convertDocuments(root, ["components/x-card.json"], OPTIONS);
+    expect(row?.references).toBe(1);
+    expect(read("pages/index.jxn")).toBe(source.replace("x-card.json", "x-card.jxn"));
+  });
+});
+
 describe("to .json", () => {
   const TO_JSON: ConvertOptions = { ...OPTIONS, to: "json" };
 

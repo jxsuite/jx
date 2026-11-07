@@ -13,4 +13,6 @@ export type { JxnSpan } from "./errors.ts";
 export { countJxnComments, lintJxn } from "./lint.ts";
 export type { JxnWarning } from "./lint.ts";
 export { parseJxn, parseJxnWithSpans } from "./parse.ts";
+export { reconcileJxn } from "./reconcile.ts";
+export type { JxnReader, JxnReading } from "./reconcile.ts";
 export { serializeJxn } from "./serialize.ts";

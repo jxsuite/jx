@@ -83,6 +83,9 @@ void mock.module("monaco-editor/editor", () => ({
   Uri: { parse: (u: string) => ({ toString: () => u }) },
   editor: { setModelMarkers: mock(() => {}) },
   languages: {
+    register: () => {},
+    setLanguageConfiguration: () => ({ dispose: () => {} }),
+    setMonarchTokensProvider: () => ({ dispose: () => {} }),
     CompletionItemKind: { Function: 1, Property: 9, Variable: 4 },
     registerCompletionItemProvider: mock(() => ({ dispose: noop })),
   },

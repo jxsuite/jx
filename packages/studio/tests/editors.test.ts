@@ -158,6 +158,9 @@ void mock.module("monaco-editor/editor", () => ({
     setModelMarkers,
   },
   languages: {
+    register: () => {},
+    setLanguageConfiguration: () => ({ dispose: () => {} }),
+    setMonarchTokensProvider: () => ({ dispose: () => {} }),
     CompletionItemKind: { Function: 1, Property: 9, Variable: 4 },
     registerCompletionItemProvider,
   },

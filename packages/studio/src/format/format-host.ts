@@ -4,7 +4,9 @@
  * Format classes are auto-discovered server-side from the project imports map
  * (specs/extensions.md); the studio introspects them via the PAL (`listFormats`) and invokes
  * parse/serialize capabilities via `formatAction` (POST /__studio/format in the dev server, RPC on
- * desktop). The studio itself holds zero format knowledge — `.json` is the single native built-in.
+ * desktop). The studio holds no other format knowledge: `.json` is native, and `.jxn` is read and
+ * written here in the same process with the same code as everywhere else (`spec.md` §22), so a host
+ * with no extension runtime has it too.
  */
 
 import { setProjectSchemasForMonaco } from "../services/monaco-lazy";
@@ -17,7 +19,8 @@ import type {
   StudioPlatform,
 } from "../types";
 import { isString } from "@jxsuite/schema/guards";
-import type { JxDocumentValue, JxMutableNode } from "@jxsuite/schema/types";
+import { parseJxn, serializeJxn } from "@jxsuite/schema/jxn";
+import type { JxDocument, JxDocumentValue, JxMutableNode } from "@jxsuite/schema/types";
 
 export interface StudioFormatHints {
   icon?: string;
@@ -58,6 +61,24 @@ export interface StudioFormat {
   studio: StudioFormatHints | null;
   capabilities: Record<string, { identifier: string; timing: string[] }>;
 }
+
+/**
+ * What opening a `.jxn` file is told about its format. It is not in {@link getFormats}, which is
+ * what a project chose and what a picker offers: a new document is still `.json`.
+ */
+const JXN_FORMAT: StudioFormat = {
+  capabilities: {
+    parse: { identifier: "parse", timing: ["compiler", "server"] },
+    serialize: { identifier: "serialize", timing: ["compiler", "server"] },
+  },
+  documentKinds: ["page", "component"],
+  exportTarget: false,
+  extensions: [".jxn"],
+  mediaType: null,
+  name: "jxn",
+  remote: false,
+  studio: { documentMode: { default: "component" } },
+};
 
 let _formats: StudioFormat[] = [];
 let _loaded: Promise<StudioFormat[]> | null = null;
@@ -235,6 +256,9 @@ export function getFormats(): StudioFormat[] {
 /** Look up the format claiming a file extension (".md" or "md"), optionally by capability. */
 export function formatByExtension(ext: string, capability?: string): StudioFormat | undefined {
   const norm = ext.startsWith(".") ? ext.toLowerCase() : `.${ext.toLowerCase()}`;
+  if (norm === ".jxn") {
+    return JXN_FORMAT;
+  }
   return _formats.find(
     (f) => f.extensions.includes(norm) && (!capability || f.capabilities[capability]),
   );
@@ -245,7 +269,7 @@ export function formatByName(name: string | null | undefined): StudioFormat | un
   if (!name) {
     return undefined;
   }
-  return _formats.find((f) => f.name === name);
+  return name === JXN_FORMAT.name ? JXN_FORMAT : _formats.find((f) => f.name === name);
 }
 
 /** Error for opening a non-JSON file when no imported format class claims its extension. */
@@ -330,6 +354,9 @@ export async function formatParse(
   source: string,
   options?: FormatActionOptions,
 ): Promise<JxMutableNode> {
+  if (name === JXN_FORMAT.name) {
+    return parseJxn(source);
+  }
   /* SAFETY: a format class's `parse` capability returns the Jx document it built from the source —
      The contract every format class implements (specs/extensions.md) — and nothing here inspects
      It before `splitFormatDocument` reads its keys. */
@@ -352,6 +379,11 @@ export async function formatSerialize(
   doc: JxMutableNode,
   options?: FormatActionOptions,
 ): Promise<string> {
+  if (name === JXN_FORMAT.name) {
+    // `source` is what keeps the comments: everything that did not change keeps its exact text.
+    // SAFETY: a document in its editing form, and every member of a JxDocument is optional.
+    return serializeJxn(doc as JxDocument, options?.source);
+  }
   /* SAFETY: a format class's `serialize` capability returns the source text it wrote — the contract
      Every format class implements (specs/extensions.md) — so the answer is a string. */
   return (await formatAction({

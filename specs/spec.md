@@ -2475,7 +2475,7 @@ That settles the staging question by removing it. The shell is not a deployment 
 
 ## 22. Jx Notation (`.jxn`)
 
-> **Status: Partial.** Every host reads `.jxn`, and `jx convert` moves a file either way. Saving rewrites a whole `.jxn` file, so a rename's reference repair loses its comments, and Studio does not open one yet.
+> **Status: Implemented.** Every host reads and writes `.jxn`. What Studio still treats as `.json` only is `studio.md` §8.5.
 
 A Jx document may be written in Jx Notation, as a `.jxn` file. Jx Notation is KDL 2 with Jx's own rules for what each node means. `.jxn` and `.json` are two spellings of one data model: both parse to the same `JxDocument`, and the schema, the runtime, the compiler and Studio's document model all work on that object. `.jxn` is a native format, so no extension has to be enabled to use it. A project's configuration may be written the same way, as `project.jxn` (`site-architecture.md` §2.3). `*.class.json`, `jx-extension.json`, JSON Schemas and data files stay JSON.
 
@@ -2571,6 +2571,17 @@ A `.jxn` file reads to the object its `.json` spelling reads to, or it does not 
 A string is written raw when it holds a backslash and read back before it is kept: a whitespace-only line, CRLF, U+2028, a control character or a bidirectional control can change or fail to parse in a raw multi-line string, and a string that does not survive falls back to an escaped one. A lone surrogate has no KDL spelling, so the writer refuses the document and names the pointer.
 
 KDL's `\s` is a space and its `\b` a backspace, so `span "${state.x.replace(/\s+/g, '')}"` reads cleanly as `/ +/g`. Hosts report `lintJxn`'s warning for `\s` or `\b` in any non-raw string. The parsed value has lost the evidence, so the warning reads the source text.
+
+### 22.4 Saving
+
+`serializeJxn(document, previous)` keeps what did not change. It merges the previous file with the writer's canonical text as KDL trees, so a node that means the same in both keeps its exact text, comments and blank lines included. The tests hold this property over every tracked document: a single `doc-ops` operation changes only the lines of the node it touched.
+
+- **What a node continues.** Children are matched by a longest common subsequence over nodes that did not change, then by name and declared `$id` or `key` in the gaps. A node with an exact twin elsewhere has moved, and takes its comments with it.
+- **What a comment belongs to.** A comment before a node goes with that node, so deleting the node deletes it. What follows an opening brace on its line belongs to the brace.
+- **Spelling.** The writer folds `state { count 0 }` into `state count=0` where it can. A key the author kept in a block stays there, because the two have one JSON Pointer.
+- **The guarantee.** A merged file that does not read back to the writer's meaning, with `style` order compared, is discarded for the writer's text. A merge can cost comments and never data. The merge knows no Jx rule and takes its reader as a parameter, so a project file can use it (`site-architecture.md` §2.3).
+
+The rename refactor and Studio's save both pass the previous file, so repairing a reference in a `.jxn` file changes that reference and nothing else.
 
 ---
 
