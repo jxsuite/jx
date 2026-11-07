@@ -1,5 +1,36 @@
 # Changelog
 
+## [10.6.0](https://github.com/jxsuite/jx/compare/studio-v10.5.0...studio-v10.6.0) (2026-11-07)
+
+
+### Features
+
+* **desktop:** open what the OS hands over, after asking to run a folder's code ([#549](https://github.com/jxsuite/jx/issues/549)) ([5e4878d](https://github.com/jxsuite/jx/commit/5e4878db6b293c5aee3f47a30b72ccb5285b8205))
+* every host reads Jx Notation ([#554](https://github.com/jxsuite/jx/issues/554)) ([230382e](https://github.com/jxsuite/jx/commit/230382e4072184ab042a328e25e9f68f1d94de83))
+* saving a .jxn file keeps what did not change ([#555](https://github.com/jxsuite/jx/issues/555)) ([7fb4141](https://github.com/jxsuite/jx/commit/7fb4141ae76f1872b789171eacb8761009222cf4))
+* **studio:** persistent Insert panel with named cards and tabs ([#559](https://github.com/jxsuite/jx/issues/559)) ([a15e884](https://github.com/jxsuite/jx/commit/a15e8842341d1f6b13f6d345d7b876e4b10918a5))
+
+
+### Bug Fixes
+
+* **runtime:** let a write from a child scope reach the state it names ([#556](https://github.com/jxsuite/jx/issues/556)) ([9345bd2](https://github.com/jxsuite/jx/commit/9345bd28d2c323d881e285cfd353f9386fa1cd22))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/ai bumped to 0.43.1
+    * @jxsuite/collab bumped to 0.11.7
+    * @jxsuite/create bumped to 1.5.5
+    * @jxsuite/formulas bumped to 0.0.29
+    * @jxsuite/markup bumped to 1.0.5
+    * @jxsuite/protocol bumped to 6.2.3
+    * @jxsuite/runtime bumped to 6.2.0
+    * @jxsuite/schema bumped to 5.3.0
+    * @jxsuite/site bumped to 2.4.0
+    * @jxsuite/ui bumped to 0.10.2
+
 ## [10.5.0](https://github.com/jxsuite/jx/compare/studio-v10.4.0...studio-v10.5.0) (2026-11-06)
 
 

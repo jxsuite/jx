@@ -1,5 +1,34 @@
 # Changelog
 
+## [8.4.0](https://github.com/jxsuite/jx/compare/server-v8.3.0...server-v8.4.0) (2026-11-07)
+
+
+### Features
+
+* every host reads Jx Notation ([#554](https://github.com/jxsuite/jx/issues/554)) ([230382e](https://github.com/jxsuite/jx/commit/230382e4072184ab042a328e25e9f68f1d94de83))
+* saving a .jxn file keeps what did not change ([#555](https://github.com/jxsuite/jx/issues/555)) ([7fb4141](https://github.com/jxsuite/jx/commit/7fb4141ae76f1872b789171eacb8761009222cf4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/ai bumped to 0.43.1
+    * @jxsuite/catalog bumped to 0.1.9
+    * @jxsuite/collab bumped to 0.11.7
+    * @jxsuite/compiler bumped to 8.3.0
+    * @jxsuite/create bumped to 1.5.5
+    * @jxsuite/import bumped to 0.42.5
+    * @jxsuite/protocol bumped to 6.2.3
+    * @jxsuite/runtime bumped to 6.2.0
+    * @jxsuite/schema bumped to 5.3.0
+    * @jxsuite/site bumped to 2.4.0
+    * @jxsuite/starters bumped to 3.3.1
+  * devDependencies
+    * @jxsuite/auth bumped to 0.8.5
+    * @jxsuite/connector bumped to 0.8.5
+    * @jxsuite/parser bumped to 4.3.1
+
 ## [8.3.0](https://github.com/jxsuite/jx/compare/server-v8.2.1...server-v8.3.0) (2026-11-06)
 
 

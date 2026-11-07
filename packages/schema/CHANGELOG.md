@@ -1,5 +1,15 @@
 # Changelog
 
+## [5.3.0](https://github.com/jxsuite/jx/compare/schema-v5.2.0...schema-v5.3.0) (2026-11-07)
+
+
+### Features
+
+* **desktop:** open what the OS hands over, after asking to run a folder's code ([#549](https://github.com/jxsuite/jx/issues/549)) ([5e4878d](https://github.com/jxsuite/jx/commit/5e4878db6b293c5aee3f47a30b72ccb5285b8205))
+* every host reads Jx Notation ([#554](https://github.com/jxsuite/jx/issues/554)) ([230382e](https://github.com/jxsuite/jx/commit/230382e4072184ab042a328e25e9f68f1d94de83))
+* saving a .jxn file keeps what did not change ([#555](https://github.com/jxsuite/jx/issues/555)) ([7fb4141](https://github.com/jxsuite/jx/commit/7fb4141ae76f1872b789171eacb8761009222cf4))
+* **schema:** read and write Jx Notation ([#553](https://github.com/jxsuite/jx/issues/553)) ([c813271](https://github.com/jxsuite/jx/commit/c813271fcf87b74faa796d832ddda9ce127c4305))
+
 ## [5.2.0](https://github.com/jxsuite/jx/compare/schema-v5.1.0...schema-v5.2.0) (2026-11-06)
 
 

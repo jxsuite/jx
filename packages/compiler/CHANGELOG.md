@@ -1,5 +1,25 @@
 # Changelog
 
+## [8.3.0](https://github.com/jxsuite/jx/compare/compiler-v8.2.0...compiler-v8.3.0) (2026-11-07)
+
+
+### Features
+
+* every host reads Jx Notation ([#554](https://github.com/jxsuite/jx/issues/554)) ([230382e](https://github.com/jxsuite/jx/commit/230382e4072184ab042a328e25e9f68f1d94de83))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/create bumped to 1.5.5
+    * @jxsuite/runtime bumped to 6.2.0
+    * @jxsuite/schema bumped to 5.3.0
+    * @jxsuite/site bumped to 2.4.0
+  * devDependencies
+    * @jxsuite/connector bumped to 0.8.5
+    * @jxsuite/parser bumped to 4.3.1
+
 ## [8.2.0](https://github.com/jxsuite/jx/compare/compiler-v8.1.0...compiler-v8.2.0) (2026-11-06)
 
 

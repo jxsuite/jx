@@ -1,5 +1,24 @@
 # Changelog
 
+## [6.2.0](https://github.com/jxsuite/jx/compare/runtime-v6.1.0...runtime-v6.2.0) (2026-11-07)
+
+
+### Features
+
+* every host reads Jx Notation ([#554](https://github.com/jxsuite/jx/issues/554)) ([230382e](https://github.com/jxsuite/jx/commit/230382e4072184ab042a328e25e9f68f1d94de83))
+
+
+### Bug Fixes
+
+* **runtime:** let a write from a child scope reach the state it names ([#556](https://github.com/jxsuite/jx/issues/556)) ([9345bd2](https://github.com/jxsuite/jx/commit/9345bd28d2c323d881e285cfd353f9386fa1cd22))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/schema bumped to 5.3.0
+
 ## [6.1.0](https://github.com/jxsuite/jx/compare/runtime-v6.0.2...runtime-v6.1.0) (2026-11-06)
 
 

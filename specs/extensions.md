@@ -2,9 +2,9 @@
 
 ## Extension Packages, Schema Composition, and the Capability Contract
 
-**Version:** 0.5.3-draft\
+**Version:** 0.5.4-draft\
 **Status:** Partial\
-**Updated:** 2026-11-06\
+**Updated:** 2026-11-07\
 **License:** MIT
 
 Supersedes v1 ("Format-Extension Classes and the Capability Contract"). The format-class contract from v1 survives unchanged (§6–§8); v2 adds the package layer around it: extension packages, manifest-driven registration, JSON-Schema composition, project sections, server mounts, and the studio settings vocabulary. The relationships vocabulary has a companion spec: [relationships.md](./relationships.md).
@@ -784,6 +784,7 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.5.4-draft** (2026-11-07) — §1: .jxn is a built-in registry entry that no class can claim.
 - **0.5.3-draft** (2026-11-06) — §8: projectData's context may ask for held entries (includeHeld); a host that passes nothing gets a production answer.
 - **0.5.2-draft** (2026-11-04) — §5.3 the core paths union gains the paginate source, which pages a list in the page's own state.
 - **0.5.1-draft** (2026-10-31) — §8.4: the search client takes a scope, a URL prefix tested by the Web App Manifest's within-scope rule before the result limit, so one emitted index serves every part of a site.
@@ -826,4 +827,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_Jx Extensions Specification v0.5.3-draft_
+_Jx Extensions Specification v0.5.4-draft_

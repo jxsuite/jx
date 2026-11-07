@@ -2,9 +2,9 @@
 
 ## Declarative Document Object Model — JSON Edition
 
-**Version:** 0.8.5-draft\
+**Version:** 0.9.1-draft\
 **Status:** Partial\
-**Updated:** 2026-11-06\
+**Updated:** 2026-11-07\
 **License:** MIT
 
 ---
@@ -2828,6 +2828,10 @@ This rewrites the mutating handlers of Appendix A's idiom using `$expression`, l
 
 ## Changelog
 
+- **0.9.1-draft** (2026-11-07) — §22 is Implemented. §22.4: saving a .jxn file keeps what did not change, and a merge can cost comments and never data.
+- **0.9.0-draft** (2026-11-07) — §2.3: the JSON data model is authoritative, and .json and .jxn are two spellings of it. §22: every host reads .jxn.
+- **0.8.7-draft** (2026-11-07) — §22: the Jx Notation grammar, what a reader refuses and what a writer guarantees, read and written by @jxsuite/schema/jxn. No host dispatches to it yet.
+- **0.8.6-draft** (2026-11-07) — Name the desktop prompt in the trust model for documents.
 - **0.8.5-draft** (2026-11-06) — Say that a project's configuration may be written as project.jxn.
 - **0.8.4-draft** (2026-11-06) — Name the format Jx Notation, with the extension .jxn.
 - **0.8.3-draft** (2026-11-06) — §8.4: the interpreter evaluates a computed-children template and redraws when its value changes, a repeater row can read its item's $children, and Markdown holds the template as a directive attribute.
@@ -2936,4 +2940,4 @@ This rewrites the mutating handlers of Appendix A's idiom using `$expression`, l
 
 ---
 
-_Jx Specification v0.8.5-draft — subject to revision_
+_Jx Specification v0.9.1-draft — subject to revision_
