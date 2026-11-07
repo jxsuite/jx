@@ -12,7 +12,6 @@ import type { TemplateId } from "./templates";
 import type { JsonObject } from "./scaffold";
 
 import TEMPLATE_VERSIONS from "./template-versions.json";
-import { isJsonObject as isObject } from "@jxsuite/schema/guards";
 import {
   NEW_PROJECT_FILE_NAME,
   parseProjectSource,
@@ -282,10 +281,9 @@ async function scaffoldFromStarter(
   // Content types, image pipeline, head, and in a project.jxn its comments.
   const projectPath = projectFilePath(destPath);
   const starterText = await readFile(projectPath, "utf8");
-  const project: unknown = parseProjectSource(starterText, projectPath);
-  if (!isObject(project)) {
-    throw new TypeError(`Starter "${starter}" has a project file that is not an object`);
-  }
+  /* SAFETY: both readers answer an object, or throw (a starter whose project file is a list is
+     refused there, naming the file), and every member below is one the re-stamp owns. */
+  const project = parseProjectSource(starterText, projectPath) as JsonObject;
   project.name = name;
   if (url) {
     project.url = url;

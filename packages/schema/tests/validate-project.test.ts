@@ -277,8 +277,9 @@ describe("explainJxnLists", () => {
       typeError("/build"),
       typeError(""),
       typeError("/multi"),
+      typeError("/url/x"),
     ];
-    const project = { build: { a: 1 }, multi: "a\nb" };
+    const project = { build: { a: 1 }, multi: "a\nb", url: "https://example.com" };
     expect(explainJxnLists(others, project)).toEqual(others);
   });
 

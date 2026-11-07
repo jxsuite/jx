@@ -358,6 +358,7 @@ style {
     const media = asConfig({ $media: { $ref: "./m.json" } });
     expect(() => serializeProject(media)).toThrow("/$media");
     expect(() => serializeProject(asConfig([]))).toThrow("is an object");
+    expect(() => serializeProject(asConfig([]), "project\n")).toThrow("is an object");
   });
 
   test("the canonical form is stable", () => {
