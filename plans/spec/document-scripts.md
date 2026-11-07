@@ -8,7 +8,6 @@ requires:
   - spec/function-entry-tier-parity
   - spec/jxn-format
   - studio/jxn-documents
-  - desktop/open-from-os
 workspaces:
   - packages/schema
   - packages/compiler
@@ -41,7 +40,7 @@ A body compiles with `new Function`, so it cannot `import`, hold module state or
 - **Calling a `$src` function differs by tier.** With `bump(state, by)`, `state.bump(3)` throws, `state.bump(state, 3)` works when interpreted, `compile-element` emits `(state) => bump(state)`, and `compile-client` emits a computed with no listener. `plan:spec/function-entry-tier-parity` closes this, which is why it is required here.
 - **`.jxn` importing `.jxn`.** `tsc` passes, and both bundlers fail.
 - **Live Preview leaks server code.** `packages/site/src/shell.ts:68`, `:94` embed the whole document in the page, which would include `$script.server`. `$script` is not in `RESERVED_KEYS` (`runtime.ts:1586`), and no slice edited the schema. `serveSite`'s file lane is a second path: it would serve `components/x.jxn` as raw bytes on an origin running project script, which is the hole `packages/site/src/paths.ts` exists to refuse, and a cloud preview is readable by anyone holding its link.
-- **A document becomes a self-contained program.** Today a `timing: "server"` entry needs a sidecar, so one forwarded file cannot run anything on the backend. `script timing=server` removes that: on an editing host, a single `.jxn` runs its own module in Node through `/__jx_server__` when the canvas renders it, which `packages/server/src/project-server.ts:297` already labels RCE-capable. With `.jxn` associated with the desktop app, that is one double-click from an email attachment. `plan:desktop/open-from-os` is required for this reason, so this plan cannot ship ahead of the prompt.
+- **A document becomes a self-contained program.** Today a `timing: "server"` entry needs a sidecar, so one forwarded file cannot run anything on the backend. `script timing=server` removes that: on an editing host, a single `.jxn` runs its own module in Node through `/__jx_server__` when the canvas renders it, which `packages/server/src/project-server.ts:297` already labels RCE-capable. With `.jxn` associated with the desktop app, that is one double-click from an email attachment. desktop.md §4.7 is why this can ship: the prompt is in the way of that double-click.
 - **Concurrent edits to a script are lost.** A `$script` value is whole-value last-writer-wins (`packages/collab/src/schema.ts:109`, `:123`). String `body` values are too, which matters more now that they can run to many lines.
 
 ## Outcome

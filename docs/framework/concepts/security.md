@@ -51,6 +51,8 @@ A Jx document is executable input. Loading and rendering an untrusted document i
 
 If you compile documents you did not author, such as user-submitted content merged into the tree, sanitize or escape `${` sequences first.
 
+The desktop app asks before a folder's code first runs, whichever way you opened it, and remembers your answer for that folder. It's consent and not a sandbox: an opened project runs with your permissions, and the answer is about the folder and not its contents. A `git pull` or a re-extracted archive at the same path runs without asking again, so answer for the source of the folder as well as what's in it today.
+
 ## The data and session boundary
 
 A site with a database and sign-ins has a second security surface: the `/_jx/*` routes the [generated worker](/docs/framework/site/deployment) serves. Nothing there trusts the browser.

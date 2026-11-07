@@ -134,6 +134,13 @@ export function createDesktopPlatform() {
       },
     ],
     [
+      /* The operating system asked this window to show a document. */
+      "documentsPending",
+      () => {
+        collectOpenDocuments();
+      },
+    ],
+    [
       /* Another window's settings change. Each window talks only to its own server, so this is the
          only way one hears about another. */
       "settingsChanged",
@@ -158,6 +165,23 @@ export function createDesktopPlatform() {
   let everOpened = false;
   /** The settings kernel's subscriber, so another window's change reaches this one. */
   let settingsHandler: ((settings: Record<string, string>) => void) | null = null;
+  let documentHandler: ((path: string) => void) | null = null;
+
+  /** Hand the page whatever documents are queued for this window, once it can take them. */
+  function collectOpenDocuments(): void {
+    if (!documentHandler) {
+      return;
+    }
+    request("takeOpenDocuments")
+      .then((paths) => {
+        for (const path of paths) {
+          documentHandler?.(path);
+        }
+      })
+      .catch((error: Error) => {
+        console.error("[platform] collecting documents to open failed:", error);
+      });
+  }
 
   /*
    * ─── The RPC transport ──────────────────────────────────────────────────────
@@ -398,6 +422,15 @@ export function createDesktopPlatform() {
 
     async getProjectRoot() {
       return request("getProjectRoot");
+    },
+
+    subscribeOpenDocument(handler: (path: string) => void) {
+      documentHandler = handler;
+      // Anything asked of this window before its page had booted is already waiting.
+      collectOpenDocuments();
+      return () => {
+        documentHandler = null;
+      };
     },
 
     async setWindowProject(root: string) {

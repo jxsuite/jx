@@ -3,6 +3,7 @@
  * /__studio/data/* and /__studio/secrets, delegating verbatim to @jxsuite/server/data against this
  * session's project root (plan Part 4a).
  */
+import { authorized } from "./_authorized";
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -48,7 +49,7 @@ beforeAll(() => {
     "utf8",
   );
   writeFileSync(resolve(TMP, ".dev.vars"), "SEEDED=1\n", "utf8");
-  session = createProjectSession(TMP);
+  session = createProjectSession(authorized(TMP));
 });
 
 afterAll(async () => {

@@ -5,11 +5,15 @@ spec:
   - desktop.md#1
   - desktop.md#3.4
   - desktop.md#4
+  - desktop.md#4.6
+  - desktop.md#4.7
   - desktop.md#7.5
   - desktop.md#7.7
   - desktop.md#9.5
   - desktop.md#9.7
 code:
+  - packages/desktop/src/backend/trust-store.ts
+  - packages/schema/src/project-file.ts
   - packages/desktop/src/webview/boot.ts
   - packages/studio/src/platforms/default-platform.ts
   - packages/studio/src/surfaces/boot-failure.ts
@@ -62,7 +66,13 @@ To open an existing project:
 3. A native file dialog opens. Select the project's `project.json` file, the file that marks a folder as a Jx project.
 4. The project opens with the folder around `project.json` as the project root.
 
-You can also open a project straight from your file manager: right-click its `project.json` and choose **Open With > Jx Studio**. Installing Studio doesn't change what opens your `.json` files by default.
+You can also open from your file manager: right-click a `project.json`, a page or a Markdown file inside a project and choose **Open With > Jx Studio**. The project opens with that file in a tab, and if it's already open its window comes forward. Installing Studio doesn't change what opens your `.json` files by default.
+
+### Opening a folder for the first time
+
+The first time a folder would open, Studio asks: **Open this folder and run its code?** A Jx project runs code on your computer with your permissions, so only open a folder you trust. Studio names the folder by its path, because a project's name is whatever its author chose. Choosing **Cancel** opens nothing.
+
+Studio remembers your answer for that folder and doesn't ask again, even if its files change later. It doesn't ask about projects you've created in Studio or that were already in your recent list. See **[Security](/docs/framework/concepts/security)**.
 
 :::doc-note
 `project.json` is the project's settings file, and Studio creates it for every new project. What's inside is described in **[Project settings](/docs/studio/projects/settings)**.

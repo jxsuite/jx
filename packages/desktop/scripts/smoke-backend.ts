@@ -102,6 +102,8 @@ for (const [key, value] of Object.entries(process.env)) {
   }
 }
 env.JX_STUDIO_ASSETS = studio;
+// The prompt's answers land in the store, and a smoke run's scratch folders do not belong in a real one.
+env.XDG_CONFIG_HOME = join(scratch, "config");
 if (electronOption !== undefined) {
   env.ELECTRON_RUN_AS_NODE = "1";
 }
@@ -111,6 +113,7 @@ console.log(`smoke: ${backend} under ${runtime}`);
 interface Message {
   id?: number;
   partition?: string;
+  requestId?: number;
   type?: string;
   url?: string;
 }
@@ -120,6 +123,11 @@ const waiters: (() => void)[] = [];
 const child = Bun.spawn([runtime, backend], {
   env,
   ipc: (message: Message) => {
+    // Answered as the shell's dialog would be, over the same channel, so the prompt's path is run too.
+    if (message.type === "confirm-trust") {
+      child.send({ requestId: message.requestId, trusted: true, type: "trust-answer" });
+      return;
+    }
     messages.push(message);
     for (const wake of waiters.splice(0)) {
       wake();
