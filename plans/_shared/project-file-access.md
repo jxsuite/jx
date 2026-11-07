@@ -2,8 +2,7 @@
 status: drafted
 disposition: implement
 claims: []
-requires:
-  - desktop/open-from-os
+requires: []
 workspaces:
   - packages/schema
   - packages/compiler
@@ -36,7 +35,7 @@ No shared helper covers the name. `PROJECT_CONFIG_PATH` (`studio/tabs/tab.ts:23`
 
 **Defects this fixes on the way:**
 
-- `pages/project.json` is a legal page at `/project` (`compiler/site/pages-discovery.ts:243`, `site/routes.ts:55`), and both walkers believe it. `server/studio-api.ts:559` answers with that folder and the page as `projectConfig`, and `desktop/backend/project-session.ts:1120` answers from `existsSync` alone. Studio then sets the project root to `pages/` (`studio.ts:1096`, `:1101`). `plan:desktop/open-from-os` fixes the desktop walker, and this plan fixes the rest.
+- `pages/project.json` is a legal page at `/project` (`compiler/site/pages-discovery.ts:243`, `site/routes.ts:55`), and both walkers believe it. `server/studio-api.ts:559` answers with that folder and the page as `projectConfig`, and `desktop/backend/project-session.ts:1120` answers from `existsSync` alone. Studio then sets the project root to `pages/` (`studio.ts:1096`, `:1101`). The desktop walker and `resolveOpenTarget` were fixed with desktop.md §4.6, and this plan fixes the rest.
 - `panels/imports-panel.ts:207`, `:298` and `main/app.ts:363` use an unbounded `endsWith("project.json")`, which also matches `new-project.json`.
 - A rename reformats every JSON file it touches: `server/refactor/scan.ts:83` writes `JSON.stringify(doc, null, 2)`, which discards the layout record Studio preserves (`schema/json-layout.ts`), and a tab-indented scaffold becomes a whole-file diff.
 
@@ -48,7 +47,7 @@ No shared helper covers the name. `PROJECT_CONFIG_PATH` (`studio/tabs/tab.ts:23`
 
 ## Decisions
 
-- **Decided:** `packages/schema/src/project-file.ts` (created by `plan:desktop/open-from-os`) is pure, working from a path and text, with no Node import, because Studio, the cloud host's Worker and `@jxsuite/site` all need it. Walking is two thin layers over it: an async one over a new `{ readText, exists }` IO for Studio and the Worker, since `FormatHostIO` (`format-registry.ts:525`) has neither, and a synchronous one at `@jxsuite/schema/project-file/node`. The synchronous one is needed: `compiler/site-loader.ts:73` is a published export, `server/site-output.ts:53` is synchronous, and `project-session.ts:283` is called by `assertReachable` (`:317`) on 10 RPC paths, where an accidentally unawaited call would turn a security guard into a no-op.
+- **Decided:** `packages/schema/src/project-file.ts` (which exists, holding `classifyProjectFile` and `findEnclosingProject`) is pure, working from a path and text, with no Node import, because Studio, the cloud host's Worker and `@jxsuite/site` all need it. Walking is two thin layers over it: an async one over a new `{ readText, exists }` IO for Studio and the Worker, since `FormatHostIO` (`format-registry.ts:525`) has neither, and a synchronous one at `@jxsuite/schema/project-file/node`. The synchronous one is needed: `compiler/site-loader.ts:73` is a published export, `server/site-output.ts:53` is synchronous, and `project-session.ts:283` is called by `assertReachable` (`:317`) on 10 RPC paths, where an accidentally unawaited call would turn a security guard into a no-op.
 - **Decided:** the API is `isProjectConfigPath(path)` (exact, at the root), `findProjectFile(io, root)`, `findEnclosingProject(io, path)`, `readProjectFile(io, root)` returning `{ path, text, config }` or `{ path, text, error }`, and `serializeProjectFile(config, previous)`.
 - **Decided:** `PROJECT_CONFIG_PATH` becomes `projectConfigPath()`, read from the open project's state, because Studio's tab id is that path and it will stop being constant. It still returns `project.json` when this lands.
 - **Decided:** a malformed file is data that each caller sees and decides about, never a silent `undefined`. `project-session.ts:620`, `studio-api.ts:118` and `format-host` swallow a parse failure and build with no extensions, which then reports every Markdown page as unknown rather than naming the file, and that has to become a Problem. A live preview stays lenient on purpose: `site/compose.ts:107` says refusing "would hide the one error", and `resolve.ts` never rejects. So the module reports, and it does not throw on a host's behalf. Hand-written KDL will fail to parse more often than generated JSON, so this has to be right before that lands.

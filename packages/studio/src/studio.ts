@@ -118,6 +118,7 @@ import {
   refreshFormats,
 } from "./format/format-host";
 import {
+  followOpenDocuments,
   loadProject as _loadProject,
   openProject as _openProject,
   findHomePage,
@@ -1228,7 +1229,8 @@ if (_projectParam) {
   }
 } else {
   // Normal mode: probe for project at server root
-  void loadProject();
+  // oxlint-disable-next-line unicorn/prefer-top-level-await -- deliberate fire-and-forget: the shell renders first
+  void loadProjectAndFollowDocuments();
   render();
   ensureFsSync();
 }
@@ -1296,6 +1298,12 @@ function renderLeftPanel() {
   leftPanelMod.render();
 }
 
+/** Load what this window holds, then show what the operating system asks of it from here on. */
+async function loadProjectAndFollowDocuments() {
+  await loadProject();
+  followOpenDocuments();
+}
+
 function loadProject() {
   return _loadProject();
 }
@@ -1334,7 +1342,10 @@ async function openProject(target: ProjectOpenTarget = "thisWindow"): Promise<Pr
     if (!picked) {
       return "cancelled";
     }
-    const { focused } = await platform.openProjectInNewWindow(picked.root);
+    const { declined, focused } = await platform.openProjectInNewWindow(picked.root);
+    if (declined) {
+      return "cancelled";
+    }
     return focused ? "focused" : "newWindow";
   }
   // The SECOND destroyer, and it was ungated for as long as the first one was. `openRecentProject`
@@ -1394,8 +1405,8 @@ async function openRecentProject(root: string) {
     // Multi-window (desktop): if this window already holds a project, open the chosen one in a new
     // Window (focusing an existing window if it's already open) rather than replacing this project.
     if (projectState && platform.openProjectInNewWindow) {
-      await platform.openProjectInNewWindow(root);
-      activity.done("Opened in another window");
+      const { declined } = await platform.openProjectInNewWindow(root);
+      activity.done(declined ? "Didn't open the project" : "Opened in another window");
       return;
     }
 
@@ -1420,6 +1431,11 @@ async function openRecentProject(root: string) {
     // The project is already open in another window, that window is focused and we bail here.
     if (platform.setWindowProject) {
       const res = await platform.setWindowProject(root);
+      if (res.declined) {
+        // The user declined to run its code, and nothing has moved yet: the tabs above stay open.
+        activity.done("Kept the current project");
+        return;
+      }
       if (res.deduped) {
         activity.done("Already open in another window");
         return;

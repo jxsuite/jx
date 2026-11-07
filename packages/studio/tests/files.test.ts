@@ -27,6 +27,7 @@ import {
   loadProject,
   openFileInPane,
   openFileInTab,
+  followOpenDocuments,
   openHomePage,
   openProject,
   pickAndUploadTo,
@@ -601,6 +602,51 @@ describe("openProject", () => {
     await openProject(ctx);
 
     expect(ctx.calls).toEqual([]);
+  });
+});
+
+// ─── followOpenDocuments ──────────────────────────────────────────────────────
+
+describe("followOpenDocuments", () => {
+  test("does nothing on a platform with no operating system to hand it files", () => {
+    installFsPlatform({});
+    expect(() => {
+      followOpenDocuments();
+    }).not.toThrow();
+  });
+
+  test("a document the operating system asks for opens in a tab", async () => {
+    let deliver: (path: string) => void = () => {};
+    installMockPlatform({
+      subscribeOpenDocument: (handler) => {
+        deliver = handler;
+        return () => {};
+      },
+    });
+    siteState();
+    openTab({ document: { tagName: "div" }, documentPath: "pages/a.json", id: "tab-a" });
+    openTab({ document: { tagName: "div" }, documentPath: "pages/b.json", id: "tab-b" });
+    followOpenDocuments();
+    deliver("pages/a.json");
+    await flush();
+    expect(activeTab.value?.id).toBe("tab-a");
+  });
+
+  test("a window whose project did not load opens no tab for it", async () => {
+    let deliver: (path: string) => void = () => {};
+    const { state } = installMockPlatform({
+      subscribeOpenDocument: (handler) => {
+        deliver = handler;
+        return () => {};
+      },
+    });
+    setProjectState(null);
+    const before = workspace.tabs.size;
+    followOpenDocuments();
+    deliver("pages/a.json");
+    await flush();
+    expect(workspace.tabs.size).toBe(before);
+    expect(state.calls.filter(([name]) => name === "readFile")).toEqual([]);
   });
 });
 

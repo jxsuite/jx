@@ -59,6 +59,8 @@ Pages are labelled by their **route** instead (`/`, `/blog`, `/blog/[slug]`), be
 
 A single click from the file tree or the palette opens a document in **preview**: it shows in _italics_ and the next single click replaces it, so browsing around never leaves you with twenty things open. Anything that commits to it makes it permanent: editing it, double-clicking it, pinning it, or running **Keep Document Open**.
 
+On the desktop app, a file you open from your file manager also opens in a tab, as a kept tab rather than a preview. See **[The desktop app](/docs/studio/desktop)**.
+
 **Pin** a document with the ◎ button on it (◉ once pinned) to hold it at the head of the strip, where no preview open can take its slot. Dragging can never interleave pinned documents with unpinned ones.
 
 ## Studio saves only when you do

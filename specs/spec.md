@@ -2435,7 +2435,7 @@ Jx Studio's own shell is such a page: its chrome mounts documents through the in
 
 ### 21.4 Trust Model for Documents
 
-A Jx document is **executable input**. Loading and rendering an untrusted document in the interpreting runtime runs its code; compiling an untrusted document runs its code at build time. Jx does not sandbox document code — treat a `.json` document with the same trust you would treat a `.js` file from the same source.
+A Jx document is **executable input**. Loading and rendering an untrusted document in the interpreting runtime runs its code; compiling an untrusted document runs its code at build time. Jx does not sandbox document code — treat a `.json` document with the same trust you would treat a `.js` file from the same source. The desktop application asks before a folder's code first runs (`desktop.md` §4.7), which is consent and not a sandbox.
 
 > **Status: Implemented** (as a stated property, not a sandbox). See also `@jxsuite/server` §4.2 for the dev-server network controls and `docs/framework/concepts/security.md` for the user-facing summary.
 
