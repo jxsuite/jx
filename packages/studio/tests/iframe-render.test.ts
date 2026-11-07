@@ -765,6 +765,43 @@ describe("registerElements", () => {
   });
 });
 
+describe("a .jxn component the editing server answers as text", () => {
+  const realFetch = globalThis.fetch;
+  afterEach(() => {
+    globalThis.fetch = realFetch;
+  });
+
+  test("is read with the parser the canvas installs on every render", async () => {
+    const container = document.createElement("div");
+    const handle = await renderResolvedDocument({
+      container,
+      doc: { tagName: "section" },
+      docBase: "http://localhost:3000/page.json",
+      mapperCtx: ctx,
+      mode: "design",
+    });
+    handle.dispose();
+    const asked: string[] = [];
+    globalThis.fetch = Object.assign(
+      (input: RequestInfo | URL) => {
+        asked.push(String(input));
+        return Promise.resolve(
+          new Response('/- kdl-version 2\n\nx-jxn-card "From KDL"\n', {
+            headers: { "content-type": "text/plain; charset=utf-8" },
+          }),
+        );
+      },
+      { preconnect: realFetch.preconnect },
+    );
+    await registerElements(
+      { $elements: [{ $ref: "components/card.jxn" }] },
+      "http://localhost:3000/pages/index.json",
+    );
+    expect(asked).toEqual(["http://localhost:3000/pages/components/card.jxn"]);
+    expect(customElements.get("x-jxn-card")).toBeDefined();
+  });
+});
+
 describe("installCanvasImageRetry", () => {
   // Happy-dom never loads images, so the broken-image `error` event is driven manually. The retry
   // Schedules the re-fire via setTimeout(150 * attempt); swap setTimeout so the backoff fires

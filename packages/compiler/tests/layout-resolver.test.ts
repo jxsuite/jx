@@ -267,7 +267,7 @@ describe("resolveLayout", () => {
     try {
       writeFileSync(join(FIXTURES, "layouts", "bad.json"), "{ not valid json", "utf8");
       const page = { $layout: "./layouts/bad.json" };
-      expect(await rejectionOf(resolveLayout(page, {}, FIXTURES))).toContain("Invalid layout JSON");
+      expect(await rejectionOf(resolveLayout(page, {}, FIXTURES))).toContain("Invalid layout");
     } finally {
       cleanup();
     }

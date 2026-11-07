@@ -17,6 +17,7 @@
 import { JX_TOOL_FACTS } from "@jxsuite/ai/jx-tools";
 import { createToolDefinition } from "@jxsuite/ai/tools";
 import { isJsonObject, isNumber } from "@jxsuite/schema/guards";
+import { classifyJxn, isJxnPath, isNativeDocumentPath, parseJxn } from "@jxsuite/schema/jxn";
 import type { CreateProjectDestination, StudioPlatform } from "../types";
 import type { ToolRegistry } from "@jxsuite/ai/tools";
 import type { JsonValue, JxMutableNode, ProjectConfig } from "@jxsuite/schema/types";
@@ -50,7 +51,7 @@ const NOT_UNDOABLE = "(saved to disk; not undoable with Cmd+Z)";
  * {@link looksLikeJxDoc} sniff.
  */
 function isJxDocPath(path: string): boolean {
-  return /^(pages|layouts|components|elements)\//.test(path) && path.endsWith(".json");
+  return /^(pages|layouts|components|elements)\//.test(path) && isNativeDocumentPath(path);
 }
 
 /** Structural sniff for Jx-document-shaped JSON values. */
@@ -300,8 +301,19 @@ export function registerProjectTools(
 
         // Pre-validate Jx documents — disk writes have no undo to lean on.
         let parsed: JsonValue | undefined;
+        const isJxn = isJxnPath(relPath) && classifyJxn(content) !== "project";
         const isJson = relPath.endsWith(".json") && !isProjectConfigPath(relPath);
-        if (isJson) {
+        if (isJxn) {
+          try {
+            const document = parseJxn(content);
+            parsed = isJsonObject(document) ? document : null;
+          } catch (error) {
+            return {
+              success: false,
+              error: `Content is not valid Jx Notation: ${error instanceof Error ? error.message : String(error)}`,
+            };
+          }
+        } else if (isJson) {
           try {
             // SAFETY: `JSON.parse` without a reviver yields nothing but JSON values.
             parsed = JSON.parse(content) as JsonValue;
@@ -313,7 +325,7 @@ export function registerProjectTools(
           }
         }
         let tokenHints = "";
-        // The parse above sets `parsed` exactly when `isJson` holds: it never yields `undefined`.
+        // The parse above sets `parsed` exactly when one of those holds: it never yields `undefined`.
         if (parsed !== undefined && (isJxDocPath(relPath) || looksLikeJxDoc(parsed))) {
           const errors = await validate(parsed);
           if (errors.length > 0) {

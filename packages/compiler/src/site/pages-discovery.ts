@@ -18,7 +18,8 @@
 
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { isJsonObject, isString } from "@jxsuite/schema/guards";
-import { errorMessage, parseJxDocument } from "@jxsuite/schema/parse";
+import { isNativeDocumentPath, parseNativeDocument } from "@jxsuite/schema/jxn";
+import { errorMessage } from "@jxsuite/schema/parse";
 import { compareRoutes, fileToRoute as routeFromFileName } from "@jxsuite/site/routes";
 import { pageCount, pageSlice, pageUrl, pagedSource, pagination } from "@jxsuite/site/pagination";
 import type { PagePagination, PagedSource } from "@jxsuite/site/pagination";
@@ -80,8 +81,8 @@ export async function readPageDocument(
   registry?: FormatRegistry,
 ): Promise<JxDocument> {
   const source = readFileSync(filePath, "utf8");
-  if (filePath.endsWith(".json")) {
-    return parseJxDocument(source, filePath);
+  if (isNativeDocumentPath(filePath)) {
+    return parseNativeDocument(source, filePath);
   }
   const ext = extname(filePath).toLowerCase();
   const entry = registry?.byExtension(ext, "parse");
@@ -200,7 +201,11 @@ async function declaredTranslationKey(
  */
 export async function discoverPages(pagesDir: string, registry?: FormatRegistry) {
   const routes: Route[] = [];
-  const pageExtensions = new Set([".json", ...(registry?.documentExtensions("page") ?? [])]);
+  const pageExtensions = new Set([
+    ".json",
+    ".jxn",
+    ...(registry?.documentExtensions("page") ?? []),
+  ]);
   await walkDir(pagesDir, pagesDir, routes, pageExtensions, registry);
 
   // Static routes first, then dynamic, then catch-all (spec §4.4) — the shared ordering.

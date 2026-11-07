@@ -15,6 +15,8 @@ export class JxnError extends Error {
   readonly line: number | null;
   /** The offset of the problem, when it has a place. */
   readonly offset: number | null;
+  /** What is wrong, without the place. */
+  readonly reason: string;
 
   /**
    * @param message What is wrong.
@@ -29,6 +31,20 @@ export class JxnError extends Error {
     this.column = where?.column ?? null;
     this.line = where?.line ?? null;
     this.offset = where?.offset ?? null;
+    this.reason = message;
+  }
+
+  /**
+   * The same error, naming the file it is in.
+   *
+   * @param file The file's path.
+   */
+  inFile(file: string): JxnError {
+    const where =
+      this.line !== null && this.column !== null && this.offset !== null
+        ? { column: this.column, line: this.line, offset: this.offset }
+        : null;
+    return new JxnError(`${file}: ${this.reason}`, where);
   }
 }
 

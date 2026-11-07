@@ -29,6 +29,7 @@ Commands:
   preview [root]   Serve an already-built dist/ directory
   schema [root]    Generate project.schema.json + document.schema.json from project.json#/extensions
   validate [root]  Validate the whole project: project.json, documents, classes, and fragments
+  convert <paths…> Move documents between .json and .jxn, repairing every reference to them
   db push [root]   Sync the data section's tables to their connections (additive-only)
 
 Options:
@@ -38,8 +39,22 @@ Options:
   --port <n>     dev/preview: port to listen on (default 3000 / 4173)
   --dry-run      db push: print the statements without executing them
   --connection   db push: restrict to one connection name
-  --strict       validate: fail on an overlay or accessibility lint error, not only a schema error`);
+  --strict       validate: fail on an overlay or accessibility lint error, not only a schema error
+  --to <format>  convert: jxn or json
+  --drop-comments convert: convert a .jxn file to .json even though it has comments`);
     process.exit(0);
+  }
+
+  // Its positionals are paths and not a project root, so it does not join the split below.
+  if (command === "convert") {
+    try {
+      const { runConvert } = await import("./site/convert-command.ts");
+      runConvert(process.cwd(), args.slice(1));
+    } catch (error) {
+      console.error(errorMessage(error));
+      process.exit(1);
+    }
+    return;
   }
 
   // `db push` is a two-word command; normalize it before the flag/positional split.

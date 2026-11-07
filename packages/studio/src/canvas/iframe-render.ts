@@ -24,6 +24,7 @@ import {
   setCanvasDelinkCommands,
   setCanvasDelinkPopovers,
   setCanvasViewportTranspose,
+  setDocumentParser,
   setRootMedia,
   setSkipAutoRequests,
   setSkipServerFunctions,
@@ -42,6 +43,17 @@ import type { CanvasMode, WireDiffMarks, WireLocale } from "./iframe-protocol";
 import { isNonNullObject, isString } from "@jxsuite/schema/guards";
 import type { JxDocument, JxElement, JxStyle } from "@jxsuite/schema/types";
 import type { PathMapCtx } from "./path-mapping";
+
+/**
+ * Read a `.jxn` `$ref`, which the editing server answers as its text.
+ *
+ * Loaded when one turns up, because the parser is a third of this entry's size budget and most
+ * canvases never see a `.jxn` reference.
+ */
+async function parseDocumentText(text: string, source: string): Promise<JxDocument> {
+  const { parseJxn } = await import("@jxsuite/schema/jxn");
+  return parseJxn(text, source);
+}
 
 /**
  * The retained render context a full render leaves behind so the surgical patcher can re-render an
@@ -1070,6 +1082,7 @@ export async function renderResolvedDocument(opts: {
   const assets = opts.assets ?? null;
   setCanvasAssetResolver(assets ? (value) => resolveAssetRef(value, assets) : null);
   setSkipServerFunctions(opts.mode !== "preview");
+  setDocumentParser(parseDocumentText);
   // Same gate for automatic `$prototype: "Request"` state entries. `buildScope` re-resolves every
   // State entry on each full render, so without this an escalating authoring action (a signals-panel
   // Edit, or Enter inside component-wrapped content) issued an HTTP request per render. Edit/design

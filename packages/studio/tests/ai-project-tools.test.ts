@@ -185,6 +185,35 @@ describe("ai-project-tools — write_file", () => {
     expect(writes(state)).toHaveLength(0);
   });
 
+  test("a .jxn document is checked like a .json one before it is written", async () => {
+    const { registry, state } = makeHarness(
+      {},
+      { validate: async () => ["must have required property 'tagName'"] },
+    );
+    const res = await registry.execute("write_file", { content: "main", path: "pages/a.jxn" });
+    expect(res.error).toContain("schema errors");
+    expect(writes(state)).toHaveLength(0);
+  });
+
+  test("a .jxn document that does not read says so, with where", async () => {
+    const { registry, state } = makeHarness();
+    const res = await registry.execute("write_file", { content: "a\nb", path: "pages/a.jxn" });
+    expect(res.success).toBe(false);
+    expect(res.error).toContain("Content is not valid Jx Notation");
+    expect(res.error).toContain("line 2, column 1");
+    expect(writes(state)).toHaveLength(0);
+  });
+
+  test("a project file written as .jxn is not read as a document", async () => {
+    const { registry, state } = makeHarness();
+    const res = await registry.execute("write_file", {
+      content: 'project "x"',
+      path: "project.jxn",
+    });
+    expect(res.success).toBe(true);
+    expect(writes(state)).toHaveLength(1);
+  });
+
   test("blocks Jx documents with schema errors before writing", async () => {
     const { registry, state } = makeHarness(
       {},

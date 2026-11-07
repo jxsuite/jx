@@ -162,3 +162,24 @@ describe("serveSite", () => {
     await expect(serveSite("/", io, assets, withRoutes, SHELL)).rejects.toThrow("disk on fire");
   });
 });
+
+describe("a .jxn file on a site origin", () => {
+  test("is answered as JSON, so a reader never needs a parser", async () => {
+    const response = await serve({ "components/x-a.jxn": 'x-a "hi"' }, "/components/x-a.jxn");
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Content-Type")).toBe("application/json;charset=utf-8");
+    expect(await response.json()).toEqual({ tagName: "x-a", textContent: "hi" });
+  });
+
+  test("that does not read is the author's to fix, and says why", async () => {
+    const response = await serve({ "components/x-a.jxn": "a\nb" }, "/components/x-a.jxn");
+    expect(response.status).toBe(422);
+    expect(await response.text()).toContain("components/x-a.jxn: ");
+  });
+
+  test("a .jxn page renders as a page", async () => {
+    const response = await serve({ "pages/index.jxn": 'main "Hello"' }, "/");
+    expect(response.status).toBe(200);
+    expect(await response.text()).toContain("Hello");
+  });
+});

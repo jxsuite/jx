@@ -205,14 +205,14 @@ describe("FormatRegistry lookups", () => {
 
   test("withCapability filters by declared roles", async () => {
     const reg = await registry();
-    expect(reg.withCapability("serialize").map((e) => e.name)).toEqual(["Markdown"]);
+    expect(reg.withCapability("serialize").map((e) => e.name)).toEqual(["Markdown", "jxn"]);
     expect(reg.withCapability("load").map((e) => e.name)).toEqual(["Csv", "Markdown"]);
   });
 
   test("documentExtensions filters by kind and never includes .json", async () => {
     const reg = await registry();
-    expect(reg.documentExtensions()).toEqual([".csv", ".md"]);
-    expect(reg.documentExtensions("page")).toEqual([".md"]);
+    expect(reg.documentExtensions()).toEqual([".csv", ".md", ".jxn"]);
+    expect(reg.documentExtensions("page")).toEqual([".md", ".jxn"]);
     expect(reg.documentExtensions("content")).toEqual([".csv", ".md"]);
   });
 

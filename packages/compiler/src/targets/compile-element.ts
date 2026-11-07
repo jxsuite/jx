@@ -49,7 +49,7 @@ import {
   isTagExpression,
   paramNames,
 } from "@jxsuite/schema/guards";
-import { parseJxDocument } from "@jxsuite/schema/parse";
+import { isNativeDocumentPath, parseNativeDocument } from "@jxsuite/schema/jxn";
 import { resolveShadowMode } from "../shadow.ts";
 import type { ShadowMode } from "../shadow.ts";
 import type { FormatRegistry } from "@jxsuite/schema/format-registry";
@@ -132,8 +132,8 @@ export async function compileElement(
         return;
       }
       visited.add(filePath);
-      if (filePath.endsWith(".json")) {
-        doc = parseJxDocument(readFileSync(filePath, "utf8"), filePath);
+      if (isNativeDocumentPath(filePath)) {
+        doc = parseNativeDocument(readFileSync(filePath, "utf8"), filePath);
       } else {
         const { extname } = await import("node:path");
         const ext = extname(filePath).toLowerCase();
@@ -179,7 +179,7 @@ export async function compileElement(
         /** @type {string} */
         const importPath = resolveElementPath
           ? resolveElementPath(refPath, currentDir)
-          : refPath.replace(/\.json$/, ".js");
+          : refPath.replace(/\.(?:json|jxn)$/i, ".js");
         elementImports.push(importPath);
       }
     }
@@ -197,7 +197,7 @@ export async function compileElement(
       resolveShadowMode(doc, opts.defaults),
       opts.serverBaseUrl,
     );
-    const outputPath = filePath ? filePath.replace(/\.json$/, ".js") : `${tagName}.js`;
+    const outputPath = filePath ? filePath.replace(/\.(?:json|jxn)$/i, ".js") : `${tagName}.js`;
     files.push({ content: jsContent, path: outputPath, tagName });
   }
 

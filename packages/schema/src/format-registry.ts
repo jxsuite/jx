@@ -3,8 +3,9 @@
  *
  * A class participates in format dispatch iff its .class.json carries a top-level `format` block.
  * Hosts (compiler, server, studio) build a registry from the project-level imports map and dispatch
- * file-extension work (parse, serialize, discover, load) through it. `.json` is the single native
- * built-in and never appears in a registry.
+ * file-extension work (parse, serialize, discover, load) through it. `.json` is native and never
+ * appears in a registry. `.jxn` is native too, and is the one entry every registry answers for
+ * without a class (`spec.md` §22), so no project and no extension can change what it means.
  *
  * All I/O is injected via FormatHostIO so the same module serves node (fs + import) and browser
  * (fetch + dynamic import) hosts.
@@ -725,8 +726,19 @@ export class FormatEntry {
 export class FormatRegistry {
   #entries: FormatEntry[];
 
+  /** The project's entries, then the built-in one, which is what a lookup searches. */
+  get #all(): FormatEntry[] {
+    return [...this.#entries, JXN_ENTRY];
+  }
+
   constructor(entries: FormatEntry[]) {
     this.#entries = entries;
+
+    for (const entry of entries) {
+      if (entry.extensions.includes(".jxn")) {
+        throw new Error(`Format "${entry.name}" claims ".jxn", which is built in`);
+      }
+    }
 
     /*
      * A declared media type reaches an HTTP header, an editor's file association and a Studio
@@ -763,6 +775,7 @@ export class FormatRegistry {
     }
   }
 
+  /** The format classes the project chose. The built-in `.jxn` entry is not one of them. */
   get entries(): readonly FormatEntry[] {
     return this.#entries;
   }
@@ -770,7 +783,7 @@ export class FormatRegistry {
   /** Look up the format claiming an extension, optionally requiring a capability. */
   byExtension(ext: string, capability?: FormatCapability): FormatEntry | undefined {
     const norm = normalizeExt(ext);
-    return this.#entries.find(
+    return this.#all.find(
       (e) => e.extensions.includes(norm) && (!capability || e.capabilities[capability]),
     );
   }
@@ -780,16 +793,16 @@ export class FormatRegistry {
   }
 
   withCapability(capability: FormatCapability): FormatEntry[] {
-    return this.#entries.filter((e) => e.capabilities[capability]);
+    return this.#all.filter((e) => e.capabilities[capability]);
   }
 
   /**
-   * All registered extensions, optionally filtered by document kind. Never includes ".json" — JSON
-   * is the native built-in, handled inline by hosts.
+   * All registered extensions, optionally filtered by document kind, including the built-in `.jxn`.
+   * Never includes ".json": JSON is native, and handled inline by hosts.
    */
   documentExtensions(kind?: FormatDocumentKind): string[] {
     const exts = new Set<string>();
-    for (const entry of this.#entries) {
+    for (const entry of this.#all) {
       if (kind && !entry.documentKinds.includes(kind)) {
         continue;
       }
@@ -803,7 +816,7 @@ export class FormatRegistry {
 
   has(ext: string): boolean {
     const norm = normalizeExt(ext);
-    return this.#entries.some((e) => e.extensions.includes(norm));
+    return this.#all.some((e) => e.extensions.includes(norm));
   }
 }
 
@@ -876,3 +889,41 @@ function normalizeExt(ext: string): string {
   const lower = ext.toLowerCase();
   return lower.startsWith(".") ? lower : `.${lower}`;
 }
+
+/**
+ * How the built-in entry reaches its implementation, which is a specifier a bundler can see and not
+ * a descriptor's path. A cloud Worker resolves only what it saw at build time, and this keeps the
+ * parser out of whatever imports this module without ever reading a `.jxn` file.
+ */
+export const JXN_IO: FormatHostIO = {
+  importModule: async () => {
+    const { parseJxn, serializeJxn } = await import("./jxn/index.ts");
+    return {
+      JxNotation: {
+        parse: (source: string) => parseJxn(source),
+        serialize: (document: JxDocument) => serializeJxn(document),
+      },
+    };
+  },
+  loadJson: () => Promise.reject(new Error("Jx Notation reads no file of its own")),
+  resolvePath: (_base, ref) => ref,
+};
+
+/**
+ * The built-in `.jxn` entry, which is what makes it native.
+ *
+ * Through it, `byExtension`, `documentExtensions` and everything built on them answer for `.jxn`
+ * through the paths a format class already uses. It is not in {@link FormatRegistry.entries}, which
+ * lists what a project chose.
+ */
+const JXN_ENTRY = new FormatEntry(
+  "jxn",
+  "",
+  {
+    $defs: { methods: { parse: { role: "parse" }, serialize: { role: "serialize" } } },
+    $implementation: "jxn",
+    format: { documentKinds: ["page", "component"], extensions: [".jxn"] },
+    title: "JxNotation",
+  },
+  JXN_IO,
+);

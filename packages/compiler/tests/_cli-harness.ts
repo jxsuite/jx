@@ -191,6 +191,21 @@ void mock.module("../src/site/dev-command.ts", () => ({
   },
 }));
 
+export const runConvertCalls: { argv: readonly string[]; root: string }[] = [];
+
+let runConvertImpl: (root: string, argv: readonly string[]) => void = () => ({});
+
+export function setRunConvert(impl: typeof runConvertImpl) {
+  runConvertImpl = impl;
+}
+
+void mock.module("../src/site/convert-command.ts", () => ({
+  runConvert: (root: string, argv: readonly string[]) => {
+    runConvertCalls.push({ argv, root });
+    return runConvertImpl(root, argv);
+  },
+}));
+
 export const previewCalls: { distDir: string; port: number }[] = [];
 
 void mock.module("../src/site/preview-server.ts", () => ({

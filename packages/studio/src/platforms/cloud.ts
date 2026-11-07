@@ -20,6 +20,7 @@ import type { WsCollabConnection } from "@jxsuite/collab/client";
 import { isBoolean, isJsonObject, isNonNullObject, isString } from "@jxsuite/schema/guards";
 import type { JsonObject, JsonValue, JxMutableNode, ProjectConfig } from "@jxsuite/schema/types";
 import { componentMetaFrom } from "@jxsuite/schema/component-meta";
+import { isJxnPath, isNativeDocumentPath, parseJxn } from "@jxsuite/schema/jxn";
 import { streamImport } from "../services/import-client";
 import type {
   AccountEntry,
@@ -1403,7 +1404,7 @@ export function createCloudPlatform(project: CloudProject | null): StudioPlatfor
             if (!SKIP.has(entry.name) && !entry.name.startsWith(".")) {
               dirs.push(entry.path);
             }
-          } else if (entry.name.endsWith(".json") && jsonPaths.length < MAX_FILES) {
+          } else if (isNativeDocumentPath(entry.name) && jsonPaths.length < MAX_FILES) {
             jsonPaths.push(entry.path);
           }
         }
@@ -1414,7 +1415,9 @@ export function createCloudPlatform(project: CloudProject | null): StudioPlatfor
       const metas = await Promise.all(
         jsonPaths.map(async (path) => {
           try {
-            return componentMetaFrom(parseJson(await platform.readFile(path)), path);
+            const text = await platform.readFile(path);
+            const document = isJxnPath(path) ? parseJxn(text) : parseJson(text);
+            return componentMetaFrom(isJsonObject(document) ? document : null, path);
           } catch {
             return null; // Not JSON, not readable, or not a component — all the same answer here.
           }

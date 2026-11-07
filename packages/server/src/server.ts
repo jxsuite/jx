@@ -169,7 +169,8 @@ export async function createDevServer(options: {
   const NO_CACHE = { "Cache-Control": "no-cache" };
   /*
    * `Bun.file` already infers a type from the extension, and for almost everything it is right. The
-   * exceptions are the two RFCs Jx has an opinion about: `.md` comes back as bare `text/markdown`
+   * exceptions are the two RFCs Jx has an opinion about, and `.jxn`, which Bun has never heard of:
+   * `.md` comes back as bare `text/markdown`
    * with no `variant`, and `.yaml` comes back as `text/yaml`, the spelling RFC 9512 §5 asks
    * implementations to stop using. `mediaTypeForPath` answers null everywhere else, so the
    * inference stays in charge of the ordinary cases.

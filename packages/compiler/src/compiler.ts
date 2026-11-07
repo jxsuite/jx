@@ -27,7 +27,7 @@ import { emitElementModule } from "./targets/compile-element.ts";
 import { compileStaticPage } from "./targets/compile-static.ts";
 import { compileClient } from "./targets/compile-client.ts";
 import { isClassDef, isString } from "@jxsuite/schema/guards";
-import { parseJxDocument } from "@jxsuite/schema/parse";
+import { isNativeDocumentPath, parseNativeDocument } from "@jxsuite/schema/jxn";
 import type { JxDocument, JxStyle } from "@jxsuite/schema/types";
 import type { FormatRegistry } from "@jxsuite/schema/format-registry";
 
@@ -94,8 +94,8 @@ export async function compile(sourcePath: string | JxDocument, opts: CompileOpti
   let raw: JxDocument;
   if (isString(sourcePath)) {
     const source = readFileSync(sourcePath, "utf8");
-    if (sourcePath.endsWith(".json")) {
-      raw = parseJxDocument(source, sourcePath);
+    if (isNativeDocumentPath(sourcePath)) {
+      raw = parseNativeDocument(source, sourcePath);
     } else {
       const { extname } = await import("node:path");
       const ext = extname(sourcePath).toLowerCase();

@@ -23,7 +23,7 @@ Principles:
 2. **Core never depends on extensions.** Extension packages live in the repository's top-level `extensions/` tree and may depend on core packages (`packages/*`) and on each other. No core package may declare a runtime dependency on an extension package or import from one in `src/`. CI enforces this (`scripts/check-dep-rules.ts`).
 3. **JSON introspection first.** Hosts read JSON (manifests, `.class.json` descriptors, schema fragments) to discover what an extension provides, and import implementation code only to invoke declared static capability methods by `role`.
 4. **JSON-Schema-native validation.** A project's effective schema is a plain JSON Schema 2020-12 document composed from the core schema and each extension's shipped schema fragment. Any compliant validator can validate a project offline — there is no jx-specific composition runtime.
-5. **`.json` is the single native built-in.** Jx _is_ JSON, so hosts handle `.json` inline and consult the registry for everything else.
+5. **`.json` and `.jxn` are the native formats.** Jx _is_ JSON, so hosts handle `.json` inline and consult the registry for everything else. `.jxn` is a built-in registry entry (`spec.md` §22): every registry answers for it, it declares `page` and `component`, it is not in the list of classes a project chose, and a class claiming `.jxn` is a configuration error.
 
 `@jxsuite/parser` is the reference extension: its content collections are wired exactly the way a third-party extension would wire them. Swap it out or add new extensions, and every integration point (build, dev server, studio editing, runtime data access, deployed-site serving) keeps working.
 
