@@ -1,5 +1,20 @@
 # Changelog
 
+## [2.4.0](https://github.com/jxsuite/jx/compare/site-v2.3.1...site-v2.4.0) (2026-11-07)
+
+
+### Features
+
+* every host reads Jx Notation ([#554](https://github.com/jxsuite/jx/issues/554)) ([230382e](https://github.com/jxsuite/jx/commit/230382e4072184ab042a328e25e9f68f1d94de83))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/runtime bumped to 6.2.0
+    * @jxsuite/schema bumped to 5.3.0
+
 ## [2.3.1](https://github.com/jxsuite/jx/compare/site-v2.3.0...site-v2.3.1) (2026-11-06)
 
 

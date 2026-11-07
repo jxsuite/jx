@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.43.1](https://github.com/jxsuite/jx/compare/ai-v0.43.0...ai-v0.43.1) (2026-11-07)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/protocol bumped to 6.2.3
+    * @jxsuite/schema bumped to 5.3.0
+
 ## [0.43.0](https://github.com/jxsuite/jx/compare/ai-v0.42.1...ai-v0.43.0) (2026-11-06)
 
 
