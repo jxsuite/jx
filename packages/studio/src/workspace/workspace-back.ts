@@ -22,7 +22,7 @@
  */
 
 import { shell, workspaceDrawsTabStrip } from "../shell";
-import { PROJECT_CONFIG_PATH } from "../tabs/tab";
+import { isProjectConfigPath } from "../tabs/tab";
 import { tabOfPane } from "../canvas/canvas-surface";
 import { workspace } from "./workspace";
 import { workspaceOfTab } from "./tab-workspace";
@@ -72,7 +72,7 @@ export function backTargetOf(
     return null;
   }
   if (id === "styles") {
-    if (tab.documentPath !== PROJECT_CONFIG_PATH || tab.session.ui.canvasMode !== SOURCE_MODE) {
+    if (!isProjectConfigPath(tab.documentPath) || tab.session.ui.canvasMode !== SOURCE_MODE) {
       return null;
     }
     const mode = shell.stylebook.view;

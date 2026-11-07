@@ -7,24 +7,18 @@
  * document fails the run — the CI net that keeps schema, spec, and usage from drifting.
  */
 
-import { existsSync, readdirSync } from "node:fs";
-import { join, relative, resolve } from "node:path";
+import { relative, resolve } from "node:path";
 import {
   formatProjectTreeIssues,
   validateProjectTree,
 } from "../packages/compiler/src/site/validate-command.ts";
+import { projectRootsIn as rootsIn } from "./lib/project-roots.ts";
 
 const REPO_ROOT = resolve(import.meta.dir, "..");
 
+/** The project roots directly inside a folder of this repository. */
 function projectRootsIn(parent: string): string[] {
-  const dir = resolve(REPO_ROOT, parent);
-  if (!existsSync(dir)) {
-    return [];
-  }
-  return readdirSync(dir)
-    .map((name) => join(dir, name))
-    .filter((path) => existsSync(join(path, "project.json")))
-    .toSorted();
+  return rootsIn(resolve(REPO_ROOT, parent));
 }
 
 const roots = [

@@ -9,6 +9,7 @@ import { existsSync, readFileSync } from "node:fs";
 import type { ImageConfig, JxDocumentValue, ProjectConfig } from "@jxsuite/schema/types";
 import { errorMessage, parseProjectConfig } from "@jxsuite/schema/parse";
 import { resolve } from "node:path";
+import { projectFilePath } from "@jxsuite/schema/project-file/node";
 
 /**
  * Default project configuration. All properties are optional in project.json; these defaults fill
@@ -71,7 +72,7 @@ const DEFAULTS = {
  * @throws {Error} If project.json is missing or invalid JSON
  */
 export function loadProjectConfig(projectRoot: string) {
-  const configPath = resolve(projectRoot, "project.json");
+  const configPath = projectFilePath(projectRoot);
 
   if (!existsSync(configPath)) {
     throw new Error(`project.json not found in ${projectRoot}`);

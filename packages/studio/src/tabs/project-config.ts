@@ -65,7 +65,7 @@ import { getPlatform } from "../platform";
 import { notify } from "../services/notify";
 import { projectState, requireProjectState, setProjectState } from "../state";
 import { setWorkspaceProject, workspace } from "../workspace/workspace";
-import { PROJECT_CONFIG_PATH, createTab, disposeTab } from "./tab";
+import { projectConfigPath, createTab, disposeTab } from "./tab";
 import { transactDoc } from "./transact";
 import { deriveJsonLayout, parseJsonDocument, serializeJson } from "@jxsuite/schema/json-layout";
 import type { JsonLayout } from "@jxsuite/schema/json-layout";
@@ -73,7 +73,7 @@ import type { JsonLayout } from "@jxsuite/schema/json-layout";
 import type { Tab } from "./tab";
 import type { JxMutableNode, ProjectConfig } from "@jxsuite/schema/types";
 
-export { PROJECT_CONFIG_PATH } from "./tab";
+export { isProjectConfigPath, projectConfigPath } from "./tab";
 
 /**
  * The project configuration, as a file.
@@ -146,7 +146,7 @@ let _seeding: Promise<void> | null = null;
  * structure in Studio uses (`collab-session.ts`'s `rawTab` for the same reason).
  */
 function openConfigTab(): Tab | null {
-  const tab = workspace.tabs.get(PROJECT_CONFIG_PATH);
+  const tab = workspace.tabs.get(projectConfigPath());
   return tab ? toRaw(tab) : null;
 }
 
@@ -166,7 +166,7 @@ function unbind(): void {
 function seedCommitted(): Promise<void> {
   _seeding ??= (async () => {
     try {
-      const text = await getPlatform().readFile(PROJECT_CONFIG_PATH);
+      const text = await getPlatform().readFile(projectConfigPath());
       const { document, layout } = parseJsonDocument(text);
       _layout = layout;
       // {@link serializeProjectConfig}'s serialisation, over the file's parse rather than a config.
@@ -332,8 +332,8 @@ export function projectConfigDocument(): Tab {
   }
   _detached = createTab({
     document: state.projectConfig ?? {},
-    documentPath: PROJECT_CONFIG_PATH,
-    id: PROJECT_CONFIG_PATH,
+    documentPath: projectConfigPath(),
+    id: projectConfigPath(),
   });
   return bind(_detached);
 }
@@ -409,11 +409,11 @@ export async function commitProjectConfig(
        never seen. Applying either one discards the other, so neither is applied: §16 files the
        write that cannot be applied, which is the one outcome silence is not allowed to be.
        `ai-project-tools.ts`'s `write_file` refuses a dirty tab on exactly these grounds. */
-    const error = new Error(`${PROJECT_CONFIG_PATH} has unsaved changes in its editor tab`);
+    const error = new Error(`${projectConfigPath()} has unsaved changes in its editor tab`);
     notify.error(
-      `Could not save ${PROJECT_CONFIG_PATH} — the file is open with unsaved changes. Save or ` +
+      `Could not save ${projectConfigPath()} — the file is open with unsaved changes. Save or ` +
         `revert that tab, then make the settings change again.`,
-      { key: `save:${PROJECT_CONFIG_PATH}`, path: PROJECT_CONFIG_PATH, source: "Settings" },
+      { key: `save:${projectConfigPath()}`, path: projectConfigPath(), source: "Settings" },
     );
     return { error, ok: false };
   }
@@ -447,11 +447,11 @@ export async function commitProjectConfig(
   const config = configOf(tab.doc.document);
   const output = serializeProjectConfig(config);
   try {
-    await getPlatform().writeFile(PROJECT_CONFIG_PATH, output);
+    await getPlatform().writeFile(projectConfigPath(), output);
   } catch (error) {
-    notify.error(`Could not save ${PROJECT_CONFIG_PATH} — ${errorMessage(error)}`, {
-      key: `save:${PROJECT_CONFIG_PATH}`,
-      path: PROJECT_CONFIG_PATH,
+    notify.error(`Could not save ${projectConfigPath()} — ${errorMessage(error)}`, {
+      key: `save:${projectConfigPath()}`,
+      path: projectConfigPath(),
       source: "Settings",
     });
     return { error, ok: false };

@@ -29,7 +29,7 @@ import { workspace } from "./workspace";
 import { homeWorkspaceOfTabId } from "./workspace-ids";
 import { parseGridTabId } from "../grid/grid-source";
 import { collectionForFile } from "../content/collection-match";
-import { PROJECT_CONFIG_PATH } from "../tabs/tab";
+import { isProjectConfigPath } from "../tabs/tab";
 import type { Pane } from "./workspace";
 import type { WorkspaceId } from "./workspace-ids";
 import type { Tab } from "../tabs/tab";
@@ -59,7 +59,7 @@ export function workspaceOfTab(tab: Tab): WorkspaceId {
     // A data-table grid is the Data panel's, which is Design's; every other grid is content.
     return grid.kind === "data" ? "design" : "content";
   }
-  if (tab.documentPath === PROJECT_CONFIG_PATH) {
+  if (isProjectConfigPath(tab.documentPath)) {
     return "styles";
   }
   /* A file-backed collection's file too: its grid is where its records are written, and the

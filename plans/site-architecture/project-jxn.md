@@ -4,7 +4,6 @@ disposition: implement
 claims:
   - site-architecture.md#2.3
 requires:
-  - _shared/project-file-access
   - spec/jxn-format
 workspaces:
   - packages/schema
@@ -48,7 +47,7 @@ size: L
 
 These are prototype numbers and need committed evidence before anyone quotes them. The prototype has no span map, no reconcile, and only `$head` rows with attributes and text.
 
-**Where the reader and writers go.** `plan:_shared/project-file-access` is required first, because it reduces 61 spellings of the name, 23 reads and 8 writers to one module. Nothing in this plan should then touch those call sites except to pass new data through.
+**Where the reader and writers go.** Every host already goes through `@jxsuite/schema/project-file` and its `/node` half, and `scripts/project-file-literals.test.ts` keeps it that way: `PROJECT_FILE_NAME`, `isProjectConfigPath`, `findEnclosingProject`, `readProjectFile`, `parseProjectFile` and `serializeProjectFile`, plus `projectConfigPath()` in Studio, which still returns a constant. Nothing in this plan should touch the call sites except to pass new data through.
 
 ## Outcome
 
@@ -152,7 +151,7 @@ data {
 
 - **`packages/schema/src/jxn/project.ts`**: `parseProject`, `serializeProject`, and the span map from JDF.1, built on its JSON block and rows.
 - **`packages/schema/src/project-file.ts`**: the name list, `findProjectFile` preferring neither and refusing both, and `findEnclosingProject` asking `classifyJxn`. It imports the parser statically and exposes it synchronously, because `@bgotink/kdl` is synchronous and several readers are too. A lazy import would save nothing, since `bundleBackend` and wrangler both inline it, the same reason `plan:spec/jxn-format` gives for the runtime. So a host carries the 10.3 KB whether or not a project uses `.jxn`. The compiled site and the runtime core do not.
-- **Hosts** need no new call sites after `plan:_shared/project-file-access`, with these exceptions: the mtime caches pick up whichever file exists, `site/paths.ts` as above, `schema-command.ts`, and the native picker. `main/app.ts:232` filters to `["json"]`, and `:356` and `backend/window-hub.ts:301` say `Open project.json`, so without this a project on `project.jxn` cannot be picked. It belongs in PJX.2, because this repository's own sites convert there.
+- **Hosts** need no new call sites, with these exceptions: the mtime caches pick up whichever file exists, `site/paths.ts` as above, `schema-command.ts`, and the native picker. `main/app.ts:232` filters to `["json"]`, and `:356` and `backend/window-hub.ts:301` say `Open project.json`, so without this a project on `project.jxn` cannot be picked. It belongs in PJX.2, because this repository's own sites convert there.
 - **`jx convert`** gains the project file, including the case where the rename is `project.json` to `project.jxn` in place, and refuses if the target exists.
 - **Studio**: `projectConfigPath()` reads the real name; `tabs/project-config.ts` seeds through `parseProject`; `services/monaco-setup.ts:208`; JDF.3's Monarch grammar; Problems through the span map; the visible labels in `surfaces/*.json` (19 surfaces mention the file, some only in `$description`) and the message strings.
 - **`packages/ai`**, **`services/ai-system-prompt.ts:150`, `:461`, `:1017`**, the tool descriptions, `.claude/commands/jx.md` and `packages/studio/evals/tasks/*`: tell the model which file it has. The prompt must not teach `project.json` to a model looking at `project.jxn`.

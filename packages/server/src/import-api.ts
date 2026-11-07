@@ -30,7 +30,6 @@
  */
 
 import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
 import { problem } from "./problem.ts";
 import type { BreakpointPolicy, BreakpointRounding } from "@jxsuite/import/breakpoint-plan";
 import type { ImportProgressEvent } from "@jxsuite/import/pipeline";
@@ -38,6 +37,7 @@ import type { ImportSiteOptions, ImportSiteResult } from "@jxsuite/import/run";
 import { IMPORT_MAX_PAGES } from "@jxsuite/protocol";
 import type { ImportBreakpointPolicy } from "@jxsuite/protocol";
 import type { JsonObject } from "@jxsuite/schema/types";
+import { projectFilePath } from "@jxsuite/schema/project-file/node";
 
 export interface ImportApiOptions {
   /**
@@ -301,7 +301,7 @@ async function handleImportSite(req: Request, opts: ImportApiOptions): Promise<R
         /* SAFETY: importSite's emit phase has just written project.json as a Jx project config,
            which is a JSON object; text that is not JSON throws into the error line below. */
         const config = JSON.parse(
-          await readFile(resolve(result.outDir, "project.json"), "utf8"),
+          await readFile(projectFilePath(result.outDir), "utf8"),
         ) as JsonObject;
         /*
          * The result travels with the `done` line. It used to be discarded here: the pipeline had

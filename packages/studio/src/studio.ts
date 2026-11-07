@@ -296,11 +296,12 @@ import { focusPublishHome } from "./publish/publish-workspace";
 import { registerI18nCommands } from "./i18n/i18n-commands";
 import { convertToComponent } from "./editor/convert-to-component";
 import type { GitDiffState } from "./types";
-import { PROJECT_CONFIG_PATH } from "./tabs/tab";
 import type { Tab } from "./tabs/tab";
 import type { JxDocument, ProjectConfig } from "@jxsuite/schema/types";
 import { setBundleBase } from "./services/bundle-base";
 import { mountBootFailureTree, mountShellTree } from "./shell/tree";
+import { PROJECT_FILE_NAME, isProjectConfigPath } from "@jxsuite/schema/project-file";
+import { projectConfigPath } from "./tabs/tab";
 
 // The bundler's `<link rel=modulepreload>` batching is installed on the module scope: before the
 // First lazy `import()` of any surface that runs, so the palette's first open does not pay a
@@ -404,7 +405,7 @@ function setCanvasMode(tab: Tab | null, mode: string) {
   }
   tab.session.ui.canvasMode = mode;
   // The Styles home view follows the author's own switches between Variables and Elements.
-  if (tab.documentPath === PROJECT_CONFIG_PATH) {
+  if (isProjectConfigPath(tab.documentPath)) {
     rememberStylesView(mode);
   }
 }
@@ -1153,7 +1154,7 @@ if (_projectParam) {
          */
         const named =
           _urlParams.get("file") ||
-          (siteCtx.fileRelPath && !siteCtx.fileRelPath.endsWith("project.json")
+          (siteCtx.fileRelPath && !isProjectConfigPath(siteCtx.fileRelPath)
             ? siteCtx.fileRelPath
             : null);
         if (!named) {
@@ -1169,8 +1170,8 @@ if (_projectParam) {
         fileRelPath = named ?? siteCtx.fileRelPath ?? _projectParam;
 
         // When opening project.json, default to home page instead (listing-based, no 404 probes).
-        if (fileRelPath === "project.json" || fileRelPath.endsWith("/project.json")) {
-          fileRelPath = (await findHomePage()) ?? "project.json";
+        if (isProjectConfigPath(fileRelPath) || fileRelPath.endsWith(`/${PROJECT_FILE_NAME}`)) {
+          fileRelPath = (await findHomePage()) ?? projectConfigPath();
         }
 
         const content = await platform.readFile(fileRelPath);
@@ -1206,7 +1207,7 @@ if (_projectParam) {
           if (parsedMode === "content" && activeTab.value) {
             activeTab.value.doc.mode = "content";
           }
-          if (fileRelPath === "project.json" && activeTab.value) {
+          if (isProjectConfigPath(fileRelPath) && activeTab.value) {
             activeTab.value.session.ui.canvasMode = "stylebook";
           }
 
@@ -1455,7 +1456,7 @@ async function openRecentProject(root: string) {
     refreshFormats();
     void loadFormats();
     refreshExtensionUi(platform);
-    const content = await platform.readFile("project.json");
+    const content = await platform.readFile(projectConfigPath());
     /* SAFETY: This is `project.json` at the root the user chose to open, the project's own config
        file whose schema is ProjectConfig; Studio edits it in that shape and does not re-validate it
        on open, as the folder-picker path in `platforms/devserver.ts` does not either. */

@@ -23,6 +23,7 @@ import type {
 } from "@jxsuite/protocol";
 import type { StudioRPC } from "../shared/rpc-schema";
 import type { ShellBridge } from "../shared/bridge";
+import { PROJECT_FILE_NAME } from "@jxsuite/schema/project-file";
 
 /* Inferred return type with a `satisfies` conformance check at the bottom, so callers see which of
    the PAL's OPTIONAL members this launcher actually implements — annotating `StudioPlatform` made
@@ -395,7 +396,7 @@ export function createDesktopPlatform() {
 
     async probeRootProject() {
       try {
-        const content = await request("readFile", { path: "project.json" });
+        const content = await request("readFile", { path: PROJECT_FILE_NAME });
         /* SAFETY: `content` is project.json's text. The PAL hands Studio the parsed document as the
            project's config without validating it, as every launcher does; text that is not JSON
            throws into the catch below and reads as "no project". */

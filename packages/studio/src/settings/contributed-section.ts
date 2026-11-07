@@ -61,6 +61,7 @@ import type {
   ContributedSurfaceHandle,
   ContributedView,
 } from "../surfaces/settings-contributed";
+import { projectConfigPath } from "../tabs/tab";
 
 // ─── Contribution shape ───────────────────────────────────────────────────────
 
@@ -258,7 +259,7 @@ async function saveProjectConfig(base: string, rerender: () => void) {
        fault, so it is a problem of its own rather than an error parked on the user's field. */
     notify.warn(`Could not validate project.json — ${errorMessage(error)}`, {
       key: "settings:validator",
-      path: "project.json",
+      path: projectConfigPath(),
       source: "Settings",
       tier: "problem",
     });

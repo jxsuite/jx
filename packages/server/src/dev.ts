@@ -22,6 +22,7 @@ import { problem } from "./problem.ts";
 import { callServerExport } from "./resolve.ts";
 import { createDevServer } from "./server.ts";
 import { injectSSE } from "./watch.ts";
+import { hasProjectFile } from "@jxsuite/schema/project-file/node";
 
 export interface DevArgs {
   port: number;
@@ -187,7 +188,7 @@ export interface DevServerHandle {
  * @returns {Promise<DevServerHandle>} The listening server
  */
 export async function startDev({ port, root }: DevArgs): Promise<DevServerHandle> {
-  const isSite = existsSync(join(root, "project.json"));
+  const isSite = hasProjectFile(root);
 
   let building = Promise.resolve();
   // What the last build collected, which the server-function route answers from.

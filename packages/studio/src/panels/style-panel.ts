@@ -54,6 +54,7 @@ import {
   isNumber,
   isString,
 } from "@jxsuite/schema/guards";
+import { PROJECT_FILE_NAME } from "@jxsuite/schema/project-file";
 import { effect, effectScope, reactive } from "../reactivity";
 import {
   cancelStyleDebounce,
@@ -374,7 +375,7 @@ function stylebookTagOf(selector: string | null): string | null {
  * elements of its own for "in this document" to be about.
  */
 function isProjectStylesheet(path: string): boolean {
-  return /(?:^|\/)project\.json$/.test(path);
+  return path.split("/").pop() === PROJECT_FILE_NAME;
 }
 
 /**

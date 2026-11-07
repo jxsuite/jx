@@ -163,6 +163,15 @@ describe("routing and guards", () => {
     expect(res!.status).toBe(404);
   });
 
+  test("a project.json that does not parse is 404, and says why", async () => {
+    mkdirSync(resolve(TMP, "broken"), { recursive: true });
+    writeFileSync(resolve(TMP, "broken", "project.json"), "{ oops");
+    const res = await call("GET", "/__studio/data/connections", { params: { dir: "broken" } });
+    expect(res!.status).toBe(404);
+    const body = await json<{ error: string }>(res);
+    expect(body.error).toContain("does not parse");
+  });
+
   test("malformed JSON bodies are 400", async () => {
     const res = await call("POST", "/__studio/data/push", { body: "not json" });
     expect(res!.status).toBe(400);

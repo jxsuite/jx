@@ -29,7 +29,7 @@ import { projectState } from "../store";
 import { clearProblems, notify, problemFindings } from "../services/notify";
 import { showPromptDialog } from "../ui/layers";
 import { activateTab, openTab, workspace } from "../workspace/workspace";
-import { PROJECT_CONFIG_PATH, commitProjectConfig } from "../tabs/project-config";
+import { projectConfigPath, commitProjectConfig } from "../tabs/project-config";
 import { pageRoute } from "../panels/tab-strip";
 import { createGridController, getGridController } from "./grid-controller";
 import {
@@ -230,7 +230,7 @@ export function reportRedirectProblems(
       action: "redirects.open",
       detail: problem.detail,
       key: `redirects.${problem.rule}:${problem.source}`,
-      path: PROJECT_CONFIG_PATH,
+      path: projectConfigPath(),
       source: REDIRECTS_PROBLEM_SOURCE,
       tier: "problem",
     });
@@ -263,7 +263,7 @@ export function createRedirectsSource(): GridSource {
   const load = () => rulesFromConfig(currentConfig());
 
   return {
-    backingPaths: () => new Map([[PROJECT_CONFIG_PATH, "*"]]),
+    backingPaths: () => new Map([[projectConfigPath(), "*"]]),
     capabilities: { delete: true, insert: true, remotePaging: false, remoteSort: false },
     columns: () => Promise.resolve(redirectColumns()),
 
@@ -476,7 +476,7 @@ export function stageRedirectImport(
         action: "redirects.import",
         detail: notes.join("\n"),
         key: "redirects.import",
-        path: PROJECT_CONFIG_PATH,
+        path: projectConfigPath(),
         source: REDIRECTS_PROBLEM_SOURCE,
         tier: "problem",
       },

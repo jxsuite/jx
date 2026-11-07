@@ -18,6 +18,7 @@ import type { BreakpointPolicy } from "./breakpoint-plan.ts";
 import type { ImportPhase, ImportProgressEvent } from "./pipeline.ts";
 import type { VerifyOptions } from "./verify.ts";
 import type { Browser } from "puppeteer-core";
+import { PROJECT_FILE_NAME, serializeProjectFile } from "@jxsuite/schema/project-file";
 
 export type { ImportPhase, ImportProgressEvent } from "./pipeline.ts";
 
@@ -117,7 +118,6 @@ export interface ImportSiteResult {
 const DEFAULT_AI_MODEL = "gpt-4o-mini";
 
 /** The one file the seed writes, and the only thing the empty-directory guard tolerates. */
-const PROJECT_FILE = "project.json";
 
 /** A placeholder project name from the URL, replaced by the page title at emit. */
 function seedName(url: string): string {
@@ -150,7 +150,7 @@ export async function importSite(
      given a `project.json` before the browser launches, so a host can open the project and watch the
      rest of the run arrive in its file tree — and a guard that could not tell that seed from a
      stranger's files would refuse every import at its second statement. */
-  if (existsSync(outDir) && readdirSync(outDir).some((entry) => entry !== PROJECT_FILE)) {
+  if (existsSync(outDir) && readdirSync(outDir).some((entry) => entry !== PROJECT_FILE_NAME)) {
     throw new Error(`Directory "${outDir}" is not empty`);
   }
 
@@ -234,7 +234,7 @@ export async function importSite(
   async function seedProject(): Promise<void> {
     await mkdir(outDir, { recursive: true });
     const seed = { name: seedName(url), imports: {}, images: { optimize: false } };
-    await writeFile(join(outDir, PROJECT_FILE), `${JSON.stringify(seed, null, 2)}\n`);
+    await writeFile(join(outDir, PROJECT_FILE_NAME), serializeProjectFile(seed, null));
     onProgress?.({
       message: `Created ${outDir}`,
       phase: "seed",

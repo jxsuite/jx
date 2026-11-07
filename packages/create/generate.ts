@@ -12,6 +12,7 @@ import type { TemplateId } from "./templates";
 import type { JsonObject } from "./scaffold";
 
 import TEMPLATE_VERSIONS from "./template-versions.json";
+import { PROJECT_FILE_NAME, serializeProjectFile } from "@jxsuite/schema/project-file";
 
 const __dirname = import.meta.dirname;
 const TEMPLATE_DIR = join(__dirname, "template");
@@ -199,7 +200,7 @@ async function populateProject(destPath: string, opts: ProjectOptions) {
   const packageJson = buildPackageJson({ adapter, description, name });
 
   const writes = [
-    writeFile(join(destPath, "project.json"), `${JSON.stringify(projectJson, null, "\t")}\n`),
+    writeFile(join(destPath, PROJECT_FILE_NAME), serializeProjectFile(projectJson, null)),
     writeFile(join(destPath, "package.json"), `${JSON.stringify(packageJson, null, "  ")}\n`),
     cp(join(TEMPLATE_DIR, "gitignore"), join(destPath, ".gitignore")),
     cp(join(TEMPLATE_DIR, "layouts"), join(destPath, "layouts"), { recursive: true }),
@@ -273,8 +274,9 @@ async function scaffoldFromStarter(
 
   // Re-stamp project.json with the new project's identity, keeping the starter's design tokens,
   // Content types, image pipeline, and head.
-  const projectPath = join(destPath, "project.json");
-  const project = parseJson(await readFile(projectPath, "utf8"));
+  const projectPath = join(destPath, PROJECT_FILE_NAME);
+  const starterText = await readFile(projectPath, "utf8");
+  const project = parseJson(starterText);
   if (!isJsonObject(project)) {
     throw new TypeError(`Starter "${starter}" has a project.json that is not a JSON object`);
   }
@@ -291,7 +293,7 @@ async function scaffoldFromStarter(
   if (design) {
     applyDesign(project, design, { starter: true });
   }
-  await writeFile(projectPath, `${JSON.stringify(project, null, "\t")}\n`);
+  await writeFile(projectPath, serializeProjectFile(project, starterText));
 
   // Rebuild package.json so scaffolded projects get current dep ranges and scripts regardless of
   // What the in-repo starter pinned.

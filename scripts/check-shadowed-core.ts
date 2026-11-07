@@ -42,30 +42,16 @@ import { existsSync, lstatSync, readdirSync, readFileSync, readlinkSync, rmSync 
 import { join, relative, resolve } from "node:path";
 import { isJsonObject, isString } from "@jxsuite/schema/guards";
 import type { JsonValue } from "@jxsuite/schema/types";
+import { projectRootsIn as rootsIn } from "./lib/project-roots.ts";
 
 const REPO_ROOT = resolve(import.meta.dir, "..");
 
 /** The npm scope whose packages define the Jx contract rather than a project's own content. */
 export const FIRST_PARTY_SCOPE = "@jxsuite";
 
-/**
- * Every directory the schema generator treats as a project root.
- *
- * Kept in step with `scripts/generate-schemas.ts` by hand, because both are lists of the same four
- * places and a shared helper would be a module for two callers that never disagree in practice.
- *
- * @param {string} parent - Repo-relative directory holding project roots
- * @returns {string[]}
- */
+/** The project roots directly inside a folder of this repository. */
 function projectRootsIn(parent: string): string[] {
-  const dir = resolve(REPO_ROOT, parent);
-  if (!existsSync(dir)) {
-    return [];
-  }
-  return readdirSync(dir)
-    .map((name) => join(dir, name))
-    .filter((path) => existsSync(join(path, "project.json")))
-    .toSorted();
+  return rootsIn(resolve(REPO_ROOT, parent));
 }
 
 /**

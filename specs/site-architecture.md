@@ -71,7 +71,7 @@ Two neighboring specs carry the detail this one only points at: `extensions.md` 
 
 ## 2. Project Structure
 
-A Jx site project follows a conventional directory layout. Only `project.json` and `pages/` are required — everything else is optional and additive.
+A Jx site project follows a conventional directory layout. Only `project.json` and `pages/` are required — everything else is optional and additive. A file by that name is a project's only if its content agrees: `pages/project.json` is a page with the route `/project`, and Nx keeps a `project.json` of its own in every package of a workspace.
 
 ```
 my-site/

@@ -11,6 +11,7 @@ import type { EditorKind } from "../commands/context";
 import type { JsonObject, JxMutableNode } from "@jxsuite/schema/types";
 import type { JxDocOp, JxFmOp } from "./patch-ops";
 import type { JsonLayout } from "@jxsuite/schema/json-layout";
+import { PROJECT_FILE_NAME, isProjectConfigPath } from "@jxsuite/schema/project-file";
 
 /**
  * The project's configuration file, project-relative.
@@ -20,7 +21,11 @@ import type { JsonLayout } from "@jxsuite/schema/json-layout";
  * Variables and Code views; editor kind `config`), and `tabs/project-config.ts` binds the tab at
  * this path as the configuration document.
  */
-export const PROJECT_CONFIG_PATH = "project.json";
+export function projectConfigPath(): string {
+  return PROJECT_FILE_NAME;
+}
+
+export { isProjectConfigPath } from "@jxsuite/schema/project-file";
 
 export interface TabUi {
   /** The Inspector leaf showing (`shell.ts`'s `INSPECTOR_TAB_IDS`); Page on a fresh tab (§6). */
@@ -448,7 +453,7 @@ export function createTab({
  * @returns {string[]}
  */
 function inferModes(documentPath: string | null | undefined, sourceFormat: string | null) {
-  if (documentPath === PROJECT_CONFIG_PATH) {
+  if (isProjectConfigPath(documentPath)) {
     /* Elements, Variables and Code: the Styles workspace's three views. Spelled here rather than
        imported from `style/project-styles` (`STYLES_TAB_MODES`), whose imports reach `store`,
        which imports this module; `tests/project-config.test.ts` holds the two lists equal. */

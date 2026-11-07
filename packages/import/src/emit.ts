@@ -1,9 +1,10 @@
 import { isString } from "@jxsuite/schema/guards";
-import type { JxElement, JxHeadEntry } from "@jxsuite/schema/types";
+import type { JxElement, JxHeadEntry, ProjectConfig } from "@jxsuite/schema/types";
 import { componentize } from "./componentize.ts";
 import { stripClasses } from "./strip-classes.ts";
 import type { ComponentizeOptions, ComponentizeResult } from "./componentize.ts";
 import type { ImportIo } from "./io.ts";
+import { PROJECT_FILE_NAME, serializeProjectFile } from "@jxsuite/schema/project-file";
 
 /**
  * The `$media` key the base width lives under — a number of CSS pixels, not a query.
@@ -250,9 +251,11 @@ export async function emitMultiPageProject({
     });
   }
 
-  const projectText = `${JSON.stringify(projectJson, null, 2)}\n`;
-  await io.write("project.json", projectText);
-  files.push("project.json");
+  /* SAFETY: every ProjectConfig member is optional, and this project's shape is what the import
+     emits; `jx validate` holds it to the per-project schema. */
+  const projectText = serializeProjectFile(projectJson as ProjectConfig, null);
+  await io.write(PROJECT_FILE_NAME, projectText);
+  files.push(PROJECT_FILE_NAME);
 
   /*
    * Classes go here, at the last possible moment, and that placement is the whole design.

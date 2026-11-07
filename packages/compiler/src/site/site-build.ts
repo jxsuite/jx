@@ -160,6 +160,7 @@ import type {
 } from "@jxsuite/schema/types";
 import type { JxScope } from "@jxsuite/runtime/types";
 import type { CacheManifest } from "./image-cache.js";
+import { projectFilePath } from "@jxsuite/schema/project-file/node";
 
 declare module "@jxsuite/schema/format-registry" {
   /**
@@ -602,7 +603,7 @@ export async function buildSite(
         /* SAFETY: `ProjectConfig.state` is a plain record of state entries, and the collector reads
            only a document's `state`, so a document carrying that one member is all it needs. */
         { state: projectConfig.state } as JxElement,
-        resolve(projectRoot, "project.json"),
+        projectFilePath(projectRoot),
         projectRoot,
       ),
     );

@@ -53,6 +53,7 @@ import type {
   SecretsSetResponse,
 } from "@jxsuite/protocol";
 import { problem, problemTypeForStatus } from "./problem.ts";
+import { projectFilePath, readProjectFile } from "@jxsuite/schema/project-file/node";
 
 // ─── Local section shapes (structural — the connector owns the full types) ───
 
@@ -135,16 +136,17 @@ export function resetDataApi(): void {
 
 /** Read the project's config + connector-owned sections; 404 when there is no project.json. */
 function getProject(projectRoot: string): ProjectSections {
-  const path = resolve(projectRoot, "project.json");
-  let config: ProjectConfig;
-  try {
-    /* SAFETY: trust boundary. project.json is the project's own config, held to its per-project
-       schema by the editor and `jx validate`; the connections and data sections are narrowed
-       below, and unreadable or non-JSON text answers the 404 in the catch. */
-    config = JSON.parse(readFileSync(path, "utf8")) as ProjectConfig;
-  } catch (error) {
-    throw new ApiError(404, `No project.json under "${projectRoot}"`, { cause: error });
+  const read = readProjectFile(projectRoot);
+  if (!read) {
+    throw new ApiError(404, `No project.json under "${projectRoot}"`);
   }
+  if ("error" in read) {
+    throw new ApiError(
+      404,
+      `The project.json under "${projectRoot}" does not parse: ${read.error}`,
+    );
+  }
+  const { config } = read;
   /* Section keys are the connector's host wire contract (the same literals jx-mounts passes to
      the Data mount's options.sections) — JSON introspection, not a connector import.
      SAFETY: `connections` and `data` are the connector extension's sections, which its
@@ -158,7 +160,7 @@ function getProject(projectRoot: string): ProjectSections {
 
 /** Build (or reuse) the project's extension registry, keyed on project.json's mtime. */
 function getRegistry(projectRoot: string, config: ProjectConfig): Promise<ExtensionRegistry> {
-  const projectJsonPath = resolve(projectRoot, "project.json");
+  const projectJsonPath = projectFilePath(projectRoot);
   const mtime = statSync(projectJsonPath).mtimeMs;
   const cached = registryCache.get(projectRoot);
   if (cached && cached.mtime === mtime) {

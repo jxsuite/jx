@@ -19,6 +19,7 @@ import { isAbsolute, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import type { JsonObject, JsonValue } from "../types";
+import { projectFilePath } from "./project-file-node.ts";
 
 export interface ProjectValidationResult {
   valid: boolean;
@@ -62,7 +63,7 @@ function readJson(path: string): JsonValue {
  */
 export async function validateProjectFile(projectRoot: string): Promise<ProjectValidationResult> {
   const root = resolve(projectRoot);
-  const projectPath = resolve(root, "project.json");
+  const projectPath = projectFilePath(root);
   const schemaPath = resolve(root, "project.schema.json");
 
   if (!existsSync(projectPath)) {

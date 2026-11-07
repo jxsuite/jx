@@ -33,6 +33,7 @@ import { isJsonObject, isString } from "@jxsuite/schema/guards";
 import type { JsonValue } from "@jxsuite/schema/types";
 
 import { serveContained } from "./net-guard.ts";
+import { projectFilePath } from "@jxsuite/schema/project-file/node";
 
 /** What `project.json` says the build writes to, cached per root against its mtime. */
 const outDirCache = new Map<string, { mtime: number; outDir: string | null }>();
@@ -51,7 +52,7 @@ export function resetSiteOutput(): void {
  * file read.
  */
 export function siteOutDir(projectRoot: string): string | null {
-  const configPath = resolve(projectRoot, "project.json");
+  const configPath = projectFilePath(projectRoot);
   if (!existsSync(configPath)) {
     return null;
   }

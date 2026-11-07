@@ -84,6 +84,7 @@ import type { CommandContext } from "../commands/context";
 import type { AiToolReport, AnyCommand, CommandRegistry } from "../commands/registry";
 import type { Tab } from "../tabs/tab";
 import { runAsActor } from "../tabs/transact";
+import { projectConfigPath } from "../tabs/tab";
 
 /**
  * The record a selection-level projection composes through.
@@ -328,7 +329,7 @@ function defaultPaths(command: AnyCommand, tab: Tab | null): string[] {
     return [tab?.documentPath ?? "(untitled)"];
   }
   if (command.undo === "project") {
-    return ["project.json"];
+    return [projectConfigPath()];
   }
   return ["(unknown file)"];
 }

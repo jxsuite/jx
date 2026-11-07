@@ -20,6 +20,7 @@ import type {
 } from "@jxsuite/schema/format-registry";
 import { isJsonObject } from "@jxsuite/schema/guards";
 import type { JsonObject, JsonValue, ProjectConfig } from "@jxsuite/schema/types";
+import { projectFilePath } from "@jxsuite/schema/project-file/node";
 
 export type { ExtensionRegistry } from "@jxsuite/schema/extension-registry";
 export type { FormatRegistry, FormatEntry } from "@jxsuite/schema/format-registry";
@@ -133,7 +134,7 @@ export async function buildProjectExtensionRegistry(
   return buildExtensionRegistry(
     projectConfig?.extensions,
     createNodeFormatIO(projectRoot),
-    resolve(projectRoot, "project.json"),
+    projectFilePath(projectRoot),
   );
 }
 
@@ -176,7 +177,7 @@ export async function buildInstalledExtensionRegistry(
   const registry = await buildExtensionRegistry(
     present,
     createNodeFormatIO(projectRoot),
-    resolve(projectRoot, "project.json"),
+    projectFilePath(projectRoot),
   );
   return { missing, registry };
 }

@@ -33,7 +33,7 @@ import { projectState } from "../src/store";
 import { openTab } from "../src/workspace/workspace";
 import { toRaw } from "../src/reactivity";
 import {
-  PROJECT_CONFIG_PATH,
+  projectConfigPath,
   resetProjectConfigDocument,
   serializeProjectConfig,
 } from "../src/tabs/project-config";
@@ -81,7 +81,7 @@ function config(): ProjectConfig {
 
 /** The `project.json` bytes the section saved, read back as the configuration they serialise. */
 function written(state: MockPlatformState): ProjectConfig {
-  const saved: ProjectConfig = JSON.parse(state.files.get(PROJECT_CONFIG_PATH)!);
+  const saved: ProjectConfig = JSON.parse(state.files.get(projectConfigPath())!);
   return saved;
 }
 
@@ -194,13 +194,13 @@ describe("the Deploy section", () => {
       { build: { adapter: "static" } },
       renderDeploySection,
       {},
-      { [PROJECT_CONFIG_PATH]: onDisk },
+      { [projectConfigPath()]: onDisk },
     );
     const opened: JxMutableNode = JSON.parse(onDisk);
     const tab = openTab({
       document: opened,
-      documentPath: PROJECT_CONFIG_PATH,
-      id: PROJECT_CONFIG_PATH,
+      documentPath: projectConfigPath(),
+      id: projectConfigPath(),
     });
     toRaw(tab.doc.document).description = "typed in the source editor";
     tab.doc.dirty = true;

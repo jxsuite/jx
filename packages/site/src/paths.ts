@@ -1,3 +1,4 @@
+import { PROJECT_FILE_NAME } from "@jxsuite/schema/project-file";
 /**
  * What a site origin serves, and — the part that matters — what it refuses.
  *
@@ -41,7 +42,7 @@ export const SERVABLE_ROOTS: readonly string[] = [
  * them twice is nothing.
  */
 export const NEVER_SERVABLE: ReadonlySet<string> = new Set([
-  "project.json",
+  PROJECT_FILE_NAME,
   "package.json",
   "package-lock.json",
   "bun.lock",

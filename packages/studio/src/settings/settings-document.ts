@@ -29,7 +29,7 @@ import {
 } from "../commands/command-args";
 import { notify } from "../services/notify";
 import { projectState } from "../state";
-import { PROJECT_CONFIG_PATH } from "../tabs/tab";
+import { projectConfigPath } from "../tabs/tab";
 import { lendProjectConfigLayout } from "../tabs/project-config";
 import { focusPane, openTab, paneOfTab, workspace } from "../workspace/workspace";
 import { workspaceHomeTabId } from "../workspace/workspace-ids";
@@ -211,7 +211,7 @@ export function showSettingsDocument(mode: string = shell.stylebook.view): Tab |
     return null;
   }
   rememberStylesView(mode);
-  const existing = workspace.tabs.get(PROJECT_CONFIG_PATH);
+  const existing = workspace.tabs.get(projectConfigPath());
   if (existing) {
     for (const candidate of PROJECT_TAB_MODES.toReversed()) {
       if (!existing.capabilities.modes.includes(candidate)) {
@@ -225,8 +225,8 @@ export function showSettingsDocument(mode: string = shell.stylebook.view): Tab |
   const tab = openTab({
     capabilities: { modes: [...PROJECT_TAB_MODES] },
     document: state.projectConfig ?? {},
-    documentPath: PROJECT_CONFIG_PATH,
-    id: PROJECT_CONFIG_PATH,
+    documentPath: projectConfigPath(),
+    id: projectConfigPath(),
   });
   /* The mode is written here rather than left to the capability list, because `createTab` seeds
      `session.ui.canvasMode` from the first non-preview mode, and a door over the same document has
@@ -303,7 +303,7 @@ export async function openProjectSettings(section?: string): Promise<void> {
        Problem rather than a toast that erases itself. */
     notify.warn(`Could not load extension settings sections — ${errorMessage(error)}`, {
       key: "settings:sections",
-      path: PROJECT_CONFIG_PATH,
+      path: projectConfigPath(),
       source: "Settings",
       tier: "problem",
     });
