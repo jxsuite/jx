@@ -62,7 +62,7 @@ const { canvasViewForMode, editorKindForMode, keyScopeStack } =
   await import("../src/commands/context");
 const { createCommandRegistry, CommandUnavailableError } = await import("../src/commands/registry");
 const { createLiveContext } = await import("../src/commands/live-context");
-const { PROJECT_CONFIG_PATH } = await import("../src/tabs/tab");
+const { projectConfigPath } = await import("../src/tabs/tab");
 const { initLayers, isModalOpen } = await import("../src/ui/layers");
 const { activeTab, closeAllTabs, openTab } = await import("../src/workspace/workspace");
 const { resetProjectShell, shell } = await import("../src/shell");
@@ -190,8 +190,8 @@ function openSettingsTab(): Tab {
   return openTab({
     capabilities: { modes: ["stylebook", "source"] },
     document: { name: "demo", version: "1.0.0" },
-    documentPath: PROJECT_CONFIG_PATH,
-    id: PROJECT_CONFIG_PATH,
+    documentPath: projectConfigPath(),
+    id: projectConfigPath(),
   });
 }
 

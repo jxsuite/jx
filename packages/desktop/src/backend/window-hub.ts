@@ -23,10 +23,19 @@ import type {
   ProjectServerHandle,
 } from "@jxsuite/server/project-server";
 import { setAuthorizationHost } from "./github-signin";
-import { createProjectSession, setDirectoryDialog, setFileDialog } from "./project-session";
+import {
+  createProjectSession,
+  resolveOpenTarget,
+  setDirectoryDialog,
+  setFileDialog,
+} from "./project-session";
+import type { RootGate } from "./project-session";
 import { watchSettings } from "./settings-store";
 import { buildWindowHandlers } from "./handlers";
-import { STUDIO_SHELL_PATH, normalizeRoot } from "./roots";
+import { STUDIO_SHELL_PATH, normalizeRoot, realRoot } from "./roots";
+import type { AuthorizedRoot } from "./roots";
+import { openTrustStore } from "./trust-store";
+import type { TrustStore } from "./trust-store";
 import type { HubControl, HubWindow, OpenOutcome, WindowRow } from "./handlers";
 import type { BackendMessage, DialogKind, ShellMessage } from "../shared/protocol";
 
@@ -40,6 +49,8 @@ export interface WindowHubOptions {
   send: (message: BackendMessage) => void;
   /** The studio assets directory each window's server serves. */
   studioDir: string;
+  /** Which folders the user has agreed to run; a parameter so a test need not touch the real store. */
+  trust?: TrustStore;
   /** The user-settings watch; a parameter so a test need not watch the real store. */
   watchSettings?: typeof watchSettings;
 }
@@ -63,8 +74,8 @@ export interface WindowHub {
    * (the dedupe does not wait), and the `open-window` message follows when the port is known.
    */
   idle: () => Promise<void>;
-  /** Open `root` (null for a welcome window) or raise the window that holds it. */
-  openProject: (root: string | null) => OpenOutcome;
+  /** Open `root` (null for a welcome window) or raise the window that holds it, showing `file`. */
+  openProject: (root: string | null, file?: string | null) => Promise<OpenOutcome>;
   /** Every open window and the project it holds. */
   windows: () => WindowRow[];
 }
@@ -101,19 +112,38 @@ export function projectPartition(root: string): string {
 }
 
 /**
+ * How long a launch that ended with nothing open waits before ending the app.
+ *
+ * Several paths reach the backend as separate messages, so the first one being refused says nothing
+ * about the second, which may be a moment behind it on the channel.
+ */
+const QUIT_GRACE_MS = 300;
+
+/**
  * Create the hub.
  *
  * @param options Its collaborators.
  */
 export function createWindowHub(options: WindowHubOptions): WindowHub {
-  const { appInfo, importApi, send, studioDir } = options;
+  const { appInfo, importApi, send, studioDir, trust = openTrustStore() } = options;
   const windows = new Map<number, Entry>();
   const dialogs = new Map<number, (path: string | null) => void>();
   // What the updater last said, which only the shell hears; the About screen asks the backend.
   let updateStatus: string | null = null;
   let nextWindow = 1;
-  /** Windows whose server is still binding: their root (for the dedupe) and their partition. */
-  const opening = new Map<number, { done: Promise<void>; key: string | null; partition: string }>();
+  /**
+   * Windows not on screen yet, whose prompt is up or whose server is still binding: what they will
+   * become (for the dedupe), the documents asked of them meanwhile, and how it came out.
+   */
+  const opening = new Map<
+    number,
+    { done: Promise<OpenOutcome>; files: string[]; key: string | null; partition: string }
+  >();
+  /** The answers being waited for, so a folder asked about twice at once is asked once. */
+  const prompts = new Map<string, Promise<boolean>>();
+  /** The prompts on screen, by the id the shell answers with. */
+  const trustAnswers = new Map<number, (trusted: boolean) => void>();
+  let quitTimer: ReturnType<typeof setTimeout> | null = null;
   /** Set by `dispose`, so a server that finishes binding afterwards is stopped, not shown. */
   let disposed = false;
   let nextDialog = 1;
@@ -148,8 +178,117 @@ export function createWindowHub(options: WindowHubOptions): WindowHub {
     send({ id: window.id, type: "focus-window" });
   }
 
+  /** Bring a window forward and queue a document for it, which its page collects when it can. */
+  function raise(window: Entry, file: string | null): void {
+    focus(window);
+    if (file) {
+      window.pendingDocuments.push(file);
+      window.server.push("documentsPending", {});
+    }
+  }
+
   function retitle(window: HubWindow): void {
-    send({ id: window.id, title: titleFor(window.session.projectRoot), type: "set-title" });
+    // A window can close while a prompt it asked is up, and the shell has already forgotten it.
+    if (!windows.has(window.id)) {
+      return;
+    }
+    const root = window.session.projectRoot;
+    send({ id: window.id, root, type: "window-root" });
+    send({ id: window.id, title: titleFor(root), type: "set-title" });
+  }
+
+  /** Ask the user, through the shell's native dialog, whether to run a folder's code. */
+  function askTrust(root: string): Promise<boolean> {
+    if (disposed) {
+      return Promise.resolve(false);
+    }
+    const requestId = nextDialog;
+    nextDialog += 1;
+    return new Promise((resolve) => {
+      trustAnswers.set(requestId, resolve);
+      // The folder this answer is about, which is not what a symlink's own name would claim.
+      send({ requestId, root: realRoot(root), type: "confirm-trust" });
+    });
+  }
+
+  /**
+   * Whether the user has agreed, or now agrees, to run a folder's code. Asks at most once at a
+   * time.
+   */
+  function ensureTrusted(root: string): Promise<boolean> {
+    const key = normalizeRoot(root);
+    const asked = prompts.get(key);
+    if (asked) {
+      return asked;
+    }
+    const answer = (async () => {
+      if (await trust.isTrusted(root)) {
+        return true;
+      }
+      const trusted = await askTrust(root);
+      if (trusted) {
+        // A store that cannot be written costs a second prompt next time, and not this open.
+        await trust.grant(root).catch((error: Error) => {
+          console.error("[hub] remembering a trusted folder failed:", error);
+        });
+      }
+      return trusted;
+    })().finally(() => {
+      prompts.delete(key);
+    });
+    prompts.set(key, answer);
+    return answer;
+  }
+
+  /** The one place an AuthorizedRoot comes from, so the one place a session learns a folder may run. */
+  const gate: RootGate = {
+    authorize: async (root) => {
+      if (!(await ensureTrusted(root))) {
+        return null;
+      }
+      // SAFETY: this is what the type means: the user has just said yes, or said it before.
+      return root as AuthorizedRoot;
+    },
+    grant: async (root) => {
+      await trust.grant(root).catch((error: Error) => {
+        console.error("[hub] remembering a created project failed:", error);
+      });
+      // SAFETY: this is what the type means: the application itself just wrote this folder.
+      return root as AuthorizedRoot;
+    },
+  };
+
+  /**
+   * End the app if a launch left nothing open.
+   *
+   * `window-all-closed` fires only when a window closes, so a launch that declined or was refused
+   * before any window existed would otherwise be a process with no interface, holding the instance
+   * lock so that the next double-click reaches nobody.
+   */
+  function quitIfNothingOpen(): void {
+    if (quitTimer) {
+      clearTimeout(quitTimer);
+    }
+    quitTimer = setTimeout(() => {
+      quitTimer = null;
+      if (!disposed && windows.size === 0 && opening.size === 0 && prompts.size === 0) {
+        send({ type: "quit" });
+      }
+    }, QUIT_GRACE_MS);
+  }
+
+  /** Open whatever a path turns out to be, or say why it cannot be (specs/desktop.md §4.6). */
+  function openPath(path: string): void {
+    const target = resolveOpenTarget(path);
+    if (target.kind === "refused") {
+      send({ message: target.reason, type: "notice" });
+      quitIfNothingOpen();
+      return;
+    }
+    if (target.problem) {
+      send({ message: target.problem, type: "notice" });
+    }
+    void openProject(target.root, target.file);
   }
 
   /**
@@ -172,8 +311,13 @@ export function createWindowHub(options: WindowHubOptions): WindowHub {
       const info = appInfo();
       return updateStatus === null ? info : { ...info, updateStatus };
     },
+    authorize: gate.authorize,
     findWindowByRoot,
     focus,
+    isOpening: (root) => {
+      const key = normalizeRoot(root);
+      return [...opening.values()].some((pending) => pending.key === key);
+    },
     listOpenWindows: () => [...windows.values()].map((entry) => windowRow(entry)),
     openProject,
     retitle,
@@ -185,46 +329,84 @@ export function createWindowHub(options: WindowHubOptions): WindowHub {
   }
 
   /**
-   * Open a window for a project, or raise the one that already holds it.
+   * Open a window for a project, or raise the one that already holds it, showing `file` there.
    *
    * Two windows on one project would edit the same files through two watchers and two undo
-   * histories, so the dedupe is not a nicety. The answer is returned because the caller has to be
-   * able to say which of the two happened.
+   * histories, so the dedupe is not a nicety. The answer says which of those happened, or that the
+   * user declined, because a caller has to be able to report what actually happened.
    */
-  function openProject(root: string | null): OpenOutcome {
+  async function openProject(
+    root: string | null,
+    file: string | null = null,
+  ): Promise<OpenOutcome> {
     const existing = root ? findWindowByRoot(root) : null;
     if (existing) {
-      focus(existing);
+      raise(existing, file);
       return { focused: true };
     }
     const key = root ? normalizeRoot(root) : null;
-    if (key && [...opening.values()].some((pending) => pending.key === key)) {
-      // Its server is still binding; the window it becomes is the one this asked for.
-      return { focused: true };
+    const pending = key ? [...opening.values()].find((entry) => entry.key === key) : null;
+    if (pending) {
+      /* Its prompt is up or its server is binding, and the window it becomes is the one this asked
+         for, so the document waits with it. Declining declines both. */
+      if (file) {
+        pending.files.push(file);
+      }
+      const outcome = await pending.done;
+      return outcome.declined ? outcome : { focused: true };
     }
-    void openWindow(root).catch((error) => {
-      console.error("[hub] opening a window failed:", error);
-    });
-    return { focused: false };
+    return openWindow(root, file);
   }
 
-  async function openWindow(root: string | null): Promise<void> {
+  async function openWindow(root: string | null, file: string | null): Promise<OpenOutcome> {
     const id = nextWindow;
     nextWindow += 1;
     const partition = root ? projectPartition(root) : welcomePartition();
-    const done = bindWindow(id, root, partition);
-    opening.set(id, { done, key: root ? normalizeRoot(root) : null, partition });
+    const files = file ? [file] : [];
+    const done = bindWindow(id, root, partition, files);
+    opening.set(id, { done, files, key: root ? normalizeRoot(root) : null, partition });
     try {
-      await done;
+      return await done;
+    } catch (error) {
+      console.error("[hub] opening a window failed:", error);
+      return { focused: false };
     } finally {
       opening.delete(id);
+      if (windows.size === 0) {
+        quitIfNothingOpen();
+      }
     }
   }
 
-  /** Start window `id`'s project server, then register the window and tell the shell to show it. */
-  async function bindWindow(id: number, root: string | null, partition: string): Promise<void> {
-    const session = createProjectSession(root);
-    const window: HubWindow = { id, session };
+  /**
+   * Ask about the folder, then start window `id`'s project server, register the window and tell the
+   * shell to show it. Nothing of the folder runs until the answer is in, and a window that is not
+   * given one was never there.
+   */
+  async function bindWindow(
+    id: number,
+    root: string | null,
+    partition: string,
+    files: string[],
+  ): Promise<OpenOutcome> {
+    const authorized = root === null ? null : await gate.authorize(root);
+    if (root !== null && authorized === null) {
+      return { declined: true, focused: false };
+    }
+    /* Everything stays clickable while a prompt is up, so a window may have taken this project in the
+       meantime, and the answer that lets this one open is the same one that let that one. */
+    const holder = root === null ? null : findWindowByRoot(root);
+    if (holder) {
+      for (const file of files) {
+        raise(holder, file);
+      }
+      if (files.length === 0) {
+        focus(holder);
+      }
+      return { focused: true };
+    }
+    const session = createProjectSession(authorized, gate);
+    const window: HubWindow = { id, pendingDocuments: files, session };
     const handlers = buildWindowHandlers(window, control);
     const serverOptions: CreateProjectServerOptions = {
       resolveSession: () => ({
@@ -243,7 +425,7 @@ export function createWindowHub(options: WindowHubOptions): WindowHub {
       // The hub stopped while the server was binding; nobody will ever show this window.
       server.stop();
       session.setProjectRoot(null);
-      return;
+      return { focused: false };
     }
     /* The same object the handlers closed over, completed: `findWindowByRoot(…, window)` compares by
        identity, and a copy here would make a window dedupe against itself. */
@@ -260,6 +442,8 @@ export function createWindowHub(options: WindowHubOptions): WindowHub {
       type: "open-window",
       url: `${server.url}${STUDIO_SHELL_PATH}?token=${server.rpcToken}`,
     });
+    send({ id, root, type: "window-root" });
+    return { focused: false };
   }
 
   /**
@@ -281,8 +465,8 @@ export function createWindowHub(options: WindowHubOptions): WindowHub {
     }
     windows.delete(id);
     entry.server.stop();
-    // Re-rooting to nothing stops the watcher and drops the unsaved-preview and format caches.
-    entry.session.setProjectRoot(null);
+    // Letting go stops the watcher and drops the unsaved-preview and format caches.
+    entry.session.close();
     // The redirect must not name a server that just stopped.
     const newest = [...windows.values()].at(-1);
     if (newest) {
@@ -313,6 +497,14 @@ export function createWindowHub(options: WindowHubOptions): WindowHub {
         resolve(null);
       }
       dialogs.clear();
+      // A prompt nobody can answer any more is a no.
+      for (const resolve of trustAnswers.values()) {
+        resolve(false);
+      }
+      trustAnswers.clear();
+      if (quitTimer) {
+        clearTimeout(quitTimer);
+      }
       setFileDialog(null);
       setDirectoryDialog(null);
     },
@@ -324,7 +516,17 @@ export function createWindowHub(options: WindowHubOptions): WindowHub {
     handle: (message) => {
       switch (message.type) {
         case "open-project": {
-          openProject(message.root);
+          void openProject(message.root);
+          break;
+        }
+        case "open-path": {
+          openPath(message.path);
+          break;
+        }
+        case "trust-answer": {
+          const resolve = trustAnswers.get(message.requestId);
+          trustAnswers.delete(message.requestId);
+          resolve?.(message.trusted);
           break;
         }
         case "window-closed": {

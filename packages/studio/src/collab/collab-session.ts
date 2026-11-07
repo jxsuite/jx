@@ -33,7 +33,7 @@ import {
   setTransactObserver,
   transactDoc,
 } from "../tabs/transact";
-import { PROJECT_CONFIG_PATH } from "../tabs/tab";
+import { isProjectConfigPath } from "../tabs/tab";
 import type { TransactOrigin } from "../tabs/transact";
 import type { TransactionRecord } from "../tabs/patch-ops";
 import type { Tab } from "../tabs/tab";
@@ -672,7 +672,7 @@ const liveTabs = new Set<Tab>();
  */
 export function ensureCollab(tab: Tab): void {
   const platform = maybePlatform();
-  if (!platform?.collab || !tab.documentPath || tab.documentPath === PROJECT_CONFIG_PATH) {
+  if (!platform?.collab || !tab.documentPath || isProjectConfigPath(tab.documentPath)) {
     return;
   }
   const runtime = runtimeFor(tab);

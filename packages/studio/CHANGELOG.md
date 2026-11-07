@@ -1,5 +1,31 @@
 # Changelog
 
+## [10.5.0](https://github.com/jxsuite/jx/compare/studio-v10.4.0...studio-v10.5.0) (2026-11-06)
+
+
+### Features
+
+* **ai:** give a turn room to work, and a closing round to reply ([#545](https://github.com/jxsuite/jx/issues/545)) ([a839c1c](https://github.com/jxsuite/jx/commit/a839c1ccbf8494db1a84255df7452b026eb81d70))
+* **content:** let a project say what holds an entry back ([#548](https://github.com/jxsuite/jx/issues/548)) ([f71a439](https://github.com/jxsuite/jx/commit/f71a43929ca7d2aa5834d6552ea485db4b2dcdac))
+* **runtime,studio:** hold template warnings for data in flight, and render-check pages as built ([#544](https://github.com/jxsuite/jx/issues/544)) ([5d97c6c](https://github.com/jxsuite/jx/commit/5d97c6c163d0ab2b40b17ad50a2c5620beb4c9a3))
+* **studio:** offer a repeater item's fields in the From data picker ([#539](https://github.com/jxsuite/jx/issues/539)) ([e9ee027](https://github.com/jxsuite/jx/commit/e9ee027322ef01fd2d42c39e7864af1e70556410))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/ai bumped to 0.43.0
+    * @jxsuite/collab bumped to 0.11.6
+    * @jxsuite/create bumped to 1.5.4
+    * @jxsuite/formulas bumped to 0.0.28
+    * @jxsuite/markup bumped to 1.0.4
+    * @jxsuite/protocol bumped to 6.2.2
+    * @jxsuite/runtime bumped to 6.1.0
+    * @jxsuite/schema bumped to 5.2.0
+    * @jxsuite/site bumped to 2.3.1
+    * @jxsuite/ui bumped to 0.10.1
+
 ## [10.4.0](https://github.com/jxsuite/jx/compare/studio-v10.3.0...studio-v10.4.0) (2026-11-04)
 
 

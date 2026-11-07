@@ -23,6 +23,7 @@ import type {
 } from "@jxsuite/protocol";
 import type { StudioRPC } from "../shared/rpc-schema";
 import type { ShellBridge } from "../shared/bridge";
+import { PROJECT_FILE_NAME } from "@jxsuite/schema/project-file";
 
 /* Inferred return type with a `satisfies` conformance check at the bottom, so callers see which of
    the PAL's OPTIONAL members this launcher actually implements — annotating `StudioPlatform` made
@@ -134,6 +135,13 @@ export function createDesktopPlatform() {
       },
     ],
     [
+      /* The operating system asked this window to show a document. */
+      "documentsPending",
+      () => {
+        collectOpenDocuments();
+      },
+    ],
+    [
       /* Another window's settings change. Each window talks only to its own server, so this is the
          only way one hears about another. */
       "settingsChanged",
@@ -158,6 +166,23 @@ export function createDesktopPlatform() {
   let everOpened = false;
   /** The settings kernel's subscriber, so another window's change reaches this one. */
   let settingsHandler: ((settings: Record<string, string>) => void) | null = null;
+  let documentHandler: ((path: string) => void) | null = null;
+
+  /** Hand the page whatever documents are queued for this window, once it can take them. */
+  function collectOpenDocuments(): void {
+    if (!documentHandler) {
+      return;
+    }
+    request("takeOpenDocuments")
+      .then((paths) => {
+        for (const path of paths) {
+          documentHandler?.(path);
+        }
+      })
+      .catch((error: Error) => {
+        console.error("[platform] collecting documents to open failed:", error);
+      });
+  }
 
   /*
    * ─── The RPC transport ──────────────────────────────────────────────────────
@@ -371,7 +396,7 @@ export function createDesktopPlatform() {
 
     async probeRootProject() {
       try {
-        const content = await request("readFile", { path: "project.json" });
+        const content = await request("readFile", { path: PROJECT_FILE_NAME });
         /* SAFETY: `content` is project.json's text. The PAL hands Studio the parsed document as the
            project's config without validating it, as every launcher does; text that is not JSON
            throws into the catch below and reads as "no project". */
@@ -398,6 +423,15 @@ export function createDesktopPlatform() {
 
     async getProjectRoot() {
       return request("getProjectRoot");
+    },
+
+    subscribeOpenDocument(handler: (path: string) => void) {
+      documentHandler = handler;
+      // Anything asked of this window before its page had booted is already waiting.
+      collectOpenDocuments();
+      return () => {
+        documentHandler = null;
+      };
     },
 
     async setWindowProject(root: string) {

@@ -25,6 +25,7 @@ import type {
 } from "@jxsuite/schema/types";
 import type { ProjectDevEnv } from "./dev-vars.ts";
 import { problem } from "./problem.ts";
+import { projectFilePath } from "@jxsuite/schema/project-file/node";
 
 /**
  * Any value a module exports, as the proxies see it before they check it. Nothing about an export
@@ -255,7 +256,7 @@ async function completeSections(context: ProjectContext): Promise<void> {
 
 /** Load (or reuse) the cached project config, extension registry and asset mounts. */
 async function loadProjectEntry(projectRoot: string): Promise<ProjectEntry | null> {
-  const projectJsonPath = resolve(projectRoot, "project.json");
+  const projectJsonPath = projectFilePath(projectRoot);
   const mtime = statSync(projectJsonPath, { throwIfNoEntry: false })?.mtimeMs;
   if (mtime === undefined) {
     return null;

@@ -19,6 +19,7 @@ import { githubSignIn, githubSignOut, githubTokenStatus } from "./github-signin"
 import { createPackageOps } from "./packages";
 import { pickProjectFile } from "./project-session";
 import type { ProjectSession } from "./project-session";
+import type { AuthorizedRoot } from "./roots";
 import { readRecents, writeRecents } from "./recent-store";
 import { patchSettings, readSettings } from "./settings-store";
 import type { RecentProjectEntry } from "../shared/rpc-schema";
@@ -26,6 +27,11 @@ import type { RecentProjectEntry } from "../shared/rpc-schema";
 /** A window as the handlers see it: the session that answers for it, and nothing about its pixels. */
 export interface HubWindow {
   id: number;
+  /**
+   * Documents asked of this window that its page has not collected yet. A queue the page drains,
+   * rather than a push of each path, because a window can be asked before its page has booted.
+   */
+  pendingDocuments: string[];
   session: ProjectSession;
 }
 
@@ -35,8 +41,12 @@ export interface WindowRow {
   projectRoot: string | null;
 }
 
-/** What opening a project did: it raised a window that already held it, or it made a new one. */
+/**
+ * What opening a project did: it raised a window that already held it, it made a new one, or the
+ * user declined to run the folder's code and it did neither.
+ */
 export interface OpenOutcome {
+  declined?: true;
   focused: boolean;
 }
 
@@ -44,14 +54,18 @@ export interface OpenOutcome {
 export interface HubControl {
   /** Version, channel and commit for the About screen. */
   appInfo: () => AppInfo;
+  /** Ask whether a folder may run; null when the user declined. */
+  authorize: (root: string) => Promise<AuthorizedRoot | null>;
   /** The open window other than `except` that holds `root`, if any. */
   findWindowByRoot: (root: string, except?: HubWindow) => HubWindow | null;
   /** Bring a window forward. */
   focus: (window: HubWindow) => void;
+  /** Whether a window for this folder is on its way: its prompt is up or its server is binding. */
+  isOpening: (root: string) => boolean;
   /** Every open window and the project it holds. */
   listOpenWindows: () => WindowRow[];
   /** Open `root` (null for a welcome window), or raise the window that holds it. */
-  openProject: (root: string | null) => OpenOutcome;
+  openProject: (root: string | null) => Promise<OpenOutcome>;
   /** The window's project changed; retitle it. */
   retitle: (window: HubWindow) => void;
 }
@@ -141,9 +155,8 @@ export function buildWindowHandlers(window: HubWindow, hub: HubControl) {
     listSecrets: () => session.listSecrets(),
     listStarters: () => Promise.resolve(listStarters()),
     locateFile: wire(session.locateFile),
-    newWindow: wire(() => {
-      hub.openProject(null);
-      return Promise.resolve();
+    newWindow: wire(async () => {
+      await hub.openProject(null);
     }),
     openExternal: wire(session.openExternal),
     openProject: async () => {
@@ -153,9 +166,7 @@ export function buildWindowHandlers(window: HubWindow, hub: HubControl) {
       }
       return result;
     },
-    openProjectInNewWindow: wire(({ root }: { root: string }) =>
-      Promise.resolve(hub.openProject(root)),
-    ),
+    openProjectInNewWindow: wire(({ root }: { root: string }) => hub.openProject(root)),
     packageVersions: () => pkg.packageVersions(),
     patchSettings: wire(({ patch }: { patch: KeyValuePatch }) => patchSettings(patch)),
     pickDirectory: () => session.pickDirectory(),
@@ -179,18 +190,34 @@ export function buildWindowHandlers(window: HubWindow, hub: HubControl) {
       session.setPreviewOverlay(params),
     ),
     setSecrets: wire(session.setSecrets),
-    setWindowProject: wire(({ root }: { root: string }) => {
+    setWindowProject: wire(async ({ root }: { root: string }) => {
       /* Dedupe first: if ANOTHER window holds this project, raise it and say so rather than binding
          a second window to the same files. Studio treats `deduped` as "nothing was loaded here". */
       const existing = hub.findWindowByRoot(root, window);
       if (existing) {
         hub.focus(existing);
-        return Promise.resolve({ config: null, deduped: true });
+        return { config: null, deduped: true };
       }
-      session.setProjectRoot(root);
+      const authorized = await hub.authorize(root);
+      if (!authorized) {
+        return { config: null, declined: true, deduped: false };
+      }
+      /* Asked again: everything stays clickable while a prompt is up, so another window may have
+         taken this project, or be about to on the same answer. */
+      const holder = hub.findWindowByRoot(root, window);
+      if (holder) {
+        hub.focus(holder);
+        return { config: null, deduped: true };
+      }
+      if (hub.isOpening(root)) {
+        return { config: null, deduped: true };
+      }
+      session.setProjectRoot(authorized);
       hub.retitle(window);
-      return Promise.resolve({ config: null, deduped: false });
+      return { config: null, deduped: false };
     }),
+    // Each document once: a page collects what is queued, and whatever it took is no longer queued.
+    takeOpenDocuments: () => Promise.resolve(window.pendingDocuments.splice(0)),
     uploadFile: wire(session.handleUploadFile),
     writeFile: wire(session.handleWriteFile),
   } satisfies Record<string, RpcHandler>;

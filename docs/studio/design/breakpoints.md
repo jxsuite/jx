@@ -63,7 +63,7 @@ Breakpoints layer in the same order a browser applies their media queries, so wh
 
 ## Define your breakpoints
 
-Breakpoints are defined in one place: **Settings › Advanced › Contexts**. Pick **Open Project Settings › Contexts** from the **Settings** menu in the Command Bar. You can also press :kbd[⌘K] and run **Open Project Settings**, or use the **⬢ menu** in the Command Bar, then choose **Contexts** in the section list. From the canvas, the sliders button at the end of the context bar's **Context** controls opens a popover with a **Manage contexts…** button at the bottom that lands on the same section without losing your element selection.
+Breakpoints are defined in one place: **Settings › Advanced › Contexts**. Pick **Open Project Settings › Contexts** from the **Settings** menu in the Command Bar. You can also press :kbd[⌘K] and type `>Open Project Settings`, or use the **⬢ menu** in the Command Bar, then choose **Contexts** in the section list. From the canvas, the sliders button at the end of the context bar's **Context** controls opens a popover with a **Manage contexts…** button at the bottom that lands on the same section without losing your element selection.
 
 The section holds three groups, because all three are the same thing on disk and only differ in what their condition asks about:
 
@@ -86,7 +86,7 @@ Forcing a scheme while the size is **Base** points your edits at that scheme's o
 :::doc-note
 **Definition and selection are separate.** Settings › Contexts is the only place a context is created, renamed or deleted. The context bar's **Context** controls only _choose_ among what is defined there, and the Style tab's Target Line only _states_ what was chosen. Clicking its breakpoint segment takes you to Settings › Contexts rather than offering a third list to disagree with.
 
-Every choice in that popover is also a command, so you can make it without reaching for the mouse: press :kbd[⌘K] and run **Set Breakpoint**, **Set Color Scheme** or **Show Layout Elements**. Each one asks for the value it needs, and Set Breakpoint lists the breakpoints this page can actually render under if you name one it can't.
+Every choice in that popover is also a command, so you can make it without reaching for the mouse: press :kbd[⌘K] and type `>Set Breakpoint`, `>Set Color Scheme` or `>Show Layout Elements`. Each one asks for the value it needs, and Set Breakpoint lists the breakpoints this page can actually render under if you name one it can't.
 :::
 
 :::doc-note

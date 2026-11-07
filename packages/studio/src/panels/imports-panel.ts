@@ -50,6 +50,7 @@ import type {
 } from "../surfaces/panel-imports";
 import type { JxMutableNode } from "@jxsuite/schema/types";
 import type { SurfaceOption } from "../ui/surface";
+import { isProjectConfigPath } from "@jxsuite/schema/project-file";
 
 /** What the panel is drawn against. `left-panel.ts`'s context, reduced to what this reads. */
 export interface ImportsContext {
@@ -204,7 +205,7 @@ function documentView(ctx: ImportsContext): ImportsView {
 
 /** What the panel shows right now. `project.json` is the one document with the other mood. */
 function view(ctx: ImportsContext): ImportsView {
-  return ctx.documentPath?.endsWith("project.json") ? siteView() : documentView(ctx);
+  return isProjectConfigPath(ctx.documentPath) ? siteView() : documentView(ctx);
 }
 
 /** Push the current projection into the standing surface, in this turn. */
@@ -295,7 +296,7 @@ async function onToggleComponent(id: string, checked: boolean): Promise<void> {
   if (!ctx || !comp) {
     return;
   }
-  if (ctx.documentPath?.endsWith("project.json")) {
+  if (isProjectConfigPath(ctx.documentPath)) {
     const before = siteElements();
     const updated = checked
       ? enableElement(before, comp, null)

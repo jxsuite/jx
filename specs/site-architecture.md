@@ -2,9 +2,9 @@
 
 ## File-Based Routing, Content Collections, Layouts, and Static Site Generation
 
-**Version:** 0.7.6-draft\
+**Version:** 0.8.0-draft\
 **Status:** Partial\
-**Updated:** 2026-11-04\
+**Updated:** 2026-11-06\
 **License:** MIT
 
 ---
@@ -71,7 +71,7 @@ Two neighboring specs carry the detail this one only points at: `extensions.md` 
 
 ## 2. Project Structure
 
-A Jx site project follows a conventional directory layout. Only `project.json` and `pages/` are required — everything else is optional and additive.
+A Jx site project follows a conventional directory layout. Only `project.json` and `pages/` are required — everything else is optional and additive. A file by that name is a project's only if its content agrees: `pages/project.json` is a page with the route `/project`, and Nx keeps a `project.json` of its own in every package of a workspace.
 
 ```
 my-site/
@@ -2401,6 +2401,9 @@ This spec builds on existing Jx primitives wherever possible:
 
 ## Changelog
 
+- **0.8.0-draft** (2026-11-06) — §7.6: Jx gives no field a meaning of its own. A content type's hold rules say what keeps an entry out of a production build, jx build leaves held entries out when the type loads, and $now reads the clock in where and when; the draft convention is gone.
+- **0.7.8-draft** (2026-11-06) — Reserve a section for provisioning new projects as project.jxn, pending.
+- **0.7.7-draft** (2026-11-06) — Reserve a section for the project file, written as project.jxn or project.json, pending.
 - **0.7.6-draft** (2026-11-04) — §4.3 a paginate source splits an array in the page's own state into numbered routes, the first at the list's own URL under a catch-all, each built with its slice and its pager values, once per value of an each source when the list belongs to another parameter; §4.5, §5.5 and §8.4.1 say so. §6.4 a ContentCollection queries several content types as one list, reads dotted field paths through arrays, and resolves #/$params and #/state references in a filter value; a field with no value contains nothing, so not contains keeps the entry.
 - **0.7.5-draft** (2026-10-29) — The image cache's npm lookup reads npm_config_cache first and gives npm config get cache 3 seconds.
 - **0.7.4-draft** (2026-10-29) — Desktop source paths follow the reorganization by process: src/main, src/preload, src/backend, src/webview and src/shared.

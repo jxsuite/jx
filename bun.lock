@@ -186,6 +186,7 @@
         "create-jxsuite": "./index.ts",
       },
       "dependencies": {
+        "@jxsuite/schema": "workspace:^",
         "@jxsuite/starters": "workspace:^",
       },
     },
