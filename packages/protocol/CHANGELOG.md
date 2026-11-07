@@ -1,5 +1,19 @@
 # Changelog
 
+## [6.2.2](https://github.com/jxsuite/jx/compare/protocol-v6.2.1...protocol-v6.2.2) (2026-11-06)
+
+
+### Bug Fixes
+
+* **desktop,server:** keep git paths and commits inside a nested project ([#540](https://github.com/jxsuite/jx/issues/540)) ([79b017a](https://github.com/jxsuite/jx/commit/79b017af1abf5a26d97544fb688f5bd85ee60507))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/schema bumped to 5.2.0
+
 ## [6.2.1](https://github.com/jxsuite/jx/compare/protocol-v6.2.0...protocol-v6.2.1) (2026-11-04)
 
 

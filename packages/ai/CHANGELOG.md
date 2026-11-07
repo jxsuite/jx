@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.43.0](https://github.com/jxsuite/jx/compare/ai-v0.42.1...ai-v0.43.0) (2026-11-06)
+
+
+### Features
+
+* **ai:** give a turn room to work, and a closing round to reply ([#545](https://github.com/jxsuite/jx/issues/545)) ([a839c1c](https://github.com/jxsuite/jx/commit/a839c1ccbf8494db1a84255df7452b026eb81d70))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/protocol bumped to 6.2.2
+    * @jxsuite/schema bumped to 5.2.0
+
 ## [0.42.1](https://github.com/jxsuite/jx/compare/ai-v0.42.0...ai-v0.42.1) (2026-11-04)
 
 

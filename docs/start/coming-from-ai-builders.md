@@ -20,7 +20,7 @@ A Jx page or component is a structured document: readable JSON describing its el
 
 ## Editable in both directions
 
-With generated code, the AI is usually the only practical way back in, because visual editing on top of a generated codebase is shallow and changes mean re-prompting. In Jx, the visual editor and the assistant share one format, so you alternate freely: prompt a section into existence, then drag and restyle it by hand; build a component yourself, then ask the assistant to rework it. Click anything the assistant made and the Inspector's **Content**, **Style** and **Logic** tabs show exactly what it is. There is no layer you can't open.
+With generated code, the AI is usually the only practical way back in, because visual editing on top of a generated codebase is shallow and changes mean re-prompting. In Jx, the visual editor and the assistant share one format, so you alternate freely: prompt a section into existence, then drag and restyle it by hand; build a component yourself, then ask the assistant to rework it. Click anything the assistant made and the Inspector's **Content**, **Style** and **Logic** views show exactly what it is. There is no layer you can't open.
 
 ## Every change is a diff
 
