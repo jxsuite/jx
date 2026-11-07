@@ -1,13 +1,13 @@
 /**
- * Tests for src/canvas/iframe-drop.ts — the PURE drop math (computeDropInstruction). The point
- * hit-test (resolveDropTarget) is CDP-only (happy-dom's elementFromPoint returns null), so it is
- * NOT unit-proven here; only the pure placement math + targetPath shape parity are covered.
+ * Tests for src/canvas/iframe-drop.ts — the PURE drop math (computeDropInstruction), and the drop
+ * over blank canvas (resolveBlankCanvasDrop), with `elementFromPoint` doubled because happy-dom
+ * does no layout. The bare hit-test walk (resolveDropTarget) is exercised under a real browser.
  *
  * Geometry comes from stubRect; the targetPath parity assertion runs the REAL applyDropInstruction
  * against a live tab so the `[...parentPath, "children", idx]` shape is proven to resolve.
  */
 import { resetWorkspaceWithTab, stubRect } from "./harness";
-import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 import type { JxMutableNode } from "@jxsuite/schema/types";
 
 // Stylebook is pulled in transitively via panels/dnd (applyDropInstruction); stub it light.
@@ -15,7 +15,7 @@ void mock.module("../src/panels/stylebook-panel", () => ({
   renderComponentPreview: async () => document.createElement("div"),
 }));
 
-const { AUTO_SCROLL_BAND, computeDropInstruction, scrollDirection } =
+const { AUTO_SCROLL_BAND, computeDropInstruction, resolveBlankCanvasDrop, scrollDirection } =
   await import("../src/canvas/iframe-drop");
 const { applyDropInstruction } = await import("../src/panels/dnd");
 const { serializeJxPath } = await import("../src/canvas/path-mapping");
@@ -289,6 +289,119 @@ describe("targetPath parity through REAL applyDropInstruction", () => {
     // Section had 1 child (h2) → now 2, the span appended last.
     expect(kids.length).toBe(2);
     expect(kids[1]).toMatchObject({ tagName: "span" });
+  });
+});
+
+describe("resolveBlankCanvasDrop", () => {
+  /** A stamped element at `top` with height 40, the way the frame stamps a rendered node. */
+  function block(tag: string, path: Path, top: number) {
+    const node = document.createElement(tag);
+    node.dataset.jxPath = serializeJxPath(path);
+    stubRect(node, { height: 40, left: 0, top, width: 100 });
+    return node;
+  }
+
+  /** A page without a layout: the root is an element, holding a heading at the top. */
+  function mountPage() {
+    const root = block("main", [], 0);
+    const heading = block("h1", ["children", 0], 0);
+    root.append(heading);
+    document.body.append(root);
+    return { heading, root };
+  }
+
+  /** A page inside a layout: an unstamped slot host the page's blocks are drawn into, then chrome. */
+  function mountLayoutPage(blockCount: number) {
+    const host = document.createElement("main");
+    host.dataset.jxLayoutPath = serializeJxPath(["children", 1]);
+    stubRect(host, { height: 600, left: 0, top: 60, width: 100 });
+    for (let index = 0; index < blockCount; index++) {
+      host.append(block("p", ["children", index], 60 + index * 50));
+    }
+    const chrome = document.createElement("footer");
+    chrome.dataset.jxLayoutRegion = "";
+    const brand = document.createElement("span");
+    chrome.append(brand);
+    document.body.append(host, chrome);
+    return { brand, host };
+  }
+
+  /** Answer every `elementFromPoint` with `hit`, as the browser would over that element. */
+  function hitting(hit: Element | null) {
+    spyOn(document, "elementFromPoint").mockReturnValue(hit);
+  }
+
+  const shadow = (): JxMutableNode => ({
+    children: [{ tagName: "h1" }, { tagName: "p" }],
+    tagName: "main",
+  });
+
+  afterEach(() => {
+    mock.restore();
+    document.body.replaceChildren();
+  });
+
+  test("below a short page, the drop lands after its last block", () => {
+    mountPage();
+    hitting(document.body);
+    expect(resolveBlankCanvasDrop(10, 500, document, shadow(), blockSrc)).toMatchObject({
+      instruction: "reorder-below",
+      targetPath: ["children", 0],
+    });
+  });
+
+  test("inside a layout, the page's blocks are found by their own paths", () => {
+    const { host } = mountLayoutPage(2);
+    hitting(host);
+    expect(resolveBlankCanvasDrop(10, 500, document, shadow(), blockSrc)).toMatchObject({
+      instruction: "reorder-below",
+      targetPath: ["children", 1],
+    });
+    expect(resolveBlankCanvasDrop(10, 61, document, shadow(), blockSrc)).toMatchObject({
+      instruction: "reorder-above",
+      targetPath: ["children", 0],
+    });
+  });
+
+  test("an empty page inside a layout takes the drop as the root's first child", () => {
+    const { host } = mountLayoutPage(0);
+    hitting(host);
+    expect(resolveBlankCanvasDrop(10, 300, document, shadow(), blockSrc)).toMatchObject({
+      instruction: "make-child",
+      targetPath: [],
+    });
+  });
+
+  test("the root is never dropped into itself, even on an empty page", () => {
+    const { host } = mountLayoutPage(0);
+    hitting(host);
+    const root = { path: [], type: "tree-node" as const };
+    expect(resolveBlankCanvasDrop(10, 300, document, shadow(), root)).toBeNull();
+  });
+
+  test("layout chrome is not the page, so a drop over it resolves to nothing", () => {
+    const { brand } = mountLayoutPage(1);
+    hitting(brand);
+    expect(resolveBlankCanvasDrop(10, 700, document, shadow(), blockSrc)).toBeNull();
+  });
+
+  test("a point over a stamped node is not blank canvas", () => {
+    const { heading } = mountPage();
+    hitting(heading);
+    expect(resolveBlankCanvasDrop(10, 10, document, shadow(), blockSrc)).toBeNull();
+  });
+
+  test("a point outside the frame is not blank canvas", () => {
+    mountPage();
+    hitting(null);
+    expect(resolveBlankCanvasDrop(-5, -5, document, shadow(), blockSrc)).toBeNull();
+  });
+
+  test("a moved node is not dropped beside itself", () => {
+    mountLayoutPage(1);
+    hitting(document.body);
+    const moving = { path: ["children", 0], type: "tree-node" as const };
+    expect(resolveBlankCanvasDrop(10, 500, document, shadow(), moving)).toBeNull();
   });
 });
 

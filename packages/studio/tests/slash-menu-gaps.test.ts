@@ -198,7 +198,7 @@ describe("click selection", () => {
     row!.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
     expect(selected).toEqual([
       {
-        description: "Insert image",
+        description: "",
         label: "Image",
         tag: "img",
       },

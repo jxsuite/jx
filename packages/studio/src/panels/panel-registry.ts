@@ -153,9 +153,9 @@ export interface PanelRecord {
    *
    * Not a hiding mechanism — a rail-less panel is still reachable by `view.setActivity`, by the
    * palette and by another surface linking to it. It is how a record survives the interval between
-   * losing its rail slot and gaining its real home (Insert, reachable from the canvas and palette;
-   * State, folded into Data — §5.1). Declaring it `false` also removes the panel's `rail/<level>`
-   * placement, which is what keeps the rail inside its four-per-group budget.
+   * losing its rail slot and gaining its real home (State, folded into Data — §5.1). Declaring it
+   * `false` also removes the panel's `rail/<level>` placement, which is what keeps the rail inside
+   * its four-per-group budget.
    *
    * `"developer"` is a rail button only while **Show developer panels** is on (§5.1,
    * `settings/developer-panels.ts`): Files and Packages, which a site author does not need on the

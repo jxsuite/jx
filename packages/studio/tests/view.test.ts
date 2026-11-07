@@ -17,7 +17,7 @@ describe("view", () => {
     expect(surfaceForPane("primary").panzoomWrap).toBeNull();
     expect(surfaceForPane("primary").centerObserver).toBeNull();
     expect(view.dndCleanups).toBeArray();
-    expect(view.elementsCollapsed).toBeInstanceOf(Set);
+    expect(view.elementsOpen).toBeInstanceOf(Map);
   });
 
   test("carries nothing that belongs to ONE STAGE", () => {

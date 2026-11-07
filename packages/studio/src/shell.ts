@@ -102,10 +102,10 @@ export const NAVIGATOR_PANEL_IDS = [
   "files",
   "search",
   "i18n",
+  "insert",
   "layers",
   "data",
   "packages",
-  "insert",
 ] as const;
 
 export type NavigatorPanelId = (typeof NAVIGATOR_PANEL_IDS)[number];

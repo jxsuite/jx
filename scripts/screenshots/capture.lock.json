@@ -271,9 +271,9 @@
       "width": 480
     },
     "docs/images/counter-elements.png": {
-      "bytes": 222483,
-      "capturedAt": "2026-11-07T03:57:54Z",
-      "capturedBy": "screenshots@ci/42336123094",
+      "bytes": 266077,
+      "capturedAt": "2026-11-07T15:54:58Z",
+      "capturedBy": "screenshots@ci/42388463860",
       "definition": "804b520463cbfdab27f70cbced9c53392d33336761b354fe03853a92d506885b",
       "height": 2000,
       "runtime": {
@@ -281,7 +281,7 @@
         "fontset": "fc:cac8f480b341",
         "os": "debian-12"
       },
-      "sha256": "28ca7f56360358a9b433be1c4f4a9762abf0e33b10e48228abd93aeb3245f818",
+      "sha256": "53377e98b09668830ed0fd543640366ebe5e5fb780b4c2d3d1c868a036598250",
       "shot": "counter-elements",
       "width": 3840
     },
@@ -481,9 +481,9 @@
       "width": 560
     },
     "docs/images/elements-panel.png": {
-      "bytes": 115260,
-      "capturedAt": "2026-10-27T22:55:17Z",
-      "capturedBy": "screenshots@ci/40598191375",
+      "bytes": 95539,
+      "capturedAt": "2026-11-07T15:54:12Z",
+      "capturedBy": "screenshots@ci/42388463860",
       "definition": "5c724ab422023ec4490fcc57ff086c3f53bfcd94c42ac73a3000b9a5cc94dfbe",
       "height": 1880,
       "runtime": {
@@ -491,7 +491,7 @@
         "fontset": "fc:cac8f480b341",
         "os": "debian-12"
       },
-      "sha256": "084ac74fb3a9160214a1cadfcdee9dd77cf2af3b2ed8151ccf8c0d1521dca1f9",
+      "sha256": "0942b485857cb3d6b99e075227befb5aeade16cd0dbee8b56d1dc7b5cd18ba5c",
       "shot": "elements-panel-shot",
       "width": 480
     },
@@ -871,9 +871,9 @@
       "width": 3840
     },
     "docs/images/slash-menu.png": {
-      "bytes": 440756,
-      "capturedAt": "2026-10-19T12:26:10Z",
-      "capturedBy": "screenshots@ci/39251688142",
+      "bytes": 410849,
+      "capturedAt": "2026-11-07T15:54:30Z",
+      "capturedBy": "screenshots@ci/42388463860",
       "definition": "6854f4741c7cebce5e529522b7fc19d895d04801ae36380a2c7cf4ea5a33aa6b",
       "height": 1180,
       "runtime": {
@@ -881,7 +881,7 @@
         "fontset": "fc:cac8f480b341",
         "os": "debian-12"
       },
-      "sha256": "e0f824f2d6f7f1f139e6f11e27d941b19bdd78829051a6c8fa3a639c3b18ebc0",
+      "sha256": "28fefb93a60bbd838617aae9637f6a2103c950ee5058d7f55bea297989f451e5",
       "shot": "slash-menu-shot",
       "width": 1240
     },

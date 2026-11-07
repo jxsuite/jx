@@ -1,31 +1,10 @@
 import elementsMeta from "../../data/elements-meta.json";
 
+import { elementName } from "../locale/element-names";
 import { ELEMENT_DEFS } from "./editable-tags";
 import type { SlashCommand } from "./inline-edit";
 
 export type { SlashCommand } from "./inline-edit";
-
-const TAG_LABELS = new Map<string, string>([
-  ["article", "Article"],
-  ["aside", "Aside"],
-  ["blockquote", "Blockquote"],
-  ["div", "Div"],
-  ["footer", "Footer"],
-  ["h1", "Heading 1"],
-  ["h2", "Heading 2"],
-  ["h3", "Heading 3"],
-  ["h4", "Heading 4"],
-  ["h5", "Heading 5"],
-  ["h6", "Heading 6"],
-  ["header", "Header"],
-  ["main", "Main"],
-  ["nav", "Nav"],
-  ["ol", "Numbered List"],
-  ["p", "Paragraph"],
-  ["search", "Search"],
-  ["section", "Section"],
-  ["ul", "Bulleted List"],
-]);
 
 const groups: Readonly<Record<string, string[]>> = elementsMeta.$convertGroups;
 
@@ -56,7 +35,7 @@ export function getConvertTargets(currentTag: string, isEmpty: boolean): SlashCo
 
   return [...tags].map((tag) => ({
     description: "",
-    label: TAG_LABELS.get(tag) || tag.charAt(0).toUpperCase() + tag.slice(1),
+    label: elementName(tag),
     tag,
   }));
 }

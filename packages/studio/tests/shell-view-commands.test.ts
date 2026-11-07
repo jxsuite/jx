@@ -131,7 +131,7 @@ describe("view.setActivity", () => {
     // Stale script or an older session still carries.
     expect(() => registry.run("view.setActivity", { tab: "head" })).toThrow(
       'command "view.setActivity" argument "tab": "head" is not declared — declared: ' +
-        "site, collections, styles, files, search, i18n, layers, data, packages, insert",
+        "site, collections, styles, files, search, i18n, insert, layers, data, packages",
     );
     expect(shell.leftTab).toBe("layers");
   });

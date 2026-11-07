@@ -41,6 +41,7 @@ import type { JxMutableNode } from "@jxsuite/schema/types";
 import type { ComponentEntry } from "../files/components.js";
 import type { ElementDragPayload } from "@atlaskit/pragmatic-drag-and-drop/element/adapter";
 import type { DropTargetRecord } from "@atlaskit/pragmatic-drag-and-drop/types";
+import { elementName } from "../locale/element-names";
 
 interface DragCanDragArgs {
   element: HTMLElement;
@@ -314,7 +315,8 @@ export function registerElementsDnD() {
       const preview = row.querySelector(".element-card-preview");
       if (preview && !preview.firstChild) {
         const el = document.createElement(unsafeTags.has(tag) ? "span" : tag);
-        el.textContent = tag;
+        // The specimen reads the card's own name, so a heading previews as "Heading 1", not "h1".
+        el.textContent = elementName(tag);
         preview.append(el);
       }
       const def = defaultDef(tag);

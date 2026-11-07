@@ -104,6 +104,7 @@ The vertical strip on the far left, drawn in the **Design** workspace. Every but
 
 **Document**
 
+- **Insert**: the elements and components you can add to a page, on an **Elements** tab and a **Components** tab, as named cards you drag onto the canvas or click to add at the selection. It stays open while you work, so the next card is one drag away. See [Insert palette](/docs/studio/design/elements).
 - **Outline**: the element structure of the open page or component, as a tree you can select and reorder. Beside a page's or component's **Elements** view it lists the element catalog instead.
 - **Data**: the values, data sources and functions the document knows about, with what each one currently resolves to. See [Logic](/docs/studio/logic).
 
@@ -118,7 +119,7 @@ Two panels are for working with the project as files and packages, and they stay
 
 With the switch off, both are still one palette row away: **Show Files** and **Show Packages**.
 
-**Insert**, the palette of elements and components you can add to a page, is not on the rail either, because you reach for it at the moment you're placing something, and it is not a view you sit in. Press :kbd[⌘K] and type `>Show Insert` to open it in the Navigator. Source control is not a Navigator panel: it is the **Publish** workspace, whose tab in the Command Bar counts your changes. See [Publish](/docs/studio/publish).
+Source control is not a Navigator panel: it is the **Publish** workspace, whose tab in the Command Bar counts your changes. See [Publish](/docs/studio/publish).
 
 ### The Site panel
 

@@ -1,0 +1,434 @@
+{
+  "$id": "locale/en/elements",
+  "title": "Element names (English)",
+  "description": "The names and one-line descriptions Studio shows for HTML elements, and the names of the Insert palette's categories (studio.md §5.3). English is the source catalog: every tag the palette offers has an entry here, and a translation is a copy of this file under data/locales/<language>/ with the values translated and the keys left alone.",
+  "categories": {
+    "text": "Text",
+    "lists": "Lists",
+    "media": "Media",
+    "layout": "Layout",
+    "interactive": "Interactive",
+    "forms": "Forms",
+    "tables": "Tables",
+    "inline": "Inline text",
+    "advanced": "Advanced"
+  },
+  "elements": {
+    "h1": {
+      "name": "Heading 1",
+      "description": "The page's main title. A page usually has one."
+    },
+    "h2": {
+      "name": "Heading 2",
+      "description": "The heading of a section."
+    },
+    "h3": {
+      "name": "Heading 3",
+      "description": "The heading of a subsection."
+    },
+    "h4": {
+      "name": "Heading 4",
+      "description": "A heading one level below Heading 3."
+    },
+    "h5": {
+      "name": "Heading 5",
+      "description": "A heading one level below Heading 4."
+    },
+    "h6": {
+      "name": "Heading 6",
+      "description": "The smallest heading."
+    },
+    "p": {
+      "name": "Paragraph",
+      "description": "A block of body text."
+    },
+    "blockquote": {
+      "name": "Quote",
+      "description": "A passage quoted from another source."
+    },
+    "pre": {
+      "name": "Code block",
+      "description": "Text shown exactly as typed, spaces and line breaks included, in a fixed-width font."
+    },
+    "hr": {
+      "name": "Divider",
+      "description": "A line that separates two parts of the page."
+    },
+    "address": {
+      "name": "Contact details",
+      "description": "Contact information for the page or for the article it is in."
+    },
+    "ul": {
+      "name": "Bulleted list",
+      "description": "A list whose order does not matter."
+    },
+    "ol": {
+      "name": "Numbered list",
+      "description": "A list whose order matters, such as steps."
+    },
+    "li": {
+      "name": "List item",
+      "description": "One item of a bulleted or numbered list."
+    },
+    "dl": {
+      "name": "Description list",
+      "description": "Terms paired with their descriptions, such as a glossary or an FAQ."
+    },
+    "dt": {
+      "name": "Term",
+      "description": "A term in a description list."
+    },
+    "dd": {
+      "name": "Description",
+      "description": "The description of a term in a description list."
+    },
+    "menu": {
+      "name": "Menu list",
+      "description": "A list of commands, such as the buttons of a toolbar."
+    },
+    "img": {
+      "name": "Image",
+      "description": "A picture."
+    },
+    "figure": {
+      "name": "Figure",
+      "description": "An image, chart or code sample, with an optional caption."
+    },
+    "figcaption": {
+      "name": "Figure caption",
+      "description": "The caption of a figure."
+    },
+    "video": {
+      "name": "Video",
+      "description": "A video with playback controls."
+    },
+    "audio": {
+      "name": "Audio",
+      "description": "A sound clip or a piece of music, with playback controls."
+    },
+    "picture": {
+      "name": "Responsive image",
+      "description": "An image with alternative files for different screens and formats."
+    },
+    "source": {
+      "name": "Media source",
+      "description": "One alternative file for a video, an audio clip or a responsive image."
+    },
+    "track": {
+      "name": "Text track",
+      "description": "Captions or subtitles for a video or an audio clip."
+    },
+    "iframe": {
+      "name": "Embedded page",
+      "description": "Another web page shown inside this one, such as a map or a video player."
+    },
+    "section": {
+      "name": "Section",
+      "description": "A part of the page about one topic, usually with its own heading."
+    },
+    "div": {
+      "name": "Container",
+      "description": "A box that groups other elements and has no meaning of its own."
+    },
+    "header": {
+      "name": "Header",
+      "description": "Introductory content, such as a logo, a title or the navigation."
+    },
+    "footer": {
+      "name": "Footer",
+      "description": "Closing content, such as copyright, contact links or related pages."
+    },
+    "main": {
+      "name": "Main content",
+      "description": "The page's central content. A page has one."
+    },
+    "nav": {
+      "name": "Navigation",
+      "description": "A group of links to other pages or to parts of this one."
+    },
+    "article": {
+      "name": "Article",
+      "description": "Content that stands on its own, such as a blog post or a product card."
+    },
+    "aside": {
+      "name": "Aside",
+      "description": "Content set apart from the main flow, such as a sidebar or a call-out."
+    },
+    "search": {
+      "name": "Search area",
+      "description": "The part of the page that holds a search form."
+    },
+    "hgroup": {
+      "name": "Heading group",
+      "description": "A heading together with its subtitle or tagline."
+    },
+    "a": {
+      "name": "Link",
+      "description": "Text that takes the reader to another page, or to another place on this one."
+    },
+    "button": {
+      "name": "Button",
+      "description": "A button the reader clicks."
+    },
+    "details": {
+      "name": "Expandable section",
+      "description": "Content the reader shows or hides by clicking its summary."
+    },
+    "summary": {
+      "name": "Summary",
+      "description": "The always-visible label of an expandable section."
+    },
+    "dialog": {
+      "name": "Dialog",
+      "description": "A box shown over the page, such as a pop-up message."
+    },
+    "form": {
+      "name": "Form",
+      "description": "A group of fields the reader fills in and sends."
+    },
+    "label": {
+      "name": "Field label",
+      "description": "The text that names a form field."
+    },
+    "input": {
+      "name": "Input field",
+      "description": "A one-line field for text, numbers, dates, checkboxes and more."
+    },
+    "textarea": {
+      "name": "Text area",
+      "description": "A field for several lines of text."
+    },
+    "select": {
+      "name": "Dropdown",
+      "description": "A list of choices the reader picks from."
+    },
+    "option": {
+      "name": "Option",
+      "description": "One choice in a dropdown or a suggestion list."
+    },
+    "optgroup": {
+      "name": "Option group",
+      "description": "A labelled group of choices in a dropdown."
+    },
+    "datalist": {
+      "name": "Suggestion list",
+      "description": "Values suggested while the reader types in a field."
+    },
+    "fieldset": {
+      "name": "Field group",
+      "description": "A box around related fields, titled by its legend."
+    },
+    "legend": {
+      "name": "Field group title",
+      "description": "The title of a field group."
+    },
+    "output": {
+      "name": "Result",
+      "description": "The result of a calculation or an action in a form."
+    },
+    "progress": {
+      "name": "Progress bar",
+      "description": "How far a task has got."
+    },
+    "meter": {
+      "name": "Meter",
+      "description": "A value within a known range, such as storage used."
+    },
+    "table": {
+      "name": "Table",
+      "description": "Data in rows and columns."
+    },
+    "caption": {
+      "name": "Table caption",
+      "description": "The title of a table."
+    },
+    "thead": {
+      "name": "Table header",
+      "description": "The rows that head a table's columns."
+    },
+    "tbody": {
+      "name": "Table body",
+      "description": "The main rows of a table."
+    },
+    "tfoot": {
+      "name": "Table footer",
+      "description": "The rows that sum up a table, such as totals."
+    },
+    "tr": {
+      "name": "Table row",
+      "description": "One row of cells."
+    },
+    "th": {
+      "name": "Header cell",
+      "description": "A cell that heads a row or a column."
+    },
+    "td": {
+      "name": "Data cell",
+      "description": "One cell of data."
+    },
+    "colgroup": {
+      "name": "Column group",
+      "description": "A group of table columns styled together."
+    },
+    "col": {
+      "name": "Column",
+      "description": "One column of a column group."
+    },
+    "span": {
+      "name": "Text span",
+      "description": "A piece of text to style, with no meaning of its own."
+    },
+    "strong": {
+      "name": "Important text",
+      "description": "Text that matters more than what surrounds it, shown in bold."
+    },
+    "em": {
+      "name": "Emphasis",
+      "description": "Text spoken with stress, shown in italics."
+    },
+    "b": {
+      "name": "Bold",
+      "description": "Text drawn in bold without extra importance, such as a keyword."
+    },
+    "i": {
+      "name": "Italic",
+      "description": "Text in an alternate voice, such as a foreign word or a thought."
+    },
+    "u": {
+      "name": "Underline",
+      "description": "Text marked with an underline, such as a misspelling."
+    },
+    "s": {
+      "name": "Strikethrough",
+      "description": "Text that is no longer accurate."
+    },
+    "small": {
+      "name": "Small print",
+      "description": "Side comments and fine print, such as a disclaimer."
+    },
+    "mark": {
+      "name": "Highlight",
+      "description": "Text highlighted for reference, such as a search match."
+    },
+    "code": {
+      "name": "Inline code",
+      "description": "A short piece of code inside a sentence."
+    },
+    "kbd": {
+      "name": "Keyboard input",
+      "description": "Keys the reader presses, such as Ctrl+C."
+    },
+    "samp": {
+      "name": "Program output",
+      "description": "Text a program printed."
+    },
+    "var": {
+      "name": "Variable",
+      "description": "A variable in a formula or in code."
+    },
+    "sub": {
+      "name": "Subscript",
+      "description": "Text set below the line, as in H₂O."
+    },
+    "sup": {
+      "name": "Superscript",
+      "description": "Text set above the line, as in 10²."
+    },
+    "q": {
+      "name": "Inline quote",
+      "description": "A short quotation inside a sentence."
+    },
+    "cite": {
+      "name": "Citation",
+      "description": "The title of a creative work, such as a book or a film."
+    },
+    "abbr": {
+      "name": "Abbreviation",
+      "description": "An abbreviation or an acronym, with its full form."
+    },
+    "dfn": {
+      "name": "Definition",
+      "description": "The term a sentence defines."
+    },
+    "time": {
+      "name": "Date or time",
+      "description": "A date or a time that software can read."
+    },
+    "data": {
+      "name": "Data value",
+      "description": "A value with a machine-readable form, such as a product code."
+    },
+    "del": {
+      "name": "Deleted text",
+      "description": "Text removed from a document, shown struck through."
+    },
+    "ins": {
+      "name": "Inserted text",
+      "description": "Text added to a document, shown underlined."
+    },
+    "br": {
+      "name": "Line break",
+      "description": "Starts a new line inside the same paragraph."
+    },
+    "wbr": {
+      "name": "Line break opportunity",
+      "description": "A place a long word may wrap."
+    },
+    "bdi": {
+      "name": "Isolated text direction",
+      "description": "Text whose direction may differ from what surrounds it, such as a user name."
+    },
+    "bdo": {
+      "name": "Text direction override",
+      "description": "Text drawn in a direction you set."
+    },
+    "ruby": {
+      "name": "Ruby annotation",
+      "description": "Text with a small pronunciation guide above it, as in East Asian typography."
+    },
+    "rt": {
+      "name": "Ruby text",
+      "description": "The pronunciation guide of a ruby annotation."
+    },
+    "rp": {
+      "name": "Ruby fallback",
+      "description": "Parentheses shown around ruby text where ruby is not supported."
+    },
+    "area": {
+      "name": "Image map area",
+      "description": "A clickable region of an image map."
+    },
+    "canvas": {
+      "name": "Drawing canvas",
+      "description": "A surface a script draws graphics on."
+    },
+    "embed": {
+      "name": "Embedded content",
+      "description": "Content from an external file, such as a plugin."
+    },
+    "map": {
+      "name": "Image map",
+      "description": "An image with clickable regions."
+    },
+    "noscript": {
+      "name": "No-script fallback",
+      "description": "Content shown when scripts are turned off."
+    },
+    "object": {
+      "name": "External object",
+      "description": "An external resource, such as a PDF."
+    },
+    "selectedcontent": {
+      "name": "Selected option content",
+      "description": "Shows the chosen option inside a customised dropdown."
+    },
+    "slot": {
+      "name": "Slot",
+      "description": "Where a component shows the content placed inside it."
+    },
+    "template": {
+      "name": "Template",
+      "description": "Content kept for a script to copy, not shown on the page."
+    }
+  }
+}

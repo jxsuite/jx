@@ -1,7 +1,7 @@
 {
   "$schema": "https://jxsuite.com/schema/v1",
   "$id": "StudioPanelElements",
-  "$description": "The Insert panel: the palette a page is built out of. One filter, then one accordion — the project's own components first, then the HTML elements by category — and a card per thing that can be inserted. The adapter (`surfaces/panel-elements.ts`) is handed sections whose cards are already filtered, already open or closed, and already carry the tag they insert, so nothing here asks what an element is, which npm components the document has enabled, or what the filter means. A card is inserted by CLICK from this document and by DRAG from `panels/dnd.ts`, which registers against the painted card — that seam is why three class names survive the conversion, and the style block says why.",
+  "$description": "The Insert panel: the palette a page is built out of. Two tabs, Elements and Components, then one filter for whichever is showing, then that tab's cards: the HTML elements in an accordion of categories, or the project's components. The adapter (`surfaces/panel-elements.ts`) is handed cards that are already filtered, already named in the reader's language and already sorted into sections that know whether they are open, so nothing here asks what an element is called, which npm components the document has enabled, or what the filter means. A card is inserted by CLICK from this document and by DRAG from `panels/dnd.ts`, which registers against the painted card — that seam is why three class names survive the conversion, and the style block says why.",
   "tagName": "div",
   "attributes": {
     "part": "palette"
@@ -38,9 +38,98 @@
       "color": "var(--fg-dim)",
       "fontSize": "var(--jx-text-sm)",
       "fontStyle": "italic"
+    },
+    "& [part=\"tabs\"]": {
+      "$description": "Two words in the Navigator's column. Each tab takes half the strip rather than the kit tab's own width, so the pair reads as a switch between two halves of one palette, not as two documents.",
+      "flex": "0 0 auto",
+      "gap": "0",
+      "fontSize": "var(--jx-text-sm)"
+    },
+    "& [part=\"tab\"]": {
+      "flex": "1 1 0",
+      "justifyContent": "center",
+      "minWidth": "0",
+      "maxWidth": "none",
+      "padding": "var(--jx-space-1) var(--jx-space-2)"
+    },
+    "& [part=\"panel\"]": {
+      "$description": "The kit's tab panel pads itself for a dialog; here the filter above it already sets the inset, and the accordion runs edge to edge as it did before the tabs.",
+      "padding": "0",
+      "minHeight": "0"
+    },
+    "& [part=\"components-section\"]": {
+      "$description": "The component cards sit in one column with the inset an accordion item gives its body, since this tab has no accordion around them.",
+      "padding": "0 var(--jx-space-2) var(--jx-space-2)"
+    },
+    "& [part=\"element-name\"]": {
+      "$description": "A card's caption leads with the element's name in the reader's language, in the chrome's own type. `.element-card-label` (styles/panels.css) is monospace for the tag it used to hold alone; the name is prose, so it takes the sans face back.",
+      "fontFamily": "var(--jx-font-sans)",
+      "fontSize": "var(--jx-text-sm)",
+      "color": "var(--fg)"
+    },
+    "& [part=\"element-tag\"]": {
+      "$description": "The tag rides beside the name, dimmer, for the author who knows HTML and for the filter, which matches it too.",
+      "marginInlineStart": "var(--jx-space-1)",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"empty-actions\"]": {
+      "display": "flex",
+      "flexWrap": "wrap",
+      "justifyContent": "center",
+      "gap": "var(--jx-space-2)"
     }
   },
   "children": [
+    {
+      "tagName": "jx-tabs",
+      "attributes": {
+        "part": "tabs",
+        "selected": "${state.tab}"
+      },
+      "$props": {
+        "label": "Insert"
+      },
+      "onchange": {
+        "$prototype": "Function",
+        "body": [
+          {
+            "operator": "call",
+            "target": {
+              "$ref": "#/state/selectTab"
+            },
+            "value": [
+              {
+                "$ref": "event#/detail"
+              }
+            ]
+          }
+        ]
+      },
+      "children": [
+        {
+          "tagName": "jx-tab",
+          "attributes": {
+            "part": "tab",
+            "id": "insert-tab-elements",
+            "data-tab": "elements",
+            "value": "elements",
+            "label": "Elements",
+            "panel": "insert-panel-elements"
+          }
+        },
+        {
+          "tagName": "jx-tab",
+          "attributes": {
+            "part": "tab",
+            "id": "insert-tab-components",
+            "data-tab": "components",
+            "value": "components",
+            "label": "Components",
+            "panel": "insert-panel-components"
+          }
+        }
+      ]
+    },
     {
       "tagName": "jx-textfield",
       "attributes": {
@@ -50,8 +139,8 @@
         "size": "sm",
         "type": "search",
         "clearable": true,
-        "label": "Filter elements",
-        "placeholder": "Filter elements…",
+        "label": "${state.filterLabel}",
+        "placeholder": "${state.filterLabel}…",
         "value": {
           "$ref": "#/state/filter"
         }
@@ -74,292 +163,463 @@
       }
     },
     {
-      "tagName": "div",
+      "tagName": "jx-tab-panel",
       "attributes": {
-        "part": "empty-slot",
-        "role": "none"
+        "part": "panel",
+        "id": "insert-panel-elements",
+        "data-tab": "elements"
       },
-      "style": {
-        "display": "contents"
-      },
-      "$switch": {
-        "$ref": "#/state/emptyState"
-      },
-      "cases": {
-        "filtered": {
-          "tagName": "div",
-          "attributes": {
-            "part": "empty"
-          },
-          "children": [
-            {
-              "tagName": "p",
-              "attributes": {
-                "part": "empty-message"
-              },
-              "textContent": "Nothing here matches “${state.filter}”."
-            },
-            {
-              "tagName": "div",
-              "attributes": {
-                "part": "empty-actions"
-              },
-              "children": [
-                {
-                  "tagName": "jx-button",
-                  "$props": {
-                    "size": "sm"
-                  },
-                  "attributes": {
-                    "part": "clear-filter"
-                  },
-                  "onclick": {
-                    "$prototype": "Function",
-                    "body": [
-                      {
-                        "operator": "call",
-                        "target": {
-                          "$ref": "#/state/clearFilter"
-                        }
-                      }
-                    ]
-                  },
-                  "children": [
-                    {
-                      "tagName": "span",
-                      "textContent": "Clear the filter"
-                    }
-                  ]
-                }
-              ]
-            }
-          ]
+      "$props": {
+        "active": {
+          "$ref": "#/state/elementsShowing"
         },
-        "empty": {
-          "tagName": "div",
-          "attributes": {
-            "part": "empty"
-          },
-          "children": [
-            {
-              "tagName": "p",
-              "attributes": {
-                "part": "empty-message"
-              },
-              "textContent": "Elements you can drop onto the page live here — text, images, layout containers and your own components."
-            }
-          ]
-        }
-      }
-    },
-    {
-      "tagName": "jx-accordion",
-      "attributes": {
-        "part": "list"
+        "labelledby": "insert-tab-elements"
       },
       "children": [
         {
           "tagName": "div",
           "attributes": {
-            "part": "components-slot",
-            "role": "none",
-            "hidden": "${state.hasComponents ? null : ''}"
+            "part": "empty-slot",
+            "role": "none"
           },
           "style": {
-            "$description": "The section stands or falls as a whole, so the slot is `display: contents` — the accordion item inside it has to be the accordion's own layout child. `hidden` is what keeps the separator honest: `jx-accordion` gives a top border to every child that FOLLOWS a visible one, so an empty slot left visible would draw a line above the first category with nothing above it.",
             "display": "contents"
           },
           "$switch": {
-            "$ref": "#/state/hasComponents"
+            "$ref": "#/state/elementsEmpty"
           },
           "cases": {
-            "true": {
-              "tagName": "jx-accordion-item",
-              "$props": {
-                "label": "Components",
-                "open": {
-                  "$ref": "#/state/componentsOpen"
-                }
-              },
+            "filtered": {
+              "tagName": "div",
               "attributes": {
-                "data-section": "components"
-              },
-              "ontoggle": {
-                "$prototype": "Function",
-                "body": [
-                  {
-                    "operator": "call",
-                    "target": {
-                      "$ref": "#/state/setComponentsOpen"
-                    },
-                    "value": [
-                      {
-                        "$ref": "event#/detail"
-                      }
-                    ]
-                  }
-                ]
+                "part": "empty"
               },
               "children": [
                 {
+                  "tagName": "p",
+                  "attributes": {
+                    "part": "empty-message"
+                  },
+                  "textContent": "Nothing here matches “${state.filter}”."
+                },
+                {
                   "tagName": "div",
                   "attributes": {
-                    "class": "components-section"
+                    "part": "empty-actions"
                   },
                   "children": [
                     {
-                      "$prototype": "Array",
-                      "items": {
-                        "$ref": "#/state/components"
+                      "tagName": "jx-button",
+                      "$props": {
+                        "size": "sm"
                       },
-                      "key": {
-                        "$ref": "$map/item/tagName"
+                      "attributes": {
+                        "part": "clear-filter"
                       },
-                      "map": {
-                        "tagName": "div",
-                        "attributes": {
-                          "class": "element-card",
-                          "data-component-tag": "${$map.item.tagName}",
-                          "title": "${$map.item.title}"
-                        },
-                        "onclick": {
-                          "$prototype": "Function",
-                          "body": [
-                            {
-                              "operator": "call",
-                              "target": {
-                                "$ref": "#/state/insertComponent"
-                              },
-                              "value": [
-                                {
-                                  "$ref": "$map/item/tagName"
-                                }
-                              ]
-                            }
-                          ]
-                        },
-                        "children": [
+                      "onclick": {
+                        "$prototype": "Function",
+                        "body": [
                           {
-                            "tagName": "div",
-                            "attributes": {
-                              "class": "element-card-preview"
-                            },
-                            "children": [
+                            "operator": "call",
+                            "target": {
+                              "$ref": "#/state/clearFilter"
+                            }
+                          }
+                        ]
+                      },
+                      "children": [
+                        {
+                          "tagName": "span",
+                          "textContent": "Clear the filter"
+                        }
+                      ]
+                    },
+                    {
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "other-tab-slot",
+                        "role": "none"
+                      },
+                      "style": {
+                        "display": "contents"
+                      },
+                      "$switch": {
+                        "$ref": "#/state/hasOtherMatches"
+                      },
+                      "cases": {
+                        "true": {
+                          "tagName": "jx-button",
+                          "$props": {
+                            "size": "sm"
+                          },
+                          "attributes": {
+                            "part": "show-other-tab"
+                          },
+                          "onclick": {
+                            "$prototype": "Function",
+                            "body": [
                               {
-                                "tagName": "span",
-                                "attributes": {
-                                  "part": "component-tag"
-                                },
-                                "textContent": "<${$map.item.tagName}>"
+                                "operator": "call",
+                                "target": {
+                                  "$ref": "#/state/showOtherTab"
+                                }
                               }
                             ]
                           },
-                          {
-                            "tagName": "div",
-                            "attributes": {
-                              "class": "element-card-label"
-                            },
-                            "textContent": "${$map.item.tagName}"
-                          }
-                        ]
+                          "children": [
+                            {
+                              "tagName": "span",
+                              "textContent": "${state.otherMatches}"
+                            }
+                          ]
+                        }
                       }
                     }
                   ]
+                }
+              ]
+            },
+            "empty": {
+              "tagName": "div",
+              "attributes": {
+                "part": "empty"
+              },
+              "children": [
+                {
+                  "tagName": "p",
+                  "attributes": {
+                    "part": "empty-message"
+                  },
+                  "textContent": "Elements you can drop onto the page live here: headings, text, images, layout containers and more."
                 }
               ]
             }
           }
         },
         {
-          "$prototype": "Array",
-          "items": {
-            "$ref": "#/state/categories"
+          "tagName": "jx-accordion",
+          "attributes": {
+            "part": "list"
           },
-          "key": {
-            "$ref": "$map/item/name"
-          },
-          "map": {
-            "tagName": "jx-accordion-item",
-            "$props": {
-              "label": {
+          "children": [
+            {
+              "$prototype": "Array",
+              "items": {
+                "$ref": "#/state/categories"
+              },
+              "key": {
                 "$ref": "$map/item/name"
               },
-              "open": {
-                "$ref": "$map/item/open"
-              }
-            },
-            "attributes": {
-              "data-section": "${$map.item.name}"
-            },
-            "ontoggle": {
-              "$prototype": "Function",
-              "body": [
-                {
-                  "operator": "call",
-                  "target": {
-                    "$ref": "#/state/setSectionOpen"
+              "map": {
+                "tagName": "jx-accordion-item",
+                "$props": {
+                  "label": {
+                    "$ref": "$map/item/name"
                   },
-                  "value": [
+                  "open": {
+                    "$ref": "$map/item/open"
+                  }
+                },
+                "attributes": {
+                  "data-section": "${$map.item.key}"
+                },
+                "ontoggle": {
+                  "$prototype": "Function",
+                  "body": [
                     {
-                      "$ref": "$map/item/name"
+                      "operator": "call",
+                      "target": {
+                        "$ref": "#/state/setSectionOpen"
+                      },
+                      "value": [
+                        {
+                          "$ref": "$map/item/key"
+                        },
+                        {
+                          "$ref": "event#/detail"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                "children": [
+                  {
+                    "$prototype": "Array",
+                    "items": {
+                      "$ref": "$map/item/elements"
+                    },
+                    "key": {
+                      "$ref": "$map/item/tag"
+                    },
+                    "map": {
+                      "tagName": "div",
+                      "attributes": {
+                        "class": "element-card",
+                        "data-block-tag": "${$map.item.tag}",
+                        "title": "${$map.item.description}"
+                      },
+                      "onclick": {
+                        "$prototype": "Function",
+                        "body": [
+                          {
+                            "operator": "call",
+                            "target": {
+                              "$ref": "#/state/insertElement"
+                            },
+                            "value": [
+                              {
+                                "$ref": "$map/item/tag"
+                              }
+                            ]
+                          }
+                        ]
+                      },
+                      "children": [
+                        {
+                          "tagName": "div",
+                          "attributes": {
+                            "class": "element-card-preview"
+                          }
+                        },
+                        {
+                          "tagName": "div",
+                          "attributes": {
+                            "class": "element-card-label"
+                          },
+                          "children": [
+                            {
+                              "tagName": "span",
+                              "attributes": {
+                                "part": "element-name"
+                              },
+                              "textContent": "${$map.item.name}"
+                            },
+                            {
+                              "tagName": "span",
+                              "attributes": {
+                                "part": "element-tag"
+                              },
+                              "textContent": "<${$map.item.tag}>"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "tagName": "jx-tab-panel",
+      "attributes": {
+        "part": "panel",
+        "id": "insert-panel-components",
+        "data-tab": "components"
+      },
+      "$props": {
+        "active": {
+          "$ref": "#/state/componentsShowing"
+        },
+        "labelledby": "insert-tab-components"
+      },
+      "children": [
+        {
+          "tagName": "div",
+          "attributes": {
+            "part": "empty-slot",
+            "role": "none"
+          },
+          "style": {
+            "display": "contents"
+          },
+          "$switch": {
+            "$ref": "#/state/componentsEmpty"
+          },
+          "cases": {
+            "filtered": {
+              "tagName": "div",
+              "attributes": {
+                "part": "empty"
+              },
+              "children": [
+                {
+                  "tagName": "p",
+                  "attributes": {
+                    "part": "empty-message"
+                  },
+                  "textContent": "Nothing here matches “${state.filter}”."
+                },
+                {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "empty-actions"
+                  },
+                  "children": [
+                    {
+                      "tagName": "jx-button",
+                      "$props": {
+                        "size": "sm"
+                      },
+                      "attributes": {
+                        "part": "clear-filter"
+                      },
+                      "onclick": {
+                        "$prototype": "Function",
+                        "body": [
+                          {
+                            "operator": "call",
+                            "target": {
+                              "$ref": "#/state/clearFilter"
+                            }
+                          }
+                        ]
+                      },
+                      "children": [
+                        {
+                          "tagName": "span",
+                          "textContent": "Clear the filter"
+                        }
+                      ]
                     },
                     {
-                      "$ref": "event#/detail"
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "other-tab-slot",
+                        "role": "none"
+                      },
+                      "style": {
+                        "display": "contents"
+                      },
+                      "$switch": {
+                        "$ref": "#/state/hasOtherMatches"
+                      },
+                      "cases": {
+                        "true": {
+                          "tagName": "jx-button",
+                          "$props": {
+                            "size": "sm"
+                          },
+                          "attributes": {
+                            "part": "show-other-tab"
+                          },
+                          "onclick": {
+                            "$prototype": "Function",
+                            "body": [
+                              {
+                                "operator": "call",
+                                "target": {
+                                  "$ref": "#/state/showOtherTab"
+                                }
+                              }
+                            ]
+                          },
+                          "children": [
+                            {
+                              "tagName": "span",
+                              "textContent": "${state.otherMatches}"
+                            }
+                          ]
+                        }
+                      }
                     }
                   ]
                 }
               ]
             },
-            "children": [
-              {
-                "$prototype": "Array",
-                "items": {
-                  "$ref": "$map/item/elements"
-                },
-                "key": {
-                  "$ref": "$map/item/tag"
-                },
-                "map": {
-                  "tagName": "div",
+            "empty": {
+              "tagName": "div",
+              "attributes": {
+                "part": "empty"
+              },
+              "children": [
+                {
+                  "tagName": "p",
                   "attributes": {
-                    "class": "element-card",
-                    "data-block-tag": "${$map.item.tag}"
+                    "part": "empty-message"
                   },
-                  "onclick": {
-                    "$prototype": "Function",
-                    "body": [
+                  "textContent": "Components you make live here. Right-click a block and choose Convert to Component, or create one with Add new."
+                }
+              ]
+            }
+          }
+        },
+        {
+          "tagName": "div",
+          "attributes": {
+            "class": "components-section",
+            "part": "components-section"
+          },
+          "children": [
+            {
+              "$prototype": "Array",
+              "items": {
+                "$ref": "#/state/components"
+              },
+              "key": {
+                "$ref": "$map/item/tagName"
+              },
+              "map": {
+                "tagName": "div",
+                "attributes": {
+                  "class": "element-card",
+                  "data-component-tag": "${$map.item.tagName}",
+                  "title": "${$map.item.title}"
+                },
+                "onclick": {
+                  "$prototype": "Function",
+                  "body": [
+                    {
+                      "operator": "call",
+                      "target": {
+                        "$ref": "#/state/insertComponent"
+                      },
+                      "value": [
+                        {
+                          "$ref": "$map/item/tagName"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                "children": [
+                  {
+                    "tagName": "div",
+                    "attributes": {
+                      "class": "element-card-preview"
+                    },
+                    "children": [
                       {
-                        "operator": "call",
-                        "target": {
-                          "$ref": "#/state/insertElement"
+                        "tagName": "span",
+                        "attributes": {
+                          "part": "component-tag"
                         },
-                        "value": [
-                          {
-                            "$ref": "$map/item/tag"
-                          }
-                        ]
+                        "textContent": "<${$map.item.tagName}>"
                       }
                     ]
                   },
-                  "children": [
-                    {
-                      "tagName": "div",
-                      "attributes": {
-                        "class": "element-card-preview"
-                      }
+                  {
+                    "tagName": "div",
+                    "attributes": {
+                      "class": "element-card-label"
                     },
-                    {
-                      "tagName": "div",
-                      "attributes": {
-                        "class": "element-card-label"
-                      },
-                      "textContent": "<${$map.item.tag}>"
-                    }
-                  ]
-                }
+                    "children": [
+                      {
+                        "tagName": "span",
+                        "attributes": {
+                          "part": "element-name"
+                        },
+                        "textContent": "${$map.item.tagName}"
+                      }
+                    ]
+                  }
+                ]
               }
-            ]
-          }
+            }
+          ]
         }
       ]
     }

@@ -390,6 +390,40 @@ describe("external file drag", () => {
     }
   });
 
+  test("a file drag before the first render posts no placement", async () => {
+    const pair = fakeChannelPair<ParentToIframe, IframeToParent>();
+    const acks: IframeToParent[] = [];
+    pair.parent.onMessage((m) => acks.push(m));
+    const container = document.createElement("div");
+    document.body.append(container);
+    teardown = startCanvasIframe({ channel: pair.iframe, container });
+    document.elementFromPoint = () => document.body;
+    try {
+      fileDrag("dragover", [new File(["x"], "a.png")], { clientX: 5, clientY: 500 });
+      pair.flush();
+      const over = findAck(acks, "fileDragOver");
+      expect(over).toBeDefined();
+      expect(over?.preview).toBeNull();
+    } finally {
+      Reflect.deleteProperty(document, "elementFromPoint");
+    }
+  });
+
+  test("a file dragged over blank canvas below the page lands after its last block", async () => {
+    const { acks, pair } = await bootRendered(16);
+    document.elementFromPoint = () => document.body;
+    try {
+      acks.length = 0;
+      fileDrag("dragover", [new File(["x"], "a.png")], { clientX: 5, clientY: 500 });
+      pair.flush();
+      const over = findAck(acks, "fileDragOver");
+      expect(over?.hit).toBeNull();
+      expect(over?.preview).not.toBeNull();
+    } finally {
+      Reflect.deleteProperty(document, "elementFromPoint");
+    }
+  });
+
   test("leaving the frame posts fileDragLeave; an inner boundary crossing does not", async () => {
     const { acks, container, pair } = await bootRendered(14);
     acks.length = 0;

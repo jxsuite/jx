@@ -29,25 +29,25 @@ The menu also has a name. **Insert: Insert Block…** in the command palette (:k
 
 ## The block list
 
-| Command             | What you get      |
-| ------------------- | ----------------- |
-| **Heading 1**       | Large heading     |
-| **Heading 2**       | Medium heading    |
-| **Heading 3**       | Small heading     |
-| **Paragraph**       | Plain text        |
-| **Bulleted List**   | Unordered list    |
-| **Numbered List**   | Numbered list     |
-| **Blockquote**      | Quote block       |
-| **Image**           | Image             |
-| **Horizontal Rule** | Divider line      |
-| **Button**          | Button element    |
-| **Link**            | Anchor link       |
-| **Code Block**      | Preformatted code |
-| **Table**           | Table             |
-| **Div**             | Container         |
-| **Section**         | Section container |
+| Command           | Element      | What you get                                      |
+| ----------------- | ------------ | ------------------------------------------------- |
+| **Heading 1**     | `h1`         | The page's main title                             |
+| **Heading 2**     | `h2`         | A section heading                                 |
+| **Heading 3**     | `h3`         | A subsection heading                              |
+| **Paragraph**     | `p`          | Body text                                         |
+| **Bulleted list** | `ul`         | A list whose order does not matter                |
+| **Numbered list** | `ol`         | A list whose order matters                        |
+| **Quote**         | `blockquote` | A passage quoted from another source              |
+| **Image**         | `img`        | A picture                                         |
+| **Divider**       | `hr`         | A line between two parts of the page              |
+| **Button**        | `button`     | A button                                          |
+| **Link**          | `a`          | A link to another page or place                   |
+| **Code block**    | `pre`        | Text kept exactly as typed, in a fixed-width font |
+| **Table**         | `table`      | Rows and columns                                  |
+| **Container**     | `div`        | A box that groups other elements                  |
+| **Section**       | `section`    | A part of the page about one topic                |
 
-Filtering matches either the name or the element's short tag, so `ol` finds Numbered List and `h1` finds Heading 1.
+The names are the ones on the [Insert palette](/docs/studio/design/elements)'s cards, so an element is called the same thing wherever you insert it. Filtering matches either the name or the element's tag, so `ol` finds Numbered list and `h1` finds Heading 1.
 
 ## Components
 

@@ -21,11 +21,11 @@ size: M
 
 `specs/desktop.md` §6.2, line 522:
 
-> **Status: Partial.** The whole-project list ships: every component `discoverComponents` finds in the tree, loaded by `loadComponentRegistry` (`packages/studio/src/files/components.ts`) into the Insert palette's one Components section (`componentViews` in `packages/studio/src/panels/elements-panel.ts`). There is no scope label and no Active/Global split: the project's own components show as one flat list at every level, and only the npm cards vary, by what the open document's `$elements` enable (`enabledNpmTags` in the same file; only the dev server discovers npm components).
+> **Status: Partial.** The whole-project list ships: every component `discoverComponents` finds in the tree, loaded by `loadComponentRegistry` (`packages/studio/src/files/components.ts`) into the Insert panel's Components tab (`componentViews` in `packages/studio/src/panels/elements-panel.ts`). There is no scope label and no Active/Global split: the project's own components show as one flat list at every level, and only the npm cards vary, by what the open document's `$elements` enable (`enabledNpmTags` in the same file; only the dev server discovers npm components).
 
 `specs/desktop.md` §6.3, line 531:
 
-> **Status: Pending.** There are no Active and Global sections: the Insert palette draws one Components section (`componentViews` in `packages/studio/src/panels/elements-panel.ts`), and nothing splits the project's components by whether the current document references them.
+> **Status: Pending.** There are no Active and Global sections: the Insert panel's Components tab draws one flat list (`componentViews` in `packages/studio/src/panels/elements-panel.ts`), and nothing splits the project's components by whether the current document references them.
 
 `specs/desktop.md` §6.4, line 544:
 
@@ -40,7 +40,7 @@ All four were unmarked before the census; the retired §11 roadmap carried them 
 **What ships** (paths under `packages/studio/`)
 
 - `componentRegistry` / `loadComponentRegistry` in `src/files/components.ts`. Every project-open path loads it for a site project only (`src/files/files.ts`, `src/studio.ts`), and the two refreshes (`src/editor/convert-to-component.ts`, `src/panels/imports-panel.ts`) run from inside an open document, so a non-empty registry implies an open site project. `noteComponentSaved` keeps it current on save.
-- `componentViews` in `src/panels/elements-panel.ts`: the registry, npm entries gated by `enabledNpmTags` (the effective `$elements` of `activeTab.value`, project level included), filtered by `view.elementsFilter`, projected as `components` / `componentsOpen` / `hasComponents` into `src/surfaces/panel-elements.{ts,json}`. The JSON draws one `jx-accordion-item` (`data-section="components"`, label "Components") inside a `hidden` `components-slot`, whose cards sit in a `div.components-section`. Collapse state is `view.elementsCollapsed`, keyed by the label.
+- `componentViews` in `src/panels/elements-panel.ts`: the registry, npm entries gated by `enabledNpmTags` (the effective `$elements` of `activeTab.value`, project level included), filtered by `view.elementsFilter`, projected as `components` and `componentsEmpty` into `src/surfaces/panel-elements.{ts,json}`. Since studio.md §5.3 split the panel into Elements and Components tabs, the JSON draws the cards flat in the Components `jx-tab-panel`, in a `div` with `class="components-section"` and `part="components-section"`, with no accordion; the element sections' disclosure is `view.elementsOpen`, a map keyed by category key. Steps 2, 3 and 4 below and the test list were written against the earlier single Components accordion section (`componentsOpen`, `hasComponents`, `setComponentsOpen`, the `components-slot`, `view.elementsCollapsed`), and are to be re-read against the tab before this plan is executed: the sections become `jx-accordion-item`s inside the Components tab, keyed into `view.elementsOpen`.
 - `registerComponentsDnD` in `src/panels/dnd.ts` finds its rows with `leftPanel.querySelector(".components-section")`: the first section only.
 - The panel is `level: "document"` with no `requiresDocument`, so it renders with no tab open. The Navigator's effect in `src/panels/left-panel.ts` repaints on `activeTab.value` and on `tab.doc.document` (the root reference `transactDoc` replaces on every applied transaction), and Insert's `afterRender` recomputes its projection on every repaint. So §6.5's trigger is already wired; nothing is computed from it.
 - `hasElement` in `src/files/elements.ts`: the one comparison of an `$elements` entry against a registry entry, `$ref`s resolved from the document's path, npm specifiers by subpath or package (studio.md §9.1.3).
@@ -95,7 +95,7 @@ All four were unmarked before the census; the retired §11 roadmap carried them 
 - desktop.md §6.4 is the one statement of that rule; §6.1 and §6.3 cite it.
 - `registerComponentsDnD` covers every `.components-section` (every `[part="components-section"]` once `plan:ui/surface-classes-to-parts` has landed; landing second, that plan converts the mapped template's class to the part and keeps `querySelectorAll`).
 - Section disclosure stays in `view.elementsCollapsed`, one Set per window, keyed by section key (`components`, `components-active`, `components-global`) beside the category names, through the one `setSectionOpen(key, open)`.
-- `plan:studio/insert-palette-categories` words studio.md §5.3 as drawn "after the components (§5.4)" without naming a component section, so it holds in either landing order. When `plan:studio/element-ref-normalization` lands, the Active set matches its spellings through `hasElement` with no change here.
+- studio.md §5.3 puts the components on the Insert panel's Components tab without naming a component section, so the sections this plan adds sit inside that tab with no §5.3 edit. When `plan:studio/element-ref-normalization` lands, the Active set matches its spellings through `hasElement` with no change here.
 
 ## Tests
 

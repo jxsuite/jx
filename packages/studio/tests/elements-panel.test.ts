@@ -1,7 +1,8 @@
 /**
  * The Insert panel — `src/panels/elements-panel.ts` and the surface it mounts,
- * `src/surfaces/panel-elements.{json,ts}`: the category accordion, the filter, insertion by click,
- * and the component section (npm enablement via `$elements`, instances built with `$props`).
+ * `src/surfaces/panel-elements.{json,ts}`: the Elements and Components tabs, the category accordion
+ * with its named cards, the filter, insertion by click, and the components (npm enablement via
+ * `$elements`, instances built with `$props`).
  *
  * Everything is addressed by `part` and by `data-section` / `data-block-tag` /
  * `data-component-tag`, because the panel is a document now: `renderElementsTemplate` is gone, the
@@ -27,8 +28,9 @@ import type { NavigatorPanelContext, NavigatorPanelDeps } from "../src/panels/pa
 import type { StudioPlatform } from "../src/types";
 import { isString } from "@jxsuite/schema/guards";
 import type { JxMutableNode } from "@jxsuite/schema/types";
+import webdata from "../data/webdata.json";
 
-/** The part of the bundled `data/webdata.json` the palette reads: category name to its blocks. */
+/** The part of the bundled `data/webdata.json` the palette reads: category key to its blocks. */
 interface WebdataFixture {
   elements: Record<string, { tag: string }[]>;
 }
@@ -42,10 +44,12 @@ type InsertPanelDeps = Pick<
   "defaultDef" | "registerComponentsDnD" | "registerElementsDnD"
 > & { webdata: WebdataFixture };
 
+/* Declared out of alphabetical order on purpose, so drawing them in declared order is observable. */
 const WEBDATA: WebdataFixture = {
   elements: {
-    Media: [{ tag: "img" }],
-    Text: [{ tag: "h1" }, { tag: "p" }],
+    text: [{ tag: "h1" }, { tag: "p" }],
+    media: [{ tag: "img" }],
+    inline: [{ tag: "strong" }],
   },
 };
 
@@ -118,10 +122,12 @@ function blankValues(): ElementsValues {
   return {
     categories: [],
     components: [],
-    componentsOpen: true,
-    emptyState: "empty",
+    componentsEmpty: "empty",
+    elementsEmpty: "empty",
     filter: "",
-    hasComponents: false,
+    filterLabel: "Filter elements",
+    otherMatches: "",
+    tab: "elements",
   };
 }
 
@@ -130,13 +136,14 @@ const NO_ACTIONS: ElementsActions = {
   clearFilter: () => {},
   insertComponent: () => {},
   insertElement: () => {},
-  setComponentsOpen: () => {},
+  selectTab: () => {},
   setFilter: () => {},
   setSectionOpen: () => {},
+  showOtherTab: () => {},
 };
 
 /** Mount the panel into a fresh host and let the document render. */
-async function renderElements(webdata: WebdataFixture = WEBDATA): Promise<HTMLElement> {
+async function renderElements(data: WebdataFixture = WEBDATA): Promise<HTMLElement> {
   host = makeHost();
   drags.components = 0;
   drags.elements = 0;
@@ -148,7 +155,7 @@ async function renderElements(webdata: WebdataFixture = WEBDATA): Promise<HTMLEl
     registerElementsDnD: () => {
       drags.elements += 1;
     },
-    webdata,
+    webdata: data,
   };
   mountElementsPanel(panelContext(deps), host);
   await flush();
@@ -165,19 +172,19 @@ async function seedRegistry(entries: ComponentEntry[]) {
   await loadComponentRegistry();
 }
 
-/** The section labelled `name`, as the kit's accordion item. */
-function section(name: string): HTMLElement & { open: boolean } {
-  const el = host.querySelector(`[data-section="${name}"]`);
+/** The section keyed `key`, as the kit's accordion item. */
+function section(key: string): HTMLElement & { open: boolean; label: string } {
+  const el = host.querySelector(`[data-section="${key}"]`);
   if (!el) {
-    throw new Error(`no "${name}" section in the palette`);
+    throw new Error(`no "${key}" section in the palette`);
   }
   /* SAFETY: every `[data-section]` node is a `jx-accordion-item` (surfaces/panel-elements.json),
-     and that component declares `open` as a boolean state exposed as a property
+     and that component declares `open` and `label` as state exposed as properties
      (ui/components/jx-accordion-item.json). */
-  return el as HTMLElement & { open: boolean };
+  return el as HTMLElement & { open: boolean; label: string };
 }
 
-/** Every section label in the palette, in the order the accordion draws them. */
+/** Every section key in the palette, in the order the accordion draws them. */
 function sectionNames(): (string | undefined)[] {
   return dataValues("[data-section]", "section");
 }
@@ -200,8 +207,8 @@ async function typeFilter(text: string): Promise<void> {
 }
 
 /** Open or close a section through the kit's own `toggle`, the way the platform announces one. */
-async function toggleSection(name: string, open: boolean): Promise<void> {
-  const item = section(name);
+async function toggleSection(key: string, open: boolean): Promise<void> {
+  const item = section(key);
   const details = item.querySelector("details");
   if (details) {
     details.open = open;
@@ -212,10 +219,26 @@ async function toggleSection(name: string, open: boolean): Promise<void> {
   await flush();
 }
 
+/** The tab panel showing `tab`'s cards. */
+function tabPanel(tab: string): HTMLElement & { active: boolean } {
+  /* SAFETY: every `[part="panel"]` node is a `jx-tab-panel` (surfaces/panel-elements.json), whose
+     `active` is a boolean state exposed as a property (ui/components/jx-tab-panel.json). */
+  return hostElement(`[part="panel"][data-tab="${tab}"]`) as HTMLElement & { active: boolean };
+}
+
+/** Activate a tab the way a pointer does: the tab dispatches `select`, the strip answers `change`. */
+async function clickTab(tab: string): Promise<void> {
+  hostElement(`[part="tab"][data-tab="${tab}"]`).dispatchEvent(
+    new MouseEvent("click", { bubbles: true }),
+  );
+  await flush();
+}
+
 beforeEach(async () => {
   document.body.innerHTML = "";
   view.elementsFilter = "";
-  view.elementsCollapsed = new Set();
+  view.elementsOpen = new Map();
+  view.insertTab = "elements";
   resetStudioState();
   resetWorkspaceWithTab({ children: [], tagName: "div" });
   await seedRegistry([]);
@@ -226,13 +249,53 @@ afterEach(() => {
   document.body.innerHTML = "";
 });
 
-describe("Insert panel — categories and filter", () => {
-  test("renders one accordion section per category, with a card per element", async () => {
+describe("Insert panel — tabs", () => {
+  test("Elements is the first tab and shows by default", async () => {
     await renderElements();
-    expect(sectionNames()).toEqual(["Media", "Text"]);
-    const tags = dataValues(".element-card", "blockTag");
-    expect(tags).toEqual(["img", "h1", "p"]);
-    expect(host.querySelector('[part="empty"]')).toBeNull();
+    expect(dataValues('[part="tab"]', "tab")).toEqual(["elements", "components"]);
+    expect(tabPanel("elements").active).toBe(true);
+    expect(tabPanel("components").active).toBe(false);
+  });
+
+  test("choosing Components swaps the panel and what the filter is named", async () => {
+    await renderElements();
+    await clickTab("components");
+    expect(view.insertTab).toBe("components");
+    expect(tabPanel("components").active).toBe(true);
+    expect(tabPanel("elements").active).toBe(false);
+    expect(filterInput().placeholder).toBe("Filter components…");
+    await clickTab("elements");
+    expect(view.insertTab).toBe("elements");
+    expect(filterInput().placeholder).toBe("Filter elements…");
+  });
+
+  test("the tab survives a remount, as a panel switch would cause", async () => {
+    view.insertTab = "components";
+    await renderElements();
+    expect(tabPanel("components").active).toBe(true);
+  });
+});
+
+describe("Insert panel — categories and filter", () => {
+  test("sections follow the order the element data declares, not the alphabet", async () => {
+    await renderElements();
+    expect(sectionNames()).toEqual(["text", "media", "inline"]);
+    expect(dataValues(".element-card[data-block-tag]", "blockTag")).toEqual([
+      "h1",
+      "p",
+      "img",
+      "strong",
+    ]);
+    expect(tabPanel("elements").querySelector('[part="empty"]')).toBeNull();
+  });
+
+  test("a section and a card are named in words, with the tag beside the card's name", async () => {
+    await renderElements();
+    expect(section("text").label).toBe("Text");
+    const card = hostElement('[data-block-tag="p"]');
+    expect(card.querySelector('[part="element-name"]')?.textContent).toBe("Paragraph");
+    expect(card.querySelector('[part="element-tag"]')?.textContent).toBe("<p>");
+    expect(card.getAttribute("title")).toBe("A block of body text.");
   });
 
   test("an element card's preview is left empty for dnd.ts to fill", async () => {
@@ -240,21 +303,58 @@ describe("Insert panel — categories and filter", () => {
     const preview = host.querySelector('[data-block-tag="p"] .element-card-preview');
     expect(preview).not.toBeNull();
     expect(preview!.firstChild).toBeNull();
-    expect(host.querySelector('[data-block-tag="p"] .element-card-label')?.textContent).toBe("<p>");
+  });
+
+  test("the committed element data is drawn whole, in its order, with Advanced last and each tag once", async () => {
+    view.elementsFilter = "";
+    await renderElements(webdata);
+    const keys = Object.keys(webdata.elements);
+    expect(sectionNames()).toEqual(keys);
+    expect(keys.at(-1)).toBe("advanced");
+    expect(keys.slice(0, 4)).toEqual(["text", "lists", "media", "layout"]);
+    const tags = dataValues(".element-card[data-block-tag]", "blockTag");
+    expect(new Set(tags).size).toBe(tags.length);
+    expect(tags.length).toBe(Object.values(webdata.elements).flat().length);
+  });
+
+  test("no document-level or head-only element is offered", async () => {
+    await renderElements(webdata);
+    const tags = dataValues(".element-card[data-block-tag]", "blockTag");
+    for (const tag of [
+      "html",
+      "head",
+      "body",
+      "base",
+      "link",
+      "meta",
+      "title",
+      "script",
+      "style",
+    ]) {
+      expect(tags).not.toContain(tag);
+    }
   });
 
   test("a filter set before the mount hides non-matching elements and empty categories", async () => {
     view.elementsFilter = "h1";
     await renderElements();
-    expect(sectionNames()).toEqual(["Text"]);
-    expect(host.querySelectorAll(".element-card").length).toBe(1);
+    expect(sectionNames()).toEqual(["text"]);
+    expect(host.querySelectorAll(".element-card[data-block-tag]").length).toBe(1);
+  });
+
+  test("the filter matches a card's name as well as its tag", async () => {
+    await renderElements();
+    await typeFilter("image");
+    expect(dataValues(".element-card[data-block-tag]", "blockTag")).toEqual(["img"]);
+    await typeFilter("para");
+    expect(dataValues(".element-card[data-block-tag]", "blockTag")).toEqual(["p"]);
   });
 
   test("typing in the filter narrows the palette without a repaint", async () => {
     await renderElements();
     await typeFilter("IMG");
     expect(view.elementsFilter).toBe("IMG");
-    expect(sectionNames()).toEqual(["Media"]);
+    expect(sectionNames()).toEqual(["media"]);
     // The echo: the field keeps what was typed, case and all — the scope is never a normalised
     // Copy of it, which is what would put the caret back mid-word.
     expect(filterInput().value).toBe("IMG");
@@ -263,24 +363,37 @@ describe("Insert panel — categories and filter", () => {
   test("clearing the filter brings the whole palette back", async () => {
     await renderElements();
     await typeFilter("img");
-    expect(sectionNames()).toEqual(["Media"]);
+    expect(sectionNames()).toEqual(["media"]);
     await typeFilter("");
-    expect(sectionNames()).toEqual(["Media", "Text"]);
+    expect(sectionNames()).toEqual(["text", "media", "inline"]);
   });
 
-  test("a collapsed category is drawn closed", async () => {
-    view.elementsCollapsed.add("Text");
+  test("inline formatting starts closed and the everyday categories open", async () => {
     await renderElements();
-    expect(section("Text").open).toBe(false);
-    expect(section("Media").open).toBe(true);
+    expect(section("text").open).toBe(true);
+    expect(section("media").open).toBe(true);
+    expect(section("inline").open).toBe(false);
+  });
+
+  test("a filter opens a category that starts closed, so its matches are seen", async () => {
+    await renderElements();
+    await typeFilter("strong");
+    expect(section("inline").open).toBe(true);
+  });
+
+  test("a section the reader closed stays closed, the filter notwithstanding", async () => {
+    view.elementsOpen.set("text", false);
+    view.elementsFilter = "h1";
+    await renderElements();
+    expect(section("text").open).toBe(false);
   });
 
   test("toggling a section records the disclosure both ways", async () => {
     await renderElements();
-    await toggleSection("Media", false);
-    expect(view.elementsCollapsed.has("Media")).toBe(true);
-    await toggleSection("Media", true);
-    expect(view.elementsCollapsed.has("Media")).toBe(false);
+    await toggleSection("media", false);
+    expect(view.elementsOpen.get("media")).toBe(false);
+    await toggleSection("media", true);
+    expect(view.elementsOpen.get("media")).toBe(true);
   });
 });
 
@@ -335,28 +448,31 @@ describe("Insert panel — components", () => {
     tagName: "extra-thing",
   };
 
-  /** The tag of every component card on screen. */
+  /** The tag of every component card in the Components tab. */
   function componentTags(): (string | undefined)[] {
     return dataValues("[data-component-tag]", "componentTag");
   }
 
-  test("no components section when the registry is empty", async () => {
+  test("an empty registry leaves the Components tab teaching where components come from", async () => {
     await renderElements();
-    expect(host.querySelector(".components-section")).toBeNull();
-    expect(sectionNames()).not.toContain("components");
-    /* Hidden rather than merely empty: `jx-accordion` gives a top border to every child that
-       follows a VISIBLE one, so a slot left visible would rule a line above the first category. */
-    expect(host.querySelector('[part="components-slot"]')?.hasAttribute("hidden")).toBe(true);
+    await clickTab("components");
+    expect(componentTags()).toEqual([]);
+    expect(tabPanel("components").querySelector('[part="empty-message"]')?.textContent).toContain(
+      "Convert to Component",
+    );
+    expect(tabPanel("elements").querySelector('[part="empty"]')).toBeNull();
   });
 
   test("npm components stay hidden unless the document enables them", async () => {
     await seedRegistry([projectComp, npmModuleComp, npmPkgComp]);
     await renderElements();
     expect(componentTags()).toEqual(["my-card"]);
-    expect(host.querySelector('[part="components-slot"]')?.hasAttribute("hidden")).toBe(false);
-    // The components section is drawn first, and dnd.ts finds its rows by this container.
-    expect(host.querySelector(".components-section [data-component-tag]")).not.toBeNull();
-    expect(sectionNames()[0]).toBe("components");
+    // The components are the Components tab's alone, and dnd.ts finds their rows by this container.
+    expect(
+      tabPanel("components").querySelector(".components-section [data-component-tag]"),
+    ).not.toBeNull();
+    expect(tabPanel("elements").querySelector("[data-component-tag]")).toBeNull();
+    expect(sectionNames()).not.toContain("components");
   });
 
   test("an $elements entry naming package/modulePath enables that one component", async () => {
@@ -373,6 +489,7 @@ describe("Insert panel — components", () => {
     const card = hostElement('[data-component-tag="fancy-button"]');
     expect(card.getAttribute("title")).toBe("@acme/widgets: <fancy-button>");
     expect(card.querySelector('[part="component-tag"]')?.textContent).toBe("<fancy-button>");
+    expect(card.querySelector('[part="element-name"]')?.textContent).toBe("fancy-button");
   });
 
   test("a bare package entry enables every component from that package", async () => {
@@ -390,7 +507,7 @@ describe("Insert panel — components", () => {
     await seedRegistry([projectComp]);
     await renderElements();
     await typeFilter("zzz");
-    expect(host.querySelector(".components-section")).toBeNull();
+    expect(componentTags()).toEqual([]);
     await typeFilter("card");
     expect(host.querySelector('[data-component-tag="my-card"]')).not.toBeNull();
   });
@@ -437,15 +554,6 @@ describe("Insert panel — components", () => {
     hostElement('[data-block-tag="h1"]').click();
     expect(activeTab.value?.doc.document.$elements).toBeUndefined();
   });
-
-  test("toggling the components section records the disclosure", async () => {
-    await seedRegistry([projectComp]);
-    await renderElements();
-    await toggleSection("components", false);
-    expect(view.elementsCollapsed.has("Components")).toBe(true);
-    await toggleSection("components", true);
-    expect(view.elementsCollapsed.has("Components")).toBe(false);
-  });
 });
 
 describe("Insert panel — empty states", () => {
@@ -458,13 +566,52 @@ describe("Insert panel — empty states", () => {
     hostElement('[part="clear-filter"]').click();
     await flush();
     expect(view.elementsFilter).toBe("");
-    expect(host.querySelector('[part="empty"]')).toBeNull();
-    expect(sectionNames()).toEqual(["Media", "Text"]);
+    expect(tabPanel("elements").querySelector('[part="empty"]')).toBeNull();
+    expect(sectionNames()).toEqual(["text", "media", "inline"]);
+  });
+
+  test("a tab the filter empties offers the other tab's matches, and the offer switches tabs", async () => {
+    await seedRegistry([
+      { path: "components/my-card.json", props: [], source: "project", tagName: "my-card" },
+    ]);
+    await renderElements();
+    await typeFilter("card");
+    const offer = hostElement('[part="panel"][data-tab="elements"] [part="show-other-tab"]');
+    expect(offer.textContent.trim()).toBe("Show 1 matching component");
+    offer.click();
+    await flush();
+    expect(view.insertTab).toBe("components");
+    expect(tabPanel("components").active).toBe(true);
+    expect(view.elementsFilter).toBe("card");
+  });
+
+  test("no offer is made when the other tab has nothing either", async () => {
+    await renderElements();
+    await typeFilter("zzz");
+    expect(host.querySelector('[part="show-other-tab"]')).toBeNull();
+  });
+
+  test("the offer counts in the plural, and points back at Elements from Components", async () => {
+    view.insertTab = "components";
+    await renderElements();
+    await typeFilter("head");
+    expect(
+      hostElement(
+        '[part="panel"][data-tab="components"] [part="show-other-tab"]',
+      ).textContent.trim(),
+    ).toBe("Show 1 matching element");
+    await typeFilter("");
+    await typeFilter("e");
+    expect(
+      hostElement(
+        '[part="panel"][data-tab="components"] [part="show-other-tab"]',
+      ).textContent.trim(),
+    ).toMatch(/^Show \d+ matching elements$/);
   });
 
   test("an empty palette teaches what the region is for, with no action to offer", async () => {
     await renderElements({ elements: {} });
-    expect(host.querySelector('[part="empty-message"]')?.textContent).toContain(
+    expect(tabPanel("elements").querySelector('[part="empty-message"]')?.textContent).toContain(
       "Elements you can drop onto the page live here",
     );
     expect(host.querySelector('[part="clear-filter"]')).toBeNull();

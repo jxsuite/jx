@@ -1,11 +1,12 @@
 /**
- * Gen-webdata.js — Extract web platform data from @webref packages
+ * Gen-webdata.ts — extract web platform data from the @webref packages.
  *
- * Produces studio/webdata.json with: - Categorized HTML elements for the blocks panel - CSS
- * property names + initial values for autocomplete - Event handler names from IDL - All
- * non-obsolete tag names
+ * Writes `data/webdata.json`: the Insert palette's HTML elements by category, CSS property names
+ * with their initial values for autocomplete, event handler names from IDL, and every non-obsolete
+ * tag name. The file is committed after `oxfmt`, which the commit hook runs on every staged JSON
+ * file.
  *
- * Usage: bun run studio/gen-webdata.js
+ * Usage: `bun run gen:webdata` (from packages/studio)
  */
 
 import { listAll } from "@webref/elements";
@@ -13,96 +14,103 @@ import css from "@webref/css";
 import idl from "@webref/idl";
 import { writeFileSync } from "node:fs";
 
-// ─── Element categories for the blocks panel ─────────────────────────────────
+// ─── The Insert palette's categories ─────────────────────────────────────────
 
+/**
+ * The Insert palette draws these groups in this key order (studio.md §5.3), most-used first, so a
+ * newcomer meets headings, paragraphs and images before form controls and table parts. Each key is
+ * a stable id, not a caption: the name a reader sees comes from the locale catalog
+ * (`data/locales/<lang>/elements.json`), so a translation never touches this table. A tag
+ * `@webref/elements` no longer lists as current is dropped.
+ */
 const CATEGORIES = {
-  Form: [
+  text: ["h1", "h2", "h3", "h4", "h5", "h6", "p", "blockquote", "pre", "hr", "address"],
+  lists: ["ul", "ol", "li", "dl", "dt", "dd", "menu"],
+  media: ["img", "figure", "figcaption", "video", "audio", "picture", "source", "track", "iframe"],
+  layout: [
+    "section",
+    "div",
+    "header",
+    "footer",
+    "main",
+    "nav",
+    "article",
+    "aside",
+    "search",
+    "hgroup",
+  ],
+  interactive: ["a", "button", "details", "summary", "dialog"],
+  forms: [
     "form",
+    "label",
     "input",
     "textarea",
     "select",
     "option",
     "optgroup",
-    "button",
-    "label",
+    "datalist",
     "fieldset",
     "legend",
     "output",
     "progress",
     "meter",
-    "datalist",
   ],
-  Interactive: ["details", "summary", "dialog", "menu"],
-  "List & Table": [
-    "ul",
-    "ol",
-    "li",
-    "dl",
-    "dt",
-    "dd",
-    "table",
-    "thead",
-    "tbody",
-    "tfoot",
-    "tr",
-    "th",
-    "td",
-    "caption",
-    "colgroup",
-    "col",
-  ],
-  Media: [
-    "img",
-    "picture",
-    "source",
-    "video",
-    "audio",
-    "track",
-    "canvas",
-    "iframe",
-    "embed",
-    "object",
-  ],
-  Structure: [
-    "div",
-    "section",
-    "article",
-    "aside",
-    "main",
-    "header",
-    "footer",
-    "nav",
-    "search",
-    "hgroup",
-    "slot",
-  ],
-  Text: [
-    "h1",
-    "h2",
-    "h3",
-    "h4",
-    "h5",
-    "h6",
-    "p",
+  tables: ["table", "caption", "thead", "tbody", "tfoot", "tr", "th", "td", "colgroup", "col"],
+  inline: [
     "span",
-    "a",
     "strong",
     "em",
+    "b",
+    "i",
+    "u",
+    "s",
     "small",
     "mark",
     "code",
-    "pre",
-    "blockquote",
-    "q",
-    "abbr",
-    "time",
+    "kbd",
+    "samp",
+    "var",
     "sub",
     "sup",
+    "q",
+    "cite",
+    "abbr",
+    "dfn",
+    "time",
+    "data",
+    "del",
+    "ins",
     "br",
-    "hr",
     "wbr",
+    "bdi",
+    "bdo",
+    "ruby",
+    "rt",
+    "rp",
   ],
 } satisfies Record<string, string[]>;
+
+/** The last group: every current HTML element no named group holds and {@link NOT_OFFERED} keeps. */
+const REMAINDER = "advanced";
+
+/**
+ * HTML elements the palette does not offer at all, because none of them belongs in a page's body.
+ * `html`, `head` and `body` are the document itself, which a Jx page already is. `base`, `link`,
+ * `meta`, `title`, `script` and `style` belong in the head, which the Page tab edits as `$head`
+ * (§6); a Jx document styles itself through `style` and the stylebook and behaves through its
+ * functions, not through a tag that runs or applies.
+ */
+const NOT_OFFERED = new Set([
+  "html",
+  "head",
+  "body",
+  "base",
+  "link",
+  "meta",
+  "title",
+  "script",
+  "style",
+]);
 
 // ─── What the @webref packages hand back (they ship no types) ─────────────────
 
@@ -159,7 +167,7 @@ async function main() {
     }
   }
 
-  // Collect uncategorized HTML elements into "Other"
+  // Every other current HTML element the palette offers goes into the last group
   const htmlTags = new Set<string>();
   const html = specs.get("html");
   if (html) {
@@ -169,9 +177,11 @@ async function main() {
       }
     }
   }
-  const other = [...htmlTags].filter((t) => !categorized.has(t)).toSorted();
-  if (other.length > 0) {
-    elements["Other"] = other.map((t) => ({ tag: t }));
+  const remainder = [...htmlTags]
+    .filter((t) => !categorized.has(t) && !NOT_OFFERED.has(t))
+    .toSorted();
+  if (remainder.length > 0) {
+    elements[REMAINDER] = remainder.map((t) => ({ tag: t }));
   }
 
   // 3. Extract CSS properties (non-legacy, with camelCase name)
@@ -214,7 +224,7 @@ async function main() {
   // 5. Write output
   const output = { allTags, cssProps, elements, eventHandlers };
   const json = JSON.stringify(output, null, 2);
-  writeFileSync("studio/data/webdata.json", json);
+  writeFileSync(new URL("../data/webdata.json", import.meta.url), `${json}\n`);
 
   // Stats
   const cats = Object.entries(elements)
@@ -224,7 +234,7 @@ async function main() {
   console.log(`CSS properties: ${cssProps.length}`);
   console.log(`Event handlers: ${eventHandlers.length}`);
   console.log(`All tags: ${allTags.length}`);
-  console.log(`Written → studio/webdata.json (${(json.length / 1024).toFixed(1)} KB)`);
+  console.log(`Written → data/webdata.json (${(json.length / 1024).toFixed(1)} KB)`);
 }
 
 await main();

@@ -106,11 +106,11 @@ Three ways to add something to the page:
 
 - **The + affordance.** Move the pointer between two elements and a **+** appears at the insertion point. Click it and pick an element from the menu; the new element lands right there, selected.
 - **The slash menu.** While editing text, type `/` at the start of a line to insert headings, lists, images, buttons, and more without leaving the keyboard. See [Edit mode](/docs/studio/editing).
-- **The Insert panel.** Press :kbd[⌘K] / :kbd[Ctrl+K], type `>Show Insert`, and drag an element or component card onto the canvas.
+- **The Insert panel.** Click **Insert** on the Navigator rail and drag an element or component card onto the canvas. Drop it on the empty canvas below your content to add it at the end of the page.
 
 ## Drag and drop
 
-You can drag onto and around the canvas from almost anywhere: cards from the **Insert** panel, rows in the **Outline** panel, and the **⠿** handle on the block action bar. While you drag, an indicator line shows exactly where the element will land: before, after, or inside the element under the cursor. Drop to commit, or press :kbd[Esc] to cancel the drag with nothing changed.
+You can drag onto and around the canvas from almost anywhere: cards from the **Insert** panel, rows in the **Outline** panel, and the **⠿** handle on the block action bar. While you drag, an indicator line shows exactly where the element will land: before, after, or inside the element under the cursor. Over the empty canvas below a short page it lands after the last element; over a layout's locked header or footer it lands nowhere. Drop to commit, or press :kbd[Esc] to cancel the drag with nothing changed.
 
 Files from your desktop work too. Drop an image on empty space and Studio uploads it and inserts it there; drop it on a picture that's already on the page and it swaps that picture's source instead. The target highlights so you can tell the two apart before you let go. An upload that fails says so and stays said, on the **[Problems](/docs/studio/interface/problems-and-progress)** list, naming the file it couldn't write. See **[Media](/docs/studio/projects/media)**.
 

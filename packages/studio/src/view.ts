@@ -97,7 +97,13 @@ interface ViewState {
   blockActionBarEl: HTMLElement | null;
   selDragCleanup: (() => void) | null;
   dndCleanups: (() => void)[];
-  elementsCollapsed: Set<string>;
+  /** The Insert palette's tab (§5.3). */
+  insertTab: "elements" | "components";
+  /**
+   * The Insert palette's sections the reader has opened or closed, by category key. A key not here
+   * takes its default: open, except the categories that start closed.
+   */
+  elementsOpen: Map<string, boolean>;
   elementsFilter: string;
   _currentDropTargetRow: HTMLElement | null;
   layerDragSourceHeight: number;
@@ -119,7 +125,8 @@ export const view: ViewState = {
   dndCleanups: [],
 
   // Left panel / elements UI
-  elementsCollapsed: new Set(),
+  insertTab: "elements",
+  elementsOpen: new Map(),
   elementsFilter: "",
 
   // Drag interaction

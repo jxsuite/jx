@@ -115,8 +115,8 @@ function leftCtx(): NavigatorPanelDeps {
     mountSignalsPanel: mock(() => {}),
     setCanvasMode: mock(() => {}),
     /* SAFETY: the Elements palette is the only reader of `webdata`, and it reads nothing but
-       `elements` (category name to `{ tag }` blocks); one category is all the Insert panel needs. */
-    webdata: { elements: { Text: [{ tag: "p" }] } } as NavigatorPanelDeps["webdata"],
+       `elements` (category key to `{ tag }` blocks); one category is all the Insert panel needs. */
+    webdata: { elements: { text: [{ tag: "p" }] } } as NavigatorPanelDeps["webdata"],
   };
 }
 
