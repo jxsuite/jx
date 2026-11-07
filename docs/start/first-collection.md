@@ -106,8 +106,8 @@ You should see the empty page on the design canvas, once per breakpoint.
 
 Design a single card, which the repeater will copy per post:
 
-1. Press :kbd[⌘K] and type `>Show Insert`. With nothing selected, click the **article** card.
-2. With the article selected, click the **h3** card, then the **p** card twice. Each new element lands inside the selection.
+1. Click **Insert** on the Navigator rail. With nothing selected, click the **Article** card in the **Layout** section.
+2. With the article selected, click the **Heading 3** card, then the **Paragraph** card twice. Each new element lands inside the selection.
 3. Select each of the three in turn and give it placeholder text via **Text Content** in the Inspector's **Content** view: `Post title`, `A line about the post.`, and `2026-01-01`.
 
 ![The design canvas with one article card holding a heading and two placeholder paragraphs](../images/blog-card.png)

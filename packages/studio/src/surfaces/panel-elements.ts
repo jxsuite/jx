@@ -2,11 +2,12 @@
 /**
  * The Insert surface: the Navigator's element palette, as a Jx document over the kit.
  *
- * This is the adapter. `panels/elements-panel.ts` keeps the panel — what the palette contains,
- * which npm components the open document has enabled, what the filter matches, and what a click
- * inserts where — and hands this module a projection with no decisions left in it: a section per
- * category that already knows whether it is open, a card per thing that can be inserted, and the
- * one of three empty states the palette is in.
+ * This is the adapter. `panels/elements-panel.ts` keeps the panel — what the palette contains, what
+ * each element is called, which npm components the open document has enabled, what the filter
+ * matches, and what a click inserts where — and hands this module a projection with no decisions
+ * left in it: the tab that is showing, a section per category that already knows whether it is
+ * open, a named card per thing that can be inserted, and the one of three empty states each tab is
+ * in.
  *
  * The flattening is here rather than in the document for the reason `surfaces/settings-overview.ts`
  * gives: `$switch` over a value is the only conditional a document has, and "is there anything to
@@ -36,13 +37,18 @@ import type { SurfaceHandle } from "../ui/surface";
 
 registerSurface("panel-elements", elementsDoc);
 
-/** One insertable HTML element: the tag is its identity, its caption and what a click inserts. */
+/** One insertable HTML element: the tag is its identity and what a click inserts. */
 export interface ElementCardView {
   tag: string;
+  /** What the card is captioned, in the reader's language. */
+  name: string;
+  /** What the element is for, in one line: the card's tooltip. */
+  description: string;
 }
 
-/** One category of the palette — an accordion section, keyed and labelled by its name. */
+/** One category of the palette: an accordion section, keyed by a stable id, labelled by name. */
 export interface ElementCategoryView {
+  key: string;
   name: string;
   open: boolean;
   elements: ElementCardView[];
@@ -54,32 +60,44 @@ export interface ComponentCardView {
   title: string;
 }
 
+/** The palette's two tabs (§5.3). */
+export type InsertTab = "elements" | "components";
+
 /**
- * Which body the palette is showing under its filter.
+ * Which body a tab is showing under the filter.
  *
- * `"filtered"` and `"empty"` are different answers rather than one with a flag: a palette nothing
- * matches offers to clear the filter, and a palette with nothing in it teaches what the region is
- * for, because there is no filter to clear.
+ * `"filtered"` and `"empty"` are different answers rather than one with a flag: a tab nothing
+ * matches offers to clear the filter, and a tab with nothing in it teaches what it is for, because
+ * there is no filter to clear.
  */
 export type ElementsEmptyState = "none" | "filtered" | "empty";
 
 /** What the panel says the surface should be showing right now. */
 export interface ElementsValues {
+  /** The tab that is showing. */
+  tab: InsertTab;
   /** What the filter field holds — the reader's own text, never a normalised form of it. */
   filter: string;
+  /** The filter's accessible name and placeholder, which says what it narrows. */
+  filterLabel: string;
   categories: ElementCategoryView[];
   components: ComponentCardView[];
-  componentsOpen: boolean;
-  hasComponents: boolean;
-  emptyState: ElementsEmptyState;
+  elementsEmpty: ElementsEmptyState;
+  componentsEmpty: ElementsEmptyState;
+  /**
+   * The other tab's offer when the filter empties this one but not that one ("Show 2 matching
+   * components"), or `""`.
+   */
+  otherMatches: string;
 }
 
 /** What a control can ask the panel to do. Every one of them is a decision the panel owns. */
 export interface ElementsActions {
+  selectTab: (tab: string) => void;
+  showOtherTab: () => void;
   setFilter: (value: string) => void;
   clearFilter: () => void;
-  setSectionOpen: (name: string, open: boolean) => void;
-  setComponentsOpen: (open: boolean) => void;
+  setSectionOpen: (key: string, open: boolean) => void;
   insertElement: (tag: string) => void;
   insertComponent: (tagName: string) => void;
 }
@@ -101,17 +119,29 @@ export interface ElementsSurfaceHandle {
   dispose: () => void;
 }
 
-/** The scope the document reads: {@link ElementsValues} plus the actions its controls call. */
-interface ElementsScope extends ElementsValues, ElementsActions {}
+/**
+ * The scope the document reads: {@link ElementsValues}, the flags a `$switch` and a tab panel's
+ * `active` need as their own values, and the actions its controls call.
+ */
+interface ElementsScope extends ElementsValues, ElementsActions {
+  elementsShowing: boolean;
+  componentsShowing: boolean;
+  hasOtherMatches: boolean;
+}
 
 /** Write a projection into the scope. */
 function project(scope: ElementsScope, values: ElementsValues): void {
+  scope.tab = values.tab;
+  scope.elementsShowing = values.tab === "elements";
+  scope.componentsShowing = values.tab === "components";
   scope.filter = values.filter;
+  scope.filterLabel = values.filterLabel;
   scope.categories = values.categories;
   scope.components = values.components;
-  scope.componentsOpen = values.componentsOpen;
-  scope.hasComponents = values.hasComponents;
-  scope.emptyState = values.emptyState;
+  scope.elementsEmpty = values.elementsEmpty;
+  scope.componentsEmpty = values.componentsEmpty;
+  scope.otherMatches = values.otherMatches;
+  scope.hasOtherMatches = values.otherMatches !== "";
 }
 
 /**
@@ -131,15 +161,21 @@ export function mountElementsSurface(
     categories: [],
     clearFilter: actions.clearFilter,
     components: [],
-    componentsOpen: true,
-    emptyState: "none",
+    componentsEmpty: "none",
+    componentsShowing: false,
+    elementsEmpty: "none",
+    elementsShowing: true,
     filter: "",
-    hasComponents: false,
+    filterLabel: "",
+    hasOtherMatches: false,
     insertComponent: actions.insertComponent,
     insertElement: actions.insertElement,
-    setComponentsOpen: actions.setComponentsOpen,
+    otherMatches: "",
+    selectTab: actions.selectTab,
     setFilter: actions.setFilter,
     setSectionOpen: actions.setSectionOpen,
+    showOtherTab: actions.showOtherTab,
+    tab: "elements",
   });
   project(scope, values);
 

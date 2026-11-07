@@ -24,6 +24,7 @@ import { parseJxPath, serializeJxPath } from "./path-mapping";
 import {
   AUTO_SCROLL_STEP,
   computeDropInstruction,
+  resolveBlankCanvasDrop,
   rectFor,
   resolveDropTarget,
   scrollDirection,
@@ -107,8 +108,9 @@ setNpmModuleResolver((specifier) => npmModuleUrl(specifier, location.href));
 
 /**
  * Resolve the drop placement for a forwarded cursor: point hit-test → nearest `[data-jx-path]` →
- * pure {@link computeDropInstruction}. Returns null when the cursor resolves to no droppable target.
- * Shared by the `dragMove` (display-only preview) and `drop` (fresh, authoritative) handlers.
+ * pure {@link computeDropInstruction}, or, over blank canvas, {@link resolveBlankCanvasDrop}. Returns
+ * null when the cursor resolves to no droppable target (a layout's chrome). Shared by the
+ * `dragMove` (display-only preview) and `drop` (fresh, authoritative) handlers.
  */
 function previewAt(
   cursor: { x: number; y: number },
@@ -118,7 +120,7 @@ function previewAt(
 ) {
   const targetEl = resolveDropTarget(cursor.x, cursor.y, doc);
   if (!targetEl) {
-    return null;
+    return resolveBlankCanvasDrop(cursor.x, cursor.y, doc, shadowDoc, src);
   }
   return computeDropInstruction(targetEl, cursor.y, shadowDoc, src);
 }
@@ -703,10 +705,11 @@ export function startCanvasIframe(opts: {
     const doc = container.ownerDocument;
     const targetEl = resolveDropTarget(cursor.x, cursor.y, doc);
     const hit = targetEl ? fileDropHitFor(targetEl, shadowDoc) : null;
-    const preview =
-      shadowDoc && targetEl
+    const preview = shadowDoc
+      ? targetEl
         ? computeDropInstruction(targetEl, cursor.y, shadowDoc, FILE_DRAG_SRC)
-        : null;
+        : resolveBlankCanvasDrop(cursor.x, cursor.y, doc, shadowDoc, FILE_DRAG_SRC)
+      : null;
     if (kind === "fileDragOver") {
       if (e.dataTransfer) {
         e.dataTransfer.dropEffect = "copy";

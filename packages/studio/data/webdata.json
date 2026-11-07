@@ -964,182 +964,7 @@
     ["zoom", "1"]
   ],
   "elements": {
-    "Form": [
-      {
-        "tag": "form"
-      },
-      {
-        "tag": "input"
-      },
-      {
-        "tag": "textarea"
-      },
-      {
-        "tag": "select"
-      },
-      {
-        "tag": "option"
-      },
-      {
-        "tag": "optgroup"
-      },
-      {
-        "tag": "button"
-      },
-      {
-        "tag": "label"
-      },
-      {
-        "tag": "fieldset"
-      },
-      {
-        "tag": "legend"
-      },
-      {
-        "tag": "output"
-      },
-      {
-        "tag": "progress"
-      },
-      {
-        "tag": "meter"
-      },
-      {
-        "tag": "datalist"
-      }
-    ],
-    "Interactive": [
-      {
-        "tag": "details"
-      },
-      {
-        "tag": "summary"
-      },
-      {
-        "tag": "dialog"
-      },
-      {
-        "tag": "menu"
-      }
-    ],
-    "List & Table": [
-      {
-        "tag": "ul"
-      },
-      {
-        "tag": "ol"
-      },
-      {
-        "tag": "li"
-      },
-      {
-        "tag": "dl"
-      },
-      {
-        "tag": "dt"
-      },
-      {
-        "tag": "dd"
-      },
-      {
-        "tag": "table"
-      },
-      {
-        "tag": "thead"
-      },
-      {
-        "tag": "tbody"
-      },
-      {
-        "tag": "tfoot"
-      },
-      {
-        "tag": "tr"
-      },
-      {
-        "tag": "th"
-      },
-      {
-        "tag": "td"
-      },
-      {
-        "tag": "caption"
-      },
-      {
-        "tag": "colgroup"
-      },
-      {
-        "tag": "col"
-      }
-    ],
-    "Media": [
-      {
-        "tag": "img"
-      },
-      {
-        "tag": "picture"
-      },
-      {
-        "tag": "source"
-      },
-      {
-        "tag": "video"
-      },
-      {
-        "tag": "audio"
-      },
-      {
-        "tag": "track"
-      },
-      {
-        "tag": "canvas"
-      },
-      {
-        "tag": "iframe"
-      },
-      {
-        "tag": "embed"
-      },
-      {
-        "tag": "object"
-      }
-    ],
-    "Structure": [
-      {
-        "tag": "div"
-      },
-      {
-        "tag": "section"
-      },
-      {
-        "tag": "article"
-      },
-      {
-        "tag": "aside"
-      },
-      {
-        "tag": "main"
-      },
-      {
-        "tag": "header"
-      },
-      {
-        "tag": "footer"
-      },
-      {
-        "tag": "nav"
-      },
-      {
-        "tag": "search"
-      },
-      {
-        "tag": "hgroup"
-      },
-      {
-        "tag": "slot"
-      }
-    ],
-    "Text": [
+    "text": [
       {
         "tag": "h1"
       },
@@ -1162,16 +987,213 @@
         "tag": "p"
       },
       {
-        "tag": "span"
+        "tag": "blockquote"
       },
       {
+        "tag": "pre"
+      },
+      {
+        "tag": "hr"
+      },
+      {
+        "tag": "address"
+      }
+    ],
+    "lists": [
+      {
+        "tag": "ul"
+      },
+      {
+        "tag": "ol"
+      },
+      {
+        "tag": "li"
+      },
+      {
+        "tag": "dl"
+      },
+      {
+        "tag": "dt"
+      },
+      {
+        "tag": "dd"
+      },
+      {
+        "tag": "menu"
+      }
+    ],
+    "media": [
+      {
+        "tag": "img"
+      },
+      {
+        "tag": "figure"
+      },
+      {
+        "tag": "figcaption"
+      },
+      {
+        "tag": "video"
+      },
+      {
+        "tag": "audio"
+      },
+      {
+        "tag": "picture"
+      },
+      {
+        "tag": "source"
+      },
+      {
+        "tag": "track"
+      },
+      {
+        "tag": "iframe"
+      }
+    ],
+    "layout": [
+      {
+        "tag": "section"
+      },
+      {
+        "tag": "div"
+      },
+      {
+        "tag": "header"
+      },
+      {
+        "tag": "footer"
+      },
+      {
+        "tag": "main"
+      },
+      {
+        "tag": "nav"
+      },
+      {
+        "tag": "article"
+      },
+      {
+        "tag": "aside"
+      },
+      {
+        "tag": "search"
+      },
+      {
+        "tag": "hgroup"
+      }
+    ],
+    "interactive": [
+      {
         "tag": "a"
+      },
+      {
+        "tag": "button"
+      },
+      {
+        "tag": "details"
+      },
+      {
+        "tag": "summary"
+      },
+      {
+        "tag": "dialog"
+      }
+    ],
+    "forms": [
+      {
+        "tag": "form"
+      },
+      {
+        "tag": "label"
+      },
+      {
+        "tag": "input"
+      },
+      {
+        "tag": "textarea"
+      },
+      {
+        "tag": "select"
+      },
+      {
+        "tag": "option"
+      },
+      {
+        "tag": "optgroup"
+      },
+      {
+        "tag": "datalist"
+      },
+      {
+        "tag": "fieldset"
+      },
+      {
+        "tag": "legend"
+      },
+      {
+        "tag": "output"
+      },
+      {
+        "tag": "progress"
+      },
+      {
+        "tag": "meter"
+      }
+    ],
+    "tables": [
+      {
+        "tag": "table"
+      },
+      {
+        "tag": "caption"
+      },
+      {
+        "tag": "thead"
+      },
+      {
+        "tag": "tbody"
+      },
+      {
+        "tag": "tfoot"
+      },
+      {
+        "tag": "tr"
+      },
+      {
+        "tag": "th"
+      },
+      {
+        "tag": "td"
+      },
+      {
+        "tag": "colgroup"
+      },
+      {
+        "tag": "col"
+      }
+    ],
+    "inline": [
+      {
+        "tag": "span"
       },
       {
         "tag": "strong"
       },
       {
         "tag": "em"
+      },
+      {
+        "tag": "b"
+      },
+      {
+        "tag": "i"
+      },
+      {
+        "tag": "u"
+      },
+      {
+        "tag": "s"
       },
       {
         "tag": "small"
@@ -1183,19 +1205,13 @@
         "tag": "code"
       },
       {
-        "tag": "pre"
+        "tag": "kbd"
       },
       {
-        "tag": "blockquote"
+        "tag": "samp"
       },
       {
-        "tag": "q"
-      },
-      {
-        "tag": "abbr"
-      },
-      {
-        "tag": "time"
+        "tag": "var"
       },
       {
         "tag": "sub"
@@ -1204,39 +1220,19 @@
         "tag": "sup"
       },
       {
-        "tag": "br"
-      },
-      {
-        "tag": "hr"
-      },
-      {
-        "tag": "wbr"
-      }
-    ],
-    "Other": [
-      {
-        "tag": "address"
-      },
-      {
-        "tag": "area"
-      },
-      {
-        "tag": "b"
-      },
-      {
-        "tag": "base"
-      },
-      {
-        "tag": "bdi"
-      },
-      {
-        "tag": "bdo"
-      },
-      {
-        "tag": "body"
+        "tag": "q"
       },
       {
         "tag": "cite"
+      },
+      {
+        "tag": "abbr"
+      },
+      {
+        "tag": "dfn"
+      },
+      {
+        "tag": "time"
       },
       {
         "tag": "data"
@@ -1245,76 +1241,57 @@
         "tag": "del"
       },
       {
-        "tag": "dfn"
-      },
-      {
-        "tag": "figcaption"
-      },
-      {
-        "tag": "figure"
-      },
-      {
-        "tag": "head"
-      },
-      {
-        "tag": "html"
-      },
-      {
-        "tag": "i"
-      },
-      {
         "tag": "ins"
       },
       {
-        "tag": "kbd"
+        "tag": "br"
       },
       {
-        "tag": "link"
+        "tag": "wbr"
       },
       {
-        "tag": "map"
+        "tag": "bdi"
       },
       {
-        "tag": "meta"
-      },
-      {
-        "tag": "noscript"
-      },
-      {
-        "tag": "rp"
-      },
-      {
-        "tag": "rt"
+        "tag": "bdo"
       },
       {
         "tag": "ruby"
       },
       {
-        "tag": "s"
+        "tag": "rt"
       },
       {
-        "tag": "samp"
+        "tag": "rp"
+      }
+    ],
+    "advanced": [
+      {
+        "tag": "area"
       },
       {
-        "tag": "script"
+        "tag": "canvas"
+      },
+      {
+        "tag": "embed"
+      },
+      {
+        "tag": "map"
+      },
+      {
+        "tag": "noscript"
+      },
+      {
+        "tag": "object"
       },
       {
         "tag": "selectedcontent"
       },
       {
-        "tag": "style"
+        "tag": "slot"
       },
       {
         "tag": "template"
-      },
-      {
-        "tag": "title"
-      },
-      {
-        "tag": "u"
-      },
-      {
-        "tag": "var"
       }
     ]
   },

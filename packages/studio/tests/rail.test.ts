@@ -187,10 +187,10 @@ describe("panel icons", () => {
 // ─── renderActivityBar ────────────────────────────────────────────────────────
 
 describe("renderActivityBar", () => {
-  test("renders the Design rail: Site above the divider, Outline and Data below it (§5.1)", async () => {
+  test("renders the Design rail: Site above the divider, Insert, Outline and Data below it (§5.1)", async () => {
     await render();
     const ids = railIds();
-    expect(ids).toEqual(["site", "layers", "data"]);
+    expect(ids).toEqual(["site", "insert", "layers", "data"]);
     // Off the rail by default: the developer panels and Languages.
     for (const id of ["files", "packages", "i18n"]) {
       expect(ids).not.toContain(id);
@@ -199,7 +199,6 @@ describe("renderActivityBar", () => {
     for (const id of ["problems", "diff", "logic", "activity"]) {
       expect(ids).not.toContain(id);
     }
-    expect(ids).not.toContain("insert");
     expect(ids).not.toContain("state");
     // Search is still declared-but-unbuilt, hidden by its own `when`.
     expect(ids).not.toContain("search");
@@ -237,18 +236,18 @@ describe("renderActivityBar", () => {
     mount();
     await flush();
     await flush();
-    expect(railIds()).toEqual(["site", "layers", "data"]);
+    expect(railIds()).toEqual(["site", "insert", "layers", "data"]);
     setDeveloperPanelsShown(true);
     try {
       await flush();
       await flush();
-      expect(railIds()).toEqual(["site", "files", "layers", "data", "packages"]);
+      expect(railIds()).toEqual(["site", "files", "insert", "layers", "data", "packages"]);
     } finally {
       setDeveloperPanelsShown(false);
     }
     await flush();
     await flush();
-    expect(railIds()).toEqual(["site", "layers", "data"]);
+    expect(railIds()).toEqual(["site", "insert", "layers", "data"]);
   });
 
   test("every rail button carries a visible label; a railLabel shortens it, and the title stays the name and tooltip", async () => {
@@ -269,7 +268,7 @@ describe("renderActivityBar", () => {
     });
     try {
       await render();
-      expect(labelsOf()).toEqual(["Site", "Outline", "Data", "Long"]);
+      expect(labelsOf()).toEqual(["Site", "Insert", "Outline", "Data", "Long"]);
       const long = railButton("long");
       expect(long?.querySelector('[part="label"]')?.textContent.trim()).toBe("Long");
       expect(controlOf(long)?.getAttribute("aria-label")).toBe("Long Panel Title");

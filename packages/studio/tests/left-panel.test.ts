@@ -29,8 +29,8 @@ let ctx: NavigatorPanelDeps;
 
 function makeCtx(overrides: Partial<NavigatorPanelDeps> = {}): NavigatorPanelDeps {
   /* SAFETY: the only reader of `webdata` is the Insert panel (elements-panel.ts), which reads
-     `webdata.elements` alone: category name to `{ tag }[]`, the shape the bundled file has. */
-  const webdata = { elements: { Text: [{ tag: "p" }] } } as NavigatorPanelDeps["webdata"];
+     `webdata.elements` alone: category key to `{ tag }[]`, the shape the bundled file has. */
+  const webdata = { elements: { text: [{ tag: "p" }] } } as NavigatorPanelDeps["webdata"];
   return {
     defaultDef: (tag: string) => ({ tagName: tag }),
     defBadgeLabel: () => "badge",

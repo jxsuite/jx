@@ -57,7 +57,7 @@ No source behaviour changes. The steps are the spec and docs rewrite in **Specs 
 4. `packages/studio/tests/layers-panel-gaps.test.ts`: the two cases below.
 5. The fragment, then delete this plan file. Nothing requires this plan, so no dependent's `requires` changes.
 
-**Integration contract.** Once this lands, `studio.md` §5.2 is Implemented and normative for: row actions are `forPlacement("outline/row")` evaluated against the row's node; every selected row and the hovered row carry them, other rows project none; the first four by `group` draw inline and the rest go in More actions; a verb that cannot act is disabled with its `requires`; a row verb acts on that row alone; the rows are a model drawn through a window with document-wide ARIA counts. `plan:studio/canvas-block-keyboard-access` and `plan:studio/insert-palette-categories` cite "the Outline (§5.2)" and may rely on that text. A later change to the row verbs (a new `outline/row` record, a different budget) is a §5.2 edit.
+**Integration contract.** Once this lands, `studio.md` §5.2 is Implemented and normative for: row actions are `forPlacement("outline/row")` evaluated against the row's node; every selected row and the hovered row carry them, other rows project none; the first four by `group` draw inline and the rest go in More actions; a verb that cannot act is disabled with its `requires`; a row verb acts on that row alone; the rows are a model drawn through a window with document-wide ARIA counts. `plan:studio/canvas-block-keyboard-access` and studio.md §5.3 cite "the Outline (§5.2)" and may rely on that text. A later change to the row verbs (a new `outline/row` record, a different budget) is a §5.2 edit.
 
 ## Tests
 

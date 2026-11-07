@@ -127,7 +127,7 @@ Coverage: `packages/studio/bunfig.toml` gates every file at `lines = 0.958, func
 - §5.1: delete the marker line (the section was unmarked before the census).
 - §5.1's table: a Search row between Files and Source Control (Group Project, Tab Search, Id `search`, Icon `magnifying-glass`, Panel "Text and names across the project's documents (§5.8)"), and the Icon cells for Outline, Page, Data and Packages become `stack`, `file`, `database` and `cube`.
 - §5.1, after the table, add: "Rail order is chord order: `panel.focus.<id>` binds ⌘1 onward down this table, and a panel its `when` hides keeps its number, so no chord moves when one appears."
-- §5.1: "Three more panels are registered `rail: false` — **Search** (`search`, project level), **Insert** …" becomes "Two more panels are registered `rail: false`: **Insert** …", with the Insert and Languages clauses kept. The closing paragraph gains a last sentence: "Search is on the rail for that reason: nothing else finds a word across the project (§5.8)."
+- §5.1: "Two more panels are registered `rail: false` — **Search** (`search`, project level) and **Languages** …" becomes "One more panel is registered `rail: false`: **Languages** …", with the Languages clause kept (Insert is on the rail already). The closing paragraph gains a last sentence: "Search is on the rail for that reason: nothing else finds a word across the project (§5.8)."
 - New **§5.8 Search Panel**, after §5.6 and before §6, unmarked. Adjust it to how the three Open decisions resolve:
 
   > Search finds text across the project's documents. The palette matches file names, and with `@` the open document's elements; nothing else looks inside every page. It is a project-level panel on the rail (§5.1).
