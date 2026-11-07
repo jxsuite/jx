@@ -489,6 +489,10 @@
     url = "https://registry.npmjs.org/@better-fetch/fetch/-/fetch-1.3.3.tgz";
     hash = "sha512-U6SlDt/GUWtK2JAxS/NhdoYTEim+EL1G5byz2TUj83KjLZBUpYzb5SmX0aXaCnbGkAjFKnV/o/0+cyXMbEcqqg==";
   };
+  "@bgotink/kdl@0.4.1" = fetchurl {
+    url = "https://registry.npmjs.org/@bgotink/kdl/-/kdl-0.4.1.tgz";
+    hash = "sha512-zuCVbRXGaY09Y9uc0LQ+PpAe4YnE7o2nT1ZEsRzrG/vnMrQlkqaFgYuaItHiUxK1nc7bd3uAYaiBW75g5u1kbw==";
+  };
   "@cloudflare/workers-types@5.20261031.1" = fetchurl {
     url = "https://registry.npmjs.org/@cloudflare/workers-types/-/workers-types-5.20261031.1.tgz";
     hash = "sha512-2BR1pUhsivjMcqncHjbK1+v/HtOyiUAzMcf3jHt1ZOIiDOktnoeEoBuiEgyJOJ6iFgVLt4Zj7HzPrBjq5zLqQQ==";

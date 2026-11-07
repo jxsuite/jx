@@ -161,6 +161,10 @@ my-counter {
 
 `script` and top-level `project` are reserved now, with `classifyJxn` deciding the second, so that `plan:spec/document-scripts` and `plan:site-architecture/project-jxn` can add them without breaking a document. No tracked document uses either tag at that position. Inside `map` and each value of `cases`, the element grammar applies. The prototype left those in JSON blocks, where `span part=value` means `{ span: { part: "value" } }`, a trap for anyone writing it by hand. JDF.1 adds this with the corpus test as proof. A style key that needs quoting is rejected rather than misread: `> li` is a node `>` with the value `li`, and only the reader knows that cannot be a declaration. Also defined there, each with a golden file: `div {}` equals `div`; `state {}` is `{}`; empty `children` is `(array).children`; `$element "x"` has tag `x`; parameters without a body have no sugar and use a JSON block.
 
+**Grammar decisions JDF.1 made, against the corpus.** `spec.md` §22.1 states them; the reasons are here. A lone `$array` child means a list of one, because that is 253 occurrences against 15 for the whole of `children` being one mapped array, which is spelled `.children { $array … }`. `$head` rows are elements in documents too, as in project files, and a non-list `$head` is written `(object)$head`. `$element tag text` is allowed, because a `<style>` or `<script>` with text is the reason the escape exists. A style value may be a list, for `@font-face`. `(object)` and `(array)` exist because `-` items cannot say "an empty list" and a block of names cannot say "an empty object where a list was expected". A structured function body is a child block of `-` items.
+
+**Conformance, measured 2026-11-06.** `@bgotink/kdl` 0.4.1 passes 318 of the 319 cases at KDL's `2.0.0` tag. The one miss, `zero_space_before_slashdash_arg_fail`, admits `node/-arg`, which loses nothing. Through `parseJxn`, none of the 319 throws anything but a `JxnError`, and `classifyJxn` answers all of them. The suite is not vendored, so re-run this when the pinned version moves: `packages/schema/tests/jxn.test.ts` holds the syntax the grammar leans on as a table.
+
 ### Saving: the reconcile algorithm
 
 `serializeJxn(doc, previousSource?)` with no source emits canonical form. With one:
@@ -214,10 +218,9 @@ The property the tests hold: any single `doc-ops` operation changes only the lin
 
 ## Slices
 
-Order: JDF.1, JDF.2, JDF.3.
+Order: JDF.2, JDF.3. JDF.1 landed: the grammar, `parseJxn`, the canonical `serializeJxn`, `classifyJxn`, `lintJxn`, the span map and the corpus test (467 of 467 documents, with `style` order; -26% bytes, -43% lines).
 
 | Slice | Scope                                                                                                                             | Claims     | State |
 | ----- | --------------------------------------------------------------------------------------------------------------------------------- | ---------- | ----- |
-| JDF.1 | Spec §22 grammar, `parseJxn`, canonical `serializeJxn`, `classifyJxn`, span map, corpus test, conformance                         | spec.md#22 | open  |
 | JDF.2 | Built-in entry, dispatch in compiler, server, desktop, site and runtime, `jx validate`, `jx convert`, media type, first docs page | spec.md#22 | open  |
 | JDF.3 | Reconcile, and refactoring through it, the Monarch grammar; closes §22                                                            | spec.md#22 | open  |
