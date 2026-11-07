@@ -372,6 +372,13 @@ describe("resolveBlankCanvasDrop", () => {
     });
   });
 
+  test("the root is never dropped into itself, even on an empty page", () => {
+    const { host } = mountLayoutPage(0);
+    hitting(host);
+    const root = { path: [], type: "tree-node" as const };
+    expect(resolveBlankCanvasDrop(10, 300, document, shadow(), root)).toBeNull();
+  });
+
   test("layout chrome is not the page, so a drop over it resolves to nothing", () => {
     const { brand } = mountLayoutPage(1);
     hitting(brand);

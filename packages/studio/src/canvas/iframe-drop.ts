@@ -196,32 +196,39 @@ export function resolveBlankCanvasDrop(
   const blocks = [...doc.querySelectorAll<HTMLElement>("[data-jx-path]")].filter(
     (el) => parseJxPath(el.dataset.jxPath ?? "").length === 2,
   );
-  if (blocks.length === 0) {
+  const [first, ...rest] = blocks;
+  if (!first) {
     return canDrop(src, [])
       ? { edge: "inside", instruction: "make-child", referenceRect: rectFor(hit), targetPath: [] }
       : null;
   }
-  return nearestBlockEdge(blocks, y, src);
+  return nearestBlockEdge(first, rest, y, src);
 }
 
-/** {@link nearestChildEdge} over blocks that carry their own paths, for a root with no element. */
+/** How far `cursorY` is from `block`, and whether its bottom edge is the nearer one. */
+function blockEdge(block: HTMLElement, cursorY: number) {
+  const rect = rectFor(block);
+  const above = Math.abs(cursorY - rect.y);
+  const below = Math.abs(cursorY - (rect.y + rect.height));
+  return { below: below <= above, block, distance: Math.min(above, below) };
+}
+
+/**
+ * {@link nearestChildEdge} over blocks that carry their own paths, for a root with no element. The
+ * first block is passed apart from the rest because an empty page is the caller's to answer.
+ */
 function nearestBlockEdge(
-  blocks: readonly HTMLElement[],
+  first: HTMLElement,
+  rest: readonly HTMLElement[],
   cursorY: number,
   src: DragSrcKind,
 ): DropPreview | null {
-  let best: { block: HTMLElement; distance: number; below: boolean } | null = null;
-  for (const block of blocks) {
-    const rect = rectFor(block);
-    const above = Math.abs(cursorY - rect.y);
-    const below = Math.abs(cursorY - (rect.y + rect.height));
-    const distance = Math.min(above, below);
-    if (!best || distance < best.distance) {
-      best = { below: below <= above, block, distance };
+  let best = blockEdge(first, cursorY);
+  for (const block of rest) {
+    const edge = blockEdge(block, cursorY);
+    if (edge.distance < best.distance) {
+      best = edge;
     }
-  }
-  if (!best) {
-    return null;
   }
   const targetPath = parseJxPath(best.block.dataset.jxPath ?? "");
   if (!canDrop(src, targetPath)) {
