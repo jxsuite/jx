@@ -1,5 +1,5 @@
 // oxlint-disable typescript/await-thenable -- bun test .resolves/.rejects matchers are typed `void` but return real Promises at runtime; the await is required.
-import { afterAll, beforeAll, describe, expect, mock, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, mock, spyOn, test } from "bun:test";
 import type { JsonObject, JsonValue } from "@jxsuite/schema/types";
 import type * as ImportClient from "@jxsuite/studio/import-client";
 import { decodeRequest } from "./_rpc-frame";
@@ -874,6 +874,22 @@ describe("chromium desktop platform", () => {
     pushToClient({ method: "documentsPending", params: {} });
     await Bun.sleep(40);
     expect(methodLog.filter((entry) => entry.method === "takeOpenDocuments")).toHaveLength(asked);
+  });
+
+  test("a failed collection is reported, and the page is handed nothing", async () => {
+    forcedErrors.set("takeOpenDocuments", "Backend gone");
+    const errors = spyOn(console, "error").mockImplementation(() => {});
+    const seen: string[] = [];
+    const unsubscribe = platform.subscribeOpenDocument((path) => seen.push(path));
+    try {
+      await until(() => errors.mock.calls.length > 0);
+      expect(String(errors.mock.calls[0]?.[0])).toContain("collecting documents to open failed");
+      expect(seen).toEqual([]);
+    } finally {
+      unsubscribe();
+      errors.mockRestore();
+      forcedErrors.delete("takeOpenDocuments");
+    }
   });
 
   test("a pushed settings change reaches the kernel's subscriber", async () => {

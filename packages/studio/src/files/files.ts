@@ -299,9 +299,8 @@ export function followOpenDocuments(): void {
     if (!projectState) {
       return;
     }
-    openFileInTab(path).catch((error: Error) => {
-      console.error(`[studio] opening ${path} failed:`, error);
-    });
+    // It reports its own failure ("Could not open …"), as it does for every other caller.
+    void openFileInTab(path);
   });
 }
 

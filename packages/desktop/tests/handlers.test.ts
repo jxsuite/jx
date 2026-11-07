@@ -1173,6 +1173,17 @@ describe("handleResolveSiteContext", () => {
       cleanup();
     }
   });
+
+  test("returns null for a file outside the project, without walking above it", async () => {
+    setup();
+    try {
+      writeFileSync(join(FIXTURES, "project.json"), '{"name": "test"}');
+      const result = await handleResolveSiteContext({ filePath: "../elsewhere/page.json" });
+      expect(result.sitePath).toBeNull();
+    } finally {
+      cleanup();
+    }
+  });
 });
 
 // ─── openProject ──────────────────────────────────────────────────────────
@@ -1285,6 +1296,11 @@ describe("pickProjectFile", () => {
       writeFileSync(join(FIXTURES, "other.json"), "{}");
       setFileDialog(async () => join(FIXTURES, "other.json"));
       await expect(pickProjectFile()).rejects.toThrow("not a project.json");
+
+      // Named project.json, but Nx's: the name alone does not make it a project.
+      writeFileSync(join(FIXTURES, "project.json"), '{ "name": "web", "targets": {} }');
+      setFileDialog(async () => join(FIXTURES, "project.json"));
+      await expect(pickProjectFile()).rejects.toThrow("not a project's configuration");
     } finally {
       setFileDialog(null);
       cleanup();

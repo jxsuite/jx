@@ -1333,6 +1333,54 @@ describe("a Mac App Store build, which the App Sandbox lets into a folder only a
       expect(app.backends[1]?.sent).toEqual([{ path: "/p/site/a.json", type: "open-path" }]);
     });
 
+    test("a second file from the same folder, handed over while the first waits, asks nothing more", async () => {
+      const app = await sandboxed({ argv: welcomeLaunch });
+      app.backends[0]?.emit({ type: "ready" });
+      app.fake.openAnswer = { bookmarks: ["B"], canceled: false, filePaths: ["/p/site"] };
+      const dialogs = app.fake.openDialogs.length;
+      openFile(app, "/p/site/a.json");
+      openFile(app, "/p/site/b.json");
+      for (let turn = 0; turn < 4; turn += 1) {
+        await Bun.sleep(0);
+      }
+      expect(app.fake.openDialogs).toHaveLength(dialogs + 1);
+      expect(app.backends).toHaveLength(2);
+      app.backends[1]?.emit({ type: "ready" });
+      expect(app.backends[1]?.sent).toEqual([
+        { path: "/p/site/a.json", type: "open-path" },
+        { path: "/p/site/b.json", type: "open-path" },
+      ]);
+    });
+
+    test("a restart prompt that fails is reported, and the next file is still asked about", async () => {
+      const app = await sandboxed({ argv: welcomeLaunch });
+      app.backends[0]?.emit({ type: "ready" });
+      // A project is open, so granting a folder means asking before restarting over it.
+      app.backends[0]?.emit(openWindow);
+      app.backends[0]?.emit({ id: 1, root: "/proj/alpha", type: "window-root" });
+      app.fake.openAnswer = { bookmarks: ["B"], canceled: false, filePaths: ["/p/site"] };
+      const failure = new Error("no display");
+      const { showMessageBox } = app.fake.api.dialog;
+      app.fake.api.dialog.showMessageBox = () => Promise.reject(failure);
+      const errors = spyOn(console, "error").mockImplementation(() => {});
+      try {
+        openFile(app, "/p/site/a.json");
+        openFile(app, "/p/site/b.json");
+        for (let turn = 0; turn < 6; turn += 1) {
+          await Bun.sleep(0);
+        }
+        // Each file's prompt failed on its own; the first did not stop the second being asked.
+        expect(errors.mock.calls.filter((call) => call[1] === failure)).toHaveLength(2);
+        expect(
+          app.fake.openDialogs.filter((d) => d.options.title === "Open project folder"),
+        ).toHaveLength(2);
+        expect(app.backends).toHaveLength(1);
+      } finally {
+        app.fake.api.dialog.showMessageBox = showMessageBox;
+        errors.mockRestore();
+      }
+    });
+
     test("cancelling the folder prompt with nothing open ends the app", async () => {
       const app = await sandboxed({ argv: welcomeLaunch });
       app.backends[0]?.emit({ type: "ready" });
