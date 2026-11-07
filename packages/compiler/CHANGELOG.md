@@ -1,5 +1,18 @@
 # Changelog
 
+## [8.2.1](https://github.com/jxsuite/jx/compare/compiler-v8.2.0...compiler-v8.2.1) (2026-11-07)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/create bumped to 1.5.5
+    * @jxsuite/runtime bumped to 6.1.1
+    * @jxsuite/site bumped to 2.3.2
+  * devDependencies
+    * @jxsuite/parser bumped to 4.3.1
+
 ## [8.2.0](https://github.com/jxsuite/jx/compare/compiler-v8.1.0...compiler-v8.2.0) (2026-11-06)
 
 

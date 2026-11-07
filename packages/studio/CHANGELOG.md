@@ -1,5 +1,23 @@
 # Changelog
 
+## [10.5.1](https://github.com/jxsuite/jx/compare/studio-v10.5.0...studio-v10.5.1) (2026-11-07)
+
+
+### Bug Fixes
+
+* **runtime:** let a write from a child scope reach the state it names ([#556](https://github.com/jxsuite/jx/issues/556)) ([9345bd2](https://github.com/jxsuite/jx/commit/9345bd28d2c323d881e285cfd353f9386fa1cd22))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/create bumped to 1.5.5
+    * @jxsuite/formulas bumped to 0.0.29
+    * @jxsuite/runtime bumped to 6.1.1
+    * @jxsuite/site bumped to 2.3.2
+    * @jxsuite/ui bumped to 0.10.2
+
 ## [10.5.0](https://github.com/jxsuite/jx/compare/studio-v10.4.0...studio-v10.5.0) (2026-11-06)
 
 
