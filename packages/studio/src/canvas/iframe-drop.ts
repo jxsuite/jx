@@ -16,7 +16,7 @@
  * preview is display-only and never the source of truth (patch-mid-drag safety).
  */
 
-import { parseJxPath } from "./path-mapping";
+import { parseJxPath, serializeJxPath } from "./path-mapping";
 import { displayTagName, isNonNullObject } from "@jxsuite/schema/guards";
 import { rectOf, elementAtPoint } from "../utils/geometry";
 import { getNodeAtPath, isAncestor, pathsEqual } from "../state";
@@ -159,6 +159,82 @@ function nearestPathEl(start: Element | null): HTMLElement | null {
 export function resolveDropTarget(x: number, y: number, doc: Document): HTMLElement | null {
   const hit = elementAtPoint(x, y, doc);
   return nearestPathEl(hit);
+}
+
+/**
+ * The drop for a cursor over blank canvas: a point under no addressable node and outside a layout's
+ * chrome.
+ *
+ * **The canvas around the content is part of the page** (§5.3). A short page fills the top of a
+ * frame whose remainder is the body, or the unstamped layout node its blocks are drawn into, and
+ * that blank space is exactly where an author drags a new block. The drop goes to the nearest edge
+ * of the page's own top-level blocks, so below the content it lands after the last one. Layout
+ * chrome (`data-jx-layout-region`, the site header and footer a page is drawn inside) is not the
+ * page, so a drop over it resolves to nothing, as a click there edits nothing.
+ *
+ * Two shapes reach here. Without a layout the root is an element (`data-jx-path="[]"`) and the root
+ * branch of {@link computeDropInstruction} already answers. Inside a layout the page root has no
+ * element of its own (its children are drawn into the layout's slot), so its blocks are found by
+ * their stamped paths, and each keeps its own path as the target, which a text child of the root
+ * would otherwise shift.
+ */
+export function resolveBlankCanvasDrop(
+  x: number,
+  y: number,
+  doc: Document,
+  shadowDoc: JxMutableNode,
+  src: DragSrcKind,
+): DropPreview | null {
+  const hit = elementAtPoint(x, y, doc);
+  if (!hit || nearestPathEl(hit) || hit.closest("[data-jx-layout-region]")) {
+    return null;
+  }
+  const root = doc.querySelector<HTMLElement>(`[data-jx-path="${serializeJxPath([])}"]`);
+  if (root) {
+    return computeDropInstruction(root, y, shadowDoc, src);
+  }
+  const blocks = [...doc.querySelectorAll<HTMLElement>("[data-jx-path]")].filter(
+    (el) => parseJxPath(el.dataset.jxPath ?? "").length === 2,
+  );
+  if (blocks.length === 0) {
+    return canDrop(src, [])
+      ? { edge: "inside", instruction: "make-child", referenceRect: rectFor(hit), targetPath: [] }
+      : null;
+  }
+  return nearestBlockEdge(blocks, y, src);
+}
+
+/** {@link nearestChildEdge} over blocks that carry their own paths, for a root with no element. */
+function nearestBlockEdge(
+  blocks: readonly HTMLElement[],
+  cursorY: number,
+  src: DragSrcKind,
+): DropPreview | null {
+  let best: { block: HTMLElement; distance: number; below: boolean } | null = null;
+  for (const block of blocks) {
+    const rect = rectFor(block);
+    const above = Math.abs(cursorY - rect.y);
+    const below = Math.abs(cursorY - (rect.y + rect.height));
+    const distance = Math.min(above, below);
+    if (!best || distance < best.distance) {
+      best = { below: below <= above, block, distance };
+    }
+  }
+  if (!best) {
+    return null;
+  }
+  const targetPath = parseJxPath(best.block.dataset.jxPath ?? "");
+  if (!canDrop(src, targetPath)) {
+    return null;
+  }
+  return best.below
+    ? {
+        edge: "bottom",
+        instruction: "reorder-below",
+        referenceRect: rectFor(best.block),
+        targetPath,
+      }
+    : { edge: "top", instruction: "reorder-above", referenceRect: rectFor(best.block), targetPath };
 }
 
 /**

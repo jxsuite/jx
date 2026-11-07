@@ -180,7 +180,7 @@ export const PANEL_PLACEMENT_MATRIX: Readonly<Record<PanelPlacement, PlacementRu
   },
   "rail/document": {
     admits: ["document"],
-    note: "the rail's lower group — Outline, Data, and Packages with the developer panels on",
+    note: "the rail's lower group — Insert, Outline, Data, and Packages with the developer panels on",
   },
   navigator: {
     admits: ["project", "document"],

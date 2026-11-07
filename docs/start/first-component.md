@@ -40,9 +40,9 @@ The canvas now shows your component once per breakpoint, empty for the moment, a
 
 ## 4. Add a button and a text line
 
-1. Press :kbd[⌘K], type `>Show Insert`, and press :kbd[Enter]. The **Insert** palette replaces the Site panel in the Navigator. (The `>` is what searches commands; without it, :kbd[⌘K] searches your files.)
-2. With nothing selected, click the `<button>` card. The button is added to the empty component.
-3. Click the `<p>` card to add a paragraph, typing `p` into **Filter elements…** if you'd rather not scroll. A card inserts into whatever is selected, as its last child; with nothing selected that's the component's root, so the paragraph lands after the button rather than inside it.
+1. Click **Insert** in the **Document** group of the Navigator rail. The **Insert** palette replaces the Site panel in the Navigator.
+2. With nothing selected, click the **Button** card in the **Interactive** section. The button is added to the empty component.
+3. Click the **Paragraph** card in the **Text** section to add a paragraph, typing `para` into **Filter elements…** if you'd rather not scroll. A card inserts into whatever is selected, as its last child; with nothing selected that's the component's root, so the paragraph lands after the button rather than inside it.
 4. Select the button on the canvas. The Inspector moves to its **Element** tab, on the **Content** view.
 5. Open the **Element** section if it is collapsed, and replace `Button` in **Text Content** with `Add one`.
 

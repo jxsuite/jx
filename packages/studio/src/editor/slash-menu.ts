@@ -28,6 +28,7 @@
 
 import { openSlashMenuSurface } from "../surfaces/slash-menu";
 import { componentSlashCommands } from "./insert-component";
+import { elementName } from "../locale/element-names";
 import { rectOf } from "../utils/geometry";
 import type {
   SlashMenuGroup,
@@ -39,23 +40,40 @@ import type { SlashCommand } from "./inline-edit";
 
 // ─── Commands ─────────────────────────────────────────────────────────────────
 
-const SLASH_COMMANDS = [
-  { description: "Large heading", label: "Heading 1", tag: "h1" },
-  { description: "Medium heading", label: "Heading 2", tag: "h2" },
-  { description: "Small heading", label: "Heading 3", tag: "h3" },
-  { description: "Plain text", label: "Paragraph", tag: "p" },
-  { description: "Unordered list", label: "Bulleted List", tag: "ul" },
-  { description: "Numbered list", label: "Numbered List", tag: "ol" },
-  { description: "Quote block", label: "Blockquote", tag: "blockquote" },
-  { description: "Insert image", label: "Image", tag: "img" },
-  { description: "Divider line", label: "Horizontal Rule", tag: "hr" },
-  { description: "Button element", label: "Button", tag: "button" },
-  { description: "Anchor link", label: "Link", tag: "a" },
-  { description: "Preformatted code", label: "Code Block", tag: "pre" },
-  { description: "Insert table", label: "Table", tag: "table" },
-  { description: "Container", label: "Div", tag: "div" },
-  { description: "Section container", label: "Section", tag: "section" },
+/**
+ * The HTML elements the slash menu offers, in this order. Each row's label is the element's name in
+ * the locale catalog (`locale/element-names.ts`), so the menu, the Insert palette and the convert
+ * menu call an element the same thing in every language. A row carries no description: the
+ * catalog's are sentences, written for the palette's tooltips, and a menu row draws its description
+ * on the label's own line and cuts it off there, while a name like "Bulleted list" already says
+ * what the row inserts.
+ */
+const SLASH_TAGS = [
+  "h1",
+  "h2",
+  "h3",
+  "p",
+  "ul",
+  "ol",
+  "blockquote",
+  "img",
+  "hr",
+  "button",
+  "a",
+  "pre",
+  "table",
+  "div",
+  "section",
 ];
+
+/** The element rows, named in the reader's language at the moment the menu opens. */
+function elementCommands(): SlashCommand[] {
+  return SLASH_TAGS.map((tag) => ({
+    description: "",
+    label: elementName(tag),
+    tag,
+  }));
+}
 
 // ─── State ────────────────────────────────────────────────────────────────────
 
@@ -127,7 +145,7 @@ export function showSlashMenuAtRect(
  * on offer.
  */
 function standardCommands(): SlashCommand[] {
-  return [...SLASH_COMMANDS, ...componentSlashCommands()];
+  return [...elementCommands(), ...componentSlashCommands()];
 }
 
 /** Everything on offer right now: what the caller named, or the standard set. */

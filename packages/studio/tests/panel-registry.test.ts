@@ -142,7 +142,7 @@ describe("panel placement matrix", () => {
 
   test("rail: false drops the rail-group placement", () => {
     expect(
-      panelPlacements({ id: "insert", level: "document", dock: "navigator", rail: false }),
+      panelPlacements({ id: "i18n", level: "project", dock: "navigator", rail: false }),
     ).toEqual(["navigator"]);
   });
 
@@ -161,7 +161,7 @@ describe("panel placement matrix", () => {
     expect(
       checkPanelPlacements([
         { id: "files", level: "project", dock: "navigator" },
-        { id: "insert", level: "document", dock: "navigator", rail: false },
+        { id: "i18n", level: "project", dock: "navigator", rail: false },
       ]),
     ).toEqual([]);
   });
@@ -196,14 +196,15 @@ describe("the Navigator's panel set", () => {
       "search",
       // No `git`: Source Control is the Publish workspace's Review changes and Branches (§5.5).
       // Languages is registered with the PROJECT group and draws no rail button, so it sits here
-      // Rather than beside Insert at the end — registration order is roster order, and this list
-      // Is what `view.setActivity` and the shot manifest address the panel by.
+      // Rather than at the end — registration order is roster order, and this list is what
+      // `view.setActivity` and the shot manifest address the panel by.
       "i18n",
+      // Insert leads the DOCUMENT group: the palette an author drags from (§5.1).
+      "insert",
       "layers",
       // No `page`: the Page panel is the Inspector's first tab now (§6).
       "data",
       "packages",
-      "insert",
     ]);
   });
 
@@ -295,14 +296,15 @@ describe("the Navigator's panel set", () => {
     expect(getPanel("git")).toBeUndefined();
   });
 
-  test("Files and Packages are developer panels; Search, Languages and Insert have no button", () => {
+  test("Files and Packages are developer panels; Search and Languages have no button", () => {
     registerNavigatorPanels();
     expect(getPanel("files")?.rail).toBe("developer");
     expect(getPanel("packages")?.rail).toBe("developer");
-    for (const id of ["search", "i18n", "insert"]) {
+    for (const id of ["search", "i18n"]) {
       expect(getPanel(id)?.rail).toBe(false);
     }
     expect(getPanel("site")?.rail).toBeUndefined();
+    expect(getPanel("insert")?.rail).toBeUndefined();
   });
 
   test("every rail label fits under its glyph", () => {
@@ -463,10 +465,10 @@ describe("railGroups", () => {
     registerNavigatorPanels();
     const groups = railGroups(emptyContext());
     expect(groups.map((g) => g.label)).toEqual(["Project", "Document"]);
-    // The Design rail (§5.1): Site above the divider, Outline and Data below it. Files and Packages
-    // Are developer panels, off until the preference is on.
+    // The Design rail (§5.1): Site above the divider, Insert, Outline and Data below it. Files and
+    // Packages are developer panels, off until the preference is on.
     expect(groups[0]?.panels.map((p) => p.id)).toEqual(["site"]);
-    expect(groups[1]?.panels.map((p) => p.id)).toEqual(["layers", "data"]);
+    expect(groups[1]?.panels.map((p) => p.id)).toEqual(["insert", "layers", "data"]);
   });
 
   test("Show developer panels puts Files and Packages back, and is read reactively", () => {
@@ -475,18 +477,18 @@ describe("railGroups", () => {
     try {
       const groups = railGroups(emptyContext());
       expect(groups[0]?.panels.map((p) => p.id)).toEqual(["site", "files"]);
-      expect(groups[1]?.panels.map((p) => p.id)).toEqual(["layers", "data", "packages"]);
+      expect(groups[1]?.panels.map((p) => p.id)).toEqual(["insert", "layers", "data", "packages"]);
     } finally {
       setDeveloperPanelsShown(false);
     }
     expect(railGroups(emptyContext())[0]?.panels.map((p) => p.id)).toEqual(["site"]);
   });
 
-  test("Insert is off the rail but still a reachable record", () => {
+  test("Insert leads the DOCUMENT group, so the palette is one click away in Design", () => {
+    /* It was rail-less for a release, reachable only through the command palette, which put the
+       one surface an author browses for elements and components behind a command name. */
     registerNavigatorPanels();
-    const railed = railGroups(emptyContext()).flatMap((g) => g.panels.map((p) => p.id));
-    expect(railed).not.toContain("insert");
-    expect(getPanel("insert")).toBeDefined();
+    expect(railGroups(emptyContext())[1]?.panels[0]?.id).toBe("insert");
   });
 
   test("State is not a record at all — its editor is part of Data", () => {
@@ -532,6 +534,7 @@ describe("railPanelSet", () => {
     expect(railPanelSet().map((p) => p.id)).toEqual([
       "site",
       "files",
+      "insert",
       "layers",
       "data",
       "packages",
@@ -581,7 +584,7 @@ describe("railDeclarations", () => {
     registerNavigatorPanels();
     expect(railDeclarations()).toEqual([
       { dock: "rail/project", tabs: ["Site", "Files"] },
-      { dock: "rail/document", tabs: ["Outline", "Data", "Packages"] },
+      { dock: "rail/document", tabs: ["Insert", "Outline", "Data", "Packages"] },
     ]);
   });
 

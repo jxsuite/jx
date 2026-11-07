@@ -638,9 +638,9 @@ describe("registerElementsDnD", () => {
     expect(draggables).toHaveLength(3);
     const previews = leftPanel.querySelectorAll(".element-card-preview");
     expect(previews[0]!.firstElementChild?.tagName.toLowerCase()).toBe("p");
-    expect(previews[0]!.textContent).toBe("p");
+    expect(previews[0]!.textContent).toBe("Paragraph"); // The card's own name, from the locale catalog
     expect(previews[1]!.firstElementChild?.tagName.toLowerCase()).toBe("span"); // Unsafe tag
-    expect(previews[1]!.textContent).toBe("script");
+    expect(previews[1]!.textContent).toBe("script"); // No catalog entry: the palette does not offer it, so the tag stands in
     expect(previews[2]!.textContent).toBe("keep"); // Already filled
 
     const data = draggables[0]!.getInitialData();

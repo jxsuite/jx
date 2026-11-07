@@ -8,9 +8,9 @@
  * the second definition site the registry exists to prevent.
  *
  * **Registration order is rail order** within a level group: PROJECT (Site, then Files with the
- * developer panels on) above the divider, DOCUMENT (Outline · Data, then Packages with the
- * developer panels on) below it (§5.1). Search, Languages and Insert are registered rail-less:
- * reachable by `view.setActivity` and the palette, with no button.
+ * developer panels on) above the divider, DOCUMENT (Insert · Outline · Data, then Packages with the
+ * developer panels on) below it (§5.1). Search and Languages are registered rail-less: reachable by
+ * `view.setActivity` and the palette, with no button.
  *
  * **Every rail button opens the Navigator.** Problems used to hold the fourth PROJECT slot while
  * its body was drawn in the Bottom dock, and paying for that took a per-dock branch in three
@@ -84,12 +84,12 @@ export function registerNavigatorPanels(): void {
   registerI18nPanel();
 
   // ── DOCUMENT group ──────────────────────────────────────────────────────────
+  /* Insert leads the group: it is where a page's elements and components are picked from and
+     dragged onto the canvas, the verb a Design session is mostly made of (§5.1, §5.3). */
+  registerInsertPanel();
   registerLayersPanel();
   registerDataPanel();
   registerPackagesPanel();
-
-  // ── Off-rail: reachable by command and palette, no rail button ──────────────
-  registerInsertPanel();
 
   // ── The Bottom dock's tabs (§16.3): Problems · Logic · Activity ──────────────
   // Composed here, in the one place panel records are gathered, so the shell has ONE composition
@@ -122,10 +122,10 @@ export function navigatorPanelSet(): readonly PanelRecord[] {
  * The roster `panel.focus.*` is generated from: rail order first, then the rail-less Navigator
  * panels.
  *
- * Not `railPanelSet()`: Insert and Languages have no rail button and no chord, and they still need
- * a `Show …` command and a palette row, which is the whole point of `rail: false` (a surface
- * reachable by name, not by number). State used to be the third of them and is gone: its editor is
- * the Data panel's now, so there is no second record to roster.
+ * Not `railPanelSet()`: Languages has no rail button and no chord, and it still needs a `Show …`
+ * command and a palette row, which is the whole point of `rail: false` (a surface reachable by
+ * name, not by number). State and Insert were rail-less beside it once: State's editor is the Data
+ * panel's now, and Insert is back on the rail (§5.1).
  *
  * The Bottom dock's three tabs are deliberately absent — Problems as of this change, and Logic and
  * Activity all along. Each is `rail: false` AND hosted there, so each is addressed by

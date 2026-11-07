@@ -1,6 +1,9 @@
 /// <reference lib="dom" />
 /**
- * Elements panel — the Insert palette: the blocks and components a page is built out of.
+ * Elements panel — the Insert palette: the blocks and components a page is built out of, on two
+ * tabs, Elements and Components (§5.3). Each element card is named in the reader's language
+ * (`locale/element-names.ts`), with its tag beside the name, and the categories lead with what a
+ * first page is made of: text, lists, media and layout before forms, tables and inline formatting.
  *
  * **The body is a Jx document** (`surfaces/panel-elements.json`, mounted by
  * `surfaces/panel-elements.ts`), so `render` draws nothing and `afterRender` mounts. What stays
@@ -30,6 +33,7 @@ import { mountElementsSurface } from "../surfaces/panel-elements";
 import { mutateInsertNode, transactDoc } from "../tabs/transact";
 import { primarySelection } from "../tabs/selection";
 import { registerPanel } from "./panel-registry";
+import { categoryName, elementDescription, elementName } from "../locale/element-names";
 import { activeTab } from "../workspace/workspace";
 import { view } from "../view";
 
@@ -38,8 +42,10 @@ import type {
   ComponentCardView,
   ElementCategoryView,
   ElementsActions,
+  ElementsEmptyState,
   ElementsSurfaceHandle,
   ElementsValues,
+  InsertTab,
 } from "../surfaces/panel-elements";
 import type { JxElement, JxMutableNode } from "@jxsuite/schema/types";
 import type { NavigatorPanelContext, NavigatorPanelDeps, PanelBody } from "./panel-registry";
@@ -49,8 +55,13 @@ interface ElementsWebdata {
   elements?: Record<string, { tag: string }[]>;
 }
 
-/** The Components section's name — its accordion label AND its key in `view.elementsCollapsed`. */
-const COMPONENTS = "Components";
+/**
+ * The categories that start closed: inline formatting and the advanced remainder (§5.3). Both are
+ * long, and neither is where somebody building their first page looks, so a newcomer sees the
+ * everyday blocks first and opens these when they want them. A filter opens them too, unless the
+ * reader has closed one by hand.
+ */
+const CLOSED_AT_FIRST: ReadonlySet<string> = new Set(["inline", "advanced"]);
 
 /**
  * What the palette is built from, held at module scope rather than closed over at mount.
@@ -76,18 +87,37 @@ function needle(): string {
   return view.elementsFilter.toLowerCase();
 }
 
-/** The categories that still have something in them, with the filter applied. */
+/** Whether a section is drawn open: the reader's own choice, else its default. */
+function sectionOpen(key: string, filter: string): boolean {
+  return view.elementsOpen.get(key) ?? (filter !== "" || !CLOSED_AT_FIRST.has(key));
+}
+
+/**
+ * The categories that still have something in them, with the filter applied, in the order
+ * `webdata.elements` declares them (§5.3). A card matches on its name in the reader's language or
+ * on its tag, so "image" and "img" both find the same card.
+ */
 function categoryViews(webdata: ElementsWebdata, filter: string): ElementCategoryView[] {
   const sections: ElementCategoryView[] = [];
-  for (const [name, elements] of Object.entries(webdata.elements ?? {})) {
-    const matched = filter ? elements.filter((entry) => entry.tag.includes(filter)) : elements;
+  for (const [key, elements] of Object.entries(webdata.elements ?? {})) {
+    const cards = elements.map(({ tag }) => ({
+      description: elementDescription(tag),
+      name: elementName(tag),
+      tag,
+    }));
+    const matched = filter
+      ? cards.filter(
+          (card) => card.tag.includes(filter) || card.name.toLowerCase().includes(filter),
+        )
+      : cards;
     if (matched.length === 0) {
       continue;
     }
     sections.push({
-      elements: matched.map(({ tag }) => ({ tag })),
-      name,
-      open: !view.elementsCollapsed.has(name),
+      elements: matched,
+      key,
+      name: categoryName(key),
+      open: sectionOpen(key, filter),
     });
   }
   return sections;
@@ -145,23 +175,51 @@ function componentViews(filter: string): ComponentCardView[] {
     }));
 }
 
+/** Which body a tab shows: its cards, or why it has none. */
+function emptyState(count: number, filter: string): ElementsEmptyState {
+  if (count > 0) {
+    return "none";
+  }
+  return filter ? "filtered" : "empty";
+}
+
+/** The other tab, which a filtered-out tab offers to switch to. */
+function otherTab(tab: InsertTab): InsertTab {
+  return tab === "elements" ? "components" : "elements";
+}
+
+/** "Show 1 matching component", "Show 3 matching elements": the other tab's offer. */
+function otherMatchesLabel(tab: InsertTab, count: number): string {
+  const noun = tab === "elements" ? "element" : "component";
+  return `Show ${count} matching ${noun}${count === 1 ? "" : "s"}`;
+}
+
 /** Everything the document draws, as one value. */
 function panelValues(source: NavigatorPanelDeps): ElementsValues {
   const filter = needle();
+  const tab = view.insertTab;
   /* SAFETY: `webdata` is wired in studio.ts from the bundled data/webdata.json, whose `elements`
-     maps each category name to an array of `{ tag }` entries. */
+     maps each category key to an array of `{ tag }` entries. */
   const categories = categoryViews(source.webdata as ElementsWebdata, filter);
   const components = componentViews(filter);
-  const bare = categories.length === 0 && components.length === 0;
+  const elementCount = categories.reduce((sum, section) => sum + section.elements.length, 0);
+  const counts: Record<InsertTab, number> = {
+    components: components.length,
+    elements: elementCount,
+  };
+  const other = otherTab(tab);
+  const showOffer = filter !== "" && counts[tab] === 0 && counts[other] > 0;
   return {
     categories,
     components,
-    componentsOpen: !view.elementsCollapsed.has(COMPONENTS),
-    emptyState: bare ? (filter ? "filtered" : "empty") : "none",
+    componentsEmpty: emptyState(components.length, filter),
+    elementsEmpty: emptyState(elementCount, filter),
     /* The reader's own text, not `filter`: the field is bound to this, and a scope holding the
        lower-cased form would rewrite what was typed on every keystroke. */
     filter: view.elementsFilter,
-    hasComponents: components.length > 0,
+    filterLabel: tab === "elements" ? "Filter elements" : "Filter components",
+    otherMatches: showOffer ? otherMatchesLabel(other, counts[other]) : "",
+    tab,
   };
 }
 
@@ -207,6 +265,17 @@ function refresh(): void {
 
 /** What the document's controls do. Every one of them is a decision this module owns. */
 const ACTIONS: ElementsActions = {
+  /* The strip announces any value its tabs carry; only the two this panel draws are taken. */
+  selectTab: (tab) => {
+    if (tab === "elements" || tab === "components") {
+      view.insertTab = tab;
+      refresh();
+    }
+  },
+  showOtherTab: () => {
+    view.insertTab = otherTab(view.insertTab);
+    refresh();
+  },
   clearFilter: () => {
     view.elementsFilter = "";
     refresh();
@@ -223,30 +292,19 @@ const ACTIONS: ElementsActions = {
       insertAtSelection(panelDeps.defaultDef(tag) as JxMutableNode);
     }
   },
-  setComponentsOpen: (open) => {
-    setCollapsed(COMPONENTS, !open);
-    refresh();
-  },
   /* The echo: what the field now holds goes into the state the palette is filtered by, before
      anything is decided about it. */
   setFilter: (value) => {
     view.elementsFilter = value;
     refresh();
   },
-  setSectionOpen: (name, open) => {
-    setCollapsed(name, !open);
+  /* Remembered across repaints and panel switches, and from then on it outranks the section's
+     default, the filter's included. */
+  setSectionOpen: (key, open) => {
+    view.elementsOpen.set(key, open);
     refresh();
   },
 };
-
-/** Remember a section's disclosure across repaints and across panel switches. */
-function setCollapsed(name: string, collapsed: boolean): void {
-  if (collapsed) {
-    view.elementsCollapsed.add(name);
-  } else {
-    view.elementsCollapsed.delete(name);
-  }
-}
 
 /**
  * Draw the panel body — mounting the document the first time, updating it every time after.
@@ -277,13 +335,13 @@ export function mountElementsPanel(ctx: NavigatorPanelContext, host: HTMLElement
 }
 
 /**
- * Contribute the Insert panel — **off the rail** (`rail: false`).
+ * Contribute the Insert panel — the first button of the rail's DOCUMENT group (§5.1).
  *
- * §5.1 keeps Insert off the Navigator rail because it is not a view of anything: it is an insert
- * palette, and a palette belongs at the caret (slash menu), on the canvas (`+`) and behind ⌘⇧A, all
- * of which are the Insert command family. The record survives so the surface stays reachable —
- * `view.setActivity {tab:"insert"}`, the palette, and the screenshot pipeline all still address it
- * — and giving up its rail slot is what keeps the DOCUMENT group at four.
+ * It is the place an author picks an element or component from and drags it onto the canvas, so it
+ * stays on screen while they work: a card is a choice to look at, compare and drag, and a palette
+ * that has to be summoned by name before it can be seen is one only a reader of the command list
+ * finds. The slash menu and the canvas `+` stay the inserts at the caret; this is the one an author
+ * browses.
  *
  * `level: "document"`, per §13.2's own worked example: it READS the project's component registry
  * and WRITES the document tree.
@@ -295,7 +353,6 @@ export function registerInsertPanel(): void {
     level: "document",
     dock: "navigator",
     icon: "grid-four",
-    rail: false,
     // The body is a document, so lit draws nothing and the mount happens against the painted DOM.
     // `afterRender` runs on every repaint; {@link mountElementsPanel} is idempotent.
     render: (): PanelBody => nothing,

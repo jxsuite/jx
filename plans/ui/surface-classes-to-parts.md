@@ -157,7 +157,7 @@ One pull request. Paths are under `packages/studio/`.
 
 - The Insert palette's parts are `components-section`, `element-card`, `element-card-preview` and `element-card-label`. `dnd.ts` finds cards only through them, and their look lives in `panel-elements.json`.
   - Landing after this plan, `plan:desktop/component-scope-sections` writes `part="components-section"` on each section's container and iterates `querySelectorAll('[part="components-section"]')`, where its step 3 says `div.components-section` and its step 5 says `.components-section`. Landing before it, that plan leaves the class on its mapped section template, `querySelectorAll('.components-section')` in `registerComponentsDnD`, and `.components-section` assertions in `elements-panel.test.ts` and `dnd-gaps.test.ts`; this plan converts all three (steps 8 and 10, Tests) and keeps the `querySelectorAll`.
-  - `plan:studio/insert-palette-categories`'s count test reads `[part="element-card"]`.
+  - `elements-panel.test.ts`'s committed-data count test ("the committed element data is drawn whole…") reads `[part="element-card"][data-block-tag]`.
 - The dock handles are `#app > [part="dock-handle"]`, rest at (1,1,0) and lit at (1,2,0). `plan:ui/principles-text` may cite that rule as the frame's instance of §5.5's weight rule.
 - ui.md §3.1's body says a surface's box is addressed by `part`, or by the id a host adopts it by, and never through a class. `plan:ui/principles-text`'s principle 1 defers to that sentence and is true in either landing order: before this plan lands, §3.1's marker names what a surface still owes.
 - `#app` carries `data-left-collapsed`, `data-right-collapsed` and `data-bottom-collapsed`, written only by `applyDockLayout()`. The Edit column carries `data-resizing` during a gesture.
@@ -189,7 +189,7 @@ New cases:
 - `tests/shell-tree.test.ts`, "the frame's handles are parts and the frame writes no class": after `mountShellTree()`, all three handles have `part="dock-handle"`, and `#app[class], #app [class]` matches nothing.
 - `tests/elements-panel.test.ts`:
   - The header's "Three class names survive" paragraph (lines 8 to 12) is replaced by one saying `dnd.ts` addresses the card parts.
-  - Selectors move to parts (lines 166 to 331), including any case another plan has added by landing time: `plan:studio/insert-palette-categories`'s count test selects `.element-card` if it lands first, and `plan:desktop/component-scope-sections`'s section cases select `.components-section`.
+  - Selectors move to parts (lines 166 to 331), including any case another plan has added by landing time: the committed-data count test selects `.element-card[data-block-tag]`, and `plan:desktop/component-scope-sections`'s section cases select `.components-section`.
   - New case, "the palette writes no class, and its cards are styled by the document": `host.querySelectorAll("[class]")` is empty, and `styles/panels.css` contains neither `element-card` nor `components-section`.
 
 Changed assertions:
