@@ -27,21 +27,29 @@ const EXPLAIN = new Map([
   ],
 ]);
 
-/**
- * Find the escapes in quoted strings that mean something other than a person likely meant.
- *
- * @param text The file.
- */
-export function lintJxn(text: string): JxnWarning[] {
-  const warnings: JxnWarning[] = [];
+/** What a walk over a file's text found, each only where a string could not be hiding it. */
+interface JxnScan {
+  comments: number;
+  /** Where each backslash in a quoted string is. */
+  escapes: number[];
+}
+
+/** Walk a file's text, knowing what is a string and what is a comment. */
+function scanJxn(text: string): JxnScan {
+  const scan: JxnScan = { comments: 0, escapes: [] };
   let index = 0;
   while (index < text.length) {
     if (text.startsWith("//", index)) {
+      scan.comments += 1;
       const end = text.indexOf("\n", index);
       index = end === -1 ? text.length : end;
     } else if (text.startsWith("/*", index)) {
+      scan.comments += 1;
       const end = text.indexOf("*/", index + 2);
       index = end === -1 ? text.length : end + 2;
+    } else if (text.startsWith("/-", index)) {
+      scan.comments += 1;
+      index += 2;
     } else if (text.charAt(index) === "#" && /^#+"/u.test(text.slice(index, index + 16))) {
       // A raw string: nothing in it is an escape.
       const [hashes = ""] = /^#+/u.exec(text.slice(index)) ?? [];
@@ -54,10 +62,7 @@ export function lintJxn(text: string): JxnWarning[] {
       index += quote.length;
       while (index < text.length && !text.startsWith(quote, index)) {
         if (text.charAt(index) === "\\") {
-          const explain = EXPLAIN.get(text.charAt(index + 1));
-          if (explain) {
-            warnings.push({ ...locate(text, index), message: explain });
-          }
+          scan.escapes.push(index);
           index += 2;
         } else {
           index += 1;
@@ -68,5 +73,26 @@ export function lintJxn(text: string): JxnWarning[] {
       index += 1;
     }
   }
-  return warnings;
+  return scan;
+}
+
+/**
+ * Find the escapes in quoted strings that mean something other than a person likely meant.
+ *
+ * @param text The file.
+ */
+export function lintJxn(text: string): JxnWarning[] {
+  return scanJxn(text).escapes.flatMap((index) => {
+    const message = EXPLAIN.get(text.charAt(index + 1));
+    return message ? [{ ...locate(text, index), message }] : [];
+  });
+}
+
+/**
+ * Count what `.json` has nowhere to keep: comments, and what a slashdash has commented out.
+ *
+ * @param text The file.
+ */
+export function countJxnComments(text: string): number {
+  return scanJxn(text).comments;
 }

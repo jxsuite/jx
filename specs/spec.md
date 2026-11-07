@@ -43,7 +43,7 @@ Jx is a schema and runtime for building reactive web applications using plain JS
 
 The core premise: **structure and state are data; the shape of each `state` entry determines its type and behavior — no additional flags required in the common case.**
 
-A Jx component is a single `.json` file that can be fully self-describing:
+A Jx component is a single `.json` or `.jxn` file (§22) that can be fully self-describing:
 
 ```
 component.json   ← structure, styling, state declarations, functions, bindings
@@ -70,9 +70,9 @@ Following [Tim Berners-Lee's Rule of Least Power](https://www.w3.org/DesignIssue
 - Template expressions over handler functions wherever possible
 - Handler functions only when logic cannot be expressed otherwise
 
-### 2.3 JSON as the Authoritative Format
+### 2.3 The JSON Data Model Is Authoritative
 
-Jx documents are valid JSON. They are not JavaScript object literals, not JSX, not a template DSL. This distinction is intentional and load-bearing:
+A Jx document is a JSON value. It is not a JavaScript object literal, not JSX, not a template DSL. A file holds that value as `.json`, or as Jx Notation in a `.jxn` file (§22), and both spellings read to the same object, so everything below the reader works on JSON whichever one the file used. This distinction is intentional and load-bearing:
 
 - JSON is fully serializable and deserializable without code execution
 - JSON has no `this` ambiguity — self-references use explicit `$ref` pointers
@@ -146,7 +146,7 @@ Standard JSON Schema 2020-12 keywords (`type`, `format`, `properties`, `items`, 
 
 ### 4.1 Self-Describing Components
 
-A Jx component is a single `.json` file. All state, computed values, and functions are declared in `state`. Simple components are fully self-describing — no sidecar file required:
+A Jx component is a single `.json` or `.jxn` file (§22). All state, computed values, and functions are declared in `state`. Simple components are fully self-describing — no sidecar file required:
 
 ```json
 {
@@ -2475,7 +2475,7 @@ That settles the staging question by removing it. The shell is not a deployment 
 
 ## 22. Jx Notation (`.jxn`)
 
-> **Status: Partial.** `@jxsuite/schema/jxn` reads and writes `.jxn`, and no host dispatches to it yet: a document on disk is `.json` or a format-extension file.
+> **Status: Partial.** Every host reads `.jxn`, and `jx convert` moves a file either way. Saving rewrites a whole `.jxn` file, so a rename's reference repair loses its comments, and Studio does not open one yet.
 
 A Jx document may be written in Jx Notation, as a `.jxn` file. Jx Notation is KDL 2 with Jx's own rules for what each node means. `.jxn` and `.json` are two spellings of one data model: both parse to the same `JxDocument`, and the schema, the runtime, the compiler and Studio's document model all work on that object. `.jxn` is a native format, so no extension has to be enabled to use it. A project's configuration may be written the same way, as `project.jxn` (`site-architecture.md` §2.3). `*.class.json`, `jx-extension.json`, JSON Schemas and data files stay JSON.
 

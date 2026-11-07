@@ -189,12 +189,15 @@ export const YAML_MEDIA_TYPE = "application/yaml";
  *   RFC 7764). Jx knows: its parser is GFM, and the format class declares exactly this.
  * - `.yaml`/`.yml` — Bun answers `text/yaml` and Node's tables usually answer nothing at all;
  *   `application/yaml` is the registration (RFC 9512).
+ * - `.jxn` — every table answers `application/octet-stream`, which makes a browser download it. KDL
+ *   names no media type of its own, and this is text a person opens in an editor.
  *
- * Keys are lower-cased extensions including the dot; values carry `charset` because both types are
- * text and a browser that guesses the encoding of a UTF-8 document guesses wrong for exactly the
- * non-Latin content the rest of this repo works to support.
+ * Keys are lower-cased extensions including the dot; values carry `charset` because all of these
+ * are text and a browser that guesses the encoding of a UTF-8 document guesses wrong for exactly
+ * the non-Latin content the rest of this repo works to support.
  */
 export const MEDIA_TYPE_BY_EXTENSION = {
+  ".jxn": "text/plain; charset=utf-8",
   ".markdown": `${MARKDOWN_MEDIA_TYPE}; charset=utf-8`,
   ".md": `${MARKDOWN_MEDIA_TYPE}; charset=utf-8`,
   ".yaml": `${YAML_MEDIA_TYPE}; charset=utf-8`,

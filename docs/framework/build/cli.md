@@ -1,6 +1,6 @@
 ---
 title: "CLI commands"
-description: "Reference for bun create @jxsuite and the jx CLI: build, schema, validate, and db push, with every flag as implemented."
+description: "Reference for bun create @jxsuite and the jx CLI: build, schema, validate, convert, and db push, with every flag as implemented."
 spec:
   - extensions.md#5.2 # generated entry documents (jx schema)
   - extensions.md#5.4 # validation (jx validate)
@@ -14,6 +14,8 @@ code:
   - packages/compiler/src/site/schema-command.ts
   - packages/compiler/src/site/validate-command.ts
   - packages/compiler/src/site/db-push.ts
+  - packages/compiler/src/site/convert-command.ts
+  - packages/server/src/convert.ts
 ---
 
 # CLI commands
@@ -120,6 +122,26 @@ After the schema checks, every well-formed document is also judged by the popove
 :::
 
 The output shape is meant to be read by whatever wrote the file, a person or a generator: one line naming the file, then one `- <instance path>: <message>` line per violation. Paired with the non-zero exit it drops straight into a write-check-fix loop. Because `jx schema` embeds every core and fragment resource under `$defs` keyed by its canonical `$id`, the document checks resolve from the committed entry documents alone (no network fetch, no module resolution), so an editor's inline squiggles and this command are looking at exactly the same schema.
+
+A `.jxn` document that does not read is reported with its line and column, and a `\\s` or `\\b` in a quoted string is a `notation/escape` warning. See [Jx Notation](/docs/framework/concepts/jxn-files).
+
+## `jx convert`
+
+Move documents between `.json` and `.jxn`, repairing every reference to them. It runs under Bun and needs `@jxsuite/server` in the project, as `jx dev` does.
+
+```bash
+jx convert <paths…> --to jxn|json [--dry-run] [--drop-comments]
+```
+
+A path may be a file or a directory, under `pages/`, `layouts/` or `components/`.
+
+| Flag              | Effect                                                       |
+| ----------------- | ------------------------------------------------------------ |
+| `--to jxn\|json`  | The format to move to. Required                              |
+| `--dry-run`       | Print what would change, and change nothing                  |
+| `--drop-comments` | Convert a `.jxn` file to `.json` even though it has comments |
+
+It leaves a file alone, says why, and exits `1` when the file is already in the target format, is a `*.class.json`, belongs to a content collection, has a target name that already exists, or does not read. Converting a `.jxn` file with comments to `.json` is refused and gives the count, because `.json` has nowhere to keep them.
 
 ## `jx db push`
 

@@ -9,7 +9,8 @@
  */
 
 import { existsSync, readFileSync } from "node:fs";
-import { errorMessage, parseJxDocument } from "@jxsuite/schema/parse";
+import { parseNativeDocument } from "@jxsuite/schema/jxn";
+import { errorMessage } from "@jxsuite/schema/parse";
 import { resolve } from "node:path";
 import { resolveLayout as resolveLayoutWith } from "@jxsuite/site/layout";
 import type { JxDocument, ProjectConfig } from "@jxsuite/schema/types";
@@ -26,9 +27,9 @@ export function nodeLayoutLoader(projectRoot: string): (layoutRef: string) => Jx
       throw new Error(`Layout not found: ${layoutRef} (resolved to ${layoutPath})`);
     }
     try {
-      return parseJxDocument(readFileSync(layoutPath, "utf8"), layoutPath);
+      return parseNativeDocument(readFileSync(layoutPath, "utf8"), layoutPath);
     } catch (error) {
-      throw new Error(`Invalid layout JSON at ${layoutPath}: ${errorMessage(error)}`, {
+      throw new Error(`Invalid layout at ${layoutPath}: ${errorMessage(error)}`, {
         cause: error,
       });
     }

@@ -69,7 +69,8 @@ import type {
 } from "@jxsuite/server/refactor";
 import { openExternal } from "./open-external.ts";
 import type { FormatRegistry } from "@jxsuite/schema/format-registry";
-import { isFunction, isNonNullObject, isString } from "@jxsuite/schema/guards";
+import { isFunction, isJsonObject, isNonNullObject, isString } from "@jxsuite/schema/guards";
+import { isJxnPath, parseJxn } from "@jxsuite/schema/jxn";
 import type {
   JsonObject,
   JsonPrimitive,
@@ -318,6 +319,16 @@ export function resolveOpenTarget(path: string): OpenTarget {
 // Route ALL studio-facing paths through toPosix()/relPosix(); a guard test enforces this.
 
 /** Normalize an OS-native path to the studio's forward-slash convention. */
+/** A document file's contents, as the JSON value component discovery reads. */
+function readComponentSource(text: string, path: string): JsonValue {
+  if (isJxnPath(path)) {
+    const document = parseJxn(text);
+    return isJsonObject(document) ? document : null;
+  }
+  // SAFETY: JSON.parse with no reviver yields only JSON values.
+  return JSON.parse(text) as JsonValue;
+}
+
 function toPosix(p: string): string {
   return p.replaceAll("\\", "/");
 }
@@ -1233,7 +1244,7 @@ export function createProjectSession(
 
     const components: ComponentMeta[] = [];
 
-    for await (const rawMatch of scanFiles("**/*.json", scanRoot)) {
+    for await (const rawMatch of scanFiles("**/*.{json,jxn}", scanRoot)) {
       // Normalize first: the glob emits backslashes on Windows, which would both leak to the studio
       // And defeat the forward-slash "dist/" / ".claude/" exclusion checks below.
       const match = toPosix(rawMatch);
@@ -1253,8 +1264,8 @@ export function createProjectSession(
            Narrowing here would be the extractor lying about a document it just read.
 
            The extractor answers null for anything that is not a component object. */
-        // SAFETY: JSON.parse with no reviver yields only JSON values.
-        const doc = JSON.parse(await readFile(fp, "utf8")) as JsonValue;
+        const text = await readFile(fp, "utf8");
+        const doc = readComponentSource(text, match);
         const meta = componentMetaFrom(doc, match);
         if (meta) {
           /* SAFETY: the same cast the cloud adapter makes (see above): the shared extractor reports

@@ -69,11 +69,11 @@ function declaresDocumentKind(kinds: readonly string[]): boolean {
 /**
  * Whether this path is (or is used as) a layout.
  *
- * Layouts are JSON at BOTH readers — `packages/compiler/src/site/layout-resolver.ts` `JSON.parse`s
- * and throws, `packages/studio/src/site-context.ts` `JSON.parse`s and silently returns null — and
- * there is no `"layout"` document kind for a format to declare, so this clause is hand-written and
- * cannot be derived. `layouts/` is excluded by {@link DOCUMENT_ROOTS} already; what remains is a
- * project whose `layout` points somewhere inside a document root.
+ * A layout is native at both readers — `packages/compiler/src/site/layout-resolver.ts` reads
+ * `.json` and `.jxn` and throws, `packages/studio/src/site-context.ts` `JSON.parse`s and silently
+ * returns null — and there is no `"layout"` document kind for a format to declare, so this clause
+ * is hand-written and cannot be derived. `layouts/` is excluded by {@link DOCUMENT_ROOTS} already;
+ * what remains is a project whose `layout` points somewhere inside a document root.
  */
 function isLayoutPath(path: string): boolean {
   const declared = projectState?.projectConfig?.layout;

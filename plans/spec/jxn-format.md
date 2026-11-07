@@ -218,9 +218,8 @@ The property the tests hold: any single `doc-ops` operation changes only the lin
 
 ## Slices
 
-Order: JDF.2, JDF.3. JDF.1 landed: the grammar, `parseJxn`, the canonical `serializeJxn`, `classifyJxn`, `lintJxn`, the span map and the corpus test (467 of 467 documents, with `style` order; -26% bytes, -43% lines).
+Order: JDF.3. JDF.2 landed: the built-in entry, dispatch in the compiler, server, desktop, site and runtime, `jx validate`, `jx convert`, the media type and the first docs page, with all 13 starters building byte-identically from `.jxn`. `jx convert` went into `@jxsuite/server/convert`, spawned under Bun like `jx dev`, because the Node entry cannot load the refactor pass. The built-in entry is not in `registry.entries`, so hosts do not list it to Studio yet, which is what keeps Studio out of this slice. JDF.1 landed: the grammar, `parseJxn`, the canonical `serializeJxn`, `classifyJxn`, `lintJxn`, the span map and the corpus test (467 of 467 documents, with `style` order; -26% bytes, -43% lines).
 
-| Slice | Scope                                                                                                                             | Claims     | State |
-| ----- | --------------------------------------------------------------------------------------------------------------------------------- | ---------- | ----- |
-| JDF.2 | Built-in entry, dispatch in compiler, server, desktop, site and runtime, `jx validate`, `jx convert`, media type, first docs page | spec.md#22 | open  |
-| JDF.3 | Reconcile, and refactoring through it, the Monarch grammar; closes §22                                                            | spec.md#22 | open  |
+| Slice | Scope                                                                  | Claims     | State |
+| ----- | ---------------------------------------------------------------------- | ---------- | ----- |
+| JDF.3 | Reconcile, and refactoring through it, the Monarch grammar; closes §22 | spec.md#22 | open  |
