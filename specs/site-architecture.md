@@ -142,7 +142,7 @@ pages/
 
 ### 2.3 The Project File
 
-> **Status: Pending.** A project is declared by `project.json`, and no host reads anything else.
+> **Status: Pending.** The grammar reads and writes (`spec.md` §22.5), and no host reads a `project.jxn` yet: a project is declared by `project.json`.
 
 A project is declared by one file at its root, either `project.jxn` (Jx Notation, `spec.md` §22) or `project.json`. Both parse to the same `ProjectConfig`. A folder holding both is refused, naming both files, rather than one silently winning.
 

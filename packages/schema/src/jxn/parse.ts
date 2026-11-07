@@ -28,14 +28,14 @@ const ANNOTATIONS = new Set(["array", "fn", "object", "on", "ref"]);
 const RESERVED_CHILDREN = new Set(["attributes", "script", "state", "style"]);
 
 /** What one read of a file is building. */
-interface Reader {
+export interface Reader {
   /** Where each thing came from, by JSON Pointer, when that was asked for. */
   spans: Map<string, JxnSpan> | null;
   text: string;
 }
 
 /** Set a key, refusing a repeat and a key that would be a prototype rather than data. */
-function setKey(
+export function setKey(
   target: JsonObject,
   key: string,
   value: JsonValue,
@@ -53,7 +53,7 @@ function setKey(
 }
 
 /** An error at a node or entry's place in the file. */
-function failure(reader: Reader, at: Entry | Node, message: string): JxnError {
+export function failure(reader: Reader, at: Entry | Node, message: string): JxnError {
   const start = spanOf(at)?.start;
   return new JxnError(message, start === undefined ? null : locate(reader.text, start));
 }
@@ -65,7 +65,7 @@ function spanOf(at: Entry | Node): JxnSpan | null {
 }
 
 /** Record where a pointer's value came from. */
-function mark(reader: Reader, pointer: string, at: Entry | Node): void {
+export function mark(reader: Reader, pointer: string, at: Entry | Node): void {
   const span = reader.spans ? spanOf(at) : null;
   if (span) {
     reader.spans?.set(pointer, span);
@@ -73,12 +73,12 @@ function mark(reader: Reader, pointer: string, at: Entry | Node): void {
 }
 
 /** A JSON Pointer token. */
-function token(key: string): string {
+export function token(key: string): string {
   return key.replaceAll("~", "~0").replaceAll("/", "~1");
 }
 
 /** A node's annotation, checked. */
-function annotationOf(reader: Reader, node: Node): string | null {
+export function annotationOf(reader: Reader, node: Node): string | null {
   const tag = node.getTag();
   if (tag !== null && !ANNOTATIONS.has(tag)) {
     throw failure(reader, node, `(${tag}) is not an annotation Jx Notation has`);
@@ -114,17 +114,17 @@ function valueOf(reader: Reader, entry: Entry): JsonValue {
 }
 
 /** A node's positional values, in order. */
-function positionals(reader: Reader, node: Node): JsonValue[] {
+export function positionals(reader: Reader, node: Node): JsonValue[] {
   return node.entries.filter((entry) => !entry.name).map((entry) => valueOf(reader, entry));
 }
 
 /** A node's named entries. */
-function properties(node: Node): Entry[] {
+export function properties(node: Node): Entry[] {
   return node.entries.filter((entry) => entry.name);
 }
 
 /** The node's children, or none. */
-function childrenOf(node: Node): readonly Node[] {
+export function childrenOf(node: Node): readonly Node[] {
   return node.children?.nodes ?? [];
 }
 
@@ -169,7 +169,7 @@ function readItems(reader: Reader, kids: readonly Node[], pointer: string): Json
 }
 
 /** A JSON block: JSON-in-KDL, plus `(ref)` and `(fn)`. */
-function readValue(reader: Reader, node: Node, pointer: string): JsonValue {
+export function readValue(reader: Reader, node: Node, pointer: string): JsonValue {
   const tag = annotationOf(reader, node);
   mark(reader, pointer, node);
   if (tag === "fn") {
@@ -217,7 +217,7 @@ function readValue(reader: Reader, node: Node, pointer: string): JsonValue {
 }
 
 /** A `style` block: scalars, and nested blocks, with source order significant. */
-function readStyle(reader: Reader, node: Node, pointer: string): JsonObject {
+export function readStyle(reader: Reader, node: Node, pointer: string): JsonObject {
   const style: JsonObject = {};
   mark(reader, pointer, node);
   if (positionals(reader, node).length > 0) {
@@ -480,7 +480,7 @@ function readElementChild(
  * @param reader The read.
  * @param node The `$head` node.
  */
-function readHead(reader: Reader, node: Node): JsonValue {
+export function readHead(reader: Reader, node: Node): JsonValue {
   return childrenOf(node).map((kid, index) => {
     const pointer = `/$head/${index}`;
     return kid.getName() === "-"
@@ -490,7 +490,7 @@ function readHead(reader: Reader, node: Node): JsonValue {
 }
 
 /** Parse KDL, and turn its error into ours. */
-function parseSource(text: string): Document {
+export function parseSource(text: string): Document {
   const control = RAW_CONTROL.exec(text);
   if (control) {
     throw new JxnError(
