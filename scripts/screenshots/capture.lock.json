@@ -271,9 +271,9 @@
       "width": 480
     },
     "docs/images/counter-elements.png": {
-      "bytes": 216484,
-      "capturedAt": "2026-10-19T01:55:24Z",
-      "capturedBy": "screenshots@ci/39187344170",
+      "bytes": 222483,
+      "capturedAt": "2026-11-07T03:57:54Z",
+      "capturedBy": "screenshots@ci/42336123094",
       "definition": "804b520463cbfdab27f70cbced9c53392d33336761b354fe03853a92d506885b",
       "height": 2000,
       "runtime": {
@@ -281,7 +281,7 @@
         "fontset": "fc:cac8f480b341",
         "os": "debian-12"
       },
-      "sha256": "fc75ae57e0a1bf059b6b18b7b8567c15d46691c38be83658949d28092eb8d438",
+      "sha256": "28ca7f56360358a9b433be1c4f4a9762abf0e33b10e48228abd93aeb3245f818",
       "shot": "counter-elements",
       "width": 3840
     },
