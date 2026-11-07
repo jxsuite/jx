@@ -1,5 +1,5 @@
 ---
-status: drafted
+status: active
 disposition: implement
 claims:
   - site-architecture.md#2.3
@@ -21,6 +21,8 @@ workspaces:
   - specs
   - docs
 size: L
+prs:
+  - jxsuite/jx#560
 ---
 
 # A project can be declared by a commented `project.jxn`, which every host reads and every writer keeps intact
@@ -186,6 +188,6 @@ data {
 
 | Slice | Scope                                                                                                         | Claims                   | State |
 | ----- | ------------------------------------------------------------------------------------------------------------- | ------------------------ | ----- |
-| PJX.1 | Grammar rows, `parseProject`, canonical `serializeProject`, corpus test                                       | site-architecture.md#2.3 | open  |
+| PJX.1 | Grammar rows, `parseProject`, canonical `serializeProject`, corpus test                                       | —                        | done  |
 | PJX.2 | Every host reads it, refusals, exposure, the picker, `jx validate`, `jx convert`, this repository's own sites | site-architecture.md#2.3 | open  |
 | PJX.3 | Every writer through reconcile, Studio, AI tools, the parse-failure rule; closes the marker                   | site-architecture.md#2.3 | open  |
