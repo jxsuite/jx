@@ -120,12 +120,23 @@ declare module "electron" {
     setIcon: (image: string) => void;
   }
 
+  /** What a second launch hands the first, as JSON. It comes from another process, so it is read. */
+  export type LaunchData = Record<string, null | string | string[]>;
+
   /** The `app` events the shell listens for, by name. */
   export interface AppEvents {
     /** A file the user opened with the app (macOS: double-click, drop on the Dock tile). */
     "open-file": (event: CancellableEvent, path: string) => void;
-    /** A second launch of the app, with the arguments and directory it was started with. */
-    "second-instance": (event: CancellableEvent, argv: string[], cwd: string) => void;
+    /**
+     * A second launch of the app, with the arguments and directory it was started with, and what it
+     * passed to `requestSingleInstanceLock`.
+     */
+    "second-instance": (
+      event: CancellableEvent,
+      argv: string[],
+      cwd: string,
+      additionalData: LaunchData | undefined,
+    ) => void;
     "window-all-closed": () => void;
     "will-quit": () => void;
   }
@@ -141,7 +152,7 @@ declare module "electron" {
     on: <Name extends keyof AppEvents>(event: Name, listener: AppEvents[Name]) => App;
     quit: () => void;
     /** Take the single-instance lock: false means another instance holds it, and has been told. */
-    requestSingleInstanceLock: () => boolean;
+    requestSingleInstanceLock: (additionalData?: LaunchData) => boolean;
     /** Linux only: Electron does not define it elsewhere. */
     setDesktopName: (name: string) => void;
     setName: (name: string) => void;
@@ -163,6 +174,8 @@ declare module "electron" {
   }
 
   export interface OpenDialogOptions {
+    /** Where the dialog starts. */
+    defaultPath?: string;
     filters?: { extensions: string[]; name: string }[];
     properties: ("createDirectory" | "openDirectory" | "openFile")[];
     /** Mac App Store builds only: also return a bookmark for each pick. */
@@ -183,13 +196,18 @@ declare module "electron" {
     defaultId: number;
     detail: string;
     message: string;
+    /** Windows: draw every button as a button, rather than guessing some are command links. */
+    noLink?: boolean;
     title: string;
     type: "info" | "warning";
   }
 
   export interface Dialog {
     /** Ask without blocking the main process; `response` is the index of the button chosen. */
-    showMessageBox: (options: MessageBoxOptions) => Promise<{ response: number }>;
+    showMessageBox: {
+      (window: BrowserWindow, options: MessageBoxOptions): Promise<{ response: number }>;
+      (options: MessageBoxOptions): Promise<{ response: number }>;
+    };
     showMessageBoxSync: (window: BrowserWindow, options: MessageBoxOptions) => number;
     /** Sheet-modal on `window` when given one; free-standing otherwise. */
     showOpenDialog: {

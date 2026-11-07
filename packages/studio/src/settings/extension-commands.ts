@@ -43,6 +43,7 @@ import { notify } from "../services/notify";
 import { notifySettingsDocument } from "./section-registry";
 import { updateSiteConfig } from "../site-context";
 import type { AnyCommand, CommandRegistry } from "../commands/registry";
+import { projectConfigPath } from "../tabs/tab";
 
 /** The package an extension operation is running for, or null. */
 let _inFlight: string | null = null;
@@ -168,7 +169,7 @@ export async function enableExtension(specifier: string): Promise<void> {
     }
     await updateSiteConfig({ extensions: [...enabledSpecifiers(), row.specifier] });
     /* Set after the write resolved, so the latch never claims a file the write did not reach. */
-    _lastEnableWrote = installed ? ["project.json", "package.json"] : ["project.json"];
+    _lastEnableWrote = installed ? [projectConfigPath(), "package.json"] : [projectConfigPath()];
   } finally {
     _inFlight = null;
     notifySettingsDocument();

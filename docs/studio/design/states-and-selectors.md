@@ -17,14 +17,14 @@ Buttons darken on hover, inputs glow on focus, disabled controls fade. Those are
 
 ## Style a state
 
-1. Select the element and open the **Style** tab.
+1. Select the element and open the **Style** view.
 2. Click the selector segment of the Target Line. It reads **base rule** when you're styling the element's normal look.
 3. Pick a state, say **:hover**. The Target Line now reads `⌖ button · Base · :hover`, so what you're editing stays on screen.
 4. Edit styles as usual. Everything you set now applies only in that state.
 
 The full inspector works here: every section, the provenance chips, even breakpoints, so a hover effect can differ between desktop and phone. A state cascades within itself: pick a breakpoint while `:hover` is active and the `:hover` values you set at Base show through as dimmed placeholders, their chip reading **from Base**. Switch the segment back to **base rule** to return to the normal styles.
 
-The same choice is available from the command palette: press :kbd[⌘K] and run **Open Selector Menu**, or **Set Style Selector** to name a selector directly.
+The same choice is available from the command palette: press :kbd[⌘K] and type `>Open Selector Menu`, or `>Set Style Selector` to name a selector directly.
 
 ## The built-in states
 

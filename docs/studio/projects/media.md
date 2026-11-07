@@ -79,7 +79,7 @@ Click **Upload** in the Media workspace's toolbar, or drop files anywhere on it.
 
 Only the kinds of file the workspace lists are uploaded: images, video, audio, PDFs and fonts. Drop a text file or a spreadsheet along with your pictures and Studio skips it and says which files it left out, rather than adding something you would never see here.
 
-You can also run **Upload Media…** from the command palette (:kbd[⌘K]), which opens the same file picker. **Rename Media File…** and **Duplicate Media File** are there too, for a script or a shortcut that names a file's path.
+You can also run **Upload Media…** from the command palette (:kbd[⌘K], then `>`), which opens the same file picker. **Rename Media File…** and **Duplicate Media File** are there too, for a script or a shortcut that names a file's path.
 
 ## Drag onto the canvas
 
@@ -98,7 +98,7 @@ Dropping onto a component that takes a single image (a card with a cover picture
 
 ## Choose media for a field
 
-Studio asks for an image or file in several places: an image's **Content** tab, a frontmatter field, and the Icon and social-image fields in **[Search appearance](/docs/studio/editing/frontmatter)**. Every one of them has a browse button and an **Upload** button.
+Studio asks for an image or file in several places: an image's **Content** view, a frontmatter field, and the Icon and social-image fields in **[Search appearance](/docs/studio/editing/frontmatter)**. Every one of them has a browse button and an **Upload** button.
 
 The browse button opens a compact list: a search box over the project's media, matched on name or path, with a thumbnail for every image. It lists the first 50 files, and **Show N more** at the foot of the list lists the next 50, so every file the Media workspace has can be reached from here. A field that holds a picture lists only images. It opens above whatever surface it was called from, so it works the same in a panel and in a window like Search appearance.
 
@@ -157,7 +157,7 @@ This is the fastest way to check what an [imported site](/docs/studio/projects/c
 
 ## Edit an image
 
-An image you can edit offers a second editor next to **Media** in the pane's **Editor** control: **Image**. Choose it there, or choose **Edit image** in the Media workspace, or run **Edit Image…** from the command palette.
+An image you can edit offers a second editor next to **Media** in the pane's **Editor** control: **Image**. Choose it there, or choose **Edit image** in the Media workspace, or run **Edit Image…** from the command palette (:kbd[⌘K], then `>`).
 
 ![The Image editor: a photo with crop handles around it, and the orientation, size, quality and tone controls beside it](../../images/image-editor.png)
 

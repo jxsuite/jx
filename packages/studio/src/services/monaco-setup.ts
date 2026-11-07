@@ -83,6 +83,7 @@ import projectSchema from "@jxsuite/schema/project-schema.json";
 import type { JsonObject } from "@jxsuite/schema/types";
 import type { ProjectSchemasResponse } from "../types";
 import { bundleUrl } from "./bundle-base";
+import { PROJECT_FILE_NAME } from "@jxsuite/schema/project-file";
 import { registerJxnLanguage } from "./jxn-language";
 
 /* Re-exported for the modules that already imported it from here. New callers should reach for
@@ -208,7 +209,7 @@ function applyJsonSchemas(documentSchema: JsonObject, projectJsonSchema: JsonObj
         uri: "https://jxsuite.com/schema/v1",
       },
       {
-        fileMatch: ["project.json"],
+        fileMatch: [PROJECT_FILE_NAME],
         schema: projectJsonSchema,
         uri: "https://jxsuite.com/schema/project/v1",
       },

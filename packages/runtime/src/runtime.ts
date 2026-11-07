@@ -1721,7 +1721,15 @@ export const RESERVED_KEYS = new Set([
 ]);
 
 /**
- * A child scope: reads fall through to `parent`, writes land on the child.
+ * A child scope: a `$map` row, or a node carrying `$`-prefixed local bindings or `$props`. Reads
+ * fall through to `parent`, and so does a write to any key the chain above already holds.
+ *
+ * The write is the half a bare `Object.create(parent)` gets wrong, and it gets it wrong silently.
+ * An assignment that reaches the reactive proxy through a prototype chain arrives with the child as
+ * its receiver, so the proxy defines the value on the child and triggers nothing: the handler's
+ * `count += 1` shadows `count`, the root never changes, and the bindings reading it never re-run. A
+ * compiled document assigns to the root directly, so the same document counted there and sat still
+ * here. A value this scope owns is declared with {@link bindLocal}, which is what shadows.
  *
  * @param {JxScope} parent
  * @returns {JxScope}
@@ -1729,7 +1737,35 @@ export const RESERVED_KEYS = new Set([
 function inheritScope(parent: JxScope): JxScope {
   /* SAFETY: `Object.create` is typed `any`, but what it returns is a plain object whose prototype
      is `parent`, so it is keyed by string exactly as the scope it extends is. */
-  return Object.create(parent) as JxScope;
+  const local = Object.create(parent) as JxScope;
+  return new Proxy(local, {
+    set(target, key: string, value: JxScopeValue) {
+      if (Object.hasOwn(target, key)) {
+        return Reflect.set(target, key, value);
+      }
+      if (key in parent) {
+        return Reflect.set(parent, key, value);
+      }
+      bindLocal(target, key, value);
+      return true;
+    },
+  });
+}
+
+/**
+ * Declare `key` on a child scope itself, shadowing whatever its parents hold under that name.
+ *
+ * @param {JxScope} scope
+ * @param {string} key
+ * @param {JxScopeValue} value
+ */
+function bindLocal(scope: JxScope, key: string, value: JxScopeValue): void {
+  Object.defineProperty(scope, key, {
+    configurable: true,
+    enumerable: true,
+    value,
+    writable: true,
+  });
 }
 
 /**
@@ -1854,7 +1890,7 @@ export function renderNode(
       if (localState === state) {
         localState = inheritScope(state);
       }
-      localState[key] = isRefValue(val) ? resolveRef(val.$ref, state) : val;
+      bindLocal(localState, key, isRefValue(val) ? resolveRef(val.$ref, state) : val);
     }
   }
 
@@ -3095,7 +3131,7 @@ function renderMappedArrayInto(
   ): MappedRow => {
     const map = shallowReactive({ index, item });
     const child = inheritScope(state);
-    child.$map = map;
+    bindLocal(child, "$map", map);
     // The flat aliases stay readable by legacy readers, and follow the reactive context.
     Object.defineProperty(child, "$map/item", { enumerable: true, get: () => map.item });
     Object.defineProperty(child, "$map/index", { enumerable: true, get: () => map.index });
@@ -4452,7 +4488,7 @@ function mergeProps(def: JxElement, parentState: JxScope): JxScope {
     if (refusePrivateProp(k, "$props")) {
       continue;
     }
-    child[k] = isRefValue(v) ? resolveRef(v.$ref, parentState) : v;
+    bindLocal(child, k, isRefValue(v) ? resolveRef(v.$ref, parentState) : v);
   }
   return child;
 }
