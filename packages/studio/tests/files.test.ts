@@ -36,6 +36,7 @@ import {
   reloadTabsIfChanged,
 } from "../src/files/files";
 import { shell } from "../src/shell";
+import { problems } from "../src/services/notify";
 import { effect, effectScope } from "../src/reactivity";
 import type { DirEntry, GitStatusResult, ProjectState, StudioPlatform } from "../src/types";
 import { uploadAccept } from "../src/files/media-upload";
@@ -630,6 +631,26 @@ describe("followOpenDocuments", () => {
     deliver("pages/a.json");
     await flush();
     expect(activeTab.value?.id).toBe("tab-a");
+  });
+
+  test("a document that cannot be opened is reported, and opens no tab", async () => {
+    let deliver: (path: string) => void = () => {};
+    installMockPlatform({
+      readFile: async () => {
+        throw new Error("gone");
+      },
+      subscribeOpenDocument: (handler) => {
+        deliver = handler;
+        return () => {};
+      },
+    });
+    siteState();
+    const before = workspace.tabs.size;
+    followOpenDocuments();
+    deliver("pages/missing.json");
+    await flush();
+    expect(workspace.tabs.size).toBe(before);
+    expect(problems.at(-1)?.message).toBe("Could not open pages/missing.json.");
   });
 
   test("a window whose project did not load opens no tab for it", async () => {
