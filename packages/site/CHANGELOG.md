@@ -1,5 +1,14 @@
 # Changelog
 
+## [2.3.2](https://github.com/jxsuite/jx/compare/site-v2.3.1...site-v2.3.2) (2026-11-07)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/runtime bumped to 6.1.1
+
 ## [2.3.1](https://github.com/jxsuite/jx/compare/site-v2.3.0...site-v2.3.1) (2026-11-06)
 
 

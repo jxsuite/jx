@@ -1,5 +1,21 @@
 # Changelog
 
+## [8.3.1](https://github.com/jxsuite/jx/compare/server-v8.3.0...server-v8.3.1) (2026-11-07)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/compiler bumped to 8.2.1
+    * @jxsuite/create bumped to 1.5.5
+    * @jxsuite/import bumped to 0.42.5
+    * @jxsuite/runtime bumped to 6.1.1
+    * @jxsuite/site bumped to 2.3.2
+    * @jxsuite/starters bumped to 3.3.1
+  * devDependencies
+    * @jxsuite/parser bumped to 4.3.1
+
 ## [8.3.0](https://github.com/jxsuite/jx/compare/server-v8.2.1...server-v8.3.0) (2026-11-06)
 
 

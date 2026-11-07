@@ -1,5 +1,12 @@
 # Changelog
 
+## [6.1.1](https://github.com/jxsuite/jx/compare/runtime-v6.1.0...runtime-v6.1.1) (2026-11-07)
+
+
+### Bug Fixes
+
+* **runtime:** let a write from a child scope reach the state it names ([#556](https://github.com/jxsuite/jx/issues/556)) ([9345bd2](https://github.com/jxsuite/jx/commit/9345bd28d2c323d881e285cfd353f9386fa1cd22))
+
 ## [6.1.0](https://github.com/jxsuite/jx/compare/runtime-v6.0.2...runtime-v6.1.0) (2026-11-06)
 
 
