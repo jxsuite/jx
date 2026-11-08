@@ -1757,11 +1757,12 @@ describe("left panel wiring", () => {
 });
 
 /* Source control is the Publish workspace's flow now, not a Navigator panel's, so the bootstrap
-   hands IT the clone flow and the diff-state setter (`setSourceControlDeps`). */
+   hands IT the clone flow (`setSourceControlDeps`), and the canvas reads the comparison Review
+   changes loaded from `shell.git.diffState`. */
 describe("source control wiring", () => {
-  test("the injected diff-state setter propagates git-diff state to the canvas", () => {
+  test("the canvas's diff-state setter propagates git-diff state to the canvas", () => {
     expect(sourceControlDeps).not.toBeNull();
-    sourceControlDeps!.setGitDiffState!({
+    canvasRenderCtx.setGitDiffState({
       currentContent: "new",
       filePath: "z.json",
       fileStatus: "M",
@@ -1773,7 +1774,7 @@ describe("source control wiring", () => {
       fileStatus: "M",
       originalContent: "old",
     });
-    sourceControlDeps!.setGitDiffState!(null);
+    canvasRenderCtx.setGitDiffState(null);
     expect(canvasRenderCtx.gitDiffState).toBeNull();
   });
 

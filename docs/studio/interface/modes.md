@@ -100,7 +100,7 @@ Every file opens in its natural editor and view, and the two controls offer only
 | Vector images (`.svg`)                 | **Media**         | **Code**                | —                       |
 | The project file (`project.json`)      | **Elements**      | **Variables**, **Code** | —                       |
 
-Any file with uncommitted changes can also be compared, including files that have no other editor at all, but not from the Editor control: you open a comparison by choosing the file in [Source control](/docs/studio/publish/source-control), which opens it in **Diff** in the Publish workspace, and **Back to Publish** leaves it. Opening a file with no editor from the Files tree still says Studio has no editor for it; the comparison asks the narrower question of what changed, and answers it.
+Any file with uncommitted changes can also be compared, including files that have no other editor at all, but not from the Editor control: you pick the change in the Publish workspace's [Review changes](/docs/studio/publish/source-control), which shows its comparison beside the list. Opening a file with no editor from the Files tree still says Studio has no editor for it; the comparison asks the narrower question of what changed, and answers it.
 
 Opening `project.json` from the Files tree lands on **Elements**, and **Go to Styles** (:kbd[⌘4], or from :kbd[⌘K]) switches to the Styles workspace from anywhere. **Open Project Settings** is a dialog rather than an editor of the file, so it leaves the tab as it is.
 

@@ -1,36 +1,14 @@
 /**
- * Open a changed file as a comparison, whatever kind of file it is.
+ * Which changed files have a comparison, and which half of one (studio.md §21.3, §22.8).
  *
- * The shape of `media/media-open.ts` and `grid/grid-open.ts`, and for the same reason those exist:
- * a real file tab keyed by its path, with a stub document, because the tab model wants A DOCUMENT
- * and a changed `.ts` is not one. The diff stage never reads it — it reads the two texts
- * `readGitDiff` returns and renders them, or hands them to Monaco.
- *
- * **The modes are set HERE rather than in `tabs/tab.ts`'s `inferModes`**, which is the division
- * media and CSV already live under: `inferModes` answers for DOCUMENTS, from the format registry,
- * and an opener answers for the files that are not.
- *
- * **A renderable document gets no new tab.** It opens or activates the ordinary path-keyed tab it
- * would have had anyway and takes `git-diff` as a mode, so §14.1 holds by construction: one path,
- * one tab, one document. Only a file that could not otherwise open at all gets a stub tab, and for
- * such a path there is no competing tab to collide with.
- *
- * **`openFileInTab` is deliberately NOT routed here.** Clicking `src/foo.ts` in the file tree still
- * says Studio has no editor for it, which is the truth about opening it as a document; only the
- * Source Control panel, asking the narrower question "show me what changed", gets a diff tab.
- * Widening the tree would drag the Library and session restore in with it.
+ * Review changes draws every change it can in its centre, and these two answers decide how: a file
+ * the canvas can draw gets both halves, Visual and Code; any other text file gets the Code half;
+ * and a change no comparison can be built for is refused with a sentence the centre shows instead.
+ * The Diff lens (`workspace/pane-derive.ts`) asks the same two questions.
  */
 
-import { activateTab, openTab, workspace } from "../workspace/workspace";
 import { formatForPath } from "../format/format-host";
 import { isViewableMedia } from "../media/media-open";
-import type { Tab } from "../tabs/tab";
-
-/**
- * Placeholder document for a diff-only tab — the stage never reads it, and there is nothing to
- * save.
- */
-const DIFF_STUB_DOCUMENT = { children: [], tagName: "div" };
 
 /** `.json` files that configure a project rather than being documents of it. */
 const NON_DOCUMENT_JSON = new Set([
@@ -94,59 +72,4 @@ export function comparisonRefusal(path: string, fileStatus: string): string | nu
     return `"${path}" is an image or media file, and a comparison of one is not text.`;
   }
   return null;
-}
-
-/** The modes a diff-only tab offers. Exactly one: there is nothing else to do with the file here. */
-export function diffTabModes(): string[] {
-  return ["git-diff"];
-}
-
-/**
- * Open (or activate) a stub comparison tab for a file the canvas cannot render.
- *
- * @param {string} path - Project-relative path of the changed file
- * @returns {Tab}
- */
-export function openDiffTab(path: string): Tab {
-  const existing = workspace.tabs.get(path);
-  if (existing) {
-    activateTab(path);
-    return existing;
-  }
-  return openTab({
-    capabilities: { modes: diffTabModes() },
-    document: structuredClone(DIFF_STUB_DOCUMENT),
-    documentPath: path,
-    id: path,
-    sourceFormat: null,
-  });
-}
-
-/**
- * THE tab a comparison belongs in, whatever kind of file it is over.
- *
- * One function because there is one rule, and the Source Control panel should not be the place it
- * is spelled out: a file the canvas can draw gets its ordinary document tab, so the author can
- * leave the comparison for Design without reopening anything; a file it cannot gets the stub tab
- * above. Both are keyed by the path, so §14.1 holds either way — one path, one tab.
- *
- * The document tab opens IN `git-diff`, and an already-open one is moved into it before it is
- * revealed: a comparison belongs to Publish (studio.md §22.1), and a tab activated in its edit mode
- * would enter Design, frame and all, for the moment before the mode followed.
- *
- * `files/files.ts` is imported dynamically because it imports `cleanupSourceControl` from
- * `publish/source-control.ts`, which imports this module: a static edge back would close that
- * cycle. `openFileInTab` answers `void` whether it opens a new tab or reveals one that was already
- * open, so the tab is resolved from the workspace by its path.
- *
- * Answers null when the file could not be opened at all, which the caller states rather than
- * silently leaving the stage on someone else's document.
- */
-export async function openComparisonTab(path: string): Promise<Tab | null> {
-  if (!canRenderComparison(path)) {
-    return openDiffTab(path);
-  }
-  const files = await import("../files/files");
-  await files.openFileInTab(path, { canvasMode: "git-diff" });
-  return [...workspace.tabs.values()].find((tab) => tab.documentPath === path) ?? null;
 }

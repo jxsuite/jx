@@ -233,3 +233,54 @@ describe("a stage that is torn down before it stands up", () => {
     expect(() => stage.dispose()).not.toThrow();
   });
 });
+
+describe("Review changes' layout", () => {
+  test("frames the boards between the change list and the publish column", async () => {
+    const el = host();
+    const stage = mountCanvasStage(
+      el,
+      boardsView(["git-diff-original", "git-diff-current"], { layout: "review", lead: "toolbar" }),
+      actions,
+    );
+    await stage.ready;
+    const names = announced.map((a) => a.part);
+    for (const name of [
+      "review-head",
+      "review-changes",
+      "review-change",
+      "review-frame",
+      "review-side",
+      "diff-toolbar",
+      "panzoom",
+    ]) {
+      expect(names).toContain(name);
+    }
+    // The boards are inside the middle column, and the two side columns are marked as asides.
+    expect(el.querySelector('[part="review-frame"] [part="panzoom"]')).not.toBeNull();
+    expect(el.querySelectorAll("[data-stage-aside]")).toHaveLength(2);
+    // The Compare bar stands in the heading row, not over the boards.
+    expect(el.querySelector('[part="review-change-row"] [part="diff-toolbar"]')).not.toBeNull();
+  });
+
+  test("a change with nothing to compare draws the notice host instead of boards", async () => {
+    const el = host();
+    const stage = mountCanvasStage(
+      el,
+      boardsView([], { frame: "notice", layout: "review" }),
+      actions,
+    );
+    await stage.ready;
+    expect(announced.map((a) => a.part)).toContain("review-notice");
+    expect(el.querySelector('[part="panzoom"]')).toBeNull();
+    expect(el.querySelector('[part="diff-toolbar"]')).toBeNull();
+  });
+
+  test("every other stage keeps the plain layout, whatever was drawn before", async () => {
+    const el = host();
+    const stage = mountCanvasStage(el, boardsView(["base"], { layout: "review" }), actions);
+    await stage.ready;
+    await stage.update(boardsView(["base"]));
+    expect(el.querySelector('[part="review-layout"]')).toBeNull();
+    expect(el.querySelector('[part="plain-layout"] [part="panzoom"]')).not.toBeNull();
+  });
+});
