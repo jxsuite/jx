@@ -34,10 +34,16 @@ interface JxnScan {
   escapes: number[];
 }
 
+/**
+ * The `/- kdl-version 2` line a file may open with. It is a slashdash by spelling, but it says
+ * which KDL the file is written in and holds nothing `.json` would lose, so it is not counted.
+ */
+const VERSION_MARKER = /^\uFEFF?\s*\/-[^\S\n]*kdl-version[^\S\n]+\d+[^\S\n]*(?:\n|$)/u;
+
 /** Walk a file's text, knowing what is a string and what is a comment. */
 function scanJxn(text: string): JxnScan {
   const scan: JxnScan = { comments: 0, escapes: [] };
-  let index = 0;
+  let index = VERSION_MARKER.exec(text)?.[0].length ?? 0;
   while (index < text.length) {
     if (text.startsWith("//", index)) {
       scan.comments += 1;

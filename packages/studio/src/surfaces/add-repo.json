@@ -745,7 +745,7 @@
                               "attributes": {
                                 "part": "note"
                               },
-                              "textContent": "Looking for project.json files…"
+                              "textContent": "Looking for project files…"
                             },
                             "listed": {
                               "tagName": "jx-listbox",
@@ -833,21 +833,21 @@
                               "attributes": {
                                 "part": "note"
                               },
-                              "textContent": "No folder in this repository holds a project.json yet. Name one above if it does, or create a new project instead."
+                              "textContent": "No folder in this repository holds a project file yet. Name one above if it does, or create a new project instead."
                             },
                             "unlisted": {
                               "tagName": "p",
                               "attributes": {
                                 "part": "note"
                               },
-                              "textContent": "Name the folder that holds the project's project.json, or leave the field empty to open the repository root."
+                              "textContent": "Name the folder that holds the project's project.jxn or project.json, or leave the field empty to open the repository root."
                             },
                             "failed": {
                               "tagName": "p",
                               "attributes": {
                                 "part": "note"
                               },
-                              "textContent": "Studio couldn't list this repository's projects. Name the folder that holds the project.json instead."
+                              "textContent": "Studio couldn't list this repository's projects. Name the folder that holds the project file instead."
                             }
                           }
                         }

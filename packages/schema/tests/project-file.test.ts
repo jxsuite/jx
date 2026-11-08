@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join, posix, resolve } from "node:path";
 import { execFileSync } from "node:child_process";
 import {
@@ -70,18 +70,21 @@ describe("classifyProjectFile", () => {
     expect(classifyProjectFile('{ "name": "constructor" }')).toBe("project");
   });
 
-  test("every tracked project file is a project", () => {
+  test("every tracked project file is a project, in either notation", () => {
     const root = resolve(import.meta.dir, "../../..");
-    const tracked = execFileSync("git", ["ls-files", `*${NEW_PROJECT_FILE_NAME}`], {
-      cwd: root,
-      encoding: "utf8",
-    })
+    const names = new Set<string>(PROJECT_FILE_NAMES);
+    const tracked = execFileSync(
+      "git",
+      ["ls-files", ...PROJECT_FILE_NAMES.map((name) => `*${name}`)],
+      { cwd: root, encoding: "utf8" },
+    )
       .split("\n")
-      .filter((file) => file.split("/").pop() === NEW_PROJECT_FILE_NAME);
-    expect(tracked.length).toBeGreaterThan(0);
+      .filter((file) => names.has(file.split("/").pop() ?? "") && existsSync(join(root, file)));
+    expect(tracked.some((file) => file.endsWith(NEW_PROJECT_FILE_NAME))).toBe(true);
+    expect(tracked.some((file) => file.endsWith(".jxn"))).toBe(true);
     for (const file of tracked) {
       const text = readFileSync(join(root, file), "utf8");
-      expect([file, classifyProjectFile(text)]).toEqual([file, "project"]);
+      expect([file, classifyProjectFile(text, file)]).toEqual([file, "project"]);
     }
   });
 });

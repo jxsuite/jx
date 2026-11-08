@@ -257,7 +257,7 @@ async function saveProjectConfig(base: string, rerender: () => void) {
   } catch (error) {
     /* A validator that will not compile must not be silent about it — but it is not the edit's
        fault, so it is a problem of its own rather than an error parked on the user's field. */
-    notify.warn(`Could not validate project.json — ${errorMessage(error)}`, {
+    notify.warn(`Could not validate ${projectConfigPath()} — ${errorMessage(error)}`, {
       key: "settings:validator",
       path: projectConfigPath(),
       source: "Settings",

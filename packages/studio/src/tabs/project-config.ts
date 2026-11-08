@@ -201,15 +201,23 @@ function seedCommitted(): Promise<void> {
       await seedJxn(path);
       return;
     }
+    let text: string;
     try {
-      const text = await getPlatform().readFile(path);
+      text = await getPlatform().readFile(path);
+    } catch {
+      // No file yet, or one the platform cannot read. "Unknown" is the honest answer, and an
+      // Unknown file is one every commit must write.
+      _committed = null;
+      return;
+    }
+    try {
       const { document, layout } = parseJsonDocument(text);
       _layout = layout;
       // {@link serializeProjectConfig}'s serialisation, over the file's parse rather than a config.
       _committed = serializeJson(document, configLayout());
-    } catch {
-      // No file, an unreadable one, or one that does not parse. "Unknown" is the honest answer,
-      // And an unknown file is one every commit must write.
+    } catch (error) {
+      // A file that does not parse is the author's, mid-edit: a commit would replace it.
+      _unwritable = errorMessage(error);
       _committed = null;
     }
   })();
@@ -256,6 +264,10 @@ export async function lendProjectConfigLayout(tab: Tab): Promise<void> {
   await seedCommitted();
   if (tab.doc.layout === null && _layout !== null) {
     tab.doc.layout = _layout;
+  }
+  // A `project.jxn`'s record is its text, which is what its Code view shows and its save merges with.
+  if (tab.doc.source === null && _source !== null) {
+    tab.doc.source = _source;
   }
 }
 

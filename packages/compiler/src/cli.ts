@@ -29,7 +29,7 @@ Commands:
   preview [root]   Serve an already-built dist/ directory
   schema [root]    Generate project.schema.json + document.schema.json from project.json#/extensions
   validate [root]  Validate the whole project: project.json, documents, classes, and fragments
-  convert <paths…> Move documents between .json and .jxn, repairing every reference to them
+  convert <paths…> Move documents and the project file between .json and .jxn, repairing references
   db push [root]   Sync the data section's tables to their connections (additive-only)
 
 Options:

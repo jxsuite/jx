@@ -17,6 +17,7 @@ import { displayTagName, isString } from "@jxsuite/schema/guards";
 import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { identities } from "@jxsuite/test-support/inspect-dom";
 import { notifyModule } from "./notify-mock";
+import { problems } from "../src/services/notify";
 import { initShellRefs, setProjectState } from "../src/store";
 import {
   activeCanvasSurface,
@@ -1253,6 +1254,61 @@ describe("source mode", () => {
       expect(parseSourceForPathMock).toHaveBeenCalledWith("/project/post.md", "# Never saved");
       expect(tab.doc.document.tagName).toBe("div");
       expect(tab.doc.dirty).toBe(false);
+    });
+  });
+
+  test("a file that did not read shows its own text, and is a document again once it parses", async () => {
+    setFormats([MARKDOWN_FORMAT]);
+    closeAllTabs();
+    const tab = openSyncedTab(undefined, { documentPath: "/project/post.md" });
+    tab.doc.sourceFormat = "Markdown";
+    tab.doc.source = "# Half-typed [link";
+    tab.doc.unread = "line 1: an unclosed link";
+    problems.push({
+      at: 0,
+      id: "unread",
+      key: "unread:/project/post.md",
+      message: "post.md does not read",
+      severity: "error",
+      tier: "problem",
+    });
+    setMode("source");
+    await withFastTimers(async (runPending) => {
+      renderCanvas();
+      await waitForEditors(1);
+      // Not the serializer's rendering of an empty document: the file, as the author left it.
+      expect(createdModels[0]!._value).toBe("# Half-typed [link");
+      const [editor] = createdEditors;
+      editor!._ignoreNextChange = false;
+      editor!._model!._value = "# Fixed";
+      fireModelChange(editor!);
+      await runPending();
+      expect(tab.doc.unread).toBeNull();
+      expect(tab.doc.source).toBe("# Fixed");
+      // The Problem that said it did not read is withdrawn with it.
+      expect(problems.some((record) => record.key === "unread:/project/post.md")).toBe(false);
+      expect(tab.doc.dirty).toBe(true);
+    });
+  });
+
+  test("a JSON file that did not read is a JSON document again once it parses", async () => {
+    const tab = openSyncedTab();
+    tab.doc.source = "{ oops";
+    tab.doc.unread = "Unexpected token";
+    setMode("source");
+    await withFastTimers(async (runPending) => {
+      renderCanvas();
+      await waitForEditors(1);
+      expect(createdModels[0]!._value).toBe("{ oops");
+      const [editor] = createdEditors;
+      editor!._ignoreNextChange = false;
+      editor!._model!._value = '{ "tagName": "main" }';
+      fireModelChange(editor!);
+      await runPending();
+      expect(tab.doc.unread).toBeNull();
+      // A JSON document's record is its layout, never its text.
+      expect(tab.doc.source).toBeNull();
+      expect(tab.doc.document.tagName).toBe("main");
     });
   });
 

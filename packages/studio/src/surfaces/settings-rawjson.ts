@@ -1,6 +1,6 @@
 /// <reference lib="dom" />
 /**
- * The Raw JSON surface: `project.json` as it is written, and the way through to editing it as text.
+ * The Source surface: the project file as it is written, and the way through to editing it as text.
  *
  * This is the adapter. `settings/project-sections.ts` keeps the section — it asks the save
  * chokepoint to serialise the configuration, so what is drawn is what a save writes, and it owns
@@ -22,6 +22,8 @@ registerSurface("settings-rawjson", rawJsonDoc);
 
 /** What the section says the surface should be showing right now. */
 export interface RawJsonValues {
+  /** The project file's name, `project.jxn` or `project.json`. */
+  file: string;
   /** The whole file, serialised by the chokepoint that writes it. */
   json: string;
 }
@@ -43,19 +45,23 @@ export interface RawJsonSurfaceHandle {
 
 /** The scope the document reads. */
 interface RawJsonScope {
+  file: string;
   json: string;
   editAsCode: () => void;
 }
 
 /** Write a patch into the scope. */
 function project(scope: RawJsonScope, patch: Partial<RawJsonValues>): void {
+  if (patch.file !== undefined) {
+    scope.file = patch.file;
+  }
   if (patch.json !== undefined) {
     scope.json = patch.json;
   }
 }
 
 /**
- * Mount the Raw JSON document into `container`.
+ * Mount the Source document into `container`.
  *
  * The container is cleared first: a settings section is handed the pane's content area, and
  * whatever the last section drew into it is not this one's to keep.
@@ -67,6 +73,7 @@ export function mountRawJsonSurface(
 ): RawJsonSurfaceHandle {
   const scope: RawJsonScope = reactive<RawJsonScope>({
     editAsCode: actions.editAsCode,
+    file: "",
     json: "",
   });
   project(scope, values);

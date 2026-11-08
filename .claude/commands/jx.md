@@ -9,7 +9,7 @@ You are authoring files for the Jx platform — a declarative, JSON-based web fr
 Every Jx file validates against one of three JSON Schema 2020-12 documents:
 
 1. **Component/Page/Layout** (`$schema: "https://jxsuite.com/schema/v1"`) — UI documents
-2. **Project config** (`$schema: "https://jxsuite.com/schema/project/v1"`) — `project.json`
+2. **Project config** (`$schema: "https://jxsuite.com/schema/project/v1"`) — `project.json`, or `project.jxn` in Jx Notation
 3. **Class definition** (`$schema: "https://jxsuite.com/schema/class/v1"`) — `.class.json`
 
 Read the generated schemas at `packages/schema/schema.json`, `packages/schema/project-schema.json`, and `packages/schema/class-schema.json` for the authoritative field reference.
@@ -20,7 +20,7 @@ Read the generated schemas at `packages/schema/schema.json`, `packages/schema/pr
 
 ```
 my-site/
-  project.json       # Required. Site config, global styles, collections, build settings
+  project.json       # Required (or project.jxn, never both). Site config, global styles, collections, build settings
   pages/             # File-based routing. Each .json = a route. [slug].json = dynamic
   layouts/           # Shared page shells. Use { "tagName": "slot" } for content insertion
   components/        # Reusable custom elements
@@ -274,6 +274,25 @@ Layouts wrap page content. Use `{ "tagName": "slot" }` for the page content inse
   },
   "build": { "outDir": "./dist", "trailingSlash": "always" }
 }
+```
+
+A project may instead be declared by `project.jxn`: the same members in Jx Notation (KDL 2), which keeps `//` comments. Check which file the project has before writing, keep its comments, and never add the other. `project "Name"` declares the file and holds `name`; a list of one needs its block (`extensions { - "@jxsuite/parser" }`, because `extensions "@jxsuite/parser"` is a string); `style` and `$media` take one declaration per line. `docs/framework/concepts/jxn-files.md` has the full form.
+
+```kdl
+/- kdl-version 2
+$schema "./project.schema.json"
+project "My Site"
+
+url "https://example.com"
+
+// Every page inherits this layout unless it names another.
+defaults layout="./layouts/base.json" lang=en
+
+extensions {
+    - "@jxsuite/parser"
+}
+
+build outDir="./dist" trailingSlash=always
 ```
 
 ---

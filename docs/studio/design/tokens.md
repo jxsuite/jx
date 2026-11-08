@@ -27,12 +27,12 @@ A design token is a named value: **Primary Blue** instead of `#3b82f6`, **Body S
 
 ## Define tokens
 
-Tokens are your site's CSS custom properties: the `--` keys of the `style` block in `project.json`. You edit them in the **Variables** view of the **Styles** workspace, which is where the workspace opens: click **Styles** in the Command Bar (:kbd[⌘4], or **Go to Styles** from :kbd[⌘K]). In [Project settings](/docs/studio/projects/settings), the **Moved** footnote's **Colors and fonts** button opens the same view.
+Tokens are your site's CSS custom properties: the `--` keys of the `style` block in your project file (`project.json` or `project.jxn`). You edit them in the **Variables** view of the **Styles** workspace, which is where the workspace opens: click **Styles** in the Command Bar (:kbd[⌘4], or **Go to Styles** from :kbd[⌘K]). In [Project settings](/docs/studio/projects/settings), the **Moved** footnote's **Colors and fonts** button opens the same view.
 
 The **Styles** panel beside it lists every token the project defines, by its name and grouped as the view groups them, with a count on each group and a swatch on each color. Click a token to jump to its row with the value ready to edit, or a group to jump to that group. **Add variable** jumps to the add row, so a new token is named and stored the same way as one added in the view. From the **Elements** view, any of these switches you back to Variables first. See **[Project Styles](/docs/studio/design/stylebook#the-styles-panel)**.
 
 :::doc-note
-A change in the Variables view is saved to `project.json` as you make it, so there is nothing to save afterwards. Because tokens and element defaults live in the same file, the write also saves any element default from the **Elements** view that was still waiting for **Save**, and the view says so at its top. Undo is the exception: :kbd[⌘Z] takes a change back in the open file, which then shows its unsaved dot until you **Save** (:kbd[⌘S]).
+A change in the Variables view is saved to the project file as you make it, so there is nothing to save afterwards. Because tokens and element defaults live in the same file, the write also saves any element default from the **Elements** view that was still waiting for **Save**, and the view says so at its top. Undo is the exception: :kbd[⌘Z] takes a change back in the open file, which then shows its unsaved dot until you **Save** (:kbd[⌘S]).
 :::
 
 Tokens are grouped by what they name:
@@ -47,7 +47,7 @@ To add a token, type a friendly name and a value in the group's empty row and cl
 A token can be built from another one: give it the value `var(--color-brand)` and the row grows a chip naming `--color-brand`, with the color that reference ends up at. Studio follows the chain to its end, so an alias of an alias still shows a color rather than more syntax.
 
 :::doc-tip
-A value that could not be written to `project.json` is raised on **[Problems](/docs/studio/interface/problems-and-progress)** rather than quietly dropped. While `project.json` is open in the Styles workspace, each token change is a step in its history, so :kbd[⌘Z] there takes it back.
+A value that could not be written to the project file is raised on **[Problems](/docs/studio/interface/problems-and-progress)** rather than quietly dropped. While the project file is open in the Styles workspace, each token change is a step in its history, so :kbd[⌘Z] there takes it back.
 :::
 
 ## One token, several values
@@ -75,7 +75,7 @@ In **[Project Styles](/docs/studio/design/stylebook)**, a value that arrives fro
 Studio also nudges toward tokens in the other direction: when its AI assistant writes styles, hard-coded values that duplicate an existing token are flagged with the token to use instead.
 
 :::doc-note
-Tokens are CSS custom properties in your project's site-wide `style` (in `project.json`), inherited by every page and component. A per-context value is stored beside the token in an `@` block named for that context. The format is described in **[Styling](/docs/framework/concepts/styling)**.
+Tokens are CSS custom properties in your project's site-wide `style` (in the project file), inherited by every page and component. A per-context value is stored beside the token in an `@` block named for that context. The format is described in **[Styling](/docs/framework/concepts/styling)**.
 :::
 
 ## Next

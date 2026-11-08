@@ -83,6 +83,7 @@ import { collectionOfPath } from "../content/entry-model";
 import { confirmFileDelete, parseSourceForPath, renamePromptMessage } from "./file-ops";
 import { parseJsonDocument } from "@jxsuite/schema/json-layout";
 import { normalizeDocument } from "../tabs/bare-repeaters";
+import { isProjectConfigPath } from "../tabs/tab";
 // The pure half of the differ: order-insensitive equality with no Yjs behind it.
 import { deepEqual } from "@jxsuite/collab/diff-core";
 import type { JsonLayout } from "@jxsuite/schema/json-layout";
@@ -280,6 +281,12 @@ export async function loadProject() {
       await loadProjectDirectories();
       await loadComponentRegistry();
       await openLastSessionOrHome();
+      if (!info.projectConfig) {
+        // A site whose project file does not read is opened with none, and shown as text
+        // (`site-architecture.md` §2.3).
+        const { showUnreadProjectFile } = await import("../settings/settings-document");
+        await showUnreadProjectFile();
+      }
       void maybePromptJxsuiteUpdate(meta.root);
     }
     // If not a site project (monorepo) — show welcome prompt, don't load tree
@@ -2497,6 +2504,14 @@ export async function openFileInTab(path: string, opts: OpenFileOpts = {}) {
       root: requireProjectState().projectRoot,
     });
   } catch (error) {
+    if (isProjectConfigPath(path)) {
+      /* The project file that does not read opens as its text, with the reason as a Problem
+         (`site-architecture.md` §2.3): from the Files tree, a restored session or a deep link alike. */
+      const { showUnreadProjectFile } = await import("../settings/settings-document");
+      if (await showUnreadProjectFile()) {
+        return;
+      }
+    }
     notify.error(`Could not open ${path}.`, {
       detail: errorMessage(error),
       path,

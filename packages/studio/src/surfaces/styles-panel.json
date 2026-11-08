@@ -240,7 +240,7 @@
                       "attributes": {
                         "part": "note"
                       },
-                      "textContent": "Every CSS custom property in project.json's root style block is listed here, by its name. Add the first one with Add variable."
+                      "textContent": "Every CSS custom property in the project file's root style block is listed here, by its name. Add the first one with Add variable."
                     },
                     "listed": {
                       "tagName": "div",
@@ -582,7 +582,7 @@
                                           "attributes": {
                                             "part": "dot",
                                             "role": "img",
-                                            "aria-label": "Styled in project.json"
+                                            "aria-label": "Styled in the project file"
                                           }
                                         }
                                       }

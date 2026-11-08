@@ -21,6 +21,7 @@
  * @docs studio/projects/settings
  */
 
+import { projectConfigPath } from "../tabs/tab";
 import { canonicalizeLocale, isWellFormedLocale, localeLabel } from "@jxsuite/schema/locale";
 import { errorMessage } from "@jxsuite/schema/parse";
 import { notify } from "../services/notify";
@@ -75,7 +76,7 @@ async function persist(container: HTMLElement, patch: ProjectConfigPatch): Promi
     await updateSiteConfig(patch);
     form(container).error = "";
   } catch (error) {
-    form(container).error = `Could not save project.json — ${errorMessage(error)}`;
+    form(container).error = `Could not save ${projectConfigPath()} — ${errorMessage(error)}`;
   }
   refresh(container);
 }

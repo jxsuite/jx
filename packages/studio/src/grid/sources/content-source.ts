@@ -19,6 +19,7 @@
  * the richer `content/entry-model.ts`, which asks THIS file where a collection's entries live, so
  * an edge back to it would be the cycle `import/no-cycle` rejects.
  */
+import { projectConfigPath } from "../../tabs/tab";
 import { getPlatform } from "../../platform";
 import { projectState } from "../../store";
 import { workspace } from "../../workspace/workspace";
@@ -657,7 +658,7 @@ export function createCollectionSource(typeName: string): GridSource {
   const requireInfo = (): CollectionInfo => {
     const info = collectionInfo(typeName);
     if (!info) {
-      throw new Error(`No content collection named "${typeName}" in project.json`);
+      throw new Error(`No content collection named "${typeName}" in ${projectConfigPath()}`);
     }
     return info;
   };

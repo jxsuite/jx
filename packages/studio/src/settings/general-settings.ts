@@ -224,7 +224,7 @@ function actions(container: HTMLElement): OverviewActions {
     } catch (error) {
       errors.set(container, {
         field,
-        message: `Could not save project.json — ${errorMessage(error)}`,
+        message: `Could not save ${projectConfigPath()} — ${errorMessage(error)}`,
       });
     }
     renderGeneralSettings(container);

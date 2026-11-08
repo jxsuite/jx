@@ -25,6 +25,7 @@
  * @docs studio/projects/settings
  */
 
+import { projectConfigPath } from "../tabs/tab";
 import { errorMessage } from "@jxsuite/schema/parse";
 import { buildRows } from "./extension-rows";
 import { getPlatform } from "../platform";
@@ -60,8 +61,8 @@ const GROUPS: { origin: ExtensionOrigin; label: string; blurb: string }[] = [
   },
   {
     blurb:
-      "Named in project.json, but this backend does not describe them. You can still turn them off.",
-    label: "Named in project.json",
+      "Named in the project file, but this backend does not describe them. You can still turn them off.",
+    label: "Named in the project file",
     origin: "configured",
   },
 ];
@@ -100,7 +101,7 @@ function noteFor(row: ExtensionRow): RowNote {
   if (row.broken) {
     return {
       note:
-        `${row.name} is named in project.json but is not installed, so the next build will fail. ` +
+        `${row.name} is named in ${projectConfigPath()} but is not installed, so the next build will fail. ` +
         `Turn it off, or turn it off and on again to install it.`,
       noteTone: "warn",
     };
@@ -134,7 +135,7 @@ function removeFor(
   row: ExtensionRow,
 ): Pick<ExtensionRowView, "canRemove" | "removeDisabled" | "removeHint" | "removeLabel"> {
   const refusal = row.enabled
-    ? `Turn ${row.title} off first. Removing the package while project.json still names it would fail the next build.`
+    ? `Turn ${row.title} off first. Removing the package while ${projectConfigPath()} still names it would fail the next build.`
     : "";
   return {
     canRemove: row.installed,

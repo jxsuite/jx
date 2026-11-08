@@ -233,7 +233,7 @@ export function gridCommands(): AnyCommand[] {
   return [
     {
       args: argsSchema({
-        name: stringProperty("The content collection's name, as project.json declares it."),
+        name: stringProperty("The content collection's name, as the project file declares it."),
       }),
       category: "Project",
       id: "collection.editInGrid",
@@ -263,7 +263,7 @@ export function gridCommands(): AnyCommand[] {
         additionalProperties: false,
         properties: {
           connection: stringProperty(
-            'The connection name from project.json. Defaults to "default".',
+            'The connection name from the project file. Defaults to "default".',
           ),
           table: stringProperty("The table to open."),
         },

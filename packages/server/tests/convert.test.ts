@@ -98,11 +98,87 @@ describe("to .json", () => {
     expect(existsSync(resolve(root, "pages/a.jxn"))).toBe(true);
   });
 
+  test("the version marker a .jxn file opens with is not a comment", async () => {
+    write("pages/a.jxn", "/- kdl-version 2\nmain\n");
+    const [row] = await convertDocuments(root, ["pages/a.jxn"], TO_JSON);
+    expect(row?.problem).toBeNull();
+  });
+
   test("--drop-comments converts it anyway", async () => {
     write("pages/a.jxn", "// one\nmain\n");
     const [row] = await convertDocuments(root, ["pages/a.jxn"], { ...TO_JSON, dropComments: true });
     expect(row?.problem).toBeNull();
     expect(existsSync(resolve(root, "pages/a.json"))).toBe(true);
+  });
+});
+
+describe("the project file", () => {
+  const TO_JSON: ConvertOptions = { ...OPTIONS, to: "json" };
+
+  test("becomes project.jxn in place, in canonical form", async () => {
+    write(
+      "project.json",
+      JSON.stringify({ $schema: "./project.schema.json", name: "Fixture", redirects: ["/a"] }),
+    );
+    const [row] = await convertDocuments(root, ["project.json"], OPTIONS);
+    expect(row).toEqual({ from: "project.json", problem: null, references: 0, to: "project.jxn" });
+    expect(existsSync(resolve(root, "project.json"))).toBe(false);
+    expect(read("project.jxn")).toBe(
+      '/- kdl-version 2\n$schema "./project.schema.json"\nproject Fixture\n\nredirects {\n    - "/a"\n}\n',
+    );
+  });
+
+  test("comes back as the same configuration", async () => {
+    write("project.json", JSON.stringify({ defaults: { lang: "en" }, name: "Fixture" }));
+    await convertDocuments(root, ["project.json"], OPTIONS);
+    const [row] = await convertDocuments(root, ["project.jxn"], TO_JSON);
+    expect(row?.problem).toBeNull();
+    expect(JSON.parse(read("project.json"))).toEqual({ defaults: { lang: "en" }, name: "Fixture" });
+    expect(existsSync(resolve(root, "project.jxn"))).toBe(false);
+  });
+
+  test("is found under the root, as the documents are", async () => {
+    write("pages/a.json", JSON.stringify({ tagName: "main" }));
+    const rows = await convertDocuments(root, ["."], OPTIONS);
+    expect(rows.find((row) => row.from === "project.json")?.problem).toBeNull();
+    expect(existsSync(resolve(root, "project.jxn"))).toBe(true);
+    expect(existsSync(resolve(root, "pages/a.jxn"))).toBe(true);
+  });
+
+  test("with comments stays .jxn, unless they may go", async () => {
+    rmSync(resolve(root, "project.json"));
+    write("project.jxn", "/- kdl-version 2\n// why\nproject Fixture\n");
+    const [kept] = await convertDocuments(root, ["project.jxn"], TO_JSON);
+    expect(kept?.problem).toContain("1 comment(s)");
+    const [dropped] = await convertDocuments(root, ["project.jxn"], {
+      ...TO_JSON,
+      dropComments: true,
+    });
+    expect(dropped?.problem).toBeNull();
+    expect(JSON.parse(read("project.json"))).toEqual({ name: "Fixture" });
+  });
+
+  test("is refused while the folder holds both, naming both, and nothing moves", async () => {
+    write("project.jxn", "project Other\n");
+    const lines: string[] = [];
+    expect(
+      await runConvert(["project.json", "--to", "jxn", "--root", root], (line) => lines.push(line)),
+    ).toBe(1);
+    expect(lines).toEqual([expect.stringContaining("project.jxn and project.json")]);
+    expect(read("project.json")).toBe(JSON.stringify({ name: "Fixture" }));
+  });
+
+  test("already in the format asked for is left alone", async () => {
+    const [row] = await convertDocuments(root, ["project.json"], TO_JSON);
+    expect(row?.problem).toBe("already .json");
+  });
+
+  test("a file named like one below the root is a document's name, not the project's", async () => {
+    write("pages/project.json", JSON.stringify({ tagName: "main" }));
+    const [row] = await convertDocuments(root, ["pages/project.json"], OPTIONS);
+    expect(row?.problem).toBeNull();
+    expect(read("pages/project.jxn")).toEndWith("\nmain\n");
+    expect(existsSync(resolve(root, "project.json"))).toBe(true);
   });
 });
 

@@ -220,7 +220,7 @@ export async function disableExtension(specifier: string): Promise<void> {
 export async function removeExtensionPackage(name: string): Promise<void> {
   if (enabledSpecifiers().includes(name)) {
     throw new RangeError(
-      `command "packages.remove" argument "package": "${name}" is still enabled in project.json ` +
+      `command "packages.remove" argument "package": "${name}" is still enabled in ${projectConfigPath()} ` +
         `"extensions" — disable it first, or the next build will fail on a missing package.`,
     );
   }
@@ -284,8 +284,8 @@ export function extensionCommands(): AnyCommand[] {
            `Not undoable.` from `undo` for every record, so saying it here would say it twice. */
         description:
           "Turn on a Jx extension for this project: install its npm package if it is missing and " +
-          'add it to project.json "extensions". Enable an extension BEFORE writing the ' +
-          "project.json section it owns, because a section belonging to a disabled extension is a " +
+          'add it to the project file\'s "extensions". Enable an extension BEFORE writing the ' +
+          "project file section it owns, because a section belonging to a disabled extension is a " +
           "schema error.",
         name: "enable_extension",
         /* The result carries what a read tool would otherwise have to be advertised to answer: the
@@ -298,7 +298,7 @@ export function extensionCommands(): AnyCommand[] {
           const sections = sectionsOf(name);
           const owned =
             sections.length > 0
-              ? ` Its project.json sections are ${_lastEnableWrote.length > 0 ? "now " : ""}valid: ${sections.join(", ")}.`
+              ? ` Its ${projectConfigPath()} sections are ${_lastEnableWrote.length > 0 ? "now " : ""}valid: ${sections.join(", ")}.`
               : "";
           const verb =
             _lastEnableWrote.length > 0 ? `Enabled ${name}.` : `${name} was already enabled.`;
@@ -329,8 +329,8 @@ export function extensionCommands(): AnyCommand[] {
       undo: "project",
       aiTool: {
         description:
-          'Remove an extension from project.json "extensions". Its npm package stays installed, ' +
-          "and the settings sections it contributed disappear. Remove any project.json sections " +
+          'Remove an extension from the project file\'s "extensions". Its npm package stays installed, ' +
+          "and the settings sections it contributed disappear. Remove any project file sections " +
           "it owns first, or the configuration will not validate.",
         name: "disable_extension",
         /* "Ask before uninstalling" is the sentence that keeps `packages.remove` — deliberately not

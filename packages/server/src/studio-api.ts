@@ -51,6 +51,7 @@ import { scanFiles } from "./fs-glob.ts";
 import {
   PROJECT_FILE_NAMES,
   classifyProjectFile,
+  parseProjectFile,
   parseProjectSource,
   projectFileConflict,
 } from "@jxsuite/schema/project-file";
@@ -520,17 +521,26 @@ export async function handleStudioApi(
 
       let isSiteProject = false;
       let projectConfig: ProjectConfig | null = null;
+      let projectProblem: string | null = null;
       const read = readProjectFile(absDir);
-      if (read && "config" in read && classifyProjectFile(read.text, read.path) === "project") {
+      const verdict = read ? classifyProjectFile(read.text, read.path) : null;
+      if (read && "config" in read && verdict === "project") {
         isSiteProject = true;
         // Relayed to the client here, never interpreted.
         projectConfig = read.config;
+      } else if (read && "error" in read && verdict !== "other" && read.text !== "") {
+        /* A file that does not read is believed, as the walk believes it (desktop.md §4.6), and
+           opened with no configuration so the client can show it as text. A folder holding both
+           files has no text to show, and stays what it was. */
+        isSiteProject = true;
+        projectProblem = read.error;
       }
 
       return Response.json({
         directories,
         isSiteProject,
         projectConfig,
+        ...(projectProblem !== null && { projectProblem }),
         projectRoot,
       });
     } catch (error) {
@@ -559,16 +569,16 @@ export async function handleStudioApi(
         return problem("conflict", projectFileConflict(found.root));
       }
       if (found) {
-        // Relayed to the client and not interpreted here; a file that does not read throws below.
-        const config = parseProjectSource(
-          readFileSync(found.projectFile, "utf8"),
-          found.projectFile,
-        );
+        /* Relayed to the client and not interpreted here. A file that does not read is still the
+           project's (site-architecture.md §2.3): the client opens it with no configuration, says
+           where the file fails and shows it as text, rather than finding no project at all. */
+        const read = parseProjectFile(found.projectFile, readFileSync(found.projectFile, "utf8"));
         // A folder is asked for as its project file, which the client reads as "go home".
         const asked = isDir ? join(absFile, basename(found.projectFile)) : absFile;
         return Response.json({
           fileRelPath: fwd(relative(found.root, asked)),
-          projectConfig: config,
+          projectConfig: "config" in read ? read.config : null,
+          ...("error" in read && { projectProblem: read.error }),
           relPath: fwd(found.root),
           sitePath: found.root,
         });
