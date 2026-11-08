@@ -186,234 +186,615 @@
     "& [part=\"writing-banner\"]": {
       "$description": "A band across the pane at 1:1, so its width is the pane's rather than the breakpoint's and the page scrolls under it. It never shrinks: it is one line.",
       "flexShrink": "0"
+    },
+    "& [part=\"review-layout\"]": {
+      "$description": "Three columns under a heading row, filling the pane: the stage cell is a flex row, so the grid stretches across its cross axis and takes its whole main axis.",
+      "flex": "1 1 auto",
+      "alignSelf": "stretch",
+      "minWidth": "0",
+      "minHeight": "0",
+      "display": "grid",
+      "gridTemplateColumns": "minmax(240px, 300px) minmax(0, 1fr) minmax(260px, 340px)",
+      "gridTemplateRows": "auto minmax(0, 1fr)",
+      "background": "var(--bg)"
+    },
+    "& [part=\"review-head\"]": {
+      "gridColumn": "1 / -1",
+      "minWidth": "0",
+      "borderBottom": "1px solid var(--border)",
+      "background": "var(--bg-panel)"
+    },
+    "& [part=\"review-changes\"]": {
+      "minWidth": "0",
+      "minHeight": "0",
+      "overflow": "auto",
+      "borderRight": "1px solid var(--border)",
+      "background": "var(--bg-panel)"
+    },
+    "& [part=\"review-side\"]": {
+      "minWidth": "0",
+      "minHeight": "0",
+      "overflow": "auto",
+      "borderLeft": "1px solid var(--border)",
+      "background": "var(--bg-panel)"
+    },
+    "& [part=\"review-center\"]": {
+      "minWidth": "0",
+      "minHeight": "0",
+      "display": "flex",
+      "flexDirection": "column"
+    },
+    "& [part=\"review-change-row\"]": {
+      "display": "flex",
+      "alignItems": "flex-start",
+      "gap": "var(--jx-space-3)",
+      "padding": "var(--jx-space-3) var(--jx-space-4) var(--jx-space-2)"
+    },
+    "& [part=\"review-change\"]": {
+      "flex": "1 1 auto",
+      "minWidth": "0"
+    },
+    "& [part=\"review-frame\"]": {
+      "$description": "The boards' viewport: the pan/zoom surface is laid out at its top left and moved by its transform, exactly as in a pane's own stage cell, and nothing it draws escapes into the side columns.",
+      "flex": "1 1 auto",
+      "minHeight": "0",
+      "position": "relative",
+      "overflow": "hidden",
+      "display": "flex",
+      "alignItems": "flex-start"
+    },
+    "& [part=\"review-frame\"] > [part=\"frame-slot\"] > [part=\"diff-code-wrap\"]": {
+      "alignSelf": "stretch"
+    },
+    "& [part=\"review-notice\"]": {
+      "flex": "1 1 auto",
+      "alignSelf": "stretch",
+      "minWidth": "0",
+      "overflow": "auto"
+    },
+    "& [part=\"review-change-row\"] [part=\"diff-toolbar\"]": {
+      "$description": "Over a comparison tab the Compare bar floats over the boards; here it stands in the heading row beside the change's name.",
+      "position": "static",
+      "transform": "none",
+      "flex": "none"
     }
   },
   "children": [
     {
-      "$description": "What stands over the frame: the writing-mode banner above Edit's scrolling column for a collection entry (whose fields are the Inspector's), the Compare bar over a comparison, or the Project Styles bar over the catalogue. Each is an empty host — the surface that fills it is mounted by the module that owns it.",
+      "$description": "Which layout the stage draws. Every mode draws `plain`; the Publish home's comparison draws `review` (studio.md §22.8).",
       "tagName": "div",
       "attributes": {
-        "part": "lead-slot"
+        "part": "layout-slot"
       },
       "style": {
         "display": "contents"
       },
       "$switch": {
-        "$ref": "#/state/lead"
+        "$ref": "#/state/layout"
       },
       "cases": {
-        "banner": {
-          "$description": "The writing-mode banner over a collection entry written on the canvas (studio.md §22.5): an empty host the banner surface is mounted into by `content/writing-banner.ts`. An entry's fields are edited in the Inspector's Entry tab; the banner only says the layout is locked and where to edit it.",
+        "plain": {
+          "$description": "Every stage but Review changes': whatever leads the frame, then the frame, as the pane's own flex items.",
           "tagName": "div",
           "attributes": {
-            "part": "writing-banner"
-          }
-        },
-        "toolbar": {
-          "tagName": "div",
-          "attributes": {
-            "part": "diff-toolbar"
-          }
-        },
-        "chrome": {
-          "$description": "`chrome-host`, not `chrome`: the bar that stands here is `surfaces/stylebook-chrome.json`, whose own root is `[part=\"chrome\"]`. A host and its occupant sharing one name makes every selector over the pair ambiguous.",
-          "tagName": "div",
-          "attributes": {
-            "part": "chrome-host"
-          }
-        }
-      }
-    },
-    {
-      "$description": "The frame. Three of its five shapes are the same two boxes with different parts — Preview's centred column, the pan/zoom surface and Edit's scrolling column all hold artboards — so they share one case and differ in `framePart` / `innerPart`. Monaco's two shapes are their own cases, because a code editor holds no artboards and an empty `$map` inside its host would leave nodes in a box the editor is about to take over.",
-      "tagName": "div",
-      "attributes": {
-        "part": "frame-slot"
-      },
-      "style": {
-        "display": "contents"
-      },
-      "$switch": {
-        "$ref": "#/state/frame"
-      },
-      "cases": {
-        "boards": {
-          "$description": "The frame's box. `part` is BOUND — a Preview column, a pan/zoom surface and an Edit canvas are one shape with three names — and `data-slot` is the static one beside it, because a host is announced as it is BUILT, one step before its attributes are settled: the adapter reads the static mark and translates it through the view it just wrote.",
-          "tagName": "div",
-          "attributes": {
-            "part": "${state.framePart}",
-            "data-slot": "frame",
-            "style": "${state.frameVars}"
+            "part": "plain-layout"
+          },
+          "style": {
+            "display": "contents"
           },
           "children": [
             {
-              "$description": "The two width handles — `jx-split`s, ui.md §5.5 — drawn only where there is a column to size, and drawn BESIDE it rather than inside it, one slot before the inner box and one after. The placement is the track: a `jx-split` measures the first ancestor of its own that generates a box, and inside the column that would have been the column, whose width is the very thing the gesture changes. Out here the track is the canvas, a box the drag does not move, and the doubling that keeps an edge under the pointer falls out of the share arithmetic in `canvas/edit-width-drag.ts` rather than being a special case. In the Preview and pan/zoom frames both slots are empty `display: contents` wrappers and cost the row nothing. The element brings what the div it replaces could not: `role=\"separator\"`, a tab stop, `aria-valuenow`, the arrows and Home/End, and Enter or a double click to return to the breakpoint's declared width. Its share, its bounds and its collapse point are written by `mountEditWidthHandle`, which also runs the snap onto the document's breakpoints from the modifiers the element reports on every `input`, with Alt as the way through.",
+              "$description": "What stands over the frame: the writing-mode banner above Edit's scrolling column for a collection entry (whose fields are the Inspector's), the Compare bar over a comparison, or the Project Styles bar over the catalogue. Each is an empty host — the surface that fills it is mounted by the module that owns it.",
               "tagName": "div",
               "attributes": {
-                "part": "handle-start-slot"
+                "part": "lead-slot"
               },
               "style": {
                 "display": "contents"
               },
               "$switch": {
-                "$ref": "#/state/handles"
+                "$ref": "#/state/lead"
               },
               "cases": {
-                "shown": {
-                  "tagName": "jx-split",
+                "banner": {
+                  "$description": "The writing-mode banner over a collection entry written on the canvas (studio.md §22.5): an empty host the banner surface is mounted into by `content/writing-banner.ts`. An entry's fields are edited in the Inspector's Entry tab; the banner only says the layout is locked and where to edit it.",
+                  "tagName": "div",
                   "attributes": {
-                    "part": "edit-handle",
-                    "data-side": "start",
-                    "title": "Drag, or use the arrow keys, to resize the page — hold Alt to skip the breakpoints"
-                  },
-                  "$props": {
-                    "orientation": "vertical",
-                    "label": "Resize the page from its left edge"
+                    "part": "writing-banner"
+                  }
+                },
+                "toolbar": {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "diff-toolbar"
+                  }
+                },
+                "chrome": {
+                  "$description": "`chrome-host`, not `chrome`: the bar that stands here is `surfaces/stylebook-chrome.json`, whose own root is `[part=\"chrome\"]`. A host and its occupant sharing one name makes every selector over the pair ambiguous.",
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "chrome-host"
                   }
                 }
               }
             },
             {
+              "$description": "The frame. Three of its five shapes are the same two boxes with different parts — Preview's centred column, the pan/zoom surface and Edit's scrolling column all hold artboards — so they share one case and differ in `framePart` / `innerPart`. Monaco's two shapes are their own cases, because a code editor holds no artboards and an empty `$map` inside its host would leave nodes in a box the editor is about to take over.",
               "tagName": "div",
               "attributes": {
-                "part": "${state.innerPart}",
-                "data-slot": "inner",
-                "data-hug": "${state.hug ? '' : null}"
+                "part": "frame-slot"
               },
               "style": {
-                "$description": "`boards` is a pass-through: Preview and the pan/zoom surface hold their artboards directly, and only Edit's column is a box of its own. Declaring the pass-through here rather than adding a wrapper to two of the three frames is what lets one subtree serve all three.",
-                "&[part=\"boards\"]": {
-                  "display": "contents"
+                "display": "contents"
+              },
+              "$switch": {
+                "$ref": "#/state/frame"
+              },
+              "cases": {
+                "boards": {
+                  "$description": "The frame's box. `part` is BOUND — a Preview column, a pan/zoom surface and an Edit canvas are one shape with three names — and `data-slot` is the static one beside it, because a host is announced as it is BUILT, one step before its attributes are settled: the adapter reads the static mark and translates it through the view it just wrote.",
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "${state.framePart}",
+                    "data-slot": "frame",
+                    "style": "${state.frameVars}"
+                  },
+                  "children": [
+                    {
+                      "$description": "The two width handles — `jx-split`s, ui.md §5.5 — drawn only where there is a column to size, and drawn BESIDE it rather than inside it, one slot before the inner box and one after. The placement is the track: a `jx-split` measures the first ancestor of its own that generates a box, and inside the column that would have been the column, whose width is the very thing the gesture changes. Out here the track is the canvas, a box the drag does not move, and the doubling that keeps an edge under the pointer falls out of the share arithmetic in `canvas/edit-width-drag.ts` rather than being a special case. In the Preview and pan/zoom frames both slots are empty `display: contents` wrappers and cost the row nothing. The element brings what the div it replaces could not: `role=\"separator\"`, a tab stop, `aria-valuenow`, the arrows and Home/End, and Enter or a double click to return to the breakpoint's declared width. Its share, its bounds and its collapse point are written by `mountEditWidthHandle`, which also runs the snap onto the document's breakpoints from the modifiers the element reports on every `input`, with Alt as the way through.",
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "handle-start-slot"
+                      },
+                      "style": {
+                        "display": "contents"
+                      },
+                      "$switch": {
+                        "$ref": "#/state/handles"
+                      },
+                      "cases": {
+                        "shown": {
+                          "tagName": "jx-split",
+                          "attributes": {
+                            "part": "edit-handle",
+                            "data-side": "start",
+                            "title": "Drag, or use the arrow keys, to resize the page — hold Alt to skip the breakpoints"
+                          },
+                          "$props": {
+                            "orientation": "vertical",
+                            "label": "Resize the page from its left edge"
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "${state.innerPart}",
+                        "data-slot": "inner",
+                        "data-hug": "${state.hug ? '' : null}"
+                      },
+                      "style": {
+                        "$description": "`boards` is a pass-through: Preview and the pan/zoom surface hold their artboards directly, and only Edit's column is a box of its own. Declaring the pass-through here rather than adding a wrapper to two of the three frames is what lets one subtree serve all three.",
+                        "&[part=\"boards\"]": {
+                          "display": "contents"
+                        }
+                      },
+                      "children": [
+                        {
+                          "$prototype": "Array",
+                          "items": {
+                            "$ref": "#/state/panels"
+                          },
+                          "key": {
+                            "$ref": "$map/item/key"
+                          },
+                          "map": {
+                            "$description": "One artboard: its breakpoint's name, the white page under it, and the empty box the iframe mounts into. Keyed on the breakpoint, because each board owns a live iframe and the declared set changes with the document's `$media` — position-based reuse would hand one breakpoint's frame to another's width, which is a live document rendered at the wrong viewport rather than a cosmetic diff.",
+                            "tagName": "div",
+                            "attributes": {
+                              "part": "panel",
+                              "data-media": "${$map.item.mediaAttr}",
+                              "data-full-width": "${$map.item.fullWidth ? '' : null}",
+                              "style": "${$map.item.widthVars}"
+                            },
+                            "children": [
+                              {
+                                "tagName": "div",
+                                "attributes": {
+                                  "part": "header-slot"
+                                },
+                                "style": {
+                                  "display": "contents"
+                                },
+                                "$switch": {
+                                  "$ref": "$map/item/header"
+                                },
+                                "cases": {
+                                  "shown": {
+                                    "$description": "The breakpoint belongs to the tab of the pane that MOUNTED this artboard — the parent-side twin of the iframe's `hit` message, resolved the same way. Writing the FOCUSED pane's tab instead set another document's breakpoint, and the Style panel then edited a compound block the person never opened.",
+                                    "tagName": "div",
+                                    "attributes": {
+                                      "part": "panel-header"
+                                    },
+                                    "onclick": {
+                                      "$prototype": "Function",
+                                      "body": [
+                                        {
+                                          "operator": "call",
+                                          "target": {
+                                            "$ref": "#/state/pickPanel"
+                                          },
+                                          "value": [
+                                            {
+                                              "$ref": "$map/item/key"
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    },
+                                    "textContent": "${$map.item.label}"
+                                  }
+                                }
+                              },
+                              {
+                                "tagName": "div",
+                                "attributes": {
+                                  "part": "panel-viewport"
+                                },
+                                "children": [
+                                  {
+                                    "tagName": "div",
+                                    "attributes": {
+                                      "part": "panel-canvas"
+                                    }
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "handle-end-slot"
+                      },
+                      "style": {
+                        "display": "contents"
+                      },
+                      "$switch": {
+                        "$ref": "#/state/handles"
+                      },
+                      "cases": {
+                        "shown": {
+                          "tagName": "jx-split",
+                          "attributes": {
+                            "part": "edit-handle",
+                            "data-side": "end",
+                            "title": "Drag, or use the arrow keys, to resize the page — hold Alt to skip the breakpoints"
+                          },
+                          "$props": {
+                            "orientation": "vertical",
+                            "label": "Resize the page from its right edge"
+                          }
+                        }
+                      }
+                    }
+                  ]
+                },
+                "source": {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "source-wrap"
+                  },
+                  "children": [
+                    {
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "source-editor"
+                      }
+                    }
+                  ]
+                },
+                "code": {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "diff-code-wrap"
+                  },
+                  "children": [
+                    {
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "diff-code-editor"
+                      }
+                    }
+                  ]
                 }
+              }
+            }
+          ]
+        },
+        "review": {
+          "$description": "Publish › Review changes (studio.md §22.8): the comparison framed by the workspace's own columns. The heading row with the sub-tabs, the change list, the change's own heading and the publish column are empty hosts `publish/publish-workspace.ts` mounts regions of the Publish document into; the middle column holds the Compare bar and the frame exactly as a comparison tab draws them. `review-frame` is the box the boards are centred and fitted in (`stageViewport`), because the pane is wider than the space they have. The two side columns are marked `data-stage-aside`, which is what the stage's wheel and drag gestures leave alone.",
+          "tagName": "div",
+          "attributes": {
+            "part": "review-layout"
+          },
+          "children": [
+            {
+              "tagName": "div",
+              "attributes": {
+                "part": "review-head"
+              }
+            },
+            {
+              "tagName": "div",
+              "attributes": {
+                "part": "review-changes",
+                "data-stage-aside": ""
+              }
+            },
+            {
+              "tagName": "div",
+              "attributes": {
+                "part": "review-center"
               },
               "children": [
                 {
-                  "$prototype": "Array",
-                  "items": {
-                    "$ref": "#/state/panels"
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "review-change-row"
                   },
-                  "key": {
-                    "$ref": "$map/item/key"
-                  },
-                  "map": {
-                    "$description": "One artboard: its breakpoint's name, the white page under it, and the empty box the iframe mounts into. Keyed on the breakpoint, because each board owns a live iframe and the declared set changes with the document's `$media` — position-based reuse would hand one breakpoint's frame to another's width, which is a live document rendered at the wrong viewport rather than a cosmetic diff.",
-                    "tagName": "div",
-                    "attributes": {
-                      "part": "panel",
-                      "data-media": "${$map.item.mediaAttr}",
-                      "data-full-width": "${$map.item.fullWidth ? '' : null}",
-                      "style": "${$map.item.widthVars}"
+                  "children": [
+                    {
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "review-change"
+                      }
                     },
-                    "children": [
-                      {
-                        "tagName": "div",
-                        "attributes": {
-                          "part": "header-slot"
-                        },
-                        "style": {
-                          "display": "contents"
-                        },
-                        "$switch": {
-                          "$ref": "$map/item/header"
-                        },
-                        "cases": {
-                          "shown": {
-                            "$description": "The breakpoint belongs to the tab of the pane that MOUNTED this artboard — the parent-side twin of the iframe's `hit` message, resolved the same way. Writing the FOCUSED pane's tab instead set another document's breakpoint, and the Style panel then edited a compound block the person never opened.",
-                            "tagName": "div",
-                            "attributes": {
-                              "part": "panel-header"
-                            },
-                            "onclick": {
-                              "$prototype": "Function",
-                              "body": [
-                                {
-                                  "operator": "call",
-                                  "target": {
-                                    "$ref": "#/state/pickPanel"
+                    {
+                      "$description": "The Compare bar, in the heading row rather than floating over the boards: Review changes has a heading for it to sit in.",
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "review-toolbar-slot"
+                      },
+                      "style": {
+                        "display": "contents"
+                      },
+                      "$switch": {
+                        "$ref": "#/state/lead"
+                      },
+                      "cases": {
+                        "toolbar": {
+                          "tagName": "div",
+                          "attributes": {
+                            "part": "diff-toolbar"
+                          }
+                        }
+                      }
+                    }
+                  ]
+                },
+                {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "review-frame"
+                  },
+                  "children": [
+                    {
+                      "$description": "The same frame as the plain layout's, with one more case: `notice`, the centre of Review changes when the change it shows has no comparison (an image, a rename) or its comparison is still being read. Copied rather than shared because a `$switch` subtree has one parent; the artboard markup inside it is the plain layout's, byte for byte.",
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "frame-slot"
+                      },
+                      "style": {
+                        "display": "contents"
+                      },
+                      "$switch": {
+                        "$ref": "#/state/frame"
+                      },
+                      "cases": {
+                        "boards": {
+                          "$description": "The frame's box. `part` is BOUND — a Preview column, a pan/zoom surface and an Edit canvas are one shape with three names — and `data-slot` is the static one beside it, because a host is announced as it is BUILT, one step before its attributes are settled: the adapter reads the static mark and translates it through the view it just wrote.",
+                          "tagName": "div",
+                          "attributes": {
+                            "part": "${state.framePart}",
+                            "data-slot": "frame",
+                            "style": "${state.frameVars}"
+                          },
+                          "children": [
+                            {
+                              "$description": "The two width handles — `jx-split`s, ui.md §5.5 — drawn only where there is a column to size, and drawn BESIDE it rather than inside it, one slot before the inner box and one after. The placement is the track: a `jx-split` measures the first ancestor of its own that generates a box, and inside the column that would have been the column, whose width is the very thing the gesture changes. Out here the track is the canvas, a box the drag does not move, and the doubling that keeps an edge under the pointer falls out of the share arithmetic in `canvas/edit-width-drag.ts` rather than being a special case. In the Preview and pan/zoom frames both slots are empty `display: contents` wrappers and cost the row nothing. The element brings what the div it replaces could not: `role=\"separator\"`, a tab stop, `aria-valuenow`, the arrows and Home/End, and Enter or a double click to return to the breakpoint's declared width. Its share, its bounds and its collapse point are written by `mountEditWidthHandle`, which also runs the snap onto the document's breakpoints from the modifiers the element reports on every `input`, with Alt as the way through.",
+                              "tagName": "div",
+                              "attributes": {
+                                "part": "handle-start-slot"
+                              },
+                              "style": {
+                                "display": "contents"
+                              },
+                              "$switch": {
+                                "$ref": "#/state/handles"
+                              },
+                              "cases": {
+                                "shown": {
+                                  "tagName": "jx-split",
+                                  "attributes": {
+                                    "part": "edit-handle",
+                                    "data-side": "start",
+                                    "title": "Drag, or use the arrow keys, to resize the page — hold Alt to skip the breakpoints"
                                   },
-                                  "value": [
-                                    {
-                                      "$ref": "$map/item/key"
-                                    }
-                                  ]
+                                  "$props": {
+                                    "orientation": "vertical",
+                                    "label": "Resize the page from its left edge"
+                                  }
+                                }
+                              }
+                            },
+                            {
+                              "tagName": "div",
+                              "attributes": {
+                                "part": "${state.innerPart}",
+                                "data-slot": "inner",
+                                "data-hug": "${state.hug ? '' : null}"
+                              },
+                              "style": {
+                                "$description": "`boards` is a pass-through: Preview and the pan/zoom surface hold their artboards directly, and only Edit's column is a box of its own. Declaring the pass-through here rather than adding a wrapper to two of the three frames is what lets one subtree serve all three.",
+                                "&[part=\"boards\"]": {
+                                  "display": "contents"
+                                }
+                              },
+                              "children": [
+                                {
+                                  "$prototype": "Array",
+                                  "items": {
+                                    "$ref": "#/state/panels"
+                                  },
+                                  "key": {
+                                    "$ref": "$map/item/key"
+                                  },
+                                  "map": {
+                                    "$description": "One artboard: its breakpoint's name, the white page under it, and the empty box the iframe mounts into. Keyed on the breakpoint, because each board owns a live iframe and the declared set changes with the document's `$media` — position-based reuse would hand one breakpoint's frame to another's width, which is a live document rendered at the wrong viewport rather than a cosmetic diff.",
+                                    "tagName": "div",
+                                    "attributes": {
+                                      "part": "panel",
+                                      "data-media": "${$map.item.mediaAttr}",
+                                      "data-full-width": "${$map.item.fullWidth ? '' : null}",
+                                      "style": "${$map.item.widthVars}"
+                                    },
+                                    "children": [
+                                      {
+                                        "tagName": "div",
+                                        "attributes": {
+                                          "part": "header-slot"
+                                        },
+                                        "style": {
+                                          "display": "contents"
+                                        },
+                                        "$switch": {
+                                          "$ref": "$map/item/header"
+                                        },
+                                        "cases": {
+                                          "shown": {
+                                            "$description": "The breakpoint belongs to the tab of the pane that MOUNTED this artboard — the parent-side twin of the iframe's `hit` message, resolved the same way. Writing the FOCUSED pane's tab instead set another document's breakpoint, and the Style panel then edited a compound block the person never opened.",
+                                            "tagName": "div",
+                                            "attributes": {
+                                              "part": "panel-header"
+                                            },
+                                            "onclick": {
+                                              "$prototype": "Function",
+                                              "body": [
+                                                {
+                                                  "operator": "call",
+                                                  "target": {
+                                                    "$ref": "#/state/pickPanel"
+                                                  },
+                                                  "value": [
+                                                    {
+                                                      "$ref": "$map/item/key"
+                                                    }
+                                                  ]
+                                                }
+                                              ]
+                                            },
+                                            "textContent": "${$map.item.label}"
+                                          }
+                                        }
+                                      },
+                                      {
+                                        "tagName": "div",
+                                        "attributes": {
+                                          "part": "panel-viewport"
+                                        },
+                                        "children": [
+                                          {
+                                            "tagName": "div",
+                                            "attributes": {
+                                              "part": "panel-canvas"
+                                            }
+                                          }
+                                        ]
+                                      }
+                                    ]
+                                  }
                                 }
                               ]
                             },
-                            "textContent": "${$map.item.label}"
+                            {
+                              "tagName": "div",
+                              "attributes": {
+                                "part": "handle-end-slot"
+                              },
+                              "style": {
+                                "display": "contents"
+                              },
+                              "$switch": {
+                                "$ref": "#/state/handles"
+                              },
+                              "cases": {
+                                "shown": {
+                                  "tagName": "jx-split",
+                                  "attributes": {
+                                    "part": "edit-handle",
+                                    "data-side": "end",
+                                    "title": "Drag, or use the arrow keys, to resize the page — hold Alt to skip the breakpoints"
+                                  },
+                                  "$props": {
+                                    "orientation": "vertical",
+                                    "label": "Resize the page from its right edge"
+                                  }
+                                }
+                              }
+                            }
+                          ]
+                        },
+                        "source": {
+                          "tagName": "div",
+                          "attributes": {
+                            "part": "source-wrap"
+                          },
+                          "children": [
+                            {
+                              "tagName": "div",
+                              "attributes": {
+                                "part": "source-editor"
+                              }
+                            }
+                          ]
+                        },
+                        "code": {
+                          "tagName": "div",
+                          "attributes": {
+                            "part": "diff-code-wrap"
+                          },
+                          "children": [
+                            {
+                              "tagName": "div",
+                              "attributes": {
+                                "part": "diff-code-editor"
+                              }
+                            }
+                          ]
+                        },
+                        "notice": {
+                          "$description": "Review changes' centre when there is nothing to compare: an empty host `publish/publish-workspace.ts` mounts its `notice` region into, which says why and shows an image change as the image.",
+                          "tagName": "div",
+                          "attributes": {
+                            "part": "review-notice"
                           }
                         }
-                      },
-                      {
-                        "tagName": "div",
-                        "attributes": {
-                          "part": "panel-viewport"
-                        },
-                        "children": [
-                          {
-                            "tagName": "div",
-                            "attributes": {
-                              "part": "panel-canvas"
-                            }
-                          }
-                        ]
                       }
-                    ]
-                  }
+                    }
+                  ]
                 }
               ]
             },
             {
               "tagName": "div",
               "attributes": {
-                "part": "handle-end-slot"
-              },
-              "style": {
-                "display": "contents"
-              },
-              "$switch": {
-                "$ref": "#/state/handles"
-              },
-              "cases": {
-                "shown": {
-                  "tagName": "jx-split",
-                  "attributes": {
-                    "part": "edit-handle",
-                    "data-side": "end",
-                    "title": "Drag, or use the arrow keys, to resize the page — hold Alt to skip the breakpoints"
-                  },
-                  "$props": {
-                    "orientation": "vertical",
-                    "label": "Resize the page from its right edge"
-                  }
-                }
-              }
-            }
-          ]
-        },
-        "source": {
-          "tagName": "div",
-          "attributes": {
-            "part": "source-wrap"
-          },
-          "children": [
-            {
-              "tagName": "div",
-              "attributes": {
-                "part": "source-editor"
-              }
-            }
-          ]
-        },
-        "code": {
-          "tagName": "div",
-          "attributes": {
-            "part": "diff-code-wrap"
-          },
-          "children": [
-            {
-              "tagName": "div",
-              "attributes": {
-                "part": "diff-code-editor"
+                "part": "review-side",
+                "data-stage-aside": ""
               }
             }
           ]

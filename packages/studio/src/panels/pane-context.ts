@@ -70,6 +70,7 @@ import { emptyPaneContextView, mountPaneContextSurface } from "../surfaces/pane-
 import { PANE_SELECTOR } from "../surfaces/pane-grid";
 import { diffShowsCode } from "../canvas/diff-view";
 import { backTargetOf, goBack } from "../workspace/workspace-back";
+import { homeWorkspaceOfTabId } from "../workspace/workspace-ids";
 import type { WorkspaceId } from "../workspace/workspace-ids";
 import { canRenderComparison } from "./git-diff-open";
 import { shell } from "../shell";
@@ -1117,6 +1118,12 @@ function podFor(tab: Tab, paneId: string): Partial<PaneContextView> {
      the one the renderer chose the half with, so the two cannot disagree; `diff-view.ts` is not
      reactive, so the Visual/Code switch repaints this chrome itself (`diff-toolbar.ts`). */
   if (mode === "git-diff" && diffShowsCode(paneId, canRenderComparison(comparisonPathOf(paneId)))) {
+    return { podState: "hidden" };
+  }
+  /* NOR OVER REVIEW CHANGES. Its comparison is framed by the publish column, whose primary button
+     is where the pod would float, and the boards there are fitted to their middle column on
+     arrival; the wheel and its modifier still zoom them (studio.md §22.8). */
+  if (mode === "git-diff" && homeWorkspaceOfTabId(tab.id) === "publish") {
     return { podState: "hidden" };
   }
   const zoom = stageZoom(surface);

@@ -13,15 +13,6 @@ import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import type { GitStatusResult, StudioPlatform } from "../src/types";
 import type { AnyCommand } from "../src/commands/registry";
 
-const compared: string[] = [];
-void mock.module("../src/panels/git-diff-open.js", () => ({
-  comparisonRefusal: () => null,
-  openComparisonTab: async (path: string) => {
-    compared.push(path);
-    return null;
-  },
-}));
-
 let confirmAnswer = true;
 let promptAnswer: string | null = null;
 /* The real layer module, with its two answers stood in: the workspace reaches the whole overlay
@@ -142,6 +133,22 @@ async function draw(): Promise<HTMLElement> {
   return host.querySelector<HTMLElement>('[part="publish"]')!;
 }
 
+/**
+ * Draw Review changes' stage regions the way the canvas does: one host per stage part, each handed
+ * to the workspace as the stage announces it (`canvas/canvas-render.ts`).
+ */
+async function drawReview(): Promise<void> {
+  host = document.createElement("div");
+  document.body.append(host);
+  for (const stagePart of pw.REVIEW_REGION_PARTS) {
+    const box = document.createElement("div");
+    box.dataset.stagePart = stagePart;
+    host.append(box);
+    pw.attachReviewRegion("primary", stagePart, box);
+  }
+  await flush(6);
+}
+
 const part = (name: string) => host.querySelector<HTMLElement>(`[part="${name}"]`);
 const parts = (name: string) => [...host.querySelectorAll<HTMLElement>(`[part="${name}"]`)];
 const asked = () => calls.map(([name]) => name);
@@ -156,7 +163,6 @@ beforeEach(async () => {
   install();
   registry();
   ran.length = 0;
-  compared.length = 0;
   confirmAnswer = true;
   promptAnswer = null;
   // The first read, as the workspace's own mount would start it.
@@ -240,25 +246,25 @@ describe("Review changes", () => {
     setSourceControlDeps({});
   });
 
-  test("draws the change list grouped, each row naming its controls after the file", async () => {
-    await draw();
-    expect(parts("group-name").map((name) => name.textContent)).toEqual(["Pages"]);
-    expect(parts("file-name").map((name) => name.textContent)).toEqual([
-      "index.json",
-      "about.json",
+  test("lists each change by what the site calls it, its controls named after it", async () => {
+    await drawReview();
+    expect(parts("change-label").map((label) => label.textContent)).toEqual(["Home", "About"]);
+    expect(parts("change-kind").map((kind) => kind.textContent)).toEqual([
+      "Page · /",
+      "Page · /about",
     ]);
+    expect(parts("change-tag").map((tag) => tag.textContent)).toContain("EDIT");
     expect(part("included")?.textContent).toBe("1 of 2 included");
     const include = host.querySelector<HTMLElement>(
       '[part="include"][data-path="pages/index.json"]',
     );
     expect(
       include?.getAttribute("label") ?? include?.querySelector("input")?.getAttribute("aria-label"),
-    ).toBe("Include pages/index.json");
+    ).toBe("Include Home in this publish");
     expect(part("sync-label")?.textContent).toBe("1 ahead, 2 behind");
   });
-
   test("a checkbox includes or leaves out its file, and Include all takes every one", async () => {
-    await draw();
+    await drawReview();
     const box = host.querySelector<HTMLInputElement>(
       '[part="include"][data-path="pages/about.json"] input',
     )!;
@@ -280,36 +286,29 @@ describe("Review changes", () => {
     ]);
   });
 
-  /* Back from a comparison (`workspace/workspace-back.ts`) asks for this: the keyboard lands on
-     the change that was compared rather than on the page body. */
-  test("focusPublishHome gives the keyboard back to the change last compared", async () => {
-    await draw();
-    const compare = () =>
-      host.querySelector<HTMLElement>('[part="compare"][data-path="pages/index.json"]')!;
-    // The kit button's own control takes the focus, as a roving group's does.
-    const control = () => compare().querySelector<HTMLElement>('[part="control"]');
-    compare().click();
-    await flush(4);
+  /* Back from a view (`workspace/workspace-back.ts`) asks for this: the keyboard lands on the change
+     the centre shows rather than on the page body. */
+  test("focusPublishHome gives the keyboard to the change the centre shows", async () => {
+    await drawReview();
+    const shown = host.querySelector<HTMLElement>('[part="change-pick"][aria-current="true"]');
+    expect(shown?.dataset.path).toBe("pages/index.json");
     document.body.focus();
     pw.focusPublishHome("primary");
-    await flush(4);
-    expect(control()).not.toBeNull();
-    expect(document.activeElement).toBe(control());
-
-    // With the home not drawn yet, its next mount serves the request.
-    pw.detachPublishWorkspace("primary");
-    host.remove();
-    document.body.focus();
-    pw.focusPublishHome("primary");
-    await draw();
-    expect(document.activeElement).toBe(control());
+    expect(document.activeElement).toBe(shown);
+    // A pane with no list standing gives nothing, rather than throwing.
+    pw.focusPublishHome("secondary");
   });
 
-  test("Before and after opens the comparison; Discard asks and discards", async () => {
-    await draw();
-    host.querySelector<HTMLElement>('[part="compare"][data-path="pages/index.json"]')!.click();
+  test("picking a change shows it in the centre; Discard asks and discards", async () => {
+    await drawReview();
+    expect(part("change-title")?.textContent).toBe("Home");
+    host.querySelector<HTMLElement>('[part="change-pick"][data-path="pages/about.json"]')!.click();
     await flush(4);
-    expect(compared).toEqual(["pages/index.json"]);
+    expect(shell.publish.selected).toBe("pages/about.json");
+    expect(part("change-title")?.textContent).toBe("About");
+    expect(part("change-url")?.textContent).toBe("/about");
+    // Untracked, so new: what publishing does is put it live.
+    expect(part("change-summary")?.textContent).toBe("A new page. It goes live at /about.");
     host.querySelector<HTMLElement>('[part="discard"][data-path="pages/index.json"]')!.click();
     await flush(4);
     expect(calls.find(([name]) => name === "gitDiscard")).toEqual([
@@ -317,9 +316,8 @@ describe("Review changes", () => {
       ["pages/index.json"],
     ]);
   });
-
   test("the sync verbs run from the bar, Push as its record", async () => {
-    await draw();
+    await drawReview();
     for (const name of ["refresh", "fetch", "pull", "push"]) {
       part(name)!.click();
       await flush(2);
@@ -332,13 +330,13 @@ describe("Review changes", () => {
     current = repo(FILES, { remotes: [] });
     const { refreshGitStatus } = await import("../src/publish/source-control");
     await refreshGitStatus();
-    await draw();
+    await drawReview();
     part("create-repository")!.click();
     expect(ran.map((entry) => entry.id)).toEqual(["git.createGithubRepository"]);
   });
 
   test("the destination card is stamped as its own region; Send for review is refused here", async () => {
-    await draw();
+    await drawReview();
     const destination = host.querySelector<HTMLElement>(
       '[data-jx-region="pane.primary/publish/commit"]',
     );
@@ -355,7 +353,7 @@ describe("Review changes", () => {
   });
 
   test("the summary is the commit message, and Publish commits and pushes", async () => {
-    await draw();
+    await drawReview();
     expect(part("blocker")?.textContent).toBe("Write a summary of the change first.");
     const field = host.querySelector<HTMLTextAreaElement>('[part="summary"] textarea')!;
     setValue(field, "Fix the header");
@@ -369,7 +367,7 @@ describe("Review changes", () => {
   });
 
   test("the checks name the next deploy step and run its command", async () => {
-    await draw();
+    await drawReview();
     const deploy = host.querySelector<HTMLElement>('[part="check"][data-check="deploy"]')!;
     // One commit is not on the remote yet, so the next link of the chain is the push.
     expect(deploy.dataset.state).toBe("todo");
@@ -389,7 +387,7 @@ describe("Review changes", () => {
 
   test("a build check is offered where the host can build, and runs", async () => {
     install({ buildSite: async () => ({ errors: [], files: 1, routes: 3 }) });
-    await draw();
+    await drawReview();
     host
       .querySelector<HTMLElement>('[part="check"][data-check="build"] [part="check-action"]')!
       .click();
@@ -441,8 +439,14 @@ describe("Review changes", () => {
     expect(part("headline")?.textContent).toBe("On main · nothing to publish");
   });
 
-  test("an error is the workspace's one failure line", async () => {
+  test("an error is the workspace's one failure line, on the home and beside the comparison", async () => {
     await draw();
+    shell.git.error = "index.lock exists";
+    await flush(2);
+    expect(part("failure")?.textContent).toBe("index.lock exists");
+    pw.detachPublishWorkspace("primary");
+    await drawReview();
+    // Drawn after the list's first include, which clears the error a verb before it left.
     shell.git.error = "index.lock exists";
     await flush(2);
     expect(part("failure")?.textContent).toBe("index.lock exists");
@@ -787,7 +791,7 @@ describe("Review changes includes what it shows for the first time", () => {
 
   test("an untouched change set opens with every change included, as the board draws it", async () => {
     staging();
-    await draw();
+    await drawReview();
     await flush(6);
     expect(calls.filter(([name]) => name === "gitStage")).toEqual([
       ["gitStage", ["pages/about.json"]],
@@ -797,7 +801,7 @@ describe("Review changes includes what it shows for the first time", () => {
 
   test("a file the author leaves out stays out; a new change is included", async () => {
     staging();
-    await draw();
+    await drawReview();
     await flush(6);
     const box = host.querySelector<HTMLInputElement>(
       '[part="include"][data-path="pages/about.json"] input',
@@ -828,7 +832,7 @@ describe("Review changes includes what it shows for the first time", () => {
 
 describe("the destination cards", () => {
   test("exactly the chosen card is a checked radio, drawn selected", async () => {
-    await draw();
+    await drawReview();
     const card = (value: string) =>
       host.querySelector<HTMLElement>(`[part="destination-card"][data-destination="${value}"]`)!;
     const radio = (value: string) => card(value).querySelector<HTMLElement>('[role="radio"]');
@@ -1024,5 +1028,207 @@ describe("Branches, named for a screen reader", () => {
     expect(
       button.getAttribute("label") ?? button.querySelector("button")?.getAttribute("aria-label"),
     ).toBe("Switch to feature and reload");
+  });
+});
+
+// ─── Review changes' stage ───────────────────────────────────────────────────
+
+describe("Review changes' stage", () => {
+  /** Read the status again, after `current` changed. */
+  async function reread(): Promise<void> {
+    const { refreshGitStatus } = await import("../src/publish/source-control");
+    await refreshGitStatus();
+  }
+
+  test("the two sides are named for what publishing does to the site", () => {
+    expect(pw.reviewSideLabels("M")).toEqual({
+      current: "After publishing",
+      original: "Last published",
+    });
+    expect(pw.reviewSideLabels("U").original).toBe("Not published yet");
+    expect(pw.reviewSideLabels("A").original).toBe("Not published yet");
+    expect(pw.reviewSideLabels("D").current).toBe("Removed by publishing");
+  });
+
+  test("an image change is shown as the image; a rename says why it has no comparison", async () => {
+    current = repo([
+      { path: "public/hero.jpg", staged: true, status: "U" },
+      { path: "pages/old.json", staged: true, status: "R" },
+      { path: "pages/index.json", staged: true, status: "M" },
+    ]);
+    await reread();
+    shell.publish.selected = "public/hero.jpg";
+    await drawReview();
+    const image = part("notice-image");
+    expect(image?.getAttribute("src")).toContain("hero.jpg");
+    expect(image?.getAttribute("alt")).toBe("hero.jpg");
+    expect(part("notice-text")?.textContent).toBe(
+      "A new file. It is published as it is shown here.",
+    );
+
+    shell.publish.selected = "pages/old.json";
+    await flush(4);
+    expect(part("notice-image")).toBeNull();
+    expect(part("notice-text")?.textContent).toMatch(/renamed file/);
+
+    // A change that has a comparison says it is being read until the canvas draws it.
+    shell.publish.selected = "pages/index.json";
+    await flush(4);
+    expect(part("notice-text")?.textContent).toBe("Reading this change…");
+  });
+
+  test("a replaced image says it is replaced; a deleted one shows nothing", async () => {
+    current = repo([
+      { path: "public/hero.jpg", staged: true, status: "M" },
+      { path: "public/old.jpg", staged: true, status: "D" },
+    ]);
+    await reread();
+    shell.publish.selected = "public/hero.jpg";
+    await drawReview();
+    expect(part("notice-text")?.textContent).toBe("This file is replaced by the one shown here.");
+    shell.publish.selected = "public/old.jpg";
+    await flush(4);
+    expect(part("notice-image")).toBeNull();
+  });
+
+  test("with no change the heading and the notice are empty", async () => {
+    current = repo([]);
+    await reread();
+    await drawReview();
+    expect(part("change-title")?.textContent).toBe("");
+    expect(part("notice-text")?.textContent).toBe("");
+  });
+
+  test("a region is mounted once per host, replaced in a new one, and detached idempotently", async () => {
+    await drawReview();
+    const list = host.querySelector<HTMLElement>('[data-stage-part="review-changes"]')!;
+    const first = list.firstElementChild;
+    // The same host announced again keeps its mount.
+    pw.attachReviewRegion("primary", "review-changes", list);
+    await flush(2);
+    expect(list.firstElementChild).toBe(first);
+    // A part the workspace does not draw is ignored.
+    pw.attachReviewRegion("primary", "review-nothing", list);
+    // A new host takes the region over, and the old one is let go.
+    const next = document.createElement("div");
+    host.append(next);
+    pw.attachReviewRegion("primary", "review-changes", next);
+    await flush(4);
+    expect(next.querySelector('[part="review-list"]')).not.toBeNull();
+    pw.detachReviewRegions("primary");
+    pw.detachReviewRegions("primary");
+  });
+
+  test("the artboards are a view of the compared file, one at a time", () => {
+    const tab = pw.reviewViewTab("pages/about.json");
+    expect(tab.documentPath).toBe("pages/about.json");
+    expect(pw.reviewViewTab("pages/about.json")).toBe(tab);
+    const next = pw.reviewViewTab("pages/index.json");
+    expect(next).not.toBe(tab);
+    expect(next.documentPath).toBe("pages/index.json");
+  });
+});
+
+describe("Review changes keeps its centre on a change", () => {
+  const modes: string[] = [];
+  let home: ReturnType<typeof openWorkspaceHome>;
+
+  beforeEach(() => {
+    modes.length = 0;
+    install({
+      gitShow: logged("gitShow", async ({ path }: { path: string }) => `old ${path}`),
+      readFile: logged("readFile", async (path: string) => `new ${path}`),
+    });
+    shell.workspace = "publish";
+    home = openWorkspaceHome("publish");
+    pw.startPublishReview({
+      setCanvasMode: (tab, mode) => {
+        modes.push(mode);
+        tab.session.ui.canvasMode = mode;
+      },
+    });
+  });
+
+  test("with changes it compares the first, and the home draws the comparison", async () => {
+    await flush(8);
+    expect(pw.reviewDrawsStage()).toBe(true);
+    expect(home.session.ui.canvasMode).toBe("git-diff");
+    expect(shell.publish.selected).toBe("pages/index.json");
+    expect(shell.git.diffState).toEqual({
+      currentContent: "new pages/index.json",
+      filePath: "pages/index.json",
+      fileStatus: "M",
+      originalContent: "old pages/index.json",
+    });
+  });
+
+  test("another pick is read, and only the last of two quick picks lands", async () => {
+    await flush(8);
+    shell.publish.selected = "pages/about.json";
+    shell.publish.selected = "pages/index.json";
+    shell.publish.selected = "pages/about.json";
+    await flush(8);
+    expect(shell.git.diffState?.filePath).toBe("pages/about.json");
+    // Untracked: there is no committed side to read.
+    expect(shell.git.diffState?.originalContent).toBe("");
+  });
+
+  test("a change with no comparison clears the one in hand", async () => {
+    current = repo([
+      { path: "pages/index.json", staged: true, status: "M" },
+      { path: "public/hero.jpg", staged: true, status: "U" },
+    ]);
+    const { refreshGitStatus } = await import("../src/publish/source-control");
+    await refreshGitStatus();
+    await flush(8);
+    expect(shell.git.diffState?.filePath).toBe("pages/index.json");
+    shell.publish.selected = "public/hero.jpg";
+    await flush(4);
+    expect(shell.git.diffState).toBeNull();
+  });
+
+  test("a failed read is the workspace's error line", async () => {
+    install({
+      gitShow: async () => {
+        throw new Error("no HEAD");
+      },
+    });
+    shell.git.diffState = null;
+    shell.publish.selected = "pages/about.json";
+    shell.publish.selected = "pages/index.json";
+    await flush(8);
+    expect(shell.git.error).toBe("Failed to load the comparison: no HEAD");
+  });
+
+  test("another sub-tab, or nothing to publish, gives the home its own surface back", async () => {
+    await flush(8);
+    shell.publish.tab = "deploys";
+    await flush(2);
+    expect(home.session.ui.canvasMode).toBe("publish-home");
+    shell.publish.tab = "review";
+    await flush(2);
+    expect(home.session.ui.canvasMode).toBe("git-diff");
+    current = repo([]);
+    const { refreshGitStatus } = await import("../src/publish/source-control");
+    await refreshGitStatus();
+    await flush(2);
+    expect(home.session.ui.canvasMode).toBe("publish-home");
+  });
+
+  test("outside Publish nothing is read", async () => {
+    shell.workspace = "design";
+    shell.git.diffState = null;
+    calls.length = 0;
+    shell.publish.selected = "pages/about.json";
+    await flush(8);
+    expect(calls.map(([name]) => name)).not.toContain("gitShow");
+    expect(shell.git.diffState).toBeNull();
+  });
+
+  test("with no Publish home open there is nothing to switch", async () => {
+    closeAllTabs();
+    shell.publish.tab = "deploys";
+    await flush(2);
+    expect(modes.at(-1)).toBe("git-diff");
   });
 });

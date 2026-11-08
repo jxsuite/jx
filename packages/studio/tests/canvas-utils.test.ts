@@ -352,6 +352,25 @@ describe("centerCanvas", () => {
     expect(surfaceForPane("primary").panY).toBe(0);
   });
 
+  test("a framed viewport is what the content is centred in, while it is in the page", () => {
+    /* Review changes draws its boards between two columns, so the space they have is the middle
+       column's, not the pane's. */
+    const wrap = makePanzoomWrap();
+    defineMetric(primary().wrap, "clientWidth", 1400);
+    defineMetric(wrap, "scrollWidth", 800);
+    const viewport = document.createElement("div");
+    defineMetric(viewport, "clientWidth", 1000);
+    primary().wrap.append(viewport);
+    primary().viewport = viewport;
+    centerCanvas(primary());
+    expect(surfaceForPane("primary").panX).toBe(100); // (1000 - 800) / 2, not (1400 - 800) / 2
+    // Gone from the page (the stage drew another layout), the pane is the space again.
+    viewport.remove();
+    centerCanvas(primary());
+    expect(surfaceForPane("primary").panX).toBe(300);
+    primary().viewport = null;
+  });
+
   test("clamps panX to 16 when content is wider than the viewport", () => {
     const wrap = makePanzoomWrap();
     defineMetric(primary().wrap, "clientWidth", 500);

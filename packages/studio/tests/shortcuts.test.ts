@@ -614,6 +614,36 @@ describe("wheel handler", () => {
 
 // ─── Middle-mouse panning ─────────────────────────────────────────────────────
 
+describe("a column beside the boards", () => {
+  /** Review changes' list column: a box the stage draws beside its boards, which scrolls itself. */
+  function aside(): HTMLElement {
+    const column = document.createElement("div");
+    column.dataset.stageAside = "";
+    const row = document.createElement("span");
+    column.append(row);
+    wrapEl().append(column);
+    return row;
+  }
+
+  test("its wheel is its own: no pan, and its native scroll is left alone", () => {
+    const e = wheel(aside(), { deltaY: 40 });
+    expect(e.defaultPrevented).toBe(false);
+    expect(setPan).not.toHaveBeenCalled();
+  });
+
+  test("ctrl+wheel over it zooms neither the boards nor Studio", () => {
+    const e = wheel(aside(), { ctrlKey: true, deltaY: -100 });
+    expect(e.defaultPrevented).toBe(true);
+    expect(activeTab.value!.session.ui.zoom).toBe(1);
+  });
+
+  test("a middle-button drag from it is not a pan", () => {
+    const e = new PointerEvent("pointerdown", { bubbles: true, button: 1, cancelable: true });
+    aside().dispatchEvent(e);
+    expect(e.defaultPrevented).toBe(false);
+  });
+});
+
 describe("middle-mouse panning", () => {
   function pointer(type: string, init: PointerEventInit = {}) {
     const e = new PointerEvent(type, { bubbles: true, cancelable: true, ...init });

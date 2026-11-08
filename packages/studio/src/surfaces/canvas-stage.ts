@@ -55,8 +55,17 @@ export interface CanvasStagePanelItem {
 
 /** Everything the stage draws, as one value. */
 export interface CanvasStageView {
-  /** Which of the three frame shapes. `boards` covers Preview, the pan/zoom surface and Edit. */
-  frame: "boards" | "source" | "code";
+  /**
+   * The stage's layout: `plain` for every mode, `review` for the Publish home's comparison, which
+   * frames the boards between the workspace's change list and its publish column (studio.md §22.8).
+   * Absent means `plain`.
+   */
+  layout?: "plain" | "review";
+  /**
+   * Which frame shape. `boards` covers Preview, the pan/zoom surface and Edit; `notice` is Review
+   * changes' centre when its change has no comparison to draw, and is drawn only in `review`.
+   */
+  frame: "boards" | "source" | "code" | "notice";
   /** The `boards` frame's outer box. Meaningless for the two Monaco frames. */
   framePart: "preview-stage" | "panzoom" | "edit-canvas";
   /** The `boards` frame's inner box: a pass-through, or Edit's column. */
@@ -106,6 +115,7 @@ export interface CanvasStageHandle {
 
 /** The scope the document reads: {@link CanvasStageView} plus the one control it draws. */
 interface CanvasStageScope extends CanvasStageView {
+  layout: "plain" | "review";
   pickPanel: (key: string) => void;
 }
 
@@ -150,6 +160,7 @@ function recordBoard(
 
 /** Write a projection into the scope. */
 function project(scope: CanvasStageScope, view: CanvasStageView): void {
+  scope.layout = view.layout ?? "plain";
   scope.frame = view.frame;
   scope.framePart = view.framePart;
   scope.innerPart = view.innerPart;
@@ -188,6 +199,7 @@ export function mountCanvasStage(
     handles: "hidden",
     hug: false,
     innerPart: "boards",
+    layout: "plain",
     lead: "none",
     panels: [],
     pickPanel: actions.pickPanel,

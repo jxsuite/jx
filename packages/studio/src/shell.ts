@@ -349,6 +349,12 @@ export interface ShellPublish {
   build: { state: "idle" | "running" | "passed" | "failed"; text: string; for: string };
   /** The pull request Send for review last opened; `number` 0 for none. */
   review: { number: number; url: string };
+  /**
+   * The change Review changes shows in its centre, by path, as the author last picked it, or null
+   * for "the first one". A pick that stops being a change falls back to the first rather than
+   * leaving the centre empty (`selectedReviewItem` in `publish/review-changes.ts`).
+   */
+  selected: string | null;
 }
 
 /** The stylebook catalogue's selection and filters — project level, like the styles they edit. */
@@ -693,6 +699,7 @@ function freshPublish(): ShellPublish {
     deploys: { error: "", project: "", rows: [], state: "idle" },
     destination: DEFAULT_PUBLISH_DESTINATION,
     review: { number: 0, url: "" },
+    selected: null,
     tab: DEFAULT_PUBLISH_TAB,
   };
 }

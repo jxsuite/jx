@@ -541,24 +541,24 @@
       "width": 3840
     },
     "docs/images/git-commit.png": {
-      "bytes": 60526,
-      "capturedAt": "2026-10-19T01:54:14Z",
-      "capturedBy": "screenshots@ci/39187344170",
+      "bytes": 58923,
+      "capturedAt": "2026-11-08T02:56:46Z",
+      "capturedBy": "screenshots@ci/42440520331",
       "definition": "27f238d93620c306365a5ca76fa7eef5fca8d3418bafae8a553ae2733fbf9f38",
-      "height": 710,
+      "height": 658,
       "runtime": {
         "chromium": "151",
         "fontset": "fc:cac8f480b341",
         "os": "debian-12"
       },
-      "sha256": "e467d839035acbb661e03a812d8d34f8d0b9abede9feee9f07534ae10d12de3d",
+      "sha256": "3fcead12400af2e3aba5e713078332b25d6f39fedde9c5b51caaaae04c63348f",
       "shot": "git-panel",
-      "width": 744
+      "width": 686
     },
     "docs/images/git-panel.png": {
-      "bytes": 235981,
-      "capturedAt": "2026-10-19T20:14:49Z",
-      "capturedBy": "screenshots@ci/39317444941",
+      "bytes": 278446,
+      "capturedAt": "2026-11-08T02:56:46Z",
+      "capturedBy": "screenshots@ci/42440520331",
       "definition": "27f238d93620c306365a5ca76fa7eef5fca8d3418bafae8a553ae2733fbf9f38",
       "height": 1824,
       "runtime": {
@@ -566,7 +566,7 @@
         "fontset": "fc:cac8f480b341",
         "os": "debian-12"
       },
-      "sha256": "30dbc552ed3022e3726a50b2af627027d9e7a69daf41d4fa6670df68d3636f52",
+      "sha256": "fd2ceb39c8f0d8098dac48313d0c5be3b98db231479bb0a2a0b89deefe84968a",
       "shot": "git-panel",
       "width": 3840
     },

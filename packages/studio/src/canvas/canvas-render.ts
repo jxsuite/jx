@@ -69,6 +69,14 @@ import {
   renderWorkspaceHome,
   workspaceHomeMounted,
 } from "../workspace/workspace-home";
+import { homeWorkspaceOfTabId } from "../workspace/workspace-ids";
+import {
+  REVIEW_REGION_PARTS,
+  attachReviewRegion,
+  detachReviewRegions,
+  reviewSideLabels,
+  reviewViewTab,
+} from "../publish/publish-workspace";
 import { formatByName, formatForPath } from "../format/format-host";
 import {
   BUFFER_COMMIT,
@@ -100,6 +108,7 @@ import { projectState } from "../state";
 import {
   activateCanvasPanel,
   applyEditZoom,
+  applyFit,
   applyTransform,
   bindCanvasPanels,
   canvasPanelEntry,
@@ -281,6 +290,9 @@ function hardClearCanvasWrap(canvasWrap: HTMLElement) {
  */
 const _stageHosts = new WeakMap<CanvasSurface, Map<string, HTMLElement>>();
 
+/** The change each stage last fitted Review changes' comparison for. */
+const _reviewFitted = new WeakMap<CanvasSurface, string>();
+
 /** The artboards the last pass described, so a header's click can resolve one. */
 const _stageEntries = new WeakMap<CanvasSurface, CanvasPanelEntry[]>();
 
@@ -324,6 +336,10 @@ function stageActions(surface: CanvasSurface): CanvasStageActions {
         attachWritingBanner(surface.paneId, element);
       } else if (part === "diff-toolbar") {
         setDiffToolbarHost(surface.paneId, element);
+      } else if (part === "review-frame") {
+        surface.viewport = element;
+      } else if (REVIEW_REGION_PARTS.has(part)) {
+        attachReviewRegion(surface.paneId, part, element);
       }
     },
     pickPanel: (key) => activateCanvasPanel(_stageEntries.get(surface) ?? [], key),
@@ -1503,6 +1519,42 @@ function renderCanvasImpl(surface: CanvasSurface) {
     const paneDiff = derivationOfPane(surface.paneId);
     const lensDiff = paneDiff?.kind === "lens" && paneDiff.preset === "diff";
     const gitDiffState = lensDiff ? paneDiff.diff : ctx.gitDiffState;
+    /* PUBLISH › REVIEW CHANGES is this branch too (studio.md §22.8): the Publish home tab is put in
+       `git-diff` while Review changes has a change to show, and its stage frames the comparison
+       between the change list and the publish column. Everything else here — the change map, the
+       Compare bar, the Code half — is the comparison tab's, unchanged. A lens is never the home. */
+    const review = !lensDiff && homeWorkspaceOfTabId(tab.id) === "publish";
+    const layout = review ? "review" : "plain";
+    if (!review) {
+      detachReviewRegions(surface.paneId);
+    }
+    if (review && (!gitDiffState || gitDiffState.filePath !== shell.publish.selected)) {
+      /* Nothing to compare YET, or nothing to compare at all: the change is still being read, or it
+         is an image or a rename, which has no comparison (§21.4). The centre says which; the two
+         columns stand either way, so picking another change is one click. */
+      if (modeChanged) {
+        canvasWrap.style.padding = "0";
+        canvasWrap.style.overflow = "hidden";
+      }
+      setDiffChangeMap(surface.paneId, null);
+      disposeDiffEditor(surface);
+      void drawStage(
+        surface,
+        {
+          frame: "notice",
+          framePart: "panzoom",
+          frameVars: "",
+          handles: "hidden",
+          hug: false,
+          innerPart: "boards",
+          layout,
+          lead: "none",
+          panels: [],
+        },
+        [],
+      );
+      return;
+    }
     if (!gitDiffState) {
       /* A LENS NEVER TAKES THE FALLBACK. `setCanvasMode(tab, "design")` writes the SOURCE pane's
          tab — the one thing a lens must not do — so a diff lens whose comparison had not landed
@@ -1542,7 +1594,7 @@ function renderCanvasImpl(surface: CanvasSurface) {
         setDiffChangeMap(surface.paneId, null);
       }
       disposeSourceEditor(surface);
-      void drawStage(surface, editorStageView("code"), []).then((stage) => {
+      void drawStage(surface, { ...editorStageView("code"), layout }, []).then((stage) => {
         if (!stage) {
           return;
         }
@@ -1559,8 +1611,13 @@ function renderCanvasImpl(surface: CanvasSurface) {
 
     const panelWidth = 800;
 
-    const origEntry = canvasPanelEntry("git-diff-original", "Original", false, panelWidth);
-    const currEntry = canvasPanelEntry("git-diff-current", "Current", false, panelWidth);
+    /* Review changes names the two sides by what publishing does to the site rather than by what
+       git calls them, because that is the question its reader is answering. */
+    const sides = review
+      ? reviewSideLabels(gitDiffState.fileStatus)
+      : { current: "Current", original: "Original" };
+    const origEntry = canvasPanelEntry("git-diff-original", sides.original, false, panelWidth);
+    const currEntry = canvasPanelEntry("git-diff-current", sides.current, false, panelWidth);
 
     /* The Compare bar leads the frame: it is absolutely positioned OVER the stage and a SIBLING of
        the pan/zoom surface, never a child. A child would be panned and scaled with the artboards,
@@ -1575,6 +1632,7 @@ function renderCanvasImpl(surface: CanvasSurface) {
         handles: "hidden",
         hug: false,
         innerPart: "boards",
+        layout,
         lead: "toolbar",
         panels: [origEntry.item, currEntry.item],
       },
@@ -1632,6 +1690,7 @@ function renderCanvasImpl(surface: CanvasSurface) {
       }
       setDiffChangeMap(surface.paneId, changeMap);
       renderDiffToolbar(surface.paneId);
+      const viewTab = review ? reviewViewTab(gitDiffState.filePath) : null;
       renderCanvasIntoPanel(
         surface,
         origEntry.panel,
@@ -1639,6 +1698,7 @@ function renderCanvasImpl(surface: CanvasSurface) {
         originalDoc,
         sideMarks(changeMap?.original, "modified-before"),
         diffGen,
+        viewTab,
       );
       renderCanvasIntoPanel(
         surface,
@@ -1647,11 +1707,22 @@ function renderCanvasImpl(surface: CanvasSurface) {
         currentDoc,
         sideMarks(changeMap?.current, "modified-after"),
         diffGen,
+        viewTab,
       );
     });
 
     void diffStage.then((stage) => {
       if (!stage) {
+        return;
+      }
+      /* Review changes fits each change it arrives at to the width of its middle column: both
+         sides side by side, whole, is what reviewing a page means, and the column is far narrower
+         than the pane a comparison tab has. Once per change, so a zoom the author chose holds
+         while they read it (studio.md §22.8). */
+      if (review && _reviewFitted.get(surface) !== gitDiffState.filePath) {
+        _reviewFitted.set(surface, gitDiffState.filePath);
+        applyFit("width", surface);
+        observeCenterUntilStable(surface);
         return;
       }
       applyTransform(surface);
@@ -1967,6 +2038,7 @@ function renderCanvasIntoPanel(
   docOverride: JxMutableNode | null = null,
   diffMarks: WireDiffMarks | null = null,
   passGen: number | null = null,
+  viewTabOverride: Tab | null = null,
 ) {
   const gen = passGen ?? surface.renderGeneration;
   const tab = tabOfPane(surface.paneId);
@@ -1997,7 +2069,9 @@ function renderCanvasIntoPanel(
       // The VIEW tab, which an override does not null out: a git-diff frame routes no mutations
       // But is still a view of this pane's document, and its docBase and layout toggle are that
       // Tab's. Explicit rather than left to the default, because this line already knows.
-      tab,
+      // Review changes passes the compared FILE's view instead (`reviewViewTab`): the pane's own
+      // Tab there is the Publish home, which has no path to find a layout or a component from.
+      viewTabOverride ?? tab,
       /* …but NOT its mode, which is the one thing the view tab cannot answer for a lens. A lens
          draws the source pane's document in a mode of its own that is never written onto the tab,
          so resolving from `tab` gave a Diff lens's artboards the SOURCE pane's mode — an editable

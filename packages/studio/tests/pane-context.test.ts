@@ -1581,6 +1581,15 @@ describe("zoom pod", () => {
       expect(part("pod")).toBeNull();
     });
 
+    test("Review changes draws no pod: its publish column stands where the pod would float", async () => {
+      openTestTab();
+      const { openWorkspaceHome } = await import("../src/workspace/workspace-home");
+      openWorkspaceHome("publish");
+      compare("/project/index.json");
+      await mountBar(ctxInMode("git-diff"));
+      expect(part("pod")).toBeNull();
+    });
+
     test("the comparison is a tracked input: retargeting it to a stylesheet takes the pod away", async () => {
       openTestTab();
       compare("/project/index.json");
