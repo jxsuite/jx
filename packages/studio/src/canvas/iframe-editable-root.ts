@@ -60,6 +60,11 @@ export interface EditableRootDeps {
    * bridge decides, since only it can see the raw `$props` value behind the binding.
    */
   onPropActivate?: (el: HTMLElement) => boolean;
+  /**
+   * A collection page's text drawn from one field of the entry being written was pressed
+   * (`data-jx-entry-field`, studio.md §22.5). Returns whether it was activated.
+   */
+  onFieldActivate?: (el: HTMLElement) => boolean;
   /** Split the active block at the caret. Returns whether it was handled. */
   onSplit?: () => boolean;
   /** Join the block at `at` onto the previous one. Returns whether it was handled. */
@@ -451,6 +456,28 @@ export function startEditableRoot(
       return;
     }
     const target = e.target instanceof Element ? e.target : null;
+    /* A press anywhere outside an open field ends it, so what was typed is written. The page around
+       a field is locked, and a press on locked chrome places no caret, so without this the field
+       stayed open (and unwritten) until the caret happened to reach another block. */
+    if (activeEl?.dataset.jxEntryField !== undefined && !(target && activeEl.contains(target))) {
+      deactivate();
+    }
+    /* An entry's field, drawn by the locked page it is written in: its own nested editing host,
+       the way a prop-bound marker inside a component is, because the page around it is frozen. */
+    const field = deps.onFieldActivate ? target?.closest("[data-jx-entry-field]") : null;
+    if (field && deps.onFieldActivate) {
+      /* SAFETY: the marker is stamped through the runtime's attribute path onto an element it
+         built as `HTMLElement` (foreign-namespace nodes included, as the prop branch below says). */
+      const host = field as HTMLElement;
+      if (host !== activeEl) {
+        deactivate();
+        if (deps.onFieldActivate(host)) {
+          activeEl = host;
+          activeKey = null;
+        }
+      }
+      return;
+    }
     let el = deps.onPropActivate ? target : null;
     while (el && el !== container) {
       if (hasDataset(el) && el.dataset.jxBoundProp && deps.onPropActivate) {

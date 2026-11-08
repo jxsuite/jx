@@ -166,6 +166,7 @@ type ResolvedFixture = Omit<Awaited<ReturnType<typeof resolveCanvasDocument>>, "
 
 const DEFAULT_RESOLVED: ResolvedFixture = {
   docBase: "http://localhost:3000/doc.json",
+  entryRoot: null,
   mapperCtx: {
     arrayPaths: [],
     canvasMode: "design",
@@ -212,6 +213,7 @@ const {
   postRedefineElementToLiveHosts,
   postDragMessage,
   postSiteStyleToLiveHosts,
+  postEntryStateToHosts,
   postPatchToHosts,
   postStyleUpdateToStylebookHosts,
   releaseCanvasHosts,
@@ -228,7 +230,8 @@ const {
   setToolbarRefresh,
 } = await import("../src/canvas/iframe-host");
 const { flushCanvasEdits } = await import("../src/canvas/iframe-host");
-const { needsReleaseReconcile } = await import("../src/canvas/iframe-host");
+const { needsReleaseReconcile, setEntryFieldWriter } = await import("../src/canvas/iframe-host");
+const { commitEntryTextField } = await import("../src/content/entry-fields");
 
 beforeEach(() => {
   channels.length = 0;
@@ -1352,6 +1355,38 @@ describe("iframe canvas patch bridge", () => {
     surface.panels.length = 0;
   });
 
+  test("postEntryStateToHosts posts the entry's fields with the stage's generation, and counts them", async () => {
+    const canvasEl = await mountReady();
+    channels[0]!.posts.length = 0;
+    const surface = surfaceForPane(PRIMARY_PANE);
+    surface.panels.push(stagePanel({ canvas: canvasEl, ready: true }));
+    surface.renderGeneration = 9;
+    const tab = activeTab.value!;
+    tab.documentPath = "content/posts/spring.md";
+    tab.doc.content.frontmatter = { title: "Spring" };
+
+    expect(postEntryStateToHosts(tab)).toBe(1);
+    expect(channels[0]!.posts).toContainEqual({
+      gen: 9,
+      kind: "entryState",
+      value: { $children: [], collection: null, data: { title: "Spring" }, id: "spring" },
+    });
+    // A tab with no file has no entry to post.
+    tab.documentPath = null;
+    expect(postEntryStateToHosts(tab)).toBe(0);
+    surface.panels.length = 0;
+  });
+
+  test("postEntryStateToHosts skips a host with no stage, and drops a disconnected one", async () => {
+    const canvasEl = await mountReady();
+    const tab = activeTab.value!;
+    tab.documentPath = "content/posts/spring.md";
+    // Ready, but on no stage: it cannot be named, so it is skipped and the caller escalates.
+    expect(postEntryStateToHosts(tab)).toBe(0);
+    canvasEl.remove();
+    expect(postEntryStateToHosts(tab)).toBe(0);
+  });
+
   test("postPatchToHosts returns 0 when no host is ready, so the caller escalates", async () => {
     const canvasEl = document.createElement("div");
     document.body.append(canvasEl);
@@ -1720,6 +1755,19 @@ describe("iframe canvas inline-edit bridge", () => {
     });
     const card = elementChildren(activeTab.value!.doc.document)[0]!;
     expect(card.$props?.title).toBe("Regional");
+  });
+
+  test("editCommitField writes the typed text to the entry's field, through the Entry tab's commit", async () => {
+    /* The tab here keeps its fields on the document root (a JSON document), which is the record
+       `commitEntryTextField` writes for such a tab; a Markdown entry's are its frontmatter. */
+    resetWorkspaceWithTab({ children: [], tagName: "div", title: "Draft" });
+    await mountReady();
+    // With no writer registered (studio init registers one), the message is dropped.
+    channels[0]!.deliver({ field: "title", kind: "editCommitField", value: "Ignored" });
+    expect(activeTab.value!.doc.document.title).toBe("Draft");
+    setEntryFieldWriter(commitEntryTextField);
+    channels[0]!.deliver({ field: "title", kind: "editCommitField", value: "Spring planting" });
+    expect(activeTab.value!.doc.document.title).toBe("Spring planting");
   });
 
   test("an in-place prop commit is echo-suppressed — the caret must survive it", async () => {

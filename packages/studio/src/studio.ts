@@ -87,6 +87,7 @@ import {
   setCanvasContextMenuHandler,
   setCanvasPointerDownHandler,
   setCanvasSlashHandler,
+  setEntryFieldWriter,
   setIframePatchEscalation,
   setFileDropHandler,
   setInsertZoneClickHandler,
@@ -147,7 +148,7 @@ import { invalidateCollectionPages, resetCollectionPages } from "./content/colle
 import { invalidatePageSummaries } from "./content/page-summaries";
 import { invalidateEntrySummaries, noteSavedEntry } from "./content/entry-summaries";
 import { invalidateRepeaterSources } from "./canvas/repeater-sources";
-import { entryFields } from "./content/entry-fields";
+import { commitEntryTextField, entryFields } from "./content/entry-fields";
 import { contentCacheDrops } from "./content/content-collections";
 import { resetWritingBanners } from "./content/writing-banner";
 import { invalidateEntryPreview, resetEntryPreview } from "./content/entry-preview";
@@ -734,6 +735,7 @@ initCanvasPatcher({
 });
 // When the iframe canvas can't apply a posted patch surgically, fall back to a full render.
 setIframePatchEscalation(scheduleCanvasRender);
+setEntryFieldWriter(commitEntryTextField);
 // One global coordinator monitor drives cross-frame palette→canvas drops (Phase 4c).
 registerCanvasDndBridge();
 initCanvasRender({

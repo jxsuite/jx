@@ -501,6 +501,44 @@ export function startIframeInlineEdit(
   };
 
   /**
+   * Open a plain session on a collection page's text drawn from one field of the entry being
+   * written (`data-jx-entry-field`, studio.md §22.5). What is typed is posted as that field's new
+   * value when the caret leaves, and only then: the idle tick commits nothing, because writing a
+   * field redraws the page around the caret.
+   */
+  const activateField = (el: HTMLElement): boolean => {
+    const field = el.dataset.jxEntryField;
+    if (!field) {
+      return false;
+    }
+    channel.post({ field, kind: "editStart", path: [] });
+    startEditing(
+      el,
+      [],
+      {
+        onCommit: (_p, _children, textContent, inPlace) => {
+          inputAnnounced = false;
+          if (!inPlace) {
+            channel.post({ field, kind: "editCommitField", value: textContent ?? "" });
+          }
+        },
+        onEnd: () => {
+          clearHighlight();
+          lastNonEmptyRange = null;
+          // As a prop session's end: the host forgets the dead session, so the next press re-enters.
+          root.forget();
+          channel.post({ kind: "editEnd" });
+        },
+        // A field is one plain string: no split, no slash-insert.
+        onInsert: () => {},
+        onSplit: () => {},
+      },
+      { plainText: true },
+    );
+    return true;
+  };
+
+  /**
    * Post a join between the block at `path` and its document-order neighbour.
    *
    * `direction` is which way the caret was deleting: backward joins this block onto the previous
@@ -578,6 +616,7 @@ export function startIframeInlineEdit(
     onMergeBackward: (at) => postMerge(at.path, -1),
     onMergeForward: (at) => postMerge(at.path, 1),
     onReplaceRange: (from, to, text) => postRangeReplace(from, to, text),
+    onFieldActivate: activateField,
     onPropActivate: activateProp,
     onSelectionChange: () => onSelectionChange(),
     onSplit: () => splitActiveBlock(),
