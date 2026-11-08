@@ -37,7 +37,7 @@ import { errorMessage } from "@jxsuite/schema/parse";
 import { localeLabel, resolveI18n } from "@jxsuite/schema/locale";
 import { notify } from "../services/notify";
 import { beginActivity } from "../panels/activity-panel";
-import { showPromptDialog } from "../ui/layers";
+import { showConfirmDialog, showPromptDialog } from "../ui/layers";
 import type { PromptDialogOptions } from "../ui/layers";
 import { openMenu } from "../surfaces/menu";
 import { getPlatform } from "../platform";
@@ -77,6 +77,7 @@ import {
   entryThumb,
   onEntrySummariesRead,
   peekEntrySummaries,
+  isPictureField,
 } from "../content/entry-summaries";
 import { titleFieldOf } from "../content/entry-title";
 import { entryCollection } from "../content/entry-model";
@@ -149,6 +150,8 @@ export interface CollectionViewState {
    * nothing, rather than hiding every entry behind a choice the picker cannot show.
    */
   filter: string;
+  /** The Table's ticked rows, by path (§22.5). Only rows still listed count. */
+  selected: string[];
 }
 
 export interface ContentViewState {
@@ -191,6 +194,7 @@ export function collectionView(key: string = shownCollectionKey()): CollectionVi
     layout: DEFAULT_LAYOUT,
     locale: "",
     query: "",
+    selected: [],
   };
   contentView.views[key] = created;
   // Read back through the reactive record, so a later write to the returned object is tracked.
@@ -773,6 +777,97 @@ async function duplicateLibraryFile(file: LibraryFile) {
   }
 }
 
+/**
+ * What a collection lists under its view: every file, what each says, the Filter that applies, and
+ * the files left once the search, the language and the Filter are applied. The home draws from it,
+ * and the Table's selection reads it, so "every post" is the posts the reader is looking at.
+ */
+function listing(collection: ReturnType<typeof shownCollection>, view: CollectionViewState) {
+  const current = librarySource();
+  const all = filterLibrary(current.files(), { collection: collection.key, query: "" });
+  const factsOf = entryFactsFor(collection, view.layout);
+  const facts = all.map((file) => factsOf(file));
+  const schema = collection.kind === "collection" ? collectionSchema(collection.key) : null;
+  const def = collection.kind === "collection" ? entryCollection(collection.key)?.def : null;
+  const fieldColumns = entryFieldColumns(schema, listedElsewhere(schema, def));
+  const boardField = boardFieldOf(fieldColumns, fieldEnums(schema), facts);
+  // Pages are listed by route; the Filter is a collection's, over what its entries say.
+  const filterField = collection.kind === "collection" ? filterFieldOf(facts, boardField) : null;
+  const filterValue =
+    filterField !== null && filterField.values.includes(view.filter) ? view.filter : "";
+  const searched = filterLibrary(current.files(), {
+    collection: collection.key,
+    locale: view.locale,
+    query: view.query,
+  });
+  const filtered =
+    filterField === null || filterValue === ""
+      ? searched
+      : searched.filter((file) => filterField.matches(factsOf(file), filterValue));
+  return {
+    all,
+    boardField,
+    factsOf,
+    facts,
+    fieldColumns,
+    filterField,
+    filterValue,
+    filtered,
+    schema,
+  };
+}
+
+/** The paths the shown collection lists right now. */
+function listedPaths(): string[] {
+  const collection = shownCollection();
+  return listing(collection, collectionView(collection.key)).filtered.map((file) => file.path);
+}
+
+/**
+ * Delete every ticked entry of the shown collection, after one confirmation that names how many
+ * (§22.5). Each file is deleted on its own, so one that cannot be leaves the rest deleted and is
+ * reported by name; the selection is cleared either way, because what it named has changed.
+ */
+async function deleteSelectedEntries(): Promise<void> {
+  const collection = shownCollection();
+  const view = collectionView(collection.key);
+  const listed = new Set(listedPaths());
+  // Never empty: the bar that offers Delete is drawn only while something listed is ticked.
+  const paths = view.selected.filter((path) => listed.has(path));
+  const noun = paths.length === 1 ? collection.item : collection.title.toLowerCase();
+  const confirmed = await showConfirmDialog(
+    `Delete ${paths.length} ${noun}?`,
+    `This deletes ${paths.length === 1 ? "its file" : "their files"} and cannot be undone.`,
+    { confirmLabel: "Delete", destructive: true },
+  );
+  if (!confirmed) {
+    return;
+  }
+  const failed: string[] = [];
+  for (const path of paths) {
+    try {
+      await getPlatform().deleteFile(path);
+    } catch {
+      failed.push(path);
+    }
+  }
+  view.selected = [];
+  invalidateUsages();
+  invalidateLibrary();
+  await loadLibrary();
+  if (failed.length === 0) {
+    notify.success(`Deleted ${paths.length} ${noun}`);
+  } else {
+    notify.error(
+      `Could not delete ${failed.length} of ${paths.length} ${collection.title.toLowerCase()}.`,
+      {
+        detail: failed.join(", "),
+        source: SOURCE,
+      },
+    );
+  }
+}
+
 async function deleteLibraryFile(file: LibraryFile) {
   const confirmed = await confirmFileDelete(file);
   if (!confirmed) {
@@ -1112,26 +1207,17 @@ function homeView(panel: ActiveLibraryPane | null, paneId: string): LibraryView 
   const collection = shownCollection();
   const view = collectionView(collection.key);
   const { layout } = view;
-  const all = filterLibrary(current.files(), { collection: collection.key, query: "" });
-  const factsOf = entryFactsFor(collection, layout);
-  const facts = all.map((file) => factsOf(file));
-  const schema = collection.kind === "collection" ? collectionSchema(collection.key) : null;
-  const def = collection.kind === "collection" ? entryCollection(collection.key)?.def : null;
-  const fieldColumns = entryFieldColumns(schema, listedElsewhere(schema, def));
-  const boardField = boardFieldOf(fieldColumns, fieldEnums(schema), facts);
-  // Pages are listed by route; the Filter is a collection's, over what its entries say.
-  const filterField = collection.kind === "collection" ? filterFieldOf(facts, boardField) : null;
-  const filterValue =
-    filterField !== null && filterField.values.includes(view.filter) ? view.filter : "";
-  const searched = filterLibrary(current.files(), {
-    collection: collection.key,
-    locale: view.locale,
-    query: view.query,
-  });
-  const filtered =
-    filterField === null || filterValue === ""
-      ? searched
-      : searched.filter((file) => filterField.matches(factsOf(file), filterValue));
+  const {
+    all,
+    boardField,
+    factsOf,
+    facts,
+    fieldColumns,
+    filterField,
+    filterValue,
+    filtered,
+    schema,
+  } = listing(collection, view);
   const files = collection.kind === "pages" ? inRouteOrder(filtered) : filtered;
   const total = all.length;
   const kind = viewKind(current, layout, files.length, total);
@@ -1151,8 +1237,19 @@ function homeView(panel: ActiveLibraryPane | null, paneId: string): LibraryView 
     kind === "calendar" ? calendarView(files, factsOf) : { groups: [], truncated: "" };
   const pages = collection.kind === "pages";
   const plural = pages ? "pages" : collection.title.toLowerCase();
+  /* The Table's selection and Cover column (§22.5): a collection whose rows are files of their own
+     (a file-backed collection's rows are lines of one file) and whose entries carry a picture. */
+  const table = kind === "table" && collection.kind === "collection";
+  const selectable = table && !collection.fileBacked;
+  const listed = new Set(files.map((file) => file.path));
+  const ticked = selectable ? view.selected.filter((path) => listed.has(path)) : [];
+  const tickedSet = new Set(ticked);
+  const covered =
+    table && Object.values(schema?.properties ?? {}).some((field) => isPictureField(field));
+  const noun = ticked.length === 1 ? collection.item : plural;
 
   return {
+    allChecked: ticked.length > 0 && ticked.length === listed.size,
     bannerState: failures.length > 0 ? "shown" : "hidden",
     bannerText:
       failures.length === 0
@@ -1220,10 +1317,18 @@ function homeView(panel: ActiveLibraryPane | null, paneId: string): LibraryView 
     rows:
       kind === "cards" || kind === "table"
         ? slice.map((file) =>
-            libraryRow(file, kind === "table" ? columns : [], live, factsOf(file)),
+            Object.assign(libraryRow(file, kind === "table" ? columns : [], live, factsOf(file)), {
+              checked: tickedSet.has(file.path),
+            }),
           )
         : [],
+    bulkState: ticked.length > 0 ? "shown" : "hidden",
+    bulkText: `${ticked.length} ${noun} selected`,
+    coverState: covered ? "shown" : "hidden",
     searchLabel: `Search ${plural}`,
+    selectAllLabel: `Select every ${collection.item}`,
+    selectState: selectable ? "shown" : "hidden",
+    someChecked: ticked.length > 0 && ticked.length < listed.size,
     subtitle: pages ? "Every URL on your site." : "",
     title: collection.title,
     truncated: calendar.truncated,
@@ -1275,7 +1380,13 @@ export function renderLibraryMode(surface: CanvasSurface, tab: Tab): void {
     addPage: () => {
       void addCollectionPageFor(shownCollection().key);
     },
+    clearSelection: () => {
+      collectionView(shownCollectionKey()).selected = [];
+    },
     contextMenu: (path, x, y) => showLibraryContextMenu(path, x, y),
+    deleteSelected: () => {
+      void deleteSelectedEntries();
+    },
     designPage: () => {
       designCollectionPage(shownCollection().key);
     },
@@ -1331,6 +1442,15 @@ export function renderLibraryMode(surface: CanvasSurface, tab: Tab): void {
       }
     },
     search: (value) => setLibrarySearch(value),
+    selectAll: (checked) => {
+      const key = shownCollectionKey();
+      collectionView(key).selected = checked ? listedPaths() : [];
+    },
+    selectRow: (path, checked) => {
+      const view = collectionView(shownCollectionKey());
+      const rest = view.selected.filter((ticked) => ticked !== path);
+      view.selected = checked ? [...rest, path] : rest;
+    },
     /* SAFETY: the surface's view buttons pass `$map.item.key`, and the `layouts` state they map is
        built from LIBRARY_LAYOUTS in the projection above, so every key is a LibraryLayout. */
     setLayout: (key) => setLibraryLayout(key as LibraryLayout),
@@ -1379,6 +1499,7 @@ export function renderLibraryMode(surface: CanvasSurface, tab: Tab): void {
       void view.layout;
       void view.query;
       void view.locale;
+      void view.selected;
 
       draw();
 

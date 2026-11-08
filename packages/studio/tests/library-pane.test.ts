@@ -25,6 +25,7 @@ import {
   installMockPlatform,
   resetStudioState,
   surfaceOf,
+  topDialog,
 } from "./harness";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { initLayers } from "../src/ui/layers";
@@ -573,6 +574,151 @@ describe("mounting", () => {
   });
 });
 
+// ─── The Table's selection and Cover column (§22.5) ──────────────────────────
+
+describe("the Table's selection and Cover column", () => {
+  const TWO = {
+    ...TREE,
+    content: [
+      file("2024-01-02-hello.md", "content/2024-01-02-hello.md"),
+      file("2024-02-03-again.md", "content/2024-02-03-again.md"),
+    ],
+  };
+
+  /** Show Posts as a Table over a fixture with two entries. */
+  async function postsTable(
+    overrides: Parameters<typeof installMockPlatform>[0] = {},
+    posts: JsonValue = POSTS,
+  ): Promise<void> {
+    installMockPlatform({
+      listDirectory: (path: string) => Promise.resolve(listingIn(TWO, path) ?? []),
+      ...overrides,
+    });
+    resetStudioState({
+      projectConfig: { content: { posts } },
+      projectDirs: Object.keys(TWO),
+      projectRoot: "",
+    });
+    await mount();
+    setContentCollection("posts");
+    setLibraryLayout("table");
+    await flush();
+  }
+
+  /** A kit checkbox under a part, ticked or cleared as a reader would. */
+  function tick(box: HTMLElement, checked: boolean): void {
+    Object.assign(box, { checked });
+    box.dispatchEvent(new Event("change", { bubbles: true }));
+  }
+  const checkedOf = (box: Element) => ("checked" in box ? box.checked : null);
+
+  test("a row's checkbox ticks it without opening it, and the bar counts what is ticked", async () => {
+    await postsTable();
+    const boxes = parts("select-row");
+    expect(boxes).toHaveLength(2);
+    const first = boxes[0]!;
+    expect("label" in first ? first.label : null).toBe("Select 2024-01-02-hello");
+    expect(part("bulk")).toBeNull();
+    tick(boxes[0]!, true);
+    boxes[0]!
+      .closest('[part="select-cell"]')!
+      .dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    await flush();
+    expect(opened).toEqual([]);
+    expect(part("bulk-text")!.textContent).toBe("1 post selected");
+    expect(parts("select-row").map((box) => checkedOf(box))).toEqual([true, false]);
+    // The header box is half-ticked while some are.
+    const all = part("select-all")!;
+    expect("indeterminate" in all ? all.indeterminate : null).toBe(true);
+
+    tick(part("select-all")!, true);
+    await flush();
+    expect(part("bulk-text")!.textContent).toBe("2 posts selected");
+    expect(checkedOf(part("select-all")!)).toBe(true);
+
+    part("bulk-clear")!.querySelector<HTMLElement>('[part="control"]')!.click();
+    await flush();
+    expect(part("bulk")).toBeNull();
+    tick(parts("select-row")[1]!, true);
+    tick(parts("select-row")[1]!, false);
+    await flush();
+    expect(part("bulk")).toBeNull();
+    tick(part("select-all")!, true);
+    tick(part("select-all")!, false);
+    await flush();
+    expect(part("bulk")).toBeNull();
+  });
+
+  test("Delete removes every ticked entry after one confirmation, and says so", async () => {
+    const removed: string[] = [];
+    await postsTable({
+      deleteFile: (path: string) => {
+        removed.push(path);
+        return Promise.resolve();
+      },
+    });
+    tick(part("select-all")!, true);
+    await flush();
+    part("bulk-delete")!.querySelector<HTMLElement>('[part="control"]')!.click();
+    await flush();
+    // Refused first: nothing goes.
+    topDialog()!.dispatchEvent(new Event("cancel"));
+    await flush();
+    expect(removed).toEqual([]);
+    part("bulk-delete")!.querySelector<HTMLElement>('[part="control"]')!.click();
+    await flush();
+    expect(topDialog()!.getAttribute("headline") ?? topDialog()!.textContent).toContain(
+      "Delete 2 posts?",
+    );
+    topDialog()!.dispatchEvent(new Event("confirm"));
+    for (let turn = 0; turn < 20 && part("bulk") !== null; turn++) {
+      await flush();
+    }
+    expect(removed.toSorted()).toEqual([
+      "content/2024-01-02-hello.md",
+      "content/2024-02-03-again.md",
+    ]);
+    expect(part("bulk")).toBeNull();
+  });
+
+  test("an entry that cannot be deleted is reported, and the rest are still deleted", async () => {
+    await postsTable({
+      deleteFile: (path: string) =>
+        path.includes("again") ? Promise.reject(new Error("EACCES")) : Promise.resolve(),
+    });
+    tick(part("select-all")!, true);
+    await flush();
+    part("bulk-delete")!.querySelector<HTMLElement>('[part="control"]')!.click();
+    await flush();
+    topDialog()!.dispatchEvent(new Event("confirm"));
+    for (let turn = 0; turn < 20 && problems.length === 0; turn++) {
+      await flush();
+    }
+    const problem = problems.at(-1)!;
+    expect(problem.message).toBe("Could not delete 1 of 2 posts.");
+    expect(problem.detail).toBe("content/2024-02-03-again.md");
+  });
+
+  test("a collection with a picture field draws a Cover column; Pages draws neither", async () => {
+    await postsTable(
+      {},
+      {
+        ...POSTS,
+        schema: {
+          ...POSTS.schema,
+          properties: { ...POSTS.schema.properties, cover: { format: "image", type: "string" } },
+        },
+      },
+    );
+    expect(parts("cover-cell").map((cell) => cell.textContent)).toEqual(["Cover", "", ""]);
+    expect(parts("cover-empty")).toHaveLength(2);
+    setContentCollection("pages");
+    await flush();
+    expect(part("select-cell")).toBeNull();
+    expect(part("cover-cell")).toBeNull();
+  });
+});
+
 // ─── Collections ─────────────────────────────────────────────────────────────
 
 describe("collections", () => {
@@ -642,6 +788,7 @@ describe("collections", () => {
       layout: "board",
       locale: "",
       query: "about",
+      selected: [],
     });
     expect(part("board")).not.toBeNull();
   });
@@ -665,6 +812,7 @@ describe("collections", () => {
       layout: "board",
       locale: "fr",
       query: "about",
+      selected: [],
     });
     expect(collectionView()).toBe(collectionView("pages"));
   });
