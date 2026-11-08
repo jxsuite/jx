@@ -188,7 +188,7 @@ A callee may also be a pure standard-library global through `window#/`, gated by
 }
 ```
 
-Formulas declared in `project.json` `state` are available on every page. A catalog of ready-made composite formulas ships with Studio's palette. See the [formula catalog](/docs/framework/reference/formulas).
+Formulas declared in the project file `state` are available on every page. A catalog of ready-made composite formulas ships with Studio's palette. See the [formula catalog](/docs/framework/reference/formulas).
 
 ## Reading the event
 

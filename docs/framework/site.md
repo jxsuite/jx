@@ -7,15 +7,15 @@ spec:
 
 # Site architecture
 
-> **Studio manages this structure for you.** [The Content workspace](/docs/studio/projects/browse) lists `pages/` and every collection under `content/`; the [content-type builder](/docs/studio/projects/content-types) writes the `content` section; [Project settings](/docs/studio/projects/settings) edits `project.json`. This section documents the on-disk layout for reference.
+> **Studio manages this structure for you.** [The Content workspace](/docs/studio/projects/browse) lists `pages/` and every collection under `content/`; the [content-type builder](/docs/studio/projects/content-types) writes the `content` section; [Project settings](/docs/studio/projects/settings) edits the project file. This section documents the on-disk layout for reference.
 
-A Jx site is a folder of plain JSON and Markdown files with a conventional layout. Only `project.json` and `pages/` are required; everything else is optional and additive.
+A Jx site is a folder of plain JSON and Markdown files with a conventional layout. Only the project file and `pages/` are required; everything else is optional and additive.
 
 ## Project anatomy
 
 ```text
 my-site/
-├── project.json           # Site configuration (required)
+├── project.jxn            # Site configuration (required; project.json in an older project)
 ├── pages/                 # File-based routing (required)
 │   ├── index.json         # → /
 │   ├── about.json         # → /about
@@ -47,7 +47,7 @@ Files and directories whose names start with `_` inside `pages/` are excluded fr
 
 ## Configuration
 
-`project.json` at the project root is the only required configuration file. It names the site, sets the default layout and language, declares global `<head>` entries, breakpoints, and design tokens, and holds the `content`, `redirects`, `copy`, and `build` sections, plus any section an enabled extension contributes: `connections` and `data` for databases, `auth` for visitor accounts, `search` for the build-time search index. Site-level `state` and `$defs` cascade into every page. See [project.json](/docs/framework/site/project-json).
+The project file at the project root is the only required configuration file. It names the site, sets the default layout and language, declares global `<head>` entries, breakpoints, and design tokens, and holds the `content`, `redirects`, `copy`, and `build` sections, plus any section an enabled extension contributes: `connections` and `data` for databases, `auth` for visitor accounts, `search` for the build-time search index. Site-level `state` and `$defs` cascade into every page. See [the project file](/docs/framework/site/project-json).
 
 ## Routing
 
@@ -59,7 +59,7 @@ Layouts are ordinary Jx documents that provide the shared page shell: navigation
 
 ## Content collections
 
-The `content` section of `project.json` turns folders of Markdown, JSON, or CSV files into typed, queryable collections with JSON Schema validation. Pages query them with `ContentCollection` and `ContentEntry` state entries, and schema `$ref`s link entries across collections. See [Content collections](/docs/framework/site/content-collections) and [Relationships](/docs/framework/site/relationships).
+The `content` section of the project file turns folders of Markdown, JSON, or CSV files into typed, queryable collections with JSON Schema validation. Pages query them with `ContentCollection` and `ContentEntry` state entries, and schema `$ref`s link entries across collections. See [Content collections](/docs/framework/site/content-collections) and [Relationships](/docs/framework/site/relationships).
 
 ## Markdown pages and content
 
@@ -71,11 +71,11 @@ Pages declare `<head>` entries with `$head`, merged in a fixed order with layout
 
 ## Images
 
-Images referenced from pages and content are optimized during the build, resized to multiple widths and re-encoded to modern formats, configured by the `images` section of `project.json`. See [Images](/docs/framework/site/images).
+Images referenced from pages and content are optimized during the build, resized to multiple widths and re-encoded to modern formats, configured by the `images` section of the project file. See [Images](/docs/framework/site/images).
 
 ## Redirects
 
-The `redirects` map in `project.json` declares old-URL-to-new-URL rules, including `:param` patterns and per-rule HTTP status codes. See [Redirects](/docs/framework/site/redirects).
+The `redirects` map in the project file declares old-URL-to-new-URL rules, including `:param` patterns and per-rule HTTP status codes. See [Redirects](/docs/framework/site/redirects).
 
 ## Databases, accounts, and server functions
 

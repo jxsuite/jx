@@ -20,6 +20,7 @@ import type { SettingDefinition } from "../src/services/settings/definitions";
 import { resetSettings, setSettings } from "../src/services/settings/kernel";
 import { setProjectState } from "../src/store";
 import { resetIgnoreCache } from "../src/files/gitignore";
+import { setProjectConfigPath } from "../src/tabs/tab";
 import { closeAllTabs, openTab } from "../src/workspace/workspace";
 import {
   allCanvasSurfaces,
@@ -63,6 +64,19 @@ export async function flush(turns = 2): Promise<void> {
 }
 
 // ─── State resets ─────────────────────────────────────────────────────────────
+
+/**
+ * The project file every suite's project is written in: `project.json`, an existing project's.
+ *
+ * Studio's own fallback is a new project's name, `project.jxn` (`site-architecture.md` §2.4), which
+ * is right for a root holding neither file and wrong for a suite: almost every suite seeds a
+ * configuration and asserts the JSON written back, and none binds a file first. A suite about the
+ * notation, or about the fallback itself, says so with `setProjectConfigPath` and puts this back
+ * after it. It is set once, as the harness loads, and not by `resetStudioState`, which a suite
+ * calls after choosing `project.jxn`.
+ */
+export const SUITE_PROJECT_FILE = "project.json";
+setProjectConfigPath(SUITE_PROJECT_FILE);
 
 /**
  * Reset the global project state to a minimal valid shape, with overrides.

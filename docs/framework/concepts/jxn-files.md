@@ -84,7 +84,7 @@ In a quoted KDL string, `\s` is a space and `\b` a backspace, so `"${x.replace(/
 
 ## A project file
 
-A project can be declared by `project.jxn` instead of `project.json`. It is the same grammar with a different top level: there is no root element, and every node is a setting. The file says what it is with a `project` node, which holds the project's name:
+A project is declared by `project.jxn`, or by `project.json` in a project created before that was the default. It is the same grammar with a different top level: there is no root element, and every node is a setting. The file says what it is with a `project` node, which holds the project's name:
 
 ```kdl
 /- kdl-version 2
@@ -115,7 +115,7 @@ A `project.jxn` that does not read is reported at its line and column and is nev
 
 A file named `project.jxn` without the `project` node is an ordinary document, so `pages/project.jxn` is still a page with the route `/project`. A folder holding both `project.jxn` and `project.json` is refused everywhere, naming both, until you delete one.
 
-To move a project to `project.jxn`, run `jx convert project.json --to jxn` in its folder. New projects still start with `project.json`.
+New projects start with `project.jxn`. To move an older project to it, run `jx convert project.json --to jxn` in its folder.
 
 ## Moving a file between formats
 

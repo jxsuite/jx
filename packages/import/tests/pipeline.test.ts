@@ -11,12 +11,13 @@
  * The last test is the bundling guard the whole split was for: it walks pipeline.ts's transitive
  * import graph and fails on a VALUE import of puppeteer-core anywhere in it.
  */
+import { parseProjectSource } from "@jxsuite/schema/project-file";
 import { describe, expect, mock, test } from "bun:test";
 import { Window } from "happy-dom";
 import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { runImportPipeline } from "../src/pipeline.ts";
-import { parseJxDocument, parseProjectConfig } from "@jxsuite/schema/parse";
+import { parseJxDocument } from "@jxsuite/schema/parse";
 import type { AiComponentizeOptions } from "../src/ai-componentize.ts";
 import type { ImportBrowser } from "../src/capture.ts";
 import type { ComponentizeResult } from "../src/componentize.ts";
@@ -93,12 +94,12 @@ describe("runImportPipeline — no filesystem, no puppeteer", () => {
     expect([...files.keys()].toSorted()).toEqual([
       "layouts/base.json",
       "pages/index.json",
-      "project.json",
+      "project.jxn",
     ]);
     expect(result.files.toSorted()).toEqual([
       "layouts/base.json",
       "pages/index.json",
-      "project.json",
+      "project.jxn",
     ]);
     // The project shape is seeded even where nothing lands in it, so a host can open it early.
     expect(dirs).toEqual(["pages", "layouts", "components", "public"]);
@@ -108,10 +109,10 @@ describe("runImportPipeline — no filesystem, no puppeteer", () => {
 
     /* The configuration comes back with the result. A caller committing to git cannot read it off
        a disk it does not have, and re-deriving it would be a second writer on the same bytes. */
-    const project = parseProjectConfig(result.projectJson, "project.json");
+    const project = parseProjectSource(result.projectJson, "project.jxn");
     expect(project.name).toBe("Fake Home");
     expect(project.$media).toEqual({ "--": "1440px" });
-    expect(files.get("project.json")).toBe(result.projectJson);
+    expect(files.get("project.jxn")).toBe(result.projectJson);
 
     expect(result.pages).toEqual([
       { route: "pages/index.json", title: "Fake Home", nodeCount: expect.any(Number) },

@@ -205,7 +205,10 @@ async function populateProject(destPath: string, opts: ProjectOptions) {
   const packageJson = buildPackageJson({ adapter, description, name });
 
   const writes = [
-    writeFile(join(destPath, NEW_PROJECT_FILE_NAME), serializeProjectFile(projectJson, null)),
+    writeFile(
+      join(destPath, NEW_PROJECT_FILE_NAME),
+      withExtensionsNote(serializeProjectFile(projectJson, null)),
+    ),
     writeFile(join(destPath, "package.json"), `${JSON.stringify(packageJson, null, "  ")}\n`),
     cp(join(TEMPLATE_DIR, "gitignore"), join(destPath, ".gitignore")),
     cp(join(TEMPLATE_DIR, "layouts"), join(destPath, "layouts"), { recursive: true }),
@@ -218,6 +221,7 @@ async function populateProject(destPath: string, opts: ProjectOptions) {
   }
 
   await Promise.all(writes);
+  await writeEditorSupport(destPath);
 
   // The .gitignore, layouts/ and pages/ above are copies too, carrying the template's modes.
   // The overlay below would otherwise fail to `force` over a file that came across read-only.
@@ -298,6 +302,9 @@ async function scaffoldFromStarter(
     applyDesign(project, design, { starter: true });
   }
   await writeFile(projectPath, serializeProjectFile(project, starterText, projectPath));
+  await writeEditorSupport(destPath);
+  // Copied from a read-only install as the rest was, so made writable as the rest was.
+  await makeWritable(destPath);
 
   // Rebuild package.json so scaffolded projects get current dep ranges and scripts regardless of
   // What the in-repo starter pinned.
@@ -312,6 +319,36 @@ async function scaffoldFromStarter(
   if (design?.logo) {
     await writeLogo(destPath, design.logo);
   }
+}
+
+/**
+ * A new project file, with one comment in it saying what `extensions` is for: the line a new user
+ * most needs explained, and the format's main advantage shown rather than described
+ * (`site-architecture.md` §2.4). The canonical form has no comments, so it goes in after.
+ *
+ * @param text The project file in its canonical form.
+ */
+function withExtensionsNote(text: string): string {
+  return text.replace(
+    /^extensions\b/m,
+    "// Extensions add what Jx does not do on its own. @jxsuite/parser reads pages/index.md and\n" +
+      "// every Markdown collection; turn others on in Studio, under Project Settings > Extensions.\n" +
+      "extensions",
+  );
+}
+
+/**
+ * What lets an editor and GitHub read `.jxn` from the first commit: Linguist knows KDL only as
+ * `.kdl`, and VS Code needs telling too. Both cost nothing, and an existing file is kept.
+ *
+ * @param destPath The project's root.
+ */
+async function writeEditorSupport(destPath: string): Promise<void> {
+  await mkdir(join(destPath, ".vscode"), { recursive: true });
+  await Promise.all([
+    cp(join(TEMPLATE_DIR, "gitattributes"), join(destPath, ".gitattributes"), { force: false }),
+    cp(join(TEMPLATE_DIR, "vscode"), join(destPath, ".vscode"), { force: false, recursive: true }),
+  ]);
 }
 
 /**

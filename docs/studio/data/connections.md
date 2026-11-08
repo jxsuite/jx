@@ -13,7 +13,7 @@ code:
 
 A connection names a database your project talks to. Most sites need exactly one; you can add more if, say, orders and analytics live in different places.
 
-Connections are a section of [Project settings](/docs/studio/projects/settings), listed under **Integrations**. Pick **Open Project Settings › Connections** from the **Settings** menu in the Command Bar. You can also press :kbd[⌘K] and type `>Open Project Settings` (or use the **⬢ menu** in the Command Bar) and choose **Connections** from the section list: your connections are listed on the left, and selecting one opens its form on the right. Like every other section, a change here is written to `project.json` as you make it.
+Connections are a section of [Project settings](/docs/studio/projects/settings), listed under **Integrations**. Pick **Open Project Settings › Connections** from the **Settings** menu in the Command Bar. You can also press :kbd[⌘K] and type `>Open Project Settings` (or use the **⬢ menu** in the Command Bar) and choose **Connections** from the section list: your connections are listed on the left, and selecting one opens its form on the right. Like every other section, a change here is written to the project file as you make it.
 
 ![The Connections section with a connection selected and its provider form open](../../images/connections-section.png)
 
@@ -60,7 +60,7 @@ Select a connection in the list and click **Test Connection** in the action row.
 With a connection selected, **Push Schema** in the same row is scoped to just that connection. Table schemas and pushing are covered in **[Data tables](/docs/studio/data/tables)**.
 
 :::doc-note
-This section edits the `connections` section of `project.json`: one entry per connection, holding the provider id and the identifier fields above, never secret values. It is contributed by the connector extension, so it is listed once `@jxsuite/connector` is one of the project's **Extensions**. On backends without database access (see [Databases](/docs/studio/data)), the entries remain editable but the Test, Push, and grid actions are hidden.
+This section edits the `connections` section of the project file: one entry per connection, holding the provider id and the identifier fields above, never secret values. It is contributed by the connector extension, so it is listed once `@jxsuite/connector` is one of the project's **Extensions**. On backends without database access (see [Databases](/docs/studio/data)), the entries remain editable but the Test, Push, and grid actions are hidden.
 :::
 
 ## Next

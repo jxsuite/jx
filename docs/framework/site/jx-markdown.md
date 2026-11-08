@@ -26,7 +26,7 @@ A Jx Markdown file is a Markdown document that transpiles to the same JSON struc
 2. **Directives** are explicit elements using [remark-directive](https://github.com/remarkjs/remark-directive) syntax
 3. **Standard Markdown** maps headings, paragraphs, lists, and links to HTML elements
 
-Markdown support is opt-in: the project must enable the parser extension in `project.json` (`"extensions": ["@jxsuite/parser"]`). There is no implicit `.md` handling without it.
+Markdown support is opt-in: the project must enable the parser extension in the project file (`"extensions": ["@jxsuite/parser"]`). There is no implicit `.md` handling without it.
 
 ## A minimal component
 

@@ -15,13 +15,13 @@ code:
 
 # Extension anatomy
 
-Jx documents are JSON. Everything beyond plain JSON enters the system through **extension packages**: Markdown content, dynamic data tables, authentication, whatever you build next. The unit of admission is an npm package (or a local directory) shipping a `jx-extension.json` manifest; a project opts in with one line in `project.json`. The first-party extensions (`@jxsuite/parser`, `@jxsuite/connector`, `@jxsuite/auth`) use only these public hooks, so anything they do, your extension can do.
+Jx documents are JSON. Everything beyond plain JSON enters the system through **extension packages**: Markdown content, dynamic data tables, authentication, whatever you build next. The unit of admission is an npm package (or a local directory) shipping a `jx-extension.json` manifest; a project opts in with one line in the project file. The first-party extensions (`@jxsuite/parser`, `@jxsuite/connector`, `@jxsuite/auth`) use only these public hooks, so anything they do, your extension can do.
 
 An extension contributes up to four kinds of things, all declared in JSON before any code runs:
 
 - **Classes**: `.class.json` descriptors that become `$prototype`-visible names ([Custom classes](/docs/extending/extensions/classes)).
 - **Formats**: file-extension handling for parsing, saving, and content loading ([Custom formats](/docs/extending/extensions/formats)).
-- **Project sections**: top-level `project.json` keys with data loading and Studio settings UI ([Project sections and settings](/docs/extending/extensions/project-sections)).
+- **Project sections**: top-level project file keys with data loading and Studio settings UI ([Project sections and settings](/docs/extending/extensions/project-sections)).
 - **Schema fragments**: JSON Schema documents composed into the project's effective schema ([Schema composition](/docs/extending/extensions/schema-composition)).
 
 ## Package layout
@@ -59,7 +59,7 @@ Third-party extensions live outside the monorepo, but the same shape applies: de
 
 ## Declaring extensions in a project
 
-A project enables extensions in `project.json`:
+A project enables extensions in the project file:
 
 ```json
 {
@@ -79,9 +79,9 @@ A project enables extensions in `project.json`:
 
 ## Section keys
 
-Extensions contribute top-level `project.json` keys ("sections"): `content` (parser), `connections` and `data` (connector), `auth` (auth). By convention section keys are single words, and the key is used verbatim as:
+Extensions contribute top-level project file keys ("sections"): `content` (parser), `connections` and `data` (connector), `auth` (auth). By convention section keys are single words, and the key is used verbatim as:
 
-- the property name in `project.json`,
+- the property name in the project file,
 - the key under `_project` in resolved scope (`config._project.content`),
 - the wire-path segment where applicable.
 

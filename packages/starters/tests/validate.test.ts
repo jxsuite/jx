@@ -6,6 +6,8 @@
  * must carry YAML frontmatter. (Full image-optimizing compilation is covered by CI screenshots — it
  * requires Sharp, which is unavailable on some dev machines.)
  */
+import { parseProjectSource } from "@jxsuite/schema/project-file";
+import { projectFilePath } from "@jxsuite/schema/project-file/node";
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -13,7 +15,6 @@ import Ajv2020 from "ajv/dist/2020";
 import addFormats from "ajv-formats";
 
 import { isJsonObject, isString } from "@jxsuite/schema/guards";
-import { parseProjectConfig } from "@jxsuite/schema/parse";
 import type { JsonObject, JsonValue } from "@jxsuite/schema/types";
 import { listStarters, SITES_DIR } from "../index";
 
@@ -71,9 +72,10 @@ describe("starter sites validate", () => {
     const dir = join(SITES_DIR, starter.id);
 
     describe(starter.id, () => {
-      test("project.json satisfies the project-config schema", () => {
-        const path = join(dir, "project.json");
-        expect(() => parseProjectConfig(readFileSync(path, "utf8"), path)).not.toThrow();
+      test("its project file reads, and is project.jxn", () => {
+        const path = projectFilePath(dir);
+        expect(path).toBe(join(dir, "project.jxn"));
+        expect(() => parseProjectSource(readFileSync(path, "utf8"), path)).not.toThrow();
       });
 
       test("committed entry documents are self-contained bundles", () => {
@@ -85,11 +87,12 @@ describe("starter sites validate", () => {
         }
       });
 
-      test("project.json validates against the bundled entry schema", () => {
+      test("its project file validates against the bundled entry schema", () => {
         const validate = compileSchema(readFileSync(join(dir, "project.schema.json"), "utf8"));
-        const project: unknown = JSON.parse(readFileSync(join(dir, "project.json"), "utf8"));
+        const path = projectFilePath(dir);
+        const project: unknown = parseProjectSource(readFileSync(path, "utf8"), path);
         const valid = validate(project);
-        expect(valid, `${starter.id}/project.json: ${JSON.stringify(validate.errors)}`).toBe(true);
+        expect(valid, `${starter.id}/project.jxn: ${JSON.stringify(validate.errors)}`).toBe(true);
       });
 
       test("every component/layout/page validates against the bundled document schema", () => {

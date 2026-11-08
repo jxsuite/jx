@@ -2,6 +2,8 @@
  * A starter built from `.jxn` documents is the same site, byte for byte, as the one built from
  * `.json`, and none of it is KDL. This is the property that says Jx Notation is a spelling.
  */
+import { parseProjectSource, serializeProjectFile } from "@jxsuite/schema/project-file";
+import { projectFilePath } from "@jxsuite/schema/project-file/node";
 import { afterAll, describe, expect, mock, test } from "bun:test";
 import {
   cpSync,
@@ -84,9 +86,17 @@ function toNotation(root: string): number {
     writeFileSync(`${path.slice(0, -".json".length)}.jxn`, serializeJxn(value as JxDocument));
     rmSync(path);
   }
-  const projectPath = join(root, "project.json");
-  const project = renameRefs(readValue(projectPath), (text) => renamed(text, [root], known));
-  writeFileSync(projectPath, JSON.stringify(project, null, 2));
+  // The project file in whichever notation the starter has, with its references following.
+  const projectPath = projectFilePath(root);
+  const text = readFileSync(projectPath, "utf8");
+  const config: unknown = parseProjectSource(text, projectPath);
+  const project = isJsonObject(config)
+    ? renameRefs(config, (ref) => renamed(ref, [root], known))
+    : null;
+  if (!isJsonObject(project)) {
+    throw new TypeError(`${projectPath} is not a project`);
+  }
+  writeFileSync(projectPath, serializeProjectFile(project, text, projectPath));
   return documents.length;
 }
 

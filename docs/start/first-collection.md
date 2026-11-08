@@ -173,7 +173,7 @@ A complete content pipeline, end to end:
 - A **repeater** whose template binds `item.data` fields is one designed card, rendered per post.
 
 :::doc-note
-On disk this is all plain files: your types in the `content` section of `project.json`, one file per post in `content/posts/`, and the Blog page holding the query and the repeater. The formats are documented in **[Content collections](/docs/framework/site/content-collections)** and **[Lists](/docs/framework/concepts/lists)**.
+On disk this is all plain files: your types in the `content` section of the project file, one file per post in `content/posts/`, and the Blog page holding the query and the repeater. The formats are documented in **[Content collections](/docs/framework/site/content-collections)** and **[Lists](/docs/framework/concepts/lists)**.
 :::
 
 ## Next steps

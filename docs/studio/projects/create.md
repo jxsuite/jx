@@ -72,7 +72,7 @@ Click **Create Project** (or **Create & Start Agent** on the Agent tab). Studio 
 If the **Project Name** is missing, the error appears directly under that field. A missing or non-absolute **Location** (or, on the cloud, a missing **Owner**) is reported under the destination fields. If creation itself fails, the message appears just above the footer buttons, so it stays visible however far the form is scrolled.
 
 :::doc-note
-Studio creates the folder you named, with `pages/`, `components/`, and a `project.json` carrying your project's name. The full folder anatomy is documented in [Site architecture](/docs/framework/site).
+Studio creates the folder you named, with `pages/`, `components/`, and a project file carrying your project's name. The full folder anatomy is documented in [Site architecture](/docs/framework/site).
 :::
 
 :::doc-tip

@@ -55,16 +55,16 @@ Every Jx file validates against one of three JSON Schema 2020-12 documents, publ
 | File                                  | Schema                                  |
 | ------------------------------------- | --------------------------------------- |
 | Components, pages, layouts (`*.json`) | `https://jxsuite.com/schema/v1`         |
-| `project.json`                        | `https://jxsuite.com/schema/project/v1` |
+| The project file                      | `https://jxsuite.com/schema/project/v1` |
 | Class definitions (`*.class.json`)    | `https://jxsuite.com/schema/class/v1`   |
 
-Inside a project, prefer the generated local copies over the network: `jx schema` writes `project.schema.json` and `document.schema.json` into the project root, composed from the core schemas plus the fragments each enabled extension ships. Each is a self-contained single-resource schema, with every `$ref` a root-relative JSON Pointer into the same file, so an editor resolves it offline with no `node_modules`, no network, and no configuration (see [Machine-readable docs](/docs/framework/agents/machine-readable) and [Schema composition](/docs/extending/extensions/schema-composition)). `project.json` binds itself with `"$schema": "./project.schema.json"`. Documents carry no `$schema` key in the shipped starters (`jx validate` checks them against `document.schema.json` either way), so add one only if you want editor autocomplete. It resolves relative to the file that carries it, so count the folder levels: `"../document.schema.json"` from `pages/index.json`, `"../../document.schema.json"` from `pages/blog/post.json`. A pointer with too few `../` names a file that does not exist, and validators report the unresolvable schema instead of checking the document at all.
+Inside a project, prefer the generated local copies over the network: `jx schema` writes `project.schema.json` and `document.schema.json` into the project root, composed from the core schemas plus the fragments each enabled extension ships. Each is a self-contained single-resource schema, with every `$ref` a root-relative JSON Pointer into the same file, so an editor resolves it offline with no `node_modules`, no network, and no configuration (see [Machine-readable docs](/docs/framework/agents/machine-readable) and [Schema composition](/docs/extending/extensions/schema-composition)). The project file binds itself with `"$schema": "./project.schema.json"`. Documents carry no `$schema` key in the shipped starters (`jx validate` checks them against `document.schema.json` either way), so add one only if you want editor autocomplete. It resolves relative to the file that carries it, so count the folder levels: `"../document.schema.json"` from `pages/index.json`, `"../../document.schema.json"` from `pages/blog/post.json`. A pointer with too few `../` names a file that does not exist, and validators report the unresolvable schema instead of checking the document at all.
 
 ## Project structure
 
 ```text
 my-site/
-  project.json       # Required. Site config, global styles, collections, build settings
+  project.jxn        # Required (or project.json, never both). Site config, global styles, collections, build settings
   pages/             # File-based routing. Each file = a route. [slug].json = dynamic
   layouts/           # Shared page shells. Use { "tagName": "slot" } for content insertion
   components/        # Reusable custom elements
@@ -263,7 +263,7 @@ Pages are documents with a few extra top-level fields:
 }
 ```
 
-- `$layout`: a path resolved from the **project root**, or `false` for no layout. Omit it to use `defaults.layout` from `project.json`.
+- `$layout`: a path resolved from the **project root**, or `false` for no layout. Omit it to use `defaults.layout` from the project file.
 - `$head`: merges with the layout's and the project's entries; the page wins on conflicts.
 - `$paths`: the concrete routes a `[param]` page generates. One source shape, checked strictly by the generated document schema: `{ contentType, param, field }` (needs `@jxsuite/parser`), `{ values, param }`, `{ "$ref": "./data.json", param, field }`, a paged list `{ "paginate": { "$ref": "#/state/posts" }, "pageSize": 10 }` (one page per ten items of the page's own `posts`, with `each` holding another source when the list is paged per tag; see [Paging a list](/docs/framework/site/routing#paging-a-list)), or a bare array of parameter objects. A key that is not part of one of these is an error, not a silently empty build.
 - `tagName` is optional on a page that uses a layout.
@@ -308,6 +308,8 @@ See [Layouts](/docs/framework/site/layouts).
 
 ## project.json
 
+A new project's file is `project.jxn`, the same members in [Jx Notation](/docs/framework/concepts/jxn-files#a-project-file), which keeps `//` comments. Check which file the project has before writing, and never add the other. Shown here as JSON, the form an older project has:
+
 ```json
 {
   "$schema": "./project.schema.json",
@@ -333,7 +335,7 @@ See [Layouts](/docs/framework/site/layouts).
 }
 ```
 
-`extensions` is the enablement list, and no Studio panel edits it: turning on the connector, auth, or search extension means adding its package name to this array by hand (a good job for the agent), then re-running `jx schema`. Studio picks up the change once it is on disk. See [project.json](/docs/framework/site/project-json) and [First-party extensions](/docs/extending/extensions/first-party).
+`extensions` is the enablement list, and no Studio panel edits it: turning on the connector, auth, or search extension means adding its package name to this array by hand (a good job for the agent), then re-running `jx schema`. Studio picks up the change once it is on disk. See [the project file](/docs/framework/site/project-json) and [First-party extensions](/docs/extending/extensions/first-party).
 
 ## `.class.json`
 
@@ -363,10 +365,10 @@ See [Custom classes](/docs/extending/extensions/classes).
 A brochure site is not the ceiling. Three additions turn a Jx project into an application, and an agent should know they exist:
 
 - **Server functions.** A state entry with `timing: "server"` names an async export via `$src` and `$export`, with no `$prototype`. It compiles to `POST /_jx/server/<exportName>`, so an export name is one function across the whole site (two modules exporting one name stop the build), and the function receives `(args, env)` where `env` carries the platform's bindings. Secrets stay in that process. See [Timing](/docs/framework/concepts/timing).
-- **Databases.** Add `@jxsuite/connector` to `extensions`, then declare `connections` (D1, Supabase, or SQLite) and `data` tables in `project.json`. `jx db push` applies the schema additively. Form actions and table queries read and write over `/_jx/data`. See [Databases](/docs/studio/data).
+- **Databases.** Add `@jxsuite/connector` to `extensions`, then declare `connections` (D1, Supabase, or SQLite) and `data` tables in the project file. `jx db push` applies the schema additively. Form actions and table queries read and write over `/_jx/data`. See [Databases](/docs/studio/data).
 - **Accounts.** Add `@jxsuite/auth` and an `auth` section for sign-in, sessions, roles, and per-table permissions. See [Auth and secrets](/docs/studio/data/auth-and-secrets).
 
-Two rules bind all three. **Secrets are never values in `project.json`**: the file records environment-variable _names_ only, and the values live in `.dev.vars` locally and in your host's environment when deployed. And any of this needs a server-capable `build.adapter` (`cloudflare-workers`, `cloudflare-pages`, `node`, or `bun`), which packages the server tier into a deployable worker; with connection-backed data tables or a server function it is not optional, because the build **fails** on static. See [Build output and adapters](/docs/framework/site/deployment).
+Two rules bind all three. **Secrets are never values in the project file**: the file records environment-variable _names_ only, and the values live in `.dev.vars` locally and in your host's environment when deployed. And any of this needs a server-capable `build.adapter` (`cloudflare-workers`, `cloudflare-pages`, `node`, or `bun`), which packages the server tier into a deployable worker; with connection-backed data tables or a server function it is not optional, because the build **fails** on static. See [Build output and adapters](/docs/framework/site/deployment).
 
 ## Hard rules
 
@@ -389,7 +391,7 @@ Two rules bind all three. **Secrets are never values in `project.json`**: the fi
 Never report a task complete on the strength of the output looking right. Run the loop:
 
 ```bash
-jx schema     # once per project, and after any change to project.json's "extensions"
+jx schema     # once per project, and after any change to the project file's "extensions"
 jx validate   # after every edit — exits 1 with the failing instance paths
 jx build      # only once validate is clean
 ```

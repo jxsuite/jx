@@ -169,7 +169,7 @@ A project enables the extension with one line, then names the format on a conten
 
 (`@jxsuite/parser` stays in the list because the `content` section itself belongs to it; your package contributes only the format.)
 
-Run `jx schema` to regenerate the project's entry schema documents. This extension ships no [schema fragment](/docs/extending/extensions/schema-composition) (it contributes no `project.json` section), but the generator still picks up the class, so `"format": "Toml"` validates in the regenerated format-name enum.
+Run `jx schema` to regenerate the project's entry schema documents. This extension ships no [schema fragment](/docs/extending/extensions/schema-composition) (it contributes no project file section), but the generator still picks up the class, so `"format": "Toml"` validates in the regenerated format-name enum.
 
 You should now see the whole surface light up: the content loader discovers and loads `.toml` entries through your class, `ContentCollection`/`ContentEntry` queries work unchanged, pages can declare `{ "$prototype": "Toml", "src": "./x.toml" }` state for runtime access, and Studio lists `.toml` files (add a `$studio` block to the descriptor to refine its icon and editing modes).
 

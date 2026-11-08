@@ -81,7 +81,7 @@ describe("which file the project has", () => {
 
   test("is a new project's name when the root holds neither, or cannot be listed", async () => {
     await open({ "pages/project.jxn": 'h1 "x"' }, {});
-    expect(projectConfigPath()).toBe("project.json");
+    expect(projectConfigPath()).toBe("project.jxn");
 
     const { platform } = installMockPlatform({
       listDirectory: () => Promise.reject(new Error("offline")),

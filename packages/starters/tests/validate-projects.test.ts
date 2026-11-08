@@ -1,5 +1,5 @@
 /**
- * Composed-schema validation of every shipped starter: each project.json must validate against its
+ * Composed-schema validation of every shipped starter: each project file must validate against its
  * committed, generated project.schema.json (written by `jx schema`). In-repo starters may lack
  * their own node_modules — validateProjectFile's host-resolution fallback keeps the relative
  * `./node_modules/...` refs resolvable either way.
@@ -17,12 +17,14 @@ import { listStarters, SITES_DIR } from "../index";
 
 const starters = listStarters();
 
-describe("starter project.json files validate against their generated schemas", () => {
+describe("starter project files validate against their generated schemas", () => {
   for (const starter of starters) {
     test(starter.id, async () => {
       const result = await validateProjectFile(join(SITES_DIR, starter.id));
-      expect(result.errors, `${starter.id} project.json is invalid`).toBeNull();
+      expect(result.errors, `${starter.id}'s project file is invalid`).toBeNull();
       expect(result.valid).toBe(true);
+      // Every starter is provisioned as a new project is (site-architecture.md §2.4).
+      expect(result.file.endsWith("project.jxn")).toBe(true);
     });
   }
 });

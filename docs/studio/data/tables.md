@@ -36,7 +36,7 @@ A **reference** field links a row to something else. Its **Target** picker lists
 Studio draws one picker for every field that points at a collection, wherever that field appears: a schema-driven settings form, a content entry's **[frontmatter](/docs/studio/editing/frontmatter)**, a row inside a repeatable group. It lists that collection's entries, and it never quietly hides a problem: an id that no longer matches an entry stays in the field, flagged as not found, and if the entries can't be listed at all the field keeps editing as plain text with the reason beside it and a **Retry**.
 
 :::doc-note
-Under the hood a table's fields are ordinary Jx field schemas in the `data` section of `project.json`. The schema format also allows table-to-table references: a to-one reference becomes a `<field>_id` column, and a to-many reference between two tables materializes a junction table on push. The visual Target picker currently offers content types, so table targets are written in the JSON directly.
+Under the hood a table's fields are ordinary Jx field schemas in the `data` section of the project file. The schema format also allows table-to-table references: a to-one reference becomes a `<field>_id` column, and a to-many reference between two tables materializes a junction table on push. The visual Target picker currently offers content types, so table targets are written in the JSON directly.
 :::
 
 ## Table options

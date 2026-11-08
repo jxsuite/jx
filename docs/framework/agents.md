@@ -17,7 +17,7 @@ This page explains why that shape suits a model, where agents plug in, and the l
 
 Prompt-to-code tools produce programs. A program is "correct" only in the sense that it runs, and finding out whether it runs means executing it, in an environment, with a browser attached. A Jx document is a different kind of output:
 
-- **The shape is bounded.** Every Jx file validates against one of three published JSON Schemas: one for documents, one for `project.json`, one for `.class.json`. A key either exists in the schema or it does not, and an invented `"styles"` where the schema says `"style"` is caught by a validator rather than by a blank page.
+- **The shape is bounded.** Every Jx file validates against one of three published JSON Schemas: one for documents, one for the project file, one for `.class.json`. A key either exists in the schema or it does not, and an invented `"styles"` where the schema says `"style"` is caught by a validator rather than by a blank page.
 - **Edits are structural, not textual.** A page is a tree of addressable nodes, so "add a button to the header" is an insertion at a path. That is how Studio's assistant edits the canvas live, and why an external agent can change one property without touching the rest of the file.
 - **Every change is a reviewable diff.** JSON diffs on property boundaries, so a small change in `git diff` is a small change in the page. Machine-written work needs review more than hand-written work does, and this is the format that makes review cheap.
 
@@ -41,18 +41,18 @@ Claude Code, Cursor, or your own script, working on the project folder like any 
 
 **1. Generate the project's schemas with `jx schema`.**
 
-Run it once per project, and again after any change to `project.json`'s `extensions` array. It composes the core schemas with the fragments each enabled extension ships and writes two entry documents into the project root, `project.schema.json` and `document.schema.json`. Both are **self-contained single-resource schemas**: every referenced resource is embedded under `$defs` and every `$ref` is a root-relative JSON Pointer, so they resolve with no `node_modules` and no network. One resolution behavior for every consumer: your editor, Studio's Monaco, and `jx validate` alike. See [Schema composition](/docs/extending/extensions/schema-composition).
+Run it once per project, and again after any change to the project file's `extensions` array. It composes the core schemas with the fragments each enabled extension ships and writes two entry documents into the project root, `project.schema.json` and `document.schema.json`. Both are **self-contained single-resource schemas**: every referenced resource is embedded under `$defs` and every `$ref` is a root-relative JSON Pointer, so they resolve with no `node_modules` and no network. One resolution behavior for every consumer: your editor, Studio's Monaco, and `jx validate` alike. See [Schema composition](/docs/extending/extensions/schema-composition).
 
 **2. Let the agent write files.**
 
-`project.json` binds itself with `"$schema": "./project.schema.json"`, so an editor with JSON language support autocompletes and underlines as the agent types. Documents under `pages/`, `layouts/`, and `components/` carry no `$schema` key of their own. `document.schema.json` is the schema they are checked against, in step 3.
+The project file binds itself with `"$schema": "./project.schema.json"`, so an editor with JSON language support autocompletes and underlines as the agent types. Documents under `pages/`, `layouts/`, and `components/` carry no `$schema` key of their own. `document.schema.json` is the schema they are checked against, in step 3.
 
 **3. Check the work with `jx validate`.**
 
 The deterministic gate, run after every edit. It walks the project in five passes:
 
 1. Both committed entry documents, for self-containment. A `$ref` that is a relative path, a URI, or a pointer to nothing means they are stale, and the fix is to re-run `jx schema`. This runs first and stops the walk, because every later pass compiles one of these files.
-2. `project.json` against the generated entry schema.
+2. The project file against the generated entry schema.
 3. Every document under `components/`, `pages/`, and `layouts/` against the bundled document schema.
 4. Every project-local `*.class.json` against the class schema.
 5. Each enabled extension's schema fragments, compiled standalone.
@@ -78,7 +78,7 @@ The whole framework is reachable from JSON, so the ceiling is higher than "a sta
 
 - **Pages, layouts, and components**: routing from the `pages/` tree, shared shells with `slot`, reusable custom elements. See [Site architecture](/docs/framework/site).
 - **Content collections**: folders of Markdown, JSON, or CSV files with schema validation, queried into pages. See [Content collections](/docs/framework/site/content-collections).
-- **Databases**: the `connections` and `data` sections in `project.json` become real tables (D1, Supabase, or SQLite) with CRUD and form actions. See [Databases](/docs/studio/data).
+- **Databases**: the `connections` and `data` sections in the project file become real tables (D1, Supabase, or SQLite) with CRUD and form actions. See [Databases](/docs/studio/data).
 - **Server functions**: a state entry with `timing: "server"` compiles into a server handler your secrets can live behind. See [Timing](/docs/framework/concepts/timing).
 - **Accounts and sessions**: the auth extension adds sign-in, sessions, and per-table permissions. See [Auth and secrets](/docs/studio/data/auth-and-secrets).
 

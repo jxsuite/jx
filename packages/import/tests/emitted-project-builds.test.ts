@@ -16,6 +16,7 @@ import { rewriteAssetUrls } from "../src/asset-rewrite.ts";
 import type { DiscoveredAsset } from "../src/asset-collect.ts";
 import coreProjectFragment from "@jxsuite/schema/schemas/project.core.schema.json";
 import type { JxElement } from "@jxsuite/schema/types";
+import { readProject } from "./_project";
 
 /**
  * The keys a project may carry are the schema's to say, so this asks it rather than restating it.
@@ -39,7 +40,7 @@ describe("an emitted project is one the compiler accepts", () => {
         styleTokens: { "--brand": "#3b82f6" },
       });
 
-      const project = await Bun.file(join(dir, "project.json")).json();
+      const project = readProject(dir);
       const rejected = Object.keys(project).filter((k) => !PROJECT_KEYS.has(k));
 
       expect(rejected).toEqual([]);
@@ -59,7 +60,7 @@ describe("an emitted project is one the compiler accepts", () => {
         styleTokens: { "--brand": "#3b82f6" },
       });
 
-      const project = await Bun.file(join(dir, "project.json")).json();
+      const project = readProject(dir);
 
       // Under `$style` the compiler emits no `:root` rule at all, so every var(--brand) in the
       // Imported CSS resolves to nothing while the build still reports success.

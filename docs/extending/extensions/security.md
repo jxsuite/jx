@@ -16,7 +16,7 @@ Extensions run real code in three privileged places: the build, the dev server, 
 
 ## Names ride the wire, values never
 
-**Secrets never enter `project.json`.** Committed config carries identifiers and env-var _names_ only:
+**Secrets never enter the project file.** Committed config carries identifiers and env-var _names_ only:
 
 ```json
 {
@@ -33,7 +33,7 @@ Where the values actually live:
 
 - **Local development**: `<project>/.dev.vars`, git-ignored (the wrangler convention). The dev server merges it over `process.env` when constructing mount environments, and a `timing: "server"` function called through the dev proxy gets the same environment (`projectDevEnv` in `packages/server/src/dev-vars.ts`).
 - **Production**: `wrangler secret put <NAME>`, or the hosting platform's secret store.
-- **Studio**: secret entry goes through the platform's secrets surface (`/__studio/secrets`); its list endpoint returns **names only**, never values. The `"secret"` [settings form control](/docs/extending/extensions/project-sections) writes there, never to `project.json`. The user-facing walkthrough is [Auth and secrets](/docs/studio/data/auth-and-secrets).
+- **Studio**: secret entry goes through the platform's secrets surface (`/__studio/secrets`); its list endpoint returns **names only**, never values. The `"secret"` [settings form control](/docs/extending/extensions/project-sections) writes there, never to the project file. The user-facing walkthrough is [Auth and secrets](/docs/studio/data/auth-and-secrets).
 
 ## Permission boundaries
 
@@ -56,7 +56,7 @@ A table with `insert: "public"` accepts writes from anyone on the internet. Pref
 
 ## What extensions may not do
 
-- Write secret values into `project.json`, return them from `projectData`, or accept them through mount `options`, because the generated worker inlines options as committed JSON.
+- Write secret values into the project file, return them from `projectData`, or accept them through mount `options`, because the generated worker inlines options as committed JSON.
 - Claim routes outside `/_jx/`, or a `basePath` another extension owns.
 - Grant access when their auth dependency is missing. Fail closed, always.
 - Be imported by core packages. The dependency rule (`core never depends on extensions`) is CI-enforced, and hosts import extension code only to invoke the static capabilities its descriptors declare, never for side effects.

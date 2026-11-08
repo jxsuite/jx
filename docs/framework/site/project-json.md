@@ -1,6 +1,6 @@
 ---
-title: "project.json"
-description: "Every key in a Jx site's project.json: identity, defaults, head entries, style tokens, content types, redirects, build, and what cascades into pages."
+title: "The project file"
+description: "Every key in a Jx site's project file, project.jxn or project.json: identity, defaults, head, style tokens, content types, redirects and build."
 spec:
   - site-architecture.md#3
   - site-architecture.md#10
@@ -12,11 +12,30 @@ code:
   - extensions/auth/schemas/project.fragment.schema.json
 ---
 
-# project.json
+# The project file
 
 > **Studio writes this file for you.** [Project settings](/docs/studio/projects/settings) edits the identity, defaults, and build keys; the [content-type builder](/docs/studio/projects/content-types) writes `content`; the [design-token editor](/docs/studio/design/tokens) writes `style`.
 
-`project.json` at the project root is the only required configuration file in a Jx site. A minimal real one (abbreviated from jxsuite.com):
+The project file at the project root is the only required configuration file in a Jx site. A new project's is `project.jxn`, written in [Jx Notation](/docs/framework/concepts/jxn-files#a-project-file), which can hold comments. A minimal real one (abbreviated from jxsuite.com):
+
+```kdl
+/- kdl-version 2
+$schema "./project.schema.json"
+project "Jx Suite"
+
+url "https://jxsuite.com"
+
+defaults layout="./layouts/base.json" lang=en
+
+build outDir="./dist" trailingSlash=always
+
+// The parser reads Markdown pages and collections.
+extensions {
+    - "@jxsuite/parser"
+}
+```
+
+The same settings as `project.json`, which every Jx host reads just as well:
 
 ```json
 {
@@ -28,6 +47,10 @@ code:
   "extensions": ["@jxsuite/parser"]
 }
 ```
+
+:::doc-note
+A project has one project file. Projects created before `project.jxn` became the default have a `project.json`, which keeps working with no change. To move one, run `jx convert project.json --to jxn` in its folder. The examples on other pages show the JSON form, and each key means the same in both.
+:::
 
 ## Key reference
 

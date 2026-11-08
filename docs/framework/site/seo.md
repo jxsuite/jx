@@ -12,7 +12,7 @@ code:
 
 # SEO and metadata
 
-Every page's `<head>` is assembled declaratively at build time, with no imperative code. Metadata comes from three places (`project.json`, the layout, the page), template strings pull values from state, and the build adds a sitemap and `robots.txt` on top.
+Every page's `<head>` is assembled declaratively at build time, with no imperative code. Metadata comes from three places (the project file, the layout, the page), template strings pull values from state, and the build adds a sitemap and `robots.txt` on top.
 
 ## Page-level `$head`
 
@@ -64,7 +64,7 @@ The injected site and page context is available too: `${state.$site.name}`, `${s
 The build assembles each page's `<head>` from four layers, later entries winning:
 
 1. **Built-in defaults**: `<meta charset>` and a standard viewport tag
-2. **Site**: `$head` in `project.json` (favicon, fonts, global meta)
+2. **Site**: `$head` in the project file (favicon, fonts, global meta)
 3. **Layout**: the layout document's `$head`
 4. **Page**: the page's `$head`
 
@@ -98,7 +98,7 @@ It's a warning and never an error, and three things never trigger it: any relati
 { "tagName": "link", "rel": "https://example.com/rel/pricing", "href": "/pricing/" }
 ```
 
-Two tags are added automatically: `<link rel="canonical">` (built from `url` in `project.json` plus the route as your host serves it, when `url` is set) and the `<html lang>` attribute. Both lose to one you write yourself. The route takes the form `build.trailingSlash` gives it, `/about/` by default and `/about` with `"never"`, so the canonical link, `og:url`, the sitemap and the `hreflang` links all name the URL that answers with the page. If your `url` includes a folder, as in `https://example.com/docs/`, the folder is kept: the canonical for `/about` is `https://example.com/docs/about/`, not `https://example.com/about/`. The [404 page](/docs/framework/site/deployment#the-404-page) gets no canonical link. A page that has a Markdown copy also gets a `<link rel="alternate" type="text/markdown">` pointing at it (see [machine-readable docs](/docs/framework/agents/machine-readable#a-markdown-copy-of-every-page)). See [serving from a subfolder](/docs/framework/site/deployment#serving-from-a-subfolder).
+Two tags are added automatically: `<link rel="canonical">` (built from `url` in the project file plus the route as your host serves it, when `url` is set) and the `<html lang>` attribute. Both lose to one you write yourself. The route takes the form `build.trailingSlash` gives it, `/about/` by default and `/about` with `"never"`, so the canonical link, `og:url`, the sitemap and the `hreflang` links all name the URL that answers with the page. If your `url` includes a folder, as in `https://example.com/docs/`, the folder is kept: the canonical for `/about` is `https://example.com/docs/about/`, not `https://example.com/about/`. The [404 page](/docs/framework/site/deployment#the-404-page) gets no canonical link. A page that has a Markdown copy also gets a `<link rel="alternate" type="text/markdown">` pointing at it (see [machine-readable docs](/docs/framework/agents/machine-readable#a-markdown-copy-of-every-page)). See [serving from a subfolder](/docs/framework/site/deployment#serving-from-a-subfolder).
 
 `lang` comes from the page's `$lang` if it has one, otherwise `defaults.lang`, otherwise `"en"`. A page can also set `$dir` (or the site `defaults.dir`) for right-to-left content:
 
@@ -166,7 +166,7 @@ Template strings resolve inside the object, at any depth, so the block can refer
 
 ## Sitemap
 
-When `url` is set in `project.json`, the build emits `dist/sitemap.xml` from the route table, one `<url>` per compiled page, with:
+When `url` is set in the project file, the build emits `dist/sitemap.xml` from the route table, one `<url>` per compiled page, with:
 
 - `<loc>`: absolute, built from `url` + the route as `build.trailingSlash` serves it, identical to the page's canonical URL, folder included
 - `<lastmod>`: a full timestamp (`2025-03-04T16:00:00Z`), taken from the page source file, or from the content entry when the page was generated from one
@@ -185,6 +185,6 @@ After `public/` is copied into `dist/`, the build appends a `Sitemap: <url>/site
 
 ## Related
 
-- [project.json](/docs/framework/site/project-json): site-level `$head`, `url`, and `defaults`
+- [the project file](/docs/framework/site/project-json): site-level `$head`, `url`, and `defaults`
 - [Layouts](/docs/framework/site/layouts): where layout-level head entries come from
 - [Content collections](/docs/framework/site/content-collections): the entry data that feeds templated metadata

@@ -36,11 +36,11 @@ describe("starter registry", () => {
     expect(new Set(ids).size).toBe(ids.length);
   });
 
-  test("every id maps to a sites/<id> directory with a project.json", () => {
+  test("every id maps to a sites/<id> directory with a project.jxn", () => {
     for (const s of starters) {
       const dir = join(SITES_DIR, s.id);
       expect(existsSync(dir)).toBe(true);
-      expect(existsSync(join(dir, "project.json"))).toBe(true);
+      expect(existsSync(join(dir, "project.jxn"))).toBe(true);
     }
   });
 });

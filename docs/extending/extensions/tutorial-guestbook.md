@@ -14,7 +14,7 @@ code:
 
 # Tutorial: a guestbook extension
 
-This tutorial builds `@acme/jx-guestbook`, the spec's second worked example: a moderated, auth-gated guestbook a site enables with one `extensions` line. Where the [TOML tutorial](/docs/extending/extensions/tutorial-toml-format) exercised the format surface, this one demonstrates the full stack: a `project.json` section with a Studio settings form, a dynamic table, a server mount cooperating with auth, and page state that compiles down to core defs. It builds **on** the connector and auth extensions as dependencies rather than reimplementing them. Plan on about an hour, reading the first-party sources alongside.
+This tutorial builds `@acme/jx-guestbook`, the spec's second worked example: a moderated, auth-gated guestbook a site enables with one `extensions` line. Where the [TOML tutorial](/docs/extending/extensions/tutorial-toml-format) exercised the format surface, this one demonstrates the full stack: a project file section with a Studio settings form, a dynamic table, a server mount cooperating with auth, and page state that compiles down to core defs. It builds **on** the connector and auth extensions as dependencies rather than reimplementing them. Plan on about an hour, reading the first-party sources alongside.
 
 **Prerequisites**: [Project sections](/docs/extending/extensions/project-sections), [Server mounts](/docs/extending/extensions/server), and [Connectors](/docs/extending/extensions/connectors); a test project with `@jxsuite/connector` and `@jxsuite/auth` already enabled ([Databases](/docs/studio/data)).
 
@@ -22,7 +22,7 @@ The spec describes this example at the architecture level, and this tutorial kee
 
 ## 1. Manifest and fragment
 
-Scaffold the package the same way as the [TOML tutorial](/docs/extending/extensions/tutorial-toml-format): a `package.json` with a `"jx"` field, a `jx-extension.json` naming one section class (say `Guestbook`), and (because this extension owns a `project.json` section) a project [schema fragment](/docs/extending/extensions/schema-composition) listed under `schemas.project`.
+Scaffold the package the same way as the [TOML tutorial](/docs/extending/extensions/tutorial-toml-format): a `package.json` with a `"jx"` field, a `jx-extension.json` naming one section class (say `Guestbook`), and (because this extension owns a project file section) a project [schema fragment](/docs/extending/extensions/schema-composition) listed under `schemas.project`.
 
 The fragment's schema defines the section value, `{ table, moderation }`: which table entries land in, and whether they await approval. The section class declares ownership plus a generic settings form:
 
@@ -31,7 +31,7 @@ The fragment's schema defines the section value, `{ table, moderation }`: which 
 "$studio": { "settings": { "layout": "form" } }
 ```
 
-You should now see, after enabling the extension in your test project and running `jx schema`, a `guestbook` key validating in `project.json`, and a **Guestbook** section rendered from your fragment in Studio's Settings, with no Studio code written. The connector's `extensions/connector/schemas/project.fragment.schema.json` and `Data.class.json` are the fuller reference for this step.
+You should now see, after enabling the extension in your test project and running `jx schema`, a `guestbook` key validating in the project file, and a **Guestbook** section rendered from your fragment in Studio's Settings, with no Studio code written. The connector's `extensions/connector/schemas/project.fragment.schema.json` and `Data.class.json` are the fuller reference for this step.
 
 ## 2. The table
 
@@ -76,7 +76,7 @@ A project adds the package and syncs:
 { "extensions": ["@jxsuite/parser", "@jxsuite/connector", "@jxsuite/auth", "@acme/jx-guestbook"] }
 ```
 
-Then `jx schema && jx db push`. You should now have a moderated, auth-gated guestbook with `project.json` validation, a Studio settings section, and dev-server parity. None of it required changes to any core package.
+Then `jx schema && jx db push`. You should now have a moderated, auth-gated guestbook with validation in the project file, a Studio settings section, and dev-server parity. None of it required changes to any core package.
 
 ## What you built
 

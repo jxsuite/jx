@@ -15,6 +15,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { LaunchOptions } from "../src/browser-local.ts";
 import type { ImportPipelineOptions } from "../src/pipeline.ts";
+import { readProject } from "./_project";
 
 const launchBrowser = mock((_opts?: LaunchOptions) => Promise.resolve({ fake: true }));
 const closeBrowser = mock(() => Promise.resolve());
@@ -155,7 +156,7 @@ describe("importSite — the local defaults", () => {
       phase: "seed",
       root: outDir,
     });
-    expect(await Bun.file(join(outDir, "project.json")).json()).toEqual({
+    expect(readProject(outDir)).toEqual({
       name: "site.example",
       imports: {},
       images: { optimize: false },

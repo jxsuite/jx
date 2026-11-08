@@ -1,0 +1,2 @@
+# Jx Notation is KDL 2, which GitHub highlights only as .kdl
+*.jxn linguist-language=KDL

@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { mkdtemp, rm } from "node:fs/promises";
 import { emitProject } from "../src/emit.ts";
 import { createLocalIo } from "../src/io.ts";
+import { readProject } from "./_project";
 
 describe("emitProject", () => {
   test("writes project.json and pages/index.json", async () => {
@@ -27,7 +28,7 @@ describe("emitProject", () => {
 
       expect(files.length).toBeGreaterThanOrEqual(2);
 
-      const project = await Bun.file(join(dir, "project.json")).json();
+      const project = readProject(dir);
       expect(project.name).toBe("Test Site");
 
       const page = await Bun.file(join(dir, "pages", "index.json")).json();

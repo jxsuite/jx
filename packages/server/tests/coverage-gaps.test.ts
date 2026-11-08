@@ -256,7 +256,7 @@ describe("dev server — create-project at a chosen destination", () => {
     const madeRoot = join(createdParent, "made-here");
     // Outside the server root, so the root comes back absolute rather than root-relative.
     expect(await res.json()).toMatchObject({ config: { name: "Made Here" }, root: madeRoot });
-    expect(existsSync(join(createdParent, "made-here", "project.json"))).toBe(true);
+    expect(existsSync(join(createdParent, "made-here", "project.jxn"))).toBe(true);
 
     // The server remembered the new root, so the activate Studio sends next is permitted even
     // Though the project sits under neither the server root nor allowedRoots.

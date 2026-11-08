@@ -255,9 +255,13 @@ describe("project.jxn", () => {
     );
   });
 
-  test("a project file is written as JSON without a path, which is a new project's name", () => {
-    expect(NEW_PROJECT_FILE_NAME).toBe("project.json");
-    expect(serializeProjectFile({ name: "Site" }, null)).toBe('{\n  "name": "Site"\n}\n');
+  test("a project file is written in Jx Notation without a path, which is a new project's name", () => {
+    expect(NEW_PROJECT_FILE_NAME).toBe("project.jxn");
+    expect(serializeProjectFile({ name: "Site" }, null)).toBe("/- kdl-version 2\nproject Site\n");
+    // A project.json is still written as JSON.
+    expect(serializeProjectFile({ name: "Site" }, null, "project.json")).toBe(
+      '{\n  "name": "Site"\n}\n',
+    );
   });
 
   test("a path's base name, in either separator", () => {

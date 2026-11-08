@@ -9,6 +9,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 import TEMPLATE_VERSIONS from "../template-versions.json";
+import { readProject } from "./_project";
 
 const FIXTURE = resolve(tmpdir(), `jx-starter-fixture-${Date.now()}`);
 const TMP = resolve(tmpdir(), `jx-create-starter-test-${Date.now()}`);
@@ -131,8 +132,8 @@ describe("generateProject — starter clone", () => {
 
   test('treats starter "blank" as the built-in template, not a clone', async () => {
     await generateProject(TMP, { name: "Blanky", starter: "blank" });
-    // Blank path builds the default project.json name from opts (not the fixture name).
-    const project = JSON.parse(readFileSync(join(TMP, "project.json"), "utf8"));
+    // Blank path builds the default project file from opts (not the fixture name).
+    const project = readProject(TMP);
     expect(project.name).toBe("Blanky");
     expect(existsSync(join(TMP, "images.json"))).toBe(false);
   });

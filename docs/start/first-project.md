@@ -51,7 +51,7 @@ When you're happy, switch to the **Publish** workspace (:kbd[⌘5], or the last 
 
 ![The publish card in Review changes: the destination, the summary and the publish button](../images/git-commit.png)
 
-There is one boundary to know about: **Studio publishes code; it doesn't build or deploy the site.** It commits and pushes, and it records the deploy adapter set in `project.json`. Your host takes it from there, building the site (`bunx jx build`) on every push and serving the `dist/` output from a CDN. With one of the server-capable adapters, the build emits a small worker beside those files as well, and that worker is the piece that runs a database, sign-ins, or server functions. See **[Publish](/docs/studio/publish)** for the full flow.
+There is one boundary to know about: **Studio publishes code; it doesn't build or deploy the site.** It commits and pushes, and it records the deploy adapter set in the project file. Your host takes it from there, building the site (`bunx jx build`) on every push and serving the `dist/` output from a CDN. With one of the server-capable adapters, the build emits a small worker beside those files as well, and that worker is the piece that runs a database, sign-ins, or server functions. See **[Publish](/docs/studio/publish)** for the full flow.
 
 ## What's next
 

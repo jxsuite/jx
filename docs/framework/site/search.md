@@ -18,7 +18,7 @@ Jx sites get full-text search from the `@jxsuite/search` extension: the build em
 
 ## Enabling the section
 
-Add the extension and a `search` section to `project.json`, then regenerate schemas with `jx schema`:
+Add the extension and a `search` section to the project file, then regenerate schemas with `jx schema`:
 
 ```json
 {

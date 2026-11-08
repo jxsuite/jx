@@ -14,7 +14,7 @@ code:
 
 # Project sections and settings
 
-A project section is a top-level `project.json` key owned by an extension class: `content` (parser), `connections` and `data` (connector), `auth` (auth). Owning a section means three things: your fragment defines its schema, your capabilities load it and expand its `$paths`, and your `$studio` block gives it a settings page. A class claims a section iff its descriptor has a top-level `project` object.
+A project section is a top-level key of the project file owned by an extension class: `content` (parser), `connections` and `data` (connector), `auth` (auth). Owning a section means three things: your fragment defines its schema, your capabilities load it and expand its `$paths`, and your `$studio` block gives it a settings page. A class claims a section iff its descriptor has a top-level `project` object.
 
 ## The `project` block
 
@@ -146,7 +146,7 @@ Built-in controls you can name in `entry.ui`:
 Enum choices may be dynamic via `{ "$ref": "#/$context/<pointer>" }`, a JSON-pointer walk over the project config (with `{@param}` segment substitution and the `$formats` virtual root). Auth's `connection` field above lists the keys of the project's `connections` section; `#/$context/auth/roles` would list configured roles.
 
 :::doc-warning
-Secrets never enter `project.json`. Committed config carries identifiers and env-var _names_ only (`"secretEnv": "BETTER_AUTH_SECRET"`); the `secret` control writes actual values to the platform's secret store, and locally they live in the git-ignored `.dev.vars`. See [Security and secrets](/docs/extending/extensions/security).
+Secrets never enter the project file. Committed config carries identifiers and env-var _names_ only (`"secretEnv": "BETTER_AUTH_SECRET"`); the `secret` control writes actual values to the platform's secret store, and locally they live in the git-ignored `.dev.vars`. See [Security and secrets](/docs/extending/extensions/security).
 :::
 
 ## Related

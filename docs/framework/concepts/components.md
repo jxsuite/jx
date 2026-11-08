@@ -190,7 +190,7 @@ If you want that boundary, ask for it per component:
 }
 ```
 
-Or for the whole project, with `"defaults": { "shadow": "open" }` in `project.json`. A component's own `$shadow` always wins, including `"$shadow": false`, which is how you keep one component in the light DOM when everything else moved.
+Or for the whole project, with `"defaults": { "shadow": "open" }` in the project file. A component's own `$shadow` always wins, including `"$shadow": false`, which is how you keep one component in the light DOM when everything else moved.
 
 The build emits a **declarative shadow root**, so the component paints correctly before any JavaScript runs:
 

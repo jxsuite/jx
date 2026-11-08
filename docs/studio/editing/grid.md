@@ -115,7 +115,7 @@ A CSV file that is a content collection's source has a third editor, **Entry**: 
 
 ## The redirect table
 
-Redirects open as a grid over three columns (**Source**, **Destination**, **Status**) and inherit the whole surface: inline editing, **Add Row** and **Delete Rows**, find & replace, undo, one batched **Save**, and views you can save. Saving writes the rules into `project.json` all together, or refuses the batch and says why, so the site never ends up with half its old URLs working. **[Project settings](/docs/studio/projects/settings)** covers what the rules mean and how they're checked.
+Redirects open as a grid over three columns (**Source**, **Destination**, **Status**) and inherit the whole surface: inline editing, **Add Row** and **Delete Rows**, find & replace, undo, one batched **Save**, and views you can save. Saving writes the rules into the project file all together, or refuses the batch and says why, so the site never ends up with half its old URLs working. **[Project settings](/docs/studio/projects/settings)** covers what the rules mean and how they're checked.
 
 ## Next
 

@@ -369,7 +369,7 @@ projectState = {
 
 > **Status: Implemented.**
 
-A new project is written **only** where the user said to put it. No backend picks a destination on its own, and none falls back to its own root — an unspecified destination is an error, not a default.
+A new project is written **only** where the user said to put it, and its project file is a `project.jxn` (`site-architecture.md` §2.4). No backend picks a destination on its own, and none falls back to its own root — an unspecified destination is an error, not a default.
 
 **The wizard is two steps, and the second collects identity only.** Step 1 (_Choose a starting point_) offers the starter gallery — with one **Start from scratch** card at its end for the minimal scaffold — plus the Import and Agent sources on their own tabs. Step 2 (_Name your project_) collects the project name and the destination, and nothing else: the site's URL, its deployment adapter and its design tokens are project settings, editable for the life of the project, so they are not creation-time decisions. **Cancel is available on both steps**, alongside the underlay, `Escape` and the header close button.
 
