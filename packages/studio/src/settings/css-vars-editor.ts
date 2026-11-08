@@ -430,6 +430,11 @@ function detailOf(
   };
 }
 
+/** A radio segment's `checked`, which the kit reads as the string "true" or "false". */
+function radioChecked(on: boolean): "true" | "false" {
+  return on ? "true" : "false";
+}
+
 /** The detail when no colour is chosen: every field present, as the document binds them all. */
 const NO_DETAIL: TokenDetailView = {
   addLabel: "",
@@ -502,9 +507,9 @@ function view(container: HTMLElement): CssVarsView {
     error: state.error,
     groups,
     schemes: [
-      { checked: scheme === null, label: "Base", value: "" },
+      { checked: radioChecked(scheme === null), label: "Base", value: "" },
       ...schemes.map((context) => ({
-        checked: context === scheme,
+        checked: radioChecked(context === scheme),
         label: context.label,
         value: context.name,
       })),

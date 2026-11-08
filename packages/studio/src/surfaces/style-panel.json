@@ -33,6 +33,17 @@
       "padding": "var(--jx-space-2) var(--jx-space-3)",
       "borderBottom": "1px solid var(--jx-border)"
     },
+    "& [part=\"applies\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "var(--jx-space-2)",
+      "padding": "var(--jx-space-2) var(--jx-space-3)",
+      "borderBottom": "1px solid var(--border)",
+      "fontSize": "12px"
+    },
+    "& [part=\"applies-label\"]": {
+      "color": "var(--fg-dim)"
+    },
     "& [part=\"restyle\"]": {
       "display": "flex",
       "flexDirection": "column",
@@ -431,6 +442,106 @@
               "tagName": "div",
               "attributes": {
                 "part": "target-host"
+              }
+            },
+            {
+              "$description": "Design's Applies to pair (studio.md §6.2): an edit in this tab changes the selected element, and every element of its tag is the site's default, which Project Styles edits, so the second option opens it there on the tag.",
+              "tagName": "div",
+              "attributes": {
+                "part": "applies-slot",
+                "role": "none"
+              },
+              "style": {
+                "display": "contents"
+              },
+              "$switch": {
+                "$ref": "#/state/appliesTo/state"
+              },
+              "cases": {
+                "shown": {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "applies"
+                  },
+                  "children": [
+                    {
+                      "tagName": "span",
+                      "attributes": {
+                        "part": "applies-label",
+                        "id": "style-applies-label"
+                      },
+                      "textContent": "Applies to"
+                    },
+                    {
+                      "tagName": "jx-action-group",
+                      "attributes": {
+                        "part": "applies-choices",
+                        "aria-labelledby": "style-applies-label"
+                      },
+                      "$props": {
+                        "selects": "single",
+                        "compact": true
+                      },
+                      "children": [
+                        {
+                          "tagName": "jx-action-button",
+                          "attributes": {
+                            "part": "applies-this"
+                          },
+                          "$props": {
+                            "size": "sm",
+                            "checked": "true",
+                            "label": {
+                              "$ref": "#/state/appliesTo/thisLabel"
+                            }
+                          },
+                          "children": [
+                            {
+                              "tagName": "span",
+                              "textContent": "${state.appliesTo.thisLabel}"
+                            }
+                          ]
+                        },
+                        {
+                          "tagName": "jx-action-button",
+                          "attributes": {
+                            "part": "applies-all",
+                            "title": "${state.appliesTo.allHint}"
+                          },
+                          "$props": {
+                            "size": "sm",
+                            "checked": "false",
+                            "label": {
+                              "$ref": "#/state/appliesTo/allLabel"
+                            }
+                          },
+                          "onclick": {
+                            "$prototype": "Function",
+                            "body": [
+                              {
+                                "operator": "call",
+                                "target": {
+                                  "$ref": "#/state/styleAllOfTag"
+                                },
+                                "value": [
+                                  {
+                                    "$ref": "#/state/appliesTo/tag"
+                                  }
+                                ]
+                              }
+                            ]
+                          },
+                          "children": [
+                            {
+                              "tagName": "span",
+                              "textContent": "${state.appliesTo.allLabel}"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
               }
             },
             {

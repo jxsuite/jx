@@ -42,6 +42,7 @@ void mock.module("../src/store", () => ({
 const selectStylebookTagMock = mock((..._args: unknown[]) => {});
 void mock.module("../src/panels/stylebook-panel", () => ({
   selectStylebookTag: selectStylebookTagMock,
+  stylebookMeta: { $sections: [] },
 }));
 
 // The Target Line's segments route to commands rather than growing their own selectors, so the
@@ -53,7 +54,8 @@ void mock.module("../src/commands/active-registry", () => ({
 
 const { VARIABLES_INSPECTOR_MESSAGE, bindStyleHost, resetSelectorMenu } =
   await import("../src/panels/style-panel");
-const { mountStylePanelSurface, NO_RESTYLE } = await import("../src/surfaces/style-panel");
+const { mountStylePanelSurface, NO_APPLIES_TO, NO_RESTYLE } =
+  await import("../src/surfaces/style-panel");
 const { openSelectorMenu } = await import("../src/surfaces/target-line");
 const { initCssData } = await import("../src/panels/style-utils");
 const { initLayers } = await import("../src/ui/layers");
@@ -316,6 +318,56 @@ describe("the tab's teaching states", () => {
 });
 
 // ─── Stylebook mode ──────────────────────────────────────────────────────────
+
+describe("Applies to (§6.2)", () => {
+  test("a plain element offers itself or every one of its tag, the second in Project Styles", async () => {
+    setupTab({});
+    const c = await renderPanel("edit");
+    const choices = [...c.querySelectorAll<HTMLElement>('[part="applies-choices"] > *')];
+    expect(choices.map((choice) => choice.textContent.trim())).toEqual([
+      "This <section>",
+      "All <section>s",
+    ]);
+    expect(choices.map((choice) => ("checked" in choice ? choice.checked : null))).toEqual([
+      "true",
+      "false",
+    ]);
+    expect(choices[1]!.getAttribute("title")).toBe(
+      "Style every <section> on the site in Project Styles",
+    );
+    choices[1]!.querySelector<HTMLElement>('[part="control"]')!.click();
+    for (let turn = 0; turn < 100 && selectStylebookTagMock.mock.calls.length === 0; turn++) {
+      await flush(1);
+    }
+    expect(runMock.mock.calls[0]?.slice(0, 2)).toEqual(["styles.open", { view: "elements" }]);
+    expect(selectStylebookTagMock.mock.calls[0]).toEqual([
+      "section",
+      undefined,
+      { panCanvas: true },
+    ]);
+  });
+
+  test("the root, a component, a set of elements and Project Styles itself offer no choice", async () => {
+    const tab = setupTab({});
+    tab.session.selection = [[]];
+    const root = await renderPanel("edit");
+    expect(root.querySelector('[part="applies"]')).toBeNull();
+    tab.doc.document.children = [{ tagName: "x-card" }, { tagName: "p" }];
+    tab.session.selection = [["children", 0]];
+    await settle();
+    expect(root.querySelector('[part="applies"]')).toBeNull();
+    tab.session.selection = [
+      ["children", 1],
+      ["children", 0],
+    ];
+    await settle();
+    expect(root.querySelector('[part="applies"]')).toBeNull();
+    shell.stylebook.selection = "h1";
+    const book = await renderPanel("stylebook");
+    expect(book.querySelector('[part="applies"]')).toBeNull();
+    shell.stylebook.selection = null;
+  });
+});
 
 describe("what else styles a Project Styles element (§7.4)", () => {
   /** The components a project defines: one restyles its buttons, one does not. */
@@ -1833,6 +1885,7 @@ describe("the surface's own seam", () => {
     pressButton: () => {},
     renameCustom: () => {},
     newComponent: () => {},
+    styleAllOfTag: () => {},
     openComponent: () => {},
     runEmptyAction: () => {},
     setFilter: () => {},
@@ -1843,6 +1896,7 @@ describe("the surface's own seam", () => {
     emptyActionLabel: "",
     emptyMessage: "Open a page to style what you click.",
     filter: "",
+    appliesTo: NO_APPLIES_TO,
     hasEmptyAction: false,
     restyle: NO_RESTYLE,
     sections: [],
