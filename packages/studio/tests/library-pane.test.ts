@@ -576,6 +576,45 @@ describe("mounting", () => {
 
 // ─── The Table's selection and Cover column (§22.5) ──────────────────────────
 
+describe("what each page is, under its title (§22.5)", () => {
+  test("a collection's template page says how many pages it makes, once its index is read", async () => {
+    const tree = {
+      ...TREE,
+      pages: [...TREE.pages, file("[slug].json", "pages/blog/[slug].json")],
+      "pages/blog": [file("[slug].json", "pages/blog/[slug].json")],
+    };
+    installMockPlatform(
+      { listDirectory: (path: string) => Promise.resolve(listingIn(tree, path) ?? []) },
+      {
+        ...INDEX_ONLY,
+        "pages/blog/[slug].json": JSON.stringify({
+          $paths: { contentType: "posts", param: "slug" },
+          tagName: "article",
+        }),
+      },
+    );
+    resetStudioState({
+      projectConfig: { content: { posts: POSTS } },
+      projectDirs: Object.keys(tree),
+      projectRoot: "",
+    });
+    await mount();
+    setLibraryLayout("table");
+    const subOf = (path: string) =>
+      host.querySelector(`[part="table-row"][data-path="${path}"] [part="cell-sub"]`)?.textContent;
+    for (
+      let turn = 0;
+      turn < 40 && subOf("pages/blog/[slug].json") !== "One page per post · 1 post";
+      turn++
+    ) {
+      await flush();
+    }
+    expect(subOf("pages/blog/[slug].json")).toBe("One page per post · 1 post");
+    expect(subOf("pages/index.json")).toBe("Home page");
+    expect(subOf("pages/about.json")).toBe("");
+  });
+});
+
 describe("the Table's selection and Cover column", () => {
   const TWO = {
     ...TREE,
@@ -1498,8 +1537,12 @@ describe("views", () => {
     await flush();
     await flush();
     const rows = parts("table-row").map((row) =>
-      [...row.querySelectorAll('[part="cell"]')].map((cell) => cell.textContent),
+      [...row.querySelectorAll('[part="cell-text"]')].map((cell) => cell.textContent),
     );
+    // What a page is reads under its title: the home page says so, any other page is itself.
+    expect(
+      parts("table-row").map((row) => row.querySelector('[part="cell-sub"]')?.textContent),
+    ).toEqual(["Home page", ""]);
     expect(part("table-head")!.textContent).toBe("TitleURLTemplateEdited");
     expect(part("table")!.getAttribute("aria-label")).toBe("Pages");
     expect(rows.map((cells) => cells.slice(0, 3))).toEqual([

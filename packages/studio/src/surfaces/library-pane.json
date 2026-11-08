@@ -258,6 +258,26 @@
       "whiteSpace": "nowrap",
       "fontSize": "var(--jx-text-md)"
     },
+    "& [part=\"cell-text\"]": {
+      "display": "block",
+      "overflow": "hidden",
+      "textOverflow": "ellipsis"
+    },
+    "& [part=\"cell-sub\"]": {
+      "$description": "What a page is, under its title (studio.md §22.5); a cell with nothing to add draws no second line.",
+      "display": "block",
+      "overflow": "hidden",
+      "textOverflow": "ellipsis",
+      "fontSize": "var(--jx-text-sm)",
+      "fontWeight": "400",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"cell-sub\"]:empty": {
+      "display": "none"
+    },
+    "& [part=\"table\"]:has([part=\"cell-sub\"]:not(:empty)) [part=\"table-row\"]": {
+      "height": "44px"
+    },
     "& [part=\"cell\"][data-field=\"name\"], & [part=\"cell\"][data-field=\"title\"]": {
       "$description": "What a row is called keeps a readable width however many field columns stand beside it.",
       "flex": "3",
@@ -1609,7 +1629,22 @@
                             "role": "cell",
                             "data-field": "${$map.item.field}"
                           },
-                          "textContent": "${$map.item.text}"
+                          "children": [
+                            {
+                              "tagName": "span",
+                              "attributes": {
+                                "part": "cell-text"
+                              },
+                              "textContent": "${$map.item.text}"
+                            },
+                            {
+                              "tagName": "span",
+                              "attributes": {
+                                "part": "cell-sub"
+                              },
+                              "textContent": "${$map.item.sub}"
+                            }
+                          ]
                         }
                       }
                     ]

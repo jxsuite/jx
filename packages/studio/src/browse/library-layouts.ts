@@ -278,6 +278,7 @@ export function libraryRow(
           : "glyph",
     cells: columns.map((column) => ({
       field: column.field,
+      sub: "",
       text: cellText(file, column.field, entry),
     })),
     checked: false,

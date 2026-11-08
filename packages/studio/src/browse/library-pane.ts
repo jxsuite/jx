@@ -60,6 +60,7 @@ import {
   collectionSourceFile,
   declaredCollectionSchema,
   contentCollection,
+  contentCollections,
   templateDisplayName,
 } from "../content/content-collections";
 import {
@@ -123,6 +124,7 @@ import type { CommandArgValues } from "../commands/command-args";
 import type {
   LibraryChip,
   LibraryPageLine,
+  LibraryRow,
   LibrarySurfaceHandle,
   LibraryView,
   LibraryViewKind,
@@ -817,6 +819,38 @@ function listing(collection: ReturnType<typeof shownCollection>, view: Collectio
   };
 }
 
+/**
+ * What each page is, as the Pages Table says under its title (§22.5): the home page, or a
+ * collection's template page with how many pages it makes. Any other page is just itself.
+ */
+function pageSubtitles(): Map<string, string> {
+  const subtitles = new Map<string, string>();
+  const files = librarySource().files();
+  // Pages itself is no collection a page expands over: only the declared ones have template pages.
+  for (const collection of contentCollections().filter((each) => each.kind === "collection")) {
+    const page = peekCollectionPage(collection.key, "");
+    if (page) {
+      const count = filterLibrary(files, { collection: collection.key, query: "" }).length;
+      const noun = count === 1 ? collection.item : collection.title.toLowerCase();
+      subtitles.set(page.path, `One page per ${collection.item} · ${count} ${noun}`);
+    }
+  }
+  return subtitles;
+}
+
+/** A Pages row's title cell, with what the page is beneath it. */
+function withPageSubtitle(row: LibraryRow, subtitles: ReadonlyMap<string, string>): LibraryRow {
+  const sub =
+    subtitles.get(row.path) ??
+    (row.cells.find((cell) => cell.field === "url")?.text === "/" ? "Home page" : "");
+  for (const cell of row.cells) {
+    if (cell.field === "title") {
+      cell.sub = sub;
+    }
+  }
+  return row;
+}
+
 /** The paths the shown collection lists right now. */
 function listedPaths(): string[] {
   const collection = shownCollection();
@@ -1247,6 +1281,7 @@ function homeView(panel: ActiveLibraryPane | null, paneId: string): LibraryView 
   const covered =
     table && Object.values(schema?.properties ?? {}).some((field) => isPictureField(field));
   const noun = ticked.length === 1 ? collection.item : plural;
+  const subtitles = pages && kind === "table" ? pageSubtitles() : null;
 
   return {
     allChecked: ticked.length > 0 && ticked.length === listed.size,
@@ -1316,11 +1351,11 @@ function homeView(panel: ActiveLibraryPane | null, paneId: string): LibraryView 
     region: paneRegion(paneId, "content"),
     rows:
       kind === "cards" || kind === "table"
-        ? slice.map((file) =>
-            Object.assign(libraryRow(file, kind === "table" ? columns : [], live, factsOf(file)), {
-              checked: tickedSet.has(file.path),
-            }),
-          )
+        ? slice.map((file) => {
+            const row = libraryRow(file, kind === "table" ? columns : [], live, factsOf(file));
+            row.checked = tickedSet.has(file.path);
+            return subtitles ? withPageSubtitle(row, subtitles) : row;
+          })
         : [],
     bulkState: ticked.length > 0 ? "shown" : "hidden",
     bulkText: `${ticked.length} ${noun} selected`,

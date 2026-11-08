@@ -88,6 +88,8 @@ export interface LibraryRow {
 export interface LibraryCell {
   field: string;
   text: string;
+  /** A second, smaller line: what a page is ("Home page", "One page per post · 6 posts"), or "". */
+  sub: string;
 }
 
 /** One Table column, from the grid source rather than a second hand-written list. */
