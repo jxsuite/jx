@@ -495,10 +495,22 @@
       "url": "https://urlpattern.spec.whatwg.org/"
     },
     {
+      "id": "WIT",
+      "org": "Other",
+      "title": "WIT: the WebAssembly Interface Type format of the Component Model",
+      "url": "https://github.com/WebAssembly/component-model/blob/main/design/mvp/WIT.md"
+    },
+    {
       "id": "Web Application Manifest",
       "org": "W3C",
       "title": "Web Application Manifest",
       "url": "https://www.w3.org/TR/appmanifest/"
+    },
+    {
+      "id": "WebAssembly Component Model",
+      "org": "Other",
+      "title": "WebAssembly Component Model",
+      "url": "https://github.com/WebAssembly/component-model"
     },
     {
       "id": "WebAuthn Level 3",
