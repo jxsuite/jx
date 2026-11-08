@@ -13,6 +13,8 @@ import { cpSync, mkdtempSync, readFileSync, readdirSync, writeFileSync, mkdirSyn
 import { dirname, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { isJsonObject } from "@jxsuite/schema/guards";
+import { parseProjectSource } from "@jxsuite/schema/project-file";
+import { projectFilePath } from "@jxsuite/schema/project-file/node";
 import type { JsonObject, JsonValue } from "@jxsuite/schema/types";
 
 const REPO_ROOT = resolve(import.meta.dir, "../../../..");
@@ -38,7 +40,12 @@ export function loadFixture({ site = "sites/test-blank", page = "pages/index.jso
   cpSync(srcRoot, tmpRoot, { recursive: true });
 
   const document = readJson(join(tmpRoot, page));
-  const projectConfig = readJson(join(tmpRoot, "project.json"));
+  const projectPath = projectFilePath(tmpRoot);
+  const parsed: unknown = parseProjectSource(readFileSync(projectPath, "utf8"), projectPath);
+  if (!isJsonObject(parsed)) {
+    throw new Error(`${projectPath} is not a project`);
+  }
+  const projectConfig = parsed;
   const components = listComponents(tmpRoot);
 
   /** Every file the model wrote, in order. */

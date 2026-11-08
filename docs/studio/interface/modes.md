@@ -84,7 +84,7 @@ Project Styles is the Styles workspace's two style editors over your project fil
 
 Your project's configuration, `project.json`, opens as a document in the Styles workspace, with three editors: **Elements**, **Variables** and **Code**. Switching between them keeps one undo history and one unsaved dot, and :kbd[⌘Z], the unsaved dot and :kbd[⌘S] mean here exactly what they mean in a page. The one difference is **Variables**, which saves each change as you make it.
 
-**Open Project Settings** is not one of its editors: it opens a dialog over whatever you are doing, with its sections in three groups (General, Integrations, Advanced), and every change in it is written to `project.json` as you make it. **Go to Styles**, in its Overview section, closes the dialog and opens the Styles workspace; **Edit as code**, in Raw JSON, opens the Code editor. Full guide: **[Project settings](/docs/studio/projects/settings)**.
+**Open Project Settings** is not one of its editors: it opens a dialog over whatever you are doing, with its sections in three groups (General, Integrations, Advanced), and every change in it is written to the project file as you make it. **Go to Styles**, in its Overview section, closes the dialog and opens the Styles workspace; **Edit as code**, in Source, opens the Code editor. Full guide: **[Project settings](/docs/studio/projects/settings)**.
 
 ## Which files offer what
 

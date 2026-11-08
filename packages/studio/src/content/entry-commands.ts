@@ -15,6 +15,7 @@
  * publishes something private.
  */
 
+import { projectConfigPath } from "../tabs/tab";
 import {
   argsSchema,
   booleanArg,
@@ -117,7 +118,7 @@ export async function createEntry(
   if (!collection) {
     notify.error(`No content collection named "${collectionName}" to create an entry in.`, {
       detail:
-        "A collection needs a `content` entry in project.json whose `source` is a directory. A " +
+        `A collection needs a \`content\` entry in ${projectConfigPath()} whose \`source\` is a directory. A ` +
         "collection whose source names a single file (a CSV catalogue) has rows, not entry files.",
       source: "Content",
     });

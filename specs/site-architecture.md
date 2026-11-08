@@ -142,13 +142,13 @@ pages/
 
 ### 2.3 The Project File
 
-> **Status: Partial.** Every host reads a `project.jxn`, and every writer keeps its comments: the CLI, the dev server, the desktop application, site origins, Studio's settings and the assistant's `write_file`. A folder holding both files is refused everywhere. Open: `jx convert` does not move a project file, Studio's labels still say `project.json`, and a `project.jxn` that does not parse is reported at its line and column but does not open in the Code view.
-
 A project is declared by one file at its root, either `project.jxn` (Jx Notation, `spec.md` §22) or `project.json`. Both parse to the same `ProjectConfig`. A folder holding both is refused, naming both files, rather than one silently winning.
 
 A `project.jxn` declares itself: its first node after any `$` metadata is `project`, whose one optional value is the project's `name`. So a file named `project.jxn` with no such node is an ordinary document, which is what keeps `pages/project.jxn` a page with the route `/project` rather than a false project root for everything beneath it. A file that does not parse is still identified by that node, so a typo does not stop its folder being a project.
 
-Comments and layout in a `project.jxn` survive every save, whether the save came from Studio's settings, a rename that repaired a reference, or a tool. A file that does not parse is reported at its line and column and is never overwritten.
+Comments and layout in a `project.jxn` survive every save, whether the save came from Studio's settings, a rename that repaired a reference, or a tool. A file that does not parse is reported at its line and column and is never overwritten. A host that hands a project to Studio relays one whose file does not parse with no configuration rather than finding no project, and Studio opens the file as its own text in the Code view, where fixing it is the only edit Project Settings accepts. The desktop application's open still refuses such a folder, naming the file and the reason (`desktop.md` §4.6). The project file never joins a collaboration session, including when a rename moves a shared document onto its path.
+
+`jx convert` moves a project between the two files in place (`compiler.md` §2.3). Studio names the file the project has wherever it names it at all, and tells the assistant which one it is and, for `project.jxn`, how it is written.
 
 ### 2.4 Provisioning a Project
 

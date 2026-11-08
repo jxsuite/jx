@@ -1276,6 +1276,29 @@ describe("a project declared by project.jxn", () => {
     const { body: info } = await get(`/__studio/project-info?dir=${encodeURIComponent(root)}`);
     expect(info.isSiteProject).toBe(false);
   });
+  test("that does not read is still the project, opened with no configuration and the reason", async () => {
+    const root = resolve(FIXTURES, "typo");
+    mkdirSync(resolve(root, "pages"), { recursive: true });
+    writeFileSync(resolve(root, "project.jxn"), 'project "Typo"\ndefaults {\n', "utf8");
+
+    const { body, status } = await resolveSite(resolve(root, "pages/index.json"));
+    expect(status).toBe(200);
+    expect(body).toMatchObject({ projectConfig: null, sitePath: root });
+    expect(body.projectProblem).toContain("project.jxn");
+
+    const { body: info } = await get(`/__studio/project-info?dir=${encodeURIComponent(root)}`);
+    expect(info).toMatchObject({ isSiteProject: true, projectConfig: null });
+    expect(info.projectProblem).toContain("project.jxn");
+  });
+
+  test("named so but holding a page is no project, readable or not", async () => {
+    const root = resolve(FIXTURES, "typo-page");
+    mkdirSync(root, { recursive: true });
+    writeFileSync(resolve(root, "project.jxn"), 'h1 "About"\n', "utf8");
+    const { body: info } = await get(`/__studio/project-info?dir=${encodeURIComponent(root)}`);
+    expect(info.isSiteProject).toBe(false);
+    expect(info.projectProblem).toBeUndefined();
+  });
 });
 
 describe("resolve-site", () => {

@@ -1,6 +1,6 @@
 ---
 title: "Project settings"
-description: "Project settings in Jx Studio: a workspace over project.json, grouped into General, Integrations and Advanced, reachable from every workspace."
+description: "Project settings in Jx Studio: a workspace over the project file, grouped into General, Integrations and Advanced, reachable from every workspace."
 spec:
   - studio.md#9.4
   - studio.md#17
@@ -44,7 +44,7 @@ code:
 
 # Project settings
 
-Everything that applies to your whole site rather than one page (its name and address, its languages, its extensions, its packages) lives in your project's configuration, the `project.json` file at the root of the project. **Project settings** is the workspace that edits it. It takes the whole window, so a section with a list and an editor side by side, such as Content Types, has room for both, and **Back** at its top returns you to the workspace you opened it from.
+Everything that applies to your whole site rather than one page (its name and address, its languages, its extensions, its packages) lives in your project's configuration, the project file at the root of the project: `project.json`, or `project.jxn` when it is written in [Jx Notation](/docs/framework/concepts/jxn-files#a-project-file). **Project settings** is the workspace that edits it. It takes the whole window, so a section with a list and an editor side by side, such as Content Types, has room for both, and **Back** at its top returns you to the workspace you opened it from.
 
 Open it from the **Settings** menu at the right of the Command Bar: **Open Project Settings**, whose submenu lists every section in the order Project settings lists them, with a divider where each group starts, so you can land on the one you want. It is also on :kbd[⌘⇧,], on :kbd[⌘K] as **Open Project Settings**, and in the **⬢ menu** in the Command Bar. Every link elsewhere in Studio that names a section, such as **Manage contexts…** or a content type's **Fields**, opens it on that section. (:kbd[⌘,] is the other half of the pair: **Preferences**, which configures the app rather than this project.)
 
@@ -58,7 +58,7 @@ The sections are listed down the left in three groups:
 
 - **General**: Overview and Locales, the things every site sets.
 - **Integrations**: Extensions, and every section an extension adds, such as Content Types, Data Tables, Authentication, Connections, Site Search and Feeds.
-- **Advanced**, marked _For developers_: Contexts, Site head, Data Shapes, Packages and Raw JSON. Most sites never need them.
+- **Advanced**, marked _For developers_: Contexts, Site head, Data Shapes, Packages and Source. Most sites never need them.
 
 Click a section to show it, or reach a group's list with :kbd[⇥] and walk it with :kbd[↑] and :kbd[↓]. Each group is one stop for :kbd[⇥], so moving from General to Advanced is two presses. Project settings opens with the keyboard on the section you are looking at, and it remembers that section: open it again later in the session and you land where you left off.
 
@@ -70,15 +70,15 @@ Under the list, **Moved** names what used to be here and where it went: **Colors
 
 ## Changes save as you make them
 
-There is no Save or Apply button, because there is nothing to confirm: every section writes `project.json` the moment a change is complete, such as when you leave a field or flip a switch.
+There is no Save or Apply button, because there is nothing to confirm: every section writes the project file the moment a change is complete, such as when you leave a field or flip a switch.
 
-- **A failed write is visible.** If the file cannot be written (a read-only project, a full disk, a backend that has gone away), the change is not quietly dropped. Studio raises a problem naming `project.json` in the [Problems list](/docs/studio/interface/problems-and-progress).
+- **A failed write is visible.** If the file cannot be written (a read-only project, a full disk, a backend that has gone away), the change is not quietly dropped. Studio raises a problem naming the file in the [Problems list](/docs/studio/interface/problems-and-progress).
 - **An edit that changes nothing writes nothing.** Re-committing a field's existing value leaves the file untouched, so your project's diff only ever shows what you actually changed.
-- **An edit that changes one field changes one line.** The file is written back in the layout it was read in, the same way [every document is saved](/docs/studio/interface/tabs#studio-saves-only-when-you-do), so a `project.json` your formatter keeps tidy stays tidy through a settings change. When the [assistant](/docs/studio/ai/chat) rewrites `project.json`, the layout it wrote is the one the next settings change keeps.
+- **An edit that changes one field changes one line.** The file is written back in the layout it was read in, the same way [every document is saved](/docs/studio/interface/tabs#studio-saves-only-when-you-do), so a `project.json` your formatter keeps tidy stays tidy through a settings change, and a `project.jxn` keeps every comment. When the [assistant](/docs/studio/ai/chat) rewrites the project file, the layout it wrote is the one the next settings change keeps.
 - **A section that cannot be shown says so.** If a section fails to load, Project settings says which one and why in the space the section would have used, rather than showing an empty column.
 
 :::doc-tip
-`project.json` is also a document you can open: **[Project Styles](/docs/studio/design/stylebook)** in the Styles workspace edits its element defaults (the **Elements** view) and its [design tokens](/docs/studio/design/tokens) (the **Variables** view), and its **Code** view shows the raw file. While that tab is open, a change made here is a step in its history, so :kbd[⌘Z] in that tab takes it back. In Project settings itself :kbd[⌘Z] reaches only the text field you are typing in: to take back a change it has already saved, undo from that tab.
+The project file is also a document you can open: **[Project Styles](/docs/studio/design/stylebook)** in the Styles workspace edits its element defaults (the **Elements** view) and its [design tokens](/docs/studio/design/tokens) (the **Variables** view), and its **Code** view shows the raw file. While that tab is open, a change made here is a step in its history, so :kbd[⌘Z] in that tab takes it back. In Project settings itself :kbd[⌘Z] reaches only the text field you are typing in: to take back a change it has already saved, undo from that tab.
 :::
 
 ## Overview
@@ -105,7 +105,7 @@ Extensions add what Jx does not do on its own: content collections, site search,
 
 - **Available** lists what your setup can run. Turning one on installs its package first if you do not have it, then enables it. The row says so before you click.
 - **Installed** lists extensions already among your project's dependencies, including any third-party ones.
-- **Named in project.json** lists anything your configuration asks for that Studio could not describe. You can still turn those off, which is what you usually want.
+- **Named in the project file** lists anything your configuration asks for that Studio could not describe. You can still turn those off, which is what you usually want.
 
 Each row names the settings sections the extension owns. Those sections appear under **Integrations** as soon as the change is saved, so a section an extension contributes shows up without reloading Studio, and disappears again when you turn it off.
 
@@ -133,7 +133,7 @@ The conditions your pages are rendered under, and the only place they are define
 Name a context in plain language; Studio derives the stored name ("Wide screen" becomes `--wide-screen`). Each change is schema-checked before it is written, and a refusal (a duplicate name, an empty query) appears under the control that caused it while the stored value stays as it was.
 
 :::doc-note
-The check looks at the whole `project.json`, but only holds you responsible for what your edit changed. If the file already had a problem, such as a key from an extension you removed or a key something else wrote, that problem is reported once at the top of the section, naming the key, and your edit still saves.
+The check looks at the whole project file, but only holds you responsible for what your edit changed. If the file already had a problem, such as a key from an extension you removed or a key something else wrote, that problem is reported once at the top of the section, naming the key, and your edit still saves.
 :::
 
 The context bar's **Context** controls only _choose_ among what is defined here; **Manage contexts…**, at the foot of the popover behind the sliders button, opens this section, as do the breakpoint and color-scheme labels in the Style tab, so you can add a breakpoint without losing your element selection.
@@ -160,16 +160,20 @@ The npm packages your project uses, as a table of name, current version, and lat
 
 Adding packages and choosing which of their components your site uses is covered in **[Dependencies and imports](/docs/studio/projects/dependencies)**.
 
-## Raw JSON
+## Source
 
-The whole of `project.json` exactly as it is saved. **Edit as code** opens that same file in the Code editor, in the Styles workspace, where it has one undo history and one unsaved-changes flag like any document. **Back to Variables** (or **Back to Elements**) at the top of the pane returns you to the view you were last in.
+The whole of your project file, `project.jxn` or `project.json`, exactly as it is saved, comments included. **Edit as code** opens that same file in the Code editor, in the Styles workspace, where it has one undo history and one unsaved-changes flag like any document. **Back to Variables** (or **Back to Elements**) at the top of the pane returns you to the view you were last in.
 
 :::doc-note
-Every section edits `project.json` at the root of your project, the same file the New Project modal first wrote. The full shape is documented in [Site architecture](/docs/framework/site).
+Every section edits the project file at the root of your project, `project.json` as the New Project modal first wrote it, or `project.jxn` once you convert it. A `project.jxn` keeps its comments through every change made here. The full shape is documented in [Site architecture](/docs/framework/site).
 :::
 
 :::doc-note
-`project.json` is not shared through [collaboration](/docs/studio/publish/collaboration) sessions. It configures your copy of the editor and is edited from surfaces that are not the canvas, so each person's project configuration stays their own.
+The project file is not shared through [collaboration](/docs/studio/publish/collaboration) sessions. It configures your copy of the editor and is edited from surfaces that are not the canvas, so each person's project configuration stays their own.
+:::
+
+:::doc-warning
+If the project file does not read, for example after a typo made in another editor, the project still opens. Studio raises a problem giving the line and column, and opens the file as text in the Code view. Until the file reads again, every section here refuses to save rather than overwrite what you were in the middle of.
 :::
 
 ## Next

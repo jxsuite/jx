@@ -1,6 +1,6 @@
 /// <reference lib="dom" />
 /**
- * Two direct views of `project.json`: Deploy (the build adapter) and Raw JSON (the file itself).
+ * Two direct views of the project file: Deploy (the build adapter) and Source (the file itself).
  *
  * They live together because each is a small, direct view of ONE `project.json` key and neither
  * owns a dialog, a picker or a schema form: `build.adapter` (one enum), and the file itself.
@@ -34,6 +34,7 @@
 import { errorMessage } from "@jxsuite/schema/parse";
 import { projectState } from "../store";
 import { serializeProjectConfig } from "../tabs/project-config";
+import { projectConfigPath } from "../tabs/tab";
 import { updateSiteConfig } from "../site-context";
 import { mountDeploySurface } from "../surfaces/settings-deploy";
 import { mountRawJsonSurface } from "../surfaces/settings-rawjson";
@@ -93,7 +94,7 @@ async function persist(container: HTMLElement, patch: Partial<ProjectConfig>): P
     await updateSiteConfig(patch);
     errors.delete(container);
   } catch (error) {
-    errors.set(container, `Could not save project.json — ${errorMessage(error)}`);
+    errors.set(container, `Could not save ${projectConfigPath()} — ${errorMessage(error)}`);
   }
   renderDeploySection(container);
 }
@@ -161,9 +162,9 @@ export function disposeDeploySection(container: HTMLElement): void {
   deployMounts.delete(container);
 }
 
-// ─── Raw JSON ─────────────────────────────────────────────────────────────────
+// ─── Source ───────────────────────────────────────────────────────────────────
 
-/** The surface mounted in each Raw JSON container. */
+/** The surface mounted in each Source container. */
 const rawJsonMounts = new WeakMap<HTMLElement, RawJsonSurfaceHandle>();
 
 /**
@@ -173,17 +174,17 @@ const rawJsonMounts = new WeakMap<HTMLElement, RawJsonSurfaceHandle>();
  * a save writes — not a second pretty-printer that would disagree with the file by an indent.
  */
 function rawJsonValues(): RawJsonValues {
-  return { json: serializeProjectConfig(config()) };
+  return { file: projectConfigPath(), json: serializeProjectConfig(config()) };
 }
 
-/** What the Raw JSON section asks its host to do. */
+/** What the Source section asks its host to do. */
 export interface RawJsonSectionActions {
-  /** Open `project.json` in the Code editor, leaving wherever the section is drawn. */
+  /** Open the project file in the Code editor, leaving wherever the section is drawn. */
   editAsCode: () => void;
 }
 
 /**
- * `project.json` as it is written, and the way into editing it as text.
+ * The project file as it is written, and the way into editing it as text.
  *
  * @param {HTMLElement} container
  * @param {RawJsonSectionActions} actions

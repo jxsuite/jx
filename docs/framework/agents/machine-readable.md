@@ -3,7 +3,7 @@ title: "Machine-readable docs"
 description: "Public endpoints an agent can fetch: llms.txt, full-docs.json, the site search index, and the canonical Jx JSON Schemas served from jxsuite.com."
 code:
   - scripts/docs/build-llm-export.ts
-  - sites/jxsuite.com/project.json
+  - sites/jxsuite.com/project.jxn
   - extensions/search/src/search-index.ts
   - packages/schema/schema.json
   - packages/compiler/src/site/static-host.ts

@@ -3,8 +3,7 @@ status: drafted
 disposition: implement
 claims:
   - site-architecture.md#2.4
-requires:
-  - site-architecture/project-jxn
+requires: []
 workspaces:
   - packages/create
   - packages/import
@@ -21,7 +20,7 @@ size: M
 
 ## Context
 
-`specs/site-architecture.md` §2.4 is Pending. By this point `plan:site-architecture/project-jxn` has made `project.jxn` work on every host, and nothing yet creates one. Writing one is separated from reading one because it has a different gate: a starter pins published versions, so this cannot merge until a release carrying the readers exists.
+`specs/site-architecture.md` §2.4 is Pending. `project.jxn` works on every host (`site-architecture.md` §2.3), and nothing yet creates one. Writing one is separated from reading one because it has a different gate: a starter pins published versions, so this cannot merge until a release carrying the readers exists.
 
 The writers: `create/generate.ts:202` (`buildProjectJson`), `:276`-`:294` (the starter re-stamp), `import/emit.ts:253`, `import/run.ts:237`, and the read-backs that follow them (`server/studio-api.ts:697`, `desktop/backend/project-session.ts:960`, `server/import-api.ts:303`), which already go through the module. The inputs: 13 starters and 11 screenshot fixtures. `create/template-versions.json` pins `compiler`, `parser`, `runtime` and `server`.
 

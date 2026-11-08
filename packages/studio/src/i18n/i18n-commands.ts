@@ -353,7 +353,7 @@ export function i18nCommands(): AnyCommand[] {
       undo: "project",
       aiTool: {
         description:
-          "Declare a language for this project, adding it to project.json's i18n.locales. Every " +
+          "Declare a language for this project, adding it to the project file's i18n.locales. Every " +
           "other language surface reads that list. Canonicalizes the tag; a malformed one is " +
           "refused.",
         name: "add_project_locale",

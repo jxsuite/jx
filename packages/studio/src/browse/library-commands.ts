@@ -64,7 +64,7 @@ export function contentViewCommands(): AnyCommand[] {
            no project open, so a manifest step may name `pages` and nothing else. */
         collection: derivedEnumProperty(
           contentCollectionKeys,
-          'Which collection the Content home shows: "pages", or a collection project.json declares.',
+          'Which collection the Content home shows: "pages", or a collection the project file declares.',
         ),
       }),
       category: "Project",

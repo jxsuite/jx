@@ -20,6 +20,8 @@
  */
 
 import { errorMessage } from "@jxsuite/schema/parse";
+import { parseProjectSource } from "@jxsuite/schema/project-file";
+import { getPlatform } from "../platform";
 import {
   argsSchema,
   enumArg,
@@ -29,8 +31,9 @@ import {
 } from "../commands/command-args";
 import { notify } from "../services/notify";
 import { projectState } from "../state";
-import { projectConfigPath } from "../tabs/tab";
-import { lendProjectConfigLayout } from "../tabs/project-config";
+import { projectConfigPath, unreadProblemKey } from "../tabs/tab";
+import { formatForPath } from "../format/format-host";
+import { lendProjectConfigLayout, projectConfigDocument } from "../tabs/project-config";
 import { focusPane, openTab, paneOfTab, workspace } from "../workspace/workspace";
 import { workspaceHomeTabId } from "../workspace/workspace-ids";
 import {
@@ -157,7 +160,7 @@ registerSettingsSection({
   render: renderDependenciesEditor,
 });
 /*
- * Raw JSON's "Edit as code" leaves Settings: the Code editor is the `project.json` tab's, which is
+ * Source's "Edit as code" leaves Settings: the Code editor is the project file's tab's, which is
  * the Styles workspace's, so the tab opens in its source editor, and activating it is what switches
  * the workspace (`workspace/tab-workspace.ts`).
  */
@@ -165,7 +168,7 @@ registerSettingsSection({
   group: "advanced",
   icon: "code",
   key: "rawJson",
-  label: "Raw JSON",
+  label: "Source",
   order: 900,
   render: (container) => {
     renderRawJsonSection(container, {
@@ -227,6 +230,8 @@ export function showSettingsDocument(mode: string = shell.stylebook.view): Tab |
     document: state.projectConfig ?? {},
     documentPath: projectConfigPath(),
     id: projectConfigPath(),
+    // A `project.jxn` is Jx Notation in the Code view and on ⌘S, as the Files tree opens it.
+    sourceFormat: formatForPath(projectConfigPath())?.name ?? null,
   });
   /* The mode is written here rather than left to the capability list, because `createTab` seeds
      `session.ui.canvasMode` from the first non-preview mode, and a door over the same document has
@@ -241,6 +246,49 @@ export function showSettingsDocument(mode: string = shell.stylebook.view): Tab |
      lends the tab that record, and the Code view re-renders when it lands (`doc` is reactive). */
   void lendProjectConfigLayout(tab);
   return tab;
+}
+
+/**
+ * Open the project file as text when it does not read, and say where it fails.
+ *
+ * A project whose file does not parse still opens (site-architecture.md §2.3), with no
+ * configuration: the hosts relay it rather than finding no project. Every settings write is refused
+ * until it reads (`tabs/project-config.ts`), so the one way to fix it is the text, and this puts
+ * the author there, with the parser's line and column in the Problem.
+ *
+ * @returns Whether the file did not read.
+ */
+export async function showUnreadProjectFile(): Promise<boolean> {
+  const path = projectConfigPath();
+  let text: string;
+  try {
+    text = await getPlatform().readFile(path);
+  } catch {
+    // No file to show: a new project, or one the host cannot read, which it has already said.
+    return false;
+  }
+  let reason: string;
+  try {
+    parseProjectSource(text, path);
+    return false;
+  } catch (error) {
+    reason = errorMessage(error);
+  }
+  notify.error(`${path} does not read, so Project Settings cannot change it until it is fixed.`, {
+    detail: reason,
+    key: unreadProblemKey(path),
+    path,
+    source: "Project",
+  });
+  const tab = showSettingsDocument(SOURCE_MODE);
+  if (tab) {
+    tab.doc.source = text;
+    tab.doc.unread = reason;
+    /* Bound as the configuration of record, so the Code view's first commit that parses is the
+       project's configuration at once, and every settings section draws what the file now says. */
+    projectConfigDocument();
+  }
+  return true;
 }
 
 /**
@@ -419,7 +467,7 @@ export function settingsCommands(): AnyCommand[] {
           view: enumProperty(
             STYLES_VIEWS,
             "Which view of the project's styles to show: elements (element defaults by tag " +
-              "name), variables (the CSS custom properties) or code (project.json as text). " +
+              "name), variables (the CSS custom properties) or code (the project file as text). " +
               "Defaults to the view the Styles workspace was left in.",
           ),
         },

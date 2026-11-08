@@ -17,7 +17,7 @@ import { getPlatform } from "../platform";
 import { activeTab, workspace } from "../workspace/workspace";
 import { shallowRef, toRaw } from "../reactivity";
 import { projectState } from "../store";
-import { adoptProjectConfig } from "../tabs/project-config";
+import { adoptProjectConfig, projectConfigPath } from "../tabs/project-config";
 import type { Tab } from "../tabs/tab";
 import { componentRegistry } from "../files/components";
 import { activeRegistry } from "../commands/active-registry";
@@ -258,6 +258,7 @@ export function createDocumentAssistant() {
     return buildSystemPrompt({
       document: tab ? toRaw(tab.doc.document) : undefined,
       projectConfig: projectConfig() || undefined,
+      projectFile: projectConfigPath(),
       components: componentRegistry.length > 0 ? componentRegistry : undefined,
       projectRoot: workspace.projectRoot || undefined,
       hasProject: Boolean(workspace.projectRoot),

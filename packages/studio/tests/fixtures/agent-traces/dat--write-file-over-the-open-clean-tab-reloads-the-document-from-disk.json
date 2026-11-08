@@ -2,9 +2,9 @@
   "chatCalls": [
     "sendMessage(\"rewrite the home page\")",
     "toMessagesArray()",
-    "setTokenCount(5621)",
+    "setTokenCount(5633)",
     "setContextWarning(false)",
-    "setTokenCount(5621)",
+    "setTokenCount(5633)",
     "setModel(\"gpt-4o\")",
     "toMessagesArray()",
     "appendToolCallStart(\"c1\", \"write_file\")",
@@ -31,7 +31,7 @@
         "carried": 0
       },
       "systemPrompt": {
-        "hash": "6f1b91396058",
+        "hash": "d659ebd4d9e9",
         "headings": [
           "## Jx Document Format",
           "### Element Properties",
@@ -45,7 +45,7 @@
           "### Premium: stat card with layered surface (components/stat-card.json):",
           "### Premium: step card with centered layout (components/step-card.json):",
           "### Layout with slots (layouts/base.json):",
-          "### Site config with design tokens (project.json):",
+          "### Site config with design tokens (the project file's members, as JSON):",
           "### Responsive Styles (per-node @breakpoint overrides)",
           "## Design Principles (premium component output)",
           "### Tokens first",
@@ -74,7 +74,7 @@
           "## Project Context",
           "## Asking the user"
         ],
-        "length": 22441
+        "length": 22491
       },
       "tools": [
         "ask_user",
@@ -190,7 +190,7 @@
     "error": null,
     "model": "gpt-4o",
     "status": "idle",
-    "tokenCount": 5621,
+    "tokenCount": 5633,
     "usage": null
   },
   "finalDocument": {

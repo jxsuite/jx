@@ -118,6 +118,27 @@ describe("ai-system-prompt — buildSystemPrompt", () => {
     expect(prompt).toContain("Responsive breakpoints");
   });
 
+  test("names the project file, and teaches Jx Notation only to a model looking at one", () => {
+    const json = buildSystemPrompt({ projectConfig: { name: "Site" }, projectRoot: "/site" });
+    expect(json).toContain("Project file: project.json");
+    expect(json).not.toContain("Jx Notation (KDL 2)");
+
+    const jxn = buildSystemPrompt({
+      extensionCatalog: [{ name: "@jxsuite/parser" }],
+      projectConfig: { name: "Site" },
+      projectFile: "project.jxn",
+      projectRoot: "/site",
+    });
+    expect(jxn).toContain("Project file: project.jxn");
+    expect(jxn).toContain("Jx Notation (KDL 2)");
+    expect(jxn).toContain('extensions { - "@jxsuite/parser" }');
+    expect(jxn).toContain("BEFORE writing the project.jxn section");
+    // What follows the static prefix is the only part that knows which file it is.
+    expect(jxn.slice(0, SYSTEM_PROMPT_STATIC_PREFIX.length)).toBe(
+      json.slice(0, SYSTEM_PROMPT_STATIC_PREFIX.length),
+    );
+  });
+
   test("a context-less but truthy project config yields no Project Context section", () => {
     const prompt = buildSystemPrompt({ projectConfig: {} });
     expect(prompt).not.toContain("## Project Context");

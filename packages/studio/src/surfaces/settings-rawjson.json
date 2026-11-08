@@ -1,7 +1,7 @@
 {
   "$schema": "https://jxsuite.com/schema/v1",
   "$id": "StudioSettingsRawJson",
-  "$description": "Project Settings › Raw JSON: `project.json` as it is written, and the way through to editing it as text. The adapter (`surfaces/settings-rawjson.ts`) hands in the serialisation the save chokepoint itself produced, so what is drawn is what a save writes rather than a second pretty-printer that would disagree with the file by an indent. The button opens the SAME tab in the Code editor — one document, three editors (`studio.md` §9.3) — so switching to the text and back keeps one undo stack instead of forking two.",
+  "$description": "Project Settings › Source: the project file (`project.jxn` or `project.json`) as it is written, and the way through to editing it as text. The adapter (`surfaces/settings-rawjson.ts`) hands in the serialisation the save chokepoint itself produced, so what is drawn is what a save writes rather than a second pretty-printer that would disagree with the file by an indent. The button opens the SAME tab in the Code editor — one document, three editors (`studio.md` §9.3) — so switching to the text and back keeps one undo stack instead of forking two.",
   "tagName": "section",
   "attributes": {
     "part": "rawjson"
@@ -28,7 +28,7 @@
       "fontFamily": "var(--font-mono)"
     },
     "& [part=\"json\"]": {
-      "$description": "`project.json` as it is saved. It scrolls in its own box: a 250-line file must not push the \"Edit as code\" action off the bottom of the section. Its background read `var(--bg-dim, var(--bg))` and `--bg-dim` is declared nowhere in the token layer, so the fallback is what has always painted it — written as what it resolves to rather than as a name that never resolved.",
+      "$description": "The project file as it is saved. It scrolls in its own box: a 250-line file must not push the \"Edit as code\" action off the bottom of the section. Its background read `var(--bg-dim, var(--bg))` and `--bg-dim` is declared nowhere in the token layer, so the fallback is what has always painted it — written as what it resolves to rather than as a name that never resolved.",
       "margin": "0 0 12px",
       "padding": "12px",
       "maxHeight": "420px",
@@ -48,7 +48,7 @@
       "attributes": {
         "part": "title"
       },
-      "textContent": "Raw JSON"
+      "textContent": "Source"
     },
     {
       "tagName": "p",
@@ -62,7 +62,7 @@
           "attributes": {
             "part": "file"
           },
-          "textContent": "project.json"
+          "textContent": "${state.file}"
         },
         ", as it is saved. Editing it as code opens the same document in the Code editor — one undo stack, one dirty flag."
       ]

@@ -478,7 +478,7 @@ export function createCommandToolRegistry(deps: CommandToolDeps): CommandToolReg
          sentence is kept: it says WHY nothing changed, which the witness cannot. */
       wrote = [];
       if (report.wrote === undefined || report.wrote.length > 0) {
-        summary = `${command.title} changed nothing: project.json is exactly as it was.`;
+        summary = `${command.title} changed nothing: ${projectConfigPath()} is exactly as it was.`;
       }
     }
     fileLedger(ctx.ledger, command, tab, wrote);

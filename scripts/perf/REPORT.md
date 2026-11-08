@@ -35,8 +35,8 @@ Serve both builds on ports other than 3000, so your own dev server stays out of 
 
 ```
 bun scripts/perf/trace-studio.ts \
-  --url "http://127.0.0.1:3101/packages/studio/index.html?project=$PWD/sites/jxsuite.com/project.json&automation=1" \
-  --base-url "http://127.0.0.1:3102/packages/studio/index.html?project=$PWD/.cache/perf-base/sites/jxsuite.com/project.json&automation=1"
+  --url "http://127.0.0.1:3101/packages/studio/index.html?project=$PWD/sites/jxsuite.com/project.jxn&automation=1" \
+  --base-url "http://127.0.0.1:3102/packages/studio/index.html?project=$PWD/.cache/perf-base/sites/jxsuite.com/project.jxn&automation=1"
 ```
 
 The two Chromes take `--port` and `--port + 1` (default 9226 and 9227). Set `CHROME_BIN` where Chrome is not `google-chrome-stable`.
