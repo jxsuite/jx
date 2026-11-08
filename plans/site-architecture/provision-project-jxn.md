@@ -47,7 +47,7 @@ The writers: `create/generate.ts:202` (`buildProjectJson`), `:276`-`:294` (the s
 - `starters/tests/validate-projects.test.ts` globs both, and fails if it finds no `project.jxn`.
 - `bun run schema:generate-all` over the converted roots: its output should not change.
 
-**Related, no edge.** `plan:desktop/jxn-file-association` should land first, so the first people handed a `project.jxn` can double-click it. `plan:_shared/jx-typechecking` JTC.5 edits the same `create/generate.ts` path for documents, and whichever lands second merges.
+**Related, no edge.** `.jxn` opens on a double-click on every channel that can register a type (`desktop.md` §7.8), so the first people handed a `project.jxn` can open it that way. `plan:_shared/jx-typechecking` JTC.5 edits the same `create/generate.ts` path for documents, and whichever lands second merges.
 
 ## Tests
 

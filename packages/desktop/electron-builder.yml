@@ -58,6 +58,10 @@ publish:
 # There is no top-level `fileAssociations`, on purpose. Jx Studio appears under Open With for .json
 # and never makes itself the default, and that key cannot say so: on Windows it writes the class of
 # `.json` itself. Each channel declares it in its own terms below (specs/desktop.md §7.4).
+#
+# `.jxn` is Jx Studio's own (§7.8), so it is declared per platform: `win.fileAssociations` (which
+# the Store package reads too) and `linux.fileAssociations`, and on macOS by hand in `extendInfo`,
+# because a mac `fileAssociations` cannot export a type or say what it conforms to.
 
 mac:
   category: public.app-category.developer-tools
@@ -72,7 +76,23 @@ mac:
   gatekeeperAssess: false
   # The Mac App Store build reads this too: electron-builder takes `extendInfo` from the mac block.
   extendInfo:
+    # `.jxn` is text, so Quick Look and TextEdit read it, and nothing else on most machines knows it.
+    UTExportedTypeDeclarations:
+      - UTTypeIdentifier: com.jxsuite.jxn
+        UTTypeDescription: Jx file
+        UTTypeConformsTo:
+          - public.plain-text
+        UTTypeTagSpecification:
+          public.filename-extension:
+            - jxn
+          public.mime-type:
+            - text/x-jxn
     CFBundleDocumentTypes:
+      - CFBundleTypeName: Jx file
+        CFBundleTypeRole: Editor
+        LSHandlerRank: Owner
+        LSItemContentTypes:
+          - com.jxsuite.jxn
       - CFBundleTypeName: JSON file
         CFBundleTypeRole: Editor
         LSHandlerRank: Alternate
@@ -111,6 +131,13 @@ win:
     - target: appx
       arch: x64
   icon: icon.ico
+  # A class-shaped name, as the installer's APP_ASSOCIATE macro asks. With no `jxn.ico` in
+  # build-resources the type shows the app's icon until a document icon is drawn.
+  fileAssociations:
+    - ext: jxn
+      name: JxStudio.Document
+      description: Jx file
+      role: Editor
 
 nsis:
   oneClick: false
@@ -146,3 +173,8 @@ linux:
   maintainer: Avunu LLC <support@jxsuite.com>
   synopsis: Visual JSON component editor
   artifactName: linux-${arch}-JxStudio.${ext}
+  # Names the type in the generated desktop entry. The type itself is jx-studio.mime.xml.
+  fileAssociations:
+    - ext: jxn
+      name: Jx file
+      mimeType: text/x-jxn

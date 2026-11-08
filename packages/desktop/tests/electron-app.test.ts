@@ -2,7 +2,7 @@
 import type * as Electron from "electron";
 import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
 import type { BackendMessage, ShellMessage } from "../src/shared/protocol";
-import { SHELL_CHANNELS } from "../src/shared/bridge";
+import { FILE_TYPE_CHANNELS, SHELL_CHANNELS } from "../src/shared/bridge";
 import {
   launchPathsFrom,
   parseAppArgs as parseAppArgsRaw,
@@ -328,7 +328,15 @@ describe("startApp", () => {
   test("names the app for the OS and registers the window actions", async () => {
     const { fake } = await started({ deps: { platform: "darwin" } });
     expect(new Set(fake.names)).toEqual(new Set(["Jx Studio"]));
-    expect([...fake.handlers.keys()].toSorted()).toEqual(Object.values(SHELL_CHANNELS).toSorted());
+    expect([...fake.handlers.keys()].toSorted()).toEqual(
+      [
+        ...Object.values(SHELL_CHANNELS),
+        FILE_TYPE_CHANNELS.register,
+        FILE_TYPE_CHANNELS.state,
+      ].toSorted(),
+    );
+    // The one question the preload asks synchronously, before it decides what to publish.
+    expect([...fake.listeners.keys()]).toEqual([FILE_TYPE_CHANNELS.available]);
   });
 });
 

@@ -41,6 +41,14 @@ beforeAll(() => {
   write("notation/project.jxn", 'project "Notation"\n');
   write("notation/pages/project.jxn", 'h1 "About the project"\n');
   write("twice/project.jxn", 'project "Twice"\n');
+  write("notation/pages/about.jxn", 'main "About"\n');
+  write("notation/pages/stray.jxn", '{ "not": "kdl" }\n');
+  write("notation/pages/typo.jxn", "main {\n");
+  write("loose/card.jxn", 'div "Card"\n');
+  writeFileSync(
+    join(scratch, "notation/pages/binary.jxn"),
+    Uint8Array.from([0xff, 0xfe, 0x00, 0x01]),
+  );
   write("twice/project.json", '{ "name": "Twice" }');
   write("twice/pages/index.json", '{ "tagName": "main" }');
 });
@@ -116,6 +124,32 @@ describe("resolveOpenTarget", () => {
     });
   });
 
+  test("a .jxn page opens in its project", () => {
+    expect(resolveOpenTarget(at("notation/pages/about.jxn"))).toMatchObject({
+      file: "pages/about.jxn",
+      kind: "project",
+    });
+  });
+
+  test("a .jxn file that is not Jx Notation gets one sentence naming it, not a window", () => {
+    expect(resolveOpenTarget(at("notation/pages/binary.jxn"))).toEqual({
+      kind: "refused",
+      reason: "binary.jxn isn't a Jx file: it isn't text.",
+    });
+    const stray = resolveOpenTarget(at("notation/pages/stray.jxn"));
+    expect(stray.kind === "refused" ? stray.reason : "").toStartWith("stray.jxn isn't a Jx file");
+    // A typo is reported where it is, so the author can find it.
+    const typo = resolveOpenTarget(at("notation/pages/typo.jxn"));
+    expect(typo.kind === "refused" ? typo.reason : "").toContain("(line 2, column 1)");
+  });
+
+  test("a .jxn in no project is refused as any loose file is", () => {
+    expect(resolveOpenTarget(at("loose/card.jxn"))).toEqual({
+      kind: "refused",
+      reason: "card.jxn isn't inside a Jx project, so Jx Studio can't open it yet.",
+    });
+  });
+
   test("a folder holding both project files opens, and names both", () => {
     const target = resolveOpenTarget(at("twice/pages/index.json"));
     expect(target).toMatchObject({ file: "pages/index.json", kind: "project", root: at("twice") });
@@ -187,6 +221,22 @@ describe("resolveOpenTarget", () => {
         expect(target.kind === "project" ? target.problem : null).toContain("can't read");
       } finally {
         chmodSync(secret, 0o600);
+      }
+    });
+
+    test("a .jxn it may not read is refused by name", () => {
+      if (process.platform === "win32" || process.getuid?.() === 0) {
+        return;
+      }
+      const locked = write("notation/pages/locked.jxn", 'main "Locked"\n');
+      chmodSync(locked, 0o000);
+      try {
+        expect(resolveOpenTarget(locked)).toEqual({
+          kind: "refused",
+          reason: "Jx Studio can't read locked.jxn.",
+        });
+      } finally {
+        chmodSync(locked, 0o600);
       }
     });
   });

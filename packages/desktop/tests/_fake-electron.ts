@@ -33,6 +33,8 @@ export interface FakeElectron {
   api: typeof Electron;
   windows: FakeWindow[];
   handlers: Map<string, (event: Electron.IpcMainInvokeEvent) => void>;
+  /** `ipcMain.on` listeners by channel: the synchronous questions a preload asks. */
+  listeners: Map<string, (event: Electron.IpcMainEvent) => void>;
   paths: Map<string, string>;
   desktopName: string[];
   /** Each bookmark handed to `app.startAccessingSecurityScopedResource`. */
@@ -187,6 +189,7 @@ export function fakeElectron(): FakeElectron {
     popups: [],
     exposed: new Map(),
     handlers: new Map(),
+    listeners: new Map(),
     invoked: [],
     openExternal: mock((_url: string) => Promise.resolve()),
     paths: new Map(),
@@ -378,11 +381,30 @@ export function fakeElectron(): FakeElectron {
       handle: (channel: string, listener: (event: Electron.IpcMainInvokeEvent) => void) => {
         record.handlers.set(channel, listener);
       },
+      on: (channel: string, listener: (event: Electron.IpcMainEvent) => void) => {
+        record.listeners.set(channel, listener);
+      },
     },
     ipcRenderer: {
-      invoke: (channel: string) => {
+      invoke: <T = void>(channel: string): Promise<T> => {
         record.invoked.push(channel);
-        return Promise.resolve();
+        // SAFETY: no handler here reads the sender; each resolves its window by `senderWindow`.
+        const sender = {} as Electron.WebContents;
+        /* SAFETY: the fake renderer answers what the fake main process's handler returns, which is
+           the value its real counterpart would send back over the channel. */
+        return Promise.resolve(record.handlers.get(channel)?.({ sender })) as Promise<T>;
+      },
+      // Asks the fake main process's listener and returns its answer, as Electron's does.
+      sendSync: <T = void>(channel: string): T => {
+        // SAFETY: no listener here reads the sender, only sets the answer.
+        const event: Electron.IpcMainEvent = {
+          returnValue: undefined,
+          sender: {} as Electron.WebContents,
+        };
+        record.listeners.get(channel)?.(event);
+        /* SAFETY: the caller names the type its question is answered in, as it does of Electron's
+           own `sendSync`, which is equally unchecked. */
+        return event.returnValue as T;
       },
     },
     Menu: {

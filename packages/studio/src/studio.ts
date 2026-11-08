@@ -267,6 +267,7 @@ import { registerPopoverCommands } from "./services/popover-report";
 import { registerStyleCommands } from "./panels/style-panel";
 import { registerGridCommands } from "./grid/grid-open";
 import { registerExtensionCommands } from "./settings/extension-commands";
+import { checkJxnRegistration, fileTypeCommands } from "./services/file-types";
 import {
   registerSettingsCommands,
   rememberStylesView,
@@ -1276,6 +1277,10 @@ void hydrateProjectList().then(() => {
   render();
 });
 
+// An AppImage that moved since it registered .jxn says so; no other host has anything to say.
+// oxlint-disable-next-line unicorn/prefer-top-level-await -- deliberate fire-and-forget: a notice must not block the first render
+void checkJxnRegistration();
+
 // Hydrate the account onboarding status (GitHub-App installation coverage on cloud), then refresh
 // The welcome screen's install prompt. No-op on platforms without getAccountStatus.
 // oxlint-disable-next-line unicorn/prefer-top-level-await -- deliberate fire-and-forget: hydration must not block initial render
@@ -1762,6 +1767,7 @@ registerFormulaEditorCommands(commandRegistry);
 registerGridCommands(commandRegistry);
 registerSettingsCommands(commandRegistry);
 registerExtensionCommands(commandRegistry);
+commandRegistry.registerAll(fileTypeCommands());
 registerPreferencesCommands(commandRegistry);
 registerContentViewCommands(commandRegistry);
 registerFileFormatCommands(commandRegistry);

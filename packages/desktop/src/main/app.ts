@@ -13,6 +13,8 @@
  *
  * @docs studio/desktop
  */
+import { nodeFileTypeHost, registerFileTypeActions } from "./file-types";
+import type { FileTypeHost } from "./file-types";
 import { existsSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -72,6 +74,8 @@ export interface AppDeps {
   platform: NodeJS.Platform;
   /** Electron's `process.resourcesPath`, where a packaged app keeps its files. */
   resourcesPath: string;
+  /** What registering `.jxn` reads and writes; this machine's, by default (§7.8). */
+  fileTypes: FileTypeHost;
   schedule: UpdateSchedule;
   spawn: SpawnBackend;
   /** Whether this is a Microsoft Store install, which the Store updates. */
@@ -361,6 +365,7 @@ export async function startApp(
     cwd = process.cwd(),
     env = process.env,
     exists = existsSync,
+    fileTypes,
     grantStore,
     loadUpdater = loadAutoUpdater,
     macAppStore = process.mas === true,
@@ -564,6 +569,7 @@ export async function startApp(
     },
   });
   registerWindowActions(electron);
+  registerFileTypeActions(electron, fileTypes ?? nodeFileTypeHost(env, args.icon));
 
   function onBackend(message: BackendMessage): void {
     switch (message.type) {

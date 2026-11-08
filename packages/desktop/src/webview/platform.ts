@@ -375,6 +375,10 @@ export function createDesktopPlatform() {
        under Chromium `--app`, whose frame already has both. */
     windowControls: shell?.windowControls,
 
+    /* Launcher-only too, and only an AppImage's: registering `.jxn` with the desktop when the user
+       asks (specs/desktop.md §7.8). Every other copy declares the type when it is installed. */
+    ...(shell?.fileTypes !== undefined && { fileTypes: shell.fileTypes }),
+
     /* New projects go where the user says: the modal's Location field, with Browse… backed by the
        XDG portal dialog below. The backend refuses a create without one. */
     createDestination: "path" as const,
