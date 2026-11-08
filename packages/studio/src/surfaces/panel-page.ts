@@ -23,12 +23,29 @@
  * @docs studio/editing/frontmatter
  */
 
+import { isJsonObject, isString } from "@jxsuite/schema/guards";
 import { reactive } from "../reactivity";
 import { mountSurface, registerSurface } from "../ui/surface";
 import pagePanelDoc from "./panel-page.json";
 import type { SurfaceHandle, SurfaceOption } from "../ui/surface";
+import type { JxElement } from "@jxsuite/schema/types";
+import type { JxScope } from "@jxsuite/runtime/types";
 
 registerSurface("panel-page", pagePanelDoc);
+
+/** The `part` a node was declared with, or the empty string. */
+function partOf(def: JxElement | string): string {
+  const part = isString(def) ? undefined : def.attributes?.["part"];
+  return isString(part) ? part : "";
+}
+
+/** One string field of the `$map` row a node was rendered inside, or the empty string. */
+function itemField(state: JxScope | undefined, field: string): string {
+  const map = state?.["$map"];
+  const item = isJsonObject(map) ? map["item"] : undefined;
+  const value = isJsonObject(item) ? item[field] : undefined;
+  return isString(value) ? value : "";
+}
 
 /**
  * One row of one section, as the document reads it.
@@ -52,8 +69,10 @@ export interface PageRow {
   /**
    * Which control the row draws. `textarea` is a multiline text field, not a second element;
    * `readout` is no control at all, a value the document derives (a page's URL) shown as text.
+   * `field` is one field of a collection's entry, drawn as a chip that drags an element showing it
+   * onto the page; its {@link PageRow.value} is what the field holds ("text", "image").
    */
-  kind: "text" | "textarea" | "number" | "boolean" | "select" | "media" | "readout";
+  kind: "text" | "textarea" | "number" | "boolean" | "select" | "media" | "readout" | "field";
   /** The row's one button, named for what it opens. Empty draws none. */
   action: string;
   /** Whether {@link PageRow.action} has anything in it; `$switch` is the document's conditional. */
@@ -92,6 +111,16 @@ export interface PageSection {
   /** Whether this band carries the door to Search appearance. Exactly one of them does. */
   hasSeo: boolean;
   rows: PageRow[];
+  /** A sentence under the rows, saying what they are for. */
+  note: string;
+  /** Whether {@link PageSection.note} has anything in it; `$switch` is the document's conditional. */
+  hasNote: boolean;
+}
+
+/** Where the flow attaches what a document cannot declare: the drag sources of field rows. */
+export interface PagePanelIslands {
+  /** A field row's chip, which drags an element showing that field onto the page. */
+  fieldSource: (element: HTMLElement, key: string) => void;
 }
 
 /** One `$head` entry no structured control owns, as the list draws it. */
@@ -108,7 +137,10 @@ export interface PageTagRow {
 
 /** What the panel says the surface should be showing right now. */
 export interface PagePanelView {
-  /** Frontmatter, Layout, Page and OpenGraph — whichever of them this document has, in order. */
+  /**
+   * Frontmatter, Page and Template (or, for a collection's page, its collection and the fields it
+   * can place), then Search & sharing and Advanced: whichever this document has, in order.
+   */
   sections: PageSection[];
   /** How many custom tags there are, as the text the count draws. */
   customCount: string;
@@ -217,6 +249,7 @@ export function renderPagePanelSurface(
   host: HTMLElement,
   view: PagePanelView,
   actions: PagePanelActions,
+  islands: PagePanelIslands | null = null,
 ): void {
   const existing = mounts.get(host);
   if (existing && (existing.handle === null || existing.handle.root.isConnected)) {
@@ -239,7 +272,16 @@ export function renderPagePanelSurface(
      another panel draws into it — and that needs no arbitration either: the root goes with it, so
      the next `afterRender` sees a disconnected handle and remakes the surface through the branch
      above. */
-  void mountSurface("panel-page", scope, host).then((handle) => {
+  void mountSurface("panel-page", scope, host, {
+    onNodeCreated: (element, _path, def, state) => {
+      if (islands && element instanceof HTMLElement && partOf(def) === "field-chip") {
+        const key = itemField(state, "key");
+        if (key !== "") {
+          islands.fieldSource(element, key);
+        }
+      }
+    },
+  }).then((handle) => {
     /* Unmounted while in flight (the Inspector's Page tab lost its document in the same turn): the
        record is no longer the host's, so the surface that just landed is taken straight back out. */
     if (mounts.get(host) !== record) {
