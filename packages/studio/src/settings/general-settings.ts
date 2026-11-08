@@ -23,6 +23,7 @@ import { updateSiteConfig } from "../site-context";
 import { activeRegistry } from "../commands/active-registry";
 import { runActiveReported } from "../commands/run-reported";
 import { getPlatform } from "../platform";
+import { templateDisplayName } from "../content/content-collections";
 import { mountOverviewSurface } from "../surfaces/settings-overview";
 import { previewAssetSrcFor } from "../canvas/asset-refs";
 import { projectConfigPath } from "../tabs/tab";
@@ -36,6 +37,7 @@ import type {
 } from "../surfaces/settings-overview";
 import type { JxHeadEntry, ProjectConfig } from "@jxsuite/schema/types";
 import type { ProjectConfigPatch } from "../site-context";
+import type { SurfaceOption } from "../ui/surface";
 
 /**
  * The last failed write, per rendered section.
@@ -183,8 +185,42 @@ const STYLES_COMMAND = "workspace.focus.styles";
  * the way to be right about that is not to ask. The one thing that can genuinely be missing is the
  * registry itself (bootstrap order, a test), and that is an existence check, not a state read.
  */
+/** The value the Default template picker gives for "no template". */
+const NO_TEMPLATE = "__none__";
+
+/**
+ * The layouts a page can be drawn in, as the Page tab's picker lists them (`listLayoutEntries` in
+ * `panels/head-panel.ts`, the one reading of which files are layouts). Listed again each time the
+ * section is mounted, so a layout added since, or another project, is never answered from an old
+ * list; the section is drawn again when the list lands.
+ */
+let layouts: { name: string; path: string }[] = [];
+function listLayouts(container: HTMLElement): void {
+  void import("../panels/head-panel")
+    .then((module) => module.listLayoutEntries())
+    .then((entries) => {
+      layouts = entries;
+      renderGeneralSettings(container);
+    });
+}
+
+/**
+ * The picker's choices: None, then each layout by name, the current one kept even if it is gone.
+ * The kept one is named as the list would name it, so its label does not change when the list lands
+ * (the picker keeps the label it drew for a value that has not changed).
+ */
+function templateOptions(current: string): SurfaceOption[] {
+  const listed = layouts.map((entry) => ({ label: entry.name, value: entry.path }));
+  const kept =
+    current !== "" && !listed.some((option) => option.value === current)
+      ? [{ label: templateDisplayName(current), value: current }]
+      : [];
+  return [{ label: "None", value: NO_TEMPLATE }, ...listed, ...kept];
+}
+
 function values(container: HTMLElement): OverviewValues {
   const cfg = config();
+  const template = cfg.defaults?.layout ?? "";
   const command = activeRegistry()?.get(STYLES_COMMAND);
   return {
     description: readDescription(cfg),
@@ -195,6 +231,8 @@ function values(container: HTMLElement): OverviewValues {
     name: cfg.name ?? "",
     stylesDisabled: command === undefined,
     stylesTitle: command?.title ?? "",
+    template: template === "" ? NO_TEMPLATE : template,
+    templateOptions: templateOptions(template),
     url: cfg.url ?? "",
   };
 }
@@ -282,6 +320,17 @@ function actions(container: HTMLElement): OverviewActions {
       }
       void persist({ name }, "name");
     },
+    /* The template a new page is drawn in (§17.1). Only `layout` is written: `defaults` holds
+       other members, which a whole-object write would drop. */
+    setTemplate: (value: string) => {
+      echo({ template: value });
+      const { layout: _previous, ...rest } = config().defaults ?? {};
+      const defaults = value === NO_TEMPLATE ? rest : { ...rest, layout: value };
+      void persist(
+        { defaults: Object.keys(defaults).length > 0 ? defaults : undefined },
+        "template",
+      );
+    },
     setUrl: (value: string) => {
       echo({ url: value });
       const url = value.trim();
@@ -314,4 +363,5 @@ export function renderGeneralSettings(container: HTMLElement): void {
   }
   standing?.dispose();
   mounted.set(container, mountOverviewSurface(container, values(container), actions(container)));
+  listLayouts(container);
 }

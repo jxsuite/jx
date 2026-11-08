@@ -19,8 +19,8 @@
       "fontWeight": "600",
       "color": "var(--fg)"
     },
-    "& jx-textfield": {
-      "$description": "How wide a text control may grow. A name field spanning a 900px pane is a line the eye has to travel to read six characters; 420px is the measure `.settings-site-name`, `.settings-site-url` and `.settings-site-description` shared, and it is the one thing those three rules said that the kit does not.",
+    "& jx-textfield, & jx-select": {
+      "$description": "How wide a text control, or the template picker, may grow. A name field spanning a 900px pane is a line the eye has to travel to read six characters; 420px is the measure `.settings-site-name`, `.settings-site-url` and `.settings-site-description` shared, and it is the one thing those three rules said that the kit does not.",
       "width": "100%",
       "maxWidth": "420px"
     },
@@ -231,6 +231,61 @@
                 "operator": "call",
                 "target": {
                   "$ref": "#/state/setUrl"
+                },
+                "value": [
+                  {
+                    "$ref": "event#/target/value"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "tagName": "jx-field",
+      "$props": {
+        "span": true,
+        "label": "Default template for new pages",
+        "description": "The template a page is drawn in unless it names its own. New pages from Add new start in it too.",
+        "invalid": {
+          "$ref": "#/state/templateInvalid"
+        }
+      },
+      "attributes": {
+        "part": "row",
+        "data-field": "template"
+      },
+      "children": [
+        {
+          "tagName": "jx-select",
+          "attributes": {
+            "part": "template"
+          },
+          "$props": {
+            "size": "sm",
+            "label": "Default template for new pages",
+            "options": {
+              "$ref": "#/state/templateOptions"
+            },
+            "value": {
+              "$ref": "#/state/templateValue"
+            },
+            "invalid": {
+              "$ref": "#/state/templateInvalid"
+            },
+            "error": {
+              "$ref": "#/state/templateError"
+            }
+          },
+          "onchange": {
+            "$prototype": "Function",
+            "body": [
+              {
+                "operator": "call",
+                "target": {
+                  "$ref": "#/state/setTemplate"
                 },
                 "value": [
                   {

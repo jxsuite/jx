@@ -24,12 +24,18 @@
 import { reactive } from "../reactivity";
 import { mountSurface, registerSurface } from "../ui/surface";
 import overviewDoc from "./settings-overview.json";
-import type { SurfaceHandle } from "../ui/surface";
+import type { SurfaceHandle, SurfaceOption } from "../ui/surface";
 
 registerSurface("settings-overview", overviewDoc);
 
 /** Which control a failure belongs under. `"section"` puts it at the top of the section. */
-export type OverviewErrorField = "name" | "description" | "url" | "favicon" | "section";
+export type OverviewErrorField =
+  | "name"
+  | "description"
+  | "url"
+  | "template"
+  | "favicon"
+  | "section";
 
 /** The one failure the section is showing, and where it belongs. */
 export interface OverviewError {
@@ -42,6 +48,12 @@ export interface OverviewValues {
   name: string;
   description: string;
   url: string;
+  /**
+   * The template a new page is drawn in (`defaults.layout`, studio.md §17.1): a layout's path, or
+   * `""` for none. The options are the layouts the Page tab's picker offers, plus None.
+   */
+  template: string;
+  templateOptions: SurfaceOption[];
   /** The configured favicon path, as `$head` names it, or `""` for none. */
   favicon: string;
   /** The src the parent realm loads to preview {@link favicon}: the authored value, resolved. */
@@ -58,6 +70,7 @@ export interface OverviewActions {
   setName: (value: string) => void;
   setDescription: (value: string) => void;
   setUrl: (value: string) => void;
+  setTemplate: (value: string) => void;
   uploadFavicon: () => void;
   openStyles: () => void;
 }
@@ -85,6 +98,10 @@ interface OverviewScope {
   urlValue: string;
   urlError: string;
   urlInvalid: boolean;
+  templateValue: string;
+  templateOptions: SurfaceOption[];
+  templateError: string;
+  templateInvalid: boolean;
   favicon: string;
   faviconSrc: string;
   hasFavicon: boolean;
@@ -97,6 +114,7 @@ interface OverviewScope {
   setName: (value: string) => void;
   setDescription: (value: string) => void;
   setUrl: (value: string) => void;
+  setTemplate: (value: string) => void;
   uploadFavicon: () => void;
   openStyles: () => void;
 }
@@ -123,6 +141,12 @@ function project(scope: OverviewScope, patch: Partial<OverviewValues>): void {
   if (patch.url !== undefined) {
     scope.urlValue = patch.url;
   }
+  if (patch.template !== undefined) {
+    scope.templateValue = patch.template;
+  }
+  if (patch.templateOptions !== undefined) {
+    scope.templateOptions = patch.templateOptions;
+  }
   if (patch.favicon !== undefined) {
     scope.favicon = patch.favicon;
     scope.hasFavicon = patch.favicon !== "";
@@ -144,6 +168,8 @@ function project(scope: OverviewScope, patch: Partial<OverviewValues>): void {
     scope.descriptionInvalid = scope.descriptionError !== "";
     scope.urlError = messageFor(error, "url");
     scope.urlInvalid = scope.urlError !== "";
+    scope.templateError = messageFor(error, "template");
+    scope.templateInvalid = scope.templateError !== "";
     scope.faviconError = messageFor(error, "favicon");
     scope.hasFaviconError = scope.faviconError !== "";
     scope.sectionError = messageFor(error, "section");
@@ -179,9 +205,14 @@ export function mountOverviewSurface(
     sectionError: "",
     setDescription: actions.setDescription,
     setName: actions.setName,
+    setTemplate: actions.setTemplate,
     setUrl: actions.setUrl,
     stylesDisabled: false,
     stylesTitle: "",
+    templateError: "",
+    templateInvalid: false,
+    templateOptions: [],
+    templateValue: "",
     uploadFavicon: actions.uploadFavicon,
     urlError: "",
     urlInvalid: false,

@@ -422,7 +422,81 @@ describe("favicon", () => {
 describe("platform adapter", () => {
   test("is no longer on Overview — it is a Deploy fact, not an identity one", async () => {
     const { container } = await setup({ build: { adapter: "static" } });
-    expect(container.querySelector("jx-select")).toBeNull();
+    expect(container.querySelector('[data-field="adapter"]')).toBeNull();
+    // The one picker on Overview is the default template's.
+    expect(
+      [...container.querySelectorAll("jx-select")].map((el) => el.getAttribute("part")),
+    ).toEqual(["template"]);
+  });
+});
+
+// ─── Default template ────────────────────────────────────────────────────────
+
+describe("default template for new pages (§17.1)", () => {
+  const LAYOUTS = {
+    listDirectory: (path: string) =>
+      Promise.resolve(
+        path === "layouts"
+          ? [
+              { name: "base.json", path: "layouts/base.json", type: "file" as const },
+              { name: "post-page.json", path: "layouts/post-page.json", type: "file" as const },
+            ]
+          : [],
+      ),
+  };
+  /** The picker, once the layouts have been listed. */
+  async function picker(container: HTMLElement): Promise<HTMLElement & { options?: unknown }> {
+    for (let turn = 0; turn < 20; turn++) {
+      const el = container.querySelector<HTMLElement>('[part="template"]');
+      const options = el && "options" in el && Array.isArray(el.options) ? el.options : [];
+      if (options.length > 1) {
+        return el!;
+      }
+      await flush();
+    }
+    throw new Error("the layouts were never listed");
+  }
+  const choose = (el: HTMLElement, value: string) => {
+    Object.assign(el, { value });
+    el.dispatchEvent(new Event("change", { bubbles: true }));
+  };
+
+  test("offers None and every layout by name, with the configured one chosen", async () => {
+    const { container } = await setup({ defaults: { layout: "./layouts/base.json" } }, LAYOUTS);
+    const el = await picker(container);
+    expect(el.options).toEqual([
+      { label: "None", value: "__none__" },
+      { label: "Base", value: "./layouts/base.json" },
+      { label: "Post Page", value: "./layouts/post-page.json" },
+    ]);
+    expect("value" in el ? el.value : null).toBe("./layouts/base.json");
+  });
+
+  test("a configured layout that is gone is still shown, by its name", async () => {
+    const { container } = await setup({ defaults: { layout: "./layouts/old.json" } }, LAYOUTS);
+    const el = await picker(container);
+    expect(Array.isArray(el.options) ? el.options.at(-1) : null).toEqual({
+      label: "Old",
+      value: "./layouts/old.json",
+    });
+  });
+
+  test("choosing one writes only defaults.layout; None removes it, and an emptied defaults", async () => {
+    const { container, state } = await setup({ defaults: { lang: "en" } }, LAYOUTS);
+    choose(await picker(container), "./layouts/post-page.json");
+    await flush();
+    expect(JSON.parse(state.files.get("project.json")!).defaults).toEqual({
+      lang: "en",
+      layout: "./layouts/post-page.json",
+    });
+    choose(await picker(container), "__none__");
+    await flush();
+    expect(JSON.parse(state.files.get("project.json")!).defaults).toEqual({ lang: "en" });
+
+    const alone = await setup({ defaults: { layout: "./layouts/base.json" } }, LAYOUTS);
+    choose(await picker(alone.container), "__none__");
+    await flush();
+    expect("defaults" in JSON.parse(alone.state.files.get("project.json")!)).toBe(false);
   });
 });
 
