@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.43.0](https://github.com/jxsuite/jx/compare/import-v0.42.5...import-v0.43.0) (2026-11-08)
+
+
+### Features
+
+* **schema:** read and write a project file in Jx Notation ([#560](https://github.com/jxsuite/jx/issues/560)) ([1a98bf2](https://github.com/jxsuite/jx/commit/1a98bf29cc60e6f958ac6d7de22159057d0bbfcb))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/markup bumped to 1.0.6
+    * @jxsuite/protocol bumped to 6.2.4
+    * @jxsuite/schema bumped to 5.4.0
+  * optionalDependencies
+    * @jxsuite/compiler bumped to 8.4.0
+
 ## [0.42.5](https://github.com/jxsuite/jx/compare/import-v0.42.4...import-v0.42.5) (2026-11-07)
 
 

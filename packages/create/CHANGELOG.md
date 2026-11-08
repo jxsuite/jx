@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.6.0](https://github.com/jxsuite/jx/compare/create-v1.5.5...create-v1.6.0) (2026-11-08)
+
+
+### Features
+
+* **schema:** read and write a project file in Jx Notation ([#560](https://github.com/jxsuite/jx/issues/560)) ([1a98bf2](https://github.com/jxsuite/jx/commit/1a98bf29cc60e6f958ac6d7de22159057d0bbfcb))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/schema bumped to 5.4.0
+    * @jxsuite/starters bumped to 3.3.2
+
 ## [1.5.5](https://github.com/jxsuite/jx/compare/create-v1.5.4...create-v1.5.5) (2026-11-07)
 
 

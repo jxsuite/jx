@@ -1,5 +1,39 @@
 # Changelog
 
+## [10.7.0](https://github.com/jxsuite/jx/compare/studio-v10.6.0...studio-v10.7.0) (2026-11-08)
+
+
+### Features
+
+* **desktop:** declare .jxn on every channel that can register a file type ([#570](https://github.com/jxsuite/jx/issues/570)) ([e155b45](https://github.com/jxsuite/jx/commit/e155b454be89c73e1b9cda9a7acaa758f571b3f5))
+* jx convert moves the project file, and Studio opens one that does not read ([#565](https://github.com/jxsuite/jx/issues/565)) ([a05163d](https://github.com/jxsuite/jx/commit/a05163d2a0ab561175bafc9ffd13058e8a8ad43e))
+* **schema:** read and write a project file in Jx Notation ([#560](https://github.com/jxsuite/jx/issues/560)) ([1a98bf2](https://github.com/jxsuite/jx/commit/1a98bf29cc60e6f958ac6d7de22159057d0bbfcb))
+* **studio:** open, find, save and convert .jxn documents, solo and shared ([#567](https://github.com/jxsuite/jx/issues/567)) ([07ed592](https://github.com/jxsuite/jx/commit/07ed59210318249b5f9571378f5da0463bb1683f))
+* **studio:** Review changes compares the picked change in its centre ([#568](https://github.com/jxsuite/jx/issues/568)) ([af89954](https://github.com/jxsuite/jx/commit/af89954fb80e948e1fa266f56112b4f47f297315))
+
+
+### Bug Fixes
+
+* **studio:** discard a superseded package-lock.json when pulling ([#564](https://github.com/jxsuite/jx/issues/564)) ([8359654](https://github.com/jxsuite/jx/commit/835965449c5be1d368512e406485d0eb37764b09))
+* **studio:** grid row-header contrast, persistent checkboxes, Publish count after save ([#569](https://github.com/jxsuite/jx/issues/569)) ([1f6c9fc](https://github.com/jxsuite/jx/commit/1f6c9fcb694ad10dcc7329b3f4897421e19982b3))
+* **studio:** register every Monaco feature before the first editor exists ([#571](https://github.com/jxsuite/jx/issues/571)) ([b7a7e30](https://github.com/jxsuite/jx/commit/b7a7e30c963bf5dc62e058b5a36de1e1d9ba657a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/ai bumped to 0.43.2
+    * @jxsuite/collab bumped to 0.11.8
+    * @jxsuite/create bumped to 1.6.0
+    * @jxsuite/formulas bumped to 0.0.30
+    * @jxsuite/markup bumped to 1.0.6
+    * @jxsuite/protocol bumped to 6.2.4
+    * @jxsuite/runtime bumped to 6.2.1
+    * @jxsuite/schema bumped to 5.4.0
+    * @jxsuite/site bumped to 2.5.0
+    * @jxsuite/ui bumped to 0.10.3
+
 ## [10.6.0](https://github.com/jxsuite/jx/compare/studio-v10.5.0...studio-v10.6.0) (2026-11-07)
 
 

@@ -2,9 +2,9 @@
 
 ## File-Based Routing, Content Collections, Layouts, and Static Site Generation
 
-**Version:** 0.8.2-draft\
+**Version:** 0.8.5-draft\
 **Status:** Partial\
-**Updated:** 2026-11-07\
+**Updated:** 2026-11-08\
 **License:** MIT
 
 ---
@@ -2401,6 +2401,9 @@ This spec builds on existing Jx primitives wherever possible:
 
 ## Changelog
 
+- **0.8.5-draft** (2026-11-08) — §2.3: jx convert moves the project file, Studio names the file the project has, a project file that does not parse opens as text in the Code view, and the project file never joins a collaboration session.
+- **0.8.4-draft** (2026-11-08) — §2.3's marker says the project.jxn grammar exists and no host reads it yet.
+- **0.8.3-draft** (2026-11-08) — Every host reads project.jxn and every writer keeps its comments; a folder holding both project files is refused.
 - **0.8.2-draft** (2026-11-07) — §1: page templates and layouts may be Jx Notation.
 - **0.8.1-draft** (2026-11-07) — A file named project.json is a project only if its content is a project configuration.
 - **0.8.0-draft** (2026-11-06) — §7.6: Jx gives no field a meaning of its own. A content type's hold rules say what keeps an entry out of a production build, jx build leaves held entries out when the type loads, and $now reads the clock in where and when; the draft convention is gone.
