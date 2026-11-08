@@ -28,6 +28,7 @@ const {
   invalidateCollectionPages,
   onCollectionPagesRead,
   pageFactsOf,
+  pagesDrawnIn,
   pageForLocale,
   peekCollectionPage,
   peekCollectionPages,
@@ -448,5 +449,87 @@ describe("entryLayoutPath", () => {
   test("with no default either there is none", () => {
     resetStudioState({ projectConfig: {} });
     expect(entryLayoutPath(undefined, null)).toBeNull();
+  });
+});
+
+describe("pagesDrawnIn", () => {
+  /** A project of four pages under three layouts, `post` drawn inside `base`. */
+  function layoutsProject(defaults?: { layout: string }) {
+    installMockPlatform(
+      {
+        listDirectory: (path: string) =>
+          Promise.resolve(
+            path === "pages"
+              ? [
+                  file("index.json", "pages/index.json"),
+                  file("about.json", "pages/about.json"),
+                  dir("blog", "pages/blog"),
+                  file("_draft.json", "pages/_draft.json"),
+                ]
+              : path === "pages/blog"
+                ? [
+                    file("[slug].json", "pages/blog/[slug].json"),
+                    file("raw.json", "pages/blog/raw.json"),
+                  ]
+                : [],
+          ),
+      },
+      {
+        "pages/_draft.json": JSON.stringify({ tagName: "div" }),
+        "pages/about.json": JSON.stringify({ $layout: false, tagName: "div" }),
+        "pages/blog/[slug].json": JSON.stringify({
+          $layout: "./layouts/post.json",
+          tagName: "div",
+        }),
+        "pages/blog/raw.json": JSON.stringify({ $layout: "./layouts/bare.json", tagName: "div" }),
+        "pages/index.json": JSON.stringify({ tagName: "div" }),
+      },
+    );
+    resetStudioState(defaults ? { projectConfig: { defaults } } : { projectConfig: {} });
+  }
+
+  /** Each layout's own `$layout`: post sits in base, and loop sits in itself. */
+  const PARENTS = new Map([
+    ["layouts/bare.json", ""],
+    ["layouts/loop.json", "./layouts/loop.json"],
+    ["layouts/post.json", "./layouts/base.json"],
+  ]);
+  let reads: string[] = [];
+  const readLayout = (path: string) => {
+    reads.push(path);
+    return Promise.resolve(PARENTS.get(path));
+  };
+
+  beforeEach(() => {
+    reads = [];
+  });
+
+  test("counts the routed pages drawn in a layout, directly, by default or through another", async () => {
+    layoutsProject({ layout: "./layouts/base.json" });
+    // The home page by default and the post page through post, never the private page or about's `false`.
+    expect(await pagesDrawnIn("layouts/base.json", readLayout)).toBe(2);
+    expect(await pagesDrawnIn("./layouts/post.json", readLayout)).toBe(1);
+    expect(await pagesDrawnIn("layouts/bare.json", readLayout)).toBe(1);
+    // Each layout's parent is read once per count, however many pages are drawn in it.
+    reads = [];
+    await pagesDrawnIn("layouts/nowhere.json", readLayout);
+    expect(reads.toSorted()).toEqual([
+      "layouts/bare.json",
+      "layouts/base.json",
+      "layouts/post.json",
+    ]);
+  });
+
+  test("with no default, a page naming no layout is drawn in none, and a cycle ends", async () => {
+    layoutsProject();
+    expect(await pagesDrawnIn("layouts/base.json", readLayout)).toBe(1);
+    installMockPlatform(
+      {
+        listDirectory: (path: string) =>
+          Promise.resolve(path === "pages" ? [file("a.json", "pages/a.json")] : []),
+      },
+      { "pages/a.json": JSON.stringify({ $layout: "./layouts/loop.json", tagName: "div" }) },
+    );
+    expect(await pagesDrawnIn("layouts/base.json", readLayout)).toBe(0);
   });
 });

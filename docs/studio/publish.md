@@ -31,7 +31,7 @@ Shipping a Jx site is part of the Studio flow, with no terminal and no separate 
 2. Click the button under the summary. Its words say what it will do: **Publish live** when a host is connected, **Commit and push** when there is a remote but no host, **Commit** when the project has no remote yet, **Send for review** for a pull request.
 3. The push wakes your host (or CI), which builds the project into plain HTML, CSS, and a little JavaScript, and serves it from a CDN. Your site is live.
 
-**Quick publish.** The small arrow beside the Publish tab opens a dialog with the change count, the first few files, the destination, a summary field and one line of checks. **Publish now** takes every change to the destination you picked; **Review all** opens Review changes instead, where you can leave a file out.
+**Quick publish.** The small arrow beside the Publish tab opens a panel under it with the change count, the first few changes named the way Review changes names them (**NEW Pricing**, **EDIT Base**), the rest summed up by kind ("+ 1 post, 2 images"), the destination, a summary field and one line of checks. A changed template says how many pages it changes, such as "affects 4 pages". **Publish now** takes every change to the destination you picked; **Review all** opens Review changes instead, where you can leave a change out. Click anywhere else or press :kbd[Esc] to close it.
 
 **How you hear about it.** Anything that takes a while runs as an **Activity** in the Bottom dock, with its steps ticked off in order and its log underneath (creating the repository, adding the remote, pushing, waiting on the host), and the same steps show in **Publish › Deploys** while they run. Nothing about that is transient once it goes wrong: a push the remote refused goes on the **Problems** list, carrying the host's own error and the activity's log, and stays there until you deal with it. See **[Problems and progress](/docs/studio/interface/problems-and-progress)**.
 
@@ -39,7 +39,7 @@ Because every Jx file is plain JSON or Markdown, each publish is a clean, review
 
 ## Where your changes go
 
-Review changes and the quick publish dialog both offer two destinations, and each says in one sentence what choosing it does:
+Review changes and quick publish both offer two destinations, and each says in one sentence what choosing it does:
 
 - **Publish live** commits what you included to the branch you are on, then ships it. With a host connected it pushes and asks the host what it built; with only a remote it pushes; with neither it commits, and says nothing leaves your machine.
 - **Send for review** saves the change to a new branch named after your summary (`studio/add-a-pricing-page`), pushes it, and opens a pull request into the branch you were on. Once you have typed a summary, the choice names the branch it will create. It needs a host that can open pull requests. Where yours can't, the choice is drawn disabled with that reason, rather than pushing a branch that opens nothing.
@@ -71,7 +71,7 @@ Confirm, and Studio moves you onto the new branch, pushes it, and opens a pull r
 
 ## The checks
 
-Review changes lists two checks above the destination, and the quick publish dialog folds them into one line:
+Review changes lists two checks above the destination, and quick publish folds them into one line:
 
 - **The next deploy step**, from the checklist below, with the button that fixes it.
 - **Does the site build**, where your host can build it. **Check build** runs a build of the changes as they stand and reports the page count or the first error. A check run before you changed something else is shown as not run, rather than as passed.
@@ -109,7 +109,7 @@ Every page is built ahead of time, so what the CDN serves is finished HTML howev
 
 Four commands are in [Quick Access](/docs/studio/interface/quick-access) under **Publish**, always listed and each disabled with the one sentence that says why:
 
-- **Quick Publish** opens the quick publish dialog. Needs a project tracked by git.
+- **Quick Publish** opens the quick publish panel. Needs a project tracked by git.
 - **Set Up Publishing** opens the provider connection flow. Needs a platform that can reach the Cloudflare API; see **[Cloudflare Pages](/docs/studio/publish/cloudflare)**.
 - **Deploy** pushes the current branch and then asks your provider what it made of it. Needs a repository with a remote and a connected provider. It doesn't commit for you: publish from Review changes to commit and deploy in one step.
 - **Open Deployment Dashboard** opens the connected Pages project on Cloudflare.

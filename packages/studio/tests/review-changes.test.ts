@@ -48,6 +48,8 @@ describe("what a change is called", () => {
       included: true,
       kind: "Page · /",
       label: "Home",
+      noun: "page",
+      nounPlural: "pages",
       path: "pages/index.md",
       refusal: "",
       status: "M",
@@ -108,13 +110,21 @@ describe("what a change is called", () => {
 
   test("media and the project's other files by their file name", () => {
     const image = reviewItem(file("public/images/greenhouse photo.jpg", "U"));
-    expect([image.label, image.kind, image.summary]).toEqual([
+    expect([image.label, image.kind, image.summary, image.nounPlural]).toEqual([
       "greenhouse photo.jpg",
       "Media",
-      "A new file.",
+      "A new image.",
+      "images",
     ]);
+    // Media that is not a picture is a file, as the rest of the project's files are.
+    const pdf = reviewItem(file("public/files/menu.pdf", "U"));
+    expect([pdf.noun, pdf.nounPlural, pdf.summary]).toEqual(["file", "files", "A new file."]);
     const lock = reviewItem(file("package-lock.json", "M"));
-    expect([lock.label, lock.kind]).toEqual(["package-lock.json", "Project file"]);
+    expect([lock.label, lock.kind, lock.noun]).toEqual([
+      "package-lock.json",
+      "Project file",
+      "file",
+    ]);
   });
 });
 
