@@ -29,7 +29,7 @@ A design token is a named value: **Primary Blue** instead of `#3b82f6`, **Body S
 
 Tokens are your site's CSS custom properties: the `--` keys of the `style` block in your project file (`project.json` or `project.jxn`). You edit them in the **Variables** view of the **Styles** workspace, which is where the workspace opens: click **Styles** in the Command Bar (:kbd[⌘4], or **Go to Styles** from :kbd[⌘K]). In [Project settings](/docs/studio/projects/settings), the **Moved** footnote's **Colors and fonts** button opens the same view.
 
-The **Styles** panel beside it lists every token the project defines, by its name and grouped as the view groups them, with a count on each group and a swatch on each color. Click a token to jump to its row with the value ready to edit, or a group to jump to that group. **Add variable** jumps to the add row, so a new token is named and stored the same way as one added in the view. From the **Elements** view, any of these switches you back to Variables first. See **[Project Styles](/docs/studio/design/stylebook#the-styles-panel)**.
+The **Styles** panel beside it lists every token the project defines, by its name and grouped as the view groups them, with a count on each group and a swatch on each color. Click a token to jump to it (a color is chosen and its details shown, any other token's row has its value ready to edit), or a group to jump to that group. **Add variable** jumps to the add row, so a new token is named and stored the same way as one added in the view. From the **Elements** view, any of these switches you back to Variables first. See **[Project Styles](/docs/studio/design/stylebook#the-styles-panel)**.
 
 :::doc-note
 A change in the Variables view is saved to the project file as you make it, so there is nothing to save afterwards. Because tokens and element defaults live in the same file, the write also saves any element default from the **Elements** view that was still waiting for **Save**, and the view says so at its top. Undo is the exception: :kbd[⌘Z] takes a change back in the open file, which then shows its unsaved dot until you **Save** (:kbd[⌘S]).
@@ -37,7 +37,7 @@ A change in the Variables view is saved to the project file as you make it, so t
 
 Tokens are grouped by what they name:
 
-- **Colors**: each row has a color swatch (click it for a native picker), the token's name as CSS spells it (`--color-accent`), and its value. Edits appear on the canvas immediately.
+- **Colors**: a grid of swatches, each with the token's name as CSS spells it (`--color-accent`) and its value. Click a swatch to choose it, and its details appear beside the grid: a color field to change it, how it reads against your page (its contrast with the page's background, such as "6.9:1 on --color-paper, passes AA", or with the page's text color when you chose the background), the rules in your project styles that use it, and its values in other contexts. Edits appear on the canvas immediately.
 - **Fonts**: each font renders a preview sentence in its own face below the row.
 - **Sizes & Spacing**: widths, gaps, and radii.
 - **Other**: anything that doesn't fit the groups above. It appears only once something lands in it.
@@ -54,8 +54,9 @@ A value that could not be written to the project file is raised on **[Problems](
 
 A token can hold a different value in any rendering context the project declares, like a color that darkens in the dark scheme or spacing that tightens on phones:
 
-- Every color token carries a row per declared **[color scheme](/docs/framework/concepts/color-schemes)**, whether or not it has a value there, because "what is this color in dark mode" is a question a palette is always answering. Leave the row empty to inherit the base value.
-- Any token can be given a value in any other declared context from the **Add override…** picker under its row: a breakpoint, a scheme, or a feature query. The picker offers only the contexts that token has no row for yet.
+- Every color token carries a row per declared **[color scheme](/docs/framework/concepts/color-schemes)** in its details, whether or not it has a value there, because "what is this color in dark mode" is a question a palette is always answering. Leave the row empty to inherit the base value.
+- Once a scheme is declared, a switch beside the **Colors** heading (**Base**, **Dark** and any other scheme) shows every swatch in that scheme, and the color field then edits the chosen color's value in it. Contrast is measured in the scheme you are looking at.
+- Any token can be given a value in any other declared context from the **Add override…** picker under its row (in a color's details): a breakpoint, a scheme, or a feature query. The picker offers only the contexts that token has no row for yet.
 - Clearing an override's field removes it, and the token goes back to inheriting its base value.
 
 Contexts are declared in one place, **Project settings › Advanced › Contexts**, described in **[Breakpoints](/docs/studio/design/breakpoints)**. The **Manage contexts…** button at the top of the Variables view opens Project settings on that section, and a project with no color scheme yet gets the same button under the Colors group.
