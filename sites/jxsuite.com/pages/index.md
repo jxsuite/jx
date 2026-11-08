@@ -109,37 +109,11 @@ Studio is a free desktop app with four places to work on the same site. Move a h
 :::
 ::::
 
-:::div{style.display="grid" style.gridTemplateColumns="repeat(auto-fit, minmax(min(420px, 100%), 1fr))" style.gap="1.5rem"}
-::mode-card{props.name="Manage" props.image="/content/docs/images/mode-manage.png" props.imageAlt="Jx Studio Manage Files modal with live previews of every project file" props.description="Every page, post, and image in one window, each with a preview, so you can add, rename, and organize without digging through folders."}
-
-::mode-card{props.name="Edit" props.image="/content/docs/images/mode-edit.png" props.imageAlt="Jx Studio editing markdown content inline with a WYSIWYG editor" props.description="Click any text on the page and type, the way you would in a document, and it saves as clean Markdown."}
-
-::mode-card{props.name="Design" props.image="/content/docs/images/mode-design.png" props.imageAlt="Jx Studio design canvas showing one component across four responsive breakpoints with a style inspector" props.description="Move things, size them, and set the colors and type on a live canvas, then see how it looks on a phone before anyone else does."}
-
-::mode-card{props.name="Script" props.image="/content/docs/images/mode-script.png" props.imageAlt="Jx Studio editing a component state function in the Monaco code editor" props.description="Make things happen when someone clicks: a menu that opens, a form that sends, and a list that fills itself from real data when your site needs it."}
-:::
-
 ::::div{style.textAlign="center" style.marginTop="2.5rem"}
 :::a{style.color="var(--color-accent)" style.textDecoration="none" style.fontWeight="600" style.fontSize="1rem" href="/studio"}
 Take the full tour of Studio →
 :::
 ::::
-:::::
-::::::
-
-::::::templates{style.padding="clamp(4rem, 8vw, 6rem) clamp(1rem, 3vw, 2rem)" style.borderTop="1px solid var(--color-border)" style.textAlign="center"}
-:::::div{style.maxWidth="680px" style.margin="0 auto"}
-::section-label{props.text="Templates"}
-
-:::h2{style.fontSize="clamp(1.75rem, 4vw, 2.5rem)" style.fontWeight="700" style.letterSpacing="-0.03em" style.margin="0 0 1rem"}
-Pick a site that already looks like yours.
-:::
-
-:::p{style.color="var(--color-text-secondary)" style.fontSize="1.0625rem" style.lineHeight="1.7" style.margin="0 0 2rem"}
-Every template is a finished site for a real kind of business: a restaurant with a menu, a shop, a portfolio, a conference. Open one in Studio, change the words and the pictures, and it is yours. The structure is already decided.
-:::
-
-::cta-button{props.href="/templates" props.label="Browse the templates" props.variant="secondary"}
 :::::
 ::::::
 
@@ -203,28 +177,8 @@ Jx writes ordinary text files into a folder on your computer: your pages, your w
 ::::
 :::::
 
-::::::cloud{style.padding="clamp(4rem, 8vw, 6rem) clamp(1rem, 3vw, 2rem)" style.borderTop="1px solid var(--color-border)" style.textAlign="center"}
-:::::div{style.maxWidth="720px" style.margin="0 auto"}
-::section-label{props.text="Coming soon"}
-
-:::h2{style.fontSize="clamp(1.75rem, 4vw, 2.5rem)" style.fontWeight="700" style.letterSpacing="-0.03em" style.margin="0 0 1rem"}
-The same Studio, in a browser tab.
-:::
-
-:::p{style.color="var(--color-text-secondary)" style.fontSize="1.0625rem" style.lineHeight="1.7" style.margin="0 0 1rem"}
-Jx Cloud is a hosted Studio, in development now: you sign in with GitHub, and your projects are GitHub repositories, so your repository stays the copy of record and your permissions stay GitHub's. Publishing goes to your own Cloudflare account, and the assistant runs Workers AI on that same account, billed to you.
-:::
-
-:::p{style.color="var(--color-text-muted)" style.fontSize="0.9375rem" style.lineHeight="1.7" style.margin="0 0 2rem"}
-The desktop app stays free, open source, and offline, and it is the way in today.
-:::
-
-::cta-button{props.href="/cloud" props.label="See what Jx Cloud will do" props.variant="secondary"}
-:::::
-::::::
-
-::::::developers{style.padding="clamp(4rem, 8vw, 6rem) clamp(1rem, 3vw, 2rem)" style.borderTop="1px solid var(--color-border)" style.textAlign="center"}
-:::::div{style.maxWidth="760px" style.margin="0 auto"}
+:::::developers{style.padding="clamp(4rem, 8vw, 6rem) clamp(1rem, 3vw, 2rem)" style.borderTop="1px solid var(--color-border)" style.textAlign="center"}
+::::div{style.maxWidth="760px" style.margin="0 auto"}
 ::section-label{props.text="For developers"}
 
 :::h2{style.fontSize="clamp(1.75rem, 4vw, 2.5rem)" style.fontWeight="700" style.letterSpacing="-0.03em" style.margin="0 0 1rem"}
@@ -240,8 +194,8 @@ Pages, styles, state, data, and server logic are declarative JSON and Markdown d
 
 ::cta-button{props.href="https://github.com/jxsuite/jx" props.label="View on GitHub" props.variant="secondary" props.newTab="true"}
 :::
+::::
 :::::
-::::::
 
 :::::bottom-cta{style.padding="clamp(5rem, 10vw, 8rem) clamp(1rem, 3vw, 2rem)" style.borderTop="1px solid var(--color-border)" style.textAlign="center" style.background="radial-gradient(ellipse 60% 50% at 50% 100%, rgba(59, 130, 246, 0.1), transparent)"}
 ::::div{style.maxWidth="640px" style.margin="0 auto"}
