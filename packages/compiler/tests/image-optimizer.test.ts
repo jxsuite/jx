@@ -11,8 +11,9 @@ import {
   buildSrcset,
   getImageMetadata,
   processImage,
+  variantUrl,
 } from "../src/site/image-optimizer";
-import { loadCache, saveCache, getCached, setCached } from "../src/site/image-cache";
+import { cacheKey, loadCache, saveCache, getCached, setCached } from "../src/site/image-cache";
 import { transformImageNodes } from "../src/site/image-transform";
 import type { CacheManifest } from "../src/site/image-cache";
 import type { JxMutableNode } from "@jxsuite/schema/types";
@@ -95,6 +96,34 @@ describe("image-optimizer utilities", () => {
 
   test("buildSrcset returns empty for no matches", () => {
     expect(buildSrcset([], "webp")).toBe("");
+  });
+
+  test("buildSrcset encodes a file name a srcset would split", () => {
+    const stem = "12x28 Designer, White, Black";
+    const variants = [320, 640].map((width) => ({
+      absolutePath: `/tmp/${stem}-${width}-abc.avif`,
+      format: "avif",
+      outputPath: `/images/_optimized/${stem}-${width}-abc.avif`,
+      width,
+    }));
+    const srcset = buildSrcset(variants, "avif");
+    expect(srcset).toBe(
+      "/images/_optimized/12x28%20Designer%2C%20White%2C%20Black-320-abc.avif 320w, " +
+        "/images/_optimized/12x28%20Designer%2C%20White%2C%20Black-640-abc.avif 640w",
+    );
+    // Each candidate is one URL and one descriptor, which is what a browser's srcset parser reads.
+    for (const candidate of srcset.split(", ")) {
+      expect(candidate.split(" ")).toHaveLength(2);
+    }
+  });
+
+  test("variantUrl encodes each segment and leaves the separators", () => {
+    expect(variantUrl("/images/_optimized/hero-640-abc.webp")).toBe(
+      "/images/_optimized/hero-640-abc.webp",
+    );
+    expect(variantUrl("/images/_optimized/Café 100%-640-abc.webp")).toBe(
+      "/images/_optimized/Caf%C3%A9%20100%25-640-abc.webp",
+    );
   });
 });
 
@@ -414,7 +443,7 @@ describe("image-transform", () => {
     const cache = { entries: {}, version: 1 };
     setCached(
       cache,
-      `${contentHash(join(root, "public/images/photo.jpg"))}:${configHash(defaultConfig)}`,
+      cacheKey(join(root, "public/images/photo.jpg"), defaultConfig),
       "/images/photo.jpg",
       manifest,
     );
@@ -508,7 +537,7 @@ describe("image-transform", () => {
     const cache = { entries: {}, version: 1 };
     setCached(
       cache,
-      `${contentHash(join(root, "public/images/hero.jpg"))}:${configHash(defaultConfig)}`,
+      cacheKey(join(root, "public/images/hero.jpg"), defaultConfig),
       "/images/hero.jpg",
       manifest,
     );
@@ -555,13 +584,13 @@ describe("image-transform", () => {
     const cache = { entries: {}, version: 1 };
     setCached(
       cache,
-      `${contentHash(join(root, "public/images/a.jpg"))}:${configHash(defaultConfig)}`,
+      cacheKey(join(root, "public/images/a.jpg"), defaultConfig),
       "/images/a.jpg",
       makeManifest("a"),
     );
     setCached(
       cache,
-      `${contentHash(join(root, "public/images/b.jpg"))}:${configHash(defaultConfig)}`,
+      cacheKey(join(root, "public/images/b.jpg"), defaultConfig),
       "/images/b.jpg",
       makeManifest("b"),
     );

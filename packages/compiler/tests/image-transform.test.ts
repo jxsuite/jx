@@ -69,16 +69,18 @@ void mock.module("../src/site/image-optimizer.js", () => ({
     width: 1200,
   })),
   processImage: mock(async () => mockManifest),
+  variantUrl: mock((outputPath: string) => outputPath),
 }));
 
 void mock.module("../src/site/image-cache.js", () => ({
+  cacheKey: mock(() => "abcd1234:cfg12345:hero"),
   getCached: mock(() => null),
   getImageCacheDir: mock((root: string) => `${root}/.cache/images`),
   setCached: mock(() => {}),
 }));
 
 const { transformImageNodes } = await import("../src/site/image-transform.js");
-const { processImage, buildSrcset, getImageMetadata }: any =
+const { processImage, buildSrcset, getImageMetadata, variantUrl }: any =
   await import("../src/site/image-optimizer.js");
 const { getCached, setCached }: any = await import("../src/site/image-cache.js");
 
@@ -391,7 +393,7 @@ describe("image-transform", () => {
       // The fresh manifest replaces the stale entry under the same content/config key.
       expect(setCached).toHaveBeenCalledWith(
         cache,
-        "abcd1234:cfg12345",
+        "abcd1234:cfg12345:hero",
         "/images/hero.png",
         mockManifest,
       );
@@ -680,6 +682,23 @@ describe("image-transform", () => {
       expect(doc.attributes.loading).toBe("lazy");
       expect(doc.attributes.decoding).toBe("async");
       expect(processImage).not.toHaveBeenCalled();
+    });
+
+    test("encodes the whitespace and commas of a file name, and nothing else", async () => {
+      writeFileSync(join(TMP, "public/images/Designer, White Black%20.png"), "fake-png-data");
+      const doc: any = {
+        attributes: { src: "/images/Designer, White Black%20.png" },
+        tagName: "img",
+      };
+
+      await transformImageNodes(doc, cfConfig, TMP, null, new Map());
+
+      expect(doc.attributes.srcset).toBe(
+        "/cdn-cgi/image/width=640,quality=75,fit=scale-down,format=auto/images/Designer%2C%20White%20Black%20.png?v=abcd1234 640w, " +
+          "/cdn-cgi/image/width=1200,quality=75,fit=scale-down,format=auto/images/Designer%2C%20White%20Black%20.png?v=abcd1234 1200w",
+      );
+      // The src attribute tolerates both, and is left as the author wrote it.
+      expect(doc.attributes.src).toBe("/images/Designer, White Black%20.png");
     });
 
     test("excludes widths larger than the original image", async () => {
@@ -1123,5 +1142,7 @@ describe("image-transform — the <img> fallback src", () => {
     });
     // The unresized original is a correct fallback and a terrible one — largest, not original.
     expect(imgOf(doc).attributes.src).toBe("/_optimized/hero-1200-abc.png");
+    // Through the same encoding as the srcset, so a file name with a space is a valid URL here too.
+    expect(variantUrl).toHaveBeenCalledWith("/_optimized/hero-1200-abc.png");
   });
 });
