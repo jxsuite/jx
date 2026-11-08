@@ -29,6 +29,7 @@
  */
 
 import { cloneValue } from "@jxsuite/schema/doc-ops";
+import { isString } from "@jxsuite/schema/guards";
 import { notePreviewOverlayEdit } from "../preview/preview-overlay";
 import { recordDocOp } from "../tabs/patch-ops";
 import { mutateUpdateFrontmatter, transactDoc } from "../tabs/transact";
@@ -136,4 +137,22 @@ export function commitEntryFields(tab: Tab, patch: Record<string, JsonValue | un
       mutateEntryField(t, field, value);
     }
   });
+}
+
+/**
+ * Write text typed in place on the canvas into one of this entry's fields (studio.md §22.5): an
+ * entry written inside its collection's page, whose title the author typed where the page draws it.
+ * One undo step, through {@link commitEntryFields}, the Entry tab's own write.
+ *
+ * Only a text field is written. A number, a date object, a list or a group renders as text but is
+ * not one, so committing typed text would silently retype it; those stay the Entry tab's, which
+ * knows their type. An unchanged value writes nothing. Returns whether the field was written.
+ */
+export function commitEntryTextField(tab: Tab, field: string, value: string): boolean {
+  const current = entryFields(tab)[field];
+  if ((current !== undefined && !isString(current)) || current === value) {
+    return false;
+  }
+  commitEntryFields(tab, { [field]: value });
+  return true;
 }

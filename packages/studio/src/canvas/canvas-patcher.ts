@@ -23,12 +23,13 @@ import { isString } from "@jxsuite/schema/guards";
 import { parentElementPath } from "../store";
 import { canvasModeOfPane, surfacesShowingTab } from "./canvas-surface";
 import { toRaw } from "../reactivity";
-import { postPatchToHosts } from "./iframe-host";
+import { postEntryStateToHosts, postPatchToHosts } from "./iframe-host";
+import { writesEntryOnCanvas } from "../content/content-collections";
 import { canvasPerf, recordEscalation, SPAN_PATCH_BATCH, timeSpan } from "./canvas-perf";
 import { setPatchConsumer } from "../tabs/patch-ops";
 
 import type { CanvasSurface } from "./surface-registry";
-import type { JxPatchOp, TransactionRecord } from "../tabs/patch-ops";
+import type { JxFmOp, JxPatchOp, TransactionRecord } from "../tabs/patch-ops";
 import type { Tab } from "../tabs/tab.js";
 import type { JxPath } from "../state";
 import type { JxMutableNode } from "@jxsuite/schema/types";
@@ -69,7 +70,9 @@ export function initCanvasPatcher(ctx: CanvasPatcherCtx) {
   _ctx = ctx;
   setPatchConsumer({
     apply: applyPatchBatch,
+    applyFields: applyFieldsBatch,
     classify: classifyOps,
+    classifyFields,
     escalate: escalateToFullRender,
     /* Records that `docRef`'s change has been applied surgically in each patchable pane.
 
@@ -342,17 +345,10 @@ function opVerdict(tab: Tab, op: JxPatchOp): string | null {
 }
 
 /**
- * Decide whether a recorded batch can be applied surgically right now.
- *
- * @param {Tab} tab
- * @param {JxPatchOp[]} ops
+ * The stage half of every patch verdict: some pane showing `tab` draws an editable canvas whose
+ * artboards have all rendered. A rejection, or null when the stages can take a patch.
  */
-export function classifyOps(tab: Tab, ops: JxPatchOp[]): PatchVerdict {
-  const reject = (reason: string) => {
-    recordEscalation(reason);
-    return { patchable: false, reason };
-  };
-
+function stagesVerdict(tab: Tab, reject: (reason: string) => PatchVerdict): PatchVerdict | null {
   /*
    * Every gate below is asked of the PANES showing this tab — not of the app.
    *
@@ -389,6 +385,25 @@ export function classifyOps(tab: Tab, ops: JxPatchOp[]): PatchVerdict {
     if (!panels.every((p) => p.ready)) {
       return reject("panels-not-ready");
     }
+  }
+  return null;
+}
+
+/**
+ * Decide whether a recorded batch can be applied surgically right now.
+ *
+ * @param {Tab} tab
+ * @param {JxPatchOp[]} ops
+ */
+export function classifyOps(tab: Tab, ops: JxPatchOp[]): PatchVerdict {
+  const reject = (reason: string) => {
+    recordEscalation(reason);
+    return { patchable: false, reason };
+  };
+
+  const stages = stagesVerdict(tab, reject);
+  if (stages) {
+    return stages;
   }
   // A `set-text` on a node whose CHILDREN are replaced in the same batch is subsumed by that
   // Subtree re-render (the iframe folds every forward op into the shadow doc first, then the
@@ -459,4 +474,38 @@ export function applyPatchBatch(tab: Tab, _ops: JxPatchOp[], record?: Transactio
     // A wide canvas look like it was doing more work than a narrow one.
     canvasPerf.patchedOps += forwardOps.length;
   });
+}
+
+/**
+ * Decide whether a transaction that changed only an entry's fields can reach the canvas without a
+ * redraw (studio.md §22.5).
+ *
+ * An entry written inside its collection's page draws its fields through the page's live entry
+ * state, which a frame can replace in place ({@link applyFieldsBatch}). So the verdict is the
+ * stages' verdict, for an entry, unless the change moves the entry's `$layout`, which changes what
+ * the entry is drawn in and only a redraw can show. A frame that turns out to draw no live entry (a
+ * page with no body) refuses the post, and that pane is redrawn as before.
+ */
+export function classifyFields(tab: Tab, fmOps: readonly JxFmOp[]): PatchVerdict {
+  const reject = (reason: string) => {
+    recordEscalation(reason);
+    return { patchable: false, reason };
+  };
+  if (!writesEntryOnCanvas(tab.documentPath)) {
+    return reject("fields-not-an-entry");
+  }
+  if (fmOps.some((op) => op.field === "$layout")) {
+    return reject("fields-move-the-layout");
+  }
+  return stagesVerdict(tab, reject) ?? { patchable: true, reason: "" };
+}
+
+/**
+ * Post an entry's fields to every frame drawing it. Throws when no frame received them, so the
+ * caller escalates to a full render and the change is never dropped.
+ */
+export function applyFieldsBatch(tab: Tab) {
+  if (postEntryStateToHosts(tab) === 0) {
+    throw new Error("no-ready-iframe-host");
+  }
 }

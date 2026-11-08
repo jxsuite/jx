@@ -40,7 +40,8 @@ import { elementForPath } from "./iframe-position";
 import type { AssetContext } from "./asset-resolve";
 import { SITE_STYLE_ID, buildSiteStyleCSS } from "@jxsuite/site/site-style";
 import type { CanvasMode, WireDiffMarks, WireLocale } from "./iframe-protocol";
-import { isNonNullObject, isString } from "@jxsuite/schema/guards";
+import { isNonNullObject, isString, isTemplateString } from "@jxsuite/schema/guards";
+import { BOUND_FIELD_ATTR } from "../utils/edit-display";
 import type { JxDocument, JxElement, JxStyle } from "@jxsuite/schema/types";
 import type { PathMapCtx } from "./path-mapping";
 
@@ -236,6 +237,39 @@ export const EDIT_PLACEHOLDER_CSS = `
 }
 [data-jx-layout-region] [data-jx-layout-region]::before {
   content: none;
+}
+[data-jx-layout-region][data-jx-layout-file^="pages/"] {
+  opacity: 1;
+}
+[data-jx-layout-region][data-jx-layout-file^="pages/"]::before {
+  content: none;
+}
+[data-jx-entry-field] {
+  cursor: text;
+}
+:where([data-jx-bound-field]) {
+  position: relative;
+}
+[data-jx-bound-field] {
+  outline: 1.5px dashed color-mix(in srgb, var(--jx-canvas-binding, #7c3aed) 70%, transparent);
+  outline-offset: 3px;
+}
+[data-jx-bound-field]::after {
+  content: attr(data-jx-bound-field);
+  position: absolute;
+  right: -4px;
+  bottom: calc(100% + 4px);
+  z-index: 2;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--jx-canvas-binding, #7c3aed);
+  color: #fff;
+  font: 500 11px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  font-style: normal;
+  letter-spacing: normal;
+  text-transform: none;
+  white-space: nowrap;
+  pointer-events: none;
 }
 `;
 
@@ -915,9 +949,29 @@ export function makeStamper(ctx: PathMapCtx) {
       (island) => path.length > island.length && island.every((seg, i) => path[i] === seg),
     );
 
+  /*
+   * Paths of the elements whose children an entry draws (`prepareForEditMode` marks them with
+   * `BOUND_FIELD_ATTR`). The runtime renders those children with paths under the element's, as if
+   * they were the document's own, but the document holds a binding there, not nodes: a stamped
+   * paragraph of a post's body was a caret target whose every keystroke addressed a node that does
+   * not exist. Left unstamped, a click inside one selects the element that draws them.
+   */
+  const drawn: (string | number)[][] = [];
+  const insideDrawn = (path: (string | number)[]): boolean =>
+    drawn.some((root) => path.length > root.length && root.every((seg, i) => path[i] === seg));
+
   return (created: Node, path: (string | number)[], def: JxElement | string) => {
     if (!(created instanceof HTMLElement)) {
       return;
+    }
+    if (insideDrawn(path)) {
+      return;
+    }
+    if (isNonNullObject(def) && isTemplateString(def.children)) {
+      const { attributes } = def;
+      if (isNonNullObject(attributes) && isString(attributes[BOUND_FIELD_ATTR])) {
+        drawn.push(path);
+      }
     }
     // The OPENED document's root can itself be a component definition (`tagName: "eer-cta"`). If
     // That tag is already registered in this realm (a previously-rendered page instantiated it —

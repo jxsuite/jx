@@ -1,0 +1,30 @@
+{
+  "name": "@jxsuite/erase",
+  "version": "0.0.0",
+  "description": "Erases TypeScript from Jx function bodies, so every tier that analyses or runs one sees JavaScript",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jxsuite/jx.git",
+    "directory": "packages/erase"
+  },
+  "files": [
+    "src/"
+  ],
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./browser": "./src/browser.ts"
+  },
+  "publishConfig": {
+    "provenance": true
+  },
+  "scripts": {
+    "test": "bun test --isolate",
+    "test:coverage": "bun test --isolate --coverage"
+  },
+  "dependencies": {
+    "@jxsuite/schema": "workspace:^",
+    "ts-blank-space": "^0.9.0"
+  }
+}

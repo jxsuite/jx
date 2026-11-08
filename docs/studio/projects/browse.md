@@ -3,6 +3,7 @@ title: "The Content workspace"
 description: "Browse your pages and every content collection, see where each collection is published, and write entries on the canvas inside their template."
 spec:
   - studio.md#9.1.2
+  - studio.md#22.4
   - studio.md#22.5
 code:
   - packages/studio/src/browse/library-pane.ts
@@ -21,6 +22,9 @@ code:
   - packages/studio/src/grid/grid-reveal.ts
   - packages/studio/src/panels/collections-panel.ts
   - packages/studio/src/surfaces/collections-panel.ts
+  - packages/studio/src/content/entry-preview.ts
+  - packages/studio/src/surfaces/entry-preview.ts
+  - packages/studio/src/canvas/live-entry.ts
 ---
 
 # The Content workspace
@@ -73,6 +77,16 @@ Above a collection's list, one line says where its entries appear on your site:
 
 Studio reads this from your pages rather than storing it: the template page is the page whose `$paths` names the collection, so the line can never disagree with what the site build publishes.
 
+### Design a collection's page
+
+The template page is one page drawn once for every entry, so Studio draws it with a real one. Open it (**Design the post page**, or **Post page** under the collection in the Site panel) and the canvas shows a post: its title, its date and its body, where the page places them. A bar above the page says which:
+
+> Previewing entry · **Designing for Slowness** ▾ · ‹ ›
+
+Pick another entry from the list, which names each by its title, or step through them with the arrows. The page is redrawn with that entry, and the choice is the same one the **resolving with** popover on the pane's context bar holds, so the two always agree.
+
+Every element that shows a field of the entry is outlined, with a badge naming the field: **title**, **date · tag**, **body**. Those words belong to the entry rather than the page, so you cannot type into them on the canvas; to change which field an element shows, select it and change its binding in the Inspector, and to change the words themselves, open the entry. A collection with no entries yet says so in the bar, and its page shows each binding instead, such as `❪ state.entry.data.title ❫`.
+
 ## Four views
 
 All four draw the same scan, so switching view repaints. It never re-scans your project; the Table reads each page once for its template and status.
@@ -96,18 +110,20 @@ The Table lists files; it does not edit them. Changing a name is a rename, not a
 
 ## Write an entry
 
-Click an entry to open it. An entry with a body, such as a Markdown post, opens on the canvas in **Edit**, inside the template its pages are drawn in: the entry's own template if it names one, otherwise its collection page's, otherwise your project's default. A slim banner above the canvas says what that means:
+Click an entry to open it. An entry with a body, such as a Markdown post, opens on the canvas in **Edit**, drawn the way your site publishes it: inside the collection's page (the one **Design the post page** opens), and that page inside its template. The post's tag, title, excerpt, byline and cover are drawn where the page places them, from the entry you are writing, and the post's own text stands where the page draws its body. A slim banner above the canvas says what that means:
 
 > Writing mode: text and media are editable, the layout is locked · **Design the post page**
 
-The header, the footer and everything else the template draws are shown, dimmed and locked, so you write in context without being able to break the layout. The button opens the collection's template page in the Design workspace, with the same words as the line above the collection. A collection with no page of its own names the template instead: **Edit the Base template in Design**.
+The header, the footer and everything else the template draws are shown, dimmed and locked, so you write in context without being able to break the layout. The page's own design is locked too, but drawn at full strength, because it is what your post will look like. The button opens the collection's template page in the Design workspace, with the same words as the line above the collection. A collection with no page of its own names the template instead: **Edit the Base template in Design**, and the entry is written inside that template alone.
+
+**Type a field where the page shows it.** Text the page draws from one field of the entry, such as the post's title, is outlined with the field's name. Click it and type: when you click away, what you typed is saved to that field, exactly as if you had typed it in the **Entry** tab, and one :kbd[⌘Z] takes it back. Only text fields work this way. A date, a number or a list is changed in the **Entry** tab, which knows its type, and so is text that combines several fields, such as a date and a tag on one line.
 
 The Inspector on the right shows the **Entry** tab while you write: the entry's **status** (a hold rule's label or **Published**, with a switch when a rule offers one), its **fields** as the collection's schema types them, the **URL** its page publishes it at, and the **file** it is stored in. The Element tab is there too, because writing still selects elements.
 
 An entry with no body (a JSON entry is nothing but its fields, and a CSV record is one row of its file) opens in the [entry form](/docs/studio/projects/content-types#edit-an-entrys-fields) instead.
 
 :::doc-note
-Studio wraps an entry in its template's **layout**. A template page that draws its own wrapper around the entry (a hero over the entry's body, say) shows that wrapper when you preview the page itself, not while you write the entry.
+The page has to say where the entry's body goes, with an element that shows the entry's body (`"${state.entry.$children ?? []}"`). The page **Add new** writes for a collection with a body has one. A page that shows no body has nowhere to write one, so its entries are written inside its template alone.
 :::
 
 ## Open, rename, duplicate, delete

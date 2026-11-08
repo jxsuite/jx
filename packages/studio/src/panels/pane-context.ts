@@ -101,13 +101,13 @@ import {
 } from "../site-context";
 import { localeLabel, localeOfPath } from "@jxsuite/schema/locale";
 import { isSchemeQuery } from "../utils/canvas-media";
-import { dynamicRouteParams, loadParamValues, pagePathsDef } from "../page-params";
+import { dynamicRouteParams, loadParamLabels, loadParamValues, pagePathsDef } from "../page-params";
 import { componentPropEntries, isComponentDoc } from "../component-props";
 import { mediaDisplayName } from "./shared";
 import type { CanvasView, FitMode } from "../canvas/canvas-utils";
 import { EDITOR_KIND_LABELS } from "../commands/context";
 import type { EditorKind } from "../commands/context";
-import type { ParamValues } from "../page-params";
+import type { ParamLabels, ParamValues } from "../page-params";
 import type { CommandArgValues } from "../commands/command-args";
 import type { Tab } from "../tabs/tab";
 import type { ResolvedI18n } from "@jxsuite/schema/locale";
@@ -1362,12 +1362,25 @@ export function resetResolvingOpen(): void {
  */
 const _paramValues = new Map<string, ParamValues>();
 
+/** What each candidate is called (an entry's title), by the same key, read with the values. */
+const _paramLabels = new Map<string, ParamLabels>();
+
 const _paramLoading = new Set<string>();
 
 /** Drop every cached candidate list — a project switch, and the tests. */
 export function resetParamValues(): void {
   _paramValues.clear();
+  _paramLabels.clear();
   _paramLoading.clear();
+}
+
+/** The cache key of a tab's candidate values: its path and its `$paths` block. */
+function paramKey(tab: Tab): string {
+  const pathsDef = pagePathsDef({
+    document: tab.doc.document,
+    frontmatter: tab.doc.content.frontmatter,
+  });
+  return `${tab.documentPath ?? ""}::${JSON.stringify(pathsDef)}`;
 }
 
 /**
@@ -1382,7 +1395,7 @@ function paramValuesFor(tab: Tab): ParamValues | null {
   if (!pathsDef && dynamicRouteParams(tab.documentPath).length === 0) {
     return null;
   }
-  const key = `${tab.documentPath ?? ""}::${JSON.stringify(pathsDef)}`;
+  const key = paramKey(tab);
   const cached = _paramValues.get(key);
   if (cached) {
     return cached;
@@ -1391,7 +1404,10 @@ function paramValuesFor(tab: Tab): ParamValues | null {
     return null;
   }
   _paramLoading.add(key);
-  void loadParamValues(tab.documentPath, pathsDef).then((values) => {
+  void Promise.all([
+    loadParamValues(tab.documentPath, pathsDef),
+    loadParamLabels(tab.documentPath, pathsDef),
+  ]).then(([values, labels]) => {
     _paramLoading.delete(key);
     /* Still SHOWN somewhere, rather than still focused. The candidate values fill a picker in one
        pane's bar; a load that landed while the keyboard was in the other pane used to be discarded,
@@ -1400,6 +1416,7 @@ function paramValuesFor(tab: Tab): ParamValues | null {
       return;
     }
     _paramValues.set(key, values);
+    _paramLabels.set(key, labels);
     autoSelectParams(tab, values);
     render();
   });
@@ -1430,6 +1447,7 @@ function autoSelectParams(tab: Tab, values: ParamValues) {
  */
 function paramRows(tab: Tab): PaneContextView["params"] {
   const values = paramValuesFor(tab);
+  const labels = _paramLabels.get(paramKey(tab)) ?? {};
   const names = new Set(dynamicRouteParams(tab.documentPath));
   for (const name of Object.keys(values ?? {})) {
     names.add(name);
@@ -1439,7 +1457,10 @@ function paramRows(tab: Tab): PaneContextView["params"] {
     key: name,
     label: `Preview value for [${name}]`,
     name,
-    options: (values?.[name] ?? []).map((value: string) => ({ label: value, value })),
+    options: (values?.[name] ?? []).map((value: string) => ({
+      label: labels[name]?.[value] ?? value,
+      value,
+    })),
     value: previewParams[name] ?? "",
   }));
 }

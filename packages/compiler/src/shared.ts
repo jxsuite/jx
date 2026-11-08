@@ -49,6 +49,7 @@ import {
   isTemplateString,
   paramNames,
   tagNameCandidates,
+  maskCode,
 } from "@jxsuite/schema/guards";
 import type { TagNameSlot } from "@jxsuite/schema/guards";
 import { resolveShadowMode, styleScopePrefix } from "./shadow.ts";
@@ -604,6 +605,62 @@ const STATE_ASSIGNMENT_RE =
 const STATE_MUTATING_METHOD_RE =
   /\bstate\.([A-Za-z_$][\w$]*)\s*\.\s*(?:push|pop|shift|unshift|splice|sort|reverse|fill|copyWithin)\s*\(/g;
 
+/** A character that continues an identifier, or a `.` that makes `state` someone's member. */
+const JOINS_STATE = /[\w$.]/u;
+
+/** A character that continues an identifier. */
+const CONTINUES_NAME = /[\w$]/u;
+
+/** Whether `state` at `at` in `read` is the one to move: standalone, and a member read unless bare. */
+function movesState(read: string, at: number, bare: boolean): boolean {
+  if (at > 0 && JOINS_STATE.test(read.charAt(at - 1))) {
+    return false;
+  }
+  let next = at + "state".length;
+  if (bare) {
+    return !CONTINUES_NAME.test(read.charAt(next));
+  }
+  while (/\s/u.test(read.charAt(next))) {
+    next += 1;
+  }
+  return read.charAt(next) === ".";
+}
+
+/**
+ * Rewrite `state` in emitted code to what holds it there (`this.state`, `s`): the one way every
+ * target does it (`spec.md` §23.1). Only a standalone `state` moves, so `prevstate.n` stays itself,
+ * and in a body only code moves, so a string or a comment that mentions `state.` is left as
+ * written.
+ *
+ * @param text The body, or an expression.
+ * @param to What `state` becomes.
+ * @param options `bare` moves `state` alone too, not only `state.member`; `code: false` reads text
+ *   that is not a body (an attribute's template), where nothing is a string or a comment.
+ */
+export function rewriteState(
+  text: string,
+  to: string,
+  options: { bare?: boolean; code?: boolean } = {},
+): string {
+  // Most text never names `state`, and every emitter calls this on every body and template.
+  if (!text.includes("state")) {
+    return text;
+  }
+  const bare = options.bare === true;
+  const read = options.code === false ? text : maskCode(text);
+  /* A scan rather than a lookbehind pattern: every emitter runs this on every body and template,
+     and JavaScriptCore runs `(?<!…)` on its slow path, which a compile benchmark measured. */
+  let out = "";
+  let last = 0;
+  for (let at = read.indexOf("state"); at !== -1; at = read.indexOf("state", at + 1)) {
+    if (movesState(read, at, bare)) {
+      out += text.slice(last, at) + to;
+      last = at + "state".length;
+    }
+  }
+  return out + text.slice(last);
+}
+
 /**
  * Collect every state key a handler writes to, across all the forms a body can take: a string body,
  * a structured body (spec §20), and an `$expression` node with a mutating operator.
@@ -618,11 +675,16 @@ const STATE_MUTATING_METHOD_RE =
  */
 function collectAssignedStateKeys(node: JxDocumentValue | undefined, into: Set<string>) {
   if (isString(node)) {
-    for (const m of node.matchAll(STATE_ASSIGNMENT_RE)) {
+    if (!node.includes("state.")) {
+      return;
+    }
+    // Code only: an assignment a comment or a string mentions writes nothing (spec.md §23.1).
+    const code = maskCode(node);
+    for (const m of code.matchAll(STATE_ASSIGNMENT_RE)) {
       // SAFETY: the pattern's one capture group is outside any optional part, so a match has it.
       into.add(m[1] as string);
     }
-    for (const m of node.matchAll(STATE_MUTATING_METHOD_RE)) {
+    for (const m of code.matchAll(STATE_MUTATING_METHOD_RE)) {
       // SAFETY: the pattern's one capture group is outside any optional part, so a match has it.
       into.add(m[1] as string);
     }

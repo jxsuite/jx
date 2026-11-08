@@ -40,7 +40,7 @@ import { activeRegistry, setActiveRegistry } from "../src/commands/active-regist
 import type { HeadLayers, SeoPreview } from "../src/panels/head-panel";
 import type { FormatFrontmatter } from "../src/format/format-host";
 import type { DirEntry } from "../src/types";
-import type { JxHeadEntry, JxMutableNode } from "@jxsuite/schema/types";
+import type { JsonObject, JxHeadEntry, JxMutableNode } from "@jxsuite/schema/types";
 
 /** Every browse and upload the panel asked the media picker for, in order. */
 const mediaCalls: string[] = [];
@@ -96,6 +96,7 @@ const {
   layoutHeadEntries,
   bindPageHost,
   buildHeadDoc,
+  fieldDragData,
   pageDescription,
   pageTabTitle,
   reservedFmKeys,
@@ -307,7 +308,7 @@ describe("page section", () => {
 
   test("description meta upserts: add, replace in place, then remove", async () => {
     const drawn = await draw({ tagName: "div" });
-    const page = section(drawn.host, "page")!;
+    const page = section(drawn.host, "search")!;
     setAndFire(page, "description", "First");
     expect(metaContent(drawn.doc, "name", "description")).toBe("First");
     expect(drawn.doc.$head).toHaveLength(1);
@@ -321,7 +322,7 @@ describe("page section", () => {
 
   test("viewport field gets the canonical placeholder", async () => {
     const drawn = await draw({ tagName: "div" });
-    expect(control(section(drawn.host, "page")!, "viewport").getAttribute("placeholder")).toBe(
+    expect(control(section(drawn.host, "advanced")!, "viewport").getAttribute("placeholder")).toBe(
       "width=device-width, initial-scale=1",
     );
   });
@@ -331,7 +332,7 @@ describe("page section", () => {
       { attributes: { href: "/favicon.ico", rel: "icon" }, tagName: "link" },
     ];
     const drawn = await draw({ $head: head, tagName: "div" });
-    const page = section(drawn.host, "page")!;
+    const page = section(drawn.host, "advanced")!;
     expect(row(page, "icon").querySelector('[part="media"]')).not.toBeNull();
     clearRow(page, "icon");
     expect(drawn.doc.$head).toHaveLength(0);
@@ -339,7 +340,7 @@ describe("page section", () => {
 
   test("the icon field upserts the link entry (add, then replace in place)", async () => {
     const drawn = await draw({ tagName: "div" });
-    const page = section(drawn.host, "page")!;
+    const page = section(drawn.host, "advanced")!;
     setAndFire(page, "icon", "/icon.svg");
     expect(drawn.doc.$head?.[0]?.attributes?.href).toBe("/icon.svg");
     setAndFire(page, "icon", "/icon2.svg");
@@ -355,7 +356,7 @@ describe("page section", () => {
        the suite ran slowly enough. Cancelling for real is also the stronger assertion: a survivor
        here would overwrite "whole" with "half" rather than escaping into another test. */
     const drawn = await draw({ tagName: "div" });
-    const page = section(drawn.host, "page")!;
+    const page = section(drawn.host, "search")!;
     withCapturedTimers((runPending) => {
       // Un-flushed: the reader is still typing, so nothing has been written.
       setAndFire(page, "description", "half", "input");
@@ -374,7 +375,7 @@ describe("page section", () => {
     const next: JxMutableNode = { tagName: "section" };
 
     withCapturedTimers((runPending) => {
-      setAndFire(section(first.host, "page")!, "description", "half", "input");
+      setAndFire(section(first.host, "search")!, "description", "half", "input");
       renderPagePanel(first.host, {
         applyMutation: (fn) => {
           fn(next);
@@ -395,7 +396,7 @@ describe("page section", () => {
 describe("media rows reach the shared picker rather than drawing one", () => {
   test("Browse opens the popover under the button and commits what it returns", async () => {
     const drawn = await draw({ tagName: "div" });
-    const page = section(drawn.host, "page")!;
+    const page = section(drawn.host, "advanced")!;
     const browse = row(page, "icon").querySelector<HTMLElement>('[part="browse"]')!;
     pointer(browse, "click");
     await flush(2);
@@ -451,7 +452,7 @@ describe("media rows reach the shared picker rather than drawing one", () => {
 
   test("Upload opens the OS picker and assigns what comes back", async () => {
     const drawn = await draw({ tagName: "div" });
-    const og = section(drawn.host, "opengraph")!;
+    const og = section(drawn.host, "search")!;
     pointer(row(og, "og:image").querySelector<HTMLElement>('[part="upload"]')!, "click");
     await flush(2);
     expect(mediaCalls).toEqual(["upload"]);
@@ -465,7 +466,7 @@ describe("media rows reach the shared picker rather than drawing one", () => {
       tagName: "div",
     });
     expect(
-      row(section(withImage.host, "opengraph")!, "og:image").querySelector('[part="thumb"]'),
+      row(section(withImage.host, "search")!, "og:image").querySelector('[part="thumb"]'),
     ).not.toBeNull();
 
     const withText = await draw({
@@ -473,20 +474,24 @@ describe("media rows reach the shared picker rather than drawing one", () => {
       tagName: "div",
     });
     expect(
-      row(section(withText.host, "opengraph")!, "og:image").querySelector('[part="thumb"]'),
+      row(section(withText.host, "search")!, "og:image").querySelector('[part="thumb"]'),
     ).toBeNull();
   });
 });
 
-// ─── OpenGraph section ────────────────────────────────────────────────────────
+// ─── The social card ──────────────────────────────────────────────────────────
 
-describe("opengraph section", () => {
+describe("the social card's fields", () => {
   test("og:description is a multiline field; og:image draws the media control", async () => {
     const drawn = await draw({ tagName: "div" });
-    const og = section(drawn.host, "opengraph")!;
     // "Multiline" is a fact about the control a reader types into, not about an attribute.
-    expect(control(og, "og:description").tagName.toLowerCase()).toBe("textarea");
-    expect(row(og, "og:image").querySelector('[part="media"]')).not.toBeNull();
+    expect(control(section(drawn.host, "advanced")!, "og:description").tagName.toLowerCase()).toBe(
+      "textarea",
+    );
+    // The social card's picture is Search & sharing's: the one social field most pages set.
+    const image = row(section(drawn.host, "search")!, "og:image");
+    expect(image.querySelector('[part="row-name"]')?.textContent).toBe("Social image");
+    expect(image.querySelector('[part="media"]')).not.toBeNull();
   });
 
   test("og:image commits a meta entry and its dot clears it", async () => {
@@ -494,7 +499,7 @@ describe("opengraph section", () => {
       { attributes: { content: "/old.png", property: "og:image" }, tagName: "meta" },
     ];
     const drawn = await draw({ $head: head, tagName: "div" });
-    const og = section(drawn.host, "opengraph")!;
+    const og = section(drawn.host, "search")!;
     setAndFire(og, "og:image", "/new.png");
     expect(metaContent(drawn.doc, "property", "og:image")).toBe("/new.png");
     clearRow(og, "og:image");
@@ -506,7 +511,7 @@ describe("opengraph section", () => {
       { attributes: { content: "Old", property: "og:title" }, tagName: "meta" },
     ];
     const drawn = await draw({ $head: head, tagName: "div" });
-    const og = section(drawn.host, "opengraph")!;
+    const og = section(drawn.host, "advanced")!;
     expect(control(og, "og:title").value).toBe("Old");
     setAndFire(og, "og:title", "  New OG  ");
     expect(metaContent(drawn.doc, "property", "og:title")).toBe("New OG");
@@ -534,7 +539,7 @@ describe("the door to Search appearance", () => {
     setActiveRegistry(registry);
     try {
       const drawn = await draw({ tagName: "div" });
-      const button = section(drawn.host, "page")!.querySelector<HTMLElement>(
+      const button = section(drawn.host, "search")!.querySelector<HTMLElement>(
         '[part="seo-button"]',
       )!;
       // The label part: the host's text now also carries the tip its hint renders (ui.md §5.1).
@@ -543,7 +548,7 @@ describe("the door to Search appearance", () => {
       expect(ran).toEqual(["document.openSeo"]);
       // Ran THROUGH the registry, which is still the active one: the button opened nothing itself.
       expect(activeRegistry()).toBe(registry);
-      // One door per surface and only one of them: OpenGraph does not offer a second.
+      // One door per surface and only one of them: no other band offers a second.
       expect(drawn.host.querySelectorAll('[part="seo-button"]')).toHaveLength(1);
     } finally {
       setActiveRegistry(null);
@@ -1197,7 +1202,7 @@ describe("the Inspector's Page tab", () => {
     const body = await paint();
     // Listed once: not again as a frontmatter field beside the Page section's row.
     expect(body.querySelectorAll('[data-prop="description"]')).toHaveLength(1);
-    const page = section(body, "page")!;
+    const page = section(body, "search")!;
     expect(control(page, "description").value).toBe("Equipment rental in Manheim");
     setAndFire(page, "description", "  Excavators and loaders  ");
     expect(tab.doc.content.frontmatter.description).toBe("Excavators and loaders");
@@ -1306,7 +1311,8 @@ describe("the Inspector's Page tab", () => {
     const body = await paint();
     const page = body.querySelector<HTMLElement>('[data-section="page"]')!;
     expect(control(page, "title").value).toBe("FM Title");
-    expect(control(page, "description").value).toBe("d");
+    const search = body.querySelector<HTMLElement>('[data-section="search"]')!;
+    expect(control(search, "description").value).toBe("d");
   });
 
   test("a content document's title and $head are committed into its frontmatter", async () => {
@@ -1318,7 +1324,7 @@ describe("the Inspector's Page tab", () => {
     const page = body.querySelector<HTMLElement>('[data-section="page"]')!;
     setAndFire(page, "title", "New");
     expect(tab.doc.content.frontmatter.title).toBe("New");
-    setAndFire(page, "description", "Fresh");
+    setAndFire(body.querySelector<HTMLElement>('[data-section="search"]')!, "description", "Fresh");
     expect(tab.doc.content.frontmatter.$head).toEqual([
       { attributes: { content: "Fresh", name: "description" }, tagName: "meta" },
     ]);
@@ -1334,8 +1340,8 @@ describe("the Inspector's Page tab", () => {
       title: "Same",
     };
     const body = await paint();
-    const page = body.querySelector<HTMLElement>('[data-section="page"]')!;
-    setAndFire(page, "description", "");
+    const search = body.querySelector<HTMLElement>('[data-section="search"]')!;
+    setAndFire(search, "description", "");
     expect(tab.doc.content.frontmatter.$head).toBeUndefined();
     expect(tab.doc.content.frontmatter.title).toBe("Same");
   });
@@ -1800,5 +1806,158 @@ describe("visibleLength", () => {
     // 80 code units, 40 graphemes: the old counter called this over a 60-character title budget.
     expect(long.length).toBe(80);
     expect(visibleLength(long)).toBe(40);
+  });
+});
+
+// ─── The Page tab's groups (§6) ──────────────────────────────────────────────
+
+describe("the Page tab's groups", () => {
+  /** The sections a host drew, by key, in order. */
+  function sectionKeys(host: HTMLElement): string[] {
+    return [...host.querySelectorAll<HTMLElement>('[part="section"]')].map(
+      (el) => el.dataset.section ?? "",
+    );
+  }
+
+  test("a page reads Page, Template, Search & sharing, Advanced, then its custom tags", async () => {
+    setupSitePage("pages/about.json");
+    await draw({ tagName: "div" });
+    await flush();
+    const drawn = await draw({ tagName: "div", title: "About" });
+    expect(sectionKeys(drawn.host)).toEqual(["page", "layout", "search", "advanced", "custom"]);
+    expect(heading(drawn.host, "layout")).toBe("Template");
+    expect(heading(drawn.host, "search")).toBe("Search & sharing");
+    const advanced = section(drawn.host, "advanced")!;
+    expect(
+      [...advanced.querySelectorAll<HTMLElement>('[part="row"]')].map((r) => r.dataset.prop),
+    ).toEqual(["viewport", "icon", "og:title", "og:description", "og:type", "file"]);
+    expect(row(advanced, "og:title").querySelector('[part="row-name"]')?.textContent).toBe(
+      "Social title",
+    );
+    expect(row(advanced, "file").querySelector('[part="readout"]')?.textContent).toBe(
+      "pages/about.json",
+    );
+  });
+
+  test("a document with no file has no File line", async () => {
+    resetStudioState({ isSiteProject: false, projectConfig: {} });
+    closeAllTabs();
+    const drawn = await draw({ tagName: "div" });
+    expect(section(drawn.host, "advanced")!.querySelector('[data-prop="file"]')).toBeNull();
+  });
+});
+
+describe("a collection's page in the Page tab", () => {
+  const POSTS: JsonObject = {
+    format: "Markdown",
+    schema: {
+      properties: {
+        cover: { format: "image", type: "string" },
+        flags: { type: "object" },
+        order: { type: "integer" },
+        published: { format: "date", type: "string" },
+        rating: { type: "number" },
+        starred: { type: "boolean" },
+        tags: { type: "array" },
+        title: { title: "Headline", type: "string" },
+        updated: { format: "date-time", type: "string" },
+      },
+      type: "object",
+    },
+    source: "./content/posts/",
+  };
+
+  /** The Post page, under a project whose `posts` collection is `posts`. */
+  async function drawPostPage(posts: JsonObject = POSTS) {
+    installMockPlatform({ listDirectory: async () => [] });
+    resetStudioState({ isSiteProject: true, projectConfig: { content: { posts } } });
+    resetWorkspaceWithTab(undefined, { documentPath: "pages/blog/[slug].json" });
+    return draw({
+      $paths: { contentType: "posts", param: "slug" },
+      state: { post: { $prototype: "ContentEntry", contentType: "posts" } },
+      tagName: "article",
+    });
+  }
+
+  test("leads with one page for every entry, its URL pattern, then the fields it can place", async () => {
+    const drawn = await drawPostPage();
+    expect(section(drawn.host, "page")).toBeNull();
+    expect(heading(drawn.host, "collection")).toBe("One page for every entry in Posts");
+    const pattern = row(section(drawn.host, "collection")!, "url");
+    expect(pattern.querySelector('[part="row-name"]')?.textContent).toBe("URL pattern");
+    expect(pattern.querySelector('[part="readout"]')?.textContent).toBe("/blog/:slug");
+    const fields = section(drawn.host, "fields")!;
+    expect(
+      [...fields.querySelectorAll<HTMLElement>('[part="field-chip"]')].map((chip) => [
+        chip.dataset.field,
+        chip.querySelector('[part="field-name"]')?.textContent,
+        chip.querySelector('[part="field-kind"]')?.textContent,
+      ]),
+    ).toEqual([
+      ["cover", "Cover", "image"],
+      ["flags", "Flags", "group"],
+      ["order", "Order", "number"],
+      ["published", "Published", "date"],
+      ["rating", "Rating", "number"],
+      ["starred", "Starred", "yes/no"],
+      ["tags", "Tags", "list"],
+      ["title", "Headline", "text"],
+      ["updated", "Updated", "date"],
+      ["$children", "Body", "rich text"],
+    ]);
+    expect(fields.querySelector('[part="section-note"]')?.textContent).toContain("Drag a field");
+  });
+
+  test("each field drags an element showing it, read by the page's own entry key", async () => {
+    await drawPostPage();
+    expect(fieldDragData("field:title")).toEqual({
+      fragment: { tagName: "p", textContent: "${state.post.data.title}" },
+      type: "block",
+    });
+    expect(fieldDragData("field:cover")?.fragment).toEqual({
+      attributes: { alt: "", src: "${state.post.data.cover}" },
+      tagName: "img",
+    });
+    expect(fieldDragData("field:published")?.fragment.tagName).toBe("time");
+    expect(fieldDragData("field:$children")?.fragment).toEqual({
+      children: "${state.post.$children ?? []}",
+      tagName: "div",
+    });
+    // A copy each time: an inserted element must not share a node with the next drag.
+    expect(fieldDragData("field:title")?.fragment).not.toBe(fieldDragData("field:title")?.fragment);
+    expect(fieldDragData("field:nope")).toBeNull();
+  });
+
+  test("a collection with no body, or no fields and no body, has nothing extra to place", async () => {
+    let drawn = await drawPostPage({ ...POSTS, format: "json" });
+    expect(section(drawn.host, "fields")!.querySelector('[data-field="$children"]')).toBeNull();
+    drawn = await drawPostPage({ format: "csv", source: "./content/posts.csv" });
+    expect(section(drawn.host, "fields")).toBeNull();
+    drawn = await drawPostPage({ source: "./content/posts/" });
+    expect(section(drawn.host, "fields")).toBeNull();
+  });
+
+  test("a page whose $paths names no declared collection is an ordinary page", async () => {
+    installMockPlatform({ listDirectory: async () => [] });
+    resetStudioState({ isSiteProject: true, projectConfig: { content: {} } });
+    resetWorkspaceWithTab(undefined, { documentPath: "pages/[slug].json" });
+    let drawn = await draw({ $paths: { contentType: "posts" }, tagName: "article" });
+    expect(section(drawn.host, "page")).not.toBeNull();
+    drawn = await draw({ $paths: [{ slug: "a" }], tagName: "article" });
+    expect(section(drawn.host, "collection")).toBeNull();
+    // With no ContentEntry, the field rows read the conventional `entry`.
+    resetStudioState({ isSiteProject: true, projectConfig: { content: { posts: POSTS } } });
+    await draw({ $paths: { contentType: "posts" }, tagName: "article" });
+    expect(fieldDragData("field:title")?.fragment.textContent).toBe("${state.entry.data.title}");
+  });
+
+  test("the field chips are drag sources, released when the panel draws another document", async () => {
+    const drawn = await drawPostPage();
+    const chip = drawn.host.querySelector<HTMLElement>('[part="field-chip"]')!;
+    expect(chip.getAttribute("draggable")).toBe("true");
+    resetStudioState({ isSiteProject: false, projectConfig: {} });
+    closeAllTabs();
+    await draw({ tagName: "div" });
+    expect(drawn.host.isConnected).toBe(true);
   });
 });
