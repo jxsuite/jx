@@ -2,76 +2,37 @@
  * Monaco editor setup — workers, the editor feature set, language services, and JX schema
  * registration.
  *
- * **The list below is Studio's STATEMENT of what the code editor can do.** Monaco 0.55 had no way
- * to say it: importing `language/json/monaco.contribution.js` transitively dragged in every one of
- * the 59 editor contributions, so the editor Studio shipped was whatever the language services
- * happened to reach. 0.56 puts a supported export map in front of them (`"./*" → ./esm/vs/*.js`)
- * with one `register` module per capability, so adding an editor capability means adding its import
- * here.
+ * **Every editor feature is registered here, up front, through `features/register.all`.** Studio
+ * used to import one `register` module per capability it wanted, as a statement of what the code
+ * editor can do. Monaco does not let that statement hold, and trying cost two console exceptions on
+ * every editor:
  *
- * Three things about that, and none of them is discoverable from the code:
+ * - The JSON and TypeScript language modes load lazily, the first time a model of their language
+ *   exists, and their worker manager imports `vs/internal/common/workers.js`, which imports every
+ *   editor contribution in monaco (0.57.0). So the features left off the list were registered
+ *   anyway, part-way through the session.
+ * - Monaco snapshots its registered singleton services when its standalone services first initialize,
+ *   which the first editor does. Two late contributions bring their services with them
+ *   (`ICodeLensCache`, `treeViewsDndService`), registered after that snapshot, so every editor
+ *   created afterwards threw `[createInstance] … depends on UNKNOWN service` for CodeLens and
+ *   drop-into-editor, while the other late contributions (color picker, inlay hints, linked
+ *   editing, font zoom…) switched on silently. What the editor could do depended on whether a
+ *   `.json` had been opened yet.
  *
- * - **A missing register is SILENT.** The editor simply lacks the capability: no error, no warning,
- *   no console line. `specs/studio.md` §11.1 makes the list normative for that reason, and the
- *   browser pass in a Studio change set is the gate. `monaco-editor/features/register.all` restores
- *   the whole set exactly if you ever need to bisect against it.
- * - **`features/suggest/register` is not what makes completion work.** It registers the provider that
- *   turns suggest items into inline (ghost) text; the suggest WIDGET is
- *   `contrib/suggest/browser/suggestController.js`, and the only public entry that reaches it is
- *   `features/inlineCompletions/register`. Without that line, `jsonDefaults`' schema completions
- *   and the `state.*` completions in the Logic tab (`panels/editors.ts`) both register successfully
- *   and then never appear.
- * - **THE EXCLUSIONS DO NOT TAKE EFFECT YET, and it is worth knowing before you try to make them.**
- *   In 0.56.0 the contrib modules import one another densely, and the suggest stack this file
- *   cannot do without reaches almost all of them: every one of the 33 features named "not
- *   registered" below is still in the bundle and still calls `registerEditorContribution` at module
- *   scope. Measured on the built output — `register.all` 14,186,780 B, this list 14,189,667 B, this
- *   list with a deep `suggestController` import instead of `inlineCompletions` 14,192,867 B.
- *   Curating costs about 3 KB and currently saves nothing.
+ * Registering the whole set here, with the editor API and before any editor exists, makes the set
+ * the same in every session and puts every service in the snapshot. It is the set the session
+ * reached anyway, so nothing a reader had becomes unavailable, and it ships in the lazy Monaco
+ * chunk, which only a code view loads (`services/monaco-lazy.ts`).
  *
- *   It is kept because it is the true statement of intent and it is where the saving lands the day
- *   monaco untangles that graph. Do not cite it as evidence that a feature is off — check the
- *   metafile. The only variant where the exclusions bite drops the suggest widget too, which takes
- *   schema completion with it.
+ * The suggest widget is part of it (`features/inlineCompletions/register` is the public entry that
+ * reaches `suggestController.js`, and `register.all` includes it): without the widget, JSON schema
+ * completion and the Logic tab's `state.*` completion register and never appear.
  */
 
 import * as monacoApi from "monaco-editor/editor";
-// Core widget, icons, tokenization.
-import "monaco-editor/features/codeEditor/register";
-import "monaco-editor/features/codicon/register";
-import "monaco-editor/features/tokenization/register";
-// Editing. `linesOperations` is also what pulls in `browser/coreCommands.js`.
-import "monaco-editor/features/clipboard/register";
-import "monaco-editor/features/comment/register";
-import "monaco-editor/features/cursorUndo/register";
-import "monaco-editor/features/dnd/register";
-import "monaco-editor/features/indentation/register";
-import "monaco-editor/features/lineSelection/register";
-import "monaco-editor/features/linesOperations/register";
-import "monaco-editor/features/multicursor/register";
-import "monaco-editor/features/smartSelect/register";
-import "monaco-editor/features/wordOperations/register";
-import "monaco-editor/features/wordPartOperations/register";
-// Navigation & search.
-import "monaco-editor/features/find/register";
-import "monaco-editor/features/folding/register";
-import "monaco-editor/features/gotoError/register"; // F8 over the oxlint markers
-import "monaco-editor/features/gotoLine/register";
-// The surfaces the JSON / TypeScript language services feed.
-import "monaco-editor/features/bracketMatching/register";
-import "monaco-editor/features/codeAction/register";
-import "monaco-editor/features/format/register";
-import "monaco-editor/features/hover/register";
-import "monaco-editor/features/links/register";
-import "monaco-editor/features/parameterHints/register";
-import "monaco-editor/features/snippet/register";
-import "monaco-editor/features/suggest/register";
-import "monaco-editor/features/inlineCompletions/register"; // Carries the suggest WIDGET — see above
-// Chrome & safety.
-import "monaco-editor/features/contextmenu/register";
-import "monaco-editor/features/readOnlyMessage/register"; // ReadOnly is set on collab failure
-import "monaco-editor/features/toggleTabFocusMode/register";
-import "monaco-editor/features/unicodeHighlighter/register";
+
+// Every editor feature, before any editor exists: see the note at the top of this file.
+import "monaco-editor/features/register.all";
 // Languages.
 import { jsonDefaults } from "monaco-editor/languages/features/json/register";
 import "monaco-editor/languages/features/typescript/register";
