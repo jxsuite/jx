@@ -1089,6 +1089,14 @@ function canScrollBy(el: HTMLElement, dx: number, dy: number): boolean {
 /** The stage-context reader, published by {@link initShortcuts} for {@link installStageGestures}. */
 let _stageContext: StageContext | null = null;
 
+/** The mark a column the stage draws beside its boards carries (`surfaces/canvas-stage.json`). */
+export const STAGE_ASIDE_SELECTOR = "[data-stage-aside]";
+
+/** Whether an event's target is inside a column beside the boards rather than over them. */
+export function overStageAside(target: EventTarget | null): boolean {
+  return target instanceof Element && target.closest(STAGE_ASIDE_SELECTOR) !== null;
+}
+
 /**
  * Install one pane's stage gestures: wheel zoom/pan, middle-mouse drag pan, background deselect.
  *
@@ -1130,6 +1138,15 @@ export function installStageGestures(surface: CanvasSurface): () => void {
   canvasWrap.addEventListener(
     "wheel",
     (e: WheelEvent) => {
+      /* A column the stage draws BESIDE its boards (Review changes' list and publish column,
+         studio.md §22.8) scrolls itself, and is not the canvas: its wheel is its own. Ctrl/⌘ is
+         still kept from zooming Studio itself, as everywhere outside a stage. */
+      if (overStageAside(e.target)) {
+        if (e.ctrlKey || e.metaKey) {
+          e.preventDefault();
+        }
+        return;
+      }
       const { canvasMode, panX, panY, setPan, applyTransform } = getContext();
       // Edit (content) mode: ctrl/cmd+wheel drives the content zoom (browser-page-zoom semantics —
       // The footprint stays fixed, content reflows); plain wheel scrolls the edit-mode container
@@ -1210,9 +1227,9 @@ export function installStageGestures(surface: CanvasSurface): () => void {
       if (ctx.canvasMode === "edit" || ctx.canvasMode === "preview") {
         return;
       } // No panning in edit mode, and preview scrolls its own frame rather than panning
-      if (e.button !== 1) {
+      if (e.button !== 1 || overStageAside(e.target)) {
         return;
-      } // Middle button only
+      } // Middle button only, and over the boards rather than a column beside them
       e.preventDefault();
       canvasWrap.setPointerCapture(e.pointerId);
       let lastX = e.clientX;

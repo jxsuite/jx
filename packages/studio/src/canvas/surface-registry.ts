@@ -57,6 +57,16 @@ export interface CanvasSurface {
    */
   panzoomWrap: HTMLElement | null;
   /**
+   * The box the boards are centred and fitted in, when the stage draws one narrower than the pane,
+   * or null for the whole stage.
+   *
+   * Publish's Review changes draws its comparison between the change list and the publish column
+   * (studio.md §22.8), so "the space the artboards have" is the middle column, not the pane:
+   * centred against the pane, the page sat half under the publish column. Every measurement that
+   * asked `wrap` for that space asks {@link stageViewport} instead, which answers this or `wrap`.
+   */
+  viewport: HTMLElement | null;
+  /**
    * The mounted stage document drawing this pane's artboards, or null in the modes that own the
    * stage themselves (grid, library, entry, media, settings) and before the first pass.
    *
@@ -171,6 +181,7 @@ function freshSurface(paneId: string): CanvasSurface {
     paneId,
     panzoomWrap: null,
     stage: null,
+    viewport: null,
     prevCanvasMode: null,
     prevStylebookCustomizedOnly: null,
     prevStylebookFilter: null,
@@ -331,4 +342,12 @@ export function disposePaneSurface(paneId: string): void {
 /** Forget a pane's surface record without releasing anything. Tests, and the app reset. */
 export function unregisterCanvasSurface(paneId: string): void {
   _surfaces.delete(paneId);
+}
+
+/**
+ * The box a surface's boards are measured against: its framed viewport (Review changes' middle
+ * column) when the stage drew one that is still in the page, else the whole stage.
+ */
+export function stageViewport(surface: CanvasSurface): HTMLElement {
+  return surface.viewport?.isConnected ? surface.viewport : surface.wrap;
 }

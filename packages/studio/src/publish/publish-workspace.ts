@@ -30,6 +30,14 @@ import { projectState } from "../store";
 import { paneRegion } from "../ui/regions";
 import { getPlatform, hasPlatform } from "../platform";
 import { mountPublishWorkspaceSurface } from "../surfaces/publish-workspace";
+import { resolveI18n } from "@jxsuite/schema/locale";
+import { previewFileSrc } from "../files/media-paths";
+import { isViewableMedia } from "../media/media-open";
+import { workspace } from "../workspace/workspace";
+import { workspaceHomeTabId } from "../workspace/workspace-ids";
+import { reviewItems, selectedReviewItem } from "./review-changes";
+import type { ReviewItem } from "./review-changes";
+import { createTab, disposeTab } from "../tabs/tab";
 import {
   currentDeploy,
   deployChecklistView,
@@ -63,11 +71,10 @@ import {
   discardFile,
   fetchGitLog,
   fetchRemote,
-  groupFilesByComponent,
   includeNewChanges,
   lastUpdatedLabel,
-  openFileComparison,
   platformHostsGit,
+  readGitDiff,
   pullRemote,
   refreshGitStatus,
   relativeDate,
@@ -84,7 +91,6 @@ import type { GitFileStatus } from "../types";
 import type { PagesDeploymentInfo } from "./pages-service";
 import type { PublishCheck } from "./publish-changes";
 import type { PublishTab } from "./publish-ids";
-import type { ChangeGroup } from "./source-control";
 import type {
   BranchRow,
   CommandButtonRow,
@@ -92,8 +98,11 @@ import type {
   PublishCheckRow,
   PublishWorkspaceActions,
   PublishWorkspaceSurfaceHandle,
+  PublishLayout,
   PublishWorkspaceView,
-  ReviewGroupRow,
+  ReviewChangeView,
+  ReviewItemRow,
+  ReviewNoticeView,
 } from "../surfaces/publish-workspace";
 
 // ─── Deployments ─────────────────────────────────────────────────────────────
@@ -257,20 +266,115 @@ function headline(mood: PublishWorkspaceView["mood"]): string {
   return `${where} · ${count > 0 ? `${changes(count)} to publish` : "nothing to publish"}`;
 }
 
-/** One group, with every control named after the file it acts on. */
-function reviewGroup(group: ChangeGroup): ReviewGroupRow {
+// ─── Review changes ──────────────────────────────────────────────────────────
+
+/** The project's resolved `i18n`, which names a page in a locale folder. */
+function projectI18n() {
+  return projectState?.projectConfig ? resolveI18n(projectState.projectConfig).i18n : null;
+}
+
+/** Every change, as Review changes states it (`publish/review-changes.ts`). */
+export function currentReviewItems(): ReviewItem[] {
+  return reviewItems(changedFiles(), projectI18n());
+}
+
+/** The change Review changes shows in its centre, or null when there is none. */
+export function currentReviewItem(): ReviewItem | null {
+  return selectedReviewItem(currentReviewItems(), shell.publish.selected);
+}
+
+/** One change as the list draws it, every control named after the thing it acts on. */
+function reviewItemRow(item: ReviewItem, selected: string | null): ReviewItemRow {
+  const file = changedFiles().find((entry) => entry.path === item.path);
   return {
-    files: group.files.map((file) => ({
-      ...file,
-      compareLabel: `Before and after: ${file.label}`,
-      discardHint: file.cannotDiscard
-        ? "A new file has no saved version to go back to"
-        : "Discard changes",
-      discardLabel: `Discard changes to ${file.path}`,
-      includeLabel: `Include ${file.path}`,
-    })),
-    key: group.key,
-    name: group.name,
+    cannotDiscard: file?.status === "U",
+    discardLabel: `Discard changes to ${item.label}`,
+    includeLabel: `Include ${item.label} in this publish`,
+    included: item.included,
+    key: item.path,
+    kind: item.kind,
+    label: item.label,
+    path: item.path,
+    selected: item.path === selected ? "true" : "false",
+    tag: item.tag,
+    tagLabel: item.tagLabel,
+  };
+}
+
+/** The heading over the centre. */
+function reviewChangeView(item: ReviewItem | null): ReviewChangeView {
+  return item
+    ? {
+        label: item.label,
+        summary: item.summary,
+        tag: item.tag,
+        tagLabel: item.tagLabel,
+        url: item.url,
+      }
+    : { label: "", summary: "", tag: "edit", tagLabel: "", url: "" };
+}
+
+/**
+ * The centre when there is nothing to compare: the image itself for an image that is still on disk,
+ * and the reason a comparison cannot be drawn, or that it is being read.
+ */
+function reviewNoticeView(item: ReviewItem | null): ReviewNoticeView {
+  if (!item) {
+    return { hasImage: false, image: "", imageAlt: "", text: "" };
+  }
+  const image =
+    item.tag !== "delete" && isViewableMedia(item.path) ? previewFileSrc(item.path) : "";
+  const text = !item.refusal
+    ? "Reading this change…"
+    : image
+      ? item.tag === "new"
+        ? "A new file. It is published as it is shown here."
+        : "This file is replaced by the one shown here."
+      : item.refusal;
+  return { hasImage: image !== "", image, imageAlt: image ? item.label : "", text };
+}
+
+/** The view Review changes draws its comparison as: the compared file's, held while it is shown. */
+let _viewTab: { path: string; tab: Tab } | null = null;
+
+/**
+ * The tab Review changes' artboards are a view OF, for the file at `path`.
+ *
+ * The pane's own tab is the Publish home, which has no path, and a page is drawn from its path:
+ * which layout wraps it, where its components and its media resolve from (§21). So the comparison
+ * is drawn as a view of the file itself, through a tab made for the purpose and never opened: it
+ * routes no edits (a comparison's frames route none), and it carries the default view settings a
+ * file opened fresh would have. One is kept, for the file on screen, and a new file replaces it.
+ *
+ * @param {string} path The compared file
+ */
+export function reviewViewTab(path: string): Tab {
+  if (_viewTab?.path === path) {
+    return _viewTab.tab;
+  }
+  if (_viewTab) {
+    disposeTab(_viewTab.tab);
+  }
+  const tab = createTab({
+    canvasMode: "git-diff",
+    document: { children: [], tagName: "div" },
+    documentPath: path,
+    id: `publish-review:${path}`,
+  });
+  _viewTab = { path, tab };
+  return tab;
+}
+
+/**
+ * What the two sides of Review changes' comparison are called: what is on the site now, and what
+ * publishing puts there (studio.md §22.8). A side that has no file says so.
+ *
+ * @param fileStatus The change's git status letter.
+ */
+export function reviewSideLabels(fileStatus: string) {
+  return {
+    current: fileStatus === "D" ? "Removed by publishing" : "After publishing",
+    original: fileStatus === "A" || fileStatus === "U" ? "Not published yet" : "Last published",
   };
 }
 
@@ -538,7 +642,10 @@ function hostView(): Pick<PublishWorkspaceView, "hostSummary" | "hostTitle"> {
  *
  * @param region The pane's region (`pane.primary/publish`), which also seeds the document's ids.
  */
-export function publishWorkspaceView(region: string): PublishWorkspaceView {
+export function publishWorkspaceView(
+  region: string,
+  layout: PublishLayout = "home",
+): PublishWorkspaceView {
   const idBase = region.replaceAll(/[^\w-]/g, "-");
   const mood = moodOf();
   const { git } = shell;
@@ -562,6 +669,8 @@ export function publishWorkspaceView(region: string): PublishWorkspaceView {
   const remote = firstRemote();
   const checklist = deployChecklistView();
   const count = files.length;
+  const items = layout === "home" ? [] : currentReviewItems();
+  const review = { items, selected: selectedReviewItem(items, shell.publish.selected) };
   return {
     ...deploysState(),
     ...hostView(),
@@ -586,6 +695,7 @@ export function publishWorkspaceView(region: string): PublishWorkspaceView {
     branchesState: branches.length > 0 ? "listed" : "empty",
     busy: git.loading,
     canClone: platformSupportsClone(),
+    change: reviewChangeView(review.selected),
     checklistSteps: checklist.steps,
     checklistSummary: checklist.summary,
     checks: mood === "repo" ? publishChecks().map((check) => checkRow(check)) : [],
@@ -604,7 +714,6 @@ export function publishWorkspaceView(region: string): PublishWorkspaceView {
     domainState: address ? "set" : "none",
     error: git.error ?? "",
     filesState: count > 0 ? "listed" : "empty",
-    groups: groupFilesByComponent(files).map((group) => reviewGroup(group)),
     hasBlocker: blocker !== "",
     hasBranchNote: hosted,
     hasError: Boolean(git.error),
@@ -618,6 +727,8 @@ export function publishWorkspaceView(region: string): PublishWorkspaceView {
       deploy ? ["publish.setUp", "publish.openDashboard"] : ["publish.setUp"],
     ),
     includedLabel: count > 0 ? `${staged} of ${count} included` : "",
+    items: review.items.map((item) => reviewItemRow(item, review.selected?.path ?? null)),
+    layout,
     lastUpdated: lastUpdatedLabel(git.lastUpdated),
     liveNone: deploy
       ? "The host has not reported an address for this site yet."
@@ -625,6 +736,7 @@ export function publishWorkspaceView(region: string): PublishWorkspaceView {
     liveSummary: liveSummary(rows),
     liveUrl: address,
     mood,
+    notice: reviewNoticeView(review.selected),
     newBranchDisabled: git.loading || mood !== "repo",
     panelId: `${idBase}-body`,
     previews: previews.map((row) => deploymentRow(row, liveId)),
@@ -719,18 +831,6 @@ function actionsFor(paneId: string): PublishWorkspaceActions {
     clone: () => {
       runCloneRepository();
     },
-    compare: (path) => {
-      _lastCompared = path;
-      void openFileComparison(path);
-    },
-    compareHost: (element, path) => {
-      let buttons = _compareButtons.get(paneId);
-      if (!buttons) {
-        buttons = new Map();
-        _compareButtons.set(paneId, buttons);
-      }
-      buttons.set(path, element);
-    },
     /* The three verbs that are records run AS records, so a refusal (Create GitHub Repository on a
        project git does not track) is the record's, and no button here reaches past it
        (`studio-ui-guidelines.md` §12.5). */
@@ -762,6 +862,9 @@ function actionsFor(paneId: string): PublishWorkspaceActions {
       if (url) {
         openUrlExternally(url);
       }
+    },
+    pick: (path) => {
+      shell.publish.selected = path;
     },
     pickDestination: (value) => {
       if (isPublishDestination(value)) {
@@ -807,40 +910,19 @@ interface PaneMount {
 /** The workspace mounted in each pane, keyed by pane id. */
 const _panes = new Map<string, PaneMount>();
 
-/** Each pane's Compare buttons, by the file each compares, as the surface announced them. */
-const _compareButtons = new Map<string, Map<string, HTMLElement>>();
-
-/** The file the last comparison was opened for: where the keyboard goes back to. */
-let _lastCompared: string | null = null;
-
-/** Panes whose next mount gives the keyboard to that file's Compare button. */
-const _focusOnMount = new Set<string>();
-
-/** Put the keyboard on the Compare button of the last file compared, once the home is drawn. */
-async function focusLastCompared(paneId: string, pane: PaneMount): Promise<void> {
-  await pane.handle.ready;
-  const button =
-    _lastCompared === null ? undefined : _compareButtons.get(paneId)?.get(_lastCompared);
-  if (button?.isConnected) {
-    // The focusable node of a kit button is the control inside it, never the host (ui.md §5).
-    (button.querySelector<HTMLElement>('[part="control"]') ?? button).focus();
-  }
-}
-
 /**
- * Give the keyboard back to the Publish home in `paneId`: what leaving a comparison with Back does
- * (`workspace/workspace-back.ts`), so the author lands on the change they compared rather than on
- * the page body. Served now when the home is standing in the pane, or by its next mount there.
+ * Give the keyboard back to Publish in `paneId`: what leaving a view with Back does
+ * (`workspace/workspace-back.ts`). Review changes' list holds the change the centre shows, so the
+ * keyboard lands on it rather than on the page body. A pane with no list standing gives nothing.
  *
  * @param {string} paneId
  */
 export function focusPublishHome(paneId: string): void {
-  const pane = _panes.get(paneId);
-  if (pane?.wrap.isConnected && pane.handle.attached()) {
-    void focusLastCompared(paneId, pane);
-    return;
-  }
-  _focusOnMount.add(paneId);
+  const list = _regions.get(paneId)?.get("changes");
+  const current = list?.host.querySelector<HTMLElement>(
+    '[part="change-pick"][aria-current="true"]',
+  );
+  current?.focus();
 }
 
 /** Whether this tab's workspace is already mounted in this pane and still in the document. */
@@ -853,6 +935,7 @@ export function publishWorkspaceMounted(paneId: string, tab: Tab): boolean {
 
 /** Tear one pane's workspace down (mode change, tab switch, project close). Idempotent. */
 export function detachPublishWorkspace(paneId: string): void {
+  detachReviewRegions(paneId);
   const pane = _panes.get(paneId);
   if (!pane) {
     return;
@@ -865,7 +948,6 @@ export function detachPublishWorkspace(paneId: string): void {
   pane.handle.dispose();
   _panes.delete(paneId);
   _adapterHosts.delete(paneId);
-  _compareButtons.delete(paneId);
 }
 
 /**
@@ -910,17 +992,197 @@ export function renderPublishWorkspace(surface: CanvasSurface, tab: Tab): void {
         void loadDeployments();
       }
     });
-    /* Review changes includes what it has not shown before, so a change set opens as the board
-       draws it (every change included) and a file the author leaves out stays out. */
+  });
+  _panes.set(paneId, { handle, scope, tabId: tab.id, wrap });
+}
+
+// ─── Review changes' stage ───────────────────────────────────────────────────
+
+/**
+ * The stage hosts Review changes' comparison draws around itself, and the region of this document
+ * each one is given (`surfaces/canvas-stage.json`'s review layout, studio.md §22.8).
+ */
+const REVIEW_REGIONS: ReadonlyMap<string, PublishLayout> = new Map([
+  ["review-head", "head"],
+  ["review-changes", "changes"],
+  ["review-change", "change"],
+  ["review-notice", "notice"],
+  ["review-side", "side"],
+]);
+
+/** The stage parts `canvas/canvas-render.ts` hands to {@link attachReviewRegion}. */
+export const REVIEW_REGION_PARTS: ReadonlySet<string> = new Set(REVIEW_REGIONS.keys());
+
+interface RegionMount {
+  host: HTMLElement;
+  handle: PublishWorkspaceSurfaceHandle;
+  scope: EffectScope;
+}
+
+/** Each pane's mounted regions, by region. */
+const _regions = new Map<string, Map<PublishLayout, RegionMount>>();
+
+/** Take one region down. */
+function disposeRegion(mount: RegionMount): void {
+  mount.scope.stop();
+  mount.handle.dispose();
+}
+
+/**
+ * Mount one region of this document into a host the stage just drew.
+ *
+ * Each region is its own mount with its own effect, projecting the same view the home does through
+ * `layout`, so the list, the heading and the publish column cannot disagree with each other or with
+ * the home about what is included, what is chosen or what the button will do. A host drawn again
+ * (the stage's layout came back) replaces the mount in the one it left.
+ *
+ * @param {string} paneId
+ * @param {string} part The stage part, one of {@link REVIEW_REGION_PARTS}
+ * @param {HTMLElement} host
+ */
+export function attachReviewRegion(paneId: string, part: string, host: HTMLElement): void {
+  const layout = REVIEW_REGIONS.get(part);
+  if (!layout) {
+    return;
+  }
+  let regions = _regions.get(paneId);
+  if (!regions) {
+    regions = new Map();
+    _regions.set(paneId, regions);
+  }
+  const previous = regions.get(layout);
+  if (previous?.host === host) {
+    return;
+  }
+  if (previous) {
+    disposeRegion(previous);
+  }
+  const region = paneRegion(paneId, "publish");
+  const handle = mountPublishWorkspaceSurface(
+    host,
+    publishWorkspaceView(region, layout),
+    actionsFor(paneId),
+  );
+  const scope = effectScope();
+  scope.run(() => {
     effect(() => {
-      if (shell.publish.tab === "review" && moodOf() === "repo") {
-        void includeNewChanges();
+      handle.update(publishWorkspaceView(region, layout));
+    });
+    /* The list is Review changes showing its changes, so it is what the home's own mount does
+       while it stands: keep the status current while Publish is showing, and include what it has
+       not shown before, so a change set opens with every change included. */
+    if (layout === "changes") {
+      effect(() => {
+        if (moodOf() === "repo") {
+          armGitPoll();
+          void includeNewChanges();
+        }
+      });
+    }
+  });
+  regions.set(layout, { handle, host, scope });
+}
+
+/** Take every region of a pane's Review changes stage down. Idempotent. */
+export function detachReviewRegions(paneId: string): void {
+  const regions = _regions.get(paneId);
+  if (!regions) {
+    return;
+  }
+  for (const mount of regions.values()) {
+    disposeRegion(mount);
+  }
+  _regions.delete(paneId);
+}
+
+// ─── Review changes' selection ───────────────────────────────────────────────
+
+/** What the review controller needs from the bootstrap. */
+export interface PublishReviewDeps {
+  /** Switch a tab's editor (`studio.ts` `setCanvasMode`). */
+  setCanvasMode: (tab: Tab, mode: string) => void;
+}
+
+/** The Publish home's own mode, and the one it is put in while Review changes compares. */
+const HOME_MODE = "publish-home";
+const REVIEW_MODE = "git-diff";
+
+/**
+ * Whether Review changes draws its comparison stage: it is the sub-tab showing, the project is a
+ * repository, and something has changed. Otherwise the home draws itself (loading, no repository,
+ * nothing to publish, and the other three sub-tabs).
+ */
+export function reviewDrawsStage(): boolean {
+  const { status } = shell.git;
+  return shell.publish.tab === "review" && Boolean(status?.isRepo) && changedFiles().length > 0;
+}
+
+/** Read the comparison of the change the centre shows, unless it is already in hand. */
+async function loadReviewComparison(item: ReviewItem): Promise<void> {
+  try {
+    const state = await readGitDiff(item.path, item.status);
+    // Only while it is still the change the centre shows: a second pick may have overtaken it.
+    if (reviewDrawsStage() && currentReviewItem()?.path === item.path) {
+      shell.git.diffState = state;
+    }
+  } catch (error) {
+    shell.git.error = `Failed to load the comparison: ${errorMessage(error)}`;
+  }
+}
+
+let _reviewScope: EffectScope | null = null;
+
+/**
+ * Keep Review changes' centre on a change, and the Publish home in the mode that draws it.
+ *
+ * Three facts, one effect each, the last only while Publish is showing. While the stage is wanted
+ * the home tab is in `git-diff` (studio.md §22.8), and out of it otherwise, so the other sub-tabs
+ * and the empty states are the home's own surface. The centre always shows a change: the one
+ * picked, or the first when the pick has published, been discarded or never happened. And the
+ * comparison of that change is read when it is not the one in hand; a file that changed again is
+ * re-read by source control's own revalidation (§21.5), not here.
+ *
+ * Started once by the bootstrap; calling it again replaces the previous run.
+ */
+export function startPublishReview(deps: PublishReviewDeps): void {
+  _reviewScope?.stop();
+  const scope = effectScope();
+  _reviewScope = scope;
+  scope.run(() => {
+    effect(() => {
+      const tab = workspace.tabs.get(workspaceHomeTabId("publish"));
+      if (!tab) {
+        return;
+      }
+      const wanted = reviewDrawsStage() ? REVIEW_MODE : HOME_MODE;
+      if (tab.session.ui.canvasMode !== wanted) {
+        deps.setCanvasMode(tab, wanted);
+      }
+    });
+    effect(() => {
+      if (!reviewDrawsStage()) {
+        return;
+      }
+      const item = currentReviewItem();
+      if (item && shell.publish.selected !== item.path) {
+        shell.publish.selected = item.path;
+      }
+    });
+    effect(() => {
+      // Read only while Publish is showing: elsewhere nobody is looking at the comparison.
+      if (shell.workspace !== "publish" || !reviewDrawsStage()) {
+        return;
+      }
+      const item = currentReviewItem();
+      if (item?.refusal) {
+        if (shell.git.diffState) {
+          shell.git.diffState = null;
+        }
+        return;
+      }
+      if (item && shell.git.diffState?.filePath !== item.path) {
+        void loadReviewComparison(item);
       }
     });
   });
-  const pane: PaneMount = { handle, scope, tabId: tab.id, wrap };
-  _panes.set(paneId, pane);
-  if (_focusOnMount.delete(paneId)) {
-    void focusLastCompared(paneId, pane);
-  }
 }

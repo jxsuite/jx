@@ -167,6 +167,8 @@ const createdDiffEditors: FakeDiffEditor[] = [];
 const mountCalls: {
   diffMarks: WireDiffMarks | null;
   modeOverride: string | null;
+  /** The document path of the tab the artboard is a VIEW of. */
+  viewPath?: string | null;
 }[] = [];
 
 /**
@@ -335,13 +337,17 @@ void mock.module("../src/canvas/iframe-host.js", () => ({
     canvas: HTMLElement,
     widthPx?: number | null,
     _tabId?: string | null,
-    _viewTab?: Tab | null,
+    viewTab?: Tab | null,
     modeOverride?: string | null,
     diffMarks?: WireDiffMarks | null,
   ) => {
     // The later arguments are recorded rather than forwarded: `iframeImpl` is the DOM double and
     // Takes four, but the per-artboard facts a git-diff render carries are only observable here.
-    mountCalls.push({ diffMarks: diffMarks ?? null, modeOverride: modeOverride ?? null });
+    mountCalls.push({
+      diffMarks: diffMarks ?? null,
+      modeOverride: modeOverride ?? null,
+      viewPath: viewTab?.documentPath ?? null,
+    });
     return iframeImpl(gen, doc, canvas, widthPx);
   },
   // `insert.openSlashMenu`'s poster; a PARTIAL mock of a module the graph reaches is a load
@@ -3294,5 +3300,110 @@ describe("git-diff · a comparison with no visual half", () => {
       .map((c) => (c.diffMarks ?? []).map((m: { kind: string }) => m.kind));
     expect(kinds[0]).toEqual(["modified-before"]);
     expect(kinds[1]).toEqual(["modified-after"]);
+  });
+});
+
+const { openWorkspaceHome } = await import("../src/workspace/workspace-home");
+
+describe("git-diff · Publish › Review changes", () => {
+  /** The Publish home, showing a comparison, as the review controller leaves it. */
+  function reviewHome(path: string) {
+    resetWorkspaceWithTab();
+    const home = openWorkspaceHome("publish");
+    setMode("git-diff");
+    shell.publish.selected = path;
+    return home;
+  }
+
+  afterEach(() => {
+    shell.publish.selected = null;
+  });
+
+  test("frames the comparison between the list and the publish column, as a view of the file", async () => {
+    reviewHome("pages/about.json");
+    ctx.gitDiffState = {
+      currentContent: JSON.stringify({
+        children: [{ tagName: "p", textContent: "new" }],
+        tagName: "div",
+      }),
+      filePath: "pages/about.json",
+      fileStatus: "M",
+      originalContent: JSON.stringify({
+        children: [{ tagName: "p", textContent: "old" }],
+        tagName: "div",
+      }),
+    };
+    mountCalls.length = 0;
+    renderCanvas();
+    await flush(6);
+    expect(stageEl().querySelector('[part="review-layout"]')).not.toBeNull();
+    const headers = [...stageEl().querySelectorAll('[part="panel-header"]')].map((h) =>
+      h.textContent.trim(),
+    );
+    expect(headers).toEqual(["Last published", "After publishing"]);
+    // The pane's own tab is the Publish home, which has no path; the boards are views of the file.
+    expect(mountCalls.map((call) => call.viewPath)).toEqual([
+      "pages/about.json",
+      "pages/about.json",
+    ]);
+    // The boards are measured against the middle column, not the pane.
+    expect(surfaceForPane("primary").viewport?.getAttribute("part")).toBe("review-frame");
+    // The regions are filled by the Publish workspace.
+    expect(stageEl().querySelector('[part="review-changes"] [part="review-list"]')).not.toBeNull();
+    // The home never falls back to Design for want of a comparison.
+    expect(ctx.setCanvasMode).not.toHaveBeenCalled();
+  });
+
+  test("a change still being read, or with no comparison, draws the notice instead", async () => {
+    reviewHome("public/hero.jpg");
+    ctx.gitDiffState = null;
+    renderCanvas();
+    await flush(6);
+    expect(stageEl().querySelector('[part="review-notice"]')).not.toBeNull();
+    expect(canvasPanels.length).toBe(0);
+    expect(ctx.setCanvasMode).not.toHaveBeenCalled();
+
+    // A comparison of ANOTHER file in hand is not this change's: still the notice.
+    ctx.gitDiffState = {
+      currentContent: "{}",
+      filePath: "pages/index.json",
+      fileStatus: "M",
+      originalContent: "{}",
+    };
+    renderCanvas();
+    await flush(6);
+    expect(stageEl().querySelector('[part="review-notice"]')).not.toBeNull();
+  });
+
+  test("the Code half stands in the same frame", async () => {
+    reviewHome("styles/site.css");
+    ctx.gitDiffState = {
+      currentContent: "a{}",
+      filePath: "styles/site.css",
+      fileStatus: "M",
+      originalContent: "b{}",
+    };
+    renderCanvas();
+    await flush(6);
+    expect(
+      stageEl().querySelector('[part="review-frame"] [part="diff-code-editor"]'),
+    ).not.toBeNull();
+  });
+
+  test("a plain comparison in the same pane lets the review regions go", async () => {
+    reviewHome("pages/about.json");
+    ctx.gitDiffState = {
+      currentContent: "{}",
+      filePath: "pages/about.json",
+      fileStatus: "M",
+      originalContent: "{}",
+    };
+    renderCanvas();
+    await flush(6);
+    openSyncedTab();
+    setMode("git-diff");
+    renderCanvas();
+    await flush(6);
+    expect(stageEl().querySelector('[part="review-layout"]')).toBeNull();
   });
 });

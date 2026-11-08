@@ -7,6 +7,7 @@ spec:
 code:
   - packages/studio/src/publish/source-control.ts
   - packages/studio/src/publish/publish-workspace.ts
+  - packages/studio/src/publish/review-changes.ts
   - packages/studio/src/surfaces/publish-workspace.ts
   - packages/studio/src/surfaces/publish-workspace.json
   - packages/studio/src/packages/pull-package-sync.ts
@@ -20,7 +21,7 @@ code:
 
 # Source control
 
-Source control is Studio's built-in git client: it records your work as commits and keeps your copy of the project in sync with its repository. It lives in the **Publish** workspace (:kbd[⌘5]), whose tab in the Command Bar counts the files that have changed: **Review changes** is the change list and the publish card, and **Branches** is the branch list. The count and the change list are about the project, so they stand whether or not a document is open.
+Source control is Studio's built-in git client: it records your work as commits and keeps your copy of the project in sync with its repository. It lives in the **Publish** workspace (:kbd[⌘5]), whose tab in the Command Bar counts the files that have changed: **Review changes** is the change list, the comparison of the change you pick, and the publish card, and **Branches** is the branch list. The count and the change list are about the project, so they stand whether or not a document is open.
 
 ![The Publish workspace's Review changes: sync status, the changed files with their checkboxes, and the publish card](../../images/git-panel.png)
 
@@ -34,12 +35,13 @@ With no project open at all, it says what publishing is for and offers **Clone G
 
 ## Review your changes
 
-**Changes** lists every changed file, grouped the way the site is organized: **Pages**, then each content collection by name, then **Components**, **Layouts**, **Styles**, **Media** and **Other**. A new folder is listed file by file, so the count is the number of files from the start. Each row shows a checkbox, the file's name and folder, and a status badge: **M** for modified, **A** for added, **D** for deleted, **U** for a brand-new untracked file.
+Review changes is three columns. **Changes** on the left lists everything that changed, named the way your site names it rather than by file: a page by its name and address (**Pricing**, **Page · /pricing**), a post by its title, a component or a template by its name, and an image or any other file by its file name. Pages come first, then entries, components, templates, styles, media and the rest. A tag on each row says what happened: **NEW**, **EDIT**, **DELETE** or **RENAME**. A new folder is listed file by file, so the count is the number of files from the start. Hover a row to see the file it stands for.
 
-- The checkbox **includes** the file in your next publish, and clearing it leaves the file out. A change is included the first time Review changes shows it, so an untouched change set reads "5 of 5 included"; a file you clear stays out until you check it again, and a file that changes for the first time after that comes in checked. **Include all** at the top checks or clears every row, and "4 of 5 included" says where you stand. Including a file is staging it, so what you see is what git will commit.
-- **Before and after** on a row shows what changed since your last commit: it opens the file's **Diff** editor at full pane size, in the Publish workspace. Put it in a [second pane](/docs/studio/interface/tabs#two-panes) with :kbd[⌘\] and the review sits beside the page it is about, both live.
-- Every row opens, whatever kind of file it is. A page or a component opens as a picture of the change; a stylesheet, a script or a config file opens as text. Deleted and brand-new files open too, with one side empty.
-- **Discard** on a row throws its changes away. Studio asks for confirmation first. An untracked file has nothing to go back to, so its Discard is disabled rather than offering to throw the file away.
+- **Pick a row** to see its change in the middle column. The change you are looking at stays picked while you work; once it is published or discarded, the first change in the list takes its place.
+- The checkbox **includes** the change in your next publish, and clearing it leaves it out. A change is included the first time Review changes shows it, so an untouched change set reads "5 of 5 included"; one you clear stays out until you check it again, and a file that changes for the first time after that comes in checked. **Include all** at the top checks or clears every row. Including a change is staging its file, so what you see is what git will commit.
+- **Discard** (the arrow that appears on a row as you point at it) throws its changes away. Studio asks for confirmation first. An untracked file has nothing to go back to, so its Discard is disabled rather than offering to throw the file away.
+
+The foot of the column holds the checks and the sync controls.
 
 :::doc-warning
 **Discard** permanently throws away a file's changes since the last commit. There is no undo beyond the confirmation dialog.
@@ -47,9 +49,9 @@ With no project open at all, it says what publishing is for and offers **Clone G
 
 ## Read a change
 
-The Diff editor compares your working copy against your last commit. It shows the change two ways, and the switch above the comparison chooses between them.
+The middle column heads the change with its name, its address and one sentence saying what publishing it does, such as "A new page. It goes live at /pricing." A component or a template says that every page using it changes too. Below the heading is the comparison of your working copy against your last commit. It shows the change two ways, and the switch beside the heading chooses between them.
 
-**Visual** draws the page twice, side by side: the committed version on the left and your version on the right. Added blocks are marked in green, removed blocks in red, and edited ones are marked on both sides so you can read the before and the after together. Each mark also carries a symbol and its own edge style, so the change is legible without relying on color.
+**Visual** draws the page twice, side by side, inside its layout: **Last published** on the left and **After publishing** on the right, fitted to the column's width. A new page reads **Not published yet** on the left, and a deleted one **Removed by publishing** on the right. Added blocks are marked in green, removed blocks in red, and edited ones are marked on both sides so you can read the before and the after together. Each mark also carries a symbol and its own edge style, so the change is legible without relying on color.
 
 **Code** shows the file's text instead, with changed lines highlighted the way any code editor shows them. A page can be read either way. A file with no visual form, such as a stylesheet or a script, opens straight into Code and the switch reads as a label. Code scrolls like any code editor and has no zoom pod, because there is nothing on it to zoom.
 
@@ -59,9 +61,9 @@ The two views answer different questions and neither replaces the other. Visual 
 
 Use **Next change** and **Previous change**, or :kbd[F7] and :kbd[⇧F7], to walk the changes in order. The counter beside them says where you are. Both sides of the comparison move together, so the block you are reading stays lined up. The stepper stops at the last change rather than looping back to the first.
 
-The comparison keeps up with your work. Saving the file you are reviewing, publishing, discarding, pulling or switching branches all refresh it, and your place in the change list is kept rather than reset. A file you have just committed has nothing left to compare, and the pane says so.
+The comparison keeps up with your work. Saving the file you are reviewing, publishing, discarding, pulling or switching branches all refresh it, and your place in the change list is kept rather than reset. A change you have just published leaves the list, and the next one takes the middle column.
 
-Two kinds of change cannot be opened, and Review changes says which. A **renamed** file needs both of its names to be compared and only the new one is recorded. An **image** or other binary file has no text on either side.
+Two kinds of change have no comparison, and the middle column says so. An **image** is shown as the image itself, because a picture is easier to check than a description of one. A **renamed** file needs both of its names to be compared and only the new one is recorded.
 
 ## Commit and publish
 
@@ -77,7 +79,7 @@ If the commit fails, the summary goes back into the box, so you can fix the prob
 
 ## Stay in sync
 
-The bar at the top of Review changes shows where you stand against the repository, with a last-updated time: **Up to date**, or how many commits you are ahead or behind. Studio refreshes this automatically while the Publish workspace is showing, and after every save; the circular arrow at the left of the bar re-checks on demand. Three buttons act on it:
+The bar at the foot of the change list shows where you stand against the repository, with a last-updated time: **Up to date**, or how many commits you are ahead or behind. Studio refreshes this automatically while the Publish workspace is showing, and after every save; the circular arrow at the left of the bar re-checks on demand. Three buttons act on it:
 
 - **Fetch**: check the repository for news without changing your files.
 - **Pull**: bring teammates' commits into your copy.

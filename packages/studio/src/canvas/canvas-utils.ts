@@ -16,6 +16,7 @@ import {
   tabOfPane,
 } from "./canvas-surface";
 import type { CanvasSurface } from "./canvas-surface";
+import { stageViewport } from "./surface-registry";
 import { activeTab, workspace } from "../workspace/workspace";
 import { panelMediaToActiveMedia, panelOfSurface } from "./canvas-helpers";
 import { rectOf } from "../utils/geometry";
@@ -254,7 +255,7 @@ export function centerCanvas(surface: CanvasSurface) {
   if (!surface.panzoomWrap) {
     return;
   }
-  const wrapWidth = surface.wrap.clientWidth;
+  const wrapWidth = stageViewport(surface).clientWidth;
   const contentWidth = surface.panzoomWrap.scrollWidth;
   const zoom = zoomOf(surface);
   const free = wrapWidth - contentWidth * zoom;
@@ -504,10 +505,11 @@ function applyGeometricFit(surface: CanvasSurface, axis: "width" | "page", maxZo
   if (!surface.panzoomWrap) {
     return;
   }
-  const wrapWidth = surface.wrap.clientWidth;
+  const viewport = stageViewport(surface);
+  const wrapWidth = viewport.clientWidth;
   // The boards' own top clearance (`--boards-inset`, the Project Styles bar) is screen space the
   // Artboards cannot use, so the page is fitted into what is left below it.
-  const wrapHeight = surface.wrap.clientHeight - boardsInset(surface.panzoomWrap);
+  const wrapHeight = viewport.clientHeight - boardsInset(surface.panzoomWrap);
   const gap = 24;
   const padding = 32;
   let totalPanelWidth = 0;
@@ -725,7 +727,7 @@ export function setUserZoom(
        content point `d` px into the drawn box is `d * ratio` px in after the zoom, so the pan
        moves by the difference. */
     const box = rectOf(surface.panzoomWrap);
-    const stage = rectOf(surface.wrap);
+    const stage = rectOf(stageViewport(surface));
     const x = at?.clientX ?? stage.left + stage.width / 2;
     const y = at?.clientY ?? stage.top + stage.height / 2;
     surface.panX += (x - box.left) * (1 - ratio);
@@ -749,7 +751,7 @@ export function fitOnCanvasEntry(surface: CanvasSurface): void {
      This guard is load-bearing rather than defensive now: a zoomed pane grid hides the other cell
      with `display:none`, so its stage really does measure zero — and unzooming re-fits for free
      through {@link observeCenterUntilStable}'s observer, which fires on the restored layout. */
-  if (surface.wrap.clientWidth <= 0) {
+  if (stageViewport(surface).clientWidth <= 0) {
     applyTransform(surface);
     return;
   }
@@ -783,7 +785,7 @@ export function resetZoom(surface: CanvasSurface = activeCanvasSurface()) {
  * viewport.
  */
 function centeringOffset(surface: CanvasSurface, rect: { top: number; height: number }): number {
-  const viewport = rectOf(revealScroller(surface) ?? surface.wrap);
+  const viewport = rectOf(revealScroller(surface) ?? stageViewport(surface));
   const elCenterY = rect.top + rect.height / 2 - viewport.top;
   return viewport.height / 2 - elCenterY;
 }
@@ -867,7 +869,7 @@ export function revealParentRect(
   rect: { top: number; height: number },
   surface: CanvasSurface = activeCanvasSurface(),
 ) {
-  const viewport = rectOf(surface.wrap);
+  const viewport = rectOf(stageViewport(surface));
   if (rect.top >= viewport.top && rect.top + rect.height <= viewport.top + viewport.height) {
     return;
   }

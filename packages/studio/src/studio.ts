@@ -292,7 +292,7 @@ import { registerContentCommands } from "./content/entry-commands";
 import { registerAddNewCommands } from "./create/add-new-commands";
 import { registerMediaCommands } from "./media/media-commands";
 import { focusMediaHome, resetMediaLibrary } from "./media/media-library";
-import { focusPublishHome } from "./publish/publish-workspace";
+import { focusPublishHome, startPublishReview } from "./publish/publish-workspace";
 import { registerI18nCommands } from "./i18n/i18n-commands";
 import { convertToComponent } from "./editor/convert-to-component";
 import type { GitDiffState } from "./types";
@@ -832,6 +832,13 @@ function installPaneRenderEffects(paneId: string): void {
     if (tab) {
       void tab.doc.mode;
       void tab.session.ui.canvasMode;
+      /* A comparison is drawn from the two texts in `shell.git.diffState`, and Review changes'
+         from the change it has picked, so a pane comparing redraws when either moves: a re-read
+         after a save, or another change picked in the list (§21.5, §22.8). */
+      if (tab.session.ui.canvasMode === "git-diff") {
+        void shell.git.diffState;
+        void shell.publish.selected;
+      }
       void tab.session.ui.editingFormula;
       void tab.session.ui.editingFunction;
       void tab.session.ui.featureToggles;
@@ -918,18 +925,17 @@ setImportHandoff(revealImportHandoff);
    one — see services/connection.ts for why only the chromium shell can. */
 watchConnection();
 
-/* What source control needs from the bootstrap: the two writes a comparison makes outside
-   `shell.git` (the Publish workspace's Before and after puts the file's own tab into git-diff), and
-   the clone flow, which ends by opening the project it cloned. */
+/* What source control needs from the bootstrap: the clone flow, which ends by opening the project
+   it cloned. */
 setSourceControlDeps({
   cloneRepository: () => {
     void cloneRepository({ openRecentProject });
   },
-  setCanvasMode,
-  setGitDiffState: (state: GitDiffState | null) => {
-    shell.git.diffState = state;
-  },
 });
+
+/* Review changes keeps a change in its centre and the Publish home in the mode that draws it
+   (studio.md §22.8). */
+startPublishReview({ setCanvasMode });
 
 leftPanelMod.mount({
   defBadgeLabel,

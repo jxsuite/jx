@@ -32,15 +32,9 @@ import { isFunction } from "@jxsuite/schema/guards";
 import type { GitDiffState, GitFileStatus, StudioPlatform } from "../types";
 import { getPlatform, hasPlatform } from "../platform";
 import { now } from "../services/clock";
-import {
-  PAGES_COLLECTION,
-  collectionKeyOfPath,
-  contentCollections,
-} from "../content/content-collections";
+import { PAGES_COLLECTION, collectionKeyOfPath } from "../content/content-collections";
 import { MEDIA_EXTENSIONS, extensionOf } from "../files/media-types";
 import { projectState } from "../store";
-import { comparisonRefusal, openComparisonTab } from "../panels/git-diff-open";
-import type { Tab } from "../tabs/tab";
 import { shell } from "../shell";
 import type { GitLogEntry } from "../shell";
 import { showConfirmDialog, showPromptDialog } from "../ui/layers";
@@ -328,13 +322,8 @@ export async function loadDiffForLens(
   }
 }
 
-/**
- * What the bootstrap injects: the two writes a comparison makes outside `shell.git`, and the clone
- * flow that needs `openRecentProject`.
- */
+/** What the bootstrap injects: the clone flow, which needs `openRecentProject`. */
 export interface SourceControlDeps {
-  setCanvasMode?: (tab: Tab | null, mode: string) => void;
-  setGitDiffState?: (state: GitDiffState | null) => void;
   cloneRepository?: () => void;
 }
 
@@ -353,45 +342,6 @@ export function runCloneRepository(): void {
 /** The changed file at this path, as the last status read saw it. */
 export function changedFileAt(path: string): GitFileStatus | undefined {
   return shell.git.status?.files.find((file: GitFileStatus) => file.path === path);
-}
-
-/**
- * Open one changed file's comparison, on that file's OWN tab.
- *
- * Every changed row opens something, and it opens the file it names: renderability decides which
- * VIEW opens (§21.3), never whether the row responds. Only `R` is refused, and out loud. The tab is
- * keyed by the clicked path, so the strip and the stage agree (§14.1); a comparison tab belongs to
- * Publish (§22.1), and it is active only once it is in `git-diff` (`openComparisonTab`), so opening
- * one never leaves the workspace. The one tab per path also means a document already open in Design
- * moves to Publish while it shows its comparison, and back when its editor is chosen again.
- */
-export async function openFileComparison(path: string): Promise<void> {
-  const file = changedFileAt(path);
-  if (!file) {
-    return;
-  }
-  const refusal = isDiffableStatus(file.status)
-    ? comparisonRefusal(file.path, file.status)
-    : `"${file.path}" has no change this view can open.`;
-  if (refusal) {
-    shell.git.error = refusal;
-    return;
-  }
-  try {
-    shell.git.loading = true;
-    const diffState = await readGitDiff(file.path, file.status);
-    shell.git.diffState = diffState;
-    // Handed to the canvas before the tab opens, because it opens already in `git-diff`.
-    _deps.setGitDiffState?.(diffState);
-    const tab = await openComparisonTab(file.path);
-    if (tab) {
-      _deps.setCanvasMode?.(tab, "git-diff");
-    }
-  } catch (error) {
-    shell.git.error = `Failed to load diff: ${errorMessage(error)}`;
-  } finally {
-    shell.git.loading = false;
-  }
 }
 
 // ─── Verbs ───────────────────────────────────────────────────────────────────
@@ -640,13 +590,6 @@ export interface ChangeRow {
   cannotDiscard: boolean;
 }
 
-/** One component's changed files, under the heading {@link groupFilesByComponent} spelled. */
-export interface ChangeGroup {
-  key: string;
-  name: string;
-  files: ChangeRow[];
-}
-
 /** One changed file as a row. The path is split here: "the name and its folder" is a path rule. */
 export function changeRow(file: GitFileStatus): ChangeRow {
   const parts = file.path.split("/");
@@ -675,7 +618,7 @@ const FOLDER_GROUPS: readonly (readonly [folder: string, name: string])[] = [
 ];
 
 /** The group key of a change: a collection's key, `folder:<name>`, `media` or `other`. */
-function changeGroupKey(path: string): string {
+export function changeGroupKey(path: string): string {
   const collection = collectionKeyOfPath(path);
   if (collection !== null) {
     return collection;
@@ -689,36 +632,6 @@ function changeGroupKey(path: string): string {
     return `folder:${top}`;
   }
   return MEDIA_EXTENSIONS.has(extensionOf(path)) ? "media" : "other";
-}
-
-/**
- * Group the changed files the way the site is organised: Pages, then each content collection the
- * project declares (by its title), then Components, Layouts, Styles, Media and Other, in that order
- * and only when non-empty. Within a group the files keep the order git listed them.
- *
- * Not by folder name. The last folder of a path is no unit of a site: `content/events/en` and
- * `content/exhibitions/en` both ended in `/en` and were filed together, and every file at the root
- * got a heading of its own (studio.md §22.8).
- */
-export function groupFilesByComponent(files: readonly GitFileStatus[]): ChangeGroup[] {
-  const order: [key: string, name: string][] = [
-    ...contentCollections().map((collection): [string, string] => [
-      collection.key,
-      collection.title,
-    ]),
-    ...FOLDER_GROUPS.map(([folder, name]): [string, string] => [`folder:${folder}`, name]),
-    ["media", "Media"],
-    ["other", "Other"],
-  ];
-  const grouped = new Map<string, GitFileStatus[]>();
-  for (const file of files) {
-    const key = changeGroupKey(file.path);
-    grouped.set(key, [...(grouped.get(key) ?? []), file]);
-  }
-  return order.flatMap(([key, name]) => {
-    const entries = grouped.get(key);
-    return entries ? [{ files: entries.map((entry) => changeRow(entry)), key, name }] : [];
-  });
 }
 
 /** One commit, as the log draws it. */
