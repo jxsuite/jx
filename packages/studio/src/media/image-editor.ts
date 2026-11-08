@@ -34,6 +34,7 @@ import { setHistoryDelegate } from "../tabs/transact";
 import { setEditBesideDocument, tabIsLive, workspace } from "../workspace/workspace";
 import { formatBytes, recordImageSize } from "../files/media-meta";
 import { replaceAsset } from "../files/media-upload";
+import { carryRecordBetween } from "../files/media-record";
 import { editRefusal, mimeForPath, sniffImage, takesQuality } from "./image-format";
 import {
   ASPECTS,
@@ -763,6 +764,14 @@ export async function saveImage(tab: Tab): Promise<boolean> {
     if (!result.ok) {
       return failed(result.reason);
     }
+    /* The canvas re-encode carries no metadata, so the file's alt text and tags are carried from the
+       bytes it was edited from (§22.6), and what is written is also the next save's source. Done
+       here, before the liveness check, which must share one synchronous stretch with the upload. */
+    const written = carryRecordBetween(
+      path,
+      source.bytes,
+      new Uint8Array(await result.blob.arrayBuffer()),
+    );
     /* Checked in the same synchronous stretch as the upload call below, so neither the tab nor the
        project root can move between the two. After a project switch a project-relative path names
        a file in the OTHER project. */
@@ -772,11 +781,11 @@ export async function saveImage(tab: Tab): Promise<boolean> {
     if (tab.documentPath !== path) {
       return failed(`It was renamed while saving, so the edit was not written to its old name.`);
     }
-    const { blob } = result;
     const was = formatBytes(source.bytes.byteLength);
-    const grew = blob.size > source.bytes.byteLength ? ", so the file grew" : "";
-    const replaced = await replaceAsset(path, new File([blob], name, { type: mime }), {
-      note: `${result.size.width} × ${result.size.height}, ${formatBytes(blob.size)} (was ${was}${grew})`,
+    const grew = written.byteLength > source.bytes.byteLength ? ", so the file grew" : "";
+    const replaced = await replaceAsset(path, new File([written], name, { type: mime }), {
+      carry: false,
+      note: `${result.size.width} × ${result.size.height}, ${formatBytes(written.byteLength)} (was ${was}${grew})`,
     });
     if (!replaced) {
       // Two files exist now, or none was written: the edit is still the author's to decide about.
@@ -784,7 +793,7 @@ export async function saveImage(tab: Tab): Promise<boolean> {
     }
     /* Re-read from the bytes just written BEFORE the recipe resets: the source and the recipe are
        always of one generation, so the next save starts from what is on disk. */
-    setSource(session, new Uint8Array(await blob.arrayBuffer()), mime);
+    setSource(session, written, mime);
     session.size = result.size;
     session.decoded = true;
     recordImageSize(path, result.size.width, result.size.height);

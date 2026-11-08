@@ -15,6 +15,12 @@
  * (`files/media-usage.ts`), asked about the selected file when it is selected and about every file
  * only when the reader asks for **Unused**.
  *
+ * **A file's alt text and tags are the file's own** (`files/media-record.ts`): read out of its
+ * bytes, and written back into them when the detail pane's fields commit. Missing alt text, the
+ * Tags section and a search's alt-text and tag matches are answered from those records, read in the
+ * background once while a library is mounted (two files at a time) and kept until a file's bytes
+ * change; their counts stay blank until every file that can hold a record has been read.
+ *
  * **Unused is asked for, never assumed.** The sweep starts the first time the filter is chosen,
  * runs one query at a time, stops when no library shows the filter any more, and the count stays
  * blank until the last answer is in. A file whose query failed is never counted as unused, and a
@@ -72,6 +78,17 @@ import {
 import { baseName, dirName, previewFileSrc } from "../files/media-paths";
 import { forgetVersions } from "../files/asset-versions";
 import { loadMediaUsages, peekMediaUsages } from "../files/media-usage";
+import {
+  canHoldMediaRecord,
+  forgetMediaRecord,
+  loadMediaRecord,
+  mediaRecordsSupported,
+  onMediaRecordsChanged,
+  peekMediaRecord,
+  resetMediaRecords,
+  saveMediaRecord,
+} from "../files/media-record";
+import { xmpFormatOf } from "../files/xmp-containers";
 import { onProjectMediaChange, projectMediaFiles } from "../ui/media-picker";
 import { openMenu } from "../surfaces/menu";
 import {
@@ -91,17 +108,28 @@ import {
   gridStep,
   isMediaFilterKey,
   isMediaSortKey,
+  isRecordFilter,
   matchesQuery,
   mediaFilterLabel,
   passesFilter,
+  tagCounts,
+  tagFilterKey,
+  tagOfFilter,
   visibleMedia,
 } from "./media-library-model";
 import { mountMediaLibrarySurface } from "../surfaces/media-library";
 import { MEDIA_PICK_SLOT, openMediaPickDialogSurface } from "../surfaces/media-pick-dialog";
-import type { LibraryMediaFile, MediaFilterKey, MediaSortKey } from "./media-library-model";
+import type {
+  FilterAnswers,
+  LibraryMediaFile,
+  MediaFilterKey,
+  MediaSortKey,
+} from "./media-library-model";
+import type { MediaRecord } from "../files/media-record";
 import type { MediaFileKind } from "../files/media-upload";
 import type { ProjectMediaFile } from "../ui/media-picker";
 import type {
+  MediaFilterRow,
   MediaLibrarySurfaceHandle,
   MediaLibraryView,
   MediaTileRow,
@@ -224,6 +252,82 @@ async function sweepUnused(files: readonly ProjectMediaFile[]): Promise<void> {
   redrawAll();
 }
 
+// ─── Records ─────────────────────────────────────────────────────────────────
+
+/** Whether every file that can hold a record has been read since the listing last moved. */
+let _recordsSettled = false;
+let _recordSweepRunning = false;
+let _recordsDone = 0;
+let _recordsTotal = 0;
+/** Bumped when the listing moves, so a sweep over the old listing cannot settle the new one. */
+let _recordEpoch = 0;
+/** Files whose record is being written: their fields wait for the write. */
+const _saving = new Set<string>();
+
+/** How many files the record sweep reads at once: enough to overlap the round trips, no more. */
+const RECORD_READS = 2;
+
+function resetRecordSweep(): void {
+  _recordsSettled = false;
+  _recordSweepRunning = false;
+  _recordsDone = 0;
+  _recordsTotal = 0;
+  _recordEpoch += 1;
+}
+
+/** Whether any library is still mounted: the only reader the record sweep runs for. */
+function recordsWanted(): boolean {
+  return [..._mounts].some((mount) => !mount.disposed);
+}
+
+/**
+ * Read every listed file's record, {@link RECORD_READS} at a time, and settle the record filters.
+ *
+ * Each read is cached by `files/media-record.ts` against the file's stamp, so a sweep after the
+ * listing moves re-reads only the files that changed. It stops when the last library goes, keeping
+ * what it read.
+ */
+async function sweepRecords(files: readonly ProjectMediaFile[]): Promise<void> {
+  if (_recordSweepRunning || _recordsSettled || !mediaRecordsSupported()) {
+    return;
+  }
+  const epoch = _recordEpoch;
+  _recordSweepRunning = true;
+  const queue = files.filter((file) => canHoldMediaRecord(file.file));
+  _recordsDone = 0;
+  _recordsTotal = queue.length;
+  const reader = async (): Promise<void> => {
+    for (let file = queue.shift(); file !== undefined; file = queue.shift()) {
+      await loadMediaRecord(file.file);
+      if (epoch !== _recordEpoch || !recordsWanted()) {
+        return;
+      }
+      _recordsDone += 1;
+    }
+  };
+  await Promise.all(Array.from({ length: RECORD_READS }, reader));
+  if (epoch !== _recordEpoch) {
+    return;
+  }
+  _recordSweepRunning = false;
+  if (recordsWanted()) {
+    _recordsSettled = true;
+    redrawAll();
+  }
+}
+
+/** What the filters can answer right now: the usage sweep's set and every record read so far. */
+function filterAnswers(): FilterAnswers {
+  const records = new Map<string, MediaRecord>();
+  for (const file of projectMediaFiles() ?? []) {
+    const state = peekMediaRecord(file.file);
+    if (state.status === "ready") {
+      records.set(file.file, state.record);
+    }
+  }
+  return { records, recordsSettled: _recordsSettled, unused: _unused };
+}
+
 // ─── Mounts ──────────────────────────────────────────────────────────────────
 
 interface LibraryMount {
@@ -298,11 +402,22 @@ function listen(): void {
     resetUnused();
     redrawAll();
   };
-  const stopListing = onProjectMediaChange(forget);
+  const stopListing = onProjectMediaChange(() => {
+    // A file added, removed or rewritten: the sweep re-reads what changed, from its cache.
+    resetRecordSweep();
+    forget();
+  });
   const stopUsages = onUsagesInvalidated(forget);
+  // A record landing repaints once per burst, not once per file of a sweep.
+  const stopRecords = onMediaRecordsChanged(() => {
+    for (const mount of _mounts) {
+      scheduleRedraw(mount);
+    }
+  });
   _unsubscribe = () => {
     stopListing();
     stopUsages();
+    stopRecords();
   };
 }
 
@@ -431,7 +546,11 @@ function offeredFilters(mount: LibraryMount): typeof MEDIA_FILTERS {
   return MEDIA_FILTERS.filter(
     (filter) =>
       (filter.key !== "unused" || usagesSupported()) &&
-      (!mount.images || filter.key === "image" || filter.key === "unused"),
+      (filter.key !== "missing-alt" || mediaRecordsSupported()) &&
+      (!mount.images ||
+        filter.key === "image" ||
+        filter.key === "missing-alt" ||
+        filter.key === "unused"),
   );
 }
 
@@ -462,7 +581,11 @@ export function selectedEntry(mount: {
     modified: null,
     name: entry.name,
   };
-  return passesFilter(modelled, filter, _unused) && matchesQuery(modelled, query) ? entry : null;
+  const answers = filterAnswers();
+  return passesFilter(modelled, filter, answers) &&
+    matchesQuery(modelled, query, answers.records.get(entry.file))
+    ? entry
+    : null;
 }
 
 /** What the grid says in place of tiles. */
@@ -491,6 +614,19 @@ function emptyTexts(mount: LibraryMount, total: number): EmptyTexts {
       emptyTitle: "No unused media",
     };
   }
+  if (filter === "missing-alt") {
+    return {
+      emptyDetail: "Every picture that can carry alt text has some.",
+      emptyTitle: "No pictures missing alt text",
+    };
+  }
+  const tag = tagOfFilter(filter);
+  if (tag !== null) {
+    return {
+      emptyDetail: "Add the tag to a file in its details to list it here.",
+      emptyTitle: `No files tagged “${tag}”`,
+    };
+  }
   return {
     emptyDetail: `${total} ${total === 1 ? "file" : "files"} in the project, none of them ${mediaFilterLabel(filter).toLowerCase()}.`,
     emptyTitle: `No ${mediaFilterLabel(filter).toLowerCase()}`,
@@ -501,29 +637,46 @@ function emptyTexts(mount: LibraryMount, total: number): EmptyTexts {
 function libraryView(mount: LibraryMount): MediaLibraryView {
   const { choice } = mount;
   const { files, listed } = libraryFiles(mount);
-  const counts = filterCounts(files, _unused);
+  const answers = filterAnswers();
+  const counts = filterCounts(files, answers);
   const filters = offeredFilters(mount);
-  // A filter the mount does not offer (a stored "video" in an image picker) reads as its first.
-  if (!filters.some((f) => f.key === choice.filter)) {
+  const tags = mediaRecordsSupported() ? tagCounts(files, answers) : [];
+  /* A filter the mount does not offer (a stored "video" in an image picker) reads as its first. A
+     tag filter is offered while its tag is carried, and while the sweep that would say so runs. */
+  const chosenTag = tagOfFilter(choice.filter);
+  const offered =
+    chosenTag === null
+      ? filters.some((f) => f.key === choice.filter)
+      : mediaRecordsSupported() &&
+        (!answers.recordsSettled ||
+          tags.some(({ tag }) => tag.toLowerCase() === chosenTag.toLowerCase()));
+  if (!offered) {
     choice.filter = filters[0]?.key ?? "all";
   }
   const visible = visibleMedia(files, {
+    answers,
     filter: choice.filter,
     query: choice.query,
     sort: choice.sort,
-    unused: _unused,
   });
-  /* The sweep is over the WHOLE listing, never this mount's: its answer is shared by every mount,
-     and an image picker's narrowed list would leave the Media home's Unused without its videos. */
+  /* The sweeps are over the WHOLE listing, never this mount's: their answers are shared by every
+     mount, and an image picker's narrowed list would leave the Media home's Unused without its
+     videos. */
   const listing = projectMediaFiles();
   if (choice.filter === "unused" && listing !== null) {
     void sweepUnused(listing);
+  }
+  if (listing !== null) {
+    void sweepRecords(listing);
   }
 
   let gridState: MediaLibraryView["gridState"] = "listed";
   if (listed === null) {
     gridState = "loading";
-  } else if (choice.filter === "unused" && _unused === null) {
+  } else if (
+    (choice.filter === "unused" && _unused === null) ||
+    (isRecordFilter(choice.filter) && !answers.recordsSettled)
+  ) {
     gridState = "counting";
   } else if (files.length === 0 || visible.length === 0) {
     gridState = files.length === 0 ? "empty" : "nomatch";
@@ -550,11 +703,28 @@ function libraryView(mount: LibraryMount): MediaLibraryView {
 
   const title =
     mount.images && choice.filter === "image" ? "Images" : mediaFilterLabel(choice.filter);
-  return {
-    countingLabel:
+  const tagFilters: MediaFilterRow[] = answers.recordsSettled
+    ? tags.map(({ tag, count }) => ({
+        count: String(count),
+        key: tagFilterKey(tag),
+        label: tag,
+        pressed: tagFilterKey(tag).toLowerCase() === choice.filter.toLowerCase() ? "true" : "false",
+      }))
+    : [];
+  let countingLabel: string;
+  if (isRecordFilter(choice.filter)) {
+    countingLabel =
+      _recordsTotal > 0
+        ? `Reading alt text and tags… ${_recordsDone} of ${_recordsTotal}`
+        : "Reading alt text and tags…";
+  } else {
+    countingLabel =
       _sweepTotal > 0
         ? `Counting references… ${_sweepDone} of ${_sweepTotal}`
-        : "Counting references…",
+        : "Counting references…";
+  }
+  return {
+    countingLabel,
     dropActive: mount.dropActive ? "true" : "false",
     filters: filters.map((filter) => {
       const count = counts[filter.key];
@@ -569,8 +739,13 @@ function libraryView(mount: LibraryMount): MediaLibraryView {
     mode: mount.mode,
     query: choice.query,
     region: mount.region,
+    searchPlaceholder: mediaRecordsSupported()
+      ? "Search by name, alt text or tag"
+      : "Search by name…",
     sort: choice.sort,
     sortOptions: MEDIA_SORTS.map((sort) => ({ label: sort.label, value: sort.key })),
+    tagFilters,
+    tagsState: tagFilters.length > 0 ? "shown" : "hidden",
     tiles,
     title,
     titleId: `media-library-title-${mount.region.replaceAll(/[^\w-]/g, "-")}`,
@@ -578,7 +753,105 @@ function libraryView(mount: LibraryMount): MediaLibraryView {
     uploadHint: `Upload into ${mount.uploadDir}/`,
     ...emptyTexts(mount, files.length),
     ...detailView(mount, entry),
+    ...recordView(entry, tags),
   };
+}
+
+/** The format word a note names, from the extension: "GIF", "AVIF". */
+function formatWord(path: string): string {
+  const ext = path.slice(path.lastIndexOf(".") + 1);
+  return ext === path ? "This" : ext.toUpperCase();
+}
+
+/** The selected file's alt text and tags, or the sentence that stands in for them. */
+function recordView(
+  entry: ProjectMediaFile | null,
+  known: readonly { tag: string }[],
+): Pick<
+  MediaLibraryView,
+  "recordState" | "recordNote" | "altText" | "tags" | "tagOptions" | "recordBusy"
+> {
+  const none = {
+    altText: "",
+    recordBusy: false,
+    recordNote: "",
+    tagOptions: [],
+    tags: [],
+  };
+  if (entry === null || entry.kind !== "image") {
+    return { ...none, recordState: "hidden" };
+  }
+  if (!mediaRecordsSupported()) {
+    return {
+      ...none,
+      recordNote: "This backend cannot read a file's bytes, so alt text and tags cannot be edited.",
+      recordState: "unsupported",
+    };
+  }
+  if (xmpFormatOf(entry.file) === null) {
+    return {
+      ...none,
+      recordNote: `${formatWord(entry.file)} files cannot carry alt text or tags. Use JPEG, PNG, WebP or SVG to describe a picture here.`,
+      recordState: "unsupported",
+    };
+  }
+  const state = peekMediaRecord(entry.file);
+  if (state.status === "pending") {
+    // Asked on the first paint that finds it missing; the store repaints when it lands.
+    void loadMediaRecord(entry.file);
+    return { ...none, recordNote: "Reading alt text and tags…", recordState: "reading" };
+  }
+  if (state.status !== "ready") {
+    return {
+      ...none,
+      recordNote: `Alt text and tags could not be read, so they are not changed: ${state.status === "failed" ? state.error : "this file cannot hold them."}`,
+      recordState: "failed",
+    };
+  }
+  const own = new Set(state.record.tags.map((tag) => tag.toLowerCase()));
+  return {
+    altText: state.record.alt,
+    recordBusy: _saving.has(entry.file),
+    recordNote: "",
+    recordState: "ready",
+    tagOptions: known.flatMap(({ tag }) =>
+      own.has(tag.toLowerCase()) ? [] : [{ label: tag, value: tag }],
+    ),
+    tags: state.record.tags.map((tag) => ({ removeLabel: `Remove tag ${tag}`, tag })),
+  };
+}
+
+/**
+ * Write the selected file's record with `change` applied, and say so when it fails. One write per
+ * file at a time: a second edit while the first is writing waits for the field to come back.
+ */
+function editRecord(mount: LibraryMount, change: (record: MediaRecord) => MediaRecord): void {
+  const entry = selectedEntry(mount);
+  const state = entry === null ? null : peekMediaRecord(entry.file);
+  if (entry === null || state?.status !== "ready" || _saving.has(entry.file)) {
+    return;
+  }
+  const next = change(state.record);
+  if (next.alt === state.record.alt && next.tags.join("\n") === state.record.tags.join("\n")) {
+    return;
+  }
+  const { file, name } = entry;
+  _saving.add(file);
+  redrawAll();
+  void saveMediaRecord(file, next).then(async (failure) => {
+    _saving.delete(file);
+    if (failure === null) {
+      // The bytes at the path changed in place: whatever drew them draws them again (§3.4).
+      await announceMediaChanged(dirName(file), file);
+    } else {
+      notify.error(`Could not save the alt text and tags of ${name}.`, {
+        detail: failure,
+        path: file,
+        source: "Media",
+      });
+    }
+    redrawAll();
+  });
 }
 
 /** The detail pane for the selected file, or the hint that stands in for one. */
@@ -755,6 +1028,7 @@ export async function deleteMediaFile(path: string): Promise<boolean> {
     return false;
   }
   forgetVersions([path]);
+  forgetMediaRecord(path);
   invalidateUsages();
   // A viewer tab over a file that is gone would show a broken image; it holds no edits to lose.
   if (workspace.tabs.has(path)) {
@@ -984,6 +1258,23 @@ function actionsFor(mount: LibraryMount) {
         openImageEditor(selected);
       }
     },
+    setAlt: (value: string) => {
+      editRecord(mount, (record) => ({ ...record, alt: value.trim() }));
+    },
+    addTag: (value: string) => {
+      const tag = value.trim();
+      editRecord(mount, (record) =>
+        tag === "" || record.tags.some((each) => each.toLowerCase() === tag.toLowerCase())
+          ? record
+          : { ...record, tags: [...record.tags, tag] },
+      );
+    },
+    removeTag: (tag: string) => {
+      editRecord(mount, (record) => ({
+        ...record,
+        tags: record.tags.filter((each) => each !== tag),
+      }));
+    },
     remove: () => {
       const { selected } = mount.choice;
       if (selected !== null) {
@@ -1157,10 +1448,10 @@ function activate(mount: LibraryMount, file: string): void {
 function moveSelection(mount: LibraryMount, key: string, ctrl: boolean): void {
   const { files } = libraryFiles(mount);
   const visible = visibleMedia(files, {
+    answers: filterAnswers(),
     filter: mount.choice.filter,
     query: mount.choice.query,
     sort: mount.choice.sort,
-    unused: _unused,
   });
   const index = visible.findIndex((file) => file.file === mount.choice.selected);
   const columns = mount.grid ? gridColumns(rectOf(mount.grid).width) : 1;
@@ -1510,4 +1801,7 @@ export function resetMediaLibrary(): void {
   _pendingPicker = null;
   _focusOnMount.clear();
   resetUnused();
+  resetRecordSweep();
+  resetMediaRecords();
+  _saving.clear();
 }

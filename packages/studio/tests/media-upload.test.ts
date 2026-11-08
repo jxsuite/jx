@@ -41,6 +41,9 @@ import {
   versionOf,
 } from "../src/files/asset-versions";
 import { isRecentLocal } from "../src/files/fs-events";
+import { resetMediaRecords } from "../src/files/media-record";
+import { embedXmp, extractXmp } from "../src/files/xmp-containers";
+import { readMediaRecord, writeMediaRecord } from "../src/files/xmp-packet";
 import type { StudioPlatform } from "../src/types";
 
 beforeEach(() => {
@@ -460,6 +463,35 @@ describe("replaceAsset", () => {
     expect(await replaceAsset("public/media/hero.jpg", testFile("hero.jpg"))).toBe(true);
     expect(order).toEqual(["marked"]);
     expect(localRevisionOf("public/media/hero.jpg")).toBeString();
+  });
+
+  test("the replaced file's alt text and tags are carried into bytes that have none", async () => {
+    resetMediaRecords();
+    const bare = Uint8Array.of(0xff, 0xd8, 0xff, 0xd9);
+    const described = embedXmp(
+      bare,
+      "jpeg",
+      writeMediaRecord(null, { alt: "Seedlings", tags: ["Garden"] }),
+    );
+    const uploads: Blob[] = [];
+    installMockPlatform({
+      readFileBytes: async () => Uint8Array.from(described).buffer,
+      uploadFile: async (path: string, body: string | Blob | ArrayBuffer) => {
+        if (body instanceof Blob) {
+          uploads.push(body);
+        }
+        return { path };
+      },
+    });
+    const chosen = new File([bare], "new.jpg", { type: "image/jpeg" });
+    expect(await replaceAsset("public/media/hero.jpg", chosen)).toBe(true);
+    const [uploaded] = uploads;
+    expect(uploaded).not.toBe(chosen);
+    const written = new Uint8Array((await uploaded?.arrayBuffer()) ?? new ArrayBuffer(0));
+    expect(readMediaRecord(extractXmp(written, "jpeg"))).toEqual({
+      alt: "Seedlings",
+      tags: ["Garden"],
+    });
   });
 
   test("a caller's note rides on the one success toast rather than a second toast", async () => {

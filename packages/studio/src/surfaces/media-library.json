@@ -82,6 +82,11 @@
       "color": "var(--fg-dim)",
       "fontWeight": "400"
     },
+    "& [part=\"tag-filters\"]": {
+      "display": "flex",
+      "flexDirection": "column",
+      "marginTop": "var(--jx-space-3)"
+    },
     "& [part=\"main\"]": {
       "display": "flex",
       "flexDirection": "column",
@@ -292,6 +297,43 @@
       "color": "var(--fg-dim)",
       "fontSize": "var(--jx-text-sm)"
     },
+    "& [part=\"record\"]": {
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "var(--jx-space-3)"
+    },
+    "& [part=\"record-note\"]": {
+      "margin": "0",
+      "color": "var(--fg-dim)",
+      "fontSize": "var(--jx-text-sm)"
+    },
+    "& [part=\"alt-group\"]": {
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "var(--jx-space-1)"
+    },
+    "& [part=\"tags-group\"]": {
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "var(--jx-space-1)"
+    },
+    "& [part=\"tag-list\"]": {
+      "display": "flex",
+      "flexWrap": "wrap",
+      "gap": "var(--jx-space-1)",
+      "margin": "0",
+      "padding": "0",
+      "listStyle": "none"
+    },
+    "& [part=\"tag-chip\"]": {
+      "display": "inline-flex",
+      "alignItems": "center",
+      "gap": "2px",
+      "paddingLeft": "var(--jx-space-2)",
+      "borderRadius": "999px",
+      "background": "var(--bg-hover)",
+      "fontSize": "var(--jx-text-sm)"
+    },
     "& [part=\"group-title\"]": {
       "margin": "0",
       "fontSize": "var(--jx-text-xs)",
@@ -498,6 +540,95 @@
               }
             ]
           }
+        },
+        {
+          "tagName": "div",
+          "attributes": {
+            "part": "tags-slot",
+            "role": "none"
+          },
+          "style": {
+            "display": "contents"
+          },
+          "$switch": {
+            "$ref": "#/state/tagsState"
+          },
+          "cases": {
+            "shown": {
+              "tagName": "div",
+              "attributes": {
+                "part": "tag-filters",
+                "role": "group",
+                "aria-labelledby": "${state.titleId}-tags"
+              },
+              "children": [
+                {
+                  "tagName": "h2",
+                  "attributes": {
+                    "part": "filters-heading",
+                    "id": "${state.titleId}-tags"
+                  },
+                  "textContent": "Tags"
+                },
+                {
+                  "$prototype": "Array",
+                  "items": {
+                    "$ref": "#/state/tagFilters"
+                  },
+                  "key": {
+                    "$ref": "$map/item/key"
+                  },
+                  "map": {
+                    "tagName": "button",
+                    "attributes": {
+                      "part": "filter",
+                      "type": "button",
+                      "aria-pressed": "${$map.item.pressed}",
+                      "data-filter": "${$map.item.key}"
+                    },
+                    "onclick": {
+                      "$prototype": "Function",
+                      "body": [
+                        {
+                          "operator": "call",
+                          "target": {
+                            "$ref": "#/state/setFilter"
+                          },
+                          "value": [
+                            {
+                              "$ref": "$map/item/key"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    "children": [
+                      {
+                        "tagName": "span",
+                        "attributes": {
+                          "part": "filter-label"
+                        },
+                        "textContent": "${$map.item.label}"
+                      },
+                      {
+                        "tagName": "span",
+                        "attributes": {
+                          "part": "filter-count"
+                        },
+                        "textContent": "${$map.item.count}"
+                      }
+                    ]
+                  }
+                }
+              ]
+            },
+            "hidden": {
+              "tagName": "span",
+              "attributes": {
+                "hidden": ""
+              }
+            }
+          }
         }
       ]
     },
@@ -531,7 +662,9 @@
                 "type": "search",
                 "size": "sm",
                 "label": "Search media",
-                "placeholder": "Search by name…",
+                "placeholder": {
+                  "$ref": "#/state/searchPlaceholder"
+                },
                 "autocomplete": "off",
                 "value": {
                   "$ref": "#/state/query"
@@ -1322,6 +1455,271 @@
                     "part": "facts"
                   },
                   "textContent": "${state.detailFacts}"
+                },
+                {
+                  "$description": "The file's own record (alt text and tags), read from and written into the file (studio.md §22.6). `hidden` for a file that is not a picture; `unsupported`, `reading` and `failed` say why there are no fields, in `recordNote`.",
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "record-slot",
+                    "role": "none"
+                  },
+                  "style": {
+                    "display": "contents"
+                  },
+                  "$switch": {
+                    "$ref": "#/state/recordState"
+                  },
+                  "cases": {
+                    "ready": {
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "record"
+                      },
+                      "children": [
+                        {
+                          "tagName": "div",
+                          "attributes": {
+                            "part": "alt-group"
+                          },
+                          "children": [
+                            {
+                              "tagName": "h4",
+                              "attributes": {
+                                "part": "group-title",
+                                "id": "${state.titleId}-alt"
+                              },
+                              "textContent": "Alt text"
+                            },
+                            {
+                              "$description": "The file's own alt text, kept in the file (IPTC `AltTextAccessibility`). Committed on `change` (blur or Enter), never per keystroke: each commit rewrites the file's bytes. The handler reads the ELEMENT's value, as every kit field here does.",
+                              "tagName": "jx-textfield",
+                              "attributes": {
+                                "part": "alt-field"
+                              },
+                              "$props": {
+                                "size": "sm",
+                                "multiline": true,
+                                "grows": true,
+                                "rows": 2,
+                                "value": {
+                                  "$ref": "#/state/altText"
+                                },
+                                "placeholder": "Describe the picture for someone who can't see it",
+                                "disabled": {
+                                  "$ref": "#/state/recordBusy"
+                                },
+                                "labelledby": "${state.titleId}-alt"
+                              },
+                              "onchange": {
+                                "$prototype": "Function",
+                                "body": [
+                                  {
+                                    "operator": "call",
+                                    "target": {
+                                      "$ref": "#/state/setAlt"
+                                    },
+                                    "value": [
+                                      {
+                                        "$ref": "event#/currentTarget/value"
+                                      }
+                                    ]
+                                  }
+                                ]
+                              }
+                            }
+                          ]
+                        },
+                        {
+                          "tagName": "div",
+                          "attributes": {
+                            "part": "tags-group"
+                          },
+                          "children": [
+                            {
+                              "tagName": "h4",
+                              "attributes": {
+                                "part": "group-title",
+                                "id": "${state.titleId}-file-tags"
+                              },
+                              "textContent": "Tags"
+                            },
+                            {
+                              "tagName": "div",
+                              "attributes": {
+                                "part": "tag-list-slot",
+                                "role": "none"
+                              },
+                              "style": {
+                                "display": "contents"
+                              },
+                              "$switch": {
+                                "$ref": "#/state/hasTags"
+                              },
+                              "cases": {
+                                "true": {
+                                  "tagName": "ul",
+                                  "attributes": {
+                                    "part": "tag-list",
+                                    "aria-labelledby": "${state.titleId}-file-tags"
+                                  },
+                                  "children": [
+                                    {
+                                      "$prototype": "Array",
+                                      "items": {
+                                        "$ref": "#/state/tags"
+                                      },
+                                      "key": {
+                                        "$ref": "$map/item/tag"
+                                      },
+                                      "map": {
+                                        "tagName": "li",
+                                        "attributes": {
+                                          "part": "tag-chip"
+                                        },
+                                        "children": [
+                                          {
+                                            "tagName": "span",
+                                            "attributes": {
+                                              "part": "tag-chip-label"
+                                            },
+                                            "textContent": "${$map.item.tag}"
+                                          },
+                                          {
+                                            "tagName": "jx-action-button",
+                                            "attributes": {
+                                              "part": "tag-remove"
+                                            },
+                                            "$props": {
+                                              "size": "sm",
+                                              "quiet": true,
+                                              "icon": "x",
+                                              "label": "${$map.item.removeLabel}",
+                                              "disabled": {
+                                                "$ref": "#/state/recordBusy"
+                                              }
+                                            },
+                                            "onclick": {
+                                              "$prototype": "Function",
+                                              "body": [
+                                                {
+                                                  "operator": "call",
+                                                  "target": {
+                                                    "$ref": "#/state/removeTag"
+                                                  },
+                                                  "value": [
+                                                    {
+                                                      "$ref": "$map/item/tag"
+                                                    }
+                                                  ]
+                                                }
+                                              ]
+                                            }
+                                          }
+                                        ]
+                                      }
+                                    }
+                                  ]
+                                },
+                                "false": {
+                                  "tagName": "span",
+                                  "attributes": {
+                                    "hidden": ""
+                                  }
+                                }
+                              }
+                            },
+                            {
+                              "$description": "Adds one tag per commit. `allows-custom-value`, because a tag is whatever the reader types; the rows are the tags other files already carry, so one spelling spreads instead of three. The adapter empties the field after a commit.",
+                              "tagName": "jx-combobox",
+                              "attributes": {
+                                "part": "tag-add"
+                              },
+                              "$props": {
+                                "size": "sm",
+                                "label": "Add a tag",
+                                "placeholder": "Add a tag",
+                                "allowsCustomValue": true,
+                                "value": "",
+                                "options": {
+                                  "$ref": "#/state/tagOptions"
+                                },
+                                "disabled": {
+                                  "$ref": "#/state/recordBusy"
+                                }
+                              },
+                              "onchange": {
+                                "$prototype": "Function",
+                                "body": [
+                                  {
+                                    "operator": "call",
+                                    "target": {
+                                      "$ref": "#/state/addTag"
+                                    },
+                                    "value": [
+                                      {
+                                        "$ref": "event#/currentTarget"
+                                      }
+                                    ]
+                                  }
+                                ]
+                              }
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    "reading": {
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "record"
+                      },
+                      "children": [
+                        {
+                          "tagName": "p",
+                          "attributes": {
+                            "part": "record-note"
+                          },
+                          "textContent": "${state.recordNote}"
+                        }
+                      ]
+                    },
+                    "unsupported": {
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "record"
+                      },
+                      "children": [
+                        {
+                          "tagName": "p",
+                          "attributes": {
+                            "part": "record-note"
+                          },
+                          "textContent": "${state.recordNote}"
+                        }
+                      ]
+                    },
+                    "failed": {
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "record"
+                      },
+                      "children": [
+                        {
+                          "tagName": "p",
+                          "attributes": {
+                            "part": "record-note"
+                          },
+                          "textContent": "${state.recordNote}"
+                        }
+                      ]
+                    },
+                    "hidden": {
+                      "tagName": "span",
+                      "attributes": {
+                        "hidden": ""
+                      }
+                    }
+                  }
                 },
                 {
                   "tagName": "div",

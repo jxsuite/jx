@@ -28,20 +28,17 @@ import { invalidateUsages } from "../services/references";
 import { activeTab } from "../workspace/workspace";
 import { forgetVersions, noteLocalWrite, notedListing } from "./asset-versions";
 import { markLocalMutation } from "./fs-events";
+import { canHoldMediaRecord, carryMediaRecord, forgetMediaRecord } from "./media-record";
 import { renameRefusal } from "./new-file-name";
-import {
-  AUDIO_EXTENSIONS,
-  IMAGE_EXTENSIONS,
-  MEDIA_EXTENSIONS,
-  VIDEO_EXTENSIONS,
-  extensionOf,
-} from "./media-types";
+import { IMAGE_EXTENSIONS, MEDIA_EXTENSIONS, extensionOf, mediaKind } from "./media-types";
+import type { AssetKind } from "./media-types";
 
 // ─── File classification ─────────────────────────────────────────────────────
 
 /* The classification lives in `media-types.ts`, which imports nothing; it is re-exported here so
    every existing caller of the upload core keeps one import. */
-export { IMAGE_EXTENSIONS, MEDIA_EXTENSIONS, extensionOf, isImage } from "./media-types";
+export { IMAGE_EXTENSIONS, MEDIA_EXTENSIONS, extensionOf, isImage, mediaKind } from "./media-types";
+export type { AssetKind } from "./media-types";
 
 /** A byte count as a person reads it, for a refusal that names the limit. */
 function formatBytes(bytes: number): string {
@@ -82,9 +79,6 @@ export function uploadAccept(): string {
   return declared ?? DEFAULT_ACCEPT;
 }
 
-/** What kind of element an uploaded asset wants to become. */
-export type AssetKind = "image" | "video" | "audio" | "file";
-
 /** One successfully uploaded file. */
 export interface UploadedAsset {
   /** Project-relative path written, e.g. `public/hero.jpg`. */
@@ -99,34 +93,6 @@ export interface UploadedAsset {
 /** Whether a filename is project media. */
 export function isMediaFile(name: string): boolean {
   return MEDIA_EXTENSIONS.has(extensionOf(name));
-}
-
-/**
- * Classify a file by MIME type, falling back to its extension. A drop from the OS usually carries a
- * `type`, but it is empty for unrecognized extensions and for some Linux file managers.
- */
-export function mediaKind(file: { name: string; type?: string }): AssetKind {
-  const mime = file.type ?? "";
-  if (mime.startsWith("image/")) {
-    return "image";
-  }
-  if (mime.startsWith("video/")) {
-    return "video";
-  }
-  if (mime.startsWith("audio/")) {
-    return "audio";
-  }
-  const ext = extensionOf(file.name);
-  if (IMAGE_EXTENSIONS.has(ext)) {
-    return "image";
-  }
-  if (VIDEO_EXTENSIONS.has(ext)) {
-    return "video";
-  }
-  if (AUDIO_EXTENSIONS.has(ext)) {
-    return "audio";
-  }
-  return "file";
 }
 
 /** The font extensions, which a browser shows as a specimen rather than as a file. */
@@ -548,6 +514,16 @@ export function mediaRenameRefusal(
   return "";
 }
 
+/** `file`, or a copy of it carrying the replaced file's record (`files/media-record.ts`). */
+async function withCarriedRecord(path: string, file: File): Promise<File> {
+  if (!canHoldMediaRecord(path)) {
+    return file;
+  }
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const carried = await carryMediaRecord(path, bytes);
+  return carried === bytes ? file : new File([carried], file.name, { type: file.type });
+}
+
 /**
  * Write `file`'s bytes over the existing media file at `path` — the Media workspace's **Replace**.
  *
@@ -559,12 +535,15 @@ export function mediaRenameRefusal(
  * A backend that reports a DIFFERENT path did not replace anything: it wrote a second file beside
  * the first, and the references still name the old bytes. That is said rather than called success.
  *
+ * `carry: false` is for a caller that has already carried the record into `file` itself (the Image
+ * editor, which holds the replaced bytes and keeps what it writes as its next source).
+ *
  * @returns Whether the bytes now at `path` are the new ones.
  */
 export async function replaceAsset(
   path: string,
   file: File,
-  opts: { note?: string } = {},
+  opts: { note?: string; carry?: boolean } = {},
 ): Promise<boolean> {
   const name = path.split("/").pop() ?? path;
   /* An `accept` narrows only the chooser (and a backend's own picker may ignore it), so the format is
@@ -588,10 +567,13 @@ export async function replaceAsset(
   /* Studio's own write, marked BEFORE it happens (§3.4): the watcher's echo of it is absorbed rather
      than reported as somebody else's change, and the path's content version is forgotten while the
      bytes are still the old ones, so no listing in flight can vouch the old version afterwards. */
+  /* The file's alt text and tags describe the picture, not these bytes: where the new file has none
+     of its own (a canvas re-encode never does), the old file's are written into it (§22.6). */
+  const upload = opts.carry === false ? file : await withCarriedRecord(path, file);
   markLocalMutation(path);
   let written: string;
   try {
-    ({ path: written } = await getPlatform().uploadFile(path, file));
+    ({ path: written } = await getPlatform().uploadFile(path, upload));
   } catch (error) {
     notify.error(`Could not replace ${name}.`, {
       detail: errorMessage(error),
@@ -606,6 +588,7 @@ export async function replaceAsset(
      pixels. Only on the path that was actually written; a second file beside it is new. */
   if (written === path) {
     noteLocalWrite(path);
+    forgetMediaRecord(path);
   }
   // The answers were about the old bytes' place in the project; the place is the same, but a stale
   // "Used on" is a list the reader acts on, so it is asked again rather than trusted.

@@ -29,11 +29,13 @@ import { isString } from "@jxsuite/schema/guards";
 import * as files from "../src/files/files";
 import { initLayers, layerHost } from "../src/ui/layers";
 import { closeAllTabs, workspace } from "../src/workspace/workspace";
-import { toasts } from "../src/services/notify";
+import { problems, toasts } from "../src/services/notify";
 import { isRegionId, regionIdOf } from "../src/ui/regions";
 import { invalidateMediaCache } from "../src/ui/media-picker";
 import { peekMediaMeta, recordImageSize } from "../src/files/media-meta";
 import { setMediaChangedHandler } from "../src/files/media-upload";
+import { readMediaRecord, writeMediaRecord } from "../src/files/xmp-packet";
+import { embedXmp, extractXmp } from "../src/files/xmp-containers";
 import { invalidateUsages } from "../src/services/references";
 import { collabState } from "../src/collab/collab-state";
 import { getPlatform } from "../src/platform";
@@ -122,12 +124,79 @@ let usages = new Map<string, ReferencesResult["files"]>();
 let failing = new Set<string>();
 let tree = treeOf(TREE);
 let state: MockPlatformState;
+/** Each file's bytes, for a test about a file's own record. A path absent here is a bare JPEG. */
+let bytesByPath = new Map<string, Uint8Array>();
+
+/** A bare JPEG header: a picture with no metadata at all. */
+const BARE_JPEG = Uint8Array.of(0xff, 0xd8, 0xff, 0xd9);
+/** A minimal PNG: signature, header, one data chunk, end. CRCs are not read. */
+const BARE_PNG = Uint8Array.of(
+  0x89,
+  0x50,
+  0x4e,
+  0x47,
+  0x0d,
+  0x0a,
+  0x1a,
+  0x0a,
+  0,
+  0,
+  0,
+  1,
+  0x49,
+  0x48,
+  0x44,
+  0x52,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  1,
+  0x49,
+  0x44,
+  0x41,
+  0x54,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0x49,
+  0x45,
+  0x4e,
+  0x44,
+  0,
+  0,
+  0,
+  0,
+);
+
+/** A JPEG carrying `alt` and `tags`. */
+function jpegWith(alt: string, tags: string[]): Uint8Array {
+  return embedXmp(BARE_JPEG, "jpeg", writeMediaRecord(null, { alt, tags }));
+}
+
+/** The record the file at `path` carries now. */
+function recordIn(path: string): { alt: string; tags: string[] } {
+  return readMediaRecord(extractXmp(bytesByPath.get(path) ?? BARE_JPEG, "jpeg"));
+}
 
 function install(withReferences = true): void {
   ({ state } = installMockPlatform({
     // The backend really has an upload afterwards, so the re-read listing can show it selected.
     uploadFile: async (path: string, body: string | Blob | ArrayBuffer) => {
       state.calls.push(["uploadFile", path, body]);
+      if (body instanceof ArrayBuffer) {
+        bytesByPath.set(path, new Uint8Array(body));
+      }
       const dir = path.slice(0, path.lastIndexOf("/"));
       const name = path.slice(path.lastIndexOf("/") + 1);
       const listed = tree.get(dir) ?? [];
@@ -154,7 +223,7 @@ function install(withReferences = true): void {
     },
     readFileBytes: async (path: string) => {
       state.calls.push(["readFileBytes", path]);
-      return new Uint8Array([0xff, 0xd8, 0xff]).buffer;
+      return Uint8Array.from(bytesByPath.get(path) ?? BARE_JPEG).buffer;
     },
     ...(withReferences && {
       findReferences: async (query: { path?: string }) => {
@@ -319,6 +388,7 @@ beforeEach(() => {
   usages = new Map([["public/hero.jpg", [using("pages/index.json", 2)]]]);
   failing = new Set();
   tree = treeOf(TREE);
+  bytesByPath = new Map();
   install();
   invalidateMediaCache();
   invalidateUsages();
@@ -366,6 +436,8 @@ describe("what the library lists", () => {
       "audio 1",
       "document 1",
       "font 1",
+      // The bare hero.jpg has no alt text; cover.png is not a PNG, so it is never counted.
+      "missing-alt 1",
       "unused",
     ]);
     expect(filterButton("all").getAttribute("aria-pressed")).toBe("true");
@@ -375,7 +447,7 @@ describe("what the library lists", () => {
     install(false);
     invalidateMediaCache();
     await mountHome();
-    expect(filterRows().at(-1)).toBe("font 1");
+    expect(filterRows().at(-1)).toBe("missing-alt 1");
   });
 
   test("a filter narrows the grid and names it", async () => {
@@ -1728,6 +1800,225 @@ describe("the pane's lifecycle", () => {
 
 // ─── Pick mode ───────────────────────────────────────────────────────────────
 
+describe("a file's own alt text and tags", () => {
+  /** Hero carries alt text and two tags; the cover is a PNG with none. */
+  function describedProject(): void {
+    bytesByPath.set("public/hero.jpg", jpegWith("A hero image", ["Garden", "Spring"]));
+    bytesByPath.set("content/blog/images/cover.png", BARE_PNG);
+  }
+
+  /** Commit a kit field's value the way the element announces a commit. */
+  function commit(el: HTMLElement, value: string): void {
+    Object.assign(el, { value });
+    el.dispatchEvent(new Event("change", { bubbles: true }));
+  }
+
+  function chips(): string[] {
+    return [...stage.querySelectorAll<HTMLElement>('[part="tag-chip-label"]')].map((el) =>
+      el.textContent.trim(),
+    );
+  }
+
+  test("Missing alt text counts what can be fixed here, and each tag gets a filter", async () => {
+    describedProject();
+    await mountHome();
+    await settle();
+    const rows = filterRows();
+    expect(rows).toContain("missing-alt 1");
+    expect(rows).toContain("tag:Garden 1");
+    expect(rows).toContain("tag:Spring 1");
+    pointer(filterButton("missing-alt"), "click");
+    await settle();
+    expect(text("title")).toBe("Missing alt text");
+    expect(tileFiles()).toEqual(["content/blog/images/cover.png"]);
+    pointer(filterButton("tag:Garden"), "click");
+    await settle();
+    expect(text("title")).toBe("Garden");
+    expect(tileFiles()).toEqual(["public/hero.jpg"]);
+  });
+
+  test("a search matches a file's alt text and its tags", async () => {
+    describedProject();
+    await mountHome();
+    await settle();
+    const search = part<HTMLInputElement>("input", part("search"));
+    search.value = "spring";
+    search.dispatchEvent(new Event("input", { bubbles: true }));
+    await settle();
+    expect(tileFiles()).toEqual(["public/hero.jpg"]);
+    search.value = "a hero";
+    search.dispatchEvent(new Event("input", { bubbles: true }));
+    await settle();
+    expect(tileFiles()).toEqual(["public/hero.jpg"]);
+  });
+
+  test("the detail pane edits them, and every edit is written into the file", async () => {
+    describedProject();
+    await mountHome();
+    pointer(tileOf("public/hero.jpg"), "click");
+    await settle();
+    expect(part<HTMLElement & { value: string }>("alt-field").value).toBe("A hero image");
+    expect(chips()).toEqual(["Garden", "Spring"]);
+
+    const changed: (string | undefined)[][] = [];
+    setMediaChangedHandler((dir, overwritten) => {
+      changed.push([dir, overwritten]);
+      invalidateMediaCache();
+    });
+    commit(part("alt-field"), "  Rows of seedlings  ");
+    await settle(10);
+    // Rewritten in place: announced as the path overwritten, so what drew it draws it again.
+    expect(changed).toContainEqual(["public", "public/hero.jpg"]);
+    expect(recordIn("public/hero.jpg")).toEqual({
+      alt: "Rows of seedlings",
+      tags: ["Garden", "Spring"],
+    });
+
+    const add = part<HTMLElement & { value: string }>("tag-add");
+    commit(add, "Bees");
+    // The field empties for the next tag.
+    expect(add.value).toBe("");
+    await settle(10);
+    expect(recordIn("public/hero.jpg").tags).toEqual(["Garden", "Spring", "Bees"]);
+    expect(chips()).toEqual(["Garden", "Spring", "Bees"]);
+
+    // A tag already carried, in any case, and a blank one, write nothing.
+    const writes = state.calls.filter(([name]) => name === "uploadFile").length;
+    commit(part("tag-add"), "garden");
+    commit(part("tag-add"), "   ");
+    commit(part("alt-field"), "Rows of seedlings");
+    await settle(10);
+    expect(state.calls.filter(([name]) => name === "uploadFile")).toHaveLength(writes);
+
+    const [remove] = stage.querySelectorAll<HTMLElement>('[part="tag-remove"]');
+    remove?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    await settle(10);
+    expect(recordIn("public/hero.jpg").tags).toEqual(["Spring", "Bees"]);
+  });
+
+  test("a write the backend refuses is reported, and the file keeps what it had", async () => {
+    describedProject();
+    await mountHome();
+    pointer(tileOf("public/hero.jpg"), "click");
+    await settle();
+    getPlatform().uploadFile = async () => {
+      throw new Error("disk full");
+    };
+    commit(part("alt-field"), "Lost");
+    await settle(10);
+    const problem = problems.find(
+      (p) => p.message === "Could not save the alt text and tags of hero.jpg.",
+    );
+    expect(problem?.detail).toBe("disk full");
+    expect(recordIn("public/hero.jpg").alt).toBe("A hero image");
+  });
+
+  test("a second edit while the first is writing waits for it", async () => {
+    describedProject();
+    await mountHome();
+    pointer(tileOf("public/hero.jpg"), "click");
+    await settle();
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const upload = getPlatform().uploadFile;
+    getPlatform().uploadFile = async (path, body) => {
+      await gate;
+      return upload(path, body);
+    };
+    commit(part("alt-field"), "First");
+    await settle();
+    expect(part<HTMLElement & { disabled: boolean }>("alt-field").disabled).toBe(true);
+    commit(part("tag-add"), "Ignored");
+    release();
+    await settle(10);
+    expect(recordIn("public/hero.jpg")).toEqual({ alt: "First", tags: ["Garden", "Spring"] });
+  });
+
+  test("a tag no file carries any more is not kept as the filter", async () => {
+    describedProject();
+    applyMediaBrowse({ filter: "tag:Retired" });
+    await mountHome();
+    await settle(10);
+    expect(pressedFilter()).toBe("all");
+  });
+
+  test("a listing that moves while the sweep reads starts it again, from what it read", async () => {
+    describedProject();
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const read = getPlatform().readFileBytes!;
+    getPlatform().readFileBytes = async (path: string) => {
+      await gate;
+      return read(path);
+    };
+    await mountHome();
+    invalidateMediaCache();
+    release();
+    await settle(12);
+    expect(filterRows()).toContain("tag:Garden 1");
+  });
+
+  test("a picture that cannot hold them says why, and other files draw nothing", async () => {
+    tree.set("public", [
+      ...(tree.get("public") ?? []),
+      { modified: "2026-06-01T00:00:00Z", name: "anim.gif", path: "public/anim.gif", type: "file" },
+    ]);
+    invalidateMediaCache();
+    await mountHome();
+    pointer(tileOf("public/anim.gif"), "click");
+    await settle();
+    expect(text("record-note")).toBe(
+      "GIF files cannot carry alt text or tags. Use JPEG, PNG, WebP or SVG to describe a picture here.",
+    );
+    // The cover.png is not a PNG at all: read, refused, and never written over.
+    pointer(tileOf("content/blog/images/cover.png"), "click");
+    await settle();
+    expect(text("record-note")).toBe(
+      "Alt text and tags could not be read, so they are not changed: Not a PNG file.",
+    );
+    pointer(tileOf("public/media/clip.mp4"), "click");
+    await settle();
+    expect(stage.querySelector('[part="record"]')).toBeNull();
+  });
+
+  test("a host that cannot read bytes offers neither the filter nor the fields", async () => {
+    describedProject();
+    const platform = getPlatform();
+    delete platform.readFileBytes;
+    invalidateMediaCache();
+    await mountHome();
+    expect(filterRows().some((row) => row.startsWith("missing-alt"))).toBe(false);
+    pointer(tileOf("public/hero.jpg"), "click");
+    await settle();
+    expect(text("record-note")).toBe(
+      "This backend cannot read a file's bytes, so alt text and tags cannot be edited.",
+    );
+  });
+
+  test("while the sweep reads, a record filter says so instead of claiming an empty grid", async () => {
+    describedProject();
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const read = getPlatform().readFileBytes!;
+    getPlatform().readFileBytes = async (path: string) => {
+      await gate;
+      return read(path);
+    };
+    applyMediaBrowse({ filter: "tag:Garden" });
+    await mountHome();
+    expect(text("empty")).toMatch(/^Reading alt text and tags…/);
+    release();
+    await settle(12);
+    expect(tileFiles()).toEqual(["public/hero.jpg"]);
+  });
+});
+
 describe("pick mode", () => {
   function dialog(): HTMLElement {
     const el = layerHost("dialog").querySelector<HTMLElement>('jx-dialog[part="media-pick"]');
@@ -1745,7 +2036,7 @@ describe("pick mode", () => {
     expect(headline(body)).toBe("Choose an image");
     expect(useButton(body).disabled).toBe(true);
     expect(part("media-library", body).dataset.mode).toBe("pick");
-    expect(filterRows(body)).toEqual(["image 2", "unused"]);
+    expect(filterRows(body)).toEqual(["image 2", "missing-alt 1", "unused"]);
     expect(text("filter-label", body)).toBe("All images");
     expect(tileFiles(body)).toEqual(["content/blog/images/cover.png", "public/hero.jpg"]);
     // No Replace or Delete here: the dialog's footer is the answer.

@@ -177,6 +177,18 @@
       "url": "https://www.iana.org/assignments/iana-ipv6-special-registry"
     },
     {
+      "id": "IPTC Photo Metadata",
+      "org": "IPTC",
+      "title": "IPTC Photo Metadata Standard",
+      "url": "https://iptc.org/standards/photo-metadata/iptc-standard/"
+    },
+    {
+      "id": "ISO 16684-1",
+      "org": "ISO",
+      "title": "Graphic technology — Extensible metadata platform (XMP) — Part 1: Data model, serialization and core properties",
+      "url": "https://www.iso.org/standard/75163.html"
+    },
+    {
       "id": "JSON Feed 1.1",
       "org": "Other",
       "title": "JSON Feed Version 1.1",

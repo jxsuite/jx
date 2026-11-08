@@ -53,3 +53,34 @@ export function extensionOf(name: string): string {
 export function isImage(ext: string): boolean {
   return IMAGE_EXTENSIONS.has(ext.startsWith(".") ? ext.toLowerCase() : `.${ext.toLowerCase()}`);
 }
+
+/** What kind of element an uploaded asset wants to become. */
+export type AssetKind = "image" | "video" | "audio" | "file";
+
+/**
+ * Classify a file by MIME type, falling back to its extension. A drop from the OS usually carries a
+ * `type`, but it is empty for unrecognized extensions and for some Linux file managers.
+ */
+export function mediaKind(file: { name: string; type?: string }): AssetKind {
+  const mime = file.type ?? "";
+  if (mime.startsWith("image/")) {
+    return "image";
+  }
+  if (mime.startsWith("video/")) {
+    return "video";
+  }
+  if (mime.startsWith("audio/")) {
+    return "audio";
+  }
+  const ext = extensionOf(file.name);
+  if (IMAGE_EXTENSIONS.has(ext)) {
+    return "image";
+  }
+  if (VIDEO_EXTENSIONS.has(ext)) {
+    return "video";
+  }
+  if (AUDIO_EXTENSIONS.has(ext)) {
+    return "audio";
+  }
+  return "file";
+}

@@ -33,8 +33,8 @@ import { isNumber } from "@jxsuite/schema/guards";
 import { getPlatform } from "../platform";
 import { baseName, dirName, normalizeProjectPath } from "./media-paths";
 import { notedListing } from "./asset-versions";
-import { extensionOf, mediaKind } from "./media-upload";
-import type { AssetKind } from "./media-upload";
+import { extensionOf, mediaKind } from "./media-types";
+import type { AssetKind } from "./media-types";
 import type { DirEntry } from "../types";
 
 /** Everything a media surface can say about one file without opening it. */

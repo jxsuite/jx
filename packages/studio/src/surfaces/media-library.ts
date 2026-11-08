@@ -59,15 +59,27 @@ export interface MediaTileRow {
   glyph: string;
 }
 
+/** One tag on the selected file. */
+export interface MediaTagChip {
+  tag: string;
+  /** The remove button's accessible name: "Remove tag Garden". */
+  removeLabel: string;
+}
+
 /** Everything the document draws, as one value. */
 export interface MediaLibraryView {
   region: string;
   mode: "manage" | "pick";
   dropActive: "true" | "false";
   filters: MediaFilterRow[];
+  /** The Tags section of the filter column: `hidden` until the files have been read and carry one. */
+  tagsState: "hidden" | "shown";
+  tagFilters: MediaFilterRow[];
   title: string;
   titleId: string;
   query: string;
+  /** What the search matches, said in its field: a name, and alt text and tags where they are read. */
+  searchPlaceholder: string;
   sort: string;
   sortOptions: { label: string; value: string }[];
   uploadAccept: string;
@@ -107,6 +119,19 @@ export interface MediaLibraryView {
   usageState: "hidden" | "shown";
   usageHeadline: string;
   usageFiles: MediaUsageRow[];
+  /**
+   * The selected file's own record (studio.md §22.6): `ready` draws its fields; `reading`,
+   * `unsupported` and `failed` draw {@link recordNote} instead; `hidden` draws nothing (not a
+   * picture).
+   */
+  recordState: "hidden" | "reading" | "unsupported" | "failed" | "ready";
+  recordNote: string;
+  altText: string;
+  tags: MediaTagChip[];
+  /** Tags other files carry that this one does not: the add field's suggestions. */
+  tagOptions: { label: string; value: string }[];
+  /** While a save is writing the file: the fields wait for it. */
+  recordBusy: boolean;
 }
 
 /** What a control asks the flow to do. */
@@ -140,6 +165,12 @@ export interface MediaLibraryActions {
   openViewer: () => void;
   /** Open the selected image in its Image editor. */
   editImage: () => void;
+  /** Commit the selected file's alt text. */
+  setAlt: (value: string) => void;
+  /** Add a tag to the selected file. */
+  addTag: (value: string) => void;
+  /** Remove a tag from the selected file. */
+  removeTag: (tag: string) => void;
   reset: () => void;
   /** A tile node was created for `file`. */
   tileHost: (element: HTMLElement, file: string) => void;
@@ -159,8 +190,13 @@ export interface MediaLibrarySurfaceHandle {
 
 /** The scope the document reads. */
 interface MediaLibraryScope
-  extends MediaLibraryView, Omit<MediaLibraryActions, "tileHost" | "gridHost" | "inputHost"> {
+  extends
+    MediaLibraryView,
+    Omit<MediaLibraryActions, "tileHost" | "gridHost" | "inputHost" | "addTag"> {
   hasUsageFiles: boolean;
+  hasTags: boolean;
+  /** The add field's commit: the tag is added, and the field emptied for the next. */
+  addTag: (field: { value: string }) => void;
 }
 
 /** An empty view: what a scope holds before the first projection. */
@@ -187,11 +223,20 @@ export function emptyMediaLibraryView(): MediaLibraryView {
     query: "",
     region: "",
     replaceAccept: "",
+    searchPlaceholder: "",
     editable: "no",
     duplicable: "no",
+    altText: "",
+    recordBusy: false,
+    recordNote: "",
+    recordState: "hidden",
     selectedFile: "",
     sort: "",
     sortOptions: [],
+    tagFilters: [],
+    tagOptions: [],
+    tags: [],
+    tagsState: "hidden",
     tiles: [],
     title: "",
     titleId: "",
@@ -206,6 +251,7 @@ export function emptyMediaLibraryView(): MediaLibraryView {
 function project(scope: MediaLibraryScope, view: MediaLibraryView): void {
   Object.assign(scope, view);
   scope.hasUsageFiles = view.usageFiles.length > 0;
+  scope.hasTags = view.tags.length > 0;
 }
 
 /** The `part` a definition declares, or `""`. */
@@ -239,10 +285,18 @@ export function mountMediaLibrarySurface(
   if (options.clear) {
     host.replaceChildren();
   }
-  const { tileHost, gridHost, inputHost, ...controls } = actions;
+  const { tileHost, gridHost, inputHost, addTag, ...controls } = actions;
   const scope = reactive<MediaLibraryScope>({
     ...emptyMediaLibraryView(),
     ...controls,
+    addTag: (field) => {
+      const { value } = field;
+      /* Emptied here, not by a projection: the field's bound value is "" before and after, so a
+         projected "" would never reach an element whose own value the reader just typed. */
+      field.value = "";
+      addTag(value);
+    },
+    hasTags: false,
     hasUsageFiles: false,
   });
   project(scope, view);
