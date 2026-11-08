@@ -1,12 +1,12 @@
 /**
- * Validate-project — project.json validation against the generated per-project entry schema
+ * Validate-project — project file validation against the generated per-project entry schema
  * (specs/extensions.md §5.4).
  *
  * Node-only by design (mirrors the dynamic-ajv-import pattern of `validateDocument`): reads
- * `<root>/project.json` and `<root>/project.schema.json`, compiles the entry document with
- * ajv-2020, and resolves its relative `$ref`s through a file loader restricted to the project root
- * and its node_modules. The entry file's URL is injected as `$id` at load time so the committed,
- * machine-path-free relative refs resolve.
+ * `<root>/project.jxn` or `<root>/project.json`, and `<root>/project.schema.json`, compiles the
+ * entry document with ajv-2020, and resolves its relative `$ref`s through a file loader restricted
+ * to the project root and its node_modules. The entry file's URL is injected as `$id` at load time
+ * so the committed, machine-path-free relative refs resolve.
  *
  * When a `./node_modules/...` ref does not exist on disk (workspace hoisting leaves in-repo
  * starters without their own node_modules), the loader falls back to host resolution of the bare
@@ -15,15 +15,21 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import { isAbsolute, relative, resolve } from "node:path";
+import { basename, isAbsolute, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import type { JsonObject, JsonValue } from "../types";
+import { isJsonObject, isNonNullObject, isString } from "./guards.ts";
+import { isJxnPath } from "./jxn/document.ts";
+import { scalar } from "./jxn/serialize.ts";
+import { parseProjectSource } from "./project-file.ts";
 import { projectFilePath } from "./project-file-node.ts";
 
 export interface ProjectValidationResult {
   valid: boolean;
   errors: unknown[] | null;
+  /** The project file's name, `project.jxn` or `project.json`, which a report names. */
+  file: string;
 }
 
 // Minimal structural types for the optional `ajv` peer dependency (no direct dependency, and it
@@ -67,16 +73,18 @@ export async function validateProjectFile(projectRoot: string): Promise<ProjectV
   const schemaPath = resolve(root, "project.schema.json");
 
   if (!existsSync(projectPath)) {
-    throw new Error(`project.json not found in ${root}`);
+    throw new Error(`No project.jxn or project.json in ${root}`);
   }
   if (!existsSync(schemaPath)) {
     throw new Error(
       `project.schema.json not found in ${root} — run \`jx schema\` to generate it from ` +
-        `project.json#/extensions`,
+        `the project file's extensions`,
     );
   }
 
-  const project = readJson(projectPath);
+  /* SAFETY: both readers answer an object: `parseProjectConfig` refuses anything else, and the
+     project grammar has no top level but the configuration's members. */
+  const project = parseProjectSource(readFileSync(projectPath, "utf8"), projectPath) as JsonObject;
   /*
    * SAFETY: project.schema.json is written by `jx schema` (emitProjectSchema), which always emits a
    * JSON object. A hand-damaged file that is not one fails loudly either way: the `$id` write below
@@ -108,7 +116,60 @@ export async function validateProjectFile(projectRoot: string): Promise<ProjectV
 
   const validate = await ajv.compileAsync(entrySchema);
   const valid = validate(project);
-  return { errors: validate.errors ?? null, valid };
+  const errors = validate.errors ?? null;
+  return {
+    errors: errors && isJxnPath(projectPath) ? explainJxnLists(errors, project) : errors,
+    file: basename(projectPath),
+    valid,
+  };
+}
+
+/** The value at a JSON Pointer. */
+function valueAt(document: JsonValue, pointer: string): JsonValue | undefined {
+  let current: JsonValue | undefined = document;
+  for (const part of pointer.split("/").slice(1)) {
+    const key = part.replaceAll("~1", "/").replaceAll("~0", "~");
+    current = Array.isArray(current)
+      ? current[Number(key)]
+      : isJsonObject(current)
+        ? current[key]
+        : undefined;
+  }
+  return current;
+}
+
+/**
+ * Say how to write a list of one in Jx Notation, where it is the mistake people make by hand.
+ *
+ * `extensions "@jxsuite/parser"` reads as a string, so the schema's "must be array" is true and of
+ * no help. Coercing from the schema instead would make the reader need the schema.
+ *
+ * @param errors Ajv's errors.
+ * @param project What the file read to.
+ */
+export function explainJxnLists(errors: unknown[], project: JsonValue): unknown[] {
+  return errors.map((error) => {
+    if (
+      !isNonNullObject(error) ||
+      !("keyword" in error) ||
+      error.keyword !== "type" ||
+      !("params" in error) ||
+      !isNonNullObject(error.params) ||
+      !("type" in error.params) ||
+      error.params.type !== "array" ||
+      !("instancePath" in error) ||
+      !isString(error.instancePath)
+    ) {
+      return error;
+    }
+    const value = valueAt(project, error.instancePath);
+    const spelled = scalar(value, "", error.instancePath);
+    const key = error.instancePath.split("/").at(-1) ?? "";
+    if (spelled === null || spelled.includes("\n") || key === "") {
+      return error;
+    }
+    return { ...error, message: `must be a list, written as ${key} { - ${spelled} }` };
+  });
 }
 
 /**

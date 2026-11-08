@@ -12,7 +12,7 @@ import { parseJxnWithSpans } from "./parse.ts";
 import { reconcileJxn } from "./reconcile.ts";
 import type { JxnReading } from "./reconcile.ts";
 
-const INDENT = "    ";
+export const INDENT = "    ";
 
 /** Past this a line of names is worse than one name per line. */
 const WIDTH = 100;
@@ -35,7 +35,7 @@ const RESERVED_TAGS = new Set(["-", "attributes", "script", "state", "style"]);
 
 const isObject = (value: JsonValue | undefined): value is JsonObject => isJsonObject(value);
 
-const isRef = (value: JsonValue | undefined): value is { $ref: string } =>
+export const isRef = (value: JsonValue | undefined): value is { $ref: string } =>
   isObject(value) && isString(value.$ref) && Object.keys(value).length === 1;
 
 /** Whether a string has no lone surrogate. A `u` regular expression sees one as a code point. */
@@ -129,7 +129,7 @@ function writeString(value: string, indent: string, where: string): string {
 }
 
 /** A key, as a node or property name. Never multi-line: a name is one line. */
-function writeName(key: string, where: string): string {
+export function writeName(key: string, where: string): string {
   if (!isWellFormed(key)) {
     throw new JxnError(`${where} is a key with a lone surrogate, which Jx Notation cannot spell`);
   }
@@ -137,7 +137,7 @@ function writeName(key: string, where: string): string {
 }
 
 /** A value that fits in one token, or null if it needs a block. */
-function scalar(value: JsonValue | undefined, indent: string, where: string): string | null {
+export function scalar(value: JsonValue | undefined, indent: string, where: string): string | null {
   if (value === null) {
     return "#null";
   }
@@ -157,7 +157,7 @@ function scalar(value: JsonValue | undefined, indent: string, where: string): st
 }
 
 /** A pointer one step on. */
-const down = (where: string, key: string | number): string =>
+export const down = (where: string, key: string | number): string =>
   `${where}/${String(key).replaceAll("~", "~0").replaceAll("/", "~1")}`;
 
 /** Whether a function has a spelling as a `(fn)` node, rather than as a plain block. */
@@ -205,7 +205,7 @@ function writeFunction(key: string, fn: JsonObject, indent: string, where: strin
 }
 
 /** A JSON block. */
-function writeValue(key: string, value: JsonValue, indent: string, where: string): string[] {
+export function writeValue(key: string, value: JsonValue, indent: string, where: string): string[] {
   const name = writeName(key, where);
   const head = indent + name;
   const single = scalar(value, indent, where);
@@ -480,7 +480,7 @@ function pushMember(
 }
 
 /** A file's `$head`, whose rows are elements. */
-function writeHeadBlock(head: JsonValue[], indent: string): string[] {
+export function writeHeadBlock(head: JsonValue[], indent: string): string[] {
   return [
     "$head {",
     ...head.flatMap((row, index) =>

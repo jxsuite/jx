@@ -231,7 +231,7 @@ Four properties are load-bearing, and each is a real attack or a real failure if
 
 ### 4.1 The project.json Contract
 
-A project is identified by its `project.json` file, and a search for one believes the name only if the content agrees (§4.6). This is the single point of entry for all deployment targets:
+A project is identified by its project file, `project.jxn` or `project.json` (`site-architecture.md` §2.3), and a search for one believes the name only if the content agrees (§4.6). The native picker offers both. This is the single point of entry for all deployment targets:
 
 - **Desktop:** User selects `project.json` via native file dialog. The parent directory becomes the project root.
 - **Dev server:** The window's `?project=` URL parameter names the folder containing `project.json` by its absolute path (§8.2). There is no picker.
@@ -476,7 +476,7 @@ Several paths in one launch each resolve in turn, and files asked of a window th
 
 A document reaches a window through a queue the page drains (`takeOpenDocuments`, with `documentsPending` to say there is something to take), and not as a pushed path, because a window can be asked before its page has booted. A project file that does not parse, or that is there and cannot be read, is still that project, and the user is told: a typo must not make a page's double-click walk past its project to some ancestor. A candidate is read only if it is an ordinary file of a sane size, so a FIFO or a link to a device cannot hold up the backend before anyone has answered.
 
-A file named like a project file is believed only if its content agrees (`site-architecture.md` §2.3), so `pages/project.json` opens the project above it with that page in a tab. A `project.json` holding a document's members, or the members of Nx's file of that name, is not a project (`classifyProjectFile` in `@jxsuite/schema/project-file`).
+A file named like a project file is believed only if its content agrees (`site-architecture.md` §2.3), so `pages/project.json` opens the project above it with that page in a tab. A `project.json` holding a document's members, or the members of Nx's file of that name, is not a project, and a `project.jxn` is one only if it declares itself with its `project` node (`classifyProjectFile` in `@jxsuite/schema/project-file`). A folder holding both names opens as that project, and the user is told to keep one; nothing reads either until then.
 
 On the Mac App Store build the sandbox grants the one file the OS handed over and none of the project around it, so the application asks for the folder, starting beside the file, and then replaces the backend as §7.7 describes. How much a Finder open grants has not been measured on a signed build.
 

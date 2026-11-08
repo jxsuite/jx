@@ -24,14 +24,15 @@ import type { JsonValue, JxMutableNode, ProjectConfig } from "@jxsuite/schema/ty
 import { getPlatform } from "../platform";
 import { workspace } from "../workspace/workspace";
 import { projectState } from "../store";
-import type { Tab } from "../tabs/tab";
 import { adoptCreatedProject } from "./project-adoption";
 import { translateValidationError } from "./ai-tools";
 import { validateDoc, validateProjectConfig } from "./jx-validate";
 import { flagHardcodedTokens, formatTokenHints } from "./token-lint";
 import type { CandidateDocument, RenderProbe } from "./ai-write-report";
 import { invalidPathResult, normalizeRelPath } from "./project-path";
-import { isProjectConfigPath } from "@jxsuite/schema/project-file";
+import { isProjectConfigPath, parseProjectSource } from "@jxsuite/schema/project-file";
+import { projectConfigPath } from "../tabs/tab";
+import type { Tab } from "../tabs/tab";
 
 /** Directories the file tools never descend into or report. */
 const EXCLUDED_DIRS = new Set(["node_modules", "dist", ".git", ".jx-cache"]);
@@ -301,8 +302,26 @@ export function registerProjectTools(
 
         // Pre-validate Jx documents — disk writes have no undo to lean on.
         let parsed: JsonValue | undefined;
-        const isJxn = isJxnPath(relPath) && classifyJxn(content) !== "project";
-        const isJson = relPath.endsWith(".json") && !isProjectConfigPath(relPath);
+        const isConfig = isProjectConfigPath(relPath);
+        if (isConfig && relPath !== projectConfigPath()) {
+          // Writing the other name would leave the folder holding both, which no host reads.
+          return {
+            success: false,
+            error:
+              `This project's file is ${projectConfigPath()}. Write the configuration there; ` +
+              `a second project file beside it would stop the project from loading.`,
+          };
+        }
+        if (isJxnPath(relPath) && !isConfig && classifyJxn(content) === "project") {
+          return {
+            success: false,
+            error:
+              `"${relPath}" starts with a project node, which only the project file at the ` +
+              `root may: write it there as project.jxn, or start this one with an element.`,
+          };
+        }
+        const isJxn = isJxnPath(relPath) && !isConfig;
+        const isJson = relPath.endsWith(".json") && !isConfig;
         if (isJxn) {
           try {
             const document = parseJxn(content);
@@ -359,14 +378,13 @@ export function registerProjectTools(
            model-authored text, and the gate below is the whole reason we do not trust its shape. */
         let projectConfig: ProjectConfig | undefined;
         if (isProjectConfigPath(relPath)) {
-          let parsedConfig: JsonValue;
+          let parsedConfig: ProjectConfig;
           try {
-            // SAFETY: `JSON.parse` without a reviver yields nothing but JSON values.
-            parsedConfig = JSON.parse(content) as JsonValue;
+            parsedConfig = parseProjectSource(content, relPath);
           } catch (error) {
             return {
               success: false,
-              error: `project.json must be valid JSON: ${error instanceof Error ? error.message : String(error)}`,
+              error: `${relPath} must read as a project file: ${error instanceof Error ? error.message : String(error)}`,
             };
           }
           /* The per-project entry document closes the composition over every enabled extension
@@ -388,13 +406,12 @@ export function registerProjectTools(
               .join("\n");
             return {
               success: false,
-              error: `project.json has schema errors — nothing was written. Fix these and retry:\n${formatted}`,
+              error: `${relPath} has schema errors — nothing was written. Fix these and retry:\n${formatted}`,
             };
           }
-          /* SAFETY: narrowed only now, because the assertion is earned by the schema gate rather
-             than by `JSON.parse`: the per-project entry schema found no violation this text did not
-             already have on disk. */
-          projectConfig = parsedConfig as ProjectConfig;
+          // Announced only now, because the schema gate is what earns it: the per-project entry
+          // Schema found no violation this text did not already have on disk.
+          projectConfig = parsedConfig;
         }
 
         try {

@@ -16,7 +16,7 @@
  * (kind "auth") after the connector plan inside {@link pushDataSchema}.
  */
 
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { isAbsolute, relative, resolve } from "node:path";
 import { Kysely, sql } from "kysely";
 import { buildProjectExtensionRegistry } from "@jxsuite/compiler/format-host";
@@ -53,7 +53,7 @@ import type {
   SecretsSetResponse,
 } from "@jxsuite/protocol";
 import { problem, problemTypeForStatus } from "./problem.ts";
-import { projectFilePath, readProjectFile } from "@jxsuite/schema/project-file/node";
+import { isSameStamp, projectFileStamp, readProjectFile } from "@jxsuite/schema/project-file/node";
 
 // ─── Local section shapes (structural — the connector owns the full types) ───
 
@@ -126,24 +126,27 @@ class ApiError extends Error {
 
 // ─── Project + registry resolution ───────────────────────────────────────────
 
-/** Per-project registry cache, invalidated when project.json's mtime moves. */
-const registryCache = new Map<string, { mtime: number; registry: Promise<ExtensionRegistry> }>();
+/** Per-project registry cache, invalidated when the project file moves or changes. */
+const registryCache = new Map<
+  string,
+  { mtime: number; path: string; registry: Promise<ExtensionRegistry> }
+>();
 
 /** Reset the registry cache (test hook). */
 export function resetDataApi(): void {
   registryCache.clear();
 }
 
-/** Read the project's config + connector-owned sections; 404 when there is no project.json. */
+/** Read the project's config + connector-owned sections; 404 when there is no project file. */
 function getProject(projectRoot: string): ProjectSections {
   const read = readProjectFile(projectRoot);
   if (!read) {
-    throw new ApiError(404, `No project.json under "${projectRoot}"`);
+    throw new ApiError(404, `No project file under "${projectRoot}"`);
   }
   if ("error" in read) {
     throw new ApiError(
       404,
-      `The project.json under "${projectRoot}" does not parse: ${read.error}`,
+      `The project file under "${projectRoot}" does not parse: ${read.error}`,
     );
   }
   const { config } = read;
@@ -158,16 +161,17 @@ function getProject(projectRoot: string): ProjectSections {
   return { config, connections, tables };
 }
 
-/** Build (or reuse) the project's extension registry, keyed on project.json's mtime. */
+/** Build (or reuse) the project's extension registry, keyed on the project file's stamp. */
 function getRegistry(projectRoot: string, config: ProjectConfig): Promise<ExtensionRegistry> {
-  const projectJsonPath = projectFilePath(projectRoot);
-  const mtime = statSync(projectJsonPath).mtimeMs;
+  const stamp = projectFileStamp(projectRoot);
   const cached = registryCache.get(projectRoot);
-  if (cached && cached.mtime === mtime) {
+  if (stamp && cached && isSameStamp(cached, stamp)) {
     return cached.registry;
   }
   const registry = buildProjectExtensionRegistry(projectRoot, config);
-  registryCache.set(projectRoot, { mtime, registry });
+  if (stamp) {
+    registryCache.set(projectRoot, { ...stamp, registry });
+  }
   return registry;
 }
 

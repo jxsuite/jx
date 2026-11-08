@@ -671,13 +671,18 @@ export function createDevServerPlatform() {
     // ─── Site context resolution ──────────────────────────────────────
 
     /**
-     * Given an absolute file path, walk up to find the nearest project.json ancestor. Returns {
+     * Given an absolute file path, walk up to find the nearest project file's folder. Returns {
      * sitePath, projectConfig } or { sitePath: null }.
      *
      * @param {string} filePath — absolute system path
+     * @throws {Error} When the folder holds both project files, which the person has to resolve.
      */
     async resolveSiteContext(filePath: string) {
       const res = await fetch(`/__studio/resolve-site?path=${encodeURIComponent(filePath)}`);
+      if (res.status === 409) {
+        const body = await readJson<ErrorBody>(res).catch((): ErrorBody => ({}));
+        throw new Error(problemDetail(body) ?? "This folder holds two project files");
+      }
       if (!res.ok) {
         return { sitePath: null };
       }

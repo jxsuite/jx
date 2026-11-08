@@ -16,3 +16,4 @@ export { parseJxn, parseJxnWithSpans } from "./parse.ts";
 export { reconcileJxn } from "./reconcile.ts";
 export type { JxnReader, JxnReading } from "./reconcile.ts";
 export { serializeJxn } from "./serialize.ts";
+export { parseProject, parseProjectWithSpans, serializeProject } from "./project.ts";

@@ -83,7 +83,7 @@ void mock.module("../src/site/schema-command.ts", () => ({
 }));
 
 let validateProjectFileImpl: (root: string) => Promise<ProjectValidationResult> = () =>
-  Promise.resolve({ errors: null, valid: true });
+  Promise.resolve({ errors: null, file: "project.json", valid: true });
 
 export const validateProjectFileCalls: string[] = [];
 

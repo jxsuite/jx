@@ -32,7 +32,7 @@ import { isNonNullObject, isString } from "@jxsuite/schema/guards";
 import { localeDirection, localeOfRoute, resolveI18n } from "@jxsuite/schema/locale";
 import { isNativeDocumentPath, parseNativeDocument } from "@jxsuite/schema/jxn";
 import type { JxDocument, JxElement, JxHeadEntry, ProjectConfig } from "@jxsuite/schema/types";
-import { PROJECT_FILE_NAME } from "@jxsuite/schema/project-file";
+import { PROJECT_FILE_NAMES, parseProjectSource } from "@jxsuite/schema/project-file";
 
 /** Everything the composer settled about a page before a renderer sees it. */
 export interface ComposedPage {
@@ -95,17 +95,28 @@ async function readDocument(io: SiteIO, path: string): Promise<JxDocument | null
   return io.parse ? ((await io.parse(path, text)) ?? null) : null;
 }
 
-/** The project's configuration, or an empty one when it has none this host can read. */
+/**
+ * The project's configuration, or an empty one when it has none this host can read.
+ *
+ * Both names are read, because a host that can only fetch has no other way to know which one a
+ * project has. A project with both has neither, as it has everywhere else (`site-architecture.md`
+ * §2.3).
+ */
 export async function readProjectConfig(io: SiteIO): Promise<ProjectConfig> {
-  const text = await io.read(PROJECT_FILE_NAME);
-  if (text === null) {
+  const texts = await Promise.all(PROJECT_FILE_NAMES.map((name) => io.read(name)));
+  const found = PROJECT_FILE_NAMES.flatMap((name, index) => {
+    const text = texts[index];
+    return text === null || text === undefined ? [] : [{ name, text }];
+  });
+  const [only] = found;
+  if (!only || found.length > 1) {
     return {};
   }
   try {
-    /* SAFETY: only the syntax is checked here, deliberately: every ProjectConfig member is
-       optional, and shape checking is `validateProject`'s job against the per-project schema,
-       which `jx build` runs and a live preview of a half-edited config must not refuse over. */
-    return JSON.parse(text) as ProjectConfig;
+    /* Only the syntax is checked here, deliberately: every ProjectConfig member is optional, and
+       shape checking is `validateProject`'s job against the per-project schema, which `jx build`
+       runs and a live preview of a half-edited config must not refuse over. */
+    return parseProjectSource(only.text, only.name);
   } catch {
     /* A project whose config does not parse still has pages, and refusing to render any of them
        would hide the one error the author can act on behind a blank origin. */

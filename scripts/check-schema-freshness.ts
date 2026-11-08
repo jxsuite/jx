@@ -260,7 +260,8 @@ export function explainDrift(changedInputs: string[], kinds: Set<SchemaKind>): s
   if (hit("packages/compiler/src/site/**")) {
     causes.push("the composer, bundler or flattener that builds the entry documents changed.");
   }
-  if (kinds.has("entry") && (hit("*/project.json") || hit("*/*/project.json"))) {
+  const projectFile = ["*/project.json", "*/*/project.json", "*/project.jxn", "*/*/project.jxn"];
+  if (kinds.has("entry") && projectFile.some((pattern) => hit(pattern))) {
     causes.push("a project enabled or disabled an extension.");
   }
 

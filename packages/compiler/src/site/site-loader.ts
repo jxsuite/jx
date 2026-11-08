@@ -7,8 +7,9 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import type { ImageConfig, JxDocumentValue, ProjectConfig } from "@jxsuite/schema/types";
-import { errorMessage, parseProjectConfig } from "@jxsuite/schema/parse";
-import { resolve } from "node:path";
+import { errorMessage } from "@jxsuite/schema/parse";
+import { parseProjectSource } from "@jxsuite/schema/project-file";
+import { basename, resolve } from "node:path";
 import { projectFilePath } from "@jxsuite/schema/project-file/node";
 
 /**
@@ -65,24 +66,24 @@ const DEFAULTS = {
 } satisfies Partial<ResolvedProjectConfig>;
 
 /**
- * Load and validate project.json from a project root.
+ * Load and validate the project file, `project.jxn` or `project.json`, from a project root.
  *
  * @param {string} projectRoot - Absolute path to the project directory
  * @returns {{ config: ProjectConfig; configPath: string; projectRoot: string }}
- * @throws {Error} If project.json is missing or invalid JSON
+ * @throws {Error} If there is no project file, there are two, or it does not read
  */
 export function loadProjectConfig(projectRoot: string) {
   const configPath = projectFilePath(projectRoot);
 
   if (!existsSync(configPath)) {
-    throw new Error(`project.json not found in ${projectRoot}`);
+    throw new Error(`No project.jxn or project.json in ${projectRoot}`);
   }
 
   let raw: ProjectConfig;
   try {
-    raw = parseProjectConfig(readFileSync(configPath, "utf8"), configPath);
+    raw = parseProjectSource(readFileSync(configPath, "utf8"), configPath);
   } catch (error) {
-    throw new Error(`Invalid project.json: ${errorMessage(error)}`, { cause: error });
+    throw new Error(`Invalid ${basename(configPath)}: ${errorMessage(error)}`, { cause: error });
   }
 
   // Deep merge with defaults. The `...raw` spread carries every author-declared key through

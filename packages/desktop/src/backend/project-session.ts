@@ -40,10 +40,17 @@ import {
 } from "@jxsuite/compiler/format-host";
 import { readBundledProjectSchemas } from "@jxsuite/compiler/schema-command";
 import { componentMetaFrom } from "@jxsuite/schema/component-meta";
-import { PROJECT_FILE_NAME, classifyProjectFile } from "@jxsuite/schema/project-file";
+import {
+  classifyProjectFile,
+  isProjectFileName,
+  parseProjectSource,
+  projectFileConflict,
+} from "@jxsuite/schema/project-file";
+import type { EnclosingProject } from "@jxsuite/schema/project-file";
 import {
   findEnclosingProjectOnDisk,
   hasProjectFile,
+  projectFileNameIn,
   projectFilePath,
   readProjectFile,
 } from "@jxsuite/schema/project-file/node";
@@ -224,19 +231,22 @@ export async function pickProjectFile(): Promise<{
   }
 
   const filePath = resolve(selectedPath);
-  if (!existsSync(filePath) || basename(filePath) !== PROJECT_FILE_NAME) {
-    throw new Error("Selected file is not a project.json");
+  if (!existsSync(filePath) || !isProjectFileName(basename(filePath))) {
+    throw new Error("Selected file is not a project.jxn or project.json");
   }
 
   const raw = await readFile(filePath, "utf8");
-  if (classifyProjectFile(raw) === "other") {
+  if (classifyProjectFile(raw, filePath) === "other") {
     throw new Error("Selected file is not a project's configuration");
   }
-  /* SAFETY: the file is a project.json by name and by content (checked above), and every ProjectConfig member is
-     optional. Only `name` is read here, and a falsy one falls back to the folder name; member-level
-     checking is `validateProject`'s job, not the picker's. */
-  const config = JSON.parse(raw) as ProjectConfig;
   const root = dirname(filePath);
+  if (projectFileNameIn(root) === "conflict") {
+    throw new Error(projectFileConflict(root));
+  }
+  /* The file is a project file by name and by content (checked above). Only `name` is read here,
+     and a falsy one falls back to the folder name; member-level checking is `validateProject`'s
+     job, not the picker's. */
+  const config = parseProjectSource(raw, filePath);
   return { config, name: config.name || basename(root), root };
 }
 
@@ -296,19 +306,29 @@ export function resolveOpenTarget(path: string): OpenTarget {
     return {
       kind: "refused",
       reason: isDirectory
-        ? `${absolute} isn't a Jx project: it has no project.json.`
+        ? `${absolute} isn't a Jx project: it has no project.jxn or project.json.`
         : `${basename(absolute)} isn't inside a Jx project, so Jx Studio can't open it yet.`,
     };
   }
   return {
-    file: isDirectory || absolute === found.projectFile ? null : relPosix(found.root, absolute),
+    file:
+      isDirectory || (dirname(absolute) === found.root && isProjectFileName(basename(absolute)))
+        ? null
+        : relPosix(found.root, absolute),
     kind: "project",
-    problem:
-      found.verdict === "unreadable"
-        ? `Jx Studio can't read ${found.projectFile}, so the project won't load. Fix the file, then close its window and open the project again.`
-        : null,
+    problem: openProblem(found),
     root: found.root,
   };
+}
+
+/** What the user should hear about a project found by a walk, or null when it reads. */
+function openProblem(found: EnclosingProject): string | null {
+  if (found.verdict === "conflict") {
+    return `${projectFileConflict(found.root)}. Then close its window and open the project again.`;
+  }
+  return found.verdict === "unreadable"
+    ? `Jx Studio can't read ${found.projectFile}, so the project won't load. Fix the file, then close its window and open the project again.`
+    : null;
 }
 
 // ─── Pure helpers (no session state) ──────────────────────────────────────────
@@ -1064,9 +1084,9 @@ export function createProjectSession(
     }
     await generateProject(destPath, options);
 
-    /* SAFETY: generateProject has just written this project.json from the options above, so it is a
-       ProjectConfig by construction. */
-    const config = JSON.parse(await readFile(projectFilePath(destPath), "utf8")) as ProjectConfig;
+    // It was just written by generateProject, from the options above.
+    const configPath = projectFilePath(destPath);
+    const config = parseProjectSource(await readFile(configPath, "utf8"), configPath);
     // The application just wrote this folder, which `generateProject` refuses unless it was empty.
     reroot(await gate.grant(destPath));
 

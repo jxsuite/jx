@@ -36,7 +36,8 @@ import type { ImportProgressEvent } from "@jxsuite/import/pipeline";
 import type { ImportSiteOptions, ImportSiteResult } from "@jxsuite/import/run";
 import { IMPORT_MAX_PAGES } from "@jxsuite/protocol";
 import type { ImportBreakpointPolicy } from "@jxsuite/protocol";
-import type { JsonObject } from "@jxsuite/schema/types";
+import type { ProjectConfig } from "@jxsuite/schema/types";
+import { parseProjectSource } from "@jxsuite/schema/project-file";
 import { projectFilePath } from "@jxsuite/schema/project-file/node";
 
 export interface ImportApiOptions {
@@ -86,7 +87,7 @@ type ImportStreamLine =
   | { type: "heartbeat" }
   | { type: "ready"; root: string }
   | ({ type: "progress" } & Omit<ImportProgressEvent, "root">)
-  | { type: "done"; root: string; config: JsonObject; result: ImportDoneSummary }
+  | { type: "done"; root: string; config: ProjectConfig; result: ImportDoneSummary }
   | { type: "error"; error: string };
 
 /** The AI pass's credentials, resolved from the request headers or the environment. */
@@ -298,11 +299,10 @@ async function handleImportSite(req: Request, opts: ImportApiOptions): Promise<R
           writeLine({ type: "progress", ...progress });
         });
 
-        /* SAFETY: importSite's emit phase has just written project.json as a Jx project config,
-           which is a JSON object; text that is not JSON throws into the error line below. */
-        const config = JSON.parse(
-          await readFile(projectFilePath(result.outDir), "utf8"),
-        ) as JsonObject;
+        // The import's emit phase has just written it; text that does not read throws into the
+        // Error line below.
+        const configPath = projectFilePath(result.outDir);
+        const config = parseProjectSource(await readFile(configPath, "utf8"), configPath);
         /*
          * The result travels with the `done` line. It used to be discarded here: the pipeline had
          * computed the page list, the file count, the warnings and (with verify) a per-page

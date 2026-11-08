@@ -1227,6 +1227,57 @@ describe("what a file named project.json has to be", () => {
   });
 });
 
+describe("a project declared by project.jxn", () => {
+  const get = async (path: string) => {
+    const url = new URL(`http://localhost${path}`);
+    const res = await callApi(new Request(url, { method: "GET" }), url, FIXTURES);
+    return { body: await res.json(), status: res.status };
+  };
+  const resolveSite = (path: string) =>
+    get(`/__studio/resolve-site?path=${encodeURIComponent(path)}`);
+
+  test("is found from a page, and from its folder, which answers with the file", async () => {
+    const root = resolve(FIXTURES, "notation");
+    mkdirSync(resolve(root, "pages"), { recursive: true });
+    writeFileSync(resolve(root, "project.jxn"), 'project "Notation"\n', "utf8");
+    writeFileSync(resolve(root, "pages/project.jxn"), 'h1 "About the project"\n', "utf8");
+
+    const { body: fromPage } = await resolveSite(resolve(root, "pages/project.jxn"));
+    expect(fromPage).toMatchObject({
+      fileRelPath: "pages/project.jxn",
+      projectConfig: { name: "Notation" },
+      sitePath: root,
+    });
+    const { body: fromFolder } = await resolveSite(root);
+    expect(fromFolder.fileRelPath).toBe("project.jxn");
+
+    const { body: info } = await get(`/__studio/project-info?dir=${encodeURIComponent(root)}`);
+    expect(info).toMatchObject({ isSiteProject: true, projectConfig: { name: "Notation" } });
+  });
+
+  test("beside a project.json, is refused by name, and listed once with the problem", async () => {
+    const root = resolve(FIXTURES, "both-files");
+    mkdirSync(resolve(root, "pages"), { recursive: true });
+    writeFileSync(resolve(root, "project.jxn"), 'project "Both"\n', "utf8");
+    writeFileSync(resolve(root, "project.json"), JSON.stringify({ name: "Both" }), "utf8");
+
+    const refused = await resolveSite(resolve(root, "pages/index.json"));
+    expect(refused.status).toBe(409);
+    expect(JSON.stringify(refused.body)).toContain("project.jxn and project.json");
+
+    const listing = await get("/__studio/sites");
+    const sites: { path: string; problem?: string }[] = listing.body;
+    const listed = sites.filter((site) => site.path.endsWith("both-files"));
+    expect(listed).toHaveLength(1);
+    expect(listed[0]?.problem).toContain("project.jxn and project.json");
+    expect(sites.some((site) => site.path.endsWith("notation"))).toBe(true);
+    expect(sites.some((site) => site.path.endsWith("notation/pages"))).toBe(false);
+
+    const { body: info } = await get(`/__studio/project-info?dir=${encodeURIComponent(root)}`);
+    expect(info.isSiteProject).toBe(false);
+  });
+});
+
 describe("resolve-site", () => {
   test("finds ancestor project.json for a file path", async () => {
     // SITE_PROJECT already has project.json at _studio_fixtures/my-site/project.json

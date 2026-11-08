@@ -482,7 +482,7 @@ export function createWindowHub(options: WindowHubOptions): WindowHub {
     }
   });
 
-  setFileDialog(() => requestDialog("file", "Open project.json"));
+  setFileDialog(() => requestDialog("file", "Open project file"));
   setDirectoryDialog(() => requestDialog("directory", "Choose a folder for your new project"));
 
   return {

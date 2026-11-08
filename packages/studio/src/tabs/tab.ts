@@ -11,18 +11,32 @@ import type { EditorKind } from "../commands/context";
 import type { JsonObject, JxMutableNode } from "@jxsuite/schema/types";
 import type { JxDocOp, JxFmOp } from "./patch-ops";
 import type { JsonLayout } from "@jxsuite/schema/json-layout";
-import { PROJECT_FILE_NAME, isProjectConfigPath } from "@jxsuite/schema/project-file";
+import { NEW_PROJECT_FILE_NAME, isProjectConfigPath } from "@jxsuite/schema/project-file";
+import type { ProjectFileName } from "@jxsuite/schema/project-file";
+
+/** Which file the open project is declared by: `project.jxn` or `project.json`. */
+let projectFileName: ProjectFileName = NEW_PROJECT_FILE_NAME;
 
 /**
  * The project's configuration file, project-relative.
  *
- * Named here rather than at the four places that used to spell it, because it is a DOCUMENT PATH —
+ * Named here rather than at the places that used to spell it, because it is a DOCUMENT PATH —
  * `inferModes` answers `["stylebook", "tokens", "source"]` for it (the Styles workspace's Elements,
  * Variables and Code views; editor kind `config`), and `tabs/project-config.ts` binds the tab at
- * this path as the configuration document.
+ * this path as the configuration document. Which of the two names it is, is the open project's:
+ * `files/project-file-name.ts` learns it as the project opens.
  */
-export function projectConfigPath(): string {
-  return PROJECT_FILE_NAME;
+export function projectConfigPath(): ProjectFileName {
+  return projectFileName;
+}
+
+/**
+ * Say which file the open project is declared by.
+ *
+ * @param name The file's name.
+ */
+export function setProjectConfigPath(name: ProjectFileName): void {
+  projectFileName = name;
 }
 
 export { isProjectConfigPath } from "@jxsuite/schema/project-file";

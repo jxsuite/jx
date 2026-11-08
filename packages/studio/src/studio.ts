@@ -297,10 +297,15 @@ import { registerI18nCommands } from "./i18n/i18n-commands";
 import { convertToComponent } from "./editor/convert-to-component";
 import type { GitDiffState } from "./types";
 import type { Tab } from "./tabs/tab";
-import type { JxDocument, ProjectConfig } from "@jxsuite/schema/types";
+import type { JxDocument } from "@jxsuite/schema/types";
 import { setBundleBase } from "./services/bundle-base";
 import { mountBootFailureTree, mountShellTree } from "./shell/tree";
-import { PROJECT_FILE_NAME, isProjectConfigPath } from "@jxsuite/schema/project-file";
+import {
+  PROJECT_FILE_NAMES,
+  isProjectConfigPath,
+  parseProjectSource,
+} from "@jxsuite/schema/project-file";
+import { learnProjectFileName } from "./files/project-file-name";
 import { projectConfigPath } from "./tabs/tab";
 
 // The bundler's `<link rel=modulepreload>` batching is installed on the module scope: before the
@@ -1119,6 +1124,7 @@ if (_projectParam) {
             searchQuery: "",
             selectedPath: siteCtx.fileRelPath || null,
           });
+          await learnProjectFileName(platform);
           setWorkspaceProject(siteCtx.sitePath, siteCtx.projectConfig || null);
 
           refreshExtensionUi(platform);
@@ -1169,8 +1175,11 @@ if (_projectParam) {
         // Read and open the file
         fileRelPath = named ?? siteCtx.fileRelPath ?? _projectParam;
 
-        // When opening project.json, default to home page instead (listing-based, no 404 probes).
-        if (isProjectConfigPath(fileRelPath) || fileRelPath.endsWith(`/${PROJECT_FILE_NAME}`)) {
+        // When opening the project file, default to home page instead (listing-based, no 404 probes).
+        if (
+          isProjectConfigPath(fileRelPath) ||
+          PROJECT_FILE_NAMES.some((name) => fileRelPath.endsWith(`/${name}`))
+        ) {
           fileRelPath = (await findHomePage()) ?? projectConfigPath();
         }
 
@@ -1456,11 +1465,12 @@ async function openRecentProject(root: string) {
     refreshFormats();
     void loadFormats();
     refreshExtensionUi(platform);
+    await learnProjectFileName(platform);
     const content = await platform.readFile(projectConfigPath());
-    /* SAFETY: This is `project.json` at the root the user chose to open, the project's own config
-       file whose schema is ProjectConfig; Studio edits it in that shape and does not re-validate it
-       on open, as the folder-picker path in `platforms/devserver.ts` does not either. */
-    const config = JSON.parse(content) as ProjectConfig;
+    /* The project's own config at the root the user chose to open; Studio edits it in that shape
+       and does not re-validate it on open, as the folder-picker path in `platforms/devserver.ts`
+       does not either. */
+    const config = parseProjectSource(content, projectConfigPath());
 
     closeAllTabs();
     resetIgnoreCache();

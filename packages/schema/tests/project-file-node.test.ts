@@ -17,10 +17,14 @@ import {
   NODE_PROJECT_WALK_IO,
   findEnclosingProjectOnDisk,
   hasProjectFile,
+  isSameStamp,
+  projectFileNameIn,
   projectFilePath,
+  projectFileStamp,
   readProjectFile,
 } from "../src/project-file-node.ts";
 import {
+  ProjectFileConflictError,
   isProjectConfigPath,
   parseProjectFile,
   serializeProjectFile,
@@ -49,6 +53,8 @@ afterAll(() => {
 describe("isProjectConfigPath", () => {
   test.each([
     ["project.json", true],
+    ["project.jxn", true],
+    ["pages/project.jxn", false],
     ["pages/project.json", false],
     ["new-project.json", false],
     ["", false],
@@ -191,5 +197,52 @@ describe("on disk", () => {
     } finally {
       chmodSync(folder, 0o700);
     }
+  });
+});
+
+describe("either name, on disk", () => {
+  test("a folder's project file is whichever it holds, and a new project's name when neither", () => {
+    const jxn = join(scratch, "either/jxn");
+    write("either/jxn/project.jxn", 'project "Site"\n');
+    expect(projectFileNameIn(jxn)).toBe("project.jxn");
+    expect(projectFilePath(jxn)).toBe(join(jxn, "project.jxn"));
+    expect(hasProjectFile(jxn)).toBe(true);
+    expect(readProjectFile(jxn)).toMatchObject({ config: { name: "Site" } });
+
+    const empty = join(scratch, "either/empty");
+    mkdirSync(empty, { recursive: true });
+    expect(projectFileNameIn(empty)).toBeNull();
+    expect(projectFilePath(empty)).toBe(join(empty, "project.json"));
+    expect(hasProjectFile(empty)).toBe(false);
+  });
+
+  test("a folder holding both is refused, naming both, and still holds a project", () => {
+    const both = join(scratch, "either/both");
+    write("either/both/project.jxn", 'project "A"\n');
+    write("either/both/project.json", '{ "name": "B" }');
+    expect(projectFileNameIn(both)).toBe("conflict");
+    expect(() => projectFilePath(both)).toThrow(ProjectFileConflictError);
+    expect(hasProjectFile(both)).toBe(true);
+    const read = readProjectFile(both);
+    expect(read && "error" in read && read.error).toContain("project.jxn and project.json");
+    expect(projectFileStamp(both)).toBeNull();
+    expect(findEnclosingProjectOnDisk(join(both, "pages"))?.verdict).toBe("conflict");
+  });
+
+  test("a stamp is the file and its time, so converting a project is a change", () => {
+    const site = join(scratch, "either/stamp");
+    write("either/stamp/project.json", '{ "name": "A" }');
+    const before = projectFileStamp(site);
+    expect(before?.path).toBe(join(site, "project.json"));
+    expect(before && isSameStamp(before, before)).toBe(true);
+    expect(before && isSameStamp(undefined, before)).toBe(false);
+    rmSync(join(site, "project.json"));
+    write("either/stamp/project.jxn", 'project "A"\n');
+    const after = projectFileStamp(site);
+    expect(after?.path).toBe(join(site, "project.jxn"));
+    expect(after && isSameStamp({ mtime: after.mtime, path: before?.path ?? "" }, after)).toBe(
+      false,
+    );
+    expect(projectFileStamp(join(scratch, "either/none"))).toBeNull();
   });
 });

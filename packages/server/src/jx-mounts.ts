@@ -16,15 +16,16 @@
  * The runtime is cached per project root and invalidated when project.json changes on disk.
  */
 
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { buildProjectExtensionRegistry } from "@jxsuite/compiler/format-host";
 import { isString } from "@jxsuite/schema/guards";
 import { projectDevEnv } from "./dev-vars.ts";
 import type { ProjectDevEnv } from "./dev-vars.ts";
 import type { ExtensionRegistry } from "@jxsuite/schema/extension-registry";
 import type { ImplementationExport, MountHandler } from "@jxsuite/schema/format-registry";
-import type { JxDocumentValue, ProjectConfig } from "@jxsuite/schema/types";
-import { projectFilePath } from "@jxsuite/schema/project-file/node";
+import type { JxDocumentValue } from "@jxsuite/schema/types";
+import { parseProjectSource } from "@jxsuite/schema/project-file";
+import { isSameStamp, projectFileStamp } from "@jxsuite/schema/project-file/node";
 
 interface MountRuntime {
   handlers: { basePath: string; handler: MountHandler }[];
@@ -32,7 +33,10 @@ interface MountRuntime {
 }
 
 /** Per-project runtime cache, invalidated when project.json's mtime moves. */
-const runtimeCache = new Map<string, { mtime: number; runtime: Promise<MountRuntime | null> }>();
+const runtimeCache = new Map<
+  string,
+  { mtime: number; path: string; runtime: Promise<MountRuntime | null> }
+>();
 
 /** Reset the runtime cache (test hook). */
 export function resetJxMounts(): void {
@@ -81,35 +85,34 @@ export async function handleJxMounts(
 
 /** Load (or reuse) the mount runtime for a project root. */
 function getRuntime(projectRoot: string): Promise<MountRuntime | null> {
-  const projectJsonPath = projectFilePath(projectRoot);
-  if (!existsSync(projectJsonPath)) {
+  const stamp = projectFileStamp(projectRoot);
+  if (!stamp) {
     return Promise.resolve(null);
   }
-  const { mtimeMs } = statSync(projectJsonPath);
   const cached = runtimeCache.get(projectRoot);
-  if (cached && cached.mtime === mtimeMs) {
+  if (cached && isSameStamp(cached, stamp)) {
     return cached.runtime;
   }
-  const runtime = buildRuntime(projectRoot, projectJsonPath).catch((error) => {
+  const runtime = buildRuntime(projectRoot, stamp.path).catch((error) => {
     console.warn(
       `jx-mounts: failed to build extension mounts for ${projectRoot}:`,
       error instanceof Error ? error.message : String(error),
     );
     return null;
   });
-  runtimeCache.set(projectRoot, { mtime: mtimeMs, runtime });
+  runtimeCache.set(projectRoot, { ...stamp, runtime });
   return runtime;
 }
 
 /** Build the runtime: registry, sections, connector stand-ins, and the ordered mount handlers. */
 async function buildRuntime(
   projectRoot: string,
-  projectJsonPath: string,
+  projectFile: string,
 ): Promise<MountRuntime | null> {
-  /* SAFETY: trust boundary. project.json is the project's own config, held to its per-project
-     schema by the editor and `jx validate`; the sections are only relayed to the mounts that own
-     them, and any throw lands in getRuntime's catch, which disables the mounts with a warning. */
-  const config = JSON.parse(readFileSync(projectJsonPath, "utf8")) as ProjectConfig;
+  /* Trust boundary. The project file is the project's own config, held to its per-project schema
+     by the editor and `jx validate`; the sections are only relayed to the mounts that own them,
+     and any throw lands in getRuntime's catch, which disables the mounts with a warning. */
+  const config = parseProjectSource(readFileSync(projectFile, "utf8"), projectFile);
   const registry = await buildProjectExtensionRegistry(projectRoot, config);
   const mounts = registry.serverMounts();
   if (mounts.length === 0) {

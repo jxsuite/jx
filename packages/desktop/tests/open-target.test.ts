@@ -38,6 +38,11 @@ beforeAll(() => {
   write("mono/apps/web/src/data.json", "{}");
   write("nx/project.json", '{ "name": "web", "targets": {} }');
   write("loose/card.json", '{ "tagName": "div" }');
+  write("notation/project.jxn", 'project "Notation"\n');
+  write("notation/pages/project.jxn", 'h1 "About the project"\n');
+  write("twice/project.jxn", 'project "Twice"\n');
+  write("twice/project.json", '{ "name": "Twice" }');
+  write("twice/pages/index.json", '{ "tagName": "main" }');
 });
 
 afterAll(() => {
@@ -96,12 +101,35 @@ describe("resolveOpenTarget", () => {
     expect(target.kind === "project" ? target.problem : null).toContain(at("broken/project.json"));
   });
 
+  test("a project.jxn opens its project, and a page by that name is a page in it", () => {
+    expect(resolveOpenTarget(at("notation/project.jxn"))).toEqual({
+      file: null,
+      kind: "project",
+      problem: null,
+      root: at("notation"),
+    });
+    expect(resolveOpenTarget(at("notation/pages/project.jxn"))).toEqual({
+      file: "pages/project.jxn",
+      kind: "project",
+      problem: null,
+      root: at("notation"),
+    });
+  });
+
+  test("a folder holding both project files opens, and names both", () => {
+    const target = resolveOpenTarget(at("twice/pages/index.json"));
+    expect(target).toMatchObject({ file: "pages/index.json", kind: "project", root: at("twice") });
+    const problem = target.kind === "project" ? target.problem : null;
+    expect(problem).toContain("project.jxn and project.json");
+    expect(problem).toContain("open the project again");
+  });
+
   test("a folder is not a project because something above it is", () => {
     expect(resolveOpenTarget(at("site/pages"))).toMatchObject({ kind: "refused" });
   });
 
   test.each([
-    ["a folder with no project file", "loose", "it has no project.json"],
+    ["a folder with no project file", "loose", "it has no project.jxn or project.json"],
     ["a file in no project", "loose/card.json", "card.json isn't inside a Jx project"],
     ["a project file that is really Nx's, with none around it", "nx/project.json", "isn't inside"],
     ["a path that is not there", "gone/page.json", "can't find"],

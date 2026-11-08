@@ -4,7 +4,7 @@ import { siteBasePath } from "@jxsuite/schema/asset-paths";
 import { dirname, isAbsolute, relative, resolve } from "node:path";
 import { errorMessage, parseClassDef } from "@jxsuite/schema/parse";
 import { isFunction, isNonNullObject, isString } from "@jxsuite/schema/guards";
-import { readFileSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { projectDevEnv } from "./dev-vars.ts";
 import { containedPath } from "./net-guard.ts";
@@ -25,7 +25,8 @@ import type {
 } from "@jxsuite/schema/types";
 import type { ProjectDevEnv } from "./dev-vars.ts";
 import { problem } from "./problem.ts";
-import { projectFilePath } from "@jxsuite/schema/project-file/node";
+import { parseProjectSource } from "@jxsuite/schema/project-file";
+import { isSameStamp, projectFileStamp } from "@jxsuite/schema/project-file/node";
 
 /**
  * Any value a module exports, as the proxies see it before they check it. Nothing about an export
@@ -194,7 +195,10 @@ function baseDirectory($base: string, root: string, projectRoot: string): string
  * seconds for data it never reads. Both together put a component fetch past the canvas's register
  * timeout on every cold open.
  */
-const projectEntryCache = new Map<string, { mtime: number; entry: Promise<ProjectEntry | null> }>();
+const projectEntryCache = new Map<
+  string,
+  { mtime: number; path: string; entry: Promise<ProjectEntry | null> }
+>();
 
 /**
  * Lazy-load project context (project.json + extension-loaded sections) for class instantiation.
@@ -256,31 +260,30 @@ async function completeSections(context: ProjectContext): Promise<void> {
 
 /** Load (or reuse) the cached project config, extension registry and asset mounts. */
 async function loadProjectEntry(projectRoot: string): Promise<ProjectEntry | null> {
-  const projectJsonPath = projectFilePath(projectRoot);
-  const mtime = statSync(projectJsonPath, { throwIfNoEntry: false })?.mtimeMs;
-  if (mtime === undefined) {
+  const stamp = projectFileStamp(projectRoot);
+  if (!stamp) {
     return null;
   }
   const cached = projectEntryCache.get(projectRoot);
-  if (cached && cached.mtime === mtime) {
+  if (cached && isSameStamp(cached, stamp)) {
     return cached.entry;
   }
-  const entry = readProjectEntry(projectRoot, projectJsonPath, mtime);
-  projectEntryCache.set(projectRoot, { entry, mtime });
+  const entry = readProjectEntry(projectRoot, stamp.path, stamp.mtime);
+  projectEntryCache.set(projectRoot, { ...stamp, entry });
   return entry;
 }
 
-/** Read one `project.json` generation. Never rejects: any failure answers "no project context". */
+/** Read one project file generation. Never rejects: any failure answers "no project context". */
 async function readProjectEntry(
   projectRoot: string,
-  projectJsonPath: string,
+  projectFile: string,
   mtime: number,
 ): Promise<ProjectEntry | null> {
   try {
-    /* SAFETY: trust boundary. project.json is the project's own config file, which the editor
-       and `jx validate` hold to its per-project schema. Any failure reading it below is caught
-       here and answers "no project context". */
-    const config = JSON.parse(readFileSync(projectJsonPath, "utf8")) as ProjectConfig;
+    /* Trust boundary. The project file is the project's own config, which the editor and
+       `jx validate` hold to its per-project schema. Any failure reading it below is caught here
+       and answers "no project context". */
+    const config = parseProjectSource(readFileSync(projectFile, "utf8"), projectFile);
     const registry = await buildProjectExtensionRegistry(projectRoot, config);
     const { mounts } = await loadAssetMounts(registry, config, projectRoot);
     return { config, mounts, mtime, registry };

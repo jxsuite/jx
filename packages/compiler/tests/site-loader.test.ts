@@ -24,10 +24,45 @@ describe("loadProjectConfig", () => {
     }
   });
 
+  test("reads a project.jxn, with the same defaults", () => {
+    setup();
+    try {
+      const text = '/- kdl-version 2\n// The site.\nproject "Notation"\nbuild outDir="./out"\n';
+      writeFileSync(join(FIXTURES, "project.jxn"), text, "utf8");
+      const { config, configPath } = loadProjectConfig(FIXTURES);
+      expect(config.name).toBe("Notation");
+      expect(config.build.outDir).toBe("./out");
+      expect(configPath).toBe(join(FIXTURES, "project.jxn"));
+    } finally {
+      cleanup();
+    }
+  });
+
+  test("names a project.jxn that does not read, with its line", () => {
+    setup();
+    try {
+      writeFileSync(join(FIXTURES, "project.jxn"), 'project "a"\nproject "b"\n', "utf8");
+      expect(() => loadProjectConfig(FIXTURES)).toThrow(/^Invalid project\.jxn: .*line 2/u);
+    } finally {
+      cleanup();
+    }
+  });
+
+  test("refuses a folder holding both project files, naming both", () => {
+    setup();
+    try {
+      writeFileSync(join(FIXTURES, "project.jxn"), "project\n", "utf8");
+      writeFileSync(join(FIXTURES, "project.json"), "{}", "utf8");
+      expect(() => loadProjectConfig(FIXTURES)).toThrow("project.jxn and project.json");
+    } finally {
+      cleanup();
+    }
+  });
+
   test("throws when project.json is missing", () => {
     setup();
     try {
-      expect(() => loadProjectConfig(FIXTURES)).toThrow("project.json not found");
+      expect(() => loadProjectConfig(FIXTURES)).toThrow("No project.jxn or project.json");
     } finally {
       cleanup();
     }

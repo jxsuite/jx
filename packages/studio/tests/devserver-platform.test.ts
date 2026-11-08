@@ -849,6 +849,22 @@ describe("resolveSiteContext", () => {
     const p = createDevServerPlatform();
     expect(await p.resolveSiteContext("/nowhere")).toEqual({ sitePath: null });
   });
+
+  test("a folder holding both project files is said, not taken for no project", async () => {
+    route("/__studio/resolve-site", () =>
+      json({ detail: "/abs/site holds both project.jxn and project.json", status: 409 }, 409),
+    );
+    const p = createDevServerPlatform();
+    await expect(p.resolveSiteContext("/abs/site")).rejects.toThrow(
+      "both project.jxn and project.json",
+    );
+  });
+
+  test("a conflict with no detail still says what it is", async () => {
+    route("/__studio/resolve-site", () => json({}, 409));
+    const p = createDevServerPlatform();
+    await expect(p.resolveSiteContext("/abs/site")).rejects.toThrow("two project files");
+  });
 });
 
 describe("locateFile", () => {
