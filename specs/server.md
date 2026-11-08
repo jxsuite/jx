@@ -2,9 +2,9 @@
 
 ## Development Server with Live Reload, Proxy Resolution, and Studio API
 
-**Version:** 0.3.7-draft\
+**Version:** 0.3.8-draft\
 **Status:** Partial\
-**Updated:** 2026-11-07\
+**Updated:** 2026-11-08\
 **License:** MIT
 
 ---
@@ -364,6 +364,7 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.3.8-draft** (2026-11-08) — §3.4: the editing server answers a .jxn file on its static routes as JSON, as a site origin does.
 - **0.3.7-draft** (2026-11-07) — A site origin answers .jxn as JSON, and an editing server answers it as text.
 - **0.3.6-draft** (2026-11-06) — §3.2: `POST /__jx_resolve__` reads `$base` as `POST /__jx_server__` does, so a relative class resolves from the absolute-path base Studio's canvas sends.
 - **0.3.5-draft** (2026-11-06) — A project nested in a larger repository gets paths relative to itself, and a status and commit that cover only itself.
@@ -426,4 +427,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_`@jxsuite/server` Specification v0.3.7-draft_
+_`@jxsuite/server` Specification v0.3.8-draft_
