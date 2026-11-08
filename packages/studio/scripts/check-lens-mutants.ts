@@ -561,6 +561,20 @@ const MUTANTS: Mutant[] = [
   {
     edits: [
       {
+        find: `  const inLens = derivationOfPane(surface.paneId)?.kind === "lens";`,
+        replace: `  const inLens = false as boolean;`,
+      },
+    ],
+    file: "src/canvas/canvas-render.ts",
+    id: "canvas-render.ts · no entry-preview bar in a lens",
+    means:
+      "a lens over a collection's page grows a second entry picker, which writes the route " +
+      "parameter of a tab the lens only views",
+    test: "tests/canvas-render.test.ts",
+  },
+  {
+    edits: [
+      {
         find: `  const lensDiff = paneDiff?.kind === "lens" && paneDiff.preset === "diff";`,
         replace: `  const lensDiff = false as boolean;`,
       },

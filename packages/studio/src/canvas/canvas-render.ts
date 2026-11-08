@@ -96,6 +96,12 @@ import {
   detachWritingBanner,
   renderWritingBanner,
 } from "../content/writing-banner";
+import {
+  attachEntryPreview,
+  detachEntryPreview,
+  entryPreviewTarget,
+  renderEntryPreview,
+} from "../content/entry-preview";
 import { writesEntryOnCanvas } from "../content/content-collections";
 import { mountCanvasStage } from "../surfaces/canvas-stage";
 import type {
@@ -334,6 +340,8 @@ function stageActions(surface: CanvasSurface): CanvasStageActions {
         surface.panzoomWrap = element;
       } else if (part === "writing-banner") {
         attachWritingBanner(surface.paneId, element);
+      } else if (part === "entry-preview-host") {
+        attachEntryPreview(surface.paneId, element);
       } else if (part === "diff-toolbar") {
         setDiffToolbarHost(surface.paneId, element);
       } else if (part === "review-frame") {
@@ -670,6 +678,7 @@ function resetCanvasView(surface: CanvasSurface) {
   detachGridPanel(paneId);
   detachEntryPane(paneId);
   detachWritingBanner(paneId);
+  detachEntryPreview(paneId);
   detachMediaPane(paneId);
   detachImageEditor(paneId);
   detachVariablesView(paneId);
@@ -1109,6 +1118,14 @@ function renderCanvasImpl(surface: CanvasSurface) {
     writesEntryOnCanvas(tab.documentPath);
   if (!wantsWritingBanner) {
     detachWritingBanner(surface.paneId);
+  }
+  /* A collection's page in Edit carries the entry-preview bar (§22.4): the page is drawn with one
+     entry, and the bar says which and steps through the rest. Not in a lens, for the banner's
+     reason: what it writes is the tab's route parameter, and a lens is a view. */
+  const inLens = derivationOfPane(surface.paneId)?.kind === "lens";
+  const wantsEntryPreview = canvasMode === "edit" && !inLens && entryPreviewTarget(tab) !== null;
+  if (!wantsEntryPreview) {
+    detachEntryPreview(surface.paneId);
   }
 
   /* Advance THIS stage's render generation so stale async renders from its previous pass bail out.
@@ -1780,7 +1797,7 @@ function renderCanvasImpl(surface: CanvasSurface) {
     const rootTag = S.document.tagName;
     const isComponentDoc = isString(rootTag) && rootTag.includes("-");
     const { featureToggles: editToggles } = S.ui;
-    /* The stage stacks when it carries the writing banner: the band first, the page's scroller
+    /* The stage stacks when it carries the writing banner or the entry-preview bar: the band first, the page's scroller
        below it. Set on every render rather than on the transition, because whether a document is
        a collection entry changes with the tab and not with the mode. `editors.ts` and
        `formula-workspace.ts` already claim the column this way — `#canvas-wrap` is a row by
@@ -1788,7 +1805,7 @@ function renderCanvasImpl(surface: CanvasSurface) {
        PANE rather than the breakpoint's column. And FLUSH: the cell's own 24px gap
        (`pane-grid.json`) between two side-by-side surfaces would be dead space between the band and
        the scroller below it, whose own 32px of top padding is the breathing room. */
-    const stacks = wantsWritingBanner;
+    const stacks = wantsWritingBanner || wantsEntryPreview;
     canvasWrap.style.flexDirection = stacks ? "column" : "";
     canvasWrap.style.alignItems = stacks ? "stretch" : "";
     canvasWrap.style.gap = stacks ? "0px" : "";
@@ -1806,7 +1823,7 @@ function renderCanvasImpl(surface: CanvasSurface) {
         handles: "shown",
         hug: isComponentDoc,
         innerPart: "edit-column",
-        lead: wantsWritingBanner ? "banner" : "none",
+        lead: wantsWritingBanner ? "banner" : wantsEntryPreview ? "entry" : "none",
         panels: [entry.item],
       },
       [entry],
@@ -1816,6 +1833,9 @@ function renderCanvasImpl(surface: CanvasSurface) {
       }
       if (wantsWritingBanner) {
         renderWritingBanner(surface.paneId, tab);
+      }
+      if (wantsEntryPreview) {
+        renderEntryPreview(surface.paneId, tab);
       }
       const editColumn = stageHost(surface, "edit-column");
       const scroller = stageHost(surface, "edit-canvas");
@@ -2129,6 +2149,7 @@ setSurfaceTeardown((surface) => {
   detachVariablesView(surface.paneId);
   detachWorkspaceHome(surface.paneId);
   detachWritingBanner(surface.paneId);
+  detachEntryPreview(surface.paneId);
   disposeSourceCollab(surface);
   disposeSourceEditor(surface);
   surface.centerObserver?.disconnect();

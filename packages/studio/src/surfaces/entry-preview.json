@@ -1,0 +1,181 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StudioEntryPreview",
+  "$description": "The entry-preview bar (specs/studio.md §22.4): one small bar above the canvas while a collection's page is open in Edit, naming the entry the page is drawn with and stepping through the others. `content/entry-preview.ts` reads the collection's entries and decides what the bar says; choosing an entry writes the page's route parameter, the same one the Context popover's picker writes, so the two cannot disagree.",
+  "tagName": "div",
+  "attributes": {
+    "part": "entry-preview",
+    "data-jx-region": "${state.region}"
+  },
+  "style": {
+    "$description": "A row across the pane that centres the bar over the page, the Design-Template board's: the canvas is the subject, so the bar is a small outlined pill rather than a band.",
+    "display": "flex",
+    "justifyContent": "center",
+    "padding": "var(--jx-space-3) var(--jx-space-4) 0",
+    "& [part=\"bar\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "var(--jx-space-2)",
+      "minWidth": "0",
+      "maxWidth": "100%",
+      "padding": "var(--jx-space-1) var(--jx-space-1) var(--jx-space-1) var(--jx-space-3)",
+      "background": "var(--bg-panel)",
+      "border": "1px solid color-mix(in srgb, var(--accent) 35%, var(--border))",
+      "borderRadius": "var(--jx-radius-md)",
+      "fontFamily": "var(--jx-font-sans)",
+      "fontSize": "var(--jx-text-sm)",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"label\"]": {
+      "flexShrink": "0",
+      "fontWeight": "500",
+      "color": "var(--accent)"
+    },
+    "& [part=\"picker-slot\"], & [part=\"picker\"]": {
+      "display": "contents"
+    },
+    "& [part=\"entry\"]": {
+      "minWidth": "12rem",
+      "maxWidth": "22rem"
+    },
+    "& [part=\"note\"]": {
+      "paddingRight": "var(--jx-space-2)"
+    }
+  },
+  "children": [
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "bar",
+        "role": "group",
+        "aria-label": "Previewing entry"
+      },
+      "children": [
+        {
+          "tagName": "span",
+          "attributes": {
+            "part": "label"
+          },
+          "textContent": "Previewing entry"
+        },
+        {
+          "tagName": "div",
+          "attributes": {
+            "part": "picker-slot",
+            "role": "none"
+          },
+          "$switch": {
+            "$ref": "#/state/status"
+          },
+          "cases": {
+            "ready": {
+              "tagName": "div",
+              "attributes": {
+                "part": "picker",
+                "role": "none"
+              },
+              "children": [
+                {
+                  "tagName": "jx-select",
+                  "attributes": {
+                    "part": "entry"
+                  },
+                  "$props": {
+                    "size": "sm",
+                    "label": "Entry to preview",
+                    "options": {
+                      "$ref": "#/state/options"
+                    },
+                    "value": {
+                      "$ref": "#/state/value"
+                    }
+                  },
+                  "onchange": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "operator": "call",
+                        "target": {
+                          "$ref": "#/state/choose"
+                        },
+                        "value": [
+                          {
+                            "$ref": "event#/target/value"
+                          }
+                        ]
+                      }
+                    ],
+                    "description": "Choosing an entry writes the page's route parameter (`canvas.setRouteParam`), and the canvas draws the page with it."
+                  }
+                },
+                {
+                  "tagName": "jx-action-button",
+                  "attributes": {
+                    "part": "previous"
+                  },
+                  "$props": {
+                    "size": "sm",
+                    "quiet": true,
+                    "icon": "caret-left",
+                    "label": "Previous entry",
+                    "hint": "Previous entry",
+                    "disabled": {
+                      "$ref": "#/state/prevDisabled"
+                    }
+                  },
+                  "onclick": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "operator": "call",
+                        "target": {
+                          "$ref": "#/state/step"
+                        },
+                        "value": [-1]
+                      }
+                    ]
+                  }
+                },
+                {
+                  "tagName": "jx-action-button",
+                  "attributes": {
+                    "part": "next"
+                  },
+                  "$props": {
+                    "size": "sm",
+                    "quiet": true,
+                    "icon": "caret-right",
+                    "label": "Next entry",
+                    "hint": "Next entry",
+                    "disabled": {
+                      "$ref": "#/state/nextDisabled"
+                    }
+                  },
+                  "onclick": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "operator": "call",
+                        "target": {
+                          "$ref": "#/state/step"
+                        },
+                        "value": [1]
+                      }
+                    ]
+                  }
+                }
+              ]
+            },
+            "note": {
+              "tagName": "span",
+              "attributes": {
+                "part": "note"
+              },
+              "textContent": "${state.note}"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
