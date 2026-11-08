@@ -43,6 +43,7 @@ import { notify } from "../services/notify";
 import { authenticateGithub } from "../github/github-auth";
 import { createGithubRepository } from "../github/github-publish";
 import { pullWithPackageSync } from "../packages/pull-package-sync";
+import { offerBranchForRefusedPush } from "./protected-branch";
 import type { AnyCommand, CommandRegistry } from "../commands/registry";
 
 // ─── Reading the repository ───────────────────────────────────────────────────
@@ -391,9 +392,25 @@ export async function initRepository(): Promise<void> {
   await refreshGitStatus();
 }
 
-/** Push the current branch. Same loading/error contract as every other verb. */
+/**
+ * Push the current branch. Same loading/error contract as every other verb, except for the one
+ * refusal that has a way on: a branch the remote's rules protect, where the commit is offered a
+ * branch of its own and a pull request instead (`protected-branch.ts`).
+ */
 export async function pushCurrentBranch(): Promise<void> {
-  await gitAction((plat) => plat.gitPush());
+  const plat = getPlatform();
+  shell.git.loading = true;
+  shell.git.error = null;
+  try {
+    await plat.gitPush();
+    await refreshGitStatus();
+  } catch (error) {
+    shell.git.loading = false;
+    const message = errorMessage(error);
+    if ((await offerBranchForRefusedPush(message, { refresh: refreshGitStatus })) === null) {
+      shell.git.error = message;
+    }
+  }
 }
 
 /** Fetch from the remote. */

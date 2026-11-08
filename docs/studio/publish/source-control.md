@@ -83,7 +83,7 @@ The bar at the foot of the change list shows where you stand against the reposit
 
 - **Fetch**: check the repository for news without changing your files.
 - **Pull**: bring teammates' commits into your copy.
-- **Push**: send your local commits up.
+- **Push**: send your local commits up. If the branch is protected on GitHub, Studio offers to push your commits to a new branch and open a pull request instead (see [When the branch is protected](/docs/studio/publish#when-the-branch-is-protected)).
 
 The buttons drop to a line of their own under the status whenever the column cannot hold both on one, so the status never breaks a word at a time to make room.
 

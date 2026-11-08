@@ -14,6 +14,7 @@ import {
   isActionRequired,
   offeredActions,
   platformErrorInfo,
+  pushRefusedByRule,
   remoteConflictsOf,
   retryHint,
 } from "../src/platform-errors";
@@ -164,6 +165,26 @@ describe("retryHint", () => {
     expect(retryHint("none")).toBe("none");
     expect(retryHint("later")).toBeUndefined();
     expect(retryHint(1)).toBeUndefined();
+  });
+});
+
+describe("pushRefusedByRule", () => {
+  test("recognises a ruleset, a protected branch and GitLab's protection in git's words", () => {
+    const ruleset = "remote: error: GH013: Repository rule violations found for refs/heads/main.";
+    expect(pushRefusedByRule(new Error(ruleset))).toBe(true);
+    expect(
+      pushRefusedByRule(" ! [remote rejected] main -> main (protected branch hook declined)"),
+    ).toBe(true);
+    expect(pushRefusedByRule("remote: error: GH006: Protected branch update failed")).toBe(true);
+    expect(pushRefusedByRule("You are not allowed to push code to protected branches")).toBe(true);
+  });
+
+  test("is false for every other push failure", () => {
+    expect(pushRefusedByRule(new Error("! [rejected] main -> main (non-fast-forward)"))).toBe(
+      false,
+    );
+    expect(pushRefusedByRule("Authentication failed")).toBe(false);
+    expect(pushRefusedByRule(42)).toBe(false);
   });
 });
 
