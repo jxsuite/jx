@@ -208,7 +208,36 @@ export interface StylePanelView {
   sections: StyleSectionView[];
   /** What else styles the element Project Styles is editing (studio.md §7.4). */
   restyle: StyleRestyleView;
+  /** In Design, whether an edit is to this element or to every one of its tag (§6.2). */
+  appliesTo: StyleAppliesToView;
 }
+
+/**
+ * The Design Style tab's "Applies to" pair: this element, which is what an edit here changes, or
+ * every element of its tag on the site, which is Project Styles' to edit and is where the second
+ * option takes the reader.
+ */
+export interface StyleAppliesToView {
+  /** `shown` for one plain HTML element selected in Design; `none` otherwise. */
+  state: "shown" | "none";
+  /** The selected element's tag, `h1`: what the second option opens Project Styles on. */
+  tag: string;
+  /** `This <h1>`. */
+  thisLabel: string;
+  /** `All <h1>s`. */
+  allLabel: string;
+  /** What choosing the second does: it opens Project Styles on the tag. */
+  allHint: string;
+}
+
+/** The pair when it has nothing to offer: every field present, as the document binds them all. */
+export const NO_APPLIES_TO: StyleAppliesToView = {
+  allHint: "",
+  allLabel: "",
+  state: "none",
+  tag: "",
+  thisLabel: "",
+};
 
 /** A component that restyles the element its own way, with a way to open it. */
 export interface StyleRestyleComponent {
@@ -274,6 +303,8 @@ export interface StylePanelActions {
   openComponent: (path: string) => void;
   /** Start a new component: the second kind of an element is one. */
   newComponent: () => void;
+  /** Style every element of a tag: Project Styles, on that tag. */
+  styleAllOfTag: (tag: string) => void;
 }
 
 /** Where the one announced host belongs. */
@@ -309,6 +340,7 @@ function project(scope: StylePanelScope, view: StylePanelView): void {
   scope.filter = view.filter;
   scope.sections = view.sections;
   scope.restyle = view.restyle;
+  scope.appliesTo = view.appliesTo;
 }
 
 /**
@@ -335,6 +367,7 @@ export function mountStylePanelSurface(
     emptyMessage: "",
     filter: "",
     hasEmptyAction: false,
+    appliesTo: NO_APPLIES_TO,
     restyle: NO_RESTYLE,
     sections: [],
     view: "empty",

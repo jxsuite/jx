@@ -139,7 +139,7 @@ export interface SchemeOptionView {
   /** `""` for the base value, else the scheme's `$media` entry name. */
   value: string;
   label: string;
-  checked: boolean;
+  checked: "true" | "false";
 }
 
 /** One group of tokens: its heading, its rows, its add row, and what it says about contexts. */

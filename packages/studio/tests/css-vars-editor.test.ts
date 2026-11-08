@@ -436,8 +436,14 @@ describe("the chosen colour's detail", () => {
     );
     const schemes = [...container.querySelectorAll<HTMLElement>('[part="scheme"]')];
     expect(schemes.map((button) => button.textContent.trim())).toEqual(["Base", "Dark"]);
+    // A segment of a radio group is checked by "true" or "false", never by a boolean.
+    const checkedOf = (button: Element) => ("checked" in button ? button.checked : undefined);
+    expect(schemes.map((button) => checkedOf(button))).toEqual(["true", "false"]);
     pointer(schemes[1]!, "click");
     await flush(4);
+    expect(
+      [...container.querySelectorAll('[part="scheme"]')].map((button) => checkedOf(button)),
+    ).toEqual(["false", "true"]);
     // Swatches show the Dark value where there is one, and the base value where it inherits.
     const caption = (name: string) =>
       tileOf(container, name).querySelector('[part="tile-value"]')?.textContent;
