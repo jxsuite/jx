@@ -254,7 +254,7 @@ describe("edges package.json cannot see", () => {
   });
 
   test("a committed site config retests studio", () => {
-    expect(flagsFor("sites/jxsuite.com/project.json")).toEqual(["studio"]);
+    expect(flagsFor("sites/jxsuite.com/project.jxn")).toEqual(["studio"]);
     expect(flagsFor("sites/test-blank/pages/index.json")).toEqual(["studio"]);
   });
 

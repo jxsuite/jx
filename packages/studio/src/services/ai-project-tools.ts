@@ -505,7 +505,7 @@ export function registerProjectTools(
       title: "Create a project",
       annotations: JX_TOOL_FACTS.create_project.annotations,
       description:
-        "Create a new Jx project (project.json, conventional directories, starter pages) and open " +
+        "Create a new Jx project (a project file, conventional directories, starter pages) and open " +
         "it in the studio. Only available while no project is open. After it succeeds, the file " +
         "and document tools become available for building out the project. If the directory " +
         "already exists, retry with a different directory slug. Requires an explicit destination: " +

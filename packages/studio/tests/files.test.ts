@@ -36,7 +36,8 @@ import {
   reloadTabsIfChanged,
 } from "../src/files/files";
 import { shell } from "../src/shell";
-import { problems } from "../src/services/notify";
+import { problems, resetNotifications } from "../src/services/notify";
+import { setProjectConfigPath } from "../src/tabs/tab";
 import { effect, effectScope } from "../src/reactivity";
 import type { DirEntry, GitStatusResult, ProjectState, StudioPlatform } from "../src/types";
 import { uploadAccept } from "../src/files/media-upload";
@@ -114,6 +115,8 @@ function siteState(overrides: Partial<ProjectState> = {}) {
 beforeEach(() => {
   closeAllTabs();
   setProjectState(null);
+  // A test that opened a `project.jxn` project leaves Studio believing in that name.
+  setProjectConfigPath("project.json");
   localStorage.clear();
   seedMarkdownFormat();
 });
@@ -246,6 +249,43 @@ describe("loadProject", () => {
     expect(st.projectConfig).toBeNull();
     expect(state.calls.filter(([name]) => name === "listDirectory")).toHaveLength(0);
     expect(activeTab.value).toBeNull();
+  });
+
+  test("a site whose project file does not read opens with it shown as text", async () => {
+    installFsPlatform(
+      { "project.jxn": 'project "Typo"\ndefaults {\n' },
+      {
+        probeRootProject: async () => ({
+          info: { directories: [], isSiteProject: true, projectConfig: null },
+          meta: { name: "typo", root: "/srv/typo" },
+        }),
+      },
+    );
+
+    await loadProject();
+
+    // The empty configuration of the file shown as text, which its first commit that reads replaces.
+    expect(requireProjectState().projectConfig).toEqual({});
+    expect(activeTab.value?.documentPath).toBe("project.jxn");
+    expect(activeTab.value?.doc.unread).toContain("project.jxn");
+  });
+
+  test("opening a project file that does not read shows it as text, not as a failure", async () => {
+    resetNotifications();
+    installFsPlatform({ "project.json": '{ "name": "Typo", }' });
+    siteState();
+    await openFileInTab("project.json");
+    expect(workspace.tabs.get("project.json")?.doc.unread).not.toBeNull();
+    expect(problems.map((record) => record.message)).not.toContain("Could not open project.json.");
+  });
+
+  test("a project file that cannot be read at all is still a failure to open", async () => {
+    resetNotifications();
+    installFsPlatform({}, { readFile: () => Promise.reject(new Error("EACCES")) });
+    siteState();
+    await openFileInTab("project.json");
+    expect(workspace.tabs.has("project.json")).toBe(false);
+    expect(problems.at(-1)?.message).toBe("Could not open project.json.");
   });
 
   test("site probe loads the tree, components, and opens the markdown home page", async () => {

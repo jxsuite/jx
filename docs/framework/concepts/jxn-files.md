@@ -111,18 +111,18 @@ style {
 
 Every host reads it: `jx build`, `jx validate`, the dev server, the desktop application and a site's own origin. Saving a setting in Studio, or the assistant writing the file, keeps your comments.
 
+A `project.jxn` that does not read is reported at its line and column and is never overwritten. Studio still opens the project, and shows the file as text in the Code view so you can fix it.
+
 A file named `project.jxn` without the `project` node is an ordinary document, so `pages/project.jxn` is still a page with the route `/project`. A folder holding both `project.jxn` and `project.json` is refused everywhere, naming both, until you delete one.
 
-:::doc-note
-`jx convert` does not move a project file yet, so write a `project.jxn` by hand, then delete the `project.json`. New projects still start with `project.json`.
-:::
+To move a project to `project.jxn`, run `jx convert project.json --to jxn` in its folder. New projects still start with `project.json`.
 
 ## Moving a file between formats
 
-`jx convert` moves documents either way and repairs every reference to them:
+`jx convert` moves documents and the project file either way, and repairs every reference to a document:
 
 ```bash
-jx convert pages layouts components --to jxn
+jx convert project.json pages layouts components --to jxn
 jx convert pages/about.jxn --to json
 ```
 

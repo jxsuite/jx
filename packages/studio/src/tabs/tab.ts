@@ -250,6 +250,13 @@ export interface Tab {
      * an edit or an undo leaves it alone, and a save writes those repeaters back as they were.
      */
     bareRepeaters: BareRepeaters | null;
+    /**
+     * Why the file's text did not read, or null when it did. While it is set, `document` is empty
+     * and `source` holds the text exactly as the file has it, which is what the Code view shows so
+     * the author can fix it (site-architecture.md §2.3). A source-view commit that parses clears
+     * it, and the Problem filed under {@link unreadProblemKey} with it.
+     */
+    unread: string | null;
   };
   session: {
     /**
@@ -358,6 +365,16 @@ const ALL_MODES = ["edit", "design", "preview", "source", "stylebook", "git-diff
  * }} opts
  * @returns {Tab}
  */
+/**
+ * The deduplication key of the Problem saying a file does not read, which the source-view commit
+ * that makes it read withdraws.
+ *
+ * @param path The file's project-relative path.
+ */
+export function unreadProblemKey(path: string): string {
+  return `unread:${path}`;
+}
+
 export function createTab({
   id,
   documentPath = null,
@@ -414,6 +431,7 @@ export function createTab({
     mode: inferDocumentMode(documentPath, sourceFormat),
     source,
     sourceFormat,
+    unread: null,
   };
   const history: Tab["history"] = {
     index: 0,

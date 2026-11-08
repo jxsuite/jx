@@ -1192,6 +1192,24 @@ describe("openRecentProject", () => {
     }
   });
 
+  test("a project file that does not read opens the project, and shows the file as text", async () => {
+    const saved = state.files.get("project.json")!;
+    state.files.set("project.json", '{ "name": "Recent", }');
+    try {
+      await toolbarCtx.openRecentProject("/recent/site");
+    } finally {
+      state.files.set("project.json", saved);
+    }
+    expect(platform.projectRoot).toBe("/recent/site");
+    expect(activeTab.value?.documentPath).toBe("project.json");
+    expect(activeTab.value?.doc.source).toBe('{ "name": "Recent", }');
+    expect(statusMessages.some((message) => message.includes("project.json does not read"))).toBe(
+      true,
+    );
+    // A typo is not a project that moved, so it keeps its place in Recent.
+    expect(statusMessages.some((message) => message.startsWith("Could not open"))).toBe(false);
+  });
+
   test("reports a missing project.json as an error", async () => {
     const saved = state.files.get("project.json")!;
     state.files.delete("project.json");

@@ -27,6 +27,8 @@ import { STYLES_TAB_MODES } from "../src/style/project-styles";
 import { getPlatform } from "../src/platform";
 import { deriveJsonLayout, parseJsonDocument, serializeJson } from "@jxsuite/schema/json-layout";
 import { isString } from "@jxsuite/schema/guards";
+import { parseProjectSource } from "@jxsuite/schema/project-file";
+import { setProjectConfigPath } from "../src/tabs/tab";
 
 import type { MockPlatformState } from "./harness";
 import type { StudioPlatform } from "../src/types";
@@ -63,8 +65,16 @@ const { updateSiteConfig } = await import("../src/site-context");
  * have had to.
  */
 const REPO_ROOT = resolve(import.meta.dir, "../../..");
-const COMMITTED_CONFIGS = ["sites", "packages/starters/sites"]
+const COMMITTED_CONFIGS = ["sites", "packages/starters/sites", "scripts/screenshots/fixtures"]
   .flatMap((dir) => globSync(`${dir}/*/project.json`, { cwd: REPO_ROOT }))
+  .map((relative) => join(REPO_ROOT, relative))
+  .toSorted();
+
+/** Every committed `project.jxn` this repository's own sites are declared by. */
+const COMMITTED_JXN = [
+  "examples/project.jxn",
+  ...globSync("sites/*/project.jxn", { cwd: REPO_ROOT }),
+]
   .map((relative) => join(REPO_ROOT, relative))
   .toSorted();
 
@@ -251,6 +261,29 @@ describe("a no-op settings edit produces an empty diff", () => {
     }
   });
 
+  test("no writer touches a committed project.jxn when nothing changed", async () => {
+    expect(COMMITTED_JXN.length).toBeGreaterThan(2);
+    setProjectConfigPath("project.jxn");
+    try {
+      for (const path of COMMITTED_JXN) {
+        const onDisk = readFileSync(path, "utf8");
+        const parsed = parseProjectSource(onDisk, path);
+
+        resetProjectConfigDocument();
+        let state = setup(structuredClone(parsed), { onDisk });
+        await updateSiteConfig({ name: parsed.name });
+        expect(writes(state), `${path} rewritten by updateSiteConfig`).toHaveLength(0);
+
+        resetProjectConfigDocument();
+        state = setup(structuredClone(parsed), { onDisk });
+        await commitProjectConfig();
+        expect(writes(state), `${path} rewritten by commitProjectConfig`).toHaveLength(0);
+      }
+    } finally {
+      setProjectConfigPath("project.json");
+    }
+  });
+
   test("a real edit to one of those files still writes — and writes a one-line diff", async () => {
     const path = COMMITTED_CONFIGS[0]!;
     const onDisk = readFileSync(path, "utf8");
@@ -268,8 +301,22 @@ describe("a no-op settings edit produces an empty diff", () => {
     expect(changed).toEqual([`  "name": "Renamed",`]);
   });
 
-  test("an unparseable project.json is 'unknown', so every commit writes", async () => {
+  test("an unparseable project.json is the author's, mid-edit, so no commit replaces it", async () => {
     const state = setup({ name: "Site" }, { onDisk: "{ not json" });
+    let refusal = "";
+    try {
+      await updateSiteConfig({ name: "Site" });
+    } catch (error_) {
+      refusal = String(error_);
+    }
+    expect(refusal).toContain("does not read");
+    expect(writes(state)).toHaveLength(0);
+    expect(state.files.get("project.json")).toBe("{ not json");
+  });
+
+  test("a project.json the platform cannot read is 'unknown', so a commit writes", async () => {
+    const state = setup({ name: "Site" }, { onDisk: "{}" });
+    getPlatform().readFile = () => Promise.reject(new Error("EACCES"));
     await updateSiteConfig({ name: "Site" });
     expect(writes(state)).toHaveLength(1);
   });

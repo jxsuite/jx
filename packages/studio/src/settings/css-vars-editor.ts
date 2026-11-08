@@ -34,6 +34,7 @@
  *   change" true of the specimen canvas as well as the page one.
  */
 
+import { projectConfigPath } from "../tabs/tab";
 import { isNumber, isString } from "@jxsuite/schema/guards";
 import { errorMessage } from "@jxsuite/schema/parse";
 import { runActiveReported } from "../commands/run-reported";
@@ -165,7 +166,7 @@ async function persist(container: HTMLElement): Promise<void> {
     await updateSiteConfig({ style: { ...style() } });
     form(container).error = "";
   } catch (error) {
-    form(container).error = `Could not save project.json — ${errorMessage(error)}`;
+    form(container).error = `Could not save ${projectConfigPath()} — ${errorMessage(error)}`;
   }
   refresh(container);
 }

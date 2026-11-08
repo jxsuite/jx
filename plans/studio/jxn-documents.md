@@ -18,7 +18,7 @@ size: M
 
 ## Context
 
-`specs/studio.md` §8.5 is Pending. `spec.md` §22 provides the reader, reconcile, an in-process format entry that lets Studio open and save a `.jxn` file, and a Monarch grammar. A new document is still `.json` and pickers do not offer `.jxn`, because that entry is deliberately not in `getFormats()`. This plan is the rest of Studio's path, and was split from that plan so that the collaboration question below does not hold up `plan:site-architecture/project-jxn`, which needs neither (`collab/collab-session.ts:664` keeps the project file out of replication).
+`specs/studio.md` §8.5 is Pending. `spec.md` §22 provides the reader, reconcile, an in-process format entry that lets Studio open and save a `.jxn` file, and a Monarch grammar. A new document is still `.json` and pickers do not offer `.jxn`, because that entry is deliberately not in `getFormats()`. This plan is the rest of Studio's path, and was split from that plan so that the collaboration question below did not hold up the project file (`site-architecture.md` §2.3), which needs neither (`collab/collab-session.ts:664` keeps the project file out of replication).
 
 Corrected against the code on 2026-11-05:
 

@@ -40,7 +40,7 @@ After each change, Studio validates the document and test-renders it out of sigh
 
 The test render draws a page the way a build would: it waits up to five seconds for the page's content, and draws a dynamic route with its first entry. It never runs your `timing: "server"` functions or sends your `Request` entries, because it happens automatically and either can have side effects such as sending email. Templates that read them get a placeholder instead, so check those in Preview, where both do run.
 
-The rules it's checked against are your project's own, the same generated schemas the **[code editor](/docs/studio/logic/code)** underlines against, so sections contributed by the extensions you've enabled are enforced too. Writes to `project.json` go through the same gate before they reach disk, and a change to your enabled extensions updates the rules for both surfaces immediately.
+The rules it's checked against are your project's own, the same generated schemas the **[code editor](/docs/studio/logic/code)** underlines against, so sections contributed by the extensions you've enabled are enforced too. Writes to the project file go through the same gate before they reach disk, and a change to your enabled extensions updates the rules for both surfaces immediately.
 
 If the assistant runs out of working rounds before everything is fixed, it stops and lists what was applied and which problems remain, so nothing fails silently.
 

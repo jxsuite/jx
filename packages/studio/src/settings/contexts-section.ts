@@ -41,6 +41,7 @@
  * @docs studio/projects/settings
  */
 
+import { projectConfigPath } from "../tabs/tab";
 import { errorMessage } from "@jxsuite/schema/parse";
 import { projectState } from "../store";
 import { updateSiteConfig } from "../site-context";
@@ -284,7 +285,7 @@ async function persistMedia(
   } catch (error) {
     /* A validator that cannot compile must not block the edit — but it must not be silent either,
        so the message rides the same inline slot the schema errors would have used. */
-    reject(container, target, `Could not validate project.json — ${errorMessage(error)}`);
+    reject(container, target, `Could not validate ${projectConfigPath()} — ${errorMessage(error)}`);
     return;
   }
   if (schemaErrors.length > 0) {
@@ -297,7 +298,7 @@ async function persistMedia(
     errors.delete(container);
   } catch (error) {
     errors.set(container, {
-      message: `Could not save project.json — ${errorMessage(error)}`,
+      message: `Could not save ${projectConfigPath()} — ${errorMessage(error)}`,
       target,
     });
   }
@@ -418,7 +419,7 @@ function noticeOf(inherited: readonly string[]): string {
     return "";
   }
   const what = inherited.length === 1 ? "problem" : "problems";
-  return `project.json has ${inherited.length} pre-existing schema ${what} that this section did not cause: ${inherited.join("; ")}`;
+  return `${projectConfigPath()} has ${inherited.length} pre-existing schema ${what} that this section did not cause: ${inherited.join("; ")}`;
 }
 
 /** The whole section, as one value the document can be handed. */

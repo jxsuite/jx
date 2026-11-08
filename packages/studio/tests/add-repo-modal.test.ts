@@ -449,7 +449,7 @@ describe("openAddRepoModal", () => {
     await flush(3);
     click(rows()[1]!);
     await flush(3);
-    expect(noteText()).toContain("No folder in this repository holds a project.json");
+    expect(noteText()).toContain("No folder in this repository holds a project file");
     expect(confirmButton()?.disabled).toBe(true);
     typeFolder("site");
     await flush();
@@ -507,7 +507,9 @@ describe("openAddRepoModal", () => {
     await flush(3);
     click(rows()[0]!);
     await flush();
-    expect(noteText()).toContain("Name the folder that holds the project's project.json");
+    expect(noteText()).toContain(
+      "Name the folder that holds the project's project.jxn or project.json",
+    );
     expect(confirmButton()?.disabled).toBe(false);
     typeFolder("docs");
     await flush();
@@ -543,7 +545,7 @@ describe("openAddRepoModal", () => {
     expect(activeRow("repo-list")).toBe(rows()[1]!);
     // The caret's scan waits, in case it is only passing through.
     expect(scans).toEqual(["octocat/site"]);
-    expect(noteText()).toContain("Looking for project.json files");
+    expect(noteText()).toContain("Looking for project files");
     expect(confirmButton()?.disabled).toBe(true);
     await wait(SCAN_DELAY_MS + 20);
     await flush();

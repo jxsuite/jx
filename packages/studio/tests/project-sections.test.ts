@@ -1,5 +1,5 @@
 /**
- * Tests for src/settings/project-sections.ts — the Deploy and Raw JSON sections — and the two
+ * Tests for src/settings/project-sections.ts — the Deploy and Source sections — and the two
  * documents they mount, `src/surfaces/settings-deploy.{json,ts}` and
  * `src/surfaces/settings-rawjson.{json,ts}`.
  *
@@ -33,10 +33,12 @@ import { projectState } from "../src/store";
 import { openTab } from "../src/workspace/workspace";
 import { toRaw } from "../src/reactivity";
 import {
+  adoptProjectConfig,
   projectConfigPath,
   resetProjectConfigDocument,
   serializeProjectConfig,
 } from "../src/tabs/project-config";
+import { setProjectConfigPath } from "../src/tabs/tab";
 import {
   BUILD_ADAPTERS,
   disposeDeploySection,
@@ -235,7 +237,7 @@ describe("the Deploy section", () => {
 
 // ─── Raw JSON ────────────────────────────────────────────────────────────────
 
-/** Raw JSON with a recording host, which is all the section asks of where it is drawn. */
+/** Source with a recording host, which is all the section asks of where it is drawn. */
 let editedAsCode = 0;
 function rawJson(container: HTMLElement): void {
   renderRawJsonSection(container, {
@@ -245,7 +247,7 @@ function rawJson(container: HTMLElement): void {
   });
 }
 
-describe("the Raw JSON section", () => {
+describe("the Source section", () => {
   test("shows the file exactly as the chokepoint serialises it", async () => {
     const { container } = await setup({ extensions: [], name: "Bistro" }, rawJson);
     // The file's bytes, trailing newline included: what a save writes.
@@ -262,6 +264,21 @@ describe("the Raw JSON section", () => {
     const { container } = await setup({ name: "Bistro" }, rawJson);
     pointer(container.querySelector('[part="edit"]')!, "click");
     expect(editedAsCode).toBe(1);
+  });
+
+  test("names a project.jxn, and shows its text with every comment", async () => {
+    const source = "/- kdl-version 2\n// The site's own name.\nproject Bistro\n";
+    setProjectConfigPath("project.jxn");
+    try {
+      const { container } = await setup({ name: "Bistro" }, () => null);
+      await adoptProjectConfig({ name: "Bistro" }, source);
+      rawJson(container);
+      await flush(4);
+      expect(container.querySelector('[part="file"]')?.textContent).toBe("project.jxn");
+      expect(container.querySelector('[part="json"]')?.textContent).toBe(source);
+    } finally {
+      setProjectConfigPath("project.json");
+    }
   });
 
   test("with no project open it renders an empty object rather than throwing", async () => {
@@ -316,9 +333,13 @@ describe("the surfaces themselves", () => {
     expect(container.childNodes).toHaveLength(0);
   });
 
-  test("a Raw JSON surface disposed before its mount settles never lands in its container", async () => {
+  test("a Source surface disposed before its mount settles never lands in its container", async () => {
     const container = host();
-    const handle = mountRawJsonSurface(container, { json: "{}" }, { editAsCode: () => {} });
+    const handle = mountRawJsonSurface(
+      container,
+      { file: "project.json", json: "{}" },
+      { editAsCode: () => {} },
+    );
     expect(handle.connected()).toBe(true);
     handle.dispose();
     handle.dispose();
@@ -329,7 +350,11 @@ describe("the surfaces themselves", () => {
 
   test("a mounted surface gives up a container its document has left", async () => {
     const container = host();
-    const handle = mountRawJsonSurface(container, { json: "{}" }, { editAsCode: () => {} });
+    const handle = mountRawJsonSurface(
+      container,
+      { file: "project.json", json: "{}" },
+      { editAsCode: () => {} },
+    );
     await flush(4);
     expect(handle.connected()).toBe(true);
     container.querySelector('[part="rawjson"]')!.remove();

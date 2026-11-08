@@ -127,13 +127,19 @@ A `.jxn` document that does not read is reported with its line and column, and a
 
 ## `jx convert`
 
-Move documents between `.json` and `.jxn`, repairing every reference to them. It runs under Bun and needs `@jxsuite/server` in the project, as `jx dev` does.
+Move documents between `.json` and `.jxn`, repairing every reference to them, and the project file between `project.json` and `project.jxn`. It runs under Bun and needs `@jxsuite/server` in the project, as `jx dev` does.
 
 ```bash
 jx convert <paths…> --to jxn|json [--dry-run] [--drop-comments]
 ```
 
-A path may be a file or a directory, under `pages/`, `layouts/` or `components/`.
+A path may be a file or a directory, under `pages/`, `layouts/` or `components/`, or the project file itself. Converting `.` converts the project file and every document.
+
+```bash
+jx convert project.json --to jxn
+```
+
+The project file is written in its canonical form, as [Jx Notation](/docs/framework/concepts/jxn-files#a-project-file) describes, and nothing refers to it by path, so nothing else changes. A folder that already holds both `project.json` and `project.jxn` is refused, naming both, because a project has one.
 
 | Flag              | Effect                                                       |
 | ----------------- | ------------------------------------------------------------ |

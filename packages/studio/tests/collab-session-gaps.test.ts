@@ -709,6 +709,26 @@ describe("attach lifecycle races", () => {
     expect(hub.connectionCount(PATH)).toBe(0);
   });
 
+  test("re-keying onto the project file leaves the session, and sharing again does not rejoin", async () => {
+    const hub = createMockCollabHub();
+    const tab = openCollabTab(hub);
+    await settleCollab();
+    expect(collabState(tab).active).toBe(true);
+
+    // A document renamed onto the project file's path, as converting a project in a session does.
+    tab.documentPath = "project.jxn";
+    rekeyCollab(tab);
+    await settleCollab();
+    expect(collabState(tab).active).toBe(false);
+    expect(hub.connectionCount("project.jxn")).toBe(0);
+
+    setCollabEnabled(tab, false);
+    setCollabEnabled(tab, true);
+    await settleCollab();
+    expect(collabState(tab).active).toBe(false);
+    expect(hub.connectionCount("project.jxn")).toBe(0);
+  });
+
   test("a capability that REJECTS reports a failure, not solo editing", async () => {
     /* This used to land on "detached" — the same value a document nobody shared carries — so a
        dead relay and a solo file were one indistinguishable state (collab.md §4). Editing still

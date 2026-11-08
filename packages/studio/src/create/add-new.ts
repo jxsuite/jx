@@ -19,6 +19,7 @@
  * @docs studio/projects/pages-layouts-components
  */
 
+import { projectConfigPath } from "../tabs/tab";
 import { fileToRoute } from "@jxsuite/site/routes";
 import { canonicalizeLocale, translationPathFor } from "@jxsuite/schema/locale";
 import { LOCALE_PLACEHOLDER } from "@jxsuite/schema/asset-paths";
@@ -673,8 +674,8 @@ function deriveCollection(name: string, options: CreationOptions, ctx: CreationC
       slug === ""
         ? ""
         : localized
-          ? `Adds a “${slug}” collection to project.json with one folder per language under ${root}/, a first entry in ${dir}/${pageNote}.`
-          : `Adds a “${slug}” collection to project.json, a ${dir}/ folder with a first entry${pageNote}.`,
+          ? `Adds a “${slug}” collection to ${projectConfigPath()} with one folder per language under ${root}/, a first entry in ${dir}/${pageNote}.`
+          : `Adds a “${slug}” collection to ${projectConfigPath()}, a ${dir}/ folder with a first entry${pageNote}.`,
   };
   if (route !== undefined) {
     result.route = route;

@@ -278,13 +278,14 @@ describe("resolve-site — gaps", () => {
     }
   });
 
-  test("returns 500 when project.json is unparseable", async () => {
+  test("relays a project.json that does not parse with no configuration, and why", async () => {
     const fp = join(ROOT, "broken-site", "page.json");
     const { req, url } = getReq(`/__studio/resolve-site?path=${encodeURIComponent(fp)}`);
     const res = await callApi(req, url);
-    expect(res.status).toBe(500);
+    expect(res.status).toBe(200);
     const payload = await res.json();
-    expect(payload.error).toBeDefined();
+    expect(payload.projectConfig).toBeNull();
+    expect(payload.projectProblem).toContain("project.json");
   });
 });
 

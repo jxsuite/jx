@@ -12,13 +12,20 @@ import { flattenTree } from "../state.js";
 import type { ComponentEntry } from "../files/components.js";
 import { isBoolean, isNonNullObject, isNumber, isString } from "@jxsuite/schema/guards";
 import type { JsonPrimitive, JxMutableNode, ProjectConfig } from "@jxsuite/schema/types";
+import { NEW_PROJECT_FILE_NAME } from "@jxsuite/schema/project-file";
+import type { ProjectFileName } from "@jxsuite/schema/project-file";
 
 /** Options for {@link buildSystemPrompt}. */
 interface BuildSystemPromptOptions {
   /** The currently open Jx document. */
   document?: JxMutableNode | undefined;
-  /** The project.json config if available. */
+  /** The project's configuration, if one is open. */
   projectConfig?: ProjectConfig | undefined;
+  /**
+   * The project file's name, `project.jxn` or `project.json` (site-architecture.md §2.3). Passed in
+   * so the prompt names the file the model will read and write, and teaches the notation it is in.
+   */
+  projectFile?: ProjectFileName | undefined;
   /** Available components. */
   components?: ComponentEntry[] | undefined;
   /** Project root path. */
@@ -62,7 +69,7 @@ export interface ExtensionCatalogSummary {
   name: string;
   title?: string | undefined;
   description?: string | undefined;
-  /** `project.json` keys that become legal once it is enabled. */
+  /** Project file keys that become legal once it is enabled. */
   sections?: readonly string[] | undefined;
 }
 
@@ -147,7 +154,7 @@ export const AI_TOOL_TIERS: AiToolInfo[] = [
     name: "create_project",
     tier: "no-project",
     blurb:
-      "create_project(name, description?, template?, directory?, design?) — scaffold a new Jx project (project.json, conventional directories, starter pages) and open it in the studio.",
+      "create_project(name, description?, template?, directory?, design?) — scaffold a new Jx project (a project file, conventional directories, starter pages) and open it in the studio.",
   },
   {
     name: "list_starters",
@@ -458,7 +465,7 @@ Note: restraint — no background, no border, just centered content with a circu
   ]
 }
 
-### Site config with design tokens (project.json):
+### Site config with design tokens (the project file's members, as JSON):
 {
   "style": {
     "--color-bg-primary": "#0a0a0a",
@@ -731,7 +738,7 @@ export const SYSTEM_PROMPT_STATIC_PREFIX =
  *
  * @param {object} opts
  * @param {import("../state.js").JxNode} [opts.document] - The currently open Jx document
- * @param {object} [opts.projectConfig] - The project.json config if available
+ * @param {object} [opts.projectConfig] - The project's configuration, if one is open
  * @param {import("../files/components.js").ComponentEntry[]} [opts.components] - Available
  *   components
  * @param {string} [opts.projectRoot] - Project root path
@@ -740,6 +747,7 @@ export const SYSTEM_PROMPT_STATIC_PREFIX =
 export function buildSystemPrompt({
   document,
   projectConfig,
+  projectFile,
   components,
   projectRoot,
   hasProject = Boolean(projectRoot),
@@ -819,6 +827,7 @@ Be concise. Don't explain what Jx is unless asked. Just build.`;
       components,
       extensionCatalog,
       projectConfig,
+      projectFile,
       projectRoot,
     });
     if (projectSummary) {
@@ -923,6 +932,20 @@ function primitiveTypeName(value: JsonPrimitive | undefined): string {
 }
 
 /**
+ * How a `project.jxn` is written, said only to a model looking at one. The examples above show the
+ * project file's members as JSON because every member means the same in both; what differs is the
+ * spelling, and a `project.json` habit (`extensions "@jxsuite/parser"`) reads as a string here.
+ */
+const JXN_PROJECT_FILE = [
+  "It is Jx Notation (KDL 2), not JSON: write it with write_file as KDL, never as JSON.",
+  '- `project "Name"` declares the file and holds `name`. It comes first, after any `$schema "./project.schema.json"`.',
+  "- A setting is `key value`. An object is `key a=1 b=2` or a block `key { a 1; b 2 }`.",
+  '- A list of many is `key a b c`. A list of ONE needs its block: `extensions { - "@jxsuite/parser" }`. `extensions "@jxsuite/parser"` is a string and fails validation.',
+  '- `style` and `$media` hold one declaration per line: `--color-accent "#3b82f6"`. `$head` holds elements: `meta name=viewport content="width=device-width"`.',
+  "- Keep every `//` comment you did not mean to remove: read_file first, and change only the lines the request is about.",
+].join("\n");
+
+/**
  * Build a project context summary.
  *
  * @param {object} opts
@@ -930,6 +953,7 @@ function primitiveTypeName(value: JsonPrimitive | undefined): string {
  */
 function buildProjectSummary({
   projectConfig,
+  projectFile = NEW_PROJECT_FILE_NAME,
   components,
   projectRoot,
   extensionCatalog,
@@ -942,6 +966,11 @@ function buildProjectSummary({
 
   if (projectRoot) {
     lines.push(`Root: ${projectRoot}`);
+  }
+
+  lines.push(`Project file: ${projectFile}`);
+  if (projectFile.endsWith(".jxn")) {
+    lines.push(JXN_PROJECT_FILE);
   }
 
   /* One line, closing a gap that was pure oversight: this function has always received the whole
@@ -1014,7 +1043,7 @@ function buildProjectSummary({
   if (extensionCatalog && extensionCatalog.length > 0) {
     const enabledSet = new Set(enabled);
     lines.push(
-      `Extensions available. Turn one on with enable_extension BEFORE writing the project.json ` +
+      `Extensions available. Turn one on with enable_extension BEFORE writing the ${projectFile} ` +
         `section it owns: a section belonging to a disabled extension is a schema error, and an ` +
         `"extensions" entry whose package is not installed fails the build. When a request needs ` +
         `a capability the core does not have (a blog or any folder of Markdown, a search box, a ` +

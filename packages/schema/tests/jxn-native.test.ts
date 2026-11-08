@@ -113,6 +113,9 @@ describe("countJxnComments", () => {
     ["one in a string is not one", 'p "// a /* b */ /- c"', 0],
     ["one in a raw string is not one", 'p #"// a"#', 0],
     ["several", "// a\n/* b */ p /- c=1", 3],
+    ["the version marker is not one", "/- kdl-version 2\np", 0],
+    ["a version marker anywhere else is", "p\n/- kdl-version 2\n", 1],
+    ["nor is a marker before a comment", "/- kdl-version 2\n// a\np", 1],
   ])("%s", (_label, text, count) => {
     expect(countJxnComments(text)).toBe(count);
   });

@@ -7,7 +7,7 @@
  */
 import { describe, expect, test } from "bun:test";
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import type { JsonObject, JsonValue, ProjectConfig } from "../types.ts";
 import { isJsonObject } from "../src/guards.ts";
@@ -525,11 +525,15 @@ redirects {
   });
 });
 
-/** Every tracked project file. */
+/** Every tracked project file of either name, still on disk. */
 function trackedProjectFiles(): string[] {
-  return execFileSync("git", ["ls-files", "*project.json"], { cwd: ROOT, encoding: "utf8" })
+  return execFileSync("git", ["ls-files", "*project.json", "*project.jxn"], {
+    cwd: ROOT,
+    encoding: "utf8",
+  })
     .split("\n")
-    .filter((file) => file !== "" && !file.includes("/surfaces/"));
+    .filter((file) => /(?:^|\/)project\.(?:json|jxn)$/u.test(file))
+    .filter((file) => !file.includes("/surfaces/") && existsSync(join(ROOT, file)));
 }
 
 /** Every key's order, at every depth, which is what a reader of `style`, `$media`, `$head` sees. */
@@ -539,7 +543,7 @@ function ordered(value: JsonValue | undefined): string {
 
 describe("the corpus", () => {
   test("every tracked project file comes back deep-equal, with style, $media and $head in order", () => {
-    const files = trackedProjectFiles();
+    const files = trackedProjectFiles().filter((file) => file.endsWith(".json"));
     for (const file of files) {
       const parsed: unknown = JSON.parse(readFileSync(join(ROOT, file), "utf8"));
       if (!isJsonObject(parsed)) {
@@ -555,5 +559,25 @@ describe("the corpus", () => {
     }
     // Enough that this cannot pass by finding nothing.
     expect(files.length).toBeGreaterThan(25);
+  });
+
+  test("every tracked project.jxn reads, saves unchanged, and its canonical form reads the same", () => {
+    const files = trackedProjectFiles().filter((file) => file.endsWith(".jxn"));
+    for (const file of files) {
+      const text = readFileSync(join(ROOT, file), "utf8");
+      const parsed = read(text, file);
+      // A save that changed nothing writes what was there, comments and all.
+      expect([file, serializeProject(asConfig(parsed), text)]).toEqual([file, text]);
+      const canonical = serializeProject(asConfig(parsed));
+      expect([file, read(canonical, file)]).toEqual([file, parsed]);
+    }
+    // This repository's own sites are declared this way.
+    expect(files).toEqual(
+      expect.arrayContaining([
+        "examples/project.jxn",
+        "sites/jxsuite.com/project.jxn",
+        "sites/test-blank/project.jxn",
+      ]),
+    );
   });
 });

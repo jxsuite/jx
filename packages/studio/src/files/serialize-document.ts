@@ -14,6 +14,7 @@
 
 import { getGridController } from "../grid/grid-controller";
 import {
+  PROJECT_FORMAT_NAME,
   defaultContentFormat,
   formatByName,
   formatSerialize,
@@ -40,6 +41,14 @@ export async function serializeDocument(tab: Tab): Promise<string> {
   }
   await loadFormats();
   const sourceFormat = formatByName(tab.doc.sourceFormat);
+  if (sourceFormat?.name === PROJECT_FORMAT_NAME) {
+    /* A `project.jxn` is its configuration and nothing else: no frontmatter to fold in, and no
+       `children` a document would be given, which the file would then gain as a member. */
+    return formatSerialize(sourceFormat.name, tab.doc.document, {
+      mode: "roundtrip",
+      ...(tab.doc.source !== null && { source: tab.doc.source }),
+    });
+  }
   if (sourceFormat?.capabilities.serialize) {
     const fm = tab.doc.content.frontmatter;
     const doc = tab.doc.document;

@@ -2,9 +2,9 @@
   "chatCalls": [
     "sendMessage(\"hi\")",
     "toMessagesArray()",
-    "setTokenCount(5616)",
+    "setTokenCount(5628)",
     "setContextWarning(false)",
-    "setTokenCount(5616)",
+    "setTokenCount(5628)",
     "setModel(\"gpt-4o\")",
     "toMessagesArray()",
     "setError(\"The model sent back an empty reply.\")"
@@ -23,7 +23,7 @@
         "carried": 0
       },
       "systemPrompt": {
-        "hash": "6f1b91396058",
+        "hash": "d659ebd4d9e9",
         "headings": [
           "## Jx Document Format",
           "### Element Properties",
@@ -37,7 +37,7 @@
           "### Premium: stat card with layered surface (components/stat-card.json):",
           "### Premium: step card with centered layout (components/step-card.json):",
           "### Layout with slots (layouts/base.json):",
-          "### Site config with design tokens (project.json):",
+          "### Site config with design tokens (the project file's members, as JSON):",
           "### Responsive Styles (per-node @breakpoint overrides)",
           "## Design Principles (premium component output)",
           "### Tokens first",
@@ -66,7 +66,7 @@
           "## Project Context",
           "## Asking the user"
         ],
-        "length": 22441
+        "length": 22491
       },
       "tools": [
         "ask_user",
@@ -105,7 +105,7 @@
     "error": "The model sent back an empty reply.",
     "model": "gpt-4o",
     "status": "error",
-    "tokenCount": 5616,
+    "tokenCount": 5628,
     "usage": null
   },
   "finalDocument": {

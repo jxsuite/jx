@@ -97,13 +97,15 @@ const JXN_FORMAT: StudioFormat = {
  * as one: its top level is the configuration, not an element. Answered only for the project's own
  * file, so no picker offers it and no other `.jxn` file can reach it.
  */
+export const PROJECT_FORMAT_NAME = "jx-project";
+
 const PROJECT_JXN_FORMAT: StudioFormat = {
   capabilities: JXN_FORMAT.capabilities,
   documentKinds: [],
   exportTarget: false,
   extensions: [],
   mediaType: null,
-  name: "jx-project",
+  name: PROJECT_FORMAT_NAME,
   remote: false,
   studio: { documentMode: { default: "component" } },
 };
@@ -308,7 +310,7 @@ export function formatByName(name: string | null | undefined): StudioFormat | un
 /** Error for opening a non-JSON file when no imported format class claims its extension. */
 export function noFormatError(path: string): Error {
   return new Error(
-    `No format class imported for "${path}" — add one to project.json imports ` +
+    `No format class imported for "${path}" — add one to the project file's imports ` +
       `(e.g. "Markdown": "@jxsuite/parser/Markdown.class.json") and make sure the ` +
       `project's dependencies are installed`,
   );

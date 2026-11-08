@@ -22,7 +22,7 @@ import type { Analysis } from "./analysis";
 /* Resolved from THIS file's own location rather than a fixed home-directory path, so the same
  * default works on any checkout — a contributor's machine, a fresh clone, or CI's container,
  * where neither the checkout path nor `$HOME` match a developer's local layout. */
-const DEFAULT_PROJECT = resolve(import.meta.dir, "../../sites/jxsuite.com/project.json");
+const DEFAULT_PROJECT = resolve(import.meta.dir, "../../sites/jxsuite.com/project.jxn");
 const DEFAULT_URL = `http://127.0.0.1:3000/packages/studio/index.html?project=${encodeURIComponent(DEFAULT_PROJECT)}&automation=1`;
 
 /* The binary is overridable via `--chrome` or `CHROME_BIN`: CI hands the container Chrome for

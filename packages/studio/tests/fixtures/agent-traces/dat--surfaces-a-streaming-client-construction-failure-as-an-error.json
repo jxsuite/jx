@@ -2,9 +2,9 @@
   "chatCalls": [
     "sendMessage(\"hi\")",
     "toMessagesArray()",
-    "setTokenCount(5523)",
+    "setTokenCount(5529)",
     "setContextWarning(false)",
-    "setTokenCount(5523)",
+    "setTokenCount(5529)",
     "setModel(\"gpt-4o\")",
     "setError(\"network down\")"
   ],
@@ -25,7 +25,7 @@
     "error": "network down",
     "model": "gpt-4o",
     "status": "error",
-    "tokenCount": 5523,
+    "tokenCount": 5529,
     "usage": null
   },
   "finalDocument": {

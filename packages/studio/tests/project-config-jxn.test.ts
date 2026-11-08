@@ -4,11 +4,12 @@
  * changes its own line and keeps every comment. A folder holding both files, and a `project.jxn`
  * that does not read, are never written.
  */
-import { installMockPlatform, resetStudioState } from "./harness";
+import { flush, installMockPlatform, resetStudioState } from "./harness";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { isString } from "@jxsuite/schema/guards";
 import { problems, resetNotifications } from "../src/services/notify";
-import { closeAllTabs } from "../src/workspace/workspace";
+import { closeAllTabs, workspace } from "../src/workspace/workspace";
+import { projectState } from "../src/store";
 import {
   formatByName,
   formatForPath,
@@ -23,6 +24,8 @@ import {
   resetProjectConfigDocument,
 } from "../src/tabs/project-config";
 
+import { showSettingsDocument, showUnreadProjectFile } from "../src/settings/settings-document";
+import { serializeDocument } from "../src/files/serialize-document";
 import type { MockPlatformState } from "./harness";
 import type { ProjectConfig } from "@jxsuite/schema/types";
 
@@ -199,5 +202,65 @@ describe("a settings edit", () => {
     );
     await commitProjectConfig({ url: "https://bistro.test" });
     expect(writes(state).at(-1)).toBe(rewritten.replace("bistro.example", "bistro.test"));
+  });
+});
+
+describe("the project.jxn tab", () => {
+  test("opened from Settings is Jx Notation, with the file's own text", async () => {
+    const state = await open(
+      { "project.jxn": SOURCE },
+      {
+        extensions: ["@jxsuite/parser"],
+        name: "Bistro",
+        url: "https://bistro.example",
+      },
+    );
+    const tab = showSettingsDocument("source");
+    expect(tab?.doc.sourceFormat).toBe("jx-project");
+    await flush(4);
+    expect(tab?.doc.source).toBe(SOURCE);
+    expect(await serializeDocument(tab!)).toBe(SOURCE);
+
+    // ⌘S writes what a settings commit would: the one line, and no member the file never had.
+    tab!.doc.document.url = "https://bistro.test";
+    expect(await serializeDocument(tab!)).toBe(SOURCE.replace("bistro.example", "bistro.test"));
+    expect(writes(state)).toEqual([]);
+  });
+});
+
+describe("a project file that does not read", () => {
+  const BROKEN = '/- kdl-version 2\nproject "Bistro"\ndefaults {\n';
+
+  test("opens as its own text in the Code view, and the Problem says where", async () => {
+    await open({ "project.jxn": BROKEN }, {});
+    expect(await showUnreadProjectFile()).toBe(true);
+    const problem = problems.at(-1);
+    expect(problem?.message).toContain("project.jxn does not read");
+    expect(problem?.detail).toMatch(/\d+:\d+|line \d+/u);
+    const tab = workspace.tabs.get("project.jxn");
+    expect(tab?.doc.source).toBe(BROKEN);
+    expect(tab?.doc.unread).toBe(problem?.detail ?? "");
+    expect(tab?.session.ui.canvasMode).toBe("source");
+
+    // The Code view's commit that parses is the project's configuration at once.
+    const fixed = { name: "Bistro" };
+    tab!.doc.document = fixed;
+    expect(projectState?.projectConfig).toEqual(fixed);
+  });
+
+  test("is not shown when it reads, or when there is none", async () => {
+    await open({ "project.jxn": SOURCE }, { name: "Bistro" });
+    expect(await showUnreadProjectFile()).toBe(false);
+    await open({}, {});
+    expect(await showUnreadProjectFile()).toBe(false);
+    expect(workspace.tabs.size).toBe(0);
+  });
+
+  test("as project.json is not overwritten by a settings edit either", async () => {
+    const state = await open({ "project.json": '{ "name": "Bistro", }' }, { name: "Bistro" });
+    const refused = await commitProjectConfig({ url: "https://bistro.test" });
+    expect(refused.ok).toBe(false);
+    expect(state.files.get("project.json")).toBe('{ "name": "Bistro", }');
+    expect(problems.at(-1)?.message).toContain("does not read");
   });
 });

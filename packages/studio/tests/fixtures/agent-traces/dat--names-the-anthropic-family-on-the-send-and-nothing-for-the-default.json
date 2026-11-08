@@ -2,17 +2,17 @@
   "chatCalls": [
     "[chat 1] sendMessage(\"hi\")",
     "[chat 1] toMessagesArray()",
-    "[chat 1] setTokenCount(5523)",
+    "[chat 1] setTokenCount(5529)",
     "[chat 1] setContextWarning(false)",
-    "[chat 1] setTokenCount(5523)",
+    "[chat 1] setTokenCount(5529)",
     "[chat 1] setModel(\"gpt-4o\")",
     "[chat 1] toMessagesArray()",
     "[chat 1] setError(\"The model sent back an empty reply.\")",
     "[chat 2] sendMessage(\"hi\")",
     "[chat 2] toMessagesArray()",
-    "[chat 2] setTokenCount(5528)",
+    "[chat 2] setTokenCount(5534)",
     "[chat 2] setContextWarning(false)",
-    "[chat 2] setTokenCount(5528)",
+    "[chat 2] setTokenCount(5534)",
     "[chat 2] setModel(\"claude-opus-5-5\")",
     "[chat 2] toMessagesArray()",
     "[chat 2] setError(\"The model sent back an empty reply.\")"
@@ -32,7 +32,7 @@
         "carried": 0
       },
       "systemPrompt": {
-        "hash": "3f815a6821c0",
+        "hash": "2a3ea6b220f6",
         "headings": [
           "## Jx Document Format",
           "### Element Properties",
@@ -46,7 +46,7 @@
           "### Premium: stat card with layered surface (components/stat-card.json):",
           "### Premium: step card with centered layout (components/step-card.json):",
           "### Layout with slots (layouts/base.json):",
-          "### Site config with design tokens (project.json):",
+          "### Site config with design tokens (the project file's members, as JSON):",
           "### Responsive Styles (per-node @breakpoint overrides)",
           "## Design Principles (premium component output)",
           "### Tokens first",
@@ -74,7 +74,7 @@
           "## Current Document",
           "## Asking the user"
         ],
-        "length": 22069
+        "length": 22094
       },
       "tools": [
         "ask_user",
@@ -135,7 +135,7 @@
     "error": "The model sent back an empty reply.",
     "model": "claude-opus-5-5",
     "status": "error",
-    "tokenCount": 5528,
+    "tokenCount": 5534,
     "usage": null
   },
   "finalDocument": {

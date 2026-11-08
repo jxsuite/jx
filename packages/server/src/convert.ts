@@ -1,10 +1,12 @@
 /**
- * `jx convert`: move a document between `.json` and `.jxn`, with every reference repaired.
+ * `jx convert`: move a document between `.json` and `.jxn`, with every reference repaired, and the
+ * project file between `project.json` and `project.jxn` (site-architecture.md §2.3).
  *
  * It is a rename, because that is what makes it safe: writing a new file beside the old one would
- * leave every `$ref` to it dangling, and the refactor pass is what repairs them. This runs under
- * Bun for the same reason `jx dev` does, so `@jxsuite/compiler`'s CLI resolves it from the project
- * and spawns it.
+ * leave every `$ref` to it dangling, and the refactor pass is what repairs them. A project file is
+ * named by nothing, so it needs no repair, and writing it beside the old one would leave a folder
+ * holding both, which every host refuses. This runs under Bun for the same reason `jx dev` does, so
+ * `@jxsuite/compiler`'s CLI resolves it from the project and spawns it.
  *
  * @docs framework/build/cli
  */
@@ -16,6 +18,11 @@ import { loadProjectConfig } from "@jxsuite/compiler/site-loader";
 import { countJxnComments, parseJxn, serializeJxn } from "@jxsuite/schema/jxn";
 import { isJsonObject, isString } from "@jxsuite/schema/guards";
 import { errorMessage, parseJxDocument } from "@jxsuite/schema/parse";
+import {
+  isProjectFileName,
+  parseProjectSource,
+  serializeProjectFile,
+} from "@jxsuite/schema/project-file";
 import type { ProjectConfig } from "@jxsuite/schema/types";
 import { applyRename } from "./refactor/index.ts";
 
@@ -77,6 +84,34 @@ function expand(path: string): string[] {
   });
 }
 
+/** Whether a path is the project's own file, which is the one root file that converts. */
+function isProjectFileAt(root: string, path: string): boolean {
+  return isProjectFileName(relative(root, path));
+}
+
+/**
+ * Why the project file cannot be converted, or null when it can. The other name already being there
+ * needs no check here: the folder then holds both, and loading the project has refused it.
+ */
+async function projectFileRefusal(path: string, options: ConvertOptions): Promise<string | null> {
+  const ext = extname(path).toLowerCase();
+  if (ext === `.${options.to}`) {
+    return `already .${options.to}`;
+  }
+  return ext === ".jxn" ? commentRefusal(path, options) : null;
+}
+
+/** Why a `.jxn` file's comments keep it from becoming `.json`, or null when nothing would be lost. */
+async function commentRefusal(path: string, options: ConvertOptions): Promise<string | null> {
+  if (options.dropComments) {
+    return null;
+  }
+  const comments = countJxnComments(await readFile(path, "utf8"));
+  return comments > 0
+    ? `it has ${comments} comment(s), and .json has nowhere to keep them. --drop-comments converts it anyway`
+    : null;
+}
+
 /** Why a file cannot be converted, or null when it can. */
 async function refusal(
   root: string,
@@ -86,6 +121,9 @@ async function refusal(
 ): Promise<string | null> {
   if (!existsSync(path)) {
     return "there is no such file";
+  }
+  if (isProjectFileAt(root, path)) {
+    return projectFileRefusal(path, options);
   }
   const name = relative(root, path).replaceAll("\\", "/");
   if (!DOCUMENT_ROOTS.some((prefix) => name.startsWith(prefix))) {
@@ -108,13 +146,7 @@ async function refusal(
   if (existsSync(targetOf(path, options.to))) {
     return `${basename(targetOf(path, options.to))} already exists`;
   }
-  if (ext === ".jxn" && !options.dropComments) {
-    const comments = countJxnComments(await readFile(path, "utf8"));
-    if (comments > 0) {
-      return `it has ${comments} comment(s), and .json has nowhere to keep them. --drop-comments converts it anyway`;
-    }
-  }
-  return null;
+  return ext === ".jxn" ? commentRefusal(path, options) : null;
 }
 
 /** The path a file has once converted. */
@@ -123,8 +155,12 @@ function targetOf(path: string, to: ConvertTarget): string {
 }
 
 /** The file's text in the other format. */
-async function converted(path: string, to: ConvertTarget): Promise<string> {
+async function converted(root: string, path: string, to: ConvertTarget): Promise<string> {
   const text = await readFile(path, "utf8");
+  if (isProjectFileAt(root, path)) {
+    // Canonical form: the comments a `.jxn` had are what `--drop-comments` agreed to lose.
+    return serializeProjectFile(parseProjectSource(text, path), null, targetOf(path, to));
+  }
   return to === "jxn"
     ? serializeJxn(parseJxDocument(text, path))
     : `${JSON.stringify(parseJxn(text, path), null, 2)}\n`;
@@ -156,7 +192,7 @@ export async function convertDocuments(
       continue;
     }
     try {
-      const text = await converted(path, options.to);
+      const text = await converted(root, path, options.to);
       if (options.dryRun) {
         continue;
       }
@@ -164,6 +200,9 @@ export async function convertDocuments(
          the new, and nothing beside it to be mistaken for the document. */
       await writeFile(path, text);
       await rename(path, target);
+      if (isProjectFileAt(root, path)) {
+        continue;
+      }
       const report = await applyRename({ absFrom: path, absTo: target, registry: formats, root });
       row.references = report.references.filesChanged;
       if (report.errors.length > 0) {
@@ -236,7 +275,14 @@ export async function runConvert(
     print("Usage: jx convert <paths…> --to jxn|json [--dry-run] [--drop-comments]");
     return 2;
   }
-  const rows = await convertDocuments(args.root, args.paths, args);
+  let rows: ConvertRow[];
+  try {
+    rows = await convertDocuments(args.root, args.paths, args);
+  } catch (error) {
+    // The project itself does not load, so there is nothing to convert in it.
+    print(errorMessage(error));
+    return 1;
+  }
   for (const row of rows) {
     if (row.problem !== null) {
       print(`${row.from}: ${row.problem}`);

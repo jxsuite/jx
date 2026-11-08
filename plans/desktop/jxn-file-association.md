@@ -4,7 +4,6 @@ disposition: implement
 claims:
   - desktop.md#7.8
 requires:
-  - site-architecture/project-jxn
   - studio/jxn-documents
 workspaces:
   - packages/desktop

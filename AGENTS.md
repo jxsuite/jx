@@ -32,7 +32,7 @@ If running on NixOS:
 
 - A development server is already running on port 3000
 - The studio interface can be accessed via: http://localhost:3000/packages/studio/index.html
-- The jxsuite.com project can be accessed via: http://localhost:3000/packages/studio/index.html?project=~/Development/jx/sites/jxsuite.com/project.json
+- The jxsuite.com project can be accessed via: http://localhost:3000/packages/studio/index.html?project=~/Development/jx/sites/jxsuite.com/project.jxn
 - Tests and validations are run at the project root level via `bun run all-the-things`
 - Tests must be run with `--isolate`
 

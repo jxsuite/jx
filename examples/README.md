@@ -2,17 +2,17 @@
 
 The monorepo's feature-demo project is a real, buildable Jx project (`"name": "Jx Examples"`, declaring `"url": "https://examples.jxsuite.dev"`, which no workflow here deploys) that doubles as the end-to-end fixture for the toolchain. It is a Bun workspace member, so its `@jxsuite/*` dependencies are `workspace:^` and resolve through symlinks back into this repo. The project enables exactly one extension, `@jxsuite/parser`.
 
-| Path                                             | Contents                                                                                                           |
-| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------ |
-| [`project.json`](./project.json)                 | Project definition: defaults, `$head`, the `posts` content collection, `build.outDir`, `extensions`                |
-| [`pages/`](./pages)                              | Routes: `index.json` plus a `basics/` tier (one custom element each) and an `advanced/` tier                       |
-| [`components/`](./components)                    | JSON component documents, two Markdown-authored ones (`todo-app.md`, `todo-item.md`), and `fetch-demo.js` (`$src`) |
-| [`layouts/`](./layouts)                          | `base.json` (page shell) and `example.json`, which nests it via `$layout` and adds the sidebar nav                 |
-| [`content/posts/`](./content/posts)              | The content collection `project.json` declares, and the fixture data behind the blog page                          |
-| `project.schema.json`                            | **Generated.** Editor schema for `project.json`                                                                    |
-| `document.schema.json`                           | **Generated.** Editor schema for every page, component, and layout here                                            |
-| [`tests/`](./tests)                              | One placeholder `bun:test` file, so the workspace's `test` script has something to run                             |
-| [`.dev-server-smoke.ts`](./.dev-server-smoke.ts) | Hand-run dev-server smoke check on port 5199. Nothing in the repo calls it                                         |
+| Path                                             | Contents                                                                                                            |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------- |
+| [`project.jxn`](./project.jxn)                   | Project definition, in Jx Notation: defaults, `$head`, the `posts` content collection, `build.outDir`, `extensions` |
+| [`pages/`](./pages)                              | Routes: `index.json` plus a `basics/` tier (one custom element each) and an `advanced/` tier                        |
+| [`components/`](./components)                    | JSON component documents, two Markdown-authored ones (`todo-app.md`, `todo-item.md`), and `fetch-demo.js` (`$src`)  |
+| [`layouts/`](./layouts)                          | `base.json` (page shell) and `example.json`, which nests it via `$layout` and adds the sidebar nav                  |
+| [`content/posts/`](./content/posts)              | The content collection `project.jxn` declares, and the fixture data behind the blog page                            |
+| `project.schema.json`                            | **Generated.** Editor schema for `project.jxn`                                                                      |
+| `document.schema.json`                           | **Generated.** Editor schema for every page, component, and layout here                                             |
+| [`tests/`](./tests)                              | One placeholder `bun:test` file, so the workspace's `test` script has something to run                              |
+| [`.dev-server-smoke.ts`](./.dev-server-smoke.ts) | Hand-run dev-server smoke check on port 5199. Nothing in the repo calls it                                          |
 
 Between them the pages exercise reactive state, computed values, list rendering, forms, `Request` data sources, `$switch` routing, responsive `$media`, nested custom elements, a `MarkdownCollection` blog, Markdown-authored components, and third-party web components (Shoelace).
 
@@ -29,7 +29,7 @@ Root `bun run dev` boots the dev server at the **repo root** on port 3000 and se
 
 - **Leaf app, not a library.** [specs/extensions.md §2](../specs/extensions.md) classifies `examples` and `sites/*` as leaf apps (exempt consumers, like a user's own project), so the core/extension dependency rules do not apply here. [`scripts/check-dep-rules.ts`](../scripts/check-dep-rules.ts) enforces those rules and reads only `packages/` and `extensions/`, so it never opens this manifest. The `@jxsuite/*` ranges here are `workspace:^` because `examples` is a workspace member; `packages/starters/sites/*` is not one, so it must name published semver, kept current by [`scripts/check-template-versions.ts`](../scripts/check-template-versions.ts) (`bun run templates:check`).
 - **`node_modules/` here is real and correct.** [`scripts/check-shadowed-core.ts`](../scripts/check-shadowed-core.ts) skips a symlink whose target still resolves (a workspace link pointing back into this repo), precisely so `bun run schema:clean-roots` leaves these links alone. A dangling one is still reported. Do not clean this directory the way a starter root is cleaned.
-- **The two `*.schema.json` files are generated. Never hand-edit them.** `examples` is the first project root [`scripts/generate-schemas.ts`](../scripts/generate-schemas.ts) and [`scripts/validate-schemas.ts`](../scripts/validate-schemas.ts) walk. A change to `project.json`, to the schema emitters, or to an extension fragment means `bun run schema:generate-all` in the same PR (or just `bun run schema:sync`); `bun run schema:verify` and `bun run schema:validate-all` both block in CI, and `.github/workflows/schemas.yml` pushes the regeneration to your branch if you forget.
+- **The two `*.schema.json` files are generated. Never hand-edit them.** `examples` is the first project root [`scripts/generate-schemas.ts`](../scripts/generate-schemas.ts) and [`scripts/validate-schemas.ts`](../scripts/validate-schemas.ts) walk. A change to `project.jxn`, to the schema emitters, or to an extension fragment means `bun run schema:generate-all` in the same PR (or just `bun run schema:sync`); `bun run schema:verify` and `bun run schema:validate-all` both block in CI, and `.github/workflows/schemas.yml` pushes the regeneration to your branch if you forget.
 - **There is no coverage lane here.** The `bunfig.toml` coverage ratchet applies to the CI workspace graph, which is `packages/*` and `extensions/*` only. Do not add one expecting a gate.
 
 ## What else reads this directory

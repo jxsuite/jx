@@ -51,7 +51,7 @@ export const VARIABLES_TITLE = "Variables";
 
 /** What a variable is, in the words of the platform feature it is. */
 export const VARIABLES_LEDE =
-  "Your site's CSS custom properties, kept in the root style block of project.json. Every page " +
+  "Your site's CSS custom properties, kept in the root style block of the project file. Every page " +
   "and component can use one in any style value as var(--name).";
 
 /**
@@ -62,7 +62,7 @@ export const VARIABLES_LEDE =
  * took as the view contradicting itself rather than as undo being the case that waits.
  */
 export const VARIABLES_SAVING =
-  "Each change here is written to project.json as you make it, so there is nothing to save " +
+  "Each change here is written to the project file as you make it, so there is nothing to save " +
   "afterwards. The write also saves any Elements change still waiting for Save, because both " +
   "live in that file. Undo is the exception: an undone change waits for Save like any other edit.";
 

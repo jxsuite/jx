@@ -286,7 +286,7 @@ export function createRedirectsSource(): GridSource {
         const rule = rules[Number(cell.rowKey)];
         if (!rule) {
           result.cells.push({
-            error: "This row is no longer in project.json — refresh the grid.",
+            error: `This row is no longer in ${projectConfigPath()} — refresh the grid.`,
             field: cell.field,
             ok: false,
             rowKey: cell.rowKey,
@@ -343,7 +343,7 @@ export function createRedirectsSource(): GridSource {
       if (!commit.ok) {
         // `commitProjectConfig` already filed the Problem; repeating it would list one failure
         // Twice. The cell errors are what keep the rows pending and marked.
-        return refuseAll(batch, "project.json could not be written — see Problems.");
+        return refuseAll(batch, `${projectConfigPath()} could not be written — see Problems.`);
       }
       reportRedirectProblems(next, await projectRoutes());
       return result;

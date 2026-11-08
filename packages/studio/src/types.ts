@@ -504,7 +504,9 @@ export interface StudioPlatform {
   codeService: (action: string, payload: JsonValue) => Promise<CodeServiceResult | null>;
   resolveSiteContext: (filePath: string) => Promise<{
     sitePath: string | null;
-    projectConfig?: ProjectConfig;
+    /** Null when the project's file does not read (`site-architecture.md` §2.3), with the reason. */
+    projectConfig?: ProjectConfig | null;
+    projectProblem?: string;
     fileRelPath?: string;
   }>;
   locateFile: (name: string) => Promise<string | null>;

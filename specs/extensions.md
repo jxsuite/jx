@@ -191,7 +191,7 @@ Standalone validation registers the shipped defaults (`@jxsuite/schema/schemas/p
 
 ### 5.4 Validation
 
-> **Status: Partial.** Offline resolution of the committed entry documents, host-first resolution of first-party refs and whole-tree `jx validate` ship (`packages/compiler/src/site/schema-command.ts`, `packages/compiler/src/site/validate-command.ts`). The canonical URLs are not all served: the `copy` map in `sites/jxsuite.com/project.json` publishes `schema/v1`, `schema/project/v1`, `schema/class/v1` and `schema/document/paths/v2`, but not `https://jxsuite.com/schema/project/core/v2` or the `https://jxsuite.com/schema/project/fields/v2` default union, so a client fetching either gets a 404 rather than the shipped default.
+> **Status: Partial.** Offline resolution of the committed entry documents, host-first resolution of first-party refs and whole-tree `jx validate` ship (`packages/compiler/src/site/schema-command.ts`, `packages/compiler/src/site/validate-command.ts`). The canonical URLs are not all served: the `copy` map in `sites/jxsuite.com/project.jxn` publishes `schema/v1`, `schema/project/v1`, `schema/class/v1` and `schema/document/paths/v2`, but not `https://jxsuite.com/schema/project/core/v2` or the `https://jxsuite.com/schema/project/fields/v2` default union, so a client fetching either gets a 404 rather than the shipped default.
 
 - Every consumer resolves the committed entry documents **offline with no file access at all**: they are self-contained single-resource schemas (§5.2), so every `$ref` is a root-relative JSON Pointer into the same document. No `node_modules`, no network, no editor configuration.
 

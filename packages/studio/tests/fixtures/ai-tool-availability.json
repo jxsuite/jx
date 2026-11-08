@@ -1,6 +1,6 @@
 {
   "an empty window": {
-    "listing": "b5787c56572d29f174580a4c9722fe10cd1d72eca84f323e7761e7adfe6be3c8",
+    "listing": "9a7f12ec3ee96c8d8be494cacfca0598b6c8b71aeae42a46de4b661724acf60f",
     "offered": ["ask_user", "import_site", "create_project", "list_starters"],
     "refusals": [
       "list_files: Tool \"list_files\" is not available right now — it requires an open project.",
@@ -20,7 +20,7 @@
     ]
   },
   "an empty window with no import backend": {
-    "listing": "eb0ec676d2dbe66374350701f31a2ac6326cbca513753daf2a1703fc9df770ae",
+    "listing": "741c0568ff1b19fd7cffcf80508ebda5db426ecb0f1525e7e14aa053c0a280e7",
     "offered": ["ask_user", "create_project", "list_starters"],
     "refusals": [
       "import_site: Tool \"import_site\" is not available right now — it requires a platform with a site-import backend.",
@@ -41,7 +41,7 @@
     ]
   },
   "a project with no document": {
-    "listing": "eec546f6eb7eedf549ff2e055deef1a1610469dab4d3a68b599972a6132893ae",
+    "listing": "2308c10d37cc43f1e99cb47d43b74e11e8a9ea6f062a114d32c99c7bc58bf24e",
     "offered": [
       "ask_user",
       "create_component",
@@ -71,7 +71,7 @@
     ]
   },
   "a document on the canvas": {
-    "listing": "816ceba4c474190316d6073eed6cb692ff92386d4ba2b29dd905aaaebba7baef",
+    "listing": "bbdb86f62473c6e5388a759692ebb9e2c533d6b61dd36ef6a309a0eb5e20c6fe",
     "offered": [
       "ask_user",
       "read_document",
@@ -107,7 +107,7 @@
     ]
   },
   "a document in Code view": {
-    "listing": "15e140c7de54e36cd8ad0d2df32dc64712f4e9b2c91bab9ee2c05a0fc1e4ba60",
+    "listing": "34cc02fcd0703114e961cb741bcd568be647b7110ac4b7ed64aaa876a9ec15fd",
     "offered": [
       "ask_user",
       "read_document",
@@ -141,7 +141,7 @@
     ]
   },
   "a single file with no project": {
-    "listing": "71148dcab94a6b407c3c53f6886b625dd35f5826cd35161f8b2107f68c87120d",
+    "listing": "688e32797f62492f4b3b93fe0200f65e2037e51fc3d4ef760a88a53cdb70a9da",
     "offered": [
       "ask_user",
       "read_document",
@@ -172,7 +172,7 @@
     ]
   },
   "a document on the canvas with no extension catalogue": {
-    "listing": "910e33ca80d94fe188d42fedf9d8cd8f89a24a9abea52032dff1192e8fe48a8e",
+    "listing": "ae09c66035da38e3cf5b1c92e6f425236e95aae5eea5cedfb1f2224e0ae7d830",
     "offered": [
       "ask_user",
       "read_document",

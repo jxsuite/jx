@@ -79,6 +79,7 @@ import {
 } from "../services/monaco-buffer";
 import { noteTyping } from "../tabs/typing";
 import { normalizeDocument } from "../tabs/bare-repeaters";
+import { unreadProblemKey } from "../tabs/tab";
 import { diffModelUrisFor, modelUriFor, monacoLangForPath } from "../services/model-uri";
 import { renderWelcome } from "../surfaces/welcome";
 import { emptyState } from "../surfaces/empty-state";
@@ -137,7 +138,7 @@ import { dismissSlashMenu } from "../editor/slash-menu";
 import { mediaDisplayName } from "../panels/shared";
 import { tabLabel } from "../panels/tab-strip";
 import { activeRegistry } from "../commands/active-registry";
-import { notify } from "../services/notify";
+import { clearProblems, notify } from "../services/notify";
 import * as overlaysPanel from "../panels/overlays";
 
 import type { CanvasPanel, GitDiffState } from "../types";
@@ -184,11 +185,25 @@ function sourceLang(tab: Tab) {
   return fromType ?? monacoLangForPath(tab.documentPath ?? "");
 }
 
+/** The file reads now: it is a document again, and the Problem that said otherwise is withdrawn. */
+function settleUnread(tab: Tab): void {
+  if (tab.doc.unread === null) {
+    return;
+  }
+  tab.doc.unread = null;
+  const key = unreadProblemKey(tab.documentPath ?? "");
+  clearProblems((record) => record.key === key);
+}
+
 /**
  * The full source text for the source view. Format-class files serialize to their on-disk form
  * (e.g. frontmatter YAML plus the body for markdown), not just the JSON of the body tree.
  */
 async function sourceContent(tab: Tab) {
+  if (tab.doc.unread !== null && tab.doc.source !== null) {
+    // The file as it is, because there is no document to serialize: it did not read.
+    return tab.doc.source;
+  }
   if (formatByName(tab.doc.sourceFormat)) {
     return serializeDocument(tab);
   }
@@ -866,6 +881,7 @@ async function mountSourceEditor(
           tab.doc.content.frontmatter = frontmatter;
           // The buffer is the author's own spelling now, so it is what the next save keeps.
           tab.doc.source = sourceEditor.getValue();
+          settleUnread(tab);
           tab.doc.dirty = true;
           writes.markSettled();
         } catch {
@@ -884,6 +900,9 @@ async function mountSourceEditor(
           tab.doc.bareRepeaters = normalizeDocument(document);
           tab.doc.document = document;
           tab.doc.layout = parsed.layout;
+          // A JSON document's record is its layout; the text it was shown as while unread is done.
+          tab.doc.source = null;
+          settleUnread(tab);
           tab.doc.dirty = true;
           writes.markSettled();
         } catch {

@@ -629,7 +629,8 @@ function detailOf(repo: RepoInfo | undefined): RepoDetail {
     branch,
     detailMeta: [branch, repo.permission, ...(repo.private ? ["private"] : [])].join(" · "),
     detailName: repo.fullName,
-    folderHelp: "The folder that holds project.json. Leave it empty for the repository root.",
+    folderHelp:
+      "The folder that holds the project file, project.jxn or project.json. Leave it empty for the repository root.",
     locations: noLocations,
   };
   if (!getPlatform().listRepoProjects) {

@@ -741,6 +741,12 @@ async function attachSession(tab: Tab): Promise<void> {
     return;
   }
   const { documentPath: path } = tab;
+  /* The project file never joins (see {@link ensureCollab}), whichever way a tab reaches here: a
+     rename onto its path re-keys a tab whose watcher is already installed, and a share toggle runs
+     the watcher again. The gate in `ensureCollab` sees neither. */
+  if (path && isProjectConfigPath(path)) {
+    return;
+  }
   const platform = maybePlatform();
   if (!path || !platform?.collab) {
     /* Not a failure and not a session: this build/platform has no collaboration to offer. Saying

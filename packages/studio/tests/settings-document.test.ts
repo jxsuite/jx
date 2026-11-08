@@ -243,7 +243,7 @@ const BUILTIN_LABELS = [
   "Site head",
   "Data Shapes",
   "Packages",
-  "Raw JSON",
+  "Source",
 ];
 
 beforeEach(() => {
@@ -515,7 +515,7 @@ describe("the settings editor", () => {
       "Site head",
       "Data Shapes",
       "Packages",
-      "Raw JSON",
+      "Source",
     ]);
     pointer(navButton("Content Types"), "click");
     await flush(8);
@@ -856,7 +856,7 @@ describe("settings.open", () => {
   test("the keyboard lands on the section it opened on, not on the first row", async () => {
     await runOpen({ section: "rawJson" });
     await flush(4);
-    expect(document.activeElement).toBe(navButton("Raw JSON", settingsHome()!));
+    expect(document.activeElement).toBe(navButton("Source", settingsHome()!));
   });
 
   test("it remembers the section it was left on for the rest of the session", async () => {
@@ -910,7 +910,7 @@ describe("settings.open", () => {
     );
   });
 
-  test("Raw JSON's Edit as code opens project.json in its source, which leaves Settings", async () => {
+  test("Source's Edit as code opens project.json in its source, which leaves Settings", async () => {
     await runOpen({ section: "rawJson" });
     await flush(4);
     pointer(settingsHome()!.querySelector('[part="edit"]')!, "click");

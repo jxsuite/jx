@@ -353,15 +353,7 @@
                 },
                 {
                   "tagName": "span",
-                  "textContent": " entry in "
-                },
-                {
-                  "tagName": "code",
-                  "textContent": "project.json"
-                },
-                {
-                  "tagName": "span",
-                  "textContent": " whose "
+                  "textContent": " entry in the project file whose "
                 },
                 {
                   "tagName": "code",

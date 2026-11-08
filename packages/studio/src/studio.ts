@@ -271,6 +271,7 @@ import {
   registerSettingsCommands,
   rememberStylesView,
   showSettingsDocument,
+  showUnreadProjectFile,
 } from "./settings/settings-document";
 import {
   installWorkspaceFollow,
@@ -297,7 +298,7 @@ import { registerI18nCommands } from "./i18n/i18n-commands";
 import { convertToComponent } from "./editor/convert-to-component";
 import type { GitDiffState } from "./types";
 import type { Tab } from "./tabs/tab";
-import type { JxDocument } from "@jxsuite/schema/types";
+import type { JxDocument, ProjectConfig } from "@jxsuite/schema/types";
 import { setBundleBase } from "./services/bundle-base";
 import { mountBootFailureTree, mountShellTree } from "./shell/tree";
 import {
@@ -1163,9 +1164,15 @@ if (_projectParam) {
           (siteCtx.fileRelPath && !isProjectConfigPath(siteCtx.fileRelPath)
             ? siteCtx.fileRelPath
             : null);
+        // A project file that does not read is relayed with no configuration
+        // (`site-architecture.md` §2.3).
+        const unread = Boolean(siteCtx.sitePath) && !siteCtx.projectConfig;
         if (!named) {
           await openLastSessionOrHome();
           if (activeTab.value) {
+            if (unread) {
+              await showUnreadProjectFile();
+            }
             render();
             renderLeftPanel();
             return;
@@ -1183,7 +1190,9 @@ if (_projectParam) {
           fileRelPath = (await findHomePage()) ?? projectConfigPath();
         }
 
-        const content = await platform.readFile(fileRelPath);
+        // The project file is shown below as the text it is, which no editor here could parse.
+        const content =
+          unread && isProjectConfigPath(fileRelPath) ? "" : await platform.readFile(fileRelPath);
         if (content) {
           let frontmatter;
           let parsedDoc;
@@ -1228,6 +1237,9 @@ if (_projectParam) {
            without it a window opened at a named file would restore other windows' sessions and
            never record its own. */
         markSessionRestored(workspace.projectRoot);
+        if (unread) {
+          await showUnreadProjectFile();
+        }
       } catch (error) {
         notify.error(`Could not open ${fileRelPath || "the project"}.`, {
           detail: errorMessage(error),
@@ -1469,8 +1481,16 @@ async function openRecentProject(root: string) {
     const content = await platform.readFile(projectConfigPath());
     /* The project's own config at the root the user chose to open; Studio edits it in that shape
        and does not re-validate it on open, as the folder-picker path in `platforms/devserver.ts`
-       does not either. */
-    const config = parseProjectSource(content, projectConfigPath());
+       does not either. A file that does not read opens the project with none, and is shown as text
+       once the project is open (site-architecture.md §2.3): it is a typo, not a project that moved,
+       so it must not cost the project its place in Recent. */
+    let config: ProjectConfig = {};
+    let unread = false;
+    try {
+      config = parseProjectSource(content, projectConfigPath());
+    } catch {
+      unread = true;
+    }
 
     closeAllTabs();
     resetIgnoreCache();
@@ -1504,6 +1524,9 @@ async function openRecentProject(root: string) {
 
     activity.step("Open the home page");
     await openLastSessionOrHome();
+    if (unread) {
+      await showUnreadProjectFile();
+    }
     ensureFsSync();
     activity.done(`Opened ${requireProjectState().name}`);
     void maybePromptJxsuiteUpdate(root);

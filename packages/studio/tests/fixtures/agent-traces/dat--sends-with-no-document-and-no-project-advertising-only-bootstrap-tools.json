@@ -2,9 +2,9 @@
   "chatCalls": [
     "sendMessage(\"I want a portfolio site\")",
     "toMessagesArray()",
-    "setTokenCount(5089)",
+    "setTokenCount(5095)",
     "setContextWarning(false)",
-    "setTokenCount(5089)",
+    "setTokenCount(5095)",
     "setModel(\"gpt-4o\")",
     "toMessagesArray()",
     "appendDelta(\"Let's start a project\")",
@@ -24,7 +24,7 @@
         "carried": 0
       },
       "systemPrompt": {
-        "hash": "54e1c7077f53",
+        "hash": "214e9378a353",
         "headings": [
           "## Jx Document Format",
           "### Element Properties",
@@ -38,7 +38,7 @@
           "### Premium: stat card with layered surface (components/stat-card.json):",
           "### Premium: step card with centered layout (components/step-card.json):",
           "### Layout with slots (layouts/base.json):",
-          "### Site config with design tokens (project.json):",
+          "### Site config with design tokens (the project file's members, as JSON):",
           "### Responsive Styles (per-node @breakpoint overrides)",
           "## Design Principles (premium component output)",
           "### Tokens first",
@@ -65,7 +65,7 @@
           "## Current Mode",
           "## Asking the user"
         ],
-        "length": 20313
+        "length": 20338
       },
       "tools": ["ask_user", "create_project", "list_starters"]
     }
@@ -91,7 +91,7 @@
     "error": null,
     "model": "gpt-4o",
     "status": "idle",
-    "tokenCount": 5089,
+    "tokenCount": 5095,
     "usage": null
   },
   "finalDocument": null,
