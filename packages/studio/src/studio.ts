@@ -265,6 +265,7 @@ import { setOpenDialog } from "./canvas/dialog-state";
 import { registerA11yCommands } from "./services/a11y-report";
 import { registerPopoverCommands } from "./services/popover-report";
 import { registerStyleCommands } from "./panels/style-panel";
+import { setGridSavedListener } from "./grid/grid-controller";
 import { registerGridCommands } from "./grid/grid-open";
 import { registerExtensionCommands } from "./settings/extension-commands";
 import {
@@ -1705,6 +1706,13 @@ setDocumentSavedListener((path, doc, tab) => {
     renderPropertiesPanel();
     renderLeftPanel();
   }
+});
+/* A grid save writes files through its source, not through the document save path above, so it
+   reports here: source control re-reads the status (the Publish workspace's count and list), and a
+   repeater on the canvas reading the same data asks again. */
+setGridSavedListener(() => {
+  void noteFileSaved(null);
+  invalidateRepeaterSources();
 });
 /* Walking a comparison. No deps: the stepper reads the pane-keyed diff store directly and the
    toolbar redraws itself, so there is nothing for the bootstrap to inject. */
