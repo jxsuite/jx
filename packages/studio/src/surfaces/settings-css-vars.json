@@ -26,14 +26,14 @@
       "boxShadow": "inset 2px 0 0 var(--accent)"
     },
     "& [part=\"group-title\"]": {
-      "margin": "0 0 8px",
+      "margin": "0",
       "fontSize": "13px",
       "fontWeight": "600",
       "color": "var(--fg)",
       "textTransform": "uppercase",
       "letterSpacing": "0.5px"
     },
-    "& [part=\"row\"]": {
+    "& [part=\"token-row\"]": {
       "display": "flex",
       "alignItems": "center",
       "gap": "8px",
@@ -172,6 +172,116 @@
       "margin": "0",
       "fontSize": "var(--jx-text-md)",
       "color": "var(--fg-dim)"
+    },
+    "& [part=\"group-head\"]": {
+      "$description": "The heading's spacing is the row's, not the title's: a block margin on an item of a centred row moves its ink off the line.",
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "var(--jx-space-3)",
+      "marginBottom": "8px"
+    },
+    "& [part=\"tiles-layout\"]": {
+      "display": "grid",
+      "gridTemplateColumns": "minmax(0, 1fr) minmax(240px, 300px)",
+      "gap": "var(--jx-space-4)",
+      "alignItems": "start"
+    },
+    "& [part=\"tiles\"]": {
+      "display": "grid",
+      "gridTemplateColumns": "repeat(auto-fill, minmax(120px, 1fr))",
+      "gap": "var(--jx-space-3)"
+    },
+    "& [part=\"tile\"]": {
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "var(--jx-space-1)",
+      "padding": "0",
+      "border": "0",
+      "background": "none",
+      "color": "var(--fg)",
+      "textAlign": "start",
+      "font": "inherit",
+      "cursor": "pointer",
+      "minWidth": "0"
+    },
+    "& [part=\"tile-swatch\"]": {
+      "display": "block",
+      "height": "64px",
+      "borderRadius": "var(--jx-radius-md)",
+      "border": "1px solid var(--border)"
+    },
+    "& [part=\"tile\"][aria-pressed=\"true\"] > [part=\"tile-swatch\"]": {
+      "outline": "2px solid var(--accent)",
+      "outlineOffset": "2px"
+    },
+    "& [part=\"tile\"]:focus-visible": {
+      "outline": "none"
+    },
+    "& [part=\"tile\"]:focus-visible > [part=\"tile-swatch\"]": {
+      "outline": "2px solid var(--accent)",
+      "outlineOffset": "2px"
+    },
+    "& [part=\"tile-name\"], & [part=\"tile-value\"], & [part=\"detail-name\"]": {
+      "fontFamily": "var(--jx-font-mono)",
+      "fontSize": "var(--jx-text-xs)",
+      "overflow": "hidden",
+      "textOverflow": "ellipsis",
+      "whiteSpace": "nowrap"
+    },
+    "& [part=\"tile-value\"], & [part=\"detail-scheme\"], & [part=\"saved\"], & [part=\"used-label\"]": {
+      "color": "var(--fg-dim)",
+      "fontSize": "var(--jx-text-xs)"
+    },
+    "& [part=\"detail\"]": {
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "var(--jx-space-3)",
+      "padding": "var(--jx-space-3)",
+      "border": "1px solid var(--border)",
+      "borderRadius": "var(--jx-radius-md)",
+      "background": "var(--bg-panel)",
+      "position": "sticky",
+      "top": "var(--jx-space-3)"
+    },
+    "& [part=\"detail\"] [part=\"overrides\"]": {
+      "$description": "The detail is its own column: the colour rows' indent past the name column and the well would push its override list out of the box.",
+      "paddingLeft": "0",
+      "marginBottom": "0"
+    },
+    "& [part=\"detail-head\"]": {
+      "display": "flex",
+      "alignItems": "baseline",
+      "gap": "var(--jx-space-2)"
+    },
+    "& [part=\"contrast\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "var(--jx-space-2)",
+      "margin": "0",
+      "fontSize": "var(--jx-text-sm)"
+    },
+    "& [part=\"contrast\"][data-state=\"pass\"]": {
+      "color": "var(--success)"
+    },
+    "& [part=\"contrast\"][data-state=\"fail\"]": {
+      "color": "var(--warning)"
+    },
+    "& [part=\"contrast\"][data-state=\"none\"]": {
+      "display": "none"
+    },
+    "& [part=\"used-by\"]": {
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "2px",
+      "fontSize": "var(--jx-text-sm)"
+    },
+    "& [part=\"saved\"]": {
+      "margin": "0",
+      "paddingTop": "var(--jx-space-2)",
+      "borderTop": "1px solid var(--border)"
+    },
+    "& [part=\"detail-remove\"]": {
+      "alignSelf": "flex-start"
     }
   },
   "children": [
@@ -211,66 +321,219 @@
         },
         "children": [
           {
-            "tagName": "h3",
+            "tagName": "div",
             "attributes": {
-              "part": "group-title"
+              "part": "group-head"
             },
-            "textContent": "${$map.item.title}"
-          },
-          {
-            "$prototype": "Array",
-            "items": {
-              "$ref": "$map/item/tokens"
-            },
-            "key": {
-              "$ref": "$map/item/name"
-            },
-            "map": {
-              "tagName": "div",
-              "attributes": {
-                "part": "token",
-                "data-token": "${$map.item.name}",
-                "aria-current": "${$map.item.current ? 'true' : null}"
+            "children": [
+              {
+                "tagName": "h3",
+                "attributes": {
+                  "part": "group-title"
+                },
+                "textContent": "${$map.item.title}"
               },
-              "children": [
-                {
-                  "tagName": "div",
-                  "attributes": {
-                    "part": "row"
-                  },
-                  "children": [
-                    {
-                      "tagName": "div",
-                      "attributes": {
-                        "part": "swatch-slot",
-                        "role": "none"
-                      },
-                      "$switch": {
-                        "$ref": "$map/item/swatchState"
-                      },
-                      "cases": {
-                        "swatch": {
-                          "tagName": "div",
+              {
+                "tagName": "div",
+                "attributes": {
+                  "part": "scheme-slot",
+                  "role": "none"
+                },
+                "style": {
+                  "display": "contents"
+                },
+                "$switch": {
+                  "$ref": "$map/item/schemeState"
+                },
+                "cases": {
+                  "shown": {
+                    "tagName": "jx-action-group",
+                    "attributes": {
+                      "part": "schemes"
+                    },
+                    "$props": {
+                      "selects": "single",
+                      "label": "Colour scheme shown",
+                      "compact": true
+                    },
+                    "children": [
+                      {
+                        "$prototype": "Array",
+                        "items": {
+                          "$ref": "#/state/schemes"
+                        },
+                        "key": {
+                          "$ref": "$map/item/value"
+                        },
+                        "map": {
+                          "tagName": "jx-action-button",
                           "attributes": {
-                            "part": "well"
+                            "part": "scheme",
+                            "data-scheme": "${$map.item.value}"
                           },
-                          "style": {
-                            "background": {
-                              "$ref": "$map/item/swatchBg"
+                          "$props": {
+                            "size": "sm",
+                            "label": {
+                              "$ref": "$map/item/label"
+                            },
+                            "checked": {
+                              "$ref": "$map/item/checked"
                             }
+                          },
+                          "onclick": {
+                            "$prototype": "Function",
+                            "body": [
+                              {
+                                "operator": "call",
+                                "target": {
+                                  "$ref": "#/state/setScheme"
+                                },
+                                "value": [
+                                  {
+                                    "$ref": "$map/item/value"
+                                  }
+                                ]
+                              }
+                            ]
                           },
                           "children": [
                             {
-                              "tagName": "input",
+                              "tagName": "span",
+                              "textContent": "${$map.item.label}"
+                            }
+                          ]
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "$description": "Colours are a palette, so they are drawn as swatches with the chosen one's detail beside them; every other group is a list of rows.",
+            "tagName": "div",
+            "attributes": {
+              "part": "tokens-slot",
+              "role": "none"
+            },
+            "style": {
+              "display": "contents"
+            },
+            "$switch": {
+              "$ref": "$map/item/layout"
+            },
+            "cases": {
+              "rows": {
+                "tagName": "div",
+                "attributes": {
+                  "part": "rows",
+                  "role": "none"
+                },
+                "style": {
+                  "display": "contents"
+                },
+                "children": [
+                  {
+                    "$prototype": "Array",
+                    "items": {
+                      "$ref": "$map/item/tokens"
+                    },
+                    "key": {
+                      "$ref": "$map/item/name"
+                    },
+                    "map": {
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "token",
+                        "data-token": "${$map.item.name}",
+                        "aria-current": "${$map.item.current ? 'true' : null}"
+                      },
+                      "children": [
+                        {
+                          "tagName": "div",
+                          "attributes": {
+                            "part": "token-row"
+                          },
+                          "children": [
+                            {
+                              "tagName": "div",
                               "attributes": {
-                                "part": "swatch-input",
-                                "type": "color",
-                                "aria-label": "${$map.item.swatchLabel}"
+                                "part": "swatch-slot",
+                                "role": "none"
                               },
-                              "value": {
-                                "$ref": "$map/item/swatchInput"
+                              "$switch": {
+                                "$ref": "$map/item/swatchState"
                               },
-                              "oninput": {
+                              "cases": {
+                                "swatch": {
+                                  "tagName": "div",
+                                  "attributes": {
+                                    "part": "well"
+                                  },
+                                  "style": {
+                                    "background": {
+                                      "$ref": "$map/item/swatchBg"
+                                    }
+                                  },
+                                  "children": [
+                                    {
+                                      "tagName": "input",
+                                      "attributes": {
+                                        "part": "swatch-input",
+                                        "type": "color",
+                                        "aria-label": "${$map.item.swatchLabel}"
+                                      },
+                                      "value": {
+                                        "$ref": "$map/item/swatchInput"
+                                      },
+                                      "oninput": {
+                                        "$prototype": "Function",
+                                        "body": [
+                                          {
+                                            "operator": "call",
+                                            "target": {
+                                              "$ref": "#/state/setToken"
+                                            },
+                                            "value": [
+                                              {
+                                                "$ref": "$map/item/name"
+                                              },
+                                              {
+                                                "$ref": "event#/target/value"
+                                              }
+                                            ]
+                                          }
+                                        ]
+                                      }
+                                    }
+                                  ]
+                                }
+                              }
+                            },
+                            {
+                              "tagName": "span",
+                              "attributes": {
+                                "part": "name",
+                                "title": "${$map.item.label}"
+                              },
+                              "textContent": "${$map.item.label}"
+                            },
+                            {
+                              "tagName": "jx-textfield",
+                              "attributes": {
+                                "part": "value"
+                              },
+                              "$props": {
+                                "label": {
+                                  "$ref": "$map/item/label"
+                                },
+                                "value": {
+                                  "$ref": "$map/item/value"
+                                },
+                                "size": "sm"
+                              },
+                              "onchange": {
                                 "$prototype": "Function",
                                 "body": [
                                   {
@@ -289,242 +552,238 @@
                                   }
                                 ]
                               }
-                            }
-                          ]
-                        }
-                      }
-                    },
-                    {
-                      "tagName": "span",
-                      "attributes": {
-                        "part": "name",
-                        "title": "${$map.item.label}"
-                      },
-                      "textContent": "${$map.item.label}"
-                    },
-                    {
-                      "tagName": "jx-textfield",
-                      "attributes": {
-                        "part": "value"
-                      },
-                      "$props": {
-                        "label": {
-                          "$ref": "$map/item/label"
-                        },
-                        "value": {
-                          "$ref": "$map/item/value"
-                        },
-                        "size": "sm"
-                      },
-                      "onchange": {
-                        "$prototype": "Function",
-                        "body": [
-                          {
-                            "operator": "call",
-                            "target": {
-                              "$ref": "#/state/setToken"
                             },
-                            "value": [
-                              {
-                                "$ref": "$map/item/name"
-                              },
-                              {
-                                "$ref": "event#/target/value"
-                              }
-                            ]
-                          }
-                        ]
-                      }
-                    },
-                    {
-                      "tagName": "div",
-                      "attributes": {
-                        "part": "chip-slot",
-                        "role": "none"
-                      },
-                      "$switch": {
-                        "$ref": "$map/item/chipState"
-                      },
-                      "cases": {
-                        "plain": {
-                          "tagName": "span",
-                          "attributes": {
-                            "part": "chip",
-                            "title": "${$map.item.chipTitle}"
-                          },
-                          "children": [
                             {
-                              "tagName": "span",
+                              "tagName": "div",
                               "attributes": {
-                                "part": "chip-label"
+                                "part": "chip-slot",
+                                "role": "none"
                               },
-                              "textContent": "${$map.item.chipLabel}"
-                            }
-                          ]
-                        },
-                        "swatch": {
-                          "tagName": "span",
-                          "attributes": {
-                            "part": "chip",
-                            "title": "${$map.item.chipTitle}"
-                          },
-                          "children": [
-                            {
-                              "tagName": "span",
-                              "attributes": {
-                                "part": "chip-swatch"
+                              "$switch": {
+                                "$ref": "$map/item/chipState"
                               },
-                              "style": {
-                                "background": {
-                                  "$ref": "$map/item/chipSwatch"
+                              "cases": {
+                                "plain": {
+                                  "tagName": "span",
+                                  "attributes": {
+                                    "part": "chip",
+                                    "title": "${$map.item.chipTitle}"
+                                  },
+                                  "children": [
+                                    {
+                                      "tagName": "span",
+                                      "attributes": {
+                                        "part": "chip-label"
+                                      },
+                                      "textContent": "${$map.item.chipLabel}"
+                                    }
+                                  ]
+                                },
+                                "swatch": {
+                                  "tagName": "span",
+                                  "attributes": {
+                                    "part": "chip",
+                                    "title": "${$map.item.chipTitle}"
+                                  },
+                                  "children": [
+                                    {
+                                      "tagName": "span",
+                                      "attributes": {
+                                        "part": "chip-swatch"
+                                      },
+                                      "style": {
+                                        "background": {
+                                          "$ref": "$map/item/chipSwatch"
+                                        }
+                                      }
+                                    },
+                                    {
+                                      "tagName": "span",
+                                      "attributes": {
+                                        "part": "chip-label"
+                                      },
+                                      "textContent": "${$map.item.chipLabel}"
+                                    }
+                                  ]
                                 }
                               }
                             },
                             {
-                              "tagName": "span",
+                              "tagName": "jx-action-button",
                               "attributes": {
-                                "part": "chip-label"
+                                "part": "remove"
                               },
-                              "textContent": "${$map.item.chipLabel}"
+                              "$props": {
+                                "icon": "trash",
+                                "size": "sm",
+                                "label": {
+                                  "$ref": "$map/item/removeLabel"
+                                },
+                                "hint": {
+                                  "$ref": "$map/item/removeLabel"
+                                }
+                              },
+                              "onclick": {
+                                "$prototype": "Function",
+                                "body": [
+                                  {
+                                    "operator": "call",
+                                    "target": {
+                                      "$ref": "#/state/removeToken"
+                                    },
+                                    "value": [
+                                      {
+                                        "$ref": "$map/item/name"
+                                      }
+                                    ]
+                                  }
+                                ]
+                              }
                             }
                           ]
-                        }
-                      }
-                    },
-                    {
-                      "tagName": "jx-action-button",
-                      "attributes": {
-                        "part": "remove"
-                      },
-                      "$props": {
-                        "icon": "trash",
-                        "size": "sm",
-                        "label": {
-                          "$ref": "$map/item/removeLabel"
                         },
-                        "hint": {
-                          "$ref": "$map/item/removeLabel"
-                        }
-                      },
-                      "onclick": {
-                        "$prototype": "Function",
-                        "body": [
-                          {
-                            "operator": "call",
-                            "target": {
-                              "$ref": "#/state/removeToken"
-                            },
-                            "value": [
-                              {
-                                "$ref": "$map/item/name"
-                              }
-                            ]
-                          }
-                        ]
-                      }
-                    }
-                  ]
-                },
-                {
-                  "tagName": "div",
-                  "attributes": {
-                    "part": "preview-slot",
-                    "role": "none"
-                  },
-                  "style": {
-                    "display": "contents"
-                  },
-                  "$switch": {
-                    "$ref": "$map/item/previewState"
-                  },
-                  "cases": {
-                    "font": {
-                      "tagName": "div",
-                      "attributes": {
-                        "part": "font-preview"
-                      },
-                      "style": {
-                        "fontFamily": {
-                          "$ref": "$map/item/previewFont"
-                        }
-                      },
-                      "textContent": "The quick brown fox jumps over the lazy dog"
-                    }
-                  }
-                },
-                {
-                  "tagName": "div",
-                  "attributes": {
-                    "part": "overrides-slot",
-                    "role": "none"
-                  },
-                  "style": {
-                    "display": "contents"
-                  },
-                  "$switch": {
-                    "$ref": "$map/item/overrideState"
-                  },
-                  "cases": {
-                    "shown": {
-                      "tagName": "div",
-                      "attributes": {
-                        "part": "overrides"
-                      },
-                      "children": [
                         {
-                          "$prototype": "Array",
-                          "items": {
-                            "$ref": "$map/item/overrides"
+                          "tagName": "div",
+                          "attributes": {
+                            "part": "preview-slot",
+                            "role": "none"
                           },
-                          "key": {
-                            "$ref": "$map/item/id"
+                          "style": {
+                            "display": "contents"
                           },
-                          "map": {
-                            "tagName": "div",
-                            "attributes": {
-                              "part": "override",
-                              "data-kind": "${$map.item.kind}"
-                            },
-                            "children": [
-                              {
-                                "tagName": "span",
-                                "attributes": {
-                                  "part": "override-label"
-                                },
-                                "textContent": "${$map.item.label}"
+                          "$switch": {
+                            "$ref": "$map/item/previewState"
+                          },
+                          "cases": {
+                            "font": {
+                              "tagName": "div",
+                              "attributes": {
+                                "part": "font-preview"
                               },
-                              {
-                                "tagName": "div",
-                                "attributes": {
-                                  "part": "swatch-slot",
-                                  "role": "none"
-                                },
-                                "$switch": {
-                                  "$ref": "$map/item/swatchState"
-                                },
-                                "cases": {
-                                  "swatch": {
+                              "style": {
+                                "fontFamily": {
+                                  "$ref": "$map/item/previewFont"
+                                }
+                              },
+                              "textContent": "The quick brown fox jumps over the lazy dog"
+                            }
+                          }
+                        },
+                        {
+                          "tagName": "div",
+                          "attributes": {
+                            "part": "overrides-slot",
+                            "role": "none"
+                          },
+                          "style": {
+                            "display": "contents"
+                          },
+                          "$switch": {
+                            "$ref": "$map/item/overrideState"
+                          },
+                          "cases": {
+                            "shown": {
+                              "tagName": "div",
+                              "attributes": {
+                                "part": "overrides"
+                              },
+                              "children": [
+                                {
+                                  "$prototype": "Array",
+                                  "items": {
+                                    "$ref": "$map/item/overrides"
+                                  },
+                                  "key": {
+                                    "$ref": "$map/item/id"
+                                  },
+                                  "map": {
                                     "tagName": "div",
                                     "attributes": {
-                                      "part": "well"
-                                    },
-                                    "style": {
-                                      "background": {
-                                        "$ref": "$map/item/swatchBg"
-                                      }
+                                      "part": "override",
+                                      "data-kind": "${$map.item.kind}"
                                     },
                                     "children": [
                                       {
-                                        "tagName": "input",
+                                        "tagName": "span",
                                         "attributes": {
-                                          "part": "swatch-input",
-                                          "type": "color",
-                                          "aria-label": "${$map.item.swatchLabel}"
+                                          "part": "override-label"
                                         },
-                                        "value": {
-                                          "$ref": "$map/item/swatchInput"
+                                        "textContent": "${$map.item.label}"
+                                      },
+                                      {
+                                        "tagName": "div",
+                                        "attributes": {
+                                          "part": "swatch-slot",
+                                          "role": "none"
                                         },
-                                        "oninput": {
+                                        "$switch": {
+                                          "$ref": "$map/item/swatchState"
+                                        },
+                                        "cases": {
+                                          "swatch": {
+                                            "tagName": "div",
+                                            "attributes": {
+                                              "part": "well"
+                                            },
+                                            "style": {
+                                              "background": {
+                                                "$ref": "$map/item/swatchBg"
+                                              }
+                                            },
+                                            "children": [
+                                              {
+                                                "tagName": "input",
+                                                "attributes": {
+                                                  "part": "swatch-input",
+                                                  "type": "color",
+                                                  "aria-label": "${$map.item.swatchLabel}"
+                                                },
+                                                "value": {
+                                                  "$ref": "$map/item/swatchInput"
+                                                },
+                                                "oninput": {
+                                                  "$prototype": "Function",
+                                                  "body": [
+                                                    {
+                                                      "operator": "call",
+                                                      "target": {
+                                                        "$ref": "#/state/setOverride"
+                                                      },
+                                                      "value": [
+                                                        {
+                                                          "$ref": "$map/item/token"
+                                                        },
+                                                        {
+                                                          "$ref": "$map/item/ctx"
+                                                        },
+                                                        {
+                                                          "$ref": "event#/target/value"
+                                                        }
+                                                      ]
+                                                    }
+                                                  ]
+                                                }
+                                              }
+                                            ]
+                                          }
+                                        }
+                                      },
+                                      {
+                                        "tagName": "jx-textfield",
+                                        "attributes": {
+                                          "part": "override-value"
+                                        },
+                                        "$props": {
+                                          "label": {
+                                            "$ref": "$map/item/fieldLabel"
+                                          },
+                                          "value": {
+                                            "$ref": "$map/item/value"
+                                          },
+                                          "placeholder": "inherits",
+                                          "size": "sm"
+                                        },
+                                        "onchange": {
                                           "$prototype": "Function",
                                           "body": [
                                             {
@@ -549,103 +808,65 @@
                                       }
                                     ]
                                   }
-                                }
-                              },
-                              {
-                                "tagName": "jx-textfield",
-                                "attributes": {
-                                  "part": "override-value"
                                 },
-                                "$props": {
-                                  "label": {
-                                    "$ref": "$map/item/fieldLabel"
+                                {
+                                  "tagName": "div",
+                                  "attributes": {
+                                    "part": "override-add-slot",
+                                    "role": "none"
                                   },
-                                  "value": {
-                                    "$ref": "$map/item/value"
+                                  "style": {
+                                    "display": "contents"
                                   },
-                                  "placeholder": "inherits",
-                                  "size": "sm"
-                                },
-                                "onchange": {
-                                  "$prototype": "Function",
-                                  "body": [
-                                    {
-                                      "operator": "call",
-                                      "target": {
-                                        "$ref": "#/state/setOverride"
+                                  "$switch": {
+                                    "$ref": "$map/item/addState"
+                                  },
+                                  "cases": {
+                                    "shown": {
+                                      "tagName": "div",
+                                      "attributes": {
+                                        "part": "override-add"
                                       },
-                                      "value": [
+                                      "children": [
                                         {
-                                          "$ref": "$map/item/token"
-                                        },
-                                        {
-                                          "$ref": "$map/item/ctx"
-                                        },
-                                        {
-                                          "$ref": "event#/target/value"
+                                          "tagName": "jx-select",
+                                          "attributes": {
+                                            "part": "add-picker"
+                                          },
+                                          "$props": {
+                                            "label": {
+                                              "$ref": "$map/item/addLabel"
+                                            },
+                                            "options": {
+                                              "$ref": "$map/item/addOptions"
+                                            },
+                                            "value": {
+                                              "$ref": "$map/item/addPick"
+                                            },
+                                            "size": "sm"
+                                          },
+                                          "onchange": {
+                                            "$prototype": "Function",
+                                            "body": [
+                                              {
+                                                "operator": "call",
+                                                "target": {
+                                                  "$ref": "#/state/addOverride"
+                                                },
+                                                "value": [
+                                                  {
+                                                    "$ref": "$map/item/name"
+                                                  },
+                                                  {
+                                                    "$ref": "event#/target/value"
+                                                  }
+                                                ]
+                                              }
+                                            ]
+                                          }
                                         }
                                       ]
                                     }
-                                  ]
-                                }
-                              }
-                            ]
-                          }
-                        },
-                        {
-                          "tagName": "div",
-                          "attributes": {
-                            "part": "override-add-slot",
-                            "role": "none"
-                          },
-                          "style": {
-                            "display": "contents"
-                          },
-                          "$switch": {
-                            "$ref": "$map/item/addState"
-                          },
-                          "cases": {
-                            "shown": {
-                              "tagName": "div",
-                              "attributes": {
-                                "part": "override-add"
-                              },
-                              "children": [
-                                {
-                                  "tagName": "jx-select",
-                                  "attributes": {
-                                    "part": "add-picker"
-                                  },
-                                  "$props": {
-                                    "label": {
-                                      "$ref": "$map/item/addLabel"
-                                    },
-                                    "options": {
-                                      "$ref": "$map/item/addOptions"
-                                    },
-                                    "value": {
-                                      "$ref": "$map/item/addPick"
-                                    },
-                                    "size": "sm"
-                                  },
-                                  "onchange": {
-                                    "$prototype": "Function",
-                                    "body": [
-                                      {
-                                        "operator": "call",
-                                        "target": {
-                                          "$ref": "#/state/addOverride"
-                                        },
-                                        "value": [
-                                          {
-                                            "$ref": "$map/item/name"
-                                          },
-                                          {
-                                            "$ref": "event#/target/value"
-                                          }
-                                        ]
-                                      }
-                                    ]
                                   }
                                 }
                               ]
@@ -655,8 +876,470 @@
                       ]
                     }
                   }
-                }
-              ]
+                ]
+              },
+              "tiles": {
+                "tagName": "div",
+                "attributes": {
+                  "part": "tiles-layout"
+                },
+                "children": [
+                  {
+                    "tagName": "div",
+                    "attributes": {
+                      "part": "tiles"
+                    },
+                    "children": [
+                      {
+                        "$prototype": "Array",
+                        "items": {
+                          "$ref": "$map/item/tokens"
+                        },
+                        "key": {
+                          "$ref": "$map/item/name"
+                        },
+                        "map": {
+                          "tagName": "button",
+                          "attributes": {
+                            "part": "tile",
+                            "type": "button",
+                            "aria-pressed": "${$map.item.currentFlag}",
+                            "data-name": "${$map.item.name}",
+                            "title": "${$map.item.name}"
+                          },
+                          "onclick": {
+                            "$prototype": "Function",
+                            "body": [
+                              {
+                                "operator": "call",
+                                "target": {
+                                  "$ref": "#/state/select"
+                                },
+                                "value": [
+                                  {
+                                    "$ref": "$map/item/name"
+                                  }
+                                ]
+                              }
+                            ]
+                          },
+                          "children": [
+                            {
+                              "tagName": "span",
+                              "attributes": {
+                                "part": "tile-swatch"
+                              },
+                              "style": {
+                                "background": {
+                                  "$ref": "$map/item/tileBg"
+                                }
+                              }
+                            },
+                            {
+                              "tagName": "span",
+                              "attributes": {
+                                "part": "tile-name"
+                              },
+                              "textContent": "${$map.item.label}"
+                            },
+                            {
+                              "tagName": "span",
+                              "attributes": {
+                                "part": "tile-value"
+                              },
+                              "textContent": "${$map.item.tileValue}"
+                            }
+                          ]
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "$description": "The chosen colour, as the Styles-Tokens board draws it beside the swatches: its value in the scheme being shown, picked with the kit's colour field, how it reads against the background, which element styles use it, its per-context values, and where it is kept.",
+                    "tagName": "div",
+                    "attributes": {
+                      "part": "detail-slot",
+                      "role": "none"
+                    },
+                    "style": {
+                      "display": "contents"
+                    },
+                    "$switch": {
+                      "$ref": "#/state/detailState"
+                    },
+                    "cases": {
+                      "shown": {
+                        "tagName": "aside",
+                        "attributes": {
+                          "part": "detail",
+                          "aria-label": "${state.detail.name}",
+                          "data-name": "${state.detail.name}"
+                        },
+                        "children": [
+                          {
+                            "tagName": "div",
+                            "attributes": {
+                              "part": "detail-head"
+                            },
+                            "children": [
+                              {
+                                "tagName": "strong",
+                                "attributes": {
+                                  "part": "detail-name"
+                                },
+                                "textContent": "${state.detail.name}"
+                              },
+                              {
+                                "tagName": "span",
+                                "attributes": {
+                                  "part": "detail-scheme"
+                                },
+                                "textContent": "${state.detail.schemeLabel}"
+                              }
+                            ]
+                          },
+                          {
+                            "tagName": "jx-color-field",
+                            "attributes": {
+                              "part": "detail-color"
+                            },
+                            "$props": {
+                              "label": {
+                                "$ref": "#/state/detail/fieldLabel"
+                              },
+                              "value": {
+                                "$ref": "#/state/detail/value"
+                              },
+                              "resolved": {
+                                "$ref": "#/state/detail/resolved"
+                              },
+                              "alpha": true
+                            },
+                            "onchange": {
+                              "$prototype": "Function",
+                              "body": [
+                                {
+                                  "operator": "call",
+                                  "target": {
+                                    "$ref": "#/state/setShownValue"
+                                  },
+                                  "value": [
+                                    {
+                                      "$ref": "#/state/detail/name"
+                                    },
+                                    {
+                                      "$ref": "event#/target/value"
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          },
+                          {
+                            "tagName": "p",
+                            "attributes": {
+                              "part": "contrast",
+                              "data-state": "${state.detail.contrastState}"
+                            },
+                            "children": [
+                              {
+                                "tagName": "jx-icon",
+                                "attributes": {
+                                  "part": "contrast-icon"
+                                },
+                                "$props": {
+                                  "name": {
+                                    "$ref": "#/state/detail/contrastIcon"
+                                  }
+                                }
+                              },
+                              {
+                                "tagName": "span",
+                                "attributes": {
+                                  "part": "contrast-text"
+                                },
+                                "textContent": "${state.detail.contrast}"
+                              }
+                            ]
+                          },
+                          {
+                            "tagName": "div",
+                            "attributes": {
+                              "part": "used-by"
+                            },
+                            "children": [
+                              {
+                                "tagName": "span",
+                                "attributes": {
+                                  "part": "used-label"
+                                },
+                                "textContent": "Used by"
+                              },
+                              {
+                                "tagName": "span",
+                                "attributes": {
+                                  "part": "used-text"
+                                },
+                                "textContent": "${state.detail.usedBy}"
+                              }
+                            ]
+                          },
+                          {
+                            "tagName": "div",
+                            "attributes": {
+                              "part": "overrides-slot",
+                              "role": "none"
+                            },
+                            "style": {
+                              "display": "contents"
+                            },
+                            "$switch": {
+                              "$ref": "#/state/detail/overrideState"
+                            },
+                            "cases": {
+                              "shown": {
+                                "tagName": "div",
+                                "attributes": {
+                                  "part": "overrides"
+                                },
+                                "children": [
+                                  {
+                                    "$prototype": "Array",
+                                    "items": {
+                                      "$ref": "#/state/detail/overrides"
+                                    },
+                                    "key": {
+                                      "$ref": "#/state/detail/id"
+                                    },
+                                    "map": {
+                                      "tagName": "div",
+                                      "attributes": {
+                                        "part": "override",
+                                        "data-kind": "${$map.item.kind}"
+                                      },
+                                      "children": [
+                                        {
+                                          "tagName": "span",
+                                          "attributes": {
+                                            "part": "override-label"
+                                          },
+                                          "textContent": "${$map.item.label}"
+                                        },
+                                        {
+                                          "tagName": "div",
+                                          "attributes": {
+                                            "part": "swatch-slot",
+                                            "role": "none"
+                                          },
+                                          "$switch": {
+                                            "$ref": "$map/item/swatchState"
+                                          },
+                                          "cases": {
+                                            "swatch": {
+                                              "tagName": "div",
+                                              "attributes": {
+                                                "part": "well"
+                                              },
+                                              "style": {
+                                                "background": {
+                                                  "$ref": "$map/item/swatchBg"
+                                                }
+                                              },
+                                              "children": [
+                                                {
+                                                  "tagName": "input",
+                                                  "attributes": {
+                                                    "part": "swatch-input",
+                                                    "type": "color",
+                                                    "aria-label": "${$map.item.swatchLabel}"
+                                                  },
+                                                  "value": {
+                                                    "$ref": "$map/item/swatchInput"
+                                                  },
+                                                  "oninput": {
+                                                    "$prototype": "Function",
+                                                    "body": [
+                                                      {
+                                                        "operator": "call",
+                                                        "target": {
+                                                          "$ref": "#/state/setOverride"
+                                                        },
+                                                        "value": [
+                                                          {
+                                                            "$ref": "$map/item/token"
+                                                          },
+                                                          {
+                                                            "$ref": "$map/item/ctx"
+                                                          },
+                                                          {
+                                                            "$ref": "event#/target/value"
+                                                          }
+                                                        ]
+                                                      }
+                                                    ]
+                                                  }
+                                                }
+                                              ]
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "tagName": "jx-textfield",
+                                          "attributes": {
+                                            "part": "override-value"
+                                          },
+                                          "$props": {
+                                            "label": {
+                                              "$ref": "$map/item/fieldLabel"
+                                            },
+                                            "value": {
+                                              "$ref": "$map/item/value"
+                                            },
+                                            "placeholder": "inherits",
+                                            "size": "sm"
+                                          },
+                                          "onchange": {
+                                            "$prototype": "Function",
+                                            "body": [
+                                              {
+                                                "operator": "call",
+                                                "target": {
+                                                  "$ref": "#/state/setOverride"
+                                                },
+                                                "value": [
+                                                  {
+                                                    "$ref": "$map/item/token"
+                                                  },
+                                                  {
+                                                    "$ref": "$map/item/ctx"
+                                                  },
+                                                  {
+                                                    "$ref": "event#/target/value"
+                                                  }
+                                                ]
+                                              }
+                                            ]
+                                          }
+                                        }
+                                      ]
+                                    }
+                                  },
+                                  {
+                                    "tagName": "div",
+                                    "attributes": {
+                                      "part": "override-add-slot",
+                                      "role": "none"
+                                    },
+                                    "style": {
+                                      "display": "contents"
+                                    },
+                                    "$switch": {
+                                      "$ref": "#/state/detail/addState"
+                                    },
+                                    "cases": {
+                                      "shown": {
+                                        "tagName": "div",
+                                        "attributes": {
+                                          "part": "override-add"
+                                        },
+                                        "children": [
+                                          {
+                                            "tagName": "jx-select",
+                                            "attributes": {
+                                              "part": "add-picker"
+                                            },
+                                            "$props": {
+                                              "label": {
+                                                "$ref": "#/state/detail/addLabel"
+                                              },
+                                              "options": {
+                                                "$ref": "#/state/detail/addOptions"
+                                              },
+                                              "value": {
+                                                "$ref": "#/state/detail/addPick"
+                                              },
+                                              "size": "sm"
+                                            },
+                                            "onchange": {
+                                              "$prototype": "Function",
+                                              "body": [
+                                                {
+                                                  "operator": "call",
+                                                  "target": {
+                                                    "$ref": "#/state/addOverride"
+                                                  },
+                                                  "value": [
+                                                    {
+                                                      "$ref": "#/state/detail/name"
+                                                    },
+                                                    {
+                                                      "$ref": "event#/target/value"
+                                                    }
+                                                  ]
+                                                }
+                                              ]
+                                            }
+                                          }
+                                        ]
+                                      }
+                                    }
+                                  }
+                                ]
+                              }
+                            }
+                          },
+                          {
+                            "tagName": "p",
+                            "attributes": {
+                              "part": "saved"
+                            },
+                            "textContent": "${state.detail.saved}"
+                          },
+                          {
+                            "tagName": "jx-action-button",
+                            "attributes": {
+                              "part": "detail-remove"
+                            },
+                            "$props": {
+                              "icon": "trash",
+                              "size": "sm",
+                              "quiet": true,
+                              "label": {
+                                "$ref": "#/state/detail/removeLabel"
+                              },
+                              "hint": {
+                                "$ref": "#/state/detail/removeLabel"
+                              }
+                            },
+                            "onclick": {
+                              "$prototype": "Function",
+                              "body": [
+                                {
+                                  "operator": "call",
+                                  "target": {
+                                    "$ref": "#/state/removeToken"
+                                  },
+                                  "value": [
+                                    {
+                                      "$ref": "#/state/detail/name"
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            "children": [
+                              {
+                                "tagName": "span",
+                                "textContent": "Delete variable"
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    }
+                  }
+                ]
+              }
             }
           },
           {

@@ -23,9 +23,11 @@ import { hintOf } from "./kit-readers";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { projectState } from "../src/store";
 import {
+  contrastLine,
   focusCssVar,
   focusCssVarGroup,
   renderCssVarsEditor,
+  usedBy,
 } from "../src/settings/css-vars-editor";
 import { revealCssVarsGroup, revealCssVarsToken } from "../src/surfaces/settings-css-vars";
 import { getNestedStyle, isJsonObject } from "@jxsuite/schema/guards";
@@ -109,6 +111,36 @@ function tokenByName(group: HTMLElement, displayName: string): HTMLElement {
   return token;
 }
 
+/** A colour's swatch tile, by its custom property. */
+function tileOf(container: HTMLElement, name: string): HTMLElement {
+  const tile = container.querySelector(`[part="tile"][data-name="${name}"]`);
+  if (!(tile instanceof HTMLElement)) {
+    throw new TypeError(`no colour tile named "${name}"`);
+  }
+  return tile;
+}
+
+/** The chosen colour's detail beside the swatches. */
+function detail(container: HTMLElement): HTMLElement {
+  const aside = container.querySelector('[part="detail"]');
+  if (!(aside instanceof HTMLElement)) {
+    throw new TypeError("no colour is chosen");
+  }
+  return aside;
+}
+
+/** Choose a colour by pressing its tile, and hand back its detail. */
+async function choose(container: HTMLElement, name: string): Promise<HTMLElement> {
+  tileOf(container, name).click();
+  await flush(4);
+  return detail(container);
+}
+
+/** The native text input of the detail's colour field. */
+function colorText(root: ParentNode): HTMLInputElement {
+  return nativeInput(root, '[part="detail-color"] [part="text"] [part="input"]');
+}
+
 /** The token block for a name in a group — the two lookups every assertion below starts with. */
 function tokenIn(container: HTMLElement, groupTitle: string, name: string): HTMLElement {
   return tokenByName(groupByTitle(container, groupTitle), name);
@@ -128,11 +160,6 @@ function field(root: ParentNode, part: string): HTMLInputElement {
   return nativeInput(root, `[part="${part}"] [part="input"]`);
 }
 
-/** A token's colour well. */
-function swatch(root: ParentNode): HTMLInputElement {
-  return nativeInput(root, '[part="swatch-input"]');
-}
-
 /** Commit an edit into a kit text field, the way a reader does. */
 async function commit(input: HTMLInputElement, value: string): Promise<void> {
   input.value = value;
@@ -146,14 +173,6 @@ async function type(input: HTMLInputElement, value: string): Promise<void> {
   input.value = value;
   input.dispatchEvent(new Event("input", { bubbles: true }));
   await flush(2);
-}
-
-/** Drag a colour well. */
-async function paint(root: ParentNode, value: string): Promise<void> {
-  const well = swatch(root);
-  well.value = value;
-  well.dispatchEvent(new Event("input", { bubbles: true }));
-  await flush(4);
 }
 
 /** Fill a group's add row and press Add. */
@@ -229,7 +248,8 @@ afterEach(async () => {
 describe("css vars grouping", () => {
   test("vars are bucketed into Colors / Fonts / Sizes / Other", async () => {
     const { container } = await setup(baseStyle());
-    expect(groupByTitle(container, "Colors").querySelectorAll('[part="token"]').length).toBe(2);
+    // Colours are a palette of swatches; every other group is rows.
+    expect(groupByTitle(container, "Colors").querySelectorAll('[part="tile"]').length).toBe(2);
     expect(groupByTitle(container, "Fonts").querySelectorAll('[part="token"]').length).toBe(1);
     expect(
       groupByTitle(container, "Sizes & Spacing").querySelectorAll('[part="token"]').length,
@@ -274,40 +294,44 @@ describe("css vars grouping", () => {
 // ─── Color section ───────────────────────────────────────────────────────────
 
 describe("color section", () => {
-  test("hex values seed the swatch color input; non-hex falls back", async () => {
+  test("each colour is a swatch of its value, and the first is chosen until another is", async () => {
     const { container } = await setup(baseStyle());
-    const primary = swatch(tokenIn(container, "Colors", "--color-primary"));
-    const accent = swatch(tokenIn(container, "Colors", "--color-accent"));
-    expect(primary.value).toBe("#007acc");
-    expect(accent.value).toBe("#3b82f6"); // Fallback for "tomato"
+    const primary = tileOf(container, "--color-primary");
+    expect(primary.querySelector('[part="tile-value"]')?.textContent).toBe("#007acc");
+    expect(getComputedStyle(primary.querySelector('[part="tile-swatch"]')!).background).toContain(
+      "#007acc",
+    );
+    // Colours are listed as the file holds them; the first is chosen while nothing else is.
+    expect(detail(container).dataset.name).toBe("--color-accent");
+    expect(tileOf(container, "--color-accent").getAttribute("aria-pressed")).toBe("true");
+    const chosen = await choose(container, "--color-primary");
+    expect(chosen.dataset.name).toBe("--color-primary");
+    expect(primary.getAttribute("aria-pressed")).toBe("true");
+    expect(tileOf(container, "--color-accent").getAttribute("aria-pressed")).toBe("false");
   });
 
-  test("swatch input updates the var and persists", async () => {
+  test("the colour field writes the chosen colour and persists", async () => {
     const { container, state } = await setup(baseStyle());
-    await paint(tokenIn(container, "Colors", "--color-primary"), "#ff0000");
+    await choose(container, "--color-primary");
+    await commit(colorText(detail(container)), "#ff0000");
     expect(style()["--color-primary"]).toBe("#ff0000");
     expect(writtenStyle(state)["--color-primary"]).toBe("#ff0000");
-    // The value field followed the well, which is what makes them one control rather than two.
-    expect(field(tokenIn(container, "Colors", "--color-primary"), "value").value).toBe("#ff0000");
+    // The swatch followed the field, which is what makes them one colour rather than two.
+    expect(
+      tileOf(container, "--color-primary").querySelector('[part="tile-value"]')?.textContent,
+    ).toBe("#ff0000");
   });
 
-  test("textfield change updates the var", async () => {
-    const { container } = await setup(baseStyle());
-    await commit(field(tokenIn(container, "Colors", "--color-accent"), "value"), "rebeccapurple");
-    expect(style()["--color-accent"]).toBe("rebeccapurple");
-  });
-
-  test("delete removes the var and re-renders without the row", async () => {
+  test("delete removes the chosen colour and re-renders without its tile", async () => {
     const { container, state } = await setup(baseStyle());
-    const remove = tokenIn(container, "Colors", "--color-accent").querySelector(
-      '[part="remove"] [part="control"]',
-    )!;
+    const chosen = await choose(container, "--color-accent");
+    const remove = chosen.querySelector('[part="detail-remove"] [part="control"]')!;
     // The button is named after the token it deletes, not after the icon it draws.
     expect(remove.getAttribute("aria-label")).toBe("Delete --color-accent");
     pointer(remove, "click");
     await flush(4);
     expect(style()["--color-accent"]).toBeUndefined();
-    expect(() => tokenIn(container, "Colors", "--color-accent")).toThrow();
+    expect(() => tileOf(container, "--color-accent")).toThrow();
     expect(writtenStyle(state)["--color-accent"]).toBeUndefined();
   });
 
@@ -367,6 +391,104 @@ describe("font section", () => {
   });
 });
 
+// ─── The chosen colour's detail (§7.1) ────────────────────────────────────────
+
+describe("the chosen colour's detail", () => {
+  const palette = (): JsonObject => ({
+    "--color-ink": "#1a1a1a",
+    "--color-paper": "#ffffff",
+    "--color-pale": "#eeeeee",
+    a: { color: "var(--color-ink)" },
+    backgroundColor: "var(--color-paper)",
+  });
+  const textOf = (root: ParentNode, name: string) =>
+    root.querySelector(`[part="${name}"]`)?.textContent.trim() ?? "";
+
+  test("contrast is read against the page's background, and the background against its text", async () => {
+    const { container } = await setup(palette());
+    const ink = await choose(container, "--color-ink");
+    expect(textOf(ink, "contrast-text")).toBe("17.4:1 on --color-paper, passes AA");
+    expect(ink.querySelector<HTMLElement>('[part="contrast"]')?.dataset["state"]).toBe("pass");
+    // The background itself is read against the text colour the page names after it.
+    expect(textOf(await choose(container, "--color-paper"), "contrast-text")).toBe(
+      "17.4:1 on --color-ink, passes AA",
+    );
+    const pale = await choose(container, "--color-pale");
+    expect(textOf(pale, "contrast-text")).toBe("1.1:1 on --color-paper, fails AA");
+    expect(pale.querySelector<HTMLElement>('[part="contrast"]')?.dataset["state"]).toBe("fail");
+  });
+
+  test("it names the rules that use the colour, and says when none does", async () => {
+    const { container } = await setup(palette());
+    expect(textOf(await choose(container, "--color-ink"), "used-text")).toBe("a");
+    expect(textOf(await choose(container, "--color-paper"), "used-text")).toBe(
+      "the page's background color",
+    );
+    expect(textOf(await choose(container, "--color-pale"), "used-text")).toBe(
+      "No rule in the project's styles uses it yet.",
+    );
+  });
+
+  test("the scheme switch shows every swatch in that scheme, and the field edits it there", async () => {
+    const { container } = await setup(
+      { ...palette(), "@--dark": { "--color-paper": "#111111" } },
+      { "--dark": "(prefers-color-scheme: dark)" },
+    );
+    const schemes = [...container.querySelectorAll<HTMLElement>('[part="scheme"]')];
+    expect(schemes.map((button) => button.textContent.trim())).toEqual(["Base", "Dark"]);
+    pointer(schemes[1]!, "click");
+    await flush(4);
+    // Swatches show the Dark value where there is one, and the base value where it inherits.
+    const caption = (name: string) =>
+      tileOf(container, name).querySelector('[part="tile-value"]')?.textContent;
+    expect(caption("--color-paper")).toBe("#111111");
+    expect(caption("--color-ink")).toBe("#1a1a1a");
+    const paper = await choose(container, "--color-paper");
+    expect(textOf(paper, "detail-scheme")).toBe("Dark");
+    // Contrast is measured in the scheme being looked at.
+    expect(textOf(paper, "contrast-text")).toBe("1.0:1 on --color-ink, fails AA");
+    await commit(colorText(paper), "#000000");
+    expect(getNestedStyle(style(), "@--dark")?.["--color-paper"]).toBe("#000000");
+    expect(style()["--color-paper"]).toBe("#ffffff");
+
+    // Back to Base, the field edits the base value again.
+    pointer(container.querySelector<HTMLElement>('[part="scheme"][data-scheme=""]')!, "click");
+    await flush(4);
+    expect(textOf(detail(container), "detail-scheme")).toBe("Base");
+    await commit(colorText(detail(container)), "#fafafa");
+    expect(style()["--color-paper"]).toBe("#fafafa");
+  });
+
+  test("with no colour tokens there is no detail to show", async () => {
+    const { container } = await setup({ "--size-gap": "8px" });
+    expect(container.querySelector('[part="detail"]')).toBeNull();
+  });
+});
+
+describe("contrastLine and usedBy", () => {
+  test("a ratio between 3 and 4.5 passes for large text only", () => {
+    expect(contrastLine("#666666", "#000000", "--bg")).toEqual({
+      contrast: "3.6:1 on --bg, passes AA for large text only",
+      contrastIcon: "warning-circle",
+      contrastState: "fail",
+    });
+  });
+
+  test("a value that is not a colour, or nothing to read it against, says nothing", () => {
+    for (const [value, against] of [
+      ["linear-gradient(red, blue)", "#fff"],
+      ["#fff", undefined],
+      [undefined, "#fff"],
+    ] as const) {
+      expect(contrastLine(value, against, "").contrastState).toBe("none");
+    }
+  });
+
+  test("a variable declared by the root block is not a use of another", () => {
+    expect(usedBy({ "--a": "var(--b)", h1: { color: "var(--b)" } }, "--b")).toBe("h1");
+  });
+});
+
 // ─── Size section + media overrides ──────────────────────────────────────────
 
 describe("size section and media overrides", () => {
@@ -385,8 +507,9 @@ describe("size section and media overrides", () => {
     expect(rows[0]!.querySelector('[part="override-label"]')?.textContent).toBe("@--sm");
 
     /* Every OTHER token is now reachable too: the block exists for the add picker alone, which is
-       the affordance that was missing — a token with no @media block could not be given one. */
-    expect(container.querySelectorAll('[part="override-add"]').length).toBe(6);
+       the affordance that was missing — a token with no @media block could not be given one. Four
+       rows carry one each, and the colours carry one between them, in the chosen colour's detail. */
+    expect(container.querySelectorAll('[part="override-add"]').length).toBe(5);
   });
 
   test("changing an override writes into the media block and persists", async () => {
@@ -463,24 +586,21 @@ describe("color scheme overrides", () => {
       { ...baseStyle(), "@--dark": { "--color-primary": "#111111" } },
       SCHEME_MEDIA,
     );
-    const colors = groupByTitle(container, "Colors");
-    const schemeRows = [...colors.querySelectorAll('[part="override"][data-kind="scheme"]')];
-    // One Dark row per color token (accent + primary).
-    expect(schemeRows).toHaveLength(2);
-    expect(schemeRows[0]!.querySelector('[part="override-label"]')?.textContent.trim()).toBe(
-      "Dark",
-    );
-    const values = schemeRows.map((r) => nativeInput(r, '[part="input"]').value);
-    expect(values).toContain("#111111");
-    expect(values).toContain("");
+    /** The chosen colour's one Dark row, by its value. */
+    const darkOf = async (name: string) => {
+      const chosen = await choose(container, name);
+      const rows = [...chosen.querySelectorAll('[part="override"][data-kind="scheme"]')];
+      expect(rows).toHaveLength(1);
+      expect(rows[0]!.querySelector('[part="override-label"]')?.textContent.trim()).toBe("Dark");
+      return nativeInput(rows[0]!, '[part="input"]').value;
+    };
+    expect(await darkOf("--color-primary")).toBe("#111111");
+    expect(await darkOf("--color-accent")).toBe("");
   });
 
   test("editing a scheme row writes the token into the @--dark block", async () => {
     const { container } = await setup(baseStyle(), SCHEME_MEDIA);
-    await commit(
-      field(tokenIn(container, "Colors", "--color-accent"), "override-value"),
-      "#0a0a0a",
-    );
+    await commit(field(await choose(container, "--color-accent"), "override-value"), "#0a0a0a");
     expect(getNestedStyle(style(), "@--dark")?.["--color-accent"]).toBe("#0a0a0a");
   });
 
@@ -489,7 +609,7 @@ describe("color scheme overrides", () => {
       { ...baseStyle(), "@--dark": { "--color-accent": "#0a0a0a" } },
       SCHEME_MEDIA,
     );
-    await commit(field(tokenIn(container, "Colors", "--color-accent"), "override-value"), "");
+    await commit(field(await choose(container, "--color-accent"), "override-value"), "");
     expect(style()["@--dark"]).toBeUndefined();
   });
 
@@ -628,9 +748,10 @@ describe("adding an override", () => {
 
   test("a colour token's scheme rows are shown unprompted, so the picker offers only the rest", async () => {
     const { container } = await setup(baseStyle(), media);
-    expect(offered(tokenIn(container, "Colors", "--color-accent")).map(([value]) => value)).toEqual(
-      ["--sm", "--print"],
-    );
+    expect(offered(await choose(container, "--color-accent")).map(([value]) => value)).toEqual([
+      "--sm",
+      "--print",
+    ]);
   });
 
   test("a token with no value is not offered an override it could not carry", async () => {
@@ -664,18 +785,14 @@ describe("token reference chips", () => {
       "--color-accent": "var(--color-brand)",
       "--color-brand": "#00aa55",
     });
-    const accent = tokenIn(container, "Colors", "--color-accent");
-    const chip = accent.querySelector('[part="chip"]')!;
-    expect(chip.querySelector('[part="chip-label"]')?.textContent.trim()).toBe("--color-brand");
-    expect(chip.getAttribute("title")).toBe("var(--color-brand) → #00aa55");
-    expect(getComputedStyle(chip.querySelector('[part="chip-swatch"]')!).background).toContain(
+    // A swatch says what the value is written as, and is painted in what it ends up at.
+    const accent = tileOf(container, "--color-accent");
+    expect(accent.querySelector('[part="tile-value"]')?.textContent).toBe("var(--color-brand)");
+    expect(getComputedStyle(accent.querySelector('[part="tile-swatch"]')!).background).toContain(
       "#00aa55",
     );
-    // The well shows the resolved colour rather than an empty square.
-    expect(getComputedStyle(accent.querySelector('[part="well"]')!).background).toContain(
-      "#00aa55",
-    );
-    expect(swatch(accent).value).toBe("#00aa55");
+    // A swatch carries the reference in its caption, so no chip is drawn beside it.
+    expect(container.querySelector('[part="chip"]')).toBeNull();
   });
 
   test("a chain of aliases resolves to the value at its end", async () => {
@@ -685,10 +802,9 @@ describe("token reference chips", () => {
       "--color-c": "#123456",
     });
     expect(
-      tokenIn(container, "Colors", "--color-a")
-        .querySelector('[part="chip"]')
-        ?.getAttribute("title"),
-    ).toBe("var(--color-b) → #123456");
+      getComputedStyle(tileOf(container, "--color-a").querySelector('[part="tile-swatch"]')!)
+        .background,
+    ).toContain("#123456");
   });
 
   test("a reference that leads nowhere says so instead of inventing a value", async () => {
@@ -711,7 +827,7 @@ describe("token reference chips", () => {
 describe("a refused write", () => {
   test("is reported under the title rather than dropped on the floor", async () => {
     const { container } = await setup(baseStyle(), undefined, failing);
-    await commit(field(tokenIn(container, "Colors", "--color-accent"), "value"), "rebeccapurple");
+    await commit(colorText(await choose(container, "--color-accent")), "rebeccapurple");
     const alert = container.querySelector('[role="alert"]');
     expect(alert?.textContent).toContain("Could not save project.json");
     /* The predecessor `void`ed the rejection, so a read-only project.json took every edit and kept
@@ -722,10 +838,10 @@ describe("a refused write", () => {
 
   test("and the message clears once a write lands", async () => {
     const { container } = await setup(baseStyle(), undefined, failing);
-    await commit(field(tokenIn(container, "Colors", "--color-accent"), "value"), "rebeccapurple");
+    await commit(colorText(await choose(container, "--color-accent")), "rebeccapurple");
     expect(container.querySelector('[role="alert"]')).not.toBeNull();
     installMockPlatform();
-    await commit(field(tokenIn(container, "Colors", "--color-accent"), "value"), "teal");
+    await commit(colorText(detail(container)), "teal");
     expect(container.querySelector('[role="alert"]')).toBeNull();
   });
 });
@@ -754,22 +870,37 @@ describe("pointing the editor at a token", () => {
     focusCssVar(container, "--size-gap");
     await flush(4);
     expect(byName(container, "--size-gap").getAttribute("aria-current")).toBe("true");
-    expect(byName(container, "--color-accent").getAttribute("aria-current")).toBeNull();
+    expect(container.querySelectorAll('[part="token"][aria-current="true"]')).toHaveLength(1);
     expect(scrolled).toEqual(["--size-gap"]);
     expect(row.querySelector('[part="value"]')?.contains(document.activeElement)).toBe(true);
   });
 
   test("reveal: false marks the row and leaves the keyboard where it was", async () => {
     const { container } = await setup(baseStyle());
-    const row = byName(container, "--color-accent");
+    const row = byName(container, "--size-gap");
     let scrolled = false;
     row.scrollIntoView = () => {
       scrolled = true;
     };
-    focusCssVar(container, "--color-accent", { reveal: false });
+    focusCssVar(container, "--size-gap", { reveal: false });
     await flush(4);
     expect(row.getAttribute("aria-current")).toBe("true");
     expect(scrolled).toBe(false);
+  });
+
+  test("a colour is chosen, its detail shown, and its swatch scrolled to and focused", async () => {
+    const { container } = await setup(baseStyle());
+    const scrolled: string[] = [];
+    tileOf(container, "--color-primary").scrollIntoView = () => {
+      scrolled.push("--color-primary");
+    };
+    focusCssVar(container, "--color-primary");
+    await flush(4);
+    const tile = tileOf(container, "--color-primary");
+    expect(tile.getAttribute("aria-pressed")).toBe("true");
+    expect(detail(container).dataset.name).toBe("--color-primary");
+    expect(scrolled).toEqual(["--color-primary"]);
+    expect(document.activeElement).toBe(tile);
   });
 
   test("a name the project does not declare marks nothing, and null clears the mark", async () => {

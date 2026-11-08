@@ -361,9 +361,9 @@
       "width": 560
     },
     "docs/images/css-variables.png": {
-      "bytes": 226939,
-      "capturedAt": "2026-10-19T20:15:07Z",
-      "capturedBy": "screenshots@ci/39317444941",
+      "bytes": 207603,
+      "capturedAt": "2026-11-08T06:19:30Z",
+      "capturedBy": "screenshots@ci/42454151433",
       "definition": "b107032560a01278f3f5da9cdd6c7eabe26ca508e5f4de737ba00f9c6edf2904",
       "height": 1824,
       "runtime": {
@@ -371,7 +371,7 @@
         "fontset": "fc:cac8f480b341",
         "os": "debian-12"
       },
-      "sha256": "6fa4bb11e5a752dfc0e1a9d0911a510caca74f032b07d2f570e3f197f08b555f",
+      "sha256": "dabad0cc3e33b77f87867bc444bb76d97508dbfbc8723b44b61346096a4b6d2a",
       "shot": "css-variables-shot",
       "width": 3360
     },
