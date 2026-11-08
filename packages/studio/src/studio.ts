@@ -1219,6 +1219,10 @@ if (_projectParam) {
             document: parsedDoc,
             ...(frontmatter != null && { frontmatter }),
             layout,
+            /* The text a format file was read as, which its save merges with so that what the
+               author did not edit keeps its own spelling: a `.jxn` file's comments, a Markdown
+               file's markers. Without it the first save from a deep link wrote canonical form. */
+            source: fileFormat ? content : null,
             sourceFormat: fileFormat?.name ?? null,
           });
 

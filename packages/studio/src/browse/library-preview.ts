@@ -19,6 +19,7 @@
  * already knows a preview is in flight without this module declaring an idle source of its own.
  */
 
+import { isNativeDocumentPath, parseNativeDocument } from "@jxsuite/schema/jxn";
 import {
   buildScope,
   renderNode,
@@ -219,8 +220,8 @@ async function projectComponentPreview(
 /** A project component's definition, or null when its file is not one. */
 export async function readDefinition(path: string): Promise<JxDocument | null> {
   try {
-    const parsed: unknown = JSON.parse(await getPlatform().readFile(path));
-    /* SAFETY: a project component's `.json` is its definition, a Jx element document; a shape
+    const parsed: unknown = parseNativeDocument(await getPlatform().readFile(path), path);
+    /* SAFETY: a project component's file is its definition, a Jx element document; a shape
        renderNode cannot draw throws into `rendersWith`'s catch, which is "does not render". */
     return isNonNullObject(parsed) && !Array.isArray(parsed) ? (parsed as JxDocument) : null;
   } catch {
@@ -273,7 +274,7 @@ export async function rendersWith(
 
 /** A component whose definition is a JSON file in the project, which is what can be tried first. */
 function isProjectDefinition(component: ComponentEntry): boolean {
-  return component.source !== "npm" && (component.path?.endsWith(".json") ?? false);
+  return component.source !== "npm" && isNativeDocumentPath(component.path ?? "");
 }
 
 /**

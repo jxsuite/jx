@@ -65,6 +65,15 @@ describe("distributePageIntoLayout", () => {
 });
 
 describe("resolveLayoutDoc", () => {
+  test("reads a .jxn layout as the same document", async () => {
+    const { state } = installMockPlatform();
+    state.files.set("layouts/base.jxn", "// The shell.\ndiv {\n    slot\n}\n");
+    expect(await resolveLayoutDoc("./layouts/base.jxn")).toEqual({
+      children: [{ tagName: "slot" }],
+      tagName: "div",
+    });
+  });
+
   test("returns a clone from the cache on repeated resolution", async () => {
     const { state } = installMockPlatform();
     state.files.set(

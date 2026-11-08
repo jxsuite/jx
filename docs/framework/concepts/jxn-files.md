@@ -138,10 +138,12 @@ Saving a `.jxn` file changes only what you changed. A node that still means the 
 
 ## In Studio
 
-Studio opens a `.jxn` file on the canvas and in the Code view, and saves it without losing comments.
+Studio treats a `.jxn` page, layout or component the same as a `.json` one. It lists them in the Site panel, offers them as layouts, draws them on the canvas and as component cards, and finds them in Quick Open. Saving changes only what you changed and keeps every comment. That holds in a shared session too: a comment someone else adds in the Code view survives your edit on the canvas.
+
+**Convert to another format** offers Jx Notation for any page or component, and JSON for a `.jxn` one. Layouts are converted with `jx convert`.
 
 :::doc-note
-New documents are still `.json`, and pickers do not offer `.jxn` yet. Some panels list only `.json` too: a `.jxn` layout does not appear under Templates. To move a file in the other direction, use `jx convert`. Studio's own surfaces and the kit stay `.json`, and so do `*.class.json`, `jx-extension.json`, schemas and data files.
+New documents are still `.json`, and pickers do not offer `.jxn` yet. Studio's own surfaces and the kit stay `.json`, and so do `*.class.json`, `jx-extension.json`, schemas and data files.
 :::
 
 ## Related

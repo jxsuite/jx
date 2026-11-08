@@ -89,6 +89,7 @@ import { deepEqual } from "@jxsuite/collab/diff-core";
 import type { JsonLayout } from "@jxsuite/schema/json-layout";
 import { invalidateUsages } from "../services/references";
 import {
+  NATIVE_DOCUMENT_EXTENSIONS,
   documentExtensions,
   formatByExtension,
   formatForPath,
@@ -455,7 +456,8 @@ export async function initProjectRepo(root: string): Promise<boolean> {
  */
 export async function findHomePage(): Promise<string | null> {
   await loadFormats();
-  const exts = [...documentExtensions("page"), ".json"];
+  // A format's own page first, as it always was, then the two native ones.
+  const exts = [...documentExtensions("page"), ...NATIVE_DOCUMENT_EXTENSIONS];
   let entries: DirEntry[];
   try {
     entries = await getPlatform().listDirectory("pages");

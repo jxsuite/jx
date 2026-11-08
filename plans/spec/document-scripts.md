@@ -6,7 +6,6 @@ claims:
 requires:
   - spec/typescript-function-bodies
   - spec/function-entry-tier-parity
-  - studio/jxn-documents
 workspaces:
   - packages/schema
   - packages/compiler

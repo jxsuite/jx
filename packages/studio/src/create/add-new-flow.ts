@@ -17,6 +17,7 @@
  * @docs studio/projects/pages-layouts-components
  */
 
+import { isNativeDocumentPath, parseNativeDocument } from "@jxsuite/schema/jxn";
 import { errorMessage } from "@jxsuite/schema/parse";
 import { serializeJson } from "@jxsuite/schema/json-layout";
 import { isJsonObject, isString } from "@jxsuite/schema/guards";
@@ -225,7 +226,7 @@ export async function readCreationContext(): Promise<CreationContext> {
 /** Whether a copy can be made of a registered component: a JSON definition the project owns. */
 function isCopyable(component: (typeof componentRegistry)[number]): boolean {
   const { path } = component;
-  return isString(path) && component.source !== "npm" && path.endsWith(".json");
+  return isString(path) && component.source !== "npm" && isNativeDocumentPath(path);
 }
 
 /** Project component definitions a copy can be made of: JSON files the project owns. */
@@ -237,7 +238,7 @@ async function readComponentDocs(): Promise<Map<string, JxMutableNode>> {
       continue;
     }
     try {
-      const parsed: unknown = JSON.parse(await getPlatform().readFile(path));
+      const parsed: unknown = parseNativeDocument(await getPlatform().readFile(path), path);
       if (isJsonObject(parsed)) {
         /* SAFETY: a component definition is a JSON object whose root is the component's element,
            which is a JxMutableNode by the document model's own definition. */

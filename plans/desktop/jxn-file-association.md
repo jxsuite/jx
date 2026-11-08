@@ -3,8 +3,7 @@ status: drafted
 disposition: implement
 claims:
   - desktop.md#7.8
-requires:
-  - studio/jxn-documents
+requires: []
 workspaces:
   - packages/desktop
   - specs
