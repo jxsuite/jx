@@ -323,6 +323,24 @@ describe("isTemplateString", () => {
 });
 
 describe("maskCode", () => {
+  test("keeps every offset through a character outside the Basic Multilingual Plane", () => {
+    const body = '"😀" + state.n';
+    const masked = maskCode(body);
+    expect(masked).toHaveLength(body.length);
+    expect(masked).toBe('"  " + state.n');
+  });
+
+  test("returns a body with nothing to blank as it is, and the same text twice the same way", () => {
+    expect(maskCode("state.n++")).toBe("state.n++");
+    expect(maskCode('a = "b"')).toBe(maskCode('a = "b"'));
+  });
+
+  test("forgets what it has seen past its bound, and still answers", () => {
+    for (let index = 0; index < 2100; index += 1) {
+      expect(maskCode(`"${index}" + x`)).toBe(`"${" ".repeat(String(index).length)}" + x`);
+    }
+  });
+
   test("blanks comments and string contents, keeping length, newlines and quotes", () => {
     const body = "const a = \"x // y\"; // note\nreturn 'q' /* c\nd */;";
     const masked = maskCode(body);

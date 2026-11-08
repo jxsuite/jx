@@ -627,6 +627,10 @@ export function rewriteState(
   to: string,
   options: { bare?: boolean; code?: boolean } = {},
 ): string {
+  // Most text never names `state`, and every emitter calls this on every body and template.
+  if (!text.includes("state")) {
+    return text;
+  }
   const pattern = options.bare === true ? STATE_WORD_RE : STATE_MEMBER_RE;
   const read = options.code === false ? text : maskCode(text);
   let out = "";
@@ -652,6 +656,9 @@ export function rewriteState(
  */
 function collectAssignedStateKeys(node: JxDocumentValue | undefined, into: Set<string>) {
   if (isString(node)) {
+    if (!node.includes("state.")) {
+      return;
+    }
     // Code only: an assignment a comment or a string mentions writes nothing (spec.md §23.1).
     const code = maskCode(node);
     for (const m of code.matchAll(STATE_ASSIGNMENT_RE)) {

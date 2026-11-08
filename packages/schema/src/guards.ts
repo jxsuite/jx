@@ -258,7 +258,36 @@ export function bodyReturnsValue(body: string): boolean {
  * @param body The body, already JavaScript.
  */
 export function maskCode(body: string): string {
-  const out = [...body];
+  // Nothing can open a comment or a string: the body is all code, and most handlers are.
+  if (!/[/'"`]/u.test(body)) {
+    return body;
+  }
+  const known = masked.get(body);
+  if (known !== undefined) {
+    return known;
+  }
+  const result = scanCode(body);
+  if (masked.size >= MASKED_LIMIT) {
+    masked.clear();
+  }
+  masked.set(body, result);
+  return result;
+}
+
+/**
+ * Bodies already masked. Every pattern a compile runs over a body reads it masked, and a dev server
+ * compiles the same bodies again on every change, so the scan is done once per text. Bounded,
+ * because a long session sees many texts.
+ */
+const masked = new Map<string, string>();
+const MASKED_LIMIT = 2048;
+
+/** The scan {@link maskCode} caches. */
+function scanCode(body: string): string {
+  /* UTF-16 units, as `at` counts them. Code points (`[...body]`) made an astral character in a
+     string one element for two offsets, so the result came back short and every offset after it,
+     which is what a caller splices the body at, was off by one. */
+  const out = body.split("");
   const blank = (at: number): void => {
     if (out[at] !== undefined && out[at] !== "\n") {
       out[at] = " ";
