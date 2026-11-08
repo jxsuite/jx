@@ -17,7 +17,7 @@
     "fontFamily": "var(--jx-font-sans)",
     "fontSize": "var(--jx-text-md)",
     "color": "var(--fg)",
-    "& [part=\"banner-slot\"], & [part=\"locale-slot\"], & [part=\"filter-slot\"], & [part=\"fields-slot\"], & [part=\"new-slot\"], & [part=\"page-slot\"], & [part=\"view-slot\"], & [part=\"art-slot\"], & [part=\"note-slot\"], & [part=\"truncated-slot\"]": {
+    "& [part=\"banner-slot\"], & [part=\"locale-slot\"], & [part=\"filter-slot\"], & [part=\"fields-slot\"], & [part=\"select-toggle-slot\"], & [part=\"new-slot\"], & [part=\"page-slot\"], & [part=\"view-slot\"], & [part=\"art-slot\"], & [part=\"note-slot\"], & [part=\"truncated-slot\"]": {
       "$description": "A `$switch` renders its own container, and none of these six is a box: each stands exactly where its case does, so the case's own rule is the only one that lays anything out.",
       "display": "contents"
     },
@@ -203,6 +203,47 @@
     "& [part=\"table-row\"]:hover": {
       "background": "var(--hover-bg)"
     },
+    "& [part=\"bulk\"]": {
+      "position": "sticky",
+      "zIndex": "2",
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "var(--jx-space-2)",
+      "padding": "var(--jx-space-2) var(--jx-space-3)",
+      "background": "var(--bg-input)",
+      "fontSize": "var(--jx-text-md)",
+      "bottom": "0",
+      "borderTop": "1px solid var(--border)",
+      "$description": "At the foot of the table, sticky, so it appears without moving a row out from under the pointer that is ticking them.",
+      "marginTop": "var(--jx-space-2)"
+    },
+    "& [part=\"bulk-text\"]": {
+      "marginRight": "auto",
+      "fontWeight": "500"
+    },
+    "& [part=\"select-cell\"]": {
+      "$description": "The Table's checkbox column (studio.md §22.5): a fixed width, and its own click, so ticking a row never opens it.",
+      "flex": "0 0 28px",
+      "display": "flex",
+      "alignItems": "center",
+      "justifyContent": "center",
+      "cursor": "default"
+    },
+    "& [part=\"cover-cell\"]": {
+      "flex": "0 0 56px",
+      "display": "flex",
+      "alignItems": "center",
+      "color": "var(--fg-dim)",
+      "fontSize": "var(--jx-text-sm)"
+    },
+    "& [part=\"cover\"], & [part=\"cover-empty\"]": {
+      "display": "block",
+      "width": "48px",
+      "height": "32px",
+      "borderRadius": "var(--jx-radius-sm)",
+      "objectFit": "cover",
+      "background": "var(--bg-input)"
+    },
     "& [part=\"cell\"]": {
       "$description": "Every column keeps a floor: with a collection's six field columns beside the file facts, a cell that may shrink to nothing is a column of ellipses. When the floors outgrow the pane, the table scrolls sideways instead. Each cell's text is kept out of its intrinsic width (`contain: inline-size`), so the table's `min-content` is the sum of those floors rather than of every full title.",
       "flex": "1",
@@ -212,6 +253,23 @@
       "textOverflow": "ellipsis",
       "whiteSpace": "nowrap",
       "fontSize": "var(--jx-text-md)"
+    },
+    "& [part=\"cell-text\"]": {
+      "display": "block",
+      "overflow": "hidden",
+      "textOverflow": "ellipsis"
+    },
+    "& [part=\"cell-sub\"]": {
+      "$description": "What a page is, under its title (studio.md §22.5); a cell with nothing to add draws no second line.",
+      "display": "block",
+      "overflow": "hidden",
+      "textOverflow": "ellipsis",
+      "fontSize": "var(--jx-text-sm)",
+      "fontWeight": "400",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"cell-sub\"]:empty": {
+      "display": "none"
     },
     "& [part=\"cell\"][data-field=\"name\"], & [part=\"cell\"][data-field=\"title\"]": {
       "$description": "What a row is called keeps a readable width however many field columns stand beside it.",
@@ -321,6 +379,10 @@
       "$description": "Rows and cards open on Enter or Space as well as a click, so the keyboard reaches an entry; the ring says which one it is on.",
       "outline": "var(--jx-focus-ring)",
       "outlineOffset": "-2px"
+    },
+    "& [part=\"table\"][data-rows=\"tall\"] [part=\"table-row\"]": {
+      "$description": "Tall enough for a cover or a second line. Said by the view rather than found by `:has()`, which re-matched every row on every repaint.",
+      "height": "44px"
     }
   },
   "children": [
@@ -541,6 +603,51 @@
               "tagName": "span",
               "attributes": {
                 "part": "spacer"
+              }
+            },
+            {
+              "tagName": "div",
+              "attributes": {
+                "part": "select-toggle-slot",
+                "role": "none"
+              },
+              "$switch": {
+                "$ref": "#/state/selectToggleState"
+              },
+              "cases": {
+                "shown": {
+                  "tagName": "jx-action-button",
+                  "attributes": {
+                    "part": "select-toggle"
+                  },
+                  "$props": {
+                    "size": "sm",
+                    "icon": "check",
+                    "toggles": true,
+                    "selected": {
+                      "$ref": "#/state/selecting"
+                    },
+                    "hint": "Tick entries to delete several at once"
+                  },
+                  "children": [
+                    {
+                      "tagName": "span",
+                      "textContent": "Select"
+                    }
+                  ],
+                  "onchange": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "operator": "call",
+                        "target": {
+                          "$ref": "#/state/toggleSelecting"
+                        },
+                        "value": []
+                      }
+                    ]
+                  }
+                }
               }
             },
             {
@@ -1198,7 +1305,8 @@
               "attributes": {
                 "part": "table",
                 "role": "table",
-                "aria-label": "${state.title}"
+                "aria-label": "${state.title}",
+                "data-rows": "${state.rowSize}"
               },
               "children": [
                 {
@@ -1208,6 +1316,86 @@
                     "role": "row"
                   },
                   "children": [
+                    {
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "select-head-slot",
+                        "role": "none"
+                      },
+                      "style": {
+                        "display": "contents"
+                      },
+                      "$switch": {
+                        "$ref": "#/state/selectState"
+                      },
+                      "cases": {
+                        "shown": {
+                          "tagName": "div",
+                          "attributes": {
+                            "part": "select-cell",
+                            "role": "columnheader"
+                          },
+                          "children": [
+                            {
+                              "tagName": "jx-checkbox",
+                              "attributes": {
+                                "part": "select-all"
+                              },
+                              "$props": {
+                                "checked": {
+                                  "$ref": "#/state/allChecked"
+                                },
+                                "indeterminate": {
+                                  "$ref": "#/state/someChecked"
+                                },
+                                "label": {
+                                  "$ref": "#/state/selectAllLabel"
+                                }
+                              },
+                              "onchange": {
+                                "$prototype": "Function",
+                                "body": [
+                                  {
+                                    "operator": "call",
+                                    "target": {
+                                      "$ref": "#/state/selectAll"
+                                    },
+                                    "value": [
+                                      {
+                                        "$ref": "event#/target/checked"
+                                      }
+                                    ]
+                                  }
+                                ]
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    {
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "cover-head-slot",
+                        "role": "none"
+                      },
+                      "style": {
+                        "display": "contents"
+                      },
+                      "$switch": {
+                        "$ref": "#/state/coverState"
+                      },
+                      "cases": {
+                        "shown": {
+                          "tagName": "div",
+                          "attributes": {
+                            "part": "cover-cell",
+                            "role": "columnheader"
+                          },
+                          "textContent": "Cover"
+                        }
+                      }
+                    },
                     {
                       "$prototype": "Array",
                       "items": {
@@ -1341,6 +1529,135 @@
                     },
                     "children": [
                       {
+                        "tagName": "div",
+                        "attributes": {
+                          "part": "select-slot",
+                          "role": "none"
+                        },
+                        "style": {
+                          "display": "contents"
+                        },
+                        "$switch": {
+                          "$ref": "#/state/selectState"
+                        },
+                        "cases": {
+                          "shown": {
+                            "tagName": "div",
+                            "attributes": {
+                              "part": "select-cell",
+                              "role": "cell"
+                            },
+                            "onclick": {
+                              "$prototype": "Function",
+                              "body": [
+                                {
+                                  "stopPropagation": true
+                                }
+                              ]
+                            },
+                            "onkeydown": {
+                              "$prototype": "Function",
+                              "body": [
+                                {
+                                  "stopPropagation": true
+                                }
+                              ]
+                            },
+                            "children": [
+                              {
+                                "tagName": "jx-checkbox",
+                                "attributes": {
+                                  "part": "select-row"
+                                },
+                                "$props": {
+                                  "checked": {
+                                    "$ref": "$map/item/checked"
+                                  },
+                                  "label": {
+                                    "$ref": "$map/item/selectLabel"
+                                  }
+                                },
+                                "onchange": {
+                                  "$prototype": "Function",
+                                  "body": [
+                                    {
+                                      "operator": "call",
+                                      "target": {
+                                        "$ref": "#/state/selectRow"
+                                      },
+                                      "value": [
+                                        {
+                                          "$ref": "$map/item/path"
+                                        },
+                                        {
+                                          "$ref": "event#/target/checked"
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      {
+                        "tagName": "div",
+                        "attributes": {
+                          "part": "cover-slot",
+                          "role": "none"
+                        },
+                        "style": {
+                          "display": "contents"
+                        },
+                        "$switch": {
+                          "$ref": "#/state/coverState"
+                        },
+                        "cases": {
+                          "shown": {
+                            "tagName": "div",
+                            "attributes": {
+                              "part": "cover-cell",
+                              "role": "cell"
+                            },
+                            "children": [
+                              {
+                                "tagName": "div",
+                                "attributes": {
+                                  "part": "cover-art-slot",
+                                  "role": "none"
+                                },
+                                "style": {
+                                  "display": "contents"
+                                },
+                                "$switch": {
+                                  "$ref": "$map/item/coverState"
+                                },
+                                "cases": {
+                                  "image": {
+                                    "tagName": "img",
+                                    "attributes": {
+                                      "part": "cover",
+                                      "src": "${$map.item.src}",
+                                      "alt": "",
+                                      "loading": "lazy",
+                                      "decoding": "async"
+                                    }
+                                  },
+                                  "none": {
+                                    "tagName": "span",
+                                    "attributes": {
+                                      "part": "cover-empty",
+                                      "aria-hidden": "true"
+                                    }
+                                  }
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      {
                         "$prototype": "Array",
                         "items": {
                           "$ref": "$map/item/cells"
@@ -1355,7 +1672,22 @@
                             "role": "cell",
                             "data-field": "${$map.item.field}"
                           },
-                          "textContent": "${$map.item.text}"
+                          "children": [
+                            {
+                              "tagName": "span",
+                              "attributes": {
+                                "part": "cell-text"
+                              },
+                              "textContent": "${$map.item.text}"
+                            },
+                            {
+                              "tagName": "span",
+                              "attributes": {
+                                "part": "cell-sub"
+                              },
+                              "textContent": "${$map.item.sub}"
+                            }
+                          ]
                         }
                       }
                     ]
@@ -1366,6 +1698,97 @@
                   "attributes": {
                     "part": "pad",
                     "style": "${state.padBottom}"
+                  }
+                },
+                {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "bulk-slot",
+                    "role": "none"
+                  },
+                  "style": {
+                    "display": "contents"
+                  },
+                  "$switch": {
+                    "$ref": "#/state/bulkState"
+                  },
+                  "cases": {
+                    "shown": {
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "bulk",
+                        "role": "status"
+                      },
+                      "children": [
+                        {
+                          "tagName": "span",
+                          "attributes": {
+                            "part": "bulk-text"
+                          },
+                          "textContent": "${state.bulkText}"
+                        },
+                        {
+                          "tagName": "jx-button",
+                          "attributes": {
+                            "part": "bulk-delete"
+                          },
+                          "$props": {
+                            "size": "sm",
+                            "variant": "negative",
+                            "disabled": {
+                              "$ref": "#/state/deleteDisabled"
+                            }
+                          },
+                          "onclick": {
+                            "$prototype": "Function",
+                            "body": [
+                              {
+                                "operator": "call",
+                                "target": {
+                                  "$ref": "#/state/deleteSelected"
+                                },
+                                "value": []
+                              }
+                            ]
+                          },
+                          "children": [
+                            {
+                              "tagName": "span",
+                              "textContent": "Delete"
+                            }
+                          ]
+                        },
+                        {
+                          "tagName": "jx-button",
+                          "attributes": {
+                            "part": "bulk-done"
+                          },
+                          "$props": {
+                            "size": "sm",
+                            "variant": "secondary",
+                            "quiet": true
+                          },
+                          "onclick": {
+                            "$prototype": "Function",
+                            "body": [
+                              {
+                                "operator": "call",
+                                "target": {
+                                  "$ref": "#/state/toggleSelecting"
+                                },
+                                "value": []
+                              }
+                            ]
+                          },
+                          "children": [
+                            {
+                              "tagName": "span",
+                              "textContent": "Done"
+                            }
+                          ]
+                        }
+                      ]
+                    }
                   }
                 }
               ]

@@ -54,6 +54,8 @@ The middle of the window shows the collection you chose, under its title. The to
 - **Fields**, which opens [Project Settings](/docs/studio/projects/settings) on this collection's fields (a collection only; pages have none);
 - **New page** or **New post** (the collection's own word for one item), which opens **Add new** on that collection.
 
+In **Table**, a collection whose entries have a picture field shows it in a **Cover** column. To delete several entries at once, press **Select** in the toolbar: each entry gains a checkbox (the header's box ticks every entry in view), and a bar at the foot of the table counts what you ticked, with **Delete** to delete them all after one confirmation and **Done** to stop selecting. Ticking a row never opens it. In **Pages**, each row says under its title what the page is: **Home page**, or for a collection's page how many pages it makes ("One page per post · 6 posts").
+
 Each collection keeps its own view, search, filter and language. Pages in **Table** and Posts in **Cards** is a state you can leave and come back to.
 
 Every control is a command too, so the toolbar is never the only way in: :kbd[⌘K] → **Content: Show Collection** shows a collection by name, and **Content: Set View**, **Content: Search Collection**, **Content: Show Language** and **Content: Rescan Files** are the rest. They are listed with everything else on **[Commands](/docs/studio/interface/commands)**.
