@@ -23,6 +23,8 @@ import { tmpdir } from "node:os";
 import type { Page } from "puppeteer-core";
 import { buildSite } from "@jxsuite/compiler/site";
 import { isJsonObject, isString } from "@jxsuite/schema/guards";
+import { parseProjectSource, serializeProjectFile } from "@jxsuite/schema/project-file";
+import { projectFilePath } from "@jxsuite/schema/project-file/node";
 import type { JsonObject, JsonValue } from "@jxsuite/schema/types";
 import { launchBrowser } from "./lib/browser";
 
@@ -62,15 +64,12 @@ async function buildToTemp(slug: string): Promise<{ dist: string; tmp: string }>
     },
     recursive: true,
   });
-  const cfgPath = join(tmp, "project.json");
-  const cfg: JsonValue = JSON.parse(await readFile(cfgPath, "utf8"));
-  if (!isJsonObject(cfg)) {
-    throw new Error(`${cfgPath} must hold a JSON object`);
-  }
-  const images: JsonObject = isJsonObject(cfg.images) ? { ...cfg.images } : {};
-  images.optimize = false;
-  cfg.images = images;
-  await writeFile(cfgPath, `${JSON.stringify(cfg, null, 2)}\n`);
+  // Either project file a starter has, read and written by the module that owns them.
+  const cfgPath = projectFilePath(tmp);
+  const text = await readFile(cfgPath, "utf8");
+  const cfg = parseProjectSource(text, cfgPath);
+  cfg.images = { ...cfg.images, optimize: false };
+  await writeFile(cfgPath, serializeProjectFile(cfg, text, cfgPath));
 
   const result = await buildSite(tmp, { clean: true });
   if (result.errors.length > 0) {

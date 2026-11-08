@@ -93,7 +93,7 @@ A document keeps its own view state while it's open. Switch from a Markdown page
 New documents open in their natural editor: Markdown in **Edit**, spreadsheets in **Grid**, the project file in **Variables** the first time, and after that in whichever of **Variables** and **Elements** you were last in.
 
 :::doc-note
-**Your project's configuration is one of these documents.** `project.json` opens like any file, in the Styles workspace, with **Elements**, **Variables** and **Code** as its editors: an unsaved dot, :kbd[⌘Z] to take a change back, :kbd[⌘S] to write it. **Open Project Settings** is a dialog that writes the same file as you change it, through the same document, so while the tab is open a settings change is a step in its history too.
+**Your project's configuration is one of these documents.** The project file opens like any file, in the Styles workspace, with **Elements**, **Variables** and **Code** as its editors: an unsaved dot, :kbd[⌘Z] to take a change back, :kbd[⌘S] to write it. **Open Project Settings** is a dialog that writes the same file as you change it, through the same document, so while the tab is open a settings change is a step in its history too.
 :::
 
 ## Reopening a project

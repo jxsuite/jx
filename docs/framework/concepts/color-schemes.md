@@ -17,7 +17,7 @@ A Jx design can ship light and dark variants of its tokens, follow the visitor's
 
 ## Declaring scheme support
 
-Add a **scheme query** to `$media` in `project.json`, an entry whose value is exactly a `prefers-color-scheme` query:
+Add a **scheme query** to `$media` in the project file, an entry whose value is exactly a `prefers-color-scheme` query:
 
 ```json
 {

@@ -1,0 +1,6 @@
+/- kdl-version 2
+project "Screenshot Fixture — Statements"
+
+url "https://example.com"
+
+defaults lang=en

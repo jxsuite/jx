@@ -70,7 +70,7 @@ jx dev        # dev server with live reload
 jx build      # compile the site to dist/
 jx preview    # serve an already-built dist/
 jx schema     # generate self-contained JSON Schemas for the project
-jx validate   # validate project.json, documents, classes, and extension fragments
+jx validate   # validate the project file, documents, classes, and extension fragments
 jx db push    # sync data tables to their connections (additive only)
 ```
 

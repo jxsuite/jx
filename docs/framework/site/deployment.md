@@ -34,7 +34,7 @@ dist/
 ├── about/index.md            # A Markdown copy of each page, linked from its <head>
 ├── components/               # Compiled component JS + CSS sidecars
 ├── images/_optimized/        # Responsive image variants
-├── sitemap.xml               # When url is set in project.json
+├── sitemap.xml               # When url is set in the project file
 ├── robots.txt                # From public/, with a Sitemap: line appended
 ├── _redirects                # From the redirects map
 ├── _headers                  # Response headers (below)
@@ -43,7 +43,7 @@ dist/
 └── worker.js                 # Only with a server adapter (see below)
 ```
 
-Pages only load JavaScript for components that actually need it, so a fully static component ships as pre-rendered HTML and CSS with no script. Files from `public/` are copied verbatim, and the `copy` map in `project.json` can place additional files at chosen output paths.
+Pages only load JavaScript for components that actually need it, so a fully static component ships as pre-rendered HTML and CSS with no script. Files from `public/` are copied verbatim, and the `copy` map in the project file can place additional files at chosen output paths.
 
 ## Response headers
 
@@ -143,7 +143,7 @@ A string replaces a directive wholesale, so restate the defaults you still want,
 
 ## Manifest and security.txt
 
-Two files a site is usually expected to publish. Both are generated from `project.json`, and both step aside if you put your own copy in `public/`.
+Two files a site is usually expected to publish. Both are generated from the project file, and both step aside if you put your own copy in `public/`.
 
 ### manifest.webmanifest
 
@@ -229,7 +229,7 @@ Leave `false` in place for as long as you think old visitors might come back. De
 
 ## Build options
 
-The `build` section of `project.json`:
+The `build` section of the project file:
 
 | Property        | Default    | What it does                                                        |
 | --------------- | ---------- | ------------------------------------------------------------------- |
@@ -279,7 +279,7 @@ Three route families, and nothing else:
 
 Worker deployment details:
 
-- Server functions are collected from every page, the layouts it uses, `project.json`'s `state` and every component, and bundled once into the worker; no build writes per-route server files. A relative `$src` is resolved from the file that declares it. Each export name is one route: one module declared in several places is served once, and two modules exporting the same name stop the build with an error naming both files.
+- Server functions are collected from every page, the layouts it uses, the project file's `state` and every component, and bundled once into the worker; no build writes per-route server files. A relative `$src` is resolved from the file that declares it. Each export name is one route: one module declared in several places is served once, and two modules exporting the same name stop the build with an error naming both files.
 - The worker is **self-contained**: hono, extension mounts, database connectors, and your server modules are inlined at build time, so `dist/` deploys and runs with no `node_modules` and no deploy-time bundling step.
 - On Cloudflare Pages, `_routes.json` limits worker invocation to `/_jx/*`, plus `/` when the site has more than one locale so the worker can choose a language for the root, and static assets are served without waking the worker. A Pages site with no server functions and no mounts gets no worker at all, and the deployment stays purely static.
 - A project with a non-empty `data` or `auth` section (served by extension mounts) or any `timing: "server"` entry **must** set a server-capable adapter. On static the build stops with an error naming the offending sections or entries, since a static site has nothing to serve them with.

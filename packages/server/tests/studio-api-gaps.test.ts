@@ -441,7 +441,7 @@ describe("create-project", () => {
     const body = await res.json();
     expect(body.root).toBe("generated-site");
     expect(body.config.name).toBe("Generated Site");
-    expect(readFileSync(join(ROOT, "generated-site", "project.json"), "utf8")).toContain(
+    expect(readFileSync(join(ROOT, "generated-site", "project.jxn"), "utf8")).toContain(
       "Generated Site",
     );
   });
@@ -453,7 +453,7 @@ describe("create-project", () => {
     const body = await res.json();
     expect(body.root).toBe(join(OUTSIDE_PARENT, "away-site"));
     expect(body.config.name).toBe("Away Site");
-    expect(existsSync(join(OUTSIDE_PARENT, "away-site", "project.json"))).toBe(true);
+    expect(existsSync(join(OUTSIDE_PARENT, "away-site", "project.jxn"))).toBe(true);
     // Nothing was written under the server root.
     expect(existsSync(join(ROOT, "away-site"))).toBe(false);
   });

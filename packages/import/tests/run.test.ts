@@ -18,6 +18,7 @@ import type { MultiEmitOptions } from "../src/emit.ts";
 import type { ExtractMediaOptions, MediaExtractionResult } from "../src/media-extract.ts";
 import type { CapturedStyle, StyleCaptureResult } from "../src/style-capture.ts";
 import type { VerifyOptions, VerifyResult } from "../src/verify.ts";
+import { readProject } from "./_project";
 
 const pageClose = mock(() => Promise.resolve());
 const pageSetViewport = mock((_v: { width: number; height: number }) => Promise.resolve());
@@ -259,7 +260,7 @@ describe("importSite — validation", () => {
 
   test("tolerates its OWN seed, so a re-entered run is not refused by its first statement", async () => {
     const dir = mkdtempSync(join(tmpdir(), "jx-run-seeded-"));
-    writeFileSync(join(dir, "project.json"), '{ "name": "x" }');
+    writeFileSync(join(dir, "project.jxn"), "project x\n");
     const result = await importSite({ url: "https://site.example/", outDir: dir, maxDepth: 0 });
     expect(result.outDir).toBe(dir);
   });
@@ -282,7 +283,7 @@ describe("importSite — the seed", () => {
     expect(events.findIndex((e) => e.phase === "seed")).toBeLessThan(
       events.findIndex((e) => e.phase === "launch"),
     );
-    const seeded = await Bun.file(join(outDir, "project.json")).json();
+    const seeded = readProject(outDir);
     expect(seeded.name).toBe("site.example");
   });
 
@@ -298,7 +299,7 @@ describe("importSite — the seed", () => {
     // `importSite` has already accepted the scheme; this is the belt-and-braces branch for a URL
     // That parses at the guard and not at `new URL` — an empty authority.
     await importSite({ url: "https://", outDir, maxDepth: 0 });
-    const seeded = await Bun.file(join(outDir, "project.json")).json();
+    const seeded = readProject(outDir);
     expect(seeded.name).toBe("Imported Site");
   });
 });

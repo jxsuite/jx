@@ -37,7 +37,7 @@ export type ProjectFileName = (typeof PROJECT_FILE_NAMES)[number];
  * What a new project's file is called (`site-architecture.md` §2.4). Never what an existing
  * project's is: that is whichever of {@link PROJECT_FILE_NAMES} its folder holds.
  */
-export const NEW_PROJECT_FILE_NAME: ProjectFileName = "project.json";
+export const NEW_PROJECT_FILE_NAME: ProjectFileName = "project.jxn";
 
 /**
  * Whether a file name is one a project file may have.

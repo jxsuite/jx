@@ -7,6 +7,7 @@ import type { JxElement } from "@jxsuite/schema/types";
 import type { ComponentizeResult } from "../src/componentize.ts";
 import { emitMultiPageProject } from "../src/emit.ts";
 import { createLocalIo } from "../src/io.ts";
+import { readProject } from "./_project";
 
 function makePrecomputed(): ComponentizeResult {
   const template: JxElement = {
@@ -77,7 +78,7 @@ describe("emitMultiPageProject", () => {
       // Project.json + 3 pages + layout = 5
       expect(files.length).toBe(5);
 
-      const project = await Bun.file(join(dir, "project.json")).json();
+      const project = readProject(dir);
       expect(project.name).toBe("Multi Page Test");
 
       const index = await Bun.file(join(dir, "pages", "index.json")).json();
@@ -136,7 +137,7 @@ describe("emitMultiPageProject", () => {
         breakpoints: { "@768": "min-width: 768px", "@1024": "min-width: 1024px" },
       });
 
-      const project = await Bun.file(join(dir, "project.json")).json();
+      const project = readProject(dir);
       expect(project.$media).toEqual({
         "@768": "min-width: 768px",
         "@1024": "min-width: 1024px",
@@ -175,7 +176,7 @@ describe("emitMultiPageProject", () => {
         styleTokens: { "--brand": "#3b82f6", "--space-4": "16px" },
       });
 
-      const project = await Bun.file(join(dir, "project.json")).json();
+      const project = readProject(dir);
       expect(project.style).toEqual({ "--brand": "#3b82f6", "--space-4": "16px" });
       expect(project.$style).toBeUndefined();
     } finally {
@@ -204,7 +205,7 @@ describe("emitMultiPageProject", () => {
       expect(css).toContain('font-family: "A"');
       expect(css).toContain('font-family: "B"');
 
-      const project = await Bun.file(join(dir, "project.json")).json();
+      const project = readProject(dir);
       expect(project.$head).toContainEqual({
         tagName: "link",
         attributes: { rel: "stylesheet", href: "/assets/fonts.css" },

@@ -8,6 +8,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 import { generateProject } from "../generate";
+import { readProject } from "./_project";
 
 const TMP = resolve(tmpdir(), `jx-create-gaps-test-${Date.now()}`);
 
@@ -25,7 +26,7 @@ describe("generateProject — destination guard", () => {
       `Directory "${TMP}" is not empty`,
     );
     // Nothing was scaffolded into the occupied directory
-    expect(existsSync(join(TMP, "project.json"))).toBe(false);
+    expect(existsSync(join(TMP, "project.jxn"))).toBe(false);
   });
 
   test("scaffolds into an existing but empty directory", async () => {
@@ -33,7 +34,7 @@ describe("generateProject — destination guard", () => {
 
     await generateProject(TMP, { name: "Empty Ok" });
 
-    expect(existsSync(join(TMP, "project.json"))).toBe(true);
+    expect(existsSync(join(TMP, "project.jxn"))).toBe(true);
     expect(existsSync(join(TMP, ".gitignore"))).toBe(true);
     expect(existsSync(join(TMP, "layouts"))).toBe(true);
     expect(existsSync(join(TMP, "pages"))).toBe(true);
@@ -44,7 +45,7 @@ describe("generateProject — project.json contents", () => {
   test("adds a description meta tag to $head when a description is given", async () => {
     await generateProject(TMP, { description: "A fine site", name: "Described" });
 
-    const project = JSON.parse(readFileSync(join(TMP, "project.json"), "utf8"));
+    const project = readProject(TMP);
     expect(project.$head).toContainEqual({
       attributes: { content: "A fine site", name: "description" },
       tagName: "meta",
@@ -57,18 +58,18 @@ describe("generateProject — project.json contents", () => {
   test("omits the description meta tag and defaults the url when not given", async () => {
     await generateProject(TMP, { name: "Bare" });
 
-    const project = JSON.parse(readFileSync(join(TMP, "project.json"), "utf8"));
+    const project = readProject(TMP);
     expect(project.$head).toHaveLength(1);
-    expect(project.$head[0].attributes.name).toBe("viewport");
+    expect(project.$head?.[0]?.attributes?.name).toBe("viewport");
     expect(project.url).toBe("https://example.com");
-    expect(project.build.adapter).toBeUndefined();
+    expect(project.build?.adapter).toBeUndefined();
   });
 
   test("node adapter records build.adapter and adds the hono dependency", async () => {
     await generateProject(TMP, { adapter: "node", name: "Server Site" });
 
-    const project = JSON.parse(readFileSync(join(TMP, "project.json"), "utf8"));
-    expect(project.build.adapter).toBe("node");
+    const project = readProject(TMP);
+    expect(project.build?.adapter).toBe("node");
 
     const pkg = JSON.parse(readFileSync(join(TMP, "package.json"), "utf8"));
     expect(pkg.dependencies.hono).toBe("^4");

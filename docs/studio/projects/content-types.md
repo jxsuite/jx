@@ -27,7 +27,7 @@ code:
 
 Content types are your site's CMS schema. Each one describes a collection (blog posts, team members, projects) by naming the folder its entries live in, the file format they use, and the fields every entry carries. Once a type exists, Studio can create entries against it and draw their fields as a form.
 
-The builder is a section of [Project settings](/docs/studio/projects/settings), listed under **Integrations** because the parser extension contributes it. Pick **Open Project Settings › Content Types** from the **Settings** menu in the Command Bar. You can also press :kbd[⌘K] and type `>Open Project Settings`, or use the **⬢ menu** in the Command Bar, then choose **Content Types** from the section list: the section opens with one sentence on what a content type is, your types are listed on the left, and selecting one opens its editor on the right. Like every other section, what you change here is written to `project.json` as you make it.
+The builder is a section of [Project settings](/docs/studio/projects/settings), listed under **Integrations** because the parser extension contributes it. Pick **Open Project Settings › Content Types** from the **Settings** menu in the Command Bar. You can also press :kbd[⌘K] and type `>Open Project Settings`, or use the **⬢ menu** in the Command Bar, then choose **Content Types** from the section list: the section opens with one sentence on what a content type is, your types are listed on the left, and selecting one opens its editor on the right. Like every other section, what you change here is written to the project file as you make it.
 
 ![The Content Types section with a type selected and its field schema open in the builder](../../images/content-type-builder.png)
 
@@ -38,7 +38,7 @@ The quickest way is **Add new** (:kbd[⌘N], or :kbd[⌘⌥N] in a browser): cho
 - **Each recipe has** offers the fields most collections start with: **Title**, **Image**, **Rich text** (the entry's body, when your project writes Markdown), **Date**, **Tags**, **Number** and **Link**. Title, Image and Rich text start chosen; click a chip to add or drop it. You can change the fields here afterwards.
 - **Give each recipe its own page** (on by default) also creates the page every entry opens at, `/recipes/:slug`, using the template you pick. It is the same page a blog starter ships: the entry's title, image and body, bound to whichever entry the address names.
 
-**Create collection** adds the `recipes` type to `project.json`, a `content/recipes/` folder with a first entry, and the page `pages/recipes/[slug].json`. The dialog says all of that before you click.
+**Create collection** adds the `recipes` type to the project file, a `content/recipes/` folder with a first entry, and the page `pages/recipes/[slug].json`. The dialog says all of that before you click.
 
 You can also start a type here, from scratch:
 
@@ -115,7 +115,7 @@ A Markdown entry's frontmatter is reachable while you write it on the canvas, to
 
 ## Holding entries back
 
-A collection's `hold` rules say what keeps an entry out of a production build, in your own fields and your own words. Studio has no built-in idea of a draft: `draft: true` means nothing until a rule says so. Write rules in the type's **hold** option in the Content Types section, each with a label and a JSON condition, or in `project.json`. See **[Holding entries back](/docs/framework/site/content-collections#holding-entries-back)** for the format, including publishing on a date.
+A collection's `hold` rules say what keeps an entry out of a production build, in your own fields and your own words. Studio has no built-in idea of a draft: `draft: true` means nothing until a rule says so. Write rules in the type's **hold** option in the Content Types section, each with a label and a JSON condition, or in the project file. See **[Holding entries back](/docs/framework/site/content-collections#holding-entries-back)** for the format, including publishing on a date.
 
 A collection with rules shows each entry's state:
 
@@ -139,7 +139,7 @@ A held entry still renders on the canvas and in **Preview**, because you are the
 :::
 
 :::doc-note
-Studio stores your types in the `content` section of `project.json`, one entry per type, recording its `source` folder, `format`, and field `schema`. Pages query these collections to list and display entries; see [Site architecture](/docs/framework/site). Options that choose which files are entries, or say where each one is routed, are covered in [Content collections](/docs/framework/site/content-collections).
+Studio stores your types in the `content` section of the project file, one entry per type, recording its `source` folder, `format`, and field `schema`. Pages query these collections to list and display entries; see [Site architecture](/docs/framework/site). Options that choose which files are entries, or say where each one is routed, are covered in [Content collections](/docs/framework/site/content-collections).
 :::
 
 ## Next

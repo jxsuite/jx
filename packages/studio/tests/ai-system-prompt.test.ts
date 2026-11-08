@@ -119,7 +119,11 @@ describe("ai-system-prompt — buildSystemPrompt", () => {
   });
 
   test("names the project file, and teaches Jx Notation only to a model looking at one", () => {
-    const json = buildSystemPrompt({ projectConfig: { name: "Site" }, projectRoot: "/site" });
+    const json = buildSystemPrompt({
+      projectConfig: { name: "Site" },
+      projectFile: "project.json",
+      projectRoot: "/site",
+    });
     expect(json).toContain("Project file: project.json");
     expect(json).not.toContain("Jx Notation (KDL 2)");
 

@@ -242,7 +242,7 @@ The compiler extracts every static `style` definition into a single `<style>` bl
 
 ## Design tokens as CSS custom properties
 
-Define tokens in your `project.json` `style` block and use them everywhere:
+Define tokens in your project file `style` block and use them everywhere:
 
 ```json
 {

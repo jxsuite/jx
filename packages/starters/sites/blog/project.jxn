@@ -1,0 +1,86 @@
+/- kdl-version 2
+$schema "./project.schema.json"
+project "The Long Field"
+
+url "https://example.com"
+
+defaults layout="./layouts/base.json" lang=en
+
+$head {
+    meta name=viewport content="width=device-width, initial-scale=1"
+    meta name=description content="The Long Field — essays and field notes on design, technology, and the craft of making things well."
+    link rel=icon href="/favicon.svg"
+    link rel=preconnect href="https://fonts.googleapis.com"
+    link rel=preconnect href="https://fonts.gstatic.com" crossorigin=""
+    link rel=stylesheet href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;0,9..144,700;0,9..144,900;1,9..144,400;1,9..144,600&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400;1,6..72,500&display=swap"
+}
+
+$media {
+    -- "1200px"
+    --lg "(max-width: 1024px)"
+    --md "(max-width: 768px)"
+    --sm "(max-width: 640px)"
+}
+
+style {
+    --color-primary "#9a2f1a"
+    --color-primary-hover "#7a2412"
+    --color-ink "#1c1a17"
+    --color-bg-dark "#1c1a17"
+    --color-bg-cream "#efe9db"
+    --color-bg-white "#f6f1e7"
+    --color-paper "#f6f1e7"
+    --color-text-primary "#1c1a17"
+    --color-text-white "#f6f1e7"
+    --color-text-muted "#6f685c"
+    --color-border "#d8cfbd"
+    --color-rule "#1c1a17"
+    --color-accent "#9a2f1a"
+    --font-heading "'Fraunces', Georgia, 'Times New Roman', serif"
+    --font-body "'Newsreader', Georgia, 'Times New Roman', serif"
+    --max-width "1160px"
+    --max-width-narrow "680px"
+    --radius "0"
+    margin "0"
+    padding "0"
+    fontFamily "var(--font-body)"
+    fontSize "19px"
+    lineHeight "1.7"
+    color "var(--color-text-primary)"
+    backgroundColor "var(--color-paper)"
+}
+
+images {
+    optimize #true
+    widths 320 640 960 1280 1920
+    formats webp avif
+    quality webp=80 avif=65 jpeg=80 png=80
+    sizes "(max-width: 768px) 100vw, 50vw"
+    lazyLoad #true
+}
+
+content {
+    posts {
+        source "./content/posts/"
+        format Markdown
+        schema {
+            type object
+            properties {
+                title type=string
+                excerpt type=string
+                date type=string
+                author type=string
+                tag type=string
+                cover type=string format=image
+                order type=number
+            }
+            required title excerpt date
+        }
+    }
+}
+
+build outDir="./dist" format=directory trailingSlash=always
+
+extensions {
+    - "@jxsuite/parser"
+}

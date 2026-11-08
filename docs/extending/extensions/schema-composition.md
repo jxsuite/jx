@@ -87,7 +87,7 @@ Each `$defs` key is a slug of the embedded resource's `$id`: `https://jxsuite.co
 
 `document.schema.json` is the same move for documents: the core document schema embedded as `#/$defs/v1` and referenced through `"allOf": [{ "$ref": "#/$defs/v1" }]`, with the paths union resource re-embedded as the union of extension-contributed `$paths` shapes (the parser contributes `ContentPathsSource` from its document fragment).
 
-`project.json` binds via `"$schema": "./project.schema.json"`.
+The project file binds via `"$schema": "./project.schema.json"`.
 
 ## The two union resources
 
@@ -110,7 +110,7 @@ An entry embed **shadows** the shipped default rather than extending it, so it r
 
 - Every consumer resolves the committed entry documents offline **with no file access at all**: each `$ref` is a root-relative JSON Pointer into the same document. No `node_modules`, no network, no editor configuration.
 - `jx validate` **reads**; `jx schema` writes. If a committed entry document is out of date, validation composes a fresh one in memory and reports against that, leaving the file on disk exactly as it is, because a checker that edits what it is checking cannot tell you your repository is wrong.
-- `jx validate` validates the whole project tree: both committed entry documents for self-containment (any `$ref` that is a relative path, a URI, or a pointer to nothing fails), `project.json` against `./project.schema.json`, every component/page/layout against the bundled document schema, every project-local `*.class.json` against the class schema, and each fragment standalone. CI runs this over every project root in the repo.
+- `jx validate` validates the whole project tree: both committed entry documents for self-containment (any `$ref` that is a relative path, a URI, or a pointer to nothing fails), the project file against `./project.schema.json`, every component/page/layout against the bundled document schema, every project-local `*.class.json` against the class schema, and each fragment standalone. CI runs this over every project root in the repo.
 - Where a client fetches the canonical URLs instead (they are served from jxsuite.com), it gets the shipped defaults. The degradation is _under-suggestion_ of extension field extras, never false errors.
 
 :::doc-note
@@ -131,7 +131,7 @@ Two failures, two fixes.
 - _"must resolve from the host workspace and does not"_ names `@jxsuite/schema`: you are running the generator somewhere that has no core on its resolution path. Install it in the workspace you are running from, and not in the project being generated.
 - _"is not resolvable from the project"_ names an extension: the project enables it but has not installed it. Install the project's dependencies (Studio offers to when a project opens), or drop the extension from the project's `extensions` list.
 
-In Studio the failure is not fatal: it falls back to the bundled core schemas and says so in the log. `project.json` and your documents still validate against core; what you lose is the fields each enabled extension contributes.
+In Studio the failure is not fatal: it falls back to the bundled core schemas and says so in the log. The project file and your documents still validate against core; what you lose is the fields each enabled extension contributes.
 :::
 
 ## Regenerating
@@ -139,7 +139,7 @@ In Studio the failure is not fatal: it falls back to the bundled core schemas an
 Run [`jx schema`](/docs/framework/build/cli) whenever the `extensions` list changes (and re-run `jx validate` after). Regeneration also happens without the CLI:
 
 - Studio regenerates the entry documents when settings are saved.
-- The dev server's Studio API regenerates them on demand when they are missing or older than `project.json`, serving the same self-contained single-resource form to the browser (Monaco registers them as inline objects and never resolves a ref itself).
+- The dev server's Studio API regenerates them on demand when they are missing or older than the project file, serving the same self-contained single-resource form to the browser (Monaco registers them as inline objects and never resolves a ref itself).
 
 The outputs are committed artifacts. Check `project.schema.json` and `document.schema.json` into the repo so editors and CI validate without a build step.
 
@@ -147,5 +147,5 @@ The outputs are committed artifacts. Check `project.schema.json` and `document.s
 
 - [CLI commands](/docs/framework/build/cli): `jx schema` and `jx validate`
 - [Extension anatomy](/docs/extending/extensions/anatomy): where fragments are declared
-- [project.json](/docs/framework/site/project-json): the document being validated
+- [the project file](/docs/framework/site/project-json): the document being validated
 - [Project sections and settings](/docs/extending/extensions/project-sections): the behavior side of a contributed section

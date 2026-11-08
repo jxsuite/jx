@@ -26,6 +26,8 @@
  * dialog makes, against a mocked index. This asserts the fulfilment. Neither is sufficient alone.
  */
 
+import { parseProjectSource } from "@jxsuite/schema/project-file";
+import { projectFilePath } from "@jxsuite/schema/project-file/node";
 import { afterAll, describe, expect, test } from "bun:test";
 import {
   cpSync,
@@ -41,7 +43,6 @@ import { tmpdir } from "node:os";
 import { buildProjectExtensionRegistry } from "@jxsuite/compiler/format-host";
 import { applyRename, findReferences, invalidateReferenceCache } from "../src/refactor/index";
 import type { FormatRegistry } from "@jxsuite/schema/format-registry";
-import type { ProjectConfig } from "@jxsuite/schema/types";
 import { installWorkspaceExtension } from "@jxsuite/test-support/install-extension";
 
 const STARTERS = join(import.meta.dir, "../../starters/sites");
@@ -61,11 +62,9 @@ function stage(starter: string): string {
     filter: (src) => !src.includes("node_modules"),
     recursive: true,
   });
-  /* SAFETY: a committed starter's project.json, held to the project schema by
-     `schema:validate-all`; only its `extensions` array is read. */
-  const { extensions = [] } = JSON.parse(readFileSync(join(root, "project.json"), "utf8")) as {
-    extensions?: string[];
-  };
+  // A committed starter's project file, in either notation; only its `extensions` array is read.
+  const projectPath = projectFilePath(root);
+  const { extensions = [] } = parseProjectSource(readFileSync(projectPath, "utf8"), projectPath);
   // The project's own install, as a user's would have: an extension never resolves from the host.
   installWorkspaceExtension(root, ...extensions.filter((e) => !e.startsWith(".")));
   return root;
@@ -110,9 +109,9 @@ function restoreDocs(root: string, snap: Map<string, string>): void {
 }
 
 async function registryFor(root: string): Promise<FormatRegistry> {
-  /* SAFETY: `root` is a staged copy of a committed starter, whose project.json `schema:validate-all`
-     holds to the project schema; buildProjectExtensionRegistry reads only its `extensions`. */
-  const config = JSON.parse(readFileSync(join(root, "project.json"), "utf8")) as ProjectConfig;
+  // A staged copy of a committed starter; buildProjectExtensionRegistry reads only its `extensions`.
+  const projectPath = projectFilePath(root);
+  const config = parseProjectSource(readFileSync(projectPath, "utf8"), projectPath);
   const extensions = await buildProjectExtensionRegistry(root, config);
   return extensions.formats;
 }

@@ -47,7 +47,7 @@ Pages opt in with a top-level `$layout`, resolved from the **project root** (not
 }
 ```
 
-- If a page omits `$layout`, the site default from `project.json` `defaults.layout` applies.
+- If a page omits `$layout`, the site default from the project file `defaults.layout` applies.
 - `"$layout": false` renders the page with no layout at all, which suits standalone landing pages and embeds.
 
 The page's `children` are distributed into the layout's `<slot>` positions when the page compiles.
@@ -115,7 +115,7 @@ Compiling a page against its layout produces one document:
 - **`$media`, `style`, `attributes`**: merged the same way, page over layout.
 - **`$head`**: merged site → layout → page, later entries winning for singletons like `<title>`; see [SEO and metadata](/docs/framework/site/seo).
 
-Layouts also receive the compiler-injected contexts: `$page` (`title`, `url`, `params`) and `$site` (`name`, `url`, plus site state). See [project.json](/docs/framework/site/project-json).
+Layouts also receive the compiler-injected contexts: `$page` (`title`, `url`, `params`) and `$site` (`name`, `url`, plus site state). See [the project file](/docs/framework/site/project-json).
 
 ## Related
 

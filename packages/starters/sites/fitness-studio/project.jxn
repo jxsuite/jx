@@ -1,0 +1,124 @@
+/- kdl-version 2
+$schema "./project.schema.json"
+project "Ember Yoga & Fitness"
+
+url "https://example.com"
+
+defaults layout="./layouts/base.json" lang=en
+
+$head {
+    meta name=viewport content="width=device-width, initial-scale=1"
+    meta name=description content="Ember is a boutique yoga & fitness studio — vinyasa, pilates, HIIT and strength in small, all-levels classes. See the weekly schedule and book a class."
+    link rel=icon href="/favicon.svg"
+    link rel=preconnect href="https://fonts.googleapis.com"
+    link rel=preconnect href="https://fonts.gstatic.com" crossorigin=""
+    link rel=stylesheet href="https://fonts.googleapis.com/css2?family=Anton&family=Archivo:wght@500;600;700;800;900&family=DM+Sans:wght@400;500;600;700&display=swap"
+}
+
+$media {
+    -- "1200px"
+    --lg "(max-width: 1024px)"
+    --md "(max-width: 768px)"
+    --sm "(max-width: 640px)"
+}
+
+style {
+    --color-primary "#ff2e63"
+    --color-primary-hover "#e01152"
+    --color-ember "#ff8c42"
+    --color-magenta "#d6157a"
+    --color-ink "#1a0f18"
+    --color-ink-band "#20111c"
+    --color-bg-dark "#20111c"
+    --color-bg-white "#ffffff"
+    --color-bg-blush "#fff4ef"
+    --color-bg-peach "#ffe7dc"
+    --color-bg-cream "#fff4ef"
+    --color-text-primary "#1a0f18"
+    --color-text-white "#ffffff"
+    --color-text-muted "#7c6a74"
+    --color-border "#f3ded4"
+    --color-border-dark "rgba(255,255,255,0.14)"
+    --color-accent "#ff8c42"
+    --color-yoga "#ff2e63"
+    --color-strength "#7b2ff7"
+    --color-pilates "#ff8c42"
+    --color-hiit "#d6157a"
+    --grad "linear-gradient(103deg, #ff2e63 0%, #ff6a3d 52%, #ffb03a 100%)"
+    --grad-hot "linear-gradient(120deg, #d6157a 0%, #ff2e63 55%, #ff8c42 100%)"
+    --duo-shadow "#280a22"
+    --font-display "'Anton', 'Archivo', system-ui, -apple-system, sans-serif"
+    --font-heading "'Archivo', system-ui, -apple-system, 'Segoe UI', sans-serif"
+    --font-body "'DM Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
+    --max-width "1200px"
+    --max-width-narrow "820px"
+    --radius "1.1rem"
+    --radius-sm "0.7rem"
+    margin "0"
+    padding "0"
+    fontFamily "var(--font-body)"
+    lineHeight "1.6"
+    color "var(--color-text-primary)"
+    backgroundColor "var(--color-bg-white)"
+    h1 {
+        fontFamily "var(--font-heading)"
+        color "var(--color-text-primary)"
+    }
+    h2 {
+        fontFamily "var(--font-heading)"
+        color "var(--color-text-primary)"
+    }
+    h3 {
+        fontFamily "var(--font-heading)"
+        color "var(--color-text-primary)"
+    }
+    h4 {
+        fontFamily "var(--font-heading)"
+        color "var(--color-text-primary)"
+    }
+    strong {
+        color "var(--color-text-primary)"
+        fontWeight "700"
+    }
+    a {
+        color "var(--color-primary)"
+    }
+    ::selection {
+        backgroundColor "var(--color-primary)"
+        color "#ffffff"
+    }
+}
+
+images {
+    optimize #true
+    widths 320 640 960 1280 1920
+    formats webp avif
+    quality webp=80 avif=65 jpeg=80 png=80
+    sizes "(max-width: 768px) 100vw, 50vw"
+    lazyLoad #true
+}
+
+content {
+    classes {
+        source "./content/classes/"
+        format Markdown
+        schema {
+            type object
+            properties {
+                name type=string
+                level type=string
+                time type=string
+                instructor type=string
+                focus type=string
+                order type=number
+            }
+            required name level time instructor
+        }
+    }
+}
+
+build outDir="./dist" format=directory trailingSlash=always
+
+extensions {
+    - "@jxsuite/parser"
+}

@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { generateProject } from "../generate";
 
 import TEMPLATE_VERSIONS from "../template-versions.json";
+import { readProject } from "./_project";
 
 const TMP = resolve(tmpdir(), `jx-create-test-${Date.now()}`);
 const STARTER_FIXTURE = resolve(tmpdir(), `jx-create-array-starter-${Date.now()}`);
@@ -61,14 +62,14 @@ describe("generateProject — wrangler.jsonc", () => {
     expect(pkg.devDependencies.wrangler).toBe("^4");
     expect(pkg.scripts.deploy).toBe("wrangler deploy");
 
-    const project = JSON.parse(readFileSync(join(TMP, "project.json"), "utf8"));
-    expect(project.build.adapter).toBe("cloudflare-workers");
+    const project = readProject(TMP);
+    expect(project.build?.adapter).toBe("cloudflare-workers");
   });
 
   test("scaffolded project.json uses the extension model", async () => {
     await generateProject(TMP, { adapter: "static", name: "My Site" });
 
-    const project = JSON.parse(readFileSync(join(TMP, "project.json"), "utf8"));
+    const project = readProject(TMP);
     // $schema binds the generated per-project schema and leads the file by convention.
     expect(Object.keys(project)[0]).toBe("$schema");
     expect(project.$schema).toBe("./project.schema.json");

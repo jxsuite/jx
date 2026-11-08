@@ -464,7 +464,7 @@
             },
             {
               "path": "framework/site/project-json",
-              "label": "project.json"
+              "label": "The project file"
             },
             {
               "path": "framework/site/routing",

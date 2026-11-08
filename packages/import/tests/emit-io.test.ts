@@ -6,10 +6,11 @@
  * the emitter and handed to the sink, so a caller committing straight to git gets exactly the same
  * project without a filesystem anywhere in the picture.
  */
+import { parseProjectSource } from "@jxsuite/schema/project-file";
 import { describe, expect, test } from "bun:test";
 import { emitMultiPageProject, emitProject } from "../src/emit.ts";
 import { memoryIo } from "./memory-io.ts";
-import { parseJxDocument, parseProjectConfig } from "@jxsuite/schema/parse";
+import { parseJxDocument } from "@jxsuite/schema/parse";
 import type { JxElement } from "@jxsuite/schema/types";
 
 describe("emitMultiPageProject through a memory sink", () => {
@@ -40,14 +41,14 @@ describe("emitMultiPageProject through a memory sink", () => {
       "layouts/base.json",
       "pages/blog/first-post.json",
       "pages/index.json",
-      "project.json",
+      "project.jxn",
       "public/assets/fonts.css",
     ]);
     expect(result.files.every((f) => !f.startsWith("/") && !f.includes("\\"))).toBe(true);
     expect(dirs).toEqual(["pages", "layouts", "components", "public"]);
 
-    const project = parseProjectConfig(result.projectJson, "project.json");
-    expect(text("project.json")).toBe(result.projectJson);
+    const project = parseProjectSource(result.projectJson, "project.jxn");
+    expect(text("project.jxn")).toBe(result.projectJson);
     expect(project.name).toBe("Sink Site");
     expect(project.style).toEqual({ "--brand": "#3b82f6" });
     // Base first, then ascending — `$media`'s order is the order Studio offers the sizes in.

@@ -9,7 +9,7 @@ code:
 
 # Redirects
 
-When a page moves, the old URL should keep working. Declare redirects once in `project.json` and the build emits them in two forms: an HTML fallback that works on any static host, and a `_redirects` file for hosts that do server-side redirects.
+When a page moves, the old URL should keep working. Declare redirects once in the project file and the build emits them in two forms: an HTML fallback that works on any static host, and a `_redirects` file for hosts that do server-side redirects.
 
 ## The redirects map
 
