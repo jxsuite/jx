@@ -604,6 +604,23 @@
     },
     "& [part=\"list-foot\"] [part=\"check-text\"]": {
       "flex": "1 1 160px"
+    },
+    "& [part=\"host-card\"]": {
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "var(--jx-space-1)",
+      "padding": "var(--jx-space-3)",
+      "border": "1px solid var(--border)",
+      "borderRadius": "var(--jx-radius-md)"
+    },
+    "& [part=\"host-card-name\"]": {
+      "fontSize": "var(--jx-text-md)",
+      "fontWeight": "600"
+    },
+    "& [part=\"host-card-text\"]": {
+      "margin": "0",
+      "fontSize": "var(--jx-text-sm)",
+      "color": "var(--fg-dim)"
     }
   },
   "$switch": {
@@ -3329,6 +3346,30 @@
                       }
                     ]
                   }
+                }
+              ]
+            },
+            {
+              "$description": "Where a publish actually goes (the Publish-Review board's host card, studio.md §22.8): the host Hosting names, and what publishing there does, so the choice above is never made blind.",
+              "tagName": "aside",
+              "attributes": {
+                "part": "host-card",
+                "aria-label": "Where your site is hosted"
+              },
+              "children": [
+                {
+                  "tagName": "strong",
+                  "attributes": {
+                    "part": "host-card-name"
+                  },
+                  "textContent": "${state.hostTitle}"
+                },
+                {
+                  "tagName": "p",
+                  "attributes": {
+                    "part": "host-card-text"
+                  },
+                  "textContent": "${state.hostSummary}"
                 }
               ]
             },

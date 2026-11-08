@@ -680,6 +680,13 @@ describe("Hosting", () => {
     expect(part("hosting-summary")).not.toBeNull();
   });
 
+  test("Review changes says where a publish goes, beside the choice of destination", async () => {
+    install({ cfApi: async () => [], cfConnect: async () => null });
+    await drawReview();
+    expect(part("host-card-name")?.textContent).toBe("Jx Cloud, on Cloudflare");
+    expect(part("host-card-text")?.textContent).toContain("every publish builds and deploys");
+  });
+
   test("Deploys with a reachable host and no provider says to connect one", async () => {
     install({ cfApi: async () => [] });
     shell.publish.tab = "deploys";

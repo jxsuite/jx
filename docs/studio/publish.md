@@ -28,7 +28,7 @@ Shipping a Jx site is part of the Studio flow, with no terminal and no separate 
 ## How it goes live
 
 1. In **Publish › Review changes**, every change is included the first time it shows up. Uncheck any file you want to leave out of this publish (it stays out until you check it again), write a one-line summary, and choose where the changes go.
-2. Click the button under the summary. Its words say what it will do: **Publish live** when a host is connected, **Commit and push** when there is a remote but no host, **Commit** when the project has no remote yet, **Send for review** for a pull request.
+2. Check the card under the summary, which says where your site is hosted and what publishing there does, then click the button below it. Its words say what it will do: **Publish live** when a host is connected, **Commit and push** when there is a remote but no host, **Commit** when the project has no remote yet, **Send for review** for a pull request.
 3. The push wakes your host (or CI), which builds the project into plain HTML, CSS, and a little JavaScript, and serves it from a CDN. Your site is live.
 
 **Quick publish.** The small arrow beside the Publish tab opens a panel under it with the change count, the first few changes named the way Review changes names them (**NEW Pricing**, **EDIT Base**), the rest summed up by kind ("+ 1 post, 2 images"), the destination, a summary field and one line of checks. A changed template says how many pages it changes, such as "affects 4 pages". **Publish now** takes every change to the destination you picked; **Review all** opens Review changes instead, where you can leave a change out. Click anywhere else or press :kbd[Esc] to close it.
