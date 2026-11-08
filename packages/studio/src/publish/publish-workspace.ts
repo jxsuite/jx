@@ -96,13 +96,14 @@ import type {
   CommandButtonRow,
   DeploymentRow,
   PublishCheckRow,
+  PublishLayout,
   PublishWorkspaceActions,
   PublishWorkspaceSurfaceHandle,
-  PublishLayout,
   PublishWorkspaceView,
   ReviewChangeView,
   ReviewItemRow,
   ReviewNoticeView,
+  SetupStepState,
 } from "../surfaces/publish-workspace";
 
 // ─── Deployments ─────────────────────────────────────────────────────────────
@@ -605,6 +606,11 @@ function sourceCommandIds(): string[] {
   return platformHostsGit() ? ["git.signInToGithub"] : ["git.push", "git.signInToGithub"];
 }
 
+/** A Hosting setup step as its mark draws it. */
+function setupStep(done: boolean): SetupStepState {
+  return done ? { label: "Done", state: "done" } : { label: "To do", state: "todo" };
+}
+
 /** The host block: which host, and what connecting it buys. */
 function hostView(): Pick<PublishWorkspaceView, "hostSummary" | "hostTitle"> {
   const deploy = currentDeploy();
@@ -674,6 +680,10 @@ export function publishWorkspaceView(
   return {
     ...deploysState(),
     ...hostView(),
+    // A host builds from a remote; a host whose git is the remote's has one by construction.
+    stepAddress: setupStep(address !== ""),
+    stepHosted: setupStep(deploy !== undefined),
+    stepSaved: setupStep(hosted || remote !== ""),
     allIncluded: count > 0 && staged === count,
     blocker,
     branchNote: hosted

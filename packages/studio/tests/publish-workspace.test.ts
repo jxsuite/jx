@@ -696,6 +696,25 @@ describe("Hosting", () => {
     );
   });
 
+  test("Hosting is three numbered steps, each saying whether it is done", async () => {
+    shell.publish.tab = "hosting";
+    current = repo(FILES, { remotes: [] });
+    const { refreshGitStatus } = await import("../src/publish/source-control");
+    await refreshGitStatus();
+    await draw();
+    expect(part("setup-title")?.textContent).toBe("Set up publishing");
+    expect(parts("step-number").map((n) => n.textContent)).toEqual(["1", "2", "3"]);
+    // No remote, no host, and no address yet: nothing is done.
+    expect(parts("step-state").map((mark) => mark.dataset.state)).toEqual(["todo", "todo", "todo"]);
+    pw.detachPublishWorkspace("primary");
+    current = repo(FILES);
+    const { projectState } = await import("../src/state");
+    projectState!.projectConfig!.url = "https://example.com";
+    await refreshGitStatus();
+    await draw();
+    expect(parts("step-state").map((mark) => mark.textContent)).toEqual(["Done", "To do", "Done"]);
+  });
+
   test("where the project is saved follows the repository's state", async () => {
     shell.publish.tab = "hosting";
     current = repo(FILES, { remotes: [] });

@@ -621,6 +621,48 @@
       "margin": "0",
       "fontSize": "var(--jx-text-sm)",
       "color": "var(--fg-dim)"
+    },
+    "& [part=\"setup-intro\"]": {
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "var(--jx-space-1)"
+    },
+    "& [part=\"setup-title\"]": {
+      "margin": "0",
+      "fontSize": "var(--jx-text-xl, 18px)",
+      "fontWeight": "600"
+    },
+    "& [part=\"setup-text\"]": {
+      "margin": "0",
+      "fontSize": "var(--jx-text-md)",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"step-head\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "var(--jx-space-2)"
+    },
+    "& [part=\"step-head\"] > [part=\"section-heading\"]": {
+      "margin": "0"
+    },
+    "& [part=\"step-number\"]": {
+      "display": "inline-flex",
+      "alignItems": "center",
+      "justifyContent": "center",
+      "width": "20px",
+      "height": "20px",
+      "borderRadius": "50%",
+      "background": "var(--bg-input)",
+      "fontSize": "var(--jx-text-sm)",
+      "fontWeight": "600"
+    },
+    "& [part=\"step-state\"]": {
+      "marginLeft": "auto",
+      "fontSize": "var(--jx-text-sm)",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"step-state\"][data-state=\"done\"]": {
+      "color": "var(--success)"
     }
   },
   "$switch": {
@@ -2030,17 +2072,64 @@
                   },
                   "children": [
                     {
+                      "$description": "Hosting as the Publish-Setup board frames it (studio.md §22.8): three steps, made once and changeable later, each saying whether it is done, with how the site is built after the second and the checklist after them.",
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "setup-intro"
+                      },
+                      "children": [
+                        {
+                          "tagName": "h2",
+                          "attributes": {
+                            "part": "setup-title"
+                          },
+                          "textContent": "Set up publishing"
+                        },
+                        {
+                          "tagName": "p",
+                          "attributes": {
+                            "part": "setup-text"
+                          },
+                          "textContent": "Three steps, made once. You can change any of them later."
+                        }
+                      ]
+                    },
+                    {
                       "tagName": "section",
                       "attributes": {
                         "part": "source"
                       },
                       "children": [
                         {
-                          "tagName": "h3",
+                          "tagName": "div",
                           "attributes": {
-                            "part": "section-heading"
+                            "part": "step-head"
                           },
-                          "textContent": "Where your project is saved"
+                          "children": [
+                            {
+                              "tagName": "span",
+                              "attributes": {
+                                "part": "step-number",
+                                "aria-hidden": "true"
+                              },
+                              "textContent": "1"
+                            },
+                            {
+                              "tagName": "h3",
+                              "attributes": {
+                                "part": "section-heading"
+                              },
+                              "textContent": "Where your project is saved"
+                            },
+                            {
+                              "tagName": "span",
+                              "attributes": {
+                                "part": "step-state",
+                                "data-state": "${state.stepSaved.state}"
+                              },
+                              "textContent": "${state.stepSaved.label}"
+                            }
+                          ]
                         },
                         {
                           "tagName": "p",
@@ -2112,11 +2201,35 @@
                       },
                       "children": [
                         {
-                          "tagName": "h3",
+                          "tagName": "div",
                           "attributes": {
-                            "part": "section-heading"
+                            "part": "step-head"
                           },
-                          "textContent": "Where your site is hosted"
+                          "children": [
+                            {
+                              "tagName": "span",
+                              "attributes": {
+                                "part": "step-number",
+                                "aria-hidden": "true"
+                              },
+                              "textContent": "2"
+                            },
+                            {
+                              "tagName": "h3",
+                              "attributes": {
+                                "part": "section-heading"
+                              },
+                              "textContent": "Where your site is hosted"
+                            },
+                            {
+                              "tagName": "span",
+                              "attributes": {
+                                "part": "step-state",
+                                "data-state": "${state.stepHosted.state}"
+                              },
+                              "textContent": "${state.stepHosted.label}"
+                            }
+                          ]
                         },
                         {
                           "tagName": "p",
@@ -2225,11 +2338,35 @@
                       },
                       "children": [
                         {
-                          "tagName": "h3",
+                          "tagName": "div",
                           "attributes": {
-                            "part": "section-heading"
+                            "part": "step-head"
                           },
-                          "textContent": "Your address"
+                          "children": [
+                            {
+                              "tagName": "span",
+                              "attributes": {
+                                "part": "step-number",
+                                "aria-hidden": "true"
+                              },
+                              "textContent": "3"
+                            },
+                            {
+                              "tagName": "h3",
+                              "attributes": {
+                                "part": "section-heading"
+                              },
+                              "textContent": "Your address"
+                            },
+                            {
+                              "tagName": "span",
+                              "attributes": {
+                                "part": "step-state",
+                                "data-state": "${state.stepAddress.state}"
+                              },
+                              "textContent": "${state.stepAddress.label}"
+                            }
+                          ]
                         },
                         {
                           "tagName": "div",
