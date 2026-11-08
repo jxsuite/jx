@@ -680,6 +680,13 @@ describe("Hosting", () => {
     expect(part("hosting-summary")).not.toBeNull();
   });
 
+  test("Review changes says where a publish goes, beside the choice of destination", async () => {
+    install({ cfApi: async () => [], cfConnect: async () => null });
+    await drawReview();
+    expect(part("host-card-name")?.textContent).toBe("Jx Cloud, on Cloudflare");
+    expect(part("host-card-text")?.textContent).toContain("every publish builds and deploys");
+  });
+
   test("Deploys with a reachable host and no provider says to connect one", async () => {
     install({ cfApi: async () => [] });
     shell.publish.tab = "deploys";
@@ -687,6 +694,25 @@ describe("Hosting", () => {
     expect(host.querySelector('[part="deploy-history"] [part="empty-message"]')?.textContent).toBe(
       "Connect a host under Hosting, and every deployment it makes is listed here.",
     );
+  });
+
+  test("Hosting is three numbered steps, each saying whether it is done", async () => {
+    shell.publish.tab = "hosting";
+    current = repo(FILES, { remotes: [] });
+    const { refreshGitStatus } = await import("../src/publish/source-control");
+    await refreshGitStatus();
+    await draw();
+    expect(part("setup-title")?.textContent).toBe("Set up publishing");
+    expect(parts("step-number").map((n) => n.textContent)).toEqual(["1", "2", "3"]);
+    // No remote, no host, and no address yet: nothing is done.
+    expect(parts("step-state").map((mark) => mark.dataset.state)).toEqual(["todo", "todo", "todo"]);
+    pw.detachPublishWorkspace("primary");
+    current = repo(FILES);
+    const { projectState } = await import("../src/state");
+    projectState!.projectConfig!.url = "https://example.com";
+    await refreshGitStatus();
+    await draw();
+    expect(parts("step-state").map((mark) => mark.textContent)).toEqual(["Done", "To do", "Done"]);
   });
 
   test("where the project is saved follows the repository's state", async () => {
