@@ -617,9 +617,9 @@
     },
     "docs/images/imports-panel.png": {
       "bytes": 31432,
-      "capturedAt": "2026-09-12T01:36:19Z",
-      "capturedBy": "screenshots@ci/34665220286",
-      "definition": "e411f30cc6f0534d247487dddb9dfc281ce36f81d78bd874293f9c8105f62289",
+      "capturedAt": "2026-11-08T05:30:20Z",
+      "capturedBy": "screenshots@ci/42450904172",
+      "definition": "33ba6d404b4dcca65d76760811313ce24a324209b7e26997505098971ad54b94",
       "height": 1880,
       "runtime": {
         "chromium": "151",
