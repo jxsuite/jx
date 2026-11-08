@@ -73,6 +73,8 @@ These invariants are implemented in `packages/collab/src` (`envelope.ts`, `schem
 
 A **type change** — text becoming a `$ref`, an object becoming a scalar — replaces the container, since no shared structure remains to preserve.
 
+The `source` text is the file. A client that mirrors structure into it writes a format file (`.jxn`, Markdown) through its serializer over the room's current `source`, not over the text that client last read, so the merge keeps what a peer typed into the text since: a `.jxn` comment survives a peer's canvas edit. The write is a minimal character edit in one transaction.
+
 ## 4. Enablement & Degradation
 
 > **Status: Partial.** The four states, the freeze and read-only indicators, clearing the awareness `selection` on unbind, the undo-scope sentence and the `project.json` exclusion ship (`packages/studio/src/collab/collab-state.ts`, `collab-session.ts`, `presence-chips.ts`, `monaco-binding.ts`). An attach that could not open never reaches `failed`: `openDoc` (`packages/collab/src/ws-client.ts`) resolves `null` when the open times out (a relay that is down, a handshake `selectSubprotocol` refused) or the server refuses before `opened`; both adapters (`packages/studio/src/platforms/devserver.ts`, `cloud.ts`) return `null` after logging `negotiateCollab`'s `refused` reason with `console.warn`; and the dev server adapter caches an unanswered probe as `null` for the life of the page. `attachSession` shows every null handle as Solo (`detached`), the collapse the table exists to prevent. The state machine this section promises is not written.

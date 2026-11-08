@@ -8,6 +8,7 @@
  * @docs framework/site/i18n
  */
 
+import { parseNativeDocument } from "@jxsuite/schema/jxn";
 import { isNonNullObject, isString } from "@jxsuite/schema/guards";
 import { projectState } from "./store";
 import { getPlatform } from "./platform";
@@ -252,9 +253,10 @@ export async function resolveLayoutDoc(layoutPath: string) {
   try {
     const platform = getPlatform();
     const content = await platform.readFile(normalized);
-    /* SAFETY: a `$layout` target is a Jx document file, which is a JSON element object; the slot
-       walk that consumes it checks `children` is an array before reading any of it. */
-    const doc = JSON.parse(content) as JxMutableNode;
+    /* SAFETY: a `$layout` target is a Jx document file in either native format (`compiler.md`
+       §2.3), an element object; the slot walk that consumes it checks `children` is an array before
+       reading any of it. */
+    const doc = parseNativeDocument(content, normalized) as JxMutableNode;
     layoutCache.set(normalized, doc);
     return structuredClone(doc);
   } catch {

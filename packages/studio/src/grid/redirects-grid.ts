@@ -74,7 +74,7 @@ interface RedirectsPatch {
 }
 
 /** Extensions the router treats as pages. Anything else under `pages/` is an asset, not a route. */
-const PAGE_EXTENSIONS = [".json", ".md", ".html"];
+const PAGE_EXTENSIONS = [".json", ".jxn", ".md", ".html"];
 
 // ─── Columns and rows ─────────────────────────────────────────────────────────
 

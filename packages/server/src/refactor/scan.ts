@@ -7,13 +7,20 @@
  * rename that rewrites a file the usage count never looked at is a lie in both directions.
  */
 
-import { extname } from "node:path";
+import { basename, extname } from "node:path";
 import { readFile } from "node:fs/promises";
 import type { FormatRegistry, ValueEdit } from "@jxsuite/schema/format-registry";
 import { isJsonObject } from "@jxsuite/schema/guards";
 import { rewriteJson } from "@jxsuite/schema/json-layout";
-import { isJxnPath, parseJxn, serializeJxn } from "@jxsuite/schema/jxn";
-import type { JsonValue, JxDocument } from "@jxsuite/schema/types";
+import {
+  classifyJxn,
+  isJxnPath,
+  parseJxn,
+  parseProject,
+  serializeJxn,
+  serializeProject,
+} from "@jxsuite/schema/jxn";
+import type { JsonValue, JxDocument, ProjectConfig } from "@jxsuite/schema/types";
 
 /** Normalise a path to forward slashes (Windows `path` returns backslashes). */
 export const fwd = (p: string) => p.replaceAll("\\", "/");
@@ -86,6 +93,18 @@ export async function loadDoc(fp: string, registry: FormatRegistry): Promise<Loa
       rewrite: null,
       // Over the text it replaces, so a rename changes the references and not the formatting.
       serialize: (doc) => Promise.resolve(rewriteJson(doc, raw)),
+    };
+  }
+  if (basename(fp) === "project.jxn" && classifyJxn(raw) === "project") {
+    /* The project file, in its own grammar (`site-architecture.md` §2.3): a rename repairs the
+       references it holds, `defaults.layout` among them, and the merge keeps its comments. A page
+       named `project.jxn` declares no project, and is read as the document it is below. */
+    const config: unknown = parseProject(raw, fp);
+    return {
+      doc: isJsonObject(config) ? config : null,
+      rewrite: null,
+      // SAFETY: the configuration this just read, with reference values replaced by reference values.
+      serialize: (doc) => Promise.resolve(serializeProject(doc as ProjectConfig, raw)),
     };
   }
   if (isJxnPath(fp)) {

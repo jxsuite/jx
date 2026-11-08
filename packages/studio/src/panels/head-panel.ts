@@ -27,6 +27,7 @@
  * `packages/compiler/src/site/head-merger.ts` by `tests/head-panel.test.ts`.
  */
 
+import { isNativeDocumentPath } from "@jxsuite/schema/jxn";
 import { isString } from "@jxsuite/schema/guards";
 import { withPageDescription } from "@jxsuite/site/head-merger";
 import { projectState, renderOnly, updateSession } from "../store";
@@ -92,10 +93,10 @@ export async function listLayoutEntries(): Promise<{ name: string; path: string 
     const platform = getPlatform();
     const listing = await platform.listDirectory("layouts");
     layoutEntries = listing
-      .filter((f: DirEntry) => f.type === "file" && f.name.endsWith(".json"))
+      .filter((f: DirEntry) => f.type === "file" && isNativeDocumentPath(f.name))
       .map((f: DirEntry) => ({
         name: f.name
-          .replace(/\.json$/, "")
+          .replace(/\.(?:json|jxn)$/, "")
           .replaceAll(/[-_]+/g, " ")
           .replaceAll(/\b\w/g, (c) => c.toUpperCase()),
         path: `./layouts/${f.name}`,
@@ -833,7 +834,7 @@ export function layoutDisplayName(path: string): string {
     path
       .replace(/^\.\//, "")
       .replace(/^layouts\//, "")
-      .replace(/\.json$/, "")
+      .replace(/\.(?:json|jxn)$/, "")
       .replaceAll(/[-_/]+/g, " ")
       .replaceAll(/\b\w/g, (c) => c.toUpperCase()) || path
   );

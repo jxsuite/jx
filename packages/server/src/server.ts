@@ -42,6 +42,8 @@ import { handleCodeApi } from "./code-api.ts";
 import { handleAiApi } from "./ai-api.ts";
 import { handleImportApi } from "./import-api.ts";
 import { mediaTypeForPath } from "@jxsuite/schema/media-type";
+import { isJxnPath } from "@jxsuite/schema/jxn";
+import { jxnAsJson } from "@jxsuite/site/serve";
 import { problem } from "./problem.ts";
 
 import { resolveNpmPath } from "./npm-path.ts";
@@ -175,7 +177,15 @@ export async function createDevServer(options: {
    * implementations to stop using. `mediaTypeForPath` answers null everywhere else, so the
    * inference stays in charge of the ordinary cases.
    */
-  const fileResponse = (file: ReturnType<typeof Bun.file>) => {
+  const fileResponse = async (file: ReturnType<typeof Bun.file>) => {
+    if (file.name !== undefined && isJxnPath(file.name)) {
+      /* The canvas runtime fetches a `$ref` and reads it as JSON, as a site origin answers it
+         (`@jxsuite/site` `serve.ts`); Studio reads a file's text through `/__studio/file`. */
+      return jxnAsJson(await file.bytes(), file.name, (type) => ({
+        ...NO_CACHE,
+        "Content-Type": type,
+      }));
+    }
     const corrected = file.name === undefined ? null : mediaTypeForPath(file.name);
     return new Response(file, {
       headers: corrected === null ? NO_CACHE : { ...NO_CACHE, "Content-Type": corrected },

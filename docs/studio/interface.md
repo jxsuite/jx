@@ -180,9 +180,9 @@ The new file is written with the starting content its type calls for: a content 
 
 ## Converting a file to another format
 
-Right-click a page or component in the Files tree and choose **Convert Format…** to move it between formats: a Markdown page to JSON, or back. The file keeps its name and takes the new extension, and every `$ref` in your project that pointed at it is rewritten to match. The tab you had open follows.
+Right-click a page or component in the Files tree and choose **Convert Format…** to move it between formats: a Markdown page to JSON, a JSON page to [Jx Notation](/docs/framework/concepts/jxn-files), or back. The file keeps its name and takes the new extension, and every `$ref` in your project that pointed at it is rewritten to match. The tab you had open follows.
 
-Studio offers the action only where it means something. Files outside `pages/` and `components/` are not offered it, nor are layouts (which are always JSON), nor anything inside a content collection: converting an entry would quietly remove it from its collection, and converting a file that merely sits beside the entries would quietly add it.
+Studio offers the action only where it means something. Files outside `pages/` and `components/` are not offered it, nor are layouts (use `jx convert` for those), nor anything inside a content collection: converting an entry would quietly remove it from its collection, and converting a file that merely sits beside the entries would quietly add it.
 
 Before the button, the dialog tells you what is about to happen: how many references will be rewritten, whether the result reads back identically, and that the original is not kept. Afterwards, a reference the refactor could not rewrite is [reported as a warning naming the file](/docs/studio/projects/pages-layouts-components#before-you-delete-rename-or-convert) rather than as a plain success. If the file is open with unsaved changes, the conversion is refused until you save or discard them.
 

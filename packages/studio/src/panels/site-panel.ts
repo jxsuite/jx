@@ -25,6 +25,7 @@
  * @docs studio/interface
  */
 
+import { isNativeDocumentPath } from "@jxsuite/schema/jxn";
 import { nothing } from "lit-html";
 import { draggable } from "@atlaskit/pragmatic-drag-and-drop/element/adapter";
 import { disableNativeDragPreview } from "@atlaskit/pragmatic-drag-and-drop/element/disable-native-drag-preview";
@@ -213,7 +214,7 @@ export function mayDefineComponent(path: string): boolean {
     return true;
   }
   return (
-    path.endsWith(".json") &&
+    isNativeDocumentPath(path) &&
     !isProjectConfigPath(path) &&
     !NON_COMPONENT_DIRS.some((dir) => path.startsWith(dir))
   );

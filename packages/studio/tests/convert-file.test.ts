@@ -361,11 +361,25 @@ describe("the open tab", () => {
 
 describe("choosing the target", () => {
   test("one target answers itself — no dialog before the confirmation", async () => {
-    // With only Markdown installed this is every conversion in the project, which is why the picker
-    // Below is a real control and not a formality.
-    const pending = convertFile("pages/about.md");
+    // With no format installed, a JSON page has one target, Jx Notation, which is native.
+    install({ "pages/about.json": '{ "tagName": "main", "textContent": "About" }' });
+    setFormats([]);
+    const pending = convertFile("pages/about.json");
+    await answerConfirm(true);
+    expect(await pending).toBe("pages/about.jxn");
+    // The document as it is: no `children` it never had, which a format document is given.
+    expect(state.files.get("pages/about.jxn")).toBe("/- kdl-version 2\n\nmain About\n");
+  });
+
+  test("a .jxn page goes back to JSON as the same document", async () => {
+    install({ "pages/about.jxn": "/- kdl-version 2\n\n// Kept until now.\nmain About\n" });
+    const pending = convertFile("pages/about.jxn", ".json");
     await answerConfirm(true);
     expect(await pending).toBe("pages/about.json");
+    expect(JSON.parse(state.files.get("pages/about.json")!)).toEqual({
+      tagName: "main",
+      textContent: "About",
+    });
   });
 
   test("two or more ask, and the pick decides", async () => {
@@ -388,7 +402,7 @@ describe("choosing the target", () => {
     }
     expect(
       [...topDialog()!.querySelectorAll("option")].map((el) => el.getAttribute("value")),
-    ).toEqual([".json", ".mdx"]);
+    ).toEqual([".json", ".jxn", ".mdx"]);
     picker.value = ".mdx";
     picker.dispatchEvent(new Event("change", { bubbles: true }));
     await flush();
@@ -566,11 +580,11 @@ describe("the command record", () => {
 
   test("its format enum is derived when READ, not when the record was built", () => {
     const format = argsOf().properties?.format;
-    expect(format?.enum).toEqual([".json", ".md"]);
+    expect(format?.enum).toEqual([".json", ".jxn", ".md"]);
     setFormats([]);
-    // A snapshot taken at module scope would still say [".json", ".md"] here — and the palette, the
-    // AI tool list and the shot contract all read the property, not the builder.
-    expect(format?.enum).toEqual([".json"]);
+    // A snapshot taken at module scope would still list three extensions here — and the palette,
+    // The AI tool list and the shot contract all read the property, not the builder.
+    expect(format?.enum).toEqual([".json", ".jxn"]);
   });
 
   test("nothing restores a convert, and the record says so rather than pretending", () => {
@@ -588,10 +602,12 @@ describe("the command record", () => {
   });
 
   test("run with no stated format lets the one target answer for itself", async () => {
-    const pending = record().run(emptyContext(), { source: "pages/about.md" });
+    install({ "pages/about.json": '{ "tagName": "main" }' });
+    setFormats([]);
+    const pending = record().run(emptyContext(), { source: "pages/about.json" });
     await answerConfirm(true);
     await pending;
-    expect(state.files.has("pages/about.json")).toBe(true);
+    expect(state.files.has("pages/about.jxn")).toBe(true);
   });
 });
 

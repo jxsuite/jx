@@ -491,7 +491,10 @@ async function ensureFiles(): Promise<void> {
   renderOverlay();
   try {
     await loadFormats();
-    const hits: readonly SearchHit[] = await getPlatform().searchFiles("", documentExtensions());
+    const hits: readonly SearchHit[] = await getPlatform().searchFiles("", [
+      ".jxn",
+      ...documentExtensions(),
+    ]);
     _files = hits.map((hit) => ({
       kind: "file" as const,
       path: hit.path,

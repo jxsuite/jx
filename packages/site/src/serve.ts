@@ -149,15 +149,24 @@ export async function serveSite(
  *
  * The runtime fetches a `$ref` and calls `res.json()`, on any origin, so answering JSON here keeps
  * a KDL parser out of every page. A file that does not read answers 422 with the reason, because
- * the runtime reports a failed fetch by its status and this one is the author's to fix.
+ * the runtime reports a failed fetch by its status and this one is the author's to fix. The dev
+ * server's canvas origin answers the same way, with its own headers.
+ *
+ * @param bytes The file.
+ * @param path Its path, which names it in an error.
+ * @param headers The headers for a response of a media type.
  */
-function jxnAsJson(bytes: Uint8Array<ArrayBuffer>, path: string): Response {
+export function jxnAsJson(
+  bytes: Uint8Array<ArrayBuffer>,
+  path: string,
+  headers: (type: string) => HeadersInit = siteHeaders,
+): Response {
   try {
     const document = parseJxn(new TextDecoder().decode(bytes), path);
-    return Response.json(document, { headers: siteHeaders("application/json;charset=utf-8") });
+    return Response.json(document, { headers: headers("application/json;charset=utf-8") });
   } catch (error) {
     return new Response(errorMessage(error), {
-      headers: siteHeaders("text/plain;charset=utf-8"),
+      headers: headers("text/plain;charset=utf-8"),
       status: 422,
     });
   }

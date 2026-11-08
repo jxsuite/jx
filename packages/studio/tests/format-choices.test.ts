@@ -82,13 +82,23 @@ describe("knownDocumentExtensions", () => {
 
 describe("convertTargets", () => {
   test("a markdown page offers JSON, and a JSON page offers markdown", () => {
-    expect(convertTargets("pages/about.md")).toEqual([{ ext: ".json", label: "JSON (.json)" }]);
-    expect(convertTargets("pages/about.json")).toEqual([{ ext: ".md", label: "Markdown (.md)" }]);
+    expect(convertTargets("pages/about.md")).toEqual([
+      { ext: ".json", label: "JSON (.json)" },
+      { ext: ".jxn", label: "Jx Notation (.jxn)" },
+    ]);
+    expect(convertTargets("pages/about.json")).toEqual([
+      { ext: ".jxn", label: "Jx Notation (.jxn)" },
+      { ext: ".md", label: "Markdown (.md)" },
+    ]);
+  });
+
+  test("a .jxn page offers JSON and markdown, and never itself", () => {
+    expect(convertTargets("pages/about.jxn").map((t) => t.ext)).toEqual([".json", ".md"]);
   });
 
   test("components too, by the kind their directory implies", () => {
-    expect(convertTargets("components/card.md").map((t) => t.ext)).toEqual([".json"]);
-    expect(convertTargets("components/card.json").map((t) => t.ext)).toEqual([".md"]);
+    expect(convertTargets("components/card.md").map((t) => t.ext)).toEqual([".json", ".jxn"]);
+    expect(convertTargets("components/card.json").map((t) => t.ext)).toEqual([".jxn", ".md"]);
   });
 
   test("a content-only format is never an endpoint, in either direction", () => {
@@ -115,7 +125,7 @@ describe("convertTargets", () => {
     resetStudioState({ projectConfig: { ...POSTS, layout: "./components/base.json" } });
     expect(convertTargets("components/base.json")).toEqual([]);
     // …and only that one.
-    expect(convertTargets("components/card.json").map((t) => t.ext)).toEqual([".md"]);
+    expect(convertTargets("components/card.json").map((t) => t.ext)).toEqual([".jxn", ".md"]);
   });
 
   test("a collection's files refuse, in BOTH directions", () => {
@@ -130,9 +140,9 @@ describe("convertTargets", () => {
     expect(convertTargets("components/posts/notes.json")).toEqual([]);
   });
 
-  test("an unreachable registry offers nothing rather than guessing", () => {
+  test("an unreachable registry offers the native pair, and nothing it would have to guess", () => {
     setFormats([]);
-    expect(convertTargets("pages/about.json")).toEqual([]);
+    expect(convertTargets("pages/about.json").map((t) => t.ext)).toEqual([".jxn"]);
     expect(convertTargets("pages/about.md")).toEqual([]);
   });
 
@@ -146,11 +156,11 @@ describe("convertTargetExtensions", () => {
   test("every extension that is a target somewhere — the command argument's declared values", () => {
     // Necessarily broader than any single file's answer: a command argument's enum cannot depend on
     // Another argument, so the per-file rule still decides and `convertFile` re-checks it.
-    expect(convertTargetExtensions()).toEqual([".json", ".md"]);
+    expect(convertTargetExtensions()).toEqual([".json", ".jxn", ".md"]);
   });
 
   test("it is a getter's worth of work, so it follows the registry", () => {
     setFormats([]);
-    expect(convertTargetExtensions()).toEqual([".json"]);
+    expect(convertTargetExtensions()).toEqual([".json", ".jxn"]);
   });
 });

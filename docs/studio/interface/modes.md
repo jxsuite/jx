@@ -90,15 +90,15 @@ Your project's configuration, `project.json`, opens as a document in the Styles 
 
 Every file opens in its natural editor and view, and the two controls offer only what that file supports:
 
-| File                               | Opens in          | Editor also offers      | View also offers        |
-| ---------------------------------- | ----------------- | ----------------------- | ----------------------- |
-| Markdown pages and content (`.md`) | **Canvas** · Edit | **Code**                | **Design**, **Preview** |
-| Components and pages (`.json`)     | **Canvas** · Edit | **Code**, **Elements**  | **Design**, **Preview** |
-| Spreadsheets (`.csv`)              | **Grid**          | **Code**                | —                       |
-| Images, video, audio, fonts, PDFs  | **Media**         | —                       | —                       |
-| PNG, JPEG and WebP images          | **Media**         | **Image**               | —                       |
-| Vector images (`.svg`)             | **Media**         | **Code**                | —                       |
-| The project file (`project.json`)  | **Elements**      | **Variables**, **Code** | —                       |
+| File                                   | Opens in          | Editor also offers      | View also offers        |
+| -------------------------------------- | ----------------- | ----------------------- | ----------------------- |
+| Markdown pages and content (`.md`)     | **Canvas** · Edit | **Code**                | **Design**, **Preview** |
+| Components and pages (`.json`, `.jxn`) | **Canvas** · Edit | **Code**, **Elements**  | **Design**, **Preview** |
+| Spreadsheets (`.csv`)                  | **Grid**          | **Code**                | —                       |
+| Images, video, audio, fonts, PDFs      | **Media**         | —                       | —                       |
+| PNG, JPEG and WebP images              | **Media**         | **Image**               | —                       |
+| Vector images (`.svg`)                 | **Media**         | **Code**                | —                       |
+| The project file (`project.json`)      | **Elements**      | **Variables**, **Code** | —                       |
 
 Any file with uncommitted changes can also be compared, including files that have no other editor at all, but not from the Editor control: you open a comparison by choosing the file in [Source control](/docs/studio/publish/source-control), which opens it in **Diff** in the Publish workspace, and **Back to Publish** leaves it. Opening a file with no editor from the Files tree still says Studio has no editor for it; the comparison asks the narrower question of what changed, and answers it.
 

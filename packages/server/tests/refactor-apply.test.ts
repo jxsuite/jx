@@ -644,4 +644,23 @@ describe("applyRename keeps the formatting of what it repairs", () => {
       `${JSON.stringify({ ...value, $layout: "./layouts/main.json" }, null, "\t")}\n`,
     );
   });
+
+  test("project.jxn keeps its comments, and a page by that name is a page", async () => {
+    const project = [
+      "/- kdl-version 2",
+      'project "Site"',
+      "",
+      "// Every page inherits this layout.",
+      'defaults layout="./layouts/base.json" lang=en',
+      "",
+    ].join("\n");
+    write("project.jxn", project);
+    write("pages/project.jxn", '$layout "./layouts/base.json"\n\nmain "About"\n');
+    write("pages/about.jxn", '$layout "./layouts/base.json"\n\nmain "About"\n');
+    write("layouts/base.json", '{ "tagName": "main" }');
+    await move("layouts/base.json", "layouts/main.json");
+    expect(read("project.jxn")).toBe(project.replace("base.json", "main.json"));
+    expect(read("pages/about.jxn")).toContain('"./layouts/main.json"');
+    expect(read("pages/project.jxn")).toContain('"./layouts/main.json"');
+  });
 });

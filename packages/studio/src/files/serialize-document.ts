@@ -14,6 +14,7 @@
 
 import { getGridController } from "../grid/grid-controller";
 import {
+  JXN_FORMAT_NAME,
   PROJECT_FORMAT_NAME,
   defaultContentFormat,
   formatByName,
@@ -41,9 +42,10 @@ export async function serializeDocument(tab: Tab): Promise<string> {
   }
   await loadFormats();
   const sourceFormat = formatByName(tab.doc.sourceFormat);
-  if (sourceFormat?.name === PROJECT_FORMAT_NAME) {
-    /* A `project.jxn` is its configuration and nothing else: no frontmatter to fold in, and no
-       `children` a document would be given, which the file would then gain as a member. */
+  if (sourceFormat?.name === PROJECT_FORMAT_NAME || sourceFormat?.name === JXN_FORMAT_NAME) {
+    /* Jx Notation is the document itself, in either grammar: no frontmatter to fold in (the format
+       opens whole), and no `children` a format document is given, which a `.jxn` file would then
+       gain as `(array).children` on an element that had none, and a project file as a member. */
     return formatSerialize(sourceFormat.name, tab.doc.document, {
       mode: "roundtrip",
       ...(tab.doc.source !== null && { source: tab.doc.source }),

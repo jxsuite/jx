@@ -63,6 +63,14 @@ describe("componentSpecimen", () => {
     definition = null;
     expect(await componentSpecimen(CARD)).toEqual({ kind: "bare" });
   });
+
+  test("a .jxn definition is a project definition too", async () => {
+    examples = new Map([["date", "2026-06-20"]]);
+    expect(await componentSpecimen({ ...CARD, path: "components/x-card.jxn" })).toEqual({
+      kind: "props",
+      props: { date: "2026-06-20" },
+    });
+  });
 });
 
 describe("loadStylebookSpecimens", () => {

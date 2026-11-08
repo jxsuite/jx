@@ -432,7 +432,18 @@ async function mirrorNow(session: ActiveSession): Promise<void> {
     return;
   }
   try {
-    const text = await _serialize(session.tab);
+    /* A format file is written over the room's CURRENT text, not the text this client last read:
+       the shared text is the file (collab.md §3.1), and a comment a peer typed into it since is
+       part of what the serializer must keep. This client's own read can be minutes old, because
+       only the source reconciler parses the shared text back. */
+    const { tab } = session;
+    if (tab.doc.sourceFormat !== null) {
+      const shared = session.collab.sourceText(session.handle.doc).toString();
+      if (shared !== "") {
+        tab.doc.source = shared;
+      }
+    }
+    const text = await _serialize(tab);
     session.collab.updateSourceText(session.handle.doc, text, session.collab.MIRROR_ORIGIN);
   } catch {
     // Serialization failures leave the previous mirror in place; the next edit retries.

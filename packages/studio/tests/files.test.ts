@@ -446,6 +446,13 @@ describe("loadProject", () => {
 // ─── openHomePage ─────────────────────────────────────────────────────────────
 
 describe("openHomePage", () => {
+  test("finds a .jxn home page, which no format needs to claim", async () => {
+    installFsPlatform({ "pages/index.jxn": 'main "Home"\n' });
+    siteState();
+
+    expect(await findHomePage()).toBe("pages/index.jxn");
+  });
+
   test("falls back to pages/index.json when no format candidate exists", async () => {
     installFsPlatform({ "pages/index.json": JSON.stringify({ tagName: "main" }) });
     siteState();

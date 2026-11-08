@@ -7,7 +7,6 @@ claims:
 requires:
   - spec/typescript-function-bodies
   - spec/document-scripts
-  - studio/jxn-documents
 workspaces:
   - packages/schema
   - packages/studio

@@ -562,6 +562,7 @@ describe("staying current", () => {
     expect(mayDefineComponent("components/card.json")).toBe(true);
     expect(mayDefineComponent("components/card.css")).toBe(true);
     expect(mayDefineComponent("widgets/hero.json")).toBe(true);
+    expect(mayDefineComponent("widgets/hero.jxn")).toBe(true);
     expect(mayDefineComponent("pages/about.json")).toBe(false);
     expect(mayDefineComponent("layouts/base.json")).toBe(false);
     expect(mayDefineComponent("content/posts/first.json")).toBe(false);

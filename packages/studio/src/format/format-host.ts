@@ -78,6 +78,8 @@ export interface StudioFormat {
  * What opening a `.jxn` file is told about its format. It is not in {@link getFormats}, which is
  * what a project chose and what a picker offers: a new document is still `.json`.
  */
+export const JXN_FORMAT_NAME = "jxn";
+
 const JXN_FORMAT: StudioFormat = {
   capabilities: {
     parse: { identifier: "parse", timing: ["compiler", "server"] },
@@ -87,7 +89,7 @@ const JXN_FORMAT: StudioFormat = {
   exportTarget: false,
   extensions: [".jxn"],
   mediaType: null,
-  name: "jxn",
+  name: JXN_FORMAT_NAME,
   remote: false,
   studio: { documentMode: { default: "component" } },
 };
@@ -348,13 +350,31 @@ export function documentExtensions(kind?: string): string[] {
 }
 
 /**
- * The extensions the build routes under `pages/`: `.json`, and every extension a page format claims
- * (`discoverPages` in `@jxsuite/compiler` walks with the same set). Waits for the registry, so a
- * Markdown page is never judged unroutable because the formats had not landed yet.
+ * The extensions every host reads as a document with no format class to import: JSON and Jx
+ * Notation (`spec.md` §22, studio.md §8.5).
+ */
+export const NATIVE_DOCUMENT_EXTENSIONS: readonly string[] = [".json", ".jxn"];
+
+/**
+ * The extensions an existing document of `kind` may be read from: the native pair and every
+ * extension a format of that kind claims. What FINDS a document, where {@link documentExtensions} is
+ * what a picker offers to CREATE one in, which is why the two are not one list: a new document is
+ * not offered as `.jxn` yet.
+ *
+ * @param kind A document kind, or every kind.
+ */
+export function readableDocumentExtensions(kind?: string): string[] {
+  return [...NATIVE_DOCUMENT_EXTENSIONS, ...documentExtensions(kind)];
+}
+
+/**
+ * The extensions the build routes under `pages/`: `.json`, `.jxn`, and every extension a page
+ * format claims (`discoverPages` in `@jxsuite/compiler` walks with the same set). Waits for the
+ * registry, so a Markdown page is never judged unroutable because the formats had not landed yet.
  */
 export async function routedPageExtensions(): Promise<string[]> {
   await loadFormats();
-  return [".json", ...documentExtensions("page")];
+  return readableDocumentExtensions("page");
 }
 
 /** The default format for new content documents (first content-kind serializer). */

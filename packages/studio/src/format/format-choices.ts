@@ -13,7 +13,13 @@
 
 import { isString } from "@jxsuite/schema/guards";
 import { collectionForFile } from "../content/collection-match";
-import { documentExtensions, formatByExtension, formatForPath, getFormats } from "./format-host";
+import {
+  JXN_FORMAT_NAME,
+  documentExtensions,
+  formatByExtension,
+  formatForPath,
+  getFormats,
+} from "./format-host";
 import { projectState } from "../store";
 
 /** One row of a format picker: the extension it writes, and the name the reader sees. */
@@ -163,7 +169,8 @@ export function convertTargets(path: string | null | undefined): FormatChoiceRow
   if (source) {
     rows.push({ ext: ".json", label: "JSON (.json)" });
   }
-  for (const ext of documentExtensions()) {
+  // Jx Notation first: it is native, so every project can write it, without importing a format.
+  for (const ext of [".jxn", ...documentExtensions()]) {
     const writer = formatByExtension(ext, "serialize");
     if (
       !writer ||
@@ -173,7 +180,10 @@ export function convertTargets(path: string | null | undefined): FormatChoiceRow
     ) {
       continue;
     }
-    rows.push({ ext, label: `${writer.name} (${ext})` });
+    rows.push({
+      ext,
+      label: writer.name === JXN_FORMAT_NAME ? "Jx Notation (.jxn)" : `${writer.name} (${ext})`,
+    });
   }
   return rows;
 }
@@ -187,7 +197,7 @@ export function convertTargets(path: string | null | undefined): FormatChoiceRow
  * `convertFile` re-checks it, so this list is what may be ASKED for and not what will be accepted.
  */
 export function convertTargetExtensions(): string[] {
-  const exts = new Set<string>([".json"]);
+  const exts = new Set<string>([".json", ".jxn"]);
   for (const format of getFormats()) {
     if (!format.capabilities.serialize || !declaresDocumentKind(format.documentKinds)) {
       continue;

@@ -23,6 +23,7 @@
  * @docs studio/design/stylebook
  */
 
+import { isNativeDocumentPath } from "@jxsuite/schema/jxn";
 import { componentExampleProps } from "../browse/component-examples";
 import { readDefinition, rendersWith } from "../browse/library-preview";
 import type { ComponentEntry } from "../files/components";
@@ -42,7 +43,7 @@ const cache = new WeakMap<readonly ComponentEntry[], Map<string, Promise<Stylebo
 /** One component's specimen. A component that is not a project JSON definition is drawn bare. */
 export async function componentSpecimen(component: ComponentEntry): Promise<StylebookSpecimen> {
   const { path } = component;
-  if (component.source === "npm" || !path?.endsWith(".json")) {
+  if (component.source === "npm" || path === undefined || !isNativeDocumentPath(path)) {
     return { kind: "bare" };
   }
   const definition = await readDefinition(path);

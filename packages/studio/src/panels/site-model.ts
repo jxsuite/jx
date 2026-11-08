@@ -19,6 +19,7 @@
  * @docs studio/interface
  */
 
+import { isNativeDocumentPath } from "@jxsuite/schema/jxn";
 import { compareRoutes, fileToRoute, isRoutedPageFile } from "@jxsuite/site/routes";
 import { localeOfPath, translationKeyOfPath } from "@jxsuite/schema/locale";
 import type { FileRoute } from "@jxsuite/site/routes";
@@ -335,7 +336,7 @@ export function templateRows(
   defaultPath: string | null = null,
 ): SiteTemplateRow[] {
   return paths
-    .filter((path) => path.endsWith(".json"))
+    .filter((path) => isNativeDocumentPath(path))
     .toSorted((a, b) => a.localeCompare(b))
     .flatMap((path) => {
       const label = humanize(stem(path));

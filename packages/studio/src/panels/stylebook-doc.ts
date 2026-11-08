@@ -16,6 +16,7 @@
  * hoist is gone and a nested `@name` block stays where the author wrote it.
  */
 
+import { isNativeDocumentPath } from "@jxsuite/schema/jxn";
 import { serializeJxPath } from "../canvas/path-mapping";
 import { isKeyframesAtRule } from "@jxsuite/runtime/css";
 import type { StylebookEntry } from "./stylebook-panel";
@@ -346,7 +347,7 @@ export function buildStylebookDoc(opts: BuildStylebookDocOpts): StylebookDocResu
       const bodyPath = sectionBodyPath();
       const cards = comps.map((comp, ci) => {
         const cardPath = [...bodyPath, "children", ci];
-        const renderable = comp.source !== "npm" && comp.path?.endsWith(".json");
+        const renderable = comp.source !== "npm" && isNativeDocumentPath(comp.path ?? "");
         if (renderable) {
           // Root-relative $ref: registerElements resolves it against docBase (the canvas origin).
           // Collapse leading slashes — an absolute projectRoot ("/home/…") would otherwise produce

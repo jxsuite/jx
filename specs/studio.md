@@ -1032,12 +1032,12 @@ The studio loads any registered format file (e.g. `.md` with the `Markdown` clas
 **Which pairs are offered is DERIVED**, from five conditions that must all hold:
 
 1. The file sits under `pages/` or `components/`. Both are conventions the build hard-codes rather than reads, so a convert may lean on them — and the alternative is offering a conversion for `package.json`, `tsconfig.json` and every `nav.json` that no format and no schema claims.
-2. The source reads as a Jx document: `.json`, or an extension whose `parse`-capable format declares `page` or `component` in `documentKinds`. Membership of those kinds already ENTAILS that `parse` returns a document — the compiler builds its page and component globs from `documentExtensions("page"|"component")` and casts every `parse` result — so no new declaration is needed, and a `content`-only format (whose `parse` may return entries rather than a document) is excluded by the same test.
-3. The target writes one: `.json`, or a `serialize`-capable format declaring `page` or `component`.
+2. The source reads as a Jx document: `.json` or `.jxn` (§8.5), or an extension whose `parse`-capable format declares `page` or `component` in `documentKinds`. Membership of those kinds already ENTAILS that `parse` returns a document — the compiler builds its page and component globs from `documentExtensions("page"|"component")` and casts every `parse` result — so no new declaration is needed, and a `content`-only format (whose `parse` may return entries rather than a document) is excluded by the same test.
+3. The target writes one: `.json` or `.jxn`, or a `serialize`-capable format declaring `page` or `component`. The two native ones need no format to be imported, so every JSON page is offered Jx Notation and the reverse.
 4. The target format differs from the source's, compared by format rather than by extension.
 5. Neither the file nor its directory belongs to a content collection, and the file is not a layout.
 
-**A layout is not offered, and that clause is hand-written.** The build reads a layout in either native format (`compiler.md` §2.3), Studio's reader parses it as JSON, neither dispatches through a format class, and there is no `"layout"` document kind for a format to declare — so unlike every other clause here, this one cannot be derived and says so where it is written.
+**A layout is not offered, and that clause is hand-written.** The build and Studio both read a layout in either native format (`compiler.md` §2.3, §8.5), neither dispatches through a format class, and there is no `"layout"` document kind for a format to declare — so unlike every other clause here, this one cannot be derived and says so where it is written. `jx convert` moves a layout between the two native formats.
 
 **A collection's files refuse in BOTH directions.** Converting an entry drops it out of its collection's discovery glob; converting a file that merely sits beside the entries INTO the collection's format enlists it as an entry nobody seeded. Source and target share a directory, so one rule covers both sides.
 
@@ -1053,9 +1053,11 @@ The studio loads any registered format file (e.g. `.md` with the `Markdown` clas
 
 ### 8.5 `.jxn` Documents
 
-> **Status: Pending.** Studio opens and saves `.json` and format-extension files. A `.jxn` file (spec.md §22) has no path through it yet.
+A `.jxn` file opens, edits and saves through the same tabs and modes as any other document, and a save keeps the comments and layout of the text it started from. Studio reads one wherever it reads a document: the home page, the Site panel's pages and templates, a page's layout on the canvas and in the Layout picker, component cards and specimens, Quick Open, the redirect and link pickers, and a component copied from another. The canvas fetches a `.jxn` component or layout through the runtime, which the editing server answers as JSON (`server.md` §3.4).
 
-A `.jxn` file opens, edits and saves through the same tabs and modes as any other document, and a save keeps the comments and layout of the text it started from.
+A save writes the document through `serializeJxn` over the text the file was read as, so only the nodes that changed are rewritten. An element is written as it is held: a `.jxn` file never gains a `children` member its element did not have. In a collaboration session the text a save merges with is the room's current shared text rather than the text this client last read, so a comment a peer typed in the Code view survives an edit made on the canvas (`collab.md` §3.1).
+
+Convert offers `.jxn` for every page and component it offers a conversion for, and `.json` and the project's other formats for a `.jxn` file (§8.4). A new document is still `.json`, and a picker that creates one does not offer `.jxn`.
 
 ---
 

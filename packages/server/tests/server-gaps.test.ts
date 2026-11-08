@@ -25,6 +25,8 @@ function setupFixtures() {
   writeFileSync(join(FIXTURES, "hello.txt"), "hello root");
   writeFileSync(join(FIXTURES, "page.html"), "<html><body><p>hi</p></body></html>");
   writeFileSync(join(FIXTURES, "notes.md"), "# Notes");
+  writeFileSync(join(FIXTURES, "card.jxn"), '/- kdl-version 2\n// A card.\nx-card "Hi"\n');
+  writeFileSync(join(FIXTURES, "broken.jxn"), "x-card {\n");
   writeFileSync(join(FIXTURES, "conf.yaml"), "a: 1\n");
 
   // Build entrypoint
@@ -230,6 +232,17 @@ describe("createDevServer", () => {
       const type = res.headers.get("content-type") ?? "";
       expect(type).toContain("application/yaml");
       expect(type).not.toContain("text/yaml");
+    });
+
+    test("a .jxn file is answered as the JSON the runtime reads, as a site origin answers it", async () => {
+      const res = await fetch(`${base}/card.jxn`);
+      expect(res.headers.get("content-type")).toContain("application/json");
+      expect(res.headers.get("cache-control")).toBe("no-cache");
+      expect(await res.json()).toEqual({ tagName: "x-card", textContent: "Hi" });
+
+      const broken = await fetch(`${base}/broken.jxn`);
+      expect(broken.status).toBe(422);
+      expect(await broken.text()).toContain("broken.jxn");
     });
 
     test("an extension Jx has no opinion about keeps Bun's own inference", async () => {
