@@ -243,6 +243,11 @@
       "position": "sticky",
       "top": "var(--jx-space-3)"
     },
+    "& [part=\"detail\"] [part=\"overrides\"]": {
+      "$description": "The detail is its own column: the colour rows' indent past the name column and the well would push its override list out of the box.",
+      "paddingLeft": "0",
+      "marginBottom": "0"
+    },
     "& [part=\"detail-head\"]": {
       "display": "flex",
       "alignItems": "baseline",
