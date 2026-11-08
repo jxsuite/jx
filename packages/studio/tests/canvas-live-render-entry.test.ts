@@ -11,6 +11,7 @@
 import { installMockPlatform, resetStudioState } from "./harness";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import {
+  entryInPage,
   entryLayout,
   pageLayout,
   rebaseLayoutElementRefs,
@@ -18,12 +19,13 @@ import {
   resolveCanvasLayout,
 } from "../src/canvas/canvas-live-render";
 import { classifyRenderNode } from "../src/canvas/path-mapping";
+import { liveEntryState } from "../src/canvas/live-entry";
 import { invalidateLayoutCache } from "../src/site-context";
 import { invalidateCollectionPages } from "../src/content/collection-pages";
 import { closeAllTabs, openTab } from "../src/workspace/workspace";
 import { getNodeAtPath } from "../src/store";
 import { isJsonObject, isNodeObject, isString } from "@jxsuite/schema/guards";
-import type { JxMutableNode, JxPath } from "@jxsuite/schema/types";
+import type { JsonObject, JxMutableNode, JxPath } from "@jxsuite/schema/types";
 import type { PathMapCtx } from "../src/canvas/path-mapping";
 
 /* SAFETY: harness imports with-dom first, whose GlobalRegistrator copies happy-dom's window members
@@ -298,6 +300,175 @@ describe("writing an entry inside its layout", () => {
     const tab = openEntryTab();
     const result = await resolveCanvasDocument(tab.doc.document, tab);
     expect(result.mapperCtx.layoutWrapped).toBe(false);
+  });
+});
+
+/** The collection's page: a header drawing the entry's fields, then the body it draws. */
+function postPage(over: JsonObject = {}): string {
+  return JSON.stringify({
+    $layout: "./layouts/base.json",
+    $paths: { contentType: "posts", param: "slug" },
+    children: [
+      {
+        children: [
+          { tagName: "h1", textContent: "${state.entry.data.title}" },
+          { tagName: "p", textContent: "${state.entry.data.date} · ${state.entry.data.tag}" },
+        ],
+        tagName: "header",
+      },
+      { children: "${state.entry.$children ?? []}", tagName: "section" },
+    ],
+    state: {
+      entry: {
+        $prototype: "ContentEntry",
+        contentType: "posts",
+        id: { $ref: "#/$params/slug" },
+      },
+    },
+    tagName: "article",
+    ...over,
+  });
+}
+
+describe("writing an entry inside its collection's page", () => {
+  async function resolved(page = postPage(), mode = "edit") {
+    setup({ "layouts/base.json": JSON.stringify(BASE), "pages/blog/[slug].json": page });
+    const tab = openEntryTab(entryBody(), { tag: "Garden", title: "Spring planting" });
+    tab.session.ui.canvasMode = mode;
+    const result = await resolveCanvasDocument(tab.doc.document, tab);
+    const ctx: PathMapCtx = {
+      arrayPaths: new Set(result.mapperCtx.arrayPaths),
+      canvasMode: result.mapperCtx.canvasMode,
+      layoutWrapped: result.mapperCtx.layoutWrapped,
+      pageContentOffset: result.mapperCtx.pageContentOffset,
+      pageContentPrefix: result.mapperCtx.pageContentPrefix,
+    };
+    return { ctx, result, tab };
+  }
+
+  test("the page goes into the layout, and the entry's tree stands where the page draws its body", async () => {
+    const { result } = await resolved();
+    // The base layout's <main> holds the page's own children: its header, then its body section.
+    const pageHeader = renderNodeAt(result.renderDoc, ["children", 1, "children", 0]);
+    expect(pageHeader.$__layout).toEqual({ file: "pages/blog/[slug].json", path: ["children", 0] });
+    const section = renderNodeAt(result.renderDoc, ["children", 1, "children", 1]);
+    expect(section.tagName).toBe("section");
+    expect(section.textContent).toBeUndefined();
+    expect(result.mapperCtx.layoutWrapped).toBe(true);
+    expect(result.mapperCtx.pageContentPrefix).toEqual(["children", 1, "children", 1, "children"]);
+    expect(result.mapperCtx.pageContentOffset).toBe(0);
+  });
+
+  test("an edit inside the spliced body lands on the ENTRY's own document", async () => {
+    const { ctx, result, tab } = await resolved();
+    const renderPath: JxPath = ["children", 1, "children", 1, "children", 1];
+    const rendered = renderNodeAt(result.renderDoc, renderPath);
+    expect(rendered.textContent).toBe("The cold frame is full again.");
+    expect(classifyRenderNode(renderPath, rendered, ctx)).toEqual({
+      kind: "path",
+      path: ["children", 1],
+    });
+    expect(getNodeAtPath(tab.doc.document, ["children", 1])?.textContent).toBe(
+      "The cold frame is full again.",
+    );
+    // The page's own nodes are locked and say which file they come from.
+    const header = renderNodeAt(result.renderDoc, ["children", 1, "children", 0]);
+    expect(classifyRenderNode(["children", 1, "children", 0], header, ctx)).toMatchObject({
+      chrome: true,
+      kind: "layout",
+      layoutFile: "pages/blog/[slug].json",
+    });
+  });
+
+  test("the page's entry is the entry being written, and its text is drawn live and badged", async () => {
+    const { result } = await resolved();
+    expect(result.renderDoc.state?.entry).toEqual({
+      $children: [],
+      collection: "posts",
+      data: { tag: "Garden", title: "Spring planting" },
+      id: "spring-planting",
+    });
+    const h1 = renderNodeAt(result.renderDoc, ["children", 1, "children", 0, "children", 0]);
+    expect(h1.attributes).toMatchObject({
+      "data-jx-bound-field": "title",
+      "data-jx-entry-field": "title",
+    });
+    // Two fields on one line have no single field to write back to: badged, not typed in place.
+    const meta = renderNodeAt(result.renderDoc, ["children", 1, "children", 0, "children", 1]);
+    expect(meta.attributes).toMatchObject({ "data-jx-bound-field": "date \u00B7 tag" });
+    expect(meta.attributes?.["data-jx-entry-field"]).toBeUndefined();
+  });
+
+  test("Preview composes the same page with the live entry, and marks nothing to type in", async () => {
+    const { result } = await resolved(postPage(), "preview");
+    const h1 = renderNodeAt(result.renderDoc, ["children", 1, "children", 0, "children", 0]);
+    expect(h1.textContent).toBe("${state.entry.data.title}");
+    expect(h1.attributes).toBeUndefined();
+    expect(result.renderDoc.state?.entry).toMatchObject({ data: { title: "Spring planting" } });
+  });
+
+  test("a page with no layout is itself the frame the entry is written in", async () => {
+    const { result } = await resolved(postPage({ $layout: false }));
+    expect(renderNodeAt(result.renderDoc, ["children", 0]).tagName).toBe("header");
+    expect(result.mapperCtx.layoutWrapped).toBe(true);
+    expect(result.mapperCtx.pageContentPrefix).toEqual(["children", 1, "children"]);
+  });
+
+  test("a page that draws no body leaves the entry in its layout alone", async () => {
+    const { result } = await resolved(
+      postPage({ children: [{ tagName: "h1", textContent: "${state.entry.data.title}" }] }),
+    );
+    expect(result.mapperCtx.pageContentPrefix).toEqual(["children", 1, "children"]);
+    expect(renderNodeAt(result.renderDoc, ["children", 1, "children", 0]).tagName).toBe("h1");
+    expect(result.renderDoc.state?.entry).toBeUndefined();
+  });
+
+  test("a hand-edited null among the page's children is stepped over", async () => {
+    const { result } = await resolved(
+      postPage({
+        children: [
+          { children: [null], tagName: "header" },
+          { children: "${state.entry.$children ?? []}", tagName: "section" },
+        ],
+      }),
+    );
+    expect(result.renderDoc.state?.entry).toMatchObject({ id: "spring-planting" });
+  });
+
+  test("a body that reads anything besides the entry is not where the entry goes", async () => {
+    const { result } = await resolved(
+      postPage({ children: [{ children: "${state.other.$children}", tagName: "section" }] }),
+    );
+    expect(result.renderDoc.state?.entry).toBeUndefined();
+  });
+
+  test("an unreadable page, and the show-layout toggle off, leave the entry alone", async () => {
+    const { result } = await resolved("{ not json");
+    expect(result.renderDoc.state?.entry).toBeUndefined();
+    const { tab } = await resolved();
+    tab.session.ui.showLayout = false;
+    const alone = await resolveCanvasDocument(tab.doc.document, tab);
+    expect(alone.mapperCtx.layoutWrapped).toBe(false);
+    expect(alone.renderDoc.state?.entry).toBeUndefined();
+  });
+
+  test("entryInPage answers null for a file in no collection", async () => {
+    setup({ "pages/blog/[slug].json": postPage() });
+    expect(await entryInPage(entryBody(), "notes/loose.md")).toBeNull();
+    // An entry whose tree is not a list of children is spliced as an empty body.
+    const spliced = await entryInPage({ tagName: "div" }, "content/posts/spring-planting.md");
+    expect(spliced?.root).toBe("entry");
+    expect(spliced?.file).toBe("pages/blog/[slug].json");
+  });
+
+  test("liveEntryState reads the tab's fields, or none without a tab", () => {
+    expect(liveEntryState(null, "content/posts/a.b.md")).toEqual({
+      $children: [],
+      collection: "posts",
+      data: {},
+      id: "a.b",
+    });
+    expect(liveEntryState(null, "README")).toMatchObject({ collection: null, id: "README" });
   });
 });
 

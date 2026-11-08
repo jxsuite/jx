@@ -399,22 +399,36 @@ export function startIframeInlineEdit(
    */
   const enterPropEditAt = (el: HTMLElement, hostPath: JxPath, prop: string) => {
     channel.post({ kind: "editStart", path: hostPath, prop });
+    enterPlainSession(el, hostPath, (p, textContent, inPlace) => {
+      const commit: EditCommitPropMsg = {
+        kind: "editCommitProp",
+        path: p,
+        prop,
+        value: textContent,
+      };
+      if (inPlace) {
+        commit.inPlace = true;
+      }
+      channel.post(commit);
+    });
+  };
+
+  /**
+   * Open a plain (plaintext-only) session on `el`: one plain string, committed through `commit`,
+   * with no split and no slash-insert. A prop-bound marker and an entry's field are both one.
+   */
+  const enterPlainSession = (
+    el: HTMLElement,
+    path: JxPath,
+    commit: (path: JxPath, textContent: string, inPlace: boolean) => void,
+  ) => {
     startEditing(
       el,
-      hostPath,
+      path,
       {
         onCommit: (p, _children, textContent, inPlace) => {
           inputAnnounced = false;
-          const commit: EditCommitPropMsg = {
-            kind: "editCommitProp",
-            path: p,
-            prop,
-            value: textContent ?? "",
-          };
-          if (inPlace) {
-            commit.inPlace = true;
-          }
-          channel.post(commit);
+          commit(p, textContent ?? "", inPlace);
         },
         onEnd: () => {
           clearHighlight();
@@ -428,7 +442,7 @@ export function startIframeInlineEdit(
           root.forget();
           channel.post({ kind: "editEnd" });
         },
-        // Prop values are single plain strings — no split, no slash-insert.
+        // A plain session holds one string — no split, no slash-insert.
         onInsert: () => {},
         onSplit: () => {},
       },
@@ -497,6 +511,26 @@ export function startIframeInlineEdit(
       return false;
     }
     enterPropEditAt(el, hostPath, prop);
+    return true;
+  };
+
+  /**
+   * Open a plain session on a collection page's text drawn from one field of the entry being
+   * written (`data-jx-entry-field`, studio.md §22.5). What is typed is posted as that field's new
+   * value when the caret leaves, and only then: the idle tick commits nothing, because writing a
+   * field redraws the page around the caret.
+   */
+  const activateField = (el: HTMLElement): boolean => {
+    const field = el.dataset.jxEntryField;
+    if (!field) {
+      return false;
+    }
+    channel.post({ field, kind: "editStart", path: [] });
+    enterPlainSession(el, [], (_path, value, inPlace) => {
+      if (!inPlace) {
+        channel.post({ field, kind: "editCommitField", value });
+      }
+    });
     return true;
   };
 
@@ -578,6 +612,7 @@ export function startIframeInlineEdit(
     onMergeBackward: (at) => postMerge(at.path, -1),
     onMergeForward: (at) => postMerge(at.path, 1),
     onReplaceRange: (from, to, text) => postRangeReplace(from, to, text),
+    onFieldActivate: activateField,
     onPropActivate: activateProp,
     onSelectionChange: () => onSelectionChange(),
     onSplit: () => splitActiveBlock(),

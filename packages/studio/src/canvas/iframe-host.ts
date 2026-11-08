@@ -11,6 +11,7 @@ import { postMessageChannel } from "./iframe-channel";
 import { canvasBaseOrigin } from "./canvas-origin";
 import { getPreviewNavigateHandler } from "./preview-navigate";
 import { resolveCanvasDocument } from "./canvas-live-render";
+import { liveEntryState } from "./live-entry";
 import { canvasPerf, recordEscalation, SPAN_PREPARE_RENDER, timeSpanAsync } from "./canvas-perf";
 import {
   applyBlockMerge,
@@ -1299,6 +1300,18 @@ export function setCanvasPointerDownHandler(fn: (() => void) | null): void {
 
 let selectionWatch: { stop: () => void } | null = null;
 
+/**
+ * The write behind an entry field typed in place (studio.md §22.5), injected by studio init:
+ * `commitEntryTextField`, which lives with the Entry tab's commit in `content/entry-fields.ts`, a
+ * module the canvas host cannot import without a cycle back through the content editors.
+ */
+let entryFieldWriter: ((tab: Tab, field: string, value: string) => boolean) | null = null;
+
+/** Register the write an `editCommitField` message runs. */
+export function setEntryFieldWriter(fn: (tab: Tab, field: string, value: string) => boolean): void {
+  entryFieldWriter = fn;
+}
+
 /** Full-render escalation, injected by studio init (a patchError can't apply surgically). */
 let patchEscalation: ((paneId: string) => void) | null = null;
 
@@ -1410,6 +1423,43 @@ export function postPatchToHosts(forwardOps: JxDocOp[], tabId: string | null): n
           ? { echoPaths, forwardOps, gen, kind: "patch" }
           : { forwardOps, gen, kind: "patch" },
       );
+      host.pendingPatches += 1;
+      posted += 1;
+    }
+  }
+  return posted;
+}
+
+/**
+ * Post an entry's fields, as they now stand, to every ready frame drawing `tab` (studio.md §22.5).
+ *
+ * The frame assigns them to the entry-state key of its live render, which is what lets a field edit
+ * (in the Entry tab, or typed where the page draws it) reach the page around the entry without a
+ * redraw. The accounting is a patch's: each post is a pending patch, and a frame whose render draws
+ * no live entry answers `patchError`, which redraws that pane. A stage that cannot be named is
+ * skipped, as in {@link postPatchToHosts}, so the caller escalates on a zero count.
+ *
+ * @returns How many frames were posted to.
+ */
+export function postEntryStateToHosts(tab: Tab): number {
+  const path = tab.documentPath;
+  if (!path) {
+    return 0;
+  }
+  const value = liveEntryState(tab, path);
+  let posted = 0;
+  for (const host of liveHosts) {
+    if (!host.iframe.isConnected) {
+      liveHosts.delete(host);
+      continue;
+    }
+    if (host.ready && host.tabId === tab.id) {
+      const stage = panelHostingCanvas(host.canvasEl)?.surface;
+      if (!stage) {
+        recordEscalation("entry-state-stage-unresolved");
+        continue;
+      }
+      host.channel.post({ gen: stage.renderGeneration, kind: "entryState", value });
       host.pendingPatches += 1;
       posted += 1;
     }
@@ -2118,6 +2168,7 @@ const PREVIEW_BLOCKED: ReadonlySet<IframeToParent["kind"]> = new Set([
   "dragOver",
   "dropResult",
   "editCommit",
+  "editCommitField",
   "editCommitProp",
   "editInput",
   "editInsert",
@@ -2736,6 +2787,16 @@ function handleMessage(state: HostState, msg: IframeToParent): void {
       }
       return;
     }
+    case "editCommitField": {
+      /* An entry's field typed where its collection's page draws it (studio.md §22.5), written
+         through the Entry tab's commit. The write redraws the page, which is why the frame posts it
+         only on release: the caret has left the field by then. */
+      const tab = hostTab(state);
+      if (tab) {
+        entryFieldWriter?.(tab, msg.field, msg.value);
+      }
+      return;
+    }
     case "editCommitProp": {
       // A prop-bound plain session committed: persist into the instance's $props (same host-tab
       // Routing as editCommit; the unchanged-value no-op lives in the apply).
@@ -3170,6 +3231,9 @@ function preparePassRender(
     };
     if (editableTags) {
       prepared.editableTags = editableTags;
+    }
+    if (resolved.entryRoot !== null) {
+      prepared.entryRoot = resolved.entryRoot;
     }
     if (allowAutoRequests) {
       prepared.allowAutoRequests = true;

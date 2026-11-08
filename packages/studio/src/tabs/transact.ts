@@ -245,12 +245,18 @@ export function transactDoc(
   // Skips the full render for consumed references. Panels' own effects still fire as before.
   // Anything unrecorded or unclassifiable falls through to today's full-render path.
   const consumer = getPatchConsumer();
+  /* A change to frontmatter fields alone records no document ops, but an entry drawn inside its
+     collection's page shows its fields through live state the frame can take in place (studio.md
+     §22.5), so it is asked of the consumer rather than taken as unrecorded. */
+  const fieldsOnly = record.ops.length === 0 && record.fmOps.length > 0;
   const verdict =
     consumer === null
       ? { patchable: false, reason: "no-patch-consumer" }
-      : record.ops.length === 0
-        ? { patchable: false, reason: "unrecorded-mutation" }
-        : consumer.classify(tab, record.ops);
+      : fieldsOnly && consumer.classifyFields && consumer.applyFields
+        ? consumer.classifyFields(tab, record.fmOps)
+        : record.ops.length === 0
+          ? { patchable: false, reason: "unrecorded-mutation" }
+          : consumer.classify(tab, record.ops);
   if (verdict.patchable) {
     consumer!.markConsumed(newRef, tab);
   }
@@ -259,7 +265,11 @@ export function transactDoc(
 
   if (verdict.patchable) {
     try {
-      consumer!.apply(tab, record.ops, record);
+      if (fieldsOnly) {
+        consumer!.applyFields?.(tab);
+      } else {
+        consumer!.apply(tab, record.ops, record);
+      }
     } catch (error) {
       consumer!.escalate(
         `patch-apply-failed: ${error instanceof Error ? error.message : String(error)}`,
