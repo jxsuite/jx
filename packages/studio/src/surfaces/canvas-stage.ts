@@ -79,7 +79,7 @@ export interface CanvasStageView {
    * collection entry (`banner`), the Compare bar over a comparison, or the Project Styles bar over
    * the catalogue. Edit draws nothing over an ordinary page (studio.md §4.2).
    */
-  lead: "none" | "banner" | "toolbar" | "chrome";
+  lead: "none" | "banner" | "entry" | "toolbar" | "chrome";
   /** Whether the column has its two width handles. */
   handles: "hidden" | "shown";
   panels: CanvasStagePanelItem[];

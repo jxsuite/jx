@@ -150,6 +150,7 @@ import { invalidateRepeaterSources } from "./canvas/repeater-sources";
 import { entryFields } from "./content/entry-fields";
 import { contentCacheDrops } from "./content/content-collections";
 import { resetWritingBanners } from "./content/writing-banner";
+import { invalidateEntryPreview, resetEntryPreview } from "./content/entry-preview";
 import { resetCollectionsPanel } from "./panels/collections-panel";
 import { resetStylesPanel } from "./panels/styles-panel";
 import { resetVariablesFocus } from "./style/variables-focus";
@@ -1053,6 +1054,7 @@ function ensureFsSync() {
       }
       invalidateParamValues();
       paneContext.resetParamValues();
+      invalidateEntryPreview();
     },
     onContentChange: reloadCleanTab,
     /* A reconnect re-reads the clean, non-collab tabs, and leaves every one whose content did not
@@ -1417,6 +1419,7 @@ function resetProjectCaches(): void {
   resetStylesPanel();
   resetVariablesFocus();
   resetWritingBanners();
+  resetEntryPreview();
   invalidateMediaCache();
   resetMediaLibrary();
 }

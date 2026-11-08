@@ -77,8 +77,8 @@ import {
   entryThumb,
   onEntrySummariesRead,
   peekEntrySummaries,
-  titleFieldOf,
 } from "../content/entry-summaries";
+import { titleFieldOf } from "../content/entry-title";
 import { entryCollection } from "../content/entry-model";
 import { NOT_HELD, holdSwitch } from "../content/hold-state";
 import type { HoldBearer } from "../content/hold-state";

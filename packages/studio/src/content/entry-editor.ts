@@ -55,7 +55,7 @@ import { hasHold, holdMeaning, holdOf, holdStatus, holdSwitch } from "./hold-sta
 import { collectionOfPath, missingRequired, recordCollectionOfPath } from "./entry-model";
 import { ENTRY_MODE, isRecordTab, recordPlace, showRecord } from "./record-entry";
 import { requestGridReveal } from "../grid/grid-reveal";
-import { titleFieldOf } from "./entry-summaries";
+import { titleFieldOf } from "./entry-title";
 import type { EntryCollection } from "./entry-model";
 import type { EntryEditorSurfaceHandle, EntryEditorView } from "../surfaces/entry-editor";
 import type { JsonSchema, SchemaFormContext } from "../ui/schema-form";

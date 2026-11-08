@@ -548,6 +548,41 @@ describe("makeStamper", () => {
     expect(el.dataset.jxLayoutFile).toBeUndefined();
   });
 
+  test("what an entry draws as children is not addressed as the page's own nodes", () => {
+    const stamp = makeStamper({ ...ctx, canvasMode: "edit" });
+    const body = document.createElement("div");
+    stamp(body, ["children", 3], {
+      attributes: { "data-jx-bound-field": "body" },
+      children: "${state.entry.$children ?? []}",
+      tagName: "div",
+    });
+    const para = document.createElement("p");
+    stamp(para, ["children", 3, "children", 0], { tagName: "p" });
+    const sibling = document.createElement("p");
+    stamp(sibling, ["children", 4], { tagName: "p" });
+    expect(body.dataset.jxPath).toBe('["children",3]');
+    expect(para.dataset.jxPath).toBeUndefined();
+    expect(sibling.dataset.jxPath).toBe('["children",4]');
+  });
+
+  test("computed children with no entry mark, and a mark with authored children, stamp as usual", () => {
+    const stamp = makeStamper({ ...ctx, canvasMode: "edit" });
+    const computed = document.createElement("div");
+    stamp(computed, ["children", 0], { children: "${state.list}", tagName: "div" });
+    const marked = document.createElement("div");
+    stamp(marked, ["children", 1], {
+      attributes: { "data-jx-bound-field": "title" },
+      tagName: "div",
+      textContent: "${state.entry.data.title}",
+    });
+    const inside = document.createElement("span");
+    stamp(inside, ["children", 0, "children", 0], { tagName: "span" });
+    const insideMarked = document.createElement("span");
+    stamp(insideMarked, ["children", 1, "children", 0], { tagName: "span" });
+    expect(inside.dataset.jxPath).toBe('["children",0,"children",0]');
+    expect(insideMarked.dataset.jxPath).toBe('["children",1,"children",0]');
+  });
+
   test("stamps data-jx-path on ordinary nodes", () => {
     const stamp = makeStamper(ctx);
     const el = document.createElement("div");
