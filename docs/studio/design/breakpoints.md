@@ -73,7 +73,7 @@ The section holds three groups, because all three are the same thing on disk and
 
 Above them sits **Base width**, which sets how wide the Base canvas panel renders when no other context applies.
 
-Name a context in plain language; Studio derives the stored name ("Wide screen" becomes `--wide-screen`). Every change is schema-checked and then written to `project.json`. If the schema refuses the value or the write fails, the reason appears under the control that caused it and the stored value stays as it was, so a refused edit never looks like the field forgetting what you typed. While `project.json` is open in the Styles workspace, a context change is a step in its history, so :kbd[⌘Z] there takes it back.
+Name a context in plain language; Studio derives the stored name ("Wide screen" becomes `--wide-screen`). Every change is schema-checked and then written to the project file. If the schema refuses the value or the write fails, the reason appears under the control that caused it and the stored value stays as it was, so a refused edit never looks like the field forgetting what you typed. While the project file is open in the Styles workspace, a context change is a step in its history, so :kbd[⌘Z] there takes it back.
 
 Whatever you declare here is also what a [design token](/docs/studio/design/tokens) can carry a different value in: declare a Dark scheme and every color token gains a **Dark** row, declare a breakpoint and any token can be given a value at it.
 
@@ -90,7 +90,7 @@ Every choice in that popover is also a command, so you can make it without reach
 :::
 
 :::doc-note
-Breakpoints are stored as a `$media` map in `project.json`. A single document may also carry a `$media` map of its own, which merges over the project's at render time. Per-breakpoint styles nest under the breakpoint's name inside each element's `style`, as described in **[Styling](/docs/framework/concepts/styling)**.
+Breakpoints are stored as a `$media` map in the project file. A single document may also carry a `$media` map of its own, which merges over the project's at render time. Per-breakpoint styles nest under the breakpoint's name inside each element's `style`, as described in **[Styling](/docs/framework/concepts/styling)**.
 :::
 
 ## Breakpoints in an imported site

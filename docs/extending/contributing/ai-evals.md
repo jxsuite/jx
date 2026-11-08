@@ -110,7 +110,7 @@ Never tune the tasks to make a scaffolding change look good. If a task is genuin
 
 The harness deliberately does not do runtime UX sensors in the live assistant, LLM-as-judge grading, or autonomous self-editing. The render critic's error format is LLM-ready on purpose, so a later phase can wire it into the live loop.
 
-A no-document task is graded on one Jx file it writes, so it still cannot score a **project-level** change. A behavior like "asked for a blog, so it turned on the content extension" runs a command tool the runner does not register and leaves nothing for the render critic to mount; it needs a check over `project.json`. Until that exists, those tools are covered by unit tests over the tool surface and the prompt, not by an eval.
+A no-document task is graded on one Jx file it writes, so it still cannot score a **project-level** change. A behavior like "asked for a blog, so it turned on the content extension" runs a command tool the runner does not register and leaves nothing for the render critic to mount; it needs a check over the project file. Until that exists, those tools are covered by unit tests over the tool surface and the prompt, not by an eval.
 
 ## Related
 

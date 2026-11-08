@@ -29,11 +29,11 @@ The only client-side dependencies a page can end up with are `@vue/reactivity` (
 
 Running `jx build` (see [CLI commands](/docs/framework/build/cli)) orchestrates one pipeline:
 
-1. **Load `project.json`** and register the extensions it declares (`extensions`), which contribute file formats such as Markdown pages.
+1. **Load the project file** and register the extensions it declares (`extensions`), which contribute file formats such as Markdown pages.
 2. **Discover routes** by scanning `pages/`: `pages/index.json` → `/`, `pages/about.json` → `/about`, `pages/blog/[slug].json` → `/blog/:slug`, `pages/docs/[...path].json` → catch-all. Files starting with `_` are not routed. `.json` pages are native; other extensions (like `.md`) route through a format registered by an enabled extension.
 3. **Expand dynamic routes**: a `[param]` page's `$paths` definition produces one concrete route per entry, or one per page of a [paged list](/docs/framework/site/routing#paging-a-list). The page's own URL pattern is handed to the extension that owns the `$paths` shape, which is how a content type with a `route` produces exactly the parameters each page needs (see [Routing](/docs/framework/site/routing)).
 4. **Compile each route**: resolve its layout, merge `$head` from site + layout + page, inject the read-only `$site`/`$page` context, resolve build-time data, transform images for responsive output, then hand the assembled document to the compiler.
-5. **Emit `dist/`**: one `index.html` per route (with `build.trailingSlash: "always"`, the default), compiled component modules and CSS under `dist/components/`, `public/` copied verbatim, plus `sitemap.xml` (when `url` is set in `project.json`), `_redirects`, and a bundled server worker when `build.adapter` is set (`worker.js`, or `_worker.js` + `_routes.json` for Cloudflare Pages).
+5. **Emit `dist/`**: one `index.html` per route (with `build.trailingSlash: "always"`, the default), compiled component modules and CSS under `dist/components/`, `public/` copied verbatim, plus `sitemap.xml` (when `url` is set in the project file), `_redirects`, and a bundled server worker when `build.adapter` is set (`worker.js`, or `_worker.js` + `_routes.json` for Cloudflare Pages).
 
 The build finishes with a summary (`Done: 12 routes → 34 files`) and exits non-zero if any route failed.
 
@@ -138,7 +138,7 @@ Across all three tiers the emitter indents nested children so the generated HTML
 
 ## CSS extraction
 
-Style never ships as JavaScript. During compilation, every static `style` definition (the project-level `style` from `project.json`, the layout's, the page's, and each node's) is extracted into a single `<style>` block in the page `<head>`, with `$media` breakpoint names expanded to real media queries. Styles found in component slot content are collected into the same block. See [Styling](/docs/framework/concepts/styling) for the authoring model.
+Style never ships as JavaScript. During compilation, every static `style` definition (the project-level `style` from the project file, the layout's, the page's, and each node's) is extracted into a single `<style>` block in the page `<head>`, with `$media` breakpoint names expanded to real media queries. Styles found in component slot content are collected into the same block. See [Styling](/docs/framework/concepts/styling) for the authoring model.
 
 **Component CSS is inlined into that block too**, after the page's own rules so the cascade is unchanged, and no `<link rel="stylesheet">` is emitted for it. A stylesheet link per component is a render-blocking request per component. jxsuite.com's home page had eleven of them, 22 kB in total, for sheets averaging 2 kB each: the whole of its critical request chain, spent on round trips rather than bytes.
 

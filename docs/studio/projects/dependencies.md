@@ -40,7 +40,7 @@ In the cloud editor nothing is installed, because a cloud project has no `node_m
 The panel follows whatever document is focused, and its header says so, reading **PACKAGES · document**:
 
 - **A page, layout, or component open** means you're managing that document's imports: which components it can place.
-- **`project.json` open** means you're managing the whole site: packages, site-wide component availability, and imported modules. Running **Open Project Settings** puts you here too, because [Project settings](/docs/studio/projects/settings) opens that same `project.json` document.
+- **The project file open** means you're managing the whole site: packages, site-wide component availability, and imported modules. Running **Open Project Settings** puts you here too, because [Project settings](/docs/studio/projects/settings) opens that same the project file document.
 
 ## Import your own components
 
@@ -52,7 +52,7 @@ If you mostly build by placing cards from the [Insert palette](/docs/studio/desi
 
 ## Add an npm package
 
-With `project.json` open:
+With the project file open:
 
 1. Type the package's name into **Add Dependency** and press :kbd[Enter].
 2. Studio installs it. If the package publishes a component catalog (a custom elements manifest), a new section appears for it, listing every component inside.
@@ -63,7 +63,7 @@ Packages can also be added from the **Packages** section of [Project settings](/
 
 Under each package section, every component has a checkbox. Nothing from a package is available until you tick it, so you pick exactly the pieces you want instead of importing the whole library:
 
-- Tick a component in the **`project.json`** context to make it available across the site.
+- Tick a component in the **project file** context to make it available across the site.
 - Tick it with a page, layout, or component open to enable it for that document only.
 
 The × in a package's header (site context) removes the package entirely, along with everything you'd picked from it.
@@ -79,7 +79,7 @@ The site context also shows **Imported Modules**, which give the project extra k
 - If a project's packages have never been installed on this machine (say, you just cloned it), Studio installs them automatically before the editor loads.
 
 :::doc-note
-Packages are recorded in your project's `package.json`; the components you tick are recorded as `$elements` entries: in `project.json` for site-wide picks, in the document's own file for per-document picks.
+Packages are recorded in your project's `package.json`; the components you tick are recorded as `$elements` entries: in the project file for site-wide picks, in the document's own file for per-document picks.
 :::
 
 ## Next

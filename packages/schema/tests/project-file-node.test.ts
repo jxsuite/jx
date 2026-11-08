@@ -84,7 +84,7 @@ describe("parseProjectFile", () => {
 
 describe("serializeProjectFile and rewriteJson", () => {
   test("a new file is written as a formatter would, ending in a newline", () => {
-    const text = serializeProjectFile({ name: "Site" }, null);
+    const text = serializeProjectFile({ name: "Site" }, null, "project.json");
     expect(JSON.parse(text)).toEqual({ name: "Site" });
     expect(text.endsWith("\n")).toBe(true);
   });
@@ -101,7 +101,9 @@ describe("serializeProjectFile and rewriteJson", () => {
 `;
     const config = { defaults: { lang: "en" }, images: { optimize: true }, name: "New" };
     const ordered = { name: config.name, images: config.images, defaults: config.defaults };
-    expect(serializeProjectFile(ordered, previous)).toBe(previous.replace("Old", "New"));
+    expect(serializeProjectFile(ordered, previous, "project.json")).toBe(
+      previous.replace("Old", "New"),
+    );
   });
 
   test("a tab-indented file stays tab-indented", () => {
@@ -122,7 +124,8 @@ describe("on disk", () => {
     write("named/project.json", "{ oops");
     expect(hasProjectFile(join(scratch, "named"))).toBe(true);
     expect(hasProjectFile(join(scratch, "nowhere"))).toBe(false);
-    expect(projectFilePath("/w/site").endsWith("project.json")).toBe(true);
+    // A folder with neither file is given a new project's name.
+    expect(projectFilePath("/w/site").endsWith("project.jxn")).toBe(true);
   });
 
   test("readProjectFile answers null for no file, and a problem for a broken one", () => {
@@ -212,7 +215,7 @@ describe("either name, on disk", () => {
     const empty = join(scratch, "either/empty");
     mkdirSync(empty, { recursive: true });
     expect(projectFileNameIn(empty)).toBeNull();
-    expect(projectFilePath(empty)).toBe(join(empty, "project.json"));
+    expect(projectFilePath(empty)).toBe(join(empty, "project.jxn"));
     expect(hasProjectFile(empty)).toBe(false);
   });
 

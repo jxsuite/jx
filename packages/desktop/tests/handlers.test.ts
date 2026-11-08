@@ -1471,7 +1471,7 @@ describe("createProject", () => {
       });
       expect(result.root).toBe(join(FIXTURES, "my-new-site"));
       expect(result.config.name).toBe("My New Site");
-      expect(existsSync(join(FIXTURES, "my-new-site", "project.json"))).toBe(true);
+      expect(existsSync(join(FIXTURES, "my-new-site", "project.jxn"))).toBe(true);
       expect(existsSync(join(FIXTURES, "my-new-site", "pages"))).toBe(true);
       // The freshly-scaffolded project becomes the active project.
       expect(getProjectRoot()).toBe(join(FIXTURES, "my-new-site"));

@@ -152,9 +152,9 @@ Comments and layout in a `project.jxn` survive every save, whether the save came
 
 ### 2.4 Provisioning a Project
 
-> **Status: Pending.** `create-jxsuite`, Studio's New Project, the site import and the starters all write `project.json`.
+> **Status: Implemented.**
 
-Every new project is provisioned with a `project.jxn`, whichever way it is created. Its documents remain `.json` until `.jxn` is the recommended document format (`spec.md` §23.3). An existing project is never converted without being asked, and `project.json` keeps working.
+Every new project is provisioned with a `project.jxn`, whichever way it is created: `create-jxsuite`, Studio's New Project, the site import, and every starter. A scaffold's `project.jxn` carries a comment explaining `extensions`, which survives every save, and the scaffold adds `.gitattributes` (`*.jxn linguist-language=KDL`) and `.vscode/` settings mapping `*.jxn` to KDL, so the file is highlighted in an editor and in a code review from the first commit. A scaffold or starter holding a `project.jxn` must pin versions of `@jxsuite/compiler` and `@jxsuite/server` that read one, and a test enforces the floor. Its documents remain `.json` until `.jxn` is the recommended document format (`spec.md` §23.3). An existing project is never converted without being asked, and `project.json` keeps working.
 
 ---
 
@@ -162,7 +162,7 @@ Every new project is provisioned with a `project.jxn`, whichever way it is creat
 
 > **Status: Partial.** `project.json` is the one required configuration file and its keys are read as §3.1 records. The example's `$head` is not in the shape the build reads: an entry's HTML attributes come only from `attributes` (`renderHeadEntry` in `packages/site/src/head-merger.ts`), so the top-level `name`, `content`, `rel` and `href` below are dropped, and the icon and font entries render as bare `<link>` tags.
 
-The `project.json` file at the project root defines site-wide settings. It is the only required configuration file.
+The project file at the project root (`project.jxn`, or `project.json` in an older project, §2.3) defines site-wide settings. The examples in this spec show its JSON form, which is the same data model. It is the only required configuration file.
 
 ```json
 {

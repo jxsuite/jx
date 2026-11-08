@@ -14,7 +14,7 @@ code:
 
 # Images
 
-The build optimizes images automatically: every eligible `<img>` gets a responsive `srcset` of resized, format-converted variants, plus lazy-loading attributes. It's on by default, and you configure it (or turn it off) under the `images` key in `project.json`.
+The build optimizes images automatically: every eligible `<img>` gets a responsive `srcset` of resized, format-converted variants, plus lazy-loading attributes. It's on by default, and you configure it (or turn it off) under the `images` key in the project file.
 
 ## Configuration
 
@@ -158,4 +158,4 @@ This requires the site to be served through a Cloudflare zone with Image Transfo
 
 - [Build output and adapters](/docs/framework/site/deployment): where the variants land in `dist/`
 - [Media in Studio](/docs/studio/projects/media): browsing and placing images visually
-- [project.json](/docs/framework/site/project-json): the full configuration reference
+- [the project file](/docs/framework/site/project-json): the full configuration reference

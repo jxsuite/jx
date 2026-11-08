@@ -63,10 +63,10 @@ To open an existing project:
 
 1. Choose _File > Open Project…_ or press :kbd[⌘O] (macOS) / :kbd[Ctrl+O] (Windows/Linux), or click **Open Project...** on the welcome screen.
 2. If a project is already open, Studio asks where the next one should go: **This Window** or **New Window**.
-3. A native file dialog opens. Select the project's `project.json` file, the file that marks a folder as a Jx project.
-4. The project opens with the folder around `project.json` as the project root.
+3. A native file dialog opens. Select the project's project file, `project.jxn` or `project.json`, the file that marks a folder as a Jx project.
+4. The project opens with the folder around that file as the project root.
 
-You can also open from your file manager: right-click a `project.json`, a page or a Markdown file inside a project and choose **Open With > Jx Studio**. The project opens with that file in a tab, and if it's already open its window comes forward. Installing Studio doesn't change what opens your `.json` files by default.
+You can also open from your file manager: right-click a project file, a page or a Markdown file inside a project and choose **Open With > Jx Studio**. The project opens with that file in a tab, and if it's already open its window comes forward. Installing Studio doesn't change what opens your `.json` files by default.
 
 A `.jxn` file is Studio's own type, so double-clicking one opens it in Studio: a `project.jxn` opens its project, and a page or component opens in its project with that file in a tab. The first time a folder opens, Studio asks whether you trust it, as described below. A file named `.jxn` that isn't [Jx Notation](/docs/framework/concepts/jxn-files) gets a sentence saying so, with the line and column of the problem, and no window. A `.jxn` outside any project isn't opened yet.
 
@@ -81,7 +81,7 @@ The first time a folder would open, Studio asks: **Open this folder and run its 
 Studio remembers your answer for that folder and doesn't ask again, even if its files change later. It doesn't ask about projects you've created in Studio or that were already in your recent list. See **[Security](/docs/framework/concepts/security)**.
 
 :::doc-note
-`project.json` is the project's settings file, and Studio creates it for every new project. What's inside is described in **[Project settings](/docs/studio/projects/settings)**.
+The project file is the project's settings file, and Studio creates it for every new project. What's inside is described in **[Project settings](/docs/studio/projects/settings)**.
 :::
 
 ## One window per project

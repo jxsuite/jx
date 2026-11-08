@@ -26,7 +26,7 @@ Open **[Project settings](/docs/studio/projects/settings)** from the **Settings*
 Both sections carry an action row with **Test Connection**, **Push Schema**, and **Open Data Grid**. The grid opens as its own tab on the canvas; see **[Data grid](/docs/studio/data/grid)**.
 
 :::doc-note
-The sections are contributed by the `@jxsuite/connector` extension, listed in the `extensions` array of `project.json`, the same mechanism that brings Content Types. Everything you edit in them is stored as the `connections` and `data` sections of `project.json`; only the table _definitions_ live there. The rows themselves stay in the database. See [project.json](/docs/framework/site/project-json).
+The sections are contributed by the `@jxsuite/connector` extension, listed in the `extensions` array of the project file, the same mechanism that brings Content Types. Everything you edit in them is stored as the `connections` and `data` sections of the project file; only the table _definitions_ live there. The rows themselves stay in the database. See [the project file](/docs/framework/site/project-json).
 :::
 
 ## From empty to live data

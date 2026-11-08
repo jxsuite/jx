@@ -56,24 +56,39 @@ const {
 const { updateSiteConfig } = await import("../src/site-context");
 
 /**
- * Every `project.json` this repository commits — the only fixture with real formatting in it.
+ * Every `project.json` this repository still commits, read as bytes, with one written here.
  *
  * Resolved from THIS FILE rather than from the working directory. It used to read `cwd: "../.."` on
  * the stated assumption that studio's tests always run from `packages/studio`; run from the repo
  * root, `../..` points above the repository, the glob matches nothing, and the loop below iterates
  * an empty list — passing, vacuously. The count assertion is what catches that, and it should never
  * have had to.
+ *
+ * The starters and most screenshot fixtures were this corpus until new projects became
+ * `project.jxn` (`site-architecture.md` §2.4) and they were converted, which took with them every
+ * file whose `oxfmt` layout keeps a short object on one line. `ONE_LINE` is that shape, so the
+ * premise below is still measured against bytes rather than assumed.
  */
 const REPO_ROOT = resolve(import.meta.dir, "../../..");
-const COMMITTED_CONFIGS = ["sites", "packages/starters/sites", "scripts/screenshots/fixtures"]
-  .flatMap((dir) => globSync(`${dir}/*/project.json`, { cwd: REPO_ROOT }))
-  .map((relative) => join(REPO_ROOT, relative))
-  .toSorted();
+const ONE_LINE = {
+  path: "inline:one-line/project.json",
+  text: '{\n  "name": "Site",\n  "defaults": { "lang": "en", "layout": "./layouts/base.json" },\n  "extensions": ["@jxsuite/parser"]\n}\n',
+};
+const COMMITTED_CONFIGS = [
+  ...["packages", "scripts/screenshots/fixtures", "sites"]
+    .flatMap((dir) => globSync(`${dir}/*/project.json`, { cwd: REPO_ROOT }))
+    .map((relative) => join(REPO_ROOT, relative))
+    .toSorted()
+    .map((path) => ({ path, text: readFileSync(path, "utf8") })),
+  ONE_LINE,
+];
 
-/** Every committed `project.jxn` this repository's own sites are declared by. */
+/** Every committed `project.jxn`: this repository's own sites, the starters and the fixtures. */
 const COMMITTED_JXN = [
   "examples/project.jxn",
-  ...globSync("sites/*/project.jxn", { cwd: REPO_ROOT }),
+  ...["packages/starters/sites", "scripts/screenshots/fixtures", "sites"].flatMap((dir) =>
+    globSync(`${dir}/*/project.jxn`, { cwd: REPO_ROOT }),
+  ),
 ]
   .map((relative) => join(REPO_ROOT, relative))
   .toSorted();
@@ -221,20 +236,18 @@ describe("commitProjectConfig", () => {
 
 describe("a no-op settings edit produces an empty diff", () => {
   test("the repository has project.json files to check", () => {
-    expect(COMMITTED_CONFIGS.length).toBeGreaterThan(5);
+    expect(COMMITTED_CONFIGS.length).toBeGreaterThan(3);
   });
 
   test("a layout-less rendering differs from disk for at least one committed file", () => {
-    const differs = COMMITTED_CONFIGS.filter((path) => {
-      const onDisk = readFileSync(path, "utf8");
-      return serializeJson(JSON.parse(onDisk), null) !== onDisk;
-    });
+    const differs = COMMITTED_CONFIGS.filter(
+      ({ text: onDisk }) => serializeJson(JSON.parse(onDisk), null) !== onDisk,
+    );
     expect(differs.length).toBeGreaterThan(0);
   });
 
   test("no writer touches a committed project.json when nothing changed", async () => {
-    for (const path of COMMITTED_CONFIGS) {
-      const onDisk = readFileSync(path, "utf8");
+    for (const { path, text: onDisk } of COMMITTED_CONFIGS) {
       const parsed = parseConfig(onDisk);
 
       /* The premise, asserted rather than assumed: with the layout the file was written in, its
@@ -262,7 +275,7 @@ describe("a no-op settings edit produces an empty diff", () => {
   });
 
   test("no writer touches a committed project.jxn when nothing changed", async () => {
-    expect(COMMITTED_JXN.length).toBeGreaterThan(2);
+    expect(COMMITTED_JXN.length).toBeGreaterThan(20);
     setProjectConfigPath("project.jxn");
     try {
       for (const path of COMMITTED_JXN) {
@@ -285,8 +298,7 @@ describe("a no-op settings edit produces an empty diff", () => {
   });
 
   test("a real edit to one of those files still writes — and writes a one-line diff", async () => {
-    const path = COMMITTED_CONFIGS[0]!;
-    const onDisk = readFileSync(path, "utf8");
+    const { text: onDisk } = ONE_LINE;
     const parsed = parseConfig(onDisk);
     const state = setup(parsed, { onDisk });
     await updateSiteConfig({ name: "Renamed" });

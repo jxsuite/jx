@@ -28,7 +28,7 @@ Three columns, all editable:
 
 It's a grid, so everything in **[Grid mode](/docs/studio/editing/grid)** applies here: double-click to edit, add and delete rows, select ranges, find and replace, undo, and one batched **Save** (:kbd[⌘S] / :kbd[Ctrl+S]) that writes every pending change at once. The view menu keeps saved views, column order and sorting per table.
 
-Saving writes the `redirects` block of `project.json` as a single transaction: the same door, the same undo, and the same refusal-with-a-Problem as every other project setting. A `301` is written in the short form (`"/old-page": "/new-page"`); any other status becomes an object with its `destination` and `status`. Empty the table and the key is removed rather than left behind as `{}`.
+Saving writes the `redirects` block of the project file as a single transaction: the same door, the same undo, and the same refusal-with-a-Problem as every other project setting. A `301` is written in the short form (`"/old-page": "/new-page"`); any other status becomes an object with its `destination` and `status`. Empty the table and the key is removed rather than left behind as `{}`.
 
 A save is refused whole rather than half-written, so the site never ends up with some of its old URLs working. Studio checks, before it writes, that:
 

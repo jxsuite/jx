@@ -536,7 +536,7 @@
       "docs": ["studio/projects/dependencies"],
       "open": {
         "project": "packages/starters/sites/shop",
-        "file": "project.json"
+        "file": "project.jxn"
       },
       "steps": [
         {

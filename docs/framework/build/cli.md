@@ -38,12 +38,12 @@ The scaffolder then prompts for a project name, description, production URL, a t
 
 A blank scaffold produces:
 
-- `project.json`: bound to `./project.schema.json`, with a viewport `$head`, `$media` breakpoints matching the template (desktop-first `max-width` queries or mobile-first `min-width` queries), a `build` block (`outDir: "./dist"`, `format: "directory"`, `trailingSlash: "always"`, plus `adapter` when not static), `extensions: ["@jxsuite/parser"]`, an empty `content` section, base `style`, and `defaults` pointing at `./layouts/base.json`
+- `project.jxn`: the [project file](/docs/framework/site/project-json) in Jx Notation, with a comment saying what `extensions` is for, bound to `./project.schema.json`, with a viewport `$head`, `$media` breakpoints matching the template (desktop-first `max-width` queries or mobile-first `min-width` queries), a `build` block (`outDir: "./dist"`, `format: "directory"`, `trailingSlash: "always"`, plus `adapter` when not static), `extensions: ["@jxsuite/parser"]`, an empty `content` section, base `style`, and `defaults` pointing at `./layouts/base.json`
 - `package.json`: `@jxsuite/parser` as a dependency, `@jxsuite/compiler` and `@jxsuite/runtime` as devDependencies, and `build`/`dev` scripts (plus a `deploy` script and `wrangler` for the Cloudflare adapters)
 - `layouts/base.json`, `pages/index.md`, empty `components/`, `content/`, and `public/` directories, and a `.gitignore`
 - `wrangler.jsonc` for the Cloudflare adapters; the `mobile-app` template overlays an app-shell layout and home page
 
-Choosing a starter instead copies the starter site verbatim (minus build artifacts), then re-stamps `project.json` with your name, URL, description, and adapter, and rebuilds `package.json` with current dependency ranges.
+Choosing a starter instead copies the starter site verbatim (minus build artifacts), then re-stamps its project file with your name, URL, description, and adapter, and rebuilds `package.json` with current dependency ranges.
 
 The new project is always writable, whatever permissions the templates themselves carry. Templates are copied from wherever `@jxsuite/create` and `@jxsuite/starters` are installed, and a read-only install (every path under `/nix/store` is read-only by construction) would otherwise hand you a project you could not edit, install into, or build.
 
@@ -95,7 +95,7 @@ Directory URLs map to their `index.html` (with or without a trailing slash) and 
 
 ## `jx schema`
 
-Generate the project's JSON Schema entry documents, `project.schema.json` and `document.schema.json`, by composing the core schemas with the fragments shipped by each extension in `project.json`'s `extensions`. The outputs are written into the project root as committed, **self-contained** artifacts: the core and fragment resources are embedded under `$defs` keyed by their canonical `$id`s, so editors resolve them offline with no `node_modules`, network, or editor configuration. No flags.
+Generate the project's JSON Schema entry documents, `project.schema.json` and `document.schema.json`, by composing the core schemas with the fragments shipped by each extension in the project file's `extensions`. The outputs are written into the project root as committed, **self-contained** artifacts: the core and fragment resources are embedded under `$defs` keyed by their canonical `$id`s, so editors resolve them offline with no `node_modules`, network, or editor configuration. No flags.
 
 ```bash
 jx schema [root]
@@ -111,14 +111,14 @@ Validate the whole project tree (run `jx schema` first). One flag.
 jx validate [root] [--strict]
 ```
 
-Checks, in order: that both committed entry documents are self-contained (every `$ref` a root-relative JSON Pointer that resolves in the same file, and if one does not, it asks you to regenerate with `jx schema` and stops there, since the remaining checks compile those files); `project.json` against the generated `project.schema.json`; every document under `components/`, `pages/`, and `layouts/` against the bundled document schema; every project-local `*.class.json` against the class schema; and each enabled extension's schema fragments compile standalone.
+Checks, in order: that both committed entry documents are self-contained (every `$ref` a root-relative JSON Pointer that resolves in the same file, and if one does not, it asks you to regenerate with `jx schema` and stops there, since the remaining checks compile those files); the project file against the generated `project.schema.json`; every document under `components/`, `pages/`, and `layouts/` against the bundled document schema; every project-local `*.class.json` against the class schema; and each enabled extension's schema fragments compile standalone.
 
 Prints `Project is valid (N files checked)` on success; otherwise lists each file's violations with their instance paths and exits `1`.
 
 After the schema checks, every well-formed document is also judged by the popover, dialog and [accessibility](/docs/framework/concepts/accessibility) rules. Their findings print beside the verdict, one per line as `file: severity: message [source/rule, WCAG n]`, and they are advisory: a well-formed project stays valid. Pass `--strict` to fail the run, and exit `1`, on a lint error. A warning never fails it.
 
 :::doc-note
-`jx validate` never writes. If an entry document is older than `project.json` it composes a current one in memory for the duration of the run and leaves the committed file exactly as it is. Run `jx schema` when you want the file itself updated. A checker that edits what it is checking can report green on bytes it just wrote.
+`jx validate` never writes. If an entry document is older than the project file it composes a current one in memory for the duration of the run and leaves the committed file exactly as it is. Run `jx schema` when you want the file itself updated. A checker that edits what it is checking can report green on bytes it just wrote.
 :::
 
 The output shape is meant to be read by whatever wrote the file, a person or a generator: one line naming the file, then one `- <instance path>: <message>` line per violation. Paired with the non-zero exit it drops straight into a write-check-fix loop. Because `jx schema` embeds every core and fragment resource under `$defs` keyed by its canonical `$id`, the document checks resolve from the committed entry documents alone (no network fetch, no module resolution), so an editor's inline squiggles and this command are looking at exactly the same schema.
@@ -151,7 +151,7 @@ It leaves a file alone, says why, and exits `1` when the file is already in the 
 
 ## `jx db push`
 
-Additively sync the tables declared in `project.json`'s `data` section to their `connections` databases, through each connection's connector. Credentials come from the environment merged with the project's `.dev.vars` file. After a real (non-dry-run) apply, each connector's binding fragments are merged into `wrangler.jsonc`, preserving your keys.
+Additively sync the tables declared in the project file's `data` section to their `connections` databases, through each connection's connector. Credentials come from the environment merged with the project's `.dev.vars` file. After a real (non-dry-run) apply, each connector's binding fragments are merged into `wrangler.jsonc`, preserving your keys.
 
 ```bash
 jx db push [root] [--dry-run] [--connection <name>]

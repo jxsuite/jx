@@ -24,6 +24,7 @@
  */
 // oxlint-disable deslop/no-unknown-parameters, deslop/no-unknown-returns, deslop/no-runtime-typeof -- This script IS the I/O boundary: it sends arbitrary RPC params to the packaged backend and judges whatever comes back, so each verifier takes `unknown` and narrows it on purpose.
 // oxlint-disable unicorn/no-process-exit -- a CLI whose exit code is its interface
+import { NEW_PROJECT_FILE_NAME } from "@jxsuite/schema/project-file";
 import {
   existsSync,
   mkdirSync,
@@ -296,12 +297,13 @@ const checks: Check[] = [
   },
   {
     name: "readFile",
-    params: { path: "project.json" },
+    // A new project's file, which is the name a scaffold writes (site-architecture.md §2.4).
+    params: { path: NEW_PROJECT_FILE_NAME },
     rpc: "readFile",
     verify: (result) =>
       typeof result === "string" && result.includes("smoke")
         ? null
-        : "project.json is not the new project's",
+        : `${NEW_PROJECT_FILE_NAME} is not the new project's`,
   },
   { name: "discoverComponents", params: {}, rpc: "discoverComponents", verify: isArray },
   {

@@ -59,9 +59,9 @@ You never have to generate those files yourself: Studio refreshes them whenever 
 
 ### The project file
 
-Your project's configuration is a document like any other, so it has a Code editor too. In **[Project settings](/docs/studio/projects/settings)**, **Advanced › Source** shows the whole of the project file as it is saved, and **Edit as code** opens that same file in Code, in the Styles workspace: one undo stack, one unsaved dot, so a hand edit in the source and a change made in a settings form can never disagree about what the file says. A `project.json` is schema-checked as you type like any other JSON.
+Your project's configuration is a document like any other, so it has a Code editor too. In **[Project settings](/docs/studio/projects/settings)**, **Advanced › Source** shows the whole of the project file as it is saved, and **Edit as code** opens that same file in Code, in the Styles workspace: one undo stack, one unsaved dot, so a hand edit in the source and a change made in a settings form can never disagree about what the file says. A the project file is schema-checked as you type like any other JSON.
 
-`project.json` is also the one document co-editing leaves alone: it configures _your_ editor, so it is never shared with a collaborator. See **[Real-time collaboration](/docs/studio/publish/collaboration)**.
+The project file is also the one document co-editing leaves alone: it configures _your_ editor, so it is never shared with a collaborator. See **[Real-time collaboration](/docs/studio/publish/collaboration)**.
 
 ## Reading a change as code
 

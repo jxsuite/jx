@@ -13,7 +13,7 @@ code:
 
 > **Studio writes this format for you.** The [content-type builder](/docs/studio/projects/content-types) creates reference fields visually, and this page documents the schema they produce and how references resolve at build time.
 
-A relationship links one content entry to another: a blog post to its author, a product to its tags. You declare it once, in the field's JSON Schema inside the `content` section of `project.json`. That single declaration drives validation, build-time resolution, and Studio's entry pickers.
+A relationship links one content entry to another: a blog post to its author, a product to its tags. You declare it once, in the field's JSON Schema inside the `content` section of the project file. That single declaration drives validation, build-time resolution, and Studio's entry pickers.
 
 ## The reference form
 

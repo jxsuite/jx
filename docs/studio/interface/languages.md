@@ -14,7 +14,7 @@ code:
 
 A [multilingual Jx site](/docs/framework/site/i18n) keeps each language in its own directory (`pages/fr-ca/about.json` beside `pages/about.json`), and that is the whole mapping. There is no message catalog and no `t()`: a translation is a **different file**, so Studio's job is to show you which files exist, which do not, and which have fallen behind.
 
-Every surface here appears only once `project.json` declares more than one locale.
+Every surface here appears only once the project file declares more than one locale.
 
 ## Declare the languages first
 
@@ -88,6 +88,6 @@ The [Content workspace](/docs/studio/projects/browse) has a **Language** facet a
 
 - [Locales and languages](/docs/framework/site/i18n): what the framework does with all this at build time
 - [Browse the library](/docs/studio/projects/browse): the Language facet
-- [Project settings](/docs/studio/projects/settings): the rest of `project.json`
+- [Project settings](/docs/studio/projects/settings): the rest of the project file
   - packages/studio/src/surfaces/panel-i18n.json
   - packages/studio/src/surfaces/panel-i18n.ts

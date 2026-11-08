@@ -1144,8 +1144,11 @@ describe("openRecentProject", () => {
     platform.listDirectory = async (dir: string) => {
       listed.push(dir);
       if (dir === ".") {
+        /* The project file is listed because a real root lists it: it is how Studio learns which of
+           the two names to read, and without it a project falls back to a new one's. */
         return [
           { name: "pages", path: "pages", type: "directory" },
+          { name: "project.json", path: "project.json", type: "file" },
           { name: "vendor", path: "vendor", type: "directory" },
           { name: "readme.md", path: "readme.md", type: "file" },
         ];

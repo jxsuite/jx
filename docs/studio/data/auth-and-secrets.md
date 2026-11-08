@@ -21,12 +21,12 @@ Two related subjects live here: how Studio handles values that must stay secret 
 
 ## Secrets: values stay put, names travel
 
-A hard rule runs through everything database-related: **secret values never enter your project files.** What `project.json` records is only the _name_ of an environment variable, such as `MAIN_URL` or `AUTH_SECRET`. The value lives elsewhere:
+A hard rule runs through everything database-related: **secret values never enter your project files.** What the project file records is only the _name_ of an environment variable, such as `MAIN_URL` or `AUTH_SECRET`. The value lives elsewhere:
 
 - **Locally**, values are stored in `.dev.vars` at your project root. It is a plain name-equals-value file, ignored by git, so a commit can never carry a credential. The dev server and the desktop app read it automatically whenever a database, an auth feature or a [server function](/docs/framework/concepts/timing) needs the value.
 - **Deployed**, the same names are looked up in your host's environment. You set the values there once. On Cloudflare that means `wrangler secret put` or the dashboard's environment settings.
 
-In Studio you meet this as the **secret field**: settings that hold something sensitive (a Supabase URL in **[Connections](/docs/studio/data/connections)**, the auth signing secret below) render as a password-style box. Paste the value and press :kbd[Enter] or click away; Studio sends it to the backend's secret store, the box empties, and from then on it just reads "Stored as MAIN_URL". The value is write-only, and is never displayed or sent back to the browser again. The derived name is what gets written into `project.json`. To replace a value, paste a new one; to inspect what's stored, open `.dev.vars` itself, because Studio will only ever show you the names.
+In Studio you meet this as the **secret field**: settings that hold something sensitive (a Supabase URL in **[Connections](/docs/studio/data/connections)**, the auth signing secret below) render as a password-style box. Paste the value and press :kbd[Enter] or click away; Studio sends it to the backend's secret store, the box empties, and from then on it just reads "Stored as MAIN_URL". The value is write-only, and is never displayed or sent back to the browser again. The derived name is what gets written into the project file. To replace a value, paste a new one; to inspect what's stored, open `.dev.vars` itself, because Studio will only ever show you the names.
 
 It is one field, registered once, so every setting that holds a secret behaves identically, including the ones an extension contributes. Where Studio is running against a host with nowhere to keep secrets, the box is disabled rather than taking a value it couldn't store.
 
@@ -44,10 +44,10 @@ Auth is an extension package, and it keeps its accounts in a database, so it bui
 
 1. **Have a connection.** Add one in **[Connections](/docs/studio/data/connections)** if the project has none, because the account tables live on one of them.
 2. **Install the package.** Type `@jxsuite/auth` into _Settings > Dependencies_ and click **Add** (see **[Dependencies and imports](/docs/studio/projects/dependencies)**).
-3. **List it as an extension.** Open `project.json` and add `"@jxsuite/auth"` to its `extensions` array, since that list is what switches the section on. Studio has no field for it yet, so this one edit happens in the **[Code editor](/docs/studio/logic/code)**; the array is described in **[project.json](/docs/framework/site/project-json)**.
-4. **Pick a server-capable adapter.** Set the build adapter to **Cloudflare Pages**, **Cloudflare Workers**, **Node** or **Bun** under **How it is built** in **[Publish](/docs/studio/publish) › Hosting**; it is `build.adapter` in `project.json`. A site with accounts is no longer purely static, and the build says so if you leave it on Static.
+3. **List it as an extension.** Open the project file and add `"@jxsuite/auth"` to its `extensions` array, since that list is what switches the section on. Studio has no field for it yet, so this one edit happens in the **[Code editor](/docs/studio/logic/code)**; the array is described in **[the project file](/docs/framework/site/project-json)**.
+4. **Pick a server-capable adapter.** Set the build adapter to **Cloudflare Pages**, **Cloudflare Workers**, **Node** or **Bun** under **How it is built** in **[Publish](/docs/studio/publish) › Hosting**; it is `build.adapter` in the project file. A site with accounts is no longer purely static, and the build says so if you leave it on Static.
 
-Reopen Settings and an **Authentication** section is waiting. Filling it in writes an `auth` section into `project.json`.
+Reopen Settings and an **Authentication** section is waiting. Filling it in writes an `auth` section into the project file.
 
 ### The Authentication settings section
 
@@ -164,5 +164,5 @@ Two behaviors to know. A provider whose id or secret has no value is dropped fro
 
 - **[Data tables](/docs/studio/data/tables)** is where the permission rules go.
 - **[Data grid](/docs/studio/data/grid)** manages users and roles by editing rows.
-- **[project.json](/docs/framework/site/project-json)** records the `auth`, `connections`, and `data` sections as committed config.
+- **[the project file](/docs/framework/site/project-json)** records the `auth`, `connections`, and `data` sections as committed config.
 - **[Security](/docs/framework/concepts/security)** covers what the server enforces, and what it never trusts.

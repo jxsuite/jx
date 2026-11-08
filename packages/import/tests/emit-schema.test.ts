@@ -15,6 +15,7 @@
  * accepts exactly the input that broke.
  */
 
+import { serializeProjectFile } from "@jxsuite/schema/project-file";
 import { describe, test, expect } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -24,8 +25,8 @@ import { validateProjectFile } from "@jxsuite/schema/validate-project";
 import { emitMultiPageProject } from "../src/emit.ts";
 import { createLocalIo } from "../src/io.ts";
 import type { MultiEmitOptions } from "../src/emit.ts";
-import { parseProjectConfig } from "@jxsuite/schema/parse";
 import type { JxElement, ProjectConfig } from "@jxsuite/schema/types";
+import { readProject } from "./_project";
 
 /** What {@link emitAndValidate} hands back: the project, where it lives, and its schema errors. */
 interface EmitValidation {
@@ -49,7 +50,7 @@ async function emitAndValidate(options: Omit<MultiEmitOptions, "io">): Promise<E
   return {
     dir,
     errors: (result.errors ?? []).map((error) => describeError(error)),
-    project: parseProjectConfig(await Bun.file(join(dir, "project.json")).text(), "project.json"),
+    project: readProject(dir),
   };
 }
 
@@ -118,19 +119,19 @@ describe("the emitted project.json", () => {
     });
     try {
       // Reintroduce exactly what the emitter used to write, and confirm the gate would have said so.
-      const project = parseProjectConfig(
-        await Bun.file(join(dir, "project.json")).text(),
-        "project.json",
-      );
+      const project = readProject(dir);
       expect(errors).toEqual([]);
       await Bun.write(
-        join(dir, "project.json"),
-        JSON.stringify({
-          ...project,
-          title: "Example Site",
-          description: "Imported from https://example.com",
-          $style: { "--brand": "#3b82f6" },
-        }),
+        join(dir, "project.jxn"),
+        serializeProjectFile(
+          {
+            ...project,
+            title: "Example Site",
+            description: "Imported from https://example.com",
+            $style: { "--brand": "#3b82f6" },
+          },
+          null,
+        ),
       );
       const regression = await validateProjectFile(dir);
       expect((regression.errors ?? []).map((e) => describeError(e))).toEqual([
@@ -159,9 +160,9 @@ describe("the emitted project.json", () => {
         },
         baseWidth: 1440,
       });
-      const project = await Bun.file(join(dir, "project.json")).json();
-      expect(Object.keys(project.$media)).toEqual(["--", "--520", "--782", "--1390"]);
-      expect(project.$media["--"]).toBe("1440px");
+      const project = readProject(dir);
+      expect(Object.keys(project.$media ?? {})).toEqual(["--", "--520", "--782", "--1390"]);
+      expect(project.$media?.["--"]).toBe("1440px");
     } finally {
       await rm(dir, { recursive: true });
     }
@@ -176,7 +177,7 @@ describe("the emitted project.json", () => {
         sourceUrl: "https://example.com",
         pages: new Map<string, JxElement>([["pages/index.json", { tagName: "div" }]]),
       });
-      const project = await Bun.file(join(dir, "project.json")).json();
+      const project = readProject(dir);
       expect(project.$media).toBeUndefined();
     } finally {
       await rm(dir, { recursive: true });

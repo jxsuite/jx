@@ -82,7 +82,7 @@ Project Styles is the Styles workspace's two style editors over your project fil
 
 ## Project Settings
 
-Your project's configuration, `project.json`, opens as a document in the Styles workspace, with three editors: **Elements**, **Variables** and **Code**. Switching between them keeps one undo history and one unsaved dot, and :kbd[⌘Z], the unsaved dot and :kbd[⌘S] mean here exactly what they mean in a page. The one difference is **Variables**, which saves each change as you make it.
+Your project's configuration, the project file, opens as a document in the Styles workspace, with three editors: **Elements**, **Variables** and **Code**. Switching between them keeps one undo history and one unsaved dot, and :kbd[⌘Z], the unsaved dot and :kbd[⌘S] mean here exactly what they mean in a page. The one difference is **Variables**, which saves each change as you make it.
 
 **Open Project Settings** is not one of its editors: it opens a dialog over whatever you are doing, with its sections in three groups (General, Integrations, Advanced), and every change in it is written to the project file as you make it. **Go to Styles**, in its Overview section, closes the dialog and opens the Styles workspace; **Edit as code**, in Source, opens the Code editor. Full guide: **[Project settings](/docs/studio/projects/settings)**.
 
@@ -98,11 +98,11 @@ Every file opens in its natural editor and view, and the two controls offer only
 | Images, video, audio, fonts, PDFs      | **Media**         | —                       | —                       |
 | PNG, JPEG and WebP images              | **Media**         | **Image**               | —                       |
 | Vector images (`.svg`)                 | **Media**         | **Code**                | —                       |
-| The project file (`project.json`)      | **Elements**      | **Variables**, **Code** | —                       |
+| The project file (`project.jxn`)       | **Elements**      | **Variables**, **Code** | —                       |
 
 Any file with uncommitted changes can also be compared, including files that have no other editor at all, but not from the Editor control: you pick the change in the Publish workspace's [Review changes](/docs/studio/publish/source-control), which shows its comparison beside the list. Opening a file with no editor from the Files tree still says Studio has no editor for it; the comparison asks the narrower question of what changed, and answers it.
 
-Opening `project.json` from the Files tree lands on **Elements**, and **Go to Styles** (:kbd[⌘4], or from :kbd[⌘K]) switches to the Styles workspace from anywhere. **Open Project Settings** is a dialog rather than an editor of the file, so it leaves the tab as it is.
+Opening the project file from the Files tree lands on **Elements**, and **Go to Styles** (:kbd[⌘4], or from :kbd[⌘K]) switches to the Styles workspace from anywhere. **Open Project Settings** is a dialog rather than an editor of the file, so it leaves the tab as it is.
 
 A JSON entry of a content collection also has an **Entry** editor. **Open Entry** is how you reach it, and it joins that file's **Editor** control from then on, so you can move between the form and the source without losing your place in either. A Markdown entry is written on the canvas, with its fields in the Inspector's **Entry** tab.
 

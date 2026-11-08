@@ -27,7 +27,7 @@ A design token is a named value: **Primary Blue** instead of `#3b82f6`, **Body S
 
 ## Define tokens
 
-Tokens are your site's CSS custom properties: the `--` keys of the `style` block in your project file (`project.json` or `project.jxn`). You edit them in the **Variables** view of the **Styles** workspace, which is where the workspace opens: click **Styles** in the Command Bar (:kbd[⌘4], or **Go to Styles** from :kbd[⌘K]). In [Project settings](/docs/studio/projects/settings), the **Moved** footnote's **Colors and fonts** button opens the same view.
+Tokens are your site's CSS custom properties: the `--` keys of the `style` block in your project file (`project.jxn` or `project.json`). You edit them in the **Variables** view of the **Styles** workspace, which is where the workspace opens: click **Styles** in the Command Bar (:kbd[⌘4], or **Go to Styles** from :kbd[⌘K]). In [Project settings](/docs/studio/projects/settings), the **Moved** footnote's **Colors and fonts** button opens the same view.
 
 The **Styles** panel beside it lists every token the project defines, by its name and grouped as the view groups them, with a count on each group and a swatch on each color. Click a token to jump to its row with the value ready to edit, or a group to jump to that group. **Add variable** jumps to the add row, so a new token is named and stored the same way as one added in the view. From the **Elements** view, any of these switches you back to Variables first. See **[Project Styles](/docs/studio/design/stylebook#the-styles-panel)**.
 

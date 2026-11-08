@@ -63,7 +63,7 @@ A site with a database and sign-ins has a second security surface: the `/_jx/*` 
 
 **Ownership cannot be forged.** When a table declares an `ownerField`, the server stamps that column with the signed-in user's id on every session-granted insert, and scopes `owner` reads and writes to rows that match, so the value in the request body is not consulted. Roles work the same way: they live in the `user` table's `role` column, which sign-up input can never set.
 
-**Secrets stay names.** `project.json` records env-var _names_ (`urlEnv`, `secretEnv`, `clientIdEnv`), never values. Values reach code only through the server's `env`: from the git-ignored `.dev.vars` locally, and from your host's secret store in production. That is also why a `timing: "server"` entry is the right home for anything holding a credential. See [Auth and secrets](/docs/studio/data/auth-and-secrets).
+**Secrets stay names.** The project file records env-var _names_ (`urlEnv`, `secretEnv`, `clientIdEnv`), never values. Values reach code only through the server's `env`: from the git-ignored `.dev.vars` locally, and from your host's secret store in production. That is also why a `timing: "server"` entry is the right home for anything holding a credential. See [Auth and secrets](/docs/studio/data/auth-and-secrets).
 
 :::doc-warning
 A table with `insert: "public"` is an open write endpoint: anyone on the internet can post rows to it, and there is no rate limiting or CAPTCHA in the contract today. Prefer `authenticated` inserts unless you knowingly want a public drop-box.

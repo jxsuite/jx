@@ -44,7 +44,7 @@ code:
 
 # Project settings
 
-Everything that applies to your whole site rather than one page (its name and address, its languages, its extensions, its packages) lives in your project's configuration, the project file at the root of the project: `project.json`, or `project.jxn` when it is written in [Jx Notation](/docs/framework/concepts/jxn-files#a-project-file). **Project settings** is the workspace that edits it. It takes the whole window, so a section with a list and an editor side by side, such as Content Types, has room for both, and **Back** at its top returns you to the workspace you opened it from.
+Everything that applies to your whole site rather than one page (its name and address, its languages, its extensions, its packages) lives in your project's configuration, the project file at the root of the project: `project.jxn`, written in [Jx Notation](/docs/framework/concepts/jxn-files#a-project-file), or `project.json` in a project created before that was the default. **Project settings** is the workspace that edits it. It takes the whole window, so a section with a list and an editor side by side, such as Content Types, has room for both, and **Back** at its top returns you to the workspace you opened it from.
 
 Open it from the **Settings** menu at the right of the Command Bar: **Open Project Settings**, whose submenu lists every section in the order Project settings lists them, with a divider where each group starts, so you can land on the one you want. It is also on :kbd[⌘⇧,], on :kbd[⌘K] as **Open Project Settings**, and in the **⬢ menu** in the Command Bar. Every link elsewhere in Studio that names a section, such as **Manage contexts…** or a content type's **Fields**, opens it on that section. (:kbd[⌘,] is the other half of the pair: **Preferences**, which configures the app rather than this project.)
 
@@ -165,7 +165,7 @@ Adding packages and choosing which of their components your site uses is covered
 The whole of your project file, `project.jxn` or `project.json`, exactly as it is saved, comments included. **Edit as code** opens that same file in the Code editor, in the Styles workspace, where it has one undo history and one unsaved-changes flag like any document. **Back to Variables** (or **Back to Elements**) at the top of the pane returns you to the view you were last in.
 
 :::doc-note
-Every section edits the project file at the root of your project, `project.json` as the New Project modal first wrote it, or `project.jxn` once you convert it. A `project.jxn` keeps its comments through every change made here. The full shape is documented in [Site architecture](/docs/framework/site).
+Every section edits the project file at the root of your project: `project.jxn`, as New Project writes it, or `project.json` in an older project. A `project.jxn` keeps its comments through every change made here. The full shape is documented in [Site architecture](/docs/framework/site).
 :::
 
 :::doc-note

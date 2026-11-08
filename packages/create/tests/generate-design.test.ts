@@ -8,6 +8,7 @@ import { Buffer } from "node:buffer";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { readProject } from "./_project";
 
 const TOKENS_FIXTURE = resolve(tmpdir(), `jx-design-tokens-fixture-${Date.now()}`);
 const PLAIN_FIXTURE = resolve(tmpdir(), `jx-design-plain-fixture-${Date.now()}`);
@@ -31,10 +32,6 @@ void mock.module("@jxsuite/starters", () => ({
 const { generateProject } = await import("../generate");
 
 const LOGO_BYTES = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
-
-function readJson(...segments: string[]) {
-  return JSON.parse(readFileSync(join(TMP, ...segments), "utf8"));
-}
 
 beforeAll(() => {
   for (const [fixture, project] of [
@@ -91,13 +88,13 @@ describe("generateProject — design quickstart (blank)", () => {
       name: "Designed",
     });
 
-    const project = readJson("project.json");
-    expect(project.style["--color-primary"]).toBe("#ff5500");
-    expect(project.style.backgroundColor).toBe("#fafafa");
+    const project = readProject(TMP);
+    expect(project.style?.["--color-primary"]).toBe("#ff5500");
+    expect(project.style?.backgroundColor).toBe("#fafafa");
     // The default "#1a1a1a" body color is overridden.
-    expect(project.style.color).toBe("#0b1220");
-    expect(project.style.fontFamily).toBe("'Atkinson Hyperlegible', sans-serif");
-    expect(project.style["--font-heading"]).toBe("'Fraunces', serif");
+    expect(project.style?.color).toBe("#0b1220");
+    expect(project.style?.fontFamily).toBe("'Atkinson Hyperlegible', sans-serif");
+    expect(project.style?.["--font-heading"]).toBe("'Fraunces', serif");
     // A non-empty media map replaces the template's $media entirely.
     expect(project.$media).toEqual({ "--": "1440px", "--sm": "(max-width: 600px)" });
 
@@ -107,15 +104,15 @@ describe("generateProject — design quickstart (blank)", () => {
 
   test("no design / empty design leaves the output byte-identical", async () => {
     await generateProject(TMP, { name: "Plain Site" });
-    const reference = readFileSync(join(TMP, "project.json"), "utf8");
+    const reference = readFileSync(join(TMP, "project.jxn"), "utf8");
 
     await generateProject(TMP2, { design: {}, name: "Plain Site" });
-    expect(readFileSync(join(TMP2, "project.json"), "utf8")).toBe(reference);
+    expect(readFileSync(join(TMP2, "project.jxn"), "utf8")).toBe(reference);
 
     // An empty media map is treated as absent, not as "remove all breakpoints".
     rmSync(TMP2, { force: true, recursive: true });
     await generateProject(TMP2, { design: { media: {} }, name: "Plain Site" });
-    expect(readFileSync(join(TMP2, "project.json"), "utf8")).toBe(reference);
+    expect(readFileSync(join(TMP2, "project.jxn"), "utf8")).toBe(reference);
     expect(existsSync(join(TMP2, "public", "logo.png"))).toBe(false);
   });
 });
@@ -136,17 +133,17 @@ describe("generateProject — design quickstart (starter retheme)", () => {
       starter: "tokens",
     });
 
-    const project = readJson("project.json");
-    expect(project.style["--color-primary"]).toBe("#ff5500");
-    expect(project.style["--color-primary-hover"]).toBe("#0033aa");
-    expect(project.style["--color-text-primary"]).toBe("#e8e8e8");
+    const project = readProject(TMP);
+    expect(project.style?.["--color-primary"]).toBe("#ff5500");
+    expect(project.style?.["--color-primary-hover"]).toBe("#0033aa");
+    expect(project.style?.["--color-text-primary"]).toBe("#e8e8e8");
     // Token keys win over the plain CSS fallbacks, which stay untouched.
-    expect(project.style.color).toBe("#111111");
-    expect(project.style["--font-body"]).toBe("'Atkinson Hyperlegible', sans-serif");
-    expect(project.style.fontFamily).toBe("'Inter', sans-serif");
-    expect(project.style["--font-heading"]).toBe("'Fraunces', serif");
+    expect(project.style?.color).toBe("#111111");
+    expect(project.style?.["--font-body"]).toBe("'Atkinson Hyperlegible', sans-serif");
+    expect(project.style?.fontFamily).toBe("'Inter', sans-serif");
+    expect(project.style?.["--font-heading"]).toBe("'Fraunces', serif");
     // Background applies because the starter declares a top-level backgroundColor.
-    expect(project.style.backgroundColor).toBe("#101418");
+    expect(project.style?.backgroundColor).toBe("#101418");
     expect(project.$media).toEqual({ "--": "1200px" });
 
     const logo = readFileSync(join(TMP, "public", "mark.svg"));
@@ -166,14 +163,14 @@ describe("generateProject — design quickstart (starter retheme)", () => {
       starter: "plain",
     });
 
-    const { style } = readJson("project.json");
+    const { style } = readProject(TMP);
     // Text and body font land on the plain CSS properties the starter declares.
-    expect(style.color).toBe("#e8e8e8");
-    expect(style.fontFamily).toBe("'Atkinson Hyperlegible', sans-serif");
+    expect(style?.color).toBe("#e8e8e8");
+    expect(style?.fontFamily).toBe("'Atkinson Hyperlegible', sans-serif");
     // Accent, heading font, and background are skipped: no matching keys to re-theme.
-    expect(style["--color-primary"]).toBeUndefined();
-    expect(style["--font-heading"]).toBeUndefined();
-    expect(style.backgroundColor).toBeUndefined();
+    expect(style?.["--color-primary"]).toBeUndefined();
+    expect(style?.["--font-heading"]).toBeUndefined();
+    expect(style?.backgroundColor).toBeUndefined();
   });
 });
 

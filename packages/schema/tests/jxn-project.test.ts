@@ -557,8 +557,8 @@ describe("the corpus", () => {
       }
       expect([file, serializeProject(asConfig(back))]).toEqual([file, text]);
     }
-    // Enough that this cannot pass by finding nothing.
-    expect(files.length).toBeGreaterThan(25);
+    // Enough that this cannot pass by finding nothing: the kit, Studio and one fixture stay JSON.
+    expect(files.length).toBeGreaterThan(2);
   });
 
   test("every tracked project.jxn reads, saves unchanged, and its canonical form reads the same", () => {

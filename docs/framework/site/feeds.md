@@ -30,7 +30,7 @@ A feed turns a [content collection](/docs/framework/site/content-collections) in
 
 The build writes `dist/feed.xml` and `dist/feed.json`, and adds the discovery links to every page's `<head>` so a browser or reader finds them on its own.
 
-`url` must be set in `project.json`, because a feed's entries are identified by absolute URL and there is nothing to generate without one.
+`url` must be set in the project file, because a feed's entries are identified by absolute URL and there is nothing to generate without one.
 
 ## Options
 

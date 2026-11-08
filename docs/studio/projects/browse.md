@@ -31,7 +31,7 @@ The Content workspace is where you browse and write what your site says: its pag
 
 ## The Collections panel
 
-The panel on the left lists **Pages** first, then every collection your project declares, in the order `project.json` declares them, each with how many entries it holds. A collection is named in words, so `project_tag` reads **Project tag**, and one of its items is a "project tag" (a collection named for the whole, such as `menu` or `gallery`, holds a "menu item" or a "gallery item"). Click one to show it.
+The panel on the left lists **Pages** first, then every collection your project declares, in the order the project file declares them, each with how many entries it holds. A collection is named in words, so `project_tag` reads **Project tag**, and one of its items is a "project tag" (a collection named for the whole, such as `menu` or `gallery`, holds a "menu item" or a "gallery item"). Click one to show it.
 
 - A collection's **saved grid views** are listed under it. Click one to open the collection's grid with that view applied. You save a view from the grid's **View** menu; see [Data grids](/docs/studio/data/grid).
 - **+ New collection** at the foot opens **Add new** on **Collection**: a name, the fields each entry has, and whether each entry gets a page of its own. See [Content types](/docs/studio/projects/content-types).

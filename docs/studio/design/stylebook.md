@@ -90,7 +90,7 @@ Three layers, from broadest to narrowest:
 The narrower layer wins where they overlap, so keep the common look in Project Styles and reserve per-element styling for true exceptions. [Design tokens](/docs/studio/design/tokens) slot in underneath all three, so defaults built from tokens keep even your baseline swappable.
 
 :::doc-note
-Element defaults are saved as tag-named rules in the open file's top-level `style`. In `project.json` they become site-wide and merge into every page and component. The format is described in **[Styling](/docs/framework/concepts/styling)**.
+Element defaults are saved as tag-named rules in the open file's top-level `style`. In the project file they become site-wide and merge into every page and component. The format is described in **[Styling](/docs/framework/concepts/styling)**.
 :::
 
 ## Next

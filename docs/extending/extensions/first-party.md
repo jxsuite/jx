@@ -55,7 +55,7 @@ Better Auth behind the connector's tables, and the reference for mount cooperati
 - **Mount**: `/_jx/auth` (order 10), serving Better Auth's routes and publishing `ctx.auth = { getSession, authorize }` for the data mount to authorize against. Without it, table rules beyond `public`/`none` deny.
 - **Push contribution**: a section-owner `deploySchema` capability contributes the system-table migration to `jx db push` as `kind: "auth"` steps ([Server mounts](/docs/extending/extensions/server)).
 - **Classes**: `Session` (the live session, `null` when signed out, and always `null` outside browsers, so static pages render signed-out) and `AuthActions` (`signInEmail`, `signUpEmail`, `signInSocial`, `signOut` handlers to wire onto forms). Both default to client timing via `$studio.stateDefaults`.
-- **Studio settings**: the **Authentication** section (`layout: "form"`), with the `secret` control for `secretEnv`. The signing secret itself never touches `project.json` ([Security and secrets](/docs/extending/extensions/security)).
+- **Studio settings**: the **Authentication** section (`layout: "form"`), with the `secret` control for `secretEnv`. The signing secret itself never touches the project file ([Security and secrets](/docs/extending/extensions/security)).
 
 User-level docs: [Auth and secrets](/docs/studio/data/auth-and-secrets).
 

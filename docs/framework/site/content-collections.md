@@ -26,9 +26,9 @@ code:
 >
 > It also enforces the collection's format where you create files: **New File…** in a collection's folder is **New Entry**, and in a subfolder of it the format picker is locked to the collection's extension. See [Creating a file](/docs/studio/interface#creating-a-file).
 
-Content collections are the data layer for content-driven sites: they turn folders of Markdown, JSON, or CSV files into typed, queryable data with JSON Schema validation. Each collection is a **content type**, declared in the `content` section of `project.json`.
+Content collections are the data layer for content-driven sites: they turn folders of Markdown, JSON, or CSV files into typed, queryable data with JSON Schema validation. Each collection is a **content type**, declared in the `content` section of the project file.
 
-Formats other than JSON come from extension packages, so a site using Markdown or CSV content enables the parser in `project.json`: `"extensions": ["@jxsuite/parser"]`.
+Formats other than JSON come from extension packages, so a site using Markdown or CSV content enables the parser in the project file: `"extensions": ["@jxsuite/parser"]`.
 
 ## Defining a content type
 
@@ -73,7 +73,7 @@ Ids keep the case and spaces of the file name exactly as written: `Linux/Swap Co
 
 ## Choosing which files are entries
 
-By default every file under the source is an entry. Two options narrow that, and both are plain data: a `project.json` is read by Studio, the dev server and CI, so a filter that ran code would make each of them run your project's text.
+By default every file under the source is an entry. Two options narrow that, and both are plain data: a project file is read by Studio, the dev server and CI, so a filter that ran code would make each of them run your project's text.
 
 ```json
 {
@@ -395,4 +395,4 @@ Files are also discovered in sorted order now, so the first of two entries that 
 - [Obsidian vault as content](/docs/framework/site/obsidian-vault): publishing a folder of notes as it is
 - [Routing](/docs/framework/site/routing): generating one page per entry with `$paths`
 - [Jx Markdown](/docs/framework/site/jx-markdown): the entry format for prose content
-- [project.json](/docs/framework/site/project-json): where the `content` section lives
+- [the project file](/docs/framework/site/project-json): where the `content` section lives

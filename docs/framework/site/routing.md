@@ -227,7 +227,7 @@ Inside a dynamic page, the current route's parameters are addressable as `#/$par
 { "id": { "$ref": "#/$params/slug" } }
 ```
 
-Each generated page resolves the reference to its own concrete value, so `/blog/hello-world` sees `slug` as `"hello-world"`. The compiler also injects a read-only `$page` state entry carrying `params`, `title`, and `url` (and `pagination` on a [paged list](#paging-a-list)), alongside the site-level `$site` context (see [project.json](/docs/framework/site/project-json)). In static builds all of this resolves at compile time; nothing route-related ships to the browser.
+Each generated page resolves the reference to its own concrete value, so `/blog/hello-world` sees `slug` as `"hello-world"`. The compiler also injects a read-only `$page` state entry carrying `params`, `title`, and `url` (and `pagination` on a [paged list](#paging-a-list)), alongside the site-level `$site` context (see [the project file](/docs/framework/site/project-json)). In static builds all of this resolves at compile time; nothing route-related ships to the browser.
 
 :::doc-tip
 In Studio, opening a dynamic page puts a picker per parameter in the context bar's **resolving with** popover, so the canvas previews a real entry instead of a placeholder.
