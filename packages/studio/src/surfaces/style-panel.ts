@@ -206,7 +206,42 @@ export interface StylePanelView {
   emptyActionLabel: string;
   filter: string;
   sections: StyleSectionView[];
+  /** What else styles the element Project Styles is editing (studio.md §7.4). */
+  restyle: StyleRestyleView;
 }
+
+/** A component that restyles the element its own way, with a way to open it. */
+export interface StyleRestyleComponent {
+  path: string;
+  tagName: string;
+  /** `Open site-newsletter`: the button names what it opens. */
+  openLabel: string;
+}
+
+/**
+ * Beside a Project Styles element: the components whose own style restyles it, which an edit here
+ * does not reach, and the way to a second kind of it, which is a component and not a variant.
+ */
+export interface StyleRestyleView {
+  /** `shown` while Project Styles has an element chosen; `none` everywhere else. */
+  state: "shown" | "none";
+  /** `list` when a component restyles the element, `none` when none does. */
+  listState: "list" | "none";
+  listTitle: string;
+  components: StyleRestyleComponent[];
+  promptTitle: string;
+  promptText: string;
+}
+
+/** The view when there is nothing to say: every field present, as the document binds them all. */
+export const NO_RESTYLE: StyleRestyleView = {
+  components: [],
+  listState: "none",
+  listTitle: "",
+  promptText: "",
+  promptTitle: "",
+  state: "none",
+};
 
 /**
  * What the reader can do here. Every one of them names a row by its `key`, never by its `prop`: the
@@ -235,6 +270,10 @@ export interface StylePanelActions {
   addCustom: (key: string, field: EventTarget | null) => void;
   openNested: (key: string) => void;
   addNested: () => void;
+  /** Open a component that restyles the element, by its definition's path. */
+  openComponent: (path: string) => void;
+  /** Start a new component: the second kind of an element is one. */
+  newComponent: () => void;
 }
 
 /** Where the one announced host belongs. */
@@ -269,6 +308,7 @@ function project(scope: StylePanelScope, view: StylePanelView): void {
   scope.emptyActionLabel = view.emptyActionLabel;
   scope.filter = view.filter;
   scope.sections = view.sections;
+  scope.restyle = view.restyle;
 }
 
 /**
@@ -295,6 +335,7 @@ export function mountStylePanelSurface(
     emptyMessage: "",
     filter: "",
     hasEmptyAction: false,
+    restyle: NO_RESTYLE,
     sections: [],
     view: "empty",
   });

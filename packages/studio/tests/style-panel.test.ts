@@ -16,6 +16,7 @@
 import {
   answerPromptDialog,
   flush,
+  installMockPlatform,
   resetStudioState,
   resetWorkspaceWithTab,
   topDialog,
@@ -52,7 +53,7 @@ void mock.module("../src/commands/active-registry", () => ({
 
 const { VARIABLES_INSPECTOR_MESSAGE, bindStyleHost, resetSelectorMenu } =
   await import("../src/panels/style-panel");
-const { mountStylePanelSurface } = await import("../src/surfaces/style-panel");
+const { mountStylePanelSurface, NO_RESTYLE } = await import("../src/surfaces/style-panel");
 const { openSelectorMenu } = await import("../src/surfaces/target-line");
 const { initCssData } = await import("../src/panels/style-utils");
 const { initLayers } = await import("../src/ui/layers");
@@ -315,6 +316,91 @@ describe("the tab's teaching states", () => {
 });
 
 // ─── Stylebook mode ──────────────────────────────────────────────────────────
+
+describe("what else styles a Project Styles element (§7.4)", () => {
+  /** The components a project defines: one restyles its buttons, one does not. */
+  async function withComponents(): Promise<void> {
+    installMockPlatform(
+      {
+        discoverComponents: async () => [
+          { path: "components/cta.json", props: [], slots: [], tagName: "x-cta" },
+          { path: "components/card.json", props: [], slots: [], tagName: "x-card" },
+        ],
+      },
+      {
+        "components/card.json": JSON.stringify({ tagName: "x-card" }),
+        "components/cta.json": JSON.stringify({
+          style: { "& button": { color: "red" } },
+          tagName: "x-cta",
+        }),
+      },
+    );
+    const { loadComponentRegistry } = await import("../src/files/components");
+    await loadComponentRegistry();
+  }
+
+  /** Repaint until the components that restyle the element have been read. */
+  async function listed(c: HTMLElement): Promise<HTMLElement[]> {
+    for (let turn = 0; turn < 200; turn++) {
+      const rows = [...c.querySelectorAll<HTMLElement>('[part="restyle-component"]')];
+      if (rows.length > 0) {
+        return rows;
+      }
+      await flush(1);
+    }
+    return [];
+  }
+
+  test("the components that restyle the element are listed, each with Open", async () => {
+    await withComponents();
+    setupTab({});
+    shell.stylebook.selection = "button";
+    const c = await renderPanel("stylebook");
+    const rows = await listed(c);
+    expect(rows.map((listedRow) => listedRow.dataset["path"])).toEqual(["components/cta.json"]);
+    expect(c.querySelector('[part="restyle-title"]')?.textContent).toBe(
+      "Components that restyle their <button>",
+    );
+    expect(rows[0]!.querySelector('[part="restyle-open"]')?.getAttribute("aria-label")).toBe(
+      "Open x-cta",
+    );
+    // Pressing Open opens the component's definition in a tab.
+    rows[0]!.querySelector<HTMLElement>('[part="restyle-open"] [part="control"]')!.click();
+    for (
+      let turn = 0;
+      turn < 200 && activeTab.value?.documentPath !== "components/cta.json";
+      turn++
+    ) {
+      await flush(1);
+    }
+    expect(activeTab.value?.documentPath).toBe("components/cta.json");
+  });
+
+  test("a second kind of the element is a new component, and none restyling it lists nothing", async () => {
+    await withComponents();
+    setupTab({});
+    shell.stylebook.selection = "table th";
+    const c = await renderPanel("stylebook");
+    await flush(10);
+    expect(c.querySelector('[part="restyle-list"]')).toBeNull();
+    expect(c.querySelector('[part="restyle-prompt-title"]')?.textContent).toBe(
+      "Need a second kind of <th>?",
+    );
+    c.querySelector<HTMLElement>('[part="restyle-new"] [part="control"]')!.click();
+    await flush(2);
+    expect(runMock.mock.calls.at(-1)?.slice(0, 2)).toEqual(["file.new", { kind: "component" }]);
+  });
+
+  test("a component's own card, and every other mode, say nothing of it", async () => {
+    setupTab({});
+    shell.stylebook.selection = "x-cta";
+    const c = await renderPanel("stylebook");
+    expect(c.querySelector('[part="restyle"]')).toBeNull();
+    shell.stylebook.selection = null;
+    const edit = await renderPanel("edit");
+    expect(edit.querySelector('[part="restyle"]')).toBeNull();
+  });
+});
 
 describe("stylebook mode", () => {
   test("the scope chip states the blast radius, and site style shows through as a donor", async () => {
@@ -1746,6 +1832,8 @@ describe("the surface's own seam", () => {
     pickSource: () => {},
     pressButton: () => {},
     renameCustom: () => {},
+    newComponent: () => {},
+    openComponent: () => {},
     runEmptyAction: () => {},
     setFilter: () => {},
     toggleSection: () => {},
@@ -1756,6 +1844,7 @@ describe("the surface's own seam", () => {
     emptyMessage: "Open a page to style what you click.",
     filter: "",
     hasEmptyAction: false,
+    restyle: NO_RESTYLE,
     sections: [],
     view: "empty" as const,
   };
