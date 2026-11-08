@@ -774,7 +774,8 @@ function emitLitMapTemplate(def: JxMutableNode | null | undefined, preformatted 
        * has: a repeater handler is emitted inline and needs inline source.
        */
       const body = mapRefsToLit(val.body as string);
-      attrs += ` @${eventName}=\${(e) => { ${body} }}`;
+      // The newline ends a last-line comment before the brace does.
+      attrs += ` @${eventName}=\${(e) => { ${body}\n}}`;
     } else if (isNonNullObject(val) && "$expression" in val) {
       /*
        * SAFETY: an `on*` member carrying `$expression` is a Shape 5 expression entry, whose
@@ -1005,7 +1006,7 @@ function emitClientModule(
       const argNames = def.args ?? ["state"];
       const callArgs = argNames.map((a: string) => (a === "state" ? "state" : "e")).join(", ");
       lines.push(
-        `  ${objectKey(key)}: (e) => { const fn = (${argNames.join(", ")}) => { ${def.body} }; fn(${
+        `  ${objectKey(key)}: (e) => { const fn = (${argNames.join(", ")}) => { ${def.body}\n}; fn(${
           callArgs
         }); },`,
       );

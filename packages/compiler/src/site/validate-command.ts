@@ -20,6 +20,8 @@
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { isJxnPath, isNativeDocumentPath, lintJxn, parseJxn } from "@jxsuite/schema/jxn";
 import { errorMessage } from "@jxsuite/schema/parse";
+import { eraseDocument } from "@jxsuite/erase";
+import type { EraseWarning } from "@jxsuite/erase";
 import { createRequire } from "node:module";
 import { join, relative, resolve } from "node:path";
 import { generateClassSchema } from "@jxsuite/schema";
@@ -65,8 +67,11 @@ export interface ProjectTreeLintFinding {
   file: string;
   /** The node's path inside the document. */
   path: (string | number)[];
-  /** Which lint: `popover`, `dialog`, `accessibility`, or `notation` for a `.jxn` file's text. */
-  source: "popover" | "dialog" | "accessibility" | "notation";
+  /**
+   * Which lint: `popover`, `dialog`, `accessibility`, `notation` for a `.jxn` file's text, or
+   * `function-body` for a body whose meaning reading it as TypeScript changes (`spec.md` §23.1).
+   */
+  source: "popover" | "dialog" | "accessibility" | "notation" | "function-body";
   rule: string;
   message: string;
   detail: string;
@@ -221,6 +226,12 @@ export async function validateProjectTree(
         continue;
       }
       const doc = read.document;
+      const bodies = checkBodies(doc, relative(root, file));
+      lint.push(...bodies.warnings);
+      if (bodies.failure !== null) {
+        issues.push(bodies.failure);
+        continue;
+      }
       if (validateDoc(doc)) {
         /*
          * Only a well-formed document is judged; a schema error is the report for the rest.
@@ -241,7 +252,11 @@ export async function validateProjectTree(
   for (const file of walkClassFiles(root)) {
     checked += 1;
     const doc = readJson(file);
-    if (!validateClass(doc)) {
+    const bodies = checkBodies(doc, relative(root, file));
+    lint.push(...bodies.warnings);
+    if (bodies.failure !== null) {
+      issues.push(bodies.failure);
+    } else if (!validateClass(doc)) {
       issues.push({ errors: validateClass.errors ?? [], file: relative(root, file) });
     }
   }
@@ -313,6 +328,36 @@ function readDocumentFile(file: string, name: string): ReadDocumentFile {
       warnings,
     };
   }
+}
+
+/** What checking a document's function bodies found: an issue that stops it, and warnings. */
+interface BodyCheck {
+  failure: ProjectTreeIssue | null;
+  warnings: ProjectTreeLintFinding[];
+}
+
+/**
+ * Whether every function body in a document is TypeScript that can be erased (`spec.md` §23.1): a
+ * body that cannot is an issue, as it stops `jx build`, and one that reads differently as
+ * TypeScript than as the JavaScript it already was is a warning.
+ */
+function checkBodies(document: JsonValue, name: string): BodyCheck {
+  const found: EraseWarning[] = [];
+  try {
+    eraseDocument(document, name, found);
+  } catch (error) {
+    return { failure: { errors: [{ message: errorMessage(error) }], file: name }, warnings: [] };
+  }
+  const warnings = found.map(({ pointer, problem }): ProjectTreeLintFinding => ({
+    detail: problem.message,
+    file: name,
+    message: `${pointer} (line ${problem.line}, column ${problem.column}): ${problem.message}`,
+    path: pointer.split("/").slice(1),
+    rule: "typescript-reading",
+    severity: "warn",
+    source: "function-body",
+  }));
+  return { failure: null, warnings };
 }
 
 /** A `.jxn` file's document, as the JSON value it is. */

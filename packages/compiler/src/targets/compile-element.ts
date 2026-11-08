@@ -5,6 +5,7 @@
  * state and lit-html for rendering.
  */
 
+import { erasedDocument } from "../erased.ts";
 import { RESERVED_KEYS, camelToKebab } from "@jxsuite/runtime";
 import {
   ATTR_HELPER,
@@ -26,6 +27,7 @@ import {
   escapeHtml,
   isMutating,
   isSchemaOnly,
+  rewriteState,
   serverCallHelperSource,
   srcExportName,
   srcImportBinding,
@@ -144,8 +146,10 @@ export async function compileElement(
         }
         doc = await entry.parseDocument(readFileSync(filePath, "utf8"));
       }
+      // Function bodies as JavaScript before anything analyses them (spec.md §23.1).
+      doc = erasedDocument(doc, filePath);
     } else {
-      doc = srcPath;
+      doc = erasedDocument(srcPath, srcPath.tagName ?? "a component");
       filePath = null;
       if (doc.tagName && visited.has(doc.tagName)) {
         return;
@@ -665,7 +669,7 @@ export function emitElementModule(
   for (const [key, template] of templateEntries) {
     lines.push(
       "",
-      `    ${refAccessor("this.state", escapeToken(key))} = computed(() => ${templateValueSource(template.replaceAll("state.", "this.state."))});`,
+      `    ${refAccessor("this.state", escapeToken(key))} = computed(() => ${templateValueSource(rewriteState(template, "this.state", { code: false }))});`,
     );
   }
 
@@ -686,7 +690,7 @@ export function emitElementModule(
       );
     } else {
       lines.push(`    ${refAccessor("this.state", escapeToken(key))} = computed(() => {`);
-      const body = (isString(def.body) ? def.body : "").replaceAll("state.", "this.state.");
+      const body = rewriteState(isString(def.body) ? def.body : "", "this.state");
       lines.push(`      ${body}`, "    });");
     }
   }
@@ -839,7 +843,7 @@ export function emitElementModule(
       for (const [cssProp, value] of dynamicStyles) {
         const expr = value.replaceAll(
           /\$\{([^}]+)\}/g,
-          (_: string, e: string) => `\${${e.replaceAll("state.", "this.state.")}}`,
+          (_: string, e: string) => `\${${rewriteState(e, "this.state")}}`,
         );
         lines.push(`      this.style['${cssProp}'] = \`${expr}\`;`);
       }
@@ -1521,7 +1525,7 @@ function mapRefToExpr(ref: string) {
  * @returns {string}
  */
 function toLitExpr(str: string) {
-  return str.replaceAll("state.", "s.");
+  return rewriteState(str, "s", { code: false });
 }
 
 /**
@@ -1576,9 +1580,10 @@ function inlineHandlerBody(def: JxFunctionDef) {
     // Body needs no textual rewriting, and a declared `event` stops silently resolving to the
     // Deprecated `window.event` global (any other declared name threw ReferenceError outright).
     const args = declared.map((name: string) => (name === "state" ? "s" : "e")).join(", ");
-    return `((${declared.join(", ")}) => { ${body} })(${args});`;
+    // The newline ends a last-line comment before the brace does.
+    return `((${declared.join(", ")}) => { ${body}\n})(${args});`;
   }
-  return body.replaceAll(/(?<!this\.)state\./g, "s.").replaceAll(/(?<!this\.)state(?!\.)/g, "s");
+  return `${rewriteState(body, "s", { bare: true })}\n`;
 }
 
 /**

@@ -242,7 +242,120 @@ export function isTemplateString(value?: unknown): value is string {
  * because a newline after `return` is an ASI bare return.
  */
 export function bodyReturnsValue(body: string): boolean {
-  return /\breturn\b[^\S\n]*(?![;}\s]|$)/.test(body);
+  return /\breturn\b[^\S\n]*(?![;}\s]|$)/.test(maskCode(body));
+}
+
+/**
+ * A function body with its comments and the contents of its strings blanked, so a pattern reads
+ * only code (`spec.md` §23.1). The result is the same length, every newline kept, so an offset in
+ * it is an offset in the body. A string keeps its quotes, so `return "x"` still returns a value,
+ * and a template literal's `${…}` keeps its contents, which are code.
+ *
+ * A scanner and not a parser, because the interpreter must answer the same way and cannot carry
+ * one. Its known limit: a regular expression literal is read as code, so a quote inside one can
+ * blank what follows it.
+ *
+ * @param body The body, already JavaScript.
+ */
+export function maskCode(body: string): string {
+  // Nothing can open a comment or a string: the body is all code, and most handlers are.
+  if (!/[/'"`]/u.test(body)) {
+    return body;
+  }
+  const known = masked.get(body);
+  if (known !== undefined) {
+    return known;
+  }
+  const result = scanCode(body);
+  if (masked.size >= MASKED_LIMIT) {
+    masked.clear();
+  }
+  masked.set(body, result);
+  return result;
+}
+
+/**
+ * Bodies already masked. Every pattern a compile runs over a body reads it masked, and a dev server
+ * compiles the same bodies again on every change, so the scan is done once per text. Bounded,
+ * because a long session sees many texts.
+ */
+const masked = new Map<string, string>();
+const MASKED_LIMIT = 2048;
+
+/** The scan {@link maskCode} caches. */
+function scanCode(body: string): string {
+  /* UTF-16 units, as `at` counts them. Code points (`[...body]`) made an astral character in a
+     string one element for two offsets, so the result came back short and every offset after it,
+     which is what a caller splices the body at, was off by one. */
+  const out = body.split("");
+  const blank = (at: number): void => {
+    if (out[at] !== undefined && out[at] !== "\n") {
+      out[at] = " ";
+    }
+  };
+  /** The brace depth of each template substitution still open, innermost last. */
+  const substitutions: number[] = [];
+  let inTemplate = false;
+  let at = 0;
+  while (at < body.length) {
+    const char = body.charAt(at);
+    if (inTemplate) {
+      if (char === "\\") {
+        blank(at);
+        blank(at + 1);
+        at += 2;
+      } else if (char === "`") {
+        inTemplate = false;
+        at += 1;
+      } else if (char === "$" && body.charAt(at + 1) === "{") {
+        substitutions.push(0);
+        inTemplate = false;
+        at += 2;
+      } else {
+        blank(at);
+        at += 1;
+      }
+    } else if (char === "/" && body.charAt(at + 1) === "/") {
+      while (at < body.length && body.charAt(at) !== "\n") {
+        blank(at);
+        at += 1;
+      }
+    } else if (char === "/" && body.charAt(at + 1) === "*") {
+      const end = body.indexOf("*/", at + 2);
+      const stop = end === -1 ? body.length : end + 2;
+      for (; at < stop; at += 1) {
+        blank(at);
+      }
+    } else if (char === "'" || char === '"') {
+      at += 1;
+      while (at < body.length && body.charAt(at) !== char && body.charAt(at) !== "\n") {
+        if (body.charAt(at) === "\\") {
+          blank(at);
+          at += 1;
+        }
+        blank(at);
+        at += 1;
+      }
+      at += 1;
+    } else if (char === "`") {
+      inTemplate = true;
+      at += 1;
+    } else {
+      const open = substitutions.length - 1;
+      if (open >= 0 && char === "{") {
+        substitutions[open] = (substitutions[open] ?? 0) + 1;
+      } else if (open >= 0 && char === "}") {
+        if (substitutions[open] === 0) {
+          substitutions.pop();
+          inTemplate = true;
+        } else {
+          substitutions[open] = (substitutions[open] ?? 1) - 1;
+        }
+      }
+      at += 1;
+    }
+  }
+  return out.join("");
 }
 
 // ─── Style guards & accessors ───────────────────────────────────────────────────
