@@ -208,6 +208,35 @@ describe("pullWithPackageSync — preemptive", () => {
     expect(statusMessages).toContain("Local package updates were superseded by pulled changes.");
   });
 
+  test("discards an npm lockfile alongside package.json", async () => {
+    const { state } = installMockPlatform(
+      {
+        gitShow: showFrom({
+          "@{u}:package-lock.json": "lock-upstream",
+          "@{u}:package.json": PKG_AUTOMATED,
+          "HEAD:package-lock.json": "lock-old",
+          "HEAD:package.json": PKG_HEAD,
+        }),
+        gitStatus: async () =>
+          gitStatusOf({
+            behind: 1,
+            files: [
+              { path: "package-lock.json", status: "M" },
+              { path: "package.json", status: "M" },
+            ],
+          }),
+        setPackageVersions: async () => ({ ok: true }),
+      },
+      { "package-lock.json": "lock-local", "package.json": PKG_AUTOMATED },
+    );
+
+    await pullWithPackageSync();
+
+    const discard = state.calls.find((c) => c[0] === "gitDiscard");
+    expect(discard?.[1]).toEqual(["package.json", "package-lock.json"]);
+    expect(dialog()).toBeNull();
+  });
+
   test("leaves files alone when upstream content matches HEAD", async () => {
     const { state } = installMockPlatform(
       {
