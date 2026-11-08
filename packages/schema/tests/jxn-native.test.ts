@@ -6,6 +6,7 @@ import {
   JxnError,
   countJxnComments,
   isJxnPath,
+  kdlProblem,
   isNativeDocumentPath,
   parseJxn,
   parseNativeDocument,
@@ -118,5 +119,17 @@ describe("countJxnComments", () => {
     ["nor is a marker before a comment", "/- kdl-version 2\n// a\np", 1],
   ])("%s", (_label, text, count) => {
     expect(countJxnComments(text)).toBe(count);
+  });
+});
+
+describe("kdlProblem", () => {
+  test("KDL is no problem, whether or not it is a valid document", () => {
+    expect(kdlProblem('main "hi"')).toBeNull();
+    expect(kdlProblem("hello world")).toBeNull();
+  });
+
+  test("text that is not KDL says why and where", () => {
+    expect(kdlProblem("a {")).toContain("(line 1, column 4)");
+    expect(kdlProblem('{ "a": 1 }')).toContain("line 1");
   });
 });

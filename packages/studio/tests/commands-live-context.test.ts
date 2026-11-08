@@ -453,6 +453,7 @@ describe("collab, ai and capabilities", () => {
       publish: false,
       readFileBytes: false,
       windowControls: false,
+      fileTypes: false,
     });
   });
 
@@ -477,6 +478,7 @@ describe("collab, ai and capabilities", () => {
       // On: the harness's mock ships `readFileBytes`, which is what gates the image editor.
       readFileBytes: true,
       windowControls: true,
+      fileTypes: false,
     });
   });
 

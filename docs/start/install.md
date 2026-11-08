@@ -27,7 +27,7 @@ The macOS build is notarized, so it opens without a Gatekeeper prompt. The Windo
 Jx Studio is Apple Silicon only. There is no macOS x64 build, so Intel Macs can still run the last release that had one, which no longer receives automatic updates.
 :::
 
-On Linux, make the AppImage executable (`chmod +x JxStudio.AppImage`) and run it. It needs FUSE 2, which recent Ubuntu releases no longer install by default: `sudo apt install libfuse2t64` on 24.04, `libfuse2` before that. Ubuntu 24.04 and later also restrict the sandbox Electron relies on for apps that are not installed from a package, so on Ubuntu the snap below is the better route.
+On Linux, make the AppImage executable (`chmod +x JxStudio.AppImage`) and run it. It needs FUSE 2, which recent Ubuntu releases no longer install by default: `sudo apt install libfuse2t64` on 24.04, `libfuse2` before that. Ubuntu 24.04 and later also restrict the sandbox Electron relies on for apps that are not installed from a package, so on Ubuntu the snap below is the better route. The AppImage doesn't register the `.jxn` file type until you run **Register .jxn Files** from Studio's command palette.
 
 ## Ubuntu (Snap Store)
 
@@ -37,7 +37,7 @@ On Ubuntu, and on any distribution with snapd, install Jx Studio from the Snap S
 sudo snap install jx-studio
 ```
 
-The snap runs the same Studio application as every other platform, with the window frame and buttons Studio draws itself, and draws natively on Wayland. It updates through the Snap Store rather than through Studio's own update prompt.
+The snap runs the same Studio application as every other platform, with the window frame and buttons Studio draws itself, and draws natively on Wayland. It updates through the Snap Store rather than through Studio's own update prompt. A snap can't add a file type to your system, so double-clicking a `.jxn` file doesn't open Studio until your distribution's MIME database knows the type; open those files from inside Studio.
 
 The snap is confined, so it reaches the folders in your home directory and on removable media. To open a project on removable media, connect that interface once:
 

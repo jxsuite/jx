@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Jx Notation (.jxn), for the freedesktop shared MIME database (specs/desktop.md §7.8). The Nix
+  package installs this file to share/mime/packages, and an AppImage's "Register .jxn Files"
+  command writes it to ~/.local/share/mime/packages. tests/file-association-config.test.ts holds it
+  equal to the desktop entries' MimeType lines and to linux.fileAssociations in electron-builder.yml.
+-->
+<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
+  <mime-type type="text/x-jxn">
+    <comment>Jx file</comment>
+    <sub-class-of type="text/plain"/>
+    <generic-icon name="text-x-generic"/>
+    <glob pattern="*.jxn"/>
+  </mime-type>
+</mime-info>

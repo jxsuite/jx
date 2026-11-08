@@ -117,6 +117,12 @@
       "url": "https://spec.commonmark.org/current/"
     },
     {
+      "id": "Desktop Entry Specification",
+      "org": "Other",
+      "title": "Desktop Entry Specification",
+      "url": "https://specifications.freedesktop.org/desktop-entry-spec/latest/"
+    },
+    {
       "id": "ECMA-262",
       "org": "Ecma",
       "title": "ECMAScript Language Specification",
@@ -409,6 +415,12 @@
       "org": "W3C",
       "title": "Service Workers",
       "url": "https://www.w3.org/TR/service-workers/"
+    },
+    {
+      "id": "Shared MIME-info Database",
+      "org": "Other",
+      "title": "Shared MIME-info Database",
+      "url": "https://specifications.freedesktop.org/shared-mime-info-spec/latest/"
     },
     {
       "id": "Sitemaps 0.9",

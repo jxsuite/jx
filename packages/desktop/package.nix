@@ -318,6 +318,8 @@ stdenv.mkDerivation {
     # which is why the icon appeared there and nowhere else; anything resolving a window to an entry
     # by id had nothing stable to find.
     install -Dm644 packages/desktop/jx-studio.desktop $out/share/applications/jx-studio.desktop
+    # `.jxn` as a type the host knows (specs/desktop.md §7.8): the desktop entry names it.
+    install -Dm644 packages/desktop/jx-studio.mime.xml $out/share/mime/packages/jx-studio.xml
 
     install -Dm644 packages/desktop/icon.png $out/share/icons/hicolor/512x512/apps/jx-studio.png
     install -Dm644 branding/jx_flattened.svg $out/share/icons/hicolor/scalable/apps/jx-studio.svg

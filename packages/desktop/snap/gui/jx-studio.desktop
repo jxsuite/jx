@@ -6,5 +6,5 @@ Icon=${SNAP}/meta/gui/icon.png
 Terminal=false
 Type=Application
 Categories=Development;WebDevelopment;
-MimeType=application/json;text/markdown;
+MimeType=application/json;text/markdown;text/x-jxn;
 StartupWMClass=jx-studio

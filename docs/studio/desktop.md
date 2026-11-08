@@ -68,6 +68,12 @@ To open an existing project:
 
 You can also open from your file manager: right-click a `project.json`, a page or a Markdown file inside a project and choose **Open With > Jx Studio**. The project opens with that file in a tab, and if it's already open its window comes forward. Installing Studio doesn't change what opens your `.json` files by default.
 
+A `.jxn` file is Studio's own type, so double-clicking one opens it in Studio: a `project.jxn` opens its project, and a page or component opens in its project with that file in a tab. The first time a folder opens, Studio asks whether you trust it, as described below. A file named `.jxn` that isn't [Jx Notation](/docs/framework/concepts/jxn-files) gets a sentence saying so, with the line and column of the problem, and no window. A `.jxn` outside any project isn't opened yet.
+
+:::doc-note
+The AppImage has no install step, so it doesn't register `.jxn` until you ask. Run **Register .jxn Files** from the command palette (:kbd[⌘K]) once. If you later move the AppImage, Studio tells you that `.jxn` files still open the old copy, and running the command again fixes it. The snap can't add a file type to your system, so on a snap open `.jxn` files from inside Studio.
+:::
+
 ### Opening a folder for the first time
 
 The first time a folder would open, Studio asks: **Open this folder and run its code?** A Jx project runs code on your computer with your permissions, so only open a folder you trust. Studio names the folder by its path, because a project's name is whatever its author chose. Choosing **Cancel** opens nothing.
@@ -99,7 +105,7 @@ Studio itself is identical in both, and every page in this documentation applies
 
 - **Nothing to run.** In the browser, Studio is served by a local dev server you start from a terminal (see **[The dev server](/docs/framework/build/dev-server)**). The desktop app carries its own backend, so you launch it like any other application.
 - **Native dialogs.** Opening projects and picking folders use your operating system's file dialogs instead of the browser's folder picker.
-- **Windows, menus, and Open With.** One window per project, Jx Studio listed under **Open With** for `.json` files, and on macOS a real _File_ menu in the menu bar. On Windows and Linux, Studio draws its own menu in the command bar.
+- **Windows, menus, and Open With.** One window per project, Jx Studio listed under **Open With** for `.json` files and opening `.jxn` files on a double-click, and on macOS a real _File_ menu in the menu bar. On Windows and Linux, Studio draws its own menu in the command bar.
 - **Right-click in text.** Where Studio leaves a right-click to the browser (in a text field, inside the text you are editing on the canvas, on a link in Preview), the app shows its own menu: spelling suggestions for a misspelled word, the edit commands (Undo, Redo, Cut, Copy, Paste, Select All), **Copy** for selected text and **Copy Link Address** for a link. Studio's own menus, such as the canvas element menu, are the same in both.
 - **Built-in updates.** The app updates itself in the background; a dev-server setup, and the NixOS build below, updates with your package manager.
 
