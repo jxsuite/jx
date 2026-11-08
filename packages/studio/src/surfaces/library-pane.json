@@ -629,7 +629,13 @@
                     },
                     "hint": "Tick entries to delete several at once"
                   },
-                  "onclick": {
+                  "children": [
+                    {
+                      "tagName": "span",
+                      "textContent": "Select"
+                    }
+                  ],
+                  "onchange": {
                     "$prototype": "Function",
                     "body": [
                       {
@@ -640,13 +646,7 @@
                         "value": []
                       }
                     ]
-                  },
-                  "children": [
-                    {
-                      "tagName": "span",
-                      "textContent": "Select"
-                    }
-                  ]
+                  }
                 }
               }
             },
