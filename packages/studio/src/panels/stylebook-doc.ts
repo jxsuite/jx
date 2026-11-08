@@ -10,7 +10,14 @@
  * `` `& .element-card-preview ${T}` `` — applyStyle resolves `&` to the root's `[data-jx=uid]`
  * scope, confining the cascade to specimens.
  *
- * There used to be a second, and it was a workaround rather than a fact: `applyStyle` emitted
+ * A second shapes the state row (studio.md §7.2): an interactive element's card draws its specimen
+ * once per CSS state, and a pseudo-class cannot be put on an element that nobody is pointing at. So
+ * each state copy is marked with `data-jx-state` and {@link transposeStylebookStyle} repeats the
+ * tag's state rule keyed on that mark. `& .element-card-preview [data-jx-state~="hover"] button` is
+ * exactly as specific as the `button:hover` it copies and comes after it, and the runtime's own
+ * selectors are left alone, so real hover still works on every canvas.
+ *
+ * There used to be a third, and it was a workaround rather than a fact: `applyStyle` emitted
  * `@media → selector` but DROPPED `selector → @media`, so a tag rule's embedded `@name` block was
  * HOISTED into the corresponding top-level one here. The runtime composes both orders now, so the
  * hoist is gone and a nested `@name` block stays where the author wrote it.
@@ -55,6 +62,57 @@ function isStyleBlock(value: JxStyle[string]): value is JxStyle {
 /** The specimen-scoping selector prefix (see the module doc). */
 const SPECIMEN_SCOPE = "& .element-card-preview";
 
+/** One cell of an element's state row: its label, its marks, and whether it is disabled. */
+export interface StylebookState {
+  /** What the cell is captioned, as CSS spells it: `default`, `:hover`. */
+  label: string;
+  /** The pseudo-classes the copy stands for, as `data-jx-state` tokens: `["hover", "active"]`. */
+  marks: readonly string[];
+  /** A real `disabled` attribute, which `:disabled` matches without a copy of its rule. */
+  disabled?: boolean;
+}
+
+/**
+ * The state row of the elements that have one. A pressed control is also hovered, and a focus ring
+ * is also focus, so those copies carry both marks, the narrower one last.
+ */
+const POINTER_STATES: readonly StylebookState[] = [
+  { label: "default", marks: [] },
+  { label: ":hover", marks: ["hover"] },
+  { label: ":focus-visible", marks: ["focus", "focus-visible"] },
+  { label: ":active", marks: ["hover", "active"] },
+];
+const CONTROL_STATES: readonly StylebookState[] = [
+  ...POINTER_STATES,
+  { disabled: true, label: ":disabled", marks: [] },
+];
+export const STYLEBOOK_STATES: ReadonlyMap<string, readonly StylebookState[]> = new Map([
+  ["a", POINTER_STATES],
+  ["button", CONTROL_STATES],
+  ["input", CONTROL_STATES],
+  ["select", CONTROL_STATES],
+  ["textarea", CONTROL_STATES],
+]);
+
+/** The order the copied state rules are emitted in, so a narrower state wins a tie. */
+const STATE_ORDER = ["focus", "focus-visible", "hover", "active"] as const;
+
+/**
+ * A tag rule's state blocks, re-keyed onto the marked copies of its state row. Empty for a tag with
+ * no state row, and for one whose rule declares none of the states.
+ */
+function stateCopies(tag: string, rule: JxStyle): [string, JxStyle][] {
+  if (!STYLEBOOK_STATES.has(tag)) {
+    return [];
+  }
+  return STATE_ORDER.flatMap((state): [string, JxStyle][] => {
+    const block = rule[`:${state}`] ?? rule[`&:${state}`];
+    return isStyleBlock(block)
+      ? [[`${SPECIMEN_SCOPE} [data-jx-state~="${state}"] ${tag}`, block]]
+      : [];
+  });
+}
+
 /**
  * Transform the merged effective document style into the generated root's style block: flat scalars
  * and `--` custom props stay at the top (inheritance into specimens) and tag rules are re-keyed
@@ -96,6 +154,7 @@ export function transposeStylebookStyle(effectiveStyle: JxStyle): JxStyle {
       for (const [mk, mv] of Object.entries(v)) {
         if (isStyleBlock(mv) && isTagPath(mk)) {
           bucket[`${SPECIMEN_SCOPE} ${mk}`] = withoutBaseWidth(mv);
+          Object.assign(bucket, Object.fromEntries(stateCopies(mk, mv)));
         } else {
           bucket[mk] = mv;
         }
@@ -105,6 +164,7 @@ export function transposeStylebookStyle(effectiveStyle: JxStyle): JxStyle {
     }
     if (isTagPath(k)) {
       out[`${SPECIMEN_SCOPE} ${k}`] = withoutBaseWidth(v);
+      Object.assign(out, Object.fromEntries(stateCopies(k, v)));
       continue;
     }
     out[k] = v;
@@ -263,6 +323,61 @@ export function buildStylebookDoc(opts: BuildStylebookDocOpts): StylebookDocResu
     return node;
   };
 
+  /**
+   * A card drawing its specimen once per state (§7.2), each copy captioned and marked. A hit on a
+   * copy names the state, `button :hover`, which is the selector a style edit there writes.
+   */
+  const statesCardNode = (
+    entry: StylebookEntry,
+    states: readonly StylebookState[],
+    cardPath: JxPath,
+  ): JxMutableNode => {
+    const { tag } = entry;
+    pathToTag.set(serializeJxPath(cardPath), tag);
+    const previewPath = [...cardPath, "children", 0];
+    pathToTag.set(serializeJxPath(previewPath), tag);
+    if (!tagToCardPath.has(tag)) {
+      tagToCardPath.set(tag, cardPath);
+    }
+    const cells = states.map((state, index): JxMutableNode => {
+      const target = state.label === "default" ? tag : `${tag} ${state.label}`;
+      const cellPath = [...previewPath, "children", index];
+      pathToTag.set(serializeJxPath(cellPath), target);
+      registerSpecimenPaths(entry, [...cellPath, "children", 0], tag);
+      pathToTag.set(serializeJxPath([...cellPath, "children", 0]), target);
+      pathToTag.set(serializeJxPath([...cellPath, "children", 1]), target);
+      const specimen = specimenNode(entry);
+      if (state.disabled) {
+        specimen.attributes = { ...specimen.attributes, disabled: "" };
+      }
+      const marks = state.marks.join(" ");
+      return {
+        attributes: marks ? { class: "sb-state", "data-jx-state": marks } : { class: "sb-state" },
+        children: [
+          specimen,
+          { attributes: { class: "sb-state-label" }, tagName: "div", textContent: state.label },
+        ],
+        tagName: "div",
+      };
+    });
+    return {
+      attributes: { class: "element-card" },
+      children: [
+        {
+          attributes: { class: "element-card-preview sb-states" },
+          children: cells,
+          tagName: "div",
+        },
+        {
+          attributes: { class: "element-card-label" },
+          tagName: "div",
+          textContent: `<${tag}>`,
+        },
+      ],
+      tagName: "div",
+    };
+  };
+
   /** A card wrapping one specimen; registers card/preview/specimen paths under `tag`. */
   const cardNode = (
     tag: string,
@@ -321,15 +436,13 @@ export function buildStylebookDoc(opts: BuildStylebookDocOpts): StylebookDocResu
       continue;
     }
     const bodyPath = sectionBodyPath();
-    const cards = entries.map((entry, ci) =>
-      cardNode(
-        entry.tag,
-        `<${entry.tag}>`,
-        specimenNode(entry),
-        [...bodyPath, "children", ci],
-        entry,
-      ),
-    );
+    const cards = entries.map((entry, ci) => {
+      const cardPath = [...bodyPath, "children", ci];
+      const states = STYLEBOOK_STATES.get(entry.tag);
+      return states
+        ? statesCardNode(entry, states, cardPath)
+        : cardNode(entry.tag, `<${entry.tag}>`, specimenNode(entry), cardPath, entry);
+    });
     sections.push(sectionNode(section.label, cards));
   }
 
