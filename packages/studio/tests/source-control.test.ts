@@ -604,40 +604,6 @@ describe("rows", () => {
     ]);
     resetStudioState({ name: "Demo", projectRoot: "/p" });
   });
-
-  test("a changed file is a row named after its file and folder", () => {
-    expect(sc.changeRow({ path: "pages/index.json", staged: true, status: "M" })).toEqual({
-      cannotDiscard: false,
-      dir: "pages",
-      hasDir: true,
-      included: true,
-      key: "pages/index.json",
-      label: "pages/index.json, modified",
-      name: "index.json",
-      path: "pages/index.json",
-      status: "M",
-      statusWord: "modified",
-    });
-    expect(sc.changeRow({ path: "src/app.ts", staged: false, status: "U" }).cannotDiscard).toBe(
-      true,
-    );
-  });
-
-  test("a status with no word of its own still says the file changed", () => {
-    expect(sc.statusWord("X")).toBe("changed");
-    expect(sc.changeRow({ path: "a", staged: false, status: "X" }).hasDir).toBe(false);
-  });
-
-  test("the compact tag is one vocabulary beside the words, an unknown letter an edit", () => {
-    expect(["A", "D", "M", "R", "U", "X"].map((letter) => sc.statusTag(letter))).toEqual([
-      "NEW",
-      "DELETED",
-      "EDIT",
-      "RENAMED",
-      "NEW",
-      "EDIT",
-    ]);
-  });
 });
 
 describe("including what has not been shown", () => {

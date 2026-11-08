@@ -1,80 +1,33 @@
 {
   "$schema": "https://jxsuite.com/schema/v1",
   "$id": "StudioPublishQuick",
-  "$description": "Quick publish (studio.md §22.8): the dialog the chevron beside the Publish workspace tab opens. The count, a short list of what changed, the destination, the summary that becomes the commit message, and the checks in one line; Publish now takes every change to the destination, and Review all opens the Publish workspace on Review changes instead. One `jx-dialog`, so the platform owns modality, Escape and focus restoration. `publish/publish-quick.ts` keeps every decision, and the words of the destinations and the checks are the same `publish/publish-changes.ts` hands Review changes, so the two cannot disagree about what a button does.",
-  "tagName": "jx-dialog",
+  "$description": "Quick publish (studio.md §22.8): the popover the chevron beside the Publish workspace tab opens, hanging from it. The count with Review all, a short list of what changed named as the site names it (NEW Pricing, EDIT Base template, affects 4 pages), the rest summed up by kind, the destination, the summary that becomes the commit message, the checks in one line, and Publish now, which takes every change to the destination. One `jx-popover` opened from the chevron, so the platform owns light dismissal, Escape and focus restoration. `publish/publish-quick.ts` keeps every decision, and the words of the changes, the destinations and the checks are the same ones Review changes draws, so the two cannot disagree about what a change is or what a button does.",
+  "tagName": "jx-popover",
   "$props": {
-    "headline": "Publish",
-    "confirmLabel": "Publish now",
-    "confirmDisabled": {
-      "$ref": "#/state/blocked"
-    },
-    "secondaryLabel": "Review all",
-    "cancelLabel": "Cancel",
-    "size": "md"
+    "label": "Publish",
+    "placement": "block-end span-inline-start"
   },
   "attributes": {
     "part": "publish-quick",
     "data-destination": "${state.destination}"
   },
-  "onconfirm": {
-    "$prototype": "Function",
-    "body": [
-      {
-        "operator": "call",
-        "target": {
-          "$ref": "#/state/confirm"
-        },
-        "value": []
-      }
-    ]
-  },
-  "onsecondary": {
-    "$prototype": "Function",
-    "body": [
-      {
-        "operator": "call",
-        "target": {
-          "$ref": "#/state/reviewAll"
-        },
-        "value": []
-      }
-    ]
-  },
-  "oncancel": {
-    "$prototype": "Function",
-    "body": [
-      {
-        "operator": "call",
-        "target": {
-          "$ref": "#/state/closed"
-        },
-        "value": []
-      }
-    ]
-  },
-  "onclose": {
-    "$prototype": "Function",
-    "body": [
-      {
-        "operator": "call",
-        "target": {
-          "$ref": "#/state/closed"
-        },
-        "value": []
-      }
-    ]
-  },
   "style": {
+    "$description": "The panel is as wide as the board draws it, wider than a menu's default, so a change's name and what it touches sit on one line.",
+    "width": "420px",
+    "maxWidth": "calc(100vw - 16px)",
     "& [part=\"sheet\"]": {
       "display": "flex",
       "flexDirection": "column",
       "gap": "var(--jx-space-3)",
+      "width": "100%",
+      "boxSizing": "border-box",
+      "padding": "var(--jx-space-2)",
       "minWidth": "0"
     },
     "& [part=\"count\"]": {
       "margin": "0",
-      "fontWeight": "600"
+      "fontWeight": "600",
+      "fontSize": "var(--jx-text-lg)"
     },
     "& [part=\"change-list\"]": {
       "margin": "0",
@@ -99,21 +52,11 @@
       "letterSpacing": "0.04em",
       "color": "var(--signal)"
     },
-    "& [part=\"change\"][data-status=\"A\"] > [part=\"change-tag\"], & [part=\"change\"][data-status=\"U\"] > [part=\"change-tag\"]": {
-      "color": "var(--success)"
-    },
-    "& [part=\"change\"][data-status=\"D\"] > [part=\"change-tag\"]": {
-      "color": "var(--danger)"
-    },
     "& [part=\"change-name\"]": {
       "minWidth": "0",
       "overflow": "hidden",
       "textOverflow": "ellipsis",
       "whiteSpace": "nowrap"
-    },
-    "& [part=\"change-dir\"], & [part=\"more\"], & [part=\"choice-note\"], & [part=\"blocker\"]": {
-      "color": "var(--fg-dim)",
-      "fontSize": "var(--jx-text-sm)"
     },
     "& [part=\"more\"], & [part=\"blocker\"]": {
       "margin": "0"
@@ -154,6 +97,34 @@
     },
     "& [part=\"checks-line\"][data-state=\"open\"] > [part=\"checks-icon\"]": {
       "color": "var(--warning)"
+    },
+    "& [part=\"head\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "var(--jx-space-2)"
+    },
+    "& [part=\"review-all\"]": {
+      "marginLeft": "auto",
+      "flex": "none"
+    },
+    "& [part=\"change-note\"]": {
+      "marginLeft": "auto",
+      "flex": "none",
+      "fontSize": "var(--jx-text-xs)",
+      "color": "var(--warning)"
+    },
+    "& [part=\"publish-now\"]": {
+      "width": "100%"
+    },
+    "& [part=\"change\"][data-tag=\"new\"] > [part=\"change-tag\"]": {
+      "color": "var(--success)"
+    },
+    "& [part=\"change\"][data-tag=\"delete\"] > [part=\"change-tag\"]": {
+      "color": "var(--danger)"
+    },
+    "& [part=\"more\"], & [part=\"choice-note\"], & [part=\"blocker\"]": {
+      "color": "var(--fg-dim)",
+      "fontSize": "var(--jx-text-sm)"
     }
   },
   "children": [
@@ -164,11 +135,48 @@
       },
       "children": [
         {
-          "tagName": "p",
+          "tagName": "div",
           "attributes": {
-            "part": "count"
+            "part": "head"
           },
-          "textContent": "${state.countLine}"
+          "children": [
+            {
+              "tagName": "strong",
+              "attributes": {
+                "part": "count"
+              },
+              "textContent": "${state.countLine}"
+            },
+            {
+              "tagName": "jx-action-button",
+              "attributes": {
+                "part": "review-all"
+              },
+              "$props": {
+                "size": "sm",
+                "quiet": true,
+                "hint": "Review each change in the Publish workspace first"
+              },
+              "onclick": {
+                "$prototype": "Function",
+                "body": [
+                  {
+                    "operator": "call",
+                    "target": {
+                      "$ref": "#/state/reviewAll"
+                    },
+                    "value": []
+                  }
+                ]
+              },
+              "children": [
+                {
+                  "tagName": "span",
+                  "textContent": "Review all"
+                }
+              ]
+            }
+          ]
         },
         {
           "tagName": "div",
@@ -201,7 +209,7 @@
                     "tagName": "li",
                     "attributes": {
                       "part": "change",
-                      "data-status": "${$map.item.status}",
+                      "data-tag": "${$map.item.tagKind}",
                       "title": "${$map.item.path}"
                     },
                     "children": [
@@ -217,14 +225,14 @@
                         "attributes": {
                           "part": "change-name"
                         },
-                        "textContent": "${$map.item.name}"
+                        "textContent": "${$map.item.label}"
                       },
                       {
                         "tagName": "span",
                         "attributes": {
-                          "part": "change-dir"
+                          "part": "change-note"
                         },
-                        "textContent": "${$map.item.dir}"
+                        "textContent": "${$map.item.note}"
                       }
                     ]
                   }
@@ -421,6 +429,37 @@
               "textContent": "${state.blocker}"
             }
           }
+        },
+        {
+          "$description": "Publish now: every change, to the chosen destination. A button of its own rather than a dialog's confirm, because the panel is a popover and the verb is the thing it is for.",
+          "tagName": "jx-button",
+          "attributes": {
+            "part": "publish-now"
+          },
+          "$props": {
+            "variant": "accent",
+            "disabled": {
+              "$ref": "#/state/blocked"
+            }
+          },
+          "onclick": {
+            "$prototype": "Function",
+            "body": [
+              {
+                "operator": "call",
+                "target": {
+                  "$ref": "#/state/confirm"
+                },
+                "value": []
+              }
+            ]
+          },
+          "children": [
+            {
+              "tagName": "span",
+              "textContent": "Publish now"
+            }
+          ]
         }
       ]
     }

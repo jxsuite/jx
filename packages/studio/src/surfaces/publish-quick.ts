@@ -1,39 +1,39 @@
 /// <reference lib="dom" />
 /**
- * Quick publish, as a mounted dialog (studio.md §22.8).
+ * Quick publish, as a mounted popover (studio.md §22.8).
  *
- * This is the adapter: the reactive scope `publish-quick.json` reads, and the mount that lives in
- * the dialog layer until the flow (`publish/publish-quick.ts`) takes it down. The dialog is a
- * `jx-dialog` opened with `showModal()`, so the platform owns modality, Escape and focus
- * restoration (`studio-ui-guidelines.md` §8.7); nothing here draws a backdrop.
- *
- * **Await the ELEMENT, not just the mount**, for the reason `surfaces/add-new.ts` gives: the
- * dialog's own template is one `connectedCallback` after the document renders.
+ * This is the adapter: the reactive scope `publish-quick.json` reads, and the panel that hangs from
+ * the chevron beside the Publish workspace tab until the flow (`publish/publish-quick.ts`) takes it
+ * down. The panel is a `jx-popover` shown from that chevron (`ui/popover-surface.ts`), so the
+ * platform owns light dismissal, Escape, focus restoration and placement against the chevron;
+ * nothing here draws a backdrop or measures a position.
  *
  * @docs studio/publish
  */
 
 import { reactive } from "../reactivity";
-import { mountSurface, registerSurface } from "../ui/surface";
-import { overlayRegion, REGION_ATTR } from "../ui/regions";
-import { close, showModal } from "@jxsuite/ui/behaviors/dialog";
-import { whenReady } from "./dialog";
+import { openPopoverSurface } from "../ui/popover-surface";
+import { registerSurface } from "../ui/surface";
 import publishQuickDoc from "./publish-quick.json";
-import type { SurfaceHandle } from "../ui/surface";
 import type { DestinationChoice } from "../publish/publish-changes";
 import type { PublishDestination } from "../publish/publish-ids";
+import type { ReviewTag } from "../publish/review-changes";
 
 registerSurface("publish-quick", publishQuickDoc);
 
-/** One changed file in the short list. */
+/** One change in the short list, named as Review changes names it. */
 export interface QuickChangeRow {
   key: string;
+  /** The file, which is the row's tooltip: what is committed, one hover away. */
   path: string;
-  /** NEW, EDIT, DELETED, RENAMED: a word, not git's letter. */
+  /** NEW, EDIT, DELETE, RENAME: a word, not git's letter. */
   tag: string;
-  name: string;
-  dir: string;
-  status: string;
+  /** What the tag means, which colours it. */
+  tagKind: ReviewTag;
+  /** What the site calls it: "Pricing", "Base template". */
+  label: string;
+  /** What else it changes, "affects 4 pages", or "" for a change that touches only itself. */
+  note: string;
 }
 
 /** Everything the dialog draws. */
@@ -67,42 +67,34 @@ export interface PublishQuickActions {
   reviewAll: () => void;
   pickDestination: (value: string) => void;
   editSummary: (value: string) => void;
-  /** The dialog closed, for any reason the platform owns as well as the flow's own `close`. */
+  /** The panel closed, for any reason the platform owns as well as the flow's own `close`. */
   closed: () => void;
 }
 
 export interface PublishQuickSurfaceOptions {
-  /** Where the dialog is mounted: the dialog layer, handed in so this module never reaches back. */
-  layer: HTMLElement;
+  /** The chevron it hangs from, or null when the command ran from somewhere with none showing. */
+  anchor: HTMLElement | null;
   view: PublishQuickView;
   actions: PublishQuickActions;
 }
 
 export interface PublishQuickSurfaceHandle {
   host: HTMLElement;
-  /** Resolves with the `jx-dialog` element once it has rendered and been opened. */
-  ready: Promise<HTMLElement>;
+  /** Settles once the panel is showing, or it was closed first. */
+  ready: Promise<void>;
   update: (view: PublishQuickView) => void;
-  /** Close the dialog (the platform restores focus) and dispose the document. Idempotent. */
+  /** Close the panel (the platform restores focus) and dispose the document. Idempotent. */
   close: () => void;
 }
 
 type PublishQuickScope = PublishQuickView & PublishQuickActions;
 
-/** Open the dialog. The handle's `ready` resolves once it is showing. */
+/** Open the panel. The handle's `ready` settles once it is showing. */
 export function openPublishQuickSurface(
   options: PublishQuickSurfaceOptions,
 ): PublishQuickSurfaceHandle {
-  const slot = document.createElement("div");
-  /* The layer is `pointer-events: none` so a click passes through it when nothing is up, and every
-     slot in it turns them back on for its own content (`surfaces/add-new.ts` says why a modal
-     dialog in a slot that skipped this hit-tests to nothing). */
-  slot.style.pointerEvents = "auto";
-  slot.setAttribute(REGION_ATTR, overlayRegion("dialog", "publish-quick"));
-  options.layer.append(slot);
-
   let closed = false;
-  /** Say it is over, once: the platform's own `close` and `close()` may each be first. */
+  /** Say it is over, once: the platform's own dismissal and `close()` may each be first. */
   const finish = (): void => {
     if (closed) {
       return;
@@ -110,9 +102,6 @@ export function openPublishQuickSurface(
     closed = true;
     options.actions.closed();
   };
-  /* A function, not the flag: TypeScript narrows a `let` across the awaits below as if nothing
-     could have closed the dialog while the mount was in flight. */
-  const isClosed = (): boolean => closed;
   const { actions } = options;
   const scope = reactive<PublishQuickScope>({
     ...options.view,
@@ -127,37 +116,20 @@ export function openPublishQuickSurface(
     pickDestination: actions.pickDestination,
     reviewAll: actions.reviewAll,
   });
-
-  let mounted: SurfaceHandle | null = null;
-  const ready = mountSurface("publish-quick", scope, slot).then(async (surface) => {
-    mounted = surface;
-    /* SAFETY: `publish-quick.json`'s root definition is a `jx-dialog` element, so the runtime
-       mounts an HTMLElement; a `Text` root only comes from a document whose root is a string. */
-    const element = surface.root as HTMLElement;
-    if (isClosed()) {
-      surface.dispose();
-      return element;
-    }
-    await whenReady(element);
-    if (!isClosed()) {
-      showModal(element);
-    }
-    return element;
+  const panel = openPopoverSurface({
+    anchor: options.anchor,
+    name: "publish-quick",
+    onDismissed: finish,
+    scope,
+    slot: "publish-quick",
   });
-
   return {
     close() {
-      const element = mounted?.root;
-      if (element instanceof HTMLElement) {
-        close(element);
-      }
-      mounted?.dispose();
-      mounted = null;
-      slot.remove();
+      panel.close();
       finish();
     },
-    host: slot,
-    ready,
+    host: panel.host,
+    ready: panel.ready,
     update(view) {
       Object.assign(scope, view);
     },
