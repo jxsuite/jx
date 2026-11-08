@@ -2,9 +2,9 @@
 
 ## Platform Abstraction, Project Loading, and Component Scoping
 
-**Version:** 0.7.15-draft\
+**Version:** 0.7.17-draft\
 **Status:** Partial\
-**Updated:** 2026-11-07\
+**Updated:** 2026-11-08\
 **License:** MIT
 
 ---
@@ -1161,6 +1161,8 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.7.17-draft** (2026-11-08) — §7.8: Jx Studio declares .jxn on each channel that can register a file type, an AppImage registers it when asked, and a .jxn that is not Jx Notation is refused by name.
+- **0.7.16-draft** (2026-11-08) — The project file may be project.jxn, which the picker offers and opening from the OS recognises by its project node.
 - **0.7.15-draft** (2026-11-07) — A search for a project believes the file's name only if its content agrees.
 - **0.7.14-draft** (2026-11-07) — What the operating system opens resolves by one rule, and a folder is trusted once before its code runs.
 - **0.7.13-draft** (2026-11-06) — Reserve sections for opening a path from the operating system, trusting a project, and file associations, all pending.
@@ -1261,4 +1263,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_Jx Studio Desktop Architecture Specification v0.7.15-draft_
+_Jx Studio Desktop Architecture Specification v0.7.17-draft_

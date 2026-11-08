@@ -1,5 +1,14 @@
 # Changelog
 
+## [5.4.0](https://github.com/jxsuite/jx/compare/schema-v5.3.0...schema-v5.4.0) (2026-11-08)
+
+
+### Features
+
+* **desktop:** declare .jxn on every channel that can register a file type ([#570](https://github.com/jxsuite/jx/issues/570)) ([e155b45](https://github.com/jxsuite/jx/commit/e155b454be89c73e1b9cda9a7acaa758f571b3f5))
+* jx convert moves the project file, and Studio opens one that does not read ([#565](https://github.com/jxsuite/jx/issues/565)) ([a05163d](https://github.com/jxsuite/jx/commit/a05163d2a0ab561175bafc9ffd13058e8a8ad43e))
+* **schema:** read and write a project file in Jx Notation ([#560](https://github.com/jxsuite/jx/issues/560)) ([1a98bf2](https://github.com/jxsuite/jx/commit/1a98bf29cc60e6f958ac6d7de22159057d0bbfcb))
+
 ## [5.3.0](https://github.com/jxsuite/jx/compare/schema-v5.2.0...schema-v5.3.0) (2026-11-07)
 
 

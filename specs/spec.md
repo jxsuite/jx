@@ -2,9 +2,9 @@
 
 ## Declarative Document Object Model — JSON Edition
 
-**Version:** 0.9.1-draft\
+**Version:** 0.9.2-draft\
 **Status:** Partial\
-**Updated:** 2026-11-07\
+**Updated:** 2026-11-08\
 **License:** MIT
 
 ---
@@ -2863,6 +2863,7 @@ This rewrites the mutating handlers of Appendix A's idiom using `$expression`, l
 
 ## Changelog
 
+- **0.9.2-draft** (2026-11-08) — Project files have a grammar: §22.5 reads and writes a project.jxn, with the project node, style rows and a comment-keeping save.
 - **0.9.1-draft** (2026-11-07) — §22 is Implemented. §22.4: saving a .jxn file keeps what did not change, and a merge can cost comments and never data.
 - **0.9.0-draft** (2026-11-07) — §2.3: the JSON data model is authoritative, and .json and .jxn are two spellings of it. §22: every host reads .jxn.
 - **0.8.7-draft** (2026-11-07) — §22: the Jx Notation grammar, what a reader refuses and what a writer guarantees, read and written by @jxsuite/schema/jxn. No host dispatches to it yet.
@@ -2975,4 +2976,4 @@ This rewrites the mutating handlers of Appendix A's idiom using `$expression`, l
 
 ---
 
-_Jx Specification v0.9.1-draft — subject to revision_
+_Jx Specification v0.9.2-draft — subject to revision_
