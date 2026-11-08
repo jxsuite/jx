@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.5.5](https://github.com/jxsuite/jx/compare/search-v0.5.4...search-v0.5.5) (2026-11-08)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/schema bumped to 5.5.0
+
 ## [0.5.4](https://github.com/jxsuite/jx/compare/search-v0.5.3...search-v0.5.4) (2026-11-08)
 
 

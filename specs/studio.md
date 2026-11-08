@@ -2,7 +2,7 @@
 
 ## Visual Builder for Jx Documents
 
-**Version:** 0.16.22-draft\
+**Version:** 0.16.37-draft\
 **Status:** Partial\
 **Updated:** 2026-11-08\
 **License:** MIT
@@ -2413,6 +2413,21 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.16.37-draft** (2026-11-08) — §22.6: a picture's alt text and tags live in the picture's own XMP (IPTC Alt Text (Accessibility) and dc:subject), edited in the Media workspace's detail pane; Missing alt text and a Tags section filter by them and the search matches them; §9.3 Replace and §9.5 saves carry them across an overwrite; §19 binds IPTC Photo Metadata and ISO 16684-1. §22.6 is Implemented.
+- **0.16.36-draft** (2026-11-08) — Review changes' publish column says where the site is hosted, beside the choice of destination (§22.8).
+- **0.16.35-draft** (2026-11-08) — Publish › Hosting numbers its three setup steps, each marked Done or To do (§22.8).
+- **0.16.34-draft** (2026-11-08) — The Pages Table says under each title what the page is: the home page, or a collection's template page with how many pages it makes (§22.5).
+- **0.16.33-draft** (2026-11-08) — A collection's Table shows a Cover column for entries with a picture field, and a Select mode whose row checkboxes and selection bar delete the ticked entries (§22.5).
+- **0.16.32-draft** (2026-11-08) — Project Settings › Overview sets the default template for new pages, writing defaults.layout (§17.1).
+- **0.16.31-draft** (2026-11-08) — Design's Style tab offers Applies to: this element, or every one of its tag, which opens Project Styles on the tag (§6.2); the Variables view's scheme switch marks its segments as a radio group expects.
+- **0.16.30-draft** (2026-11-08) — The Style tab names the components that restyle a Project Styles element, each with Open, and offers New component for a second kind of it (§7.4).
+- **0.16.29-draft** (2026-11-08) — The Variables view draws colours as a swatch grid with the chosen colour's detail (colour field, contrast against the page, what uses it, overrides) and a scheme switch (§7.1).
+- **0.16.28-draft** (2026-11-08) — Project Styles draws a link, a button and each form field once per CSS state, side by side, and a hit on a copy edits that state (§7.2).
+- **0.16.27-draft** (2026-11-08) — Quick publish is a popover hanging from its chevron, naming changes as Review changes does, with a changed template's page count and the rest summed up by kind (§22.8).
+- **0.16.26-draft** (2026-11-08) — The Page tab reads Page, Template, Search & sharing and Advanced, and a collection's page leads with its URL pattern and template and lists the fields it can place, each a chip that drags a bound element onto the page (§6).
+- **0.16.25-draft** (2026-11-08) — An entry is written inside its collection's page and the page's layout, with the page's entry state read from the tab and whole-field text typed in place (§22.5).
+- **0.16.24-draft** (2026-11-08) — A collection's page draws the text it takes from a ContentEntry live with field badges (§4.1), and Edit carries the entry-preview bar over it (§22.4); route-parameter pickers list entries by title (§6.2).
+- **0.16.23-draft** (2026-11-08) — §22.8: a push refused by the branch's rules offers Push to a New Branch and a pull request.
 - **0.16.22-draft** (2026-11-08) — §11.1: the code editor registers every Monaco feature before the first editor exists, because the lazily loaded JSON and TypeScript modes registered the rest late, and two of them threw on every editor created afterwards.
 - **0.16.21-draft** (2026-11-08) — §22.8 Review changes draws the comparison of the picked change in its centre, between a list that names each change as the site does (tag, name, kind and address) and the publish column; §21.4 and §22.1: comparisons are no longer tabs of their own, so Publish has no Back.
 - **0.16.20-draft** (2026-11-08) — §8.5: Studio opens, edits, saves and converts .jxn documents, solo and in a collaboration session, keeping their comments.
@@ -2637,4 +2652,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_`@jxsuite/studio` Specification v0.16.22-draft_
+_`@jxsuite/studio` Specification v0.16.37-draft_
