@@ -46,7 +46,7 @@
     },
     "extensions/auth": {
       "name": "@jxsuite/auth",
-      "version": "0.8.3",
+      "version": "0.8.5",
       "dependencies": {
         "@jxsuite/connector": "workspace:^",
         "@jxsuite/schema": "workspace:^",
@@ -61,7 +61,7 @@
     },
     "extensions/connector": {
       "name": "@jxsuite/connector",
-      "version": "0.8.3",
+      "version": "0.8.5",
       "dependencies": {
         "@jxsuite/schema": "workspace:^",
         "kysely": "^0.29.8",
@@ -77,7 +77,7 @@
     },
     "extensions/feed": {
       "name": "@jxsuite/feed",
-      "version": "0.5.1",
+      "version": "0.5.3",
       "dependencies": {
         "@jxsuite/schema": "workspace:^",
       },
@@ -87,7 +87,7 @@
     },
     "extensions/parser": {
       "name": "@jxsuite/parser",
-      "version": "4.2.0",
+      "version": "4.3.1",
       "dependencies": {
         "@jxsuite/markup": "workspace:^",
         "@jxsuite/schema": "workspace:^",
@@ -116,7 +116,7 @@
     },
     "extensions/search": {
       "name": "@jxsuite/search",
-      "version": "0.5.1",
+      "version": "0.5.3",
       "dependencies": {
         "@jxsuite/schema": "workspace:^",
         "minisearch": "^7.2.0",
@@ -127,7 +127,7 @@
     },
     "packages/ai": {
       "name": "@jxsuite/ai",
-      "version": "0.42.1",
+      "version": "0.43.1",
       "dependencies": {
         "@jxsuite/protocol": "workspace:^",
         "@jxsuite/schema": "workspace:^",
@@ -140,14 +140,14 @@
     },
     "packages/catalog": {
       "name": "@jxsuite/catalog",
-      "version": "0.1.7",
+      "version": "0.1.9",
       "dependencies": {
         "@jxsuite/protocol": "workspace:^",
       },
     },
     "packages/collab": {
       "name": "@jxsuite/collab",
-      "version": "0.11.5",
+      "version": "0.11.7",
       "dependencies": {
         "@jxsuite/schema": "workspace:^",
         "lib0": "^0.2.119",
@@ -157,12 +157,13 @@
     },
     "packages/compiler": {
       "name": "@jxsuite/compiler",
-      "version": "8.1.0",
+      "version": "8.3.0",
       "bin": {
         "jx": "./bin/jx.js",
       },
       "dependencies": {
         "@jxsuite/create": "workspace:^",
+        "@jxsuite/erase": "workspace:^",
         "@jxsuite/runtime": "workspace:^",
         "@jxsuite/schema": "workspace:^",
         "@jxsuite/site": "workspace:^",
@@ -181,7 +182,7 @@
     },
     "packages/create": {
       "name": "@jxsuite/create",
-      "version": "1.5.3",
+      "version": "1.5.5",
       "bin": {
         "create-jxsuite": "./index.ts",
       },
@@ -192,7 +193,7 @@
     },
     "packages/desktop": {
       "name": "@jxsuite/desktop",
-      "version": "8.0.4",
+      "version": "8.1.0",
       "dependencies": {
         "@jxsuite/compiler": "workspace:^",
         "@jxsuite/create": "workspace:^",
@@ -213,9 +214,17 @@
         "electron-updater": "^6.8.11",
       },
     },
+    "packages/erase": {
+      "name": "@jxsuite/erase",
+      "version": "0.0.0",
+      "dependencies": {
+        "@jxsuite/schema": "workspace:^",
+        "ts-blank-space": "^0.9.0",
+      },
+    },
     "packages/formulas": {
       "name": "@jxsuite/formulas",
-      "version": "0.0.27",
+      "version": "0.0.29",
       "dependencies": {
         "@jxsuite/schema": "workspace:^",
       },
@@ -226,7 +235,7 @@
     },
     "packages/import": {
       "name": "@jxsuite/import",
-      "version": "0.42.3",
+      "version": "0.42.5",
       "bin": {
         "jx-import": "./src/cli.ts",
       },
@@ -250,7 +259,7 @@
     },
     "packages/markup": {
       "name": "@jxsuite/markup",
-      "version": "1.0.3",
+      "version": "1.0.5",
       "dependencies": {
         "@jxsuite/schema": "workspace:^",
         "hast-util-from-html": "^2.0.3",
@@ -269,14 +278,14 @@
     },
     "packages/protocol": {
       "name": "@jxsuite/protocol",
-      "version": "6.2.1",
+      "version": "6.2.3",
       "dependencies": {
         "@jxsuite/schema": "workspace:^",
       },
     },
     "packages/runtime": {
       "name": "@jxsuite/runtime",
-      "version": "6.0.2",
+      "version": "6.2.0",
       "dependencies": {
         "@jxsuite/schema": "workspace:^",
         "@vue/reactivity": "3.5.44",
@@ -288,7 +297,7 @@
     },
     "packages/schema": {
       "name": "@jxsuite/schema",
-      "version": "5.1.0",
+      "version": "5.3.0",
       "dependencies": {
         "@bgotink/kdl": "0.4.1",
         "@webref/css": "^8.7.8",
@@ -303,13 +312,14 @@
     },
     "packages/server": {
       "name": "@jxsuite/server",
-      "version": "8.2.1",
+      "version": "8.4.0",
       "dependencies": {
         "@jxsuite/ai": "workspace:^",
         "@jxsuite/catalog": "workspace:^",
         "@jxsuite/collab": "workspace:^",
         "@jxsuite/compiler": "workspace:^",
         "@jxsuite/create": "workspace:^",
+        "@jxsuite/erase": "workspace:^",
         "@jxsuite/import": "workspace:^",
         "@jxsuite/protocol": "workspace:^",
         "@jxsuite/runtime": "workspace:^",
@@ -336,7 +346,7 @@
     },
     "packages/site": {
       "name": "@jxsuite/site",
-      "version": "2.3.0",
+      "version": "2.4.0",
       "dependencies": {
         "@jxsuite/runtime": "workspace:^",
         "@jxsuite/schema": "workspace:^",
@@ -344,7 +354,7 @@
     },
     "packages/starters": {
       "name": "@jxsuite/starters",
-      "version": "3.2.0",
+      "version": "3.3.1",
       "dependencies": {
         "@jxsuite/protocol": "workspace:^",
       },
@@ -358,7 +368,7 @@
     },
     "packages/studio": {
       "name": "@jxsuite/studio",
-      "version": "10.4.0",
+      "version": "10.6.0",
       "dependencies": {
         "@atlaskit/pragmatic-drag-and-drop": "^4.0.0",
         "@atlaskit/pragmatic-drag-and-drop-hitbox": "^3.0.0",
@@ -398,7 +408,7 @@
     },
     "packages/ui": {
       "name": "@jxsuite/ui",
-      "version": "0.10.0",
+      "version": "0.10.2",
       "dependencies": {
         "@jxsuite/runtime": "workspace:^",
         "@jxsuite/schema": "workspace:^",
@@ -884,6 +894,8 @@
     "@jxsuite/create": ["@jxsuite/create@workspace:packages/create"],
 
     "@jxsuite/desktop": ["@jxsuite/desktop@workspace:packages/desktop"],
+
+    "@jxsuite/erase": ["@jxsuite/erase@workspace:packages/erase"],
 
     "@jxsuite/examples": ["@jxsuite/examples@workspace:examples"],
 
@@ -2663,6 +2675,8 @@
 
     "ts-algebra": ["ts-algebra@2.0.0", "", {}, "sha512-FPAhNPFMrkwz76P7cdjdmiShwMynZYN6SgOujD1urY4oNm80Ou9oMdmbR45LotcKOXoy7wSmHkRFE6Mxbrhefw=="],
 
+    "ts-blank-space": ["ts-blank-space@0.9.0", "", { "dependencies": { "typescript": "5.1.6 - 6.0.x" } }, "sha512-TU6coIZm6RxGgAjroRKmi6aCQ7Pq7cT+1I+bTKBepD6joOuWqUCOptVlz+eurqTnatnQOimlR8XB5sQZ6ULwbw=="],
+
     "ts-migrate": ["ts-migrate@0.1.35", "", { "dependencies": { "create-jest-runner": "^0.5.3", "json5": "^2.1.1", "json5-writer": "^0.1.8", "ts-migrate-plugins": "^0.1.35", "ts-migrate-server": "^0.1.33", "updatable-log": "^0.2.0", "yargs": "^15.0.2" }, "peerDependencies": { "typescript": ">4.0" }, "bin": { "ts-migrate": "build/cli.js", "ts-migrate-full": "bin/ts-migrate-full.sh" } }, "sha512-EmXahqwIP0a6fE1BLKKVMgJEeYn9V+CxJ19qFJ/DzkPL4PjDI/FcgPo8D519amBPy2nnlc/x1V6R6aIeHdD87w=="],
 
     "ts-migrate-plugins": ["ts-migrate-plugins@0.1.35", "", { "dependencies": { "eslint": "^7.14.0", "jscodeshift": "^0.13.0", "json-schema": "^0.4.0", "ts-migrate-server": "^0.1.33" }, "peerDependencies": { "typescript": ">4.0" } }, "sha512-DUkx7ClKhxKYPWDha9DJTZ6LhwEUszL90uH5I/O11K/6TbA96ytln1O3HL6Pt83i4mAKOlg0mQ6AMsPtL5FFkQ=="],
@@ -3104,6 +3118,8 @@
     "tiny-async-pool/semver": ["semver@5.7.2", "", { "bin": { "semver": "bin/semver" } }, "sha512-cBznnQ9KjJqU67B52RMC65CMarK2600WFnbkcaiwWq3xy/5haFJlshgnpjovMVJ+Hff49d8GEn0b87C5pDQ10g=="],
 
     "to-object-path/kind-of": ["kind-of@3.2.2", "", { "dependencies": { "is-buffer": "^1.1.5" } }, "sha512-NOW9QQXMoZGg/oqnVNoNTTIFEIid1627WCffUBJEdMxYApq7mNE7CpzucIPc+ZQg25Phej7IJSmX3hO+oblOtQ=="],
+
+    "ts-blank-space/typescript": ["typescript@6.0.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-y2TvuxSZPDyQakkFRPZHKFm+KKVqIisdg9/CZwm9ftvKXLP8NRWj38/ODjNbr43SsoXqNuAisEf1GdCxqWcdBw=="],
 
     "ts-migrate/yargs": ["yargs@15.4.1", "", { "dependencies": { "cliui": "^6.0.0", "decamelize": "^1.2.0", "find-up": "^4.1.0", "get-caller-file": "^2.0.1", "require-directory": "^2.1.1", "require-main-filename": "^2.0.0", "set-blocking": "^2.0.0", "string-width": "^4.2.0", "which-module": "^2.0.0", "y18n": "^4.0.0", "yargs-parser": "^18.1.2" } }, "sha512-aePbxDmcYW++PaqBsJ+HYUFwCdv4LVvdnhBy78E57PIor8/OVvhMrADFFEDh8DHDFRv/O9i3lPhsENjO7QX0+A=="],
 

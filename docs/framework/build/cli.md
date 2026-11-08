@@ -125,6 +125,8 @@ The output shape is meant to be read by whatever wrote the file, a person or a g
 
 A `.jxn` document that does not read is reported with its line and column, and a `\\s` or `\\b` in a quoted string is a `notation/escape` warning. See [Jx Notation](/docs/framework/concepts/jxn-files).
 
+A function body that uses TypeScript which can't be erased (`enum`, a value `namespace`, a module `import`) is reported with its file, its place in the document, and its line and column, because `jx build` would stop on it. A body whose meaning changes when it's read as TypeScript, such as `a < b > (c)`, is a `function-body/typescript-reading` warning. See [Functions](/docs/framework/concepts/functions).
+
 ## `jx convert`
 
 Move documents between `.json` and `.jxn`, repairing every reference to them, and the project file between `project.json` and `project.jxn`. It runs under Bun and needs `@jxsuite/server` in the project, as `jx dev` does.

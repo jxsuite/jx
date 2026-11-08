@@ -1,5 +1,5 @@
 ---
-status: drafted
+status: active
 disposition: implement
 claims:
   - spec.md#23.1
@@ -17,6 +17,8 @@ workspaces:
   - specs
   - docs
 size: L
+prs:
+  - jxsuite/jx#576
 ---
 
 # A function body in any Jx document is TypeScript, erased once before anything analyses or runs it
@@ -143,6 +145,6 @@ The owner's direction: TypeScript is the default scripting language from the fir
 
 | Slice | Scope                                                                              | Claims       | State |
 | ----- | ---------------------------------------------------------------------------------- | ------------ | ----- |
-| TSB.1 | `packages/erase`, build and server load, `maskCode`, the newline and rewrite fixes | spec.md#23.1 | open  |
+| TSB.1 | `packages/erase`, build and server load, `maskCode`, the newline and rewrite fixes | —            | done  |
 | TSB.2 | Runtime seam and loader, canvas install, Live Preview                              | spec.md#23.1 | open  |
 | TSB.3 | Code services, function editor, schema text; closes the marker                     | spec.md#23.1 | open  |

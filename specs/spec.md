@@ -2475,7 +2475,7 @@ That settles the staging question by removing it. The shell is not a deployment 
 
 ## 22. Jx Notation (`.jxn`)
 
-> **Status: Implemented.** Every host reads and writes `.jxn`. What Studio still treats as `.json` only is `studio.md` §8.5.
+> **Status: Implemented.** Every host reads and writes `.jxn`, and Studio opens, edits, saves and converts it (`studio.md` §8.5).
 
 A Jx document may be written in Jx Notation, as a `.jxn` file. Jx Notation is KDL 2 with Jx's own rules for what each node means. `.jxn` and `.json` are two spellings of one data model: both parse to the same `JxDocument`, and the schema, the runtime, the compiler and Studio's document model all work on that object. `.jxn` is a native format, so no extension has to be enabled to use it. A project's configuration may be written the same way, as `project.jxn` (`site-architecture.md` §2.3). `*.class.json`, `jx-extension.json`, JSON Schemas and data files stay JSON.
 
@@ -2626,9 +2626,17 @@ Code in a document is TypeScript, whichever format holds the document. This sect
 
 ### 23.1 Function Bodies
 
-> **Status: Pending.** A string `body` is JavaScript today, and every tier passes it to `new Function` or splices it into an emitted module as written.
+> **Status: Partial.** `jx build`, `jx validate` and the server's class resolution erase types as each document is read (`packages/erase`, `packages/compiler/src/erased.ts`). The runtime's interpreter, and with it Studio's canvas and Live Preview, still compiles a body as written, so a typed body fails there; Studio's code services format and lint a body as JavaScript and minify it on close.
 
 A string `body` in any document format is TypeScript, limited to syntax that can be erased without emitting code. Types are removed before anything analyses or runs the body, so each tier only ever sees JavaScript. A `${}` template stays a JavaScript expression. A structured body (§20) has no text to erase and is unaffected.
+
+**Erased once, as a document is read.** A host erases every `$prototype: "Function"` entry's string body (or array of lines, as a class member may hold) wherever it sits, including an accessor's `getter` and `setter`, and leaves every other `body` alone, because a `Request`'s body is a payload. Types become spaces, so a line and column in a stack trace match the body as written, and erasing twice changes nothing. The stored document keeps the authored text; only the copy that runs is erased.
+
+**What cannot be erased is an error.** `enum`, a value `namespace`, a parameter property, and a module `import` or `export` need code generated for them, so a body using one stops the build, named by its file, its JSON Pointer and its line and column. A body that needs imports belongs in a module of its own (§23.2).
+
+**One change of meaning.** `a < b > (c)` is a generic call in TypeScript and two comparisons in JavaScript. A body that was already JavaScript and reads differently as TypeScript is built as TypeScript, and `jx build` and `jx validate` warn with its place.
+
+**Analysis reads code, not comments.** Whether a body returns a value, and which state entries it writes, is read from the body with its comments and string contents blanked (`maskCode`), so `// return early` does not make a handler a computed. Every target ends a spliced body with a newline, so a last-line comment cannot swallow the brace that closes it, and rewrites only a standalone `state`, so `prevstate.n` stays itself.
 
 ### 23.2 Document Scripts
 

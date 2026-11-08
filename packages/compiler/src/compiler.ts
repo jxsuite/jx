@@ -13,6 +13,7 @@
  * @version 3.0.0
  */
 
+import { erasedDocument } from "./erased.ts";
 import { readFileSync } from "node:fs";
 import {
   DEFAULT_LIT_HTML_SRC,
@@ -109,6 +110,8 @@ export async function compile(sourcePath: string | JxDocument, opts: CompileOpti
   } else {
     raw = sourcePath;
   }
+  // Function bodies as JavaScript before anything analyses them (spec.md §23.1).
+  raw = erasedDocument(raw, isString(sourcePath) ? sourcePath : "the document");
 
   // Route 0: .class.json schema-defined class → JS class module
   if (isClassDef(raw)) {

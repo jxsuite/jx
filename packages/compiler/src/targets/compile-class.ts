@@ -5,6 +5,7 @@
  * Schema 2020-12 class definition.
  */
 
+import { erasedClass } from "../erased.ts";
 import type {
   JxClassCtorDef,
   JxClassDef,
@@ -20,7 +21,9 @@ import { isString } from "@jxsuite/schema/guards";
  * @param {JxClassDef} classDef - Parsed .class.json content (must have $prototype: "Class")
  * @returns {string} JavaScript module source code
  */
-export function compileClassJson(classDef: JxClassDef) {
+export function compileClassJson(authored: JxClassDef) {
+  // Member bodies as JavaScript before anything splices them (spec.md §23.1).
+  const classDef = erasedClass(authored, authored.title ?? "a class");
   const className = classDef.title;
   if (!className) {
     throw new Error("compileClassJson: missing title (class name)");

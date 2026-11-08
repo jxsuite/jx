@@ -16,6 +16,7 @@
  * genuinely needs a filesystem: the walk, the `$layout` peek, and `$paths` expansion.
  */
 
+import { erasedDocument } from "../erased.ts";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { isJsonObject, isString } from "@jxsuite/schema/guards";
 import { isNativeDocumentPath, parseNativeDocument } from "@jxsuite/schema/jxn";
@@ -82,7 +83,7 @@ export async function readPageDocument(
 ): Promise<JxDocument> {
   const source = readFileSync(filePath, "utf8");
   if (isNativeDocumentPath(filePath)) {
-    return parseNativeDocument(source, filePath);
+    return erasedDocument(parseNativeDocument(source, filePath), filePath);
   }
   const ext = extname(filePath).toLowerCase();
   const entry = registry?.byExtension(ext, "parse");
@@ -93,7 +94,8 @@ export async function readPageDocument(
         `e.g. "@jxsuite/parser".`,
     );
   }
-  return await entry.parseDocument(source);
+  // A format's page holds function bodies too (spec.md §23.1).
+  return erasedDocument(await entry.parseDocument(source), filePath);
 }
 
 /**

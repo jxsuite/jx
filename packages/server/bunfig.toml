@@ -3,6 +3,8 @@ coverageReporter = ["text", "lcov"]
 coverageSkipTestFiles = true
 coveragePathIgnorePatterns = [
   "**/tests/**",
+  # @jxsuite/erase loads with every document read and is gated by its own run, at its own bar.
+  "../erase/**",
   "./result/**",
   "../../extensions/**",
   # The AI routes run @jxsuite/ai/gateway, so its files land here with only the paths this server

@@ -146,6 +146,12 @@
       "component": "ui",
       "bump-minor-pre-major": true,
       "initial-version": "0.1.0"
+    },
+    "packages/erase": {
+      "release-type": "node",
+      "component": "erase",
+      "bump-minor-pre-major": true,
+      "initial-version": "0.1.0"
     }
   }
 }

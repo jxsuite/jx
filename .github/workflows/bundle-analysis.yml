@@ -26,6 +26,7 @@ on:
       - "packages/collab/**"
       - "packages/compiler/**"
       - "packages/create/**"
+      - "packages/erase/**"
       - "packages/formulas/**"
       - "packages/markup/**"
       - "packages/protocol/**"

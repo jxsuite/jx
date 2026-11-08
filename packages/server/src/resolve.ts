@@ -1,5 +1,6 @@
 /** Resolve.js — Generic $src module proxy + timing: "server" function proxy */
 
+import { eraseClass } from "@jxsuite/erase";
 import { siteBasePath } from "@jxsuite/schema/asset-paths";
 import { dirname, isAbsolute, relative, resolve } from "node:path";
 import { errorMessage, parseClassDef } from "@jxsuite/schema/parse";
@@ -594,7 +595,9 @@ function isCtorDef(
  *
  * @param {JxClassDef} classDef
  */
-function classFromSchema(classDef: JxClassDef) {
+function classFromSchema(authored: JxClassDef) {
+  // Member bodies as JavaScript before anything compiles them (spec.md §23.1).
+  const classDef = eraseClass(authored, authored.title ?? "a class");
   const fields = classDef.$defs?.fields ?? {};
   const rawCtor = classDef.$defs?.constructor;
   const ctor = isCtorDef(rawCtor) ? rawCtor : undefined;

@@ -8,6 +8,7 @@
  * and saying which file was wrong when it is.
  */
 
+import { erasedDocument } from "../erased.ts";
 import { existsSync, readFileSync } from "node:fs";
 import { parseNativeDocument } from "@jxsuite/schema/jxn";
 import { errorMessage } from "@jxsuite/schema/parse";
@@ -27,7 +28,10 @@ export function nodeLayoutLoader(projectRoot: string): (layoutRef: string) => Jx
       throw new Error(`Layout not found: ${layoutRef} (resolved to ${layoutPath})`);
     }
     try {
-      return parseNativeDocument(readFileSync(layoutPath, "utf8"), layoutPath);
+      return erasedDocument(
+        parseNativeDocument(readFileSync(layoutPath, "utf8"), layoutPath),
+        layoutPath,
+      );
     } catch (error) {
       throw new Error(`Invalid layout at ${layoutPath}: ${errorMessage(error)}`, {
         cause: error,
