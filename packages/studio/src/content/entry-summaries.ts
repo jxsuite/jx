@@ -208,7 +208,7 @@ function pictureIn(value: EntryFields[string]): string {
 }
 
 /** Whether a schema property holds a picture: `format: image`, an image object, or a list of either. */
-function isPictureField(field: ContentTypeSchemaField): boolean {
+export function isPictureField(field: ContentTypeSchemaField): boolean {
   if (field.format === "image") {
     return true;
   }

@@ -278,11 +278,15 @@ export function libraryRow(
           : "glyph",
     cells: columns.map((column) => ({
       field: column.field,
+      sub: "",
       text: cellText(file, column.field, entry),
     })),
+    checked: false,
+    coverState: image || thumb !== "" ? "image" : "none",
     meta: file.type,
     name: entry?.title ?? file.name,
     path: file.path,
+    selectLabel: `Select ${entry?.title ?? file.name}`,
     src: image ? previewFileSrc(file.path) : thumb,
   };
 }
@@ -292,9 +296,12 @@ function nameRow(file: LibraryFile, entry?: EntryFacts): LibraryRow {
   return {
     art: "glyph",
     cells: [],
+    checked: false,
+    coverState: "none",
     meta: file.type,
     name: entry?.title ?? file.name,
     path: file.path,
+    selectLabel: `Select ${entry?.title ?? file.name}`,
     src: "",
   };
 }

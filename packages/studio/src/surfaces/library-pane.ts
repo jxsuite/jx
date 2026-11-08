@@ -76,12 +76,20 @@ export interface LibraryRow {
   src: string;
   /** The table's cells for this row, in the source's own column order. */
   cells: LibraryCell[];
+  /** The Table's Cover cell: `image` draws {@link LibraryRow.src}, `none` an empty box. */
+  coverState: "image" | "none";
+  /** Whether the row's checkbox is ticked (the Table's selection, studio.md §22.5). */
+  checked: boolean;
+  /** The checkbox's name: `Select Spring planting`. */
+  selectLabel: string;
 }
 
 /** One table cell: which column it is in, and what it says. */
 export interface LibraryCell {
   field: string;
   text: string;
+  /** A second, smaller line: what a page is ("Home page", "One page per post · 6 posts"), or "". */
+  sub: string;
 }
 
 /** One Table column, from the grid source rather than a second hand-written list. */
@@ -185,6 +193,30 @@ export interface LibraryView {
   padBottom: string;
   rows: LibraryRow[];
   columns: LibraryColumn[];
+  /** The Table's Cover column: `shown` when the collection's entries have a picture field. */
+  coverState: "hidden" | "shown";
+  /**
+   * **Select** in the toolbar: `shown` in the Table of a collection whose rows are files of their
+   * own. It turns the checkboxes on and off, so a Table nobody is selecting in draws none.
+   */
+  selectToggleState: "hidden" | "shown";
+  /** Whether selecting is on: the toggle is pressed, and the checkboxes are drawn. */
+  selecting: boolean;
+  /** The Table's checkboxes: `shown` while selecting. */
+  selectState: "hidden" | "shown";
+  /** `tall` when a row carries a cover or a second line, so it is drawn tall enough for one. */
+  rowSize: "normal" | "tall";
+  /** **Delete** is pressable only with something ticked. */
+  deleteDisabled: boolean;
+  /** The header checkbox: every row ticked, or some. */
+  allChecked: boolean;
+  someChecked: boolean;
+  /** `Select every post`. */
+  selectAllLabel: string;
+  /** The bar over a selection: `shown` while anything is ticked. */
+  bulkState: "hidden" | "shown";
+  /** `2 posts selected`. */
+  bulkText: string;
   groups: LibraryGroup[];
   truncated: string;
   truncatedState: "hidden" | "shown";
@@ -209,6 +241,16 @@ export interface LibraryActions {
   designPage: () => void;
   /** **Add one** writes the collection's page. */
   addPage: () => void;
+  /** A row's checkbox, ticked or cleared. */
+  selectRow: (path: string, checked: boolean) => void;
+  /** The header checkbox: every row shown, or none. */
+  selectAll: (checked: boolean) => void;
+  /** **Select** pressed: selecting turns on, or off (which clears what was ticked). */
+  toggleSelecting: () => void;
+  /** **Clear** in the selection bar. */
+  clearSelection: () => void;
+  /** **Delete** in the selection bar: every ticked entry, after one confirmation. */
+  deleteSelected: () => void;
   scrolled: () => void;
   retry: () => void;
   reset: () => void;
@@ -264,6 +306,17 @@ function project(scope: LibraryScope, view: LibraryView): void {
   scope.groups = view.groups;
   scope.truncated = view.truncated;
   scope.truncatedState = view.truncatedState;
+  scope.coverState = view.coverState;
+  scope.selectState = view.selectState;
+  scope.selectToggleState = view.selectToggleState;
+  scope.selecting = view.selecting;
+  scope.rowSize = view.rowSize;
+  scope.deleteDisabled = view.deleteDisabled;
+  scope.allChecked = view.allChecked;
+  scope.someChecked = view.someChecked;
+  scope.selectAllLabel = view.selectAllLabel;
+  scope.bulkState = view.bulkState;
+  scope.bulkText = view.bulkText;
 }
 
 /** The `part` a node's definition carries, or "" for a text node or an unmarked element. */
@@ -300,7 +353,13 @@ export function mountLibrarySurface(
   placeholderBrokenImages(host, listening.signal);
   const scope: LibraryScope = reactive<LibraryScope>({
     addPage: actions.addPage,
+    allChecked: false,
     bannerState: "hidden",
+    bulkState: "hidden",
+    bulkText: "",
+    clearSelection: actions.clearSelection,
+    coverState: "hidden",
+    deleteSelected: actions.deleteSelected,
     bannerText: "",
     columns: [],
     contextMenu: actions.contextMenu,
@@ -339,6 +398,16 @@ export function mountLibrarySurface(
     setLayout: actions.setLayout,
     setFilter: actions.setFilter,
     setLocale: actions.setLocale,
+    selectAll: actions.selectAll,
+    selectAllLabel: "",
+    selectRow: actions.selectRow,
+    selectState: "hidden",
+    selectToggleState: "hidden",
+    selecting: false,
+    rowSize: "normal",
+    deleteDisabled: true,
+    toggleSelecting: actions.toggleSelecting,
+    someChecked: false,
     subtitle: "",
     title: "",
     truncated: "",
