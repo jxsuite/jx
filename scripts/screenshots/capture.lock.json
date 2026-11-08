@@ -541,17 +541,17 @@
       "width": 3840
     },
     "docs/images/git-commit.png": {
-      "bytes": 58923,
-      "capturedAt": "2026-11-08T02:56:46Z",
-      "capturedBy": "screenshots@ci/42440520331",
+      "bytes": 77870,
+      "capturedAt": "2026-11-08T07:47:57Z",
+      "capturedBy": "screenshots@ci/42460142352",
       "definition": "27f238d93620c306365a5ca76fa7eef5fca8d3418bafae8a553ae2733fbf9f38",
-      "height": 658,
+      "height": 816,
       "runtime": {
         "chromium": "151",
         "fontset": "fc:cac8f480b341",
         "os": "debian-12"
       },
-      "sha256": "3fcead12400af2e3aba5e713078332b25d6f39fedde9c5b51caaaae04c63348f",
+      "sha256": "10263fdd383b777a1479c9f91c6226dc0dccf1aaa39c5a54e2510e3a56a7c781",
       "shot": "git-panel",
       "width": 686
     },

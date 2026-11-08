@@ -133,6 +133,12 @@ export interface BranchRow {
 }
 
 /** Everything the document draws, as one value. */
+/** One Hosting setup step's state, and the word it is marked with. */
+export interface SetupStepState {
+  state: "done" | "todo";
+  label: string;
+}
+
 export interface PublishWorkspaceView {
   /** Which part this mount draws: the home, or one region of Review changes' stage. */
   layout: PublishLayout;
@@ -209,6 +215,13 @@ export interface PublishWorkspaceView {
   sourceCommands: CommandButtonRow[];
   hostTitle: string;
   hostSummary: string;
+  /**
+   * Hosting's three setup steps (studio.md §22.8), each `done` or `todo`: the project saved where a
+   * host can build it, a host connected, and an address for the site.
+   */
+  stepSaved: SetupStepState;
+  stepHosted: SetupStepState;
+  stepAddress: SetupStepState;
   hostCommands: CommandButtonRow[];
   domainState: "set" | "none";
   domain: string;
@@ -299,6 +312,9 @@ export function emptyPublishWorkspaceView(): PublishWorkspaceView {
     hostCommands: [],
     hostSummary: "",
     hostTitle: "",
+    stepAddress: { label: "", state: "todo" },
+    stepHosted: { label: "", state: "todo" },
+    stepSaved: { label: "", state: "todo" },
     includedLabel: "",
     items: [],
     lastUpdated: "",
