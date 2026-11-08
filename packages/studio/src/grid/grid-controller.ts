@@ -114,6 +114,22 @@ export const ROW_KEY_FIELD = "__key";
 
 const _controllers = new WeakMap<Tab, GridController>();
 
+/**
+ * Who else wants to know that a grid save wrote something.
+ *
+ * The grid's own counterpart of `setDocumentSavedListener` in `files/file-ops.ts`: a grid commits
+ * through its source rather than through the document save path, so without this a grid save moved
+ * the working tree and nothing told source control, and the Publish workspace kept its old count
+ * until someone pressed Refresh. Injected for the same reason that one is: a direct import would
+ * put `publish/source-control.ts` into this module's graph.
+ */
+let _onGridSaved: (tab: Tab) => void = () => {};
+
+/** Register the grid save listener. Called once, from the bootstrap. */
+export function setGridSavedListener(listener: (tab: Tab) => void): void {
+  _onGridSaved = listener;
+}
+
 /** The grid controller for a tab, if it is a grid tab. */
 export function getGridController(tab: Tab | null): GridController | null {
   return tab ? (_controllers.get(toRaw(tab)) ?? null) : null;
@@ -420,6 +436,9 @@ export function createGridController(tab: Tab, source: GridSource): GridControll
           result.cells.filter((r) => r.ok).length +
           result.inserts.filter((r) => r.ok).length +
           result.deletes.filter((r) => r.ok).length;
+        if (okCount > 0) {
+          _onGridSaved(tab);
+        }
         const failed = changeCount - okCount;
         const staleCount =
           result.cells.filter((r) => r.stale).length + result.deletes.filter((r) => r.stale).length;

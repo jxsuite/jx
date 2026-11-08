@@ -335,7 +335,21 @@ export function formatterForColumn(column: GridColumn, makeHost: HostFactory): C
     const value = cell.getValue();
     const host = makeHost(`jx-grid-cell-content jx-grid-kind-${column.kind}`);
     if (column.kind === "boolean") {
-      render(html`${value === true ? "✓" : ""}`, host);
+      /* A box in every cell, ticked or not, so a false value reads as "no" rather than as an empty
+         cell. It is the editor's own native checkbox (the header says why not the kit's), drawn
+         read-only: out of the tab order and deaf to the pointer, so a click still selects the cell
+         and a double-click still opens the editor, which is the one place the value changes. */
+      render(
+        html`<input
+          class="jx-grid-checkbox"
+          type="checkbox"
+          tabindex="-1"
+          aria-readonly="true"
+          aria-label=${column.title}
+          .checked=${live(value === true)}
+        />`,
+        host,
+      );
     } else if (column.kind === "array" && Array.isArray(value)) {
       render(html`${value.map((item) => html`<span class="jx-grid-chip">${item}</span>`)}`, host);
     } else {

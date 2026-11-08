@@ -250,10 +250,18 @@ describe("formatterForColumn", () => {
     expect(host.className).toContain("jx-grid-kind-string");
   });
 
-  test("booleans render a check only when true", () => {
+  test("booleans render a read-only checkbox whether true or false", () => {
     const format = formatterForColumn(col("boolean"), makeHost);
-    expect(format(cellWith(true)).textContent).toContain("✓");
-    expect(format(cellWith(false)).textContent.trim()).toBe("");
+    const ticked = format(cellWith(true)).querySelector("input");
+    const clear = format(cellWith(false)).querySelector("input");
+    expect(ticked?.type).toBe("checkbox");
+    expect(ticked?.checked).toBe(true);
+    expect(clear?.type).toBe("checkbox");
+    expect(clear?.checked).toBe(false);
+    // Out of the tab order: the grid's keyboard model moves between cells, not into them.
+    expect(clear?.getAttribute("tabindex")).toBe("-1");
+    expect(clear?.getAttribute("aria-readonly")).toBe("true");
+    expect(format(cellWith(null)).querySelector("input")?.checked).toBe(false);
   });
 
   test("arrays render one chip per item", () => {

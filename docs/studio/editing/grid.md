@@ -34,7 +34,7 @@ Grid turns tabular content into a spreadsheet on the canvas: rows and columns, r
 Double-click a cell to edit it. Columns are typed, so each kind gets the right control:
 
 - Text and number cells: type into them, and number cells clean up currency symbols and commas for you.
-- On/off cells get a checkbox, choice cells a dropdown, date cells a date field.
+- On/off cells show a checkbox in every row, ticked or not, and double-clicking one lets you change it. Choice cells get a dropdown, date cells a date field.
 - List cells hold chips: :kbd[Enter] or a comma adds one, :kbd[Backspace] removes the last, and each chip has its own remove button.
 - Image cells open the media picker, and relationship cells (a field that points at another collection) open a picker of that collection's entries, with a box beneath it for an id that isn't in the list.
 
@@ -88,7 +88,7 @@ The same four verbs are in the Command Bar (:kbd[⌘K]) whenever a grid is on sc
 
 ## Save, in one batch
 
-Nothing writes until you click **Save**, and the button counts your pending changes (:kbd[⌘S] / :kbd[Ctrl+S] does the same). On save, Studio checks required cells, confirms any deletions, writes everything, and reports what saved. If a change can't be written, that cell stays pending with the reason attached; fix it and save again.
+Nothing writes until you click **Save**, and the button counts your pending changes (:kbd[⌘S] / :kbd[Ctrl+S] does the same). On save, Studio checks required cells, confirms any deletions, writes everything, and reports what saved. If a change can't be written, that cell stays pending with the reason attached; fix it and save again. The changes count on the **Publish** workspace tab updates as soon as the save lands, the same as saving a page.
 
 Studio also protects you from crossed wires:
 

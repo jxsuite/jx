@@ -2010,6 +2010,32 @@ describe("remaining wiring arrows", () => {
     expect(entry?.props).toEqual([{ default: "", format: "image", name: "imageSrc" }]);
   });
 
+  test("a grid save tells source control, as a document save does", async () => {
+    /* A grid commits through its source, not through the document save path, so the bootstrap
+       wires the grid's own saved listener to source control: without it the Publish count stayed
+       stale until someone pressed Refresh. */
+    const { createGridController } = await import("../src/grid/grid-controller");
+    const tab = openShellTab();
+    const source: Parameters<typeof createGridController>[1] = {
+      capabilities: { delete: false, insert: false, remotePaging: false, remoteSort: false },
+      columns: async () => [{ editable: true, field: "title", kind: "string", title: "Title" }],
+      commit: async (batch) => ({
+        cells: batch.cells.map((c) => ({ field: c.field, ok: true, rowKey: c.rowKey })),
+        deletes: [],
+        inserts: [],
+      }),
+      id: "test://grid",
+      label: "Test grid",
+      rows: async () => ({ rows: [{ cells: { title: "One" }, key: "a" }], total: 1 }),
+    };
+    const controller = createGridController(tab, source);
+    await controller.load();
+    controller.buffer.setCell("a", "title", "Renamed");
+    const {rev} = shell.git;
+    await controller.save();
+    expect(shell.git.rev).toBe(rev + 1);
+  });
+
   test("welcome openRecentProject opens the project directly", async () => {
     await welcomeCtx.openRecentProject("/recent/site");
     expect(statusMessages).toHaveLength(0);

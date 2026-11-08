@@ -189,9 +189,24 @@
   outline: 2px solid var(--accent);
   outline-offset: -1px;
 }
-.jx-grid-editor .jx-grid-checkbox {
+/* One checkbox for the cell at rest and the cell being edited, so double-clicking does not change
+   what the box looks like. Sized explicitly: in a 26px row the UA box was squeezed by the cell's
+   line box, and in a dark chrome its unticked state was a grey square on a near-black cell. */
+.jx-grid-checkbox {
+  flex: none;
+  width: 14px;
+  height: 14px;
   margin: 0 auto;
   accent-color: var(--accent);
+}
+.jx-grid-kind-boolean {
+  display: flex;
+  align-items: center;
+  height: 100%;
+}
+/* Read-only at rest: the click belongs to the cell (selection), the double-click to the editor. */
+.jx-grid-kind-boolean .jx-grid-checkbox {
+  pointer-events: none;
 }
 .jx-grid-pill-editor .jx-grid-pills {
   display: flex;

@@ -39,7 +39,7 @@ void mock.module("../src/services/notify.js", () =>
   notifyModule((call) => statusCalls.push(call.message)),
 );
 
-const { createGridController, getGridController, ROW_KEY_FIELD } =
+const { createGridController, getGridController, ROW_KEY_FIELD, setGridSavedListener } =
   await import("../src/grid/grid-controller");
 
 interface StubOptions {
@@ -272,6 +272,44 @@ describe("save", () => {
     controller.buffer.setCell("a", "title", "Renamed");
     expect(controller.buffer.isDirty()).toBeFalse();
     expect(statusCalls.at(-1)).toContain("Saved 3 change(s)");
+  });
+
+  test("a save that wrote something tells the saved listener, so source control re-reads", async () => {
+    installMockPlatform();
+    const saved: unknown[] = [];
+    setGridSavedListener((tab) => saved.push(tab));
+    try {
+      const tab = openGridTab();
+      const controller = createGridController(tab, stubSource());
+      await controller.load();
+      controller.buffer.setCell("a", "title", "Renamed");
+      await controller.save();
+      expect(saved).toHaveLength(1);
+      expect(saved[0]).toBe(tab);
+
+      // Nothing written, nobody told: a commit whose every row failed moved no file.
+      const failing = createGridController(
+        openGridTab(),
+        stubSource({
+          commit: (batch) => ({
+            cells: batch.cells.map((c) => ({
+              error: "locked",
+              field: c.field,
+              ok: false,
+              rowKey: c.rowKey,
+            })),
+            deletes: [],
+            inserts: [],
+          }),
+        }),
+      );
+      await failing.load();
+      failing.buffer.setCell("a", "title", "X");
+      await failing.save();
+      expect(saved).toHaveLength(1);
+    } finally {
+      setGridSavedListener(() => {});
+    }
   });
 
   test("partial failures stay pending with errors and report counts", async () => {
