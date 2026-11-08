@@ -92,6 +92,54 @@ export interface TokenRowView {
   /** What the picker currently reads. Always `""` in practice — see {@link renderCssVarsSurface}. */
   addPick: string;
   addLabel: string;
+  /** A colour tile's swatch: the value in the scheme being shown, as a CSS background. */
+  tileBg: string;
+  /** A colour tile's caption: that value as written. */
+  tileValue: string;
+  /** {@link TokenRowView.current} as the tile's `aria-pressed` reads it. */
+  currentFlag: "true" | "false";
+}
+
+/**
+ * The chosen colour, as the detail beside the swatches draws it (studio.md §7.1): its value in the
+ * scheme shown, how it reads against the background, what uses it, and its overrides.
+ */
+export interface TokenDetailView {
+  /** The custom property; also the row the override block and the field write to. */
+  name: string;
+  /** "Base" or the scheme's name ("Dark"): which value the field edits. */
+  schemeLabel: string;
+  /** The colour field's accessible name. */
+  fieldLabel: string;
+  /** The value in the scheme shown, as written. */
+  value: string;
+  /** What it resolves to when it follows another variable, for the field's swatch. */
+  resolved: string;
+  /** `pass` and `fail` against the background; `none` when either colour cannot be read. */
+  contrastState: "pass" | "fail" | "none";
+  contrastIcon: string;
+  /** "6.9:1 on --color-paper, passes AA". */
+  contrast: string;
+  /** The element styles that read it: "a, button, h1", or a sentence saying none do. */
+  usedBy: string;
+  /** Where it is kept: "Saved as the --accent variable in project.json". */
+  saved: string;
+  removeLabel: string;
+  /** The override block's own fields, the token row's. */
+  overrideState: "none" | "shown";
+  overrides: OverrideRowView[];
+  addState: "none" | "shown";
+  addOptions: SurfaceOption[];
+  addPick: string;
+  addLabel: string;
+}
+
+/** One colour scheme the swatches can be shown in. */
+export interface SchemeOptionView {
+  /** `""` for the base value, else the scheme's `$media` entry name. */
+  value: string;
+  label: string;
+  checked: boolean;
 }
 
 /** One group of tokens: its heading, its rows, its add row, and what it says about contexts. */
@@ -112,11 +160,20 @@ export interface GroupView {
    * one.
    */
   noticeState: "none" | "shown";
+  /** `tiles` for the colour palette, `rows` for every other group. */
+  layout: "tiles" | "rows";
+  /** Whether the group heading carries the scheme switch (colours, with a scheme declared). */
+  schemeState: "none" | "shown";
 }
 
 /** What the section shows — the flow's projection of the project's root style block. */
 export interface CssVarsView {
   groups: GroupView[];
+  /** Whether a colour is chosen to show beside the swatches. */
+  detailState: "none" | "shown";
+  detail: TokenDetailView;
+  /** Base and every declared colour scheme, for the switch over the swatches. */
+  schemes: SchemeOptionView[];
   /** What the last write failed with, or `""`. */
   error: string;
 }
@@ -131,6 +188,12 @@ export interface CssVarsActions {
   setAddValue: (group: string, value: string) => void;
   addToken: (group: string) => void;
   manageContexts: () => void;
+  /** Choose the colour the detail beside the swatches shows. */
+  select: (name: string) => void;
+  /** Show the swatches in a colour scheme (`""` for the base values). */
+  setScheme: (scheme: string) => void;
+  /** Write the chosen colour's value in the scheme shown: the base value, or that override. */
+  setShownValue: (name: string, value: string) => void;
 }
 
 /** What the document discriminates on at the top level. Derived here, so the flow never spells it. */
@@ -220,12 +283,19 @@ export function revealCssVarsToken(host: HTMLElement, name: string): void {
     const row = [...root.querySelectorAll<HTMLElement>('[part="token"]')].find(
       (candidate) => candidate.dataset["token"] === name,
     );
-    if (!row) {
+    if (row) {
+      row.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      // The NATIVE input: the kit's text field does not delegate focus from its host.
+      row.querySelector<HTMLElement>('[part="value"] input')?.focus();
       return;
     }
-    row.scrollIntoView({ behavior: "smooth", block: "nearest" });
-    // The NATIVE input: the kit's text field does not delegate focus from its host.
-    row.querySelector<HTMLElement>('[part="value"] input')?.focus();
+    /* A colour is a swatch, and the flow has already made it the chosen one, so its detail beside
+       the swatches is the place to put the keyboard. */
+    const tile = [...root.querySelectorAll<HTMLElement>('[part="tile"]')].find(
+      (candidate) => candidate.dataset["name"] === name,
+    );
+    tile?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    tile?.focus();
   }, 0);
 }
 

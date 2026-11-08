@@ -35,7 +35,7 @@
  */
 
 import { projectConfigPath } from "../tabs/tab";
-import { isNumber, isString } from "@jxsuite/schema/guards";
+import { isJsonObject, isNumber, isString } from "@jxsuite/schema/guards";
 import { errorMessage } from "@jxsuite/schema/parse";
 import { runActiveReported } from "../commands/run-reported";
 import { projectState } from "../store";
@@ -55,7 +55,8 @@ import {
   revealCssVarsGroup,
   revealCssVarsToken,
 } from "../surfaces/settings-css-vars";
-import { friendlyNameToVar } from "../utils/studio-utils";
+import { camelToLabel, friendlyNameToVar } from "../utils/studio-utils";
+import { contrastRatio, parseColor } from "@jxsuite/ui/color";
 
 import type { JxStyle, ProjectConfig } from "@jxsuite/schema/types";
 import type { ProjectToken, TokenContext, TokenGroup, TokenGroupId } from "../style/project-styles";
@@ -64,6 +65,7 @@ import type {
   CssVarsView,
   GroupView,
   OverrideRowView,
+  TokenDetailView,
   TokenRowView,
 } from "../surfaces/settings-css-vars";
 
@@ -103,6 +105,8 @@ interface Form {
   error: string;
   /** The token the Outline pointed this editor at ({@link focusCssVar}), or `null`. */
   current: string | null;
+  /** The colour scheme the swatches show (its `$media` name), or `""` for the base values. */
+  scheme: string;
 }
 
 const forms = new WeakMap<HTMLElement, Form>();
@@ -111,7 +115,7 @@ const forms = new WeakMap<HTMLElement, Form>();
 function form(container: HTMLElement): Form {
   let state = forms.get(container);
   if (!state) {
-    state = { add: {}, current: null, error: "" };
+    state = { add: {}, current: null, error: "", scheme: "" };
     forms.set(container, state);
   }
   return state;
@@ -247,6 +251,7 @@ function tokenRow(
   rootStyle: JxStyle,
   declared: TokenContext[],
   current: string | null,
+  scheme: TokenContext | null = null,
 ): TokenRowView {
   const isColor = group.id === "color";
   const value = String(token.value);
@@ -271,6 +276,7 @@ function tokenRow(
         ? ""
         : `${toTokenRef(refName)} → ${resolved === undefined ? "unresolved" : String(resolved)}`,
     current: token.name === current,
+    currentFlag: token.name === current ? "true" : "false",
     label: token.name,
     name: token.name,
     overrides: shown.map((context) => overrideRow(token, context, isColor, rootStyle)),
@@ -280,10 +286,170 @@ function tokenRow(
     removeLabel: `Delete ${token.name}`,
     swatchLabel: `${token.name} color`,
     swatchState: isColor ? "swatch" : "none",
+    ...tileOf(rootStyle, token, scheme),
     value,
     ...well(isColor ? resolved : undefined, COLOR_INPUT_FALLBACK),
   };
 }
+
+/** A token's value in `scheme`: its override there, else its base value. */
+function shownValue(rootStyle: JxStyle, token: ProjectToken, scheme: TokenContext | null): string {
+  const override = scheme ? readTokenOverride(rootStyle, scheme, token.name) : undefined;
+  return String(override ?? token.value);
+}
+
+/** A colour tile's swatch and caption: the token's value in the scheme the swatches show. */
+function tileOf(
+  rootStyle: JxStyle,
+  token: ProjectToken,
+  scheme: TokenContext | null,
+): Pick<TokenRowView, "tileBg" | "tileValue"> {
+  const value = shownValue(rootStyle, token, scheme);
+  const resolved = resolveTokenValue(rootStyle, value);
+  return { tileBg: resolved === undefined ? "transparent" : String(resolved), tileValue: value };
+}
+
+// ─── The chosen colour ───────────────────────────────────────────────────────
+
+/** What a colour's name says it is, when the page does not say which it uses. */
+const BACKGROUND_NAME = /(?:^|-)(?:background|bg|paper|canvas|surface)(?:-|$)/u;
+const TEXT_NAME = /(?:^|-)(?:text|ink|fg|foreground)(?:-|$)/u;
+
+/** The variable a root declaration reads, when the whole value is one `var()`. */
+function rootVar(rootStyle: JxStyle, ...keys: string[]): string | null {
+  for (const key of keys) {
+    const value = rootStyle[key];
+    const name = isString(value) || isNumber(value) ? tokenRefName(value) : null;
+    if (name !== null) {
+      return name;
+    }
+  }
+  return null;
+}
+
+/**
+ * What a colour is read against: the page's own background (the variable the root style's
+ * `backgroundColor` reads), or, for that background itself, the page's text colour. A palette whose
+ * page names neither falls back to the colours named for them (a dark variant is never the page).
+ * Null when there is nothing to read it against.
+ */
+function counterpart(
+  rootStyle: JxStyle,
+  tokens: readonly ProjectToken[],
+  name: string,
+): ProjectToken | null {
+  const named = (wanted: string | null) => tokens.find((token) => token.name === wanted) ?? null;
+  const guess = (pattern: RegExp) =>
+    tokens.find((token) => pattern.test(token.name) && !token.name.includes("dark")) ?? null;
+  const background =
+    named(rootVar(rootStyle, "backgroundColor", "background")) ?? guess(BACKGROUND_NAME);
+  if (background && background.name !== name) {
+    return background;
+  }
+  const text = named(rootVar(rootStyle, "color")) ?? guess(TEXT_NAME);
+  return text && text.name !== name ? text : null;
+}
+
+/**
+ * How one colour reads against another, as the detail says it: the WCAG 2 contrast ratio and what
+ * it passes. `none` when either value is not a colour that can be read (a `var()` that resolves to
+ * nothing, a gradient, a keyword the parser does not know).
+ */
+export function contrastLine(
+  value: string | number | undefined,
+  against: string | number | undefined,
+  againstName: string,
+): Pick<TokenDetailView, "contrast" | "contrastIcon" | "contrastState"> {
+  const one = value === undefined ? null : parseColor(String(value));
+  const two = against === undefined ? null : parseColor(String(against));
+  if (!one || !two) {
+    return { contrast: "", contrastIcon: "check", contrastState: "none" };
+  }
+  const ratio = contrastRatio(one, two);
+  const shown = `${(Math.floor(ratio * 10) / 10).toFixed(1)}:1 on ${againstName}`;
+  if (ratio >= 4.5) {
+    return { contrast: `${shown}, passes AA`, contrastIcon: "check", contrastState: "pass" };
+  }
+  if (ratio >= 3) {
+    return {
+      contrast: `${shown}, passes AA for large text only`,
+      contrastIcon: "warning-circle",
+      contrastState: "fail",
+    };
+  }
+  return { contrast: `${shown}, fails AA`, contrastIcon: "warning-circle", contrastState: "fail" };
+}
+
+/**
+ * The style rules in the project's root style block that read a variable: "a, button, h1". Only the
+ * project's own styles are read, since that is the one block this editor owns; a page or a
+ * component may use it as well.
+ */
+export function usedBy(rootStyle: JxStyle, name: string): string {
+  const needle = `var(${name}`;
+  const uses = Object.entries(rootStyle).flatMap(([key, value]) => {
+    if (key.startsWith("--") || !JSON.stringify(value ?? "").includes(needle)) {
+      return [];
+    }
+    // A declaration of the root block is the page's own: "the page's background color".
+    return [isJsonObject(value) ? key : `the page's ${camelToLabel(key).toLowerCase()}`];
+  });
+  return uses.length === 0 ? "No rule in the project's styles uses it yet." : uses.join(", ");
+}
+
+/** The detail beside the swatches, for the chosen colour in the scheme shown. */
+function detailOf(
+  token: ProjectToken,
+  tokens: readonly ProjectToken[],
+  rootStyle: JxStyle,
+  row: TokenRowView,
+  scheme: TokenContext | null,
+): TokenDetailView {
+  const value = shownValue(rootStyle, token, scheme);
+  const resolved = resolveTokenValue(rootStyle, value);
+  const other = counterpart(rootStyle, tokens, token.name);
+  const againstValue = other
+    ? resolveTokenValue(rootStyle, shownValue(rootStyle, other, scheme))
+    : undefined;
+  return {
+    addLabel: row.addLabel,
+    addOptions: row.addOptions,
+    addPick: "",
+    addState: row.addState,
+    fieldLabel: scheme ? `${token.name} in ${scheme.label}` : `${token.name} value`,
+    name: token.name,
+    overrideState: row.overrideState,
+    overrides: row.overrides,
+    removeLabel: `Delete ${token.name}`,
+    resolved: resolved === undefined ? "" : String(resolved),
+    saved: `Saved as the ${token.name} variable in ${projectConfigPath()}`,
+    schemeLabel: scheme ? scheme.label : "Base",
+    usedBy: usedBy(rootStyle, token.name),
+    value,
+    ...contrastLine(resolved, againstValue, other?.name ?? ""),
+  };
+}
+
+/** The detail when no colour is chosen: every field present, as the document binds them all. */
+const NO_DETAIL: TokenDetailView = {
+  addLabel: "",
+  addOptions: [],
+  addPick: "",
+  addState: "none",
+  contrast: "",
+  contrastIcon: "check",
+  contrastState: "none",
+  fieldLabel: "",
+  name: "",
+  overrideState: "none",
+  overrides: [],
+  removeLabel: "",
+  resolved: "",
+  saved: "",
+  schemeLabel: "",
+  usedBy: "",
+  value: "",
+};
 
 /**
  * What the section shows right now.
@@ -298,8 +464,13 @@ function tokenRow(
 function view(container: HTMLElement): CssVarsView {
   const rootStyle = style();
   const declared = contexts();
-  const hasScheme = declared.some((context) => context.kind === "scheme");
+  const schemes = declared.filter((context) => context.kind === "scheme");
+  const hasScheme = schemes.length > 0;
+  const state = form(container);
+  const scheme = schemes.find((context) => context.name === state.scheme) ?? null;
   const groups: GroupView[] = [];
+  // The chosen colour's detail, which the colour group fills while it draws its swatches.
+  const detailed: TokenDetailView[] = [];
   for (const { group, tokens } of groupTokens(rootStyle)) {
     /* A bucket named "Other" over an empty list teaches nothing (`studio-ui-guidelines.md` §11.1).
        Every other group keeps its heading and its add row, because an empty one is where a palette
@@ -315,16 +486,45 @@ function view(container: HTMLElement): CssVarsView {
       id: group.id,
       nameHint: ADD_ROW_HINTS[group.id].name,
       nameLabel: `New ${group.title} name`,
+      layout: group.id === "color" ? "tiles" : "rows",
       noticeState: group.id === "color" && !hasScheme ? "shown" : "none",
+      schemeState: group.id === "color" && hasScheme ? "shown" : "none",
       title: group.title,
-      tokens: tokens.map((token) =>
-        tokenRow(token, group, rootStyle, declared, form(container).current),
-      ),
+      tokens: rowsOf(group, tokens),
       valueHint: ADD_ROW_HINTS[group.id].value,
       valueLabel: `New ${group.title} value`,
     });
   }
-  return { error: form(container).error, groups };
+  const [detail] = detailed;
+  return {
+    detail: detail ?? NO_DETAIL,
+    detailState: detail ? "shown" : "none",
+    error: state.error,
+    groups,
+    schemes: [
+      { checked: scheme === null, label: "Base", value: "" },
+      ...schemes.map((context) => ({
+        checked: context === scheme,
+        label: context.label,
+        value: context.name,
+      })),
+    ],
+  };
+
+  /** A group's rows; for the colours, the chosen one (the current, else the first) is detailed. */
+  function rowsOf(group: TokenGroup, tokens: ProjectToken[]): TokenRowView[] {
+    if (group.id !== "color") {
+      return tokens.map((token) => tokenRow(token, group, rootStyle, declared, state.current));
+    }
+    const chosen = tokens.find((token) => token.name === state.current) ?? tokens[0];
+    return tokens.map((token) => {
+      const row = tokenRow(token, group, rootStyle, declared, chosen?.name ?? null, scheme);
+      if (token === chosen) {
+        detailed.push(detailOf(token, tokens, rootStyle, row, scheme));
+      }
+      return row;
+    });
+  }
 }
 
 /** Re-read the file and the form, and let the surface reconcile. */
@@ -456,6 +656,24 @@ function actions(container: HTMLElement): CssVarsActions {
         /* The block is recreated on demand, so a caller holding a stale row still writes to the
            right place — and an emptied block is removed rather than left as `"@--dark": {}`. */
         writeTokenOverride(style(), context, token, value);
+        commit(container);
+      },
+      select: (name: string) => {
+        form(container).current = name;
+        refresh(container);
+      },
+      setScheme: (scheme: string) => {
+        form(container).scheme = scheme;
+        refresh(container);
+      },
+      /* The colour field edits what the swatches show: the base value, or the scheme's override. */
+      setShownValue: (name: string, value: string) => {
+        const scheme = contexts().find((c) => c.name === form(container).scheme);
+        if (scheme) {
+          writeTokenOverride(style(), scheme, name, value);
+        } else {
+          style()[name] = value;
+        }
         commit(container);
       },
       setToken: (name: string, value: string) => {
