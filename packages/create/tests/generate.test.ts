@@ -100,6 +100,28 @@ describe("generateProject — wrangler.jsonc", () => {
 });
 
 describe("generateProject — starter project.json", () => {
+  test("a starter's project.jxn is re-stamped in place, keeping its comments", async () => {
+    mkdirSync(STARTER_FIXTURE, { recursive: true });
+    const starter = [
+      "/- kdl-version 2",
+      "// The starter's own name, replaced on scaffold.",
+      'project "Starter"',
+      "",
+      "// Where the starter's pages inherit from.",
+      'defaults layout="./layouts/base.json"',
+      "",
+    ].join("\n");
+    writeFileSync(join(STARTER_FIXTURE, "project.jxn"), starter);
+
+    await generateProject(TMP, { name: "My Site", starter: "notation" });
+
+    expect(existsSync(join(TMP, "project.json"))).toBe(false);
+    expect(readFileSync(join(TMP, "project.jxn"), "utf8")).toBe(
+      starter.replace('project "Starter"', 'project "My Site"'),
+    );
+    rmSync(join(STARTER_FIXTURE, "project.jxn"));
+  });
+
   test("rejects a starter whose project.json is not a JSON object, and rolls back", async () => {
     mkdirSync(STARTER_FIXTURE, { recursive: true });
     writeFileSync(join(STARTER_FIXTURE, "project.json"), "[]");
@@ -111,9 +133,8 @@ describe("generateProject — starter project.json", () => {
       failure = error;
     }
 
-    expect(failure).toEqual(
-      new TypeError('Starter "listy" has a project.json that is not a JSON object'),
-    );
+    expect(failure).toBeInstanceOf(Error);
+    expect(String(failure)).toContain("expected a JSON object");
     expect(existsSync(TMP)).toBe(false);
   });
 });

@@ -68,6 +68,13 @@ import { setWorkspaceProject, workspace } from "../workspace/workspace";
 import { projectConfigPath, createTab, disposeTab } from "./tab";
 import { transactDoc } from "./transact";
 import { deriveJsonLayout, parseJsonDocument, serializeJson } from "@jxsuite/schema/json-layout";
+import { isJxnPath } from "@jxsuite/schema/jxn";
+import {
+  parseProjectSource,
+  projectFileConflict,
+  serializeProjectFile,
+} from "@jxsuite/schema/project-file";
+import { hasProjectFileConflict } from "../files/project-file-name";
 import type { JsonLayout } from "@jxsuite/schema/json-layout";
 
 import type { Tab } from "./tab";
@@ -87,7 +94,20 @@ export { isProjectConfigPath, projectConfigPath } from "./tab";
  * @returns {string}
  */
 export function serializeProjectConfig(config: ProjectConfig): string {
+  const path = projectConfigPath();
+  if (isJxnPath(path)) {
+    // The file as last read or written, which is what keeps its comments (`spec.md` §22.4).
+    return serializeProjectFile(config, configSource(), path);
+  }
   return serializeJson(config, configLayout());
+}
+
+/**
+ * The text a `project.jxn` was last read in or written as, which its save merges with: the open
+ * tab's, when there is one, as {@link configLayout} prefers the tab's layout.
+ */
+function configSource(): string | null {
+  return openConfigTab()?.doc.source ?? _source;
 }
 
 // ─── The document of record ───────────────────────────────────────────────────
@@ -122,6 +142,15 @@ let _committed: string | null = null;
  * different project is a different file.
  */
 let _layout: JsonLayout | null = null;
+
+/** For a `project.jxn`, the text {@link seedCommitted} read or a commit last wrote. */
+let _source: string | null = null;
+
+/**
+ * Why a `project.jxn` must not be written: it does not read, so a commit from what the app holds
+ * would replace whatever the author was in the middle of. Null when it may be.
+ */
+let _unwritable: string | null = null;
 
 /**
  * The layout a configuration write honours.
@@ -159,14 +188,21 @@ function unbind(): void {
   _bound = null;
   _committed = null;
   _layout = null;
+  _source = null;
+  _unwritable = null;
   _seeding = null;
 }
 
 /** Learn what the file holds, once per binding. Memoised on the promise so commits cannot race. */
 function seedCommitted(): Promise<void> {
   _seeding ??= (async () => {
+    const path = projectConfigPath();
+    if (isJxnPath(path)) {
+      await seedJxn(path);
+      return;
+    }
     try {
-      const text = await getPlatform().readFile(projectConfigPath());
+      const text = await getPlatform().readFile(path);
       const { document, layout } = parseJsonDocument(text);
       _layout = layout;
       // {@link serializeProjectConfig}'s serialisation, over the file's parse rather than a config.
@@ -178,6 +214,26 @@ function seedCommitted(): Promise<void> {
     }
   })();
   return _seeding;
+}
+
+/** {@link seedCommitted} for a `project.jxn`, whose record is its text rather than a layout. */
+async function seedJxn(path: string): Promise<void> {
+  let text: string;
+  try {
+    text = await getPlatform().readFile(path);
+  } catch {
+    // No file yet: the first commit writes one, from the canonical form.
+    _committed = null;
+    return;
+  }
+  try {
+    parseProjectSource(text, path);
+    _source = text;
+    _committed = text;
+  } catch (error) {
+    _unwritable = errorMessage(error);
+    _committed = null;
+  }
 }
 
 /**
@@ -395,6 +451,21 @@ export async function commitProjectConfig(
   // The seed, and the record it read handed to the document — so the tab the Settings door opened
   // Writes the same bytes from ⌘S that this commit is about to.
   await lendProjectConfigLayout(tab);
+  if (_unwritable !== null) {
+    // It may have been fixed since it was read, in its own tab or anywhere else: read it again.
+    _seeding = null;
+    _unwritable = null;
+    await seedCommitted();
+  }
+  const refusal = writeRefusal();
+  if (refusal) {
+    notify.error(`Could not save ${projectConfigPath()} — ${refusal}`, {
+      key: `save:${projectConfigPath()}`,
+      path: projectConfigPath(),
+      source: "Settings",
+    });
+    return { error: new Error(refusal), ok: false };
+  }
   const current = configOf(tab.doc.document);
   const currentText = serializeProjectConfig(current);
 
@@ -457,6 +528,10 @@ export async function commitProjectConfig(
     return { error, ok: false };
   }
   _committed = output;
+  if (isJxnPath(projectConfigPath())) {
+    _source = output;
+    tab.doc.source = output;
+  }
   tab.doc.dirty = false;
   if (extensionsKey(config) !== before) {
     await refreshExtensionSurfaces();
@@ -511,7 +586,32 @@ export async function adoptProjectConfig(config: ProjectConfig, text: string): P
   // The record of the bytes just written, on the tab as well as on the seed: `configLayout`
   // Prefers the open tab's, and the tab's is the record of the file it opened, which the write has
   // Just replaced. The tab holds the config now; it holds the config's layout too.
+  if (isJxnPath(projectConfigPath())) {
+    // The text is the record of a `project.jxn`, and it reads, or it would not have been written.
+    _source = text;
+    _unwritable = null;
+    tab.doc.source = text;
+    _committed = text;
+    return;
+  }
   _layout = deriveJsonLayout(text);
   tab.doc.layout = _layout;
   _committed = serializeProjectConfig(config);
+}
+
+/**
+ * Why the project file must not be written now, or null when it may be.
+ *
+ * A folder holding both project files has no file a save could go to without leaving the other
+ * looking live, and a `project.jxn` that does not read would be replaced by the configuration the
+ * app was loaded with, losing whatever the author was in the middle of (`site-architecture.md`
+ * §2.3).
+ */
+function writeRefusal(): string | null {
+  if (hasProjectFileConflict()) {
+    return projectFileConflict("this project's folder");
+  }
+  return _unwritable === null
+    ? null
+    : `it does not read, so saving would replace it. Fix the file first: ${_unwritable}`;
 }

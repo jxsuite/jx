@@ -27,7 +27,7 @@ import { isFunction, isNonNullObject, isString } from "@jxsuite/schema/guards";
 import { previewAssetSrcFor } from "../canvas/asset-refs";
 import { projectState } from "../store";
 import type { JxHeadEntry, ProjectConfig } from "@jxsuite/schema/types";
-import { PROJECT_FILE_NAME } from "@jxsuite/schema/project-file";
+import { projectConfigPath } from "../tabs/tab";
 
 /** The preview box, as a project sheet names the page's root and body inside a shadow root. */
 const HOST_ROOTS = { body: ":host", root: ":host" };
@@ -94,7 +94,7 @@ export function headStylesheetHrefs(head: readonly JxHeadEntry[] | undefined): s
 
 /** One linked stylesheet as a preview sheet, or null when it cannot be read. */
 async function linkedSheet(href: string): Promise<CSSStyleSheet | null> {
-  const url = previewAssetSrcFor(href, PROJECT_FILE_NAME);
+  const url = previewAssetSrcFor(href, projectConfigPath());
   try {
     const response = await fetch(url);
     if (!response.ok) {

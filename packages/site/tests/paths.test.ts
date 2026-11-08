@@ -85,6 +85,12 @@ describe("candidatePaths", () => {
     expect(candidatePaths(path)).toEqual([]);
   });
 
+  test("either project file is never servable, so /project.jxn is not public/project.jxn", () => {
+    expect(NEVER_SERVABLE.has("project.jxn")).toBe(true);
+    expect(NEVER_SERVABLE.has("project.json")).toBe(true);
+    expect(candidatePaths("project.jxn")).toEqual([]);
+  });
+
   test("every servable root produces a two-candidate list", () => {
     for (const root of SERVABLE_ROOTS) {
       expect(candidatePaths(`${root}x.txt`)).toHaveLength(2);

@@ -66,6 +66,24 @@ describe("siteOutDir", () => {
     expect(siteOutDir(NOT_A_SITE)).toBeNull();
   });
 
+  test("a project.jxn is read, and converting to it is noticed even within one mtime tick", () => {
+    const site = join(ROOT, "converted");
+    mkdirSync(site, { recursive: true });
+    writeFileSync(join(site, "project.json"), JSON.stringify({ build: { outDir: "a" } }));
+    expect(siteOutDir(site)).toBe(join(site, "a"));
+    rmSync(join(site, "project.json"));
+    writeFileSync(join(site, "project.jxn"), "project\nbuild outDir=b\n");
+    expect(siteOutDir(site)).toBe(join(site, "b"));
+  });
+
+  test("a folder holding both project files declines until one is gone", () => {
+    const both = join(ROOT, "both");
+    mkdirSync(both, { recursive: true });
+    writeFileSync(join(both, "project.json"), "{}");
+    writeFileSync(join(both, "project.jxn"), "project\n");
+    expect(siteOutDir(both)).toBeNull();
+  });
+
   test("an unparseable project.json declines rather than guessing", () => {
     const broken = join(ROOT, "broken");
     mkdirSync(broken, { recursive: true });

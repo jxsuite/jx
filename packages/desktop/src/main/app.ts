@@ -37,7 +37,7 @@ import {
 } from "./shell";
 import { DEFAULT_SCHEDULE, startUpdates, updatesEnabled } from "./updater";
 import type { AutoUpdater, UpdateSchedule } from "./updater";
-import { PROJECT_FILE_NAME } from "@jxsuite/schema/project-file";
+import { PROJECT_FILE_NAMES, isProjectFileName } from "@jxsuite/schema/project-file";
 
 /**
  * What the app is told: `--jx-<name>=<value>` switches (an unpackaged run's only source) or,
@@ -162,7 +162,7 @@ export function projectRootFrom(
   if (env.JSONSX_PROJECT_ROOT) {
     return resolve(cwd, env.JSONSX_PROJECT_ROOT);
   }
-  return exists(resolve(cwd, PROJECT_FILE_NAME)) ? cwd : null;
+  return PROJECT_FILE_NAMES.some((name) => exists(resolve(cwd, name))) ? cwd : null;
 }
 
 /** What a launch wants opened, worked out by the launch that knows its own argv. */
@@ -227,9 +227,9 @@ export function parseAppArgs(
   };
 }
 
-/** The project a `--jx-project` switch names: a `project.json`'s folder, or the folder. */
+/** The project a `--jx-project` switch names: a project file's folder, or the folder. */
 export function projectDirOf(path: string): string {
-  return basename(path) === PROJECT_FILE_NAME ? dirname(path) : path;
+  return isProjectFileName(basename(path)) ? dirname(path) : path;
 }
 
 /**
@@ -325,7 +325,7 @@ async function choosePath(
     options.defaultPath = defaultPath;
   }
   if (kind === "file" && !sandboxed) {
-    options.filters = [{ extensions: ["json"], name: "Project files" }];
+    options.filters = [{ extensions: ["jxn", "json"], name: "Project files" }];
   }
   if (sandboxed) {
     options.securityScopedBookmarks = true;
@@ -549,14 +549,14 @@ export async function startApp(
   installApplicationMenu(electron, platform, {
     newWindow: () => post({ root: null, type: "open-project" }),
     openProject: () => {
-      void choosePath(electron, "file", "Open project.json", grants !== null).then((picked) => {
+      void choosePath(electron, "file", "Open project file", grants !== null).then((picked) => {
         if (!picked) {
           return;
         }
-        // A sandboxed build is handed the project's folder; the others, its project.json.
+        // A sandboxed build is handed the project's folder; the others, its project file.
         const isProject = grants
-          ? exists(join(picked.path, PROJECT_FILE_NAME))
-          : basename(picked.path) === PROJECT_FILE_NAME;
+          ? PROJECT_FILE_NAMES.some((name) => exists(join(picked.path, name)))
+          : isProjectFileName(basename(picked.path));
         if (isProject) {
           void openPicked(picked, "file");
         }
@@ -708,14 +708,17 @@ export async function startApp(
     return grants || kind === "directory" ? picked.path : dirname(picked.path);
   }
 
-  /** What the backend that asked is told was chosen: for a project, the project.json inside. */
+  /** What the backend that asked is told was chosen: for a project, the project file inside. */
   function answerPath(picked: Picked | null, kind: DialogKind): string | null {
     if (!picked) {
       return null;
     }
     if (grants && kind === "file") {
-      const file = join(picked.path, PROJECT_FILE_NAME);
-      return exists(file) ? file : null;
+      // With both, the backend's picker reports the conflict, so either one will do to reach it.
+      const file = PROJECT_FILE_NAMES.map((name) => join(picked.path, name)).find((path) =>
+        exists(path),
+      );
+      return file ?? null;
     }
     return picked.path;
   }

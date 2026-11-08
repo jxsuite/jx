@@ -2583,6 +2583,41 @@ KDL's `\s` is a space and its `\b` a backspace, so `span "${state.x.replace(/\s+
 
 The rename refactor and Studio's save both pass the previous file, so repairing a reference in a `.jxn` file changes that reference and nothing else.
 
+### 22.5 Project files
+
+A project file (`site-architecture.md` §2.3) is this grammar with a different top level. There is no root element, and every node is a member of the configuration:
+
+```kdl
+/- kdl-version 2
+$schema "./project.schema.json"
+project "Bistro & Café"
+
+// The base layout every page inherits unless it names another.
+defaults layout="./layouts/base.json" lang=en
+
+extensions "@jxsuite/parser" "@jxsuite/connector"
+
+$media {
+    --md "(max-width: 768px)"
+}
+
+style {
+    --color-primary "#9a2f1a"
+}
+```
+
+| Written                                     | Means                                                                  |
+| ------------------------------------------- | ---------------------------------------------------------------------- |
+| `project [name]`                            | The file's kind, and `name`. Required, once, first after `$` metadata. |
+| Top-level `$x` nodes                        | Those members, as in §22.1, before or after `project`                  |
+| `$head { … }`                               | Element rows, as in §22.1. `- (ref)"…"` is a `$ref` entry              |
+| `style`, `$media`                           | Style rows, as in §22.1, with source order significant                 |
+| `key value`                                 | A scalar member                                                        |
+| `key a b c`, `key { - a }`, `(array)key`    | A list of many, of one, and empty                                      |
+| `key a=1 b=2`, `key { a 1; b 2 }`, `key {}` | An object. Both forms are the same data                                |
+
+Everything else is §22.1's JSON block, so `(ref)`, the refusals of §22.2 and the guarantees of §22.3 apply unchanged, and `project` written twice or holding anything but one value is refused. The canonical form favours reading: short `$` metadata, then `project`, then one section per member with a blank line between them; `$media` and `style` take one declaration per line; and a list of one is always `key { - a }`, never a bare value, because `extensions "@jxsuite/parser"` reads as a string. A save goes through §22.4's merge with this grammar as its reader, so a setting changed in Studio changes its own line and keeps every comment.
+
 ---
 
 ## 23. TypeScript in Documents

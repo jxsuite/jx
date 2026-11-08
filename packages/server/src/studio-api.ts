@@ -48,11 +48,19 @@ import type { JsonObject, JsonPrimitive, JsonValue, ProjectConfig } from "@jxsui
 import { isFunction, isJsonObject, isNonNullObject, isString } from "@jxsuite/schema/guards";
 import { problem } from "./problem.ts";
 import { scanFiles } from "./fs-glob.ts";
-import { PROJECT_FILE_NAME, classifyProjectFile } from "@jxsuite/schema/project-file";
+import {
+  PROJECT_FILE_NAMES,
+  classifyProjectFile,
+  parseProjectSource,
+  projectFileConflict,
+} from "@jxsuite/schema/project-file";
 import {
   findEnclosingProjectOnDisk,
   hasProjectFile,
+  isSameStamp,
   projectFilePath,
+  projectFileStamp,
+  readProjectFile,
 } from "@jxsuite/schema/project-file/node";
 
 /** Normalise a path to forward slashes (Windows `path` module returns backslashes). */
@@ -102,11 +110,11 @@ interface Cem {
   modules?: CemModule[];
 }
 
-// ─── Extension registry (per project root, invalidated on project.json change) ──
+// ─── Extension registry (per project root, invalidated on a project file change) ──
 
 const extensionRegistryCache = new Map<
   string,
-  { mtime: number; missing: string[]; registry: ExtensionRegistry }
+  { mtime: number; missing: string[]; path: string; registry: ExtensionRegistry }
 >();
 
 /**
@@ -121,26 +129,23 @@ const extensionRegistryCache = new Map<
  * @returns {Promise<ExtensionRegistry>}
  */
 async function getExtensionRegistry(projectRoot: string): Promise<ExtensionRegistry> {
-  const projectJsonPath = projectFilePath(projectRoot);
-  let mtime = 0;
+  const stamp = projectFileStamp(projectRoot) ?? { mtime: 0, path: "" };
   let projectConfig: ProjectConfig | undefined;
   try {
-    mtime = statSync(projectJsonPath).mtimeMs;
-    /* SAFETY: buildProjectExtensionRegistry reads only `projectConfig?.extensions` and validates
-       that list itself; every other ProjectConfig member is optional and unread on this path. */
-    projectConfig = JSON.parse(readFileSync(projectJsonPath, "utf8")) as ProjectConfig;
+    // The registry reads only `projectConfig?.extensions`, and checks that list itself.
+    projectConfig = parseProjectSource(readFileSync(stamp.path, "utf8"), stamp.path);
   } catch {
     projectConfig = undefined;
   }
   const cached = extensionRegistryCache.get(projectRoot);
-  if (cached && cached.mtime === mtime && !anyNowInstalled(projectRoot, cached.missing)) {
+  if (cached && isSameStamp(cached, stamp) && !anyNowInstalled(projectRoot, cached.missing)) {
     return cached.registry;
   }
   const { missing, registry } = await buildInstalledExtensionRegistry(projectRoot, projectConfig);
   if (missing.length > 0 && missing.join("\n") !== cached?.missing.join("\n")) {
     console.warn(`[studio] ${missingExtensionsNotice(missing)}`);
   }
-  extensionRegistryCache.set(projectRoot, { missing, mtime, registry });
+  extensionRegistryCache.set(projectRoot, { ...stamp, missing, registry });
   return registry;
 }
 
@@ -515,17 +520,12 @@ export async function handleStudioApi(
 
       let isSiteProject = false;
       let projectConfig: ProjectConfig | null = null;
-      try {
-        const text = await readFile(projectFilePath(absDir), "utf8");
-        // SAFETY: JSON.parse without a reviver only ever produces JSON values.
-        const raw = JSON.parse(text) as JsonValue;
-        if (classifyProjectFile(text) === "project" && isJsonObject(raw)) {
-          isSiteProject = true;
-          /* SAFETY: `raw` is a JSON object and every ProjectConfig member is optional; the config
-             is only relayed to the client here, never interpreted. */
-          projectConfig = raw as ProjectConfig;
-        }
-      } catch {}
+      const read = readProjectFile(absDir);
+      if (read && "config" in read && classifyProjectFile(read.text, read.path) === "project") {
+        isSiteProject = true;
+        // Relayed to the client here, never interpreted.
+        projectConfig = read.config;
+      }
 
       return Response.json({
         directories,
@@ -548,26 +548,26 @@ export async function handleStudioApi(
       // Walk up looking for project.json. Accept a directory (e.g. the project root itself, as
       // Deep links like ?project=/abs/my-site pass) by starting the walk AT the directory and
       // Treating its project.json as the target file, so callers land on the home page.
-      let absFile = expandTilde(filePath);
-      let dir: string;
+      const absFile = expandTilde(filePath);
       let isDir = false;
       try {
         isDir = statSync(absFile).isDirectory();
       } catch {}
-      if (isDir) {
-        dir = absFile;
-        absFile = projectFilePath(absFile);
-      } else {
-        dir = dirname(absFile);
-      }
       // A page named project.json is not a project, and neither is Nx's file of that name.
-      const found = findEnclosingProjectOnDisk(dir);
+      const found = findEnclosingProjectOnDisk(isDir ? absFile : dirname(absFile));
+      if (found?.verdict === "conflict") {
+        return problem("conflict", projectFileConflict(found.root));
+      }
       if (found) {
-        /* SAFETY: the config is relayed to the client verbatim and not interpreted here, so its
-           member types are the client's to check; malformed JSON throws into the catch below. */
-        const config = JSON.parse(readFileSync(found.projectFile, "utf8")) as ProjectConfig;
+        // Relayed to the client and not interpreted here; a file that does not read throws below.
+        const config = parseProjectSource(
+          readFileSync(found.projectFile, "utf8"),
+          found.projectFile,
+        );
+        // A folder is asked for as its project file, which the client reads as "go home".
+        const asked = isDir ? join(absFile, basename(found.projectFile)) : absFile;
         return Response.json({
-          fileRelPath: fwd(relative(found.root, absFile)),
+          fileRelPath: fwd(relative(found.root, asked)),
           projectConfig: config,
           relPath: fwd(found.root),
           sitePath: found.root,
@@ -582,8 +582,8 @@ export async function handleStudioApi(
   // Discover site projects — find all project.json files under root
   if (path === "/__studio/sites" && req.method === "GET") {
     try {
-      const sites = [];
-      for await (const match of scanFiles(`**/${PROJECT_FILE_NAME}`, root)) {
+      const sites: { config: ProjectConfig; path: string; problem?: string }[] = [];
+      for await (const match of scanFiles(`**/{${PROJECT_FILE_NAMES.join(",")}}`, root)) {
         if (
           match.includes("node_modules") ||
           fwd(match).includes("dist/") ||
@@ -594,13 +594,17 @@ export async function handleStudioApi(
         const fp = resolve(root, match);
         try {
           const text = await readFile(fp, "utf8");
-          // SAFETY: JSON.parse without a reviver only ever produces JSON values.
-          const raw = JSON.parse(text) as JsonValue;
-          if (classifyProjectFile(text) === "project" && isJsonObject(raw)) {
+          if (classifyProjectFile(text, fp) === "project") {
             const projectDir = fwd(dirname(fp));
-            /* SAFETY: `raw` is a JSON object and every ProjectConfig member is optional; the site
-               list only relays the config to the client. */
-            sites.push({ config: raw as ProjectConfig, path: projectDir });
+            // The site list only relays the config to the client.
+            const config = parseProjectSource(text, fp);
+            const twin = sites.find((site) => site.path === projectDir);
+            if (twin) {
+              // Neither file is the project's, so the list says so rather than choosing.
+              twin.problem = projectFileConflict(projectDir);
+            } else {
+              sites.push({ config, path: projectDir });
+            }
           }
         } catch {}
       }
@@ -690,9 +694,9 @@ export async function handleStudioApi(
       }
       await generateProject(destPath, projectOptions);
 
-      /* SAFETY: generateProject just wrote this project.json from its own template, so it is a
-         project config; it is relayed to the client, not interpreted here. */
-      const config = JSON.parse(await readFile(projectFilePath(destPath), "utf8")) as ProjectConfig;
+      // It was just written by generateProject, and is relayed to the client, not interpreted.
+      const configPath = projectFilePath(destPath);
+      const config = parseProjectSource(await readFile(configPath, "utf8"), configPath);
       // Root-relative while the project happens to sit under the server root (the historical
       // Shape every caller already handles); absolute otherwise.
       const inRoot = containedPath(destPath, root) !== null;

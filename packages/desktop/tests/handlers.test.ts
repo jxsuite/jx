@@ -1215,7 +1215,7 @@ describe("openProject", () => {
     try {
       writeFileSync(join(FIXTURES, "other.json"), "{}");
       setFileDialog(async () => join(FIXTURES, "other.json"));
-      await expect(openProject()).rejects.toThrow("not a project.json");
+      await expect(openProject()).rejects.toThrow("not a project.jxn or project.json");
     } finally {
       setFileDialog(null);
       cleanup();
@@ -1295,12 +1295,31 @@ describe("pickProjectFile", () => {
 
       writeFileSync(join(FIXTURES, "other.json"), "{}");
       setFileDialog(async () => join(FIXTURES, "other.json"));
-      await expect(pickProjectFile()).rejects.toThrow("not a project.json");
+      await expect(pickProjectFile()).rejects.toThrow("not a project.jxn or project.json");
 
       // Named project.json, but Nx's: the name alone does not make it a project.
       writeFileSync(join(FIXTURES, "project.json"), '{ "name": "web", "targets": {} }');
       setFileDialog(async () => join(FIXTURES, "project.json"));
       await expect(pickProjectFile()).rejects.toThrow("not a project's configuration");
+    } finally {
+      setFileDialog(null);
+      cleanup();
+    }
+  });
+
+  test("a project.jxn is picked as one, and a folder holding both is refused", async () => {
+    setup();
+    try {
+      writeFileSync(join(FIXTURES, "project.jxn"), 'project "Notation"\n');
+      setFileDialog(async () => join(FIXTURES, "project.jxn"));
+      expect(await pickProjectFile()).toEqual({
+        config: { name: "Notation" },
+        name: "Notation",
+        root: FIXTURES,
+      });
+
+      writeFileSync(join(FIXTURES, "project.json"), JSON.stringify({ name: "Json" }));
+      await expect(pickProjectFile()).rejects.toThrow("project.jxn and project.json");
     } finally {
       setFileDialog(null);
       cleanup();

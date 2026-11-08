@@ -13,7 +13,7 @@ import type {
   FormatActionRequest,
   StudioPlatform,
 } from "@jxsuite/studio/types";
-import type { JsonObject, JsonValue, ProjectConfig } from "@jxsuite/schema/types";
+import type { JsonObject, JsonValue } from "@jxsuite/schema/types";
 import type {
   DataRowDelete,
   DataRowInsert,
@@ -23,7 +23,7 @@ import type {
 } from "@jxsuite/protocol";
 import type { StudioRPC } from "../shared/rpc-schema";
 import type { ShellBridge } from "../shared/bridge";
-import { PROJECT_FILE_NAME } from "@jxsuite/schema/project-file";
+import { PROJECT_FILE_NAMES, parseProjectSource } from "@jxsuite/schema/project-file";
 
 /* Inferred return type with a `satisfies` conformance check at the bottom, so callers see which of
    the PAL's OPTIONAL members this launcher actually implements — annotating `StudioPlatform` made
@@ -396,11 +396,23 @@ export function createDesktopPlatform() {
 
     async probeRootProject() {
       try {
-        const content = await request("readFile", { path: PROJECT_FILE_NAME });
-        /* SAFETY: `content` is project.json's text. The PAL hands Studio the parsed document as the
-           project's config without validating it, as every launcher does; text that is not JSON
-           throws into the catch below and reads as "no project". */
-        const config = JSON.parse(content) as ProjectConfig;
+        // Either name may be the project's, and a folder holding both is reported once Studio opens it.
+        const found = await Promise.all(
+          PROJECT_FILE_NAMES.map((path) =>
+            request("readFile", { path }).then(
+              (text) => ({ path, text }),
+              () => null,
+            ),
+          ),
+        );
+        const file = found.find((entry) => entry !== null);
+        if (!file) {
+          return null;
+        }
+        /* The PAL hands Studio the parsed document as the project's config without validating it,
+           as every launcher does; text that does not read throws into the catch below and reads as
+           "no project". */
+        const config = parseProjectSource(file.text, file.path);
         // Resolve the absolute backend root so the recent-projects list gets a re-openable key.
         const { root } = await request("getProjectRoot");
         const directories: string[] = [];
@@ -413,7 +425,7 @@ export function createDesktopPlatform() {
           meta: { name: config.name || "project", root: root || "." },
         };
       } catch {
-        // The launcher's root defaults to the launch cwd, which usually holds no project.json.
+        // The launcher's root defaults to the launch cwd, which usually holds no project file.
         // Report "no project" (null) so the studio shows the welcome screen — returning a phantom
         // Non-site project instead sets projectState and suppresses the welcome screen for the
         // Whole session.

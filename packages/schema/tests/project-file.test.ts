@@ -3,11 +3,20 @@ import { readFileSync } from "node:fs";
 import { join, posix, resolve } from "node:path";
 import { execFileSync } from "node:child_process";
 import {
-  PROJECT_FILE_NAME,
+  NEW_PROJECT_FILE_NAME,
+  PROJECT_FILE_NAMES,
+  ProjectFileConflictError,
+  baseName,
   classifyProjectFile,
   findEnclosingProject,
+  isProjectConfigPath,
+  isProjectFileName,
+  parseProjectFile,
+  parseProjectSource,
+  pickProjectFileName,
+  serializeProjectFile,
 } from "../src/project-file.ts";
-import type { ProjectWalkIo } from "../src/project-file.ts";
+import type { ProjectFileVerdict, ProjectWalkIo } from "../src/project-file.ts";
 
 /** A filesystem of exactly these files, in POSIX spelling, recording what was read. */
 function fakeIo(files: Record<string, string>): ProjectWalkIo & { reads: string[] } {
@@ -63,12 +72,12 @@ describe("classifyProjectFile", () => {
 
   test("every tracked project file is a project", () => {
     const root = resolve(import.meta.dir, "../../..");
-    const tracked = execFileSync("git", ["ls-files", `*${PROJECT_FILE_NAME}`], {
+    const tracked = execFileSync("git", ["ls-files", `*${NEW_PROJECT_FILE_NAME}`], {
       cwd: root,
       encoding: "utf8",
     })
       .split("\n")
-      .filter((file) => file.split("/").pop() === PROJECT_FILE_NAME);
+      .filter((file) => file.split("/").pop() === NEW_PROJECT_FILE_NAME);
     expect(tracked.length).toBeGreaterThan(0);
     for (const file of tracked) {
       const text = readFileSync(join(root, file), "utf8");
@@ -118,20 +127,139 @@ describe("findEnclosingProject", () => {
     });
   });
 
-  test("ends at the filesystem's root with nothing found, having asked for each folder once", () => {
+  test("ends at the filesystem's root with nothing found, having asked for each name in each folder once", () => {
     const io = fakeIo({});
     expect(findEnclosingProject("/w/site", io)).toBeNull();
-    expect(io.reads).toEqual(["/w/site/project.json", "/w/project.json", "/project.json"]);
+    expect(io.reads).toEqual([
+      "/w/site/project.jxn",
+      "/w/site/project.json",
+      "/w/project.jxn",
+      "/w/project.json",
+      "/project.jxn",
+      "/project.json",
+    ]);
   });
 
   test("never looks past the folder it was told to stop at", () => {
     const io = fakeIo({ "/w/project.json": SITE });
     expect(findEnclosingProject("/w/site/pages", io, "/w/site")).toBeNull();
-    expect(io.reads).toEqual(["/w/site/pages/project.json", "/w/site/project.json"]);
+    expect(io.reads).toEqual([
+      "/w/site/pages/project.jxn",
+      "/w/site/pages/project.json",
+      "/w/site/project.jxn",
+      "/w/site/project.json",
+    ]);
   });
 
   test("checks the folder it stops at", () => {
     const io = fakeIo({ "/w/site/project.json": SITE });
     expect(findEnclosingProject("/w/site/pages", io, "/w/site")?.root).toBe("/w/site");
+  });
+});
+
+describe("project.jxn", () => {
+  const JXN = 'project "Site"\nurl "https://example.com"\n';
+
+  test("both names are a project's, and nothing else is", () => {
+    for (const name of PROJECT_FILE_NAMES) {
+      expect(isProjectFileName(name)).toBe(true);
+      expect(isProjectConfigPath(name)).toBe(true);
+    }
+    expect(isProjectFileName("pages/project.jxn")).toBe(false);
+    expect(isProjectConfigPath("new-project.jxn")).toBe(false);
+    expect(isProjectFileName(null)).toBe(false);
+  });
+
+  test.each<[string, string, ProjectFileVerdict]>([
+    ["a declared project", JXN, "project"],
+    ["a page by that name", 'h1 "About the project"', "other"],
+    ["a project with a typo after its declaration", 'project "Site"\ndefaults {', "project"],
+    ["a binary file", "\0\0", "unreadable"],
+  ])("%s", (_label, text, verdict) => {
+    expect(classifyProjectFile(text, "/w/site/project.jxn")).toBe(verdict);
+  });
+
+  test("the walk finds a project.jxn, and walks past a page by that name", () => {
+    const io = fakeIo({
+      "/w/site/pages/project.jxn": 'h1 "About"',
+      "/w/site/project.jxn": JXN,
+    });
+    expect(findEnclosingProject("/w/site/pages", io)).toEqual({
+      projectFile: "/w/site/project.jxn",
+      root: "/w/site",
+      verdict: "project",
+    });
+  });
+
+  test("a folder holding both is a conflict, which no walk passes", () => {
+    const io = fakeIo({
+      "/w/project.json": '{ "name": "Outer" }',
+      "/w/site/project.json": '{ "name": "Site" }',
+      "/w/site/project.jxn": JXN,
+    });
+    expect(findEnclosingProject("/w/site/pages", io)).toEqual({
+      projectFile: "/w/site/project.jxn",
+      root: "/w/site",
+      verdict: "conflict",
+    });
+  });
+
+  test("a page named project.jxn beside a project.json is no conflict", () => {
+    const io = fakeIo({
+      "/w/site/project.json": '{ "name": "Site" }',
+      "/w/site/project.jxn": 'h1 "About"',
+    });
+    expect(findEnclosingProject("/w/site", io)?.verdict).toBe("project");
+  });
+
+  test("which name a folder holds", () => {
+    expect(pickProjectFileName((name) => name === "project.jxn")).toBe("project.jxn");
+    expect(pickProjectFileName((name) => name === "project.json")).toBe("project.json");
+    expect(pickProjectFileName(() => true)).toBe("conflict");
+    expect(pickProjectFileName(() => false)).toBeNull();
+  });
+
+  test("the conflict names both files, and is an error of its own kind", () => {
+    const error = new ProjectFileConflictError("/w/site");
+    expect(error.name).toBe("ProjectFileConflictError");
+    expect(error.message).toContain("project.jxn");
+    expect(error.message).toContain("project.json");
+    expect(error.message).toContain("/w/site");
+  });
+
+  test("a file is read in the format its name says", () => {
+    expect(parseProjectSource(JXN, "/w/project.jxn")).toEqual({
+      name: "Site",
+      url: "https://example.com",
+    });
+    expect(parseProjectSource('{ "name": "Site" }', "/w/project.json")).toEqual({ name: "Site" });
+    expect(parseProjectFile("/w/project.jxn", "project\nproject")).toMatchObject({
+      error: expect.stringContaining("/w/project.jxn"),
+    });
+  });
+
+  test("a project.jxn is written in Jx Notation, keeping its comments", () => {
+    const previous =
+      '/- kdl-version 2\n// The site.\nproject "Site"\n\n// Where it lives.\nurl "https://a.example"\n';
+    const written = serializeProjectFile(
+      { name: "Site", url: "https://b.example" },
+      previous,
+      "/w/project.jxn",
+    );
+    expect(written).toBe(previous.replace("a.example", "b.example"));
+    expect(serializeProjectFile({ name: "Site" }, null, "project.jxn")).toBe(
+      "/- kdl-version 2\nproject Site\n",
+    );
+  });
+
+  test("a project file is written as JSON without a path, which is a new project's name", () => {
+    expect(NEW_PROJECT_FILE_NAME).toBe("project.json");
+    expect(serializeProjectFile({ name: "Site" }, null)).toBe('{\n  "name": "Site"\n}\n');
+  });
+
+  test("a path's base name, in either separator", () => {
+    expect(baseName("a/b/project.jxn")).toBe("project.jxn");
+    expect(baseName(String.raw`C:\a\project.json`)).toBe("project.json");
+    expect(baseName("project.json")).toBe("project.json");
   });
 });
