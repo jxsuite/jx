@@ -154,6 +154,8 @@ export interface CollectionViewState {
   filter: string;
   /** The Table's ticked rows, by path (§22.5). Only rows still listed count. */
   selected: string[];
+  /** Whether **Select** is on: the Table draws its checkboxes only then. */
+  selecting: boolean;
 }
 
 export interface ContentViewState {
@@ -197,6 +199,7 @@ export function collectionView(key: string = shownCollectionKey()): CollectionVi
     locale: "",
     query: "",
     selected: [],
+    selecting: false,
   };
   contentView.views[key] = created;
   // Read back through the reactive record, so a later write to the returned object is tracked.
@@ -823,18 +826,29 @@ function listing(collection: ReturnType<typeof shownCollection>, view: Collectio
  * What each page is, as the Pages Table says under its title (§22.5): the home page, or a
  * collection's template page with how many pages it makes. Any other page is just itself.
  */
+let subtitlesMemo: { files: readonly LibraryFile[]; subtitles: Map<string, string> } | null = null;
 function pageSubtitles(): Map<string, string> {
-  const subtitles = new Map<string, string>();
   const files = librarySource().files();
+  // One answer per scan: a repaint (a scroll, a view switch) asks again and must not re-count.
+  if (subtitlesMemo?.files === files) {
+    return subtitlesMemo.subtitles;
+  }
+  const subtitles = new Map<string, string>();
+  let complete = true;
   // Pages itself is no collection a page expands over: only the declared ones have template pages.
   for (const collection of contentCollections().filter((each) => each.kind === "collection")) {
     const page = peekCollectionPage(collection.key, "");
+    if (page === undefined) {
+      complete = false;
+    }
     if (page) {
       const count = filterLibrary(files, { collection: collection.key, query: "" }).length;
       const noun = count === 1 ? collection.item : collection.title.toLowerCase();
       subtitles.set(page.path, `One page per ${collection.item} · ${count} ${noun}`);
     }
   }
+  // Remembered only once the template-page index has answered for every collection.
+  subtitlesMemo = complete ? { files, subtitles } : null;
   return subtitles;
 }
 
@@ -1275,8 +1289,9 @@ function homeView(panel: ActiveLibraryPane | null, paneId: string): LibraryView 
      (a file-backed collection's rows are lines of one file) and whose entries carry a picture. */
   const table = kind === "table" && collection.kind === "collection";
   const selectable = table && !collection.fileBacked;
+  const selecting = selectable && view.selecting;
   const listed = new Set(files.map((file) => file.path));
-  const ticked = selectable ? view.selected.filter((path) => listed.has(path)) : [];
+  const ticked = selecting ? view.selected.filter((path) => listed.has(path)) : [];
   const tickedSet = new Set(ticked);
   const covered =
     table && Object.values(schema?.properties ?? {}).some((field) => isPictureField(field));
@@ -1357,12 +1372,17 @@ function homeView(panel: ActiveLibraryPane | null, paneId: string): LibraryView 
             return subtitles ? withPageSubtitle(row, subtitles) : row;
           })
         : [],
-    bulkState: ticked.length > 0 ? "shown" : "hidden",
-    bulkText: `${ticked.length} ${noun} selected`,
+    bulkState: selecting ? "shown" : "hidden",
+    bulkText:
+      ticked.length === 0 ? `Tick the ${plural} to delete` : `${ticked.length} ${noun} selected`,
+    deleteDisabled: ticked.length === 0,
+    rowSize: covered || subtitles !== null ? "tall" : "normal",
     coverState: covered ? "shown" : "hidden",
     searchLabel: `Search ${plural}`,
     selectAllLabel: `Select every ${collection.item}`,
-    selectState: selectable ? "shown" : "hidden",
+    selectState: selecting ? "shown" : "hidden",
+    selectToggleState: selectable ? "shown" : "hidden",
+    selecting,
     someChecked: ticked.length > 0 && ticked.length < listed.size,
     subtitle: pages ? "Every URL on your site." : "",
     title: collection.title,
@@ -1417,6 +1437,11 @@ export function renderLibraryMode(surface: CanvasSurface, tab: Tab): void {
     },
     clearSelection: () => {
       collectionView(shownCollectionKey()).selected = [];
+    },
+    toggleSelecting: () => {
+      const view = collectionView(shownCollectionKey());
+      view.selecting = !view.selecting;
+      view.selected = [];
     },
     contextMenu: (path, x, y) => showLibraryContextMenu(path, x, y),
     deleteSelected: () => {
@@ -1535,6 +1560,7 @@ export function renderLibraryMode(surface: CanvasSurface, tab: Tab): void {
       void view.query;
       void view.locale;
       void view.selected;
+      void view.selecting;
 
       draw();
 

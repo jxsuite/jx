@@ -195,8 +195,19 @@ export interface LibraryView {
   columns: LibraryColumn[];
   /** The Table's Cover column: `shown` when the collection's entries have a picture field. */
   coverState: "hidden" | "shown";
-  /** The Table's checkboxes: `shown` for a collection whose rows are files of their own. */
+  /**
+   * **Select** in the toolbar: `shown` in the Table of a collection whose rows are files of their
+   * own. It turns the checkboxes on and off, so a Table nobody is selecting in draws none.
+   */
+  selectToggleState: "hidden" | "shown";
+  /** Whether selecting is on: the toggle is pressed, and the checkboxes are drawn. */
+  selecting: boolean;
+  /** The Table's checkboxes: `shown` while selecting. */
   selectState: "hidden" | "shown";
+  /** `tall` when a row carries a cover or a second line, so it is drawn tall enough for one. */
+  rowSize: "normal" | "tall";
+  /** **Delete** is pressable only with something ticked. */
+  deleteDisabled: boolean;
   /** The header checkbox: every row ticked, or some. */
   allChecked: boolean;
   someChecked: boolean;
@@ -234,6 +245,8 @@ export interface LibraryActions {
   selectRow: (path: string, checked: boolean) => void;
   /** The header checkbox: every row shown, or none. */
   selectAll: (checked: boolean) => void;
+  /** **Select** pressed: selecting turns on, or off (which clears what was ticked). */
+  toggleSelecting: () => void;
   /** **Clear** in the selection bar. */
   clearSelection: () => void;
   /** **Delete** in the selection bar: every ticked entry, after one confirmation. */
@@ -295,6 +308,10 @@ function project(scope: LibraryScope, view: LibraryView): void {
   scope.truncatedState = view.truncatedState;
   scope.coverState = view.coverState;
   scope.selectState = view.selectState;
+  scope.selectToggleState = view.selectToggleState;
+  scope.selecting = view.selecting;
+  scope.rowSize = view.rowSize;
+  scope.deleteDisabled = view.deleteDisabled;
   scope.allChecked = view.allChecked;
   scope.someChecked = view.someChecked;
   scope.selectAllLabel = view.selectAllLabel;
@@ -385,6 +402,11 @@ export function mountLibrarySurface(
     selectAllLabel: "",
     selectRow: actions.selectRow,
     selectState: "hidden",
+    selectToggleState: "hidden",
+    selecting: false,
+    rowSize: "normal",
+    deleteDisabled: true,
+    toggleSelecting: actions.toggleSelecting,
     someChecked: false,
     subtitle: "",
     title: "",

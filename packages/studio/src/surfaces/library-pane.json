@@ -17,7 +17,7 @@
     "fontFamily": "var(--jx-font-sans)",
     "fontSize": "var(--jx-text-md)",
     "color": "var(--fg)",
-    "& [part=\"banner-slot\"], & [part=\"locale-slot\"], & [part=\"filter-slot\"], & [part=\"fields-slot\"], & [part=\"new-slot\"], & [part=\"page-slot\"], & [part=\"view-slot\"], & [part=\"art-slot\"], & [part=\"note-slot\"], & [part=\"truncated-slot\"]": {
+    "& [part=\"banner-slot\"], & [part=\"locale-slot\"], & [part=\"filter-slot\"], & [part=\"fields-slot\"], & [part=\"select-toggle-slot\"], & [part=\"new-slot\"], & [part=\"page-slot\"], & [part=\"view-slot\"], & [part=\"art-slot\"], & [part=\"note-slot\"], & [part=\"truncated-slot\"]": {
       "$description": "A `$switch` renders its own container, and none of these six is a box: each stands exactly where its case does, so the case's own rule is the only one that lays anything out.",
       "display": "contents"
     },
@@ -244,10 +244,6 @@
       "objectFit": "cover",
       "background": "var(--bg-input)"
     },
-    "& [part=\"table\"]:has([part=\"cover\"]) [part=\"table-row\"]": {
-      "$description": "A row with covers is tall enough to show one.",
-      "height": "44px"
-    },
     "& [part=\"cell\"]": {
       "$description": "Every column keeps a floor: with a collection's six field columns beside the file facts, a cell that may shrink to nothing is a column of ellipses. When the floors outgrow the pane, the table scrolls sideways instead. Each cell's text is kept out of its intrinsic width (`contain: inline-size`), so the table's `min-content` is the sum of those floors rather than of every full title.",
       "flex": "1",
@@ -274,9 +270,6 @@
     },
     "& [part=\"cell-sub\"]:empty": {
       "display": "none"
-    },
-    "& [part=\"table\"]:has([part=\"cell-sub\"]:not(:empty)) [part=\"table-row\"]": {
-      "height": "44px"
     },
     "& [part=\"cell\"][data-field=\"name\"], & [part=\"cell\"][data-field=\"title\"]": {
       "$description": "What a row is called keeps a readable width however many field columns stand beside it.",
@@ -386,6 +379,10 @@
       "$description": "Rows and cards open on Enter or Space as well as a click, so the keyboard reaches an entry; the ring says which one it is on.",
       "outline": "var(--jx-focus-ring)",
       "outlineOffset": "-2px"
+    },
+    "& [part=\"table\"][data-rows=\"tall\"] [part=\"table-row\"]": {
+      "$description": "Tall enough for a cover or a second line. Said by the view rather than found by `:has()`, which re-matched every row on every repaint.",
+      "height": "44px"
     }
   },
   "children": [
@@ -606,6 +603,51 @@
               "tagName": "span",
               "attributes": {
                 "part": "spacer"
+              }
+            },
+            {
+              "tagName": "div",
+              "attributes": {
+                "part": "select-toggle-slot",
+                "role": "none"
+              },
+              "$switch": {
+                "$ref": "#/state/selectToggleState"
+              },
+              "cases": {
+                "shown": {
+                  "tagName": "jx-action-button",
+                  "attributes": {
+                    "part": "select-toggle"
+                  },
+                  "$props": {
+                    "size": "sm",
+                    "icon": "check",
+                    "toggles": true,
+                    "selected": {
+                      "$ref": "#/state/selecting"
+                    },
+                    "hint": "Tick entries to delete several at once"
+                  },
+                  "onclick": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "operator": "call",
+                        "target": {
+                          "$ref": "#/state/toggleSelecting"
+                        },
+                        "value": []
+                      }
+                    ]
+                  },
+                  "children": [
+                    {
+                      "tagName": "span",
+                      "textContent": "Select"
+                    }
+                  ]
+                }
               }
             },
             {
@@ -1263,7 +1305,8 @@
               "attributes": {
                 "part": "table",
                 "role": "table",
-                "aria-label": "${state.title}"
+                "aria-label": "${state.title}",
+                "data-rows": "${state.rowSize}"
               },
               "children": [
                 {
@@ -1691,7 +1734,10 @@
                           },
                           "$props": {
                             "size": "sm",
-                            "variant": "negative"
+                            "variant": "negative",
+                            "disabled": {
+                              "$ref": "#/state/deleteDisabled"
+                            }
                           },
                           "onclick": {
                             "$prototype": "Function",
@@ -1715,7 +1761,7 @@
                         {
                           "tagName": "jx-button",
                           "attributes": {
-                            "part": "bulk-clear"
+                            "part": "bulk-done"
                           },
                           "$props": {
                             "size": "sm",
@@ -1728,7 +1774,7 @@
                               {
                                 "operator": "call",
                                 "target": {
-                                  "$ref": "#/state/clearSelection"
+                                  "$ref": "#/state/toggleSelecting"
                                 },
                                 "value": []
                               }
@@ -1737,7 +1783,7 @@
                           "children": [
                             {
                               "tagName": "span",
-                              "textContent": "Clear"
+                              "textContent": "Done"
                             }
                           ]
                         }

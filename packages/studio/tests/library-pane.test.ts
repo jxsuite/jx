@@ -644,6 +644,12 @@ describe("the Table's selection and Cover column", () => {
     await flush();
   }
 
+  /** Press **Select** in the toolbar. */
+  async function toggleSelecting(): Promise<void> {
+    part("select-toggle")!.querySelector<HTMLElement>('[part="control"]')!.click();
+    await flush();
+  }
+
   /** A kit checkbox under a part, ticked or cleared as a reader would. */
   function tick(box: HTMLElement, checked: boolean): void {
     Object.assign(box, { checked });
@@ -651,13 +657,32 @@ describe("the Table's selection and Cover column", () => {
   }
   const checkedOf = (box: Element) => ("checked" in box ? box.checked : null);
 
+  test("a Table nobody is selecting in draws no checkboxes until Select is pressed", async () => {
+    await postsTable();
+    expect(part("select-cell")).toBeNull();
+    expect(part("bulk")).toBeNull();
+    await toggleSelecting();
+    expect(parts("select-row")).toHaveLength(2);
+    expect(part("bulk-text")!.textContent).toBe("Tick the posts to delete");
+    const del = part("bulk-delete")!;
+    expect("disabled" in del ? del.disabled : null).toBe(true);
+    // Done turns selecting off and forgets what was ticked.
+    tick(parts("select-row")[0]!, true);
+    await flush();
+    part("bulk-done")!.querySelector<HTMLElement>('[part="control"]')!.click();
+    await flush();
+    expect(part("select-cell")).toBeNull();
+    await toggleSelecting();
+    expect(parts("select-row").map((box) => checkedOf(box))).toEqual([false, false]);
+  });
+
   test("a row's checkbox ticks it without opening it, and the bar counts what is ticked", async () => {
     await postsTable();
+    await toggleSelecting();
     const boxes = parts("select-row");
     expect(boxes).toHaveLength(2);
     const first = boxes[0]!;
     expect("label" in first ? first.label : null).toBe("Select 2024-01-02-hello");
-    expect(part("bulk")).toBeNull();
     tick(boxes[0]!, true);
     boxes[0]!
       .closest('[part="select-cell"]')!
@@ -675,17 +700,13 @@ describe("the Table's selection and Cover column", () => {
     expect(part("bulk-text")!.textContent).toBe("2 posts selected");
     expect(checkedOf(part("select-all")!)).toBe(true);
 
-    part("bulk-clear")!.querySelector<HTMLElement>('[part="control"]')!.click();
+    tick(part("select-all")!, false);
     await flush();
-    expect(part("bulk")).toBeNull();
+    expect(part("bulk-text")!.textContent).toBe("Tick the posts to delete");
     tick(parts("select-row")[1]!, true);
     tick(parts("select-row")[1]!, false);
     await flush();
-    expect(part("bulk")).toBeNull();
-    tick(part("select-all")!, true);
-    tick(part("select-all")!, false);
-    await flush();
-    expect(part("bulk")).toBeNull();
+    expect(part("bulk-text")!.textContent).toBe("Tick the posts to delete");
   });
 
   test("Delete removes every ticked entry after one confirmation, and says so", async () => {
@@ -696,6 +717,7 @@ describe("the Table's selection and Cover column", () => {
         return Promise.resolve();
       },
     });
+    await toggleSelecting();
     tick(part("select-all")!, true);
     await flush();
     part("bulk-delete")!.querySelector<HTMLElement>('[part="control"]')!.click();
@@ -710,14 +732,19 @@ describe("the Table's selection and Cover column", () => {
       "Delete 2 posts?",
     );
     topDialog()!.dispatchEvent(new Event("confirm"));
-    for (let turn = 0; turn < 20 && part("bulk") !== null; turn++) {
+    for (
+      let turn = 0;
+      turn < 20 && part("bulk-text")?.textContent !== "Tick the posts to delete";
+      turn++
+    ) {
       await flush();
     }
     expect(removed.toSorted()).toEqual([
       "content/2024-01-02-hello.md",
       "content/2024-02-03-again.md",
     ]);
-    expect(part("bulk")).toBeNull();
+    // Selecting stays on with nothing ticked, ready for the next.
+    expect(part("bulk-text")!.textContent).toBe("Tick the posts to delete");
   });
 
   test("an entry that cannot be deleted is reported, and the rest are still deleted", async () => {
@@ -725,6 +752,7 @@ describe("the Table's selection and Cover column", () => {
       deleteFile: (path: string) =>
         path.includes("again") ? Promise.reject(new Error("EACCES")) : Promise.resolve(),
     });
+    await toggleSelecting();
     tick(part("select-all")!, true);
     await flush();
     part("bulk-delete")!.querySelector<HTMLElement>('[part="control"]')!.click();
@@ -828,6 +856,7 @@ describe("collections", () => {
       locale: "",
       query: "about",
       selected: [],
+      selecting: false,
     });
     expect(part("board")).not.toBeNull();
   });
@@ -852,6 +881,7 @@ describe("collections", () => {
       locale: "fr",
       query: "about",
       selected: [],
+      selecting: false,
     });
     expect(collectionView()).toBe(collectionView("pages"));
   });
