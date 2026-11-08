@@ -8,6 +8,7 @@ spec:
   - spec.md#5.3 # Function properties, parameter binding, $src classification
   - spec.md#23.1 # TypeScript in a body, erased as a document is read
 code:
+  - packages/erase/src/core.ts
   - packages/erase/src/index.ts
   - packages/compiler/src/erased.ts
   - packages/compiler/src/targets/compile-element.ts
