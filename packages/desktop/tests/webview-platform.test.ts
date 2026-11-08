@@ -999,6 +999,30 @@ describe("chromium desktop platform", () => {
     expect(platform.windowControls).toBeUndefined();
   });
 
+  test("only an AppImage's bridge offers file types, and the adapter passes it on as it is", () => {
+    expect("fileTypes" in platform).toBe(false);
+    const fileTypes = {
+      register: () => Promise.resolve({ ran: [], skipped: [], wrote: [] }),
+      state: () => Promise.resolve("unregistered" as const),
+    };
+    globalThis.__jxShell = {
+      fileTypes,
+      focus: () => Promise.resolve(),
+      windowControls: {
+        close: () => Promise.resolve(),
+        maximize: () => Promise.resolve(),
+        minimize: () => Promise.resolve(),
+      },
+    };
+    try {
+      const shelled = createDesktopPlatform();
+      expect("fileTypes" in shelled ? shelled.fileTypes : null).toBe(fileTypes);
+      windowListeners.get("pagehide")?.();
+    } finally {
+      globalThis.__jxShell = undefined;
+    }
+  });
+
   test("under the Electron shell the bridge's controls are exposed and it raises the window", async () => {
     const shellFocus = mock(() => Promise.resolve());
     const controls = {

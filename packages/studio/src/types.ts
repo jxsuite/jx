@@ -984,3 +984,24 @@ export interface ProjectState {
   searchQuery: string;
   projectDirs?: string[];
 }
+
+// ─── Launcher-only: registering `.jxn` (desktop.md §7.8) ───────────────────
+
+/** What registering `.jxn` did: the database tools that ran, those not installed, and files written. */
+export interface FileTypeReport {
+  ran: string[];
+  skipped: string[];
+  wrote: string[];
+}
+
+/** Whether `.jxn` is registered for this copy of Jx Studio. */
+export type FileTypeState = "unregistered" | "registered" | "stale";
+
+/**
+ * Registering `.jxn` with the desktop: a launcher-only member outside {@link StudioPlatform}, which
+ * only an AppImage publishes, because every other channel declares the type when it is installed.
+ */
+export interface FileTypeRegistration {
+  register: () => Promise<FileTypeReport>;
+  state: () => Promise<FileTypeState>;
+}

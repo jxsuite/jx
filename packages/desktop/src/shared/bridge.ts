@@ -9,6 +9,7 @@
  * @docs studio/desktop
  */
 import type { ContextBridge, IpcRenderer } from "electron";
+import type { FileTypeRegistration, FileTypeReport, FileTypeState } from "@jxsuite/studio/types";
 
 /** IPC channel per window action. */
 export const SHELL_CHANNELS = {
@@ -16,6 +17,16 @@ export const SHELL_CHANNELS = {
   focus: "jx-shell:focus",
   maximize: "jx-shell:maximize",
   minimize: "jx-shell:minimize",
+} as const;
+
+/**
+ * The channels of registering `.jxn` (specs/desktop.md §7.8), apart from the window actions: the
+ * first is asked synchronously, once, while the preload decides whether to publish the rest.
+ */
+export const FILE_TYPE_CHANNELS = {
+  available: "jx-shell:file-types-available",
+  register: "jx-shell:file-types-register",
+  state: "jx-shell:file-types-state",
 } as const;
 
 /** The global the preload publishes the bridge on. */
@@ -39,6 +50,8 @@ export interface ShellWindowControls {
 export interface ShellBridge {
   /** Raise this window: the target of the launcher's `focusWindow` push. */
   focus: () => Promise<void>;
+  /** Present only in an AppImage, the one channel that registers `.jxn` when asked. */
+  fileTypes?: FileTypeRegistration;
   windowControls: ShellWindowControls;
 }
 
@@ -48,12 +61,26 @@ declare global {
 }
 
 /**
+ * Whether this copy registers `.jxn` itself. A failure to ask only leaves the command out: the
+ * window's own controls must never depend on it.
+ *
+ * @param ipc The preload's `ipcRenderer`.
+ */
+function asksFileTypes(ipc: IpcRenderer): boolean {
+  try {
+    return ipc.sendSync<boolean>(FILE_TYPE_CHANNELS.available) === true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Build the bridge over the renderer's IPC.
  *
  * @param ipc The preload's `ipcRenderer`.
  */
 export function shellBridge(ipc: IpcRenderer): ShellBridge {
-  return {
+  const bridge: ShellBridge = {
     focus: () => ipc.invoke(SHELL_CHANNELS.focus),
     windowControls: {
       close: () => ipc.invoke(SHELL_CHANNELS.close),
@@ -61,6 +88,14 @@ export function shellBridge(ipc: IpcRenderer): ShellBridge {
       minimize: () => ipc.invoke(SHELL_CHANNELS.minimize),
     },
   };
+  // Asked once, synchronously, so the member is there or not before any page script runs.
+  if (asksFileTypes(ipc)) {
+    bridge.fileTypes = {
+      register: () => ipc.invoke<FileTypeReport>(FILE_TYPE_CHANNELS.register),
+      state: () => ipc.invoke<FileTypeState>(FILE_TYPE_CHANNELS.state),
+    };
+  }
+  return bridge;
 }
 
 /**

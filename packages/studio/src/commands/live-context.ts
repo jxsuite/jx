@@ -25,6 +25,7 @@
  * studio.ts, and lets a test state a context without standing up the app.
  */
 
+import { fileTypeRegistration } from "../services/file-types";
 import { isFunction, isString } from "@jxsuite/schema/guards";
 import { resolveI18n } from "@jxsuite/schema/locale";
 import { componentRegistry } from "../files/components";
@@ -91,6 +92,7 @@ function capabilities(platform: StudioPlatform | null): CommandContext["capabili
   const has = (key: keyof StudioPlatform) => isFunction(platform?.[key]);
   return {
     dataRows: has("dataRows"),
+    fileTypes: fileTypeRegistration(platform) !== null,
     // The real member now, not the `codeService` stand-in it was minted against: the usage query is
     // Its own route over the rename refactor's walker, and cloud computes it server-side.
     findReferences: has("findReferences"),

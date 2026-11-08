@@ -77,7 +77,7 @@ import type {
 import { openExternal } from "./open-external.ts";
 import type { FormatRegistry } from "@jxsuite/schema/format-registry";
 import { isFunction, isJsonObject, isNonNullObject, isString } from "@jxsuite/schema/guards";
-import { isJxnPath, parseJxn } from "@jxsuite/schema/jxn";
+import { classifyJxn, isJxnPath, kdlProblem, parseJxn } from "@jxsuite/schema/jxn";
 import type {
   JsonObject,
   JsonPrimitive,
@@ -298,6 +298,11 @@ export function resolveOpenTarget(path: string): OpenTarget {
   } catch {
     return { kind: "refused", reason: `Jx Studio can't find ${absolute}.` };
   }
+  // A `.jxn` file is ours only if it is Jx Notation: the extension alone says nothing (§7.8).
+  const foreign = isDirectory ? null : foreignJxn(absolute);
+  if (foreign !== null) {
+    return { kind: "refused", reason: foreign };
+  }
   const found = findEnclosingProjectOnDisk(
     isDirectory ? absolute : dirname(absolute),
     isDirectory ? absolute : undefined,
@@ -319,6 +324,37 @@ export function resolveOpenTarget(path: string): OpenTarget {
     problem: openProblem(found),
     root: found.root,
   };
+}
+
+/**
+ * Why a `.jxn` file is not one Jx Studio can open, or null when it is, or is not a `.jxn` file.
+ *
+ * The operating system hands Jx Studio every file with the extension (desktop.md §7.8), and a few
+ * stray files that are nothing of ours use it. One that is not UTF-8, or not KDL, gets one sentence
+ * naming it rather than a window. A project file is the walk's to judge, since a typo in one is
+ * still its folder's project (`site-architecture.md` §2.3).
+ *
+ * @param path The absolute path of a file.
+ */
+export function foreignJxn(path: string): string | null {
+  const name = basename(path);
+  if (!isJxnPath(path) || isProjectFileName(name)) {
+    return null;
+  }
+  let bytes: Uint8Array;
+  try {
+    bytes = readFileSync(path);
+  } catch {
+    return `Jx Studio can't read ${name}.`;
+  }
+  let text: string;
+  try {
+    text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    return `${name} isn't a Jx file: it isn't text.`;
+  }
+  const problem = classifyJxn(text) === "unreadable" ? "it isn't KDL" : kdlProblem(text);
+  return problem === null ? null : `${name} isn't a Jx file Jx Studio can read: ${problem}.`;
 }
 
 /** What the user should hear about a project found by a walk, or null when it reads. */

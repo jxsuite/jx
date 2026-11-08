@@ -36,6 +36,9 @@ export const CAPABILITIES = [
   "openProject",
   "dataRows",
   "windowControls",
+  /* An AppImage's "Register .jxn Files" (desktop.md §7.8): a launcher-only member, like
+     `windowControls`, published only by the one desktop copy that registers file types itself. */
+  "fileTypes",
   "findReferences",
   /* The image editor's gate. A backend that cannot hand Studio a project file's raw bytes cannot
      decode one, so the Image mode is not offered at all rather than offered and then failing. */
@@ -351,6 +354,7 @@ export function emptyContext(): CommandContext {
       openProject: false,
       dataRows: false,
       windowControls: false,
+      fileTypes: false,
       findReferences: false,
       readFileBytes: false,
       publish: false,

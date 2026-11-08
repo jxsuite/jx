@@ -489,6 +489,23 @@ export function readHead(reader: Reader, node: Node): JsonValue {
   });
 }
 
+/**
+ * Why a file is not KDL at all, or null when it is: the test for a file that is not Jx Notation
+ * before anything asks what it means (desktop.md §7.8). A file that parses here may still not be a
+ * valid document; that is `parseJxn`'s answer.
+ *
+ * @param text The file.
+ * @returns The reason with its line and column, or null.
+ */
+export function kdlProblem(text: string): string | null {
+  try {
+    parseSource(text);
+    return null;
+  } catch (error) {
+    return error instanceof Error ? error.message : String(error);
+  }
+}
+
 /** Parse KDL, and turn its error into ours. */
 export function parseSource(text: string): Document {
   const control = RAW_CONTROL.exec(text);

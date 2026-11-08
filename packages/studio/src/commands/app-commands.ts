@@ -30,6 +30,7 @@
  * only one of the two had a guard.
  */
 
+import { fileTypeCommands } from "../services/file-types";
 import { defaultCommands, noopCommandDeps } from "./defaults";
 import { panelFocusRoster } from "../panels/navigator-panels";
 import { createCommandRegistry } from "./registry";
@@ -155,6 +156,8 @@ export function appCommandSet(): AnyCommand[] {
     ...assistantCommands(),
     ...preferencesCommands(),
     ...aboutCommands(),
+    // An AppImage's file-type registration, offered only where the desktop publishes it.
+    ...fileTypeCommands(),
     // The Content home's verbs: which collection it shows, and that collection's own view.
     ...contentViewCommands(),
     ...contentCommands(),

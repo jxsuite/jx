@@ -169,8 +169,15 @@ declare module "electron" {
     sender: WebContents;
   }
 
+  /** A synchronous message's event: the listener answers by setting `returnValue`. */
+  export interface IpcMainEvent {
+    returnValue: unknown;
+    sender: WebContents;
+  }
+
   export interface IpcMain {
-    handle: (channel: string, listener: (event: IpcMainInvokeEvent) => void) => void;
+    handle: <T>(channel: string, listener: (event: IpcMainInvokeEvent) => T) => void;
+    on: (channel: string, listener: (event: IpcMainEvent) => void) => void;
   }
 
   export interface OpenDialogOptions {
@@ -264,7 +271,10 @@ declare module "electron" {
   }
 
   export interface IpcRenderer {
-    invoke: (channel: string) => Promise<void>;
+    /** Resolves with what the main process's handler returned. */
+    invoke: <T = void>(channel: string) => Promise<T>;
+    /** Blocks until the main process answers; for a question asked once, at preload. */
+    sendSync: <T = void>(channel: string) => T;
   }
 
   /**
