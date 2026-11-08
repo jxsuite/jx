@@ -19,6 +19,7 @@ import { comparisonRefusal } from "../panels/git-diff-open";
 import { humanize, pageLabel } from "../panels/site-model";
 import { PAGES_COLLECTION, contentCollections } from "../content/content-collections";
 import { changeGroupKey, isDiffableStatus } from "./source-control";
+import { IMAGE_EXTENSIONS, extensionOf } from "../files/media-upload";
 import type { ResolvedI18n } from "@jxsuite/schema/locale";
 import type { GitFileStatus } from "../types";
 
@@ -42,6 +43,10 @@ export interface ReviewItem {
   url: string;
   /** One sentence saying what publishing it does. */
   summary: string;
+  /** What it is, in the singular and lower case: "page", "post", "template", "image". */
+  noun: string;
+  /** The same in the plural: "pages", "posts" (a collection's own name), "images". */
+  nounPlural: string;
   /** Whether it goes in the next publish. */
   included: boolean;
   /** Why it has no before-and-after comparison, or "" when it has one. */
@@ -85,6 +90,8 @@ interface Subject {
   url: string;
   /** The thing in the singular, lower case: "page", "post", "component". */
   noun: string;
+  /** The thing in the plural, lower case: "pages", "posts", "components". */
+  nounPlural: string;
   /**
    * What else publishing it changes, said after the first sentence, or "" when only itself. A
    * component or a template is drawn on other pages, so changing one changes them.
@@ -99,6 +106,7 @@ function pageSubject(path: string, i18n: ResolvedI18n | null): Subject {
     kind: `Page · ${route.urlPattern}`,
     label: pageLabel(route, path, i18n),
     noun: "page",
+    nounPlural: "pages",
     reach: "",
     url: route.urlPattern,
   };
@@ -116,6 +124,8 @@ function subjectOf(path: string, i18n: ResolvedI18n | null): Subject {
       kind: `${humanize(collection.item)} · ${collection.title}`,
       label: humanize(stemOf(path)),
       noun: collection.item,
+      // The collection is named in the plural already ("Posts"); its item is the singular.
+      nounPlural: collection.title.toLowerCase(),
       reach: "",
       url: "",
     };
@@ -125,6 +135,7 @@ function subjectOf(path: string, i18n: ResolvedI18n | null): Subject {
       kind: "Component",
       label: humanize(stemOf(path)),
       noun: "component",
+      nounPlural: "components",
       reach: "Every page that uses it changes with it.",
       url: "",
     };
@@ -134,6 +145,7 @@ function subjectOf(path: string, i18n: ResolvedI18n | null): Subject {
       kind: "Template",
       label: humanize(stemOf(path)),
       noun: "template",
+      nounPlural: "templates",
       reach: "Every page drawn in it changes with it.",
       url: "",
     };
@@ -143,14 +155,30 @@ function subjectOf(path: string, i18n: ResolvedI18n | null): Subject {
       kind: "Styles",
       label: humanize(stemOf(path)),
       noun: "stylesheet",
+      nounPlural: "stylesheets",
       reach: "Every page that loads it can change.",
       url: "",
     };
   }
   if (group === "media") {
-    return { kind: "Media", label: baseName(path), noun: "file", reach: "", url: "" };
+    const image = IMAGE_EXTENSIONS.has(extensionOf(path));
+    return {
+      kind: "Media",
+      label: baseName(path),
+      noun: image ? "image" : "file",
+      nounPlural: image ? "images" : "files",
+      reach: "",
+      url: "",
+    };
   }
-  return { kind: "Project file", label: baseName(path), noun: "file", reach: "", url: "" };
+  return {
+    kind: "Project file",
+    label: baseName(path),
+    noun: "file",
+    nounPlural: "files",
+    reach: "",
+    url: "",
+  };
 }
 
 /** The sentence a change's tag says about its subject. */
@@ -187,6 +215,8 @@ export function reviewItem(file: GitFileStatus, i18n: ResolvedI18n | null = null
     included: Boolean(file.staged),
     kind: subject.kind,
     label: subject.label,
+    noun: subject.noun,
+    nounPlural: subject.nounPlural,
     path: file.path,
     refusal,
     status: file.status,

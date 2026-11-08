@@ -235,34 +235,6 @@ export function platformOpensPullRequests(): boolean {
 
 // ─── Comparisons ─────────────────────────────────────────────────────────────
 
-/** How each status reads aloud. The badge is one letter and a colour, which a label cannot be. */
-const STATUS_WORDS = new Map([
-  ["A", "added"],
-  ["D", "deleted"],
-  ["M", "modified"],
-  ["R", "renamed"],
-  ["U", "untracked"],
-]);
-
-/** A status letter, said aloud: "modified". An unknown letter still says the file changed. */
-export function statusWord(status: string): string {
-  return STATUS_WORDS.get(status) ?? "changed";
-}
-
-/** A status letter as the short tag a compact list prints (the quick publish dialog's). */
-const STATUS_TAGS = new Map([
-  ["A", "NEW"],
-  ["D", "DELETED"],
-  ["M", "EDIT"],
-  ["R", "RENAMED"],
-  ["U", "NEW"],
-]);
-
-/** A status letter as a tag: "EDIT". An unknown letter still says the file changed. */
-export function statusTag(status: string): string {
-  return STATUS_TAGS.get(status) ?? "EDIT";
-}
-
 /** The statuses a comparison can be built for. `R` is absent: see {@link isDiffableStatus}. */
 export const DIFFABLE_STATUSES = new Set(["M", "A", "U", "D"]);
 
@@ -584,48 +556,6 @@ export async function checkoutBranch(name: string): Promise<void> {
 }
 
 // ─── Change rows, grouped ────────────────────────────────────────────────────
-
-/** One changed file, as every list of changes draws it. Values only. */
-export interface ChangeRow {
-  /** The project-relative path: the row's key and what every control hands back. */
-  key: string;
-  path: string;
-  /** The last segment, which is what the row reads as. */
-  name: string;
-  /** Everything before it, drawn small beside the name. */
-  dir: string;
-  hasDir: boolean;
-  /** The one-letter badge: `M`, `A`, `D`, `R`, `U`. */
-  status: string;
-  /** The status said aloud. */
-  statusWord: string;
-  /** The path and the status in words: what the row's controls are named after. */
-  label: string;
-  /** Whether the next publish includes it: the index holds it. */
-  included: boolean;
-  /** An untracked file has no committed version to go back to. */
-  cannotDiscard: boolean;
-}
-
-/** One changed file as a row. The path is split here: "the name and its folder" is a path rule. */
-export function changeRow(file: GitFileStatus): ChangeRow {
-  const parts = file.path.split("/");
-  const name = parts.pop() ?? file.path;
-  const dir = parts.join("/");
-  const word = statusWord(file.status);
-  return {
-    cannotDiscard: file.status === "U",
-    dir,
-    hasDir: dir !== "",
-    included: Boolean(file.staged),
-    key: file.path,
-    label: `${file.path}, ${word}`,
-    name,
-    path: file.path,
-    status: file.status,
-    statusWord: word,
-  };
-}
 
 /** The project folders a change is filed under by name, after the content collections. */
 const FOLDER_GROUPS: readonly (readonly [folder: string, name: string])[] = [

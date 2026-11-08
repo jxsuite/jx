@@ -1,8 +1,8 @@
 /**
  * Quick publish, `src/publish/publish-quick.ts` over `src/surfaces/publish-quick.json` (studio.md
- * §22.8): the dialog the chevron beside the Publish workspace tab opens.
+ * §22.8): the popover the chevron beside the Publish workspace tab opens, hanging from it.
  *
- * It is mounted into the real dialog layer and read by `part`. What it publishes is every change,
+ * It is mounted into the real popover layer and read by `part`. What it publishes is every change,
  * through the same verb Review changes runs, so the assertions are about what reached git.
  */
 import {
@@ -16,7 +16,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { GitStatusResult } from "../src/types";
 import type { AnyCommand } from "../src/commands/registry";
 
-const { initLayers } = await import("../src/ui/layers");
+const { initLayers, layerHost } = await import("../src/ui/layers");
 const { createCommandRegistry } = await import("../src/commands/registry");
 const { setActiveRegistry } = await import("../src/commands/active-registry");
 const { makeContext } = await import("../src/commands/context");
@@ -54,7 +54,7 @@ function seed(count: number) {
 }
 
 const dialog = () =>
-  document.querySelector<HTMLElement>('#layer-dialog jx-dialog[part="publish-quick"]');
+  layerHost("popover").querySelector<HTMLElement>('jx-popover[part="publish-quick"]');
 const part = (name: string) => dialog()?.querySelector<HTMLElement>(`[part="${name}"]`) ?? null;
 const parts = (name: string) => [
   ...(dialog()?.querySelectorAll<HTMLElement>(`[part="${name}"]`) ?? []),
@@ -89,12 +89,19 @@ afterEach(() => {
 });
 
 describe("the view", () => {
-  test("counts every change, lists the first few by what happened to them, and says how many more", () => {
+  test("counts every change, names the first few as the site does, and sums up the rest", () => {
     seed(6);
     const view = quick.quickPublishView();
     expect(view.countLine).toBe("6 changes ready");
-    expect(view.rows.map((row) => row.tag)).toEqual(["NEW", "EDIT", "DELETED", "RENAMED"]);
-    expect(view.more).toBe("+ 2 more");
+    expect(view.rows.map((row) => [row.tag, row.tagKind, row.label, row.note])).toEqual([
+      ["NEW", "new", "Page 0", ""],
+      ["EDIT", "edit", "Page 1", ""],
+      ["DELETE", "delete", "Page 2", ""],
+      ["RENAME", "rename", "Page 3", ""],
+    ]);
+    // The file is the row's tooltip: what is committed, one hover away.
+    expect(view.rows[0]?.path).toBe("pages/page-0.json");
+    expect(view.more).toBe("+ 2 pages");
     expect(view.hasMore).toBe(true);
     // Every change is taken, so a file left out of Review changes does not block it.
     expect(view.blocker).toBe("Write a summary of the change first.");
@@ -117,18 +124,16 @@ describe("the view", () => {
   });
 });
 
-describe("the dialog", () => {
-  test("opens once, in the dialog layer, with the list, the destinations and the checks", async () => {
+describe("the panel", () => {
+  test("opens once, in the popover layer, with the list, the destinations and the checks", async () => {
     seed(2);
     const handle = quick.openQuickPublish();
     expect(quick.openQuickPublish()).toBe(handle);
     await handle.ready;
     await flush(4);
     expect(part("count")?.textContent).toBe("2 changes ready");
-    expect(parts("change-name").map((name) => name.textContent)).toEqual([
-      "page-0.json",
-      "page-1.json",
-    ]);
+    expect(parts("change-name").map((name) => name.textContent)).toEqual(["Page 0", "Page 1"]);
+    expect(parts("change").map((row) => row.dataset.tag)).toEqual(["new", "edit"]);
     expect(parts("destination-card").map((card) => card.dataset.destination)).toEqual([
       "live",
       "review",
@@ -138,7 +143,7 @@ describe("the dialog", () => {
     expect(part("checks-icon")?.tagName).toBe("JX-ICON");
     const icon = part("checks-icon");
     expect(icon && "name" in icon ? icon.name : null).toBe("warning-circle");
-    expect(handle.host.dataset.jxRegion).toBe("overlay.dialog:publish-quick");
+    expect(handle.host.dataset.jxRegion).toBe("overlay.menu:publish-quick");
   });
 
   test("Publish now takes every change to the destination, then closes", async () => {
@@ -149,28 +154,28 @@ describe("the dialog", () => {
     setValue(dialog()!.querySelector<HTMLInputElement>('[part="summary"] input')!, "Ship it");
     await flush(2);
     expect(shell.git.commitMessage).toBe("Ship it");
-    dialog()!.dispatchEvent(new CustomEvent("confirm"));
+    part("publish-now")!.click();
     await flush(8);
     const names = calls.map(([name]) => name);
     expect(names.slice(0, 3)).toEqual(["gitStage", "gitCommit", "gitPush"]);
     expect(dialog()).toBeNull();
   });
 
-  test("a refused publish keeps the dialog up with the reason", async () => {
+  test("a refused publish keeps the panel up with the reason", async () => {
     seed(2);
     const handle = quick.openQuickPublish();
     await handle.ready;
     await flush(4);
-    dialog()!.dispatchEvent(new CustomEvent("confirm"));
+    part("publish-now")!.click();
     await flush(6);
     expect(dialog()).not.toBeNull();
     expect(part("blocker")?.textContent).toBe("Write a summary of the change first.");
   });
 
   /* The deploy is an Activity that reports its own failure, and it answers false. The commit has
-     landed, but the change set never reached the live site, so the dialog does not close as though
+     landed, but the change set never reached the live site, so the panel does not close as though
      it had. */
-  test("a deploy that did not ship keeps the dialog up", async () => {
+  test("a deploy that did not ship keeps the panel up", async () => {
     seed(2);
     installMockPlatform({
       cfApi: async () => [],
@@ -199,12 +204,12 @@ describe("the dialog", () => {
     await flush(4);
     setValue(dialog()!.querySelector<HTMLInputElement>('[part="summary"] input')!, "Ship it");
     await flush(2);
-    dialog()!.dispatchEvent(new CustomEvent("confirm"));
+    part("publish-now")!.click();
     await flush(10);
     expect(dialog()).not.toBeNull();
   });
 
-  test("the destination is chosen in the dialog and shared with Review changes", async () => {
+  test("the destination is chosen in the panel and shared with Review changes", async () => {
     seed(2);
     const handle = quick.openQuickPublish();
     await handle.ready;
@@ -221,7 +226,7 @@ describe("the dialog", () => {
     const handle = quick.openQuickPublish();
     await handle.ready;
     await flush(4);
-    dialog()!.dispatchEvent(new CustomEvent("secondary"));
+    part("review-all")!.click();
     await flush(4);
     expect(dialog()).toBeNull();
     expect(ran).toEqual([{ args: { tab: "review" }, id: "publish.open" }]);
@@ -232,9 +237,122 @@ describe("the dialog", () => {
     const first = quick.openQuickPublish();
     await first.ready;
     await flush(4);
-    dialog()!.dispatchEvent(new CustomEvent("close"));
+    dialog()!.dispatchEvent(Object.assign(new Event("toggle"), { newState: "closed" }));
     await flush(2);
     const second = quick.openQuickPublish();
     expect(second).not.toBe(first);
+  });
+
+  test("closing it twice says it is over once", async () => {
+    seed(1);
+    const handle = quick.openQuickPublish();
+    await handle.ready;
+    await flush(4);
+    handle.close();
+    handle.close();
+    await flush(2);
+    // The first close forgot it; the second found nothing left to say, so the next open is new.
+    expect(quick.openQuickPublish()).not.toBe(handle);
+  });
+});
+
+describe("what a change touches, and where the panel hangs", () => {
+  test("a changed template says how many pages it changes, once they are counted", async () => {
+    const status: GitStatusResult = {
+      ahead: 0,
+      behind: 0,
+      branch: "main",
+      files: [
+        { path: "layouts/base.json", staged: false, status: "M" },
+        { path: "layouts/old.json", staged: false, status: "D" },
+      ],
+      isRepo: true,
+      remotes: ["origin"],
+    };
+    shell.git.status = status;
+    installMockPlatform(
+      {
+        listDirectory: async (dir: string) =>
+          dir === "pages"
+            ? [
+                { name: "index.json", path: "pages/index.json", type: "file" as const },
+                { name: "about.json", path: "pages/about.json", type: "file" as const },
+                { name: "plain.json", path: "pages/plain.json", type: "file" as const },
+                { name: "post.json", path: "pages/post.json", type: "file" as const },
+              ]
+            : [],
+      },
+      {
+        "layouts/base.json": JSON.stringify({ tagName: "div" }),
+        "pages/about.json": JSON.stringify({ $layout: false, tagName: "div" }),
+        "pages/index.json": JSON.stringify({ tagName: "div" }),
+        "pages/plain.json": JSON.stringify({ $layout: "./layouts/base.json", tagName: "div" }),
+        // Drawn in a layout that is itself drawn in the changed one: the chain is followed.
+        "layouts/article.json": JSON.stringify({ $layout: "./layouts/base.json", tagName: "div" }),
+        "pages/post.json": JSON.stringify({ $layout: "./layouts/article.json", tagName: "div" }),
+      },
+    );
+    resetStudioState({
+      name: "Demo",
+      projectConfig: { defaults: { layout: "./layouts/base.json" }, name: "Demo" },
+      projectRoot: "/p",
+    });
+    const handle = quick.openQuickPublish();
+    await handle.ready;
+    await flush(10);
+    expect(quick.quickPublishView().rows.map((row) => [row.label, row.note])).toEqual([
+      ["Base", "affects 3 pages"],
+      ["Old", ""],
+    ]);
+    expect(parts("change-note").map((note) => note.textContent)).toEqual(["affects 3 pages", ""]);
+  });
+
+  test("the rest are summed up by kind, in the singular where there is one", () => {
+    const item = (path: string, noun: string, nounPlural: string) => ({
+      included: false,
+      kind: "",
+      label: path,
+      noun,
+      nounPlural,
+      path,
+      refusal: "",
+      status: "M",
+      summary: "",
+      tag: "edit" as const,
+      tagLabel: "EDIT",
+      url: "",
+    });
+    expect(
+      quick.moreLine([
+        item("content/posts/a.md", "post", "posts"),
+        item("public/a.png", "image", "images"),
+        item("public/b.png", "image", "images"),
+      ]),
+    ).toBe("+ 1 post, 2 images");
+    expect(quick.moreLine([])).toBe("");
+  });
+
+  test("it hangs from the chevron that runs it", async () => {
+    seed(1);
+    const chevron = document.createElement("button");
+    chevron.dataset.command = "publish.quick";
+    document.body.append(chevron);
+    const shown: (Element | undefined)[] = [];
+    const original = HTMLElement.prototype.showPopover;
+    HTMLElement.prototype.showPopover = function showPopover(
+      this: HTMLElement,
+      options?: { source?: Element },
+    ) {
+      shown.push(options?.source);
+      original.call(this);
+    };
+    try {
+      const handle = quick.openQuickPublish();
+      await handle.ready;
+      await flush(4);
+    } finally {
+      HTMLElement.prototype.showPopover = original;
+    }
+    expect(shown.at(-1)).toBe(chevron);
   });
 });

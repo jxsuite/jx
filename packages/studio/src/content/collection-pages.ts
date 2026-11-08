@@ -221,6 +221,61 @@ async function readIndex(): Promise<CollectionPageIndex> {
   return index;
 }
 
+/** A layout reference as a project path: `./layouts/base.json` → `layouts/base.json`. */
+function layoutFile(ref: string): string {
+  return ref.replace(/^\.\//, "");
+}
+
+/**
+ * How many routed pages are drawn in the layout at `layoutPath`, directly or through a layout drawn
+ * in it (studio.md §22.8): what changing that template changes on the site.
+ *
+ * A page is drawn in its own `$layout`, else the project's `defaults.layout`, and a layout in its
+ * own `$layout` in turn, as the build resolves the chain (`site-architecture.md` §5.2); a page
+ * whose `$layout` is `false` is drawn in none. One walk of `pages/` and one read of each layout on
+ * the way, so it is asked once, when a surface that says it opens, and never on a paint.
+ *
+ * @param layoutPath - The layout, project-relative (`layouts/base.json`).
+ * @param readLayout - Reads a layout's own `$layout`; `site-context`'s reader in Studio.
+ */
+export async function pagesDrawnIn(
+  layoutPath: string,
+  readLayout: (path: string) => Promise<string | false | undefined>,
+): Promise<number> {
+  const target = layoutFile(layoutPath);
+  const files: string[] = [];
+  await listPages("pages", files);
+  const pages = files.filter((path) => isRoutedPageFile(path));
+  const fallback = projectState?.projectConfig?.defaults?.layout;
+  const parents = new Map<string, Promise<string | false | undefined>>();
+  /** Whether `ref`'s chain reaches the target, following each layout's own `$layout` once. */
+  const reaches = async (ref: string, seen: Set<string>): Promise<boolean> => {
+    const file = layoutFile(ref);
+    if (file === target) {
+      return true;
+    }
+    if (seen.has(file)) {
+      return false;
+    }
+    seen.add(file);
+    let parent = parents.get(file);
+    if (!parent) {
+      parent = readLayout(file);
+      parents.set(file, parent);
+    }
+    const next = await parent;
+    return isString(next) && next !== "" ? reaches(next, seen) : false;
+  };
+  const drawn = await Promise.all(
+    pages.map(async (path) => {
+      const { layout } = await readPageFacts(path);
+      const ref = layout === undefined ? fallback : layout;
+      return isString(ref) && ref !== "" ? reaches(ref, new Set()) : false;
+    }),
+  );
+  return drawn.filter(Boolean).length;
+}
+
 /**
  * The index, read once per invalidation.
  *
