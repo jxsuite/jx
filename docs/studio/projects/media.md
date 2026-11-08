@@ -10,6 +10,9 @@ spec:
 code:
   - packages/studio/src/files/media-upload.ts
   - packages/studio/src/files/media-meta.ts
+  - packages/studio/src/files/media-record.ts
+  - packages/studio/src/files/xmp-packet.ts
+  - packages/studio/src/files/xmp-containers.ts
   - packages/studio/src/files/media-paths.ts
   - packages/studio/src/files/media-usage.ts
   - packages/studio/src/media/media-library.ts
@@ -43,15 +46,12 @@ The Media workspace shows every media file in the project in three columns: filt
 
 ![The Media workspace, with a file being dragged onto it to upload](../../images/media-upload.png)
 
-- **Filters**: **All media**, **Images**, **Video**, **Audio**, **Documents** and **Fonts**, each with its count, and **Unused**, the files no page, component or entry refers to. Unused has no number until you choose it: Studio then asks the reference search about every file, one at a time, and the count appears when the last answer is in. The search reads the project once and answers every file from what it read, so even a library of hundreds of images is counted in seconds. Choosing another filter stops the count, and the answers already in are kept for the next time you choose Unused. A file whose search failed is never counted as unused. Saving, renaming or deleting a document asks again, so a picture you have just placed on a page leaves Unused.
-- **Search and sort**: the search field matches a file's name, so typing `b` finds the files with a `b` in their name rather than every file under `public/`. Sort by **Newest**, **Name** or **Size** (largest first). The details pane follows what the grid shows: a search or a filter that hides the selected file hides its details too, and clearing it brings both back.
+- **Filters**: **All media**, **Images**, **Video**, **Audio**, **Documents** and **Fonts**, each with its count; **Missing alt text**, the pictures that could carry alt text and have none (see [Alt text and tags](#alt-text-and-tags)); and **Unused**, the files no page, component or entry refers to. Unused has no number until you choose it: Studio then asks the reference search about every file, one at a time, and the count appears when the last answer is in. The search reads the project once and answers every file from what it read, so even a library of hundreds of images is counted in seconds. Choosing another filter stops the count, and the answers already in are kept for the next time you choose Unused. A file whose search failed is never counted as unused. Saving, renaming or deleting a document asks again, so a picture you have just placed on a page leaves Unused.
+- **Tags**: below the filters, one entry per tag your files carry, with how many carry it. Choose one to list those files.
+- **Search and sort**: the search field matches a file's name, its alt text and its tags, so typing `b` finds the files with a `b` in their name rather than every file under `public/`. Sort by **Newest**, **Name** or **Size** (largest first). The details pane follows what the grid shows: a search or a filter that hides the selected file hides its details too, and clearing it brings both back.
 - **The grid**: thumbnails load as their tiles scroll into view. Click a tile to select it, or :kbd[Tab] onto the grid, which selects the tile it lands on. Use the arrow keys to move the selection (:kbd[Home] and :kbd[End] go to the ends of a row, with :kbd[Ctrl] to the ends of the grid), and press :kbd[Enter] or double-click to open the file in its viewer.
 
 The **Unused** filter appears only when your project's host can search references. A host that cannot is never shown a filter that would always answer "nothing".
-
-:::doc-note
-There is no **Missing alt text** filter and no tags yet. Alt text is written on each image element where it is used, not stored per file, and there is no tag store to filter by. Both are planned once they have somewhere to live.
-:::
 
 ### The details pane
 
@@ -59,6 +59,7 @@ Select a file and the right-hand pane describes it:
 
 - **A preview**: the picture, a player for video and audio, or a font set in its own face.
 - **What it is**: its kind, its pixel dimensions once the picture has loaded, its size on disk, and when it was last modified. An SVG's dimensions are the ones the file declares (its `width` and `height`, or its `viewBox`), and an SVG that declares no size shows none. Anything Studio hasn't been told is left out rather than shown as a zero.
+- **Alt text** and **Tags**, for a picture (see [Alt text and tags](#alt-text-and-tags)).
 - **Site URL**: the address a document writes for this file, with a **Copy** button. A file at `public/media/hero.jpg` is referenced `/media/hero.jpg`, a string that is not its path, and writing the path instead is the commonest way an image goes missing from a page.
 - **Used on**: every document that refers to the file, with a count each, headed by a line such as _Used on 2 pages and 1 other file_ or, when no page uses it directly, _Used in 1 file_ (a layout or component, say). Click one to open it.
 - **Replace**, **Open in viewer**, **Edit image** (for an image Studio can [edit](#edit-an-image)), **Rename**, **Duplicate** and **Delete**.
@@ -72,6 +73,20 @@ Right-click a tile to select it and reach the same actions without moving to the
 **Duplicate** makes a copy beside the original and selects it: `hero.jpg` becomes `hero-copy.jpg`, then `hero-copy-1.jpg`, and it never overwrites anything. Nothing refers to the copy yet, so it starts out **Unused**. It copies the file as it is on disk: a pending image edit stays with its own tab until you save it. A host that cannot read a file's raw bytes doesn't offer Duplicate.
 
 **Delete** asks first, and says what it would break (see [Deleting media](#deleting-media) below). Deleting the last file in `public/media/`, or in a collection's `images/` folder, removes that folder too: Studio made it for your uploads, so it does not leave it behind empty. A folder you made yourself stays.
+
+### Alt text and tags
+
+A picture's alt text and tags are kept **inside the picture file**, in the standard metadata fields photo tools already use: alt text in the IPTC **Alt Text (Accessibility)** field and tags as its **Keywords** (`dc:subject`). Nothing is stored beside the file, so a picture keeps its description when you rename it, move it, copy it into another project or open it in another program, and alt text and keywords written by a photo tool such as Lightroom show up here too.
+
+Type in **Alt text** and press :kbd[Tab] or click away to save it. Type a tag in **Add a tag** and press :kbd[Enter], or pick one other files already carry; the **×** on a tag removes it. Each change rewrites the file at the same address, so the pages that use it are untouched. Everything else in the file's metadata is kept: a camera's settings, a copyright notice, a translation of the alt text into another language.
+
+JPEG, PNG, WebP and SVG files can carry alt text and tags. Other formats (GIF and AVIF, for instance) cannot, and the details pane says so instead of offering fields. **Missing alt text** lists only pictures you can fix here, so a GIF is never counted, and neither is a file whose metadata could not be read: Studio says why and leaves that file alone rather than writing over something it did not understand.
+
+Studio reads every picture's alt text and tags in the background while the Media workspace or a media picker is open, two files at a time, and remembers them until a file changes. **Missing alt text** and the **Tags** list appear with their counts once every file has been read; choose either before then and the grid says it is still reading.
+
+**Replace** and [saving an edited image](#edit-an-image) keep the alt text and tags: the new picture is written with the old one's, unless the file you chose carries its own.
+
+This is the picture's own description, kept with the file. The text a page shows is still the `alt` on each image element, which you set in the Inspector, because the same picture can mean different things in different places.
 
 ## Upload into the Media workspace
 
@@ -197,7 +212,7 @@ The last two are decided from the file itself, so Studio reads it first: if you 
 
 ### What a save changes besides the picture
 
-A save writes pixels and nothing else, so anything else the file carried is gone:
+A save writes pixels and the picture's [alt text and tags](#alt-text-and-tags), and nothing else, so anything else the file carried is gone:
 
 - **Orientation**: a photo recorded sideways with a rotation tag has that rotation applied to its pixels and the tag dropped. It looks the same, but its stored width and height swap.
 - **Color profile and bit depth**: a wide-gamut image is converted to the browser's color space, and sixteen bits per channel become eight.
