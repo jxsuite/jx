@@ -478,14 +478,22 @@ function tagEnd(text: string, lt: number): number {
   return -1;
 }
 
-/** A range of the SVG source. */
-interface SvgSpan {
+/** The root `<svg …>` start tag: where it begins, where its `>` is, and whether it closes itself. */
+interface SvgRootTag {
+  start: number;
+  end: number;
+  selfClosing: boolean;
+}
+
+/** The `x:xmpmeta` element an SVG holds, with its range in the source; `null` and -1 when none. */
+interface SvgPacket {
+  packet: string | null;
   start: number;
   end: number;
 }
 
 /** The root `<svg …>` start tag's range. */
-function svgRoot(text: string): SvgSpan & { selfClosing: boolean } {
+function svgRoot(text: string): SvgRootTag {
   const match = /<svg[\s>/]/.exec(text);
   if (match === null) {
     throw new XmpContainerError("Not an SVG file.");
@@ -498,7 +506,7 @@ function svgRoot(text: string): SvgSpan & { selfClosing: boolean } {
 }
 
 /** The `x:xmpmeta` element's source and range, inside the root's metadata. */
-function svgXmp(text: string): SvgSpan & { packet: string | null } {
+function svgXmp(text: string): SvgPacket {
   svgRoot(text);
   const match = XMPMETA.exec(text);
   return match === null
