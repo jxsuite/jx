@@ -134,6 +134,13 @@ describe("rewriteState", () => {
     // An attribute's template is not code, so what reads as a string there is still rewritten.
     expect(rewriteState("'${state.a}'", "s", { code: false })).toBe("'${s.a}'");
   });
+
+  test("reads a member across whitespace, and never a longer name that starts with state", () => {
+    expect(rewriteState("state\n  .a + state (b)", "s")).toBe("s\n  .a + state (b)");
+    expect(rewriteState("stateful + state$ + states.a + state", "s", { bare: true })).toBe(
+      "stateful + state$ + states.a + s",
+    );
+  });
 });
 
 describe("jx validate", () => {

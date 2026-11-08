@@ -605,11 +605,26 @@ const STATE_ASSIGNMENT_RE =
 const STATE_MUTATING_METHOD_RE =
   /\bstate\.([A-Za-z_$][\w$]*)\s*\.\s*(?:push|pop|shift|unshift|splice|sort|reverse|fill|copyWithin)\s*\(/g;
 
-/** A standalone `state` followed by a member: not `prevstate`, and not `this.state` again. */
-const STATE_MEMBER_RE = /(?<![\w$.])state(?=\s*\.)/g;
+/** A character that continues an identifier, or a `.` that makes `state` someone's member. */
+const JOINS_STATE = /[\w$.]/u;
 
-/** A standalone `state`, member or not. */
-const STATE_WORD_RE = /(?<![\w$.])state\b/g;
+/** A character that continues an identifier. */
+const CONTINUES_NAME = /[\w$]/u;
+
+/** Whether `state` at `at` in `read` is the one to move: standalone, and a member read unless bare. */
+function movesState(read: string, at: number, bare: boolean): boolean {
+  if (at > 0 && JOINS_STATE.test(read.charAt(at - 1))) {
+    return false;
+  }
+  let next = at + "state".length;
+  if (bare) {
+    return !CONTINUES_NAME.test(read.charAt(next));
+  }
+  while (/\s/u.test(read.charAt(next))) {
+    next += 1;
+  }
+  return read.charAt(next) === ".";
+}
 
 /**
  * Rewrite `state` in emitted code to what holds it there (`this.state`, `s`): the one way every
@@ -631,13 +646,17 @@ export function rewriteState(
   if (!text.includes("state")) {
     return text;
   }
-  const pattern = options.bare === true ? STATE_WORD_RE : STATE_MEMBER_RE;
+  const bare = options.bare === true;
   const read = options.code === false ? text : maskCode(text);
+  /* A scan rather than a lookbehind pattern: every emitter runs this on every body and template,
+     and JavaScriptCore runs `(?<!…)` on its slow path, which a compile benchmark measured. */
   let out = "";
   let last = 0;
-  for (const match of read.matchAll(pattern)) {
-    out += text.slice(last, match.index) + to;
-    last = match.index + "state".length;
+  for (let at = read.indexOf("state"); at !== -1; at = read.indexOf("state", at + 1)) {
+    if (movesState(read, at, bare)) {
+      out += text.slice(last, at) + to;
+      last = at + "state".length;
+    }
   }
   return out + text.slice(last);
 }
