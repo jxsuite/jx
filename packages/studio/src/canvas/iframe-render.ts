@@ -697,6 +697,40 @@ export const STYLEBOOK_CSS = `
 .element-card-preview > meter {
   font-size: 10px;
 }
+/* An interactive element's state row (studio.md §7.2): one captioned copy per state, side by side. */
+.element-card-preview.sb-states {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 8px;
+  align-items: stretch;
+  padding: 8px;
+}
+.sb-states > .sb-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  min-width: 0;
+  padding: 10px 6px 4px;
+  border-radius: 4px;
+  background: color-mix(in srgb, #808080 6%, transparent);
+}
+.sb-state > :not(.sb-state-label) {
+  max-width: 100%;
+  margin: 0;
+}
+.sb-state > input,
+.sb-state > textarea,
+.sb-state > select,
+.sb-state > button {
+  font-size: 10px;
+}
+.sb-state-label {
+  font-size: 10px;
+  color: color-mix(in srgb, #808080 80%, transparent);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
 .element-card-label {
   padding: 2px 6px;
   font-size: 10px;

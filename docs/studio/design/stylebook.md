@@ -61,6 +61,8 @@ A page or a component has an **Elements** view of its own, in the Design workspa
 3. Edit styles with the full inspector: sections, provenance chips, and all.
 4. Watch every panel update: you're styling the element type, so every specimen of it changes at once, and so does every matching element the chip named.
 
+Links, buttons and form fields are drawn once per state, side by side: **default**, **:hover**, **:focus-visible**, **:active**, and **:disabled** for the form fields. Each copy shows what that state's rule does without you pointing at anything, and an edit to a state repaints its copy as you make it. Click a copy to style that state: the Target Line's selector reads `button :hover`, and the edit is written under `button`. The pressed copy also shows the hover look, as a pressed button is also hovered.
+
 The Target Line works the same as in Design mode: the **breakpoint** segment says which screen size a default is scoped to (see **[Breakpoints](/docs/studio/design/breakpoints)**), and the **selector** segment adds states, so you can give every link a default `:hover` in one edit. Select the link specimen and the menu offers the states a link has, `a :hover`, `a :visited` and the rest, each one written under `a`. The specimen is a real link, so the color and underline you set on it are the ones your pages will show (see **[Hover states and selectors](/docs/studio/design/states-and-selectors)**). Nested parts style as compound selections, like the header cells inside tables.
 
 ## Know what an edit reaches

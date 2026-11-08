@@ -287,6 +287,13 @@ export async function renderStylebookMode(
  * @param {string | null} [media]
  */
 export function selectStylebookTag(tag: string, media?: string | null, { panCanvas = false } = {}) {
+  /* A state copy names its state (`button :hover`, §7.2): the selector it edits is the whole path,
+     and the element selected is the tag before it, which is what the panels mark and the canvas
+     outlines. */
+  const element = tag
+    .split(" ")
+    .filter((part) => !part.startsWith(":"))
+    .join(" ");
   const ui: Partial<TabUi> = { activeSelector: tag, rightTab: "style" };
   if (media !== undefined) {
     ui.activeMedia = media;
@@ -303,10 +310,10 @@ export function selectStylebookTag(tag: string, media?: string | null, { panCanv
     selection: [],
     ui,
   });
-  shell.stylebook.selection = tag;
+  shell.stylebook.selection = element;
 
-  if (tag && panCanvas) {
-    panToStylebookTag(tag);
+  if (element && panCanvas) {
+    panToStylebookTag(element);
   }
 }
 

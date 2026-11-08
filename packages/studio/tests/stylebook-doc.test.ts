@@ -114,7 +114,7 @@ describe("buildStylebookDoc — tree shape", () => {
       meta: {
         $sections: [
           {
-            elements: [{ attributes: { type: "text" }, style: "width: 40px", tag: "input" }],
+            elements: [{ attributes: { value: "3" }, style: "width: 40px", tag: "progress" }],
             label: "Forms",
           },
         ],
@@ -125,8 +125,8 @@ describe("buildStylebookDoc — tree shape", () => {
     const card = kids(body)[0]!;
     const preview = kids(card)[0]!;
     const spec = kids(preview)[0]!;
-    expect(spec.tagName).toBe("input");
-    expect(spec.attributes).toEqual({ style: "width: 40px", type: "text" });
+    expect(spec.tagName).toBe("progress");
+    expect(spec.attributes).toEqual({ style: "width: 40px", value: "3" });
   });
 
   test("pathToTag maps card/preview/specimen paths; descendants get compounds; chrome is absent", () => {
@@ -226,7 +226,108 @@ describe("buildStylebookDoc — tree shape", () => {
   });
 });
 
+describe("buildStylebookDoc — an interactive element's state row (§7.2)", () => {
+  const FORM: BuildStylebookDocOpts["meta"] = {
+    $sections: [
+      {
+        elements: [
+          { tag: "button", text: "Click Me" },
+          { attributes: { href: "#" }, tag: "a", text: "A link" },
+          { children: [{ tag: "option", text: "One" }], tag: "select" },
+        ],
+        label: "Form",
+      },
+    ],
+  };
+  const cardsOf = (doc: JxMutableNode) => kids(kids(kids(doc)[0]!)[1]!);
+
+  test("a control is drawn once per state, each copy captioned and marked", () => {
+    const [button, link] = cardsOf(build({ meta: FORM }).doc);
+    const preview = kids(button!)[0]!;
+    expect(cls(preview)).toBe("element-card-preview sb-states");
+    const cells = kids(preview);
+    expect(cells.map((cell) => kids(cell)[1]!.textContent)).toEqual([
+      "default",
+      ":hover",
+      ":focus-visible",
+      ":active",
+      ":disabled",
+    ]);
+    expect(cells.map((cell) => cell.attributes?.["data-jx-state"])).toEqual([
+      undefined,
+      "hover",
+      "focus focus-visible",
+      "hover active",
+      undefined,
+    ]);
+    // `:disabled` is the real attribute, which the browser matches without a copied rule.
+    expect(kids(cells[4]!)[0]!.attributes).toEqual({ disabled: "" });
+    expect(kids(cells[0]!)[0]!.attributes).toBeUndefined();
+    expect(kids(button!)[1]!.textContent).toBe("<button>");
+    // A link cannot be disabled, so its row stops at `:active`.
+    expect(kids(kids(link!)[0]!).map((cell) => kids(cell)[1]!.textContent)).toEqual([
+      "default",
+      ":hover",
+      ":focus-visible",
+      ":active",
+    ]);
+  });
+
+  test("a hit on a copy names its state, and the card is the element's", () => {
+    const { pathToTag, tagToCardPath } = build({ meta: FORM });
+    const card: (string | number)[] = ["children", 0, "children", 1, "children", 0];
+    const cell = (i: number) => [...card, "children", 0, "children", i];
+    const at = (path: (string | number)[]) => pathToTag.get(serializeJxPath(path));
+    expect(at(card)).toBe("button");
+    expect(at([...card, "children", 0])).toBe("button");
+    expect(at(cell(0))).toBe("button");
+    expect(at(cell(1))).toBe("button :hover");
+    expect(at([...cell(1), "children", 0])).toBe("button :hover");
+    expect(at([...cell(4), "children", 1])).toBe("button :disabled");
+    expect(tagToCardPath.get("button")).toEqual(card);
+    // A copy's descendants keep their compound, so an option still selects `select option`.
+    const select: (string | number)[] = ["children", 0, "children", 1, "children", 2];
+    const option = [...select, "children", 0, "children", 2, "children", 0, "children", 0];
+    expect(pathToTag.get(serializeJxPath(option))).toBe("select option");
+  });
+});
+
 describe("transposeStylebookStyle", () => {
+  test("a state rule is repeated on the copies marked for it, in the order states win", () => {
+    const out = transposeStylebookStyle({
+      "@--md": { button: { ":hover": { color: "teal" } } },
+      a: { "&:hover": { color: "navy" } },
+      button: {
+        ":active": { color: "red" },
+        ":disabled": { opacity: "0.5" },
+        ":focus-visible": { outline: "2px solid" },
+        ":hover": { color: "blue" },
+        color: "black",
+      },
+      h1: { ":hover": { color: "green" } },
+    });
+    const keys = Object.keys(out);
+    expect(keys).toEqual([
+      "@--md",
+      "& .element-card-preview a",
+      '& .element-card-preview [data-jx-state~="hover"] a',
+      "& .element-card-preview button",
+      '& .element-card-preview [data-jx-state~="focus-visible"] button',
+      '& .element-card-preview [data-jx-state~="hover"] button',
+      '& .element-card-preview [data-jx-state~="active"] button',
+      "& .element-card-preview h1",
+    ]);
+    expect(out['& .element-card-preview [data-jx-state~="hover"] button']).toEqual({
+      color: "blue",
+    });
+    expect(out['& .element-card-preview [data-jx-state~="hover"] a']).toEqual({ color: "navy" });
+    // Inside a context block too, so a breakpoint's or a scheme's state shows on the row.
+    expect(out["@--md"]).toEqual({
+      "& .element-card-preview button": { ":hover": { color: "teal" } },
+      '& .element-card-preview [data-jx-state~="hover"] button': { color: "teal" },
+    });
+  });
+
   test("keeps flat scalars + custom props at the top; re-keys tag rules under the specimen scope", () => {
     const out = transposeStylebookStyle({
       "--accent": "#f00",

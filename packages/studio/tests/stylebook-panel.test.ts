@@ -464,6 +464,14 @@ describe("selectStylebookTag", () => {
     expect(seen).toEqual(["[] h1"]);
   });
 
+  test("a state copy selects its element and edits its state (§7.2)", () => {
+    const tab = makeTab();
+    selectStylebookTag("button :hover");
+    // The panels mark and the canvas outlines the element; the Style tab edits `button :hover`.
+    expect(shell.stylebook.selection).toBe("button");
+    expect(tab.session.ui.activeSelector).toBe("button :hover");
+  });
+
   test("omitting media leaves the current breakpoint context untouched", () => {
     const tab = makeTab();
     tab.session.ui.activeMedia = "md";
