@@ -2,9 +2,9 @@
 
 ## Visual Builder for Jx Documents
 
-**Version:** 0.16.18-draft\
+**Version:** 0.16.22-draft\
 **Status:** Partial\
-**Updated:** 2026-11-07\
+**Updated:** 2026-11-08\
 **License:** MIT
 
 ---
@@ -2255,7 +2255,7 @@ Two texts read once notice nothing. Every git operation and every save bumps a r
 | Content   | The Content home and collection grid tabs, entry-form tabs, and every file `collectionForFile` places in a collection, because an entry is written in Content; a file-backed collection's one file included, since its grid is where its records are written |
 | Media     | The Media home tab and every media viewer tab (the `media` editor of §4.2)                                                                                                                                                                                   |
 | Styles    | The `project.json` tab, in any of its editors                                                                                                                                                                                                                |
-| Publish   | The Publish home tab, which draws Review changes' comparisons in its centre (§21, §22.8)                                                                                                                                                                                                          |
+| Publish   | The Publish home tab, which draws Review changes' comparisons in its centre (§21, §22.8)                                                                                                                                                                     |
 | Settings  | The Settings home tab alone (§22.9); it edits `project.json` without being a tab over it                                                                                                                                                                     |
 | Design    | Everything else: pages, templates, components and every other file                                                                                                                                                                                           |
 
@@ -2389,6 +2389,10 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.16.22-draft** (2026-11-08) — §11.1: the code editor registers every Monaco feature before the first editor exists, because the lazily loaded JSON and TypeScript modes registered the rest late, and two of them threw on every editor created afterwards.
+- **0.16.21-draft** (2026-11-08) — §22.8 Review changes draws the comparison of the picked change in its centre, between a list that names each change as the site does (tag, name, kind and address) and the publish column; §21.4 and §22.1: comparisons are no longer tabs of their own, so Publish has no Back.
+- **0.16.20-draft** (2026-11-08) — §8.5: Studio opens, edits, saves and converts .jxn documents, solo and in a collaboration session, keeping their comments.
+- **0.16.19-draft** (2026-11-08) — §17.1: Project Settings' Raw JSON section is Source, the project file as it is saved in either notation.
 - **0.16.18-draft** (2026-11-07) — §5.1, §5.3 and §22.4: Insert is the Document group's first rail button in Design, and a card dropped on the blank canvas around the content lands at the nearest edge of the root's blocks instead of nowhere.
 - **0.16.17-draft** (2026-11-07) — §5.3: the Insert panel splits into Elements and Components tabs; element cards are named in the reader's language from a per-language catalog, with the tag beside the name; the categories lead with Text, Lists, Media and Layout, the document and head-only elements are no longer offered, and Inline text and Advanced start closed. §5.3 is Implemented.
 - **0.16.16-draft** (2026-11-07) — §8.4: a layout's clause says what its readers do now.
@@ -2609,4 +2613,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_`@jxsuite/studio` Specification v0.16.18-draft_
+_`@jxsuite/studio` Specification v0.16.22-draft_
