@@ -60,6 +60,7 @@
     "@jxsuite/collab": "workspace:^",
     "@jxsuite/compiler": "workspace:^",
     "@jxsuite/create": "workspace:^",
+    "@jxsuite/erase": "workspace:^",
     "@jxsuite/import": "workspace:^",
     "@jxsuite/protocol": "workspace:^",
     "@jxsuite/runtime": "workspace:^",

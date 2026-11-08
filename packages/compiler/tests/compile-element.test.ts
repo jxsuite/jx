@@ -1657,7 +1657,7 @@ describe("compileElement — declared handler parameters", () => {
 
     const { content } = result.files[0]!;
     expect(content).toContain(
-      '@input="${(e) => { ((state, event) => { state.text = event.target.value })(s, e); }}"',
+      '@input="${(e) => { ((state, event) => { state.text = event.target.value\n})(s, e); }}"',
     );
   });
 
@@ -1680,7 +1680,7 @@ describe("compileElement — declared handler parameters", () => {
     // Previously emitted a free `evt`, which threw ReferenceError; `event` only ever "worked" by
     // Accidentally resolving to the deprecated window.event global.
     expect(result.files[0]!.content).toContain(
-      "((state, evt) => { state.text = evt.type })(s, e);",
+      "((state, evt) => { state.text = evt.type\n})(s, e);",
     );
   });
 
@@ -1691,7 +1691,7 @@ describe("compileElement — declared handler parameters", () => {
       tagName: "test-inline-plain",
     });
 
-    expect(result.files[0]!.content).toContain('@click="${(e) => { s.text = 1 }}"');
+    expect(result.files[0]!.content).toContain('@click="${(e) => { s.text = 1\n }}"');
   });
 
   test("maps a $src handler's declared parameters as well", async () => {
@@ -1767,7 +1767,7 @@ describe("compileElement — $map context for map handlers", () => {
     });
 
     const { content } = result.files[0]!;
-    expect(content).toContain('@click="${(e) => { s.$map = $map; s.n++ }}"');
+    expect(content).toContain('@click="${(e) => { s.$map = $map; s.n++\n }}"');
     expect(content).toMatch(/@click="\$\{\(e\) => \{ s\.\$map = \$map; s\.n/);
   });
 

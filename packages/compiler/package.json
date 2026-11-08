@@ -53,6 +53,7 @@
   },
   "dependencies": {
     "@jxsuite/create": "workspace:^",
+    "@jxsuite/erase": "workspace:^",
     "@jxsuite/runtime": "workspace:^",
     "@jxsuite/schema": "workspace:^",
     "@jxsuite/site": "workspace:^",

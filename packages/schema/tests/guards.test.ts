@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import {
   SCHEMA_KEYWORDS,
   bodyReturnsValue,
+  maskCode,
   childrenContainArray,
   displayTagName,
   ensureNestedStyle,
@@ -321,7 +322,41 @@ describe("isTemplateString", () => {
   });
 });
 
+describe("maskCode", () => {
+  test("blanks comments and string contents, keeping length, newlines and quotes", () => {
+    const body = "const a = \"x // y\"; // note\nreturn 'q' /* c\nd */;";
+    const masked = maskCode(body);
+    expect(masked).toHaveLength(body.length);
+    expect(masked).toBe("const a = \"      \";        \nreturn ' '     \n    ;");
+  });
+
+  test("keeps the code inside a template's substitutions, nested ones included", () => {
+    expect(maskCode("`a ${state.n + `b ${q}`} c`")).toBe("`  ${state.n + `  ${q}`}  `");
+    expect(maskCode("`${ { a: 1 }.a }`")).toBe("`${ { a: 1 }.a }`");
+  });
+
+  test("an escape is blanked with what it escapes, in a string and in a template", () => {
+    expect(maskCode(String.raw`"a\"b" + c`)).toBe('"    " + c');
+    expect(maskCode("`\\``.length")).toBe("`  `.length");
+  });
+
+  test("an unterminated string or comment ends at the line or the body", () => {
+    expect(maskCode('"open\nstate.n')).toBe('"    \nstate.n');
+    expect(maskCode("x /* open")).toBe("x        ");
+  });
+
+  test("a stray closing brace outside a template is just code", () => {
+    expect(maskCode("} {")).toBe("} {");
+  });
+});
+
 describe("bodyReturnsValue", () => {
+  test("reads code, not what a comment or a string says", () => {
+    expect(bodyReturnsValue("// return early\nstate.x = 1")).toBe(false);
+    expect(bodyReturnsValue('state.label = "return home"')).toBe(false);
+    expect(bodyReturnsValue('return "x"')).toBe(true);
+  });
+
   test("detects a return statement (computed vs handler)", () => {
     expect(bodyReturnsValue("return state.count + 1")).toBe(true);
     expect(bodyReturnsValue("const x = 1;\n  return x")).toBe(true);

@@ -20,5 +20,6 @@
   "extensions/search": "0.5.3",
   "extensions/feed": "0.5.3",
   "packages/catalog": "0.1.9",
-  "packages/ui": "0.10.2"
+  "packages/ui": "0.10.2",
+  "packages/erase": "0.0.0"
 }

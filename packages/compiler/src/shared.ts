@@ -49,6 +49,7 @@ import {
   isTemplateString,
   paramNames,
   tagNameCandidates,
+  maskCode,
 } from "@jxsuite/schema/guards";
 import type { TagNameSlot } from "@jxsuite/schema/guards";
 import { resolveShadowMode, styleScopePrefix } from "./shadow.ts";
@@ -604,6 +605,39 @@ const STATE_ASSIGNMENT_RE =
 const STATE_MUTATING_METHOD_RE =
   /\bstate\.([A-Za-z_$][\w$]*)\s*\.\s*(?:push|pop|shift|unshift|splice|sort|reverse|fill|copyWithin)\s*\(/g;
 
+/** A standalone `state` followed by a member: not `prevstate`, and not `this.state` again. */
+const STATE_MEMBER_RE = /(?<![\w$.])state(?=\s*\.)/g;
+
+/** A standalone `state`, member or not. */
+const STATE_WORD_RE = /(?<![\w$.])state\b/g;
+
+/**
+ * Rewrite `state` in emitted code to what holds it there (`this.state`, `s`): the one way every
+ * target does it (`spec.md` §23.1). Only a standalone `state` moves, so `prevstate.n` stays itself,
+ * and in a body only code moves, so a string or a comment that mentions `state.` is left as
+ * written.
+ *
+ * @param text The body, or an expression.
+ * @param to What `state` becomes.
+ * @param options `bare` moves `state` alone too, not only `state.member`; `code: false` reads text
+ *   that is not a body (an attribute's template), where nothing is a string or a comment.
+ */
+export function rewriteState(
+  text: string,
+  to: string,
+  options: { bare?: boolean; code?: boolean } = {},
+): string {
+  const pattern = options.bare === true ? STATE_WORD_RE : STATE_MEMBER_RE;
+  const read = options.code === false ? text : maskCode(text);
+  let out = "";
+  let last = 0;
+  for (const match of read.matchAll(pattern)) {
+    out += text.slice(last, match.index) + to;
+    last = match.index + "state".length;
+  }
+  return out + text.slice(last);
+}
+
 /**
  * Collect every state key a handler writes to, across all the forms a body can take: a string body,
  * a structured body (spec §20), and an `$expression` node with a mutating operator.
@@ -618,11 +652,13 @@ const STATE_MUTATING_METHOD_RE =
  */
 function collectAssignedStateKeys(node: JxDocumentValue | undefined, into: Set<string>) {
   if (isString(node)) {
-    for (const m of node.matchAll(STATE_ASSIGNMENT_RE)) {
+    // Code only: an assignment a comment or a string mentions writes nothing (spec.md §23.1).
+    const code = maskCode(node);
+    for (const m of code.matchAll(STATE_ASSIGNMENT_RE)) {
       // SAFETY: the pattern's one capture group is outside any optional part, so a match has it.
       into.add(m[1] as string);
     }
-    for (const m of node.matchAll(STATE_MUTATING_METHOD_RE)) {
+    for (const m of code.matchAll(STATE_MUTATING_METHOD_RE)) {
       // SAFETY: the pattern's one capture group is outside any optional part, so a match has it.
       into.add(m[1] as string);
     }
