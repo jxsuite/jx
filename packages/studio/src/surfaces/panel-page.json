@@ -172,6 +172,38 @@
     },
     "& [part=\"tag-picker\"]": {
       "minWidth": "70px"
+    },
+    "& [part=\"section-note\"]": {
+      "margin": "0",
+      "padding": "0 var(--jx-space-3) var(--jx-space-2)",
+      "fontSize": "var(--jx-text-xs)",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"field-chip\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "var(--jx-space-2)",
+      "width": "100%",
+      "boxSizing": "border-box",
+      "padding": "var(--jx-space-1) var(--jx-space-2)",
+      "borderRadius": "var(--jx-radius-sm)",
+      "background": "var(--bg-input)",
+      "color": "var(--fg)",
+      "fontSize": "var(--jx-text-sm)",
+      "cursor": "grab",
+      "userSelect": "none"
+    },
+    "& [part=\"field-grip\"]": {
+      "flexShrink": "0",
+      "color": "var(--fg-dim)"
+    },
+    "& [part=\"field-kind\"]": {
+      "marginLeft": "auto",
+      "color": "var(--fg-dim)",
+      "fontSize": "var(--jx-text-xs)"
+    },
+    "& [part=\"row\"]:has([part=\"field-chip\"]) [part=\"row-label\"]": {
+      "display": "none"
     }
   },
   "children": [
@@ -523,6 +555,40 @@
                           },
                           "textContent": "${$map.item.value}"
                         },
+                        "field": {
+                          "$description": "One field of a collection's entry, as a chip that drags an element showing it onto the page (§6): its name, and what it holds. The chip is a drag source the flow registers on it (`PagePanelIslands.fieldSource`), so the document only draws it. The row's own label is hidden for it, because the chip carries the name.",
+                          "tagName": "span",
+                          "attributes": {
+                            "part": "field-chip",
+                            "data-field": "${$map.item.prop}",
+                            "title": "Drag onto the page"
+                          },
+                          "children": [
+                            {
+                              "tagName": "jx-icon",
+                              "attributes": {
+                                "part": "field-grip"
+                              },
+                              "$props": {
+                                "name": "dots-three-vertical"
+                              }
+                            },
+                            {
+                              "tagName": "span",
+                              "attributes": {
+                                "part": "field-name"
+                              },
+                              "textContent": "${$map.item.label}"
+                            },
+                            {
+                              "tagName": "span",
+                              "attributes": {
+                                "part": "field-kind"
+                              },
+                              "textContent": "${$map.item.value}"
+                            }
+                          ]
+                        },
                         "select": {
                           "tagName": "jx-select",
                           "attributes": {
@@ -778,6 +844,29 @@
                 }
               }
             ]
+          },
+          {
+            "$description": "A sentence under a band's rows, saying what they are for (Fields you can place says how to place one).",
+            "tagName": "div",
+            "attributes": {
+              "part": "section-note-slot",
+              "role": "none"
+            },
+            "style": {
+              "display": "contents"
+            },
+            "$switch": {
+              "$ref": "$map/item/hasNote"
+            },
+            "cases": {
+              "true": {
+                "tagName": "p",
+                "attributes": {
+                  "part": "section-note"
+                },
+                "textContent": "${$map.item.note}"
+              }
+            }
           }
         ]
       }

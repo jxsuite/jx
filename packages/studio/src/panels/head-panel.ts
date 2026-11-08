@@ -49,17 +49,25 @@ import { renderPagePanelSurface, unmountPagePanelSurface } from "../surfaces/pan
 import { emptyState } from "../surfaces/empty-state";
 import type { EmptyStateSpec } from "./empty-state";
 import { collectionForFile } from "../content/collection-match";
+import { contentCollection, declaredCollectionSchema } from "../content/content-collections";
+import { fieldTitle } from "../browse/library-source";
+import { documentUrlPattern, pagePathsDef } from "../page-params";
+import { entryRootsOf } from "../utils/edit-display";
+import type { BlockDragData } from "./site-panel";
+import { draggable } from "@atlaskit/pragmatic-drag-and-drop/element/adapter";
+import { disableNativeDragPreview } from "@atlaskit/pragmatic-drag-and-drop/element/disable-native-drag-preview";
 import {
   isEntryTab,
   renderEntryInspector,
   unmountEntryInspector,
 } from "../content/entry-inspector";
 
-import type { JxHeadEntry, JxMutableNode } from "@jxsuite/schema/types";
+import type { ContentTypeSchemaField, JxHeadEntry, JxMutableNode } from "@jxsuite/schema/types";
 import type { Tab } from "../tabs/tab";
 import type * as MediaPickerModule from "../ui/media-picker";
 import type {
   PagePanelActions,
+  PagePanelIslands,
   PagePanelView,
   PageRow,
   PageSection,
@@ -1249,6 +1257,173 @@ function iconRow(head: JxHeadEntry[], apply: PagePanelContext["applyMutation"]):
   return row;
 }
 
+/** A section of rows, with no door to Search appearance and no sentence under it. */
+function section(key: string, title: string, rows: PageRow[]): PageSection {
+  return { hasNote: false, hasSeo: false, key, note: "", rows, title };
+}
+
+/** Search & sharing's picture: the social card's image, by the name a reader knows it by. */
+const SOCIAL_IMAGE: MetaField = {
+  ...OG_FIELDS.find((f) => f.key === "og:image")!,
+  label: "Social image",
+};
+
+/**
+ * The social card's other fields, in Advanced: the defaults the page's title and description give
+ * them are what most pages want, so they are an override rather than a first-class row.
+ */
+const ADVANCED_SOCIAL: MetaField[] = OG_FIELDS.flatMap((f) =>
+  f.key === "og:image" ? [] : [{ ...f, label: `Social ${f.label.toLowerCase()}` }],
+);
+
+/** Where the document is stored, as Advanced's last line. */
+function fileRow(path: string): PageRow {
+  return { ...blankRow("__file", "file", "File"), kind: "readout", value: path };
+}
+
+/** A collection's page's URL, with the parameter every entry fills: `/blog/:slug`. */
+function patternRow(path: string): PageRow {
+  return {
+    ...blankRow("__url", "url", "URL pattern"),
+    kind: "readout",
+    value: documentUrlPattern(path),
+  };
+}
+
+/** The collection a page draws one page per entry of, and the state key its entry is read by. */
+interface PageCollection {
+  key: string;
+  title: string;
+  root: string;
+}
+
+/**
+ * The collection this page is the page of (`$paths.contentType`), or null for any other document.
+ * Its entry is read by the page's first `ContentEntry` state key, `entry` by convention.
+ */
+function collectionOfPage(tab: Tab | null, doc: JxMutableNode): PageCollection | null {
+  if (!tab || !isPageDocument(tab)) {
+    return null;
+  }
+  const paths = pagePathsDef({ document: doc, frontmatter: tab.doc.content.frontmatter });
+  if (!paths || Array.isArray(paths) || !("contentType" in paths) || !isString(paths.contentType)) {
+    return null;
+  }
+  const collection = contentCollection(paths.contentType);
+  if (!collection) {
+    return null;
+  }
+  const [root = "entry"] = entryRootsOf(doc);
+  return { key: collection.key, root, title: collection.title };
+}
+
+/** What a schema field holds, in the words the field list draws beside its name. */
+function fieldKind(entry: ContentTypeSchemaField): string {
+  if (entry.format === "image") {
+    return "image";
+  }
+  if (entry.format === "date" || entry.format === "date-time") {
+    return "date";
+  }
+  switch (entry.type) {
+    case "array": {
+      return "list";
+    }
+    case "number":
+    case "integer": {
+      return "number";
+    }
+    case "boolean": {
+      return "yes/no";
+    }
+    case "object": {
+      return "group";
+    }
+    default: {
+      return "text";
+    }
+  }
+}
+
+/**
+ * The element a field becomes when it is dragged onto the page: one that shows that field of the
+ * entry the page is drawn with, so it is badged and live on the canvas the moment it lands (§4.1).
+ */
+function fieldFragment(root: string, name: string, kind: string): JxMutableNode {
+  const value = `\${state.${root}.data.${name}}`;
+  if (kind === "image") {
+    return { attributes: { alt: "", src: value }, tagName: "img" };
+  }
+  if (kind === "date") {
+    return { tagName: "time", textContent: value };
+  }
+  return { tagName: "p", textContent: value };
+}
+
+/**
+ * Whether a collection's entries have a body to place: a directory of documents in a format that
+ * parses one (Markdown), not a file's records or JSON entries, which are their fields alone.
+ */
+function collectionHasBody(key: string): boolean {
+  if (contentCollection(key)?.fileBacked !== false) {
+    return false;
+  }
+  /* SAFETY: `content` is the parser extension's section, collection name → entry object; only its
+     optional `format` string is read here, as `content-collections.ts` reads its `source`. */
+  const entry = (projectState?.projectConfig?.content ?? {}) as Record<
+    string,
+    { format?: unknown }
+  >;
+  const format = entry[key]?.format;
+  return isString(format) && !/^(?:json|csv|ya?ml)$/i.test(format);
+}
+
+/** Each field row's drag payload, by row key, for the projection on screen. */
+const _fieldDrags = new Map<string, BlockDragData>();
+
+/** The payload a field row drags, or null for a key this projection did not draw. */
+export function fieldDragData(key: string): BlockDragData | null {
+  const data = _fieldDrags.get(key);
+  return data ? { fragment: structuredClone(data.fragment), type: "block" } : null;
+}
+
+/**
+ * Fields you can place: every field the collection's schema declares, then its body when entries
+ * have one, each a row that drags an element showing it onto the page. Null for a collection that
+ * declares no fields and has no body.
+ */
+function fieldsSection(collection: PageCollection): PageSection | null {
+  const rows: PageRow[] = [];
+  for (const [name, entry] of Object.entries(
+    declaredCollectionSchema(collection.key)?.properties ?? {},
+  )) {
+    const key = `field:${name}`;
+    const kind = fieldKind(entry);
+    _fieldDrags.set(key, { fragment: fieldFragment(collection.root, name, kind), type: "block" });
+    const label = isString(entry.title) && entry.title !== "" ? entry.title : fieldTitle(name);
+    rows.push({ ...blankRow(key, name, label), kind: "field", value: kind });
+  }
+  if (collectionHasBody(collection.key)) {
+    _fieldDrags.set("field:$children", {
+      fragment: { children: `\${state.${collection.root}.$children ?? []}`, tagName: "div" },
+      type: "block",
+    });
+    rows.push({
+      ...blankRow("field:$children", "$children", "Body"),
+      kind: "field",
+      value: "rich text",
+    });
+  }
+  if (rows.length === 0) {
+    return null;
+  }
+  return {
+    ...section("fields", "Fields you can place", rows),
+    hasNote: true,
+    note: "Drag a field onto the page, or select an element and pick a field to show.",
+  };
+}
+
 /**
  * The Layout picker, or `null` when this document takes none — a component has no layout, and a
  * page whose layouts directory is still being listed has nothing to offer yet.
@@ -1290,7 +1465,7 @@ function layoutSection(
       invalidateLayoutCache();
     },
   });
-  const row = blankRow("__layout", "layout", "Layout");
+  const row = blankRow("__layout", "layout", "Template");
   row.kind = "select";
   row.isSet = current !== undefined;
   row.options = [
@@ -1310,7 +1485,7 @@ function layoutSection(
       );
     });
   }
-  return { hasSeo: false, key: "layout", rows: [row], title: "Layout" };
+  return section("layout", "Template", [row]);
 }
 
 /**
@@ -1345,12 +1520,11 @@ function frontmatterSection(tab: Tab | null): PageSection | null {
       clearLabel: `Clear ${f.field}`,
     });
   });
-  return {
-    hasSeo: false,
-    key: "frontmatter",
+  return section(
+    "frontmatter",
+    collection ? `Frontmatter (${collection.name})` : "Frontmatter",
     rows,
-    title: collection ? `Frontmatter (${collection.name})` : "Frontmatter",
-  };
+  );
 }
 
 /** The `$head` entries no structured control owns, and the keys a Remove hands back. */
@@ -1380,6 +1554,7 @@ function customEntries(head: JxHeadEntry[]): PageTagRow[] {
 function view(ctx: PagePanelContext): PagePanelView {
   _commits.clear();
   _rowActions.clear();
+  _fieldDrags.clear();
   const tab = activeTab.value;
   const doc = ctx.document;
   const head = doc.$head ?? [];
@@ -1390,32 +1565,46 @@ function view(ctx: PagePanelContext): PagePanelView {
     sections.push(frontmatter);
   }
   const layout = layoutSection(tab, doc, ctx.applyMutation);
-  if (layout) {
-    sections.push(layout);
+  /* A collection's page is one page for every entry (§6): its first group says so, with the URL
+     pattern its file gives every entry and the template they are drawn in, and the fields an entry
+     brings follow it, ready to be placed. Its title is the entry's, so it has no Title row. */
+  const collection = collectionOfPage(tab, doc);
+  if (collection) {
+    sections.push(
+      section(`collection`, `One page for every entry in ${collection.title}`, [
+        ...(tab?.documentPath ? [patternRow(tab.documentPath)] : []),
+        ...(layout?.rows ?? []),
+      ]),
+    );
+    const fields = fieldsSection(collection);
+    if (fields) {
+      sections.push(fields);
+    }
+  } else {
+    const url = urlRow(tab);
+    sections.push(
+      section("page", "Page", [titleRow(doc, ctx.applyMutation), ...(url ? [url] : [])]),
+    );
+    if (layout) {
+      sections.push(layout);
+    }
   }
-  const url = urlRow(tab);
   sections.push(
     {
+      ...section("search", "Search & sharing", [
+        descriptionRow(doc, ctx.applyMutation),
+        metaRow(SOCIAL_IMAGE, head, ctx.applyMutation),
+      ]),
       hasSeo: true,
-      key: "page",
-      rows: [
-        titleRow(doc, ctx.applyMutation),
-        ...(url ? [url] : []),
-        ...PAGE_FIELDS.map((field) =>
-          field.key === "description"
-            ? descriptionRow(doc, ctx.applyMutation)
-            : metaRow(field, head, ctx.applyMutation),
-        ),
-        iconRow(head, ctx.applyMutation),
-      ],
-      title: "Page",
     },
-    {
-      hasSeo: false,
-      key: "opengraph",
-      rows: OG_FIELDS.map((field) => metaRow(field, head, ctx.applyMutation)),
-      title: "OpenGraph",
-    },
+    section("advanced", "Advanced", [
+      ...PAGE_FIELDS.flatMap((field) =>
+        field.key === "description" ? [] : [metaRow(field, head, ctx.applyMutation)],
+      ),
+      iconRow(head, ctx.applyMutation),
+      ...ADVANCED_SOCIAL.map((field) => metaRow(field, head, ctx.applyMutation)),
+      ...(tab?.documentPath ? [fileRow(tab.documentPath)] : []),
+    ]),
   );
 
   const entries = customEntries(head);
@@ -1436,8 +1625,40 @@ function sync(): void {
   if (!_host || !_ctx) {
     return;
   }
-  renderPagePanelSurface(_host, view(_ctx), ACTIONS);
+  renderPagePanelSurface(_host, view(_ctx), ACTIONS, ISLANDS);
+  releaseDetachedSources();
 }
+
+/** The drag sources registered on field chips, by chip — released once the chip leaves the page. */
+const _sources = new Map<HTMLElement, () => void>();
+
+/** Release every field chip's drag source whose node the panel has dropped. */
+function releaseDetachedSources(): void {
+  for (const [element, cleanup] of _sources) {
+    if (!element.isConnected) {
+      cleanup();
+      _sources.delete(element);
+    }
+  }
+}
+
+/** What the panel attaches to nodes its document draws: a field chip drags its field (§6). */
+const ISLANDS: PagePanelIslands = {
+  fieldSource: (element, key) => {
+    _sources.get(element)?.();
+    _sources.set(
+      element,
+      draggable({
+        element,
+        // The payload the canvas drop accepts from a component card, built when the drag starts.
+        getInitialData: () => fieldDragData(key) ?? {},
+        onGenerateDragPreview: ({ nativeSetDragImage }) => {
+          disableNativeDragPreview({ nativeSetDragImage });
+        },
+      }),
+    );
+  },
+};
 
 // ─── The verbs ───────────────────────────────────────────────────────────
 

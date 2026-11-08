@@ -23,7 +23,7 @@ All of it lives in one place: the **Page** tab of the Inspector. The canvas show
 
 The Page panel is the Inspector's first tab. Click it, press :kbd[⌘⇧1] (:kbd[Ctrl+Shift+1] on Windows/Linux), or select nothing on the canvas: the Inspector switches to Page on its own when the selection goes away, and back to the element you select next. The tab is named for what the open file is (**Page**, **Template**, **Component**, **Entry**, or **Document**), and its sections, top to bottom, depend on the file you have open:
 
-![The Inspector's Page tab for a page, showing its Layout, Page, and OpenGraph sections](../../images/document-panel.png)
+![The Inspector's Page tab for a page, showing its Page, Template, Search & sharing and Advanced sections](../../images/document-panel.png)
 
 A component has no page settings of its own, because its title, search and social details come from the page it is placed on. Its **Component** tab says so, and **Edit tag and props** selects the component's root, where Element › Content edits its tag name and the defaults of the props it takes.
 
@@ -40,23 +40,38 @@ For a content page that belongs to a collection (a blog post, a product, a listi
 
 Any extra field already present in the file appears too, even if the collection doesn't define it. Clearing a field removes it from the file entirely. Collections and their fields are defined in **[Content types](/docs/studio/projects/content-types)**.
 
-### Layout
-
-Site pages also get a **Layout** picker: keep the project default, choose a specific layout, or pick **None**; see **[Pages, layouts, components](/docs/studio/projects/pages-layouts-components)**. **Edit template** under it opens the layout the page is drawn in, so you can change the header or footer every page shares. A Markdown page keeps its choice as a `$layout` key in its frontmatter, and a JSON page on its root.
-
 ### Page
 
 The basics every page should have:
 
 - **Title**: the browser-tab and search-result title.
 - **URL**: the address the page is published at, which comes from where its file sits in `pages/`. To change it, rename or move the file.
+
+### Template
+
+The **Template** picker: keep the project default, choose a specific layout, or pick **None**; see **[Pages, layouts, components](/docs/studio/projects/pages-layouts-components)**. **Edit template** under it opens the layout the page is drawn in, so you can change the header or footer every page shares. A Markdown page keeps its choice as a `$layout` key in its frontmatter, and a JSON page on its root.
+
+### Search & sharing
+
+What the page looks like in search results and when it is shared, with the **Search appearance** button beside the heading:
+
 - **Description**: the summary search engines show under the title. A page has one description, and this field edits it wherever the page keeps it: a Markdown page's `description:` frontmatter key, or a description tag in the page's head. Because it is edited here, that frontmatter key is not listed again among the page's other fields.
+- **Social image**: the picture on the card shown when the page is shared, picked from your media.
+
+### Advanced
+
+The rest of what a page's head can say, which most pages never change:
+
 - **Viewport**: leave the suggested default unless you have a specific reason not to.
 - **Icon**: the small icon in the browser tab, picked from your media.
+- **Social title**, **Social description** and **Social type**: the shared card's own wording, when it should differ from the page's title and description.
+- **File**: where the page is stored.
 
-### OpenGraph
+### A collection's page
 
-The card shown when the page is shared on social platforms: **Title**, **Description**, **Image**, and **Type**. If you fill in nothing else, fill in these and the Page section, because they're what links to your site look like elsewhere.
+A page that gives every entry of a collection its own address (**Post page** under its collection in the Site panel) leads with **One page for every entry in Posts** instead of Page: its **URL pattern** (such as `/blog/:slug`, where each entry fills in `:slug`) and its **Template**. It has no Title row, because its title is each entry's.
+
+**Fields you can place** follows: every field the collection defines, with what it holds (text, number, date, image, list), and **Body** when entries have one. Drag a field onto the page to place an element that shows it, such as a picture for an image field or the post's text for Body. It is drawn with the [entry you are previewing](/docs/studio/projects/browse#design-a-collections-page) and outlined with the field's name. To show a field in an element that is already there, select it and choose **From data…** in its content row.
 
 ### Custom Tags
 
@@ -64,7 +79,7 @@ The escape hatch for everything else that can live in a page's head: analytics, 
 
 ## Search appearance
 
-**Search appearance** is a window of its own, and there are two ways in: the button beside the Page tab's **Page** heading (on a collection entry too, where the tab is titled **Entry**), and the command palette. Both open the same thing over the document you're working on.
+**Search appearance** is a window of its own, and there are two ways in: the button beside the Page tab's **Search & sharing** heading (on a collection entry too, where the tab is titled **Entry**), and the command palette. Both open the same thing over the document you're working on.
 
 The first thing it shows is not a form but two pictures of the finished page: a **Search result** preview (breadcrumb, title, description) and a **Social card** preview with its image, domain, headline and summary. Below them is the resolved-field list, then the warnings, and only then the controls that change any of it.
 
@@ -114,7 +129,7 @@ When there is nothing to say, it says that too: _Nothing to flag — every previ
 
 Under the warnings are the controls, in two groups named after the preview each one feeds. **Search result** holds **Description**, **Viewport** and the **Icon** picker; **Social card** holds the four OpenGraph fields. They're grouped because they collide: Open Graph has its own Title, Description and Image, and in one flat column "Description" named two different fields.
 
-These edit exactly what the Page panel's Page and OpenGraph sections edit: the same values, from wherever you happen to be working.
+These edit exactly what the Page panel's Search & sharing and Advanced sections edit: the same values, from wherever you happen to be working.
 
 :::doc-note
 On disk, all of this lives at the top of the page's own file, in a small labeled block above the content: the frontmatter. That's why metadata travels with the page: copy the file and everything comes along, and any text editor can read it.
