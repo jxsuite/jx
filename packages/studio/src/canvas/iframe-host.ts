@@ -1456,7 +1456,7 @@ export function postEntryStateToHosts(tab: Tab): number {
     if (host.ready && host.tabId === tab.id) {
       const stage = panelHostingCanvas(host.canvasEl)?.surface;
       if (!stage) {
-        recordEscalation("host-stage-unresolved");
+        recordEscalation("entry-state-stage-unresolved");
         continue;
       }
       host.channel.post({ gen: stage.renderGeneration, kind: "entryState", value });

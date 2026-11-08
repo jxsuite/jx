@@ -399,22 +399,36 @@ export function startIframeInlineEdit(
    */
   const enterPropEditAt = (el: HTMLElement, hostPath: JxPath, prop: string) => {
     channel.post({ kind: "editStart", path: hostPath, prop });
+    enterPlainSession(el, hostPath, (p, textContent, inPlace) => {
+      const commit: EditCommitPropMsg = {
+        kind: "editCommitProp",
+        path: p,
+        prop,
+        value: textContent,
+      };
+      if (inPlace) {
+        commit.inPlace = true;
+      }
+      channel.post(commit);
+    });
+  };
+
+  /**
+   * Open a plain (plaintext-only) session on `el`: one plain string, committed through `commit`,
+   * with no split and no slash-insert. A prop-bound marker and an entry's field are both one.
+   */
+  const enterPlainSession = (
+    el: HTMLElement,
+    path: JxPath,
+    commit: (path: JxPath, textContent: string, inPlace: boolean) => void,
+  ) => {
     startEditing(
       el,
-      hostPath,
+      path,
       {
         onCommit: (p, _children, textContent, inPlace) => {
           inputAnnounced = false;
-          const commit: EditCommitPropMsg = {
-            kind: "editCommitProp",
-            path: p,
-            prop,
-            value: textContent ?? "",
-          };
-          if (inPlace) {
-            commit.inPlace = true;
-          }
-          channel.post(commit);
+          commit(p, textContent ?? "", inPlace);
         },
         onEnd: () => {
           clearHighlight();
@@ -428,7 +442,7 @@ export function startIframeInlineEdit(
           root.forget();
           channel.post({ kind: "editEnd" });
         },
-        // Prop values are single plain strings — no split, no slash-insert.
+        // A plain session holds one string — no split, no slash-insert.
         onInsert: () => {},
         onSplit: () => {},
       },
@@ -512,29 +526,11 @@ export function startIframeInlineEdit(
       return false;
     }
     channel.post({ field, kind: "editStart", path: [] });
-    startEditing(
-      el,
-      [],
-      {
-        onCommit: (_p, _children, textContent, inPlace) => {
-          inputAnnounced = false;
-          if (!inPlace) {
-            channel.post({ field, kind: "editCommitField", value: textContent ?? "" });
-          }
-        },
-        onEnd: () => {
-          clearHighlight();
-          lastNonEmptyRange = null;
-          // As a prop session's end: the host forgets the dead session, so the next press re-enters.
-          root.forget();
-          channel.post({ kind: "editEnd" });
-        },
-        // A field is one plain string: no split, no slash-insert.
-        onInsert: () => {},
-        onSplit: () => {},
-      },
-      { plainText: true },
-    );
+    enterPlainSession(el, [], (_path, value, inPlace) => {
+      if (!inPlace) {
+        channel.post({ field, kind: "editCommitField", value });
+      }
+    });
     return true;
   };
 

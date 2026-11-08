@@ -1381,8 +1381,9 @@ describe("iframe canvas patch bridge", () => {
     const canvasEl = await mountReady();
     const tab = activeTab.value!;
     tab.documentPath = "content/posts/spring.md";
-    // Ready, but on no stage: it cannot be named, so it is skipped and the caller escalates.
+    // Ready, but on no stage: it cannot be named, so it is skipped, counted, and the caller escalates.
     expect(postEntryStateToHosts(tab)).toBe(0);
+    expect(canvasPerf.lastEscalationReason).toBe("entry-state-stage-unresolved");
     canvasEl.remove();
     expect(postEntryStateToHosts(tab)).toBe(0);
   });
