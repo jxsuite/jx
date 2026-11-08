@@ -242,6 +242,18 @@ describe("the panel", () => {
     const second = quick.openQuickPublish();
     expect(second).not.toBe(first);
   });
+
+  test("closing it twice says it is over once", async () => {
+    seed(1);
+    const handle = quick.openQuickPublish();
+    await handle.ready;
+    await flush(4);
+    handle.close();
+    handle.close();
+    await flush(2);
+    // The first close forgot it; the second found nothing left to say, so the next open is new.
+    expect(quick.openQuickPublish()).not.toBe(handle);
+  });
 });
 
 describe("what a change touches, and where the panel hangs", () => {
@@ -266,6 +278,7 @@ describe("what a change touches, and where the panel hangs", () => {
                 { name: "index.json", path: "pages/index.json", type: "file" as const },
                 { name: "about.json", path: "pages/about.json", type: "file" as const },
                 { name: "plain.json", path: "pages/plain.json", type: "file" as const },
+                { name: "post.json", path: "pages/post.json", type: "file" as const },
               ]
             : [],
       },
@@ -274,6 +287,9 @@ describe("what a change touches, and where the panel hangs", () => {
         "pages/about.json": JSON.stringify({ $layout: false, tagName: "div" }),
         "pages/index.json": JSON.stringify({ tagName: "div" }),
         "pages/plain.json": JSON.stringify({ $layout: "./layouts/base.json", tagName: "div" }),
+        // Drawn in a layout that is itself drawn in the changed one: the chain is followed.
+        "layouts/article.json": JSON.stringify({ $layout: "./layouts/base.json", tagName: "div" }),
+        "pages/post.json": JSON.stringify({ $layout: "./layouts/article.json", tagName: "div" }),
       },
     );
     resetStudioState({
@@ -285,10 +301,10 @@ describe("what a change touches, and where the panel hangs", () => {
     await handle.ready;
     await flush(10);
     expect(quick.quickPublishView().rows.map((row) => [row.label, row.note])).toEqual([
-      ["Base", "affects 2 pages"],
+      ["Base", "affects 3 pages"],
       ["Old", ""],
     ]);
-    expect(parts("change-note").map((note) => note.textContent)).toEqual(["affects 2 pages", ""]);
+    expect(parts("change-note").map((note) => note.textContent)).toEqual(["affects 3 pages", ""]);
   });
 
   test("the rest are summed up by kind, in the singular where there is one", () => {
