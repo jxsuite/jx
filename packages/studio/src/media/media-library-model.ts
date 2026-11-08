@@ -13,10 +13,17 @@
  * could not find out" are different facts, and a filter that offered the second as the first would
  * be inviting a delete nobody can stand behind.
  *
+ * **Missing alt text and the tag filters are questions about the file's own record**, its alt text
+ * and tags as the file carries them (`files/media-record.ts`). Reading one is a read of the file,
+ * so they too are answered by a sweep, and until it has read every file that can hold a record
+ * their counts are blank. A file whose format cannot hold a record, or whose record could not be
+ * read, is never counted as missing alt text: the filter lists what the reader can fix here.
+ *
  * @docs studio/projects/media
  */
 
 import type { MediaFileKind } from "../files/media-upload";
+import type { MediaRecord } from "../files/xmp-packet";
 
 /** One file as the library lists it. */
 export interface LibraryMediaFile {
@@ -30,31 +37,87 @@ export interface LibraryMediaFile {
   modified: string | null;
 }
 
-/** A filter in the left column. The five kinds, every file, and the one usage question. */
-export type MediaFilterKey = "all" | MediaFileKind | "unused";
+/**
+ * A filter in the left column: every file, the five kinds, the two questions (Missing alt text,
+ * Unused), and one filter per tag, keyed `tag:<tag>`.
+ */
+export type MediaFilterKey = "all" | MediaFileKind | "missing-alt" | "unused" | `tag:${string}`;
+
+/** The fixed filters' keys: every key but a tag's. */
+export type FixedFilterKey = Exclude<MediaFilterKey, `tag:${string}`>;
+
+/** The prefix a tag filter's key carries. */
+const TAG_PREFIX = "tag:";
+
+/** The filter key for one tag. */
+export function tagFilterKey(tag: string): MediaFilterKey {
+  return `${TAG_PREFIX}${tag}`;
+}
+
+/** The tag a filter key names, or `null` for every other filter. */
+export function tagOfFilter(key: string): string | null {
+  return key.startsWith(TAG_PREFIX) && key.length > TAG_PREFIX.length
+    ? key.slice(TAG_PREFIX.length)
+    : null;
+}
+
+/** What the filters that are not a property of the file's name have answered so far. */
+export interface FilterAnswers {
+  /** The files nobody references, once the usage sweep has settled; `null` before. */
+  unused: ReadonlySet<string> | null;
+  /**
+   * Each file's record, by path, for every file read so far whose format holds one and whose read
+   * succeeded. A file missing here is unread, unreadable, or of a format with no record.
+   */
+  records: ReadonlyMap<string, MediaRecord>;
+  /** Whether every file that can hold a record has been read. */
+  recordsSettled: boolean;
+}
+
+/** Answers before anything has been asked. */
+export const NO_ANSWERS: FilterAnswers = {
+  records: new Map(),
+  recordsSettled: false,
+  unused: null,
+};
 
 /** The filters, in the order the column lists them (studio.md §22.6). */
-export const MEDIA_FILTERS: readonly { key: MediaFilterKey; label: string }[] = [
+export const MEDIA_FILTERS: readonly { key: FixedFilterKey; label: string }[] = [
   { key: "all", label: "All media" },
   { key: "image", label: "Images" },
   { key: "video", label: "Video" },
   { key: "audio", label: "Audio" },
   { key: "document", label: "Documents" },
   { key: "font", label: "Fonts" },
+  { key: "missing-alt", label: "Missing alt text" },
   { key: "unused", label: "Unused" },
 ];
 
 /** The filter keys, for a command's `enum`. */
-export const MEDIA_FILTER_KEYS: readonly MediaFilterKey[] = MEDIA_FILTERS.map((f) => f.key);
+export const MEDIA_FILTER_KEYS: readonly FixedFilterKey[] = MEDIA_FILTERS.map((f) => f.key);
 
 /** Whether a value names a filter. A command argument and a stored value are untrusted input. */
 export function isMediaFilterKey(value: unknown): value is MediaFilterKey {
-  return MEDIA_FILTER_KEYS.some((key) => key === value);
+  return (
+    MEDIA_FILTER_KEYS.some((key) => key === value) ||
+    (typeof value === "string" && tagOfFilter(value) !== null)
+  );
 }
 
-/** The heading a filter's grid carries. */
+/** The heading a filter's grid carries: a tag filter's is the tag. */
 export function mediaFilterLabel(key: MediaFilterKey): string {
-  return MEDIA_FILTERS.find((f) => f.key === key)?.label ?? "All media";
+  return tagOfFilter(key) ?? MEDIA_FILTERS.find((f) => f.key === key)?.label ?? "All media";
+}
+
+/** Whether a filter is answered by the record sweep: Missing alt text, and every tag. */
+export function isRecordFilter(key: MediaFilterKey): boolean {
+  return key === "missing-alt" || tagOfFilter(key) !== null;
+}
+
+/** Whether a record carries `tag`, compared without case, as a reader types it. */
+function hasTag(record: MediaRecord | undefined, tag: string): boolean {
+  const wanted = tag.toLowerCase();
+  return record?.tags.some((each) => each.toLowerCase() === wanted) ?? false;
 }
 
 /** A sort, by the word its menu reads. */
@@ -73,18 +136,25 @@ export function isMediaSortKey(value: unknown): value is MediaSortKey {
   return MEDIA_SORT_KEYS.some((key) => key === value);
 }
 
-/** Whether a file passes a filter. `unused` is `null` until the usage sweep has settled. */
+/** Whether a file passes a filter, on what has been answered so far. */
 export function passesFilter(
   file: LibraryMediaFile,
   filter: MediaFilterKey,
-  unused: ReadonlySet<string> | null,
+  answers: FilterAnswers,
 ): boolean {
+  const tag = tagOfFilter(filter);
+  if (tag !== null) {
+    return hasTag(answers.records.get(file.file), tag);
+  }
   switch (filter) {
     case "all": {
       return true;
     }
     case "unused": {
-      return unused !== null && unused.has(file.file);
+      return answers.unused !== null && answers.unused.has(file.file);
+    }
+    case "missing-alt": {
+      return answers.records.get(file.file)?.alt === "";
     }
     default: {
       return file.kind === filter;
@@ -93,13 +163,23 @@ export function passesFilter(
 }
 
 /**
- * Whether a file matches a search: its NAME, case-insensitively, as the field's "Search by name…"
- * says. Not its path: every path starts `public/` or `content/`, so a one-letter search for "b" or
- * "c" kept the whole library and looked broken.
+ * Whether a file matches a search, case-insensitively: its NAME, its alt text or one of its tags,
+ * as the field's "Search by name, alt text or tag" says. Not its path: every path starts `public/`
+ * or `content/`, so a one-letter search for "b" or "c" kept the whole library and looked broken.
  */
-export function matchesQuery(file: Pick<LibraryMediaFile, "name">, query: string): boolean {
+export function matchesQuery(
+  file: Pick<LibraryMediaFile, "name">,
+  query: string,
+  record?: MediaRecord,
+): boolean {
   const needle = query.trim().toLowerCase();
-  return needle === "" || file.name.toLowerCase().includes(needle);
+  return (
+    needle === "" ||
+    file.name.toLowerCase().includes(needle) ||
+    (record !== undefined &&
+      (record.alt.toLowerCase().includes(needle) ||
+        record.tags.some((tag) => tag.toLowerCase().includes(needle))))
+  );
 }
 
 /**
@@ -114,12 +194,14 @@ export function visibleMedia(
     filter: MediaFilterKey;
     query: string;
     sort: MediaSortKey;
-    unused: ReadonlySet<string> | null;
+    answers: FilterAnswers;
   },
 ): LibraryMediaFile[] {
+  const { answers } = options;
   const kept = files.filter(
     (file) =>
-      passesFilter(file, options.filter, options.unused) && matchesQuery(file, options.query),
+      passesFilter(file, options.filter, answers) &&
+      matchesQuery(file, options.query, answers.records.get(file.file)),
   );
   return kept.toSorted((a, b) => compareBy(options.sort, a, b) || a.file.localeCompare(b.file));
 }
@@ -141,21 +223,26 @@ function compareBy(sort: MediaSortKey, a: LibraryMediaFile, b: LibraryMediaFile)
 }
 
 /**
- * How many files each filter would show, before the search narrows them.
+ * How many files each fixed filter would show, before the search narrows them.
  *
- * `unused` is `null` until the sweep has settled, and the column draws no number for it: a count is
- * a claim, and "0 unused" before anyone has looked would be one nobody can stand behind.
+ * Unused is `null` until its sweep has settled, and Missing alt text until the record sweep has,
+ * and the column draws no number for either: a count is a claim, and "0 unused" before anyone has
+ * looked would be one nobody can stand behind.
  */
 export function filterCounts(
   files: readonly LibraryMediaFile[],
-  unused: ReadonlySet<string> | null,
-): Record<MediaFilterKey, number | null> {
-  const counts: Record<MediaFilterKey, number | null> = {
+  answers: FilterAnswers,
+): Record<FixedFilterKey, number | null> {
+  const { unused } = answers;
+  const counts: Record<FixedFilterKey, number | null> = {
     all: files.length,
     audio: 0,
     document: 0,
     font: 0,
     image: 0,
+    "missing-alt": answers.recordsSettled
+      ? files.filter((file) => passesFilter(file, "missing-alt", answers)).length
+      : null,
     unused: unused === null ? null : files.filter((file) => unused.has(file.file)).length,
     video: 0,
   };
@@ -163,6 +250,31 @@ export function filterCounts(
     counts[file.kind] = (counts[file.kind] ?? 0) + 1;
   }
   return counts;
+}
+
+/**
+ * Every tag the files carry, with how many files carry it, in name order. Tags differing only in
+ * case are one tag, spelled as the first file read spells it.
+ */
+export function tagCounts(
+  files: readonly LibraryMediaFile[],
+  answers: FilterAnswers,
+): { tag: string; count: number }[] {
+  const byKey = new Map<string, { tag: string; count: number }>();
+  for (const file of files) {
+    for (const tag of answers.records.get(file.file)?.tags ?? []) {
+      const key = tag.toLowerCase();
+      const known = byKey.get(key);
+      if (known === undefined) {
+        byKey.set(key, { count: 1, tag });
+      } else {
+        known.count += 1;
+      }
+    }
+  }
+  return [...byKey.values()].toSorted((a, b) =>
+    a.tag.localeCompare(b.tag, undefined, { numeric: true, sensitivity: "base" }),
+  );
 }
 
 /** The minimum tile width and the gap the grid is laid out with (`surfaces/media-library.json`). */
