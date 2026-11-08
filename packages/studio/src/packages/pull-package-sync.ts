@@ -19,7 +19,10 @@ import { notify } from "../services/notify";
 import { JXSUITE_PREFIX, applyJxsuiteUpdate, checkJxsuiteUpdate } from "./jxsuite-update";
 import type { GitStatusResult } from "../types";
 
-const PKG_PATHS = ["package.json", "bun.lock", "bun.lockb"];
+/* `package-lock.json` too: a project installed with npm commits that lockfile, and the cloud host
+   rewrites it on every install. Missing it left a superseded automated update blocking every pull:
+   package.json was discarded, the lockfile beside it was not, and the pull still conflicted. */
+const PKG_PATHS = ["package.json", "bun.lock", "bun.lockb", "package-lock.json"];
 
 /**
  * Untracked markers across backends. Every backend says `U` now — the desktop used to pass
@@ -277,11 +280,6 @@ async function recoverAfterFailedPull(cause: unknown): Promise<void> {
   await discardPullAndSync(plan);
 }
 
-/**
- * Snapshot the package files (aligned to PKG_PATHS). Lists the root once and reads only the files
- * that exist, so absent lockfiles (cloud projects don't commit one) never trigger a console 404
- * from a blind read. Listing failure falls back to probing all paths.
- */
 /**
  * Snapshot the package files (aligned to PKG_PATHS). Lists the root once and reads only the files
  * that exist, so absent lockfiles (cloud projects don't commit one) never trigger a console 404
