@@ -15,7 +15,7 @@ import { releaseElementStyles, renderNode, runScoped } from "@jxsuite/runtime";
 import { isNumber, isString } from "@jxsuite/schema/guards";
 import { getNodeAtPath } from "../state";
 import { makeStamper } from "./iframe-render";
-import { prepareForEditMode, sampleRowAt } from "../utils/edit-display";
+import { entryRootsOf, prepareForEditMode, sampleRowAt } from "../utils/edit-display";
 import { stripEventHandlers } from "../utils/strip-events";
 import type { IframeRenderCtx } from "./iframe-render";
 import type { JxPath } from "../state";
@@ -50,7 +50,11 @@ export function renderSubtreeIframe(
   // Inside a repeater, the template is drawn with the sample row the full render used.
   const def = isString(node)
     ? node
-    : prepareForEditMode(stripEventHandlers(node), sampleRowAt(shadowDoc, docPath));
+    : prepareForEditMode(
+        stripEventHandlers(node),
+        sampleRowAt(shadowDoc, docPath),
+        entryRootsOf(shadowDoc),
+      );
   const { result: rendered, stop } = runScoped(() =>
     renderNode(def, ctx.defs, {
       _path: docPathToRenderPath(docPath, ctx),

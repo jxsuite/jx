@@ -140,7 +140,7 @@ The canvas stylesheet and the one `jx build` writes are produced by the same bui
 
 The page on the canvas also knows where it is. `$page` and `$site` are filled in the way a build fills them: the page's URL, its title, its language and writing direction from the folder it sits in, and your site's name and languages. A collection entry gets the URL and language of the page that publishes it. So `${$page.locale}` formats a date in the page's own language on the canvas too, in every view.
 
-In Edit and Design, text your page draws from data shows the binding itself, such as `❪ item.title ❫`, because that is what you edit. A component is different: it is handed real values. A component inside a repeater is drawn with the list's first item, so an exhibition card shows the first exhibition's title, dates and gallery rather than failing on a date it cannot read. The list's data is loaded before the page draws.
+In Edit and Design, text your page draws from data shows the binding itself, such as `❪ item.title ❫`, because that is what you edit. Text a [collection's page](/docs/studio/projects/browse#design-a-collections-page) draws from its entry is the exception: it shows the entry's own words, outlined with a badge naming the field. A component is different: it is handed real values. A component inside a repeater is drawn with the list's first item, so an exhibition card shows the first exhibition's title, dates and gallery rather than failing on a date it cannot read. The list's data is loaded before the page draws.
 
 Data a layout reads from a content type, such as a sidebar's navigation, is loaded the same way, and a package script a component names with `npm:` is loaded from your project's installed packages.
 

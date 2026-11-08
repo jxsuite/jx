@@ -17,6 +17,7 @@
  */
 import { flush, installMockPlatform, resetStudioState, resetWorkspaceWithTab } from "./harness";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import type { ParamLabels } from "../src/page-params";
 import type { Tab } from "../src/tabs/tab";
 
 /** Every `loadParamValues` call this test provoked, by document path. */
@@ -32,8 +33,12 @@ const CAP = 40;
 
 const realParams = await import("../src/page-params");
 
+/** What the mocked loader says each value is called; empty unless a test names some. */
+let labels: ParamLabels = {};
+
 void mock.module("../src/page-params", () => ({
   ...realParams,
+  loadParamLabels: () => Promise.resolve(labels),
   loadParamValues: (documentPath: string | null) => {
     loadCalls.push(String(documentPath));
     if (loadCalls.length > CAP) {
@@ -82,6 +87,7 @@ function pickers(host: HTMLElement): { label: string; items: string[] }[] {
 }
 
 beforeEach(() => {
+  labels = {};
   loadCalls.length = 0;
   closeAllTabs();
   resetStudioState({ isSiteProject: true });
@@ -182,6 +188,19 @@ describe("two panes on dynamic routes", () => {
     // Neither tab carries a param the other document declares — the specific wrong state.
     expect(primary.session.ui.previewParams.id).toBeUndefined();
     expect(side.session.ui.previewParams.sku).toBeUndefined();
+  });
+
+  test("a value with a title is offered by it, and one without by itself", async () => {
+    labels = { sku: { alpha: "Alpha anvil" } };
+    resetWorkspaceWithTab(
+      { children: [], tagName: "div" },
+      { documentPath: "pages/products/[sku].json", id: "titled" },
+    );
+    paneContext.mount(primaryHost, makeCtx());
+    await flush(8);
+    paneContext.render();
+    await flush(4);
+    expect(pickers(primaryHost)).toEqual([{ items: ["Alpha anvil", "beta"], label: "sku" }]);
   });
 
   test("one pane is unchanged: a single dynamic page still loads exactly once", async () => {

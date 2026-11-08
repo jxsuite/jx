@@ -3,6 +3,7 @@ title: "The Content workspace"
 description: "Browse your pages and every content collection, see where each collection is published, and write entries on the canvas inside their template."
 spec:
   - studio.md#9.1.2
+  - studio.md#22.4
   - studio.md#22.5
 code:
   - packages/studio/src/browse/library-pane.ts
@@ -21,6 +22,8 @@ code:
   - packages/studio/src/grid/grid-reveal.ts
   - packages/studio/src/panels/collections-panel.ts
   - packages/studio/src/surfaces/collections-panel.ts
+  - packages/studio/src/content/entry-preview.ts
+  - packages/studio/src/surfaces/entry-preview.ts
 ---
 
 # The Content workspace
@@ -72,6 +75,16 @@ Above a collection's list, one line says where its entries appear on your site:
 - **Entries have no page of their own**: no page in `pages/` expands over this collection. A page counts when its `$paths` names the collection (`contentType`), or when it lists its own URLs (`values`) and reads one entry of the collection by the route parameter, as a taxonomy page such as `pages/author/[slug].json` does. **Add one** writes `pages/<collection>/[slug].json`, the same page **Add new** writes when you create a collection with **Give each item its own page** on, bound to the collection's title, image and body.
 
 Studio reads this from your pages rather than storing it: the template page is the page whose `$paths` names the collection, so the line can never disagree with what the site build publishes.
+
+### Design a collection's page
+
+The template page is one page drawn once for every entry, so Studio draws it with a real one. Open it (**Design the post page**, or **Post page** under the collection in the Site panel) and the canvas shows a post: its title, its date and its body, where the page places them. A bar above the page says which:
+
+> Previewing entry · **Designing for Slowness** ▾ · ‹ ›
+
+Pick another entry from the list, which names each by its title, or step through them with the arrows. The page is redrawn with that entry, and the choice is the same one the **resolving with** popover on the pane's context bar holds, so the two always agree.
+
+Every element that shows a field of the entry is outlined, with a badge naming the field: **title**, **date · tag**, **body**. Those words belong to the entry rather than the page, so you cannot type into them on the canvas; to change which field an element shows, select it and change its binding in the Inspector, and to change the words themselves, open the entry. A collection with no entries yet says so in the bar, and its page shows each binding instead, such as `❪ state.entry.data.title ❫`.
 
 ## Four views
 

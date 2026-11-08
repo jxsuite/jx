@@ -9,6 +9,7 @@ import {
   documentUrlPattern,
   dynamicRouteParams,
   invalidateParamValues,
+  loadParamLabels,
   loadParamValues,
   pagePathsDef,
   paramBoundStateKeys,
@@ -221,6 +222,51 @@ describe("loadParamValues", () => {
 
   test("unrecognized shapes resolve to no params", async () => {
     expect(await loadParamValues("p11", {})).toEqual({});
+  });
+});
+
+describe("loadParamLabels", () => {
+  test("a content type's values are called by their entries' titles", async () => {
+    let reads = 0;
+    installMockPlatform({
+      resolveClass: async () => {
+        reads += 1;
+        return [
+          { data: { title: "  Designing for Slowness " }, id: "designing" },
+          { data: { Name: "Espresso Tiramisu" }, id: "tiramisu" },
+          { data: { title: "" }, id: "untitled" },
+          { data: { title: "Duplicate" }, id: "designing" },
+          { id: "bare" },
+          { data: { title: "No id" } },
+        ];
+      },
+    });
+    const def = { contentType: "posts" };
+    expect(await loadParamLabels("l1", def)).toEqual({
+      slug: { designing: "Designing for Slowness", tiramisu: "Espresso Tiramisu" },
+    });
+    // The values and the labels are one read.
+    expect(await loadParamValues("l1", def)).toEqual({
+      slug: ["designing", "tiramisu", "untitled", "bare"],
+    });
+    expect(reads).toBe(1);
+  });
+
+  test("a value read from another field is still called by its entry's title", async () => {
+    installMockPlatform({
+      resolveClass: async () => [{ data: { sku: "a-1", title: "Anvil" }, id: "anvil" }],
+    });
+    expect(
+      await loadParamLabels("l2", { contentType: "product", field: "sku", param: "sku" }),
+    ).toEqual({ sku: { "a-1": "Anvil" } });
+  });
+
+  test("an unreadable collection, and every other shape, has no labels", async () => {
+    installMockPlatform({ resolveClass: async () => ({ error: "nope" }) });
+    expect(await loadParamLabels("l3", { contentType: "posts" })).toEqual({ slug: {} });
+    expect(await loadParamLabels("l4", { param: "lang", values: ["en", "fr"] })).toEqual({});
+    expect(await loadParamLabels("l5", [{ id: "x" }])).toEqual({});
+    expect(await loadParamLabels("l6", null)).toEqual({});
   });
 });
 

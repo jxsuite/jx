@@ -442,6 +442,148 @@ export function sampleRowAt(doc: JxDocumentValue, path: readonly (string | numbe
   return row;
 }
 
+// ─── Entry-bound text ────────────────────────────────────────────────────────
+
+/**
+ * The attribute edit mode stamps on an element whose text or children it draws from a content
+ * entry: the fields it shows, joined ` · `. The canvas's edit stylesheet draws it as a badge over
+ * the element (`iframe-render.ts`), and the element is closed to the caret, because the words are
+ * the entry's and not the page's.
+ */
+export const BOUND_FIELD_ATTR = "data-jx-bound-field";
+
+/**
+ * The state entries whose fields edit mode draws live: every `ContentEntry` a document declares
+ * (studio.md §4.1). A collection's page names the entry it is drawing through one, so its text is
+ * the entry previewed rather than a row of `❪ state.entry.data.title ❫` labels.
+ */
+export function entryRootsOf(doc: JxDocumentValue | undefined): ReadonlySet<string> {
+  const roots = new Set<string>();
+  const state = isNodeObject(doc) ? doc.state : undefined;
+  if (isDocumentContainer(state) && !Array.isArray(state)) {
+    for (const [key, value] of Object.entries(state)) {
+      if (isNodeObject(value) && value.$prototype === "ContentEntry") {
+        roots.add(key);
+      }
+    }
+  }
+  return roots;
+}
+
+/** `state.<root>` followed by plain member steps, the shape an entry field is placed in. */
+const ENTRY_PATH_RE = /^state\.([\w$]+)((?:\.[\w$]+)*)$/u;
+
+/** An empty fallback (`?? []`, `?? ""`) is plumbing: the binding reads as the field it guards. */
+const EMPTY_FALLBACK_RE = /\s*\?\?\s*(?:\[\s*\]|""|'')\s*$/u;
+
+/**
+ * The field an expression reads from one of `roots`, by the name the author placed: `title` for
+ * `state.entry.data.title`, `body` for `state.entry.$children`. Null for anything else.
+ */
+function entryFieldOf(expr: string, roots: ReadonlySet<string>): string | null {
+  const match = ENTRY_PATH_RE.exec(expr.replace(EMPTY_FALLBACK_RE, "").trim());
+  if (!match || !roots.has(match[1]!)) {
+    return null;
+  }
+  const [first, second] = match[2]!.split(".").filter(Boolean);
+  if (first === "data" && second) {
+    return second;
+  }
+  return first === "$children" ? "body" : (first ?? match[1]!);
+}
+
+/**
+ * The fields a template draws from an entry, in order, or null when it draws nothing from one or
+ * when any of its expressions reads something else (that text stays its binding, §4.1).
+ */
+export function entryBoundFields(template: string, roots: ReadonlySet<string>): string[] | null {
+  if (roots.size === 0) {
+    return null;
+  }
+  const parts = templateExpressions(template);
+  if (parts.length === 0) {
+    return null;
+  }
+  const fields: string[] = [];
+  for (const { expr } of parts) {
+    const field = entryFieldOf(expr, roots);
+    if (field === null) {
+      return null;
+    }
+    if (!fields.includes(field)) {
+      fields.push(field);
+    }
+  }
+  return fields;
+}
+
+/**
+ * An entry-bound text template as edit mode renders it: each expression evaluated live, and read as
+ * its binding label (`❪ state.entry.data.title ❫`) when there is no entry to read it from yet, so a
+ * page with no entry chosen still says what goes where.
+ */
+function liveEntryText(template: string): string {
+  let out = "";
+  let last = 0;
+  for (const { start, end, expr } of templateExpressions(template)) {
+    const label = jsLiteral(templateToEditDisplay(`\${${expr}}`));
+    out += template.slice(last, start);
+    out += `\${(() => { try { return (${expr}) ?? ${label}; } catch { return ${label}; } })()}`;
+    last = end + 1;
+  }
+  return out + template.slice(last);
+}
+
+/** A `$ref` text binding as the template it means, or null for a pointer a template cannot reach. */
+function refTemplate(ref: string): string | null {
+  const pointer = ref.startsWith("#/") ? ref.slice(2) : ref;
+  const segments = pointer.split("/");
+  return segments[0] === "state" && segments.every((seg) => /^[\w$]+$/u.test(seg))
+    ? `\${${segments.join(".")}}`
+    : null;
+}
+
+/**
+ * The entry fields a node's text or computed children draw, with the value edit mode renders for
+ * them, or null when they draw something else.
+ */
+function entryBinding(
+  node: JxMutableNode,
+  roots: ReadonlySet<string>,
+): { key: "textContent" | "children"; value: string; fields: string[] } | null {
+  const { textContent, children } = node;
+  const text = isString(textContent)
+    ? textContent
+    : isRef(textContent)
+      ? refTemplate(textContent.$ref)
+      : null;
+  if (text !== null && text.includes("${")) {
+    const fields = entryBoundFields(text, roots);
+    return fields ? { fields, key: "textContent", value: liveEntryText(text) } : null;
+  }
+  if (isTemplateString(children)) {
+    const fields = entryBoundFields(children, roots);
+    return fields ? { fields, key: "children", value: children } : null;
+  }
+  return null;
+}
+
+/** The entry fields a node's text or computed children draw, or null (see {@link entryRootsOf}). */
+export function entryFieldsOfNode(
+  node: JxDocumentValue | undefined,
+  roots: ReadonlySet<string>,
+): string[] | null {
+  return isNodeObject(node) ? (entryBinding(node, roots)?.fields ?? null) : null;
+}
+
+/** Whether a prepared node already carries its entry binding: the walk runs twice over a layout. */
+function hasEntryBinding(node: JxMutableNode): boolean {
+  const { attributes } = node;
+  return isDocumentContainer(attributes) && !Array.isArray(attributes)
+    ? isString(attributes[BOUND_FIELD_ATTR])
+    : false;
+}
+
 /**
  * The text a `$ref` binding shows in edit mode: its pointer, with the `#/state/` prefix dropped.
  *
@@ -462,18 +604,39 @@ function refDisplayLabel(ref: string): string {
  * @param {JxMutableNode} node
  * @returns {JxMutableNode}
  */
-export function prepareForEditMode(node: JxMutableNode, row?: SampleRow): JxMutableNode;
-export function prepareForEditMode(node: JxDocumentValue, row?: SampleRow): JxDocumentValue;
+export function prepareForEditMode(
+  node: JxMutableNode,
+  row?: SampleRow,
+  entryRoots?: ReadonlySet<string>,
+): JxMutableNode;
+export function prepareForEditMode(
+  node: JxDocumentValue,
+  row?: SampleRow,
+  entryRoots?: ReadonlySet<string>,
+): JxDocumentValue;
 export function prepareForEditMode(
   node: JxDocumentValue | undefined,
   row?: SampleRow,
+  entryRoots?: ReadonlySet<string>,
 ): JxDocumentValue | undefined;
 export function prepareForEditMode(
   node: JxDocumentValue | undefined,
   row: SampleRow = null,
+  entryRoots: ReadonlySet<string> = entryRootsOf(node),
 ): JxDocumentValue | undefined {
-  return prepareNode(node, row);
+  /* Held for the walk rather than threaded through every recursive call: the walk is synchronous,
+     and the outer value is restored so a nested call cannot leak its roots into its caller's. */
+  const outer = _entryRoots;
+  _entryRoots = entryRoots;
+  try {
+    return prepareNode(node, row);
+  } finally {
+    _entryRoots = outer;
+  }
 }
+
+/** The entry roots of the walk in progress ({@link entryRootsOf}). */
+let _entryRoots: ReadonlySet<string> = new Set();
 
 /** {@link prepareForEditMode} for one value, inside the sample `row` of its enclosing repeater. */
 function prepareNode(node: JxMutableNode, row: SampleRow): JxMutableNode;
@@ -504,6 +667,10 @@ function prepareNode(
 
   const out: RebuiltNode = {};
   let needsMediaPlaceholder = false;
+  /* Text or computed children drawn from a content entry render live (§4.1). A node already
+     carrying the mark was prepared once: a page inside a layout is walked again as the merge. */
+  const entryBound = hasEntryBinding(obj);
+  const entry = entryBound ? null : entryBinding(obj, _entryRoots);
   const isMediaElement = isString(obj.tagName) && mediaTags.has(obj.tagName);
 
   // Check if this media element lacks a resolvable src (top-level or in attributes)
@@ -560,6 +727,8 @@ function prepareNode(
         out.children = [prepareNode(v, row)];
       } else if (!isTemplateString(v)) {
         out.children = prepareNode(v, row);
+      } else if (entryBound || entry?.key === "children") {
+        out.children = v;
       }
     } else if (k === "cases" && obj.$switch && isDocumentContainer(v)) {
       // Replace $switch cases with a placeholder showing the first case or a label
@@ -624,6 +793,10 @@ function prepareNode(
       /* Not a render input any more: `cases` is replaced by the first case above, so a live
          expression would hand the runtime a switch with nothing to choose from. */
       out[k] = templateToEditDisplay(v);
+    } else if (k === "textContent" && entry?.key === "textContent") {
+      out[k] = entry.value;
+    } else if (k === "textContent" && entryBound) {
+      out[k] = v;
     } else if (k === "textContent" && isString(v) && v.includes("${")) {
       // The author's text: shown as its binding, so editing it in place edits the template.
       out[k] = templateToEditDisplay(v);
@@ -649,12 +822,20 @@ function prepareNode(
   /* Computed children (spec.md §8.4) are shown as their binding, like text is, but they are not
      text: the words here are a label of what the page draws, and a caret placed in them would
      commit that label as the element's `textContent`. So the label is closed to the caret. */
-  if (isTemplateString(obj.children)) {
+  if (isTemplateString(obj.children) && !entryBound && entry?.key !== "children") {
     out.textContent = computedChildrenDisplay(obj.children);
     const { attributes } = out;
     out.attributes = isDocumentContainer(attributes)
       ? { ...attributes, contenteditable: "false" }
       : { contenteditable: "false" };
+  }
+
+  /* An entry's words are not the page's: closed to the caret, and badged with the fields they
+     show, so the author can see what each element draws from the entry (studio.md §4.1). */
+  if (entry) {
+    const { attributes } = out;
+    const mark = { [BOUND_FIELD_ATTR]: entry.fields.join(" \u00B7 "), contenteditable: "false" };
+    out.attributes = isDocumentContainer(attributes) ? { ...attributes, ...mark } : mark;
   }
 
   // Mark empty elements with placeholder classes for design-mode visibility

@@ -25,6 +25,9 @@ import {
   EMPTY_PLACEHOLDER_CLASSES,
   isRowBound,
   templateToEditDisplay,
+  BOUND_FIELD_ATTR,
+  entryFieldsOfNode,
+  entryRootsOf,
 } from "../utils/edit-display";
 import type { IframeRenderCtx } from "./iframe-render";
 import type { JxDocOp } from "../tabs/patch-ops";
@@ -108,6 +111,13 @@ function applyOpToDom(
     case "set-key": {
       if (op.key === "style") {
         patchStyle(doc, op.path, container, ctx);
+        return;
+      }
+      /* Text an entry draws is rendered live and badged (§4.1), which a text write cannot do, and
+         neither can it take the badge off text that stopped drawing from the entry: either way the
+         node is drawn again, as the full render would draw it. */
+      if (op.key === "textContent" && drawsEntryText(doc, op.path, container)) {
+        replaceSubtree(doc, op.path, container, requireCtx(ctx));
         return;
       }
       if (op.key === "textContent") {
@@ -352,6 +362,18 @@ function patchText(doc: JxMutableNode, path: (string | number)[], container: HTM
   const node = getNodeAtPath(doc, path);
   el.textContent = textDisplayValue(node);
   syncPlaceholderClass(el, node);
+}
+
+/** Whether a node's text is, or was until this op, drawn from a content entry. */
+function drawsEntryText(
+  doc: JxMutableNode,
+  path: (string | number)[],
+  container: HTMLElement,
+): boolean {
+  if (findElement(container, path)?.hasAttribute(BOUND_FIELD_ATTR)) {
+    return true;
+  }
+  return entryFieldsOfNode(getNodeAtPath(doc, path), entryRootsOf(doc)) !== null;
 }
 
 /** Locate the rendered element for a document path via its stamped `data-jx-path` attribute. */

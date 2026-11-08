@@ -214,7 +214,7 @@ The middle of the window is the **pane grid**: one editor pane, or two side by s
 
 A Diff pane compares one file against your last commit and carries its own change stepper, so two panes can be reviewing two different files at once. See **[Source control](/docs/studio/publish/source-control#read-a-change)**.
 
-A Canvas pane renders the open file live. Panning, zooming, selection and direct manipulation are covered in **[The canvas](/docs/studio/interface/canvas)**. The stage shows the page and nothing above it: a page's title, URL, layout, frontmatter and the way in to Search appearance are on the Inspector's **Page** tab, in every view. The one band Edit draws over a document is the writing banner over a collection entry.
+A Canvas pane renders the open file live. Panning, zooming, selection and direct manipulation are covered in **[The canvas](/docs/studio/interface/canvas)**. The stage shows the page and nothing above it: a page's title, URL, layout, frontmatter and the way in to Search appearance are on the Inspector's **Page** tab, in every view. Edit draws a band over only two documents: the writing banner over a collection entry, and the **Previewing entry** bar over a [collection's page](/docs/studio/projects/browse#design-a-collections-page).
 
 ## The jump bar
 

@@ -183,6 +183,10 @@
     "& [part=\"preview-stage\"] [part=\"panel-canvas\"]": {
       "height": "100%"
     },
+    "& [part=\"entry-preview-host\"]": {
+      "$description": "A row across the pane over Edit's column, like the writing banner's; the bar inside centres itself. It never shrinks.",
+      "flexShrink": "0"
+    },
     "& [part=\"writing-banner\"]": {
       "$description": "A band across the pane at 1:1, so its width is the pane's rather than the breakpoint's and the page scrolls under it. It never shrinks: it is one line.",
       "flexShrink": "0"
@@ -284,7 +288,7 @@
           },
           "children": [
             {
-              "$description": "What stands over the frame: the writing-mode banner above Edit's scrolling column for a collection entry (whose fields are the Inspector's), the Compare bar over a comparison, or the Project Styles bar over the catalogue. Each is an empty host — the surface that fills it is mounted by the module that owns it.",
+              "$description": "What stands over the frame: the writing-mode banner above Edit's scrolling column for a collection entry (whose fields are the Inspector's), the entry-preview bar above a collection's page, the Compare bar over a comparison, or the Project Styles bar over the catalogue. Each is an empty host — the surface that fills it is mounted by the module that owns it.",
               "tagName": "div",
               "attributes": {
                 "part": "lead-slot"
@@ -301,6 +305,13 @@
                   "tagName": "div",
                   "attributes": {
                     "part": "writing-banner"
+                  }
+                },
+                "entry": {
+                  "$description": "The entry-preview bar over a collection's page in Edit (studio.md §22.4): an empty host the bar surface is mounted into by `content/entry-preview.ts`. `entry-preview-host`, not `entry-preview`: the bar's own root is `[part=\"entry-preview\"]`.",
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "entry-preview-host"
                   }
                 },
                 "toolbar": {

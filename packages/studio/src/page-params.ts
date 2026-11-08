@@ -14,6 +14,7 @@ import { documentUrlPattern } from "@jxsuite/site/routes";
 import { getPlatform } from "./platform";
 import { loadExtensions } from "./format/format-host";
 import { isJsonObject, isRef, isString } from "@jxsuite/schema/guards";
+import { titleFieldOf } from "./content/entry-title";
 import type {
   JsonObject,
   JsonValue,
@@ -25,6 +26,15 @@ import type {
 
 /** Param name → candidate values, in `$paths` declaration order. */
 export type ParamValues = Record<string, string[]>;
+
+/** Param name → value → what the value is called: an entry's title, where it has one. */
+export type ParamLabels = Record<string, Record<string, string>>;
+
+/** A `$paths` block's candidate values, with the names they go by. */
+interface ParamResolution {
+  values: ParamValues;
+  labels: ParamLabels;
+}
 
 /** One entry of a resolved ContentCollection, as `/__jx_resolve__` serializes it to JSON. */
 interface ResolvedContentEntry {
@@ -67,7 +77,7 @@ export function pagePathsDef(doc: {
   return fromDoc ?? fromFrontmatter ?? null;
 }
 
-const valueCache = new Map<string, Promise<ParamValues>>();
+const valueCache = new Map<string, Promise<ParamResolution>>();
 
 /** Drop all cached enumerations (e.g. after content files change). */
 export function invalidateParamValues() {
@@ -86,17 +96,37 @@ export function invalidateParamValues() {
 export function loadParamValues(
   documentPath: string | null | undefined,
   pathsDef: JxPathsDef | null,
-) {
+): Promise<ParamValues> {
+  return loadParams(documentPath, pathsDef).then(({ values }) => values);
+}
+
+/**
+ * What each candidate value is called, for a `$paths` block that enumerates a content collection:
+ * the entry's title (`titleFieldOf`), so a picker offers "Designing for Slowness" rather than
+ * `designing-for-slowness`. A value with no title, and every other shape, is absent, and is called
+ * by the value itself. Shares {@link loadParamValues}' one read and its cache.
+ */
+export function loadParamLabels(
+  documentPath: string | null | undefined,
+  pathsDef: JxPathsDef | null,
+): Promise<ParamLabels> {
+  return loadParams(documentPath, pathsDef).then(({ labels }) => labels);
+}
+
+function loadParams(
+  documentPath: string | null | undefined,
+  pathsDef: JxPathsDef | null,
+): Promise<ParamResolution> {
   if (!pathsDef) {
-    return Promise.resolve<ParamValues>({});
+    return Promise.resolve({ labels: {}, values: {} });
   }
   const key = `${documentPath ?? ""}::${JSON.stringify(pathsDef)}`;
   let pending = valueCache.get(key);
   if (!pending) {
-    pending = resolveParamValues(pathsDef).catch((error): ParamValues => {
+    pending = resolveParamValues(pathsDef).catch((error): ParamResolution => {
       valueCache.delete(key);
       console.warn("page-params: failed to enumerate $paths values:", error);
-      return {};
+      return { labels: {}, values: {} };
     });
     valueCache.set(key, pending);
   }
@@ -109,7 +139,7 @@ export function loadParamValues(
  * @param {JxPathsDef} pathsDef
  * @returns {Promise<ParamValues>}
  */
-async function resolveParamValues(pathsDef: JxPathsDef): Promise<ParamValues> {
+async function resolveParamValues(pathsDef: JxPathsDef): Promise<ParamResolution> {
   // Legacy: array of param objects — group values per param key
   if (Array.isArray(pathsDef)) {
     const out: ParamValues = {};
@@ -118,7 +148,7 @@ async function resolveParamValues(pathsDef: JxPathsDef): Promise<ParamValues> {
         pushValue(out, param, value);
       }
     }
-    return out;
+    return { labels: {}, values: out };
   }
 
   // Content type-based: { contentType: "blog", param: "slug", field: "id" } — an open extension
@@ -130,8 +160,9 @@ async function resolveParamValues(pathsDef: JxPathsDef): Promise<ParamValues> {
     const field = pathsDef.field ?? "id";
     const resolved = await resolveContentCollection(pathsDef.contentType);
     const out = { [param]: [] } satisfies ParamValues;
+    const labels: Record<string, string> = {};
     if (!Array.isArray(resolved)) {
-      return out;
+      return { labels: { [param]: labels }, values: out };
     }
     /* SAFETY: a resolved ContentCollection is its entries array, each `{ id, data }` (the parser's
        ContentLoaderEntry after the JSON hop). Off-shape entries stay harmless: a primitive reads as
@@ -139,9 +170,14 @@ async function resolveParamValues(pathsDef: JxPathsDef): Promise<ParamValues> {
        degrades to an empty result. */
     const entries = resolved as ResolvedContentEntry[];
     for (const entry of entries) {
-      pushValue(out, param, field === "id" ? entry.id : (entry.data?.[field] ?? entry.id));
+      const value = field === "id" ? entry.id : (entry.data?.[field] ?? entry.id);
+      pushValue(out, param, value);
+      const title = entryTitle(entry.data);
+      if (title && value !== null && value !== undefined && value !== "") {
+        labels[String(value)] ??= title;
+      }
     }
-    return out;
+    return { labels: { [param]: labels }, values: out };
   }
 
   // Explicit values: { values: ["en", "fr"], param: "lang" }
@@ -151,7 +187,7 @@ async function resolveParamValues(pathsDef: JxPathsDef): Promise<ParamValues> {
     for (const value of pathsDef.values) {
       pushValue(out, param, value);
     }
-    return out;
+    return { labels: {}, values: out };
   }
 
   // Data file ref: { "$ref": "./data/products.json", param: "id", field: "sku" } — `$ref` also
@@ -164,15 +200,25 @@ async function resolveParamValues(pathsDef: JxPathsDef): Promise<ParamValues> {
     const data = JSON.parse(content) as JsonValue;
     const out = { [param]: [] } satisfies ParamValues;
     if (!Array.isArray(data)) {
-      return out;
+      return { labels: {}, values: out };
     }
     for (const item of data) {
       pushValue(out, param, isJsonObject(item) ? (item[field] ?? item.id ?? item) : item);
     }
-    return out;
+    return { labels: {}, values: out };
   }
 
-  return {};
+  return { labels: {}, values: {} };
+}
+
+/** An entry's title, by the field Content lists it by, or null when it has none. */
+function entryTitle(data: JsonObject | undefined): string | null {
+  if (!data) {
+    return null;
+  }
+  const key = titleFieldOf(null, data);
+  const title = key === null ? undefined : data[key];
+  return isString(title) && title.trim() ? title.trim() : null;
 }
 
 /**

@@ -16,7 +16,8 @@
 
 import { isNonNullObject } from "@jxsuite/schema/guards";
 import { parseCsv } from "../grid/csv-codec";
-import { fieldText, titleFieldOf } from "./entry-summaries";
+import { fieldText } from "./entry-summaries";
+import { titleFieldOf } from "./entry-title";
 import type { ContentTypeSchema, JsonValue } from "@jxsuite/schema/types";
 
 /** One record of a file-backed collection. */

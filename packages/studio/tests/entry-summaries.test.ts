@@ -23,7 +23,6 @@ const {
   entryThumb,
   entryDay,
   fieldText,
-  titleFieldOf,
   entryStem,
   imageFieldPath,
   invalidateEntrySummaries,
@@ -33,6 +32,7 @@ const {
   peekEntrySummaries,
   summarize,
 } = await import("../src/content/entry-summaries");
+const { titleFieldOf } = await import("../src/content/entry-title");
 
 const POSTS = {
   format: "markdown",

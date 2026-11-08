@@ -678,3 +678,69 @@ describe("applyIframePatch — echoed ops", () => {
     expect(container.querySelector("em")?.textContent).toBe("new");
   });
 });
+
+describe("applyIframePatch — text an entry draws", () => {
+  /** A collection's page: a ContentEntry in state, and two text children. */
+  const ENTRY_PAGE: JxMutableNode = {
+    children: [
+      { tagName: "h1", textContent: "Draft" },
+      { tagName: "p", textContent: "Plain" },
+    ],
+    state: { entry: { $prototype: "ContentEntry", contentType: "posts" } },
+    tagName: "article",
+  };
+
+  test("text set to an entry field is drawn again, live and badged", () => {
+    const { container, shadow } = mount(ENTRY_PAGE);
+    applyIframePatch(
+      shadow,
+      [
+        {
+          key: "textContent",
+          op: "set-key",
+          path: ["children", 0],
+          value: "${state.entry.data.title}",
+        },
+      ],
+      container,
+      CTX,
+    );
+    const h1 = elAt(container, ["children", 0]);
+    expect(h1.dataset.jxBoundField).toBe("title");
+    expect(h1.getAttribute("contenteditable")).toBe("false");
+    // No entry resolves in this scope, so the field reads as its binding.
+    expect(h1.textContent).toBe("❪ state.entry.data.title ❫");
+  });
+
+  test("text that stops drawing from the entry loses its badge", () => {
+    const { container, shadow } = mount(ENTRY_PAGE);
+    elAt(container, ["children", 1]).dataset.jxBoundField = "excerpt";
+    applyIframePatch(
+      shadow,
+      [{ key: "textContent", op: "set-key", path: ["children", 1], value: "Written by hand" }],
+      container,
+      CTX,
+    );
+    const p = elAt(container, ["children", 1]);
+    expect(p.dataset.jxBoundField).toBeUndefined();
+    expect(p.textContent).toBe("Written by hand");
+  });
+
+  test("without a render context the redraw cannot happen, and says so", () => {
+    const { container, shadow } = mount(ENTRY_PAGE);
+    expect(() =>
+      applyIframePatch(
+        shadow,
+        [
+          {
+            key: "textContent",
+            op: "set-key",
+            path: ["children", 0],
+            value: "${state.entry.data.title}",
+          },
+        ],
+        container,
+      ),
+    ).toThrow("iframe-patch-no-render-ctx");
+  });
+});

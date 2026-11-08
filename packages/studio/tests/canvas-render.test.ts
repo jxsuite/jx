@@ -2761,6 +2761,38 @@ describe("what leads Edit's frame", () => {
     expect(stageEl().style.flexDirection).toBe("column");
   });
 
+  test("a collection's page gets the entry-preview bar above the scroller, and only in Edit", async () => {
+    resetStudioState({
+      isSiteProject: true,
+      projectConfig: { content: { posts: { format: "markdown", source: "./content/posts" } } },
+    });
+    const tab = openSyncedTab(
+      { $paths: { contentType: "posts", param: "slug" }, children: [], tagName: "article" },
+      { documentPath: "pages/[slug].json" },
+    );
+    tab.session.ui.previewParams = {};
+    setMode("edit");
+    renderCanvas();
+    await flush();
+
+    const order = [
+      ...stageEl().querySelectorAll('[part="entry-preview-host"], [part="edit-canvas"]'),
+    ].map((el) => el.getAttribute("part"));
+    expect(order).toEqual(["entry-preview-host", "edit-canvas"]);
+    expect(stageEl().querySelector('[part="writing-banner"]')).toBeNull();
+    expect(stageEl().style.flexDirection).toBe("column");
+    await flush(8);
+    expect(stageEl().querySelector('[part="entry-preview"]')?.textContent).toContain(
+      "Previewing entry",
+    );
+
+    setMode("design");
+    renderCanvas();
+    await flush();
+    expect(stageEl().querySelector('[part="entry-preview-host"]')).toBeNull();
+    expect(stageEl().style.flexDirection).toBe("");
+  });
+
   test("Preview, Source and Grid draw no band over an entry — they are not writing views", async () => {
     openEntryTab();
     for (const mode of ["preview", "source", "grid"]) {
@@ -2949,6 +2981,30 @@ describe("a derived pane's stage", () => {
 
     expect(stageEl().querySelector('[part="writing-banner"]')).not.toBeNull();
     expect(lensWrap.querySelector('[part="writing-banner"]')).toBeNull();
+    lensWrap.remove();
+  });
+
+  test("draws no entry-preview bar, while the pane that OWNS the collection's page draws one", async () => {
+    /* The bar writes the tab's route parameter, which belongs to the pane that owns the tab. Both
+       sides in EDIT, the one mode that draws the bar, so the lens gate is what is asked. */
+    installMockPlatform();
+    resetStudioState({
+      isSiteProject: true,
+      projectConfig: { content: { posts: { format: "markdown", source: "./content/posts" } } },
+    });
+    openSyncedTab(
+      { $paths: { contentType: "posts", param: "slug" }, children: [], tagName: "article" },
+      { documentPath: "pages/[slug].json" },
+    );
+    setMode("edit");
+    const lensWrap = standUpLens(lensRecord({ mode: "edit" }));
+
+    renderCanvas(PRIMARY_PANE);
+    renderCanvas(SECONDARY_PANE);
+    await flush();
+
+    expect(stageEl().querySelector('[part="entry-preview-host"]')).not.toBeNull();
+    expect(lensWrap.querySelector('[part="entry-preview-host"]')).toBeNull();
     lensWrap.remove();
   });
 

@@ -28,6 +28,7 @@ import { previewFileSrc } from "../files/media-paths";
 import { holdStatus } from "./hold-state";
 import { entryCollection } from "./entry-model";
 import { PAGES_COLLECTION, collectionKeyOfPath } from "./content-collections";
+import { titleFieldOf } from "./entry-title";
 import type { EntryFields } from "./entry-fields";
 import type { ContentTypeSchema, ContentTypeSchemaField } from "@jxsuite/schema/types";
 
@@ -51,34 +52,6 @@ export interface EntrySummary {
 
 /** An entry's declared fields as list text, keyed by field name. */
 export type EntryFieldTexts = Readonly<Record<string, string>>;
-
-/** Field names that mean "what this entry is called", in the order they are preferred. */
-const TITLE_FIELD_NAMES = ["title", "name", "label", "heading"];
-
-/**
- * The field an entry is called by: `title` where there is one, else the first conventionally named
- * field (`name`, `label`, `heading`) the schema declares or the entry holds. A menu item with a
- * `name` and no `title` is "Espresso Tiramisu", not `tiramisu`.
- */
-export function titleFieldOf(
-  schema: ContentTypeSchema | null | undefined,
-  fields: EntryFields = {},
-): string | null {
-  // Whatever its capitalisation: a CSV's header row is often `Title`, and it is still the title.
-  const named = (keys: readonly string[]): string | null => {
-    for (const wanted of TITLE_FIELD_NAMES) {
-      const key = keys.find((candidate) => candidate.toLowerCase() === wanted);
-      if (key !== undefined) {
-        return key;
-      }
-    }
-    return null;
-  };
-  return (
-    named(Object.keys(schema?.properties ?? {})) ??
-    named(Object.keys(fields).filter((key) => isString(fields[key])))
-  );
-}
 
 /** A field value as list text: a scalar as written, a list of scalars joined, anything else "". */
 export function fieldText(value: EntryFields[string] | Date | undefined): string {
