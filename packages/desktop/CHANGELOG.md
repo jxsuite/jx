@@ -1,5 +1,29 @@
 # Changelog
 
+## [8.3.0](https://github.com/jxsuite/jx/compare/desktop-v8.2.0...desktop-v8.3.0) (2026-11-08)
+
+
+### Features
+
+* erase TypeScript from function bodies as each document is read ([#576](https://github.com/jxsuite/jx/issues/576)) ([d7b013c](https://github.com/jxsuite/jx/commit/d7b013c334a5b06d0f31648375443092a43e4af8))
+* provision every new project with project.jxn ([#578](https://github.com/jxsuite/jx/issues/578)) ([77c8093](https://github.com/jxsuite/jx/commit/77c8093f81e468679bd8c4cf0b1c3451e261a8c2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/compiler bumped to 8.5.0
+    * @jxsuite/create bumped to 1.7.0
+    * @jxsuite/protocol bumped to 6.2.5
+    * @jxsuite/schema bumped to 5.5.0
+    * @jxsuite/server bumped to 8.6.0
+    * @jxsuite/starters bumped to 3.4.0
+    * @jxsuite/studio bumped to 10.8.0
+  * devDependencies
+    * @jxsuite/server bumped to 8.6.0
+    * @jxsuite/ui bumped to 0.10.4
+
 ## [8.2.0](https://github.com/jxsuite/jx/compare/desktop-v8.1.0...desktop-v8.2.0) (2026-11-08)
 
 

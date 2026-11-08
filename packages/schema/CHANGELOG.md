@@ -1,5 +1,13 @@
 # Changelog
 
+## [5.5.0](https://github.com/jxsuite/jx/compare/schema-v5.4.0...schema-v5.5.0) (2026-11-08)
+
+
+### Features
+
+* erase TypeScript from function bodies as each document is read ([#576](https://github.com/jxsuite/jx/issues/576)) ([d7b013c](https://github.com/jxsuite/jx/commit/d7b013c334a5b06d0f31648375443092a43e4af8))
+* provision every new project with project.jxn ([#578](https://github.com/jxsuite/jx/issues/578)) ([77c8093](https://github.com/jxsuite/jx/commit/77c8093f81e468679bd8c4cf0b1c3451e261a8c2))
+
 ## [5.4.0](https://github.com/jxsuite/jx/compare/schema-v5.3.0...schema-v5.4.0) (2026-11-08)
 
 

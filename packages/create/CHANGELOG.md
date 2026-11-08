@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.7.0](https://github.com/jxsuite/jx/compare/create-v1.6.0...create-v1.7.0) (2026-11-08)
+
+
+### Features
+
+* provision every new project with project.jxn ([#578](https://github.com/jxsuite/jx/issues/578)) ([77c8093](https://github.com/jxsuite/jx/commit/77c8093f81e468679bd8c4cf0b1c3451e261a8c2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/schema bumped to 5.5.0
+    * @jxsuite/starters bumped to 3.4.0
+
 ## [1.6.0](https://github.com/jxsuite/jx/compare/create-v1.5.5...create-v1.6.0) (2026-11-08)
 
 

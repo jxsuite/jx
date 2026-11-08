@@ -1,5 +1,41 @@
 # Changelog
 
+## [10.8.0](https://github.com/jxsuite/jx/compare/studio-v10.7.0...studio-v10.8.0) (2026-11-08)
+
+
+### Features
+
+* provision every new project with project.jxn ([#578](https://github.com/jxsuite/jx/issues/578)) ([77c8093](https://github.com/jxsuite/jx/commit/77c8093f81e468679bd8c4cf0b1c3451e261a8c2))
+* **studio:** a picture's alt text and tags live in the picture ([#588](https://github.com/jxsuite/jx/issues/588)) ([035875d](https://github.com/jxsuite/jx/commit/035875d20c8805e23948afc6af0f883ee821004a))
+* **studio:** Applies to in Design's Style tab ([#584](https://github.com/jxsuite/jx/issues/584)) ([d2fc807](https://github.com/jxsuite/jx/commit/d2fc807c658148f831c0493f7e1a35827020d544))
+* **studio:** Content Table: Cover column, row selection, and what each page is ([#585](https://github.com/jxsuite/jx/issues/585)) ([85877a3](https://github.com/jxsuite/jx/commit/85877a34ca75858401757fedcd3f9f5f7da2196f))
+* **studio:** design a collection's page with a real entry in it ([#574](https://github.com/jxsuite/jx/issues/574)) ([e6f369f](https://github.com/jxsuite/jx/commit/e6f369f0c569df647348f685960386300622b9f2))
+* **studio:** offer a branch and pull request when a protected branch refuses a push ([#572](https://github.com/jxsuite/jx/issues/572)) ([d6be586](https://github.com/jxsuite/jx/commit/d6be586713fb5ffd5515d17fe256947e6c30a7f9))
+* **studio:** Project Settings › Overview sets the default template for new pages ([#586](https://github.com/jxsuite/jx/issues/586)) ([e14b3c9](https://github.com/jxsuite/jx/commit/e14b3c96e51fb4541bba4eb41348745ff05da547))
+* **studio:** Project Styles draws each interactive element in every state ([#582](https://github.com/jxsuite/jx/issues/582)) ([dd24b1e](https://github.com/jxsuite/jx/commit/dd24b1efdab910980eee7330c89ebb7bae1e6f8d))
+* **studio:** quick publish hangs from its chevron and names changes as the site does ([#580](https://github.com/jxsuite/jx/issues/580)) ([a56e060](https://github.com/jxsuite/jx/commit/a56e060efd4b3d35a945499f889a90d76e991377))
+* **studio:** regroup the Page tab, and give a collection's page its fields ([#579](https://github.com/jxsuite/jx/issues/579)) ([9a5de5e](https://github.com/jxsuite/jx/commit/9a5de5eff080139363fdeee6b53a9fca1821c1b4))
+* **studio:** Review changes says where the site is hosted, and Hosting numbers its setup steps ([#587](https://github.com/jxsuite/jx/issues/587)) ([da65932](https://github.com/jxsuite/jx/commit/da6593242313833ee538149af7ec2df1d4132fb2))
+* **studio:** the Style tab names the components that restyle a Project Styles element ([#583](https://github.com/jxsuite/jx/issues/583)) ([b419049](https://github.com/jxsuite/jx/commit/b4190494f599af6d251ff48cfbdfcea0ec216167))
+* **studio:** the Variables view draws the palette as swatches ([#581](https://github.com/jxsuite/jx/issues/581)) ([da7af5b](https://github.com/jxsuite/jx/commit/da7af5b3bebd16cb1b12d24595a5755aa7422710))
+* **studio:** write an entry inside its collection's page ([#577](https://github.com/jxsuite/jx/issues/577)) ([885b038](https://github.com/jxsuite/jx/commit/885b03815816ccc6fd6f52fecab189fa87d354e5))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/ai bumped to 0.43.3
+    * @jxsuite/collab bumped to 0.11.9
+    * @jxsuite/create bumped to 1.7.0
+    * @jxsuite/formulas bumped to 0.0.31
+    * @jxsuite/markup bumped to 1.0.7
+    * @jxsuite/protocol bumped to 6.2.5
+    * @jxsuite/runtime bumped to 6.2.2
+    * @jxsuite/schema bumped to 5.5.0
+    * @jxsuite/site bumped to 2.5.1
+    * @jxsuite/ui bumped to 0.10.4
+
 ## [10.7.0](https://github.com/jxsuite/jx/compare/studio-v10.6.0...studio-v10.7.0) (2026-11-08)
 
 

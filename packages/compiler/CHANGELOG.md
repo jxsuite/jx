@@ -1,5 +1,27 @@
 # Changelog
 
+## [8.5.0](https://github.com/jxsuite/jx/compare/compiler-v8.4.0...compiler-v8.5.0) (2026-11-08)
+
+
+### Features
+
+* erase TypeScript from function bodies as each document is read ([#576](https://github.com/jxsuite/jx/issues/576)) ([d7b013c](https://github.com/jxsuite/jx/commit/d7b013c334a5b06d0f31648375443092a43e4af8))
+* provision every new project with project.jxn ([#578](https://github.com/jxsuite/jx/issues/578)) ([77c8093](https://github.com/jxsuite/jx/commit/77c8093f81e468679bd8c4cf0b1c3451e261a8c2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/create bumped to 1.7.0
+    * @jxsuite/erase bumped to 0.1.0
+    * @jxsuite/runtime bumped to 6.2.2
+    * @jxsuite/schema bumped to 5.5.0
+    * @jxsuite/site bumped to 2.5.1
+  * devDependencies
+    * @jxsuite/connector bumped to 0.8.7
+    * @jxsuite/parser bumped to 4.3.3
+
 ## [8.4.0](https://github.com/jxsuite/jx/compare/compiler-v8.3.0...compiler-v8.4.0) (2026-11-08)
 
 

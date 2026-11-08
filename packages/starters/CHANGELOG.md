@@ -1,5 +1,23 @@
 # Changelog
 
+## [3.4.0](https://github.com/jxsuite/jx/compare/starters-v3.3.2...starters-v3.4.0) (2026-11-08)
+
+
+### Features
+
+* provision every new project with project.jxn ([#578](https://github.com/jxsuite/jx/issues/578)) ([77c8093](https://github.com/jxsuite/jx/commit/77c8093f81e468679bd8c4cf0b1c3451e261a8c2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/protocol bumped to 6.2.5
+  * devDependencies
+    * @jxsuite/parser bumped to 4.3.3
+    * @jxsuite/runtime bumped to 6.2.2
+    * @jxsuite/schema bumped to 5.5.0
+
 ## [3.3.2](https://github.com/jxsuite/jx/compare/starters-v3.3.1...starters-v3.3.2) (2026-11-08)
 
 

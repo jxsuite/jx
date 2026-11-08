@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.44.0](https://github.com/jxsuite/jx/compare/import-v0.43.0...import-v0.44.0) (2026-11-08)
+
+
+### Features
+
+* erase TypeScript from function bodies as each document is read ([#576](https://github.com/jxsuite/jx/issues/576)) ([d7b013c](https://github.com/jxsuite/jx/commit/d7b013c334a5b06d0f31648375443092a43e4af8))
+* provision every new project with project.jxn ([#578](https://github.com/jxsuite/jx/issues/578)) ([77c8093](https://github.com/jxsuite/jx/commit/77c8093f81e468679bd8c4cf0b1c3451e261a8c2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/markup bumped to 1.0.7
+    * @jxsuite/protocol bumped to 6.2.5
+    * @jxsuite/schema bumped to 5.5.0
+  * optionalDependencies
+    * @jxsuite/compiler bumped to 8.5.0
+
 ## [0.43.0](https://github.com/jxsuite/jx/compare/import-v0.42.5...import-v0.43.0) (2026-11-08)
 
 

@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.10.4](https://github.com/jxsuite/jx/compare/ui-v0.10.3...ui-v0.10.4) (2026-11-08)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/runtime bumped to 6.2.2
+    * @jxsuite/schema bumped to 5.5.0
+
 ## [0.10.3](https://github.com/jxsuite/jx/compare/ui-v0.10.2...ui-v0.10.3) (2026-11-08)
 
 
