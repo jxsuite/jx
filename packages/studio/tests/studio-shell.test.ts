@@ -1757,11 +1757,12 @@ describe("left panel wiring", () => {
 });
 
 /* Source control is the Publish workspace's flow now, not a Navigator panel's, so the bootstrap
-   hands IT the clone flow and the diff-state setter (`setSourceControlDeps`). */
+   hands IT the clone flow (`setSourceControlDeps`), and the canvas reads the comparison Review
+   changes loaded from `shell.git.diffState`. */
 describe("source control wiring", () => {
-  test("the injected diff-state setter propagates git-diff state to the canvas", () => {
+  test("the canvas's diff-state setter propagates git-diff state to the canvas", () => {
     expect(sourceControlDeps).not.toBeNull();
-    sourceControlDeps!.setGitDiffState!({
+    canvasRenderCtx.setGitDiffState({
       currentContent: "new",
       filePath: "z.json",
       fileStatus: "M",
@@ -1773,7 +1774,7 @@ describe("source control wiring", () => {
       fileStatus: "M",
       originalContent: "old",
     });
-    sourceControlDeps!.setGitDiffState!(null);
+    canvasRenderCtx.setGitDiffState(null);
     expect(canvasRenderCtx.gitDiffState).toBeNull();
   });
 
@@ -2007,6 +2008,32 @@ describe("remaining wiring arrows", () => {
     const entry = componentRegistry.find((c) => c.tagName === "mas-service-card");
     expect(entry?.path).toBe("components/mas-service-card.json");
     expect(entry?.props).toEqual([{ default: "", format: "image", name: "imageSrc" }]);
+  });
+
+  test("a grid save tells source control, as a document save does", async () => {
+    /* A grid commits through its source, not through the document save path, so the bootstrap
+       wires the grid's own saved listener to source control: without it the Publish count stayed
+       stale until someone pressed Refresh. */
+    const { createGridController } = await import("../src/grid/grid-controller");
+    const tab = openShellTab();
+    const source: Parameters<typeof createGridController>[1] = {
+      capabilities: { delete: false, insert: false, remotePaging: false, remoteSort: false },
+      columns: async () => [{ editable: true, field: "title", kind: "string", title: "Title" }],
+      commit: async (batch) => ({
+        cells: batch.cells.map((c) => ({ field: c.field, ok: true, rowKey: c.rowKey })),
+        deletes: [],
+        inserts: [],
+      }),
+      id: "test://grid",
+      label: "Test grid",
+      rows: async () => ({ rows: [{ cells: { title: "One" }, key: "a" }], total: 1 }),
+    };
+    const controller = createGridController(tab, source);
+    await controller.load();
+    controller.buffer.setCell("a", "title", "Renamed");
+    const { rev } = shell.git;
+    await controller.save();
+    expect(shell.git.rev).toBe(rev + 1);
   });
 
   test("welcome openRecentProject opens the project directly", async () => {

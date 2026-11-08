@@ -2,9 +2,9 @@
 
 ## Static HTML Compiler, Custom Element Emitter, and Island Detector
 
-**Version:** 0.5.3-draft\
+**Version:** 0.5.5-draft\
 **Status:** Partial\
-**Updated:** 2026-11-07\
+**Updated:** 2026-11-08\
 **License:** MIT
 
 ---
@@ -764,6 +764,8 @@ An earlier revision of this table claimed ~7 kB and ~3 kB (~10 kB total); those 
 
 ## Changelog
 
+- **0.5.5-draft** (2026-11-08) — §2.3: jx convert moves the project file between project.json and project.jxn.
+- **0.5.4-draft** (2026-11-08) — §7.2 and §7.6: srcset candidate URLs are percent-encoded so a file name with a space or comma cannot split a candidate; §7.5: the image cache key includes the source's file name, so a renamed image gets variants under its new name.
 - **0.5.3-draft** (2026-11-07) — §2.3: reading a document whichever native format it is in, and jx convert.
 - **0.5.2-draft** (2026-10-29) — The image cache's npm lookup reads npm_config_cache first and gives npm config get cache 3 seconds.
 - **0.5.1-draft** (2026-10-27) — §9.2: a compiled switch discriminant and a repeater's items read a nested pointer by its path and answer undefined through a null parent, as the interpreter does.
@@ -815,4 +817,4 @@ An earlier revision of this table claimed ~7 kB and ~3 kB (~10 kB total); those 
 
 ---
 
-_`@jxsuite/compiler` Specification v0.5.3-draft_
+_`@jxsuite/compiler` Specification v0.5.5-draft_

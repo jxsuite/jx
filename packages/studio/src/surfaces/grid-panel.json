@@ -118,6 +118,37 @@
       "background": "var(--bg-panel)",
       "borderRight": "1px solid var(--border)"
     },
+    "& .tabulator .tabulator-row .tabulator-cell.tabulator-range-row-header": {
+      "$description": "With `selectableRangeRows` and no declared row header, Tabulator makes the FIRST column the range row header, and its stock sheet paints that cell for a light theme: a light grey under black text on the row holding the active range, a mid blue under white on a selected row. The background lost to the frozen rule above on some rows and the black text never lost at all, so the first column of the selected row went black-on-dark. Every state of the row header is restated here, text colour included.",
+      "color": "var(--fg)"
+    },
+    "& .tabulator .tabulator-row.tabulator-range-highlight .tabulator-cell.tabulator-range-row-header": {
+      "background": "color-mix(in srgb, var(--accent) 14%, var(--bg-panel))",
+      "color": "var(--fg)"
+    },
+    "& .tabulator .tabulator-row.tabulator-range-selected .tabulator-cell.tabulator-range-row-header": {
+      "background": "color-mix(in srgb, var(--accent) 30%, var(--bg-panel))",
+      "color": "var(--fg)"
+    },
+    "& .tabulator .tabulator-header .tabulator-col.tabulator-range-highlight": {
+      "$description": "The column-header counterpart of the row header above: Tabulator's stock light grey and mid blue under the header's own light title text.",
+      "background": "color-mix(in srgb, var(--accent) 14%, var(--bg-panel))",
+      "color": "var(--fg)"
+    },
+    "& .tabulator .tabulator-header .tabulator-col.tabulator-range-selected": {
+      "background": "color-mix(in srgb, var(--accent) 30%, var(--bg-panel))",
+      "color": "var(--fg)"
+    },
+    "& .tabulator .tabulator-row .tabulator-cell.tabulator-range-selected:not(.tabulator-range-only-cell-selected):not(.tabulator-range-row-header)": {
+      "$description": "A multi-cell range. Tabulator's stock fill is a pale blue under this theme's light text.",
+      "background": "color-mix(in srgb, var(--accent) 22%, var(--bg))",
+      "color": "var(--fg)"
+    },
+    "& .tabulator .tabulator-row .tabulator-cell.tabulator-editing .jx-grid-checkbox": {
+      "$description": "Tabulator's editing rule strips `border` and `background` from every input in an editing cell, which is right for a text field and leaves a checkbox as a faint square. The checkbox keeps the UA's box.",
+      "background": "revert",
+      "border": "revert"
+    },
     "& .tabulator .tabulator-range": {
       "border": "1px solid var(--accent)",
       "background": "color-mix(in srgb, var(--accent) 10%, transparent)"

@@ -11,7 +11,7 @@ import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { notifyModule } from "./notify-mock";
 import type { NotifyCall } from "./notify-mock";
 import type { PromptDialogOptions } from "../src/ui/layers";
-import type { GitDiffState, GitStatusResult, StudioPlatform } from "../src/types";
+import type { GitStatusResult, StudioPlatform } from "../src/types";
 
 // ─── Boundaries ──────────────────────────────────────────────────────────────
 
@@ -34,19 +34,6 @@ void mock.module("../src/ui/layers.js", () => ({
   showPromptDialog: async (headline: string, opts: PromptDialogOptions) => {
     prompts.push({ headline, opts });
     return promptAnswer;
-  },
-}));
-
-const opened: string[] = [];
-/** What a test wants to know at the moment the comparison's tab opens. */
-let onOpen: () => void = () => {};
-void mock.module("../src/panels/git-diff-open.js", () => ({
-  comparisonRefusal: (path: string, status: string) =>
-    status === "R" ? "renamed" : path.endsWith(".png") ? "media" : null,
-  openComparisonTab: async (path: string) => {
-    opened.push(path);
-    onOpen();
-    return { documentPath: path, id: path };
   },
 }));
 
@@ -139,8 +126,6 @@ beforeEach(() => {
   promptAnswer = null;
   confirms.length = 0;
   prompts.length = 0;
-  opened.length = 0;
-  onOpen = () => {};
   pulls = 0;
   pullFailure = null;
   token = "ghp_token";
@@ -368,6 +353,19 @@ describe("the verbs", () => {
     expect(shell.git.loading).toBe(false);
   });
 
+  test("a push the branch's rules refuse is offered a branch, and declining says why", async () => {
+    install({
+      gitPush: () => Promise.reject(new Error("(protected branch hook declined)")),
+    });
+    shell.git.branches = { branches: ["main"], current: "main" };
+    await sc.pushCurrentBranch();
+    expect(shell.git.error).toMatch(/^main is protected on GitHub/);
+    expect(shell.git.loading).toBe(false);
+    install({ gitPush: () => Promise.reject(new Error("offline")) });
+    await sc.pushCurrentBranch();
+    expect(shell.git.error).toBe("offline");
+  });
+
   test("discard asks first, refuses an untracked file, and discards on yes", async () => {
     shell.git.status = repo([
       { path: "a.json", staged: false, status: "M" },
@@ -501,55 +499,6 @@ describe("comparisons", () => {
     console.warn = warn;
   });
 
-  test("Before and after opens the file's own tab in Diff", async () => {
-    withFiles({ "a.json": "new" });
-    const modes: [unknown, string][] = [];
-    const states: (GitDiffState | null)[] = [];
-    sc.setSourceControlDeps({
-      setCanvasMode: (tab, mode) => {
-        modes.push([tab?.id, mode]);
-      },
-      setGitDiffState: (state) => {
-        states.push(state);
-      },
-    });
-    shell.git.status = repo([{ path: "a.json", staged: false, status: "M" }]);
-    const statesWhenOpened: number[] = [];
-    onOpen = () => {
-      statesWhenOpened.push(states.length);
-    };
-    await sc.openFileComparison("a.json");
-    expect(opened).toEqual(["a.json"]);
-    // The canvas has the comparison before the tab opens, because the tab opens already in Diff.
-    expect(statesWhenOpened).toEqual([1]);
-    expect(modes).toEqual([["a.json", "git-diff"]]);
-    expect(states[0]?.currentContent).toBe("new");
-    expect(shell.git.diffState?.filePath).toBe("a.json");
-    expect(shell.git.loading).toBe(false);
-  });
-
-  test("a rename and a media file are refused in words; an unknown path is ignored", async () => {
-    shell.git.status = repo([
-      { path: "b.json", staged: false, status: "R" },
-      { path: "logo.png", staged: false, status: "M" },
-    ]);
-    await sc.openFileComparison("nowhere.json");
-    expect(shell.git.error).toBeNull();
-    await sc.openFileComparison("b.json");
-    expect(shell.git.error).toBe('"b.json" has no change this view can open.');
-    await sc.openFileComparison("logo.png");
-    expect(shell.git.error).toBe("media");
-    expect(opened).toEqual([]);
-  });
-
-  test("a failed read is a friendly error", async () => {
-    withFiles({});
-    shell.git.status = repo([{ path: "a.json", staged: false, status: "M" }]);
-    await sc.openFileComparison("a.json");
-    expect(shell.git.error).toMatch(/^Failed to load diff: /);
-    expect(shell.git.loading).toBe(false);
-  });
-
   test("a save of the compared file re-reads it; another file's only bumps the revision", async () => {
     withFiles({ "a.json": "v2" });
     shell.git.loading = true;
@@ -614,7 +563,7 @@ describe("comparisons", () => {
 // ─── Rows ────────────────────────────────────────────────────────────────────
 
 describe("rows", () => {
-  test("files group the way the site is organised, in a fixed order, never by folder name", () => {
+  test("a change is filed the way the site is organised, never by folder name", () => {
     resetStudioState({
       name: "Demo",
       projectConfig: {
@@ -626,38 +575,38 @@ describe("rows", () => {
       },
       projectRoot: "/p",
     });
-    const groups = sc.groupFilesByComponent([
-      { path: "pages/index.json", staged: true, status: "M" },
-      { path: "project.json", staged: false, status: "M" },
-      { path: "content/exhibitions/en/a.md", staged: false, status: "U" },
-      { path: "src/app.ts", staged: false, status: "U" },
-      { path: "content/events/en/b.md", staged: false, status: "U" },
-      { path: "public/hero.jpg", staged: false, status: "U" },
-      { path: "components/card.json", staged: false, status: "M" },
-      { path: "package.json", staged: false, status: "M" },
-      { path: "pages/_partials/nav.json", staged: false, status: "M" },
-      { path: "layouts/base.json", staged: false, status: "M" },
-    ]);
-    /* Two collections whose folders both end in `en` stay apart, the root files share Other, and a
+    /* Two collections whose folders both end in `en` stay apart, the root files are Other, and a
        page directory's private part is still the pages. */
-    expect(groups.map((group) => [group.name, group.files.map((file) => file.path)])).toEqual([
-      ["Pages", ["pages/index.json", "pages/_partials/nav.json"]],
-      ["Events", ["content/events/en/b.md"]],
-      ["Exhibitions", ["content/exhibitions/en/a.md"]],
-      ["Components", ["components/card.json"]],
-      ["Layouts", ["layouts/base.json"]],
-      ["Media", ["public/hero.jpg"]],
-      ["Other", ["project.json", "src/app.ts", "package.json"]],
+    expect(
+      [
+        "pages/index.json",
+        "pages/_partials/nav.json",
+        "content/events/en/b.md",
+        "content/exhibitions/en/a.md",
+        "components/card.json",
+        "layouts/base.json",
+        "styles/site.css",
+        "public/hero.jpg",
+        "project.json",
+        "src/app.ts",
+      ].map((path) => sc.changeGroupKey(path)),
+    ).toEqual([
+      "pages",
+      "pages",
+      "events",
+      "exhibitions",
+      "folder:components",
+      "folder:layouts",
+      "folder:styles",
+      "media",
+      "other",
+      "other",
     ]);
     resetStudioState({ name: "Demo", projectRoot: "/p" });
   });
 
   test("a changed file is a row named after its file and folder", () => {
-    const groups = sc.groupFilesByComponent([
-      { path: "pages/index.json", staged: true, status: "M" },
-      { path: "src/app.ts", staged: false, status: "U" },
-    ]);
-    expect(groups[0]?.files[0]).toEqual({
+    expect(sc.changeRow({ path: "pages/index.json", staged: true, status: "M" })).toEqual({
       cannotDiscard: false,
       dir: "pages",
       hasDir: true,
@@ -669,7 +618,9 @@ describe("rows", () => {
       status: "M",
       statusWord: "modified",
     });
-    expect(groups[1]?.files[0]?.cannotDiscard).toBe(true);
+    expect(sc.changeRow({ path: "src/app.ts", staged: false, status: "U" }).cannotDiscard).toBe(
+      true,
+    );
   });
 
   test("a status with no word of its own still says the file changed", () => {

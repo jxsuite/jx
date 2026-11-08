@@ -1,5 +1,21 @@
 # Changelog
 
+## [2.5.0](https://github.com/jxsuite/jx/compare/site-v2.4.0...site-v2.5.0) (2026-11-08)
+
+
+### Features
+
+* **schema:** read and write a project file in Jx Notation ([#560](https://github.com/jxsuite/jx/issues/560)) ([1a98bf2](https://github.com/jxsuite/jx/commit/1a98bf29cc60e6f958ac6d7de22159057d0bbfcb))
+* **studio:** open, find, save and convert .jxn documents, solo and shared ([#567](https://github.com/jxsuite/jx/issues/567)) ([07ed592](https://github.com/jxsuite/jx/commit/07ed59210318249b5f9571378f5da0463bb1683f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/runtime bumped to 6.2.1
+    * @jxsuite/schema bumped to 5.4.0
+
 ## [2.4.0](https://github.com/jxsuite/jx/compare/site-v2.3.1...site-v2.4.0) (2026-11-07)
 
 

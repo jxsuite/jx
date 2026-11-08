@@ -288,15 +288,29 @@ describe("the declared Monaco feature set", () => {
     expect({ stale, undoubled }).toEqual({ stale: [], undoubled: [] });
   });
 
-  test("registers the suggest WIDGET, not just the suggest provider", async () => {
-    /* `features/suggest/register` registers the provider that renders suggest items as inline text;
-       `contrib/suggest/browser/suggestController.js` is the widget, and `features/inlineCompletions/
-       register` is the only public entry that reaches it. Drop that import and the JSON schema
-       completions and the Logic tab's `state.*` completions both register and never appear — with
-       no error anywhere. */
+  test("registers every editor feature up front, the suggest widget among them", async () => {
+    /* Monaco's lazily loaded JSON and TypeScript modes import every editor contribution
+       (`vs/internal/common/workers.js`), after the first editor has snapshotted the registered
+       services. A curated list therefore changed the editor part-way through a session, and the
+       two contributions whose services arrived late (CodeLens, drop-into-editor) threw on every
+       editor created afterwards. Registering the whole set first makes it the same set throughout,
+       with every service in the snapshot. It carries the suggest WIDGET too, without which JSON
+       schema completion and the Logic tab's `state.*` completion register and never appear. */
     const source = await Bun.file(
       new URL("../src/services/monaco-setup.ts", import.meta.url),
     ).text();
-    expect(source).toContain('import "monaco-editor/features/inlineCompletions/register"');
+    expect(source).toContain('import "monaco-editor/features/register.all"');
+    const allFeatures = await Bun.file(
+      new URL(
+        "../../../node_modules/monaco-editor/esm/vs/features/register.all.js",
+        import.meta.url,
+      ),
+    ).text();
+    expect(allFeatures).toContain("inlineCompletions.contribution.js");
+    expect(allFeatures).toContain("codelensController.js");
+    // Every feature registers before the editor API is first used: the import precedes the languages.
+    expect(source.indexOf("features/register.all")).toBeLessThan(
+      source.indexOf("languages/features/json/register"),
+    );
   });
 });
