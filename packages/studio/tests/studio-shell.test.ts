@@ -2031,7 +2031,7 @@ describe("remaining wiring arrows", () => {
     const controller = createGridController(tab, source);
     await controller.load();
     controller.buffer.setCell("a", "title", "Renamed");
-    const {rev} = shell.git;
+    const { rev } = shell.git;
     await controller.save();
     expect(shell.git.rev).toBe(rev + 1);
   });

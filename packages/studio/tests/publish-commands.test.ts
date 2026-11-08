@@ -293,6 +293,18 @@ describe("runDeploy", () => {
     expect(toasts).toHaveLength(0);
   });
 
+  test("a push the branch's rules refuse fails as that refusal, in words", async () => {
+    connect();
+    installMockPlatform({
+      gitHosted: true,
+      gitPush: () => Promise.reject(new Error("push declined due to repository rule violations")),
+    });
+    expect(await runDeploy({ attempts: 1, delayMs: 0, summary: "Ship" })).toBe(false);
+    expect(problems).toHaveLength(1);
+    expect(problems[0]!.message).toBe("This branch is protected on GitHub and refused the push.");
+    expect(problems[0]!.action).toBe("git.push");
+  });
+
   test("a Cloudflare that will not answer fails once, not on every attempt", async () => {
     connect();
     let calls = 0;

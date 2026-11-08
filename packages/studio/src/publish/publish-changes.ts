@@ -37,13 +37,15 @@ import { showPromptDialog } from "../ui/layers";
 import { notify } from "../services/notify";
 import { shell } from "../shell";
 import { projectState } from "../store";
-import { slugify } from "../files/new-file-name";
 import { currentDeploy, nextDeployStep } from "./deploy-checklist";
 import { platformSupportsPublish } from "./pages-service";
+import { offerBranchForRefusedPush, reviewBranchName } from "./protected-branch";
 import { runDeploy } from "./publish-commands";
 import { platformHostsGit, platformOpensPullRequests, refreshGitStatus } from "./source-control";
 import type { GitFileStatus } from "../types";
 import type { PublishDestination } from "./publish-ids";
+
+export { reviewBranchName } from "./protected-branch";
 
 // ─── Where a change set can go ───────────────────────────────────────────────
 
@@ -70,15 +72,6 @@ export function deployReady(): boolean {
 function liveTarget(): string {
   const deploy = currentDeploy();
   return deploy?.productionUrl ?? deploy?.projectName ?? "";
-}
-
-/**
- * The branch a review is sent from: `studio/` and the summary as a slug, cut short enough to read
- * in a branch picker. A summary with nothing sluggable in it still names a branch.
- */
-export function reviewBranchName(summary: string): string {
-  const slug = slugify(summary).replaceAll(/-+/g, "-").replaceAll(/^-|-$/g, "").slice(0, 48);
-  return `studio/${slug.replace(/-$/, "") || "changes"}`;
 }
 
 /**
@@ -447,7 +440,7 @@ export async function publishChanges(
            Activity has already said which. The commit landed either way, so the summary stays
            cleared, but the change set did not reach the live site and the caller must not say it
            did. */
-        shipped = await runDeploy();
+        shipped = await runDeploy({ summary: message });
       } else if (!platformHostsGit() && firstRemote() !== "") {
         await plat.gitPush();
       }
@@ -455,6 +448,18 @@ export async function publishChanges(
     await refreshGitStatus();
     return shipped;
   } catch (error) {
+    if (committed && destination === "live") {
+      /* The commit landed and its push was refused. When the refusal is the branch's rules, the
+         way on is a branch of its own and a pull request, which is offered rather than relayed. */
+      shell.git.loading = false;
+      const moved = await offerBranchForRefusedPush(errorMessage(error), {
+        refresh: refreshGitStatus,
+        summary: message,
+      });
+      if (moved !== null) {
+        return moved;
+      }
+    }
     const conflicts = committed ? null : remoteConflictsOf(error);
     if (conflicts && platformCommitsBranches()) {
       shell.git.loading = false;
