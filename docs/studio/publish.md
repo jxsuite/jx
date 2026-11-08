@@ -8,6 +8,7 @@ code:
   - packages/studio/src/surfaces/publish-workspace.ts
   - packages/studio/src/surfaces/publish-workspace.json
   - packages/studio/src/publish/publish-changes.ts
+  - packages/studio/src/publish/protected-branch.ts
   - packages/studio/src/publish/publish-quick.ts
   - packages/studio/src/surfaces/publish-quick.ts
   - packages/studio/src/surfaces/publish-quick.json
@@ -54,6 +55,12 @@ In Jx Cloud, someone else can publish to the same branch while you are still edi
 Confirm, and Studio saves your changes to that new branch, opens a pull request from it into the branch that moved, and brings your session up to date with everyone else's changes. Resolve the overlap in the pull request on GitHub, then merge it. Choose **Cancel** to keep your changes where they are, with your summary.
 
 Files you changed in exactly the same way as the published version don't count as a conflict. Studio treats them as already published.
+
+### When the branch is protected
+
+If your repository's rules on GitHub only let changes into a branch through a pull request, pushing to that branch directly is refused. Studio recognises that refusal and asks whether to **Push to a New Branch** instead. Your commit is already saved on your computer, and the dialog suggests a branch name based on its summary, which you can change.
+
+Confirm, and Studio moves you onto the new branch, pushes it, and opens a pull request from it into the protected branch. Where Studio can't open the pull request itself, it opens GitHub's page for creating it, with both branches filled in. Choose **Cancel** to leave the commit where it is.
 
 ## The four views
 

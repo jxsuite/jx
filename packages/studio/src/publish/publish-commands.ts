@@ -36,6 +36,9 @@ import { getPlatform } from "../platform";
 import { beginActivity } from "../panels/activity-panel";
 import { currentDeploy, noteDeployment } from "./deploy-checklist";
 import { errorMessage } from "@jxsuite/schema/parse";
+import { pushRefusedByRule } from "../platform-errors";
+import { offerBranchForRefusedPush } from "./protected-branch";
+import { refreshGitStatus } from "./source-control";
 import { latestDeployment } from "./pages-service";
 import { activeRegistry } from "../commands/active-registry";
 import { argsSchema, enumArg, enumProperty } from "../commands/command-args";
@@ -69,11 +72,12 @@ async function sleep(ms: number): Promise<void> {
 /**
  * Push the current branch and report what Cloudflare made of it.
  *
- * @param options Poll shape, so a test does not wait 30 real seconds.
+ * @param options Poll shape, so a test does not wait 30 real seconds, and the summary of the commit
+ *   being deployed, which names the branch a protected branch's refusal offers.
  * @returns Whether the push succeeded — NOT whether the build did, which is Cloudflare's to say.
  */
 export async function runDeploy(
-  options: { attempts?: number; delayMs?: number } = {},
+  options: { attempts?: number; delayMs?: number; summary?: string } = {},
 ): Promise<boolean> {
   const deploy = currentDeploy();
   // Aborted by the activity's Cancel; the poll loop checks it between attempts.
@@ -95,7 +99,20 @@ export async function runDeploy(
   } catch (error) {
     // Logged BEFORE the failure: `fail()` snapshots the log into the Problem's `detail`, so a line
     // Appended afterwards would be visible in the Activity row and absent from the report of it.
-    activity.log(errorMessage(error));
+    const output = errorMessage(error);
+    activity.log(output);
+    if (pushRefusedByRule(output)) {
+      /* The branch's rules refuse a direct push, so nothing will deploy from it. The failure says
+         that in words, and the way on (a branch of its own and a pull request) is offered next. */
+      activity.fail("This branch is protected on GitHub and refused the push.", {
+        action: "git.push",
+      });
+      await offerBranchForRefusedPush(output, {
+        refresh: refreshGitStatus,
+        summary: options.summary ?? "",
+      });
+      return false;
+    }
     activity.fail("Could not push to the remote.", { action: "git.push" });
     return false;
   }

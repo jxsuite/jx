@@ -128,6 +128,34 @@ export function remoteConflictsOf(cause: unknown): string[] | null {
   return conflicting && info.conflicts ? info.conflicts : null;
 }
 
+/**
+ * What git prints when the remote refuses a push because of the branch's rules rather than its
+ * history: a GitHub ruleset (`GH013`, "push declined due to repository rule violations"), a classic
+ * branch protection rule (`GH006`, "protected branch hook declined"), or GitLab's protected
+ * branch.
+ *
+ * Read from the text because that is all a push failure carries: git has no machine-readable form
+ * of a remote's refusal, and both local hosts relay its output as the error's message. A refusal
+ * for any other reason (a non-fast-forward, a missing credential) matches none of these.
+ */
+const RULE_REFUSALS = [
+  /\bGH0(?:06|13)\b/,
+  /push declined due to repository rule violations/i,
+  /repository rule violations found/i,
+  /protected branch hook declined/i,
+  /protected branch update failed/i,
+  /not allowed to (?:force )?push(?: code)? to protected branches/i,
+];
+
+/**
+ * Whether a failed push was refused by the remote's branch rules (a ruleset or a protected branch),
+ * the one failure whose remedy is always a branch of its own and a pull request.
+ */
+export function pushRefusedByRule(cause: unknown): boolean {
+  const text = cause instanceof Error ? cause.message : isString(cause) ? cause : "";
+  return RULE_REFUSALS.some((pattern) => pattern.test(text));
+}
+
 /** The GitHub-App install link when the error is the structured needs-installation 403. */
 export function installUrlOf(cause: unknown): string | null {
   const info = platformErrorInfo(cause);

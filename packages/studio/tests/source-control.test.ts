@@ -353,6 +353,19 @@ describe("the verbs", () => {
     expect(shell.git.loading).toBe(false);
   });
 
+  test("a push the branch's rules refuse is offered a branch, and declining says why", async () => {
+    install({
+      gitPush: () => Promise.reject(new Error("(protected branch hook declined)")),
+    });
+    shell.git.branches = { branches: ["main"], current: "main" };
+    await sc.pushCurrentBranch();
+    expect(shell.git.error).toMatch(/^main is protected on GitHub/);
+    expect(shell.git.loading).toBe(false);
+    install({ gitPush: () => Promise.reject(new Error("offline")) });
+    await sc.pushCurrentBranch();
+    expect(shell.git.error).toBe("offline");
+  });
+
   test("discard asks first, refuses an untracked file, and discards on yes", async () => {
     shell.git.status = repo([
       { path: "a.json", staged: false, status: "M" },

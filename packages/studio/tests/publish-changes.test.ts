@@ -349,6 +349,36 @@ describe("publishChanges", () => {
     expect(deploys).toBe(0);
   });
 
+  test("…a push the branch's rules refuse offers a branch of its own instead", async () => {
+    install({
+      gitPush: (opts) =>
+        opts?.setUpstream
+          ? Promise.resolve()
+          : Promise.reject(new Error("remote: error: GH013: Repository rule violations found")),
+    });
+    status([{ path: "a.json", staged: true, status: "M" }]);
+    shell.git.commitMessage = "Fix the header";
+    expect(await pc.publishChanges("live")).toBe(false);
+    expect(prompts[0]?.headline).toBe("Push to a New Branch");
+    expect(prompts[0]?.opts.value).toBe("studio/fix-the-header");
+    expect(shell.git.error).toMatch(/^main is protected on GitHub/);
+    expect(shell.git.commitMessage).toBe("");
+    promptAnswer = "studio/fix";
+    status([{ path: "a.json", staged: true, status: "M" }]);
+    shell.git.commitMessage = "Fix the header";
+    expect(await pc.publishChanges("live")).toBe(true);
+    expect(asked()).toContain("gitCreateBranch");
+  });
+
+  test("…any other refused push is relayed as it stands", async () => {
+    install({ gitPush: () => Promise.reject(new Error("non-fast-forward")) });
+    status([{ path: "a.json", staged: true, status: "M" }]);
+    shell.git.commitMessage = "Fix";
+    expect(await pc.publishChanges("live")).toBe(false);
+    expect(prompts).toEqual([]);
+    expect(shell.git.error).toBe("non-fast-forward");
+  });
+
   test("…stages every change first when asked to take them all", async () => {
     status([
       { path: "a.json", staged: true, status: "M" },
