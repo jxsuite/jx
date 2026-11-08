@@ -509,7 +509,7 @@ During page compilation, `transformImageNodes()` walks the document tree and mut
    The source's own width is added only when it is **below** the largest configured width: a source smaller than every rung would otherwise produce no variants at all, and one falling between rungs would never be offered at its native resolution. A source larger than the top rung does not get one — the largest configured width is the ceiling the project chose. (Adding it unconditionally meant a 3840 px screenshot emitted a 3840 px variant in every format, encoded on every cold build and offered as a `3840w` candidate no real viewport would select.)
 
 2. **Inject attributes** — The `<img>` node is mutated in-place:
-   - `srcset` — responsive variant list with widths (e.g., `hero-320-a1b2.avif 320w, hero-640-a1b2.avif 640w`)
+   - `srcset` — responsive variant list with widths (e.g., `hero-320-a1b2.avif 320w, hero-640-a1b2.avif 640w`). Each candidate URL is the variant's path with every segment percent-encoded (`variantUrl`), because a variant is named after its source file and a `srcset` splits candidates on whitespace: `Designer, White.jpg` written raw became the candidate `…/Designer,` with a descriptor of `White-640-a1b2.avif`. The same encoding applies to a variant used as `src`
    - `sizes` — see §7.2.1
    - `src` — the largest emitted variant in a universally decodable format (`jpeg`/`png`) when the project emits one; otherwise the original file. `src` is reached only by a client that understood neither `srcset` nor any `<source type>`, so it has to stay decodable — but the original is the **unresized** source, and a resized variant of the same format is strictly better. A project emitting only `webp`/`avif` keeps the original: a smaller image nobody can decode is not an improvement.
    - `width` and `height` — original image dimensions (prevents CLS)
@@ -575,8 +575,8 @@ Individual `<img>` nodes can override global settings via attributes:
 
 Processed images are cached to `.cache/images/manifest.json` to avoid redundant re-encoding across builds.
 
-- **Cache key:** `{contentHash}:{configHash}` — MD5 of source file contents + MD5 of optimization config (`widths`, `formats`, `quality`)
-- **Invalidation:** Source file changes, config changes, or missing variant files in `dist/`
+- **Cache key:** `{contentHash}:{configHash}:{stem}` — MD5 of source file contents + MD5 of optimization config (`widths`, `formats`, `quality`) + the source's file name without its extension. The name is in the key because it is in the output: variants are named `{stem}-{width}-{hash}.{format}`, so a key of content alone handed a renamed file its old entry and its old variant names, and renaming a file to fix its URLs changed nothing until the cache was deleted by hand. The old name's entry goes untouched by the build that renames it, so pruning removes it
+- **Invalidation:** Source file changes, config changes, renames, or missing variant files in `dist/`
 - **Persistence:** Cache survives `dist/` cleanup — only variant files are regenerated
 - **Pruning:** After an error-free build, entries whose key was never resolved during the build are removed at save time and their variant files deleted (a file shared with a surviving entry is kept), so a persisted cache — and the `dist/` copy made from it — stays bounded to images in use
 
@@ -584,7 +584,7 @@ Processed images are cached to `.cache/images/manifest.json` to avoid redundant 
 
 When `images.service` is `"cloudflare"`, the Sharp variant pipeline is skipped entirely. Image optimization becomes pure markup — no code is generated or deployed:
 
-- `transformImageNodes()` rewrites eligible `<img>` srcsets to Cloudflare [transform-via-URL](https://developers.cloudflare.com/images/transform-images/transform-via-url/) entries, one per configured width ≤ the original width: `/cdn-cgi/image/width=<w>,quality=<q>,fit=scale-down,format=auto/<src>?v=<contentHash8>` `format=auto` lets Cloudflare negotiate AVIF/WebP per browser; `quality` is the config's `quality.webp` value. The original `src` is preserved as fallback. Sharp is used only for a header-only dimension read (memoized per build).
+- `transformImageNodes()` rewrites eligible `<img>` srcsets to Cloudflare [transform-via-URL](https://developers.cloudflare.com/images/transform-images/transform-via-url/) entries, one per configured width ≤ the original width: `/cdn-cgi/image/width=<w>,quality=<q>,fit=scale-down,format=auto/<src>?v=<contentHash8>` `format=auto` lets Cloudflare negotiate AVIF/WebP per browser; `quality` is the config's `quality.webp` value. Whitespace and commas in `<src>` are percent-encoded so the candidate cannot split, and nothing else is, because an authored `src` may already be encoded. The original `src` is preserved as fallback. Sharp is used only for a header-only dimension read (memoized per build).
 - Remote https sources from `images.remoteDomains` hostnames get the same treatment with the full URL as the transform source — every configured width is emitted (dimensions unknown; `fit=scale-down` prevents upscaling) and no `v` hash is appended.
 - These URLs are served by Cloudflare's zone-level Image Transformations feature, which must be enabled in the dashboard; they do not resolve on `*.pages.dev` / `*.workers.dev` preview hosts. The build prints a reminder.
 

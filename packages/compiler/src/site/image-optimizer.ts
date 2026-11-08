@@ -263,6 +263,25 @@ export async function processImage(srcPath: string, cacheImgDir: string, config:
  */
 export function buildSrcset(variants: ImageVariant[], format: string) {
   return variants
-    .flatMap((v) => (v.format === format ? [`${v.outputPath} ${v.width}w`] : []))
+    .flatMap((v) => (v.format === format ? [`${variantUrl(v.outputPath)} ${v.width}w`] : []))
     .join(", ");
+}
+
+/**
+ * The URL of an emitted variant: its output path with each segment percent-encoded.
+ *
+ * A variant is named after its source file, and a source file may be named anything. Written raw, a
+ * name with a space breaks a `srcset`, which splits candidates on whitespace, so `Designer, White,
+ * Black.jpg` became a candidate for `…/Designer,` and a descriptor of `White,`. A comma is legal
+ * inside a candidate URL but not at its end, and is encoded too, so no file name can end a
+ * candidate early. The file on disk keeps its name: a server decodes the path back to it.
+ *
+ * @param {string} outputPath - A variant's `outputPath`, as written to disk
+ * @returns {string}
+ */
+export function variantUrl(outputPath: string) {
+  return outputPath
+    .split("/")
+    .map((segment) => encodeURIComponent(segment))
+    .join("/");
 }

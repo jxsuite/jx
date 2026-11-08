@@ -7,7 +7,7 @@
  */
 
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { basename, resolve } from "node:path";
+import { basename, extname, resolve } from "node:path";
 import { execSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { configHash, contentHash } from "./image-optimizer.ts";
@@ -112,14 +112,19 @@ export function getImageCacheDir(projectRoot: string): string {
 // ─── Cache key ───────────────────────────────────────────────────────────────
 
 /**
- * Build a cache key from source file content and config.
+ * Build a cache key from source file content, config, and the file's name.
+ *
+ * The name is part of the key because it is part of the output: variants are named after the source
+ * file (`variantFilename`). Keyed on content alone, a renamed photo found its old entry and kept
+ * the old variant names, so renaming a file to fix its URLs changed nothing until the cache was
+ * deleted by hand. The old entry is untouched by the build that renames it, so pruning removes it.
  *
  * @param {string} srcPath - Absolute path to source image
  * @param {ImageConfig} config
  * @returns {string}
  */
 export function cacheKey(srcPath: string, config: ImageConfig) {
-  return `${contentHash(srcPath)}:${configHash(config)}`;
+  return `${contentHash(srcPath)}:${configHash(config)}:${basename(srcPath, extname(srcPath))}`;
 }
 
 // ─── Load / save ─────────────────────────────────────────────────────────────
