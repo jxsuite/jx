@@ -119,6 +119,12 @@ export type ParentToIframe =
       assets?: AssetContext | null;
       mapperCtx: WireMapperCtx;
       siteStyle: JxStyle | null;
+      /**
+       * The state key of the entry this render draws live inside its collection's page (studio.md
+       * §22.5), or absent when it draws none. An `entryState` message replaces that key's value in
+       * place, which is how a field edit reaches the page without redrawing it.
+       */
+      entryRoot?: string;
       // Forced color-scheme preview (spec.md §9.5): "light"/"dark" sets data-color-scheme on the
       // Iframe root, null clears it (auto — follow the OS).
       colorScheme: "light" | "dark" | null;
@@ -293,6 +299,14 @@ export type ParentToIframe =
   // Already transposed parent-side (transposeStylebookStyle); `gen` must equal the iframe's
   // RenderedGen — a stale update is dropped (the superseding render carries the same style).
   | { kind: "styleUpdate"; style: JxStyle; gen: number }
+  /*
+   * The entry a render draws inside its collection's page, as its fields now stand (studio.md
+   * §22.5): the frame assigns it to the render's `entryRoot` key of its live scope, so the page's
+   * bound text follows without a redraw and a caret elsewhere on the page stays where it is.
+   * Acknowledged as a patch: `patchComplete`, or `patchError` from a frame whose render at `gen`
+   * draws no live entry, which the host escalates to a full render.
+   */
+  | { kind: "entryState"; gen: number; value: JsonObject }
   // Enter inline editing on the node at `path` (used to re-enter after a split/insert re-renders).
   | {
       kind: "enterEdit";
@@ -584,8 +598,9 @@ export type IframeToParent =
       shiftKey: boolean;
     }
   // Inline editing started in the iframe (the parent shows the format toolbar from here). `prop`
-  // Names the component-instance prop when the session edits prop-bound text (plain sessions).
-  | { kind: "editStart"; path: (string | number)[]; prop?: string }
+  // Names the component-instance prop when the session edits prop-bound text, and `field` the
+  // Entry field when it edits a collection page's text drawn from the entry (plain sessions both).
+  | { kind: "editStart"; path: (string | number)[]; prop?: string; field?: string }
   // The first keystroke of a typing burst, ahead of the idle tick's commit: the parent marks the tab
   // Dirty now, so Save is enabled the instant there is text a save would keep.
   | { kind: "editInput" }
@@ -626,6 +641,10 @@ export type IframeToParent =
       prop: string;
       value: string;
     }
+  // Committed entry-field text (studio.md §22.5): an entry written inside its collection's page
+  // Typed one of the page's whole-field nodes; the parent writes `value` to the entry's `field`.
+  // Sent on release only, never on the idle tick: a field write redraws the page around the caret.
+  | { kind: "editCommitField"; field: string; value: string }
   // Enter split a paragraph: keep `before` in the node, insert a new one with `after`.
   | {
       kind: "editSplit";

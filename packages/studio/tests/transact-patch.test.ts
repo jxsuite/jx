@@ -20,6 +20,7 @@ import {
   mutateMoveNode,
   mutateRemoveNode,
   mutateUpdateAttribute,
+  mutateUpdateFrontmatter,
   mutateUpdateMedia,
   mutateUpdateMediaStyle,
   mutateUpdateProp,
@@ -250,6 +251,64 @@ describe("transactDoc consumer wiring", () => {
     expect(getNodeAtPath(toRaw(tab.doc.document), ["children", 0])?.style).toEqual({
       color: "blue",
     });
+  });
+});
+
+describe("transactDoc on a change to frontmatter fields alone", () => {
+  /** A consumer that answers the fields verdict too (studio.md §22.5), recording what it is asked. */
+  function installFieldsConsumer(patchable: boolean, applyThrows = false) {
+    const asked: string[][] = [];
+    const escalated: string[] = [];
+    const log = { applied: 0, asked, escalated, marked: 0 };
+    setPatchConsumer({
+      apply: () => {
+        throw new Error("a fields-only change must not post document ops");
+      },
+      applyFields: () => {
+        log.applied += 1;
+        if (applyThrows) {
+          throw new Error("no host");
+        }
+      },
+      classify: () => ({ patchable: false, reason: "not asked" }),
+      classifyFields: (_tab, fmOps) => {
+        log.asked.push(fmOps.map((op) => op.field));
+        return { patchable, reason: patchable ? "" : "test-reject" };
+      },
+      escalate: (reason) => {
+        log.escalated.push(reason);
+      },
+      markConsumed: () => {
+        log.marked += 1;
+      },
+    });
+    return log;
+  }
+
+  test("is asked of the fields verdict, and applied in place when it says so", () => {
+    const log = installFieldsConsumer(true);
+    transactDoc(tab, (t) => mutateUpdateFrontmatter(t, "title", "Spring"));
+    expect(log.asked).toEqual([["title"]]);
+    expect(log.marked).toBe(1);
+    expect(log.applied).toBe(1);
+    expect(tab.doc.content.frontmatter.title).toBe("Spring");
+  });
+
+  test("is redrawn as before when the verdict refuses it, and escalates when the post fails", () => {
+    const refused = installFieldsConsumer(false);
+    transactDoc(tab, (t) => mutateUpdateFrontmatter(t, "title", "Spring"));
+    expect(refused.marked).toBe(0);
+    expect(refused.applied).toBe(0);
+    const failing = installFieldsConsumer(true, true);
+    transactDoc(tab, (t) => mutateUpdateFrontmatter(t, "title", "Summer"));
+    expect(failing.escalated[0]).toStartWith("patch-apply-failed");
+  });
+
+  test("a consumer with no fields verdict leaves it unrecorded, as before", () => {
+    const log = installConsumer({ patchable: true });
+    transactDoc(tab, (t) => mutateUpdateFrontmatter(t, "title", "Spring"));
+    expect(log.classified).toEqual([]);
+    expect(log.marked).toEqual([]);
   });
 });
 

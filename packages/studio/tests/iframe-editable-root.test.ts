@@ -264,6 +264,69 @@ describe("a secondary press", () => {
   });
 });
 
+describe("entry-field nested hosts", () => {
+  // A collection page's locked header around an entry: the title is one whole field of the entry.
+  const WITH_FIELD = `<p data-jx-path='["children",0]'>Body</p><header contenteditable="false"><h1 data-jx-entry-field="title" contenteditable="false"><em>Spring</em> planting</h1><p>Sep 30 · Garden</p></header>`;
+
+  test("a press on the field, or inside it, asks the bridge to open a nested host", () => {
+    const fields: string[] = [];
+    const { container } = mount(WITH_FIELD, {
+      onFieldActivate: (el) => {
+        fields.push(el.dataset.jxEntryField!);
+        return true;
+      },
+    });
+    nth(container, "em").dispatchEvent(new MouseEvent("pointerdown", { bubbles: true }));
+    expect(fields).toEqual(["title"]);
+    // The same host pressed again is already the active one: it is not opened twice.
+    nth(container, "h1").dispatchEvent(new MouseEvent("pointerdown", { bubbles: true }));
+    expect(fields).toEqual(["title"]);
+  });
+
+  test("typing in an adopted field host is not prevented, and its first caret keeps it", () => {
+    const { container, rec } = mount(WITH_FIELD, { onFieldActivate: () => true });
+    const field = nth(container, "h1");
+    field.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true }));
+    caretInto(field, 1);
+    expect(rec.deactivated).toBe(0);
+    expect(beforeInput(field, "insertText", "x")).toBe(false);
+  });
+
+  test("a refused field is not adopted, and a press elsewhere in the page never reaches it", () => {
+    const fields: string[] = [];
+    const { container, rec } = mount(WITH_FIELD, {
+      onFieldActivate: (el) => {
+        fields.push(el.dataset.jxEntryField!);
+        return false;
+      },
+    });
+    nth(container, "h1").dispatchEvent(new MouseEvent("pointerdown", { bubbles: true }));
+    caretInto(nth(container, "h1"), 1);
+    expect(rec.activated).toHaveLength(0);
+    nth(container, "header p").dispatchEvent(new MouseEvent("pointerdown", { bubbles: true }));
+    expect(fields).toEqual(["title"]);
+  });
+
+  test("a press anywhere outside an open field ends it, locked chrome included", () => {
+    const { container, rec } = mount(WITH_FIELD, { onFieldActivate: () => true });
+    nth(container, "h1").dispatchEvent(new MouseEvent("pointerdown", { bubbles: true }));
+    // A press on the locked line beside the title places no caret, but the title still closes.
+    nth(container, "header p").dispatchEvent(new MouseEvent("pointerdown", { bubbles: true }));
+    expect(rec.deactivated).toBe(1);
+    // A press inside the open field does not.
+    nth(container, "h1").dispatchEvent(new MouseEvent("pointerdown", { bubbles: true }));
+    nth(container, "em").dispatchEvent(new MouseEvent("pointerdown", { bubbles: true }));
+    expect(rec.deactivated).toBe(1);
+  });
+
+  test("without a field bridge the press is an ordinary press on locked text", () => {
+    const { container } = mount(WITH_FIELD);
+    caretInto(nth(container, "p"), 1);
+    nth(container, "h1").dispatchEvent(new MouseEvent("pointerdown", { bubbles: true }));
+    expect(window.getSelection()?.rangeCount).toBe(0);
+  });
+});
+
 describe("prop-bound nested hosts", () => {
   const WITH_PROP = `<p data-jx-path='["children",0]'>Page</p><x-card data-jx-path='["children",1]' contenteditable="false"><span data-jx-bound-prop="title">Card</span></x-card>`;
 

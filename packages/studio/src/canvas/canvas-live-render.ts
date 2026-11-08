@@ -31,7 +31,8 @@ import { componentRegistry, computeRelativePath } from "../files/components";
 import { collectUsedTags } from "@jxsuite/schema/component-meta";
 import { injectContext } from "@jxsuite/site/context";
 import { documentUrlPattern } from "@jxsuite/site/routes";
-import { prepareForEditMode } from "../utils/edit-display";
+import { entryBoundFields, entryRootsOf, prepareForEditMode } from "../utils/edit-display";
+import { liveEntryState } from "./live-entry";
 import {
   paramBoundStateKeys,
   resolveParamBoundState,
@@ -229,9 +230,9 @@ export function pageLayout(doc: JxMutableNode, tab: Tab | null): string | false 
  * document, or in its frontmatter for a Markdown entry, {@link pageLayout}), else its collection's
  * template page's `$layout`, else the project's `defaults.layout`. `null` when none applies.
  *
- * The template PAGE's own body is not spliced around the entry: a page that binds the entry into a
- * wrapper of its own shows that wrapper only in Preview of the page itself, because the edit
- * transforms cannot map the entry's paths through the page's bound node.
+ * When the collection's page draws the entry's body, the entry is written inside that page first
+ * ({@link entryInPage}) and this is the layout the PAGE is drawn in; otherwise it is the layout the
+ * entry is drawn in alone.
  */
 export async function entryLayout(
   doc: JxMutableNode,
@@ -242,6 +243,125 @@ export async function entryLayout(
   const match = path ? collectionForFile(path) : null;
   const page = match ? await collectionPage(match.name, entryLocale(path)) : null;
   return entryLayoutPath(own, page);
+}
+
+/** A collection entry spliced into its collection's page, ready to be wrapped in a layout. */
+export interface EntryPage {
+  /** The page, its nodes marked as the page's, with the entry's own tree where its body goes. */
+  doc: JxMutableNode;
+  /** The page's `ContentEntry` state key the entry stands in for (`entry`). */
+  root: string;
+  /** The page file, project-relative. */
+  file: string;
+}
+
+/**
+ * The node of a collection page that draws its entry's body: computed children reading the
+ * `$children` of one of its `ContentEntry` state entries (`"${state.entry.$children ?? []}"`), with
+ * the path to it. Null when the page draws no body.
+ */
+function entryBodyOf(
+  node: JxMutableNode,
+  roots: ReadonlySet<string>,
+): { body: JxMutableNode; root: string } | null {
+  if (!isNonNullObject(node)) {
+    return null;
+  }
+  const { children } = node;
+  if (isString(children)) {
+    const fields = entryBoundFields(children, roots);
+    const root = fields?.length === 1 && fields[0] === "body" ? entryRootOf(children, roots) : null;
+    return root === null ? null : { body: node, root };
+  }
+  if (Array.isArray(children)) {
+    for (const child of children) {
+      const found = isString(child) ? null : entryBodyOf(child, roots);
+      if (found) {
+        return found;
+      }
+    }
+  }
+  return null;
+}
+
+/** The attribute that marks a page's text as one entry field the author can type in place. */
+export const ENTRY_FIELD_ATTR = "data-jx-entry-field";
+
+/** Text that is one whole field of `root`: `${state.entry.data.title}`, and nothing around it. */
+function wholeFieldOf(text: string, root: string): string | null {
+  const match = /^\$\{\s*state\.([\w$]+)\.data\.([\w$]+)\s*\}$/u.exec(text);
+  return match?.[1] === root ? match[2]! : null;
+}
+
+/**
+ * Mark every node of a collection page whose text is one whole field of the entry, so the canvas
+ * lets the author type it in place and writes what they type to that field (studio.md §22.5). Text
+ * that mixes fields or literals (`${state.entry.data.date} · ${state.entry.data.tag}`) has no
+ * single field to write back to, and stays the Entry tab's.
+ */
+function markEntryFields(node: JxMutableNode, root: string): void {
+  if (!isNonNullObject(node)) {
+    return;
+  }
+  const field = isString(node.textContent) ? wholeFieldOf(node.textContent, root) : null;
+  if (field !== null) {
+    node.attributes = { ...node.attributes, [ENTRY_FIELD_ATTR]: field };
+  }
+  if (Array.isArray(node.children)) {
+    for (const child of node.children) {
+      if (!isString(child)) {
+        markEntryFields(child, root);
+      }
+    }
+  }
+}
+
+/** Which of `roots` an entry-bound template reads (its first expression's `state.<root>`). */
+function entryRootOf(template: string, roots: ReadonlySet<string>): string | null {
+  const root = /\$\{\s*state\.([\w$]+)/u.exec(template)?.[1];
+  return root !== undefined && roots.has(root) ? root : null;
+}
+
+/**
+ * An entry written inside its collection's page (studio.md §22.5): the page the collection's
+ * entries are published through, read and marked as locked template, with the entry's own tree in
+ * place of the node that draws the entry's body. So a post is written under its page's title, date
+ * and cover rather than in the bare layout, and every keystroke still lands in the entry's own
+ * document: the spliced tree is the one unmarked run of nodes, which `findPageContentPrefix` finds
+ * as the editable region exactly as it finds a page inside a layout.
+ *
+ * Null, and the entry is drawn in its layout alone as before, when the collection has no page, the
+ * page cannot be read, or it draws no body (`"${state.entry.$children}"`), because a page that
+ * places no body has nowhere to write one.
+ *
+ * @param entry - The entry's document as this render draws it (prepared, in Edit and Design)
+ * @param path - The entry's file, project-relative
+ * @param editable - Whether the render can be edited, so the page's whole-field text is marked as
+ *   the entry's fields to type in place (Edit and Design; never Preview)
+ */
+export async function entryInPage(
+  entry: JxMutableNode,
+  path: string,
+  editable = false,
+): Promise<EntryPage | null> {
+  const match = collectionForFile(path);
+  const page = match ? await collectionPage(match.name, entryLocale(path)) : null;
+  const doc = page ? await resolveLayoutDoc(page.path) : null;
+  if (!page || !doc) {
+    return null;
+  }
+  const found = entryBodyOf(doc, entryRootsOf(doc));
+  if (!found) {
+    return null;
+  }
+  // Marked BEFORE the entry goes in, so the page's nodes are locked and the entry's are not.
+  markLayoutNodes(doc, page.path);
+  if (editable) {
+    markEntryFields(doc, found.root);
+  }
+  const { children } = entry;
+  found.body.children = Array.isArray(children) ? [...children] : [];
+  return { doc, file: page.path, root: found.root };
 }
 
 /**
@@ -294,6 +414,8 @@ export async function resolveCanvasDocument(
   assets: AssetContext | null;
   mapperCtx: WireMapperCtx;
   siteStyle: JxStyle | null;
+  /** The state key of the entry drawn live inside its collection's page, or null for none. */
+  entryRoot: string | null;
 }> {
   const S = { documentPath: tab?.documentPath, mode: tab?.doc.mode };
   const canvasMode = modeOverride ?? canvasModeOfTab(tab);
@@ -314,30 +436,45 @@ export async function resolveCanvasDocument(
 
   // Layout wrapping obeys the tab-bar's "show layout elements" toggle (default on); with it off,
   // The page renders alone — the unwrapped path is identical to a non-layout page.
+  let entryPage: EntryPage | null = null;
   if ((isPage || isEntry) && tab?.session.ui.showLayout !== false) {
     const layoutPath = isEntry
       ? await entryLayout(doc, tab, S.documentPath)
       : getEffectiveLayoutPath(pageLayout(doc, tab));
-    if (layoutPath) {
-      const layoutDoc = await resolveCanvasLayout(layoutPath);
-      if (layoutDoc) {
-        const pageForSlots = canvasMode === "preview" ? structuredClone(toRaw(doc)) : renderDoc;
-        const merged = distributePageIntoLayout(layoutDoc, pageForSlots);
-        renderDoc =
-          canvasMode === "preview" ? merged : prepareForEditMode(stripEventHandlers(merged));
-        layoutWrapped = true;
-        if (S.documentPath) {
-          /* SAFETY: a document's `$elements` entries are tag-name strings, `{ $ref }` imports or
+    /* An entry goes into its collection's page first, and the page into the layout: the order the
+       build composes them in (studio.md §22.5). */
+    let pageForSlots = canvasMode === "preview" ? structuredClone(toRaw(doc)) : renderDoc;
+    if (isEntry && S.documentPath) {
+      entryPage = await entryInPage(pageForSlots, S.documentPath, canvasMode !== "preview");
+      pageForSlots = entryPage?.doc ?? pageForSlots;
+    }
+    const layoutDoc = layoutPath ? await resolveCanvasLayout(layoutPath) : null;
+    if (!layoutDoc && entryPage) {
+      // A page with no layout: the page alone is the frame the entry is written in.
+      const pageDoc = entryPage.doc;
+      renderDoc =
+        canvasMode === "preview" ? pageDoc : prepareForEditMode(stripEventHandlers(pageDoc));
+      layoutWrapped = true;
+      const pageContent = findPageContentPrefix(pageDoc);
+      pageContentPrefix = pageContent?.prefix ?? null;
+      pageContentOffset = pageContent?.offset ?? 0;
+    }
+    if (layoutDoc) {
+      const merged = distributePageIntoLayout(layoutDoc, pageForSlots);
+      renderDoc =
+        canvasMode === "preview" ? merged : prepareForEditMode(stripEventHandlers(merged));
+      layoutWrapped = true;
+      if (S.documentPath) {
+        /* SAFETY: a document's `$elements` entries are tag-name strings, `{ $ref }` imports or
              inline element definitions (a hand-edited null among them is skipped by the walk). */
-          rebaseLayoutElementRefs(
-            renderDoc.$elements as (JxElement | string | null)[] | undefined,
-            S.documentPath,
-          );
-        }
-        const pageContent = findPageContentPrefix(merged);
-        pageContentPrefix = pageContent?.prefix ?? null;
-        pageContentOffset = pageContent?.offset ?? 0;
+        rebaseLayoutElementRefs(
+          renderDoc.$elements as (JxElement | string | null)[] | undefined,
+          S.documentPath,
+        );
       }
+      const pageContent = findPageContentPrefix(merged);
+      pageContentPrefix = pageContent?.prefix ?? null;
+      pageContentOffset = pageContent?.offset ?? 0;
     }
   }
 
@@ -530,9 +667,20 @@ export async function resolveCanvasDocument(
   renderDoc.$media = getEffectiveMedia(renderDoc.$media);
   renderDoc.$head = getEffectiveHead(renderDoc.$head);
 
+  /* The page's entry state is the entry being written, set last so nothing between here and the
+     page read (the class bake above) resolves the page's ContentEntry from disk over it. A rebuild,
+     not a write: the render doc's state is shared with documents the tab saves. */
+  if (entryPage && S.documentPath) {
+    renderDoc = {
+      ...renderDoc,
+      state: { ...renderDoc.state, [entryPage.root]: liveEntryState(tab, S.documentPath) },
+    };
+  }
+
   return {
     assets,
     docBase,
+    entryRoot: entryPage?.root ?? null,
     mapperCtx: {
       arrayPaths: [...arrayPaths],
       canvasMode,

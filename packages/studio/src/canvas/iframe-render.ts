@@ -238,6 +238,15 @@ export const EDIT_PLACEHOLDER_CSS = `
 [data-jx-layout-region] [data-jx-layout-region]::before {
   content: none;
 }
+[data-jx-layout-region][data-jx-layout-file^="pages/"] {
+  opacity: 1;
+}
+[data-jx-layout-region][data-jx-layout-file^="pages/"]::before {
+  content: none;
+}
+[data-jx-entry-field] {
+  cursor: text;
+}
 :where([data-jx-bound-field]) {
   position: relative;
 }

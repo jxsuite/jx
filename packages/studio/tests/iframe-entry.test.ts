@@ -528,6 +528,55 @@ describe("startCanvasIframe — patch", () => {
     return { acks, container, pair };
   }
 
+  describe("an entry's fields, posted in place (studio.md §22.5)", () => {
+    /** A page drawing its entry's title, rendered with the entry as live state. */
+    function entryPage(): JxMutableNode {
+      return {
+        children: [{ tagName: "h1", textContent: "${state.entry.data.title}" }],
+        state: { entry: { data: { title: "Spring" } } },
+        tagName: "article",
+      };
+    }
+
+    async function bootEntry(extra: Partial<RenderMsg>) {
+      const pair = fakeChannelPair<ParentToIframe, IframeToParent>();
+      const acks: IframeToParent[] = [];
+      pair.parent.onMessage((m) => acks.push(m));
+      const container = document.createElement("div");
+      teardown = startCanvasIframe({ channel: pair.iframe, container });
+      pair.parent.post(renderMsg(2, entryPage(), entryPage(), extra));
+      pair.flush();
+      await flush();
+      pair.flush();
+      return { acks, container, pair };
+    }
+
+    test("replace the render's entry state, and every binding that reads it follows", async () => {
+      const { acks, container, pair } = await bootEntry({ entryRoot: "entry" });
+      expect(rendered(container, "h1").textContent).toBe("Spring");
+      acks.length = 0;
+      pair.parent.post({ gen: 2, kind: "entryState", value: { data: { title: "Summer" } } });
+      pair.flush();
+      await flush();
+      pair.flush();
+      expect(rendered(container, "h1").textContent).toBe("Summer");
+      expect(acks).toContainEqual({ gen: 2, kind: "patchComplete" });
+    });
+
+    test("a render that draws no live entry, or a stale one, refuses so the host redraws", async () => {
+      const { acks, pair } = await bootEntry({});
+      acks.length = 0;
+      pair.parent.post({ gen: 2, kind: "entryState", value: { data: {} } });
+      pair.flush();
+      pair.flush();
+      expect(acks).toContainEqual({ gen: 2, kind: "patchError", message: "entry-state-not-live" });
+      pair.parent.post({ gen: 1, kind: "entryState", value: { data: {} } });
+      pair.flush();
+      pair.flush();
+      expect(acks).toContainEqual({ gen: 1, kind: "patchError", message: "entry-state-not-live" });
+    });
+  });
+
   test("a render adopts the document format's caret vocabulary", async () => {
     // Which tags hold a caret depends on the document: markdown's blockquote holds paragraphs, so
     // The caret belongs in the <p> inside it, while a native document's may hold text directly.

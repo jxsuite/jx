@@ -328,6 +328,8 @@ export function startCanvasIframe(opts: {
   // The mode of the LIVE render — gates the interactive surfaces (inline editing, insert zones,
   // Grab-drags) that only design/edit modes own. Adopted alongside shadowDoc.
   let currentMode: CanvasMode = "design";
+  /** The live render's entry-state key (studio.md §22.5), or null when it draws no live entry. */
+  let entryRoot: string | null = null;
   /**
    * The popover the artboard is drawing open, as a serialized path, or null.
    *
@@ -862,6 +864,20 @@ export function startCanvasIframe(opts: {
       }
       return;
     }
+    if (msg.kind === "entryState") {
+      /* The entry's fields changed (studio.md §22.5). Assigning the key of the live scope re-runs
+         every binding that reads it, the page's title and byline included, and touches no other
+         DOM, so a caret in the entry's body or in another field stays where it is. A frame whose
+         render cannot take it reports that, and the host redraws it instead. */
+      const { gen } = msg;
+      if (gen !== renderedGen || !renderCtx || entryRoot === null) {
+        channel.post({ gen, kind: "patchError", message: "entry-state-not-live" });
+        return;
+      }
+      renderCtx.defs[entryRoot] = msg.value;
+      channel.post({ gen, kind: "patchComplete" });
+      return;
+    }
     if (msg.kind === "styleUpdate") {
       // Stylebook live style edit: swap the ROOT's style and re-run the runtime's style applier —
       // One reapply regenerates the whole scoped-CSS cascade (real @media included) without a
@@ -1071,6 +1087,7 @@ export function startCanvasIframe(opts: {
           renderCtx = handle.ctx;
           renderedGen = gen;
           currentMode = msg.mode;
+          entryRoot = msg.entryRoot ?? null;
           channel.post({ gen, kind: "renderComplete" });
           armIdleWatch();
           // Thread a serializable snapshot of the resolved $defs to the parent so the data-explorer

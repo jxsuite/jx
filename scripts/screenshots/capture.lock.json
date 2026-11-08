@@ -841,9 +841,9 @@
       "width": 560
     },
     "docs/images/seo-modal.png": {
-      "bytes": 240446,
-      "capturedAt": "2026-10-19T01:54:44Z",
-      "capturedBy": "screenshots@ci/39187344170",
+      "bytes": 327947,
+      "capturedAt": "2026-11-08T05:29:52Z",
+      "capturedBy": "screenshots@ci/42450862847",
       "definition": "5f4e7f6672bde116b3c1c64a10ecf28e21b97cf6b68b528c95c8660e07b3d96f",
       "height": 1966,
       "runtime": {
@@ -851,7 +851,7 @@
         "fontset": "fc:cac8f480b341",
         "os": "debian-12"
       },
-      "sha256": "96b5fd0d19900a9f1a72640169307f7a9ba2d9db182118a5c8bfab2455a518fd",
+      "sha256": "f39a40b89cd7171b2b0229b09d83eb6a67c777cec5603d6030c6ab12ae64cea9",
       "shot": "seo-modal",
       "width": 1152
     },

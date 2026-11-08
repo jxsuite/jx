@@ -20,6 +20,8 @@ let captured: { forwardOps: JxDocOp[]; tabId: string | null } | null = null;
 /** How many ready hosts the fake bridge reports having fanned the patch out to. */
 let readyHosts = 1;
 void mock.module("../src/canvas/iframe-host", () => ({
+  // The patcher's fields path (studio.md §22.5) imports it too; this suite posts no fields.
+  postEntryStateToHosts: () => 0,
   postPatchToHosts: (forwardOps: JxDocOp[], tabId: string | null) => {
     captured = { forwardOps, tabId };
     return readyHosts;

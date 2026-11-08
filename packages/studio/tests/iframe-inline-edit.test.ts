@@ -8,6 +8,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { startIframeInlineEdit } from "../src/canvas/iframe-inline-edit";
 import { startIframeSlashBridge } from "../src/canvas/iframe-slash";
 import {
+  commitActiveBlock,
   isEditing,
   openSlashMenu,
   setSlashController,
@@ -1400,5 +1401,56 @@ describe("the slash menu", () => {
     slashAt(container);
     await nextFrame();
     expect(shows).toEqual([]);
+  });
+});
+
+describe("entry-field inline editing", () => {
+  /** A collection page's locked header with the entry's title as one whole field, beside a block. */
+  function fieldContainer() {
+    const container = document.createElement("div");
+    container.innerHTML = `<p data-jx-path='["children",0]'>Body</p><header contenteditable="false"><h1 data-jx-entry-field="title" contenteditable="false">Spring planting</h1></header>`;
+    document.body.append(container);
+    // SAFETY: the fixture above holds exactly one h1.
+    const h1 = container.querySelector("h1")!;
+    return { container, h1 };
+  }
+
+  test("a press on the field opens a plain session and posts editStart with the field", () => {
+    const { channel, posts } = fakeChannel();
+    const { container, h1 } = fieldContainer();
+    const stop = boot(channel, container);
+    clickInto(h1);
+    expect(h1.isContentEditable).toBe(true);
+    expect(posts).toContainEqual({ field: "title", kind: "editStart", path: [] });
+    stop();
+  });
+
+  test("the idle tick writes nothing; leaving the field posts its value once, and the session ends", () => {
+    const { channel, posts } = fakeChannel();
+    const { container, h1 } = fieldContainer();
+    const stop = boot(channel, container);
+    clickInto(h1);
+    h1.textContent = "Spring planting, again";
+    commitActiveBlock();
+    expect(posts.filter((m) => m.kind === "editCommitField")).toEqual([]);
+    stopEditing();
+    expect(posts.filter((m) => m.kind === "editCommitField")).toEqual([
+      { field: "title", kind: "editCommitField", value: "Spring planting, again" },
+    ]);
+    expect(posts.at(-1)).toEqual({ kind: "editEnd" });
+    // The locked page closes over the field again once the caret has left it.
+    expect(h1.getAttribute("contenteditable")).toBe("false");
+    expect(isEditing()).toBe(false);
+    stop();
+  });
+
+  test("an element whose field name is empty is not a field to open", () => {
+    const { channel, posts } = fakeChannel();
+    const { container, h1 } = fieldContainer();
+    h1.dataset.jxEntryField = "";
+    const stop = boot(channel, container);
+    clickInto(h1);
+    expect(posts.filter((m) => m.kind === "editStart")).toEqual([]);
+    stop();
   });
 });

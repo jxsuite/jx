@@ -91,6 +91,14 @@ export interface PatchConsumer {
    */
   apply: (tab: Tab, ops: JxPatchOp[], record?: TransactionRecord) => void;
   /**
+   * Decide whether a transaction that changed only frontmatter fields can reach the canvas without
+   * a full render: an entry drawn inside its collection's page reads its fields through live state
+   * the frame can replace (studio.md §22.5). Absent, every such transaction full-renders.
+   */
+  classifyFields?: (tab: Tab, fmOps: readonly JxFmOp[]) => { patchable: boolean; reason: string };
+  /** Send the tab's fields to the frames drawing it. Throws on failure (caller escalates). */
+  applyFields?: (tab: Tab) => void;
+  /**
    * Schedule a full canvas render as the fallback path, recording the reason.
    *
    * `tab` names the document that failed to patch, and so the PANE whose stage must be rebuilt: a

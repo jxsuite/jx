@@ -15,7 +15,12 @@ import { MARKDOWN_FORMAT, mockFormatAction, seedMarkdownFormat } from "./format-
 import { closeAllTabs, openTab } from "../src/workspace/workspace";
 import { serializeDocument } from "../src/files/serialize-document";
 import { transactDoc, undo } from "../src/tabs/transact";
-import { commitEntryFields, entryFields, mutateEntryField } from "../src/content/entry-fields";
+import {
+  commitEntryFields,
+  commitEntryTextField,
+  entryFields,
+  mutateEntryField,
+} from "../src/content/entry-fields";
 import type { EntryFields } from "../src/content/entry-fields";
 import type { Tab } from "../src/tabs/tab";
 import type { JxMutableNode } from "@jxsuite/schema/types";
@@ -149,5 +154,29 @@ describe("commitEntryFields", () => {
       pubDate: "2026-01-01",
       title: "Renamed",
     });
+  });
+});
+
+describe("commitEntryTextField", () => {
+  test("writes typed text to a text field, or to an absent one, as one undo step", () => {
+    const md = markdownEntry({ title: "Hello" });
+    const before = md.history.snapshots.length;
+    expect(commitEntryTextField(md, "title", "Spring planting")).toBe(true);
+    expect(md.doc.content.frontmatter.title).toBe("Spring planting");
+    expect(md.history.snapshots.length).toBe(before + 1);
+    undo(md);
+    expect(md.doc.content.frontmatter.title).toBe("Hello");
+    expect(commitEntryTextField(md, "subtitle", "A note")).toBe(true);
+    expect(md.doc.content.frontmatter.subtitle).toBe("A note");
+  });
+
+  test("an unchanged value, or a field that is not text, is not written", () => {
+    const md = markdownEntry({ order: 3, tags: ["a"], title: "Hello" });
+    const before = md.history.snapshots.length;
+    expect(commitEntryTextField(md, "title", "Hello")).toBe(false);
+    expect(commitEntryTextField(md, "order", "4")).toBe(false);
+    expect(commitEntryTextField(md, "tags", "b")).toBe(false);
+    expect(md.doc.content.frontmatter).toEqual({ order: 3, tags: ["a"], title: "Hello" });
+    expect(md.history.snapshots.length).toBe(before);
   });
 });
