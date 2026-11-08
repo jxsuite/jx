@@ -33,6 +33,54 @@
       "padding": "var(--jx-space-2) var(--jx-space-3)",
       "borderBottom": "1px solid var(--jx-border)"
     },
+    "& [part=\"restyle\"]": {
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "var(--jx-space-2)",
+      "padding": "var(--jx-space-2) var(--jx-space-3)",
+      "borderBottom": "1px solid var(--border)"
+    },
+    "& [part=\"restyle-title\"]": {
+      "margin": "0",
+      "fontSize": "12px",
+      "fontWeight": "600",
+      "color": "var(--fg)"
+    },
+    "& [part=\"restyle-components\"]": {
+      "listStyle": "none",
+      "margin": "0",
+      "padding": "0",
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "2px"
+    },
+    "& [part=\"restyle-component\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "justifyContent": "space-between",
+      "gap": "var(--jx-space-2)",
+      "fontSize": "12px"
+    },
+    "& [part=\"restyle-name\"]": {
+      "fontFamily": "var(--font-mono)",
+      "overflow": "hidden",
+      "textOverflow": "ellipsis",
+      "whiteSpace": "nowrap"
+    },
+    "& [part=\"restyle-prompt\"]": {
+      "display": "flex",
+      "flexDirection": "column",
+      "alignItems": "flex-start",
+      "gap": "var(--jx-space-1)",
+      "padding": "var(--jx-space-2)",
+      "border": "1px dashed var(--border)",
+      "borderRadius": "var(--jx-radius-md)",
+      "fontSize": "12px"
+    },
+    "& [part=\"restyle-prompt-text\"]": {
+      "margin": "0",
+      "color": "var(--fg-dim)"
+    },
     "& [part=\"rows\"]": {
       "display": "flex",
       "flexDirection": "column",
@@ -383,6 +431,178 @@
               "tagName": "div",
               "attributes": {
                 "part": "target-host"
+              }
+            },
+            {
+              "$description": "What else styles the element Project Styles is editing (studio.md §7.4): the components whose own style restyles it, which an edit here does not reach, and the way to a second kind of it, which is a component rather than a variant (§7.1).",
+              "tagName": "div",
+              "attributes": {
+                "part": "restyle-slot",
+                "role": "none"
+              },
+              "style": {
+                "display": "contents"
+              },
+              "$switch": {
+                "$ref": "#/state/restyle/state"
+              },
+              "cases": {
+                "shown": {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "restyle"
+                  },
+                  "children": [
+                    {
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "restyle-list-slot",
+                        "role": "none"
+                      },
+                      "style": {
+                        "display": "contents"
+                      },
+                      "$switch": {
+                        "$ref": "#/state/restyle/listState"
+                      },
+                      "cases": {
+                        "list": {
+                          "tagName": "section",
+                          "attributes": {
+                            "part": "restyle-list",
+                            "aria-label": "${state.restyle.listTitle}"
+                          },
+                          "children": [
+                            {
+                              "tagName": "h3",
+                              "attributes": {
+                                "part": "restyle-title"
+                              },
+                              "textContent": "${state.restyle.listTitle}"
+                            },
+                            {
+                              "tagName": "ul",
+                              "attributes": {
+                                "part": "restyle-components"
+                              },
+                              "children": [
+                                {
+                                  "$prototype": "Array",
+                                  "items": {
+                                    "$ref": "#/state/restyle/components"
+                                  },
+                                  "key": {
+                                    "$ref": "$map/item/path"
+                                  },
+                                  "map": {
+                                    "tagName": "li",
+                                    "attributes": {
+                                      "part": "restyle-component",
+                                      "data-path": "${$map.item.path}"
+                                    },
+                                    "children": [
+                                      {
+                                        "tagName": "span",
+                                        "attributes": {
+                                          "part": "restyle-name"
+                                        },
+                                        "textContent": "${$map.item.tagName}"
+                                      },
+                                      {
+                                        "tagName": "jx-button",
+                                        "attributes": {
+                                          "part": "restyle-open",
+                                          "aria-label": "${$map.item.openLabel}"
+                                        },
+                                        "$props": {
+                                          "size": "sm",
+                                          "variant": "secondary",
+                                          "quiet": true
+                                        },
+                                        "onclick": {
+                                          "$prototype": "Function",
+                                          "body": [
+                                            {
+                                              "operator": "call",
+                                              "target": {
+                                                "$ref": "#/state/openComponent"
+                                              },
+                                              "value": [
+                                                {
+                                                  "$ref": "$map/item/path"
+                                                }
+                                              ]
+                                            }
+                                          ]
+                                        },
+                                        "children": [
+                                          {
+                                            "tagName": "span",
+                                            "textContent": "Open"
+                                          }
+                                        ]
+                                      }
+                                    ]
+                                  }
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    {
+                      "tagName": "aside",
+                      "attributes": {
+                        "part": "restyle-prompt"
+                      },
+                      "children": [
+                        {
+                          "tagName": "strong",
+                          "attributes": {
+                            "part": "restyle-prompt-title"
+                          },
+                          "textContent": "${state.restyle.promptTitle}"
+                        },
+                        {
+                          "tagName": "p",
+                          "attributes": {
+                            "part": "restyle-prompt-text"
+                          },
+                          "textContent": "${state.restyle.promptText}"
+                        },
+                        {
+                          "tagName": "jx-button",
+                          "attributes": {
+                            "part": "restyle-new"
+                          },
+                          "$props": {
+                            "size": "sm",
+                            "variant": "secondary"
+                          },
+                          "onclick": {
+                            "$prototype": "Function",
+                            "body": [
+                              {
+                                "operator": "call",
+                                "target": {
+                                  "$ref": "#/state/newComponent"
+                                },
+                                "value": []
+                              }
+                            ]
+                          },
+                          "children": [
+                            {
+                              "tagName": "span",
+                              "textContent": "New component…"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
               }
             },
             {

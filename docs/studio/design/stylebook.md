@@ -23,6 +23,7 @@ code:
   - packages/studio/src/style/tag-inheritance.ts
   - packages/studio/src/style/stylebook-specimens.ts
   - packages/studio/src/panels/styles-panel.ts
+  - packages/studio/src/style/component-restyles.ts
   - packages/studio/src/surfaces/styles-panel.ts
 ---
 
@@ -64,6 +65,8 @@ A page or a component has an **Elements** view of its own, in the Design workspa
 Links, buttons and form fields are drawn once per state, side by side: **default**, **:hover**, **:focus-visible**, **:active**, and **:disabled** for the form fields. Each copy shows what that state's rule does without you pointing at anything, and an edit to a state repaints its copy as you make it. Click a copy to style that state: the Target Line's selector reads `button :hover`, and the edit is written under `button`. The pressed copy also shows the hover look, as a pressed button is also hovered.
 
 The Target Line works the same as in Design mode: the **breakpoint** segment says which screen size a default is scoped to (see **[Breakpoints](/docs/studio/design/breakpoints)**), and the **selector** segment adds states, so you can give every link a default `:hover` in one edit. Select the link specimen and the menu offers the states a link has, `a :hover`, `a :visited` and the rest, each one written under `a`. The specimen is a real link, so the color and underline you set on it are the ones your pages will show (see **[Hover states and selectors](/docs/studio/design/states-and-selectors)**). Nested parts style as compound selections, like the header cells inside tables.
+
+Below the Target Line, the Style tab names the components in your project that restyle the element their own way, such as a newsletter component with its own button style. An edit here does not show inside those, so each one has an **Open** button that opens it. Underneath, **Need a second kind of button?** points at the answer for a call-to-action that should look different from every other button: make it a component that wraps a `<button>` and carries its own style. **New component…** starts one.
 
 ## Know what an edit reaches
 

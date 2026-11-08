@@ -128,7 +128,9 @@ import { UNIT_RE } from "../ui/unit-selector";
 import { colorTokens, resolvedColor } from "../ui/color-selector";
 import { resolveTokenValue, toTokenRef, tokenRefName } from "../style/token-ref";
 import { PROJECT_VARIABLES_VIEW } from "../style/project-styles";
-import { mountStylePanelSurface } from "../surfaces/style-panel";
+import { mountStylePanelSurface, NO_RESTYLE } from "../surfaces/style-panel";
+import { componentRestyles } from "../style/component-restyles";
+import { runActiveReported } from "../commands/run-reported";
 import { openMenu } from "../surfaces/menu";
 import type { MenuHandle, MenuRowProjection } from "../surfaces/menu";
 import { cloneValue } from "../tabs/doc-op-apply";
@@ -145,6 +147,7 @@ import type {
   StylePanelActions,
   StylePanelSurface,
   StylePanelView,
+  StyleRestyleView,
   StyleRowView,
   StyleSectionView,
 } from "../surfaces/style-panel";
@@ -1397,8 +1400,35 @@ function emptyView(message: string, withOpen: boolean): StylePanelView {
     emptyMessage: message,
     filter: "",
     hasEmptyAction: withOpen,
+    restyle: NO_RESTYLE,
     sections: [],
     view: "empty",
+  };
+}
+
+/**
+ * What else styles the element Project Styles is editing (§7.4): the components that restyle it
+ * their own way, which an edit here does not reach, and the way to a second kind of it. Read for
+ * the element (the stylebook selection, `table th`), not its state, so `button :hover` names the
+ * same components `button` does. A component's own card has nothing to say here: it IS one.
+ */
+function restyleView(stylebookSelector: string | null): StyleRestyleView {
+  const tag = stylebookSelector?.split(" ").at(-1);
+  if (!stylebookSelector || !tag || !isTagPath(stylebookSelector) || tag.includes("-")) {
+    return NO_RESTYLE;
+  }
+  const components = componentRestyles(tag).map(({ path, tagName }) => ({
+    openLabel: `Open ${tagName}`,
+    path,
+    tagName,
+  }));
+  return {
+    components,
+    listState: components.length > 0 ? "list" : "none",
+    listTitle: `Components that restyle their <${tag}>`,
+    promptText: `Make it a component that wraps a <${tag}> and carries its own style, then reuse it from the Site panel. A rule here would change every <${tag}> on the site.`,
+    promptTitle: `Need a second kind of <${tag}>?`,
+    state: "shown",
   };
 }
 
@@ -1688,6 +1718,7 @@ function buildEditor(
     emptyMessage: "",
     filter: tab.session.ui.styleFilter || "",
     hasEmptyAction: false,
+    restyle: restyleView(stylebookSelector),
     sections,
     view: "editor",
   };
@@ -2050,6 +2081,12 @@ function openRowMenu(
 
 /** Everything the document can ask for, resolved through {@link rowActions}. */
 const ACTIONS: StylePanelActions = {
+  newComponent: () => {
+    void runActiveReported("file.new", { kind: "component" }, "Style");
+  },
+  openComponent: (path) => {
+    void import("../files/files").then(({ openFileInTab }) => openFileInTab(path));
+  },
   addCustom: (key, field) => {
     const add = rowActions(key)?.add;
     if (!add || !(field instanceof HTMLInputElement)) {
