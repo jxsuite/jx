@@ -51,6 +51,8 @@ At the end of the line, a chip states the blast radius of the next keystroke:
 
 The project case adds a warning band under the line: it names how many elements in how many files the edit reaches, and **Show affected** lists the files with a count each. While the count is still being worked out the band says so; where the project can't be searched it says the number is **unknown**, never a confident zero.
 
+With one element selected in Design, **Applies to** under the line says the same thing as a choice: **This `<h1>`** is what an edit here changes. **All `<h1>`s** opens [Project Styles](/docs/studio/design/stylebook) on `h1`, where an edit changes every `h1` on the site.
+
 ## Where each value came from
 
 Every field label carries a chip that answers one question: _why does this box say what it says?_

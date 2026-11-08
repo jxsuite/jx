@@ -128,7 +128,7 @@ import { UNIT_RE } from "../ui/unit-selector";
 import { colorTokens, resolvedColor } from "../ui/color-selector";
 import { resolveTokenValue, toTokenRef, tokenRefName } from "../style/token-ref";
 import { PROJECT_VARIABLES_VIEW } from "../style/project-styles";
-import { mountStylePanelSurface, NO_RESTYLE } from "../surfaces/style-panel";
+import { mountStylePanelSurface, NO_APPLIES_TO, NO_RESTYLE } from "../surfaces/style-panel";
 import { componentRestyles } from "../style/component-restyles";
 import { runActiveReported } from "../commands/run-reported";
 import { openMenu } from "../surfaces/menu";
@@ -146,6 +146,7 @@ import type {
   StyleOptionView,
   StylePanelActions,
   StylePanelSurface,
+  StyleAppliesToView,
   StylePanelView,
   StyleRestyleView,
   StyleRowView,
@@ -1399,10 +1400,32 @@ function emptyView(message: string, withOpen: boolean): StylePanelView {
     emptyActionLabel: withOpen ? openPageAction().label : "",
     emptyMessage: message,
     filter: "",
+    appliesTo: NO_APPLIES_TO,
     hasEmptyAction: withOpen,
     restyle: NO_RESTYLE,
     sections: [],
     view: "empty",
+  };
+}
+
+/**
+ * Design's "Applies to" pair (§6.2): an edit here changes this element; every element of its tag is
+ * the site's default, which Project Styles edits, so the second option goes there. Offered for one
+ * plain HTML element: a component's look is its own definition's, and the root is the page.
+ */
+function appliesToView(tab: Tab, node: JxMutableNode): StyleAppliesToView {
+  const tag = isString(node.tagName) ? node.tagName : "";
+  const one = tab.session.selection.length === 1;
+  const isRoot = primarySelection(tab.session.selection)?.length === 0;
+  if (!one || isRoot || !/^[a-z][a-z0-9]*$/u.test(tag)) {
+    return NO_APPLIES_TO;
+  }
+  return {
+    allHint: `Style every <${tag}> on the site in Project Styles`,
+    allLabel: `All <${tag}>s`,
+    state: "shown",
+    tag,
+    thisLabel: `This <${tag}>`,
   };
 }
 
@@ -1467,7 +1490,7 @@ function buildView(canvasMode: () => string): StylePanelView {
   if (!node) {
     return emptyView(staleSelectionMessage(), false);
   }
-  return buildEditor(tab, node, {});
+  return { ...buildEditor(tab, node, {}), appliesTo: appliesToView(tab, node) };
 }
 
 /**
@@ -1717,6 +1740,7 @@ function buildEditor(
     emptyActionLabel: "",
     emptyMessage: "",
     filter: tab.session.ui.styleFilter || "",
+    appliesTo: NO_APPLIES_TO,
     hasEmptyAction: false,
     restyle: restyleView(stylebookSelector),
     sections,
@@ -2083,6 +2107,14 @@ function openRowMenu(
 const ACTIONS: StylePanelActions = {
   newComponent: () => {
     void runActiveReported("file.new", { kind: "component" }, "Style");
+  },
+  styleAllOfTag: (tag) => {
+    // The site's default for the tag is Project Styles' to edit: open it there, on the tag.
+    void runActiveReported("styles.open", { view: "elements" }, "Style").then(() => {
+      void import("./styles-panel").then(({ STYLES_PANEL_ACTIONS }) => {
+        STYLES_PANEL_ACTIONS.selectElement(tag);
+      });
+    });
   },
   openComponent: (path) => {
     void import("../files/files").then(({ openFileInTab }) => openFileInTab(path));
