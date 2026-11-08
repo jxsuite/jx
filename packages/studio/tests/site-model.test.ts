@@ -207,12 +207,12 @@ describe("the filter narrows every section by name, route or path", () => {
     ]);
   });
 
-  test("templates are the JSON layouts, sorted and filtered, with the default layout marked", () => {
+  test("templates are the native layouts, sorted and filtered, with the default layout marked", () => {
     const all = templateRows(
-      ["layouts/post.json", "layouts/base.json", "layouts/notes.md"],
+      ["layouts/post.json", "layouts/base.jxn", "layouts/notes.md"],
       "layouts/post.json",
       "",
-      "layouts/base.json",
+      "layouts/base.jxn",
     );
     expect(all.map((row) => [row.label, row.detail, row.selected])).toEqual([
       ["Base", "default layout", "false"],

@@ -113,10 +113,14 @@ async function writeDocument(
        the tab it opens in reads its layout straight back. The newline is the serializer's own. */
     return serializeJson(merged, null);
   }
-  const { formatByExtension, formatSerialize } = await import("./format-host");
+  const { JXN_FORMAT_NAME, formatByExtension, formatSerialize } = await import("./format-host");
   const format = formatByExtension(targetExt, "serialize");
   if (!format) {
     throw new Error(`No installed format writes ${targetExt} files.`);
+  }
+  if (format.name === JXN_FORMAT_NAME) {
+    // The native notation holds the document as it is: no body split to undo, no `children` to add.
+    return formatSerialize(format.name, merged);
   }
   /*
    * Frontmatter is asked for whenever the MERGED document carries anything but its body.
@@ -196,14 +200,16 @@ export async function buildPlan(
     };
   }
 
-  if (targetExt === ".json") {
-    /* A three-state answer, because `validateDoc` fails OPEN: an unavailable validator returns no
-       errors, which is indistinguishable from a valid document. Claiming validity on the strength of
-       a schema that was never compiled is the "never render 0" defect one layer down. */
+  if (targetExt === ".json" || targetExt === ".jxn") {
+    /* Either native target is the same document, so it is held to the same schema. A three-state
+       answer, because `validateDoc` fails OPEN: an unavailable validator returns no errors, which
+       is indistinguishable from a valid document. Claiming validity on the strength of a schema
+       that was never compiled is the "never render 0" defect one layer down. */
     const { validateDocOrNull } = await import("../services/jx-validate");
-    /* SAFETY: `text` is what `serializeJson` just wrote, and `JSON.parse` without a reviver yields
-       a JSON value. */
-    const errors = await validateDocOrNull(JSON.parse(text) as JsonValue);
+    const { parseNativeDocument } = await import("@jxsuite/schema/jxn");
+    /* SAFETY: `text` is what the native writer just wrote, read back by the native reader, whose
+       answer is a Jx document: JSON data throughout. */
+    const errors = await validateDocOrNull(parseNativeDocument(text, targetPath) as JsonValue);
     if (errors === null) {
       lines.push(
         "The result could not be checked against the document schema — that is not the same as " +

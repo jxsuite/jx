@@ -472,7 +472,7 @@ interface ListedEntry {
 async function loadPageRouteEntries() {
   pageRoutesLoading = true;
   const routes: string[] = [];
-  const docExts = new Set([".json", ".md", ".html"]);
+  const docExts = new Set([".json", ".jxn", ".md", ".html"]);
   try {
     const platform = getPlatform();
     const walk = async (dir: string, rel: string): Promise<void> => {

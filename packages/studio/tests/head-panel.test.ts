@@ -1729,6 +1729,7 @@ describe("layoutHeadEntries — the one layer that lives in a file", () => {
   test("layoutDisplayName reads a path the way a person names the layout", () => {
     expect(layoutDisplayName("./layouts/blog_post.json")).toBe("Blog Post");
     expect(layoutDisplayName("layouts/nested/marketing-page.json")).toBe("Nested Marketing Page");
+    expect(layoutDisplayName("./layouts/base.jxn")).toBe("Base");
   });
 
   test("seoPreviewFor reads the open document, its layout, and the project config", async () => {

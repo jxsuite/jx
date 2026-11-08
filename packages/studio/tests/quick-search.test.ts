@@ -441,7 +441,7 @@ describe("files mode", () => {
     await open("files");
     await type("pgblog");
     const searches = state.calls.filter(([name]) => name === "searchFiles");
-    expect(searches).toEqual([["searchFiles", "", [".md"]]]);
+    expect(searches).toEqual([["searchFiles", "", [".jxn", ".md"]]]);
     // A basename substring backend could never have answered "pgblog".
     expect(names()).toEqual(["index.md"]);
     expect(items()[0]!.querySelector('[part="description"]')?.textContent).toBe(

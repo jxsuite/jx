@@ -156,7 +156,7 @@ The project's working tree, browsable as a site, on a loopback origin of its own
 
 Every response carries `Cache-Control: private, no-store` (a composed page is a function of a tree that changes under it and is not revalidatable), `X-Robots-Tag: noindex, nofollow`, `X-Content-Type-Options: nosniff` and `Referrer-Policy: same-origin`.
 
-A `.jxn` file under a servable root is answered as `application/json`, parsed on the way out, so the runtime's `res.json()` works on any site origin. A file that does not read answers 422 with the reason. An editing server has no such lane: `mediaTypeForPath` answers `.jxn` as `text/plain; charset=utf-8`, because KDL names no media type and the file is text a person opens in an editor.
+A `.jxn` file under a servable root is answered as `application/json`, parsed on the way out, so the runtime's `res.json()` works on any site origin. A file that does not read answers 422 with the reason. The editing server answers its static routes the same way, because the canvas loads a `.jxn` component or layout through the runtime from there. Studio reads a file's text through `/__studio/file`, which returns it as written, and `mediaTypeForPath` still answers `.jxn` as `text/plain; charset=utf-8`, because KDL names no media type.
 
 **The host's own surfaces live under `/__jx_live__/`**, dispatched ahead of everything: the `@jxsuite/runtime` browser bundle (immutable), the reload client, `project.json`'s `style` as a stylesheet, the reload stream, a retarget acknowledgement and a liveness probe. Not `/_jx/` — that is the extension-mount namespace, which a previewed page still needs — and not `/__studio__/`, because a preview origin must not look like the editor's.
 

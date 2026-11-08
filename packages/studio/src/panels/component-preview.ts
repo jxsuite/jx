@@ -6,6 +6,7 @@
  * in its generated specimen doc.)
  */
 
+import { isNativeDocumentPath } from "@jxsuite/schema/jxn";
 import { defineElement, setSkipServerFunctions } from "@jxsuite/runtime";
 import { projectState } from "../store";
 import { fillPreviewImages } from "../canvas/preview-placeholder";
@@ -65,7 +66,7 @@ export async function defineComponent(comp: ComponentEntry): Promise<boolean> {
   if (comp.source === "npm") {
     return Boolean(customElements.get(comp.tagName));
   }
-  if (comp.path && !comp.path.endsWith(".json")) {
+  if (comp.path && !isNativeDocumentPath(comp.path)) {
     return false;
   }
   const root = projectState?.projectRoot;
