@@ -1,6 +1,6 @@
 {
   "name": "@jxsuite/erase",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Erases TypeScript from Jx function bodies, so every tier that analyses or runs one sees JavaScript",
   "license": "MIT",
   "repository": {
