@@ -3,8 +3,12 @@ title: "Jx Notation (.jxn)"
 description: "Write a Jx document as a .jxn file: shorter than JSON, with comments and multi-line code, and read to exactly the same document."
 spec:
   - spec.md#22
+  - site-architecture.md#2.3
 code:
   - packages/schema/src/jxn/parse.ts
+  - packages/schema/src/jxn/project.ts
+  - packages/schema/src/jxn/index.ts
+  - packages/studio/src/files/project-file-name.ts
   - packages/schema/src/jxn/serialize.ts
   - packages/schema/src/jxn/reconcile.ts
   - packages/schema/src/jxn/document.ts
@@ -76,6 +80,41 @@ A `.jxn` file either reads to the document its `.json` spelling would, or it doe
 
 :::doc-warning
 In a quoted KDL string, `\s` is a space and `\b` a backspace, so `"${x.replace(/\s+/g, '')}"` reads without complaint and matches the wrong thing. Use a raw string for a pattern: `#"${x.replace(/\s+/g, '')}"#`. `jx validate` warns about both, and the writer always uses a raw string for a value with a backslash in it.
+:::
+
+## A project file
+
+A project can be declared by `project.jxn` instead of `project.json`. It is the same grammar with a different top level: there is no root element, and every node is a setting. The file says what it is with a `project` node, which holds the project's name:
+
+```kdl
+/- kdl-version 2
+$schema "./project.schema.json"
+project "Bistro & Café"
+
+// The base layout every page inherits unless it names another.
+defaults layout="./layouts/base.json" lang=en
+
+extensions {
+    - "@jxsuite/parser"
+}
+
+$media {
+    --md "(max-width: 768px)"
+}
+
+style {
+    --color-primary "#9a2f1a"
+}
+```
+
+`$head` holds elements, `style` and `$media` hold one declaration per line, and every other setting is written the way a value is anywhere in Jx Notation. A list of one item needs its block, `extensions { - "@jxsuite/parser" }`, because `extensions "@jxsuite/parser"` is a single string. `jx validate` says so when it finds one.
+
+Every host reads it: `jx build`, `jx validate`, the dev server, the desktop application and a site's own origin. Saving a setting in Studio, or the assistant writing the file, keeps your comments.
+
+A file named `project.jxn` without the `project` node is an ordinary document, so `pages/project.jxn` is still a page with the route `/project`. A folder holding both `project.jxn` and `project.json` is refused everywhere, naming both, until you delete one.
+
+:::doc-note
+`jx convert` does not move a project file yet, so write a `project.jxn` by hand, then delete the `project.json`. New projects still start with `project.json`.
 :::
 
 ## Moving a file between formats

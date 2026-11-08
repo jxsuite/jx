@@ -110,6 +110,8 @@ const responses = new Map<string, JsonValue>(
 
 // Track forced errors for specific methods
 const forcedErrors = new Map<string, string>();
+/** The project files the fake backend holds, by name. */
+let projectFiles = new Map([["project.json", JSON.stringify({ name: "TestProject" })]]);
 
 // Every request the platform actually sent, so a test can assert both that one RPC was used and
 // That another one was NOT (the folder chooser must never fire two dialogs).
@@ -150,13 +152,12 @@ const server = Bun.serve({
 
       // Dynamic response for readFile based on path
       if (msg.method === "readFile") {
-        if (msg.params?.path === "project.json") {
-          ws.send(
-            JSON.stringify({
-              id: msg.id,
-              result: JSON.stringify({ name: "TestProject" }),
-            }),
-          );
+        const path = String(msg.params?.path);
+        const projectFile = projectFiles.get(path);
+        if (projectFile !== undefined) {
+          ws.send(JSON.stringify({ id: msg.id, result: projectFile }));
+        } else if (path.startsWith("project.")) {
+          ws.send(JSON.stringify({ error: "File not found", id: msg.id }));
         } else {
           ws.send(JSON.stringify({ id: msg.id, result: "file content here" }));
         }
@@ -486,12 +487,35 @@ describe("chromium desktop platform", () => {
   });
 
   test("probeRootProject returns null when readFile fails (no project → welcome screen)", async () => {
-    // The launcher's root defaults to the launch cwd; a missing project.json means "no project".
+    // The launcher's root defaults to the launch cwd; no project file means "no project".
     // A phantom non-site result here would set projectState and suppress the welcome screen for
     // The whole session (the chromium never-shows-welcome regression).
-    forcedErrors.set("readFile", "File not found");
-    const result = await platform.probeRootProject();
-    expect(result).toBeNull();
+    projectFiles = new Map();
+    try {
+      expect(await platform.probeRootProject()).toBeNull();
+    } finally {
+      projectFiles = new Map([["project.json", JSON.stringify({ name: "TestProject" })]]);
+    }
+  });
+
+  test("probeRootProject reads a project.jxn", async () => {
+    projectFiles = new Map([["project.jxn", 'project "Notation"\n']]);
+    try {
+      const result = await platform.probeRootProject();
+      expect(result?.info.projectConfig).toEqual({ name: "Notation" });
+      expect(result?.meta.name).toBe("Notation");
+    } finally {
+      projectFiles = new Map([["project.json", JSON.stringify({ name: "TestProject" })]]);
+    }
+  });
+
+  test("probeRootProject reads a project file that does not read as no project", async () => {
+    projectFiles = new Map([["project.jxn", "project\nproject\n"]]);
+    try {
+      expect(await platform.probeRootProject()).toBeNull();
+    } finally {
+      projectFiles = new Map([["project.json", JSON.stringify({ name: "TestProject" })]]);
+    }
   });
 
   test("resolveSiteContext returns site path", async () => {

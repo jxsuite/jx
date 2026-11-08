@@ -19,8 +19,20 @@ import type {
   StudioPlatform,
 } from "../types";
 import { isString } from "@jxsuite/schema/guards";
-import { parseJxn, serializeJxn } from "@jxsuite/schema/jxn";
-import type { JxDocument, JxDocumentValue, JxMutableNode } from "@jxsuite/schema/types";
+import {
+  isJxnPath,
+  parseJxn,
+  parseProject,
+  serializeJxn,
+  serializeProject,
+} from "@jxsuite/schema/jxn";
+import { isProjectConfigPath } from "@jxsuite/schema/project-file";
+import type {
+  JxDocument,
+  JxDocumentValue,
+  JxMutableNode,
+  ProjectConfig,
+} from "@jxsuite/schema/types";
 
 export interface StudioFormatHints {
   icon?: string;
@@ -76,6 +88,22 @@ const JXN_FORMAT: StudioFormat = {
   extensions: [".jxn"],
   mediaType: null,
   name: "jxn",
+  remote: false,
+  studio: { documentMode: { default: "component" } },
+};
+
+/**
+ * A project file in Jx Notation (`spec.md` §22.5), which is not a document and must never be read
+ * as one: its top level is the configuration, not an element. Answered only for the project's own
+ * file, so no picker offers it and no other `.jxn` file can reach it.
+ */
+const PROJECT_JXN_FORMAT: StudioFormat = {
+  capabilities: JXN_FORMAT.capabilities,
+  documentKinds: [],
+  exportTarget: false,
+  extensions: [],
+  mediaType: null,
+  name: "jx-project",
   remote: false,
   studio: { documentMode: { default: "component" } },
 };
@@ -269,7 +297,12 @@ export function formatByName(name: string | null | undefined): StudioFormat | un
   if (!name) {
     return undefined;
   }
-  return name === JXN_FORMAT.name ? JXN_FORMAT : _formats.find((f) => f.name === name);
+  if (name === JXN_FORMAT.name) {
+    return JXN_FORMAT;
+  }
+  return name === PROJECT_JXN_FORMAT.name
+    ? PROJECT_JXN_FORMAT
+    : _formats.find((f) => f.name === name);
 }
 
 /** Error for opening a non-JSON file when no imported format class claims its extension. */
@@ -285,6 +318,10 @@ export function noFormatError(path: string): Error {
 export function formatForPath(path: string | null | undefined): StudioFormat | undefined {
   if (!path) {
     return undefined;
+  }
+  if (isProjectConfigPath(path)) {
+    // The project's own file is configuration in either spelling, never a document.
+    return isJxnPath(path) ? PROJECT_JXN_FORMAT : undefined;
   }
   const dot = path.lastIndexOf(".");
   if (dot === -1) {
@@ -357,6 +394,11 @@ export async function formatParse(
   if (name === JXN_FORMAT.name) {
     return parseJxn(source);
   }
+  if (name === PROJECT_JXN_FORMAT.name) {
+    /* SAFETY: a project's configuration in its editing form. Studio edits it with the document
+       machinery, whose every member is optional, as it does a `project.json` (`tabs/project-config.ts`). */
+    return parseProject(source) as JxMutableNode;
+  }
   /* SAFETY: a format class's `parse` capability returns the Jx document it built from the source —
      The contract every format class implements (specs/extensions.md) — and nothing here inspects
      It before `splitFormatDocument` reads its keys. */
@@ -383,6 +425,10 @@ export async function formatSerialize(
     // `source` is what keeps the comments: everything that did not change keeps its exact text.
     // SAFETY: a document in its editing form, and every member of a JxDocument is optional.
     return serializeJxn(doc as JxDocument, options?.source);
+  }
+  if (name === PROJECT_JXN_FORMAT.name) {
+    // SAFETY: a configuration in its editing form, and every member of a ProjectConfig is optional.
+    return serializeProject(doc as ProjectConfig, options?.source);
   }
   /* SAFETY: a format class's `serialize` capability returns the source text it wrote — the contract
      Every format class implements (specs/extensions.md) — so the answer is a string. */

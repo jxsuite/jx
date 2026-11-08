@@ -71,7 +71,7 @@ Two neighboring specs carry the detail this one only points at: `extensions.md` 
 
 ## 2. Project Structure
 
-A Jx site project follows a conventional directory layout. Only `project.json` and `pages/` are required — everything else is optional and additive. A file by that name is a project's only if its content agrees: `pages/project.json` is a page with the route `/project`, and Nx keeps a `project.json` of its own in every package of a workspace.
+A Jx site project follows a conventional directory layout. Only the project file (`project.jxn` or `project.json`, §2.3) and `pages/` are required — everything else is optional and additive. A file by that name is a project's only if its content agrees: `pages/project.json` is a page with the route `/project`, and Nx keeps a `project.json` of its own in every package of a workspace.
 
 ```
 my-site/
@@ -142,7 +142,7 @@ pages/
 
 ### 2.3 The Project File
 
-> **Status: Pending.** The grammar reads and writes (`spec.md` §22.5), and no host reads a `project.jxn` yet: a project is declared by `project.json`.
+> **Status: Partial.** Every host reads a `project.jxn`, and every writer keeps its comments: the CLI, the dev server, the desktop application, site origins, Studio's settings and the assistant's `write_file`. A folder holding both files is refused everywhere. Open: `jx convert` does not move a project file, Studio's labels still say `project.json`, and a `project.jxn` that does not parse is reported at its line and column but does not open in the Code view.
 
 A project is declared by one file at its root, either `project.jxn` (Jx Notation, `spec.md` §22) or `project.json`. Both parse to the same `ProjectConfig`. A folder holding both is refused, naming both files, rather than one silently winning.
 

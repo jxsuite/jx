@@ -109,13 +109,13 @@ const EXTRA_EDGES: ExtraEdge[] = [
     why: "Studio's suite imports these CI scripts directly and spawns two more of them, and reads the screenshot manifest and its contract fixtures.",
   },
   {
-    patterns: ["sites/*/project.json", "sites/test-blank/**"],
+    patterns: ["sites/*/project.json", "sites/*/project.jxn", "sites/test-blank/**"],
     seeds: ["packages/studio"],
     evidence: [
       "packages/studio/tests/project-config.test.ts",
       "packages/studio/tests/harness/load-fixture.ts",
     ],
-    why: "project-config globs every committed sites/*/project.json as its only real-formatting fixture; the DOM harness loads sites/test-blank as its site.",
+    why: "project-config globs every committed sites/*/project file as its only real-formatting fixture; the DOM harness loads sites/test-blank as its site.",
   },
   {
     patterns: ["packages/site/src/site-style.ts"],

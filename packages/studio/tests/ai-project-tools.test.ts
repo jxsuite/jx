@@ -15,6 +15,7 @@ import type { JsonValue, ProjectConfig } from "@jxsuite/schema/types";
 import { registerProjectTools } from "../src/services/ai-project-tools";
 import type { ProjectToolsCtx } from "../src/services/ai-project-tools";
 import { closeAllTabs, setWorkspaceProject } from "../src/workspace/workspace";
+import { setProjectConfigPath } from "../src/tabs/tab";
 import { fileTurn, resetAiWrites } from "../src/services/ai-writes";
 import { recordingContext } from "./harness/recording-context";
 import type { CandidateDocument } from "../src/services/ai-write-report";
@@ -204,14 +205,53 @@ describe("ai-project-tools — write_file", () => {
     expect(writes(state)).toHaveLength(0);
   });
 
-  test("a project file written as .jxn is not read as a document", async () => {
+  test("a project file written as .jxn is read as one, not as a document", async () => {
+    setProjectConfigPath("project.jxn");
+    try {
+      const onProjectConfigWritten = mock(async (_config: ProjectConfig, _text: string) => {});
+      const { registry, state } = makeHarness({}, { onProjectConfigWritten });
+      const res = await registry.execute("write_file", {
+        content: 'project "x"\nurl "https://x.example"',
+        path: "project.jxn",
+      });
+      expect(res.success).toBe(true);
+      expect(writes(state)).toHaveLength(1);
+      expect(onProjectConfigWritten.mock.calls[0]?.[0]).toEqual({
+        name: "x",
+        url: "https://x.example",
+      });
+
+      const broken = await registry.execute("write_file", {
+        content: "project\nproject",
+        path: "project.jxn",
+      });
+      expect(broken.success).toBe(false);
+      expect(broken.error).toContain("project.jxn must read as a project file");
+    } finally {
+      setProjectConfigPath("project.json");
+    }
+  });
+
+  test("the project file it does not have is refused, so a folder never holds both", async () => {
     const { registry, state } = makeHarness();
     const res = await registry.execute("write_file", {
       content: 'project "x"',
       path: "project.jxn",
     });
-    expect(res.success).toBe(true);
-    expect(writes(state)).toHaveLength(1);
+    expect(res.success).toBe(false);
+    expect(res.error).toContain("This project's file is project.json");
+    expect(writes(state)).toHaveLength(0);
+  });
+
+  test("a project node anywhere but the project file is refused, naming the fix", async () => {
+    const { registry, state } = makeHarness();
+    const res = await registry.execute("write_file", {
+      content: 'project "x"',
+      path: "pages/about.jxn",
+    });
+    expect(res.success).toBe(false);
+    expect(res.error).toContain("write it there as project.jxn");
+    expect(writes(state)).toHaveLength(0);
   });
 
   test("blocks Jx documents with schema errors before writing", async () => {

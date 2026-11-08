@@ -358,6 +358,7 @@ style {
     const media = asConfig({ $media: { $ref: "./m.json" } });
     expect(() => serializeProject(media)).toThrow("/$media");
     expect(() => serializeProject(asConfig([]))).toThrow("is an object");
+    expect(() => serializeProject(asConfig([]), "project\n")).toThrow("is an object");
   });
 
   test("the canonical form is stable", () => {
@@ -484,6 +485,23 @@ redirects {
     config.redirects = { "/old": "/new" };
     expect(serializeProject(asConfig(config), source)).toBe(
       source.replace('    "/gone" "/"\n', ""),
+    );
+  });
+
+  test("a writer holding the members in another order moves none of them", () => {
+    const config = read(SAMPLE);
+    const { url, ...rest } = config;
+    const reordered = { ...rest, url: "https://bistro.example" };
+    expect(Object.keys(reordered).at(-1)).toBe("url");
+    expect(url).toBe("https://bistro-cafe.pages.dev");
+    expect(serializeProject(asConfig(reordered), SAMPLE)).toBe(
+      withLines({ 'url "https://bistro-cafe.pages.dev"': 'url "https://bistro.example"' }),
+    );
+  });
+
+  test("a previous file that does not read is replaced by the canonical form", () => {
+    expect(serializeProject(asConfig({ name: "A" }), "project\nproject")).toBe(
+      "/- kdl-version 2\nproject A\n",
     );
   });
 

@@ -213,6 +213,36 @@ function readForReconcile(text: string): JxnReading {
  * @throws {JxnError} When it holds what Jx Notation cannot spell, naming the JSON Pointer.
  */
 export function serializeProject(config: ProjectConfig, previous?: string): string {
-  const canonical = writeCanonical(config);
-  return previous === undefined ? canonical : reconcileJxn(previous, canonical, readForReconcile);
+  if (previous === undefined) {
+    return writeCanonical(config);
+  }
+  const canonical = writeCanonical(inOrderOf(config, previous));
+  return reconcileJxn(previous, canonical, readForReconcile);
+}
+
+/**
+ * The configuration with its members in the order the previous file has them.
+ *
+ * Order means nothing among a project's members, so a writer whose object happens to hold them in
+ * another order must not move a member, which would cost the comment above it. A member the file
+ * did not have goes after the ones it did.
+ */
+function inOrderOf(config: ProjectConfig, previous: string): ProjectConfig {
+  let before: string[];
+  try {
+    before = Object.keys(parseProject(previous));
+  } catch {
+    return config;
+  }
+  if (!isJsonObject(config)) {
+    return config;
+  }
+  const source = config;
+  const keys = Object.keys(source);
+  const order = [
+    ...before.filter((key) => keys.includes(key)),
+    ...keys.filter((key) => !before.includes(key)),
+  ];
+  // SAFETY: the same members, only in another order.
+  return Object.fromEntries(order.map((key) => [key, source[key]])) as ProjectConfig;
 }

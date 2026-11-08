@@ -23,6 +23,7 @@ workspaces:
 size: L
 prs:
   - jxsuite/jx#560
+  - jxsuite/jx#561
 ---
 
 # A project can be declared by a commented `project.jxn`, which every host reads and every writer keeps intact
@@ -186,8 +187,8 @@ data {
 
 ## Slices
 
-| Slice | Scope                                                                                                         | Claims                   | State |
-| ----- | ------------------------------------------------------------------------------------------------------------- | ------------------------ | ----- |
-| PJX.1 | Grammar rows, `parseProject`, canonical `serializeProject`, corpus test                                       | —                        | done  |
-| PJX.2 | Every host reads it, refusals, exposure, the picker, `jx validate`, `jx convert`, this repository's own sites | site-architecture.md#2.3 | open  |
-| PJX.3 | Every writer through reconcile, Studio, AI tools, the parse-failure rule; closes the marker                   | site-architecture.md#2.3 | open  |
+| Slice | Scope                                                                                                                                                                                                                                                        | Claims                   | State |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------ | ----- |
+| PJX.1 | Grammar rows, `parseProject`, canonical `serializeProject`, corpus test                                                                                                                                                                                      | —                        | done  |
+| PJX.2 | Every host reads it and every writer keeps its comments (the CLI, servers, desktop, site origins, Studio's settings and the assistant's `write_file`), the both-files refusal, exposure, the picker, `jx validate`'s list-of-one message; §2.3 → Partial     | —                        | done  |
+| PJX.3 | `jx convert` for the project file, this repository's own sites converted, Studio's labels and surfaces, a `project.jxn` that does not parse opening in the Code view, the assistant's prompt and tool descriptions, `rekeyCollab`'s check; closes the marker | site-architecture.md#2.3 | open  |

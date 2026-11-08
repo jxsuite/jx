@@ -35,6 +35,7 @@
  */
 
 import { nothing } from "lit-html";
+import { learnProjectFileName } from "./project-file-name";
 import { errorMessage } from "@jxsuite/schema/parse";
 import { localeLabel, localeOfPath, resolveI18n } from "@jxsuite/schema/locale";
 import { showPromptDialog } from "../ui/layers";
@@ -261,6 +262,7 @@ export async function loadProject() {
     // Only a site project counts as an open project for the workspace (a bare monorepo root keeps
     // The assistant in bootstrap mode).
     if (info.isSiteProject) {
+      await learnProjectFileName(platform);
       setWorkspaceProject(meta.root || ".", info.projectConfig || null);
     }
 
@@ -363,6 +365,7 @@ export async function openProject({
       searchQuery: "",
       selectedPath: null,
     });
+    await learnProjectFileName(platform);
     setWorkspaceProject(handle.root, config);
 
     await autoSyncProjectOnOpen();

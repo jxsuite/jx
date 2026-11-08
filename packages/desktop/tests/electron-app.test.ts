@@ -175,6 +175,9 @@ describe("projectRootFrom", () => {
   test("JSONSX_PROJECT_ROOT comes next", () => {
     expect(projectRootFrom([], { JSONSX_PROJECT_ROOT: "/env" }, "/cwd", none)).toBe("/env");
     expect(projectRootFrom([], { JSONSX_PROJECT_ROOT: "rel" }, "/cwd", none)).toBe("/cwd/rel");
+    // A working directory declared by either file is the project, and neither is no project.
+    const jxnOnly = (path: string): boolean => path === "/cwd/project.jxn";
+    expect(projectRootFrom([], {}, "/cwd", jxnOnly)).toBe("/cwd");
   });
 
   test("the working directory counts only when it is a project, so $HOME never does", () => {
@@ -243,6 +246,7 @@ describe("trustPrompt", () => {
 describe("projectDirOf", () => {
   test("a project.json means its folder; anything else is already a folder", () => {
     expect(projectDirOf("/p/site/project.json")).toBe("/p/site");
+    expect(projectDirOf("/p/site/project.jxn")).toBe("/p/site");
     expect(projectDirOf("/p/site")).toBe("/p/site");
   });
 });
@@ -425,7 +429,7 @@ describe("dialogs", () => {
       type: "dialog-result",
     });
     expect(fake.openDialogs[0]?.options).toEqual({
-      filters: [{ extensions: ["json"], name: "Project files" }],
+      filters: [{ extensions: ["jxn", "json"], name: "Project files" }],
       properties: ["openFile"],
       title: "Pick",
     });
