@@ -70,6 +70,19 @@ describe("image-cache", () => {
     teardown();
   });
 
+  test("cacheKey tells a renamed file from its old name", () => {
+    setup();
+    const config: any = { formats: ["webp"], quality: 80, widths: [800] };
+    const before = join(TMP, "Designer, White.png");
+    const after = join(TMP, "designer-white.png");
+    writeFileSync(before, Buffer.from("same-bytes"));
+    writeFileSync(after, Buffer.from("same-bytes"));
+    // Variants are named after the file, so the same bytes under a new name are a new output.
+    expect(cacheKey(before, config)).not.toBe(cacheKey(after, config));
+    expect(cacheKey(after, config).endsWith(":designer-white")).toBe(true);
+    teardown();
+  });
+
   test("loadCache returns empty manifest when no cache exists", () => {
     _testResetNpmCacheBase();
     const cache = loadCache("/nonexistent/path");

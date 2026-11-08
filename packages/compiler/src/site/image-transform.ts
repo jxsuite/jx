@@ -15,12 +15,12 @@ import { existsSync } from "node:fs";
 import { basename, extname, resolve } from "node:path";
 import {
   buildSrcset,
-  configHash,
   contentHash,
   getImageMetadata,
   processImage,
+  variantUrl,
 } from "./image-optimizer.ts";
-import { getCached, getImageCacheDir, setCached } from "./image-cache.ts";
+import { cacheKey, getCached, getImageCacheDir, setCached } from "./image-cache.ts";
 import { imgLoadingAttrs } from "./img-loading.ts";
 import { resolveAssetUrl } from "@jxsuite/schema/asset-paths";
 import { isNodeObject, isNonNullObject, isString } from "@jxsuite/schema/guards";
@@ -96,15 +96,29 @@ function buildCloudflareSrcset(
   const quality = config.quality.webp ?? 80;
   const separator = src.startsWith("/") ? "" : "/";
   const suffix = hash ? `?v=${hash}` : "";
+  const path = srcsetSafe(src);
   return config.widths
     .filter((w) => w <= originalWidth)
     .toSorted((a, b) => a - b)
     .map(
       (w) =>
         `/cdn-cgi/image/width=${w},quality=${quality},fit=scale-down,format=auto` +
-        `${separator}${src}${suffix} ${w}w`,
+        `${separator}${path}${suffix} ${w}w`,
     )
     .join(", ");
+}
+
+/**
+ * An authored `src` made safe to stand as a `srcset` candidate: whitespace and commas encoded,
+ * everything else as written. A `src` attribute tolerates a space, but a `srcset` splits on it.
+ * Only those characters are touched, because an author's `src` may already be percent-encoded and
+ * encoding it whole would encode its `%` a second time.
+ *
+ * @param {string} src
+ * @returns {string}
+ */
+function srcsetSafe(src: string) {
+  return src.replaceAll(/[\s,]/g, (char) => encodeURIComponent(char));
 }
 
 /**
@@ -122,7 +136,7 @@ async function resolveManifest(
   projectRoot: string,
   cache: CacheManifest,
 ) {
-  const key = `${contentHash(absoluteSrc)}:${configHash(config)}`;
+  const key = cacheKey(absoluteSrc, config);
   const cached = getCached(cache, key);
 
   if (cached) {
@@ -471,7 +485,7 @@ function fallbackVariant(variants: ImageVariant[], formats: readonly string[]): 
       best = variant;
     }
   }
-  return best?.outputPath;
+  return best && variantUrl(best.outputPath);
 }
 
 /**
