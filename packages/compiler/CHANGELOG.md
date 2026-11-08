@@ -1,5 +1,31 @@
 # Changelog
 
+## [8.4.0](https://github.com/jxsuite/jx/compare/compiler-v8.3.0...compiler-v8.4.0) (2026-11-08)
+
+
+### Features
+
+* jx convert moves the project file, and Studio opens one that does not read ([#565](https://github.com/jxsuite/jx/issues/565)) ([a05163d](https://github.com/jxsuite/jx/commit/a05163d2a0ab561175bafc9ffd13058e8a8ad43e))
+* **schema:** read and write a project file in Jx Notation ([#560](https://github.com/jxsuite/jx/issues/560)) ([1a98bf2](https://github.com/jxsuite/jx/commit/1a98bf29cc60e6f958ac6d7de22159057d0bbfcb))
+
+
+### Bug Fixes
+
+* **compiler:** encode image variant URLs, and key the image cache on the file name ([#566](https://github.com/jxsuite/jx/issues/566)) ([96a2ea6](https://github.com/jxsuite/jx/commit/96a2ea6a2e567b171c08f8b84a3be987828141a1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/create bumped to 1.6.0
+    * @jxsuite/runtime bumped to 6.2.1
+    * @jxsuite/schema bumped to 5.4.0
+    * @jxsuite/site bumped to 2.5.0
+  * devDependencies
+    * @jxsuite/connector bumped to 0.8.6
+    * @jxsuite/parser bumped to 4.3.2
+
 ## [8.3.0](https://github.com/jxsuite/jx/compare/compiler-v8.2.0...compiler-v8.3.0) (2026-11-07)
 
 

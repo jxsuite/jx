@@ -1,5 +1,29 @@
 # Changelog
 
+## [8.2.0](https://github.com/jxsuite/jx/compare/desktop-v8.1.0...desktop-v8.2.0) (2026-11-08)
+
+
+### Features
+
+* **desktop:** declare .jxn on every channel that can register a file type ([#570](https://github.com/jxsuite/jx/issues/570)) ([e155b45](https://github.com/jxsuite/jx/commit/e155b454be89c73e1b9cda9a7acaa758f571b3f5))
+* **schema:** read and write a project file in Jx Notation ([#560](https://github.com/jxsuite/jx/issues/560)) ([1a98bf2](https://github.com/jxsuite/jx/commit/1a98bf29cc60e6f958ac6d7de22159057d0bbfcb))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/compiler bumped to 8.4.0
+    * @jxsuite/create bumped to 1.6.0
+    * @jxsuite/protocol bumped to 6.2.4
+    * @jxsuite/schema bumped to 5.4.0
+    * @jxsuite/server bumped to 8.5.0
+    * @jxsuite/starters bumped to 3.3.2
+    * @jxsuite/studio bumped to 10.7.0
+  * devDependencies
+    * @jxsuite/server bumped to 8.5.0
+    * @jxsuite/ui bumped to 0.10.3
+
 ## [8.1.0](https://github.com/jxsuite/jx/compare/desktop-v8.0.5...desktop-v8.1.0) (2026-11-07)
 
 

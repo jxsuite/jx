@@ -1,5 +1,35 @@
 # Changelog
 
+## [8.5.0](https://github.com/jxsuite/jx/compare/server-v8.4.0...server-v8.5.0) (2026-11-08)
+
+
+### Features
+
+* jx convert moves the project file, and Studio opens one that does not read ([#565](https://github.com/jxsuite/jx/issues/565)) ([a05163d](https://github.com/jxsuite/jx/commit/a05163d2a0ab561175bafc9ffd13058e8a8ad43e))
+* **schema:** read and write a project file in Jx Notation ([#560](https://github.com/jxsuite/jx/issues/560)) ([1a98bf2](https://github.com/jxsuite/jx/commit/1a98bf29cc60e6f958ac6d7de22159057d0bbfcb))
+* **studio:** open, find, save and convert .jxn documents, solo and shared ([#567](https://github.com/jxsuite/jx/issues/567)) ([07ed592](https://github.com/jxsuite/jx/commit/07ed59210318249b5f9571378f5da0463bb1683f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/ai bumped to 0.43.2
+    * @jxsuite/catalog bumped to 0.1.10
+    * @jxsuite/collab bumped to 0.11.8
+    * @jxsuite/compiler bumped to 8.4.0
+    * @jxsuite/create bumped to 1.6.0
+    * @jxsuite/import bumped to 0.43.0
+    * @jxsuite/protocol bumped to 6.2.4
+    * @jxsuite/runtime bumped to 6.2.1
+    * @jxsuite/schema bumped to 5.4.0
+    * @jxsuite/site bumped to 2.5.0
+    * @jxsuite/starters bumped to 3.3.2
+  * devDependencies
+    * @jxsuite/auth bumped to 0.8.6
+    * @jxsuite/connector bumped to 0.8.6
+    * @jxsuite/parser bumped to 4.3.2
+
 ## [8.4.0](https://github.com/jxsuite/jx/compare/server-v8.3.0...server-v8.4.0) (2026-11-07)
 
 
