@@ -246,6 +246,17 @@ export function bodyReturnsValue(body: string): boolean {
 }
 
 /**
+ * Whether an object is a function entry, whose `body` is code (`spec.md` §23.1): a `Function`
+ * entry, or a class member, which a `.class.json` names by its `role` alone. A field is a member
+ * with no body. Any other `body` may be data, so it is never read as code.
+ *
+ * @param value An object in a document or class definition.
+ */
+export function isFunctionEntry(value: JsonObject): boolean {
+  return value.$prototype === "Function" || (isString(value.role) && value.role !== "field");
+}
+
+/**
  * A function body with its comments and the contents of its strings blanked, so a pattern reads
  * only code (`spec.md` §23.1). The result is the same length, every newline kept, so an offset in
  * it is an offset in the body. A string keeps its quotes, so `return "x"` still returns a value,

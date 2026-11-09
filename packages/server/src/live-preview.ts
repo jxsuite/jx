@@ -174,6 +174,25 @@ async function loadRuntimeBundle(): Promise<string> {
   return runtimeBundle;
 }
 
+/** The body eraser's browser bundle, built once per process, the first time a page asks for it. */
+let eraserBundle: Promise<string> | null = null;
+
+/**
+ * `@jxsuite/erase/browser` as one browser module (`spec.md` §23.1). A page fetches it only when a
+ * function body is TypeScript, so most previews never ask, and none pays for it at startup.
+ */
+function loadEraserBundle(): Promise<string> {
+  eraserBundle ??= bundleToString(
+    createRequire(import.meta.url).resolve("@jxsuite/erase/browser"),
+    { minify: true, target: "browser" },
+  ).catch((error: Error) => {
+    // Not kept: the next page that needs it tries again rather than inheriting this failure.
+    eraserBundle = null;
+    throw error;
+  });
+  return eraserBundle;
+}
+
 /** Every path under a servable root, plus anything the overlay is holding. */
 async function treePaths(projectRoot: string, overlay: Map<string, string>): Promise<string[]> {
   const found = new Set<string>(overlay.keys());
@@ -344,6 +363,15 @@ async function handle(entry: Running, projectRoot: string, req: Request): Promis
       });
     }
 
+    if (surface === "eraser.js") {
+      return new Response(await loadEraserBundle(), {
+        headers: {
+          "Cache-Control": "public, max-age=31536000, immutable",
+          "Content-Type": "text/javascript; charset=utf-8",
+        },
+      });
+    }
+
     if (surface === "client.js") {
       return new Response(PREVIEW_CLIENT_JS, {
         headers: {
@@ -404,6 +432,7 @@ async function handle(entry: Running, projectRoot: string, req: Request): Promis
     shell: {
       base: "/",
       clientScriptUrl: `${LIVE_NAMESPACE}/client.js`,
+      eraserUrl: `${LIVE_NAMESPACE}/eraser.js`,
       resolveToken: entry.token,
       runtimeUrl: `${LIVE_NAMESPACE}/runtime.js`,
       styleUrl: `${LIVE_NAMESPACE}/site.css`,

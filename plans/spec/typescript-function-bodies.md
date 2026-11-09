@@ -146,5 +146,5 @@ The owner's direction: TypeScript is the default scripting language from the fir
 | Slice | Scope                                                                              | Claims       | State |
 | ----- | ---------------------------------------------------------------------------------- | ------------ | ----- |
 | TSB.1 | `packages/erase`, build and server load, `maskCode`, the newline and rewrite fixes | —            | done  |
-| TSB.2 | Runtime seam and loader, canvas install, Live Preview                              | spec.md#23.1 | open  |
+| TSB.2 | Runtime seam and loader, canvas install, Live Preview                              | spec.md#23.1 | done  |
 | TSB.3 | Code services, function editor, schema text; closes the marker                     | spec.md#23.1 | open  |

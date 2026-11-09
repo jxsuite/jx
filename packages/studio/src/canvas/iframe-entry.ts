@@ -57,12 +57,14 @@ import {
   reapplyStyle,
   redefineElement,
   resetDocumentStyles,
+  setBodyEraser,
   setCanvasAssetResolver,
   setNpmModuleResolver,
   setResolveToken,
 } from "@jxsuite/runtime";
 import { resolveAssetRef } from "./asset-resolve";
 import { npmModuleUrl } from "./npm-modules";
+import { eraseBody } from "@jxsuite/erase/browser";
 import type { AssetContext } from "./asset-resolve";
 import { KIT_LOADERS } from "@jxsuite/ui/loaders";
 import type { CanvasEnvelope, IframeChannel } from "./iframe-channel";
@@ -105,6 +107,13 @@ for (const [specifier, load] of Object.entries(KIT_LOADERS)) {
  * `registerElements` already imports a bare `$elements` specifier from.
  */
 setNpmModuleResolver((specifier) => npmModuleUrl(specifier, location.href));
+
+/**
+ * A function body may be TypeScript (`spec.md` §23.1). The canvas installs the eraser at boot
+ * rather than on demand, because a live edit reaches the handler it binds with no asynchronous step
+ * in which to fetch one. It loads with the canvas, never with the runtime core.
+ */
+setBodyEraser(eraseBody);
 
 /**
  * Resolve the drop placement for a forwarded cursor: point hit-test → nearest `[data-jx-path]` →

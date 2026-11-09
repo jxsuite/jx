@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import {
   SCHEMA_KEYWORDS,
   bodyReturnsValue,
+  isFunctionEntry,
   maskCode,
   childrenContainArray,
   displayTagName,
@@ -319,6 +320,16 @@ describe("isTemplateString", () => {
     expect(isTemplateString("$count")).toBe(false);
     expect(isTemplateString()).toBe(false);
     expect(isTemplateString(42)).toBe(false);
+  });
+});
+
+describe("isFunctionEntry", () => {
+  test("a Function entry and a class member are; a field and plain data are not", () => {
+    expect(isFunctionEntry({ $prototype: "Function", body: "" })).toBe(true);
+    expect(isFunctionEntry({ body: "", role: "method" })).toBe(true);
+    expect(isFunctionEntry({ body: "", role: "constructor" })).toBe(true);
+    expect(isFunctionEntry({ role: "field" })).toBe(false);
+    expect(isFunctionEntry({ body: "text" })).toBe(false);
   });
 });
 
