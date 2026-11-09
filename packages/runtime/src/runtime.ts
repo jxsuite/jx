@@ -76,6 +76,8 @@ import {
 import type { TagNameSlot } from "@jxsuite/schema/guards";
 import { formatSrcset, parseSrcset } from "@jxsuite/schema/asset-paths";
 import { runStatements } from "./statements.ts";
+import { compileBody, prepareBodies } from "./body-eraser.ts";
+
 import { readCookie, serializeCookie } from "./cookie.ts";
 import type {
   CemParameter,
@@ -95,6 +97,14 @@ import type {
   JxStyle,
 } from "@jxsuite/schema/types";
 import type { EffectScope, Ref } from "@vue/reactivity";
+
+export {
+  bodyNeedsEraser,
+  prepareBodies,
+  setBodyEraser,
+  setBodyEraserLoader,
+} from "./body-eraser.ts";
+export type { BodyEraser, BodyEraserLoader, BodyEraserModule } from "./body-eraser.ts";
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
@@ -357,6 +367,7 @@ function responseContentType(res: Partial<Pick<Response, "headers">>): string {
 
 export async function resolve(source: string | JxDocument, ctx?: JxContext): Promise<JxDocument> {
   if (!isString(source)) {
+    await prepareBodies(source);
     return source;
   }
   // A mount's resolver answers for THIS mount and its hit never enters the shared cache.
@@ -367,7 +378,7 @@ export async function resolve(source: string | JxDocument, ctx?: JxContext): Pro
   if (_resolveCache.has(source)) {
     return _resolveCache.get(source)!;
   }
-  const p = fetch(source).then(async (res) => {
+  const fetched = fetch(source).then(async (res) => {
     if (!res.ok) {
       throw new Error(`Jx: failed to fetch ${source} (${res.status})`);
     }
@@ -405,6 +416,11 @@ export async function resolve(source: string | JxDocument, ctx?: JxContext): Pro
        an `$elements` entry, a `$switch` case), and the host answered 2xx with a non-HTML body, so
        the JSON is that document; the runtime does not schema-validate documents by design. */
     return (await res.json()) as JxDocument;
+  });
+  // A body that needs the eraser has it before anything compiles, which happens synchronously.
+  const p = fetched.then(async (doc) => {
+    await prepareBodies(doc);
+    return doc;
   });
   _resolveCache.set(source, p);
   return p;
@@ -1618,7 +1634,7 @@ async function resolveFunction(def: JxFunctionDef, state: JxScope, key: string, 
     const params = resolveParamNames(def);
     /* SAFETY: `new Function` returns an ordinary function of the named parameters, `state` first.
        A call never checks its arguments, and what the body returns is one more scope member. */
-    fn = new Function(...params, def.body) as ScopeFunction;
+    fn = compileBody(params, def.body, `'${key}'`) as ScopeFunction;
     Object.defineProperty(fn, "name", {
       configurable: true,
       value: def.name ?? key,
@@ -2132,7 +2148,7 @@ function bindHandler(
     const params = resolveParamNames(val);
     /* SAFETY: `new Function` returns an ordinary function of the named parameters, `state` first;
        the listener calls it with the scope and the event, and discards what it returns. */
-    const fn = new Function(...params, val.body) as JxEventHandler;
+    const fn = compileBody(params, val.body, `the ${type} handler`) as JxEventHandler;
     el.addEventListener(type, (e) => fn(scope, e));
     return true;
   }
@@ -3867,6 +3883,7 @@ async function resolveClassJson(def: JxPrototypeDef, state: JxScope, key: string
     // Fall back to dev proxy (server will handle .class.json resolution)
     return resolveViaDevProxy(def, state, key, base);
   }
+  await prepareBodies(classDef);
 
   // Hybrid mode: $implementation points to the real JS module
   if (classDef.$implementation) {
@@ -3934,6 +3951,7 @@ function classFromSchema(classDef: JxClassDef) {
   const rawCtor = classDef.$defs?.constructor;
   const ctor = isCtorDef(rawCtor) ? rawCtor : undefined;
   const methods = classDef.$defs?.methods ?? {};
+  const className = classDef.title ?? "a class";
 
   // oxlint-disable-next-line typescript/no-extraneous-class -- methods are attached to the prototype dynamically below
   class DynClass {
@@ -3961,7 +3979,10 @@ function classFromSchema(classDef: JxClassDef) {
         /* SAFETY: `new Function` returns an ordinary function of the one named parameter; `call`
            runs it with the instance under construction as `this`, which is the constructor
            body's contract. */
-        const init = new Function("config", bodyStr) as (this: DynClass, config: JxScope) => void;
+        const init = compileBody(["config"], bodyStr, `the constructor of ${className}`) as (
+          this: DynClass,
+          config: JxScope,
+        ) => void;
         init.call(this, config);
       }
     }
@@ -3986,7 +4007,11 @@ function classFromSchema(classDef: JxClassDef) {
       if (typedMethod.getter) {
         /* SAFETY: `new Function` returns an ordinary function; as a getter it is called with no
            arguments and the instance as `this`, and what it returns is the property's value. */
-        descriptor.get = new Function(typedMethod.getter.body ?? "") as () => JxScopeValue;
+        descriptor.get = compileBody(
+          [],
+          typedMethod.getter.body ?? "",
+          `the getter ${name} of ${className}`,
+        ) as () => JxScopeValue;
       }
       if (typedMethod.setter) {
         const sp = (typedMethod.setter.parameters ?? []).map(
@@ -3994,18 +4019,20 @@ function classFromSchema(classDef: JxClassDef) {
         );
         /* SAFETY: `new Function` returns an ordinary function of the named parameters; as a setter
            it receives the assigned value as its one argument, and its return is discarded. */
-        descriptor.set = new Function(...sp, typedMethod.setter.body ?? "") as (
-          v: JxScopeValue,
-        ) => void;
+        descriptor.set = compileBody(
+          sp,
+          typedMethod.setter.body ?? "",
+          `the setter ${name} of ${className}`,
+        ) as (v: JxScopeValue) => void;
       }
       Object.defineProperty(DynClass.prototype, name, {
         ...descriptor,
         configurable: true,
       });
     } else if (typedMethod.scope === "static") {
-      DynClass[name] = new Function(...params, bodyStr);
+      DynClass[name] = compileBody(params, bodyStr, `${name} of ${className}`);
     } else {
-      DynClass.prototype[name] = new Function(...params, bodyStr);
+      DynClass.prototype[name] = compileBody(params, bodyStr, `${name} of ${className}`);
     }
   }
 

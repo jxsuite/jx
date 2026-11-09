@@ -6,6 +6,8 @@ preload = ["@jxsuite/test-support/preload"]
 coverageReporter = ["text", "lcov"]
 coverageSkipTestFiles = true
 coveragePathIgnorePatterns = [
+  # @jxsuite/erase loads as the canvas's own chunk and is gated by its own run.
+  "../erase/**",
   "**/tests/**",
   # The shared preload is gated by packages/test-support's own run, at 100%.
   "../test-support/**",

@@ -135,6 +135,21 @@ describe("eraseClass", () => {
     expect(erased.$defs.methods.read.setter.body).toBe("this.n = value;         ");
   });
 
+  test("erases a member a .class.json names by its role alone", () => {
+    const definition = {
+      $defs: {
+        constructor: { body: "this.n = 1 as number;", role: "constructor" },
+        fields: { n: { body: "data, not code", role: "field" } },
+        methods: { read: { body: "return this.n as number;", role: "method" } },
+      },
+      $prototype: "Class",
+    } satisfies JsonValue;
+    const erased = eraseClass(definition, "x.class.json");
+    expect(erased.$defs.constructor.body).toBe("this.n = 1          ;");
+    expect(erased.$defs.methods.read.body).toBe("return this.n          ;");
+    expect(erased.$defs.fields.n.body).toBe("data, not code");
+  });
+
   test("an accessor with no body keeps its shape", () => {
     const erased = eraseClass({ m: { $prototype: "Function", getter: {} } }, "x.class.json");
     expect(erased).toEqual({ m: { $prototype: "Function", getter: {} } });

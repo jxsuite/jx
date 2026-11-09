@@ -90,6 +90,22 @@ describe("pageShell", () => {
     expect(html.indexOf("setResolveToken(")).toBeLessThan(html.indexOf("await Jx("));
   });
 
+  test("no eraser loader unless the host serves an eraser", () => {
+    expect(pageShell(page(), BASIC)).not.toContain("setBodyEraserLoader");
+  });
+
+  test("an eraser URL becomes a loader set before the render, fetched only on demand", () => {
+    const html = pageShell(page(), {
+      ...BASIC,
+      eraserUrl: "/__jx_live__/eraser.js",
+      resolveToken: "tok",
+    });
+    expect(html).toContain("import { Jx, setResolveToken, setBodyEraserLoader }");
+    expect(html).toContain('setBodyEraserLoader(() => import("/__jx_live__/eraser.js"));');
+    expect(html.indexOf("setBodyEraserLoader(")).toBeLessThan(html.indexOf("await Jx("));
+    expect(html).not.toContain('<script type="module" src="/__jx_live__/eraser.js"');
+  });
+
   test("a token carrying a quote cannot break out of the module script", () => {
     const html = pageShell(page(), { ...BASIC, resolveToken: '");alert(1);//' });
     expect(html).toContain(String.raw`setResolveToken("\");alert(1);//");`);

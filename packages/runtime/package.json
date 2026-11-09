@@ -38,6 +38,7 @@
   },
   "devDependencies": {
     "@happy-dom/global-registrator": "^21.0.4",
+    "@jxsuite/erase": "workspace:^",
     "@jxsuite/test-support": "workspace:^"
   }
 }

@@ -292,6 +292,7 @@
       },
       "devDependencies": {
         "@happy-dom/global-registrator": "^21.0.4",
+        "@jxsuite/erase": "workspace:^",
         "@jxsuite/test-support": "workspace:^",
       },
     },
@@ -375,6 +376,7 @@
         "@jxsuite/ai": "workspace:^",
         "@jxsuite/collab": "workspace:^",
         "@jxsuite/create": "workspace:^",
+        "@jxsuite/erase": "workspace:^",
         "@jxsuite/formulas": "workspace:^",
         "@jxsuite/markup": "workspace:^",
         "@jxsuite/protocol": "workspace:^",
