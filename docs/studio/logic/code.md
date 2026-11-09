@@ -25,7 +25,7 @@ There are two distinct code surfaces for writing code, and a third for reading a
 
 ## The function editor
 
-A function body in **Code** mode (the **Statements**/**Code** toggle) is JavaScript. The small text field in the panel is fine for one line. For anything more, click the code icon: **Open in code editor** on a State-panel function, **Open in editor** on an inline event handler. The body opens in the **Logic** tab of the **[Bottom dock](/docs/studio/interface#bottom-dock)**, under the pane, so the page the handler belongs to stays on screen while you write it.
+A function body in **Code** mode (the **Statements**/**Code** toggle) is TypeScript, and plain JavaScript is fine as it is: types are removed before the body runs ([Functions](/docs/framework/concepts/functions)). The small text field in the panel is fine for one line. For anything more, click the code icon: **Open in code editor** on a State-panel function, **Open in editor** on an inline event handler. The body opens in the **Logic** tab of the **[Bottom dock](/docs/studio/interface#bottom-dock)**, under the pane, so the page the handler belongs to stays on screen while you write it.
 
 What you get:
 
@@ -35,7 +35,7 @@ What you get:
 - **Automatic write-back**: edits flow into the document as you type; there is no separate apply step. Save the file as usual when you're done.
 - **Your last keystrokes are never the ones that get lost.** Write-back is batched, so at any instant the editor can be a moment ahead of the document, and every way out of it settles that first. Switching to Problems, collapsing the dock, moving to another document, opening a different formula, closing the editor: each one lands what you typed. Closing the tab or quitting counts that text as unsaved and asks you about it, even when nothing else in the document has changed. **Save** lights up with your first keystroke for the same reason, and saving lands what you typed before it writes the file.
 
-**Close**, in the editor's header, writes the body back one last time (minified) and takes the tab off the dock's strip. Until then the editor keeps its place: collapsing the dock or switching to another document and back leaves it exactly as it was. The same tab carries the **[formula workspace](/docs/studio/logic/formula-workspace)** when what you're editing is a structured expression rather than code.
+**Close**, in the editor's header, writes the body back one last time, exactly as you wrote it, types included, and takes the tab off the dock's strip. Until then the editor keeps its place: collapsing the dock or switching to another document and back leaves it exactly as it was. The same tab carries the **[formula workspace](/docs/studio/logic/formula-workspace)** when what you're editing is a structured expression rather than code.
 
 Inside a body, `state` holds your entries (`state.$count += 1` is the code twin of a **Set state** statement), event handlers also receive `event`, and a function's declared parameters are available by name.
 

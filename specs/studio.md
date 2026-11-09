@@ -745,13 +745,14 @@ Add, remove, rename, and edit `state` entries. All four shapes supported:
 
 ### 6.4 Code Editor
 
-> **Status: Partial.** The editor and its Format, Minify and Lint calls ship (`codeService` in `packages/studio/src/services/code-services.ts`, called from `panels/editors.ts`), and the dev server serves them (`/__studio/code/*` in `packages/server/src/code-api.ts`). The desktop app, the end-user path, does not: its `codeService` returns `null` (`packages/desktop/src/backend/project-session.ts`), as does the cloud host's (`packages/studio/src/platforms/cloud.ts`), so format, minify and lint silently do nothing there.
+> **Status: Partial.** The editor and its Format and Lint calls ship (`codeService` in `packages/studio/src/services/code-services.ts`, called from `panels/editors.ts`), and the dev server serves them (`/__studio/code/*` in `packages/server/src/code-api.ts`). The desktop app, the end-user path, does not: its `codeService` returns `null` (`packages/desktop/src/backend/project-session.ts`), as does the cloud host's (`packages/studio/src/platforms/cloud.ts`), so format and lint silently do nothing there.
 
-Monaco-powered editor for function `body` strings. Integrated with server code services:
+Monaco-powered editor for function `body` strings, opened as TypeScript (`spec.md` §23.1) with syntax checking only, since nothing type-checks a body yet. Integrated with server code services:
 
-- **Format** — via `oxfmt`
-- **Minify** — via `Bun.Transpiler`
-- **Lint** — via `oxlint` with diagnostic display
+- **Format** — via `oxfmt`, as TypeScript
+- **Lint** — via `oxlint` with diagnostic display, as TypeScript
+
+**Close** writes the buffer back exactly as written. It used to minify the body first, which deletes types; compiled output is still minified.
 
 ### 6.5 CEM Annotations Editor
 

@@ -67,6 +67,8 @@ export const classConstructorDefSchema = {
   properties: {
     $prototype: { const: "Function", type: "string" },
     body: {
+      description:
+        "The member's body in erasable TypeScript, which plain JavaScript already is (spec §23.1), as one string or as an array of lines.",
       oneOf: [{ type: "string" }, { items: { type: "string" }, type: "array" }],
     },
     description: { type: "string" },
@@ -103,6 +105,8 @@ export const classMethodDefSchema = {
     $prototype: { const: "Function", type: "string" },
     access: { enum: ["public", "private", "protected"], type: "string" },
     body: {
+      description:
+        "The member's body in erasable TypeScript, which plain JavaScript already is (spec §23.1), as one string or as an array of lines.",
       oneOf: [{ type: "string" }, { items: { type: "string" }, type: "array" }],
     },
     description: { type: "string" },

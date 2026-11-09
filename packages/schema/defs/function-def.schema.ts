@@ -32,11 +32,12 @@ export const functionDefSchema = {
     },
     body: {
       description:
-        "Inline function body: an opaque JS source string (first implicit parameter is state), or a structured statement array (spec §20) — explicit structured function declaration, analyzable by tooling and editable visually. The escalation ladder within the shape is structured statements → JS string.",
+        "Inline function body: a source string in erasable TypeScript, which plain JavaScript already is (spec §23.1; types are erased before it is analysed or run; first implicit parameter is state), or a structured statement array (spec §20) — explicit structured function declaration, analyzable by tooling and editable visually. The escalation ladder within the shape is structured statements → source string.",
       examples: [
         "state.count++",
         'state.items.push({ id: Date.now(), text: "", done: false })',
         'return state.score >= 90 ? "gold" : "silver"',
+        "const input = event.target as HTMLInputElement; state.label = input.value",
         [
           { operator: "push", target: { $ref: "#/state/cart" }, value: 1 },
           { dispatchEvent: "cart-changed", detail: { $ref: "#/state/cart" } },

@@ -609,7 +609,7 @@ const ACTIONS: LogicWorkspaceActions = {
   },
   close() {
     if (logicTarget()?.surface === "function") {
-      void closeFunctionEditor();
+      closeFunctionEditor();
       return;
     }
     closeFormulaWorkspace();

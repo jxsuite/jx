@@ -5,7 +5,6 @@ claims:
   - spec.md#23.3
   - studio.md#16.7
 requires:
-  - spec/typescript-function-bodies
   - spec/document-scripts
 workspaces:
   - packages/schema
@@ -24,7 +23,7 @@ size: L
 
 ## Context
 
-`specs/spec.md` §23.3 and `specs/studio.md` §16.7 are both Pending: nothing checks the code inside a document. TypeScript is the default language (`plan:spec/typescript-function-bodies`), so this plan is what makes that default worth having.
+`specs/spec.md` §23.3 and `specs/studio.md` §16.7 are both Pending: nothing checks the code inside a document. TypeScript is the default language (`spec.md` §23.1), so this plan is what makes that default worth having.
 
 **TypeScript 7.1 content mappers** (`7.1.0-beta` on npm on 2026-11-05, `latest` is 7.0.2, and the repository pins `^7.0.2`). A mapper is a process speaking JSON-RPC over stdio (`initialize`, `openProject`, `transform`, `closeProject`), declared under `contentMappers` in a tsconfig. `tsc` refuses it without `--runExternalCode`, and VS Code requires workspace trust. Rename, completion and formatting edits write back only through `Verbatim` spans. Design source: microsoft/typescript-go#4712.
 

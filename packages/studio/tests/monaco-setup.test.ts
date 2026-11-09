@@ -10,11 +10,17 @@ import { flattenSchema } from "@jxsuite/schema/project-schemas";
 import jxSchema from "@jxsuite/schema/schema.json";
 import { isNonNullObject } from "@jxsuite/schema/guards";
 import type { DiagnosticsOptions } from "monaco-editor/languages/features/json/register";
+import type { DiagnosticsOptions as TypeScriptDiagnosticsOptions } from "monaco-editor/languages/features/typescript/register";
 import { installMonacoSetupMocks, MONACO_SETUP_ENTRIES } from "./monaco-setup-mocks";
 
 const setDiagnosticsOptions = mock((_opts: DiagnosticsOptions) => {});
 
-installMonacoSetupMocks({ jsonDefaults: { setDiagnosticsOptions } });
+const setTypeScriptDiagnostics = mock((_opts: TypeScriptDiagnosticsOptions) => {});
+
+installMonacoSetupMocks({
+  jsonDefaults: { setDiagnosticsOptions },
+  typescriptDefaults: { setDiagnosticsOptions: setTypeScriptDiagnostics },
+});
 
 class FakeWorker {
   url: string;
@@ -312,5 +318,14 @@ describe("the declared Monaco feature set", () => {
     expect(source.indexOf("features/register.all")).toBeLessThan(
       source.indexOf("languages/features/json/register"),
     );
+  });
+});
+
+describe("a function body's TypeScript diagnostics", () => {
+  test("check syntax and not types, since a body's names come from the runtime (spec.md §23.1)", () => {
+    expect(setTypeScriptDiagnostics).toHaveBeenCalledWith({
+      noSemanticValidation: true,
+      noSyntaxValidation: false,
+    });
   });
 });

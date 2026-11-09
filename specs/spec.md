@@ -2626,7 +2626,7 @@ Code in a document is TypeScript, whichever format holds the document. This sect
 
 ### 23.1 Function Bodies
 
-> **Status: Partial.** `jx build`, `jx validate`, the server's class resolution, the interpreter, Studio's canvas and Live Preview erase types (`packages/erase`, `packages/compiler/src/erased.ts`, `packages/runtime/src/body-eraser.ts`). Studio's code services still format and lint a body as JavaScript and minify it on close.
+> **Status: Implemented.** `jx build`, `jx validate`, the server's class resolution, the interpreter, Studio's canvas and Live Preview erase types (`packages/erase`, `packages/compiler/src/erased.ts`, `packages/runtime/src/body-eraser.ts`), and Studio's code editor edits a body as TypeScript (`packages/studio/src/panels/editors.ts`, `packages/server/src/code-api.ts`).
 
 A string `body` in any document format is TypeScript, limited to syntax that can be erased without emitting code. Types are removed before anything analyses or runs the body, so each tier only ever sees JavaScript. A `${}` template stays a JavaScript expression. A structured body (§20) has no text to erase and is unaffected.
 
@@ -2635,6 +2635,8 @@ A string `body` in any document format is TypeScript, limited to syntax that can
 **What cannot be erased is an error.** `enum`, a value `namespace`, a parameter property, and a module `import` or `export` need code generated for them, so a body using one stops the build, named by its file, its JSON Pointer and its line and column. A body that needs imports belongs in a module of its own (§23.2).
 
 **In the browser, the host hands the runtime its eraser.** The runtime compiles every body through one seam and carries no stripper. A host installs one with `setBodyEraser(eraseBody)`, `eraseBody` from `@jxsuite/erase/browser`, or names how to fetch it with `setBodyEraserLoader`; the runtime then fetches it only when a document or class it resolves has a body that does not compile as JavaScript or holds a generic call, before anything in it compiles. Studio's canvas sets the loader too, and waits for it before rendering a document that needs it; a live edit that brings in the first typed body fails to compile, and the host answers with that full render. Live Preview's shell sets the loader, so a site with no typed body downloads nothing more. With no eraser, a body compiles as written, `a < b > (c)` keeps its JavaScript meaning, and a typed body fails with an error naming the body and the call that fixes it.
+
+**Edited as written.** Studio opens a body in a TypeScript editor, formats it as TypeScript and lints it as TypeScript, and stores what the author wrote: nothing minifies a body on its way back into the document, because minifying deletes types. Nothing reports type errors yet.
 
 **One change of meaning.** `a < b > (c)` is a generic call in TypeScript and two comparisons in JavaScript. A body that was already JavaScript and reads differently as TypeScript is built as TypeScript, and `jx build` and `jx validate` warn with its place.
 

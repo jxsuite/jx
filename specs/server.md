@@ -299,17 +299,18 @@ There were four shapes before — `Response.json({error}, {status})`, a bare-tex
 
 OXC-powered code quality services for Studio's function-body editors.
 
-| Endpoint                     | Tool             | Description                                | Status          |
-| ---------------------------- | ---------------- | ------------------------------------------ | --------------- |
-| `POST /__studio/code/format` | `oxfmt`          | Format JavaScript snippet                  | **Implemented** |
-| `POST /__studio/code/minify` | `Bun.Transpiler` | Minify JavaScript snippet                  | **Implemented** |
-| `POST /__studio/code/lint`   | `oxlint`         | Lint JavaScript snippet (JSON diagnostics) | **Implemented** |
+| Endpoint                     | Tool     | Description                               | Status          |
+| ---------------------------- | -------- | ----------------------------------------- | --------------- |
+| `POST /__studio/code/format` | `oxfmt`  | Format a TypeScript body                  | **Implemented** |
+| `POST /__studio/code/lint`   | `oxlint` | Lint a TypeScript body (JSON diagnostics) | **Implemented** |
+
+A body is TypeScript (`spec.md` §23.1), and plain JavaScript is TypeScript already, so both endpoints read it as a `.ts` file. Lint runs from the system temp directory, so a body gets oxlint's default rules rather than the configuration of the directory the server was started in. There is no minify endpoint: Studio stores a body as written, because minifying deletes its types.
 
 Snippets are function _bodies_: the handler wraps them in a synthetic function before formatting/linting, unwraps the result, and remaps diagnostic line/column positions back to the snippet.
 
 The remapping is a constant: the wrapper is one synthetic header line, so a diagnostic loses one line and a fixed byte count (`adjustDiagnostics`). It is named here because it is the kind of thing that invites a source map, and a source map for a constant offset is more machinery than the thing it maps — see §8.
 
-> **Status: Implemented.** `src/code-api.ts` (oxfmt via its Node API, oxlint via its CLI binary, minification via `Bun.Transpiler`).
+> **Status: Implemented.** `src/code-api.ts` (oxfmt via its Node API, oxlint via its CLI binary).
 
 ---
 

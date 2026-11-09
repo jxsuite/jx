@@ -4,7 +4,6 @@ disposition: implement
 claims:
   - spec.md#23.2
 requires:
-  - spec/typescript-function-bodies
   - spec/function-entry-tier-parity
 workspaces:
   - packages/schema
@@ -34,7 +33,7 @@ A body compiles with `new Function`, so it cannot `import`, hold module state or
 
 - **`#client` has no document identity.** `_moduleCache` is keyed on the spelled `$src` (`runtime.ts:1448`), so document B received document A's `bump`. A second `preloadModule("#client")` replaces the first. `resolveLayout` keeps only the layout's `$script` (`packages/site/src/layout.ts:69`).
 - **The sample `(server)save` was wrong.** §11's `timing: "server"` entry is a data call. It POSTs at mount with `arguments: {}`, the function receives `(args, env)`, and the entry is `null` until a call answers. So `save(count)` would write on every mount with `count` set to `{}`. Two documents' `save` also merged with `errors: []`, because the one specifier `#server` looks like one module.
-- **Hosts do not transpile `.ts`.** `serveProjectFile` returns raw TypeScript as `text/javascript` (`server/src/file-response.ts:87`). So a `script` importing `./math.ts` fails on any interpreting host. This also affects a `.ts` `$src` today. Desktop's backend is Electron's Node, so `Bun.Transpiler` is not available there, and the stripper does not boot on the cloud host's Worker (`plan:spec/typescript-function-bodies`), so a server route could not work on every host.
+- **Hosts do not transpile `.ts`.** `serveProjectFile` returns raw TypeScript as `text/javascript` (`server/src/file-response.ts:87`). So a `script` importing `./math.ts` fails on any interpreting host. This also affects a `.ts` `$src` today. Desktop's backend is Electron's Node, so `Bun.Transpiler` is not available there, and the stripper does not boot on the cloud host's Worker (`spec.md` §23.1), so a server route could not work on every host.
 - **Calling a `$src` function differs by tier.** With `bump(state, by)`, `state.bump(3)` throws, `state.bump(state, 3)` works when interpreted, `compile-element` emits `(state) => bump(state)`, and `compile-client` emits a computed with no listener. `plan:spec/function-entry-tier-parity` closes this, which is why it is required here.
 - **`.jxn` importing `.jxn`.** `tsc` passes, and both bundlers fail.
 - **Live Preview leaks server code.** `packages/site/src/shell.ts:68`, `:94` embed the whole document in the page, which would include `$script.server`. `$script` is not in `RESERVED_KEYS` (`runtime.ts:1586`), and no slice edited the schema. `serveSite`'s file lane is a second path: it would serve `components/x.jxn` as raw bytes on an origin running project script, which is the hole `packages/site/src/paths.ts` exists to refuse, and a cloud preview is readable by anyone holding its link.
@@ -112,8 +111,8 @@ my-counter {
 - **Compiler**: `site-build.ts` `rewriteSidecarSrc` treats a `jx-script:` specifier as a bundle entry. `BundleRequest` gains `virtualEntry: { contents, resolveDir }` in both backends (esbuild `stdin`, Bun virtual files), with relative imports resolving from the document's directory. `server-entries.ts` collects `#server` the same way. `Bun.build({ files })` has been run successfully in isolation.
 - **`packages/erase`**: `loadModule` in the browser entry, including import rewriting, which reads specifiers through the parser the stripper already carries.
 - **`packages/site`**: `composePage` qualifies before `resolveLayout`, and strips server scripts before `pageShell`. `serve.ts`'s file lane strips them too.
-- **Runtime**: `RESERVED_KEYS`, `setModuleLoader`, and the two cases in `importSource`. The eraser loader from `plan:spec/typescript-function-bodies` also fires for a document with `$script.client` or a `.ts` `$src`, and the runtime installs the `loadModule` it returns as well as `eraseBody`.
-- **Hosts**: no route. The cloud host needs nothing beyond what `plan:spec/typescript-function-bodies` already asks of it.
+- **Runtime**: `RESERVED_KEYS`, `setModuleLoader`, and the two cases in `importSource`. The eraser loader (`spec.md` §23.1) also fires for a document with `$script.client` or a `.ts` `$src`, and the runtime installs the `loadModule` it returns as well as `eraseBody`.
+- **Hosts**: no route. The cloud host needs nothing beyond serving the body eraser it already serves for `spec.md` §23.1.
 - **Studio**: `script` shown in the code surface as TypeScript, the advisory in Problems, `$script.server` removed from the canvas payload.
 - **Collab**: `TEXT_KEYS` and the path-aware rule for `body`, with `plan:collab/granular-writes`.
 

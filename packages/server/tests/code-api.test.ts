@@ -101,29 +101,28 @@ describe("code-api", () => {
     });
   });
 
-  describe("minify", () => {
-    test("returns empty for empty code", async () => {
-      const { req, url } = codeRequest("minify", { code: "" });
-      const res = await handleCodeApi(req, url);
-      const data = await handled(res).json();
-      expect(data.code).toBe("");
+  describe("a TypeScript body (spec.md §23.1)", () => {
+    const TYPED = "const input=event.target as HTMLInputElement;state.label=input.value;";
+
+    test("formats with its types kept", async () => {
+      const { req, url } = codeRequest("format", { code: TYPED });
+      const data = await handled(await handleCodeApi(req, url)).json();
+      expect(data.errors).toEqual([]);
+      expect(data.code).toBe(
+        "const input = event.target as HTMLInputElement;\nstate.label = input.value;",
+      );
     });
 
-    test("minifies valid code", async () => {
-      const { req, url } = codeRequest("minify", {
-        code: "const   x   =   1;",
-      });
-      const res = await handleCodeApi(req, url);
-      const data = await handled(res).json();
-      expect(data.code).toBe("const x=1;");
+    test("lints with no parse error", async () => {
+      const { req, url } = codeRequest("lint", { code: TYPED });
+      const data = await handled(await handleCodeApi(req, url)).json();
+      expect(data.error).toBeUndefined();
+      expect(data.diagnostics).toEqual([]);
     });
 
-    test("returns original with error on invalid code", async () => {
-      const { req, url } = codeRequest("minify", { code: "const x = ;" });
-      const res = await handleCodeApi(req, url);
-      const data = await handled(res).json();
-      expect(data.error).toBeDefined();
-      expect(data.code).toBe("const x = ;");
+    test("is never minified: the service has no minify action", async () => {
+      const { req, url } = codeRequest("minify", { code: TYPED });
+      expect(await handleCodeApi(req, url)).toBeNull();
     });
   });
 

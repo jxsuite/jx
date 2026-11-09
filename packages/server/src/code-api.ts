@@ -1,8 +1,8 @@
 /**
  * Code-api.js — OXC-powered code services for the studio function editor
  *
- * Endpoints under /__studio/code/* that provide formatting (oxfmt), minification (Bun.Transpiler),
- * and linting (oxlint CLI) for JS snippets.
+ * Endpoints under /__studio/code/* that format (oxfmt) and lint (oxlint CLI) a function body. A
+ * body may be TypeScript (`spec.md` §23.1), so both read it as `.ts`.
  */
 
 import { tmpdir } from "node:os";
@@ -111,10 +111,6 @@ function adjustDiagnostics(diagnostics: OxcDiagnostic[], headerLen: number) {
   });
 }
 
-// ─── Reusable transpiler ─────────────────────────────────────────────────────
-
-const minifier = new Bun.Transpiler({ minifyWhitespace: true });
-
 // ─── Handler ─────────────────────────────────────────────────────────────────
 
 /**
@@ -148,7 +144,7 @@ export async function handleCodeApi(req: Request, url: URL) {
 
     try {
       const wrapped = wrapBody(code, args);
-      const result = await format("fn.js", wrapped, { useTabs: true });
+      const result = await format("fn.ts", wrapped, { useTabs: true });
       return Response.json({
         code: unwrapFormatted(result.code),
         errors: result.errors,
@@ -158,22 +154,6 @@ export async function handleCodeApi(req: Request, url: URL) {
         code,
         errors: [{ message: errorMessage(error) }],
       });
-    }
-  }
-
-  // ── Minify ─────────────────────────────────────────────────────────────────
-
-  if (action === "minify") {
-    const { code } = body;
-    if (!code?.trim()) {
-      return Response.json({ code: "" });
-    }
-
-    try {
-      const minified = minifier.transformSync(code).trim();
-      return Response.json({ code: minified });
-    } catch (error) {
-      return Response.json({ code, error: errorMessage(error) });
     }
   }
 
@@ -195,12 +175,15 @@ export async function handleCodeApi(req: Request, url: URL) {
     const headerLen = wrapped.indexOf("\n") + 1;
     const tmpFile = join(
       tmpdir(),
-      `__jx_lint_${Date.now()}_${Math.random().toString(36).slice(2)}.js`,
+      `__jx_lint_${Date.now()}_${Math.random().toString(36).slice(2)}.ts`,
     );
 
     try {
       await Bun.write(tmpFile, wrapped);
+      // Run from the temp directory, so the body gets oxlint's defaults and not the rules of
+      // The repository the server happens to be started in.
       const proc = Bun.spawn([oxlintBin, "--format=json", "-A", "no-unused-vars", tmpFile], {
+        cwd: tmpdir(),
         stderr: "pipe",
         stdout: "pipe",
       });

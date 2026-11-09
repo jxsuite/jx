@@ -409,7 +409,7 @@ describe("the code surface — def target", () => {
     expect(dock.querySelector('[part="code-host"]')).not.toBeNull();
 
     expect(created).toHaveLength(1);
-    expect(created[0]!.options.language).toBe("javascript");
+    expect(created[0]!.options.language).toBe("typescript");
     expect(created[0]!.value).toBe("return 1;");
     expect(Object.is(view.functionEditor, created[0])).toBe(true);
     expect(view.functionEditor!._editingTarget).toBe(
@@ -875,16 +875,15 @@ describe("a commit names the tab its editor was mounted for", () => {
 });
 
 describe("closeFunctionEditor", () => {
-  test("minifies the buffer into the state def and clears the target", async () => {
+  test("writes the buffer into the state def as written and clears the target", async () => {
     setEditing({ defName: "greet", type: "def" });
     await paintLogic();
     created.at(-1)!.type("return    2;");
 
-    await closeFunctionEditor();
+    closeFunctionEditor();
 
     const greet = stateDef(activeTab.value!, "greet");
-    // The mock code service answers null for "minify", so the raw buffer is what is stored — the
-    // Point is that the CLOSE is what writes, rather than losing whatever the debounce had not.
+    // The CLOSE is what writes, rather than losing whatever the debounce had not.
     expect(greet.body).toBe("return    2;");
     expect(activeTab.value!.session.ui.editingFunction).toBeNull();
     expect(view.functionEditor).toBeNull();
@@ -902,7 +901,7 @@ describe("closeFunctionEditor", () => {
     await paintLogic();
     created.at(-1)!.type("bye()");
 
-    await closeFunctionEditor();
+    closeFunctionEditor();
 
     const onclick = onclickOf(activeTab.value!);
     expect(onclick.$prototype).toBe("Function");
@@ -929,7 +928,7 @@ describe("closeFunctionEditor", () => {
 
     setTransactGate(() => "source-canonical");
     try {
-      await closeFunctionEditor();
+      closeFunctionEditor();
     } finally {
       setTransactGate(null);
     }
@@ -1030,7 +1029,7 @@ describe("closeFunctionEditor", () => {
 
     setTransactGate(() => "source-canonical");
     try {
-      await closeFunctionEditor();
+      closeFunctionEditor();
       // Refused: the surface is exactly as it was, which is the whole point of the refusal.
       expect(ed.disposed).toBe(false);
       expect(tabBufferUnsaved(tab)).toBe(true);
@@ -1096,93 +1095,17 @@ describe("closeFunctionEditor", () => {
 
   test("is a no-op with no target, and clears the target when no editor was mounted", async () => {
     setEditing(null);
-    await closeFunctionEditor();
+    closeFunctionEditor();
     expect(activeTab.value!.session.ui.editingFunction).toBeNull();
 
     setEditing({ defName: "greet", type: "def" });
-    await closeFunctionEditor();
+    closeFunctionEditor();
     expect(activeTab.value!.session.ui.editingFunction).toBeNull();
   });
 
   test("closing with no tab open returns without touching anything", async () => {
     closeAllTabs();
-    expect(await closeFunctionEditor()).toBeUndefined();
-  });
-
-  /**
-   * The Close reads its buffer and its target BEFORE the minify and tears down AFTER it, and a
-   * retarget fits in between. The write belongs to the def whose buffer it is; the teardown belongs
-   * to whatever is mounted when it runs — and those stopped being the same editor.
-   */
-  test("a retarget during a slow minify writes the old body and leaves the new editor alone", async () => {
-    const pendingMinifies: CodeServiceResolver[] = [];
-    installMockPlatform({ codeService: deferredCodeService("minify", pendingMinifies) });
-    setEditing({ defName: "greet", type: "def" });
-    await paintLogic();
-    const first = created.at(-1)!;
-    first.type("return 42;");
-
-    const closing = closeFunctionEditor();
-    await flush();
-
-    // "Open in editor" on an event binding while the minify is still in flight.
-    setEditing({ eventKey: "onclick", path: ["children", 0], type: "event" });
-    await paintLogic();
-    const second = created.at(-1)!;
-    expect(second).not.toBe(first);
-    expect(first.disposed).toBe(true);
-
-    pendingMinifies.at(-1)!({ code: "return 42;" });
-    await closing;
-
-    // The buffer landed where it came from …
-    expect(stateDef(activeTab.value!, "greet").body).toBe("return 42;");
-    // … and the surface the user is actually looking at is untouched.
-    expect(second.disposed).toBe(false);
-    expect(Object.is(view.functionEditor, second)).toBe(true);
-    const stillOpen = activeTab.value!.session.ui.editingFunction;
-    expect(stillOpen?.type).toBe("event");
-    expect(stillOpen?.eventKey).toBe("onclick");
-  });
-
-  /**
-   * The OTHER thing that fits inside the minify, and it is the ordinary one.
-   *
-   * Guarding the whole tail on `view.functionEditor === editor` conflates two obligations with two
-   * different owners. Disposing belongs to the instance, and a retarget has a real claim on it.
-   * Clearing the target belongs to the target, and the only thing with a claim on THAT is a
-   * retarget that already replaced it — which is not what happens here. Collapse the dock, select
-   * Problems, or ⌘\ to another pane during the minify and the editor is disposed and NOT replaced,
-   * so the identity guard bailed and `editingFunction` was never cleared: the Logic tab stayed on
-   * the strip, and re-opening the dock restored the body the user had just dismissed.
-   */
-  test("a Close whose editor is torn down mid-minify still clears the target", async () => {
-    const pendingMinifies: CodeServiceResolver[] = [];
-    installMockPlatform({ codeService: deferredCodeService("minify", pendingMinifies) });
-    setEditing({ defName: "greet", type: "def" });
-    await paintLogic();
-    const ed = created.at(-1)!;
-    ed.type("return 42;");
-
-    const closing = closeFunctionEditor();
-    await flush();
-
-    // The dock collapses / Problems is selected while the minify is in flight: the Logic tab
-    // Repaints without a `[part="code-host"]`, so `syncFunctionEditor` disposes on the spot. Nothing
-    // Retargets, so nothing else will ever clear `editingFunction`.
-    dock.textContent = "";
-    // @ts-expect-error -- _$litPart$ is Lit's private render-part marker, not in the DOM types
-    delete dock["_$litPart$"];
-    syncFunctionEditor(dock);
-    expect(ed.disposed).toBe(true);
-    expect(view.functionEditor).toBeNull();
-
-    pendingMinifies.at(-1)!({ code: "return 42;" });
-    await closing;
-
-    expect(activeTab.value!.session.ui.editingFunction).toBeNull();
-    expect(stateDef(activeTab.value!, "greet").body).toBe("return 42;");
-    expect(view.functionEditor).toBeNull();
+    expect(closeFunctionEditor()).toBeUndefined();
   });
 });
 
@@ -1282,7 +1205,7 @@ describe("registerFunctionCompletions", () => {
     expect(registerCompletionItemProvider).toHaveBeenCalledTimes(1);
 
     const [language, provider] = registerCompletionItemProvider.mock.calls[0]!;
-    expect(language).toBe("javascript");
+    expect(language).toBe("typescript");
     expect(provider.triggerCharacters).toEqual(["."]);
 
     const byLabel = suggestionsByLabel(provider, 7);
