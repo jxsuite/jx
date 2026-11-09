@@ -98,7 +98,12 @@ import type {
 } from "@jxsuite/schema/types";
 import type { EffectScope, Ref } from "@vue/reactivity";
 
-export { bodyNeedsEraser, setBodyEraser, setBodyEraserLoader } from "./body-eraser.ts";
+export {
+  bodyNeedsEraser,
+  prepareBodies,
+  setBodyEraser,
+  setBodyEraserLoader,
+} from "./body-eraser.ts";
 export type { BodyEraser, BodyEraserLoader, BodyEraserModule } from "./body-eraser.ts";
 
 // ─── Public API ───────────────────────────────────────────────────────────────

@@ -57,14 +57,14 @@ import {
   reapplyStyle,
   redefineElement,
   resetDocumentStyles,
-  setBodyEraser,
+  setBodyEraserLoader,
   setCanvasAssetResolver,
   setNpmModuleResolver,
   setResolveToken,
 } from "@jxsuite/runtime";
 import { resolveAssetRef } from "./asset-resolve";
 import { npmModuleUrl } from "./npm-modules";
-import { eraseBody } from "@jxsuite/erase/browser";
+import { loadBodyEraser } from "./body-eraser";
 import type { AssetContext } from "./asset-resolve";
 import { KIT_LOADERS } from "@jxsuite/ui/loaders";
 import type { CanvasEnvelope, IframeChannel } from "./iframe-channel";
@@ -109,11 +109,12 @@ for (const [specifier, load] of Object.entries(KIT_LOADERS)) {
 setNpmModuleResolver((specifier) => npmModuleUrl(specifier, location.href));
 
 /**
- * A function body may be TypeScript (`spec.md` §23.1). The canvas installs the eraser at boot
- * rather than on demand, because a live edit reaches the handler it binds with no asynchronous step
- * in which to fetch one. It loads with the canvas, never with the runtime core.
+ * A function body may be TypeScript (`spec.md` §23.1). The eraser carries a compiler, so the canvas
+ * loads it as its own chunk, the first time a document it renders has a body that needs it: the
+ * render waits for it (`renderResolvedDocument`). A patch that brings in the first typed body fails
+ * to compile, and the host answers that with a full render, which loads it.
  */
-setBodyEraser(eraseBody);
+setBodyEraserLoader(loadBodyEraser);
 
 /**
  * Resolve the drop placement for a forwarded cursor: point hit-test → nearest `[data-jx-path]` →

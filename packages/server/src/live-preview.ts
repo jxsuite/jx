@@ -175,21 +175,18 @@ async function loadRuntimeBundle(): Promise<string> {
 }
 
 /** The body eraser's browser bundle, built once per process, the first time a page asks for it. */
-let eraserBundle: Promise<string> | null = null;
+let eraserBundle: string | null = null;
 
 /**
  * `@jxsuite/erase/browser` as one browser module (`spec.md` §23.1). A page fetches it only when a
- * function body is TypeScript, so most previews never ask, and none pays for it at startup.
+ * function body is TypeScript, so most previews never ask, and none pays for it at startup. A build
+ * that fails is not kept, so the next page that needs it tries again.
  */
-function loadEraserBundle(): Promise<string> {
-  eraserBundle ??= bundleToString(
+async function loadEraserBundle(): Promise<string> {
+  eraserBundle ??= await bundleToString(
     createRequire(import.meta.url).resolve("@jxsuite/erase/browser"),
     { minify: true, target: "browser" },
-  ).catch((error: Error) => {
-    // Not kept: the next page that needs it tries again rather than inheriting this failure.
-    eraserBundle = null;
-    throw error;
-  });
+  );
   return eraserBundle;
 }
 
