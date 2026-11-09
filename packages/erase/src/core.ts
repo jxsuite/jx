@@ -18,7 +18,7 @@
  *
  * @docs framework/concepts/functions
  */
-import { isJsonObject, isString, maskCode } from "@jxsuite/schema/guards";
+import { isFunctionEntry, isJsonObject, isString, maskCode } from "@jxsuite/schema/guards";
 import type { JsonObject, JsonValue, JxClassDef, JxDocument } from "@jxsuite/schema/types";
 
 /** Something about a body worth saying, at a place in it. */
@@ -264,7 +264,7 @@ function walk(value: JsonValue, site: BodySite, warnings: EraseWarning[]): JsonV
   if (!isJsonObject(value)) {
     return value;
   }
-  const isFunction = value.$prototype === "Function";
+  const isFunction = isFunctionEntry(value);
   /* Built as entries: assigning `__proto__` would set the copy's prototype, where `JSON.parse`
      made it an own key. */
   const entries: [string, JsonValue][] = [];

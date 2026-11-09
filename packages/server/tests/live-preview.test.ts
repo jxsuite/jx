@@ -237,6 +237,21 @@ describe("the host's own namespace", () => {
     expect(await response.text()).toContain("Jx");
   });
 
+  test("the body eraser is served as one browser module, cached hard, and pages name it", async () => {
+    const { origin } = await startLivePreview(TMP);
+    const response = await fetch(`${origin}/__jx_live__/eraser.js`);
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Cache-Control")).toContain("immutable");
+    const code = await response.text();
+    expect(code).toContain("eraseBody");
+    expect(code).not.toMatch(/from\s*["']@jxsuite\/runtime["']/u);
+    // A second page shares the first build.
+    const again = await fetch(`${origin}/__jx_live__/eraser.js`);
+    expect(again.status).toBe(200);
+    const page = await get(origin, "/");
+    expect(page.body).toContain('setBodyEraserLoader(() => import("/__jx_live__/eraser.js"))');
+  }, 60_000);
+
   test("the reload client is served, and never cached", async () => {
     const { origin } = await startLivePreview(TMP);
     const response = await fetch(`${origin}/__jx_live__/client.js`);

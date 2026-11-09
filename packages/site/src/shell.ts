@@ -47,6 +47,13 @@ export interface ShellOptions {
    * host that omits this should expect a collection to render as an empty list.
    */
   resolveToken?: string | undefined;
+  /**
+   * URL of the body eraser (`@jxsuite/erase/browser`, built as its own file) on this origin. With
+   * it, the page fetches the eraser only when a function body is TypeScript (`spec.md` §23.1);
+   * without it, a typed body fails to compile and says so. This package never imports the eraser,
+   * so a host that cannot run it still loads this one.
+   */
+  eraserUrl?: string | undefined;
 }
 
 /** Escape a string for an HTML attribute value. */
@@ -70,10 +77,17 @@ function jsonPayload(doc: JxDocument): string {
 
 /** The document for one composed page. */
 export function pageShell(page: ComposedPage, options: ShellOptions): string {
-  const imports = options.resolveToken ? "Jx, setResolveToken" : "Jx";
-  const setToken = options.resolveToken
-    ? `\nsetResolveToken(${JSON.stringify(options.resolveToken)});`
-    : "";
+  const names = ["Jx"];
+  let setup = "";
+  if (options.resolveToken) {
+    names.push("setResolveToken");
+    setup += `\nsetResolveToken(${JSON.stringify(options.resolveToken)});`;
+  }
+  if (options.eraserUrl) {
+    names.push("setBodyEraserLoader");
+    setup += `\nsetBodyEraserLoader(() => import(${JSON.stringify(options.eraserUrl)}));`;
+  }
+  const imports = names.join(", ");
   const style = options.styleUrl
     ? `\n  <link rel="stylesheet" href="${attr(options.styleUrl)}">`
     : "";
@@ -93,7 +107,7 @@ export function pageShell(page: ComposedPage, options: ShellOptions): string {
 <body>
 <script type="application/json" id="jx-page-document">${jsonPayload(page.doc)}</script>
 <script type="module">
-import { ${imports} } from "${attr(options.runtimeUrl)}";${setToken}
+import { ${imports} } from "${attr(options.runtimeUrl)}";${setup}
 const source = document.getElementById("jx-page-document").textContent;
 await Jx(JSON.parse(source), document.body, { base: ${JSON.stringify(options.base)} });
 </script>${client}

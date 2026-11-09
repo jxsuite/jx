@@ -63,6 +63,7 @@
     "@jxsuite/ai": "workspace:^",
     "@jxsuite/collab": "workspace:^",
     "@jxsuite/create": "workspace:^",
+    "@jxsuite/erase": "workspace:^",
     "@jxsuite/formulas": "workspace:^",
     "@jxsuite/markup": "workspace:^",
     "@jxsuite/protocol": "workspace:^",

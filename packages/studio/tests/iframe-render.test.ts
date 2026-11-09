@@ -160,6 +160,33 @@ describe("renderResolvedDocument", () => {
     handle.dispose();
   });
 
+  test("a typed function body waits for the eraser, then renders", async () => {
+    const { eraseBody } = await import("@jxsuite/erase/browser");
+    const { setBodyEraser, setBodyEraserLoader } = await import("@jxsuite/runtime");
+    let loads = 0;
+    setBodyEraserLoader(() => {
+      loads += 1;
+      return Promise.resolve({ eraseBody });
+    });
+    const container = document.createElement("div");
+    const handle = await renderResolvedDocument({
+      container,
+      doc: {
+        state: { n: { $prototype: "Function", body: "return (2 as number) + 1;" } },
+        tagName: "p",
+        textContent: "${state.n}",
+      },
+      docBase: "http://localhost:3000/page.json",
+      mapperCtx: ctx,
+      mode: "preview",
+    });
+    expect(loads).toBe(1);
+    expect(firstElementOf(container).textContent).toBe("3");
+    handle.dispose();
+    setBodyEraser(null);
+    setBodyEraserLoader(null);
+  });
+
   test("replaces previous content on re-render", async () => {
     const container = document.createElement("div");
     await renderResolvedDocument({

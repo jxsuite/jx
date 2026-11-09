@@ -17,6 +17,7 @@ import {
   buildScope,
   canvasStyleValue,
   defineElement,
+  prepareBodies,
   renderNode,
   runScoped,
   setCanvasAssetResolver,
@@ -1226,6 +1227,8 @@ export async function renderResolvedDocument(opts: {
   // Timeout and swallows failures internally, so awaiting it can't block the render indefinitely on
   // A slow/hanging component (the document still renders; an unresolved tag just stays inert).
   await registerElements(opts.doc, opts.docBase);
+  // A typed function body compiles in buildScope, synchronously, so its eraser arrives first.
+  await prepareBodies(opts.doc);
   const $defs = await buildScope(opts.doc, {}, opts.docBase);
   const onNodeCreated = makeStamper(opts.mapperCtx);
   // The scope MUST be the runtime's (runScoped): renderNode creates its binding effects with the

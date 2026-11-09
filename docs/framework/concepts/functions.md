@@ -11,6 +11,7 @@ code:
   - packages/erase/src/core.ts
   - packages/erase/src/index.ts
   - packages/compiler/src/erased.ts
+  - packages/runtime/src/body-eraser.ts
   - packages/compiler/src/targets/compile-element.ts
   - packages/compiler/src/targets/compile-client.ts
   - packages/runtime/src/runtime.ts
@@ -176,15 +177,15 @@ Functions marked `timing: "server"` are a separate mechanism: a plain `$src`/`$e
 ## Rules
 
 - `body` and `$src` are mutually exclusive, and declaring both is a compile-time error.
-- A `body` may use TypeScript that can be removed without generating code: annotations, `as`, `!`, generics and type aliases. `jx build` and `jx validate` accept it in any document format. `enum`, a value `namespace` and a module `import` are refused with the place they are written.
+- A `body` may use TypeScript that can be removed without generating code: annotations, `as`, `!`, generics and type aliases. `jx build`, `jx validate`, Studio's canvas and Live Preview accept it in any document format. `enum`, a value `namespace` and a module `import` are refused with the place they are written.
 - `state` is always reachable from a body. `arguments`/`parameters` bind by name: a parameter named `state` gets the state, any other name gets the event.
 - `this` is never used. All component state goes through the `state` proxy.
 - `$export` defaults to the entry's key name; sidecar exports must be named exports.
 - Function entries use `camelCase` names, like all state entries.
 - Only `$prototype: "Function"` may point `$src` at a `.js` file. Other prototypes require a `.class.json` (see [Data prototypes](/docs/framework/concepts/data-prototypes)).
 
-:::doc-warning
-Studio's canvas and Live Preview don't run a typed body yet, so a body with types in it works in `jx build` output and fails in Studio. Keep bodies in plain JavaScript until that lands.
+:::doc-note
+Studio's function editor still formats and lints a body as JavaScript, and minifies it when the editor closes, which removes its types. Keep typed bodies short, or edit them in the document's source, until that lands.
 :::
 
 ## Related

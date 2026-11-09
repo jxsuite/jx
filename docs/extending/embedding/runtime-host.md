@@ -7,9 +7,11 @@ spec:
   - embedding.md#4 # host functions and events
   - embedding.md#5 # per-mount context
   - embedding.md#6 # preloading bundled documents and modules
+  - embedding.md#6.2 # TypeScript function bodies
   - embedding.md#7 # redefining an element
 code:
   - packages/runtime/src/runtime.ts
+  - packages/runtime/src/body-eraser.ts
 ---
 
 # Embedding the runtime in your app
@@ -116,6 +118,27 @@ preloadModule("jx-ui:/behaviors/menu.ts", () => import("./behaviors/menu.ts"));
 The kit ships this table ready-made as `KIT_LOADERS` from `@jxsuite/ui/loaders`, the same specifiers as `KIT_MODULES` with every entry a thunk.
 
 `preloadModule` is also the only way a `timing: "server"` entry runs in your process. For any specifier you have not registered, the runtime posts the call to your host's `/__jx_server__` proxy and never imports the module. A host that answers no proxy leaves such an entry `null` and logs the failed call, and `skipServerFunctions` (below) skips the entries without a request.
+
+## Run TypeScript function bodies
+
+A function body may be TypeScript. The runtime carries no stripper, so your host hands it one. Build `@jxsuite/erase/browser` as its own file beside the runtime, then either install it now:
+
+```ts
+import { setBodyEraser } from "@jxsuite/runtime";
+import { eraseBody } from "@jxsuite/erase/browser";
+
+setBodyEraser(eraseBody);
+```
+
+or let the runtime fetch it the first time a document needs it:
+
+```ts
+import { setBodyEraserLoader } from "@jxsuite/runtime";
+
+setBodyEraserLoader(() => import("/assets/eraser.js"));
+```
+
+With a loader, a page whose bodies are all JavaScript downloads nothing more. If you render a document you built yourself rather than one the runtime resolved, call `await prepareBodies(doc)` before rendering it, so the loader runs first. Install the eraser eagerly instead when you bind handlers from documents you edit live with no step in which to fetch it.
 
 ## Configure each mount
 

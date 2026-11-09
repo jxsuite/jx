@@ -57,12 +57,14 @@ import {
   reapplyStyle,
   redefineElement,
   resetDocumentStyles,
+  setBodyEraserLoader,
   setCanvasAssetResolver,
   setNpmModuleResolver,
   setResolveToken,
 } from "@jxsuite/runtime";
 import { resolveAssetRef } from "./asset-resolve";
 import { npmModuleUrl } from "./npm-modules";
+import { loadBodyEraser } from "./body-eraser";
 import type { AssetContext } from "./asset-resolve";
 import { KIT_LOADERS } from "@jxsuite/ui/loaders";
 import type { CanvasEnvelope, IframeChannel } from "./iframe-channel";
@@ -105,6 +107,14 @@ for (const [specifier, load] of Object.entries(KIT_LOADERS)) {
  * `registerElements` already imports a bare `$elements` specifier from.
  */
 setNpmModuleResolver((specifier) => npmModuleUrl(specifier, location.href));
+
+/**
+ * A function body may be TypeScript (`spec.md` §23.1). The eraser carries a compiler, so the canvas
+ * loads it as its own chunk, the first time a document it renders has a body that needs it: the
+ * render waits for it (`renderResolvedDocument`). A patch that brings in the first typed body fails
+ * to compile, and the host answers that with a full render, which loads it.
+ */
+setBodyEraserLoader(loadBodyEraser);
 
 /**
  * Resolve the drop placement for a forwarded cursor: point hit-test → nearest `[data-jx-path]` →
