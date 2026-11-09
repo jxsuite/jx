@@ -262,12 +262,6 @@ export const STUDIO_ROUTES = {
     "Format posted source {code, path?} → {code, errors}",
     "Code editors skip format-on-open/save (codeService returns null).",
   ),
-  codeMinify: route(
-    "POST",
-    "/__studio/code/minify",
-    "Minify posted source {code} → {code}",
-    "Compiled-output minification is skipped.",
-  ),
   codeLint: route(
     "POST",
     "/__studio/code/lint",

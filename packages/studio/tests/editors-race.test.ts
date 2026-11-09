@@ -201,7 +201,7 @@ describe("a mount suspended inside the Monaco import", () => {
     expect(created).toHaveLength(0);
     expect(view.functionEditor).toBeNull();
 
-    await closeFunctionEditor();
+    closeFunctionEditor();
     expect(activeTab.value!.session.ui.editingFunction).toBeNull();
 
     openGate();

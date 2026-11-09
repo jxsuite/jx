@@ -35,8 +35,9 @@ import * as monacoApi from "monaco-editor/editor";
 import "monaco-editor/features/register.all";
 // Languages.
 import { jsonDefaults } from "monaco-editor/languages/features/json/register";
-import "monaco-editor/languages/features/typescript/register";
+import { typescriptDefaults } from "monaco-editor/languages/features/typescript/register";
 import "monaco-editor/languages/definitions/javascript/register";
+import "monaco-editor/languages/definitions/typescript/register";
 
 import { flattenSchema } from "@jxsuite/schema/project-schemas";
 import jxSchema from "@jxsuite/schema/schema.json";
@@ -181,6 +182,11 @@ function applyJsonSchemas(documentSchema: JsonObject, projectJsonSchema: JsonObj
     validate: true,
   });
 }
+
+/* A function body is TypeScript (`spec.md` §23.1) and opens as `typescript`. It is a body, not a
+   module: top-level `return` and `await` are what it is, and its names (`state`, `event`) come from
+   the runtime, so only syntax is checked until bodies are type-checked against their scope. */
+typescriptDefaults.setDiagnosticsOptions({ noSemanticValidation: true, noSyntaxValidation: false });
 
 /* Flattened once at module load: the shipped core schemas reference the well-known union resources
    by canonical $id (the `$paths` source union, extensions.md §5.3), and Monaco resolves anything with

@@ -83,13 +83,12 @@
  *    it is its own fact and not a use of clause 3.
  *
  * **Ahead is not the same as unsaved, and the gates that warn about lost work need the narrower
- * fact.** Format-on-open leaves a buffer ahead deliberately and never commits — and since
- * `closeFunctionEditor` writes a MINIFIED body, the pretty-printed buffer differs from the document
- * for as long as the editor is open. Counting THAT as unsaved work would put "you have unsaved
- * changes" in front of every author who merely opened a handler. So a keystroke says
- * {@link BufferWrites.markTyped} — ahead, and the text is the user's own — and the two gates that
- * destroy a tab ({@link commitTabBuffers}'s callers) read {@link BufferWrites.typed}, which is
- * exactly the text a close would take with it.
+ * fact.** Format-on-open leaves a buffer ahead deliberately and never commits, so the
+ * pretty-printed buffer differs from the document for as long as the editor is open. Counting THAT
+ * as unsaved work would put "you have unsaved changes" in front of every author who merely opened a
+ * handler. So a keystroke says {@link BufferWrites.markTyped} — ahead, and the text is the user's
+ * own — and the two gates that destroy a tab ({@link commitTabBuffers}'s callers) read
+ * {@link BufferWrites.typed}, which is exactly the text a close would take with it.
  *
  * {@link commitBufferWrites} reads the same fact from the other end. A gate asks it BEFORE the
  * destruction, to decide whether to prompt; a disposer asks it AFTER its own flush, when the answer
@@ -396,10 +395,10 @@ function describeCommitFailure(cause: unknown): string {
  *
  * Cancel-without-flush ({@link cancelBufferWrites}) stays correct in exactly one place, and only
  * because the commit has already happened by other means: `closeFunctionEditor` reads the buffer
- * itself and writes a MINIFIED body through the same writer, so the armed commit holds nothing but
- * a raw copy of what was just written, and replaying it afterwards would undo the minify. Every
- * other disposal path — `disposeFunctionEditor`, `disposeSourceEditor` and therefore
- * `resetCanvasView`, the model-URI swap and the mode transition — flushes.
+ * itself and writes it through the same writer, so the armed commit holds nothing but a copy of
+ * what was just written, and replaying it afterwards would only repeat the write. Every other
+ * disposal path — `disposeFunctionEditor`, `disposeSourceEditor` and therefore `resetCanvasView`,
+ * the model-URI swap and the mode transition — flushes.
  *
  * **AND THE FLUSH IS ALLOWED TO FAIL, which is what the answer is for.** `bodyWriter` returns
  * whether the body reached the document, and it returns `false` whenever the collab gate refuses

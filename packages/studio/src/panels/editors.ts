@@ -201,9 +201,9 @@ export function syncFunctionEditor(host: HTMLElement): void {
  *
  * - Type, then click Problems / the dock's × / ⌘\ to another pane — `syncFunctionEditor` disposes
  *   synchronously, and half a second later the body is `""` and the tab is dirty.
- * - Worse, click **Close** — `closeFunctionEditor` minifies, writes the correct body, disposes, and
- *   the orphan timer overwrites that correct write with `""`. The action that exists to save the
- *   work was the one that destroyed it.
+ * - Worse, click **Close** — `closeFunctionEditor` writes the correct body, disposes, and the orphan
+ *   timer overwrites that correct write with `""`. The action that exists to save the work was the
+ *   one that destroyed it.
  *
  * The takeover never saw this because it was torn down by exactly one thing (closing it, which
  * happened to be slower than the debounce). A dock tab is torn down by five, four of them new with
@@ -323,28 +323,17 @@ function bodyWriter(tab: Tab, editing: EditingTarget, writes?: BufferWrites) {
 }
 
 /**
- * Close the code surface: minify what is in the buffer, write it back, and clear the target.
+ * Close the code surface: write what is in the buffer back as written, and clear the target.
  *
  * The write is the reason the Close is a real one rather than a tab switch. It lived in `studio.ts`
  * beside the pane context bar's crumb, which was its only caller; the Logic tab's Close is the
  * second, and a body-saving routine that two surfaces call belongs beside the editor whose buffer
  * it reads.
  *
- * **The minify is an await, and a retarget fits inside it.** The buffer and the target are both
- * read BEFORE it; the teardown after it acts on whatever is mounted then. Open A, click Close, and
- * while `minify` is in flight click "Open in code editor" on B: the write still belongs to A and
- * still lands on A, but the dispose-and-clear would have killed B's live editor and closed a
- * document position the user had just asked for. So the write is unconditional and the TEARDOWN is
- * conditional — they answer to different moments in time and only one of them is still A's.
- *
- * **But that is TWO obligations, and only one of them is the editor's.** Guarding the whole tail on
- * `view.functionEditor === editor` conflated them, and the case it got wrong is the ordinary one:
- * an editor torn down inside the minify and NOT retargeted — collapse the dock, select Problems, ⌘\
- * to another pane — leaves `view.functionEditor` null, so the guard bailed and `editingFunction`
- * was never cleared. Nothing else clears it, so the Logic tab stayed on the strip pointing at a
- * body the user had just dismissed, and re-opening the dock restored the editor they closed.
- * Disposing belongs to the instance; clearing the target belongs to the TARGET, and the only thing
- * with a claim on the target is a retarget that already replaced it.
+ * **The body is stored as written.** A body may be TypeScript (`spec.md` §23.1), and the Close used
+ * to minify it first, which deletes the types; compiled output is still minified. With no round
+ * trip the Close is synchronous, so nothing can retarget or tear the editor down between reading
+ * the buffer and writing it.
  *
  * **The write goes through the editor's own `_commitBody`, not through the focused tab.** That
  * writer was bound at mount to the tab and target this buffer belongs to, so the Close and the
@@ -353,16 +342,12 @@ function bodyWriter(tab: Tab, editing: EditingTarget, writes?: BufferWrites) {
  * same {@link bodyWriter}, bound to those.
  *
  * **AND THE WRITE CAN BE REFUSED, in which case there is nothing left to close over.** Under the
- * source-canonical freeze the collab gate blocks the body commit, and this used to carry on:
- * minify, refused write, `cancelBufferWrites` (the armed commit gone too), dispose, target cleared.
- * The Close button — the one action whose entire purpose is to save the body — destroyed it, and
- * the standing "frozen" chip in the presence strip does not say that a button just did nothing. A
- * refusal therefore keeps the surface exactly as it is (the text stays on screen, the target stays
- * open) and says why, once, through the same Problems/toast channel every other failed write uses.
- * Nothing is re-armed: the buffer is still marked typed, so the close and quit gates already know
- * the work exists.
+ * source-canonical freeze the collab gate blocks the body commit. A refusal therefore keeps the
+ * surface exactly as it is (the text stays on screen, the target stays open) and says why, once,
+ * through the same Problems/toast channel every other failed write uses. Nothing is re-armed: the
+ * buffer is still marked typed, so the close and quit gates already know the work exists.
  */
-export async function closeFunctionEditor(): Promise<void> {
+export function closeFunctionEditor(): void {
   const tab = activeTab.value;
   /* SAFETY: `editingFunction` is written only by openLogicTarget, whose callers pass one of the two
      EditingTarget shapes (see syncFunctionEditor). */
@@ -373,15 +358,10 @@ export async function closeFunctionEditor(): Promise<void> {
   const editor = view.functionEditor;
   if (editor) {
     const currentCode = editor.getValue();
-    const minResult = await codeService("minify", { code: currentCode });
-    /* Cancelled AFTER the round trip, not before it. Either position stops the armed commit from
-       replaying raw text over the minified body, but cancelling first means a minify that REJECTS
-       takes the user's last keystrokes with it — there would be no armed commit left to write them.
-       Left armed, the worst case is that the timer fires mid-await and writes the same text to the
-       same target a moment before the minified version lands on top of it. */
+    // The armed commit would only replay this same text; the Close writes it now.
     cancelBufferWrites(editor);
     const write = editor._commitBody ?? bodyWriter(tab, editing);
-    if (!write(minResult?.code ?? currentCode)) {
+    if (!write(currentCode)) {
       const options: NotifyOptions = { key: "logic.close-refused", source: "Logic" };
       if (tab.documentPath) {
         options.path = tab.documentPath;
@@ -392,11 +372,6 @@ export async function closeFunctionEditor(): Promise<void> {
       );
       return;
     }
-    if (view.functionEditor !== null && view.functionEditor !== editor) {
-      return;
-    }
-    // A no-op when the teardown already happened, which is the whole point: the clear below still
-    // Runs, because a target with no editor is precisely the state nothing else resolves.
     disposeFunctionEditor();
   }
   updateUi(activeTab.value, "editingFunction", null);
@@ -460,7 +435,7 @@ async function mountFunctionEditor(
     automaticLayout: true,
     fontFamily: "'JetBrains Mono', 'SF Mono', 'Fira Code', 'Consolas', monospace",
     fontSize: 12,
-    language: "javascript",
+    language: "typescript",
     lineNumbers: "on",
     minimap: { enabled: false },
     scrollBeyondLastLine: false,
@@ -566,14 +541,14 @@ async function mountFunctionEditor(
   });
 }
 
-// Register Monaco JS completion provider for state scope variables (once)
+// Register the Monaco completion provider for state scope variables (once)
 export async function registerFunctionCompletions() {
   if (view._completionRegistered) {
     return;
   }
   view._completionRegistered = true;
   const monacoNs = await loadMonaco();
-  monacoNs.languages.registerCompletionItemProvider("javascript", {
+  monacoNs.languages.registerCompletionItemProvider("typescript", {
     provideCompletionItems(model, position) {
       if (!activeTab.value) {
         return { suggestions: [] };
