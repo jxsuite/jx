@@ -138,7 +138,7 @@ import { setBodyEraserLoader } from "@jxsuite/runtime";
 setBodyEraserLoader(() => import("/assets/eraser.js"));
 ```
 
-With a loader, a page whose bodies are all JavaScript downloads nothing more. Install the eraser eagerly instead when you bind handlers from documents you edit live, because that path has no step in which to fetch it. With neither, a typed body fails with an error naming it and `setBodyEraser`.
+With a loader, a page whose bodies are all JavaScript downloads nothing more. If you render a document you built yourself rather than one the runtime resolved, call `await prepareBodies(doc)` before rendering it, so the loader runs first. Install the eraser eagerly instead when you bind handlers from documents you edit live with no step in which to fetch it.
 
 ## Configure each mount
 
