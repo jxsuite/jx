@@ -532,7 +532,7 @@ describe("buildScope", () => {
     expect(result).toBe("hello");
   });
 
-  test("Shape 4: Function with $src → computed via introspection (has return, ≤1 param)", async () => {
+  test("Shape 4: a $src export the document only reads is a computed", async () => {
     const srcUrl = new URL("_test_computed_src.js", import.meta.url).href;
     const state = await buildScope(
       {
@@ -566,7 +566,7 @@ describe("buildScope", () => {
     expect(state.handler).toBeTypeOf("function");
   });
 
-  test("Shape 4: Function with $src → computed when fn has return and ≤1 param", async () => {
+  test("Shape 4: a $src export is a computed by use, whatever its source", async () => {
     const srcUrl = new URL("_test_handlers_fn.js", import.meta.url).href;
     const state = await buildScope(
       {
@@ -578,6 +578,31 @@ describe("buildScope", () => {
       BASE,
     );
     expect(state.myFn).toBe(42);
+  });
+
+  test("Shape 4: a returning $src export bound to onclick is a function", async () => {
+    const srcUrl = new URL("_test_handlers_fn.js", import.meta.url).href;
+    const state = await buildScope(
+      {
+        children: [{ onclick: { $ref: "#/state/bump" }, tagName: "button" }],
+        state: { bump: { $prototype: "Function", $src: srcUrl }, count: 0 },
+      },
+      {},
+      BASE,
+    );
+    expect(state.bump).toBeTypeOf("function");
+    expect(fnOf(state, "bump")(state)).toBe(1);
+    expect(state.count).toBe(1);
+  });
+
+  test("Shape 4: a two-parameter $src export the document only reads is a computed", async () => {
+    const srcUrl = new URL("_test_handlers_fn.js", import.meta.url).href;
+    const state = await buildScope(
+      { state: { pair: { $prototype: "Function", $src: srcUrl } } },
+      {},
+      BASE,
+    );
+    expect(state.pair).toBe("pair");
   });
 
   test("Shape 4: Function with both body and $src → throws", async () => {

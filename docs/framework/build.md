@@ -154,7 +154,7 @@ Every page is prerendered: the compiler evaluates `${state.…}` against the bui
 
 - **A constant bakes.** `{"tagline": {"type": "string", "default": "Ship JSON"}}` read as `${state.tagline}` becomes text in the HTML, with no JavaScript behind it.
 - **An entry a handler writes to stays bound.** If any handler in the document assigns to `state.saved` (`=`, `+=`, `++`, or an in-place `push`/`splice`/`sort`), every template reading it keeps its binding, even though the entry has a perfectly ordinary build-time value.
-- **A computed over changing state stays bound.** A `$prototype: "Function"` whose body returns is evaluated at build time, so a computed is left unresolved too when it reads a written entry, a `$src` value, or a `Request`, however many steps removed.
+- **A computed over changing state stays bound.** A computed `$prototype: "Function"` (a body that returns a value and declares no parameters) is evaluated at build time, so a computed is left unresolved too when it reads a written entry, a `$src` value, or a `Request`, however many steps removed.
 - **An array a computed still reads stays in client state.** Expanding an array into a list at build time no longer drops it: if a computed or a template still reads `state.rows` at runtime, the array ships with the island. Mark it `timing: "compiler"` to say the data really is build-time only.
 
 :::doc-note

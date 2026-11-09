@@ -52,7 +52,6 @@ import type {
   JxScopeValue,
 } from "./types.ts";
 import {
-  bodyReturnsValue,
   hasStructuredBody,
   isBoolean,
   isExpressionDef,
@@ -74,6 +73,8 @@ import {
   paramNames,
 } from "@jxsuite/schema/guards";
 import type { TagNameSlot } from "@jxsuite/schema/guards";
+import { classifyFunctionEntries } from "@jxsuite/schema/function-role";
+import type { FunctionRole } from "@jxsuite/schema/function-role";
 import { formatSrcset, parseSrcset } from "@jxsuite/schema/asset-paths";
 import { runStatements } from "./statements.ts";
 import { compileBody, prepareBodies } from "./body-eraser.ts";
@@ -1023,7 +1024,9 @@ export async function buildScope(
     }
   }
 
-  // Third pass: $prototype: "Function" entries
+  // Third pass: $prototype: "Function" entries. One verdict per entry, from the document: the same
+  // One every compiled target reads (spec.md §5.3 4b, 4d).
+  const roles = classifyFunctionEntries(doc);
   for (const [key, def] of Object.entries(defs)) {
     if (hasStructuredBody(def)) {
       // Structured body (spec §20): with parameters → a callable mapping positional args onto
@@ -1045,7 +1048,7 @@ export async function buildScope(
         state[key] = handler;
       }
     } else if (isFunctionDef(def)) {
-      state[key] = await resolveFunction(def, state, key, base);
+      state[key] = await resolveFunction(def, state, key, roles.get(key) ?? "callable", base);
     }
   }
 
@@ -1605,16 +1608,23 @@ type ScopeFunction = (...args: JxScopeValue[]) => JxScopeValue;
 /**
  * Resolve a $prototype: "Function" entry into a function or computed.
  *
- * Functions receive state as their first parameter at call time. Functions with a return statement
- * in their body are wrapped in computed() for reactive evaluation.
+ * Functions receive state as their first parameter at call time. A `computed` role (decided by
+ * `classifyFunctionEntries` from the document) is wrapped in computed() for reactive evaluation.
  *
  * @param {JxFunctionDef} def - State entry with $prototype: "Function"
  * @param {JxScope} state - Reactive scope proxy
  * @param {string} key - Def key name
+ * @param {FunctionRole} role - The document's verdict for this entry
  * @param {string} [base] - Base URL for resolving $src imports
  * @returns {Promise<JxScopeValue>}
  */
-async function resolveFunction(def: JxFunctionDef, state: JxScope, key: string, base?: string) {
+async function resolveFunction(
+  def: JxFunctionDef,
+  state: JxScope,
+  key: string,
+  role: FunctionRole,
+  base?: string,
+) {
   if (def.body && def.$src) {
     throw new Error(`Jx: '${key}' declares both body and $src — these are mutually exclusive`);
   }
@@ -1665,16 +1675,8 @@ async function resolveFunction(def: JxFunctionDef, state: JxScope, key: string, 
     fn = candidate as ScopeFunction;
   }
 
-  // Detect computed: body contains a return statement, or $src function introspection.
-  // Functions with parameters (event handlers, callbacks) are never computed.
-  const hasParams = (def.parameters ?? def.arguments ?? []).length > 0;
-  let isComputed = false;
-  if (!hasParams) {
-    isComputed = isString(def.body)
-      ? bodyReturnsValue(def.body)
-      : fn.length <= 1 && bodyReturnsValue(fn.toString());
-  }
-  if (isComputed) {
+  // The role comes from the document (spec.md §5.3 4b, 4d), never from the import's arity or source.
+  if (role === "computed") {
     return computed(() => fn(state));
   }
 

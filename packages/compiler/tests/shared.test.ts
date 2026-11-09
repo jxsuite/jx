@@ -323,6 +323,16 @@ describe("buildInitialScope", () => {
     expect(scope.inc).toBeFunction();
   });
 
+  test("a parameterised string body that returns a value is a callable, not a deferred computed", () => {
+    const scope = buildInitialScope({
+      double: { $prototype: "Function", body: "return x * 2", parameters: ["x"] },
+    });
+    expect(scope.double).toBeFunction();
+    // SAFETY: the scope member is the compiled body, called as a state function is.
+    const double = scope.double as (state: typeof scope, x: number) => number;
+    expect(double(scope, 5)).toBe(10);
+  });
+
   test("Function $prototype with returning body creates getter", () => {
     const scope = buildInitialScope({
       count: 5,
