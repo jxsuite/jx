@@ -20,6 +20,7 @@
 
 import { componentRegistry } from "../files/components";
 import { uploadAssets } from "../files/media-upload";
+import { loadMediaRecord, peekMediaRecord } from "../files/media-record";
 import { applyDropInstruction } from "../panels/dnd";
 import { mutateUpdateAttribute, mutateUpdateProp, transactDoc } from "../tabs/transact";
 import { isNumber } from "@jxsuite/schema/guards";
@@ -91,11 +92,23 @@ export function resolveFileDropTarget(
  * flagged, and the drop selects the new element (`applyDropInstruction`), so the Inspector is
  * already on the field the author has to fill. Neither is the file name a description: `IMG_0412`
  * read aloud is noise, not an alternative.
+ *
+ * **Except where the file itself describes the picture.** A file whose own record (studio.md §22.6,
+ * `files/media-record.ts`) carries alt text is placed with that text as its `alt`: the author wrote
+ * it once, in the Media workspace or in a photo tool, and it is a description, not a guess. Only a
+ * record already read counts, so this stays synchronous; a caller that can wait reads the record
+ * first ({@link applyFileDrop}, the Site panel's thumbnails). The `alt` is a copy: editing it later
+ * on the page does not touch the file, and the file's record does not follow into the page.
  */
 export function elementForAsset(asset: UploadedAsset): JxMutableNode {
   switch (asset.kind) {
     case "image": {
-      return { attributes: { src: asset.ref }, tagName: "img" };
+      const record = peekMediaRecord(asset.path);
+      const alt = record.status === "ready" ? record.record.alt : "";
+      return {
+        attributes: alt === "" ? { src: asset.ref } : { alt, src: asset.ref },
+        tagName: "img",
+      };
     }
     case "video": {
       return { attributes: { controls: "", src: asset.ref }, tagName: "video" };
@@ -162,6 +175,10 @@ export async function applyFileDrop(
     return;
   }
 
+  // Read each image's own record first, so an image placed here arrives with its alt text.
+  await Promise.all(
+    assets.filter((asset) => asset.kind === "image").map((asset) => loadMediaRecord(asset.path)),
+  );
   for (const [i, asset] of assets.entries()) {
     const srcData = { fragment: elementForAsset(asset), type: "block" };
     if (preview) {
