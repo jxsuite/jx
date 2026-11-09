@@ -41,6 +41,7 @@ import {
   CROP_STOPS,
   HANDLE_LABELS,
   cropOf,
+  focusThrough,
   displaySize,
   filterString,
   fitForWebWidth,
@@ -764,13 +765,15 @@ export async function saveImage(tab: Tab): Promise<boolean> {
     if (!result.ok) {
       return failed(result.reason);
     }
-    /* The canvas re-encode carries no metadata, so the file's alt text and tags are carried from the
+    /* The canvas re-encode carries no metadata, so the file's alt text, tags and focal point are carried from the
        bytes it was edited from (§22.6), and what is written is also the next save's source. Done
        here, before the liveness check, which must share one synchronous stretch with the upload. */
     const written = carryRecordBetween(
       path,
       source.bytes,
       new Uint8Array(await result.blob.arrayBuffer()),
+      // The focal point moves with the pixels: turned, mirrored, measured inside the crop.
+      (focus) => focusThrough(focus, recipe, size),
     );
     /* Checked in the same synchronous stretch as the upload call below, so neither the tab nor the
        project root can move between the two. After a project switch a project-relative path names

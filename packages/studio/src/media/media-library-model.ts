@@ -23,7 +23,7 @@
  */
 
 import type { MediaFileKind } from "../files/media-upload";
-import type { MediaRecord } from "../files/xmp-packet";
+import type { FocalPoint, MediaRecord } from "@jxsuite/site/xmp-packet";
 
 /** One file as the library lists it. */
 export interface LibraryMediaFile {
@@ -341,4 +341,39 @@ export function gridStep(
     }
   }
   return next < 0 || next >= count ? at : next;
+}
+
+// ─── Focal point ─────────────────────────────────────────────────────────────
+
+/** A fraction of the picture as the percentage the fields show: "37.5", at most one decimal. */
+export function focusPercent(fraction: number): string {
+  return String(Math.round(fraction * 1000) / 10);
+}
+
+/** The focal point a press on the picture names, or `null` for a picture with no size yet. */
+export function focusAt(x: number, width: number, y: number, height: number): FocalPoint | null {
+  if (!(width > 0 && height > 0)) {
+    return null;
+  }
+  const clamp = (value: number): number => Math.min(1, Math.max(0, value));
+  return { x: clamp(x / width), y: clamp(y / height) };
+}
+
+/**
+ * The focal point with one coordinate set from a typed percentage, the other kept (or the centre
+ * when the picture had none). `null` when the text is not a number; out of range is clamped.
+ */
+export function focusWithAxis(
+  focus: FocalPoint | null,
+  axis: "x" | "y",
+  text: string,
+): FocalPoint | null {
+  const trimmed = text.trim();
+  const value = Number(trimmed);
+  if (trimmed === "" || !Number.isFinite(value)) {
+    return null;
+  }
+  const fraction = Math.min(1, Math.max(0, value / 100));
+  const base = focus ?? { x: 0.5, y: 0.5 };
+  return axis === "x" ? { x: fraction, y: base.y } : { x: base.x, y: fraction };
 }

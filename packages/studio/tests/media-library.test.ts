@@ -34,8 +34,8 @@ import { isRegionId, regionIdOf } from "../src/ui/regions";
 import { invalidateMediaCache } from "../src/ui/media-picker";
 import { peekMediaMeta, recordImageSize } from "../src/files/media-meta";
 import { setMediaChangedHandler } from "../src/files/media-upload";
-import { readMediaRecord, writeMediaRecord } from "../src/files/xmp-packet";
-import { embedXmp, extractXmp } from "../src/files/xmp-containers";
+import { readMediaRecord, writeMediaRecord } from "@jxsuite/site/xmp-packet";
+import { embedXmp, extractXmp } from "@jxsuite/site/xmp-containers";
 import { invalidateUsages } from "../src/services/references";
 import { collabState } from "../src/collab/collab-state";
 import { getPlatform } from "../src/platform";
@@ -58,6 +58,7 @@ import {
 } from "../src/media/media-library";
 import type { DirEntry, ReferencesResult } from "../src/types";
 import type { MockPlatformState } from "./harness";
+import type { MediaRecord } from "@jxsuite/site/xmp-packet";
 
 // ─── The project ─────────────────────────────────────────────────────────────
 
@@ -181,11 +182,11 @@ const BARE_PNG = Uint8Array.of(
 
 /** A JPEG carrying `alt` and `tags`. */
 function jpegWith(alt: string, tags: string[]): Uint8Array {
-  return embedXmp(BARE_JPEG, "jpeg", writeMediaRecord(null, { alt, tags }));
+  return embedXmp(BARE_JPEG, "jpeg", writeMediaRecord(null, { alt, focus: null, tags }));
 }
 
 /** The record the file at `path` carries now. */
-function recordIn(path: string): { alt: string; tags: string[] } {
+function recordIn(path: string): MediaRecord {
   return readMediaRecord(extractXmp(bytesByPath.get(path) ?? BARE_JPEG, "jpeg"));
 }
 
@@ -1852,6 +1853,51 @@ describe("a file's own alt text and tags", () => {
     expect(tileFiles()).toEqual(["public/hero.jpg"]);
   });
 
+  test("a focal point is set by a press on the picture, by the two fields, and cleared", async () => {
+    describedProject();
+    await mountHome();
+    pointer(tileOf("public/hero.jpg"), "click");
+    await settle();
+    const frame = part("focus-frame");
+    expect(frame.dataset.focusSet).toBe("no");
+    expect(part<HTMLElement & { disabled: boolean }>("focus-clear").disabled).toBe(true);
+
+    Object.defineProperty(frame, "clientWidth", { configurable: true, value: 200 });
+    Object.defineProperty(frame, "clientHeight", { configurable: true, value: 100 });
+    const press = new MouseEvent("click", { bubbles: true });
+    Object.defineProperty(press, "offsetX", { value: 50 });
+    Object.defineProperty(press, "offsetY", { value: 75 });
+    frame.dispatchEvent(press);
+    await settle(10);
+    expect(recordIn("public/hero.jpg").focus).toEqual({ x: 0.25, y: 0.75 });
+    expect(frame.dataset.focusSet).toBe("yes");
+    expect(part<HTMLElement & { value: string }>("focus-x").value).toBe("25");
+
+    commit(part("focus-y"), "10");
+    await settle(10);
+    expect(recordIn("public/hero.jpg").focus).toEqual({ x: 0.25, y: 0.1 });
+    // Not a number: nothing is written.
+    const writes = state.calls.filter(([name]) => name === "uploadFile").length;
+    commit(part("focus-x"), "abc");
+    await settle(10);
+    expect(state.calls.filter(([name]) => name === "uploadFile")).toHaveLength(writes);
+
+    part("focus-clear").dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    await settle(10);
+    expect(recordIn("public/hero.jpg").focus).toBeNull();
+    expect(recordIn("public/hero.jpg").alt).toBe("A hero image");
+  });
+
+  test("a press on a picture with no size yet sets nothing", async () => {
+    describedProject();
+    await mountHome();
+    pointer(tileOf("public/hero.jpg"), "click");
+    await settle();
+    part("focus-frame").dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    await settle(10);
+    expect(recordIn("public/hero.jpg").focus).toBeNull();
+  });
+
   test("the detail pane edits them, and every edit is written into the file", async () => {
     describedProject();
     await mountHome();
@@ -1871,6 +1917,7 @@ describe("a file's own alt text and tags", () => {
     expect(changed).toContainEqual(["public", "public/hero.jpg"]);
     expect(recordIn("public/hero.jpg")).toEqual({
       alt: "Rows of seedlings",
+      focus: null,
       tags: ["Garden", "Spring"],
     });
 
@@ -1933,7 +1980,11 @@ describe("a file's own alt text and tags", () => {
     commit(part("tag-add"), "Ignored");
     release();
     await settle(10);
-    expect(recordIn("public/hero.jpg")).toEqual({ alt: "First", tags: ["Garden", "Spring"] });
+    expect(recordIn("public/hero.jpg")).toEqual({
+      alt: "First",
+      focus: null,
+      tags: ["Garden", "Spring"],
+    });
   });
 
   test("a tag no file carries any more is not kept as the filter", async () => {

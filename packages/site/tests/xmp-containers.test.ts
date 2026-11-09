@@ -1,14 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import {
-  XmpContainerError,
-  crc32,
-  embedXmp,
-  extractXmp,
-  xmpFormatOf,
-} from "../src/files/xmp-containers";
-import { readMediaRecord, writeMediaRecord } from "../src/files/xmp-packet";
+import { XmpContainerError, crc32, embedXmp, extractXmp, xmpFormatOf } from "../src/xmp-containers";
+import { readMediaRecord, writeMediaRecord } from "../src/xmp-packet";
 import { isString } from "@jxsuite/schema/guards";
-import type { XmpFormat } from "../src/files/xmp-containers";
+import type { XmpFormat } from "../src/xmp-containers";
 
 const enc = new TextEncoder();
 const dec = new TextDecoder();
@@ -24,8 +18,8 @@ function bytes(...parts: (number[] | Uint8Array | string)[]): Uint8Array<ArrayBu
   return out;
 }
 
-const PACKET = writeMediaRecord(null, { alt: "Seedlings", tags: ["Garden"] });
-const PACKET_2 = writeMediaRecord(null, { alt: "Bees", tags: [] });
+const PACKET = writeMediaRecord(null, { alt: "Seedlings", focus: null, tags: ["Garden"] });
+const PACKET_2 = writeMediaRecord(null, { alt: "Bees", focus: null, tags: [] });
 
 // ─── JPEG ────────────────────────────────────────────────────────────────────
 
@@ -303,6 +297,7 @@ describe("SVG", () => {
     const packet = extractXmp(svg(out), "svg");
     expect(readMediaRecord(packet)).toEqual({
       alt: "Seedlings",
+      focus: null,
       tags: ["Garden"],
     });
   });
