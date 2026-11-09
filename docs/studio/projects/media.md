@@ -22,6 +22,7 @@ code:
   - packages/studio/src/surfaces/media-pick-dialog.ts
   - packages/studio/src/ui/media-picker.ts
   - packages/studio/src/surfaces/media-field.ts
+  - packages/studio/src/editor/file-drop-action.ts
   - packages/studio/src/surfaces/media-browser.ts
   - packages/studio/src/editor/file-drop-action.ts
   - packages/studio/src/canvas/asset-refs.ts
@@ -94,7 +95,7 @@ Like alt text, the focal point is kept inside the file, as an IPTC **image regio
 
 When you build the site, every image whose file has a focal point gets it as its `object-position`, unless you set `object-position` on that image yourself. [Editing the image](#edit-an-image) moves the point with the picture: it turns and mirrors with it, and a crop that leaves the point out removes it.
 
-This is the picture's own description, kept with the file. The text a page shows is still the `alt` on each image element, which you set in the Inspector, because the same picture can mean different things in different places.
+This is the picture's own description, kept with the file. The text a page shows is still the `alt` on each image element, which you set in the Inspector, because the same picture can mean different things in different places. When you place a picture on a page, by dropping a file on the canvas or dragging it from the Site panel, the new image starts with the file's alt text, which you can then change for that page. Changing it there does not change the file.
 
 ## Upload into the Media workspace
 

@@ -57,6 +57,22 @@ void mock.module("../src/files/media-upload", () => ({
   },
 }));
 
+// The files' own records: an image whose record carries alt text is placed with it.
+const altByPath = new Map<string, string>();
+const recordLoads: string[] = [];
+void mock.module("../src/files/media-record", () => ({
+  loadMediaRecord: (path: string) => {
+    recordLoads.push(path);
+    return Promise.resolve({ status: "unsupported" });
+  },
+  peekMediaRecord: (path: string) => {
+    const alt = altByPath.get(path);
+    return alt === undefined
+      ? { status: "pending" }
+      : { record: { alt, tags: [] }, status: "ready" };
+  },
+}));
+
 // The registry the component-prop branch consults. Mutated in place, never reassigned — mock.module
 // Snapshots the exported value, so a fresh array would not be seen by the module under test.
 const registry: RegistryEntry[] = [];
@@ -125,6 +141,8 @@ beforeEach(() => {
   attrCalls.length = 0;
   propCalls.length = 0;
   registry.length = 0;
+  altByPath.clear();
+  recordLoads.length = 0;
 });
 
 // ─── resolveFileDropTarget ───────────────────────────────────────────────────
@@ -190,6 +208,17 @@ describe("elementForAsset", () => {
       attributes: { src: "/hero.png" },
       tagName: "img",
     });
+  });
+
+  test("an image whose file carries alt text is placed with it", () => {
+    altByPath.set("public/hero.png", "Rows of seedlings");
+    expect(elementForAsset(asset())).toEqual({
+      attributes: { alt: "Rows of seedlings", src: "/hero.png" },
+      tagName: "img",
+    });
+    // An empty record is no description: still no alt at all.
+    altByPath.set("public/hero.png", "");
+    expect(elementForAsset(asset()).attributes).toEqual({ src: "/hero.png" });
   });
 
   test("playable media gets native controls", () => {
@@ -289,6 +318,12 @@ describe("applyFileDrop", () => {
         targetPath: ["children", 2],
       },
     ]);
+  });
+
+  test("an insert reads each image's record first, and only images'", async () => {
+    uploadResult = [asset(), asset({ kind: "video", path: "public/a.mp4", ref: "/a.mp4" })];
+    await applyFileDrop(tab, files, null, preview());
+    expect(recordLoads).toEqual(["public/hero.png"]);
   });
 
   test("a multi-file insert keeps drop order by advancing the index", async () => {
