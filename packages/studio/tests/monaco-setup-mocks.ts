@@ -13,22 +13,25 @@
 
 import { mock } from "bun:test";
 import type { DiagnosticsOptions } from "monaco-editor/languages/features/json/register";
+import type { DiagnosticsOptions as TypeScriptDiagnosticsOptions } from "monaco-editor/languages/features/typescript/register";
 
-/** The two entries that carry VALUES monaco-setup reads. */
+/** The three entries that carry VALUES monaco-setup reads. */
 export const MONACO_EDITOR_ENTRY = "monaco-editor/editor";
 export const MONACO_JSON_ENTRY = "monaco-editor/languages/features/json/register";
+export const MONACO_TYPESCRIPT_ENTRY = "monaco-editor/languages/features/typescript/register";
 
 /** The rest — imported purely to register a capability with the editor. */
 export const MONACO_SIDE_EFFECT_ENTRIES = [
   "monaco-editor/features/register.all",
-  "monaco-editor/languages/features/typescript/register",
   "monaco-editor/languages/definitions/javascript/register",
+  "monaco-editor/languages/definitions/typescript/register",
 ] as const;
 
 /** Every `monaco-editor` specifier the module under test imports. */
 export const MONACO_SETUP_ENTRIES: readonly string[] = [
   MONACO_EDITOR_ENTRY,
   MONACO_JSON_ENTRY,
+  MONACO_TYPESCRIPT_ENTRY,
   ...MONACO_SIDE_EFFECT_ENTRIES,
 ];
 
@@ -41,6 +44,8 @@ export interface MonacoEditorApiDouble {
 export interface MonacoSetupMockOptions {
   /** Stands in for the `jsonDefaults` monaco-setup pushes diagnostics options into. */
   jsonDefaults?: { setDiagnosticsOptions: (options: DiagnosticsOptions) => void };
+  /** Stands in for the `typescriptDefaults` monaco-setup sets a body's diagnostics on. */
+  typescriptDefaults?: { setDiagnosticsOptions: (options: TypeScriptDiagnosticsOptions) => void };
   /** Stands in for the editor API namespace (`editor.remeasureFonts`). */
   editorApi?: MonacoEditorApiDouble;
 }
@@ -53,6 +58,8 @@ export function installMonacoSetupMocks(options: MonacoSetupMockOptions = {}): v
   const jsonDefaults = options.jsonDefaults ?? { setDiagnosticsOptions: () => {} };
   void mock.module(MONACO_EDITOR_ENTRY, () => options.editorApi ?? {});
   void mock.module(MONACO_JSON_ENTRY, () => ({ jsonDefaults }));
+  const typescriptDefaults = options.typescriptDefaults ?? { setDiagnosticsOptions: () => {} };
+  void mock.module(MONACO_TYPESCRIPT_ENTRY, () => ({ typescriptDefaults }));
   for (const entry of MONACO_SIDE_EFFECT_ENTRIES) {
     void mock.module(entry, () => ({}));
   }

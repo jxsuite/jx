@@ -8,6 +8,7 @@
           "type": "string"
         },
         "body": {
+          "description": "The member's body in erasable TypeScript, which plain JavaScript already is (spec §23.1), as one string or as an array of lines.",
           "oneOf": [
             {
               "type": "string"
@@ -120,6 +121,7 @@
           "type": "string"
         },
         "body": {
+          "description": "The member's body in erasable TypeScript, which plain JavaScript already is (spec §23.1), as one string or as an array of lines.",
           "oneOf": [
             {
               "type": "string"

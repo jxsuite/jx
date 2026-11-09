@@ -753,13 +753,13 @@ describe("closeFunctionEditor", () => {
     openShellTab();
     const editor = { dispose: mock(() => {}), getValue: () => "x" };
     const installed = installFunctionEditor(editor);
-    await toolbarCtx.closeFunctionEditor();
+    toolbarCtx.closeFunctionEditor();
     expect(editor.dispose).not.toHaveBeenCalled();
     expect(view.functionEditor).toBe(installed);
     view.functionEditor = null;
   });
 
-  test("stores the edited def body (raw code when minify yields nothing)", async () => {
+  test("stores the edited def body", async () => {
     const tab = openShellTab({
       children: [],
       state: { fn: { $prototype: "Function", body: "old" } },
@@ -768,29 +768,33 @@ describe("closeFunctionEditor", () => {
     tab.session.ui.editingFunction = { defName: "fn", type: "def" };
     const editor = { dispose: mock(() => {}), getValue: () => "return 42;" };
     installFunctionEditor(editor);
-    await toolbarCtx.closeFunctionEditor();
+    toolbarCtx.closeFunctionEditor();
     expect(tab.doc.document.state?.fn).toMatchObject({ body: "return 42;" });
     expect(editor.dispose).toHaveBeenCalled();
     expect(view.functionEditor).toBeNull();
     expect(tab.session.ui.editingFunction).toBeNull();
   });
 
-  test("uses the minified body when the code service provides one", async () => {
+  test("stores a TypeScript body as written, whatever the code service would answer", async () => {
     const tab = openShellTab({
       children: [],
       state: { fn: { $prototype: "Function", body: "old" } },
       tagName: "div",
     });
     tab.session.ui.editingFunction = { defName: "fn", type: "def" };
-    installFunctionEditor({ dispose: mock(() => {}), getValue: () => "return 42 ;" });
+    const typed = "const n: number = 42;\nreturn n;";
+    installFunctionEditor({ dispose: mock(() => {}), getValue: () => typed });
+    const codeService = mock(async () => ({ code: "return 42;" }));
     const originalCodeService = platform.codeService;
-    platform.codeService = async () => ({ code: "return 42;" });
+    platform.codeService = codeService;
     try {
-      await toolbarCtx.closeFunctionEditor();
+      toolbarCtx.closeFunctionEditor();
     } finally {
       platform.codeService = originalCodeService;
     }
-    expect(tab.doc.document.state?.fn).toMatchObject({ body: "return 42;" });
+    // The Close asks no service anything: minifying would delete the types (spec.md §23.1).
+    expect(codeService).not.toHaveBeenCalled();
+    expect(tab.doc.document.state?.fn).toMatchObject({ body: typed });
   });
 
   test("merges an event handler body onto the existing binding", async () => {
@@ -800,7 +804,7 @@ describe("closeFunctionEditor", () => {
     });
     tab.session.ui.editingFunction = { eventKey: "onclick", path: ["children", 0], type: "event" };
     installFunctionEditor({ dispose: mock(() => {}), getValue: () => "go(e)" });
-    await toolbarCtx.closeFunctionEditor();
+    toolbarCtx.closeFunctionEditor();
     // The body lands on the binding that was there, which keeps its own arguments and prototype.
     expect(tab.doc.document.children).toEqual([
       { onclick: { $prototype: "Function", arguments: ["e"], body: "go(e)" }, tagName: "button" },
@@ -811,7 +815,7 @@ describe("closeFunctionEditor", () => {
     const tab = openShellTab();
     tab.session.ui.editingFunction = { defName: "fn", type: "def" };
     view.functionEditor = null;
-    await toolbarCtx.closeFunctionEditor();
+    toolbarCtx.closeFunctionEditor();
     expect(tab.session.ui.editingFunction).toBeNull();
   });
 });
