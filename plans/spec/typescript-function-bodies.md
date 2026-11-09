@@ -19,6 +19,7 @@ workspaces:
 size: L
 prs:
   - jxsuite/jx#576
+  - jxsuite/jx#592
 ---
 
 # A function body in any Jx document is TypeScript, erased once before anything analyses or runs it
