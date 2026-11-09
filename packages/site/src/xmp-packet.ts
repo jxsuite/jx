@@ -8,6 +8,9 @@
  * - **Alt text** is the IPTC Photo Metadata Standard's `Iptc4xmpCore:AltTextAccessibility`, a
  *   language alternative whose `x-default` entry is the text. Other languages are kept as found.
  * - **Tags** are `dc:subject`, the unordered bag IPTC's Keywords maps to in XMP.
+ * - **The focal point** is one IPTC Image Region (`Iptc4xmpExt:ImageRegion`): a polygon of a single
+ *   vertex in relative units (the standard's own way to say "a point"), whose role is the IPTC
+ *   NewsCodes `areaOfInterest`. Every other region in the bag is kept.
  *
  * **Everything else in the packet is kept.** A rewrite parses the packet into a small tree,
  * replaces those two properties on the first `rdf:Description` (removing them from any other, so a
@@ -29,17 +32,29 @@ export interface MediaRecord {
   alt: string;
   /** Its tags, in the order the file lists them, without duplicates or blanks. */
   tags: string[];
+  /** The point a crop of the picture keeps in view, or `null` when it has none. */
+  focus: FocalPoint | null;
+}
+
+/** A point on a picture, each coordinate a fraction of its width or height from the top left. */
+export interface FocalPoint {
+  readonly x: number;
+  readonly y: number;
 }
 
 export const RDF_NS = "http://www.w3.org/1999/02/22-rdf-syntax-ns#";
 export const DC_NS = "http://purl.org/dc/elements/1.1/";
 export const IPTC_CORE_NS = "http://iptc.org/std/Iptc4xmpCore/1.0/xmlns/";
+export const IPTC_EXT_NS = "http://iptc.org/std/Iptc4xmpExt/2008-02-29/";
+export const XMP_NS = "http://ns.adobe.com/xap/1.0/";
+/** The IPTC Image Region Role a focal point is written with. */
+export const AREA_OF_INTEREST = "http://cv.iptc.org/newscodes/imageregionrole/areaOfInterest";
 const XML_NS = "http://www.w3.org/XML/1998/namespace";
 const X_NS = "adobe:ns:meta/";
 
 /** The empty record: no alt text, no tags. */
 export function emptyMediaRecord(): MediaRecord {
-  return { alt: "", tags: [] };
+  return { alt: "", focus: null, tags: [] };
 }
 
 // ─── A small XML tree ────────────────────────────────────────────────────────
@@ -329,6 +344,109 @@ function altFrom(property: XmlElement, scope: Scope): string {
   return chosen === undefined ? textOf(property).trim() : textOf(chosen[0]);
 }
 
+// ─── Image regions ───────────────────────────────────────────────────────────
+
+/**
+ * Where a structure's fields are: on the element itself when it is written
+ * `rdf:parseType="Resource"` (or as attributes, the shorthand form), else on the `rdf:Description`
+ * inside it.
+ */
+function structOf(element: XmlElement, scope: Scope): [XmlElement, Scope] {
+  const resource = element.attrs.some(
+    ([k, v]) => v === "Resource" && isNamed(k, scope, RDF_NS, "parseType", true),
+  );
+  if (!resource) {
+    for (const child of elements(element.children)) {
+      const inner = scopeOf(child, scope);
+      if (isNamed(child.name, inner, RDF_NS, "Description")) {
+        return [child, inner];
+      }
+    }
+  }
+  return [element, scope];
+}
+
+/** A structure's field written as an element, with the scope inside it. */
+function fieldElement(
+  holder: XmlElement,
+  scope: Scope,
+  ns: string,
+  local: string,
+): [XmlElement, Scope] | null {
+  for (const child of elements(holder.children)) {
+    const inner = scopeOf(child, scope);
+    if (isNamed(child.name, inner, ns, local)) {
+      return [child, inner];
+    }
+  }
+  return null;
+}
+
+/** A structure's simple field, as an attribute or an element, trimmed; `null` when absent. */
+function fieldText(holder: XmlElement, scope: Scope, ns: string, local: string): string | null {
+  const attr = holder.attrs.find(([k]) => isNamed(k, scope, ns, local, true));
+  if (attr !== undefined) {
+    return attr[1].trim();
+  }
+  const found = fieldElement(holder, scope, ns, local);
+  return found === null ? null : textOf(found[0]).trim();
+}
+
+/** A relative coordinate, or `null` when it is missing, not a number, or off the picture. */
+function coordinate(text: string | null): number | null {
+  if (text === null || text === "") {
+    return null;
+  }
+  const value = Number(text);
+  return Number.isFinite(value) && value >= 0 && value <= 1 ? value : null;
+}
+
+/** Whether a region's roles include the area of interest, by its NewsCodes URI (http or https). */
+function isAreaOfInterest(region: XmlElement, scope: Scope): boolean {
+  const roles = fieldElement(region, scope, IPTC_EXT_NS, "rRole");
+  if (roles === null) {
+    return false;
+  }
+  return listItems(...roles).some(([li, liScope]) => {
+    const [role, roleScope] = structOf(li, liScope);
+    const ids = fieldElement(role, roleScope, XMP_NS, "Identifier");
+    const values =
+      ids === null
+        ? [fieldText(role, roleScope, XMP_NS, "Identifier") ?? ""]
+        : listItems(...ids).map(([id]) => textOf(id).trim());
+    return values.some((value) => value.replace(/^https:/, "http:") === AREA_OF_INTEREST);
+  });
+}
+
+/**
+ * The focal point an image region states: a relative polygon of exactly one vertex whose role is
+ * the area of interest. Any other region (a face, a crop, a rectangle) is `null`, and kept.
+ */
+function focusOf(li: XmlElement, scope: Scope): FocalPoint | null {
+  const [region, regionScope] = structOf(li, scope);
+  const boundaryField = fieldElement(region, regionScope, IPTC_EXT_NS, "RegionBoundary");
+  if (boundaryField === null || !isAreaOfInterest(region, regionScope)) {
+    return null;
+  }
+  const [boundary, boundaryScope] = structOf(...boundaryField);
+  const vertices = fieldElement(boundary, boundaryScope, IPTC_EXT_NS, "rbVertices");
+  if (
+    fieldText(boundary, boundaryScope, IPTC_EXT_NS, "rbShape") !== "polygon" ||
+    fieldText(boundary, boundaryScope, IPTC_EXT_NS, "rbUnit") !== "relative" ||
+    vertices === null
+  ) {
+    return null;
+  }
+  const points = listItems(...vertices);
+  if (points.length !== 1) {
+    return null;
+  }
+  const [point, pointScope] = structOf(...points[0]!);
+  const x = coordinate(fieldText(point, pointScope, IPTC_EXT_NS, "rbX"));
+  const y = coordinate(fieldText(point, pointScope, IPTC_EXT_NS, "rbY"));
+  return x === null || y === null ? null : { x, y };
+}
+
 /** Tags without blanks or repeats, in order. */
 export function cleanTags(tags: readonly string[]): string[] {
   const seen = new Set<string>();
@@ -369,6 +487,13 @@ export function readMediaRecord(packet: string | null): MediaRecord {
         altFound = true;
       } else if (isNamed(property.name, inner, DC_NS, "subject")) {
         record.tags.push(...listItems(property, inner).map(([li]) => textOf(li)));
+      } else if (
+        record.focus === null &&
+        isNamed(property.name, inner, IPTC_EXT_NS, "ImageRegion")
+      ) {
+        for (const [li, liScope] of listItems(property, inner)) {
+          record.focus ??= focusOf(li, liScope);
+        }
       }
     }
   }
@@ -447,6 +572,7 @@ export function writeMediaRecord(packet: string | null, record: MediaRecord): st
   for (const [description, s] of all) {
     dropProperty(description, s, IPTC_CORE_NS, "AltTextAccessibility");
     dropProperty(description, s, DC_NS, "subject");
+    dropFocus(description, s);
   }
   const rdf = prefixFor(target, scope, RDF_NS, "rdf");
   const alt = record.alt.trim();
@@ -465,7 +591,97 @@ export function writeMediaRecord(packet: string | null, record: MediaRecord): st
     const items = tags.map((tag) => el(`${rdf}:li`, [], [{ type: "text", value: tag }]));
     target.children.push(el(`${dc}:subject`, [], [el(`${rdf}:Bag`, [], items)]));
   }
+  if (record.focus !== null) {
+    writeFocus(all.length === 0 ? [[target, scope]] : all, record.focus);
+  }
   return serializeXml(nodes);
+}
+
+/**
+ * Remove every focal-point region from a description's image regions, keeping the others, and the
+ * property itself when it no longer holds any.
+ */
+function dropFocus(description: XmlElement, scope: Scope): void {
+  description.children = description.children.filter((node) => {
+    if (node.type !== "element") {
+      return true;
+    }
+    const inner = scopeOf(node, scope);
+    if (!isNamed(node.name, inner, IPTC_EXT_NS, "ImageRegion")) {
+      return true;
+    }
+    for (const container of elements(node.children)) {
+      const containerScope = scopeOf(container, inner);
+      container.children = container.children.filter(
+        (li) => li.type !== "element" || focusOf(li, scopeOf(li, containerScope)) === null,
+      );
+    }
+    return listItems(node, inner).length > 0;
+  });
+}
+
+/** A decimal short enough to read, exact enough for any picture: four places. */
+function decimal(value: number): string {
+  return String(Math.round(value * 10_000) / 10_000);
+}
+
+/**
+ * Add the focal-point region: into the image regions a description already has (the first one with
+ * any), else as a new bag on the first description, so a file never carries the property twice.
+ */
+function writeFocus(all: readonly [XmlElement, Scope][], focus: FocalPoint): void {
+  let home: [XmlElement, Scope] = all[0]!;
+  let bag: XmlElement | null = null;
+  for (const [description, scope] of all) {
+    const found = fieldElement(description, scope, IPTC_EXT_NS, "ImageRegion");
+    const container = found === null ? undefined : elements(found[0].children)[0];
+    if (container !== undefined) {
+      home = [description, scope];
+      bag = container;
+      break;
+    }
+  }
+  const [description, scope] = home;
+  const rdf = prefixFor(description, scope, RDF_NS, "rdf");
+  const ext = prefixFor(description, scope, IPTC_EXT_NS, "Iptc4xmpExt");
+  const xmp = prefixFor(description, scope, XMP_NS, "xmp");
+  const resource = (): [string, string][] => [[`${rdf}:parseType`, "Resource"]];
+  const text = (name: string, value: string): XmlElement => el(name, [], [{ type: "text", value }]);
+  const point = el(`${rdf}:li`, resource(), [
+    text(`${ext}:rbX`, decimal(focus.x)),
+    text(`${ext}:rbY`, decimal(focus.y)),
+  ]);
+  const boundary = el(`${ext}:RegionBoundary`, resource(), [
+    text(`${ext}:rbShape`, "polygon"),
+    text(`${ext}:rbUnit`, "relative"),
+    el(`${ext}:rbVertices`, [], [el(`${rdf}:Seq`, [], [point])]),
+  ]);
+  const roleId = el(`${rdf}:Bag`, [], [text(`${rdf}:li`, AREA_OF_INTEREST)]);
+  const roleName = el(
+    `${rdf}:li`,
+    [["xml:lang", "x-default"]],
+    [{ type: "text", value: "Focal point" }],
+  );
+  const role = el(`${rdf}:li`, resource(), [
+    el(`${xmp}:Identifier`, [], [roleId]),
+    el(`${ext}:Name`, [], [el(`${rdf}:Alt`, [], [roleName])]),
+  ]);
+  const region = el(`${rdf}:li`, resource(), [
+    boundary,
+    el(`${ext}:rRole`, [], [el(`${rdf}:Bag`, [], [role])]),
+  ]);
+  if (bag === null) {
+    description.children.push(el(`${ext}:ImageRegion`, [], [el(`${rdf}:Bag`, [], [region])]));
+  } else {
+    bag.children.push(region);
+  }
+}
+
+/** Whether two focal points are the same point, as written (to four places). */
+export function sameFocus(a: FocalPoint | null, b: FocalPoint | null): boolean {
+  return a === null || b === null
+    ? a === b
+    : decimal(a.x) === decimal(b.x) && decimal(a.y) === decimal(b.y);
 }
 
 /** The `rdf:RDF` element and the scope inside it, or `null` when the packet has none. */
@@ -504,6 +720,7 @@ function addDescription(nodes: readonly XmlNode[]): [XmlElement, Scope] {
 export function sameMediaRecord(a: MediaRecord, b: MediaRecord): boolean {
   return (
     a.alt.trim() === b.alt.trim() &&
+    sameFocus(a.focus, b.focus) &&
     a.tags.length === b.tags.length &&
     a.tags.every((tag, index) => tag === b.tags[index])
   );

@@ -11,6 +11,9 @@ import {
   TILE_GAP,
   TILE_MIN_WIDTH,
   filterCounts,
+  focusAt,
+  focusPercent,
+  focusWithAxis,
   gridColumns,
   gridStep,
   isMediaFilterKey,
@@ -25,7 +28,7 @@ import {
   visibleMedia,
 } from "../src/media/media-library-model";
 import type { FilterAnswers, LibraryMediaFile } from "../src/media/media-library-model";
-import type { MediaRecord } from "../src/files/xmp-packet";
+import type { MediaRecord } from "@jxsuite/site/xmp-packet";
 
 const FILES: LibraryMediaFile[] = [
   { bytes: 900, file: "public/hero.jpg", kind: "image", modified: "2026-01-01", name: "hero.jpg" },
@@ -103,8 +106,8 @@ describe("the filters", () => {
   test("Missing alt text and a tag ask the file's record, and claim nothing unread", () => {
     const [hero, png] = FILES;
     const answers = withRecords({
-      "public/b.png": { alt: "", tags: ["Garden"] },
-      "public/hero.jpg": { alt: "A hero", tags: ["garden", "Spring"] },
+      "public/b.png": { alt: "", focus: null, tags: ["Garden"] },
+      "public/hero.jpg": { alt: "A hero", focus: null, tags: ["garden", "Spring"] },
     });
     expect(passesFilter(hero!, "missing-alt", answers)).toBe(false);
     expect(passesFilter(png!, "missing-alt", answers)).toBe(true);
@@ -132,7 +135,7 @@ describe("the search", () => {
 
   test("matches the file's alt text and tags once read", () => {
     const [hero] = FILES;
-    const record = { alt: "Rows of Seedlings", tags: ["Garden"] };
+    const record = { alt: "Rows of Seedlings", focus: null, tags: ["Garden"] };
     expect(matchesQuery(hero!, "seedl", record)).toBe(true);
     expect(matchesQuery(hero!, "GARD", record)).toBe(true);
     expect(matchesQuery(hero!, "bees", record)).toBe(false);
@@ -190,7 +193,7 @@ describe("visibleMedia", () => {
   });
 
   test("a search reaches the records the sweep has read", () => {
-    const answers = withRecords({ "public/b.png": { alt: "", tags: ["Hero shot"] } });
+    const answers = withRecords({ "public/b.png": { alt: "", focus: null, tags: ["Hero shot"] } });
     expect(
       paths(visibleMedia(FILES, { answers, filter: "all", query: "hero", sort: "name" })),
     ).toEqual(["public/b.png", "public/hero.jpg"]);
@@ -217,8 +220,8 @@ describe("filterCounts", () => {
 
   test("counts Missing alt text once every record is read", () => {
     const answers = withRecords({
-      "public/b.png": { alt: "", tags: [] },
-      "public/hero.jpg": { alt: "Hero", tags: [] },
+      "public/b.png": { alt: "", focus: null, tags: [] },
+      "public/hero.jpg": { alt: "Hero", focus: null, tags: [] },
     });
     expect(filterCounts(FILES, answers)["missing-alt"]).toBeNull();
     expect(filterCounts(FILES, { ...answers, recordsSettled: true })["missing-alt"]).toBe(1);
@@ -228,8 +231,8 @@ describe("filterCounts", () => {
 describe("tagCounts", () => {
   test("one row per tag across case, spelled as first read, in name order", () => {
     const answers = withRecords({
-      "public/b.png": { alt: "", tags: ["garden", "Bees"] },
-      "public/hero.jpg": { alt: "", tags: ["Garden", "spring 10", "spring 9"] },
+      "public/b.png": { alt: "", focus: null, tags: ["garden", "Bees"] },
+      "public/hero.jpg": { alt: "", focus: null, tags: ["Garden", "spring 10", "spring 9"] },
     });
     expect(tagCounts(FILES, answers)).toEqual([
       { count: 1, tag: "Bees" },
@@ -273,5 +276,27 @@ describe("the grid's keyboard", () => {
     expect(gridStep(0, "ArrowRight", 3, 0)).toBeNull();
     // An index past the end is read as the last tile.
     expect(gridStep(99, "ArrowLeft", 3, 7)).toBe(5);
+  });
+});
+
+describe("focal point helpers", () => {
+  test("focusPercent shows a fraction as a percentage to one place", () => {
+    expect(focusPercent(0.12345)).toBe("12.3");
+    expect(focusPercent(1)).toBe("100");
+  });
+
+  test("focusAt reads a press within the picture, clamped, and nothing for a picture of no size", () => {
+    expect(focusAt(50, 200, 25, 100)).toEqual({ x: 0.25, y: 0.25 });
+    expect(focusAt(-5, 200, 300, 100)).toEqual({ x: 0, y: 1 });
+    expect(focusAt(1, 0, 1, 100)).toBeNull();
+    expect(focusAt(1, 100, 1, 0)).toBeNull();
+  });
+
+  test("focusWithAxis sets one coordinate from a percentage, keeping or centring the other", () => {
+    expect(focusWithAxis(null, "x", "20")).toEqual({ x: 0.2, y: 0.5 });
+    expect(focusWithAxis({ x: 0.1, y: 0.9 }, "y", " 140 ")).toEqual({ x: 0.1, y: 1 });
+    expect(focusWithAxis({ x: 0.1, y: 0.9 }, "x", "-3")).toEqual({ x: 0, y: 0.9 });
+    expect(focusWithAxis(null, "x", "")).toBeNull();
+    expect(focusWithAxis(null, "y", "abc")).toBeNull();
   });
 });

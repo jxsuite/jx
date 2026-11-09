@@ -132,6 +132,13 @@ export interface MediaLibraryView {
   tagOptions: { label: string; value: string }[];
   /** While a save is writing the file: the fields wait for it. */
   recordBusy: boolean;
+  /** The focal point's coordinates as percentages ("37.5"), `""` when the file has none. */
+  focusX: string;
+  focusY: string;
+  /** The marker's position over the picture ("37.5%"), and whether it is drawn. */
+  focusLeft: string;
+  focusTop: string;
+  focusSet: "yes" | "no";
 }
 
 /** What a control asks the flow to do. */
@@ -171,6 +178,12 @@ export interface MediaLibraryActions {
   addTag: (value: string) => void;
   /** Remove a tag from the selected file. */
   removeTag: (tag: string) => void;
+  /** A press on the focal-point picture, at `x` of `width` across and `y` of `height` down. */
+  setFocusAt: (x: number, width: number, y: number, height: number) => void;
+  /** One coordinate typed as a percentage. */
+  setFocusAxis: (axis: "x" | "y", value: string) => void;
+  /** Remove the selected file's focal point. */
+  clearFocus: () => void;
   reset: () => void;
   /** A tile node was created for `file`. */
   tileHost: (element: HTMLElement, file: string) => void;
@@ -195,6 +208,8 @@ interface MediaLibraryScope
     Omit<MediaLibraryActions, "tileHost" | "gridHost" | "inputHost" | "addTag"> {
   hasUsageFiles: boolean;
   hasTags: boolean;
+  /** Whether Clear has nothing to remove, or must wait for a write. */
+  focusCleared: boolean;
   /** The add field's commit: the tag is added, and the field emptied for the next. */
   addTag: (field: { value: string }) => void;
 }
@@ -227,6 +242,11 @@ export function emptyMediaLibraryView(): MediaLibraryView {
     editable: "no",
     duplicable: "no",
     altText: "",
+    focusLeft: "50%",
+    focusSet: "no",
+    focusTop: "50%",
+    focusX: "",
+    focusY: "",
     recordBusy: false,
     recordNote: "",
     recordState: "hidden",
@@ -252,6 +272,7 @@ function project(scope: MediaLibraryScope, view: MediaLibraryView): void {
   Object.assign(scope, view);
   scope.hasUsageFiles = view.usageFiles.length > 0;
   scope.hasTags = view.tags.length > 0;
+  scope.focusCleared = view.focusSet !== "yes" || view.recordBusy;
 }
 
 /** The `part` a definition declares, or `""`. */
@@ -296,6 +317,7 @@ export function mountMediaLibrarySurface(
       field.value = "";
       addTag(value);
     },
+    focusCleared: true,
     hasTags: false,
     hasUsageFiles: false,
   });

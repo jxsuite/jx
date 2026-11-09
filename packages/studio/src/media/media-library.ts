@@ -86,9 +86,10 @@ import {
   onMediaRecordsChanged,
   peekMediaRecord,
   resetMediaRecords,
+  sameMediaRecord,
   saveMediaRecord,
 } from "../files/media-record";
-import { xmpFormatOf } from "../files/xmp-containers";
+import { xmpFormatOf } from "@jxsuite/site/xmp-containers";
 import { onProjectMediaChange, projectMediaFiles } from "../ui/media-picker";
 import { openMenu } from "../surfaces/menu";
 import {
@@ -104,6 +105,9 @@ import {
   MEDIA_FILTERS,
   MEDIA_SORTS,
   filterCounts,
+  focusAt,
+  focusPercent,
+  focusWithAxis,
   gridColumns,
   gridStep,
   isMediaFilterKey,
@@ -769,10 +773,25 @@ function recordView(
   known: readonly { tag: string }[],
 ): Pick<
   MediaLibraryView,
-  "recordState" | "recordNote" | "altText" | "tags" | "tagOptions" | "recordBusy"
+  | "recordState"
+  | "recordNote"
+  | "altText"
+  | "tags"
+  | "tagOptions"
+  | "recordBusy"
+  | "focusX"
+  | "focusY"
+  | "focusLeft"
+  | "focusTop"
+  | "focusSet"
 > {
   const none = {
     altText: "",
+    focusLeft: "50%",
+    focusSet: "no" as const,
+    focusTop: "50%",
+    focusX: "",
+    focusY: "",
     recordBusy: false,
     recordNote: "",
     tagOptions: [],
@@ -809,8 +828,14 @@ function recordView(
     };
   }
   const own = new Set(state.record.tags.map((tag) => tag.toLowerCase()));
+  const { focus } = state.record;
   return {
     altText: state.record.alt,
+    focusLeft: `${focusPercent(focus?.x ?? 0.5)}%`,
+    focusSet: focus === null ? "no" : "yes",
+    focusTop: `${focusPercent(focus?.y ?? 0.5)}%`,
+    focusX: focus === null ? "" : focusPercent(focus.x),
+    focusY: focus === null ? "" : focusPercent(focus.y),
     recordBusy: _saving.has(entry.file),
     recordNote: "",
     recordState: "ready",
@@ -832,7 +857,7 @@ function editRecord(mount: LibraryMount, change: (record: MediaRecord) => MediaR
     return;
   }
   const next = change(state.record);
-  if (next.alt === state.record.alt && next.tags.join("\n") === state.record.tags.join("\n")) {
+  if (sameMediaRecord(next, state.record)) {
     return;
   }
   const { file, name } = entry;
@@ -1274,6 +1299,21 @@ function actionsFor(mount: LibraryMount) {
         ...record,
         tags: record.tags.filter((each) => each !== tag),
       }));
+    },
+    setFocusAt: (x: number, width: number, y: number, height: number) => {
+      const focus = focusAt(x, width, y, height);
+      if (focus !== null) {
+        editRecord(mount, (record) => ({ ...record, focus }));
+      }
+    },
+    setFocusAxis: (axis: "x" | "y", value: string) => {
+      editRecord(mount, (record) => ({
+        ...record,
+        focus: focusWithAxis(record.focus, axis, value) ?? record.focus,
+      }));
+    },
+    clearFocus: () => {
+      editRecord(mount, (record) => ({ ...record, focus: null }));
     },
     remove: () => {
       const { selected } = mount.choice;

@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
+import { embedXmp } from "@jxsuite/site/xmp-containers";
+import { writeMediaRecord } from "@jxsuite/site/xmp-packet";
 import type { ImageConfig } from "../src/site/image-optimizer.ts";
 import type { JxStyle } from "@jxsuite/schema/types";
 
@@ -1144,5 +1146,67 @@ describe("image-transform — the <img> fallback src", () => {
     expect(imgOf(doc).attributes.src).toBe("/_optimized/hero-1200-abc.png");
     // Through the same encoding as the srcset, so a file name with a space is a valid URL here too.
     expect(variantUrl).toHaveBeenCalledWith("/_optimized/hero-1200-abc.png");
+  });
+});
+
+describe("image-transform — a picture's own focal point", () => {
+  const jpegFocused = (x: number, y: number) =>
+    embedXmp(
+      Uint8Array.of(0xff, 0xd8, 0xff, 0xd9),
+      "jpeg",
+      writeMediaRecord(null, { alt: "", focus: { x, y }, tags: [] }),
+    );
+  const off = { ...defaultConfig, optimize: false };
+
+  beforeEach(() => {
+    setup();
+    writeFileSync(join(TMP, "public/images/focused.jpg"), jpegFocused(0.25, 0.8));
+    writeFileSync(join(TMP, "public/images/plain.jpg"), Uint8Array.of(0xff, 0xd8, 0xff, 0xd9));
+  });
+  afterEach(teardown);
+
+  test("becomes the image's object-position, whether or not images are optimized", async () => {
+    const doc: any = { attributes: { src: "/images/focused.jpg?v=1" }, tagName: "img" };
+    await transformImageNodes(doc, off, TMP, null);
+    expect(doc.style).toEqual({ objectPosition: "25% 80%" });
+    // Read once per file state: a second build of the same bytes answers from memory.
+    const again: any = {
+      attributes: { src: "/images/focused.jpg" },
+      style: { width: "100%" },
+      tagName: "img",
+    };
+    await transformImageNodes(again, off, TMP, null);
+    expect(again.style).toEqual({ objectPosition: "25% 80%", width: "100%" });
+  });
+
+  test("the author's own object-position, or a style that is not an object, wins", async () => {
+    const own: any = {
+      attributes: { src: "/images/focused.jpg" },
+      style: { objectPosition: "top" },
+      tagName: "img",
+    };
+    await transformImageNodes(own, off, TMP, null);
+    expect(own.style).toEqual({ objectPosition: "top" });
+    const text: any = {
+      attributes: { src: "/images/focused.jpg" },
+      style: "color: red",
+      tagName: "img",
+    };
+    await transformImageNodes(text, off, TMP, null);
+    expect(text.style).toBe("color: red");
+  });
+
+  test.each([
+    ["a file with no focal point", "/images/plain.jpg"],
+    ["a file whose bytes are not its format", "/images/hero.png"],
+    ["a missing file", "/images/gone.jpg"],
+    ["a format with no place for one", "/images/anim.gif"],
+    ["a bound src", "${state.src}"],
+    ["a remote src", "https://example.com/a.jpg"],
+    ["an empty src", ""],
+  ])("is nothing for %s", async (_label, src) => {
+    const doc: any = { attributes: { src }, tagName: "img" };
+    await transformImageNodes(doc, off, TMP, null);
+    expect(doc.style).toBeUndefined();
   });
 });

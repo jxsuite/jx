@@ -9,9 +9,13 @@
  * in every project, because deciding not to optimize an image says nothing about when to fetch it.
  * The **variant** pass (`images.optimize`) is the expensive half and is the one the master switch
  * turns off.
+ *
+ * A third, cheap pass runs on every image too: a picture whose own file names a **focal point**
+ * (studio.md §22.6, an IPTC Image Region read by `@jxsuite/site/xmp-packet`) is given it as its
+ * `object-position`, unless the author set one, so any `object-fit` crop keeps that point in view.
  */
 
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { basename, extname, resolve } from "node:path";
 import {
   buildSrcset,
@@ -25,6 +29,8 @@ import { imgLoadingAttrs } from "./img-loading.ts";
 import { resolveAssetUrl } from "@jxsuite/schema/asset-paths";
 import { isNodeObject, isNonNullObject, isString } from "@jxsuite/schema/guards";
 import { errorMessage } from "@jxsuite/schema/parse";
+import { extractXmp, xmpFormatOf } from "@jxsuite/site/xmp-containers";
+import { readMediaRecord } from "@jxsuite/site/xmp-packet";
 
 import type { AssetMount } from "@jxsuite/schema/asset-paths";
 import type { ImageConfig, ImageManifest, ImageVariant } from "./image-optimizer.ts";
@@ -232,6 +238,78 @@ function resolveImagePath(src: string, projectRoot: string, mounts?: readonly As
     return resolve(projectRoot, "public", src.slice(1));
   }
   return resolve(projectRoot, src);
+}
+
+/** Focal points already read, keyed by the file's path, modified time and size. */
+const focusCache = new Map<string, string | null>();
+
+/** A fraction as a CSS percentage, to one decimal place. */
+function percent(fraction: number): string {
+  return `${Math.round(fraction * 1000) / 10}%`;
+}
+
+/**
+ * The `object-position` a picture's own focal point asks for, or `null` when the file names none,
+ * cannot hold one, or cannot be read. A file whose metadata does not parse is a picture, not a
+ * broken build: it is drawn as it was before it had a focal point.
+ */
+function focusPosition(absolute: string): string | null {
+  const format = xmpFormatOf(absolute);
+  if (format === null) {
+    return null;
+  }
+  let stamp: string;
+  try {
+    const stat = statSync(absolute);
+    stamp = `${absolute}|${stat.mtimeMs}|${stat.size}`;
+  } catch {
+    return null;
+  }
+  const cached = focusCache.get(stamp);
+  if (cached !== undefined) {
+    return cached;
+  }
+  let position: string | null = null;
+  try {
+    const bytes = new Uint8Array(readFileSync(absolute));
+    const { focus } = readMediaRecord(extractXmp(bytes, format));
+    position = focus === null ? null : `${percent(focus.x)} ${percent(focus.y)}`;
+  } catch {
+    position = null;
+  }
+  focusCache.set(stamp, position);
+  return position;
+}
+
+/**
+ * Give an `<img>` its file's focal point as `object-position`. The author's own `objectPosition`
+ * wins, a style written as something other than an object is left alone, and a bound, remote or
+ * inline `src` names no file to read.
+ */
+function applyFocalPoint(
+  node: JxMutableNode | JxDocument,
+  src: JxAttributeValue | undefined,
+  projectRoot: string,
+  mounts: readonly AssetMount[],
+): void {
+  if (!isString(src) || src === "" || src.includes("${")) {
+    return;
+  }
+  if (EXTERNAL_PREFIXES.some((prefix) => src.startsWith(prefix))) {
+    return;
+  }
+  const { style } = node;
+  if (style !== undefined && !isNonNullObject(style)) {
+    return;
+  }
+  if (style?.objectPosition !== undefined) {
+    return;
+  }
+  const [path = ""] = src.split(/[?#]/);
+  const position = focusPosition(resolveImagePath(path, projectRoot, mounts));
+  if (position !== null) {
+    node.style = { ...style, objectPosition: position };
+  }
 }
 
 /**
@@ -576,6 +654,7 @@ async function transformImgNode(
     attrs.src = node.src;
     delete node.src;
   }
+  applyFocalPoint(node, attrs.src, projectRoot, mounts);
 
   const variants = config.optimize
     ? await resolveVariants(

@@ -12,6 +12,7 @@ import {
   HANDLES,
   RECIPE_HISTORY_LIMIT,
   IDENTITY,
+  focusThrough,
   cloneRecipe,
   cropOf,
   displaySize,
@@ -464,5 +465,33 @@ describe("whole-record undo", () => {
     expect(history.past).toHaveLength(RECIPE_HISTORY_LIMIT);
     const branched = pushStep(undoStep(history), recipe({ contrast: 1 }));
     expect(branched.future).toEqual([]);
+  });
+});
+
+describe("focusThrough", () => {
+  test("an untouched picture keeps its point; a resize moves nothing", () => {
+    expect(focusThrough({ x: 0.25, y: 0.5 }, recipe({ width: 100 }), SOURCE)).toEqual({
+      x: 0.25,
+      y: 0.5,
+    });
+  });
+
+  test("a crop measures the point inside it, and drops one it leaves out", () => {
+    const crop = { height: 150, width: 200, x: 0, y: 0 };
+    expect(focusThrough({ x: 0.25, y: 0.25 }, recipe({ crop }), SOURCE)).toEqual({
+      x: 0.5,
+      y: 0.5,
+    });
+    expect(focusThrough({ x: 0.75, y: 0.25 }, recipe({ crop }), SOURCE)).toBeNull();
+    expect(focusThrough({ x: 0.25, y: 0.75 }, recipe({ crop }), SOURCE)).toBeNull();
+  });
+
+  test("a turn and a mirror move the point with the pixels", () => {
+    // A quarter turn clockwise: the top left corner goes to the top right.
+    expect(focusThrough({ x: 0, y: 0 }, recipe({ turns: 1 }), SOURCE)).toEqual({ x: 1, y: 0 });
+    expect(focusThrough({ x: 0.25, y: 0.5 }, recipe({ flipH: true }), SOURCE)).toEqual({
+      x: 0.75,
+      y: 0.5,
+    });
   });
 });

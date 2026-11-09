@@ -427,6 +427,53 @@
         "outline": "var(--jx-focus-ring)",
         "outlineOffset": "2px"
       }
+    },
+    "--jx-focus-left": "${state.focusLeft}",
+    "--jx-focus-top": "${state.focusTop}",
+    "& [part=\"focus-group\"]": {
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "var(--jx-space-1)"
+    },
+    "& [part=\"focus-frame\"]": {
+      "position": "relative",
+      "alignSelf": "flex-start",
+      "maxWidth": "100%",
+      "cursor": "crosshair",
+      "lineHeight": "0"
+    },
+    "& [part=\"focus-img\"]": {
+      "display": "block",
+      "maxWidth": "100%",
+      "maxHeight": "160px",
+      "borderRadius": "var(--radius)",
+      "pointerEvents": "none"
+    },
+    "& [part=\"focus-marker\"]": {
+      "position": "absolute",
+      "left": "var(--jx-focus-left)",
+      "top": "var(--jx-focus-top)",
+      "width": "14px",
+      "height": "14px",
+      "marginLeft": "-7px",
+      "marginTop": "-7px",
+      "borderRadius": "50%",
+      "border": "2px solid var(--fg)",
+      "boxShadow": "0 0 0 2px rgba(0, 0, 0, 0.6)",
+      "pointerEvents": "none",
+      "display": "none"
+    },
+    "& [part=\"focus-frame\"][data-focus-set=\"yes\"] [part=\"focus-marker\"]": {
+      "display": "block"
+    },
+    "& [part=\"focus-fields\"]": {
+      "display": "flex",
+      "alignItems": "flex-end",
+      "gap": "var(--jx-space-2)",
+      "flexWrap": "wrap"
+    },
+    "& [part=\"focus-x\"], & [part=\"focus-y\"]": {
+      "width": "72px"
     }
   },
   "ondragover": {
@@ -1663,6 +1710,207 @@
                                   }
                                 ]
                               }
+                            }
+                          ]
+                        },
+                        {
+                          "$description": "The picture's focal point, kept in the file as an IPTC Image Region (a one-vertex polygon whose role is the area of interest). A press on the picture sets it; the two fields set it from the keyboard, as percentages across and down; Clear removes it. The marker's position travels as custom properties bound to state in this document's style block.",
+                          "tagName": "div",
+                          "attributes": {
+                            "part": "focus-group"
+                          },
+                          "children": [
+                            {
+                              "tagName": "h4",
+                              "attributes": {
+                                "part": "group-title",
+                                "id": "${state.titleId}-focus"
+                              },
+                              "textContent": "Focal point"
+                            },
+                            {
+                              "tagName": "p",
+                              "attributes": {
+                                "part": "record-note"
+                              },
+                              "textContent": "Pages that crop this picture keep this point in view. Click the picture to set it."
+                            },
+                            {
+                              "tagName": "div",
+                              "attributes": {
+                                "part": "focus-frame",
+                                "data-focus-set": "${state.focusSet}"
+                              },
+                              "onclick": {
+                                "$prototype": "Function",
+                                "body": [
+                                  {
+                                    "operator": "call",
+                                    "target": {
+                                      "$ref": "#/state/setFocusAt"
+                                    },
+                                    "value": [
+                                      {
+                                        "$ref": "event#/offsetX"
+                                      },
+                                      {
+                                        "$ref": "event#/currentTarget/clientWidth"
+                                      },
+                                      {
+                                        "$ref": "event#/offsetY"
+                                      },
+                                      {
+                                        "$ref": "event#/currentTarget/clientHeight"
+                                      }
+                                    ]
+                                  }
+                                ]
+                              },
+                              "children": [
+                                {
+                                  "tagName": "img",
+                                  "attributes": {
+                                    "part": "focus-img",
+                                    "src": "${state.previewSrc}",
+                                    "alt": ""
+                                  }
+                                },
+                                {
+                                  "tagName": "span",
+                                  "attributes": {
+                                    "part": "focus-marker",
+                                    "aria-hidden": "true"
+                                  }
+                                }
+                              ]
+                            },
+                            {
+                              "tagName": "div",
+                              "attributes": {
+                                "part": "focus-fields"
+                              },
+                              "children": [
+                                {
+                                  "tagName": "jx-field",
+                                  "attributes": {
+                                    "part": "focus-x-row"
+                                  },
+                                  "$props": {
+                                    "label": "Across (%)"
+                                  },
+                                  "children": [
+                                    {
+                                      "tagName": "jx-number-field",
+                                      "attributes": {
+                                        "part": "focus-x"
+                                      },
+                                      "$props": {
+                                        "size": "sm",
+                                        "label": "Across (%)",
+                                        "min": "0",
+                                        "max": "100",
+                                        "placeholder": "50",
+                                        "value": {
+                                          "$ref": "#/state/focusX"
+                                        },
+                                        "disabled": {
+                                          "$ref": "#/state/recordBusy"
+                                        }
+                                      },
+                                      "onchange": {
+                                        "$prototype": "Function",
+                                        "body": [
+                                          {
+                                            "operator": "call",
+                                            "target": {
+                                              "$ref": "#/state/setFocusAxis"
+                                            },
+                                            "value": [
+                                              "x",
+                                              {
+                                                "$ref": "event#/currentTarget/value"
+                                              }
+                                            ]
+                                          }
+                                        ]
+                                      }
+                                    }
+                                  ]
+                                },
+                                {
+                                  "tagName": "jx-field",
+                                  "attributes": {
+                                    "part": "focus-y-row"
+                                  },
+                                  "$props": {
+                                    "label": "Down (%)"
+                                  },
+                                  "children": [
+                                    {
+                                      "tagName": "jx-number-field",
+                                      "attributes": {
+                                        "part": "focus-y"
+                                      },
+                                      "$props": {
+                                        "size": "sm",
+                                        "label": "Down (%)",
+                                        "min": "0",
+                                        "max": "100",
+                                        "placeholder": "50",
+                                        "value": {
+                                          "$ref": "#/state/focusY"
+                                        },
+                                        "disabled": {
+                                          "$ref": "#/state/recordBusy"
+                                        }
+                                      },
+                                      "onchange": {
+                                        "$prototype": "Function",
+                                        "body": [
+                                          {
+                                            "operator": "call",
+                                            "target": {
+                                              "$ref": "#/state/setFocusAxis"
+                                            },
+                                            "value": [
+                                              "y",
+                                              {
+                                                "$ref": "event#/currentTarget/value"
+                                              }
+                                            ]
+                                          }
+                                        ]
+                                      }
+                                    }
+                                  ]
+                                },
+                                {
+                                  "tagName": "jx-button",
+                                  "attributes": {
+                                    "part": "focus-clear"
+                                  },
+                                  "$props": {
+                                    "variant": "secondary",
+                                    "size": "sm",
+                                    "disabled": {
+                                      "$ref": "#/state/focusCleared"
+                                    }
+                                  },
+                                  "textContent": "Clear",
+                                  "onclick": {
+                                    "$prototype": "Function",
+                                    "body": [
+                                      {
+                                        "operator": "call",
+                                        "target": {
+                                          "$ref": "#/state/clearFocus"
+                                        },
+                                        "value": []
+                                      }
+                                    ]
+                                  }
+                                }
+                              ]
                             }
                           ]
                         }

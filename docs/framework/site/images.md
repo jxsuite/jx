@@ -3,9 +3,11 @@ title: "Images"
 description: "The build-time image pipeline: responsive srcset variants in WebP and AVIF, lazy-loading attributes, per-image overrides, and caching."
 spec:
   - site-architecture.md#9
+  - site-architecture.md#9.2.8
   - compiler.md#7
 code:
   - packages/compiler/src/site/image-transform.ts
+  - packages/site/src/xmp-packet.ts
   - packages/compiler/src/site/img-loading.ts
   - packages/compiler/src/site/asset-mounts.ts
   - packages/compiler/src/site/image-optimizer.ts
@@ -141,6 +143,12 @@ Individual images can override the global config through ordinary attributes:
 - `loading="eager"`: keeps `loading="lazy"` off an above-the-fold image
 - `fetchpriority="high"`: marks the LCP image: fetched at high priority, never lazy-loaded
 - `data-no-optimize`: skips the pipeline entirely
+
+## Focal point
+
+A picture can carry its own focal point in its embedded metadata: an IPTC image region holding one point, with the role _area of interest_. Studio's Media workspace writes it (see [Focal point](/docs/studio/projects/media#focal-point)), and so can any tool that writes IPTC image regions.
+
+When an `<img>` references a JPEG, PNG, WebP or SVG file in the project that has one, the build sets the point as the image's `object-position`, for example `25% 80%`. An image drawn with `object-fit: cover` then crops around that point. This happens whether or not `optimize` is on. Your own `objectPosition` on the image always wins, and an image whose `src` is bound, remote or a `data:` URL is left alone.
 
 ## Caching
 

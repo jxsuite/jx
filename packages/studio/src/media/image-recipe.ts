@@ -21,6 +21,8 @@
  * @docs studio/projects/media
  */
 
+import type { FocalPoint } from "@jxsuite/site/xmp-packet";
+
 /** A bitmap's size in pixels. */
 export type PixelSize = Pick<DOMRectReadOnly, "height" | "width">;
 
@@ -275,6 +277,28 @@ export function displayToSource(
   source: PixelSize,
 ): PixelRect {
   return mapRect(rect, (p) => pointToSource(p, recipe, source));
+}
+
+/**
+ * Where a focal point (fractions of the source's width and height) lands in the picture the recipe
+ * bakes, as fractions of ITS width and height: turned and mirrored with the pixels, then measured
+ * inside the crop. `null` when the crop leaves the point out. A resize moves nothing, since both
+ * are fractions.
+ */
+export function focusThrough(
+  focus: FocalPoint,
+  recipe: Readonly<ImageRecipe>,
+  source: PixelSize,
+): FocalPoint | null {
+  const [px, py] = pointToDisplay(
+    [focus.x * source.width, focus.y * source.height],
+    recipe,
+    source,
+  );
+  const crop = sourceToDisplay(cropOf(recipe, source), recipe, source);
+  const x = (px - crop.x) / crop.width;
+  const y = (py - crop.y) / crop.height;
+  return x >= 0 && x <= 1 && y >= 0 && y <= 1 ? { x, y } : null;
 }
 
 // ─── Handles ─────────────────────────────────────────────────────────────────

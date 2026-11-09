@@ -1,10 +1,10 @@
 /**
  * A media file's own record (its alt text and tags), read from and written into the file.
  *
- * The record lives in the file's XMP packet (`files/xmp-packet.ts`, `files/xmp-containers.ts`), so
- * this module is a cache in front of the file, never a store of its own: it reads a file's bytes
- * once, answers from memory until the file changes, and writes by rewriting the file's bytes at the
- * same path (studio.md §22.6).
+ * The record lives in the file's XMP packet (`@jxsuite/site/xmp-packet`,
+ * `@jxsuite/site/xmp-containers`), so this module is a cache in front of the file, never a store of
+ * its own: it reads a file's bytes once, answers from memory until the file changes, and writes by
+ * rewriting the file's bytes at the same path (studio.md §22.6).
  *
  * **A cached answer is tied to the bytes it was read from.** Each entry keeps a stamp of the file
  * as the listing last described it: the content version a host vouches for (`asset-versions.ts`),
@@ -29,12 +29,18 @@ import { normalizeProjectPath } from "./media-paths";
 import { peekMediaMeta } from "./media-meta";
 import { forgetVersions, noteLocalWrite, versionOf } from "./asset-versions";
 import { markLocalMutation } from "./fs-events";
-import { cleanTags, readMediaRecord, sameMediaRecord, writeMediaRecord } from "./xmp-packet";
-import { embedXmp, extractXmp, xmpFormatOf } from "./xmp-containers";
-import type { MediaRecord } from "./xmp-packet";
-import type { XmpFormat } from "./xmp-containers";
+import {
+  cleanTags,
+  readMediaRecord,
+  sameMediaRecord,
+  writeMediaRecord,
+} from "@jxsuite/site/xmp-packet";
+import { embedXmp, extractXmp, xmpFormatOf } from "@jxsuite/site/xmp-containers";
+import type { FocalPoint, MediaRecord } from "@jxsuite/site/xmp-packet";
+import type { XmpFormat } from "@jxsuite/site/xmp-containers";
 
-export type { MediaRecord } from "./xmp-packet";
+export type { FocalPoint, MediaRecord } from "@jxsuite/site/xmp-packet";
+export { sameMediaRecord } from "@jxsuite/site/xmp-packet";
 
 export type MediaRecordState =
   | { status: "unsupported" }
@@ -204,7 +210,11 @@ export async function saveMediaRecord(path: string, record: MediaRecord): Promis
     return "This file's format cannot hold alt text or tags.";
   }
   const key = normalizeProjectPath(path);
-  const next: MediaRecord = { alt: record.alt.trim(), tags: cleanTags(record.tags) };
+  const next: MediaRecord = {
+    alt: record.alt.trim(),
+    focus: record.focus,
+    tags: cleanTags(record.tags),
+  };
   let bytes: Uint8Array<ArrayBuffer>;
   try {
     const current = new Uint8Array(await holder.read(key));
@@ -241,13 +251,14 @@ function mergeInto(
   next: Uint8Array<ArrayBuffer>,
   old: MediaRecord,
 ): Uint8Array<ArrayBuffer> {
-  if (old.alt === "" && old.tags.length === 0) {
+  if (old.alt === "" && old.tags.length === 0 && old.focus === null) {
     return next;
   }
   try {
     const own = recordFrom(format, next);
     const merged: MediaRecord = {
       alt: own.alt === "" ? old.alt : own.alt,
+      focus: own.focus ?? old.focus,
       tags: own.tags.length === 0 ? old.tags : own.tags,
     };
     return sameMediaRecord(own, merged)
@@ -285,11 +296,15 @@ export async function carryMediaRecord(
 /**
  * {@link carryMediaRecord} from bytes in hand: `previous` is what the file held, `next` what will
  * replace it. Pure, so the Image editor can keep the bytes it writes as its next source.
+ *
+ * `moveFocus` says where the old focal point lands in the new picture, for an edit that moved the
+ * pixels (a crop, a turn, a mirror): `null` drops it, because it was cropped away.
  */
 export function carryRecordBetween(
   path: string,
   previous: Uint8Array,
   next: Uint8Array<ArrayBuffer>,
+  moveFocus: (focus: FocalPoint) => FocalPoint | null = (focus) => focus,
 ): Uint8Array<ArrayBuffer> {
   const format = xmpFormatOf(path);
   if (format === null) {
@@ -301,7 +316,10 @@ export function carryRecordBetween(
   } catch {
     return next;
   }
-  return mergeInto(format, next, old);
+  return mergeInto(format, next, {
+    ...old,
+    focus: old.focus === null ? null : moveFocus(old.focus),
+  });
 }
 
 /** Forget one file's record: it was deleted, or its bytes replaced. */

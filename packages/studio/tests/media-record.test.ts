@@ -17,8 +17,8 @@ import {
   saveMediaRecord,
   withMediaRecord,
 } from "../src/files/media-record";
-import { embedXmp, extractXmp } from "../src/files/xmp-containers";
-import { readMediaRecord, writeMediaRecord } from "../src/files/xmp-packet";
+import { embedXmp, extractXmp } from "@jxsuite/site/xmp-containers";
+import { readMediaRecord, writeMediaRecord } from "@jxsuite/site/xmp-packet";
 import { invalidateMediaMeta, seedMediaMeta } from "../src/files/media-meta";
 import {
   beginListing,
@@ -33,7 +33,7 @@ import type { StudioPlatform } from "../src/types";
 const BARE_JPEG = Uint8Array.of(0xff, 0xd8, 0xff, 0xd9);
 
 function jpegWith(alt: string, tags: string[]): Uint8Array<ArrayBuffer> {
-  return embedXmp(BARE_JPEG, "jpeg", writeMediaRecord(null, { alt, tags }));
+  return embedXmp(BARE_JPEG, "jpeg", writeMediaRecord(null, { alt, focus: null, tags }));
 }
 
 /** The files on the fake disk, as bytes. */
@@ -88,7 +88,7 @@ describe("which files hold a record", () => {
 
   test("an unsupported file is answered without a read, and refused a save", async () => {
     expect(await loadMediaRecord("public/anim.gif")).toEqual({ status: "unsupported" });
-    expect(await saveMediaRecord("public/anim.gif", { alt: "x", tags: [] })).toBe(
+    expect(await saveMediaRecord("public/anim.gif", { alt: "x", focus: null, tags: [] })).toBe(
       "This file's format cannot hold alt text or tags.",
     );
     expect(reads).toEqual([]);
@@ -104,7 +104,10 @@ describe("reading", () => {
       loadMediaRecord("public/hero.jpg"),
       loadMediaRecord("public/hero.jpg"),
     ]);
-    expect(a).toEqual({ record: { alt: "A hero", tags: ["Garden"] }, status: "ready" });
+    expect(a).toEqual({
+      record: { alt: "A hero", focus: null, tags: ["Garden"] },
+      status: "ready",
+    });
     expect(b).toBe(a);
     expect(await loadMediaRecord("./public/hero.jpg")).toBe(a);
     expect(reads).toEqual(["public/hero.jpg"]);
@@ -140,7 +143,7 @@ describe("reading", () => {
     ]);
     expect(peekMediaRecord("public/hero.jpg")).toEqual({ status: "pending" });
     expect(await loadMediaRecord("public/hero.jpg")).toEqual({
-      record: { alt: "Changed", tags: [] },
+      record: { alt: "Changed", focus: null, tags: [] },
       status: "ready",
     });
     expect(reads).toHaveLength(2);
@@ -189,19 +192,24 @@ describe("saving", () => {
       },
     });
     expect(
-      await saveMediaRecord("public/hero.jpg", { alt: " New alt ", tags: ["b", "B", "a"] }),
+      await saveMediaRecord("public/hero.jpg", {
+        alt: " New alt ",
+        focus: null,
+        tags: ["b", "B", "a"],
+      }),
     ).toBeNull();
     expect(markedFirst).toBe(true);
     const written = extractXmp(disk.get("public/hero.jpg") ?? BARE_JPEG, "jpeg");
     expect(readMediaRecord(written)).toEqual({
       alt: "New alt",
+      focus: null,
       tags: ["b", "a"],
     });
     expect(localRevisionOf("public/hero.jpg")).toBeString();
     // The written record is the answer, with no second read of the file just written.
     const readsAfter = reads.length;
     expect(await loadMediaRecord("public/hero.jpg")).toEqual({
-      record: { alt: "New alt", tags: ["b", "a"] },
+      record: { alt: "New alt", focus: null, tags: ["b", "a"] },
       status: "ready",
     });
     expect(reads).toHaveLength(readsAfter);
@@ -209,21 +217,23 @@ describe("saving", () => {
 
   test("a record the file already carries writes nothing", async () => {
     expect(
-      await saveMediaRecord("public/hero.jpg", { alt: "A hero", tags: ["Garden"] }),
+      await saveMediaRecord("public/hero.jpg", { alt: "A hero", focus: null, tags: ["Garden"] }),
     ).toBeNull();
     expect(writes).toEqual([]);
     expect(peekMediaRecord("public/hero.jpg")).toEqual({
-      record: { alt: "A hero", tags: ["Garden"] },
+      record: { alt: "A hero", focus: null, tags: ["Garden"] },
       status: "ready",
     });
   });
 
   test("a file that cannot be read, or rewritten, is left as it was and the reason returned", async () => {
-    expect(await saveMediaRecord("public/gone.jpg", { alt: "x", tags: [] })).toBe(
+    expect(await saveMediaRecord("public/gone.jpg", { alt: "x", focus: null, tags: [] })).toBe(
       "no such file: public/gone.jpg",
     );
     disk.set("public/odd.png", Uint8Array.of(0));
-    expect(await saveMediaRecord("public/odd.png", { alt: "x", tags: [] })).toBe("Not a PNG file.");
+    expect(await saveMediaRecord("public/odd.png", { alt: "x", focus: null, tags: [] })).toBe(
+      "Not a PNG file.",
+    );
     expect(writes).toEqual([]);
   });
 
@@ -233,9 +243,11 @@ describe("saving", () => {
         throw new Error("read-only");
       },
     });
-    expect(await saveMediaRecord("public/hero.jpg", { alt: "x", tags: [] })).toBe("read-only");
+    expect(await saveMediaRecord("public/hero.jpg", { alt: "x", focus: null, tags: [] })).toBe(
+      "read-only",
+    );
     install({ uploadFile: async () => ({ path: "public/hero-1.jpg" }) });
-    expect(await saveMediaRecord("public/hero.jpg", { alt: "x", tags: [] })).toBe(
+    expect(await saveMediaRecord("public/hero.jpg", { alt: "x", focus: null, tags: [] })).toBe(
       "The backend stored the file as public/hero-1.jpg instead of rewriting it.",
     );
   });
@@ -246,6 +258,7 @@ describe("carrying a record across an overwrite", () => {
     const carried = await carryMediaRecord("public/hero.jpg", BARE_JPEG);
     expect(readMediaRecord(extractXmp(carried, "jpeg"))).toEqual({
       alt: "A hero",
+      focus: null,
       tags: ["Garden"],
     });
   });
@@ -255,6 +268,7 @@ describe("carrying a record across an overwrite", () => {
     const carried = await carryMediaRecord("public/hero.jpg", own);
     expect(readMediaRecord(extractXmp(carried, "jpeg"))).toEqual({
       alt: "Own alt",
+      focus: null,
       tags: ["Garden"],
     });
     const complete = jpegWith("Own alt", ["Own"]);
@@ -272,15 +286,36 @@ describe("carrying a record across an overwrite", () => {
 
   test("from bytes in hand, reading nothing", () => {
     const carried = carryRecordBetween("public/hero.jpg", jpegWith("Held", ["x"]), BARE_JPEG);
-    expect(readMediaRecord(extractXmp(carried, "jpeg"))).toEqual({ alt: "Held", tags: ["x"] });
+    expect(readMediaRecord(extractXmp(carried, "jpeg"))).toEqual({
+      alt: "Held",
+      focus: null,
+      tags: ["x"],
+    });
     expect(reads).toEqual([]);
     // Nothing to carry from bytes that are not a JPEG, or into a format with no place for it.
     expect(carryRecordBetween("public/hero.jpg", Uint8Array.of(1), BARE_JPEG)).toBe(BARE_JPEG);
     expect(carryRecordBetween("public/a.gif", BARE_JPEG, BARE_JPEG)).toBe(BARE_JPEG);
   });
 
+  test("a focal point is carried where the new bytes have none, moved by the edit that moved it", () => {
+    const held = embedXmp(
+      BARE_JPEG,
+      "jpeg",
+      writeMediaRecord(null, { alt: "", focus: { x: 0.2, y: 0.4 }, tags: [] }),
+    );
+    const kept = carryRecordBetween("public/hero.jpg", held, BARE_JPEG);
+    expect(readMediaRecord(extractXmp(kept, "jpeg")).focus).toEqual({ x: 0.2, y: 0.4 });
+    const moved = carryRecordBetween("public/hero.jpg", held, BARE_JPEG, (f) => ({
+      x: 1 - f.x,
+      y: f.y,
+    }));
+    expect(readMediaRecord(extractXmp(moved, "jpeg")).focus).toEqual({ x: 0.8, y: 0.4 });
+    // Cropped away: nothing to carry, so the bytes are written as they are.
+    expect(carryRecordBetween("public/hero.jpg", held, BARE_JPEG, () => null)).toBe(BARE_JPEG);
+  });
+
   test("withMediaRecord refuses a format with no place for one", () => {
-    expect(() => withMediaRecord("a.gif", BARE_JPEG, { alt: "", tags: [] })).toThrow(
+    expect(() => withMediaRecord("a.gif", BARE_JPEG, { alt: "", focus: null, tags: [] })).toThrow(
       "This format cannot hold alt text or tags.",
     );
   });

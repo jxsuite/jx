@@ -42,8 +42,8 @@ import {
 } from "../src/files/asset-versions";
 import { isRecentLocal } from "../src/files/fs-events";
 import { resetMediaRecords } from "../src/files/media-record";
-import { embedXmp, extractXmp } from "../src/files/xmp-containers";
-import { readMediaRecord, writeMediaRecord } from "../src/files/xmp-packet";
+import { embedXmp, extractXmp } from "@jxsuite/site/xmp-containers";
+import { readMediaRecord, writeMediaRecord } from "@jxsuite/site/xmp-packet";
 import type { StudioPlatform } from "../src/types";
 
 beforeEach(() => {
@@ -471,7 +471,7 @@ describe("replaceAsset", () => {
     const described = embedXmp(
       bare,
       "jpeg",
-      writeMediaRecord(null, { alt: "Seedlings", tags: ["Garden"] }),
+      writeMediaRecord(null, { alt: "Seedlings", focus: null, tags: ["Garden"] }),
     );
     const uploads: Blob[] = [];
     installMockPlatform({
@@ -490,6 +490,7 @@ describe("replaceAsset", () => {
     const written = new Uint8Array((await uploaded?.arrayBuffer()) ?? new ArrayBuffer(0));
     expect(readMediaRecord(extractXmp(written, "jpeg"))).toEqual({
       alt: "Seedlings",
+      focus: null,
       tags: ["Garden"],
     });
   });
