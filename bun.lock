@@ -46,7 +46,7 @@
     },
     "extensions/auth": {
       "name": "@jxsuite/auth",
-      "version": "0.8.5",
+      "version": "0.8.7",
       "dependencies": {
         "@jxsuite/connector": "workspace:^",
         "@jxsuite/schema": "workspace:^",
@@ -61,7 +61,7 @@
     },
     "extensions/connector": {
       "name": "@jxsuite/connector",
-      "version": "0.8.5",
+      "version": "0.8.7",
       "dependencies": {
         "@jxsuite/schema": "workspace:^",
         "kysely": "^0.29.8",
@@ -77,7 +77,7 @@
     },
     "extensions/feed": {
       "name": "@jxsuite/feed",
-      "version": "0.5.3",
+      "version": "0.5.5",
       "dependencies": {
         "@jxsuite/schema": "workspace:^",
       },
@@ -87,7 +87,7 @@
     },
     "extensions/parser": {
       "name": "@jxsuite/parser",
-      "version": "4.3.1",
+      "version": "4.3.3",
       "dependencies": {
         "@jxsuite/markup": "workspace:^",
         "@jxsuite/schema": "workspace:^",
@@ -116,7 +116,7 @@
     },
     "extensions/search": {
       "name": "@jxsuite/search",
-      "version": "0.5.3",
+      "version": "0.5.5",
       "dependencies": {
         "@jxsuite/schema": "workspace:^",
         "minisearch": "^7.2.0",
@@ -127,7 +127,7 @@
     },
     "packages/ai": {
       "name": "@jxsuite/ai",
-      "version": "0.43.1",
+      "version": "0.43.3",
       "dependencies": {
         "@jxsuite/protocol": "workspace:^",
         "@jxsuite/schema": "workspace:^",
@@ -140,14 +140,14 @@
     },
     "packages/catalog": {
       "name": "@jxsuite/catalog",
-      "version": "0.1.9",
+      "version": "0.1.11",
       "dependencies": {
         "@jxsuite/protocol": "workspace:^",
       },
     },
     "packages/collab": {
       "name": "@jxsuite/collab",
-      "version": "0.11.7",
+      "version": "0.11.9",
       "dependencies": {
         "@jxsuite/schema": "workspace:^",
         "lib0": "^0.2.119",
@@ -157,7 +157,7 @@
     },
     "packages/compiler": {
       "name": "@jxsuite/compiler",
-      "version": "8.3.0",
+      "version": "8.5.0",
       "bin": {
         "jx": "./bin/jx.js",
       },
@@ -182,7 +182,7 @@
     },
     "packages/create": {
       "name": "@jxsuite/create",
-      "version": "1.5.5",
+      "version": "1.7.0",
       "bin": {
         "create-jxsuite": "./index.ts",
       },
@@ -193,7 +193,7 @@
     },
     "packages/desktop": {
       "name": "@jxsuite/desktop",
-      "version": "8.1.0",
+      "version": "8.3.0",
       "dependencies": {
         "@jxsuite/compiler": "workspace:^",
         "@jxsuite/create": "workspace:^",
@@ -216,7 +216,7 @@
     },
     "packages/erase": {
       "name": "@jxsuite/erase",
-      "version": "0.0.0",
+      "version": "0.1.0",
       "dependencies": {
         "@jxsuite/schema": "workspace:^",
         "ts-blank-space": "^0.9.0",
@@ -224,7 +224,7 @@
     },
     "packages/formulas": {
       "name": "@jxsuite/formulas",
-      "version": "0.0.29",
+      "version": "0.0.31",
       "dependencies": {
         "@jxsuite/schema": "workspace:^",
       },
@@ -235,7 +235,7 @@
     },
     "packages/import": {
       "name": "@jxsuite/import",
-      "version": "0.42.5",
+      "version": "0.44.0",
       "bin": {
         "jx-import": "./src/cli.ts",
       },
@@ -259,7 +259,7 @@
     },
     "packages/markup": {
       "name": "@jxsuite/markup",
-      "version": "1.0.5",
+      "version": "1.0.7",
       "dependencies": {
         "@jxsuite/schema": "workspace:^",
         "hast-util-from-html": "^2.0.3",
@@ -278,14 +278,14 @@
     },
     "packages/protocol": {
       "name": "@jxsuite/protocol",
-      "version": "6.2.3",
+      "version": "6.2.5",
       "dependencies": {
         "@jxsuite/schema": "workspace:^",
       },
     },
     "packages/runtime": {
       "name": "@jxsuite/runtime",
-      "version": "6.2.0",
+      "version": "6.2.2",
       "dependencies": {
         "@jxsuite/schema": "workspace:^",
         "@vue/reactivity": "3.5.44",
@@ -297,7 +297,7 @@
     },
     "packages/schema": {
       "name": "@jxsuite/schema",
-      "version": "5.3.0",
+      "version": "5.5.0",
       "dependencies": {
         "@bgotink/kdl": "0.4.1",
         "@webref/css": "^8.7.8",
@@ -312,7 +312,7 @@
     },
     "packages/server": {
       "name": "@jxsuite/server",
-      "version": "8.4.0",
+      "version": "8.6.0",
       "dependencies": {
         "@jxsuite/ai": "workspace:^",
         "@jxsuite/catalog": "workspace:^",
@@ -346,7 +346,7 @@
     },
     "packages/site": {
       "name": "@jxsuite/site",
-      "version": "2.4.0",
+      "version": "2.5.1",
       "dependencies": {
         "@jxsuite/runtime": "workspace:^",
         "@jxsuite/schema": "workspace:^",
@@ -354,7 +354,7 @@
     },
     "packages/starters": {
       "name": "@jxsuite/starters",
-      "version": "3.3.1",
+      "version": "3.4.0",
       "dependencies": {
         "@jxsuite/protocol": "workspace:^",
       },
@@ -368,7 +368,7 @@
     },
     "packages/studio": {
       "name": "@jxsuite/studio",
-      "version": "10.6.0",
+      "version": "10.8.0",
       "dependencies": {
         "@atlaskit/pragmatic-drag-and-drop": "^4.0.0",
         "@atlaskit/pragmatic-drag-and-drop-hitbox": "^3.0.0",
@@ -408,7 +408,7 @@
     },
     "packages/ui": {
       "name": "@jxsuite/ui",
-      "version": "0.10.2",
+      "version": "0.10.4",
       "dependencies": {
         "@jxsuite/runtime": "workspace:^",
         "@jxsuite/schema": "workspace:^",

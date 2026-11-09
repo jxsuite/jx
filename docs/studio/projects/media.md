@@ -11,8 +11,8 @@ code:
   - packages/studio/src/files/media-upload.ts
   - packages/studio/src/files/media-meta.ts
   - packages/studio/src/files/media-record.ts
-  - packages/studio/src/files/xmp-packet.ts
-  - packages/studio/src/files/xmp-containers.ts
+  - packages/site/src/xmp-packet.ts
+  - packages/site/src/xmp-containers.ts
   - packages/studio/src/files/media-paths.ts
   - packages/studio/src/files/media-usage.ts
   - packages/studio/src/media/media-library.ts
@@ -85,7 +85,15 @@ JPEG, PNG, WebP and SVG files can carry alt text and tags. Other formats (GIF an
 
 Studio reads every picture's alt text and tags in the background while the Media workspace or a media picker is open, two files at a time, and remembers them until a file changes. **Missing alt text** and the **Tags** list appear with their counts once every file has been read; choose either before then and the grid says it is still reading.
 
-**Replace** and [saving an edited image](#edit-an-image) keep the alt text and tags: the new picture is written with the old one's, unless the file you chose carries its own.
+**Replace** and [saving an edited image](#edit-an-image) keep the alt text, tags and focal point: the new picture is written with the old one's, unless the file you chose carries its own.
+
+### Focal point
+
+A picture's **focal point** is the spot a page should keep in view when it crops the picture to fit a box (an image drawn with `object-fit: cover`, for example a card thumbnail or a wide banner). Select a picture and click it under **Focal point** in the details pane, or type the position as percentages in **Across (%)** and **Down (%)**. **Clear** removes it.
+
+Like alt text, the focal point is kept inside the file, as an IPTC **image region** with the role _area of interest_, so it travels with the picture and other tools can read it. Other regions in the file, such as faces a photo tool marked, are kept.
+
+When you build the site, every image whose file has a focal point gets it as its `object-position`, unless you set `object-position` on that image yourself. [Editing the image](#edit-an-image) moves the point with the picture: it turns and mirrors with it, and a crop that leaves the point out removes it.
 
 This is the picture's own description, kept with the file. The text a page shows is still the `alt` on each image element, which you set in the Inspector, because the same picture can mean different things in different places. When you place a picture on a page, by dropping a file on the canvas or dragging it from the Site panel, the new image starts with the file's alt text, which you can then change for that page. Changing it there does not change the file.
 

@@ -19,8 +19,6 @@
  * @docs studio/projects/media
  */
 
-import { extensionOf } from "./media-types";
-
 export type XmpFormat = "jpeg" | "png" | "webp" | "svg";
 
 /** Why bytes could not be read or rewritten. */
@@ -38,7 +36,8 @@ const FORMAT_BY_EXTENSION = new Map<string, XmpFormat>([
 
 /** The container a path's extension names, when Studio can read and write its XMP. */
 export function xmpFormatOf(path: string): XmpFormat | null {
-  return FORMAT_BY_EXTENSION.get(extensionOf(path)) ?? null;
+  const dot = path.lastIndexOf(".");
+  return FORMAT_BY_EXTENSION.get(dot > 0 ? path.slice(dot).toLowerCase() : "") ?? null;
 }
 
 const utf8 = new TextEncoder();

@@ -22,7 +22,9 @@
     "./routes": "./src/routes.ts",
     "./serve": "./src/serve.ts",
     "./shell": "./src/shell.ts",
-    "./site-style": "./src/site-style.ts"
+    "./site-style": "./src/site-style.ts",
+    "./xmp-containers": "./src/xmp-containers.ts",
+    "./xmp-packet": "./src/xmp-packet.ts"
   },
   "publishConfig": {
     "provenance": true
