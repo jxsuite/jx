@@ -47,6 +47,7 @@ import {
 import { mediaKind } from "../files/media-upload";
 import { previewFileSrc } from "../files/media-paths";
 import { elementForAsset } from "../editor/file-drop-action";
+import { loadMediaRecord } from "../files/media-record";
 import { readPageFacts } from "../content/collection-pages";
 import { listCollectionEntryIds } from "../grid/sources/content-source";
 import { projectMediaFiles } from "../ui/media-picker";
@@ -556,6 +557,9 @@ function mountInto(host: HTMLElement): void {
       adoptSource(panel, element, () => componentDragData(tagName));
     },
     mediaSource: (element, path) => {
+      /* Read the file's record now, so the element a drag builds already carries its alt text. A
+         read that fails, or a file that cannot hold one, simply places the image without it. */
+      void loadMediaRecord(path);
       adoptSource(panel, element, () => mediaDragData(path));
     },
     preview: (element, tagName) => {

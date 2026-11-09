@@ -22,6 +22,7 @@ code:
   - packages/studio/src/surfaces/media-pick-dialog.ts
   - packages/studio/src/ui/media-picker.ts
   - packages/studio/src/surfaces/media-field.ts
+  - packages/studio/src/editor/file-drop-action.ts
   - packages/studio/src/surfaces/media-browser.ts
   - packages/studio/src/editor/file-drop-action.ts
   - packages/studio/src/canvas/asset-refs.ts
@@ -86,7 +87,7 @@ Studio reads every picture's alt text and tags in the background while the Media
 
 **Replace** and [saving an edited image](#edit-an-image) keep the alt text and tags: the new picture is written with the old one's, unless the file you chose carries its own.
 
-This is the picture's own description, kept with the file. The text a page shows is still the `alt` on each image element, which you set in the Inspector, because the same picture can mean different things in different places.
+This is the picture's own description, kept with the file. The text a page shows is still the `alt` on each image element, which you set in the Inspector, because the same picture can mean different things in different places. When you place a picture on a page, by dropping a file on the canvas or dragging it from the Site panel, the new image starts with the file's alt text, which you can then change for that page. Changing it there does not change the file.
 
 ## Upload into the Media workspace
 
