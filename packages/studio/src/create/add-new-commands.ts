@@ -119,7 +119,7 @@ export function addNewCommands(): AnyCommand[] {
         description:
           "Create a page, collection, template, component or collection entry, the way Add new does: " +
           "pass kind and name and it is written and opened, with the path derived from the name " +
-          "(pages/<slug>.json, layouts/<slug>.json, components/<tag>.json, a content/<name>/ " +
+          "(pages/<slug>.jxn, layouts/<slug>.jxn, components/<tag>.jxn, a content/<name>/ " +
           "collection). Without a name it only opens the Add new dialog for the person.",
         name: "add_new",
         report: () => reportFor(),
@@ -144,7 +144,7 @@ export function addNewCommands(): AnyCommand[] {
               "Omit it to open the Add new dialog instead of creating.",
           ),
           template: stringProperty(
-            "The template to start from: a layout such as base or layouts/base.json, article for a " +
+            "The template to start from: a layout such as base or layouts/base.jxn, article for a " +
               "Markdown page, or blank for none. A collection uses it for its own page; a template " +
               "is wrapped in it.",
           ),

@@ -25,7 +25,7 @@ project "Jx Suite"
 
 url "https://jxsuite.com"
 
-defaults layout="./layouts/base.json" lang=en
+defaults layout="./layouts/base.jxn" lang=en
 
 build outDir="./dist" trailingSlash=always
 

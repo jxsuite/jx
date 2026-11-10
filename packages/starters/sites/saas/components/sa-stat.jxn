@@ -1,0 +1,32 @@
+/- kdl-version 2
+
+sa-stat {
+    state value="0" label=""
+    style {
+        display flex
+        flexDirection column
+        gap "0.5rem"
+        padding "1.9rem"
+        borderRadius "var(--radius)"
+        border "1px solid var(--color-border)"
+        backgroundColor "var(--color-bg-elev)"
+        textAlign center
+    }
+    div "${state.value}" {
+        style {
+            fontFamily "var(--font-heading)"
+            fontSize "clamp(2.25rem, 5vw, 3.4rem)"
+            fontWeight "700"
+            letterSpacing "-0.03em"
+            lineHeight "1"
+            background "var(--grad)"
+            backgroundClip text
+            webkitBackgroundClip text
+            webkitTextFillColor transparent
+            color "var(--color-primary)"
+        }
+    }
+    div "${state.label}" {
+        style fontSize="0.9rem" color="var(--color-text-muted)" lineHeight="1.5"
+    }
+}

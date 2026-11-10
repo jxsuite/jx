@@ -1,0 +1,12 @@
+/- kdl-version 2
+$elements (ref)"../components/ev-nav.jxn" (ref)"../components/ev-footer.jxn"
+
+div {
+    style minHeight="100vh" display=flex flexDirection=column backgroundColor="var(--color-bg)"
+    ev-nav
+    main {
+        style flex="1"
+        slot
+    }
+    ev-footer
+}

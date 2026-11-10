@@ -1,0 +1,11 @@
+/- kdl-version 2
+
+bl-post-list {
+    style {
+        display block
+        maxWidth "var(--max-width)"
+        margin "0 auto"
+        borderTop "1.5px solid var(--color-rule)"
+    }
+    slot
+}

@@ -1,0 +1,217 @@
+/- kdl-version 2
+
+sa-hero {
+    state {
+        eyebrow ""
+        heading ""
+        headingAccent ""
+        subheading ""
+        cta "Get started free"
+        ctaHref "/pricing/"
+        cta2 ""
+        cta2Href "/features/"
+        note ""
+        image type=string format=image default=""
+        imageAlt "Product dashboard preview"
+    }
+    style {
+        display block
+        position relative
+        overflow hidden
+        color "var(--color-text-white)"
+        background "radial-gradient(ellipse 48% 42% at 15% 0%, rgba(124,116,255,0.38), transparent 60%), radial-gradient(ellipse 42% 40% at 88% 8%, rgba(34,211,238,0.20), transparent 62%), radial-gradient(ellipse 65% 55% at 50% 118%, rgba(244,114,182,0.16), transparent 60%), var(--color-bg)"
+    }
+    div {
+        style {
+            position absolute
+            inset "0"
+            backgroundImage "radial-gradient(circle, rgba(255,255,255,0.045) 1px, transparent 1px)"
+            backgroundSize "34px 34px"
+            opacity "0.6"
+            pointerEvents none
+        }
+    }
+    div {
+        style {
+            position relative
+            zIndex "10"
+            maxWidth "var(--max-width)"
+            margin "0 auto"
+            padding "clamp(4.5rem, 11vw, 8rem) 1.5rem clamp(3rem, 7vw, 5rem)"
+            textAlign center
+        }
+        p {
+            style {
+                display "${state.eyebrow ? 'inline-flex' : 'none'}"
+                alignItems center
+                gap "0.55rem"
+                padding "0.4rem 0.95rem"
+                borderRadius "999px"
+                border "1px solid var(--color-border)"
+                backgroundColor "rgba(255, 255, 255, 0.04)"
+                fontSize "0.8125rem"
+                fontWeight "500"
+                color "var(--color-text-primary)"
+                margin "0 0 1.75rem"
+            }
+            span {
+                style {
+                    width "0.5rem"
+                    height "0.5rem"
+                    borderRadius "999px"
+                    background "var(--grad-btn)"
+                    boxShadow "0 0 10px var(--glow)"
+                }
+            }
+            span "${state.eyebrow}"
+        }
+        h1 {
+            style {
+                fontFamily "var(--font-heading)"
+                fontSize "clamp(2.6rem, 6.8vw, 5rem)"
+                fontWeight "700"
+                lineHeight "1.02"
+                letterSpacing "-0.04em"
+                margin "0 auto 1.5rem"
+                maxWidth "18ch"
+                color "var(--color-text-primary)"
+            }
+            span "${state.heading} "
+            span "${state.headingAccent}" {
+                style {
+                    background "var(--grad)"
+                    backgroundClip text
+                    webkitBackgroundClip text
+                    webkitTextFillColor transparent
+                    color "#22d3ee"
+                }
+            }
+        }
+        p "${state.subheading}" {
+            style {
+                fontSize "clamp(1.05rem, 2vw, 1.3rem)"
+                lineHeight "1.65"
+                color "var(--color-text-muted)"
+                margin "0 auto 2.25rem"
+                maxWidth "52ch"
+            }
+        }
+        div {
+            style display=flex gap="0.75rem" justifyContent=center flexWrap=wrap
+            a href="${state.ctaHref}" "${state.cta}" {
+                style {
+                    display inline-block
+                    background "var(--grad-btn)"
+                    color "#ffffff"
+                    padding "0.9rem 2rem"
+                    borderRadius "999px"
+                    fontSize "1.02rem"
+                    fontWeight "600"
+                    textDecoration none
+                    boxShadow "0 10px 30px -8px var(--glow)"
+                    transition "transform 0.15s, box-shadow 0.15s"
+                    :hover transform="translateY(-2px)" boxShadow="0 16px 40px -8px var(--glow)"
+                }
+            }
+            a href="${state.cta2Href}" "${state.cta2}" {
+                style {
+                    display "${state.cta2 ? 'inline-block' : 'none'}"
+                    border "1px solid var(--color-border)"
+                    backgroundColor "rgba(255,255,255,0.03)"
+                    color "var(--color-text-primary)"
+                    padding "0.9rem 2rem"
+                    borderRadius "999px"
+                    fontSize "1.02rem"
+                    fontWeight "600"
+                    textDecoration none
+                    transition "background-color 0.15s, border-color 0.15s"
+                    :hover {
+                        backgroundColor "rgba(255, 255, 255, 0.07)"
+                        borderColor "var(--color-text-muted)"
+                    }
+                }
+            }
+        }
+        p "${state.note}" {
+            style {
+                display "${state.note ? 'block' : 'none'}"
+                fontSize "0.85rem"
+                color "var(--color-text-muted)"
+                margin "1.25rem 0 0"
+            }
+        }
+        div {
+            style {
+                display "${state.image ? 'block' : 'none'}"
+                position relative
+                maxWidth "1000px"
+                margin "3.5rem auto 0"
+            }
+            div {
+                style {
+                    position absolute
+                    inset "-1px"
+                    borderRadius "calc(var(--radius) + 2px)"
+                    padding "1px"
+                    background "linear-gradient(160deg, rgba(139,123,255,0.7), rgba(34,211,238,0.25) 40%, transparent 70%)"
+                    pointerEvents none
+                }
+            }
+            div {
+                style {
+                    position relative
+                    borderRadius "var(--radius)"
+                    overflow hidden
+                    border "1px solid var(--color-border)"
+                    backgroundColor "var(--color-bg-elev)"
+                    boxShadow "0 40px 90px -30px rgba(0,0,0,0.8), 0 0 80px -20px var(--glow)"
+                }
+                div {
+                    style {
+                        display flex
+                        alignItems center
+                        gap "0.5rem"
+                        padding "0.75rem 1rem"
+                        borderBottom "1px solid var(--color-border)"
+                        backgroundColor "var(--color-bg-elev2)"
+                    }
+                    span {
+                        style {
+                            width "0.7rem"
+                            height "0.7rem"
+                            borderRadius "999px"
+                            backgroundColor "#ff5f57"
+                        }
+                    }
+                    span {
+                        style {
+                            width "0.7rem"
+                            height "0.7rem"
+                            borderRadius "999px"
+                            backgroundColor "#febc2e"
+                        }
+                    }
+                    span {
+                        style {
+                            width "0.7rem"
+                            height "0.7rem"
+                            borderRadius "999px"
+                            backgroundColor "#28c840"
+                        }
+                    }
+                    span app.flowlark.com {
+                        style {
+                            marginLeft "0.75rem"
+                            fontSize "0.75rem"
+                            color "var(--color-text-muted)"
+                            fontFamily "var(--font-heading)"
+                        }
+                    }
+                }
+                img src="${state.image}" alt="${state.imageAlt}" loading=eager {
+                    style display=block width="100%" height=auto
+                }
+            }
+        }
+    }
+}

@@ -61,7 +61,7 @@ A component file open on its own renders with its defaults, but defaults are oft
 Test values are a preview lens only: they're never saved into the component, and clearing a field returns the prop to its default. They pair with the **Preview** toggle described in **[Modes and preview](/docs/studio/interface/modes)**.
 
 :::doc-note
-A component is a plain file (`components/pricing-card.json`), and converting also records a reference to it in the page's `$elements` list. The format is described in **[Components](/docs/framework/concepts/components)**.
+A component is a plain file (`components/pricing-card.jxn`, in [Jx Notation](/docs/framework/concepts/jxn-files)), and converting also records a reference to it in the page's `$elements` list. The format is described in **[Components](/docs/framework/concepts/components)**.
 :::
 
 ## Next

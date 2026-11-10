@@ -1,0 +1,84 @@
+/- kdl-version 2
+
+shp-contact-form {
+    state heading="Send us a message"
+    style display=block
+    h3 "${state.heading}" {
+        style fontFamily="var(--font-heading)" fontSize="1.6rem" margin="0 0 1.25rem"
+    }
+    form action="#" method=post {
+        style display=grid gap="1rem" alignContent=start
+        input type=text name=name placeholder="Your name" required="true" aria-label="Your name" {
+            style {
+                width "100%"
+                padding "0.75rem 0.9rem"
+                border "1px solid var(--color-border)"
+                borderRadius "var(--radius)"
+                fontSize "1rem"
+            }
+        }
+        input type=email name=email placeholder="Email address" required="true" aria-label="Email address" {
+            style {
+                width "100%"
+                padding "0.75rem 0.9rem"
+                border "1px solid var(--color-border)"
+                borderRadius "var(--radius)"
+                fontSize "1rem"
+            }
+        }
+        div {
+            style display=grid gridTemplateColumns="1fr 1fr" gap="1rem"
+            select name=topic aria-label="What can we help with?" {
+                style {
+                    width "100%"
+                    padding "0.75rem 0.9rem"
+                    border "1px solid var(--color-border)"
+                    borderRadius "var(--radius)"
+                    fontSize "1rem"
+                    backgroundColor "var(--color-bg-white)"
+                }
+                option value=sales "Buying a bike"
+                option value=service "Book a service"
+                option value=fit "Bike fitting"
+                option value=other "Something else"
+            }
+            input type=date name=date aria-label="Preferred service date" {
+                style {
+                    width "100%"
+                    padding "0.75rem 0.9rem"
+                    border "1px solid var(--color-border)"
+                    borderRadius "var(--radius)"
+                    fontSize "1rem"
+                }
+            }
+        }
+        textarea name=notes rows="3" placeholder="Tell us about your bike or what you're after…" aria-label=Notes {
+            style {
+                width "100%"
+                padding "0.75rem 0.9rem"
+                border "1px solid var(--color-border)"
+                borderRadius "var(--radius)"
+                fontSize "1rem"
+                fontFamily inherit
+            }
+        }
+        button type=submit "Send Message" {
+            style {
+                backgroundColor "var(--color-primary)"
+                color "var(--color-text-white)"
+                padding "0.85rem 1.5rem"
+                border none
+                borderRadius "999px"
+                fontSize "1rem"
+                fontWeight "600"
+                cursor pointer
+                justifySelf start
+                transition "background-color 0.15s"
+                :hover backgroundColor="var(--color-primary-hover)"
+            }
+        }
+        p "This is a demo form. Wire it to your booking provider or email in pages/contact.md." {
+            style fontSize="0.85rem" color="var(--color-text-muted)" margin="0"
+        }
+    }
+}

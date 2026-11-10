@@ -1,0 +1,62 @@
+/- kdl-version 2
+
+pv-cta {
+    state heading="" text="" cta="Start a Project" ctaHref="/contact/"
+    style {
+        display block
+        backgroundColor "var(--color-bg-elev)"
+        borderTop "1px solid var(--color-line)"
+        color "var(--color-text-white)"
+        padding "clamp(5rem, 12vw, 9rem) 1.5rem"
+        textAlign center
+    }
+    div {
+        style maxWidth="760px" margin="0 auto"
+        p "Commissions open" {
+            style {
+                textTransform uppercase
+                letterSpacing "0.28em"
+                fontSize "0.7rem"
+                fontWeight "500"
+                color "var(--color-primary)"
+                margin "0 0 1.5rem"
+            }
+        }
+        h2 "${state.heading}" {
+            style {
+                fontFamily "var(--font-heading)"
+                fontSize "clamp(2.5rem, 6vw, 4.5rem)"
+                fontWeight "400"
+                lineHeight "1.04"
+                letterSpacing "-0.01em"
+                margin "0 0 1.5rem"
+            }
+        }
+        p "${state.text}" {
+            style {
+                fontSize "1.15rem"
+                lineHeight "1.75"
+                color "var(--color-text-muted)"
+                margin "0 auto 2.5rem"
+                maxWidth "48ch"
+            }
+        }
+        a href="${state.ctaHref}" "${state.cta} →" {
+            style {
+                display inline-flex
+                alignItems center
+                gap "0.7rem"
+                color "var(--color-text-white)"
+                fontSize "0.8rem"
+                fontWeight "600"
+                textTransform uppercase
+                letterSpacing "0.2em"
+                textDecoration none
+                borderBottom "1px solid var(--color-primary)"
+                paddingBottom "0.5rem"
+                transition "gap 0.2s, color 0.15s"
+                :hover gap="1.2rem" color="var(--color-primary)"
+            }
+        }
+    }
+}

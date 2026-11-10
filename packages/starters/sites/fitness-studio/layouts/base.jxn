@@ -1,0 +1,17 @@
+/- kdl-version 2
+$elements (ref)"../components/fs-nav.jxn" (ref)"../components/fs-footer.jxn"
+
+div {
+    style {
+        minHeight "100vh"
+        display flex
+        flexDirection column
+        backgroundColor "var(--color-bg-white)"
+    }
+    fs-nav
+    main {
+        style flex="1"
+        slot
+    }
+    fs-footer
+}

@@ -1,0 +1,106 @@
+/- kdl-version 2
+
+bl-post-card {
+    state {
+        number ""
+        title ""
+        excerpt ""
+        date ""
+        tag ""
+        href "#"
+        cover type=string format=image default=""
+    }
+    style display=block
+    a href="${state.href}" {
+        style {
+            display grid
+            gridTemplateColumns "clamp(2.4rem, 5vw, 4.5rem) 1fr auto"
+            gap "clamp(1rem, 3vw, 2.75rem)"
+            alignItems start
+            padding "1.75rem 0.75rem"
+            textDecoration none
+            color "var(--color-text-primary)"
+            borderBottom "1px solid var(--color-border)"
+            transition "color 0.18s, background-color 0.18s"
+            @--sm gridTemplateColumns="auto 1fr" gap="1rem 1.25rem"
+            :hover color="var(--color-primary)" backgroundColor="var(--color-bg-cream)"
+        }
+        span "${state.number}" {
+            style {
+                fontFamily "var(--font-heading)"
+                fontWeight "400"
+                fontSize "clamp(1.6rem, 4vw, 2.6rem)"
+                lineHeight "1"
+                color "var(--color-text-muted)"
+                fontVariantNumeric tabular-nums
+            }
+        }
+        div {
+            style minWidth="0" {
+                @--sm gridColumn="1 / -1"
+            }
+            span "${state.tag}" {
+                style {
+                    display "${state.tag ? 'block' : 'none'}"
+                    fontFamily "var(--font-body)"
+                    fontSize "0.72rem"
+                    fontWeight "600"
+                    textTransform uppercase
+                    letterSpacing "0.16em"
+                    color "var(--color-primary)"
+                    marginBottom "0.6rem"
+                }
+            }
+            h3 "${state.title}" {
+                style {
+                    fontFamily "var(--font-heading)"
+                    fontWeight "600"
+                    fontSize "clamp(1.5rem, 3.2vw, 2.15rem)"
+                    lineHeight "1.1"
+                    letterSpacing "-0.015em"
+                    margin "0 0 0.6rem"
+                    color inherit
+                }
+            }
+            p "${state.excerpt}" {
+                style {
+                    fontFamily "var(--font-heading)"
+                    fontStyle italic
+                    fontWeight "400"
+                    fontSize "1.15rem"
+                    lineHeight "1.5"
+                    color "var(--color-text-muted)"
+                    margin "0"
+                    maxWidth "62ch"
+                }
+            }
+        }
+        div {
+            style textAlign=right whiteSpace=nowrap {
+                @--sm textAlign=left gridColumn="1 / -1"
+            }
+            span "${state.date}" {
+                style {
+                    display block
+                    fontFamily "var(--font-body)"
+                    fontSize "0.72rem"
+                    fontWeight "500"
+                    textTransform uppercase
+                    letterSpacing "0.14em"
+                    color "var(--color-text-muted)"
+                    marginBottom "0.6rem"
+                }
+            }
+            span "Read →" {
+                style {
+                    fontFamily "var(--font-body)"
+                    fontSize "0.78rem"
+                    fontWeight "600"
+                    textTransform uppercase
+                    letterSpacing "0.12em"
+                    color "var(--color-primary)"
+                }
+            }
+        }
+    }
+}

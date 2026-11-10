@@ -1,0 +1,81 @@
+/- kdl-version 2
+
+fs-cta {
+    state eyebrow="" heading="" text="" cta="Book a Class" ctaHref="/contact/"
+    style {
+        display block
+        position relative
+        overflow hidden
+        backgroundColor "var(--color-ink)"
+        color "var(--color-text-white)"
+        padding "clamp(3.5rem, 9vw, 6rem) 1.5rem"
+        textAlign center
+    }
+    div {
+        style {
+            position absolute
+            inset "0"
+            background "radial-gradient(ellipse 50% 60% at 12% 8%, rgba(255,46,99,0.4), transparent 60%), radial-gradient(ellipse 50% 60% at 90% 100%, rgba(255,140,66,0.32), transparent 60%)"
+            pointerEvents none
+        }
+    }
+    div {
+        style position=relative zIndex="2" maxWidth="var(--max-width-narrow)" margin="0 auto"
+        p "${state.eyebrow}" {
+            style {
+                display "${state.eyebrow ? 'block' : 'none'}"
+                margin "0 0 1rem"
+                fontFamily "var(--font-heading)"
+                textTransform uppercase
+                letterSpacing "0.22em"
+                fontSize "0.8rem"
+                fontWeight "700"
+                color "var(--color-ember)"
+            }
+        }
+        h2 "${state.heading}" {
+            style {
+                fontFamily "var(--font-display)"
+                fontSize "clamp(2.4rem, 6.5vw, 4.6rem)"
+                fontWeight "400"
+                lineHeight "0.95"
+                letterSpacing "0.01em"
+                textTransform uppercase
+                margin "0 0 1.1rem"
+                color "#ffffff"
+            }
+        }
+        p "${state.text}" {
+            style {
+                display "${state.text ? 'block' : 'none'}"
+                fontSize "1.12rem"
+                fontWeight "500"
+                lineHeight "1.65"
+                color "rgba(255,255,255,0.8)"
+                margin "0 auto 2rem"
+                maxWidth "48ch"
+            }
+        }
+        a href="${state.ctaHref}" "${state.cta}" {
+            style {
+                display inline-block
+                background "var(--grad-hot)"
+                color "#ffffff"
+                padding "1.05rem 2.6rem"
+                borderRadius "999px"
+                fontFamily "var(--font-heading)"
+                fontSize "0.92rem"
+                fontWeight "800"
+                textTransform uppercase
+                letterSpacing "0.06em"
+                textDecoration none
+                boxShadow "0 18px 44px -14px rgba(255,46,99,0.65)"
+                transition "transform 0.15s, box-shadow 0.15s"
+                :hover {
+                    transform "translateY(-3px)"
+                    boxShadow "0 24px 52px -14px rgba(255,46,99,0.75)"
+                }
+            }
+        }
+    }
+}

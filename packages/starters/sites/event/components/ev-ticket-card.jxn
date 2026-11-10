@@ -1,0 +1,169 @@
+/- kdl-version 2
+
+ev-ticket-card {
+    state {
+        tier ""
+        price ""
+        period ""
+        description ""
+        perk1 ""
+        perk2 ""
+        perk3 ""
+        perk4 ""
+        cta "Get tickets"
+        ctaHref "/tickets/"
+        featured #false
+        badge "Most popular"
+    }
+    style {
+        display flex
+        flexDirection column
+        position relative
+        padding "2.1rem"
+        borderRadius "var(--radius)"
+        border "${state.featured ? '2px solid transparent' : '1px solid var(--color-border)'}"
+        backgroundColor "${state.featured ? 'var(--color-bg-elev)' : 'var(--color-bg-elev)'}"
+        backgroundImage "${state.featured ? 'linear-gradient(var(--color-bg-elev), var(--color-bg-elev)), var(--grad)' : 'none'}"
+        backgroundOrigin border-box
+        backgroundClip "${state.featured ? 'padding-box, border-box' : 'border-box'}"
+        boxShadow "${state.featured ? '0 30px 70px -22px var(--glow)' : 'none'}"
+        transform "${state.featured ? 'translateY(-6px)' : 'none'}"
+    }
+    span "${state.badge}" {
+        style {
+            display "${state.featured ? 'inline-block' : 'none'}"
+            position absolute
+            top "-0.85rem"
+            left "50%"
+            transform "translateX(-50%)"
+            background "var(--grad-btn)"
+            color "#ffffff"
+            fontSize "0.7rem"
+            fontWeight "800"
+            letterSpacing "0.1em"
+            textTransform uppercase
+            padding "0.35rem 0.95rem"
+            borderRadius "999px"
+            whiteSpace nowrap
+            boxShadow "0 10px 26px -8px var(--glow)"
+        }
+    }
+    h3 "${state.tier}" {
+        style {
+            fontFamily "var(--font-heading)"
+            fontSize "1.4rem"
+            fontWeight "700"
+            letterSpacing "-0.01em"
+            margin "0 0 0.4rem"
+            color "var(--color-text-primary)"
+        }
+    }
+    p "${state.description}" {
+        style {
+            margin "0 0 1.35rem"
+            fontSize "0.95rem"
+            lineHeight "1.55"
+            color "var(--color-text-muted)"
+        }
+    }
+    div {
+        style display=flex alignItems=baseline gap="0.4rem" marginBottom="1.6rem"
+        span "${state.price}" {
+            style {
+                fontFamily "var(--font-heading)"
+                fontSize "2.7rem"
+                fontWeight "800"
+                letterSpacing "-0.03em"
+                lineHeight "1"
+                color "${state.featured ? 'transparent' : 'var(--color-text-primary)'}"
+                background "${state.featured ? 'var(--grad)' : 'none'}"
+                backgroundClip "${state.featured ? 'text' : 'border-box'}"
+                webkitBackgroundClip "${state.featured ? 'text' : 'border-box'}"
+                webkitTextFillColor "${state.featured ? 'transparent' : 'var(--color-text-primary)'}"
+            }
+        }
+        span "${state.period}" {
+            style fontSize="0.9rem" color="var(--color-text-muted)"
+        }
+    }
+    ul {
+        style {
+            listStyle none
+            margin "0 0 1.85rem"
+            padding "0"
+            display flex
+            flexDirection column
+            gap "0.7rem"
+            flex "1"
+        }
+        li {
+            style {
+                display "${state.perk1 ? 'flex' : 'none'}"
+                gap "0.65rem"
+                alignItems flex-start
+                fontSize "0.95rem"
+                color "var(--color-text-primary)"
+            }
+            span ✓ {
+                style color="var(--color-lime)" fontWeight="800"
+            }
+            span "${state.perk1}"
+        }
+        li {
+            style {
+                display "${state.perk2 ? 'flex' : 'none'}"
+                gap "0.65rem"
+                alignItems flex-start
+                fontSize "0.95rem"
+                color "var(--color-text-primary)"
+            }
+            span ✓ {
+                style color="var(--color-lime)" fontWeight="800"
+            }
+            span "${state.perk2}"
+        }
+        li {
+            style {
+                display "${state.perk3 ? 'flex' : 'none'}"
+                gap "0.65rem"
+                alignItems flex-start
+                fontSize "0.95rem"
+                color "var(--color-text-primary)"
+            }
+            span ✓ {
+                style color="var(--color-lime)" fontWeight="800"
+            }
+            span "${state.perk3}"
+        }
+        li {
+            style {
+                display "${state.perk4 ? 'flex' : 'none'}"
+                gap "0.65rem"
+                alignItems flex-start
+                fontSize "0.95rem"
+                color "var(--color-text-primary)"
+            }
+            span ✓ {
+                style color="var(--color-lime)" fontWeight="800"
+            }
+            span "${state.perk4}"
+        }
+    }
+    a href="${state.ctaHref}" "${state.cta}" {
+        style {
+            display block
+            textAlign center
+            padding "0.9rem 1.5rem"
+            borderRadius "999px"
+            fontSize "1rem"
+            fontWeight "700"
+            textDecoration none
+            transition "transform 0.15s, box-shadow 0.15s, background-color 0.15s"
+            color "${state.featured ? '#ffffff' : 'var(--color-text-primary)'}"
+            background "${state.featured ? 'var(--grad-btn)' : 'rgba(255,255,255,0.04)'}"
+            border "${state.featured ? 'none' : '1px solid var(--color-border)'}"
+            boxShadow "${state.featured ? '0 12px 30px -8px var(--glow)' : 'none'}"
+            :hover transform="translateY(-2px)"
+        }
+    }
+}

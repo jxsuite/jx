@@ -1,0 +1,29 @@
+/- kdl-version 2
+
+pv-project-grid {
+    state {}
+    style {
+        display grid
+        gridTemplateColumns "repeat(12, 1fr)"
+        gridAutoRows "clamp(230px, 32vw, 460px)"
+        gap "0.5rem"
+        padding "0 0.5rem"
+        "& pv-project-card" gridColumn="span 6"
+        "& pv-project-card:nth-of-type(6n + 1)" gridColumn="span 7"
+        "& pv-project-card:nth-of-type(6n + 2)" gridColumn="span 5"
+        "& pv-project-card:nth-of-type(6n + 3)" gridColumn="span 5"
+        "& pv-project-card:nth-of-type(6n + 4)" gridColumn="span 7"
+        "& pv-project-card:nth-of-type(6n + 5)" gridColumn="span 6"
+        "& pv-project-card:nth-of-type(6n + 6)" gridColumn="span 6"
+        @--sm gridTemplateColumns="1fr" gridAutoRows="68vw" {
+            "& pv-project-card" gridColumn="span 1"
+            "& pv-project-card:nth-of-type(6n + 1)" gridColumn="span 1"
+            "& pv-project-card:nth-of-type(6n + 2)" gridColumn="span 1"
+            "& pv-project-card:nth-of-type(6n + 3)" gridColumn="span 1"
+            "& pv-project-card:nth-of-type(6n + 4)" gridColumn="span 1"
+            "& pv-project-card:nth-of-type(6n + 5)" gridColumn="span 1"
+            "& pv-project-card:nth-of-type(6n + 6)" gridColumn="span 1"
+        }
+    }
+    slot
+}

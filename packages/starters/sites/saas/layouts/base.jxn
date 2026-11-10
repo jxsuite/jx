@@ -1,0 +1,17 @@
+/- kdl-version 2
+$elements (ref)"../components/sa-nav.jxn" (ref)"../components/sa-footer.jxn"
+
+div {
+    style {
+        minHeight "100vh"
+        display flex
+        flexDirection column
+        backgroundColor "var(--color-bg-white)"
+    }
+    sa-nav
+    main {
+        style flex="1"
+        slot
+    }
+    sa-footer
+}

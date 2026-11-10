@@ -1,0 +1,72 @@
+/- kdl-version 2
+
+pv-contact-form {
+    state heading="Project inquiry"
+    style display=block {
+        "& input" {
+            width "100%"
+            padding "0.85rem 1rem"
+            border "1px solid var(--color-line)"
+            backgroundColor "var(--color-bg-elev)"
+            color "var(--color-text-primary)"
+            borderRadius "0"
+            fontSize "1rem"
+            fontFamily inherit
+            outline none
+        }
+        "& input:focus" borderColor="var(--color-primary)"
+        "& textarea:focus" borderColor="var(--color-primary)"
+    }
+    h3 "${state.heading}" {
+        style {
+            fontFamily "var(--font-heading)"
+            fontSize "1.9rem"
+            fontWeight "500"
+            margin "0 0 1.5rem"
+            color "var(--color-text-primary)"
+        }
+    }
+    form action="#" method=post {
+        style display=grid gap="1rem" alignContent=start
+        input type=text name=name placeholder="Your name" required="true" aria-label="Your name"
+        input type=email name=email placeholder="Email address" required="true" aria-label="Email address"
+        div {
+            style display=grid gridTemplateColumns="1fr 1fr" gap="1rem"
+            input type=text name=type placeholder="Type of project" aria-label="Type of project"
+            input type=date name=date aria-label="Preferred date"
+        }
+        textarea name=notes rows="4" placeholder="Tell us about the shoot…" aria-label="Project details" {
+            style {
+                width "100%"
+                padding "0.85rem 1rem"
+                border "1px solid var(--color-line)"
+                backgroundColor "var(--color-bg-elev)"
+                color "var(--color-text-primary)"
+                borderRadius "0"
+                fontSize "1rem"
+                fontFamily inherit
+                outline none
+            }
+        }
+        button type=submit "Send Inquiry →" {
+            style {
+                backgroundColor "var(--color-primary)"
+                color "var(--color-bg)"
+                padding "0.9rem 1.75rem"
+                border none
+                borderRadius "0"
+                fontSize "0.8rem"
+                fontWeight "700"
+                letterSpacing "0.14em"
+                textTransform uppercase
+                cursor pointer
+                justifySelf start
+                transition "background-color 0.15s"
+                :hover backgroundColor="var(--color-primary-hover)"
+            }
+        }
+        p "Demo form — wire it to your booking provider or email in pages/contact.md." {
+            style fontSize="0.85rem" color="var(--color-text-muted)" margin="0"
+        }
+    }
+}

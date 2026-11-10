@@ -1,0 +1,275 @@
+/- kdl-version 2
+
+np-hero {
+    state {
+        eyebrow ""
+        heading ""
+        headingAccent ""
+        headingTail ""
+        subheading ""
+        cta "Donate Now"
+        ctaHref "/get-involved/"
+        cta2 ""
+        cta2Href "/programs/"
+        badgeNumber "640"
+        badgeLabel "neighbors volunteering this month"
+        bg type=string format=image default=""
+    }
+    style display=block position=relative overflow=hidden backgroundColor="var(--color-bg-cream)"
+    div {
+        style {
+            position absolute
+            top "-14rem"
+            right "-10rem"
+            width "34rem"
+            height "34rem"
+            borderRadius "48% 52% 58% 42% / 52% 44% 56% 48%"
+            backgroundColor "var(--color-primary-soft)"
+            opacity "0.7"
+        }
+    }
+    div {
+        style {
+            position absolute
+            bottom "-12rem"
+            left "-9rem"
+            width "26rem"
+            height "26rem"
+            borderRadius "42% 58% 46% 54% / 55% 48% 52% 45%"
+            backgroundColor "var(--color-gold-soft)"
+            opacity "0.55"
+        }
+    }
+    div {
+        style {
+            position relative
+            zIndex "2"
+            maxWidth "var(--max-width)"
+            margin "0 auto"
+            padding "clamp(2.75rem, 6vw, 5rem) 1.5rem clamp(3rem, 7vw, 5.5rem)"
+            display grid
+            gridTemplateColumns "1.05fr 0.95fr"
+            gap "clamp(2rem, 5vw, 4.5rem)"
+            alignItems center
+            @--md gridTemplateColumns="1fr" gap="2.75rem"
+        }
+        div {
+            p {
+                style {
+                    display inline-flex
+                    alignItems center
+                    gap "0.55rem"
+                    padding "0.42rem 1rem 0.42rem 0.6rem"
+                    borderRadius "999px"
+                    backgroundColor "var(--color-bg-white)"
+                    border "1px solid var(--color-border)"
+                    boxShadow "0 6px 16px -12px rgba(23,58,43,0.5)"
+                    fontFamily "var(--font-body)"
+                    fontSize "0.82rem"
+                    fontWeight "700"
+                    color "var(--color-text-secondary)"
+                    margin "0 0 1.6rem"
+                }
+                span 🌱 {
+                    style {
+                        display inline-flex
+                        alignItems center
+                        justifyContent center
+                        width "1.4rem"
+                        height "1.4rem"
+                        borderRadius "999px"
+                        backgroundColor "var(--color-primary-soft)"
+                        color "var(--color-primary)"
+                        fontSize "0.8rem"
+                    }
+                }
+                span "${state.eyebrow}"
+            }
+            h1 {
+                style {
+                    fontFamily "var(--font-display)"
+                    fontSize "clamp(2.6rem, 6vw, 4.6rem)"
+                    fontWeight "600"
+                    lineHeight "1.02"
+                    letterSpacing "-0.02em"
+                    margin "0 0 1.4rem"
+                    color "var(--color-primary-deep)"
+                }
+                span "${state.heading} "
+                span "${state.headingAccent}" {
+                    style fontStyle=italic fontWeight="500" color="var(--color-accent)"
+                }
+                span "${state.headingTail}"
+            }
+            p "${state.subheading}" {
+                style {
+                    fontSize "clamp(1.08rem, 1.6vw, 1.28rem)"
+                    lineHeight "1.65"
+                    color "var(--color-text-secondary)"
+                    margin "0 0 2rem"
+                    maxWidth "46ch"
+                }
+            }
+            div {
+                style display=flex alignItems=center gap="0.9rem" flexWrap=wrap
+                a href="${state.ctaHref}" {
+                    style {
+                        display inline-flex
+                        alignItems center
+                        gap "0.5rem"
+                        backgroundColor "var(--color-accent)"
+                        color "var(--color-text-white)"
+                        padding "1rem 2.25rem"
+                        borderRadius "999px"
+                        fontSize "1.05rem"
+                        fontWeight "800"
+                        textDecoration none
+                        boxShadow "0 16px 34px -14px rgba(242,106,61,0.8)"
+                        transition "background-color 0.15s, transform 0.15s"
+                        :hover {
+                            backgroundColor "var(--color-accent-hover)"
+                            transform "translateY(-2px)"
+                        }
+                    }
+                    span ❤ {
+                        style fontSize="0.95rem"
+                    }
+                    span "${state.cta}"
+                }
+                a href="${state.cta2Href}" "${state.cta2} →" {
+                    style {
+                        display "${state.cta2 ? 'inline-flex' : 'none'}"
+                        alignItems center
+                        gap "0.5rem"
+                        backgroundColor "var(--color-bg-white)"
+                        border "1px solid var(--color-border-strong)"
+                        color "var(--color-primary-deep)"
+                        padding "1rem 1.75rem"
+                        borderRadius "999px"
+                        fontSize "1.05rem"
+                        fontWeight "800"
+                        textDecoration none
+                        transition "border-color 0.15s, transform 0.15s"
+                        :hover borderColor="var(--color-primary)" transform="translateY(-2px)"
+                    }
+                }
+            }
+            div {
+                style {
+                    display flex
+                    alignItems center
+                    gap "1.25rem"
+                    flexWrap wrap
+                    marginTop "2rem"
+                    fontFamily "var(--font-body)"
+                    fontSize "0.9rem"
+                    fontWeight "700"
+                    color "var(--color-text-secondary)"
+                }
+                span {
+                    style display=inline-flex alignItems=center gap="0.45rem"
+                    span ✔ {
+                        style color="var(--color-primary)" fontSize="1rem"
+                    }
+                    span "94¢ of every $1 to programs"
+                }
+                span {
+                    style {
+                        width "0.35rem"
+                        height "0.35rem"
+                        borderRadius "999px"
+                        backgroundColor "var(--color-border-strong)"
+                        @--sm display=none
+                    }
+                }
+                span {
+                    style display=inline-flex alignItems=center gap="0.45rem"
+                    span ✔ {
+                        style color="var(--color-primary)" fontSize="1rem"
+                    }
+                    span "501(c)(3) since 2007"
+                }
+            }
+        }
+        div {
+            style position=relative {
+                @--md maxWidth="460px" margin="0 auto" width="100%"
+            }
+            div {
+                style {
+                    position absolute
+                    inset "1.25rem -1rem -1.25rem 1.25rem"
+                    borderRadius "58% 42% 46% 54% / 55% 52% 48% 45%"
+                    backgroundColor "var(--color-primary)"
+                    opacity "0.14"
+                }
+            }
+            div {
+                style {
+                    position relative
+                    aspectRatio "1 / 1"
+                    borderRadius "56% 44% 47% 53% / 55% 50% 50% 45%"
+                    overflow hidden
+                    boxShadow "var(--shadow-float)"
+                    border "6px solid var(--color-bg-white)"
+                }
+                img src="${state.bg}" alt="Rivertown Foundation volunteers helping neighbors" {
+                    style {
+                        position absolute
+                        inset "0"
+                        width "100%"
+                        height "100%"
+                        objectFit cover
+                        display block
+                    }
+                }
+            }
+            div {
+                style {
+                    position absolute
+                    left "-0.5rem"
+                    bottom "1.5rem"
+                    display flex
+                    alignItems center
+                    gap "0.85rem"
+                    padding "0.85rem 1.25rem 0.85rem 0.9rem"
+                    backgroundColor "var(--color-bg-white)"
+                    borderRadius "1.25rem"
+                    boxShadow "var(--shadow-card)"
+                    @--sm left="0.5rem" bottom="0.75rem"
+                }
+                span 🤝 {
+                    style {
+                        display inline-flex
+                        alignItems center
+                        justifyContent center
+                        width "2.9rem"
+                        height "2.9rem"
+                        borderRadius "999px"
+                        backgroundColor "var(--color-gold-soft)"
+                        fontSize "1.35rem"
+                    }
+                }
+                span {
+                    style display=flex flexDirection=column lineHeight="1.1"
+                    span "${state.badgeNumber}" {
+                        style {
+                            fontFamily "var(--font-display)"
+                            fontSize "1.5rem"
+                            fontWeight "700"
+                            color "var(--color-primary-deep)"
+                        }
+                    }
+                    span "${state.badgeLabel}" {
+                        style {
+                            fontSize "0.78rem"
+                            fontWeight "700"
+                            color "var(--color-text-muted)"
+                            maxWidth "12ch"
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

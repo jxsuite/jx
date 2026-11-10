@@ -371,6 +371,16 @@ describe("choosing the target", () => {
     expect(state.files.get("pages/about.jxn")).toBe("/- kdl-version 2\n\nmain About\n");
   });
 
+  test("a layout moves to Jx Notation, its one conversion, even with formats installed", async () => {
+    install({
+      "layouts/base.json": '{ "tagName": "div", "children": [{ "tagName": "slot" }] }',
+    });
+    const pending = convertFile("layouts/base.json");
+    await answerConfirm(true);
+    expect(await pending).toBe("layouts/base.jxn");
+    expect(state.files.get("layouts/base.jxn")).toBe("/- kdl-version 2\n\ndiv {\n    slot\n}\n");
+  });
+
   test("a .jxn page goes back to JSON as the same document", async () => {
     install({ "pages/about.jxn": "/- kdl-version 2\n\n// Kept until now.\nmain About\n" });
     const pending = convertFile("pages/about.jxn", ".json");

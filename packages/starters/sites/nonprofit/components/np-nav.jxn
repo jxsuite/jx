@@ -1,0 +1,157 @@
+/- kdl-version 2
+
+np-nav {
+    state {
+        brand "Rivertown Foundation"
+        notice "Every gift is matched 2× this month — until it's gone."
+    }
+    style display=block position=sticky top="0" zIndex="50"
+    div {
+        style backgroundColor="var(--color-primary-deep)" color="var(--color-text-white)"
+        div {
+            style {
+                maxWidth "var(--max-width-wide)"
+                margin "0 auto"
+                padding "0.5rem 1.5rem"
+                display flex
+                alignItems center
+                justifyContent center
+                gap "0.6rem"
+                fontFamily "var(--font-body)"
+                fontSize "0.82rem"
+                fontWeight "700"
+                textAlign center
+            }
+            span ✦ {
+                style flex=none fontSize="0.95rem" lineHeight="1"
+            }
+            span "${state.notice}" {
+                style color="var(--color-gold-soft)"
+            }
+        }
+    }
+    div {
+        style {
+            backgroundColor "rgba(251,245,236,0.88)"
+            backdropFilter "blur(10px)"
+            borderBottom "1px solid var(--color-border)"
+        }
+        div {
+            style {
+                maxWidth "var(--max-width-wide)"
+                margin "0 auto"
+                padding "0.85rem 1.5rem"
+                display flex
+                alignItems center
+                justifyContent space-between
+                gap "1.5rem"
+            }
+            a href="/" {
+                style {
+                    display flex
+                    alignItems center
+                    gap "0.7rem"
+                    textDecoration none
+                    color "var(--color-text-primary)"
+                }
+                span ❤ {
+                    style {
+                        display inline-flex
+                        alignItems center
+                        justifyContent center
+                        width "2.5rem"
+                        height "2.5rem"
+                        borderRadius "999px 999px 999px 4px"
+                        backgroundColor "var(--color-primary)"
+                        color "var(--color-text-white)"
+                        fontSize "1.2rem"
+                        boxShadow "0 8px 18px -8px rgba(47,125,85,0.8)"
+                    }
+                }
+                span {
+                    style display=flex flexDirection=column lineHeight="1.05"
+                    span "${state.brand}" {
+                        style {
+                            fontFamily "var(--font-display)"
+                            fontSize "1.32rem"
+                            fontWeight "600"
+                            letterSpacing "-0.01em"
+                        }
+                    }
+                    span "Neighbors helping neighbors" {
+                        style {
+                            fontFamily "var(--font-body)"
+                            fontSize "0.68rem"
+                            fontWeight "700"
+                            textTransform uppercase
+                            letterSpacing "0.18em"
+                            color "var(--color-primary)"
+                            @--sm display=none
+                        }
+                    }
+                }
+            }
+            nav {
+                style display=flex alignItems=center gap="1.7rem" {
+                    @--sm gap="0.9rem"
+                }
+                a href="/programs/" Programs {
+                    style {
+                        color "var(--color-text-primary)"
+                        textDecoration none
+                        fontWeight "700"
+                        fontSize "0.96rem"
+                        transition "color 0.15s"
+                        :hover color="var(--color-primary)"
+                    }
+                }
+                a href="/about/" About {
+                    style {
+                        color "var(--color-text-primary)"
+                        textDecoration none
+                        fontWeight "700"
+                        fontSize "0.96rem"
+                        transition "color 0.15s"
+                        @--md display=none
+                        :hover color="var(--color-primary)"
+                    }
+                }
+                a href="/get-involved/" "Get Involved" {
+                    style {
+                        color "var(--color-text-primary)"
+                        textDecoration none
+                        fontWeight "700"
+                        fontSize "0.96rem"
+                        transition "color 0.15s"
+                        @--sm display=none
+                        :hover color="var(--color-primary)"
+                    }
+                }
+                a href="/get-involved/" {
+                    style {
+                        display inline-flex
+                        alignItems center
+                        gap "0.4rem"
+                        backgroundColor "var(--color-accent)"
+                        color "var(--color-text-white)"
+                        padding "0.6rem 1.5rem"
+                        borderRadius "999px"
+                        textDecoration none
+                        fontWeight "800"
+                        fontSize "0.96rem"
+                        boxShadow "0 10px 22px -8px rgba(242,106,61,0.75)"
+                        transition "background-color 0.15s, transform 0.15s"
+                        :hover {
+                            backgroundColor "var(--color-accent-hover)"
+                            transform "translateY(-1px)"
+                        }
+                    }
+                    span ❤ {
+                        style fontSize="0.9rem"
+                    }
+                    span Donate
+                }
+            }
+        }
+    }
+}

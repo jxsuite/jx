@@ -1,0 +1,38 @@
+/- kdl-version 2
+
+bit-feature {
+    state number="" title="" text=""
+    style display=block paddingTop="1.5rem" borderTop="1px solid var(--color-border-strong)"
+    div {
+        style display=flex alignItems=baseline gap="0.9rem" marginBottom="1rem"
+        span "${state.number}" {
+            style {
+                fontFamily "var(--font-heading)"
+                fontSize "1.35rem"
+                fontWeight "600"
+                fontStyle italic
+                color "var(--color-primary)"
+                fontVariantNumeric tabular-nums
+            }
+        }
+        h3 "${state.title}" {
+            style {
+                fontFamily "var(--font-heading)"
+                fontSize "1.45rem"
+                fontWeight "700"
+                letterSpacing "-0.01em"
+                margin "0"
+                color "var(--color-text-primary)"
+            }
+        }
+    }
+    p "${state.text}" {
+        style {
+            margin "0"
+            fontFamily "var(--font-body)"
+            color "var(--color-text-muted)"
+            fontSize "1rem"
+            lineHeight "1.7"
+        }
+    }
+}

@@ -1,0 +1,22 @@
+/- kdl-version 2
+$elements {
+    - (ref)"../components/hs-nav.jxn"
+    - (ref)"../components/hs-footer.jxn"
+    - (ref)"../components/hs-callbar.jxn"
+}
+
+div {
+    style {
+        minHeight "100vh"
+        display flex
+        flexDirection column
+        backgroundColor "var(--color-bg-white)"
+    }
+    hs-nav
+    main {
+        style flex="1"
+        slot
+    }
+    hs-footer
+    hs-callbar
+}

@@ -1,0 +1,116 @@
+/- kdl-version 2
+
+fs-footer {
+    state {
+        brand EMBER
+        tagline "Yoga, pilates, HIIT and strength for every body — small classes, big momentum."
+        address "412 Willow Avenue, Bridgewater"
+        phone "(555) 240-7788"
+    }
+    style {
+        display block
+        backgroundColor "var(--color-ink)"
+        color "var(--color-text-white)"
+        padding "clamp(3rem, 6vw, 4.5rem) 1.5rem 2rem"
+    }
+    div {
+        style {
+            maxWidth "var(--max-width)"
+            margin "0 auto"
+            display grid
+            gridTemplateColumns "2fr 1fr 1fr"
+            gap "2.5rem"
+            @--md gridTemplateColumns="1fr"
+        }
+        div {
+            div {
+                style display=flex alignItems=center gap="0.6rem" marginBottom="1rem"
+                span {
+                    style width="1.5rem" height="1.5rem" borderRadius="50%" background="var(--grad)"
+                }
+                span "${state.brand}" {
+                    style {
+                        fontFamily "var(--font-display)"
+                        fontSize "1.7rem"
+                        letterSpacing "0.02em"
+                        color "#ffffff"
+                        lineHeight "1"
+                    }
+                }
+            }
+            p "${state.tagline}" {
+                style margin="0" opacity="0.72" maxWidth="34ch" lineHeight="1.7"
+            }
+        }
+        div {
+            div Visit {
+                style {
+                    fontFamily "var(--font-heading)"
+                    textTransform uppercase
+                    letterSpacing "0.12em"
+                    fontSize "0.72rem"
+                    fontWeight "700"
+                    color "var(--color-ember)"
+                    marginBottom "0.9rem"
+                }
+            }
+            p "${state.address}" {
+                style margin="0 0 0.35rem" opacity="0.85"
+            }
+            p "${state.phone}" {
+                style margin="0" opacity="0.85"
+            }
+        }
+        div {
+            div Explore {
+                style {
+                    fontFamily "var(--font-heading)"
+                    textTransform uppercase
+                    letterSpacing "0.12em"
+                    fontSize "0.72rem"
+                    fontWeight "700"
+                    color "var(--color-ember)"
+                    marginBottom "0.9rem"
+                }
+            }
+            a href="/classes/" Schedule {
+                style {
+                    display block
+                    color "#ffffff"
+                    opacity "0.85"
+                    textDecoration none
+                    marginBottom "0.4rem"
+                    :hover opacity="1" color="var(--color-ember)"
+                }
+            }
+            a href="/pricing/" Pricing {
+                style {
+                    display block
+                    color "#ffffff"
+                    opacity "0.85"
+                    textDecoration none
+                    marginBottom "0.4rem"
+                    :hover opacity="1" color="var(--color-ember)"
+                }
+            }
+            a href="/contact/" "Book a Class" {
+                style display=block color="#ffffff" opacity="0.85" textDecoration=none {
+                    :hover opacity="1" color="var(--color-ember)"
+                }
+            }
+        }
+    }
+    div {
+        style {
+            maxWidth "var(--max-width)"
+            margin "2.75rem auto 0"
+            paddingTop "1.5rem"
+            borderTop "1px solid rgba(255,255,255,0.14)"
+            fontSize "0.85rem"
+            opacity "0.55"
+        }
+        p "© Ember Yoga & Fitness. Built with Jx." {
+            style margin="0"
+        }
+    }
+}
