@@ -96,12 +96,12 @@
     "& [part=\"key-head\"], & [part=\"locale-head\"]": {
       "padding": "2px 6px",
       "borderBottom": "1px solid var(--border)",
-      "color": "var(--fg-dim)",
-      "fontSize": "var(--jx-text-sm)",
-      "fontWeight": "700",
+      "color": "var(--jx-heading-color)",
+      "fontSize": "var(--jx-heading-size)",
+      "fontWeight": "var(--jx-heading-weight)",
       "textAlign": "start",
       "textTransform": "uppercase",
-      "letterSpacing": "0.04em",
+      "letterSpacing": "var(--jx-heading-tracking)",
       "whiteSpace": "nowrap"
     },
     "& [part=\"default-mark\"]": {

@@ -74,11 +74,11 @@
     "& [part=\"card-label\"]": {
       "display": "block",
       "paddingBottom": "var(--jx-space-3)",
-      "fontSize": "var(--jx-text-sm)",
-      "fontWeight": "700",
-      "letterSpacing": "0.06em",
+      "fontSize": "var(--jx-heading-size)",
+      "fontWeight": "var(--jx-heading-weight)",
+      "letterSpacing": "var(--jx-heading-tracking)",
       "textTransform": "uppercase",
-      "color": "var(--fg-dim)"
+      "color": "var(--jx-heading-color)"
     },
     "& [part=\"serp-url\"]": {
       "overflow": "hidden",
@@ -258,11 +258,11 @@
     },
     "& [part=\"group-title\"]": {
       "margin": "0 0 var(--jx-space-1)",
-      "fontSize": "var(--jx-text-sm)",
-      "fontWeight": "600",
+      "fontSize": "var(--jx-heading-size)",
+      "fontWeight": "var(--jx-heading-weight)",
       "textTransform": "uppercase",
-      "letterSpacing": "0.06em",
-      "color": "var(--fg-dim)"
+      "letterSpacing": "var(--jx-heading-tracking)",
+      "color": "var(--jx-heading-color)"
     },
     "& [part=\"group-note\"]": {
       "margin": "0 0 var(--jx-space-3)",

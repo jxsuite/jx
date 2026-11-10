@@ -3,6 +3,7 @@ import "./with-dom.ts";
 import { getNestedStyle } from "@jxsuite/schema/guards";
 import { buildSiteStyleCSS } from "@jxsuite/site/site-style";
 import project from "../project.json";
+import accordionItem from "../components/jx-accordion-item.json";
 
 import { describe, expect, test } from "bun:test";
 
@@ -212,6 +213,23 @@ describe("theme", () => {
         ).toBeGreaterThanOrEqual(3);
       }
     }
+  });
+
+  test("a section heading is four tokens, and the accordion's summary draws all of them", () => {
+    // `ui.md` §4.1. Studio drew its panel headings in seven combinations of size, tracking and
+    // Weight; the recipe is the kit's now, so a heading reads as a heading wherever it stands and a
+    // Theme retunes every one in one place.
+    expect(themeTokens).toMatchObject({
+      "--jx-heading-size": "var(--jx-text-sm)",
+      "--jx-heading-weight": "600",
+      "--jx-heading-tracking": "0.06em",
+      "--jx-heading-color": "var(--jx-fg-dim)",
+    });
+    const summary = JSON.stringify(accordionItem.style);
+    for (const token of ["size", "weight", "tracking", "color"]) {
+      expect(summary).toContain(`var(--jx-heading-${token})`);
+    }
+    expect(summary).toContain('"textTransform":"uppercase"');
   });
 
   test("compact density keeps the 24px control and buys its density from the type", () => {
