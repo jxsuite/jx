@@ -52,11 +52,13 @@ import {
 import { globalEntries, namedFormulaEntries } from "../ui/formula-catalog";
 import { notify } from "../services/notify";
 import type { NotifyOptions } from "../services/notify";
+import { createTypeCheck } from "../services/type-check";
+import type { TypeCheckInit } from "../services/type-check";
 
 import type { BufferWrites } from "../services/monaco-buffer";
 import { noteTyping } from "../tabs/typing";
 import type { OxLintDiagnostic } from "../services/code-services";
-import type { JsonValue, JxDocumentValue } from "@jxsuite/schema/types";
+import type { JsonValue, JxDocumentValue, JxElement } from "@jxsuite/schema/types";
 import type { JxPath } from "../state";
 import type { Tab } from "../tabs/tab";
 
@@ -66,6 +68,34 @@ type EditingTarget =
 
 /** The Monaco instance plus the four fields this module hangs off it (declared in `../view`). */
 type FunctionEditor = NonNullable<typeof view.functionEditor>;
+
+/** Numbers the editors mounted this session, so each one's virtual file and Problems are its own. */
+let typeCheckSeq = 0;
+
+/**
+ * What names a body to the type check: which body it is, where it sits in its document, and what to
+ * call it in a Problem. Nothing for a target this module does not know.
+ */
+function typeCheckTarget(
+  tab: Tab,
+  editing: EditingTarget,
+): Pick<Parameters<typeof createTypeCheck>[0], "key" | "label" | "target"> | null {
+  if (editing.type === "def") {
+    return {
+      key: `${tab.id}:state/${editing.defName}`,
+      label: `state.${editing.defName}`,
+      target: { key: editing.defName, kind: "state" },
+    };
+  }
+  if ("eventKey" in editing) {
+    return {
+      key: `${tab.id}:${editing.path.join("/")}.${editing.eventKey}`,
+      label: editing.eventKey,
+      target: { eventKey: editing.eventKey, kind: "event", path: editing.path },
+    };
+  }
+  return null;
+}
 
 /**
  * The body `editing` names, read out of `tab`'s document.
@@ -241,6 +271,7 @@ export function disposeFunctionEditor(): void {
   const editor = view.functionEditor;
   if (editor) {
     commitBufferWrites(editor, "logic");
+    editor._typeCheck?.dispose();
     editor.dispose();
     view.functionEditor = null;
   }
@@ -453,6 +484,33 @@ async function mountFunctionEditor(
   editor._commitBody = bodyWriter(tab, editing, writes);
   view.functionEditor = editor;
 
+  /* Type errors (`studio.md` §16.7): the body is checked in a file of its own that declares `state`,
+     and the findings are drawn on this buffer beside the syntax errors Monaco reports. The answer
+     is wanted only while this editor is the one mounted and still holds the text it was asked
+     about, which is the same test the lint's answer is held to. */
+  const checked = typeCheckTarget(tab, editing);
+  if (checked) {
+    typeCheckSeq += 1;
+    const init: TypeCheckInit = {
+      ...checked,
+      /* SAFETY: a tab's document is a Jx element; the mutable view only adds the editing methods. */
+      document: () => (tabIsLive(tab) ? (tab.doc.document as JxElement) : null),
+      editor,
+      id: `fn${typeCheckSeq}`,
+      wanted: (code) =>
+        view.functionEditor === editor &&
+        tabIsLive(tab) &&
+        bufferIsLive(editor) &&
+        editor.getValue() === code,
+    };
+    if (tab.documentPath) {
+      init.path = tab.documentPath;
+    }
+    const typeCheck = createTypeCheck(init);
+    editor._typeCheck = typeCheck;
+    void typeCheck.run(body);
+  }
+
   let lintGen = 0;
 
   // Format on open — show pretty-printed code, then run initial lint.
@@ -485,6 +543,8 @@ async function mountFunctionEditor(
          repainting on the Problems badge, on Activity and on a 30-second git poll, "Format on open"
          visibly undid itself within seconds of every open. */
       writes.markAhead();
+      // The text moved, and so did every position a finding was drawn at.
+      void editor._typeCheck?.run(result.code);
     }
   });
   void codeService("lint", { args, code: body }).then((result) => {
@@ -515,6 +575,10 @@ async function mountFunctionEditor(
     writes.arm(BUFFER_COMMIT, 500, () => {
       editor._commitBody?.(editor.getValue());
       renderOnly("leftPanel");
+    });
+
+    writes.arm("types", 750, () => {
+      void editor._typeCheck?.run(editor.getValue());
     });
 
     writes.arm("lint", 750, () => {

@@ -13,7 +13,10 @@
 
 import { mock } from "bun:test";
 import type { DiagnosticsOptions } from "monaco-editor/languages/features/json/register";
-import type { DiagnosticsOptions as TypeScriptDiagnosticsOptions } from "monaco-editor/languages/features/typescript/register";
+import type {
+  CompilerOptions,
+  DiagnosticsOptions as TypeScriptDiagnosticsOptions,
+} from "monaco-editor/languages/features/typescript/register";
 
 /** The three entries that carry VALUES monaco-setup reads. */
 export const MONACO_EDITOR_ENTRY = "monaco-editor/editor";
@@ -44,8 +47,11 @@ export interface MonacoEditorApiDouble {
 export interface MonacoSetupMockOptions {
   /** Stands in for the `jsonDefaults` monaco-setup pushes diagnostics options into. */
   jsonDefaults?: { setDiagnosticsOptions: (options: DiagnosticsOptions) => void };
-  /** Stands in for the `typescriptDefaults` monaco-setup sets a body's diagnostics on. */
-  typescriptDefaults?: { setDiagnosticsOptions: (options: TypeScriptDiagnosticsOptions) => void };
+  /** Stands in for the `typescriptDefaults` monaco-setup sets a body's diagnostics and options on. */
+  typescriptDefaults?: {
+    setCompilerOptions?: (options: CompilerOptions) => void;
+    setDiagnosticsOptions: (options: TypeScriptDiagnosticsOptions) => void;
+  };
   /** Stands in for the editor API namespace (`editor.remeasureFonts`). */
   editorApi?: MonacoEditorApiDouble;
 }
@@ -58,8 +64,17 @@ export function installMonacoSetupMocks(options: MonacoSetupMockOptions = {}): v
   const jsonDefaults = options.jsonDefaults ?? { setDiagnosticsOptions: () => {} };
   void mock.module(MONACO_EDITOR_ENTRY, () => options.editorApi ?? {});
   void mock.module(MONACO_JSON_ENTRY, () => ({ jsonDefaults }));
-  const typescriptDefaults = options.typescriptDefaults ?? { setDiagnosticsOptions: () => {} };
-  void mock.module(MONACO_TYPESCRIPT_ENTRY, () => ({ typescriptDefaults }));
+  const typescriptDefaults = {
+    setCompilerOptions: () => {},
+    ...(options.typescriptDefaults ?? { setDiagnosticsOptions: () => {} }),
+  };
+  // The enums are the values monaco-setup names its compiler options by; the numbers are TypeScript's.
+  void mock.module(MONACO_TYPESCRIPT_ENTRY, () => ({
+    ModuleKind: { ESNext: 99 },
+    ModuleResolutionKind: { NodeJs: 2 },
+    ScriptTarget: { ESNext: 99 },
+    typescriptDefaults,
+  }));
   for (const entry of MONACO_SIDE_EFFECT_ENTRIES) {
     void mock.module(entry, () => ({}));
   }

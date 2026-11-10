@@ -14,6 +14,13 @@
 import { flush, installMockPlatform, registerPrimaryStage, resetWorkspaceWithTab } from "./harness";
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { surfaceForPane } from "../src/canvas/surface-registry";
+import {
+  installTypeCheckDouble,
+  resetTypeCheckDouble,
+  typeCheckDispose,
+  typeCheckRun,
+  typeChecks,
+} from "./type-check-double";
 import type { CanvasPanel, CodeServiceResult, FunctionEditDef, StudioPlatform } from "../src/types";
 import { isJsonObject, isString } from "@jxsuite/schema/guards";
 import type { JsonObject, JxMutableNode } from "@jxsuite/schema/types";
@@ -165,6 +172,8 @@ void mock.module("monaco-editor/editor", () => ({
     registerCompletionItemProvider,
   },
 }));
+
+installTypeCheckDouble();
 
 const { closeFunctionEditor, registerFunctionCompletions, syncFunctionEditor } =
   await import("../src/panels/editors");
@@ -374,6 +383,7 @@ beforeEach(() => {
   toolbarRender.mockClear();
   leftPanelRender.mockClear();
   setModelMarkers.mockClear();
+  resetTypeCheckDouble();
   // The function editor now registers completions when it MOUNTS (previously studio.ts did it at
   // Startup), so both the mock and the once-guard have to reset or the count depends on test order.
   registerCompletionItemProvider.mockClear();
@@ -1194,6 +1204,100 @@ describe("continuations that outlive their editor", () => {
     // `lintGen` counts within ONE mount, so the stale closure's generation still matches its own
     // Counter — nothing but the editor identity can tell this result apart from a current one.
     expect(setModelMarkers).not.toHaveBeenCalled();
+  });
+});
+
+describe("type errors (studio.md §16.7)", () => {
+  test("a state function is checked as it opens, named by its entry", async () => {
+    setEditing({ defName: "greet", type: "def" });
+    await paintLogic();
+    await flush();
+    expect(typeChecks).toHaveLength(1);
+    const [init] = typeChecks;
+    expect(init!.target).toEqual({ key: "greet", kind: "state" });
+    expect(init!.label).toBe("state.greet");
+    expect(init!.path).toBe("/project/pages/index.json");
+    expect(init!.id).toMatch(/^fn\d+$/u);
+    expect(init!.key).toBe(`${activeTab.value!.id}:state/greet`);
+    expect(typeCheckRun).toHaveBeenCalledWith("return 1;");
+  });
+
+  test("an inline handler is checked where it hangs, named by its event", async () => {
+    setEditing({ eventKey: "onclick", path: ["children", 0], type: "event" });
+    await paintLogic();
+    await flush();
+    expect(typeChecks[0]!.target).toEqual({
+      eventKey: "onclick",
+      kind: "event",
+      path: ["children", 0],
+    });
+    expect(typeChecks[0]!.label).toBe("onclick");
+    expect(typeChecks[0]!.key).toBe(`${activeTab.value!.id}:children/0.onclick`);
+    expect(typeCheckRun).toHaveBeenCalledWith("go()");
+  });
+
+  test("is not started for a target this surface does not know", async () => {
+    setEditing({ type: "mystery" });
+    await paintLogic();
+    await flush();
+    expect(typeChecks).toEqual([]);
+    expect("_typeCheck" in created.at(-1)!).toBe(false);
+  });
+
+  test("reads the document as it is now, so State follows an edit", async () => {
+    setEditing({ defName: "greet", type: "def" });
+    await paintLogic();
+    await flush();
+    expect(typeChecks[0]!.document()).toBe(activeTab.value!.doc.document);
+    closeAllTabs();
+    expect(typeChecks[0]!.document()).toBeNull();
+  });
+
+  test("is asked again 750ms after a keystroke, with what was typed", async () => {
+    setEditing({ defName: "greet", type: "def" });
+    await paintLogic();
+    await flush();
+    typeCheckRun.mockClear();
+    created[0]!.type("return state.nope;");
+    expect(typeCheckRun).not.toHaveBeenCalled();
+    await sleep(900);
+    expect(typeCheckRun).toHaveBeenCalledTimes(1);
+    expect(typeCheckRun).toHaveBeenCalledWith("return state.nope;");
+  });
+
+  test("is asked again once the formatted text lands, since every position moved", async () => {
+    formatResult = { code: "return 1;\n" };
+    setEditing({ defName: "greet", type: "def" });
+    await paintLogic();
+    await flush();
+    expect(typeCheckRun.mock.calls.map(([code]) => code)).toEqual(["return 1;", "return 1;\n"]);
+  });
+
+  test("wants an answer only while this editor holds the text it was asked about", async () => {
+    setEditing({ defName: "greet", type: "def" });
+    await paintLogic();
+    await flush();
+    const [init] = typeChecks;
+    const editor = created[0]!;
+    expect(init!.wanted("return 1;")).toBe(true);
+    expect(init!.wanted("something else")).toBe(false);
+    editor.value = "return 2;";
+    expect(init!.wanted("return 1;")).toBe(false);
+    expect(init!.wanted("return 2;")).toBe(true);
+    view.functionEditor = null;
+    expect(init!.wanted("return 2;")).toBe(false);
+  });
+
+  test("is released with the editor", async () => {
+    setEditing({ defName: "greet", type: "def" });
+    await paintLogic();
+    await flush();
+    expect(typeCheckDispose).not.toHaveBeenCalled();
+    setEditing(null);
+    await paintLogic();
+    expect(typeCheckDispose.mock.calls).toHaveLength(1);
+    expect(created[0]!.disposed).toBe(true);
+    expect(view.functionEditor).toBeNull();
   });
 });
 

@@ -6,6 +6,7 @@ code:
   - packages/studio/src/panels/formula-workspace.ts
   - packages/studio/src/canvas/canvas-render.ts
   - packages/studio/src/services/code-services.ts
+  - packages/studio/src/services/type-check.ts
   - packages/studio/src/settings/project-sections.ts
 ---
 
@@ -31,11 +32,14 @@ What you get:
 
 - **Formatting on open**: the body is pretty-printed before you start.
 - **Live linting**: problems are underlined as you type, with the message on hover.
+- **Type errors**: a body is checked against your page's `state`, so `state.nope = 1` is underlined with `Property 'nope' does not exist on type 'State'`, and each error is also listed in **Problems** under **Type check**. Nothing needs installing: the editor does the checking itself, in the desktop app and in the cloud editor alike.
 - **Completions**: type `state.` to see every entry from the **[Data panel](/docs/studio/logic/data)** (your values, data sources, and functions), and `window.` for the standard library (`Math`, `JSON`, …). Named formulas carry their descriptions into the suggestions.
 - **Automatic write-back**: edits flow into the document as you type; there is no separate apply step. Save the file as usual when you're done.
 - **Your last keystrokes are never the ones that get lost.** Write-back is batched, so at any instant the editor can be a moment ahead of the document, and every way out of it settles that first. Switching to Problems, collapsing the dock, moving to another document, opening a different formula, closing the editor: each one lands what you typed. Closing the tab or quitting counts that text as unsaved and asks you about it, even when nothing else in the document has changed. **Save** lights up with your first keystroke for the same reason, and saving lands what you typed before it writes the file.
 
 **Close**, in the editor's header, writes the body back one last time, exactly as you wrote it, types included, and takes the tab off the dock's strip. Until then the editor keeps its place: collapsing the dock or switching to another document and back leaves it exactly as it was. The same tab carries the **[formula workspace](/docs/studio/logic/formula-workspace)** when what you're editing is a structured expression rather than code.
+
+Type checking is as strict as TypeScript is, except that an untyped parameter is allowed, so a body written as plain JavaScript is not flooded with errors. A value your page does not define a type for (a fetched `Request`, a template, a computed function) is treated as any type rather than as an error, and the event a handler receives is any type too. A handler on an element inside a section that has its own `state` sees that state and its parents'. A page with a layout may use any name, since the layout's state is not known here. Errors in a body you are not editing are not listed until you open it, and a Problem stays listed after you close the editor until you open that body again.
 
 Inside a body, `state` holds your entries (`state.$count += 1` is the code twin of a **Set state** statement), event handlers also receive `event`, and a function's declared parameters are available by name.
 
