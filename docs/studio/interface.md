@@ -55,6 +55,8 @@ Studio's own labels, buttons and headings can't be selected, so dragging across 
 
 The bar across the top of the window. Everything in it is a command, so what you see here, what the [command palette](/docs/studio/interface/quick-access) offers and what a keyboard shortcut does can never disagree.
 
+Its buttons are full size, 24 pixels square or wider, so they are easy to hit; only the window's own close, minimize and maximize controls are smaller, matching your operating system.
+
 From left to right:
 
 - The **Studio menu** (the ≡ button at the left edge) holds the commands that don't need a permanent button, each with its own keyboard shortcut printed beside it: **Open Project…**, **Open Recent…**, **New Project…**, **Preferences…**, **Zen Mode**, and the rest.
