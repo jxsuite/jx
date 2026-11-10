@@ -2065,13 +2065,22 @@ async function createNewFile(dirPath: string, renderLeftPanel: () => void) {
               ext: collection.ext,
               kind: "locked",
             }
-          : { defaultExt: ".json", kind: "choose" },
+          : { defaultExt: defaultExtensionIn(dirPath), kind: "choose" },
       suggestedName: "untitled",
     });
   }
   if (created !== null) {
     renderLeftPanel();
   }
+}
+
+/**
+ * The extension New File starts on in a folder: Jx Notation in a folder of documents, where every
+ * new page, layout and component is written in it (§8.5), and JSON anywhere else, which is data.
+ */
+export function defaultExtensionIn(dirPath: string): string {
+  const [top] = dirPath.replaceAll("\\", "/").replace(/^\.\//, "").split("/");
+  return top === "pages" || top === "layouts" || top === "components" ? ".jxn" : ".json";
 }
 
 /**

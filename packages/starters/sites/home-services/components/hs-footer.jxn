@@ -1,0 +1,169 @@
+/- kdl-version 2
+
+hs-footer {
+    state {
+        brand SUMMIT
+        brandSub "HEATING & COOLING"
+        tagline "Reliable heating and cooling for Northern Colorado homes — repairs, installs, and 24/7 emergency service."
+        address "1420 Prospect Road, Fort Collins, CO 80525"
+        phone "(970) 555-0148"
+        phoneHref tel:+19705550148
+        license "CO HVAC Lic. #C-48219 · Bonded & Insured"
+    }
+    style {
+        display block
+        position relative
+        backgroundColor "var(--color-bg-dark)"
+        color "var(--color-text-white)"
+        paddingBottom "2rem"
+    }
+    div {
+        style height="6px" background="var(--hazard)"
+    }
+    div {
+        style {
+            maxWidth "var(--max-width)"
+            margin "0 auto"
+            padding "3.25rem 1.5rem 0"
+            display grid
+            gridTemplateColumns "2fr 1fr 1fr"
+            gap "2.5rem"
+            @--md gridTemplateColumns="1fr"
+        }
+        div {
+            div {
+                style display=flex alignItems=center gap="0.6rem" marginBottom="0.9rem"
+                span ▲ {
+                    style {
+                        display flex
+                        alignItems center
+                        justifyContent center
+                        width "2.3rem"
+                        height "2.3rem"
+                        backgroundColor "var(--color-primary)"
+                        color "var(--color-text-white)"
+                        borderRadius "0.3rem"
+                        fontFamily "var(--font-heading)"
+                        fontWeight "700"
+                        fontSize "1.25rem"
+                        clipPath "polygon(0 0, 100% 0, 100% 78%, 50% 100%, 0 78%)"
+                    }
+                }
+                span {
+                    style display=flex flexDirection=column lineHeight="1"
+                    span "${state.brand}" {
+                        style {
+                            fontFamily "var(--font-heading)"
+                            fontWeight "700"
+                            fontSize "1.25rem"
+                            letterSpacing "0.06em"
+                        }
+                    }
+                    span "${state.brandSub}" {
+                        style {
+                            fontFamily "var(--font-heading)"
+                            fontWeight "500"
+                            fontSize "0.58rem"
+                            letterSpacing "0.24em"
+                            color "var(--color-primary)"
+                            marginTop "0.15rem"
+                        }
+                    }
+                }
+            }
+            p "${state.tagline}" {
+                style margin="0 0 1rem" opacity="0.72" maxWidth="42ch" lineHeight="1.6"
+            }
+            p "${state.license}" {
+                style {
+                    margin "0"
+                    fontFamily "var(--font-heading)"
+                    fontSize "0.78rem"
+                    letterSpacing "0.05em"
+                    textTransform uppercase
+                    opacity "0.55"
+                }
+            }
+        }
+        div {
+            div Contact {
+                style {
+                    fontFamily "var(--font-heading)"
+                    textTransform uppercase
+                    letterSpacing "0.1em"
+                    fontSize "0.78rem"
+                    color "var(--color-primary)"
+                    marginBottom "0.9rem"
+                    fontWeight "600"
+                }
+            }
+            a href="${state.phoneHref}" "${state.phone}" {
+                style {
+                    display block
+                    fontFamily "var(--font-heading)"
+                    fontSize "1.35rem"
+                    fontWeight "700"
+                    color "var(--color-text-white)"
+                    textDecoration none
+                    marginBottom "0.55rem"
+                    letterSpacing "0.01em"
+                }
+            }
+            p "${state.address}" {
+                style margin="0" opacity="0.78" lineHeight="1.55"
+            }
+        }
+        div {
+            div Explore {
+                style {
+                    fontFamily "var(--font-heading)"
+                    textTransform uppercase
+                    letterSpacing "0.1em"
+                    fontSize "0.78rem"
+                    color "var(--color-primary)"
+                    marginBottom "0.9rem"
+                    fontWeight "600"
+                }
+            }
+            a href="/services/" Services {
+                style {
+                    display block
+                    color "var(--color-text-white)"
+                    opacity "0.82"
+                    textDecoration none
+                    marginBottom "0.45rem"
+                }
+            }
+            a href="/about/" About {
+                style {
+                    display block
+                    color "var(--color-text-white)"
+                    opacity "0.82"
+                    textDecoration none
+                    marginBottom "0.45rem"
+                }
+            }
+            a href="/contact/" Contact {
+                style {
+                    display block
+                    color "var(--color-text-white)"
+                    opacity "0.82"
+                    textDecoration none
+                }
+            }
+        }
+    }
+    div {
+        style {
+            maxWidth "var(--max-width)"
+            margin "2.5rem auto 0"
+            padding "1.5rem 1.5rem 0"
+            borderTop "1px solid var(--color-steel-line)"
+            fontSize "0.85rem"
+            opacity "0.55"
+        }
+        p "© Summit Heating & Cooling. Built with Jx." {
+            style margin="0"
+        }
+    }
+}

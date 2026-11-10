@@ -1,0 +1,151 @@
+/- kdl-version 2
+$translationKey "exhibitions/${slug}"
+$layout "./layouts/fr-ca.jxn"
+$paths contentType=exhibitions param=slug field=id
+$head {
+    meta name=description content="${state.entry.data.description}"
+}
+
+$element .title="${state.entry.data.title} — Atrium" .description="${state.entry.data.description}" {
+    state {
+        entry {
+            $prototype ContentEntry
+            $src "@jxsuite/parser/ContentEntry.class.json"
+            contentType exhibitions
+            field id
+            id (ref)"#/$params/slug"
+        }
+        opens {
+            $expression {
+                operator call
+                target (ref)"window#/Intl/formatDate"
+                value {
+                    - (ref)"#/state/entry/data/date"
+                    - #null
+                    - day=numeric month=long year=numeric
+                }
+            }
+        }
+        closes {
+            $expression {
+                operator call
+                target (ref)"window#/Intl/formatDate"
+                value {
+                    - (ref)"#/state/entry/data/until"
+                    - #null
+                    - day=numeric month=long year=numeric
+                }
+            }
+        }
+        works {
+            $expression {
+                operator call
+                target (ref)"window#/Intl/formatNumber"
+                value {
+                    - (ref)"#/state/entry/data/works"
+                }
+            }
+        }
+    }
+    article {
+        mu-pagehead {
+            $props {
+                kicker "${state.entry.data.gallery}"
+                title "${state.entry.data.title}"
+                standfirst "${state.entry.data.description}"
+                metaLabel Commissariat
+                metaValue "${state.entry.data.curator}"
+            }
+        }
+        mu-band {
+            $props index="01" label=L'exposition tone=chalk
+            div {
+                style {
+                    display grid
+                    gridTemplateColumns "minmax(0, 1.35fr) minmax(0, 0.75fr)"
+                    columnGap "clamp(2rem, 5vw, 4rem)"
+                    alignItems start
+                    @--md gridTemplateColumns="minmax(0, 1fr)" rowGap="2.5rem"
+                }
+                div {
+                    style maxWidth="var(--measure)" fontSize="1.08rem" lineHeight="1.8"
+                    .children {
+                        $array items=(ref)"#/state/entry/$children" {
+                            p "${item.textContent}" {
+                                style margin="0 0 1.35rem"
+                            }
+                        }
+                    }
+                }
+                aside {
+                    style {
+                        border "2px solid var(--color-ink)"
+                        backgroundColor "var(--color-card)"
+                        padding "clamp(1.1rem, 2.5vw, 1.6rem)"
+                    }
+                    p Cartel {
+                        style {
+                            margin "0 0 0.5rem"
+                            fontFamily "var(--font-label)"
+                            fontSize "0.64rem"
+                            letterSpacing "var(--label-tracking)"
+                            textTransform "var(--label-case)"
+                            color "var(--color-muted)"
+                        }
+                    }
+                    div aria-hidden="true" {
+                        style {
+                            aspectRatio "4 / 3"
+                            border "2px solid var(--color-ink)"
+                            marginBlockEnd "1.1rem"
+                            background "radial-gradient(circle at 62% 40%, hsl(${state.entry.data.hue} 55% 45%) 0 31%, transparent 31.5%), repeating-linear-gradient(${state.entry.data.hue}deg, var(--color-chalk-deep) 0 9px, var(--color-card) 9px 18px)"
+                        }
+                    }
+                    mu-fact {
+                        $props term=Ouverture value="${state.opens}" layout=stack
+                    }
+                    mu-fact {
+                        $props term=Clôture value="${state.closes}" layout=stack
+                    }
+                    mu-fact {
+                        $props term=Objets value="${state.works}" layout=stack
+                    }
+                    mu-fact {
+                        $props term=Où value="${state.entry.data.gallery}" layout=stack
+                    }
+                    mu-fact {
+                        $props term=Commissaire value="${state.entry.data.curator}" layout=stack
+                    }
+                    p "Chaque cartel de cette salle est écrit en trois langues, à longueur égale. Rien n'est abrégé pour le mur le plus court." {
+                        style {
+                            margin "1.25rem 0 0"
+                            paddingBlockStart "0.9rem"
+                            borderBlockStart "1px solid var(--color-hairline)"
+                            fontSize "0.9rem"
+                            lineHeight "1.6"
+                            color "var(--color-muted)"
+                        }
+                    }
+                }
+            }
+        }
+        mu-band {
+            $props index="02" label="Aussi à l'affiche" tone=card
+            p "Deux autres expositions sont ouvertes en même temps, et le même billet — aucun — donne accès aux trois." {
+                style margin="0 0 1.5rem" lineHeight="1.75" maxWidth="var(--measure)"
+            }
+            mu-more {
+                $props label="Toute la programmation" href="/fr-ca/expositions/"
+            }
+        }
+        mu-cta {
+            $props {
+                kicker "Entrée libre"
+                heading "C'est au rez-de-chaussée, et c'est ouvert en ce moment."
+                text "De dix heures à six heures, du mardi au dimanche. Entrez par le côté du quai et tournez à gauche au mur de la douane."
+                label "Préparer sa visite"
+                href "/fr-ca/visite/"
+            }
+        }
+    }
+}

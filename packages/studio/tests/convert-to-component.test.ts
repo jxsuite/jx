@@ -24,7 +24,8 @@ import { initLayers } from "../src/ui/layers";
 import { activeTab } from "../src/workspace/workspace";
 import { setTransactGate } from "../src/tabs/transact";
 import { isJsonObject, isString } from "@jxsuite/schema/guards";
-import type { JsonValue, JxMutableNode } from "@jxsuite/schema/types";
+import { parseJxn } from "@jxsuite/schema/jxn";
+import type { JxMutableNode } from "@jxsuite/schema/types";
 import type { Tab } from "../src/tabs/tab";
 
 // ─── Environment ──────────────────────────────────────────────────────────────
@@ -198,16 +199,16 @@ describe("conversion", () => {
     await done;
 
     expect(children()[0]).toEqual({ tagName: "hero-block" });
-    expect(tab.doc.document.$elements).toEqual([{ $ref: "../components/hero-block.json" }]);
+    expect(tab.doc.document.$elements).toEqual([{ $ref: "../components/hero-block.jxn" }]);
 
     const write = platformState.calls.find((c) => c[0] === "writeFile");
     expect(write).toBeDefined();
     const [, path, text] = write ?? [];
-    expect(path).toBe("components/hero-block.json");
+    expect(path).toBe("components/hero-block.jxn");
     if (!isString(text)) {
       throw new Error("the component file was written without text");
     }
-    const written: JsonValue = JSON.parse(text);
+    const written: unknown = parseJxn(text);
     if (!isJsonObject(written)) {
       throw new Error("the component file is not a JSON object");
     }
@@ -220,13 +221,13 @@ describe("conversion", () => {
 
   test("converting a second time does not duplicate the $ref", async () => {
     const doc = tab.doc.document;
-    doc.$elements = [{ $ref: "../components/hero-block.json" }];
+    doc.$elements = [{ $ref: "../components/hero-block.jxn" }];
     tab.session.selection = [["children", 0]];
     const { done } = await startDialog();
     setName("hero-block");
     confirmDialog();
     await done;
-    expect(doc.$elements).toEqual([{ $ref: "../components/hero-block.json" }]);
+    expect(doc.$elements).toEqual([{ $ref: "../components/hero-block.jxn" }]);
   });
 
   test("cancel leaves the document untouched", async () => {
@@ -265,7 +266,7 @@ describe("conversion", () => {
     expect(problem?.severity).toBe("warn");
     expect(problem?.message).toContain("slot problem");
     expect(problem?.source).toBe("Components");
-    expect(problem?.path).toBe("components/slotty-block.json");
+    expect(problem?.path).toBe("components/slotty-block.jxn");
   });
 
   test("a failing write is caught and still leaves the document converted", async () => {
@@ -382,7 +383,7 @@ describe("a refused conversion", () => {
     }
 
     expect(JSON.stringify(tab.doc.document)).toBe(before);
-    expect(platformState.files.has("components/frozen-widget.json")).toBe(false);
+    expect(platformState.files.has("components/frozen-widget.jxn")).toBe(false);
     // The gate raises its own keyed toast; this path adds no claim of its own beside it.
     expect(toasts.some((t) => t.message.startsWith("Converted to"))).toBe(false);
     expect(problems).toHaveLength(0);

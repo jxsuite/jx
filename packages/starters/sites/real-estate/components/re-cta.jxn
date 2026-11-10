@@ -1,0 +1,98 @@
+/- kdl-version 2
+
+re-cta {
+    state {
+        heading ""
+        text ""
+        cta "Contact an Agent"
+        ctaHref "/contact/"
+        cta2 ""
+        cta2Href "/listings/"
+    }
+    style {
+        display block
+        position relative
+        overflow hidden
+        background "radial-gradient(ellipse 55% 80% at 50% 120%, rgba(20,184,166,0.22), transparent 65%), var(--color-bg-dark)"
+        color "var(--color-text-white)"
+        padding "clamp(3.5rem, 8vw, 5.5rem) 1.5rem"
+        textAlign center
+    }
+    div {
+        style maxWidth="var(--max-width-narrow)" margin="0 auto" position=relative zIndex="2"
+        p "Northshore Realty" {
+            style {
+                textTransform uppercase
+                letterSpacing "0.18em"
+                fontSize "0.74rem"
+                fontWeight "700"
+                color "var(--color-accent-bright)"
+                margin "0 0 1rem"
+            }
+        }
+        h2 "${state.heading}" {
+            style {
+                fontFamily "var(--font-display)"
+                fontSize "clamp(2rem, 4.4vw, 3rem)"
+                fontWeight "500"
+                lineHeight "1.1"
+                letterSpacing "-0.015em"
+                margin "0 0 1rem"
+                color "var(--color-text-white)"
+            }
+        }
+        p "${state.text}" {
+            style {
+                fontSize "1.12rem"
+                lineHeight "1.65"
+                color "rgba(255,255,255,0.74)"
+                margin "0 auto 2.25rem"
+                maxWidth "50ch"
+            }
+        }
+        div {
+            style display=flex gap="0.75rem" justifyContent=center flexWrap=wrap
+            a href="${state.ctaHref}" {
+                style {
+                    display inline-flex
+                    alignItems center
+                    gap "0.5rem"
+                    backgroundColor "var(--color-accent-bright)"
+                    color "var(--color-ink)"
+                    padding "0.9rem 2rem"
+                    borderRadius "999px"
+                    fontSize "1.02rem"
+                    fontWeight "700"
+                    textDecoration none
+                    transition "transform 0.15s, box-shadow 0.15s"
+                    boxShadow "0 14px 34px -14px rgba(20,184,166,0.8)"
+                    :hover {
+                        transform "translateY(-2px)"
+                        boxShadow "0 20px 44px -14px rgba(20,184,166,0.9)"
+                    }
+                }
+                span "${state.cta}"
+                span →
+            }
+            a href="${state.cta2Href}" "${state.cta2}" {
+                style {
+                    display "${state.cta2 ? 'inline-flex' : 'none'}"
+                    alignItems center
+                    border "1px solid rgba(255,255,255,0.22)"
+                    backgroundColor "rgba(255,255,255,0.04)"
+                    color "var(--color-text-white)"
+                    padding "0.9rem 2rem"
+                    borderRadius "999px"
+                    fontSize "1.02rem"
+                    fontWeight "600"
+                    textDecoration none
+                    transition "background-color 0.15s, border-color 0.15s"
+                    :hover {
+                        backgroundColor "rgba(255,255,255,0.09)"
+                        borderColor "rgba(255,255,255,0.4)"
+                    }
+                }
+            }
+        }
+    }
+}

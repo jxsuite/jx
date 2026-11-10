@@ -1,0 +1,183 @@
+/- kdl-version 2
+
+hs-trust-bar {
+    state {
+        icon1 🎖️
+        item1 NATE-Certified
+        sub1 "Factory-trained techs"
+        icon2 🛡️
+        item2 "Licensed & Insured"
+        sub2 "Bonded · CO Lic. #C-48219"
+        icon3 🏅
+        item3 "BBB A+ Rated"
+        sub3 "600+ 5-star reviews"
+        icon4 💳
+        item4 "Financing Available"
+        sub4 "0% APR options"
+    }
+    style {
+        display block
+        backgroundColor "var(--color-bg-white)"
+        borderBottom "1px solid var(--color-border)"
+    }
+    div {
+        style {
+            maxWidth "var(--max-width)"
+            margin "0 auto"
+            display grid
+            gridTemplateColumns "repeat(4, 1fr)"
+            @--md gridTemplateColumns="repeat(2, 1fr)"
+            @--sm gridTemplateColumns="1fr"
+        }
+        div {
+            style {
+                display flex
+                alignItems center
+                gap "0.85rem"
+                padding "1.15rem 1.5rem"
+                borderRight "1px solid var(--color-border)"
+                @--sm borderRight=none borderBottom="1px solid var(--color-border)"
+            }
+            div "${state.icon1}" {
+                style {
+                    flexShrink "0"
+                    display flex
+                    alignItems center
+                    justifyContent center
+                    width "2.6rem"
+                    height "2.6rem"
+                    borderRadius "var(--radius-sm)"
+                    backgroundColor "var(--color-primary-soft)"
+                    fontSize "1.35rem"
+                    lineHeight "1"
+                }
+            }
+            div {
+                div "${state.item1}" {
+                    style {
+                        fontFamily "var(--font-heading)"
+                        textTransform uppercase
+                        letterSpacing "0.03em"
+                        fontWeight "600"
+                        fontSize "0.98rem"
+                        lineHeight "1.1"
+                    }
+                }
+                div "${state.sub1}" {
+                    style fontSize="0.82rem" color="var(--color-text-muted)" marginTop="0.15rem"
+                }
+            }
+        }
+        div {
+            style {
+                display flex
+                alignItems center
+                gap "0.85rem"
+                padding "1.15rem 1.5rem"
+                borderRight "1px solid var(--color-border)"
+                @--md borderRight=none
+                @--sm borderBottom="1px solid var(--color-border)"
+            }
+            div "${state.icon2}" {
+                style {
+                    flexShrink "0"
+                    display flex
+                    alignItems center
+                    justifyContent center
+                    width "2.6rem"
+                    height "2.6rem"
+                    borderRadius "var(--radius-sm)"
+                    backgroundColor "var(--color-primary-soft)"
+                    fontSize "1.35rem"
+                    lineHeight "1"
+                }
+            }
+            div {
+                div "${state.item2}" {
+                    style {
+                        fontFamily "var(--font-heading)"
+                        textTransform uppercase
+                        letterSpacing "0.03em"
+                        fontWeight "600"
+                        fontSize "0.98rem"
+                        lineHeight "1.1"
+                    }
+                }
+                div "${state.sub2}" {
+                    style fontSize="0.82rem" color="var(--color-text-muted)" marginTop="0.15rem"
+                }
+            }
+        }
+        div {
+            style {
+                display flex
+                alignItems center
+                gap "0.85rem"
+                padding "1.15rem 1.5rem"
+                borderRight "1px solid var(--color-border)"
+                @--sm borderRight=none borderBottom="1px solid var(--color-border)"
+            }
+            div "${state.icon3}" {
+                style {
+                    flexShrink "0"
+                    display flex
+                    alignItems center
+                    justifyContent center
+                    width "2.6rem"
+                    height "2.6rem"
+                    borderRadius "var(--radius-sm)"
+                    backgroundColor "var(--color-primary-soft)"
+                    fontSize "1.35rem"
+                    lineHeight "1"
+                }
+            }
+            div {
+                div "${state.item3}" {
+                    style {
+                        fontFamily "var(--font-heading)"
+                        textTransform uppercase
+                        letterSpacing "0.03em"
+                        fontWeight "600"
+                        fontSize "0.98rem"
+                        lineHeight "1.1"
+                    }
+                }
+                div "${state.sub3}" {
+                    style fontSize="0.82rem" color="var(--color-text-muted)" marginTop="0.15rem"
+                }
+            }
+        }
+        div {
+            style display=flex alignItems=center gap="0.85rem" padding="1.15rem 1.5rem"
+            div "${state.icon4}" {
+                style {
+                    flexShrink "0"
+                    display flex
+                    alignItems center
+                    justifyContent center
+                    width "2.6rem"
+                    height "2.6rem"
+                    borderRadius "var(--radius-sm)"
+                    backgroundColor "var(--color-primary-soft)"
+                    fontSize "1.35rem"
+                    lineHeight "1"
+                }
+            }
+            div {
+                div "${state.item4}" {
+                    style {
+                        fontFamily "var(--font-heading)"
+                        textTransform uppercase
+                        letterSpacing "0.03em"
+                        fontWeight "600"
+                        fontSize "0.98rem"
+                        lineHeight "1.1"
+                    }
+                }
+                div "${state.sub4}" {
+                    style fontSize="0.82rem" color="var(--color-text-muted)" marginTop="0.15rem"
+                }
+            }
+        }
+    }
+}

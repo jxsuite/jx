@@ -1,0 +1,138 @@
+/- kdl-version 2
+
+co-footer {
+    state {
+        brand "Craft & Code Academy"
+        tagline "A project-based web development bootcamp with live mentorship and a portfolio-ready capstone."
+        email admissions@craftcode.academy
+        phone "(555) 240-7788"
+    }
+    style {
+        display block
+        backgroundColor "var(--color-ink)"
+        color "var(--color-text-white)"
+        borderTop "1px solid var(--color-terminal-line)"
+        padding "3.5rem 1.5rem 2rem"
+    }
+    div {
+        style {
+            maxWidth "var(--max-width)"
+            margin "0 auto"
+            display grid
+            gridTemplateColumns "2fr 1fr 1fr"
+            gap "2.5rem"
+            @--md gridTemplateColumns="1fr"
+        }
+        div {
+            div {
+                style display=flex alignItems=center gap="0.6rem" marginBottom="0.9rem"
+                span "</>" {
+                    style {
+                        display inline-flex
+                        alignItems center
+                        justifyContent center
+                        width "1.9rem"
+                        height "1.9rem"
+                        borderRadius "0.5rem"
+                        backgroundColor "var(--color-primary)"
+                        color "var(--color-text-white)"
+                        fontFamily "var(--font-mono)"
+                        fontSize "0.8rem"
+                        fontWeight "700"
+                    }
+                }
+                span "${state.brand}" {
+                    style {
+                        fontFamily "var(--font-heading)"
+                        fontSize "1.3rem"
+                        fontWeight "800"
+                        letterSpacing "-0.02em"
+                    }
+                }
+            }
+            p "${state.tagline}" {
+                style margin="0" color="rgba(255,255,255,0.6)" maxWidth="40ch" lineHeight="1.65"
+            }
+        }
+        div {
+            div "// admissions" {
+                style {
+                    fontFamily "var(--font-mono)"
+                    fontSize "0.75rem"
+                    color "var(--color-accent)"
+                    marginBottom "0.9rem"
+                }
+            }
+            a href=mailto:admissions@craftcode.academy "${state.email}" {
+                style {
+                    display block
+                    color "rgba(255,255,255,0.82)"
+                    textDecoration none
+                    marginBottom "0.4rem"
+                    fontFamily "var(--font-mono)"
+                    fontSize "0.85rem"
+                    :hover color="var(--color-text-white)"
+                }
+            }
+            p "${state.phone}" {
+                style {
+                    margin "0"
+                    color "rgba(255,255,255,0.82)"
+                    fontFamily "var(--font-mono)"
+                    fontSize "0.85rem"
+                }
+            }
+        }
+        div {
+            div "// explore" {
+                style {
+                    fontFamily "var(--font-mono)"
+                    fontSize "0.75rem"
+                    color "var(--color-accent)"
+                    marginBottom "0.9rem"
+                }
+            }
+            a href="/curriculum/" Curriculum {
+                style {
+                    display block
+                    color "rgba(255,255,255,0.82)"
+                    textDecoration none
+                    marginBottom "0.4rem"
+                    :hover color="var(--color-text-white)"
+                }
+            }
+            a href="/about/" About {
+                style {
+                    display block
+                    color "rgba(255,255,255,0.82)"
+                    textDecoration none
+                    marginBottom "0.4rem"
+                    :hover color="var(--color-text-white)"
+                }
+            }
+            a href="/enroll/" Enroll {
+                style display=block color="rgba(255,255,255,0.82)" textDecoration=none {
+                    :hover color="var(--color-text-white)"
+                }
+            }
+        }
+    }
+    div {
+        style {
+            maxWidth "var(--max-width)"
+            margin "2.5rem auto 0"
+            paddingTop "1.5rem"
+            borderTop "1px solid var(--color-terminal-line)"
+            fontFamily "var(--font-mono)"
+            fontSize "0.8rem"
+            color "rgba(255,255,255,0.5)"
+        }
+        p {
+            style margin="0"
+            span "$ " {
+                style color="var(--color-accent)"
+            }
+            span #"echo "© Craft & Code Academy — built with Jx""#
+        }
+    }
+}

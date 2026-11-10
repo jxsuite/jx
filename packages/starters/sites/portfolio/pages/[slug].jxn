@@ -1,0 +1,177 @@
+/- kdl-version 2
+$paths contentType=projects param=slug field=slug
+$head {
+    meta name=description content="${state.entry.data.title} — a ${state.entry.data.category} project by Aperture Studio."
+}
+
+$element .title="${state.entry.data.title} — Aperture Studio" {
+    state {
+        entry {
+            $prototype ContentEntry
+            contentType projects
+            field slug
+            id (ref)"#/$params/slug"
+            $src "@jxsuite/parser/ContentEntry.class.json"
+        }
+    }
+    article {
+        style {
+            maxWidth "var(--max-width-narrow)"
+            margin "0 auto"
+            padding "clamp(7rem, 11vw, 9rem) 1.5rem clamp(3.5rem, 8vw, 6rem)"
+        }
+        a href="/work/" "← All work" {
+            style {
+                display inline-block
+                color "var(--color-primary)"
+                textDecoration none
+                fontWeight "600"
+                fontSize "0.85rem"
+                letterSpacing "0.05em"
+                textTransform uppercase
+                marginBottom "2rem"
+                :hover textDecoration=underline
+            }
+        }
+        header {
+            style marginBottom="2.5rem"
+            div {
+                style display=flex alignItems=center gap="0.85rem" marginBottom="1.25rem"
+                span "${state.entry.data.category}" {
+                    style {
+                        display inline-block
+                        padding "0.3rem 0.8rem"
+                        border "1px solid var(--color-border)"
+                        borderRadius "999px"
+                        fontSize "0.72rem"
+                        fontWeight "600"
+                        letterSpacing "0.14em"
+                        textTransform uppercase
+                        color "var(--color-primary)"
+                        backgroundColor "var(--color-bg-cream)"
+                    }
+                }
+                span "${state.entry.data.year}" {
+                    style fontSize="0.85rem" color="var(--color-text-muted)" letterSpacing="0.05em"
+                }
+            }
+            h1 "${state.entry.data.title}" {
+                style {
+                    fontFamily "var(--font-heading)"
+                    fontSize "clamp(2.5rem, 6vw, 4rem)"
+                    fontWeight "600"
+                    lineHeight "1.06"
+                    letterSpacing "-0.01em"
+                    margin "0"
+                }
+            }
+        }
+        img src="${state.entry.data.cover}" alt="${state.entry.data.title}" {
+            style {
+                width "100%"
+                maxHeight "34rem"
+                objectFit cover
+                borderRadius "var(--radius)"
+                display "${state.entry.data.cover ? 'block' : 'none'}"
+                marginBottom "2.75rem"
+            }
+        }
+        div {
+            style {
+                fontSize "1.15rem"
+                lineHeight "1.85"
+                color "var(--color-text-primary)"
+                maxWidth "62ch"
+                margin "0 0 3.5rem"
+            }
+            .children "${state.entry.$children ?? []}"
+        }
+        section {
+            h2 "Selected frames" {
+                style {
+                    fontFamily "var(--font-heading)"
+                    fontSize "1.75rem"
+                    fontWeight "600"
+                    margin "0 0 1.5rem"
+                    paddingBottom "0.6rem"
+                    borderBottom "2px solid var(--color-ink)"
+                }
+            }
+            div {
+                style display=grid gridTemplateColumns="repeat(3, 1fr)" gap="1rem" {
+                    @--sm gridTemplateColumns="1fr"
+                }
+                img src="/images/project-2.jpg" alt="${state.entry.data.title} — frame" loading=lazy {
+                    style {
+                        width "100%"
+                        aspectRatio "4 / 5"
+                        objectFit cover
+                        borderRadius "var(--radius)"
+                        display block
+                    }
+                }
+                img src="/images/project-4.jpg" alt="${state.entry.data.title} — frame" loading=lazy {
+                    style {
+                        width "100%"
+                        aspectRatio "4 / 5"
+                        objectFit cover
+                        borderRadius "var(--radius)"
+                        display block
+                    }
+                }
+                img src="/images/project-6.jpg" alt="${state.entry.data.title} — frame" loading=lazy {
+                    style {
+                        width "100%"
+                        aspectRatio "4 / 5"
+                        objectFit cover
+                        borderRadius "var(--radius)"
+                        display block
+                    }
+                }
+            }
+        }
+        div {
+            style {
+                marginTop "3.5rem"
+                padding "clamp(2.5rem, 6vw, 3.5rem)"
+                backgroundColor "var(--color-bg-dark)"
+                color "var(--color-text-white)"
+                borderRadius "var(--radius)"
+                textAlign center
+            }
+            h2 "Planning something similar?" {
+                style {
+                    fontFamily "var(--font-heading)"
+                    fontSize "clamp(1.75rem, 4vw, 2.5rem)"
+                    fontWeight "600"
+                    margin "0 0 1rem"
+                }
+            }
+            p "Tell us about your project and we'll be in touch to talk through the details." {
+                style {
+                    fontSize "1.1rem"
+                    lineHeight "1.7"
+                    opacity "0.82"
+                    margin "0 auto 2rem"
+                    maxWidth "48ch"
+                }
+            }
+            a href="/contact/" "Start a Project" {
+                style {
+                    display inline-block
+                    backgroundColor "var(--color-primary)"
+                    color "var(--color-text-white)"
+                    padding "0.9rem 2.25rem"
+                    borderRadius "var(--radius)"
+                    fontSize "0.95rem"
+                    fontWeight "600"
+                    letterSpacing "0.05em"
+                    textTransform uppercase
+                    textDecoration none
+                    transition "background-color 0.15s"
+                    :hover backgroundColor="var(--color-primary-hover)"
+                }
+            }
+        }
+    }
+}

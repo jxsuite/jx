@@ -1,0 +1,50 @@
+/- kdl-version 2
+
+bit-menu-item {
+    state name="" price="" description=""
+    style display=block padding="1.05rem 0"
+    div {
+        style display=flex alignItems=baseline gap="0"
+        h3 "${state.name}" {
+            style {
+                fontFamily "var(--font-heading)"
+                fontSize "1.3rem"
+                fontWeight "600"
+                letterSpacing "-0.005em"
+                margin "0"
+                color "var(--color-text-primary)"
+            }
+        }
+        span {
+            style {
+                flex "1 1 auto"
+                margin "0 0.6rem"
+                borderBottom "1.5px dotted var(--color-border-strong)"
+                transform "translateY(-0.32em)"
+            }
+        }
+        span "${state.price}" {
+            style {
+                fontFamily "var(--font-heading)"
+                fontSize "1.2rem"
+                fontWeight "600"
+                color "var(--color-primary)"
+                whiteSpace nowrap
+                fontVariantNumeric tabular-nums
+            }
+        }
+    }
+    p "${state.description}" {
+        style {
+            display "${state.description ? 'block' : 'none'}"
+            margin "0.4rem 0 0"
+            fontFamily "var(--font-heading)"
+            fontStyle italic
+            fontWeight "400"
+            color "var(--color-text-muted)"
+            fontSize "1.02rem"
+            lineHeight "1.55"
+            maxWidth "58ch"
+        }
+    }
+}

@@ -1,0 +1,23 @@
+/- kdl-version 2
+
+fs-class-grid {
+    state heading=""
+    style display=block maxWidth="var(--max-width)" margin="0 auto"
+    h3 "${state.heading}" {
+        style {
+            display "${state.heading ? 'block' : 'none'}"
+            fontFamily "var(--font-heading)"
+            fontSize "1.4rem"
+            fontWeight "700"
+            color "var(--color-primary)"
+            margin "0 0 1.25rem"
+        }
+    }
+    div {
+        style display=grid gridTemplateColumns="repeat(3, 1fr)" gap="1.25rem" {
+            @--lg gridTemplateColumns="repeat(2, 1fr)"
+            @--sm gridTemplateColumns="1fr"
+        }
+        slot
+    }
+}

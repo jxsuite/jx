@@ -1,0 +1,163 @@
+/- kdl-version 2
+
+np-cta {
+    state {
+        eyebrow ""
+        heading ""
+        headingAccent ""
+        text ""
+        cta "Donate Now"
+        ctaHref "/get-involved/"
+        cta2 ""
+        cta2Href "/get-involved/"
+        reassurance "Secure & tax-deductible · 94¢ of every dollar goes straight to programs"
+        bg type=string format=image default=""
+    }
+    style {
+        display block
+        padding "clamp(3rem, 7vw, 5rem) 1.5rem"
+        backgroundColor "var(--color-bg-cream)"
+    }
+    div {
+        style {
+            position relative
+            overflow hidden
+            maxWidth "var(--max-width-wide)"
+            margin "0 auto"
+            borderRadius "var(--radius-lg)"
+            background "linear-gradient(135deg, #21563c 0%, var(--color-primary-deep) 55%, #12301f 100%)"
+            color "var(--color-text-white)"
+        }
+        div {
+            style {
+                position absolute
+                top "-8rem"
+                right "-6rem"
+                width "26rem"
+                height "26rem"
+                borderRadius "50%"
+                background "radial-gradient(circle at center, rgba(233,166,61,0.35) 0%, rgba(233,166,61,0) 70%)"
+            }
+        }
+        div {
+            style {
+                position absolute
+                bottom "-10rem"
+                left "-7rem"
+                width "24rem"
+                height "24rem"
+                borderRadius "50%"
+                background "radial-gradient(circle at center, rgba(242,106,61,0.3) 0%, rgba(242,106,61,0) 70%)"
+            }
+        }
+        div {
+            style {
+                position relative
+                zIndex "2"
+                maxWidth "var(--max-width-narrow)"
+                margin "0 auto"
+                padding "clamp(3rem, 7vw, 4.75rem) 1.5rem"
+                textAlign center
+            }
+            p "${state.eyebrow}" {
+                style {
+                    display "${state.eyebrow ? 'inline-flex' : 'none'}"
+                    alignItems center
+                    gap "0.5rem"
+                    padding "0.35rem 0.95rem"
+                    borderRadius "999px"
+                    backgroundColor "rgba(255,255,255,0.12)"
+                    textTransform uppercase
+                    letterSpacing "0.14em"
+                    fontSize "0.75rem"
+                    fontWeight "800"
+                    color "var(--color-gold)"
+                    margin "0 0 1.25rem"
+                }
+            }
+            h2 {
+                style {
+                    fontFamily "var(--font-display)"
+                    fontSize "clamp(2.1rem, 4.6vw, 3.2rem)"
+                    fontWeight "600"
+                    lineHeight "1.08"
+                    letterSpacing "-0.015em"
+                    margin "0 0 1.15rem"
+                }
+                span "${state.heading} "
+                span "${state.headingAccent}" {
+                    style fontStyle=italic fontWeight="500" color="var(--color-gold)"
+                }
+            }
+            p "${state.text}" {
+                style {
+                    fontSize "1.14rem"
+                    fontWeight "600"
+                    lineHeight "1.65"
+                    color "rgba(255,255,255,0.85)"
+                    margin "0 auto 2rem"
+                    maxWidth "52ch"
+                }
+            }
+            div {
+                style display=flex gap="0.85rem" flexWrap=wrap justifyContent=center
+                a href="${state.ctaHref}" {
+                    style {
+                        display inline-flex
+                        alignItems center
+                        gap "0.5rem"
+                        backgroundColor "var(--color-accent)"
+                        color "var(--color-text-white)"
+                        padding "1rem 2.5rem"
+                        borderRadius "999px"
+                        fontSize "1.05rem"
+                        fontWeight "800"
+                        textDecoration none
+                        boxShadow "0 18px 36px -14px rgba(242,106,61,0.85)"
+                        transition "background-color 0.15s, transform 0.15s"
+                        :hover {
+                            backgroundColor "var(--color-accent-hover)"
+                            transform "translateY(-2px)"
+                        }
+                    }
+                    span ❤ {
+                        style fontSize="0.95rem"
+                    }
+                    span "${state.cta}"
+                }
+                a href="${state.cta2Href}" "${state.cta2}" {
+                    style {
+                        display "${state.cta2 ? 'inline-flex' : 'none'}"
+                        alignItems center
+                        gap "0.5rem"
+                        border "1px solid rgba(255,255,255,0.55)"
+                        color "var(--color-text-white)"
+                        padding "1rem 2rem"
+                        borderRadius "999px"
+                        fontSize "1.05rem"
+                        fontWeight "800"
+                        textDecoration none
+                        transition "background-color 0.15s"
+                        :hover backgroundColor="rgba(255,255,255,0.14)"
+                    }
+                }
+            }
+            p {
+                style {
+                    display "${state.reassurance ? 'flex' : 'none'}"
+                    alignItems center
+                    justifyContent center
+                    gap "0.5rem"
+                    margin "1.75rem 0 0"
+                    fontSize "0.88rem"
+                    fontWeight "700"
+                    color "rgba(255,255,255,0.72)"
+                }
+                span 🔒 {
+                    style color="var(--color-gold)"
+                }
+                span "${state.reassurance}"
+            }
+        }
+    }
+}

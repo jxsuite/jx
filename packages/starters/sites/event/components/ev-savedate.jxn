@@ -1,0 +1,268 @@
+/- kdl-version 2
+
+ev-savedate {
+    state {
+        eyebrow "Save the date"
+        heading "June 12, 2026 — Portland"
+        text "One day, three tracks, and a room full of the people building what's next. Early-bird tickets are live."
+        days "42"
+        hours "18"
+        minutes "05"
+        seconds "30"
+        cta "Get tickets"
+        ctaHref "/tickets/"
+    }
+    style {
+        display block
+        position relative
+        overflow hidden
+        color "var(--color-text-white)"
+        borderTop "1px solid var(--color-border)"
+        borderBottom "1px solid var(--color-border)"
+        background "radial-gradient(ellipse 60% 120% at 15% 50%, rgba(34,224,255,0.16), transparent 60%), radial-gradient(ellipse 60% 120% at 85% 50%, rgba(255,61,154,0.18), transparent 60%), var(--color-bg-cream)"
+        padding "clamp(2.75rem, 6vw, 4rem) 1.5rem"
+    }
+    div {
+        style {
+            maxWidth "var(--max-width)"
+            margin "0 auto"
+            display grid
+            gridTemplateColumns "1fr auto"
+            gap "clamp(2rem, 5vw, 3.5rem)"
+            alignItems center
+            @--lg gridTemplateColumns="1fr" gap="2.25rem" textAlign=center justifyItems=center
+        }
+        div {
+            p {
+                style {
+                    display inline-flex
+                    alignItems center
+                    gap "0.55rem"
+                    textTransform uppercase
+                    letterSpacing "0.18em"
+                    fontSize "0.78rem"
+                    fontWeight "700"
+                    margin "0 0 0.9rem"
+                    color "var(--color-accent)"
+                }
+                span {
+                    style {
+                        width "0.5rem"
+                        height "0.5rem"
+                        borderRadius "999px"
+                        background "var(--color-lime)"
+                        boxShadow "0 0 10px var(--color-lime)"
+                    }
+                }
+                span "${state.eyebrow}"
+            }
+            h2 "${state.heading}" {
+                style {
+                    fontFamily "var(--font-heading)"
+                    fontSize "clamp(1.9rem, 4.2vw, 2.9rem)"
+                    fontWeight "800"
+                    letterSpacing "-0.03em"
+                    lineHeight "1.08"
+                    margin "0 0 0.9rem"
+                    color "var(--color-text-primary)"
+                }
+            }
+            p "${state.text}" {
+                style {
+                    fontSize "1.05rem"
+                    lineHeight "1.65"
+                    color "var(--color-text-muted)"
+                    margin "0 0 1.75rem"
+                    maxWidth "44ch"
+                }
+            }
+            a href="${state.ctaHref}" "${state.cta}" {
+                style {
+                    display inline-block
+                    background "var(--grad-btn)"
+                    color "#ffffff"
+                    padding "0.9rem 2.25rem"
+                    borderRadius "999px"
+                    fontSize "1.02rem"
+                    fontWeight "700"
+                    textDecoration none
+                    boxShadow "0 12px 34px -8px var(--glow)"
+                    transition "transform 0.15s"
+                    :hover transform="translateY(-2px)"
+                }
+            }
+        }
+        div {
+            style display=flex alignItems=center gap="0.5rem" {
+                @--sm gap="0.3rem"
+            }
+            div {
+                style {
+                    textAlign center
+                    minWidth "4.6rem"
+                    padding "1.1rem 0.6rem"
+                    borderRadius "0.9rem"
+                    background "rgba(255,255,255,0.03)"
+                    border "1px solid var(--color-border)"
+                    boxShadow "0 0 40px -18px var(--glow-cyan)"
+                    @--sm minWidth="3.7rem" padding="0.85rem 0.35rem"
+                }
+                div "${state.days}" {
+                    style {
+                        fontFamily "var(--font-heading)"
+                        fontSize "clamp(1.9rem, 4.5vw, 2.9rem)"
+                        fontWeight "800"
+                        lineHeight "1"
+                        fontVariantNumeric tabular-nums
+                        background "var(--grad)"
+                        backgroundClip text
+                        webkitBackgroundClip text
+                        webkitTextFillColor transparent
+                        color "var(--color-accent)"
+                    }
+                }
+                div Days {
+                    style {
+                        marginTop "0.45rem"
+                        fontSize "0.66rem"
+                        textTransform uppercase
+                        letterSpacing "0.14em"
+                        color "var(--color-text-muted)"
+                    }
+                }
+            }
+            span : {
+                style {
+                    fontFamily "var(--font-heading)"
+                    fontSize "1.8rem"
+                    fontWeight "800"
+                    color "var(--color-border)"
+                    @--sm display=none
+                }
+            }
+            div {
+                style {
+                    textAlign center
+                    minWidth "4.6rem"
+                    padding "1.1rem 0.6rem"
+                    borderRadius "0.9rem"
+                    background "rgba(255,255,255,0.03)"
+                    border "1px solid var(--color-border)"
+                    boxShadow "0 0 40px -18px var(--glow-cyan)"
+                    @--sm minWidth="3.7rem" padding="0.85rem 0.35rem"
+                }
+                div "${state.hours}" {
+                    style {
+                        fontFamily "var(--font-heading)"
+                        fontSize "clamp(1.9rem, 4.5vw, 2.9rem)"
+                        fontWeight "800"
+                        lineHeight "1"
+                        fontVariantNumeric tabular-nums
+                        background "var(--grad)"
+                        backgroundClip text
+                        webkitBackgroundClip text
+                        webkitTextFillColor transparent
+                        color "var(--color-accent)"
+                    }
+                }
+                div Hours {
+                    style {
+                        marginTop "0.45rem"
+                        fontSize "0.66rem"
+                        textTransform uppercase
+                        letterSpacing "0.14em"
+                        color "var(--color-text-muted)"
+                    }
+                }
+            }
+            span : {
+                style {
+                    fontFamily "var(--font-heading)"
+                    fontSize "1.8rem"
+                    fontWeight "800"
+                    color "var(--color-border)"
+                    @--sm display=none
+                }
+            }
+            div {
+                style {
+                    textAlign center
+                    minWidth "4.6rem"
+                    padding "1.1rem 0.6rem"
+                    borderRadius "0.9rem"
+                    background "rgba(255,255,255,0.03)"
+                    border "1px solid var(--color-border)"
+                    boxShadow "0 0 40px -18px var(--glow-cyan)"
+                    @--sm minWidth="3.7rem" padding="0.85rem 0.35rem"
+                }
+                div "${state.minutes}" {
+                    style {
+                        fontFamily "var(--font-heading)"
+                        fontSize "clamp(1.9rem, 4.5vw, 2.9rem)"
+                        fontWeight "800"
+                        lineHeight "1"
+                        fontVariantNumeric tabular-nums
+                        background "var(--grad)"
+                        backgroundClip text
+                        webkitBackgroundClip text
+                        webkitTextFillColor transparent
+                        color "var(--color-accent)"
+                    }
+                }
+                div Mins {
+                    style {
+                        marginTop "0.45rem"
+                        fontSize "0.66rem"
+                        textTransform uppercase
+                        letterSpacing "0.14em"
+                        color "var(--color-text-muted)"
+                    }
+                }
+            }
+            span : {
+                style {
+                    fontFamily "var(--font-heading)"
+                    fontSize "1.8rem"
+                    fontWeight "800"
+                    color "var(--color-border)"
+                    @--sm display=none
+                }
+            }
+            div {
+                style {
+                    textAlign center
+                    minWidth "4.6rem"
+                    padding "1.1rem 0.6rem"
+                    borderRadius "0.9rem"
+                    background "rgba(255,255,255,0.03)"
+                    border "1px solid var(--color-border)"
+                    boxShadow "0 0 40px -18px var(--glow)"
+                    @--sm minWidth="3.7rem" padding="0.85rem 0.35rem"
+                }
+                div "${state.seconds}" {
+                    style {
+                        fontFamily "var(--font-heading)"
+                        fontSize "clamp(1.9rem, 4.5vw, 2.9rem)"
+                        fontWeight "800"
+                        lineHeight "1"
+                        fontVariantNumeric tabular-nums
+                        background "var(--grad)"
+                        backgroundClip text
+                        webkitBackgroundClip text
+                        webkitTextFillColor transparent
+                        color "var(--color-primary)"
+                    }
+                }
+                div Secs {
+                    style {
+                        marginTop "0.45rem"
+                        fontSize "0.66rem"
+                        textTransform uppercase
+                        letterSpacing "0.14em"
+                        color "var(--color-text-muted)"
+                    }
+                }
+            }
+        }
+    }
+}

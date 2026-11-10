@@ -1,0 +1,57 @@
+/- kdl-version 2
+
+co-outcome-card {
+    state number="" icon="" title="" text=""
+    style {
+        display block
+        position relative
+        padding "1.75rem"
+        backgroundColor "var(--color-bg-white)"
+        borderRadius "var(--radius)"
+        border "1px solid var(--color-border)"
+        transition "transform 0.15s, box-shadow 0.15s, border-color 0.15s"
+        :hover {
+            transform "translateY(-4px)"
+            boxShadow "0 18px 40px -18px rgba(79,70,229,0.4)"
+            borderColor "var(--color-primary-light)"
+        }
+    }
+    div {
+        style display=flex alignItems=center justifyContent=space-between marginBottom="1.1rem"
+        div "${state.icon}" {
+            style {
+                display inline-flex
+                alignItems center
+                justifyContent center
+                width "2.9rem"
+                height "2.9rem"
+                borderRadius "0.65rem"
+                backgroundColor "var(--color-indigo-050)"
+                border "1px solid var(--color-indigo-line)"
+                fontSize "1.45rem"
+                lineHeight "1"
+            }
+        }
+        span "${state.number}" {
+            style {
+                fontFamily "var(--font-mono)"
+                fontSize "0.85rem"
+                fontWeight "600"
+                color "var(--color-text-faint)"
+            }
+        }
+    }
+    h3 "${state.title}" {
+        style {
+            fontFamily "var(--font-heading)"
+            fontSize "1.18rem"
+            fontWeight "700"
+            letterSpacing "-0.01em"
+            margin "0 0 0.5rem"
+            color "var(--color-text-primary)"
+        }
+    }
+    p "${state.text}" {
+        style margin="0" color="var(--color-text-muted)" fontSize="0.98rem" lineHeight="1.65"
+    }
+}

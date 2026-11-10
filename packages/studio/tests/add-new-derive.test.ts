@@ -80,9 +80,9 @@ describe("kinds", () => {
 describe("pages", () => {
   test("a name derives a slugged page at its route, on the default template", () => {
     const page = deriveCreation("page", "Our Pricing", {}, CTX);
-    expect(page.path).toBe("pages/our-pricing.json");
+    expect(page.path).toBe("pages/our-pricing.jxn");
     expect(page.route).toBe("/our-pricing");
-    expect(page.saved).toBe("Saved as pages/our-pricing.json · opens at /our-pricing");
+    expect(page.saved).toBe("Saved as pages/our-pricing.jxn · opens at /our-pricing");
     // The default template is the default, so the page says nothing and keeps following it.
     expect(page.content.doc.$layout).toBeUndefined();
     expect(page.content.doc).toMatchObject({ tagName: "main", title: "Our Pricing" });
@@ -109,17 +109,17 @@ describe("pages", () => {
       format: "Markdown",
       frontmatter: true,
     });
-    // A project with no prose format has no Article: the choice falls back to a JSON page.
+    // A project with no prose format has no Article: the choice falls back to a Jx Notation page.
     expect(
       deriveCreation("page", "X", { startFrom: START_ARTICLE }, { ...CTX, article: null }).ext,
-    ).toBe(".json");
+    ).toBe(".jxn");
   });
 
   test("an edited URL places the file, and / is the index", () => {
     const nested = deriveCreation("page", "Pricing", { url: "/Docs/Getting Started" }, CTX);
-    expect(nested.path).toBe("pages/docs/getting-started.json");
+    expect(nested.path).toBe("pages/docs/getting-started.jxn");
     expect(nested.route).toBe("/docs/getting-started");
-    expect(deriveCreation("page", "Home", { url: "/" }, CTX).path).toBe("pages/index.json");
+    expect(deriveCreation("page", "Home", { url: "/" }, CTX).path).toBe("pages/index.jxn");
     expect(urlSegments("//a//b c/")).toEqual(["a", "b-c"]);
   });
 
@@ -155,7 +155,7 @@ describe("pages", () => {
     const page = deriveCreation("page", "About", {}, CTX);
     const taken: TakenLookup = (dir) => (dir === "pages" ? new Set(["about.json"]) : new Set());
     expect(creationProblem(page, "About", {}, CTX, taken)).toBe(
-      "about.json already exists in pages/.",
+      "pages/about.json already opens at /about.",
     );
     // A directory not listed yet is not judged free or taken.
     expect(
@@ -165,10 +165,10 @@ describe("pages", () => {
 });
 
 describe("templates", () => {
-  test("always JSON, one slot, wrapped in a layout or in nothing", () => {
+  test("always Jx Notation, one slot, wrapped in a layout or in nothing", () => {
     const plain = deriveCreation("template", "Landing", {}, CTX);
-    expect(plain.path).toBe("layouts/landing.json");
-    expect(plain.saved).toBe("Saved as layouts/landing.json with one slot.");
+    expect(plain.path).toBe("layouts/landing.jxn");
+    expect(plain.saved).toBe("Saved as layouts/landing.jxn with one slot.");
     expect(plain.content.doc).toEqual({
       children: [{ children: [{ tagName: "slot" }], tagName: "main" }],
       tagName: "div",
@@ -186,12 +186,29 @@ describe("templates", () => {
   });
 });
 
+describe("the other native spelling", () => {
+  test("a template or component whose name the other spelling already holds is refused", () => {
+    const template = deriveCreation("template", "Base", {}, CTX);
+    const layouts: TakenLookup = (dir) => (dir === "layouts" ? new Set(["base.json"]) : new Set());
+    expect(creationProblem(template, "Base", {}, CTX, layouts)).toBe(
+      "layouts/base.json already exists.",
+    );
+    const component = deriveCreation("component", "Promo card", {}, CTX);
+    const components: TakenLookup = (dir) =>
+      dir === "components" ? new Set(["Promo-Card.JSON"]) : new Set();
+    expect(creationProblem(component, "Promo card", {}, CTX, components)).toBe(
+      "components/promo-card.json already exists.",
+    );
+    expect(creationProblem(template, "Base", {}, CTX, () => new Set())).toBe("");
+  });
+});
+
 describe("components", () => {
   test("the tag derives from the name, with site- when it has no hyphen", () => {
     const card = deriveCreation("component", "Pricing table", {}, CTX);
     expect(card.tag).toBe("pricing-table");
-    expect(card.path).toBe("components/pricing-table.json");
-    expect(card.saved).toBe("Saved as components/pricing-table.json with tag <pricing-table>.");
+    expect(card.path).toBe("components/pricing-table.jxn");
+    expect(card.saved).toBe("Saved as components/pricing-table.jxn with tag <pricing-table>.");
     expect(card.content.doc).toEqual({ children: [], tagName: "pricing-table" });
     expect(deriveCreation("component", "Hero", {}, CTX).tag).toBe("site-hero");
   });
@@ -260,10 +277,10 @@ describe("collections", () => {
       frontmatter: true,
     });
     expect(recipes.route).toBe("/recipes/:slug");
-    expect(recipes.extraWrites.map((write) => write.path)).toEqual(["pages/recipes/[slug].json"]);
+    expect(recipes.extraWrites.map((write) => write.path)).toEqual(["pages/recipes/[slug].jxn"]);
     expect(recipes.saved).toBe(
       "Adds a “recipes” collection to project.json, a content/recipes/ folder with a first entry, " +
-        "and pages/recipes/[slug].json at /recipes/:slug.",
+        "and pages/recipes/[slug].jxn at /recipes/:slug.",
     );
   });
 
@@ -336,8 +353,14 @@ describe("collections", () => {
     );
     const pageTaken: TakenLookup = (dir) =>
       dir === "pages/recipes" ? new Set(["[slug].json"]) : new Set();
+    // The older spelling opens at the same route, so it refuses the new one too.
     expect(creationProblem(fresh, "Recipes", {}, CTX, pageTaken)).toBe(
-      "[slug].json already exists in pages/recipes/.",
+      "pages/recipes/[slug].json already exists.",
+    );
+    const sameTaken: TakenLookup = (dir) =>
+      dir === "pages/recipes" ? new Set(["[slug].jxn"]) : new Set();
+    expect(creationProblem(fresh, "Recipes", {}, CTX, sameTaken)).toBe(
+      "[slug].jxn already exists in pages/recipes/.",
     );
     expect(directoriesToList(fresh)).toEqual(["content", "pages/recipes"]);
   });
@@ -514,19 +537,19 @@ describe("languages (site-architecture.md §13)", () => {
 
   test("a page in another language is saved in its tree and opens under its prefix", () => {
     const page = deriveCreation("page", "Opening Hours", { locale: "fr-CA" }, I18N_CTX);
-    expect(page.path).toBe("pages/fr-ca/opening-hours.json");
+    expect(page.path).toBe("pages/fr-ca/opening-hours.jxn");
     expect(page.dir).toBe("pages/fr-ca");
     expect(page.route).toBe("/fr-ca/opening-hours");
     expect(page.saved).toBe(
-      "Saved as pages/fr-ca/opening-hours.json · opens at /fr-ca/opening-hours",
+      "Saved as pages/fr-ca/opening-hours.jxn · opens at /fr-ca/opening-hours",
     );
     // The default language owns the unprefixed URL space.
     expect(deriveCreation("page", "Opening Hours", { locale: "en" }, I18N_CTX).path).toBe(
-      "pages/opening-hours.json",
+      "pages/opening-hours.jxn",
     );
     // An edited URL is moved into the language's tree too.
     const nested = deriveCreation("page", "X", { locale: "ar", url: "/visit/hours" }, I18N_CTX);
-    expect(nested.path).toBe("pages/ar/visit/hours.json");
+    expect(nested.path).toBe("pages/ar/visit/hours.jxn");
     expect(directoriesToList(nested)).toContain("pages/ar/visit");
     // Without a name there is nothing to move.
     expect(deriveCreation("page", "", { locale: "ar" }, I18N_CTX).dir).toBe("pages");
@@ -538,9 +561,9 @@ describe("languages (site-architecture.md §13)", () => {
     expect(events.path).toBe("content/events/en/first-event.md");
     // A template page in every language, the default language's first (it names the route).
     expect(events.extraWrites.map((write) => write.path)).toEqual([
-      "pages/events/[slug].json",
-      "pages/fr-ca/events/[slug].json",
-      "pages/ar/events/[slug].json",
+      "pages/events/[slug].jxn",
+      "pages/fr-ca/events/[slug].jxn",
+      "pages/ar/events/[slug].jxn",
     ]);
     expect(events.route).toBe("/events/:slug");
     expect(events.saved).toContain("one folder per language under content/events/");
@@ -581,6 +604,15 @@ describe("languages (site-architecture.md §13)", () => {
     expect(templateForLocale(framed, "ar")).toBe("./layouts/ar/site.json");
     expect(templateForLocale(framed, "en")).toBe("./layouts/base.json");
     expect(templateForLocale(framed, "")).toBe("./layouts/base.json");
+    // A language's frame written in Jx Notation is found by the same name.
+    const notation = {
+      ...framed,
+      layouts: [
+        { name: "Base", ref: "./layouts/base.jxn" },
+        { name: "Fr Ca", ref: "./layouts/fr-ca.jxn" },
+      ],
+    };
+    expect(templateForLocale(notation, "fr-CA")).toBe("./layouts/fr-ca.jxn");
   });
 
   test("prefix-always puts even the default language's page under its prefix", () => {
@@ -590,7 +622,7 @@ describe("languages (site-architecture.md §13)", () => {
     };
     expect(deriveCreation("page", "Hours", { locale: "en" }, always).route).toBe("/en/hours");
     const events = deriveCreation("collection", "Events", {}, always);
-    expect(events.extraWrites[0]?.path).toBe("pages/en/events/[slug].json");
+    expect(events.extraWrites[0]?.path).toBe("pages/en/events/[slug].jxn");
   });
 });
 

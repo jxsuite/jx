@@ -38,9 +38,9 @@ The scaffolder then prompts for a project name, description, production URL, a t
 
 A blank scaffold produces:
 
-- `project.jxn`: the [project file](/docs/framework/site/project-json) in Jx Notation, with a comment saying what `extensions` is for, bound to `./project.schema.json`, with a viewport `$head`, `$media` breakpoints matching the template (desktop-first `max-width` queries or mobile-first `min-width` queries), a `build` block (`outDir: "./dist"`, `format: "directory"`, `trailingSlash: "always"`, plus `adapter` when not static), `extensions: ["@jxsuite/parser"]`, an empty `content` section, base `style`, and `defaults` pointing at `./layouts/base.json`
+- `project.jxn`: the [project file](/docs/framework/site/project-json) in Jx Notation, with a comment saying what `extensions` is for, bound to `./project.schema.json`, with a viewport `$head`, `$media` breakpoints matching the template (desktop-first `max-width` queries or mobile-first `min-width` queries), a `build` block (`outDir: "./dist"`, `format: "directory"`, `trailingSlash: "always"`, plus `adapter` when not static), `extensions: ["@jxsuite/parser"]`, an empty `content` section, base `style`, and `defaults` pointing at `./layouts/base.jxn`
 - `package.json`: `@jxsuite/parser` as a dependency, `@jxsuite/compiler` and `@jxsuite/runtime` as devDependencies, and `build`/`dev` scripts (plus a `deploy` script and `wrangler` for the Cloudflare adapters)
-- `layouts/base.json`, `pages/index.md`, empty `components/`, `content/`, and `public/` directories, and a `.gitignore`
+- `layouts/base.jxn` (in [Jx Notation](/docs/framework/concepts/jxn-files)), `pages/index.md`, empty `components/`, `content/`, and `public/` directories, and a `.gitignore`
 - `wrangler.jsonc` for the Cloudflare adapters; the `mobile-app` template overlays an app-shell layout and home page
 
 Choosing a starter instead copies the starter site verbatim (minus build artifacts), then re-stamps its project file with your name, URL, description, and adapter, and rebuilds `package.json` with current dependency ranges.

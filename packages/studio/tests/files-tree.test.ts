@@ -44,7 +44,9 @@ import {
   workspace,
 } from "../src/workspace/workspace";
 import { initLayers } from "../src/ui/layers";
-import { setFormats } from "../src/format/format-host";
+import { formatByExtension, setFormats } from "../src/format/format-host";
+import { defaultExtensionIn } from "../src/files/files";
+import { parseJxn } from "@jxsuite/schema/jxn";
 import { registerFileFormatCommands } from "../src/format/convert-file";
 import { problems, resetNotifications, toasts } from "../src/services/notify";
 import { loadUsages, peekUsages } from "../src/services/references";
@@ -679,6 +681,7 @@ describe("createNewFile (toolbar + context menu)", () => {
     expect(dialogField().value).toBe("untitled");
     expect(promptFormatOptions()).toEqual([
       [".json", "JSON (.json)"],
+      [".jxn", "Jx Notation (.jxn)"],
       [".md", "Markdown (.md)"],
       ["__other__", "Other…"],
     ]);
@@ -812,6 +815,22 @@ describe("createNewFile (toolbar + context menu)", () => {
  * different wrong answer if it fires in the wrong place, and none of them is visible in the menu —
  * the row is `files.newFile` in every case, which is asserted below.
  */
+describe("defaultExtensionIn", () => {
+  test("a folder of documents starts New File on Jx Notation, and any other folder on JSON", () => {
+    expect(defaultExtensionIn("pages")).toBe(".jxn");
+    expect(defaultExtensionIn("./pages/blog")).toBe(".jxn");
+    expect(defaultExtensionIn("layouts")).toBe(".jxn");
+    expect(defaultExtensionIn("components/cards")).toBe(".jxn");
+    expect(defaultExtensionIn("data")).toBe(".json");
+    expect(defaultExtensionIn("pages-old")).toBe(".json");
+  });
+
+  test("its blank document reads back as the one the .json blank is", () => {
+    const template = formatByExtension(".jxn")?.studio?.newFileTemplate ?? "";
+    expect(parseJxn(template)).toEqual({ children: [{ tagName: "p" }], tagName: "div" });
+  });
+});
+
 describe("New File asks the destination what it is", () => {
   /** Mount a tree over a project whose `content` section is `content`. */
   async function treeFor(
@@ -899,7 +918,7 @@ describe("New File asks the destination what it is", () => {
     await treeFor({ notes: { format: "Toml", schema: {}, source: "./notes/" } });
     const shown = await newFileIn("notes");
     expect(shown.headline).toBe("New File");
-    expect(shown.rows.map(([value]) => value)).toEqual([".json", ".md", "__other__"]);
+    expect(shown.rows.map(([value]) => value)).toEqual([".json", ".jxn", ".md", "__other__"]);
     const problem = problems.at(-1)!;
     expect(problem.message).toContain("cannot be constrained");
     expect(problem.detail).toContain("Toml");
@@ -911,7 +930,7 @@ describe("New File asks the destination what it is", () => {
     await treeFor(MARKDOWN_POSTS);
     const shown = await newFileIn("loose");
     expect(shown.headline).toBe("New File");
-    expect(shown.rows.map(([value]) => value)).toEqual([".json", ".md", "__other__"]);
+    expect(shown.rows.map(([value]) => value)).toEqual([".json", ".jxn", ".md", "__other__"]);
     await answerPromptDialog(null);
   });
 });

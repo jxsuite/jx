@@ -133,7 +133,7 @@
       "docs": ["studio/design"],
       "open": {
         "project": "packages/starters/sites/event",
-        "file": "components/ev-savedate.json",
+        "file": "components/ev-savedate.jxn",
         "view": "design"
       },
       "steps": [
@@ -173,7 +173,7 @@
       "docs": ["studio/logic"],
       "open": {
         "project": "packages/starters/sites/real-estate",
-        "file": "components/re-listings-filter.json",
+        "file": "components/re-listings-filter.jxn",
         "view": "design"
       },
       "steps": [
@@ -259,7 +259,7 @@
       "docs": ["studio/logic"],
       "open": {
         "project": "packages/starters/sites/real-estate",
-        "file": "components/re-listings-filter.json",
+        "file": "components/re-listings-filter.jxn",
         "view": "design"
       },
       "steps": [
@@ -281,7 +281,7 @@
       "docs": ["studio/design"],
       "open": {
         "project": "packages/starters/sites/real-estate",
-        "file": "components/re-listing-card.json",
+        "file": "components/re-listing-card.jxn",
         "view": "design"
       },
       "steps": [
@@ -502,7 +502,7 @@
       "docs": ["studio/design/layers"],
       "open": {
         "project": "packages/starters/sites/event",
-        "file": "components/ev-savedate.json",
+        "file": "components/ev-savedate.jxn",
         "view": "design"
       },
       "steps": [
@@ -621,7 +621,7 @@
       "docs": ["studio/logic/data"],
       "open": {
         "project": "packages/starters/sites/real-estate",
-        "file": "components/re-listings-filter.json",
+        "file": "components/re-listings-filter.jxn",
         "view": "design"
       },
       "steps": [
@@ -800,7 +800,7 @@
       "docs": ["studio/design/properties", "studio/logic/formulas"],
       "open": {
         "project": "packages/starters/sites/real-estate",
-        "file": "components/re-listing-card.json",
+        "file": "components/re-listing-card.jxn",
         "view": "design",
         "viewport": {
           "width": 1920,
@@ -856,7 +856,7 @@
       "docs": ["studio/logic/events"],
       "open": {
         "project": "packages/starters/sites/event",
-        "file": "components/ev-agenda-tabs.json",
+        "file": "components/ev-agenda-tabs.jxn",
         "view": "design",
         "viewport": {
           "width": 1920,
@@ -900,7 +900,7 @@
       "docs": ["studio/logic/formula-workspace"],
       "open": {
         "project": "packages/starters/sites/course",
-        "file": "components/co-curriculum-accordion.json",
+        "file": "components/co-curriculum-accordion.jxn",
         "view": "design"
       },
       "steps": [
@@ -976,7 +976,7 @@
       "docs": ["studio/design/states-and-selectors"],
       "open": {
         "project": "packages/starters/sites/real-estate",
-        "file": "components/re-listing-card.json",
+        "file": "components/re-listing-card.jxn",
         "view": "design",
         "viewport": {
           "width": 1920,
@@ -1023,7 +1023,7 @@
       "docs": ["studio/design/components"],
       "open": {
         "project": "packages/starters/sites/real-estate",
-        "file": "components/re-listing-card.json",
+        "file": "components/re-listing-card.jxn",
         "view": "design"
       },
       "steps": [

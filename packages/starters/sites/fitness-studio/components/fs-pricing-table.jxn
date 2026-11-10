@@ -1,0 +1,322 @@
+/- kdl-version 2
+
+fs-pricing-table {
+    state {
+        tier1 Drop-in
+        price1 "$22 / class"
+        tier2 "Monthly Unlimited"
+        price2 "$129 / month"
+        tier3 "Annual Unlimited"
+        price3 "$1,290 / year"
+    }
+    style {
+        display block
+        maxWidth "var(--max-width)"
+        margin "0 auto"
+        overflowX auto
+        border "1px solid var(--color-border)"
+        borderRadius "var(--radius)"
+    }
+    table {
+        style width="100%" minWidth="640px" borderCollapse=collapse fontSize="0.95rem"
+        thead {
+            tr {
+                th "What's included" {
+                    style {
+                        textAlign left
+                        padding "1.25rem 1.25rem 1rem"
+                        fontFamily "var(--font-heading)"
+                        fontSize "0.8rem"
+                        textTransform uppercase
+                        letterSpacing "0.08em"
+                        color "var(--color-text-muted)"
+                        borderBottom "1px solid var(--color-border)"
+                    }
+                }
+                th "${state.tier1}" {
+                    style {
+                        textAlign center
+                        padding "1.25rem 1rem 1rem"
+                        fontFamily "var(--font-heading)"
+                        fontSize "1.05rem"
+                        fontWeight "600"
+                        borderBottom "1px solid var(--color-border)"
+                    }
+                }
+                th "${state.tier2}" {
+                    style {
+                        textAlign center
+                        padding "1.25rem 1rem 1rem"
+                        fontFamily "var(--font-heading)"
+                        fontSize "1.05rem"
+                        fontWeight "600"
+                        color "var(--color-primary)"
+                        backgroundColor "var(--color-bg-cream)"
+                        borderBottom "2px solid var(--color-primary)"
+                    }
+                }
+                th "${state.tier3}" {
+                    style {
+                        textAlign center
+                        padding "1.25rem 1.25rem 1rem"
+                        fontFamily "var(--font-heading)"
+                        fontSize "1.05rem"
+                        fontWeight "600"
+                        borderBottom "1px solid var(--color-border)"
+                    }
+                }
+            }
+            tr {
+                td Price {
+                    style {
+                        padding "0.75rem 1.25rem"
+                        fontWeight "600"
+                        color "var(--color-text-muted)"
+                        borderBottom "1px solid var(--color-border)"
+                    }
+                }
+                td "${state.price1}" {
+                    style {
+                        textAlign center
+                        padding "0.75rem 1rem"
+                        fontWeight "600"
+                        borderBottom "1px solid var(--color-border)"
+                    }
+                }
+                td "${state.price2}" {
+                    style {
+                        textAlign center
+                        padding "0.75rem 1rem"
+                        fontWeight "600"
+                        backgroundColor "var(--color-bg-cream)"
+                        borderBottom "1px solid var(--color-border)"
+                    }
+                }
+                td "${state.price3}" {
+                    style {
+                        textAlign center
+                        padding "0.75rem 1.25rem"
+                        fontWeight "600"
+                        borderBottom "1px solid var(--color-border)"
+                    }
+                }
+            }
+        }
+        tbody {
+            tr {
+                td "Unlimited classes" {
+                    style padding="0.85rem 1.25rem" borderBottom="1px solid var(--color-border)"
+                }
+                td — {
+                    style {
+                        textAlign center
+                        padding "0.85rem 1rem"
+                        color "var(--color-text-muted)"
+                        borderBottom "1px solid var(--color-border)"
+                    }
+                }
+                td ✓ {
+                    style {
+                        textAlign center
+                        padding "0.85rem 1rem"
+                        color "var(--color-accent)"
+                        fontWeight "700"
+                        backgroundColor "var(--color-bg-cream)"
+                        borderBottom "1px solid var(--color-border)"
+                    }
+                }
+                td ✓ {
+                    style {
+                        textAlign center
+                        padding "0.85rem 1.25rem"
+                        color "var(--color-accent)"
+                        fontWeight "700"
+                        borderBottom "1px solid var(--color-border)"
+                    }
+                }
+            }
+            tr {
+                td "All class types (yoga, pilates, HIIT, strength)" {
+                    style padding="0.85rem 1.25rem" borderBottom="1px solid var(--color-border)"
+                }
+                td ✓ {
+                    style {
+                        textAlign center
+                        padding "0.85rem 1rem"
+                        color "var(--color-accent)"
+                        fontWeight "700"
+                        borderBottom "1px solid var(--color-border)"
+                    }
+                }
+                td ✓ {
+                    style {
+                        textAlign center
+                        padding "0.85rem 1rem"
+                        color "var(--color-accent)"
+                        fontWeight "700"
+                        backgroundColor "var(--color-bg-cream)"
+                        borderBottom "1px solid var(--color-border)"
+                    }
+                }
+                td ✓ {
+                    style {
+                        textAlign center
+                        padding "0.85rem 1.25rem"
+                        color "var(--color-accent)"
+                        fontWeight "700"
+                        borderBottom "1px solid var(--color-border)"
+                    }
+                }
+            }
+            tr {
+                td "Mat & prop rental" {
+                    style padding="0.85rem 1.25rem" borderBottom="1px solid var(--color-border)"
+                }
+                td ✓ {
+                    style {
+                        textAlign center
+                        padding "0.85rem 1rem"
+                        color "var(--color-accent)"
+                        fontWeight "700"
+                        borderBottom "1px solid var(--color-border)"
+                    }
+                }
+                td ✓ {
+                    style {
+                        textAlign center
+                        padding "0.85rem 1rem"
+                        color "var(--color-accent)"
+                        fontWeight "700"
+                        backgroundColor "var(--color-bg-cream)"
+                        borderBottom "1px solid var(--color-border)"
+                    }
+                }
+                td ✓ {
+                    style {
+                        textAlign center
+                        padding "0.85rem 1.25rem"
+                        color "var(--color-accent)"
+                        fontWeight "700"
+                        borderBottom "1px solid var(--color-border)"
+                    }
+                }
+            }
+            tr {
+                td "Free mat storage" {
+                    style padding="0.85rem 1.25rem" borderBottom="1px solid var(--color-border)"
+                }
+                td — {
+                    style {
+                        textAlign center
+                        padding "0.85rem 1rem"
+                        color "var(--color-text-muted)"
+                        borderBottom "1px solid var(--color-border)"
+                    }
+                }
+                td ✓ {
+                    style {
+                        textAlign center
+                        padding "0.85rem 1rem"
+                        color "var(--color-accent)"
+                        fontWeight "700"
+                        backgroundColor "var(--color-bg-cream)"
+                        borderBottom "1px solid var(--color-border)"
+                    }
+                }
+                td ✓ {
+                    style {
+                        textAlign center
+                        padding "0.85rem 1.25rem"
+                        color "var(--color-accent)"
+                        fontWeight "700"
+                        borderBottom "1px solid var(--color-border)"
+                    }
+                }
+            }
+            tr {
+                td "Workshop discount" {
+                    style padding="0.85rem 1.25rem" borderBottom="1px solid var(--color-border)"
+                }
+                td — {
+                    style {
+                        textAlign center
+                        padding "0.85rem 1rem"
+                        color "var(--color-text-muted)"
+                        borderBottom "1px solid var(--color-border)"
+                    }
+                }
+                td "10%" {
+                    style {
+                        textAlign center
+                        padding "0.85rem 1rem"
+                        fontWeight "600"
+                        backgroundColor "var(--color-bg-cream)"
+                        borderBottom "1px solid var(--color-border)"
+                    }
+                }
+                td "20%" {
+                    style {
+                        textAlign center
+                        padding "0.85rem 1.25rem"
+                        fontWeight "600"
+                        borderBottom "1px solid var(--color-border)"
+                    }
+                }
+            }
+            tr {
+                td "Guest passes" {
+                    style padding="0.85rem 1.25rem" borderBottom="1px solid var(--color-border)"
+                }
+                td — {
+                    style {
+                        textAlign center
+                        padding "0.85rem 1rem"
+                        color "var(--color-text-muted)"
+                        borderBottom "1px solid var(--color-border)"
+                    }
+                }
+                td — {
+                    style {
+                        textAlign center
+                        padding "0.85rem 1rem"
+                        color "var(--color-text-muted)"
+                        backgroundColor "var(--color-bg-cream)"
+                        borderBottom "1px solid var(--color-border)"
+                    }
+                }
+                td "4 / year" {
+                    style {
+                        textAlign center
+                        padding "0.85rem 1.25rem"
+                        fontWeight "600"
+                        borderBottom "1px solid var(--color-border)"
+                    }
+                }
+            }
+            tr {
+                td "Priority booking" {
+                    style padding="0.85rem 1.25rem"
+                }
+                td — {
+                    style textAlign=center padding="0.85rem 1rem" color="var(--color-text-muted)"
+                }
+                td — {
+                    style {
+                        textAlign center
+                        padding "0.85rem 1rem"
+                        color "var(--color-text-muted)"
+                        backgroundColor "var(--color-bg-cream)"
+                    }
+                }
+                td ✓ {
+                    style {
+                        textAlign center
+                        padding "0.85rem 1.25rem"
+                        color "var(--color-accent)"
+                        fontWeight "700"
+                    }
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,139 @@
+/- kdl-version 2
+
+pf-hero {
+    state {
+        eyebrow "Tax · Assurance · Advisory"
+        marker "Est. 2007"
+        heading ""
+        lede ""
+        aside ""
+        cta "Book a consultation"
+        ctaHref "/contact/"
+        cta2 "Read the Quarterly"
+        cta2Href "/insights/"
+    }
+    style {
+        display block
+        backgroundColor "var(--color-paper)"
+        padding "clamp(2.5rem, 6vw, 4.5rem) 1.5rem clamp(2.5rem, 6vw, 4rem)"
+    }
+    div {
+        style maxWidth="var(--max-width)" margin="0 auto"
+        div {
+            style {
+                display flex
+                alignItems baseline
+                justifyContent space-between
+                gap "1rem"
+                paddingBottom "0.9rem"
+                borderBottom "1px solid var(--color-rule)"
+                fontFamily "var(--font-sans)"
+                fontSize "0.72rem"
+                fontWeight "600"
+                textTransform uppercase
+                letterSpacing "0.18em"
+            }
+            span "${state.eyebrow}" {
+                style color="var(--color-accent)"
+            }
+            span "${state.marker}" {
+                style color="var(--color-muted)"
+            }
+        }
+        h1 "${state.heading}" {
+            style {
+                fontFamily "var(--font-serif)"
+                fontWeight "500"
+                fontSize "clamp(2.6rem, 6.4vw, 5.2rem)"
+                lineHeight "1.04"
+                letterSpacing "-0.02em"
+                margin "clamp(1.75rem, 4vw, 3rem) 0 0"
+                maxWidth "18ch"
+                color "var(--color-ink)"
+            }
+        }
+        div {
+            style {
+                marginTop "clamp(1.75rem, 4vw, 2.75rem)"
+                paddingTop "clamp(1.5rem, 3vw, 2.25rem)"
+                borderTop "1px solid var(--color-hairline)"
+                display grid
+                gridTemplateColumns "1.35fr 1fr"
+                gap "clamp(1.5rem, 5vw, 4rem)"
+                alignItems start
+                @--md gridTemplateColumns="1fr" gap="1.75rem"
+            }
+            div {
+                p "${state.lede}" {
+                    style {
+                        margin "0 0 1.75rem"
+                        fontSize "clamp(1.05rem, 1.6vw, 1.22rem)"
+                        lineHeight "1.65"
+                        color "var(--color-ink)"
+                        maxWidth "48ch"
+                    }
+                }
+                div {
+                    style display=flex gap="0.75rem" flexWrap=wrap
+                    a href="${state.ctaHref}" "${state.cta}" {
+                        style {
+                            display inline-block
+                            backgroundColor "var(--color-ink)"
+                            color "var(--color-paper)"
+                            padding "0.8rem 1.6rem"
+                            fontFamily "var(--font-sans)"
+                            fontSize "0.78rem"
+                            fontWeight "600"
+                            textTransform uppercase
+                            letterSpacing "0.14em"
+                            textDecoration none
+                            transition "background-color 0.15s"
+                            :hover backgroundColor="var(--color-primary-hover)"
+                        }
+                    }
+                    a href="${state.cta2Href}" "${state.cta2} →" {
+                        style {
+                            display "${state.cta2 ? 'inline-flex' : 'none'}"
+                            alignItems center
+                            color "var(--color-ink)"
+                            padding "0.8rem 0.4rem"
+                            fontFamily "var(--font-sans)"
+                            fontSize "0.78rem"
+                            fontWeight "600"
+                            textTransform uppercase
+                            letterSpacing "0.14em"
+                            textDecoration none
+                            borderBottom "1px solid var(--color-accent)"
+                            transition "color 0.15s"
+                            :hover color="var(--color-accent)"
+                        }
+                    }
+                }
+            }
+            div {
+                style {
+                    display "${state.aside ? 'block' : 'none'}"
+                    borderLeft "1px solid var(--color-hairline)"
+                    paddingLeft "clamp(1.25rem, 3vw, 2rem)"
+                    @--md {
+                        borderLeft none
+                        paddingLeft "0"
+                        borderTop "1px solid var(--color-hairline)"
+                        paddingTop "1.5rem"
+                    }
+                }
+                p "${state.aside}" {
+                    style {
+                        margin "0"
+                        fontFamily "var(--font-serif)"
+                        fontStyle italic
+                        fontWeight "400"
+                        fontSize "clamp(1.15rem, 2vw, 1.5rem)"
+                        lineHeight "1.5"
+                        color "var(--color-ink)"
+                    }
+                }
+            }
+        }
+    }
+}

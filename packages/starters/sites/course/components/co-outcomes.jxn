@@ -1,0 +1,179 @@
+/- kdl-version 2
+
+co-outcomes {
+    state kicker=outcomes heading="" n1="" l1="" n2="" l2="" n3="" l3="" n4="" l4=""
+    style {
+        display block
+        position relative
+        overflow hidden
+        backgroundColor "var(--color-ink)"
+        color "var(--color-text-white)"
+        padding "clamp(3rem, 6vw, 4.5rem) 1.5rem"
+    }
+    div {
+        style {
+            position absolute
+            inset "0"
+            backgroundImage "radial-gradient(circle, rgba(255,255,255,0.05) 1px, transparent 1px)"
+            backgroundSize "28px 28px"
+            opacity "0.5"
+            pointerEvents none
+        }
+    }
+    div {
+        style {
+            position absolute
+            inset "0"
+            background "radial-gradient(ellipse 55% 90% at 50% -10%, rgba(79,70,229,0.35), transparent 60%)"
+            pointerEvents none
+        }
+    }
+    div {
+        style position=relative zIndex="2" maxWidth="var(--max-width)" margin="0 auto"
+        div {
+            style textAlign=center marginBottom="2.75rem"
+            p {
+                style {
+                    fontFamily "var(--font-mono)"
+                    fontSize "0.8rem"
+                    fontWeight "600"
+                    color "var(--color-accent)"
+                    margin "0 0 0.85rem"
+                    letterSpacing "0.02em"
+                }
+                span "$ " {
+                    style color="rgba(255,255,255,0.4)"
+                }
+                span "${state.kicker}"
+            }
+            h2 "${state.heading}" {
+                style {
+                    fontFamily "var(--font-heading)"
+                    fontSize "clamp(1.7rem, 3.4vw, 2.4rem)"
+                    fontWeight "800"
+                    letterSpacing "-0.03em"
+                    lineHeight "1.15"
+                    margin "0 auto"
+                    maxWidth "22ch"
+                }
+            }
+        }
+        div {
+            style {
+                display grid
+                gridTemplateColumns "repeat(4, 1fr)"
+                border "1px solid var(--color-terminal-line)"
+                borderRadius "0.9rem"
+                backgroundColor "rgba(20,28,57,0.5)"
+                overflow hidden
+                @--sm gridTemplateColumns="repeat(2, 1fr)"
+            }
+            div {
+                style {
+                    padding "clamp(1.5rem, 3vw, 2.25rem) 1.25rem"
+                    textAlign center
+                    borderRight "1px solid var(--color-terminal-line)"
+                    @--sm borderBottom="1px solid var(--color-terminal-line)"
+                }
+                div "${state.n1}" {
+                    style {
+                        fontFamily "var(--font-heading)"
+                        fontSize "clamp(2.1rem, 4.5vw, 3rem)"
+                        fontWeight "800"
+                        lineHeight "1"
+                        letterSpacing "-0.03em"
+                        color "var(--color-text-white)"
+                        fontVariantNumeric tabular-nums
+                    }
+                }
+                div "${state.l1}" {
+                    style {
+                        marginTop "0.65rem"
+                        fontSize "0.85rem"
+                        fontWeight "500"
+                        color "rgba(255,255,255,0.6)"
+                        lineHeight "1.4"
+                    }
+                }
+            }
+            div {
+                style {
+                    padding "clamp(1.5rem, 3vw, 2.25rem) 1.25rem"
+                    textAlign center
+                    borderRight "1px solid var(--color-terminal-line)"
+                    @--sm borderRight=none borderBottom="1px solid var(--color-terminal-line)"
+                }
+                div "${state.n2}" {
+                    style {
+                        fontFamily "var(--font-heading)"
+                        fontSize "clamp(2.1rem, 4.5vw, 3rem)"
+                        fontWeight "800"
+                        lineHeight "1"
+                        letterSpacing "-0.03em"
+                        color "var(--color-accent)"
+                        fontVariantNumeric tabular-nums
+                    }
+                }
+                div "${state.l2}" {
+                    style {
+                        marginTop "0.65rem"
+                        fontSize "0.85rem"
+                        fontWeight "500"
+                        color "rgba(255,255,255,0.6)"
+                        lineHeight "1.4"
+                    }
+                }
+            }
+            div {
+                style {
+                    padding "clamp(1.5rem, 3vw, 2.25rem) 1.25rem"
+                    textAlign center
+                    borderRight "1px solid var(--color-terminal-line)"
+                }
+                div "${state.n3}" {
+                    style {
+                        fontFamily "var(--font-heading)"
+                        fontSize "clamp(2.1rem, 4.5vw, 3rem)"
+                        fontWeight "800"
+                        lineHeight "1"
+                        letterSpacing "-0.03em"
+                        color "var(--color-text-white)"
+                        fontVariantNumeric tabular-nums
+                    }
+                }
+                div "${state.l3}" {
+                    style {
+                        marginTop "0.65rem"
+                        fontSize "0.85rem"
+                        fontWeight "500"
+                        color "rgba(255,255,255,0.6)"
+                        lineHeight "1.4"
+                    }
+                }
+            }
+            div {
+                style padding="clamp(1.5rem, 3vw, 2.25rem) 1.25rem" textAlign=center
+                div "${state.n4}" {
+                    style {
+                        fontFamily "var(--font-heading)"
+                        fontSize "clamp(2.1rem, 4.5vw, 3rem)"
+                        fontWeight "800"
+                        lineHeight "1"
+                        letterSpacing "-0.03em"
+                        color "var(--color-accent-cyan)"
+                        fontVariantNumeric tabular-nums
+                    }
+                }
+                div "${state.l4}" {
+                    style {
+                        marginTop "0.65rem"
+                        fontSize "0.85rem"
+                        fontWeight "500"
+                        color "rgba(255,255,255,0.6)"
+                        lineHeight "1.4"
+                    }
+                }
+            }
+        }
+    }
+}

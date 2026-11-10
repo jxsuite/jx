@@ -1,0 +1,42 @@
+/- kdl-version 2
+
+re-step {
+    state number="" title="" text=""
+    style {
+        display block
+        padding "1.75rem"
+        backgroundColor "var(--color-bg-white)"
+        border "1px solid var(--color-border)"
+        borderRadius "var(--radius)"
+    }
+    div "${state.number}" {
+        style {
+            display flex
+            alignItems center
+            justifyContent center
+            width "2.75rem"
+            height "2.75rem"
+            borderRadius "0.7rem"
+            backgroundColor "var(--color-teal-tint)"
+            border "1px solid var(--color-accent-soft)"
+            color "var(--color-primary)"
+            fontFamily "var(--font-heading)"
+            fontWeight "800"
+            fontSize "1.2rem"
+            fontVariantNumeric tabular-nums
+            marginBottom "1.1rem"
+        }
+    }
+    h3 "${state.title}" {
+        style {
+            fontFamily "var(--font-heading)"
+            fontSize "1.2rem"
+            fontWeight "700"
+            letterSpacing "-0.01em"
+            margin "0 0 0.5rem"
+        }
+    }
+    p "${state.text}" {
+        style margin="0" color="var(--color-text-muted)" fontSize="0.98rem" lineHeight="1.65"
+    }
+}

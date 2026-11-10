@@ -17,7 +17,12 @@
  * @docs studio/projects/pages-layouts-components
  */
 
-import { isNativeDocumentPath, parseNativeDocument } from "@jxsuite/schema/jxn";
+import {
+  isJxnPath,
+  isNativeDocumentPath,
+  parseNativeDocument,
+  serializeJxn,
+} from "@jxsuite/schema/jxn";
 import { errorMessage } from "@jxsuite/schema/parse";
 import { serializeJson } from "@jxsuite/schema/json-layout";
 import { isJsonObject, isString } from "@jxsuite/schema/guards";
@@ -32,6 +37,7 @@ import {
   formatByExtension,
   formatSerialize,
   loadFormats,
+  NATIVE_EXT,
 } from "../format/format-host";
 import { creationFormats } from "../format/format-choices";
 import { collectionNames, entryCollections } from "../content/entry-model";
@@ -147,7 +153,7 @@ async function readLayouts(): Promise<LayoutChoice[]> {
 /** The first page format that writes prose: what an Article page is saved in. */
 function articleFormat(): WritingFormat | null {
   for (const row of creationFormats("page")) {
-    if (row.ext === ".json") {
+    if (row.ext === ".json" || row.ext === ".jxn") {
       continue;
     }
     const format = formatByExtension(row.ext, "serialize");
@@ -268,6 +274,7 @@ export function resolveTemplateArg(value: string, layouts: readonly LayoutChoice
       normalizeLayoutPath(layout.ref) === normalized ||
       normalizeLayoutPath(layout.ref) === `layouts/${normalized}` ||
       normalizeLayoutPath(layout.ref) === `layouts/${normalized}.json` ||
+      normalizeLayoutPath(layout.ref) === `layouts/${normalized}.jxn` ||
       layout.name.toLowerCase() === wanted.toLowerCase(),
   );
   return match?.ref ?? null;
@@ -311,10 +318,13 @@ function optionsForRequest(request: AddNewRequest, ctx: CreationContext): Creati
 
 // ─── Writing ─────────────────────────────────────────────────────────────────
 
-/** A body's bytes: native JSON through the save serializer, anything else through its format. */
-async function serializeBody(body: CreationBody): Promise<string> {
+/**
+ * A body's bytes: a native body as Jx Notation or JSON by its path's extension, through the same
+ * serializers a save uses, and anything else through its format.
+ */
+async function serializeBody(path: string, body: CreationBody): Promise<string> {
   if (body.format === null) {
-    return serializeJson(body.doc, null);
+    return isJxnPath(path) ? serializeJxn(body.doc) : serializeJson(body.doc, null);
   }
   /* SAFETY: a creation body is a document the derivation built — an element-shaped object, which is
      what a format's serializer reads. */
@@ -363,7 +373,7 @@ function announce(paths: readonly string[]): void {
 async function writeOne(path: string, body: CreationBody, quiet: boolean): Promise<void> {
   let text: string;
   try {
-    text = await serializeBody(body);
+    text = await serializeBody(path, body);
   } catch (error) {
     notify.error(`Could not prepare ${path}.`, {
       detail: errorMessage(error),
@@ -535,7 +545,7 @@ export async function createDirect(
 // ─── A page for an existing collection ───────────────────────────────────────
 
 /**
- * Give an existing collection a page of its own: `pages/<name>/[slug].json`, written exactly as Add
+ * Give an existing collection a page of its own: `pages/<name>/[slug].jxn`, written exactly as Add
  * new writes it for a new collection with **Give each item its own page** on (the blog starter's
  * shape, bound to whichever of title, image and body the collection has, in the default template).
  * The Content home's **Add one** (`specs/studio.md` §22.5).
@@ -550,10 +560,12 @@ export async function addCollectionPage(name: string): Promise<string | null> {
     return null;
   }
   const dir = `pages/${slugify(name) || name}`;
-  const path = `${dir}/[slug].json`;
+  const path = `${dir}/[slug]${NATIVE_EXT}`;
   const taken = await listTakenNames(dir);
-  if (taken.has("[slug].json")) {
-    notify.error(`${path} already exists.`, {
+  // Either native spelling opens at the same route, so either one already being there refuses.
+  const existing = ["[slug].json", "[slug].jxn"].find((file) => taken.has(file));
+  if (existing !== undefined) {
+    notify.error(`${dir}/${existing} already exists.`, {
       detail: "Open it in Design and point its $paths at this collection, or rename it first.",
       path,
       source: SOURCE,

@@ -1,0 +1,55 @@
+/- kdl-version 2
+
+co-section-header {
+    state eyebrow="" index="" heading="" subheading="" align=center
+    style {
+        display block
+        maxWidth "var(--max-width-narrow)"
+        margin "0 auto 2.75rem"
+        textAlign "${state.align}"
+    }
+    div {
+        style {
+            display "${state.eyebrow ? 'flex' : 'none'}"
+            alignItems center
+            gap "0.6rem"
+            justifyContent "${state.align === 'center' ? 'center' : 'flex-start'}"
+            fontFamily "var(--font-mono)"
+            fontSize "0.8rem"
+            fontWeight "600"
+            margin "0 0 0.9rem"
+        }
+        span "//" {
+            style color="var(--color-text-faint)"
+        }
+        span "${state.eyebrow}" {
+            style color="var(--color-primary)" letterSpacing="0.02em"
+        }
+        span "· ${state.index}" {
+            style display="${state.index ? 'inline' : 'none'}" color="var(--color-text-faint)"
+        }
+    }
+    h2 "${state.heading}" {
+        style {
+            fontFamily "var(--font-heading)"
+            fontSize "clamp(1.9rem, 3.8vw, 2.65rem)"
+            fontWeight "800"
+            lineHeight "1.12"
+            letterSpacing "-0.03em"
+            margin "0"
+            color "var(--color-text-primary)"
+        }
+    }
+    p "${state.subheading}" {
+        style {
+            display "${state.subheading ? 'block' : 'none'}"
+            fontSize "1.1rem"
+            lineHeight "1.65"
+            color "var(--color-text-muted)"
+            margin "1rem 0 0"
+            maxWidth "${state.align === 'center' ? '60ch' : 'none'}"
+            marginLeft "${state.align === 'center' ? 'auto' : '0'}"
+            marginRight "${state.align === 'center' ? 'auto' : '0'}"
+        }
+    }
+}

@@ -1,0 +1,95 @@
+/- kdl-version 2
+
+co-cta {
+    state kicker="$ ./enroll --now" heading="" text="" cta="Enroll Now" ctaHref="/enroll/" note=""
+    style {
+        display block
+        position relative
+        overflow hidden
+        backgroundColor "var(--color-ink)"
+        color "var(--color-text-white)"
+        padding "clamp(3.5rem, 8vw, 5.5rem) 1.5rem"
+        textAlign center
+    }
+    div {
+        style {
+            position absolute
+            inset "0"
+            backgroundImage "radial-gradient(circle, rgba(255,255,255,0.05) 1px, transparent 1px)"
+            backgroundSize "28px 28px"
+            opacity "0.5"
+            pointerEvents none
+        }
+    }
+    div {
+        style {
+            position absolute
+            inset "0"
+            background "radial-gradient(ellipse 60% 100% at 50% 120%, rgba(79,70,229,0.4), transparent 62%)"
+            pointerEvents none
+        }
+    }
+    div {
+        style position=relative zIndex="2" maxWidth="var(--max-width-narrow)" margin="0 auto"
+        p "${state.kicker}" {
+            style {
+                fontFamily "var(--font-mono)"
+                fontSize "0.85rem"
+                color "var(--color-accent)"
+                margin "0 0 1.1rem"
+            }
+        }
+        h2 "${state.heading}" {
+            style {
+                fontFamily "var(--font-heading)"
+                fontSize "clamp(1.9rem, 4vw, 2.75rem)"
+                fontWeight "800"
+                lineHeight "1.12"
+                letterSpacing "-0.03em"
+                margin "0 0 1rem"
+            }
+        }
+        p "${state.text}" {
+            style {
+                fontSize "1.1rem"
+                lineHeight "1.65"
+                color "rgba(255,255,255,0.72)"
+                margin "0 auto 2rem"
+                maxWidth "54ch"
+            }
+        }
+        a href="${state.ctaHref}" "${state.cta}" {
+            style {
+                display inline-flex
+                alignItems center
+                gap "0.5rem"
+                backgroundColor "var(--color-primary)"
+                color "var(--color-text-white)"
+                padding "0.95rem 2.25rem"
+                borderRadius "999px"
+                fontSize "1.05rem"
+                fontWeight "600"
+                textDecoration none
+                boxShadow "0 16px 36px -12px rgba(79,70,229,1)"
+                transition "transform 0.15s, background-color 0.15s"
+                :hover backgroundColor="var(--color-primary-hover)" transform="translateY(-2px)"
+            }
+        }
+        p {
+            style {
+                display "${state.note ? 'flex' : 'none'}"
+                alignItems center
+                justifyContent center
+                gap "0.5rem"
+                margin "1.35rem 0 0"
+                fontFamily "var(--font-mono)"
+                fontSize "0.8rem"
+                color "rgba(255,255,255,0.55)"
+            }
+            span ▸ {
+                style color="var(--color-accent)"
+            }
+            span "${state.note}"
+        }
+    }
+}

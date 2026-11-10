@@ -1,0 +1,78 @@
+/- kdl-version 2
+
+fs-hours {
+    state {
+        heading "Studio Hours"
+        weekdays "6:00am – 9:00pm"
+        saturday "7:00am – 2:00pm"
+        sunday "8:00am – 12:00pm"
+        note "Doors open 15 minutes before each class. Please arrive early to settle in."
+    }
+    style {
+        display block
+        backgroundColor "var(--color-ink)"
+        color "#ffffff"
+        borderRadius "var(--radius)"
+        padding "2.2rem"
+        overflow hidden
+    }
+    h3 "${state.heading}" {
+        style {
+            fontFamily "var(--font-display)"
+            fontSize "1.7rem"
+            fontWeight "400"
+            letterSpacing "0.01em"
+            textTransform uppercase
+            margin "0 0 1.35rem"
+            color "#ffffff"
+        }
+    }
+    div {
+        style {
+            display flex
+            justifyContent space-between
+            alignItems center
+            padding "0.7rem 0"
+            borderBottom "1px solid rgba(255,255,255,0.12)"
+        }
+        span "Mon – Fri" {
+            style fontWeight="600"
+        }
+        span "${state.weekdays}" {
+            style color="var(--color-ember)" fontWeight="700" fontFamily="var(--font-heading)"
+        }
+    }
+    div {
+        style {
+            display flex
+            justifyContent space-between
+            alignItems center
+            padding "0.7rem 0"
+            borderBottom "1px solid rgba(255,255,255,0.12)"
+        }
+        span Saturday {
+            style fontWeight="600"
+        }
+        span "${state.saturday}" {
+            style color="var(--color-ember)" fontWeight="700" fontFamily="var(--font-heading)"
+        }
+    }
+    div {
+        style display=flex justifyContent=space-between alignItems=center padding="0.7rem 0"
+        span Sunday {
+            style fontWeight="600"
+        }
+        span "${state.sunday}" {
+            style color="var(--color-ember)" fontWeight="700" fontFamily="var(--font-heading)"
+        }
+    }
+    p "${state.note}" {
+        style {
+            display "${state.note ? 'block' : 'none'}"
+            margin "1.35rem 0 0"
+            fontSize "0.85rem"
+            color "rgba(255,255,255,0.62)"
+            lineHeight "1.6"
+        }
+    }
+}

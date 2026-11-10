@@ -536,7 +536,7 @@ function buildProjectJson({ name, description, url, adapter, template = "blank" 
     content: {},
     defaults: {
       lang: "en",
-      layout: "./layouts/base.json",
+      layout: "./layouts/base.jxn",
     },
     extensions: ["@jxsuite/parser"],
     name,

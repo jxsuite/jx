@@ -1,0 +1,82 @@
+/- kdl-version 2
+
+shp-visit-info {
+    state {
+        address1 "412 Spoke Avenue"
+        address2 "Riverbend, CA 90210"
+        phone "(555) 042-7100"
+        phoneHref tel:+15550427100
+        weekdays "9:00am – 6:30pm"
+        saturday "9:00am – 5:00pm"
+        sunday "10:00am – 4:00pm"
+    }
+    style display=grid gap="1.5rem"
+    div {
+        style {
+            padding "2rem"
+            backgroundColor "var(--color-bg-cream)"
+            border "1px solid var(--color-border)"
+            borderRadius "var(--radius)"
+        }
+        h3 "Find us" {
+            style fontFamily="var(--font-heading)" fontSize="1.4rem" margin="0 0 1rem"
+        }
+        p "${state.address1}" {
+            style margin="0 0 0.35rem"
+        }
+        p "${state.address2}" {
+            style margin="0 0 0.75rem"
+        }
+        a href="${state.phoneHref}" "${state.phone}" {
+            style color="var(--color-primary)" textDecoration=none fontWeight="600"
+        }
+    }
+    div {
+        style {
+            padding "2rem"
+            backgroundColor "var(--color-bg-white)"
+            border "1px solid var(--color-border)"
+            borderRadius "var(--radius)"
+        }
+        h3 "Shop hours" {
+            style fontFamily="var(--font-heading)" fontSize="1.4rem" margin="0 0 1.25rem"
+        }
+        div {
+            style {
+                display flex
+                justifyContent space-between
+                padding "0.6rem 0"
+                borderBottom "1px solid var(--color-border)"
+            }
+            span "Monday – Friday" {
+                style fontWeight="500"
+            }
+            span "${state.weekdays}" {
+                style color="var(--color-text-muted)"
+            }
+        }
+        div {
+            style {
+                display flex
+                justifyContent space-between
+                padding "0.6rem 0"
+                borderBottom "1px solid var(--color-border)"
+            }
+            span Saturday {
+                style fontWeight="500"
+            }
+            span "${state.saturday}" {
+                style color="var(--color-text-muted)"
+            }
+        }
+        div {
+            style display=flex justifyContent=space-between padding="0.6rem 0"
+            span Sunday {
+                style fontWeight="500"
+            }
+            span "${state.sunday}" {
+                style color="var(--color-text-muted)"
+            }
+        }
+    }
+}

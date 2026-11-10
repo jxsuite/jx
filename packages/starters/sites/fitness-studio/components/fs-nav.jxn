@@ -1,0 +1,95 @@
+/- kdl-version 2
+
+fs-nav {
+    state brand=EMBER
+    style {
+        display block
+        position sticky
+        top "0"
+        zIndex "50"
+        backgroundColor "rgba(255,255,255,0.82)"
+        backdropFilter "blur(12px)"
+        borderBottom "1px solid var(--color-border)"
+    }
+    div {
+        style {
+            maxWidth "var(--max-width)"
+            margin "0 auto"
+            padding "0.85rem 1.5rem"
+            display flex
+            alignItems center
+            justifyContent space-between
+            gap "1.5rem"
+        }
+        a href="/" {
+            style display=inline-flex alignItems=center gap="0.6rem" textDecoration=none
+            span {
+                style {
+                    width "1.6rem"
+                    height "1.6rem"
+                    borderRadius "50%"
+                    background "var(--grad)"
+                    boxShadow "0 0 0 4px rgba(255,46,99,0.14)"
+                    flexShrink "0"
+                }
+            }
+            span "${state.brand}" {
+                style {
+                    fontFamily "var(--font-display)"
+                    fontSize "1.5rem"
+                    letterSpacing "0.02em"
+                    color "var(--color-text-primary)"
+                    lineHeight "1"
+                }
+            }
+        }
+        nav {
+            style display=flex alignItems=center gap="1.9rem" {
+                @--sm gap="1rem"
+            }
+            a href="/classes/" Schedule {
+                style {
+                    color "var(--color-text-primary)"
+                    textDecoration none
+                    fontWeight "600"
+                    fontSize "0.82rem"
+                    textTransform uppercase
+                    letterSpacing "0.1em"
+                    :hover color="var(--color-primary)"
+                }
+            }
+            a href="/pricing/" Pricing {
+                style {
+                    color "var(--color-text-primary)"
+                    textDecoration none
+                    fontWeight "600"
+                    fontSize "0.82rem"
+                    textTransform uppercase
+                    letterSpacing "0.1em"
+                    @--sm display=none
+                    :hover color="var(--color-primary)"
+                }
+            }
+            a href="/contact/" "Book a Class" {
+                style {
+                    display inline-block
+                    background "var(--grad-hot)"
+                    color "var(--color-text-white)"
+                    padding "0.6rem 1.4rem"
+                    borderRadius "999px"
+                    textDecoration none
+                    fontWeight "700"
+                    fontSize "0.82rem"
+                    textTransform uppercase
+                    letterSpacing "0.08em"
+                    boxShadow "0 8px 22px -8px rgba(255,46,99,0.6)"
+                    transition "transform 0.15s, box-shadow 0.15s"
+                    :hover {
+                        transform "translateY(-2px)"
+                        boxShadow "0 14px 30px -8px rgba(255,46,99,0.7)"
+                    }
+                }
+            }
+        }
+    }
+}

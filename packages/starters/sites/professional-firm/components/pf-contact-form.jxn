@@ -1,0 +1,74 @@
+/- kdl-version 2
+
+pf-contact-form {
+    state {
+        heading "Request a consultation"
+        note "This is a demo form. Wire it to your CRM or email in pages/contact.md."
+    }
+    style display=block
+    h3 "${state.heading}" {
+        style {
+            fontFamily "var(--font-serif)"
+            fontSize "1.7rem"
+            fontWeight "500"
+            letterSpacing "-0.01em"
+            margin "0 0 0.4rem"
+            color "var(--color-ink)"
+        }
+    }
+    div {
+        style height="2px" width="3rem" backgroundColor="var(--color-accent)" margin="0 0 1.5rem"
+    }
+    form action="#" method=post {
+        style display=grid gap="1rem" alignContent=start {
+            "& input, & textarea" {
+                width "100%"
+                padding "0.8rem 0"
+                border none
+                borderBottom "1px solid var(--color-hairline)"
+                borderRadius "0"
+                backgroundColor transparent
+                fontFamily "var(--font-sans)"
+                fontSize "1rem"
+                color "var(--color-ink)"
+                outline none
+                transition "border-color 0.15s"
+            }
+            "& input:focus, & textarea:focus" borderBottom="1px solid var(--color-accent)"
+        }
+        input type=text name=name placeholder="Your name" required="true" aria-label="Your name"
+        input type=email name=email placeholder="Work email" required="true" aria-label="Work email"
+        div {
+            style display=grid gridTemplateColumns="1fr 1fr" gap="1rem" {
+                @--sm gridTemplateColumns="1fr"
+            }
+            input type=text name=company placeholder=Company aria-label=Company
+            input type=text name=revenue placeholder="Annual revenue (approx.)" aria-label="Annual revenue"
+        }
+        textarea name=notes rows="4" placeholder="What can we help with?" aria-label="What can we help with?" {
+            style fontFamily="var(--font-sans)"
+        }
+        button type=submit "Request a consultation" {
+            style {
+                marginTop "0.75rem"
+                backgroundColor "var(--color-ink)"
+                color "var(--color-paper)"
+                padding "0.9rem 1.75rem"
+                border none
+                borderRadius "0"
+                fontFamily "var(--font-sans)"
+                fontSize "0.78rem"
+                fontWeight "600"
+                textTransform uppercase
+                letterSpacing "0.14em"
+                cursor pointer
+                justifySelf start
+                transition "background-color 0.15s"
+                :hover backgroundColor="var(--color-primary-hover)"
+            }
+        }
+        p "${state.note}" {
+            style fontSize="0.82rem" color="var(--color-muted)" margin="0"
+        }
+    }
+}

@@ -1,0 +1,106 @@
+/- kdl-version 2
+
+co-application {
+    state heading="Start your application"
+    style display=block
+    form action="#" method=post {
+        style {
+            display grid
+            gap "1.1rem"
+            alignContent start
+            marginTop "1.5rem"
+            padding "clamp(1.5rem, 4vw, 2.25rem)"
+            backgroundColor "var(--color-bg-white)"
+            border "1px solid var(--color-border)"
+            borderRadius "var(--radius)"
+            boxShadow "0 16px 44px -28px rgba(15,20,36,0.4)"
+            "& label" {
+                display block
+                fontFamily "var(--font-mono)"
+                fontSize "0.74rem"
+                fontWeight "600"
+                textTransform uppercase
+                letterSpacing "0.06em"
+                color "var(--color-text-muted)"
+                marginBottom "0.4rem"
+            }
+            "& input, & select, & textarea" {
+                width "100%"
+                padding "0.8rem 0.95rem"
+                border "1px solid var(--color-border-strong)"
+                borderRadius "var(--radius-sm)"
+                fontSize "1rem"
+                fontFamily "var(--font-body)"
+                backgroundColor "var(--color-bg-white)"
+                color "var(--color-text-primary)"
+            }
+            "& input:focus, & select:focus, & textarea:focus" {
+                outline none
+                borderColor "var(--color-primary)"
+                boxShadow "0 0 0 3px rgba(79,70,229,0.15)"
+            }
+        }
+        div {
+            label for=app-name "Your name"
+            input id=app-name type=text name=name placeholder="Ada Lovelace" required="true"
+        }
+        div {
+            label for=app-email "Email address"
+            input id=app-email type=email name=email placeholder=you@example.com required="true"
+        }
+        div {
+            style display=grid gridTemplateColumns="1fr 1fr" gap="1.1rem" {
+                @--sm gridTemplateColumns="1fr"
+            }
+            div {
+                label for=app-cohort "Preferred cohort"
+                select id=app-cohort name=cohort {
+                    option value="" disabled="true" selected="true" "Choose a cohort"
+                    option value=fall "Fall 2026 · Sept 8"
+                    option value=winter "Winter 2027 · Jan 12"
+                    option value=unsure "Not sure yet"
+                }
+            }
+            div {
+                label for=app-exp "Coding experience"
+                select id=app-exp name=experience {
+                    option value="" disabled="true" selected="true" "Choose one"
+                    option value=none "Complete beginner"
+                    option value=some "Some self-taught"
+                    option value=cs "CS / bootcamp background"
+                }
+            }
+        }
+        div {
+            label for=app-goals "What do you want to build?"
+            textarea id=app-goals name=goals rows="3" placeholder="Tell us what you're hoping to build or become..." {
+                style fontFamily="var(--font-body)" resize=vertical
+            }
+        }
+        button type=submit "Submit Application →" {
+            style {
+                backgroundColor "var(--color-primary)"
+                color "var(--color-text-white)"
+                padding "0.9rem 1.75rem"
+                border none
+                borderRadius "999px"
+                fontSize "1rem"
+                fontWeight "600"
+                fontFamily "var(--font-body)"
+                cursor pointer
+                justifySelf start
+                boxShadow "0 14px 30px -14px rgba(79,70,229,0.9)"
+                transition "background-color 0.15s, transform 0.15s"
+                :hover backgroundColor="var(--color-primary-hover)" transform="translateY(-1px)"
+            }
+        }
+        p "// demo form — wire it to your CRM or email in pages/enroll.md" {
+            style {
+                fontFamily "var(--font-mono)"
+                fontSize "0.78rem"
+                color "var(--color-text-faint)"
+                margin "0"
+            }
+        }
+    }
+}

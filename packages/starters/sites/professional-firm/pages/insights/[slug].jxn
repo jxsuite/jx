@@ -1,0 +1,106 @@
+/- kdl-version 2
+$layout "./layouts/article.jxn"
+$paths contentType=insights param=slug field=id
+
+$element .title="${state.entry.data.title} — Meridian Advisory" {
+    state {
+        entry {
+            $prototype ContentEntry
+            $src "@jxsuite/parser/ContentEntry.class.json"
+            contentType insights
+            field id
+            id (ref)"#/$params/slug"
+        }
+    }
+    article {
+        pf-article-header {
+            $props {
+                eyebrow "${state.entry.data.category}"
+                title "${state.entry.data.title}"
+                date "${state.entry.data.date}"
+                author "${state.entry.data.author}"
+                readingTime "${state.entry._meta.readingTime}"
+            }
+        }
+        div {
+            style {
+                fontFamily "var(--font-serif)"
+                fontSize "1.2rem"
+                lineHeight "1.8"
+                color "var(--color-ink)"
+                "& p:first-of-type::first-letter" {
+                    float left
+                    fontFamily "var(--font-serif)"
+                    fontSize "3.6em"
+                    lineHeight "0.82"
+                    fontWeight "600"
+                    padding "0.02em 0.14em 0 0"
+                    color "var(--color-accent)"
+                }
+            }
+            .children {
+                $array items=(ref)"#/state/entry/$children" {
+                    p "${item.textContent}" {
+                        style margin="0 0 1.5rem"
+                    }
+                }
+            }
+        }
+        div "Written by ${state.entry.data.author} · Meridian Advisory" {
+            style {
+                marginTop "2.5rem"
+                paddingTop "1.5rem"
+                borderTop "1px solid var(--color-hairline)"
+                fontFamily "var(--font-sans)"
+                fontSize "0.78rem"
+                textTransform uppercase
+                letterSpacing "0.12em"
+                color "var(--color-muted)"
+            }
+        }
+        div {
+            style {
+                marginTop "2.5rem"
+                backgroundColor "var(--color-ink-deep)"
+                color "var(--color-text-white)"
+                borderTop "3px solid var(--color-accent)"
+                padding "2rem"
+                display flex
+                flexWrap wrap
+                alignItems center
+                justifyContent space-between
+                gap "1.25rem"
+            }
+            div {
+                div "Have a question this raised?" {
+                    style {
+                        fontFamily "var(--font-serif)"
+                        fontSize "1.35rem"
+                        fontWeight "500"
+                        marginBottom "0.3rem"
+                    }
+                }
+                div "Book a free consultation with a Meridian advisor." {
+                    style color="rgba(244,241,233,0.75)" fontSize="0.95rem"
+                }
+            }
+            a href="/contact/" "Book a consultation" {
+                style {
+                    display inline-block
+                    backgroundColor "var(--color-accent)"
+                    color "var(--color-ink-deep)"
+                    padding "0.85rem 1.75rem"
+                    fontFamily "var(--font-sans)"
+                    fontSize "0.76rem"
+                    fontWeight "600"
+                    textTransform uppercase
+                    letterSpacing "0.14em"
+                    textDecoration none
+                    whiteSpace nowrap
+                    transition "background-color 0.15s"
+                    :hover backgroundColor="#b0904c"
+                }
+            }
+        }
+    }
+}

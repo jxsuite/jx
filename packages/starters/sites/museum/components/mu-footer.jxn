@@ -1,0 +1,206 @@
+/- kdl-version 2
+
+mu-footer {
+    state {
+        brand Atrium
+        tagline ""
+        visitLabel "Find us"
+        address ""
+        hours ""
+        readLabel Read
+        exhibitionsLink Exhibitions
+        visitLink "Plan your visit"
+        aboutLink "About the museum"
+        exhibitionsHref "/exhibitions/"
+        visitHref "/visit/"
+        aboutHref "/about/"
+        contactLabel Contact
+        email ""
+        phone ""
+        legal ""
+        credit ""
+    }
+    style {
+        display block
+        backgroundColor "var(--color-ink-deep)"
+        color "var(--color-chalk)"
+        borderBlockStart "2px solid var(--color-ink)"
+    }
+    div {
+        style {
+            maxWidth "var(--max-width)"
+            marginInline auto
+            paddingInline "var(--gutter)"
+            paddingBlock "clamp(3rem, 6vw, 4.5rem) 2rem"
+            display grid
+            gridTemplateColumns "minmax(0, 1.7fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr)"
+            gap "2.5rem"
+            @--lg gridTemplateColumns="minmax(0, 1fr) minmax(0, 1fr)"
+            @--sm gridTemplateColumns="minmax(0, 1fr)" gap="2rem"
+        }
+        div {
+            div {
+                style display=inline-flex alignItems=center gap="0.7rem" marginBlockEnd="1.1rem"
+                span aria-hidden="true" {
+                    style {
+                        width "1.05rem"
+                        height "1.05rem"
+                        borderRadius "50%"
+                        backgroundColor "var(--color-chalk)"
+                        flex "0 0 auto"
+                    }
+                }
+                span "${state.brand}" {
+                    style {
+                        fontFamily "var(--font-display)"
+                        fontSize "1.55rem"
+                        fontWeight "700"
+                        lineHeight "1"
+                        letterSpacing "var(--display-tracking)"
+                    }
+                }
+            }
+            p "${state.tagline}" {
+                style {
+                    margin "0"
+                    maxWidth "38ch"
+                    fontSize "0.98rem"
+                    lineHeight "1.7"
+                    color "rgba(231, 227, 218, 0.72)"
+                }
+            }
+        }
+        div {
+            p "${state.visitLabel}" {
+                style {
+                    margin "0 0 0.9rem"
+                    paddingBlockEnd "0.7rem"
+                    borderBlockEnd "1px solid rgba(231, 227, 218, 0.2)"
+                    fontFamily "var(--font-label)"
+                    fontSize "0.64rem"
+                    letterSpacing "var(--label-tracking)"
+                    textTransform "var(--label-case)"
+                    color "rgba(231, 227, 218, 0.55)"
+                }
+            }
+            p "${state.address}" {
+                style {
+                    margin "0 0 0.6rem"
+                    fontSize "0.95rem"
+                    lineHeight "1.6"
+                    color "rgba(231, 227, 218, 0.85)"
+                }
+            }
+            p "${state.hours}" {
+                style {
+                    margin "0"
+                    fontSize "0.95rem"
+                    lineHeight "1.6"
+                    color "rgba(231, 227, 218, 0.6)"
+                }
+            }
+        }
+        div {
+            p "${state.readLabel}" {
+                style {
+                    margin "0 0 0.9rem"
+                    paddingBlockEnd "0.7rem"
+                    borderBlockEnd "1px solid rgba(231, 227, 218, 0.2)"
+                    fontFamily "var(--font-label)"
+                    fontSize "0.64rem"
+                    letterSpacing "var(--label-tracking)"
+                    textTransform "var(--label-case)"
+                    color "rgba(231, 227, 218, 0.55)"
+                }
+            }
+            a href="${state.exhibitionsHref}" "${state.exhibitionsLink}" {
+                style {
+                    display block
+                    marginBlockEnd "0.55rem"
+                    fontSize "0.95rem"
+                    color "rgba(231, 227, 218, 0.85)"
+                    textDecoration none
+                    transition "color 0.15s"
+                    :hover color="var(--color-chalk)"
+                }
+            }
+            a href="${state.visitHref}" "${state.visitLink}" {
+                style {
+                    display block
+                    marginBlockEnd "0.55rem"
+                    fontSize "0.95rem"
+                    color "rgba(231, 227, 218, 0.85)"
+                    textDecoration none
+                    transition "color 0.15s"
+                    :hover color="var(--color-chalk)"
+                }
+            }
+            a href="${state.aboutHref}" "${state.aboutLink}" {
+                style {
+                    display block
+                    fontSize "0.95rem"
+                    color "rgba(231, 227, 218, 0.85)"
+                    textDecoration none
+                    transition "color 0.15s"
+                    :hover color="var(--color-chalk)"
+                }
+            }
+        }
+        div {
+            p "${state.contactLabel}" {
+                style {
+                    margin "0 0 0.9rem"
+                    paddingBlockEnd "0.7rem"
+                    borderBlockEnd "1px solid rgba(231, 227, 218, 0.2)"
+                    fontFamily "var(--font-label)"
+                    fontSize "0.64rem"
+                    letterSpacing "var(--label-tracking)"
+                    textTransform "var(--label-case)"
+                    color "rgba(231, 227, 218, 0.55)"
+                }
+            }
+            p {
+                style {
+                    margin "0 0 0.55rem"
+                    fontFamily "var(--font-label)"
+                    fontSize "0.9rem"
+                    color "rgba(231, 227, 218, 0.85)"
+                }
+                bdi "${state.email}"
+            }
+            p {
+                style {
+                    margin "0"
+                    fontFamily "var(--font-label)"
+                    fontSize "0.9rem"
+                    color "rgba(231, 227, 218, 0.85)"
+                }
+                bdi "${state.phone}"
+            }
+        }
+    }
+    div {
+        style {
+            maxWidth "var(--max-width)"
+            marginInline auto
+            paddingInline "var(--gutter)"
+            paddingBlock "1.4rem"
+            borderBlockStart "1px solid rgba(231, 227, 218, 0.2)"
+            display flex
+            flexWrap wrap
+            justifyContent space-between
+            gap "1rem"
+            fontFamily "var(--font-label)"
+            fontSize "0.64rem"
+            letterSpacing "var(--label-tracking)"
+            textTransform "var(--label-case)"
+            color "rgba(231, 227, 218, 0.5)"
+        }
+        p "${state.legal}" {
+            style margin="0"
+        }
+        p "${state.credit}" {
+            style margin="0"
+        }
+    }
+}

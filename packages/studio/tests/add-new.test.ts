@@ -15,6 +15,7 @@ import {
 } from "./harness";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { isJsonObject } from "@jxsuite/schema/guards";
+import { parseJxn } from "@jxsuite/schema/jxn";
 import { mockFormatAction, seedMarkdownFormat } from "./format-fixture";
 import type { InstalledMockPlatform } from "./harness";
 import type { StudioPlatform } from "../src/types";
@@ -220,7 +221,7 @@ function fileJson(path: string): JsonObject {
   if (text === undefined) {
     throw new Error(`nothing was written at ${path}`);
   }
-  const parsed: unknown = JSON.parse(text);
+  const parsed: unknown = path.endsWith(".jxn") ? parseJxn(text) : JSON.parse(text);
   if (!isJsonObject(parsed)) {
     throw new Error(`${path} is not a JSON object`);
   }
@@ -259,7 +260,7 @@ describe("the dialog", () => {
     expect(primary().disabled).toBe(true);
     expect(primary().textContent.trim()).toBe("Create page");
     await typeName("Our Pricing");
-    expect(saved()).toBe("Saved as pages/our-pricing.json · opens at /our-pricing");
+    expect(saved()).toBe("Saved as pages/our-pricing.jxn · opens at /our-pricing");
     expect(part("route")?.textContent).toBe("/our-pricing");
     expect(primary().disabled).toBe(false);
   });
@@ -269,7 +270,7 @@ describe("the dialog", () => {
     await open();
     expect(fieldError()).toBe("");
     await typeName("About");
-    expect(fieldError()).toBe("about.json already exists in pages/.");
+    expect(fieldError()).toBe("pages/about.json already opens at /about.");
     await confirm();
     // Still open, nothing written over the existing page.
     expect(topDialog()).not.toBeNull();
@@ -292,7 +293,7 @@ describe("the dialog", () => {
     expect(saved()).toContain("Adds a “recipes” collection to project.json");
     expect(part("confirm")?.textContent.trim()).toBe("Create collection");
     await pickKind("template");
-    expect(saved()).toBe("Saved as layouts/recipes.json with one slot.");
+    expect(saved()).toBe("Saved as layouts/recipes.jxn with one slot.");
   });
 
   test("a second open while one is showing is the same dialog", async () => {
@@ -311,7 +312,7 @@ describe("the dialog", () => {
     const input = dialog().querySelector<HTMLInputElement>('[part="name"] [part="input"]')!;
     input.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Enter" }));
     const result = await done;
-    expect(result?.path).toBe("pages/contact.json");
+    expect(result?.path).toBe("pages/contact.jxn");
   });
 });
 
@@ -325,16 +326,16 @@ describe("a page", () => {
     const result = await done;
     expect(result).toEqual({
       kind: "page",
-      path: "pages/pricing.json",
+      path: "pages/pricing.jxn",
       route: "/pricing",
-      wrote: ["pages/pricing.json"],
+      wrote: ["pages/pricing.jxn"],
     });
-    expect(fileJson("pages/pricing.json")).toEqual({
+    expect(fileJson("pages/pricing.jxn")).toEqual({
       children: [{ tagName: "h1", textContent: "Pricing" }],
       tagName: "main",
       title: "Pricing",
     });
-    expect(activeTab.value?.documentPath).toBe("pages/pricing.json");
+    expect(activeTab.value?.documentPath).toBe("pages/pricing.jxn");
   });
 
   /* Each keystroke asked for the folder the page's index would live in (`pages/pri`, `pages/pric`,
@@ -363,7 +364,7 @@ describe("a page", () => {
     await typeName("Bare");
     await confirm();
     await done;
-    expect(fileJson("pages/bare.json").$layout).toBe(false);
+    expect(fileJson("pages/bare.jxn").$layout).toBe(false);
   });
 
   test("Edit reveals the URL, which then places the file", async () => {
@@ -376,10 +377,10 @@ describe("a page", () => {
     url.value = "/docs/start";
     url.dispatchEvent(new Event("input", { bubbles: true }));
     await settle(undefined, 10);
-    expect(saved()).toBe("Saved as pages/docs/start.json · opens at /docs/start");
+    expect(saved()).toBe("Saved as pages/docs/start.jxn · opens at /docs/start");
     await confirm();
     const result = await done;
-    expect(result?.path).toBe("pages/docs/start.json");
+    expect(result?.path).toBe("pages/docs/start.jxn");
   });
 });
 
@@ -390,10 +391,10 @@ describe("a template", () => {
     const { done } = await open({ kind: "template" });
     await pickCard("wrap-in", "./layouts/base.json");
     await typeName("Landing");
-    expect(saved()).toBe("Saved as layouts/landing.json with one slot.");
+    expect(saved()).toBe("Saved as layouts/landing.jxn with one slot.");
     await confirm();
     await done;
-    expect(fileJson("layouts/landing.json")).toEqual({
+    expect(fileJson("layouts/landing.jxn")).toEqual({
       $layout: "./layouts/base.json",
       children: [{ children: [{ tagName: "slot" }], tagName: "main" }],
       tagName: "div",
@@ -405,13 +406,13 @@ describe("a component", () => {
   test("Blank writes its tag, registers it, and opens it", async () => {
     const { done } = await open({ kind: "component" });
     await typeName("Hero");
-    expect(saved()).toBe("Saved as components/site-hero.json with tag <site-hero>.");
+    expect(saved()).toBe("Saved as components/site-hero.jxn with tag <site-hero>.");
     await confirm();
     const result = await done;
     expect(result?.tag).toBe("site-hero");
-    expect(fileJson("components/site-hero.json")).toEqual({ children: [], tagName: "site-hero" });
+    expect(fileJson("components/site-hero.jxn")).toEqual({ children: [], tagName: "site-hero" });
     expect(components.componentRegistry.map((entry) => entry.tagName)).toContain("site-hero");
-    expect(activeTab.value?.documentPath).toBe("components/site-hero.json");
+    expect(activeTab.value?.documentPath).toBe("components/site-hero.jxn");
   });
 
   test("Current selection is disabled, with its reason, when nothing is selected", async () => {
@@ -440,12 +441,12 @@ describe("a component", () => {
     await confirm();
     await done;
     expect(tab.doc.document.children).toEqual([{ tagName: "hero-banner" }]);
-    expect(tab.doc.document.$elements).toEqual([{ $ref: "../components/hero-banner.json" }]);
+    expect(tab.doc.document.$elements).toEqual([{ $ref: "../components/hero-banner.jxn" }]);
     // The lifted subtree, minus the page-only `$id`, under the tag the name derived.
-    expect(fileJson("components/hero-banner.json")).toEqual({ tagName: "hero-banner" });
+    expect(fileJson("components/hero-banner.jxn")).toEqual({ tagName: "hero-banner" });
     // Then the new component opens, as every other component start does.
-    await settle(() => activeTab.value?.documentPath === "components/hero-banner.json");
-    expect(activeTab.value?.documentPath).toBe("components/hero-banner.json");
+    await settle(() => activeTab.value?.documentPath === "components/hero-banner.jxn");
+    expect(activeTab.value?.documentPath).toBe("components/hero-banner.jxn");
   });
 
   test("Copy of… copies an existing component under the new tag", async () => {
@@ -464,7 +465,7 @@ describe("a component", () => {
     await typeName("Card two");
     await confirm();
     await done;
-    expect(fileJson("components/card-two.json")).toEqual({
+    expect(fileJson("components/card-two.jxn")).toEqual({
       children: [{ tagName: "slot" }],
       tagName: "card-two",
     });
@@ -502,7 +503,7 @@ describe("a collection", () => {
     expect(result?.wrote).toEqual([
       "project.json",
       "content/recipes/first-recipe.json",
-      "pages/recipes/[slug].json",
+      "pages/recipes/[slug].jxn",
     ]);
     expect(store.projectState?.projectConfig?.content).toEqual({
       recipes: {
@@ -521,7 +522,7 @@ describe("a collection", () => {
     });
     expect(fileJson("project.json").content).toBeDefined();
     expect(fileJson("content/recipes/first-recipe.json")).toEqual({ title: "First recipe" });
-    expect(fileJson("pages/recipes/[slug].json").$paths).toEqual({
+    expect(fileJson("pages/recipes/[slug].jxn").$paths).toEqual({
       contentType: "recipes",
       field: "id",
       param: "slug",
@@ -631,8 +632,8 @@ describe("media", () => {
 describe("createDirect", () => {
   test("creates from a kind and a name, with the same bytes the dialog writes", async () => {
     const result = await flow.createDirect({ kind: "page", name: "Pricing", template: "post" });
-    expect(result.path).toBe("pages/pricing.json");
-    expect(fileJson("pages/pricing.json").$layout).toBe("./layouts/post.json");
+    expect(result.path).toBe("pages/pricing.jxn");
+    expect(fileJson("pages/pricing.jxn").$layout).toBe("./layouts/post.json");
     expect(topDialog()).toBeNull();
   });
 
@@ -651,7 +652,7 @@ describe("createDirect", () => {
       caught = error;
     }
     expect(caught).toBeInstanceOf(RangeError);
-    expect(String(caught)).toContain("about.json already exists in pages/.");
+    expect(String(caught)).toContain("pages/about.json already opens at /about.");
   });
 
   test("a template argument that names nothing lists what there is", async () => {
@@ -684,8 +685,8 @@ describe("createDirect", () => {
     } catch (error) {
       caught = error;
     }
-    expect(String(caught)).toContain("could not create layouts/broken.json");
-    expect(problems.some((problem) => problem.path === "layouts/broken.json")).toBe(true);
+    expect(String(caught)).toContain("could not create layouts/broken.jxn");
+    expect(problems.some((problem) => problem.path === "layouts/broken.jxn")).toBe(true);
   });
 
   test("a template argument resolves by path, by stem and by name", () => {
@@ -747,7 +748,7 @@ describe("with a prose format", () => {
     await confirm();
     await done;
     expect(platform.state.files.get("content/notes/first-note.md")).toContain("title: First note");
-    expect(JSON.stringify(fileJson("pages/notes/[slug].json").children)).toContain(
+    expect(JSON.stringify(fileJson("pages/notes/[slug].jxn").children)).toContain(
       "${state.entry.$children}",
     );
   });
@@ -774,7 +775,7 @@ describe("the dialog's other controls", () => {
     await typeName("Events");
     await confirm();
     await done;
-    expect(fileJson("pages/events/[slug].json").$layout).toBe(false);
+    expect(fileJson("pages/events/[slug].jxn").$layout).toBe(false);
   });
 
   test("the entry collection picker, the drag-out and Edit twice", async () => {
@@ -981,12 +982,12 @@ describe("a collection that half lands", () => {
     await typeName("Recipes");
     await confirm();
     const result = await done;
-    expect(result?.wrote).not.toContain("pages/recipes/[slug].json");
+    expect(result?.wrote).not.toContain("pages/recipes/[slug].jxn");
     expect(
       toasts.some(
         (toast) =>
           toast.severity === "warn" &&
-          toast.message.includes("pages/recipes/[slug].json could not be written"),
+          toast.message.includes("pages/recipes/[slug].jxn could not be written"),
       ),
     ).toBe(true);
   });
@@ -1007,8 +1008,8 @@ describe("a page for a collection that has none", () => {
   test("writes the page Add new writes for a new collection, in the default template", async () => {
     setup({}, { content: RECIPES });
     const path = await flow.addCollectionPage("recipes");
-    expect(path).toBe("pages/recipes/[slug].json");
-    const page = fileJson("pages/recipes/[slug].json");
+    expect(path).toBe("pages/recipes/[slug].jxn");
+    const page = fileJson("pages/recipes/[slug].jxn");
     expect(page.$paths).toEqual({ contentType: "recipes", field: "id", param: "slug" });
     // The default template already applies, so the page says nothing about it.
     expect(page.$layout).toBeUndefined();
@@ -1021,12 +1022,12 @@ describe("a page for a collection that has none", () => {
   });
 
   test("refuses a collection the project does not declare, and one that already has the page", async () => {
-    setup({ "pages/recipes/[slug].json": "{}" }, { content: RECIPES });
+    setup({ "pages/recipes/[slug].jxn": "{}" }, { content: RECIPES });
     expect(await flow.addCollectionPage("gone")).toBeNull();
     expect(problems.at(-1)?.message).toContain('"gone" is not a collection');
     expect(await flow.addCollectionPage("recipes")).toBeNull();
-    expect(problems.at(-1)?.message).toBe("pages/recipes/[slug].json already exists.");
-    expect(platform.state.files.get("pages/recipes/[slug].json")).toBe("{}");
+    expect(problems.at(-1)?.message).toBe("pages/recipes/[slug].jxn already exists.");
+    expect(platform.state.files.get("pages/recipes/[slug].jxn")).toBe("{}");
   });
 
   test("a write that fails answers null", async () => {
@@ -1091,9 +1092,9 @@ describe("a multilingual site (site-architecture.md §13)", () => {
     setup(FILES, I18N);
     await open({ kind: "page" });
     await typeName("Opening Hours");
-    expect(saved()).toBe("Saved as pages/opening-hours.json · opens at /opening-hours");
+    expect(saved()).toBe("Saved as pages/opening-hours.jxn · opens at /opening-hours");
     await pickLocale("fr-CA");
-    expect(saved()).toBe("Saved as pages/fr-ca/opening-hours.json · opens at /fr-ca/opening-hours");
+    expect(saved()).toBe("Saved as pages/fr-ca/opening-hours.jxn · opens at /fr-ca/opening-hours");
   });
 
   test("a page is framed in its language's own template until a template is chosen", async () => {
@@ -1108,7 +1109,7 @@ describe("a multilingual site (site-architecture.md §13)", () => {
     await pickLocale("fr-CA");
     await confirm();
     await done;
-    expect(fileJson("pages/fr-ca/hours.json").$layout).toBe("./layouts/fr-ca.json");
+    expect(fileJson("pages/fr-ca/hours.jxn").$layout).toBe("./layouts/fr-ca.json");
   });
 
   test("a collection is localized by default, and can opt out", async () => {

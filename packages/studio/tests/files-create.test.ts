@@ -202,6 +202,7 @@ describe("the picker's rows", () => {
     // The default content format and write ANOTHER format's bytes into it.
     expect(promptFormatOptions()).toEqual([
       [".json", "JSON (.json)"],
+      [".jxn", "Jx Notation (.jxn)"],
       [".md", "Markdown (.md)"],
       ["__other__", "Other…"],
     ]);
@@ -216,7 +217,12 @@ describe("the picker's rows", () => {
       suggestedName: "untitled",
     });
     await flush();
-    expect(promptFormatOptions().map(([value]) => value)).toEqual([".json", ".md", "__other__"]);
+    expect(promptFormatOptions().map(([value]) => value)).toEqual([
+      ".json",
+      ".jxn",
+      ".md",
+      "__other__",
+    ]);
     await answerPromptDialog(null);
     await pending;
 
@@ -226,6 +232,7 @@ describe("the picker's rows", () => {
       suggestedName: "untitled",
     });
     await flush();
+    // A collection's entries are data, which Jx Notation is not offered for.
     expect(promptFormatOptions().map(([value]) => value)).toEqual([".json", ".md", "__other__"]);
     await answerPromptDialog(null);
     await contentOnly;
@@ -269,6 +276,7 @@ describe("the picker's rows", () => {
     await flush();
     expect(promptFormatOptions()).toEqual([
       [".json", "JSON (.json)"],
+      [".jxn", "Jx Notation (.jxn)"],
       ["__other__", "Other…"],
     ]);
     await answerPromptDialog(null);

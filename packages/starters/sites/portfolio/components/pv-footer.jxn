@@ -1,0 +1,113 @@
+/- kdl-version 2
+
+pv-footer {
+    state {
+        brand "Aperture Studio"
+        tagline "Available light, unhurried days, prints worth keeping."
+        email hello@aperturestudio.example
+        phone "(555) 204-7788"
+    }
+    style {
+        display block
+        backgroundColor "var(--color-bg)"
+        borderTop "1px solid var(--color-line)"
+        padding "clamp(3.5rem, 8vw, 5.5rem) clamp(1.5rem, 4vw, 4rem) 2.5rem"
+    }
+    div {
+        style {
+            maxWidth "var(--max-width)"
+            margin "0 auto"
+            display flex
+            alignItems flex-end
+            justifyContent space-between
+            gap "2.5rem"
+            flexWrap wrap
+        }
+        div {
+            div "${state.brand}" {
+                style {
+                    fontFamily "var(--font-heading)"
+                    fontWeight "400"
+                    fontSize "clamp(2.4rem, 6vw, 4rem)"
+                    lineHeight "1"
+                    letterSpacing "-0.01em"
+                    margin "0 0 0.75rem"
+                    color "var(--color-text-primary)"
+                }
+            }
+            p "${state.tagline}" {
+                style {
+                    margin "0"
+                    fontFamily "var(--font-heading)"
+                    fontStyle italic
+                    fontSize "1.15rem"
+                    color "var(--color-text-muted)"
+                }
+            }
+        }
+        div {
+            style display=flex flexDirection=column gap="0.6rem" textAlign=right {
+                @--sm textAlign=left
+            }
+            a href="mailto:${state.email}" "${state.email}" {
+                style {
+                    color "var(--color-text-primary)"
+                    textDecoration none
+                    fontSize "0.82rem"
+                    letterSpacing "0.04em"
+                    transition "color 0.15s"
+                    :hover color="var(--color-primary)"
+                }
+            }
+            span "${state.phone}" {
+                style color="var(--color-text-muted)" fontSize="0.82rem" letterSpacing="0.04em"
+            }
+            nav {
+                style {
+                    display flex
+                    gap "1.5rem"
+                    justifyContent flex-end
+                    marginTop "0.5rem"
+                    fontSize "0.68rem"
+                    fontWeight "600"
+                    textTransform uppercase
+                    letterSpacing "0.18em"
+                    @--sm justifyContent=flex-start
+                }
+                a href="/work/" Work {
+                    style color="var(--color-text-muted)" textDecoration=none {
+                        :hover color="var(--color-primary)"
+                    }
+                }
+                a href="/about/" About {
+                    style color="var(--color-text-muted)" textDecoration=none {
+                        :hover color="var(--color-primary)"
+                    }
+                }
+                a href="/contact/" Contact {
+                    style color="var(--color-text-muted)" textDecoration=none {
+                        :hover color="var(--color-primary)"
+                    }
+                }
+            }
+        }
+    }
+    div {
+        style {
+            maxWidth "var(--max-width)"
+            margin "clamp(3rem, 6vw, 4.5rem) auto 0"
+            paddingTop "1.5rem"
+            borderTop "1px solid var(--color-line)"
+            display flex
+            justifyContent space-between
+            gap "1rem"
+            flexWrap wrap
+            fontSize "0.72rem"
+            letterSpacing "0.1em"
+            textTransform uppercase
+            color "var(--color-text-muted)"
+        }
+        span "© Aperture Studio"
+        span "Built with Jx"
+    }
+}

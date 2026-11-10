@@ -1,0 +1,73 @@
+/- kdl-version 2
+
+bit-section-header {
+    state eyebrow="" heading="" headingAccent="" subheading="" align=center
+    style {
+        display block
+        maxWidth "var(--max-width-narrow)"
+        margin "0 auto 2.75rem"
+        textAlign "${state.align}"
+    }
+    div {
+        style {
+            display "${state.eyebrow ? 'flex' : 'none'}"
+            alignItems center
+            gap "0.85rem"
+            justifyContent "${state.align === 'center' ? 'center' : 'flex-start'}"
+            marginBottom "1.1rem"
+        }
+        span {
+            style width="2.25rem" height="1px" backgroundColor="var(--color-primary)"
+        }
+        p "${state.eyebrow}" {
+            style {
+                margin "0"
+                fontFamily "var(--font-body)"
+                textTransform uppercase
+                letterSpacing "0.22em"
+                fontSize "0.74rem"
+                fontWeight "700"
+                color "var(--color-primary)"
+            }
+        }
+        span {
+            style {
+                display "${state.align === 'center' ? 'block' : 'none'}"
+                width "2.25rem"
+                height "1px"
+                backgroundColor "var(--color-primary)"
+            }
+        }
+    }
+    h2 {
+        style {
+            fontFamily "var(--font-heading)"
+            fontSize "clamp(2rem, 4.4vw, 3rem)"
+            fontWeight "700"
+            lineHeight "1.1"
+            letterSpacing "-0.02em"
+            margin "0"
+            color "var(--color-text-primary)"
+        }
+        span "${state.heading}"
+        span " ${state.headingAccent}" {
+            style {
+                display "${state.headingAccent ? 'inline' : 'none'}"
+                fontStyle italic
+                fontWeight "500"
+                color "var(--color-primary)"
+            }
+        }
+    }
+    p "${state.subheading}" {
+        style {
+            display "${state.subheading ? 'block' : 'none'}"
+            fontFamily "var(--font-body)"
+            fontSize "1.1rem"
+            lineHeight "1.7"
+            color "var(--color-text-muted)"
+            margin "1.1rem auto 0"
+            maxWidth "56ch"
+        }
+    }
+}

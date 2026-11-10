@@ -164,7 +164,7 @@ Studio derives two of its surfaces from `parse` and `serialize` rather than from
 - **The New File format picker** offers your extension when some installed class declares BOTH `parse` and `serialize` for it. Both are needed: without `parse` the file cannot be opened after it is created, and without `serialize` its first save falls through to another format and writes that format's bytes into it. (This is why the parser extension's `Csv`, which parses rows and has no serializer, is not offered; a `.csv` is still creatable through the picker's **Other…** row. `Csv` declares `rewrite` instead, which buys it the refactor and not this picker.)
 - **Convert Format…** offers your format as a conversion endpoint when it declares both capabilities **and** `page` or `component` in `documentKinds`. That membership is what says `parse` returns a Jx document rather than content entries, and the compiler already relies on it to build its page and component globs, so there is no separate declaration to make.
 
-`.json` is the endpoint both surfaces share, because no registry ever claims it.
+`.json` and `.jxn` are the endpoints both surfaces share, because they are native and no registry claims them.
 
 One more generic hint applies to any class, not just formats: `$studio.stateDefaults`, an object merged into state entries Studio creates for the prototype. The connector's `TableQuery` sets `{ "timing": "client" }` so Studio-created queries default to browser resolution.
 

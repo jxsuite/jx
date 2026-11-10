@@ -1,0 +1,64 @@
+/- kdl-version 2
+
+bl-author-bio {
+    state {
+        name ""
+        role "Writer & editor"
+        bio ""
+        avatar type=string format=image default=""
+    }
+    style {
+        display block
+        borderTop "1.5px solid var(--color-rule)"
+        borderBottom "1.5px solid var(--color-rule)"
+        padding "1.75rem 0"
+    }
+    div {
+        style display=flex gap="1.5rem" alignItems=center {
+            @--sm flexDirection=column textAlign=center
+        }
+        img src="${state.avatar}" alt="${state.name}" loading=lazy {
+            style {
+                display "${state.avatar ? 'block' : 'none'}"
+                width "84px"
+                height "84px"
+                borderRadius "999px"
+                objectFit cover
+                flexShrink "0"
+                filter "grayscale(1)"
+            }
+        }
+        div {
+            div "Written by · ${state.role}" {
+                style {
+                    fontFamily "var(--font-body)"
+                    textTransform uppercase
+                    letterSpacing "0.16em"
+                    fontSize "0.7rem"
+                    fontWeight "600"
+                    color "var(--color-primary)"
+                    marginBottom "0.4rem"
+                }
+            }
+            div "${state.name}" {
+                style {
+                    fontFamily "var(--font-heading)"
+                    fontSize "1.5rem"
+                    fontWeight "700"
+                    letterSpacing "-0.01em"
+                    margin "0 0 0.4rem"
+                }
+            }
+            p "${state.bio}" {
+                style {
+                    margin "0"
+                    fontFamily "var(--font-heading)"
+                    fontStyle italic
+                    color "var(--color-text-muted)"
+                    fontSize "1.1rem"
+                    lineHeight "1.6"
+                }
+            }
+        }
+    }
+}

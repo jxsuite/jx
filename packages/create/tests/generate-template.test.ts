@@ -2,6 +2,7 @@
  * The built-in template variants of the blank build: $media direction, viewport/theme-color meta,
  * the mobile-app file overlay, and precedence of a starter over a template id.
  */
+import { parseJxn } from "@jxsuite/schema/jxn";
 import { afterEach, beforeAll, describe, expect, mock, test } from "bun:test";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -38,8 +39,8 @@ const MOBILE_MEDIA = {
   "--lg": "(min-width: 1024px)",
 };
 
-function readJson(...segments: string[]) {
-  return JSON.parse(readFileSync(join(TMP, ...segments), "utf8"));
+function readDocument(...segments: string[]) {
+  return parseJxn(readFileSync(join(TMP, ...segments), "utf8"));
 }
 
 function viewportContent(project: ProjectConfig) {
@@ -71,8 +72,8 @@ describe("generateProject — built-in templates", () => {
     expect(hasThemeColor).toBe(false);
 
     // The shared skeleton files, no app-shell overlay.
-    const layout = readJson("layouts", "base.json");
-    expect(layout.style.minHeight).toBe("100vh");
+    const layout = readDocument("layouts", "base.jxn");
+    expect(layout).toMatchObject({ style: { minHeight: "100vh" } });
     expect(existsSync(join(TMP, "pages", "explore.md"))).toBe(false);
   });
 
@@ -92,8 +93,8 @@ describe("generateProject — built-in templates", () => {
     expect(project.$media).toEqual(MOBILE_MEDIA);
     expect(viewportContent(project)).toBe("width=device-width, initial-scale=1");
 
-    const layout = readJson("layouts", "base.json");
-    expect(layout.style.minHeight).toBe("100vh");
+    const layout = readDocument("layouts", "base.jxn");
+    expect(layout).toMatchObject({ style: { minHeight: "100vh" } });
     expect(existsSync(join(TMP, "pages", "explore.md"))).toBe(false);
   });
 
@@ -111,9 +112,10 @@ describe("generateProject — built-in templates", () => {
     });
 
     // The overlay replaces the base layout with the app shell and adds the nav's pages.
-    const layout = readJson("layouts", "base.json");
-    expect(layout.style.height).toBe("100dvh");
-    expect(layout.children.at(-1).tagName).toBe("nav");
+    const layout = readDocument("layouts", "base.jxn");
+    expect(layout).toMatchObject({ style: { height: "100dvh" } });
+    const children = Array.isArray(layout.children) ? layout.children : [];
+    expect(children.at(-1)).toMatchObject({ tagName: "nav" });
     expect(existsSync(join(TMP, "pages", "explore.md"))).toBe(true);
     expect(existsSync(join(TMP, "pages", "profile.md"))).toBe(true);
   });

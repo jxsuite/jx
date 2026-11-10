@@ -1,0 +1,162 @@
+/- kdl-version 2
+
+re-nav {
+    state brand=Northshore
+    style {
+        display block
+        position sticky
+        top "0"
+        zIndex "50"
+        backgroundColor "rgba(255, 255, 255, 0.86)"
+        backdropFilter "blur(14px)"
+        borderBottom "1px solid var(--color-border)"
+    }
+    div {
+        style {
+            maxWidth "var(--max-width)"
+            margin "0 auto"
+            padding "0.85rem 1.5rem"
+            display flex
+            alignItems center
+            gap "1.25rem"
+        }
+        a href="/" {
+            style {
+                display inline-flex
+                alignItems center
+                gap "0.6rem"
+                textDecoration none
+                marginRight "0.5rem"
+            }
+            span ⌂ {
+                style {
+                    display inline-flex
+                    alignItems center
+                    justifyContent center
+                    width "2rem"
+                    height "2rem"
+                    borderRadius "0.55rem"
+                    background "linear-gradient(150deg, var(--color-accent-bright), var(--color-primary))"
+                    color "var(--color-text-white)"
+                    fontSize "1.05rem"
+                    boxShadow "0 6px 16px -6px rgba(15,118,110,0.6)"
+                }
+            }
+            span {
+                style display=flex flexDirection=column lineHeight="1"
+                span "${state.brand} Realty" {
+                    style {
+                        fontFamily "var(--font-heading)"
+                        fontSize "1.15rem"
+                        fontWeight "800"
+                        letterSpacing "-0.03em"
+                        color "var(--color-text-primary)"
+                    }
+                }
+                span "North Shore MLS" {
+                    style {
+                        fontSize "0.62rem"
+                        fontWeight "700"
+                        letterSpacing "0.22em"
+                        textTransform uppercase
+                        color "var(--color-text-muted)"
+                        marginTop "0.2rem"
+                    }
+                }
+            }
+        }
+        nav {
+            style display=flex alignItems=center gap="1.4rem" marginLeft="0.5rem" {
+                @--md display=none
+            }
+            a href="/listings/" Buy {
+                style {
+                    color "var(--color-text-secondary)"
+                    textDecoration none
+                    fontWeight "600"
+                    fontSize "0.92rem"
+                    transition "color 0.15s"
+                    :hover color="var(--color-primary)"
+                }
+            }
+            a href="/listings/" Listings {
+                style {
+                    color "var(--color-text-secondary)"
+                    textDecoration none
+                    fontWeight "600"
+                    fontSize "0.92rem"
+                    transition "color 0.15s"
+                    :hover color="var(--color-primary)"
+                }
+            }
+            a href="/#neighborhoods" Neighborhoods {
+                style {
+                    color "var(--color-text-secondary)"
+                    textDecoration none
+                    fontWeight "600"
+                    fontSize "0.92rem"
+                    transition "color 0.15s"
+                    :hover color="var(--color-primary)"
+                }
+            }
+            a href="/about/" About {
+                style {
+                    color "var(--color-text-secondary)"
+                    textDecoration none
+                    fontWeight "600"
+                    fontSize "0.92rem"
+                    transition "color 0.15s"
+                    :hover color="var(--color-primary)"
+                }
+            }
+        }
+        a href="/listings/" aria-label="Search homes" {
+            style {
+                marginLeft auto
+                display inline-flex
+                alignItems center
+                gap "0.55rem"
+                padding "0.5rem 0.9rem 0.5rem 0.75rem"
+                borderRadius "999px"
+                border "1px solid var(--color-border-strong)"
+                backgroundColor "var(--color-bg-white)"
+                color "var(--color-text-muted)"
+                textDecoration none
+                fontSize "0.88rem"
+                fontWeight "600"
+                transition "border-color 0.15s, color 0.15s"
+                @--sm display=none
+                :hover borderColor="var(--color-primary)" color="var(--color-primary)"
+            }
+            span ⌕ {
+                style {
+                    display inline-flex
+                    alignItems center
+                    justifyContent center
+                    width "1.5rem"
+                    height "1.5rem"
+                    borderRadius "999px"
+                    backgroundColor "var(--color-teal-tint)"
+                    color "var(--color-primary)"
+                    fontSize "0.85rem"
+                }
+            }
+            span "Search homes"
+        }
+        a href="/contact/" "List with us" {
+            style {
+                display inline-flex
+                alignItems center
+                backgroundColor "var(--color-primary)"
+                color "var(--color-text-white)"
+                padding "0.6rem 1.15rem"
+                borderRadius "999px"
+                textDecoration none
+                fontWeight "700"
+                fontSize "0.9rem"
+                transition "background-color 0.15s, transform 0.15s"
+                :hover backgroundColor="var(--color-primary-hover)" transform="translateY(-1px)"
+            }
+        }
+    }
+}

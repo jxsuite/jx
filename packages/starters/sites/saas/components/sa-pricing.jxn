@@ -1,0 +1,317 @@
+/- kdl-version 2
+
+sa-pricing {
+    state {
+        billing monthly
+        starterMonthly "0"
+        starterAnnual "0"
+        proMonthly "29"
+        proAnnual "24"
+        scaleMonthly "79"
+        scaleAnnual "63"
+    }
+    style display=block maxWidth="var(--max-width)" margin="0 auto" padding="0 1.5rem"
+    div {
+        style {
+            display flex
+            flexDirection column
+            alignItems center
+            gap "0.6rem"
+            marginBottom "2.75rem"
+        }
+        div {
+            style {
+                display inline-flex
+                padding "0.3rem"
+                borderRadius "999px"
+                backgroundColor "var(--color-bg-cream)"
+                border "1px solid var(--color-border)"
+            }
+            button Monthly {
+                (on)onclick {
+                    $expression operator="=" target=(ref)"#/state/billing" value=monthly
+                }
+                style {
+                    padding "0.5rem 1.25rem"
+                    border none
+                    borderRadius "999px"
+                    cursor pointer
+                    fontSize "0.9rem"
+                    fontWeight "600"
+                    fontFamily inherit
+                    transition "background-color 0.15s, color 0.15s, box-shadow 0.15s"
+                    backgroundColor "${state.billing === 'monthly' ? 'var(--color-bg-elev2)' : 'transparent'}"
+                    color "${state.billing === 'monthly' ? 'var(--color-text-primary)' : 'var(--color-text-muted)'}"
+                    boxShadow "${state.billing === 'monthly' ? '0 1px 4px rgba(20, 20, 43, 0.1)' : 'none'}"
+                }
+            }
+            button Annual {
+                (on)onclick {
+                    $expression operator="=" target=(ref)"#/state/billing" value=annual
+                }
+                style {
+                    padding "0.5rem 1.25rem"
+                    border none
+                    borderRadius "999px"
+                    cursor pointer
+                    fontSize "0.9rem"
+                    fontWeight "600"
+                    fontFamily inherit
+                    transition "background-color 0.15s, color 0.15s, box-shadow 0.15s"
+                    backgroundColor "${state.billing === 'annual' ? 'var(--color-bg-elev2)' : 'transparent'}"
+                    color "${state.billing === 'annual' ? 'var(--color-text-primary)' : 'var(--color-text-muted)'}"
+                    boxShadow "${state.billing === 'annual' ? '0 1px 4px rgba(20, 20, 43, 0.1)' : 'none'}"
+                }
+            }
+        }
+        p "${state.billing === 'annual' ? 'You’re saving 20% with annual billing' : 'Switch to annual and save 20%'}" {
+            style margin="0" fontSize="0.85rem" fontWeight="600" color="var(--color-primary)"
+        }
+    }
+    div {
+        style display=grid gridTemplateColumns="repeat(3, 1fr)" gap="1.25rem" alignItems=stretch {
+            @--md gridTemplateColumns="1fr" maxWidth="420px" margin="0 auto"
+        }
+        div {
+            style {
+                display flex
+                flexDirection column
+                padding "2rem"
+                borderRadius "var(--radius)"
+                border "1px solid var(--color-border)"
+                backgroundColor "var(--color-bg-white)"
+            }
+            h3 Starter {
+                style {
+                    fontFamily "var(--font-heading)"
+                    fontSize "1.25rem"
+                    fontWeight "600"
+                    margin "0 0 0.35rem"
+                }
+            }
+            p "For individuals and side projects getting off the ground." {
+                style {
+                    margin "0 0 1.25rem"
+                    color "var(--color-text-muted)"
+                    fontSize "0.92rem"
+                    lineHeight "1.55"
+                }
+            }
+            div {
+                style display=flex alignItems=baseline gap="0.25rem" marginBottom="0.25rem"
+                span "$${state.billing === 'monthly' ? state.starterMonthly : state.starterAnnual}" {
+                    style {
+                        fontFamily "var(--font-heading)"
+                        fontSize "2.75rem"
+                        fontWeight "700"
+                        letterSpacing "-0.03em"
+                        lineHeight "1"
+                    }
+                }
+                span "/mo" {
+                    style color="var(--color-text-muted)" fontSize="0.95rem"
+                }
+            }
+            p "${state.billing === 'annual' ? 'per user · billed annually' : 'per user · billed monthly'}" {
+                style margin="0 0 1.5rem" fontSize="0.82rem" color="var(--color-text-muted)"
+            }
+            a href="/contact/" "Start for free" {
+                style {
+                    display block
+                    textAlign center
+                    padding "0.7rem 1rem"
+                    borderRadius "var(--radius)"
+                    border "1px solid var(--color-border)"
+                    color "var(--color-text-primary)"
+                    textDecoration none
+                    fontWeight "600"
+                    fontSize "0.95rem"
+                    marginBottom "1.5rem"
+                    transition "border-color 0.15s"
+                    :hover borderColor="var(--color-primary)"
+                }
+            }
+            div {
+                style display=flex flexDirection=column gap="0.6rem"
+                sa-check-item {
+                    $props text="Up to 3 projects"
+                }
+                sa-check-item {
+                    $props text="Community support"
+                }
+                sa-check-item {
+                    $props text="1 GB storage"
+                }
+            }
+        }
+        div {
+            style {
+                position relative
+                display flex
+                flexDirection column
+                padding "2rem"
+                borderRadius "var(--radius)"
+                border "1px solid rgba(124, 116, 255, 0.6)"
+                backgroundColor "var(--color-bg-elev)"
+                boxShadow "0 24px 70px -18px var(--glow)"
+            }
+            span "Most popular" {
+                style {
+                    position absolute
+                    top "-0.75rem"
+                    left "2rem"
+                    padding "0.25rem 0.75rem"
+                    borderRadius "999px"
+                    backgroundColor "var(--color-primary)"
+                    color "var(--color-text-white)"
+                    fontSize "0.72rem"
+                    fontWeight "700"
+                    letterSpacing "0.05em"
+                    textTransform uppercase
+                }
+            }
+            h3 Pro {
+                style {
+                    fontFamily "var(--font-heading)"
+                    fontSize "1.25rem"
+                    fontWeight "600"
+                    margin "0 0 0.35rem"
+                }
+            }
+            p "For growing teams that need automation and insight." {
+                style {
+                    margin "0 0 1.25rem"
+                    color "var(--color-text-muted)"
+                    fontSize "0.92rem"
+                    lineHeight "1.55"
+                }
+            }
+            div {
+                style display=flex alignItems=baseline gap="0.25rem" marginBottom="0.25rem"
+                span "$${state.billing === 'monthly' ? state.proMonthly : state.proAnnual}" {
+                    style {
+                        fontFamily "var(--font-heading)"
+                        fontSize "2.75rem"
+                        fontWeight "700"
+                        letterSpacing "-0.03em"
+                        lineHeight "1"
+                        color "var(--color-primary)"
+                    }
+                }
+                span "/mo" {
+                    style color="var(--color-text-muted)" fontSize="0.95rem"
+                }
+            }
+            p "${state.billing === 'annual' ? 'per user · billed annually' : 'per user · billed monthly'}" {
+                style margin="0 0 1.5rem" fontSize="0.82rem" color="var(--color-text-muted)"
+            }
+            a href="/contact/" "Start 14-day trial" {
+                style {
+                    display block
+                    textAlign center
+                    padding "0.7rem 1rem"
+                    borderRadius "999px"
+                    background "var(--grad-btn)"
+                    color "#ffffff"
+                    textDecoration none
+                    fontWeight "600"
+                    fontSize "0.95rem"
+                    marginBottom "1.5rem"
+                    boxShadow "0 10px 26px -8px var(--glow)"
+                    transition "transform 0.15s"
+                    :hover transform="translateY(-2px)"
+                }
+            }
+            div {
+                style display=flex flexDirection=column gap="0.6rem"
+                sa-check-item {
+                    $props text="Unlimited projects"
+                }
+                sa-check-item {
+                    $props text="Automations & workflows"
+                }
+                sa-check-item {
+                    $props text="Analytics dashboard"
+                }
+                sa-check-item {
+                    $props text="Priority email support"
+                }
+            }
+        }
+        div {
+            style {
+                display flex
+                flexDirection column
+                padding "2rem"
+                borderRadius "var(--radius)"
+                border "1px solid var(--color-border)"
+                backgroundColor "var(--color-bg-white)"
+            }
+            h3 Scale {
+                style {
+                    fontFamily "var(--font-heading)"
+                    fontSize "1.25rem"
+                    fontWeight "600"
+                    margin "0 0 0.35rem"
+                }
+            }
+            p "For organizations that need control, security, and SLAs." {
+                style {
+                    margin "0 0 1.25rem"
+                    color "var(--color-text-muted)"
+                    fontSize "0.92rem"
+                    lineHeight "1.55"
+                }
+            }
+            div {
+                style display=flex alignItems=baseline gap="0.25rem" marginBottom="0.25rem"
+                span "$${state.billing === 'monthly' ? state.scaleMonthly : state.scaleAnnual}" {
+                    style {
+                        fontFamily "var(--font-heading)"
+                        fontSize "2.75rem"
+                        fontWeight "700"
+                        letterSpacing "-0.03em"
+                        lineHeight "1"
+                    }
+                }
+                span "/mo" {
+                    style color="var(--color-text-muted)" fontSize="0.95rem"
+                }
+            }
+            p "${state.billing === 'annual' ? 'per user · billed annually' : 'per user · billed monthly'}" {
+                style margin="0 0 1.5rem" fontSize="0.82rem" color="var(--color-text-muted)"
+            }
+            a href="/contact/" "Talk to sales" {
+                style {
+                    display block
+                    textAlign center
+                    padding "0.7rem 1rem"
+                    borderRadius "var(--radius)"
+                    border "1px solid var(--color-border)"
+                    color "var(--color-text-primary)"
+                    textDecoration none
+                    fontWeight "600"
+                    fontSize "0.95rem"
+                    marginBottom "1.5rem"
+                    transition "border-color 0.15s"
+                    :hover borderColor="var(--color-primary)"
+                }
+            }
+            div {
+                style display=flex flexDirection=column gap="0.6rem"
+                sa-check-item {
+                    $props text="Everything in Pro"
+                }
+                sa-check-item {
+                    $props text="SSO & SCIM provisioning"
+                }
+                sa-check-item {
+                    $props text="Advanced permissions"
+                }
+                sa-check-item {
+                    $props text="99.9% uptime SLA"
+                }
+            }
+        }
+    }
+}

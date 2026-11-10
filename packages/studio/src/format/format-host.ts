@@ -76,7 +76,8 @@ export interface StudioFormat {
 
 /**
  * What opening a `.jxn` file is told about its format. It is not in {@link getFormats}, which is
- * what a project chose and what a picker offers: a new document is still `.json`.
+ * what a project chose: Jx Notation is native, so no project has to choose it, and the pickers
+ * offer it themselves (`format-choices.ts`).
  */
 export const JXN_FORMAT_NAME = "jxn";
 
@@ -91,7 +92,11 @@ const JXN_FORMAT: StudioFormat = {
   mediaType: null,
   name: JXN_FORMAT_NAME,
   remote: false,
-  studio: { documentMode: { default: "component" } },
+  studio: {
+    documentMode: { default: "component" },
+    // The blank document New File writes as `.json`, in this spelling.
+    newFileTemplate: "/- kdl-version 2\n\ndiv {\n    p\n}\n",
+  },
 };
 
 /**
@@ -355,11 +360,14 @@ export function documentExtensions(kind?: string): string[] {
  */
 export const NATIVE_DOCUMENT_EXTENSIONS: readonly string[] = [".json", ".jxn"];
 
+/** The extension every new native document is written in: Jx Notation (`spec.md` §22). */
+export const NATIVE_EXT = ".jxn";
+
 /**
  * The extensions an existing document of `kind` may be read from: the native pair and every
  * extension a format of that kind claims. What FINDS a document, where {@link documentExtensions} is
- * what a picker offers to CREATE one in, which is why the two are not one list: a new document is
- * not offered as `.jxn` yet.
+ * what a format offers to CREATE one in; the native pair is offered by the picker itself
+ * (`format-choices.ts` `creationFormats`).
  *
  * @param kind A document kind, or every kind.
  */

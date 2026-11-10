@@ -1,0 +1,118 @@
+/- kdl-version 2
+
+pv-project-card {
+    state {
+        number ""
+        title ""
+        category ""
+        year ""
+        href "#"
+        cover type=string format=image default=""
+        alt ""
+    }
+    style display=block minWidth="0"
+    a href="${state.href}" {
+        style {
+            position relative
+            display block
+            height "100%"
+            overflow hidden
+            textDecoration none
+            color "var(--color-text-white)"
+            backgroundColor "var(--color-bg-elev)"
+            ":hover img" transform="scale(1.06)"
+            ":hover figcaption" transform="translateY(0)" opacity="1"
+        }
+        img src="${state.cover}" alt="${state.alt}" loading=lazy {
+            style {
+                position absolute
+                inset "0"
+                width "100%"
+                height "100%"
+                objectFit cover
+                display block
+                transition "transform 0.8s cubic-bezier(0.22, 1, 0.36, 1)"
+            }
+        }
+        div {
+            style {
+                position absolute
+                inset "0"
+                background "linear-gradient(to top, rgba(10,10,11,0.82) 0%, rgba(10,10,11,0.25) 40%, transparent 68%)"
+            }
+        }
+        div {
+            style {
+                position absolute
+                left "0"
+                right "0"
+                bottom "0"
+                padding "clamp(1.25rem, 2.5vw, 2rem)"
+            }
+            div {
+                style display=flex alignItems=center gap="0.7rem" marginBottom="0.6rem"
+                span "${state.number}" {
+                    style {
+                        fontFamily "var(--font-label)"
+                        fontSize "0.72rem"
+                        letterSpacing "0.1em"
+                        color "var(--color-primary)"
+                    }
+                }
+                span {
+                    style {
+                        width "1.5rem"
+                        height "1px"
+                        backgroundColor "var(--color-primary)"
+                        opacity "0.7"
+                    }
+                }
+                span "${state.category}" {
+                    style {
+                        display "${state.category ? 'inline' : 'none'}"
+                        fontSize "0.66rem"
+                        fontWeight "600"
+                        letterSpacing "0.2em"
+                        textTransform uppercase
+                        color "var(--color-text-white)"
+                        opacity "0.75"
+                    }
+                }
+            }
+            div {
+                style display=flex alignItems=baseline justifyContent=space-between gap="1rem"
+                h3 "${state.title}" {
+                    style {
+                        fontFamily "var(--font-heading)"
+                        fontWeight "500"
+                        fontSize "clamp(1.6rem, 2.8vw, 2.4rem)"
+                        lineHeight "1.05"
+                        margin "0"
+                    }
+                }
+                span "${state.year}" {
+                    style {
+                        display "${state.year ? 'inline' : 'none'}"
+                        fontSize "0.8rem"
+                        color "var(--color-text-white)"
+                        opacity "0.6"
+                        whiteSpace nowrap
+                    }
+                }
+            }
+            figcaption "View project →" {
+                style {
+                    marginTop "0.75rem"
+                    fontSize "0.72rem"
+                    fontWeight "600"
+                    textTransform uppercase
+                    letterSpacing "0.18em"
+                    color "var(--color-primary)"
+                    transform "translateY(0.75rem)"
+                    opacity "0"
+                    transition "transform 0.3s, opacity 0.3s"
+                }
+            }
+        }
+    }
+}

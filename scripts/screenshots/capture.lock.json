@@ -242,9 +242,9 @@
     },
     "docs/images/convert-to-component.png": {
       "bytes": 326699,
-      "capturedAt": "2026-10-19T01:55:15Z",
-      "capturedBy": "screenshots@ci/39187344170",
-      "definition": "7decf0421e9b321071889d2975c88d621b4de5a1a43bc5db5eb7f26751870af8",
+      "capturedAt": "2026-11-10T01:32:53Z",
+      "capturedBy": "screenshots@ci/42736207406",
+      "definition": "ac5ebd0fc501b02b57c3aabf2943ed070c5ece1b21e5a6590bdab7a21f6adcf2",
       "height": 2000,
       "runtime": {
         "chromium": "151",
@@ -377,9 +377,9 @@
     },
     "docs/images/data-explorer.png": {
       "bytes": 118168,
-      "capturedAt": "2026-09-12T01:36:28Z",
-      "capturedBy": "screenshots@ci/34665220286",
-      "definition": "8397ee03cd57199f5a35459acad0df4c9f53c20e6dc6883bc959f9f0395ff02f",
+      "capturedAt": "2026-11-10T01:32:23Z",
+      "capturedBy": "screenshots@ci/42736207406",
+      "definition": "88a051526a04a720078f72fa6cb564a449d8742818fd6d0b9cdcf8dc926fc0d3",
       "height": 1880,
       "runtime": {
         "chromium": "151",
@@ -452,9 +452,9 @@
     },
     "docs/images/design-inspector.png": {
       "bytes": 138962,
-      "capturedAt": "2026-11-08T07:03:14Z",
-      "capturedBy": "screenshots@ci/42457063958",
-      "definition": "45a0dbf5b8f4b1585bfa4d0a6cb4a75f60134d0233d4618b96f9a2dbf83a802e",
+      "capturedAt": "2026-11-10T01:31:48Z",
+      "capturedBy": "screenshots@ci/42736207406",
+      "definition": "2a8cd734796a90c662404d737863e18e43e060cd48ae69d86a3336d937c2c07a",
       "height": 1880,
       "runtime": {
         "chromium": "151",
@@ -497,9 +497,9 @@
     },
     "docs/images/events-panel.png": {
       "bytes": 48647,
-      "capturedAt": "2026-10-19T01:55:01Z",
-      "capturedBy": "screenshots@ci/39187344170",
-      "definition": "f3995e9ccff6c620f2f6408452f558d3beea6a4b668ae866c8447dc2e9f3962a",
+      "capturedAt": "2026-11-10T01:32:41Z",
+      "capturedBy": "screenshots@ci/42736207406",
+      "definition": "eb8e647f76341e2cbbd17818b1bd060ccf0e625144a2d107480800cbcf02ab6a",
       "height": 1160,
       "runtime": {
         "chromium": "151",
@@ -512,9 +512,9 @@
     },
     "docs/images/field-mode-button.png": {
       "bytes": 9518,
-      "capturedAt": "2026-09-12T01:36:40Z",
-      "capturedBy": "screenshots@ci/34665220286",
-      "definition": "c7b10b266a3e6b862f4de16c93f0fc27982520e42e148ed537d0524fa80975da",
+      "capturedAt": "2026-11-10T01:32:38Z",
+      "capturedBy": "screenshots@ci/42736207406",
+      "definition": "4e6cc38074b01412eb99869fbc097be139e98af10439af09d9f109852e3d3ab7",
       "height": 104,
       "runtime": {
         "chromium": "151",
@@ -527,9 +527,9 @@
     },
     "docs/images/formula-workspace.png": {
       "bytes": 355314,
-      "capturedAt": "2026-10-19T01:55:03Z",
-      "capturedBy": "screenshots@ci/39187344170",
-      "definition": "298f7268ee2a713698efb707e9a1da556a772deac6c80befc9bb7877e1772505",
+      "capturedAt": "2026-11-10T01:32:44Z",
+      "capturedBy": "screenshots@ci/42736207406",
+      "definition": "9d15c440ee99edeb73fda97176246caa1b17e3b6e02b075f74645551f4d465a5",
       "height": 2000,
       "runtime": {
         "chromium": "151",
@@ -647,9 +647,9 @@
     },
     "docs/images/layers-panel.png": {
       "bytes": 81589,
-      "capturedAt": "2026-10-17T03:20:24Z",
-      "capturedBy": "screenshots@ci/38998268865",
-      "definition": "42d24096685ab55c5469b09efcc591d6afe22b676302550dac1c999aaa7313e0",
+      "capturedAt": "2026-11-10T01:32:12Z",
+      "capturedBy": "screenshots@ci/42736207406",
+      "definition": "c6cbdf69de9e77e7f29540e5bc3f56eef099f912bcd4421c0378ac2439456118",
       "height": 1880,
       "runtime": {
         "chromium": "151",
@@ -692,9 +692,9 @@
     },
     "docs/images/mode-design.png": {
       "bytes": 1001950,
-      "capturedAt": "2026-11-08T07:02:55Z",
-      "capturedBy": "screenshots@ci/42457063958",
-      "definition": "51eaafbafa8f6ffbd4f7c91f468f277429a27c85a0dc250b02b3b1b43e841780",
+      "capturedAt": "2026-11-10T01:31:28Z",
+      "capturedBy": "screenshots@ci/42736207406",
+      "definition": "ab25f82f8e06ab04313d31866080cab1a1b02699deb80678d2b445429e577c19",
       "height": 2000,
       "runtime": {
         "chromium": "151",
@@ -737,9 +737,9 @@
     },
     "docs/images/mode-script.png": {
       "bytes": 879839,
-      "capturedAt": "2026-10-19T01:54:10Z",
-      "capturedBy": "screenshots@ci/39187344170",
-      "definition": "d7d80b2dc6705384f70a78a8edc6fb0758d0110d6dcc94a7242ae3adb12880c8",
+      "capturedAt": "2026-11-10T01:31:33Z",
+      "capturedBy": "screenshots@ci/42736207406",
+      "definition": "56a1408c547bf29318d27967968535bf42742fb3b2cfaaa2d780e0e1b41d58df",
       "height": 2000,
       "runtime": {
         "chromium": "151",
@@ -767,9 +767,9 @@
     },
     "docs/images/properties-panel.png": {
       "bytes": 56843,
-      "capturedAt": "2026-10-19T01:54:59Z",
-      "capturedBy": "screenshots@ci/39187344170",
-      "definition": "c7b10b266a3e6b862f4de16c93f0fc27982520e42e148ed537d0524fa80975da",
+      "capturedAt": "2026-11-10T01:32:38Z",
+      "capturedBy": "screenshots@ci/42736207406",
+      "definition": "4e6cc38074b01412eb99869fbc097be139e98af10439af09d9f109852e3d3ab7",
       "height": 1480,
       "runtime": {
         "chromium": "151",
@@ -827,9 +827,9 @@
     },
     "docs/images/selector-menu.png": {
       "bytes": 118997,
-      "capturedAt": "2026-10-19T01:55:10Z",
-      "capturedBy": "screenshots@ci/39187344170",
-      "definition": "497edcd9122d203905a00b6811ff7990f78a6481fc93c2fd30d9a868c3efd96d",
+      "capturedAt": "2026-11-10T01:32:49Z",
+      "capturedBy": "screenshots@ci/42736207406",
+      "definition": "aedc1389170905de9d0e3eac6395292171743ef33be05256dce444e8f6192916",
       "height": 1480,
       "runtime": {
         "chromium": "151",
@@ -887,9 +887,9 @@
     },
     "docs/images/state-panel.png": {
       "bytes": 863612,
-      "capturedAt": "2026-10-19T01:54:16Z",
-      "capturedBy": "screenshots@ci/39187344170",
-      "definition": "51f274a94a6fbb5176c5c2376453d977092fe2472f16195e63c6a2a42fea2083",
+      "capturedAt": "2026-11-10T01:31:45Z",
+      "capturedBy": "screenshots@ci/42736207406",
+      "definition": "8d0427c90a4128ddb48c258924afccda97dea9b42bfff71d28b00090f8930d04",
       "height": 2000,
       "runtime": {
         "chromium": "151",
@@ -931,9 +931,9 @@
       "width": 3840
     },
     "docs/images/tab-strip.png": {
-      "bytes": 7281,
-      "capturedAt": "2026-10-19T01:55:19Z",
-      "capturedBy": "screenshots@ci/39187344170",
+      "bytes": 7022,
+      "capturedAt": "2026-11-10T01:32:59Z",
+      "capturedBy": "screenshots@ci/42736207406",
       "definition": "518143d28759c9d8f36ce0e198f41c60d36ec77f38d002eb9cfb9529d2c60d47",
       "height": 70,
       "runtime": {
@@ -941,7 +941,7 @@
         "fontset": "fc:cac8f480b341",
         "os": "debian-12"
       },
-      "sha256": "4a64b4c43c5f81829cb001bbbf119ef5dd845588075710615cc071223252f3f0",
+      "sha256": "c81d10dea62222423d963f439e824840124c8ce605ed05ec7d940a1453d98b97",
       "shot": "tab-strip-shot",
       "width": 1420
     },

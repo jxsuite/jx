@@ -1,0 +1,60 @@
+/- kdl-version 2
+
+pf-article-header {
+    state eyebrow=Insight title="" date="" author="" readingTime=""
+    style display=block marginBottom="clamp(2rem, 4vw, 3rem)"
+    p "${state.eyebrow}" {
+        style {
+            fontFamily "var(--font-sans)"
+            textTransform uppercase
+            letterSpacing "0.2em"
+            fontSize "0.72rem"
+            fontWeight "600"
+            color "var(--color-accent)"
+            paddingBottom "1rem"
+            borderBottom "1px solid var(--color-rule)"
+            margin "0 0 1.5rem"
+        }
+    }
+    h1 "${state.title}" {
+        style {
+            fontFamily "var(--font-serif)"
+            fontSize "clamp(2.1rem, 5vw, 3.2rem)"
+            fontWeight "500"
+            lineHeight "1.1"
+            letterSpacing "-0.02em"
+            margin "0 0 1.5rem"
+            color "var(--color-ink)"
+        }
+    }
+    div {
+        style {
+            display flex
+            flexWrap wrap
+            alignItems center
+            gap "0.6rem"
+            paddingTop "1.25rem"
+            borderTop "1px solid var(--color-hairline)"
+            fontFamily "var(--font-sans)"
+            fontSize "0.8rem"
+            textTransform uppercase
+            letterSpacing "0.1em"
+            color "var(--color-muted)"
+        }
+        span "${state.author}" {
+            style fontWeight="600" color="var(--color-ink)"
+        }
+        span "/" {
+            style color="var(--color-hairline)"
+        }
+        span "${state.date}" {
+            style fontVariantNumeric=tabular-nums
+        }
+        span "/" {
+            style display="${state.readingTime ? 'inline' : 'none'}" color="var(--color-hairline)"
+        }
+        span "${state.readingTime} min read" {
+            style display="${state.readingTime ? 'inline' : 'none'}" fontVariantNumeric=tabular-nums
+        }
+    }
+}

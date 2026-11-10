@@ -140,10 +140,10 @@ Saving a `.jxn` file changes only what you changed. A node that still means the 
 
 Studio treats a `.jxn` page, layout or component the same as a `.json` one. It lists them in the Site panel, offers them as layouts, draws them on the canvas and as component cards, and finds them in Quick Open. Saving changes only what you changed and keeps every comment. That holds in a shared session too: a comment someone else adds in the Code view survives your edit on the canvas.
 
-**Convert to another format** offers Jx Notation for any page or component, and JSON for a `.jxn` one. Layouts are converted with `jx convert`.
+**Convert to another format** offers Jx Notation for any page or component, and JSON for a `.jxn` one. A layout converts only between `.json` and `.jxn`, because those are the two spellings a layout is read in.
 
 :::doc-note
-New documents are still `.json`, and pickers do not offer `.jxn` yet. Studio's own surfaces and the kit stay `.json`, and so do `*.class.json`, `jx-extension.json`, schemas and data files.
+New pages, templates and components are `.jxn`, from **Add new**, from converting a selection to a component, and from New File in `pages/`, `layouts/` and `components/`. The starters and `create-jxsuite` ship their documents as `.jxn` too. A `.json` document you already have stays `.json` until you convert it. Studio's own surfaces and the kit stay `.json`, and so do `*.class.json`, `jx-extension.json`, schemas and data files.
 :::
 
 ## Related

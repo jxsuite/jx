@@ -1,6 +1,7 @@
 /**
- * A starter built from `.jxn` documents is the same site, byte for byte, as the one built from
- * `.json`, and none of it is KDL. This is the property that says Jx Notation is a spelling.
+ * A starter built from `.jxn` documents, as the starters are committed, is the same site, byte for
+ * byte, as the one built from their `.json` spelling, and none of it is KDL. This is the property
+ * that says Jx Notation is a spelling.
  */
 import { parseProjectSource, serializeProjectFile } from "@jxsuite/schema/project-file";
 import { projectFilePath } from "@jxsuite/schema/project-file/node";
@@ -16,7 +17,7 @@ import {
 } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { isJsonObject, isString } from "@jxsuite/schema/guards";
-import type { JsonValue, JxDocument } from "@jxsuite/schema/types";
+import type { JsonValue } from "@jxsuite/schema/types";
 
 const mockSharp = () => ({
   metadata: () => Promise.resolve({ format: "jpeg", height: 600, width: 800 }),
@@ -25,7 +26,7 @@ const mockSharp = () => ({
 void mock.module("sharp", () => ({ default: mockSharp }));
 
 const { buildSite } = await import("../src/site/site-build.ts");
-const { serializeJxn } = await import("@jxsuite/schema/jxn");
+const { parseJxn } = await import("@jxsuite/schema/jxn");
 
 const STARTERS = resolve(import.meta.dir, "../../starters/sites");
 const WORK = resolve(import.meta.dir, ".jxn-build");
@@ -64,26 +65,25 @@ function renameRefs(value: JsonValue, rename: (text: string) => string): JsonVal
 
 /** What a reference becomes, when it names a file the conversion renames. */
 function renamed(text: string, bases: readonly string[], known: ReadonlySet<string>): string {
-  const named = text.endsWith(".json") && bases.some((base) => known.has(resolve(base, text)));
-  return named ? `${text.slice(0, -".json".length)}.jxn` : text;
+  const named = text.endsWith(".jxn") && bases.some((base) => known.has(resolve(base, text)));
+  return named ? `${text.slice(0, -".jxn".length)}.json` : text;
 }
 
-/** A file's value, as JSON. */
+/** A `.jxn` document's value. */
 function readValue(path: string): JsonValue {
-  // SAFETY: JSON.parse without a reviver only ever yields a JSON value.
-  return JSON.parse(readFileSync(path, "utf8")) as JsonValue;
+  // SAFETY: a document read from Jx Notation is a JSON value by construction.
+  return parseJxn(readFileSync(path, "utf8"), path) as JsonValue;
 }
 
-/** Turn every document in a project into `.jxn`, and its references with it. */
-function toNotation(root: string): number {
+/** Turn every `.jxn` document in a project into `.json`, and its references with it. */
+function toJsonSpelling(root: string): number {
   const files = DOCUMENT_ROOTS.flatMap((dir) => walk(join(root, dir)));
-  const documents = files.filter((path) => path.endsWith(".json"));
+  const documents = files.filter((path) => path.endsWith(".jxn"));
   const known = new Set(documents);
   for (const path of documents) {
     const bases = [dirname(path), root];
     const value = renameRefs(readValue(path), (text) => renamed(text, bases, known));
-    // SAFETY: a document's members are all optional, and this one is a starter's, as committed.
-    writeFileSync(`${path.slice(0, -".json".length)}.jxn`, serializeJxn(value as JxDocument));
+    writeFileSync(`${path.slice(0, -".jxn".length)}.json`, `${JSON.stringify(value, null, 2)}\n`);
     rmSync(path);
   }
   // The project file in whichever notation the starter has, with its references following.
@@ -121,7 +121,7 @@ describe("a starter written in Jx Notation", () => {
       const keep = (path: string) => !/(?:^|\/)(?:node_modules|dist)(?:\/|$)/u.test(path);
       cpSync(join(STARTERS, name), json, { filter: keep, recursive: true });
       cpSync(join(STARTERS, name), notation, { filter: keep, recursive: true });
-      expect(toNotation(notation)).toBeGreaterThan(0);
+      expect(toJsonSpelling(json)).toBeGreaterThan(0);
       // A sitemap's `lastmod` is a source file's mtime, and writing the copies took a moment.
       for (const path of [...walk(json), ...walk(notation)]) {
         utimesSync(path, SOURCE_TIME, SOURCE_TIME);

@@ -20,6 +20,7 @@
  */
 
 import { projectConfigPath } from "../tabs/tab";
+import { NATIVE_EXT } from "../format/format-host";
 import { fileToRoute } from "@jxsuite/site/routes";
 import { canonicalizeLocale, translationPathFor } from "@jxsuite/schema/locale";
 import { LOCALE_PLACEHOLDER } from "@jxsuite/schema/asset-paths";
@@ -269,7 +270,10 @@ export type TakenLookup = (dir: string) => ReadonlySet<string> | undefined;
 
 // ─── The result ──────────────────────────────────────────────────────────────
 
-/** A document to write, and the format that writes it (`null` is native JSON). */
+/**
+ * A document to write, and the format that writes it (`null` is native: Jx Notation or JSON, by the
+ * path).
+ */
 export interface CreationBody {
   doc: JsonObject;
   format: string | null;
@@ -288,7 +292,7 @@ export interface Creation {
   kind: CreationKind;
   dir: string;
   fileName: string;
-  /** The main file's extension, `.json`, `.md`, or `""` for Media. */
+  /** The main file's extension, `.jxn`, `.md`, or `""` for Media. */
   ext: string;
   /** `dir/fileName`, or the upload directory for Media. */
   path: string;
@@ -359,7 +363,7 @@ export function templateForLocale(ctx: CreationContext, locale: string | null | 
   if (wanted !== null) {
     const named = ctx.layouts.find((layout) => {
       const parts = normalizeLayoutPath(layout.ref)
-        .replace(/\.json$/i, "")
+        .replace(/\.(?:json|jxn)$/i, "")
         .split("/");
       return parts.some((part) => canonicalizeLocale(part) === wanted);
     });
@@ -555,7 +559,7 @@ function componentDoc(tagName: string, options: CreationOptions, ctx: CreationCo
 function derivePage(name: string, options: CreationOptions, ctx: CreationContext): Creation {
   const startFrom = options.startFrom ?? defaultTemplateChoice(ctx);
   const article = startFrom === START_ARTICLE && ctx.article !== null ? ctx.article : null;
-  const ext = article?.ext ?? ".json";
+  const ext = article?.ext ?? NATIVE_EXT;
   const segments =
     options.url === undefined ? [slugify(name)].filter((s) => s !== "") : urlSegments(options.url);
   const stem =
@@ -641,7 +645,7 @@ function deriveCollection(name: string, options: CreationOptions, ctx: CreationC
       : [null];
     const written: string[] = [];
     for (const locale of locales) {
-      const pagePath = inLocale(`pages/${slug}/[slug].json`, locale, ctx);
+      const pagePath = inLocale(`pages/${slug}/[slug]${NATIVE_EXT}`, locale, ctx);
       const template =
         locale === null || chosen !== defaultTemplateChoice(ctx)
           ? chosen
@@ -683,10 +687,10 @@ function deriveCollection(name: string, options: CreationOptions, ctx: CreationC
   return result;
 }
 
-/** A template: always `.json`, because both readers of a layout parse it as JSON only. */
+/** A template: native, because both readers of a layout read `.jxn` and `.json` and nothing else. */
 function deriveTemplate(name: string, options: CreationOptions): Creation {
   const slug = slugify(name);
-  const fileName = slug === "" ? "" : `${slug}.json`;
+  const fileName = slug === "" ? "" : `${slug}${NATIVE_EXT}`;
   const path = join("layouts", fileName);
   const doc: JsonObject = {};
   const wrap = options.startFrom ?? "";
@@ -698,7 +702,7 @@ function deriveTemplate(name: string, options: CreationOptions): Creation {
   return {
     content: { doc, format: null },
     dir: "layouts",
-    ext: ".json",
+    ext: NATIVE_EXT,
     extraWrites: [],
     fileName,
     kind: "template",
@@ -710,12 +714,12 @@ function deriveTemplate(name: string, options: CreationOptions): Creation {
 /** A component: the tag the name derives to, and a definition that carries it. */
 function deriveComponent(name: string, options: CreationOptions, ctx: CreationContext): Creation {
   const tagName = deriveTagName(name);
-  const fileName = tagName === "" ? "" : `${tagName}.json`;
+  const fileName = tagName === "" ? "" : `${tagName}${NATIVE_EXT}`;
   const path = join("components", fileName);
   return {
     content: { doc: componentDoc(tagName, options, ctx), format: null },
     dir: "components",
-    ext: ".json",
+    ext: NATIVE_EXT,
     extraWrites: [],
     fileName,
     kind: "component",
@@ -857,6 +861,47 @@ function routeClaimant(creation: Creation, taken: TakenLookup): string | null {
   return null;
 }
 
+/**
+ * The other native spelling of a template's or component's file, when it is already there:
+ * `layouts/base.json` beside a new `layouts/base.jxn` would be two templates with one name.
+ */
+function nativeTwin(creation: Creation, taken: TakenLookup): string | null {
+  if ((creation.kind !== "template" && creation.kind !== "component") || creation.fileName === "") {
+    return null;
+  }
+  const stem = creation.fileName.slice(0, creation.fileName.length - creation.ext.length);
+  const listing = taken(creation.dir) ?? new Set<string>();
+  for (const ext of [".json", ".jxn"]) {
+    const twin = `${stem}${ext}`;
+    if (
+      ext !== creation.ext &&
+      [...listing].some((name) => name.toLowerCase() === twin.toLowerCase())
+    ) {
+      return join(creation.dir, twin);
+    }
+  }
+  return null;
+}
+
+/**
+ * A page file other than this one, in its directory, under the same name: `[slug].json` for
+ * `[slug].jxn`.
+ */
+function pageAtSameStem(path: string, taken: TakenLookup): string | null {
+  if (!path.startsWith("pages/")) {
+    return null;
+  }
+  const [dir, file] = splitPath(path);
+  const dot = file.lastIndexOf(".");
+  const prefix = `${file.slice(0, dot === -1 ? file.length : dot).toLowerCase()}.`;
+  const own = file.toLowerCase();
+  const other = [...(taken(dir) ?? [])].find((name) => {
+    const lower = name.toLowerCase();
+    return lower !== own && lower.startsWith(prefix);
+  });
+  return other === undefined ? null : join(dir, other);
+}
+
 /** The name refusals every named kind shares: blank, then a slug of nothing. */
 function nameProblem(name: string): string {
   return validateNewFileName(name, "", {
@@ -947,6 +992,10 @@ export function creationProblem(
       break;
     }
   }
+  const twin = nativeTwin(creation, taken);
+  if (twin !== null) {
+    return `${twin} already exists.`;
+  }
   const paths = [
     ...(creation.kind === "collection" ? [] : [creation.path]),
     ...creation.extraWrites.map((write) => write.path),
@@ -955,6 +1004,13 @@ export function creationProblem(
     const problem = fileProblem(path, taken);
     if (problem !== "") {
       return problem;
+    }
+  }
+  // A collection's own page beside one already at its route, in either spelling.
+  for (const write of creation.extraWrites) {
+    const claimant = pageAtSameStem(write.path, taken);
+    if (claimant !== null) {
+      return `${claimant} already exists.`;
     }
   }
   return "";

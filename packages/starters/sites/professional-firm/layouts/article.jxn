@@ -1,0 +1,88 @@
+/- kdl-version 2
+$elements (ref)"../components/pf-nav.jxn" (ref)"../components/pf-footer.jxn"
+
+div {
+    style minHeight="100vh" display=flex flexDirection=column backgroundColor="var(--color-paper)"
+    pf-nav
+    main {
+        style flex="1"
+        div {
+            style {
+                maxWidth "1040px"
+                margin "0 auto"
+                padding "clamp(2.5rem, 6vw, 4.5rem) 1.5rem clamp(3rem, 8vw, 5rem)"
+                display grid
+                gridTemplateColumns "minmax(0, 200px) minmax(0, 1fr)"
+                gap "clamp(2rem, 5vw, 4rem)"
+                alignItems start
+                @--md gridTemplateColumns="1fr" gap="2rem"
+            }
+            aside {
+                style {
+                    position sticky
+                    top "6rem"
+                    borderTop "3px solid var(--color-accent)"
+                    paddingTop "1.25rem"
+                    @--md position=static borderTop="1px solid var(--color-rule)"
+                }
+                div {
+                    style display=flex alignItems=baseline gap="0.5rem" marginBottom="1.5rem"
+                    span Meridian {
+                        style {
+                            fontFamily "var(--font-serif)"
+                            fontSize "1.15rem"
+                            fontWeight "600"
+                            color "var(--color-ink)"
+                        }
+                    }
+                    span Quarterly {
+                        style {
+                            fontFamily "var(--font-sans)"
+                            fontSize "0.62rem"
+                            fontWeight "600"
+                            textTransform uppercase
+                            letterSpacing "0.22em"
+                            color "var(--color-accent)"
+                        }
+                    }
+                }
+                div {
+                    style {
+                        fontFamily "var(--font-sans)"
+                        fontSize "0.68rem"
+                        fontWeight "600"
+                        textTransform uppercase
+                        letterSpacing "0.14em"
+                        color "var(--color-muted)"
+                        lineHeight "1.8"
+                        paddingBottom "1.25rem"
+                        marginBottom "1.25rem"
+                        borderBottom "1px solid var(--color-hairline)"
+                    }
+                    div "Filed under"
+                    div Insight {
+                        style color="var(--color-ink)"
+                    }
+                }
+                a href="/insights/" "← All insights" {
+                    style {
+                        fontFamily "var(--font-sans)"
+                        fontSize "0.72rem"
+                        fontWeight "600"
+                        textTransform uppercase
+                        letterSpacing "0.14em"
+                        color "var(--color-ink)"
+                        textDecoration none
+                        transition "color 0.15s"
+                        :hover color="var(--color-accent)"
+                    }
+                }
+            }
+            div {
+                style maxWidth="var(--measure)" minWidth="0"
+                slot
+            }
+        }
+    }
+    pf-footer
+}

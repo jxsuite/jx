@@ -1,0 +1,62 @@
+/- kdl-version 2
+
+bl-nav {
+    style {
+        position sticky
+        top "0"
+        zIndex "50"
+        display block
+        backgroundColor "var(--color-paper)"
+        borderBottom "1.5px solid var(--color-rule)"
+    }
+    div {
+        style {
+            maxWidth "var(--max-width)"
+            margin "0 auto"
+            padding "0.55rem 1.5rem"
+            display flex
+            alignItems center
+            justifyContent space-between
+            gap "1rem"
+        }
+        a href="/" "The Long Field" {
+            style {
+                fontFamily "var(--font-heading)"
+                fontWeight "700"
+                fontSize "1.05rem"
+                letterSpacing "0.01em"
+                color "var(--color-text-primary)"
+                textDecoration none
+                whiteSpace nowrap
+            }
+        }
+        nav {
+            style {
+                display flex
+                alignItems center
+                gap "1.75rem"
+                fontFamily "var(--font-body)"
+                fontSize "0.72rem"
+                fontWeight "500"
+                textTransform uppercase
+                letterSpacing "0.16em"
+                @--sm gap="1.1rem"
+            }
+            a href="/#latest" Essays {
+                style color="var(--color-text-primary)" textDecoration=none transition="color 0.15s" {
+                    :hover color="var(--color-primary)"
+                }
+            }
+            a href="/about/" About {
+                style color="var(--color-text-primary)" textDecoration=none transition="color 0.15s" {
+                    :hover color="var(--color-primary)"
+                }
+            }
+            a href="/contact/" Subscribe {
+                style color="var(--color-primary)" textDecoration=none transition="opacity 0.15s" {
+                    :hover opacity="0.65"
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,308 @@
+/- kdl-version 2
+
+hs-hero {
+    state {
+        eyebrow ""
+        heading ""
+        subheading ""
+        cta "Get a Free Quote"
+        ctaHref "/contact/"
+        cta2 ""
+        cta2Href "/services/"
+        phone "(970) 555-0148"
+        phoneHref tel:+19705550148
+        bg type=string format=image default=""
+    }
+    style {
+        display block
+        position relative
+        overflow hidden
+        color "var(--color-text-white)"
+        backgroundColor "var(--color-bg-dark)"
+        backgroundImage "linear-gradient(104deg, rgba(14,26,35,0.97) 0%, rgba(14,26,35,0.92) 42%, rgba(14,26,35,0.72) 66%, rgba(14,26,35,0.55) 100%), url('${state.bg}')"
+        backgroundSize "cover, cover"
+        backgroundPosition "center, right center"
+        backgroundRepeat no-repeat
+    }
+    div {
+        style position=absolute top="0" left="0" right="0" height="6px" background="var(--hazard)"
+    }
+    div {
+        style {
+            position relative
+            zIndex "5"
+            maxWidth "var(--max-width)"
+            margin "0 auto"
+            padding "clamp(3rem, 6vw, 5rem) 1.5rem clamp(3.5rem, 7vw, 5.5rem)"
+            display grid
+            gridTemplateColumns "1.08fr 0.92fr"
+            gap "clamp(2rem, 5vw, 4rem)"
+            alignItems center
+            @--md gridTemplateColumns="1fr" gap="2.5rem"
+        }
+        div {
+            p {
+                style {
+                    display inline-flex
+                    alignItems center
+                    gap "0.55rem"
+                    padding "0.35rem 0.85rem 0.35rem 0.7rem"
+                    backgroundColor "var(--color-primary)"
+                    color "var(--color-text-white)"
+                    fontFamily "var(--font-heading)"
+                    textTransform uppercase
+                    letterSpacing "0.08em"
+                    fontSize "0.78rem"
+                    fontWeight "600"
+                    margin "0 0 1.5rem"
+                    transform "skewX(-8deg)"
+                }
+                span "${state.eyebrow}" {
+                    style transform="skewX(8deg)" display=inline-block
+                }
+            }
+            h1 "${state.heading}" {
+                style {
+                    fontFamily "var(--font-heading)"
+                    fontSize "clamp(2.7rem, 6.2vw, 4.9rem)"
+                    fontWeight "700"
+                    textTransform uppercase
+                    lineHeight "0.98"
+                    letterSpacing "0.005em"
+                    margin "0 0 1.25rem"
+                    color "var(--color-text-white)"
+                }
+            }
+            p "${state.subheading}" {
+                style {
+                    fontSize "clamp(1.08rem, 1.9vw, 1.3rem)"
+                    lineHeight "1.6"
+                    margin "0 0 1.75rem"
+                    color "#cdd8e0"
+                    maxWidth "48ch"
+                }
+            }
+            div {
+                style display=flex flexWrap=wrap gap="1rem 1.5rem" marginBottom="2rem"
+                div {
+                    style {
+                        display inline-flex
+                        alignItems center
+                        gap "0.5rem"
+                        fontFamily "var(--font-heading)"
+                        textTransform uppercase
+                        letterSpacing "0.05em"
+                        fontSize "0.85rem"
+                        fontWeight "600"
+                        color "#e6edf2"
+                    }
+                    span ✓ {
+                        style color="var(--color-primary)" fontSize="1.05rem"
+                    }
+                    span "Licensed & Insured"
+                }
+                div {
+                    style {
+                        display inline-flex
+                        alignItems center
+                        gap "0.5rem"
+                        fontFamily "var(--font-heading)"
+                        textTransform uppercase
+                        letterSpacing "0.05em"
+                        fontSize "0.85rem"
+                        fontWeight "600"
+                        color "#e6edf2"
+                    }
+                    span ★ {
+                        style color="var(--color-primary)" fontSize="1.05rem"
+                    }
+                    span "4.9 · 600+ Reviews"
+                }
+                div {
+                    style {
+                        display inline-flex
+                        alignItems center
+                        gap "0.5rem"
+                        fontFamily "var(--font-heading)"
+                        textTransform uppercase
+                        letterSpacing "0.05em"
+                        fontSize "0.85rem"
+                        fontWeight "600"
+                        color "#e6edf2"
+                    }
+                    span ⚡ {
+                        style color="var(--color-primary)" fontSize="1.05rem"
+                    }
+                    span "Same-Day Service"
+                }
+            }
+            div {
+                style display=flex gap="1rem" flexWrap=wrap alignItems=center
+                a href="${state.ctaHref}" "${state.cta}" {
+                    style {
+                        display inline-block
+                        backgroundColor "var(--color-primary)"
+                        color "var(--color-text-white)"
+                        padding "0.95rem 2.1rem"
+                        borderRadius "var(--radius-sm)"
+                        fontFamily "var(--font-heading)"
+                        textTransform uppercase
+                        letterSpacing "0.05em"
+                        fontSize "1.02rem"
+                        fontWeight "600"
+                        textDecoration none
+                        boxShadow "0 14px 30px -12px rgba(244,81,30,0.9)"
+                        transition "background-color 0.15s, transform 0.15s"
+                        :hover {
+                            backgroundColor "var(--color-primary-hover)"
+                            transform "translateY(-2px)"
+                        }
+                    }
+                }
+                a href="${state.phoneHref}" {
+                    style {
+                        display inline-flex
+                        alignItems center
+                        gap "0.5rem"
+                        color "var(--color-text-white)"
+                        textDecoration none
+                        fontWeight "600"
+                    }
+                    span ☏ {
+                        style color="var(--color-primary)" fontSize="1.15rem"
+                    }
+                    span "${state.phone}" {
+                        style {
+                            fontFamily "var(--font-heading)"
+                            fontSize "1.2rem"
+                            fontWeight "700"
+                            letterSpacing "0.01em"
+                        }
+                    }
+                }
+            }
+        }
+        div {
+            style {
+                backgroundColor "var(--color-bg-white)"
+                color "var(--color-text-primary)"
+                borderRadius "var(--radius)"
+                boxShadow "var(--shadow-float)"
+                overflow hidden
+            }
+            div {
+                style {
+                    backgroundColor "var(--color-steel)"
+                    color "var(--color-text-white)"
+                    padding "1rem 1.4rem"
+                    display flex
+                    alignItems center
+                    justifyContent space-between
+                    gap "0.75rem"
+                }
+                span "Fast, Free Quote" {
+                    style {
+                        fontFamily "var(--font-heading)"
+                        textTransform uppercase
+                        letterSpacing "0.05em"
+                        fontWeight "600"
+                        fontSize "1.15rem"
+                    }
+                }
+                span "No obligation" {
+                    style {
+                        fontFamily "var(--font-heading)"
+                        fontSize "0.68rem"
+                        textTransform uppercase
+                        letterSpacing "0.1em"
+                        color "var(--color-primary)"
+                        border "1px solid var(--color-primary)"
+                        borderRadius "999px"
+                        padding "0.15rem 0.6rem"
+                    }
+                }
+            }
+            form action="/contact/" method=post {
+                style display=grid gap="0.7rem" padding="1.4rem"
+                input type=text name=name placeholder="Full name" aria-label="Full name" {
+                    style {
+                        width "100%"
+                        padding "0.75rem 0.85rem"
+                        border "1px solid var(--color-border-strong)"
+                        borderRadius "var(--radius-sm)"
+                        fontSize "1rem"
+                        fontFamily inherit
+                        backgroundColor "var(--color-bg-cream)"
+                    }
+                }
+                input type=tel name=phone placeholder="Phone number" aria-label="Phone number" {
+                    style {
+                        width "100%"
+                        padding "0.75rem 0.85rem"
+                        border "1px solid var(--color-border-strong)"
+                        borderRadius "var(--radius-sm)"
+                        fontSize "1rem"
+                        fontFamily inherit
+                        backgroundColor "var(--color-bg-cream)"
+                    }
+                }
+                select name=service aria-label="Service needed" {
+                    style {
+                        width "100%"
+                        padding "0.75rem 0.85rem"
+                        border "1px solid var(--color-border-strong)"
+                        borderRadius "var(--radius-sm)"
+                        fontSize "1rem"
+                        fontFamily inherit
+                        fontWeight "500"
+                        color "var(--color-text-primary)"
+                        backgroundColor "var(--color-bg-cream)"
+                        cursor pointer
+                    }
+                    option value="" "What do you need?"
+                    option value=ac-repair "AC Repair"
+                    option value=ac-install "AC Installation"
+                    option value=furnace-repair "Furnace Repair"
+                    option value=furnace-install "Furnace Installation"
+                    option value=heat-pump "Heat Pumps"
+                    option value=maintenance "Maintenance Plan"
+                    option value=other "Something else"
+                }
+                button type=submit "Request Service →" {
+                    style {
+                        width "100%"
+                        backgroundColor "var(--color-primary)"
+                        color "var(--color-text-white)"
+                        padding "0.85rem 1.5rem"
+                        border none
+                        borderRadius "var(--radius-sm)"
+                        fontFamily "var(--font-heading)"
+                        textTransform uppercase
+                        letterSpacing "0.05em"
+                        fontSize "1.02rem"
+                        fontWeight "600"
+                        cursor pointer
+                        transition "background-color 0.15s"
+                        :hover backgroundColor="var(--color-primary-hover)"
+                    }
+                }
+                p {
+                    style {
+                        margin "0"
+                        fontSize "0.82rem"
+                        color "var(--color-text-muted)"
+                        textAlign center
+                        display flex
+                        alignItems center
+                        justifyContent center
+                        gap "0.4rem"
+                    }
+                    span ⏱ {
+                        style color="var(--color-primary)"
+                    }
+                    span "We reply within the hour, 7 days a week."
+                }
+            }
+        }
+    }
+}

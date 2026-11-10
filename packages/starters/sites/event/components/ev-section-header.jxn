@@ -1,0 +1,51 @@
+/- kdl-version 2
+
+ev-section-header {
+    state eyebrow="" heading="" subheading="" align=center
+    style {
+        display block
+        maxWidth "var(--max-width-narrow)"
+        margin "0 auto 2.75rem"
+        textAlign "${state.align}"
+    }
+    p {
+        style {
+            display "${state.eyebrow ? 'inline-flex' : 'none'}"
+            alignItems center
+            gap "0.55rem"
+            textTransform uppercase
+            letterSpacing "0.16em"
+            fontSize "0.78rem"
+            fontWeight "700"
+            color "var(--color-accent)"
+            margin "0 0 0.85rem"
+        }
+        span {
+            style width="1.6rem" height="2px" borderRadius="2px" background="var(--grad)"
+        }
+        span "${state.eyebrow}"
+    }
+    h2 "${state.heading}" {
+        style {
+            fontFamily "var(--font-heading)"
+            fontSize "clamp(2rem, 4.2vw, 2.9rem)"
+            fontWeight "800"
+            lineHeight "1.08"
+            letterSpacing "-0.035em"
+            margin "0"
+            color "var(--color-text-primary)"
+        }
+    }
+    p "${state.subheading}" {
+        style {
+            display "${state.subheading ? 'block' : 'none'}"
+            fontSize "1.1rem"
+            lineHeight "1.7"
+            color "var(--color-text-muted)"
+            margin "1.05rem 0 0"
+            maxWidth "${state.align === 'center' ? '60ch' : 'none'}"
+            marginLeft "${state.align === 'center' ? 'auto' : '0'}"
+            marginRight "${state.align === 'center' ? 'auto' : '0'}"
+        }
+    }
+}

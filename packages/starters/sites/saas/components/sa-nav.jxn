@@ -1,0 +1,108 @@
+/- kdl-version 2
+
+sa-nav {
+    state brand=Flowlark
+    style {
+        display block
+        position sticky
+        top "0"
+        zIndex "50"
+        backgroundColor "rgba(10, 10, 20, 0.72)"
+        backdropFilter "blur(14px)"
+        borderBottom "1px solid var(--color-border)"
+    }
+    div {
+        style {
+            maxWidth "var(--max-width)"
+            margin "0 auto"
+            padding "0.9rem 1.5rem"
+            display flex
+            alignItems center
+            justifyContent space-between
+            gap "1.5rem"
+        }
+        a href="/" {
+            style {
+                display inline-flex
+                alignItems center
+                gap "0.6rem"
+                fontFamily "var(--font-heading)"
+                fontSize "1.3rem"
+                fontWeight "700"
+                color "var(--color-text-primary)"
+                textDecoration none
+                letterSpacing "-0.02em"
+            }
+            span ◆ {
+                style {
+                    display inline-flex
+                    alignItems center
+                    justifyContent center
+                    width "1.7rem"
+                    height "1.7rem"
+                    borderRadius "0.5rem"
+                    background "var(--grad-btn)"
+                    color "#ffffff"
+                    fontSize "1rem"
+                    boxShadow "0 0 18px var(--glow)"
+                }
+            }
+            span "${state.brand}"
+        }
+        nav {
+            style display=flex alignItems=center gap="1.7rem" {
+                @--sm gap="0.9rem"
+            }
+            a href="/features/" Features {
+                style {
+                    color "var(--color-text-muted)"
+                    textDecoration none
+                    fontWeight "500"
+                    fontSize "0.92rem"
+                    @--sm display=none
+                    transition "color 0.15s"
+                    :hover color="var(--color-text-primary)"
+                }
+            }
+            a href="/pricing/" Pricing {
+                style {
+                    color "var(--color-text-muted)"
+                    textDecoration none
+                    fontWeight "500"
+                    fontSize "0.92rem"
+                    transition "color 0.15s"
+                    :hover color="var(--color-text-primary)"
+                }
+            }
+            a href="/contact/" Contact {
+                style {
+                    color "var(--color-text-muted)"
+                    textDecoration none
+                    fontWeight "500"
+                    fontSize "0.92rem"
+                    @--sm display=none
+                    transition "color 0.15s"
+                    :hover color="var(--color-text-primary)"
+                }
+            }
+            a href="/pricing/" "Get started" {
+                style {
+                    display inline-block
+                    background "var(--grad-btn)"
+                    color "#ffffff"
+                    padding "0.55rem 1.25rem"
+                    borderRadius "999px"
+                    textDecoration none
+                    fontWeight "600"
+                    fontSize "0.92rem"
+                    boxShadow "0 0 0 1px rgba(255,255,255,0.06), 0 8px 24px -8px var(--glow)"
+                    transition "transform 0.15s, box-shadow 0.15s"
+                    :hover {
+                        transform "translateY(-1px)"
+                        boxShadow "0 0 0 1px rgba(255,255,255,0.12), 0 12px 30px -8px var(--glow)"
+                    }
+                }
+            }
+        }
+    }
+}

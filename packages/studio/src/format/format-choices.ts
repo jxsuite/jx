@@ -76,7 +76,7 @@ function declaresDocumentKind(kinds: readonly string[]): boolean {
  * Whether this path is (or is used as) a layout.
  *
  * A layout is native at both readers — `packages/compiler/src/site/layout-resolver.ts` reads
- * `.json` and `.jxn` and throws, `packages/studio/src/site-context.ts` `JSON.parse`s and silently
+ * `.json` and `.jxn` and throws, `packages/studio/src/site-context.ts` reads both and silently
  * returns null — and there is no `"layout"` document kind for a format to declare, so this clause
  * is hand-written and cannot be derived. `layouts/` is excluded by {@link DOCUMENT_ROOTS} already;
  * what remains is a project whose `layout` points somewhere inside a document root.
@@ -89,8 +89,29 @@ function isLayoutPath(path: string): boolean {
   return normalize(declared).toLowerCase() === normalize(path).toLowerCase();
 }
 
+/** Whether this path is a layout: a file under `layouts/`, or the project's declared `layout`. */
+function isLayoutFile(path: string): boolean {
+  return normalize(path).toLowerCase().startsWith("layouts/") || isLayoutPath(path);
+}
+
 /**
- * The rows the New File format picker offers, `.json` first.
+ * A layout's one conversion: between its two native spellings. Both readers of a layout read
+ * `.json` and `.jxn` alike, and neither reads any other format, so that is the only move that keeps
+ * it a layout.
+ */
+function nativeCounterpart(path: string): FormatChoiceRow[] {
+  const lower = normalize(path).toLowerCase();
+  if (lower.endsWith(".json")) {
+    return [{ ext: ".jxn", label: "Jx Notation (.jxn)" }];
+  }
+  if (lower.endsWith(".jxn")) {
+    return [{ ext: ".json", label: "JSON (.json)" }];
+  }
+  return [];
+}
+
+/**
+ * The rows the New File format picker offers: `.json`, then `.jxn` for a document, then formats.
  *
  * A format qualifies only when SOME registered class can both `parse` and `serialize` its
  * extension. Both halves are load-bearing and neither is cosmetic:
@@ -108,7 +129,14 @@ function isLayoutPath(path: string): boolean {
  */
 export function creationFormats(kind?: "page" | "component" | "content"): FormatChoiceRow[] {
   const rows: FormatChoiceRow[] = [{ ext: ".json", label: "JSON (.json)" }];
+  // Jx Notation is native, so it needs no format to write it; a collection's entries are data.
+  if (kind !== "content") {
+    rows.push({ ext: ".jxn", label: "Jx Notation (.jxn)" });
+  }
   for (const ext of documentExtensions(kind)) {
+    if (ext === ".jxn") {
+      continue;
+    }
     const reader = formatByExtension(ext, "parse");
     if (reader && formatByExtension(ext, "serialize")) {
       rows.push({ ext, label: `${reader.name} (${ext})` });
@@ -135,9 +163,12 @@ export function knownDocumentExtensions(): Set<string> {
  *
  * Empty is the answer for, and only for:
  *
- * - A file outside `pages/` and `components/` — including every `.json` that is configuration rather
- *   than a document, and every `layouts/` file;
- * - The project's declared `layout`, wherever it lives;
+ * - A file outside `pages/`, `components/` and `layouts/`, including every `.json` that is
+ *   configuration rather than a document;
+ *
+ * A layout (a `layouts/` file, or the project's declared `layout` wherever it lives) converts only
+ * between `.json` and `.jxn` ({@link nativeCounterpart}).
+ *
  * - Anything inside a content collection, in EITHER direction. Converting an entry drops it out of
  *   its collection's discovery glob; converting a co-located file INTO the collection's format
  *   enlists it as an entry nobody seeded. Source and target share a directory, so one test covers
@@ -152,8 +183,11 @@ export function convertTargets(path: string | null | undefined): FormatChoiceRow
   if (path === null || path === undefined || path === "") {
     return [];
   }
+  if (isLayoutFile(path)) {
+    return nativeCounterpart(path);
+  }
   const root = documentRootOf(path);
-  if (root === null || isLayoutPath(path) || collectionForFile(path)) {
+  if (root === null || collectionForFile(path)) {
     return [];
   }
 

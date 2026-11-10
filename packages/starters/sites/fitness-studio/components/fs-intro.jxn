@@ -1,0 +1,231 @@
+/- kdl-version 2
+
+fs-intro {
+    state {
+        kicker ""
+        image type=string format=image default=""
+        imageAlt ""
+        badge ""
+        stat1 ""
+        stat1label ""
+        stat2 ""
+        stat2label ""
+        stat3 ""
+        stat3label ""
+    }
+    style {
+        display block
+        padding "clamp(3.5rem, 8vw, 6.5rem) 1.5rem"
+        backgroundColor "var(--color-bg-white)"
+    }
+    div {
+        style {
+            maxWidth "var(--max-width)"
+            margin "0 auto"
+            display grid
+            gridTemplateColumns "0.95fr 1.05fr"
+            gap "clamp(2rem, 5vw, 4.5rem)"
+            alignItems center
+            @--md gridTemplateColumns="1fr" gap="2.5rem"
+        }
+        div {
+            style position=relative
+            div {
+                style {
+                    position absolute
+                    top "-1.1rem"
+                    left "-1.1rem"
+                    right "1.6rem"
+                    bottom "1.6rem"
+                    borderRadius "var(--radius)"
+                    background "var(--grad)"
+                    transform "rotate(-2.5deg)"
+                    opacity "0.9"
+                    @--sm display=none
+                }
+            }
+            div {
+                style {
+                    position relative
+                    borderRadius "var(--radius)"
+                    overflow hidden
+                    aspectRatio "4 / 5"
+                    backgroundColor "var(--duo-shadow)"
+                    boxShadow "0 30px 60px -28px rgba(26,15,24,0.5)"
+                }
+                img src="${state.image}" alt="${state.imageAlt}" width="1200" height="1500" loading=lazy {
+                    style {
+                        position absolute
+                        inset "0"
+                        width "100%"
+                        height "100%"
+                        objectFit cover
+                        filter "grayscale(100%) contrast(1.08)"
+                    }
+                }
+                div {
+                    style {
+                        position absolute
+                        inset "0"
+                        backgroundColor "var(--duo-shadow)"
+                        mixBlendMode lighten
+                    }
+                }
+                div {
+                    style {
+                        position absolute
+                        inset "0"
+                        background "linear-gradient(150deg, #ff2e63 0%, #ff8c42 100%)"
+                        mixBlendMode multiply
+                        opacity "0.85"
+                    }
+                }
+            }
+            div {
+                style {
+                    display "${state.badge ? 'flex' : 'none'}"
+                    position absolute
+                    bottom "-1.1rem"
+                    right "-0.6rem"
+                    alignItems center
+                    gap "0.5rem"
+                    padding "0.7rem 1.15rem"
+                    borderRadius "999px"
+                    backgroundColor "var(--color-ink)"
+                    color "#ffffff"
+                    fontFamily "var(--font-heading)"
+                    fontWeight "700"
+                    fontSize "0.82rem"
+                    boxShadow "0 16px 34px -12px rgba(0,0,0,0.5)"
+                }
+                span {
+                    style {
+                        width "0.5rem"
+                        height "0.5rem"
+                        borderRadius "50%"
+                        backgroundColor "#ffb03a"
+                    }
+                }
+                span "${state.badge}"
+            }
+        }
+        div {
+            div {
+                style {
+                    display "${state.kicker ? 'inline-flex' : 'none'}"
+                    alignItems center
+                    gap "0.55rem"
+                    marginBottom "1.1rem"
+                }
+                span {
+                    style {
+                        width "1.6rem"
+                        height "3px"
+                        borderRadius "2px"
+                        background "var(--grad-hot)"
+                    }
+                }
+                span "${state.kicker}" {
+                    style {
+                        fontFamily "var(--font-heading)"
+                        textTransform uppercase
+                        letterSpacing "0.16em"
+                        fontSize "0.78rem"
+                        fontWeight "700"
+                        color "var(--color-primary)"
+                    }
+                }
+            }
+            div {
+                style fontSize="1.12rem" lineHeight="1.8" color="var(--color-text-primary)"
+                slot
+            }
+            div {
+                style {
+                    display "${state.stat1 ? 'grid' : 'none'}"
+                    gridTemplateColumns "repeat(3, auto)"
+                    gap "clamp(1.25rem, 4vw, 2.5rem)"
+                    marginTop "2.25rem"
+                    paddingTop "1.75rem"
+                    borderTop "1px solid var(--color-border)"
+                    justifyContent start
+                    @--sm gridTemplateColumns="repeat(3, 1fr)" gap="1rem"
+                }
+                div {
+                    div "${state.stat1}" {
+                        style {
+                            fontFamily "var(--font-display)"
+                            fontSize "clamp(1.9rem, 4vw, 2.6rem)"
+                            lineHeight "1"
+                            background "var(--grad-hot)"
+                            backgroundClip text
+                            webkitBackgroundClip text
+                            webkitTextFillColor transparent
+                            color "var(--color-primary)"
+                        }
+                    }
+                    div "${state.stat1label}" {
+                        style {
+                            fontSize "0.8rem"
+                            fontWeight "600"
+                            color "var(--color-text-muted)"
+                            marginTop "0.35rem"
+                            textTransform uppercase
+                            letterSpacing "0.04em"
+                        }
+                    }
+                }
+                div {
+                    style display="${state.stat2 ? 'block' : 'none'}"
+                    div "${state.stat2}" {
+                        style {
+                            fontFamily "var(--font-display)"
+                            fontSize "clamp(1.9rem, 4vw, 2.6rem)"
+                            lineHeight "1"
+                            background "var(--grad-hot)"
+                            backgroundClip text
+                            webkitBackgroundClip text
+                            webkitTextFillColor transparent
+                            color "var(--color-primary)"
+                        }
+                    }
+                    div "${state.stat2label}" {
+                        style {
+                            fontSize "0.8rem"
+                            fontWeight "600"
+                            color "var(--color-text-muted)"
+                            marginTop "0.35rem"
+                            textTransform uppercase
+                            letterSpacing "0.04em"
+                        }
+                    }
+                }
+                div {
+                    style display="${state.stat3 ? 'block' : 'none'}"
+                    div "${state.stat3}" {
+                        style {
+                            fontFamily "var(--font-display)"
+                            fontSize "clamp(1.9rem, 4vw, 2.6rem)"
+                            lineHeight "1"
+                            background "var(--grad-hot)"
+                            backgroundClip text
+                            webkitBackgroundClip text
+                            webkitTextFillColor transparent
+                            color "var(--color-primary)"
+                        }
+                    }
+                    div "${state.stat3label}" {
+                        style {
+                            fontSize "0.8rem"
+                            fontWeight "600"
+                            color "var(--color-text-muted)"
+                            marginTop "0.35rem"
+                            textTransform uppercase
+                            letterSpacing "0.04em"
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

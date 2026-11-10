@@ -1,0 +1,17 @@
+/- kdl-version 2
+$elements (ref)"../components/re-nav.jxn" (ref)"../components/re-footer.jxn"
+
+div {
+    style {
+        minHeight "100vh"
+        display flex
+        flexDirection column
+        backgroundColor "var(--color-bg-white)"
+    }
+    re-nav
+    main {
+        style flex="1"
+        slot
+    }
+    re-footer
+}

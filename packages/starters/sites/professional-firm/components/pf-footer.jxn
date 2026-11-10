@@ -1,0 +1,171 @@
+/- kdl-version 2
+
+pf-footer {
+    state {
+        brand Meridian
+        sub Advisory
+        tagline "Tax, assurance, and CFO counsel for founders and growing companies — since 2007."
+        address "410 Corniche Plaza, Suite 900 · Harborview, NY 10014"
+        phone "(555) 204-8830"
+        email hello@meridianadvisory.com
+    }
+    style {
+        display block
+        backgroundColor "var(--color-ink-deep)"
+        color "var(--color-text-white)"
+        borderTop "3px solid var(--color-accent)"
+    }
+    div {
+        style {
+            maxWidth "var(--max-width)"
+            margin "0 auto"
+            padding "clamp(3rem, 6vw, 4.5rem) 1.5rem 2rem"
+            display grid
+            gridTemplateColumns "1.6fr 1fr 1fr"
+            gap "2.5rem"
+            @--md gridTemplateColumns="1fr" gap="2rem"
+        }
+        div {
+            div {
+                style display=flex alignItems=baseline gap="0.55rem" marginBottom="1rem"
+                span "${state.brand}" {
+                    style {
+                        fontFamily "var(--font-serif)"
+                        fontSize "1.7rem"
+                        fontWeight "600"
+                        letterSpacing "-0.01em"
+                    }
+                }
+                span "${state.sub}" {
+                    style {
+                        fontFamily "var(--font-sans)"
+                        fontSize "0.68rem"
+                        fontWeight "600"
+                        textTransform uppercase
+                        letterSpacing "0.28em"
+                        color "var(--color-accent)"
+                    }
+                }
+            }
+            p "${state.tagline}" {
+                style {
+                    margin "0"
+                    maxWidth "34ch"
+                    color "rgba(244,241,233,0.7)"
+                    fontSize "0.95rem"
+                    lineHeight "1.65"
+                }
+            }
+        }
+        div {
+            div Office {
+                style {
+                    fontFamily "var(--font-sans)"
+                    textTransform uppercase
+                    letterSpacing "0.18em"
+                    fontSize "0.68rem"
+                    fontWeight "600"
+                    color "var(--color-accent)"
+                    paddingBottom "0.75rem"
+                    marginBottom "0.9rem"
+                    borderBottom "1px solid rgba(244,241,233,0.16)"
+                }
+            }
+            p "${state.address}" {
+                style {
+                    margin "0 0 0.4rem"
+                    color "rgba(244,241,233,0.82)"
+                    fontSize "0.9rem"
+                    lineHeight "1.6"
+                }
+            }
+            p "${state.phone}" {
+                style margin="0 0 0.25rem" color="rgba(244,241,233,0.82)" fontSize="0.9rem"
+            }
+            p "${state.email}" {
+                style margin="0" color="rgba(244,241,233,0.82)" fontSize="0.9rem"
+            }
+        }
+        div {
+            div Firm {
+                style {
+                    fontFamily "var(--font-sans)"
+                    textTransform uppercase
+                    letterSpacing "0.18em"
+                    fontSize "0.68rem"
+                    fontWeight "600"
+                    color "var(--color-accent)"
+                    paddingBottom "0.75rem"
+                    marginBottom "0.9rem"
+                    borderBottom "1px solid rgba(244,241,233,0.16)"
+                }
+            }
+            a href="/services/" "Practice areas" {
+                style {
+                    display block
+                    color "rgba(244,241,233,0.82)"
+                    textDecoration none
+                    fontSize "0.9rem"
+                    marginBottom "0.5rem"
+                    transition "color 0.15s"
+                    :hover color="var(--color-accent)"
+                }
+            }
+            a href="/insights/" "The Quarterly" {
+                style {
+                    display block
+                    color "rgba(244,241,233,0.82)"
+                    textDecoration none
+                    fontSize "0.9rem"
+                    marginBottom "0.5rem"
+                    transition "color 0.15s"
+                    :hover color="var(--color-accent)"
+                }
+            }
+            a href="/team/" People {
+                style {
+                    display block
+                    color "rgba(244,241,233,0.82)"
+                    textDecoration none
+                    fontSize "0.9rem"
+                    marginBottom "0.5rem"
+                    transition "color 0.15s"
+                    :hover color="var(--color-accent)"
+                }
+            }
+            a href="/contact/" Contact {
+                style {
+                    display block
+                    color "rgba(244,241,233,0.82)"
+                    textDecoration none
+                    fontSize "0.9rem"
+                    transition "color 0.15s"
+                    :hover color="var(--color-accent)"
+                }
+            }
+        }
+    }
+    div {
+        style {
+            maxWidth "var(--max-width)"
+            margin "0 auto"
+            padding "1.5rem"
+            borderTop "1px solid rgba(244,241,233,0.16)"
+            fontFamily "var(--font-sans)"
+            fontSize "0.72rem"
+            textTransform uppercase
+            letterSpacing "0.12em"
+            color "rgba(244,241,233,0.5)"
+            display flex
+            justifyContent space-between
+            gap "1rem"
+            flexWrap wrap
+        }
+        p "© Meridian Advisory · Registered CPAs" {
+            style margin="0"
+        }
+        p "Member, State Society of Accountants" {
+            style margin="0"
+        }
+    }
+}

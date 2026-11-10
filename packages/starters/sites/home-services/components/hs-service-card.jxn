@@ -1,0 +1,68 @@
+/- kdl-version 2
+
+hs-service-card {
+    state icon="" name="" summary="" cta="" href="/services/"
+    style {
+        position relative
+        display flex
+        flexDirection column
+        padding "1.9rem 1.75rem"
+        backgroundColor "var(--color-bg-white)"
+        border "1px solid var(--color-border)"
+        borderTop "4px solid var(--color-steel)"
+        borderRadius "var(--radius)"
+        boxShadow "var(--shadow-card)"
+        transition "transform 0.16s, box-shadow 0.16s, border-top-color 0.16s"
+        :hover {
+            transform "translateY(-4px)"
+            boxShadow "0 22px 46px -22px rgba(14,26,35,0.4)"
+            borderTopColor "var(--color-primary)"
+        }
+    }
+    div "${state.icon}" {
+        style {
+            display flex
+            alignItems center
+            justifyContent center
+            width "3.6rem"
+            height "3.6rem"
+            borderRadius "var(--radius-sm)"
+            backgroundColor "var(--color-steel)"
+            color "var(--color-text-white)"
+            fontSize "1.85rem"
+            lineHeight "1"
+            marginBottom "1.2rem"
+            clipPath "polygon(0 0, 100% 0, 100% 82%, 84% 100%, 0 100%)"
+        }
+    }
+    h3 "${state.name}" {
+        style {
+            fontFamily "var(--font-heading)"
+            fontSize "1.4rem"
+            fontWeight "600"
+            textTransform uppercase
+            letterSpacing "0.02em"
+            margin "0 0 0.55rem"
+        }
+    }
+    p "${state.summary}" {
+        style margin="0" color="var(--color-text-muted)" fontSize="1rem" lineHeight="1.6"
+    }
+    a href="${state.href}" "${state.cta} →" {
+        style {
+            display "${state.cta ? 'inline-flex' : 'none'}"
+            alignItems center
+            gap "0.4rem"
+            marginTop auto
+            paddingTop "1.25rem"
+            color "var(--color-primary)"
+            fontFamily "var(--font-heading)"
+            textTransform uppercase
+            letterSpacing "0.05em"
+            fontWeight "600"
+            fontSize "0.9rem"
+            textDecoration none
+            :hover color="var(--color-primary-hover)"
+        }
+    }
+}
