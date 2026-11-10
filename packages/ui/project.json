@@ -101,7 +101,7 @@
       "--jx-switch-thumb": "light-dark(#ffffff, var(--jx-gray-100))",
       "--jx-font-sans": "\"Inter Variable\", \"Inter\", system-ui, -apple-system, \"Segoe UI\", sans-serif",
       "--jx-font-mono": "\"JetBrains Mono\", \"SF Mono\", \"Fira Code\", monospace",
-      "--jx-text-xs": "10px",
+      "--jx-text-xs": "11px",
       "--jx-text-sm": "11px",
       "--jx-text-md": "12px",
       "--jx-text-lg": "14px",

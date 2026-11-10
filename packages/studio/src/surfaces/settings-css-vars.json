@@ -92,7 +92,7 @@
       "border": "1px solid currentcolor",
       "borderRadius": "var(--radius)",
       "color": "var(--handler)",
-      "fontSize": "9px",
+      "fontSize": "var(--jx-text-xs)",
       "lineHeight": "14px",
       "whiteSpace": "nowrap"
     },

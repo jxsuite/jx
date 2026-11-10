@@ -49,7 +49,7 @@
   position: absolute;
   top: -9px;
   left: 6px;
-  font-size: 9px;
+  font-size: var(--jx-text-xs);
   color: color-mix(in srgb, var(--map) 50%, transparent);
   background: white;
   padding: 0 3px;
@@ -151,11 +151,11 @@
 .element-card-preview > button,
 .element-card-preview > progress,
 .element-card-preview > meter {
-  font-size: 10px;
+  font-size: var(--jx-text-xs);
 }
 .element-card-label {
   padding: 2px 6px;
-  font-size: 10px;
+  font-size: var(--jx-text-xs);
   color: var(--fg-dim);
   background: var(--bg-input);
   text-align: center;

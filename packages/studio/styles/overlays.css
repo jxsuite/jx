@@ -116,7 +116,7 @@
   margin-bottom: 24px;
 }
 .sb-label {
-  font-size: 10px;
+  font-size: var(--jx-text-xs);
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.08em;

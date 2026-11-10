@@ -111,7 +111,15 @@ const DATA_FILES = [
 ];
 
 /** Px values that have an exact kit token and should be tokenized in new code. */
-const TOKENIZABLE_FONT_PX = new Set(["10", "11", "12", "14"]); // Kit --jx-text-xs / -sm / -md / -lg
+const TOKENIZABLE_FONT_PX = new Set(["11", "12", "14"]); // Kit --jx-text-xs and -sm / -md / -lg
+/**
+ * The smallest text the chrome may draw, in CSS px: the kit's `--jx-text-xs` (`ui.md` §4.3).
+ *
+ * Text under it is an ERROR, not a nudge. Studio drew badges, rail captions and specimen labels at
+ * 9px and 10px, which is under what the kit's own scale allows and hard to read on any display; the
+ * floor is the kit's smallest step so a literal can never undercut the scale it sits beside.
+ */
+export const MIN_FONT_PX = 11;
 const TOKENIZABLE_RADIUS_PX = new Set(["2", "4", "6", "10"]); // Kit --jx-radius-xs / -sm / -md / -lg
 
 const HEX_RE = /#[0-9a-fA-F]{3,8}\b/g;
@@ -519,8 +527,32 @@ export function scanHex(rel: string, source: string): ScanFindings {
         match = re.exec(stripped);
       }
     }
+    errors.push(...undersizedText(rel, idx + 1, stripped, FONT_PX_RE));
   }
   return { errors, warnings };
+}
+
+/**
+ * A `font-size` in px under {@link MIN_FONT_PX} on one line, as findings.
+ *
+ * @param rel Repo-relative path, for the finding
+ * @param line The line number the text is on
+ * @param text The line, with `var(--x, #hex)` fallbacks already dropped
+ * @param re `FONT_PX_RE` for CSS, `JSON_FONT_PX_RE` for a document's style block
+ */
+export function undersizedText(rel: string, line: number, text: string, re: RegExp): Finding[] {
+  const out: Finding[] = [];
+  re.lastIndex = 0;
+  for (const match of text.matchAll(re)) {
+    if (Number(match[1]) < MIN_FONT_PX) {
+      out.push({
+        file: rel,
+        line,
+        text: `${text.trim()} — text under ${MIN_FONT_PX}px; use var(--jx-text-xs) or larger`,
+      });
+    }
+  }
+  return out;
 }
 
 /* ---------------------------------------------------------------------- animation names --- */
@@ -603,6 +635,7 @@ export function scanJsonStyle(rel: string, source: string): ScanFindings {
           match = re.exec(stripped);
         }
       }
+      errors.push(...undersizedText(rel, at, stripped, JSON_FONT_PX_RE));
     }
   }
   return { errors, warnings };

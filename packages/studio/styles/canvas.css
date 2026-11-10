@@ -187,7 +187,7 @@
   top: -20px;
   left: -2px;
   padding: 1px 5px;
-  font-size: 10px;
+  font-size: var(--jx-text-xs);
   background: var(--accent);
   color: var(--accent-fg);
   border-radius: var(--jx-radius-xs) var(--jx-radius-xs) 0 0;
