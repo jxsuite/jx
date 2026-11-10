@@ -73,7 +73,7 @@ import {
   paramNames,
 } from "@jxsuite/schema/guards";
 import type { TagNameSlot } from "@jxsuite/schema/guards";
-import { classifyFunctionEntries } from "@jxsuite/schema/function-role";
+import { classifyFunctionEntries, declaresBodyAndSrc } from "@jxsuite/schema/function-role";
 import type { FunctionRole } from "@jxsuite/schema/function-role";
 import { formatSrcset, parseSrcset } from "@jxsuite/schema/asset-paths";
 import { runStatements } from "./statements.ts";
@@ -1028,6 +1028,11 @@ export async function buildScope(
   // One every compiled target reads (spec.md §5.3 4b, 4d).
   const roles = classifyFunctionEntries(doc);
   for (const [key, def] of Object.entries(defs)) {
+    /* Refused ahead of the structured-body branch, so a structured body beside a `$src` is caught
+       too, and by presence, so `body: ""` is (spec.md §5.3 4d). */
+    if (isFunctionDef(def) && declaresBodyAndSrc(def)) {
+      throw new Error(`Jx: '${key}' declares both body and $src — these are mutually exclusive`);
+    }
     if (hasStructuredBody(def)) {
       // Structured body (spec §20): with parameters → a callable mapping positional args onto
       // $args names (invoked via the call operator); without → an event handler.
@@ -1625,9 +1630,6 @@ async function resolveFunction(
   role: FunctionRole,
   base?: string,
 ) {
-  if (def.body && def.$src) {
-    throw new Error(`Jx: '${key}' declares both body and $src — these are mutually exclusive`);
-  }
   if (!def.body && !def.$src) {
     const params = resolveParamNames(def);
     const noop = new Function(...params, "");
@@ -2138,6 +2140,11 @@ function bindHandler(
       el.addEventListener(type, (e) => handler(scope, e));
     }
     return true;
+  }
+  if (isFunctionDef(val) && declaresBodyAndSrc(val)) {
+    throw new Error(
+      `Jx: inline '${key}' handler declares both body and $src — these are mutually exclusive`,
+    );
   }
   if (hasStructuredBody(val)) {
     const { body } = val;

@@ -7,6 +7,7 @@ import type {
   JsonObject,
   JsonValue,
   JxAttributeValue,
+  JxDocument,
   JxElement,
   JxStateDefinition,
 } from "@jxsuite/schema/types";
@@ -754,14 +755,9 @@ describe("compileElement — extractInitialValue prototypes", () => {
 describe("compileElement — $src imports", () => {
   test("Function with $src generates import and wrapper", async () => {
     const result = await compileElement({
-      children: [],
+      children: [{ onclick: { $ref: "#/state/handler" }, tagName: "button" }],
       state: {
-        handler: {
-          $export: "handler",
-          $prototype: "Function",
-          $src: "./utils.js",
-          body: "state.count++",
-        },
+        handler: { $export: "handler", $prototype: "Function", $src: "./utils.js" },
       },
       tagName: "test-src-fn",
     });
@@ -779,7 +775,6 @@ describe("compileElement — $src imports", () => {
           $export: "total",
           $prototype: "Function",
           $src: "./calc.js",
-          body: "return state.items.length",
         },
       },
       tagName: "test-src-computed",
@@ -794,8 +789,8 @@ describe("compileElement — $src imports", () => {
     const result = await compileElement({
       children: [],
       state: {
-        add: { $prototype: "Function", $src: "./math.js", body: "state.x++" },
-        sub: { $prototype: "Function", $src: "./math.js", body: "state.x--" },
+        add: { $prototype: "Function", $src: "./math.js" },
+        sub: { $prototype: "Function", $src: "./math.js" },
       },
       tagName: "test-src-multi",
     });
@@ -2145,5 +2140,42 @@ describe("compileElement — timing server entries", () => {
         tagName: "test-server-badref",
       }),
     ).rejects.toThrow(/"hit".*"id"/s);
+  });
+});
+
+describe("compileElement: body and $src are mutually exclusive (spec.md §5.3 4d)", () => {
+  const both = { $prototype: "Function", $src: "./a.js", body: "state.n++" };
+  const build = (doc: JxDocument) => compileElement(doc);
+
+  test("a state entry declaring both body and $src is a build error", async () => {
+    expect(build({ children: [], state: { go: both }, tagName: "x-both" })).rejects.toThrow(
+      'state entry "go" declares both "body" and "$src"',
+    );
+  });
+
+  test("an inline on* Function declaring both is a build error", async () => {
+    // oxlint-disable-next-line typescript/await-thenable -- bun-types types `.rejects.toThrow()` as void, but it returns a Promise at runtime that must be awaited
+    await expect(
+      build({ children: [{ onclick: both, tagName: "button" }], tagName: "x-both" }),
+    ).rejects.toThrow('inline "onclick" handler declares both');
+  });
+
+  test("so is one on a map root", async () => {
+    const doc: JxDocument = {
+      children: [
+        {
+          children: {
+            $prototype: "Array",
+            items: { $ref: "#/state/rows" },
+            map: { onclick: both, tagName: "li" },
+          },
+          tagName: "ul",
+        },
+      ],
+      state: { rows: [1] },
+      tagName: "x-both",
+    };
+    // oxlint-disable-next-line typescript/await-thenable -- bun-types types `.rejects.toThrow()` as void, but it returns a Promise at runtime that must be awaited
+    await expect(build(doc)).rejects.toThrow('inline "onclick" handler declares both');
   });
 });

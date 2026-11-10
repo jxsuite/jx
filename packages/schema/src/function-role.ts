@@ -95,6 +95,17 @@ function collectCallableKeys(doc: JxElement): Set<string> {
   return keys;
 }
 
+/**
+ * Does a Function declaration name both a `body` and a `$src`? The two are mutually exclusive
+ * (spec.md §5.3 4d), and the test is presence, as the `FunctionDef` schema's `not` is, so an empty
+ * `body: ""` beside a `$src` is refused too and `jx validate` agrees with every tier.
+ *
+ * @param def A Function declaration, a `state` entry or a handler written inline on an `on*` key.
+ */
+export function declaresBodyAndSrc(def: JxFunctionDef): boolean {
+  return "body" in def && "$src" in def;
+}
+
 /** The rules in order: the first that applies decides. */
 function functionEntryRole(
   key: string,

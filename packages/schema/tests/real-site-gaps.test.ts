@@ -231,3 +231,26 @@ describe("a tag chosen at element creation", () => {
     expect(validate({ children: [], tagName: conditional("x-a", "x-b") }).ok).toBe(false);
   });
 });
+
+describe("a Function declares a body or a $src, never both (spec.md §5.3 4d)", () => {
+  const both = { $prototype: "Function", $src: "./a.js", body: "state.n++" };
+
+  test("a Function state entry declaring both body and $src is refused", () => {
+    expect(validate(doc([], { go: both })).ok).toBe(false);
+    expect(
+      validate(doc([], { go: { ...both, body: [{ operator: "push", target: [] }] } })).ok,
+    ).toBe(false);
+    expect(validate(doc([], { go: { ...both, body: "" } })).ok).toBe(false);
+  });
+
+  test("an inline on* Function declaring both is refused", () => {
+    expect(validate(doc([{ onclick: both, tagName: "button" }])).ok).toBe(false);
+  });
+
+  test("body alone and $src alone still validate", () => {
+    expect(validate(doc([], { go: { $prototype: "Function", body: "state.n++" } })).errors).toBe(
+      "",
+    );
+    expect(validate(doc([], { go: { $prototype: "Function", $src: "./a.js" } })).errors).toBe("");
+  });
+});
