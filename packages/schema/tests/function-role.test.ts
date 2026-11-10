@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { classifyFunctionEntries, LIFECYCLE_KEYS } from "../src/function-role";
+import { classifyFunctionEntries, declaresBodyAndSrc, LIFECYCLE_KEYS } from "../src/function-role";
 import type { JxElement } from "../types";
 
 /** The verdict for one entry of a document. */
@@ -165,5 +165,20 @@ describe("a bodyless $src entry", () => {
     const cyclic: JxElement = { state: { rows: entry } };
     Object.assign(cyclic, { self: cyclic, list: [cyclic] });
     expect(roleOf(cyclic, "rows")).toBe("computed");
+  });
+});
+
+describe("declaresBodyAndSrc", () => {
+  test("is true when both keys are present, an empty body included", () => {
+    expect(declaresBodyAndSrc({ $prototype: "Function", $src: "./a.js", body: "return 1" })).toBe(
+      true,
+    );
+    expect(declaresBodyAndSrc({ $prototype: "Function", $src: "./a.js", body: "" })).toBe(true);
+  });
+
+  test("is false for body alone, $src alone, or neither", () => {
+    expect(declaresBodyAndSrc({ $prototype: "Function", body: "return 1" })).toBe(false);
+    expect(declaresBodyAndSrc({ $prototype: "Function", $src: "./a.js" })).toBe(false);
+    expect(declaresBodyAndSrc({ $prototype: "Function" })).toBe(false);
   });
 });

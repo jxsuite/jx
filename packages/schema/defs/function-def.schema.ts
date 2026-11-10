@@ -2,8 +2,9 @@ export const functionDefSchema = {
   additionalProperties: false,
   description:
     'A function declaration. $prototype must be "Function". ' +
-    "body (inline) and $src (external) are mutually exclusive. " +
+    "body (inline) and $src (external) are mutually exclusive; declaring both is an error. " +
     "First parameter is always state (the reactive scope).",
+  not: { required: ["body", "$src"] },
   properties: {
     $export: {
       description: "Named export in $src module. Defaults to the state key name.",

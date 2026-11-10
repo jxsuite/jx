@@ -427,7 +427,7 @@ An `npm:` specifier names a package export, and each renderer resolves it where 
 
 ##### 4d — Function Properties
 
-> **Status: Partial.** The property table, parameter-object normalization, compiled-site bundling (`packages/compiler/src/site/bundler.ts`) and usage-based classification of a `$src` entry (`classifyFunctionEntries` in `packages/schema/src/function-role.ts`, read by every tier) ship. Three rules hold in only some tiers: declaring both `body` and `$src` throws at runtime scope build but is never a compile-time error; `compile-client.ts` ignores `$lazy`; and the interpreter's `resolveParamNames` recognizes `state` only in first position rather than binding by name.
+> **Status: Partial.** The property table, parameter-object normalization, compiled-site bundling (`packages/compiler/src/site/bundler.ts`) and usage-based classification of a `$src` entry (`classifyFunctionEntries` in `packages/schema/src/function-role.ts`, read by every tier) ship, and so does the `body`/`$src` exclusion (`declaresBodyAndSrc`, same module). Two rules hold in only some tiers: `compile-client.ts` ignores `$lazy`, and the interpreter's `resolveParamNames` recognizes `state` only in first position rather than binding by name.
 
 | Property      | Required     | Description                                                                                                     |
 | ------------- | ------------ | --------------------------------------------------------------------------------------------------------------- |
@@ -442,7 +442,7 @@ An `npm:` specifier names a package export, and each renderer resolves it where 
 | `description` | No           | Documentation string                                                                                            |
 | `emits`       | No           | Array of CEM `Event` objects this function dispatches                                                           |
 
-`body` and `$src` are mutually exclusive. Declaring both is a compile-time error.
+`body` and `$src` are mutually exclusive. Declaring both is a compile-time error. The rule covers a `state` entry and a Function written inline on an `on*` property alike: both compiled targets refuse the pair at build, the interpreter throws when it builds the scope or binds the handler, and the `FunctionDef` schema refuses it, so `jx validate` reports it first.
 
 `parameters` entries may be bare string names (`["item"]`, as in §20.1's example), CEM-compatible parameter objects (`{ "name": "id", "type": { "text": "number" }, "default": 1 }`), or a mix — the schema and runtime accept both forms, and the runtime normalizes every entry to its name. Prefer objects when tooling metadata (types, defaults, descriptions) matters; bare names suffice otherwise.
 

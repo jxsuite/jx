@@ -624,6 +624,44 @@ describe("buildScope", () => {
     ).rejects.toThrow("mutually exclusive");
   });
 
+  test("Shape 4: an empty body beside a $src is refused too", async () => {
+    // oxlint-disable-next-line typescript/await-thenable -- bun-types types `.rejects.toThrow()` as void, but it returns a Promise at runtime that must be awaited
+    await expect(
+      buildScope(
+        { state: { bad: { $prototype: "Function", $src: "./foo.js", body: "" } } },
+        {},
+        BASE,
+      ),
+    ).rejects.toThrow("mutually exclusive");
+  });
+
+  test("Shape 4: a structured body beside a $src is refused too", async () => {
+    // oxlint-disable-next-line typescript/await-thenable -- bun-types types `.rejects.toThrow()` as void, but it returns a Promise at runtime that must be awaited
+    await expect(
+      buildScope(
+        {
+          state: {
+            bad: {
+              $prototype: "Function",
+              $src: "./foo.js",
+              body: [{ operator: "push", target: { $ref: "#/state/list" }, value: 1 }],
+            },
+          },
+        },
+        {},
+        BASE,
+      ),
+    ).rejects.toThrow("mutually exclusive");
+  });
+
+  test("Shape 4: an inline on* Function declaring both body and $src throws when bound", () => {
+    const node: JxElement = {
+      onclick: { $prototype: "Function", $src: "./foo.js", body: "state.n++" },
+      tagName: "button",
+    };
+    expect(() => renderNode(node, reactive({ n: 0 }))).toThrow("inline 'onclick' handler");
+  });
+
   test("Shape 4: a non-string body with no $src throws — untrusted JSON, not a TS guarantee", async () => {
     // The `body`/`$src` union is a TypeScript-only contract; a raw document can still carry a
     // Truthy, non-string `body` (e.g. malformed authoring tooling), which skips both the

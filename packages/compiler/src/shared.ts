@@ -6,7 +6,7 @@
  * compilation targets (static, client, element, server).
  */
 
-import { classifyFunctionEntries } from "@jxsuite/schema/function-role";
+import { classifyFunctionEntries, declaresBodyAndSrc } from "@jxsuite/schema/function-role";
 import {
   COLOR_SCHEME_ATTR,
   COLOR_SCHEME_STORAGE_KEY,
@@ -719,6 +719,27 @@ function collectAssignedStateKeys(node: JxDocumentValue | undefined, into: Set<s
 }
 
 /**
+ * Refuse a Function declaration that names both a `body` and a `$src` (spec.md §5.3 4d). The pair
+ * has no meaning: each tier used to keep a different half, so a document that built in one target
+ * did something else in another. Every place the compiler lowers a Function declaration calls this
+ * first, so no target lets the pair through, and `where` names the declaration for the build
+ * error.
+ *
+ * @param where What the declaration is, for the message: `state entry "save"`.
+ * @param def The value found there; anything but a Function declaration is left alone.
+ */
+export function refuseBodyWithSrc(
+  where: string,
+  def: JxDocumentValue | JxStateDefinition | undefined,
+): void {
+  if (isFunctionDef(def) && declaresBodyAndSrc(def)) {
+    throw new Error(
+      `${where} declares both "body" and "$src"; they are mutually exclusive (spec.md §5.3 4d). Keep one.`,
+    );
+  }
+}
+
+/**
  * @param {Record<string, JxStateDefinition>} [defs]
  * @param {JxScope | null} [parentScope]
  * @returns {JxScope}
@@ -823,6 +844,7 @@ export function buildInitialScope(
       continue;
     }
     if (isFunctionDef(def)) {
+      refuseBodyWithSrc(`state entry "${key}"`, def);
       if (hasStructuredBody(def)) {
         // Structured body (spec §20): a side-effecting handler in the build-time scope. Build-time
         // Code may call it bare, so the scope it runs against falls back to this one.

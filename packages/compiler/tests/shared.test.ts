@@ -288,6 +288,12 @@ describe("hasAnyIsland", () => {
 // ─── Scope / value resolution ───────────────────────────────────────────────
 
 describe("buildInitialScope", () => {
+  test("an entry declaring both body and $src is refused", () => {
+    expect(() =>
+      buildInitialScope({ go: { $prototype: "Function", $src: "./a.js", body: "state.n++" } }),
+    ).toThrow('state entry "go" declares both "body" and "$src"');
+  });
+
   test("scalar values are set directly", () => {
     const scope = buildInitialScope({ active: true, count: 0, name: "Alice" });
     expect(scope.count).toBe(0);

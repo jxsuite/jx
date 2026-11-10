@@ -1483,3 +1483,41 @@ describe("compileClient — nested state refs in $switch and repeaters", () => {
     expect(js).not.toContain("page_rows");
   });
 });
+
+describe("compileClient: body and $src are mutually exclusive (spec.md §5.3 4d)", () => {
+  const both = { $prototype: "Function", $src: "./a.js", body: "state.n++" };
+
+  test("a state entry declaring both is a build error", () => {
+    const doc: JxDocument = { children: [], state: { go: both }, tagName: "div" };
+    expect(() => compileClient(doc, { title: "T" })).toThrow(
+      'state entry "go" declares both "body" and "$src"',
+    );
+  });
+
+  test("an inline on* Function declaring both is a build error", () => {
+    const doc: JxDocument = { children: [{ onclick: both, tagName: "button" }], tagName: "div" };
+    expect(() => compileClient(doc, { title: "T" })).toThrow(
+      'inline "onclick" handler declares both',
+    );
+  });
+
+  test("so is one on a list item", () => {
+    const doc: JxDocument = {
+      children: [
+        {
+          children: {
+            $prototype: "Array",
+            items: { $ref: "#/state/rows" },
+            map: { onclick: both, tagName: "li" },
+          },
+          tagName: "ul",
+        },
+      ],
+      state: { rows: [1] },
+      tagName: "div",
+    };
+    expect(() => compileClient(doc, { title: "T" })).toThrow(
+      'inline "onclick" handler declares both',
+    );
+  });
+});

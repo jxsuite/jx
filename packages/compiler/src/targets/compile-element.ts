@@ -23,6 +23,7 @@ import {
   compileOperandSource,
   compileStatements,
   emitFormulaFn,
+  refuseBodyWithSrc,
   emitRequestFetch,
   emitServerCall,
   escapeHtml,
@@ -340,6 +341,7 @@ export function emitElementModule(
   const defs = doc.state ?? {};
   const roles = classifyFunctionEntries(doc);
   for (const [key, def] of Object.entries(defs)) {
+    refuseBodyWithSrc(`state entry "${key}"`, def);
     if (isFunctionDef(def) && def.$src) {
       const srcPath = def.$src;
       if (def.$lazy === true) {
@@ -1131,6 +1133,7 @@ ${no}
     if (!key.startsWith("on") || key === "observedAttributes") {
       continue;
     }
+    refuseBodyWithSrc(`inline "${key}" handler`, val);
     const eventName = key.slice(2).toLowerCase();
     if (isBoundRef(val)) {
       parts.push(
@@ -1330,6 +1333,7 @@ function emitMappedArray(arrayDef: JxMappedArray, indent: string) {
     if (!key.startsWith("on")) {
       continue;
     }
+    refuseBodyWithSrc(`inline "${key}" handler`, val);
     const eventName = key.slice(2).toLowerCase();
     if (isRef(val)) {
       parts.push(`@${eventName}="\${(e) => { s.$map = $map; ${refToExpr(val.$ref)}(s, e); }}"`);
