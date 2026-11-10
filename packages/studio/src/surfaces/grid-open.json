@@ -16,11 +16,11 @@
     "color": "var(--fg)",
     "& [part=\"group-title\"]": {
       "margin": "0",
-      "fontSize": "var(--jx-text-xs)",
-      "fontWeight": "600",
+      "fontSize": "var(--jx-heading-size)",
+      "fontWeight": "var(--jx-heading-weight)",
       "textTransform": "uppercase",
-      "letterSpacing": "0.04em",
-      "color": "var(--fg-dim)"
+      "letterSpacing": "var(--jx-heading-tracking)",
+      "color": "var(--jx-heading-color)"
     },
     "& [part=\"rows\"]": {
       "display": "flex",

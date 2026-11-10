@@ -22,11 +22,11 @@
       "alignItems": "center",
       "gap": "6px",
       "padding": "6px 8px 2px",
-      "fontSize": "var(--jx-text-sm)",
-      "fontWeight": "600",
-      "color": "var(--fg-dim)",
+      "fontSize": "var(--jx-heading-size)",
+      "fontWeight": "var(--jx-heading-weight)",
+      "color": "var(--jx-heading-color)",
       "textTransform": "uppercase",
-      "letterSpacing": "0.5px"
+      "letterSpacing": "var(--jx-heading-tracking)"
     },
     "& [part=\"count\"]": {
       "fontWeight": "400",

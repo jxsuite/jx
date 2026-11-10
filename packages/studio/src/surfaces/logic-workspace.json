@@ -148,10 +148,11 @@
     },
     "& [part=\"rail-title\"]": {
       "paddingBottom": "6px",
-      "fontSize": "var(--jx-text-sm)",
-      "letterSpacing": "0.5px",
-      "color": "var(--fg-dim)",
-      "textTransform": "uppercase"
+      "fontSize": "var(--jx-heading-size)",
+      "letterSpacing": "var(--jx-heading-tracking)",
+      "color": "var(--jx-heading-color)",
+      "textTransform": "uppercase",
+      "fontWeight": "var(--jx-heading-weight)"
     },
     "& [part=\"entry\"]": {
       "marginBottom": "8px"

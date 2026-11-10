@@ -44,11 +44,11 @@
     },
     "& [part=\"group-title\"]": {
       "margin": "0 0 var(--jx-space-1)",
-      "color": "var(--fg-dim)",
-      "fontSize": "var(--jx-text-sm)",
-      "fontWeight": "700",
+      "color": "var(--jx-heading-color)",
+      "fontSize": "var(--jx-heading-size)",
+      "fontWeight": "var(--jx-heading-weight)",
       "textTransform": "uppercase",
-      "letterSpacing": "0.04em"
+      "letterSpacing": "var(--jx-heading-tracking)"
     },
     "& [part=\"list\"]": {
       "display": "flex",

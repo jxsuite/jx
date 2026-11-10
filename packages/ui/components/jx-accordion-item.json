@@ -167,7 +167,11 @@
       "overflow": "hidden",
       "textOverflow": "ellipsis",
       "whiteSpace": "nowrap",
-      "fontWeight": "500"
+      "color": "var(--jx-heading-color)",
+      "fontSize": "var(--jx-heading-size)",
+      "fontWeight": "var(--jx-heading-weight)",
+      "letterSpacing": "var(--jx-heading-tracking)",
+      "textTransform": "uppercase"
     },
     "& > [part=\"details\"] > [part=\"summary\"] > [part=\"actions\"]": {
       "display": "inline-flex",

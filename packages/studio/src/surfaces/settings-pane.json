@@ -62,10 +62,10 @@
       "gap": "var(--jx-space-2)",
       "margin": "0",
       "padding": "0 var(--jx-space-3)",
-      "color": "var(--fg-dim)",
-      "fontSize": "var(--jx-text-sm)",
-      "fontWeight": "600",
-      "letterSpacing": "0.04em",
+      "color": "var(--jx-heading-color)",
+      "fontSize": "var(--jx-heading-size)",
+      "fontWeight": "var(--jx-heading-weight)",
+      "letterSpacing": "var(--jx-heading-tracking)",
       "textTransform": "uppercase"
     },
     "& [part=\"group-note\"]": {
