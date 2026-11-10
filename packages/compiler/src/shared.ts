@@ -6,6 +6,7 @@
  * compilation targets (static, client, element, server).
  */
 
+import { classifyFunctionEntries } from "@jxsuite/schema/function-role";
 import {
   COLOR_SCHEME_ATTR,
   COLOR_SCHEME_STORAGE_KEY,
@@ -28,7 +29,6 @@ import { compileOperandSource, evaluateExpression, isMutating } from "@jxsuite/r
 import { runStatements } from "@jxsuite/runtime/statements";
 import { buildSiteStyleCSS } from "@jxsuite/site/site-style";
 import {
-  bodyReturnsValue,
   childrenContainArray,
   hasStructuredBody,
   isExpressionDef,
@@ -757,6 +757,9 @@ export function buildInitialScope(
     }
   }
 
+  // The same verdict every other tier reads (spec.md §5.3 4b, 4d).
+  const roles = classifyFunctionEntries({ state: defs });
+
   for (const [key, def] of Object.entries(defs)) {
     if (!isNonNullObject(def) || Array.isArray(def)) {
       setOwnScopeValue(scope, key, cloneValue(def));
@@ -780,7 +783,7 @@ export function buildInitialScope(
   // Template-string entries are deferred to a third pass: whether one is resolvable depends on the
   // Runtime-only marks the loop below adds, and key order must not decide the answer.
   const templateDefs: [string, string][] = [];
-  // Computed (`bodyReturnsValue`) entries are deferred for the same reason. A computed is stored in
+  // Entries the classifier calls computed are deferred for the same reason. A computed is stored in
   // The scope as its already-evaluated *result*, so a template reading it sees an ordinary string
   // And prerender bakes it — destroying the binding rather than merely staling it (issue #124).
   const computedBodies: [string, string][] = [];
@@ -844,7 +847,7 @@ export function buildInitialScope(
         ) => JxScope[string];
         const invoke = (state: JxScope, event?: Event) =>
           fn(...params.map((name) => (name === "state" ? state : event)));
-        if (bodyReturnsValue(body)) {
+        if (roles.get(key) === "computed") {
           defineLazyScopeValue(scope, key, () => invoke(scope));
           computedBodies.push([key, body]);
         } else {

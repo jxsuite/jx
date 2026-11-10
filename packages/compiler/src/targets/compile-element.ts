@@ -6,6 +6,7 @@
  */
 
 import { erasedDocument } from "../erased.ts";
+import { classifyFunctionEntries } from "@jxsuite/schema/function-role";
 import { RESERVED_KEYS, camelToKebab } from "@jxsuite/runtime";
 import {
   ATTR_HELPER,
@@ -35,7 +36,6 @@ import {
   templateValueSource,
 } from "../shared.ts";
 import {
-  bodyReturnsValue,
   hasStructuredBody,
   isExpressionDef,
   isBoolean,
@@ -307,75 +307,6 @@ function extractInitialValue(def: JxStateDefinition) {
   return JSON.stringify(def);
 }
 
-/** Lifecycle hooks the generated element calls itself, so they are never `$ref`'d (spec.md §16.4). */
-const LIFECYCLE_KEYS = new Set(["onMount", "onUnmount", "onAdopted"]);
-
-/**
- * Collect the state keys a document uses as a _callable_, at any depth: bound to an `on*` event,
- * invoked by an `$expression` `call` node, or called as `state.key(…)` from a template string or
- * another function's body.
- *
- * A bodyless `$src` Function carries no body to classify by, and unlike the interpreter — which
- * introspects the imported function — a compiler only has the document to go on. Anything not used
- * as a callable has its return value read reactively, and so becomes a computed (spec.md §5.3 4b).
- * Defaulting the other way round would turn a called helper into a value and break its call site.
- *
- * @param {JxDocument} doc
- * @returns {Set<string>}
- */
-function collectCallableRefs(doc: JxDocument) {
-  const keys = new Set<string>();
-  const seen = new Set<object>();
-
-  const addStateRef = (ref: string) => {
-    if (ref.startsWith("#/state/")) {
-      /* SAFETY: `String.prototype.split` always returns at least one element (the whole string
-         when the separator is absent), so index 0 is present. */
-      keys.add(ref.slice("#/state/".length).split("/")[0] as string);
-    }
-  };
-
-  const visit = (node: JxDocumentValue | undefined) => {
-    if (isString(node)) {
-      // `${state.formatDate(d)}` in a template, or `state.helper(x)` in another function's body.
-      for (const call of node.matchAll(/\bstate\.([A-Za-z_$][\w$]*)\s*\(/g)) {
-        /* SAFETY: the pattern's one capture group is not optional, so every match fills
-           index 1 with the called member's name. */
-        keys.add(call[1] as string);
-      }
-      return;
-    }
-    if (!isNonNullObject(node) || seen.has(node)) {
-      return;
-    }
-    seen.add(node);
-    if (Array.isArray(node)) {
-      for (const item of node) {
-        visit(item);
-      }
-      return;
-    }
-    /* SAFETY: `node` is a non-null, non-array object reached from `doc.children` or `doc.state`,
-       and every such object in a parsed Jx document is a JSON object whose members are document
-       values; the view only reads members, and each is checked before use. */
-    const record = node as Readonly<Record<string, JxDocumentValue | undefined>>;
-    // An `$expression` `call` node names its callee in `target` (spec.md §19.4c).
-    if (record.operator === "call" && isRef(record.target)) {
-      addStateRef(record.target.$ref);
-    }
-    for (const [key, val] of Object.entries(record)) {
-      if (key.startsWith("on") && key !== "observedAttributes" && isRef(val)) {
-        addStateRef(val.$ref);
-      }
-      visit(val);
-    }
-  };
-
-  visit(doc.children);
-  visit(doc.state);
-  return keys;
-}
-
 /**
  * Generate a complete ES module string for a custom element.
  *
@@ -407,7 +338,7 @@ export function emitElementModule(
   /** `$lazy` `$src` modules → the (export, local binding) pairs each one supplies. */
   const lazySrcMap = new Map<string, { binding: string; exportName: string }[]>();
   const defs = doc.state ?? {};
-  const callableRefs = collectCallableRefs(doc);
+  const roles = classifyFunctionEntries(doc);
   for (const [key, def] of Object.entries(defs)) {
     if (isFunctionDef(def) && def.$src) {
       const srcPath = def.$src;
@@ -417,7 +348,7 @@ export function emitElementModule(
          * promise. Silently producing `computed(() => Promise)` would render "[object Promise]" in
          * whatever the template bound it to, so this is a build error rather than a surprise.
          */
-        if (!callableRefs.has(key) && !LIFECYCLE_KEYS.has(key)) {
+        if (roles.get(key) === "computed") {
           throw new Error(
             `"${key}" declares "$lazy": true but is used as a computed value, not called. ` +
               `A lazily loaded function resolves to a promise; a computed must resolve now. ` +
@@ -533,20 +464,7 @@ export function emitElementModule(
         computedEntries.push([key, def]);
       }
     } else if (isFunctionDef(def)) {
-      if (def.$src && !isString(def.body)) {
-        // Bodyless `$src` entry — classify by document usage, not by an absent body. `body` and
-        // `$src` are mutually exclusive (spec.md §5.3 4d), so this is the only shape a
-        // Spec-conformant external Function takes.
-        if (callableRefs.has(key) || LIFECYCLE_KEYS.has(key)) {
-          functionEntries.push([key, def]);
-        } else {
-          computedEntries.push([key, def]);
-        }
-      } else if (isString(def.body) && bodyReturnsValue(def.body)) {
-        computedEntries.push([key, def]);
-      } else {
-        functionEntries.push([key, def]);
-      }
+      (roles.get(key) === "computed" ? computedEntries : functionEntries).push([key, def]);
     } else if (isString(def) && def.includes("${")) {
       /* A TEMPLATE STRING IS A COMPUTED, and the runtime has always said so — `runtime.ts`'s
          second state pass is `if (typeof def === "string" && def.includes("${")) state[key] =

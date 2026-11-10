@@ -8,6 +8,7 @@ spec:
   - spec.md#5.3 # Function properties, parameter binding, $src classification
   - spec.md#23.1 # TypeScript in a body, erased as a document is read
 code:
+  - packages/schema/src/function-role.ts
   - packages/erase/src/core.ts
   - packages/erase/src/index.ts
   - packages/compiler/src/erased.ts
@@ -107,7 +108,7 @@ When several entries share a `$src`, the module is imported once and its named e
 
 An `npm:` specifier names an export of an installed package. `jx build` bundles it into the site. A page rendered live (on the Studio canvas, or by an app embedding the runtime) imports it from wherever that host serves packages: the Studio dev server bundles it from your project's `node_modules`, and an app can answer with an import map.
 
-A sidecar entry has no `body` to read, so its role follows how the document uses it. Bind it to an event, invoke it as `state.helper(state)`, or name it a lifecycle hook, and it stays a function. Read it anywhere else, in a list's `items`, a `${}` interpolation or a property binding, and it becomes a computed value: what you get is the export's **return value**, recomputed when its inputs change, not the function itself.
+A sidecar entry has no `body` to read, so its role follows its declaration and how the document uses it. Declare `parameters` and it stays a function wherever it is used. Otherwise, bind it to an event (on a child, or at a component's root beside `tagName`), invoke it as `state.helper(state)`, or name it a lifecycle hook, and it stays a function. Read it anywhere else, in a list's `items`, a `${}` interpolation or a property binding, and it becomes a computed value: what you get is the export's **return value**, recomputed when its inputs change, not the function itself. The export's own parameter count is never consulted, so a helper that only other JavaScript calls needs its `parameters` declared.
 
 ```json
 {
