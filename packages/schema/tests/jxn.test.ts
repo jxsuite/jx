@@ -646,10 +646,17 @@ describe("spans", () => {
 /** Everything in the repository that is a Jx document. */
 function trackedDocuments(): string[] {
   const NOT_DOCUMENTS =
-    /(^|\/)(package|tsconfig|project|jx-extension|bun|nav|catalog|registry|release-assets|template-versions|bundle-budget|prose|claims|standards|renovate|manifest|capture\.lock)[^/]*\.json$|schema\.json$|\.class\.json$|\.schema\.|\/messages\/|\/data\/|\/content\/|fixtures|\.oxlint|\.vscode|\.release/u;
-  return execFileSync("git", ["ls-files", "*.json"], { cwd: ROOT, encoding: "utf8" })
+    /(^|\/)(package|tsconfig|project|jx-extension|bun|nav|catalog|registry|release-assets|template-versions|bundle-budget|prose|claims|standards|renovate|manifest|capture\.lock)[^/]*\.(?:json|jxn)$|schema\.json$|\.class\.(?:json|jxn)$|\.schema\.|\/messages\/|\/data\/|\/content\/|fixtures|\.oxlint|\.vscode|\.release/u;
+  return execFileSync("git", ["ls-files", "*.json", "*.jxn"], { cwd: ROOT, encoding: "utf8" })
     .split("\n")
     .filter((file) => file !== "" && !NOT_DOCUMENTS.test(file));
+}
+
+/** A tracked file's value: JSON as JSON, and a `.jxn` file through the grammar. */
+function readTracked(file: string): JsonValue {
+  const text = readFileSync(join(ROOT, file), "utf8");
+  // SAFETY: JSON.parse without a reviver only ever yields a JSON value.
+  return file.endsWith(".jxn") ? read(text) : (JSON.parse(text) as JsonValue);
 }
 
 /** Sorted keys, because only `style`'s order means anything. */
@@ -688,8 +695,7 @@ describe("the corpus", () => {
   test("every tracked document comes back deep-equal, with style order intact", () => {
     let checked = 0;
     for (const file of trackedDocuments()) {
-      // SAFETY: JSON.parse without a reviver only ever yields a JSON value.
-      const parsed = JSON.parse(readFileSync(join(ROOT, file), "utf8")) as JsonValue;
+      const parsed = readTracked(file);
       const isDocument =
         isJsonObject(parsed) &&
         (isString(parsed.tagName) || "children" in parsed || "$layout" in parsed);

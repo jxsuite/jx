@@ -392,10 +392,13 @@ function valueAt(node: JsonObject, path: readonly (string | number)[]): JsonValu
 }
 
 describe("the corpus", () => {
-  const files = execFileSync("git", ["ls-files", "*.json"], { cwd: ROOT, encoding: "utf8" })
+  const files = execFileSync("git", ["ls-files", "*.json", "*.jxn"], {
+    cwd: ROOT,
+    encoding: "utf8",
+  })
     .split("\n")
     .filter((file) => /(?:^|\/)(?:pages|layouts|components)\//u.test(file))
-    .filter((file) => !file.endsWith(".class.json") && !file.endsWith(".schema.json"));
+    .filter((file) => !/\.(?:class|schema)\.(?:json|jxn)$/u.test(file));
 
   test("any single operation reads back, and leaves the rest of the file alone", () => {
     let random = 20_261_106;
@@ -405,7 +408,8 @@ describe("the corpus", () => {
     };
     let checked = 0;
     for (const file of files) {
-      const parsed = JSON.parse(readFileSync(join(ROOT, file), "utf8"));
+      const text = readFileSync(join(ROOT, file), "utf8");
+      const parsed = file.endsWith(".jxn") ? parseJxn(text) : JSON.parse(text);
       if (!isJsonObject(parsed)) {
         continue;
       }
