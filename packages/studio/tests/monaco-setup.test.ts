@@ -10,16 +10,24 @@ import { flattenSchema } from "@jxsuite/schema/project-schemas";
 import jxSchema from "@jxsuite/schema/schema.json";
 import { isNonNullObject } from "@jxsuite/schema/guards";
 import type { DiagnosticsOptions } from "monaco-editor/languages/features/json/register";
-import type { DiagnosticsOptions as TypeScriptDiagnosticsOptions } from "monaco-editor/languages/features/typescript/register";
+import type {
+  CompilerOptions,
+  DiagnosticsOptions as TypeScriptDiagnosticsOptions,
+} from "monaco-editor/languages/features/typescript/register";
 import { installMonacoSetupMocks, MONACO_SETUP_ENTRIES } from "./monaco-setup-mocks";
 
 const setDiagnosticsOptions = mock((_opts: DiagnosticsOptions) => {});
 
 const setTypeScriptDiagnostics = mock((_opts: TypeScriptDiagnosticsOptions) => {});
 
+const setCompilerOptions = mock((_opts: CompilerOptions) => {});
+
 installMonacoSetupMocks({
   jsonDefaults: { setDiagnosticsOptions },
-  typescriptDefaults: { setDiagnosticsOptions: setTypeScriptDiagnostics },
+  typescriptDefaults: {
+    setCompilerOptions,
+    setDiagnosticsOptions: setTypeScriptDiagnostics,
+  },
 });
 
 class FakeWorker {
@@ -322,10 +330,23 @@ describe("the declared Monaco feature set", () => {
 });
 
 describe("a function body's TypeScript diagnostics", () => {
-  test("check syntax and not types, since a body's names come from the runtime (spec.md §23.1)", () => {
+  test("check the buffer's syntax and not its types, since its names come from the runtime", () => {
     expect(setTypeScriptDiagnostics).toHaveBeenCalledWith({
       noSemanticValidation: true,
       noSyntaxValidation: false,
+    });
+  });
+
+  test("read the wrapped body strictly, but not for implicit any (studio.md §16.7)", () => {
+    expect(setCompilerOptions).toHaveBeenCalledWith({
+      allowNonTsExtensions: true,
+      module: 99,
+      moduleResolution: 2,
+      noEmit: true,
+      noImplicitAny: false,
+      skipLibCheck: true,
+      strict: true,
+      target: 99,
     });
   });
 });

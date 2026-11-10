@@ -2008,9 +2008,23 @@ Every finding that can be repaired carries the command that repairs it, and the 
 
 ### 16.7 Type Errors in Document Code
 
-> **Status: Pending.** The function editor reports no type errors.
+> **Status: Implemented.** The function editor marks type errors in a body and files each as a Problem. A body is the only code a document holds today, so modules join it when a document can carry them (spec.md §23.2).
 
-The code surface marks type errors in a document's bodies and modules (spec.md §23.3) at their real positions, with no `tsc` or Node process on the machine, and files them as **Problems**.
+The code surface marks type errors in a document's function bodies (spec.md §23.3) at their real positions, with no `tsc` or Node process on the machine, and files them as **Problems**. Monaco's own TypeScript worker does the checking, so the desktop app and a cloud host check types with nothing installed beside Studio.
+
+**A body is checked in a file written around it.** A body is the inside of a function, so the worker cannot read the buffer: `return` is not allowed at the top of a file, and `state` is declared nowhere. `@jxsuite/schema/virtual-types` writes the function around the body, copied in verbatim, with `State` declared above it and the names the runtime binds as its parameters (`state` first, then the entry's declared `parameters` or `arguments`, spec.md §5.3). The editor's own buffer stays what Monaco made of it, a syntax-only model, and the findings are drawn on it as a second set of markers (`jx-types`) beside its syntax errors and the lint's. An error maps back to the body by a single shift, because the body is verbatim in the file.
+
+**`State` says what the document proves and no more.** A literal gives its type, an object its shape and an array the types of its items (an empty one is `any[]`, an empty object `Record<string, any>`). A callable Function entry is `(...args: any[]) => any`. A computed Function entry, a template, an `$expression`, a `$prototype` instance, a `timing: "server"` call and a `null` are `any`, because the document does not determine their type and an error about code the author cannot fix teaches them to ignore the checker. Members named with a leading `$` (`$media`, `$props`) are open, and a document with a `$layout` is open to every name, since the layout supplies state the page does not list. Anything else is an error: `state.nope = 1` reports `Property 'nope' does not exist on type 'State'`. An inline handler sees the `state` of every element from the root down to the one it hangs on, the nearest winning, as the runtime's scopes nest. `event` is `any` wherever an entry does not name it, because the runtime passes it and the browser holds it as `window.event`, and calling a handler that works an error would be the wrong answer.
+
+**The options are strict, but not for implicit `any`.** A body is as often JavaScript as TypeScript (spec.md §23.1), and an untyped callback parameter is not a mistake in one. `strictNullChecks` and the rest of `strict` are on, so `document.__x = 1` and `event.target.tagName` are reported as TypeScript reports them.
+
+**What it does not say.** An error in the wrapper itself is never shown. An unresolvable module (2307, 2792, 7016) is dropped: a body cannot `import` statically, and a dynamic `import()` resolves in the browser, so there is nothing the author can fix from here. While the body does not parse the check says nothing, because the errors a parse failure causes are noise, and Monaco reports the syntax error itself.
+
+**When it runs.** On open, 750 ms after the last keystroke, and again when the formatted text replaces the buffer, since every position moved. An answer that arrives after the text changed, or the editor was retargeted, is discarded, by the same test the lint's answer is held to.
+
+**Problems outlive the editor, and are keyed by the body.** The Problems tab shares the dock with the code surface, so it can be read only once the editor is gone, and a Problem that vanished with the editor could never be seen. Each is filed under the source **Type check** with a key naming the tab and the body, so opening the same body again replaces them, and a fixed body clears them on its first check. They are not re-derived when the body is edited elsewhere (the Data panel's field, a collaborator), so a Problem can describe a body as it was until the editor opens it again.
+
+**The limits are stated.** Studio checks one body at a time, against the state of its own document. A project's own `tsc` is the whole-project checker (spec.md §23.3).
 
 ---
 

@@ -2650,9 +2650,11 @@ A document may carry its own client and server modules, so a component does not 
 
 ### 23.3 Type Checking
 
-> **Status: Pending.** Nothing checks the code inside a document.
+> **Status: Partial.** Studio's function editor reports type errors in a body (`studio.md` §16.7). Nothing in the terminal or in another editor does.
 
 Type errors in a document's bodies and modules are reported at their real positions, in the terminal and in an editor, and a scaffolded project is set up to report them.
+
+A body is checked as the function it is the inside of, with `State` declared from its document's `state` and the names the runtime binds as its parameters. `@jxsuite/schema/virtual-types` writes that file and maps a position in it back to the body, with no dependency on a compiler, so every surface that checks types reads the same file. What `State` says is what the document proves: `state.nope` is an error, a value the document does not determine is `any`.
 
 ---
 
