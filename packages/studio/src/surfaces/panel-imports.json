@@ -23,11 +23,11 @@
       "alignItems": "center",
       "gap": "6px",
       "padding": "6px 8px 2px",
-      "fontSize": "var(--jx-text-sm)",
-      "fontWeight": "600",
-      "color": "var(--fg-dim)",
+      "fontSize": "var(--jx-heading-size)",
+      "fontWeight": "var(--jx-heading-weight)",
+      "color": "var(--jx-heading-color)",
       "textTransform": "uppercase",
-      "letterSpacing": "0.5px"
+      "letterSpacing": "var(--jx-heading-tracking)"
     },
     "& [part=\"title\"][data-mono]": {
       "$description": "A package name is an identifier, so it is set in the monospace face and NOT uppercased. The uppercasing is the header's, and it applied to these titles too: `@acme/kit` was drawn as `@ACME/KIT`, which is a name npm does not have. Case is meaning here, so the band's transform stops at this one part.",

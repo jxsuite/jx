@@ -146,10 +146,11 @@
       "gap": "var(--jx-space-2)"
     },
     "& [part=\"ctx-group-label\"]": {
-      "fontSize": "var(--jx-text-sm)",
+      "fontSize": "var(--jx-heading-size)",
       "textTransform": "uppercase",
-      "letterSpacing": "0.04em",
-      "color": "var(--fg-dim)"
+      "letterSpacing": "var(--jx-heading-tracking)",
+      "color": "var(--jx-heading-color)",
+      "fontWeight": "var(--jx-heading-weight)"
     },
     "& [part=\"features\"]": {
       "$description": "The group that WRAPS, and the reason it is not a segmented control. A feature list is as long as the project makes it and this popover is a 240–340px column, so it folds onto a second line in any project with more than a few; a compact group cannot draw that — its seam is written in tree order, no selector can find the ends of a flex line, and it therefore refuses to wrap and would overflow the column instead (ui.md §5.4). Chips instead: each member draws its own rounded frame (`quiet: false`, since the group no longer frames it) and the chosen one takes the accent edge below. The gap is --jx-space-2 rather than the group's own 2px, which puts every small chip's hit area at the 24px floor on both axes instead of the 22px two overlapping extensions leave (§4.3). The size list used to wrap here beside it; it is a segmented group on the bar now, which clips at its trailing end rather than wrapping.",

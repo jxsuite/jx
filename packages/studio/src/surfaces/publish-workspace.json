@@ -82,11 +82,11 @@
     },
     "& [part=\"section-heading\"]": {
       "margin": "0",
-      "fontSize": "var(--jx-text-sm)",
-      "fontWeight": "600",
-      "color": "var(--fg-dim)",
+      "fontSize": "var(--jx-heading-size)",
+      "fontWeight": "var(--jx-heading-weight)",
+      "color": "var(--jx-heading-color)",
       "textTransform": "uppercase",
-      "letterSpacing": "0.04em"
+      "letterSpacing": "var(--jx-heading-tracking)"
     },
     "& [part=\"publish-column\"] > section": {
       "padding": "var(--jx-space-4)",

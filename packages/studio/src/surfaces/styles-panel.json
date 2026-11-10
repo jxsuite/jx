@@ -33,11 +33,11 @@
     "& [part=\"section-title\"]": {
       "flex": "1",
       "margin": "0",
-      "fontSize": "var(--jx-text-sm)",
-      "fontWeight": "600",
-      "letterSpacing": "0.04em",
+      "fontSize": "var(--jx-heading-size)",
+      "fontWeight": "var(--jx-heading-weight)",
+      "letterSpacing": "var(--jx-heading-tracking)",
       "textTransform": "uppercase",
-      "color": "var(--fg-dim)"
+      "color": "var(--jx-heading-color)"
     },
     "& [part=\"section-count\"], & [part=\"row-count\"]": {
       "flexShrink": "0",
