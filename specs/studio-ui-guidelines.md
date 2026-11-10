@@ -89,14 +89,13 @@ Use CSS custom properties from `:root` — never hardcode color values.
 
 ### 2.2 Type Scale
 
-> **Status: Partial.** The scale is the kit's `--jx-text-xs`/`sm`/`md`/`lg` (10/11/12/14px, `ui.md` §4), and the 12px base, the 10px row labels and the 1.5 line height hold. `jx-field` labels and `jx-accordion-item` headers draw at `--jx-text-md` (12px), not the 11px this table assigns, because Studio stamps no `data-density="compact"`; and no 1.7 content-mode line height exists.
+> **Status: Partial.** The scale is the kit's `--jx-text-xs`/`sm`/`md`/`lg` (11/11/12/14px, `ui.md` §4.3), and the 12px base, the 11px row labels and the 1.5 line height hold. Nothing in the chrome draws under 11px, and `check-styles.ts` refuses a literal that would. `jx-field` labels and `jx-accordion-item` headers draw at `--jx-text-md` (12px), not the 11px this table assigns, because Studio stamps no `data-density="compact"`; and no 1.7 content-mode line height exists.
 
-| Size     | Usage                                                               |
-| -------- | ------------------------------------------------------------------- |
-| **12px** | Base body text, main UI                                             |
-| **11px** | Form labels (`jx-field`), breadcrumbs, accordion headers            |
-| **10px** | Hints (`.style-row-label`), badges, data explorer, secondary labels |
-| **9px**  | Layer toggle icons, micro indicators                                |
+| Size     | Usage                                                                                                                                |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| **12px** | Base body text, main UI                                                                                                              |
+| **11px** | Form labels (`jx-field`), breadcrumbs, accordion headers                                                                             |
+| **11px** | Hints (`.style-row-label`), badges, data explorer, secondary labels, layer toggle icons, micro indicators: `--jx-text-xs`, the floor |
 
 **Line height:** 1.5 (base), 1.7 (content mode)
 
@@ -199,7 +198,7 @@ A row is a document's markup, not a template's — this is the shape the `style`
   display: flex;
   align-items: center;
   gap: 4px;
-  font-size: 10px;
+  font-size: var(--jx-text-xs);
   color: var(--fg-dim);
 }
 .style-row > jx-textfield,

@@ -308,8 +308,9 @@ describe("the Navigator's panel set", () => {
   });
 
   test("every rail label fits under its glyph", () => {
-    /* A character count stands in for the 48px stacked label box at `--jx-text-xs`, because
-       happy-dom does no layout. "Packages" is eight characters and 46px, the widest that fits;
+    /* A character count stands in for the stacked label box at `--jx-text-xs`, because happy-dom
+       does no layout. The box is the 56px rail less the 2px selection border, about 53px, and "Packages"
+       is eight characters and 51px at 11px, the widest that fits;
        "Source Control" was fourteen and 71px, and the kit ellipsed it. A proxy, not a measurement:
        eight very wide glyphs could still clip, so a new long title should declare a railLabel. */
     registerNavigatorPanels();

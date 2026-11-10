@@ -113,15 +113,17 @@ The tokens are the `style` block of the kit's `project.json`, which is where a s
 
 ### 4.3 Scales
 
-| Family  | Tokens                                                                                                                  |
-| ------- | ----------------------------------------------------------------------------------------------------------------------- |
-| Type    | `--jx-text-xs/sm/md/lg` = 10/11/12/14px with `--jx-leading-*` = 14/16/18/20px, a four-step scale on a 4px line grid     |
-| Space   | `--jx-space-1…7` = 2/4/8/12/16/24/32px                                                                                  |
-| Control | `--jx-control-h` = 24px (24px compact, 28px comfortable), never below 24px at any density; `--jx-icon-size` = 16px      |
-| Radius  | `--jx-radius-xs/sm/md/lg` = 2/4/6/10px                                                                                  |
-| Focus   | `--jx-focus-ring` = `2px solid var(--jx-accent)`, drawn on `:focus-visible` only, `Highlight` under forced colours      |
-| Shadow  | `--jx-shadow-popover`, `--jx-shadow-dialog`: shadows are for surfaces that float; panels are separated by 1px hairlines |
-| Fonts   | `--jx-font-sans` (Inter, then the system stack), `--jx-font-mono`                                                       |
+| Family  | Tokens                                                                                                                                       |
+| ------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| Type    | `--jx-text-xs/sm/md/lg` = 11/11/12/14px with `--jx-leading-*` = 14/16/18/20px; 11px is the floor, and `xs` keeps the tighter caption leading |
+| Space   | `--jx-space-1…7` = 2/4/8/12/16/24/32px                                                                                                       |
+| Control | `--jx-control-h` = 24px (24px compact, 28px comfortable), never below 24px at any density; `--jx-icon-size` = 16px                           |
+| Radius  | `--jx-radius-xs/sm/md/lg` = 2/4/6/10px                                                                                                       |
+| Focus   | `--jx-focus-ring` = `2px solid var(--jx-accent)`, drawn on `:focus-visible` only, `Highlight` under forced colours                           |
+| Shadow  | `--jx-shadow-popover`, `--jx-shadow-dialog`: shadows are for surfaces that float; panels are separated by 1px hairlines                      |
+| Fonts   | `--jx-font-sans` (Inter, then the system stack), `--jx-font-mono`                                                                            |
+
+**The type has a floor too, and it is the smallest step.** `--jx-text-xs` was 10px, and Studio drew badges, rail captions and specimen labels at 9px and 10px on top of it. No WCAG criterion names a minimum size, so this one is a reading judgement rather than a conformance claim: 11px is the smallest size the kit's face holds at its x-height on a standard-density display, and it is the step compact density already steps its body type down to. `xs` stays a separate token from `sm` because it keeps the 14px caption leading a stacked rail label and a menu item's shortcut are drawn on. Studio's style gate (`check-styles.ts`) refuses a `font-size` literal under 11px in a stylesheet, a template and a surface's `style` block, so a literal can never undercut the scale it sits beside. A stacked `jx-action-button` draws no inline padding: its label is centred, and the 4px the padding took is what lets an eight-letter rail caption fit the 56px rail at 11px.
 
 **The control height has a floor, and it is a WCAG criterion rather than a taste.** WCAG 2.2 SC 2.5.8 (Target Size, Minimum) asks 24×24 CSS px of a pointer target, and `--jx-control-h` is the one number every button, field, row, tab, menu item and swatch in the kit draws as its `minHeight` or `blockSize` — so it is the one number that decides the height of every control. Compact density used to re-declare it at 20px, which put every compact row under the minimum; the criterion's spacing exception (an undersized target is fine when a 24px circle centred on it intersects no other target) does not hold for rows stacked in a tree or controls packed in a toolbar, which is exactly where compact is used, and §11 therefore could not claim the criterion (#309). The floor is 24px at every density now, held by `conformance.test.ts` beside the focus-ring gate: the root value and every `[data-density]` re-declaration must be a pixel length of at least 24.
 
