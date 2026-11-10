@@ -51,7 +51,7 @@ A body compiles with `new Function`, so it cannot `import`, hold module state or
 ## Decisions
 
 - **Decided (owner):** `$src` is discouraged, not disabled. `npm:` and shared modules have no other spelling, and the kit's behaviours stay as they are. The advisory is informational and fires only on a relative `$src` outside the kit.
-- **Decided (owner):** a `(fn)` body cannot call a `script` helper. Only `(export)` connects them. Allowing it would mean compiling every body as a module, and a body cannot see the module's scope at run time. A body calling one gets a `ReferenceError` when run, and `plan:_shared/jx-typechecking` reports it first.
+- **Decided (owner):** a `(fn)` body cannot call a `script` helper. Only `(export)` connects them. Allowing it would mean compiling every body as a module, and a body cannot see the module's scope at run time. A body calling one gets a `ReferenceError` when run, and `plan:spec/jx-typechecking` reports it first.
 - **Decided:** the data model is `$script: { client?: string, server?: string }`, with `$src: "#client"` and `$src: "#server"` as the authored form.
 - **Decided:** at load, before any merge, the specifier is qualified by its document: `jx-script:<project-relative-path>#client`. `_moduleCache`, `preloadModule`, `resolveLayout` and `collectServerEntries` then work as they are, because a page's and a layout's modules are different strings.
 - **Decided:** `(server)` keeps §11's meaning exactly, as a reactive data call taking `(args, env)`. Properties on the node become `arguments`. This plan adds no imperative server call. A write is a request to an extension mount, as it is today, and adding one would be a separate §11 feature.
@@ -116,7 +116,7 @@ my-counter {
 - **Studio**: `script` shown in the code surface as TypeScript, the advisory in Problems, `$script.server` removed from the canvas payload.
 - **Collab**: `TEXT_KEYS` and the path-aware rule for `body`, with `plan:collab/granular-writes`.
 
-**Integration contract.** Once this lands, `plan:_shared/jx-typechecking` may rely on: `$script` as the module text; `(export)` entries being the import itself on `state`; a server export's parameters being `(args, env)`.
+**Integration contract.** Once this lands, `plan:spec/jx-typechecking` may rely on: `$script` as the module text; `(export)` entries being the import itself on `state`; a server export's parameters being `(args, env)`.
 
 ## Tests
 

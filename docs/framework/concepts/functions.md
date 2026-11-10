@@ -9,6 +9,7 @@ spec:
   - spec.md#23.1 # TypeScript in a body, erased as a document is read
 code:
   - packages/schema/src/function-role.ts
+  - packages/schema/src/jxn/virtual-types.ts
   - packages/erase/src/core.ts
   - packages/erase/src/index.ts
   - packages/compiler/src/erased.ts
@@ -179,6 +180,7 @@ Functions marked `timing: "server"` are a separate mechanism: a plain `$src`/`$e
 
 - `body` and `$src` are mutually exclusive, and declaring both is a compile-time error.
 - A `body` may use TypeScript that can be removed without generating code: annotations, `as`, `!`, generics and type aliases. `jx build`, `jx validate`, Studio's canvas, its code editor and Live Preview accept it in any document format, and the editor saves it as you wrote it. `enum`, a value `namespace` and a module `import` are refused with the place they are written.
+- Studio's code editor checks the types in a body against the page's `state` and lists the errors in Problems. Nothing checks them outside Studio yet, so a `jx build` still accepts a body with a type error.
 - `state` is always reachable from a body. `arguments`/`parameters` bind by name: a parameter named `state` gets the state, any other name gets the event.
 - `this` is never used. All component state goes through the `state` proxy.
 - `$export` defaults to the entry's key name; sidecar exports must be named exports.

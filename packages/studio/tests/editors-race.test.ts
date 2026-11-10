@@ -12,6 +12,7 @@
  * something to the surface while it is suspended, and then lets the import land.
  */
 import { flush, installMockPlatform, resetWorkspaceWithTab } from "./harness";
+import { installTypeCheckDouble } from "./type-check-double";
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import type { FunctionEditDef } from "../src/types";
 import type { JxMutableNode } from "@jxsuite/schema/types";
@@ -122,6 +123,8 @@ void mock.module("../src/services/monaco-lazy", () => ({
   resetMonacoLazy: () => {},
   setProjectSchemasForMonaco: () => {},
 }));
+
+installTypeCheckDouble();
 
 const { closeFunctionEditor, syncFunctionEditor } = await import("../src/panels/editors");
 const { html, render: litRender } = await import("lit-html");

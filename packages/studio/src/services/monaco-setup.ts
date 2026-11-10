@@ -35,7 +35,12 @@ import * as monacoApi from "monaco-editor/editor";
 import "monaco-editor/features/register.all";
 // Languages.
 import { jsonDefaults } from "monaco-editor/languages/features/json/register";
-import { typescriptDefaults } from "monaco-editor/languages/features/typescript/register";
+import {
+  ModuleKind,
+  ModuleResolutionKind,
+  ScriptTarget,
+  typescriptDefaults,
+} from "monaco-editor/languages/features/typescript/register";
 import "monaco-editor/languages/definitions/javascript/register";
 import "monaco-editor/languages/definitions/typescript/register";
 
@@ -185,8 +190,21 @@ function applyJsonSchemas(documentSchema: JsonObject, projectJsonSchema: JsonObj
 
 /* A function body is TypeScript (`spec.md` §23.1) and opens as `typescript`. It is a body, not a
    module: top-level `return` and `await` are what it is, and its names (`state`, `event`) come from
-   the runtime, so only syntax is checked until bodies are type-checked against their scope. */
+   the runtime, so Monaco checks only the syntax of the buffer itself. Types are checked in a file
+   written around the body (`services/type-check.ts`), which the worker reads as a program of its own,
+   and these are the options it reads it under: strict, but not `noImplicitAny`, because a body is
+   as often JavaScript as TypeScript and an untyped callback parameter is not a mistake in it. */
 typescriptDefaults.setDiagnosticsOptions({ noSemanticValidation: true, noSyntaxValidation: false });
+typescriptDefaults.setCompilerOptions({
+  allowNonTsExtensions: true,
+  module: ModuleKind.ESNext,
+  moduleResolution: ModuleResolutionKind.NodeJs,
+  noEmit: true,
+  noImplicitAny: false,
+  skipLibCheck: true,
+  strict: true,
+  target: ScriptTarget.ESNext,
+});
 
 /* Flattened once at module load: the shipped core schemas reference the well-known union resources
    by canonical $id (the `$paths` source union, extensions.md §5.3), and Monaco resolves anything with

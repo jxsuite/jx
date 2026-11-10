@@ -14,6 +14,7 @@
 
 import type { editor } from "monaco-editor";
 import type { BufferWrites } from "./services/monaco-buffer";
+import type { TypeCheck } from "./services/type-check";
 import type { Tab } from "./tabs/tab";
 
 /**
@@ -92,6 +93,8 @@ interface ViewState {
     | (MonacoSurface & {
         _editingTarget?: string | null;
         _commitBody?: (body: string) => boolean;
+        /** The type check drawn on this buffer (`services/type-check.ts`), released with it. */
+        _typeCheck?: TypeCheck;
       })
     | null;
   blockActionBarEl: HTMLElement | null;
