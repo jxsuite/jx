@@ -117,7 +117,13 @@ describe("resolveFunction $src branches", () => {
   test("falls back to bare-specifier import when base resolution fails", async () => {
     const doc: JxDocument = {
       state: {
-        fn: { $export: "computed", $prototype: "Function", $src: "@vue/reactivity" },
+        // Declared parameters keep it a function: the test is about the bare-specifier fallback.
+        fn: {
+          $export: "computed",
+          $prototype: "Function",
+          $src: "@vue/reactivity",
+          parameters: ["getter"],
+        },
       },
     };
     const state = await buildScope(doc, {}, "file:///nonexistent/");
@@ -131,7 +137,7 @@ describe("resolveFunction $src branches", () => {
       },
     };
     const state = await buildScope(doc, {}, "");
-    // Double() has a return statement and <=1 params: wrapped in computed (async → Promise)
+    // Nothing in the document calls it, so it is a computed (async → Promise)
     expect(state.dbl).toBeInstanceOf(Promise);
     expect(await state.dbl).toBe(0);
   });

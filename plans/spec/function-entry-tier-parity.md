@@ -3,8 +3,6 @@ status: drafted
 disposition: implement
 claims:
   - spec.md#4d
-requires:
-  - spec/callable-classifier
 workspaces:
   - packages/schema
   - packages/runtime
@@ -30,7 +28,7 @@ size: L
 
 > **Status: Partial.** The property table, parameter-object normalization and compiled-site bundling (`packages/compiler/src/site/bundler.ts`) ship. Four rules hold in only some tiers: usage-based classification of a `$src` entry is `compile-element.ts`'s alone (the interpreter introspects the imported function, and `compile-client.ts` makes every `$src` entry a computed, so a `$src` handler bound to `on*` attaches no listener); declaring both `body` and `$src` throws at runtime scope build but is never a compile-time error; `compile-client.ts` ignores `$lazy`; and the interpreter's `resolveParamNames` recognizes `state` only in first position rather than binding by name.
 
-The first rule is built by `plan:spec/callable-classifier`, which this plan requires: `classifyFunctionEntries(doc)` in `@jxsuite/schema/function-role`, read by every tier, with `compile-client.ts` lowering a callable `$src` entry to `state[key]` (the import) plus an `on[key]` adapter. That plan narrows this marker to the other three rules. They are this plan's, and so are five lowering defects found while detailing (two routed here by `plan:spec/callable-classifier`, one by `plan:compiler/element-binding-table`, and the two list emitters below). Verified at `84735a9f`.
+The first rule is built by the shared classifier in `@jxsuite/schema/function-role` (landed), which this plan requires: `classifyFunctionEntries(doc)` in `@jxsuite/schema/function-role`, read by every tier, with `compile-client.ts` lowering a callable `$src` entry to `state[key]` (the import) plus an `on[key]` adapter. That plan narrows this marker to the other three rules. They are this plan's, and so are five lowering defects found while detailing (two routed here by the shared classifier in `@jxsuite/schema/function-role` (landed), one by `plan:compiler/element-binding-table`, and the two list emitters below). Verified at `84735a9f`.
 
 **`body` plus `$src`.** `resolveFunction` (`packages/runtime/src/runtime.ts:1172`) throws for a string-body state entry, testing truthiness, so `body: ""` slips through, and a structured body never reaches it: `buildScope`'s Function pass branches on `hasStructuredBody` first (line 904). An inline `on*` Function declaring both is bound by its body in `bindHandler` (line 1539) with no error. The compiler never refuses the pair, and each tier keeps a different half: `compile-client.ts` imports `$src` and ignores `body` (line 176), `buildInitialScope` runs `body` (`packages/compiler/src/shared.ts:617`), and `emitElementModule` imports `$src`, classifies by `body`, then calls the import. `FunctionDef` (`packages/schema/defs/function-def.schema.ts`) states the exclusion only in `description`, so `jx validate` accepts it. No tracked document declares both; three fixtures in `compile-element.test.ts` do ("Function with $src generates import and wrapper", "computed Function with $src generates import and computed wrapper", "multiple $src imports from same file are grouped").
 

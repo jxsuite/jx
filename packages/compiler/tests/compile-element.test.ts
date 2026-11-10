@@ -1377,6 +1377,41 @@ describe("compileElement — bodyless $src classification", () => {
     expect(result.files[0]!.content).toContain("this.state.rows = (state) => rows(state);");
   });
 
+  test("a root-level on* $ref keeps a bodyless $src entry callable", async () => {
+    const result = await compileElement({
+      children: [],
+      onkeydown: { $ref: "#/state/rows" },
+      state: { rows: { $export: "getRows", $prototype: "Function", $src: "./lib.js" } },
+      tagName: "test-src-root",
+    });
+
+    const { content } = result.files[0]!;
+    expect(content).toContain("this.state.rows = (state) => rows(state);");
+    expect(content).not.toContain("this.state.rows = computed(");
+  });
+
+  test("a parameterised string body that returns a value is a function", async () => {
+    const result = await compileElement({
+      children: [],
+      state: { double: { $prototype: "Function", body: "return x * 2", parameters: ["x"] } },
+      tagName: "test-param-body",
+    });
+
+    expect(result.files[0]!.content).not.toContain("this.state.double = computed(");
+  });
+
+  test("a $lazy entry that declares parameters is not a computed-use error", async () => {
+    const result = await compileElement({
+      children: [],
+      state: {
+        rows: { $lazy: true, $prototype: "Function", $src: "./lib.js", parameters: ["q"] },
+      },
+      tagName: "test-lazy-params",
+    });
+
+    expect(result.files[0]!.content).toContain("rows");
+  });
+
   test("a bodyless $src lifecycle hook stays callable", async () => {
     const result = await compileElement({
       children: [],

@@ -2,7 +2,7 @@
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
 
 import { describe, expect, test } from "bun:test";
-import { defineElement, mount } from "../src/runtime";
+import { defineElement, mount, preloadModule } from "../src/runtime";
 
 import type { JxDocument, JxElement, JxRef } from "@jxsuite/schema/types";
 import type { JxEventHandler } from "../src/types";
@@ -94,6 +94,34 @@ describe("a definition's root-level event handlers", () => {
     expect(seen[0]!.current).toBe(el);
     expect(seen[0]!.value).toBe("copy");
     outer.remove();
+  });
+
+  test("a root on* $ref keeps a returning $src handler callable on the host", async () => {
+    const tag = "hh-src";
+    preloadModule("jx-test:/hh-src.ts", {
+      // One parameter and a return: arity would make it a computed, and its listener would be lost.
+      onPress(state: { presses: number }) {
+        state.presses += 1;
+        return state.presses;
+      },
+    });
+    await defineElement({
+      tagName: tag,
+      state: {
+        onPress: { $prototype: "Function", $src: "jx-test:/hh-src.ts" },
+        presses: 0,
+      },
+      onclick: { $ref: "#/state/onPress" },
+      textContent: "${state.presses}",
+    });
+    const el = document.createElement(tag);
+    document.body.append(el);
+    await tick();
+    el.click();
+    el.click();
+    await tick();
+    expect(el.textContent).toBe("2");
+    el.remove();
   });
 
   test("a root-level key that is not a handler is not written onto the host", async () => {

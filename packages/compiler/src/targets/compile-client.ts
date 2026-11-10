@@ -11,6 +11,7 @@
  * state + computed signals), bind (DOM getters), on (event handlers), hydrate()
  */
 
+import { classifyFunctionEntries } from "@jxsuite/schema/function-role";
 import { RESERVED_KEYS, camelToKebab } from "@jxsuite/runtime";
 import {
   ATTR_HELPER,
@@ -42,7 +43,6 @@ import {
   templateValueSource,
 } from "../shared.ts";
 import {
-  bodyReturnsValue,
   hasStructuredBody,
   isBoolean,
   isExpandedSignal,
@@ -132,6 +132,8 @@ export function compileClient(
   } = opts;
 
   const context = createCompileContext(raw, null, raw.state ?? {}, raw.$media ?? {});
+  // One verdict per Function entry, from the document (spec.md §5.3 4b, 4d).
+  const roles = classifyFunctionEntries(raw);
   const styleBlock = compileStyles(raw, raw.$media ?? {}, opts.projectStyle ?? null);
 
   // Collectors for bindings and handlers
@@ -205,9 +207,21 @@ export function compileClient(
         }
         names.add(srcImportBinding(key, def));
 
-        // $src functions always produce computed entries (they return values)
-        computedEntries.push([key, `() => { return ${key}(state); }`]);
-      } else if (isString(body) && bodyReturnsValue(body)) {
+        if (roles.get(key) === "computed") {
+          // Only read, never called: its return value is what the page uses.
+          computedEntries.push([key, `() => { return ${key}(state); }`]);
+        } else {
+          /* Used as a callable: `state[key]` is the import, for a template or `call` site, and
+             `on[key]` adapts it for an event binding. Declared names map by name, and an undeclared
+             one is called as `(state, event)`, which is what the interpreter does. */
+          const callNames = args && args.length > 0 ? args : ["state", "event"];
+          initBlocks.push(`state[${JSON.stringify(key)}] = ${key};`);
+          onEntries.push([
+            key,
+            { args: callNames, body: `return ${key}(${callNames.join(", ")});` },
+          ]);
+        }
+      } else if (isString(body) && roles.get(key) === "computed") {
         // Body contains return → computed
         computedEntries.push([key, `() => { ${body} }`]);
       } else {

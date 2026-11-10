@@ -958,25 +958,46 @@ describe("compileClient — mapped array advanced features", () => {
 });
 
 describe("compileClient — $src function handlers", () => {
-  test("$src function is imported and called as computed", () => {
+  const withButton = (entry: JsonObject) => ({
+    children: [{ onclick: { $ref: "#/state/doSomething" }, tagName: "button", textContent: "Go" }],
+    state: { doSomething: { $prototype: "Function", $src: "./actions.js", ...entry } },
+    tagName: "div",
+  });
+
+  test("a $src handler bound to on* is bound as state and on", () => {
+    const { files } = compileClient(withButton({}), { title: "Test" });
+    const js = files[0]!.content;
+    expect(js).toContain("import { doSomething } from './actions.js'");
+    expect(js).toContain('state["doSomething"] = doSomething;');
+    expect(js).toContain("return doSomething(state, event);");
+    expect(js).not.toContain("computed(() => { return doSomething(state); })");
+  });
+
+  test("a $src entry the page only reads stays computed", () => {
     const doc = {
-      children: [
-        {
-          onclick: { $ref: "#/state/doSomething" },
-          tagName: "button",
-          textContent: "Go",
-        },
-      ],
-      state: {
-        doSomething: { $prototype: "Function", $src: "./actions.js" },
-      },
+      children: [{ tagName: "p", textContent: "${state.doSomething}" }],
+      state: { doSomething: { $prototype: "Function", $src: "./actions.js" } },
       tagName: "div",
     };
-    const { files } = compileClient(doc, { title: "Test" });
-    const js = files[0]!.content;
-    // Should import and have a handler that calls it directly
-    expect(js).toContain("import { doSomething } from './actions.js'");
-    expect(js).toContain("doSomething(");
+    const js = compileClient(doc, { title: "Test" }).files[0]!.content;
+    expect(js).toContain("return doSomething(state);");
+    expect(js).not.toContain('state["doSomething"] = doSomething;');
+  });
+
+  test("a $src handler's declared names map by name", () => {
+    const { files } = compileClient(withButton({ parameters: ["event"] }), { title: "Test" });
+    expect(files[0]!.content).toContain("return doSomething(event);");
+  });
+
+  test("a parameterised string body that returns a value is a handler", () => {
+    const doc = {
+      children: [{ onclick: { $ref: "#/state/double" }, tagName: "button" }],
+      state: { double: { $prototype: "Function", body: "return x * 2", parameters: ["x"] } },
+      tagName: "div",
+    };
+    const js = compileClient(doc, { title: "Test" }).files[0]!.content;
+    expect(js).not.toContain("double: computed(");
+    expect(js).toContain("return x * 2");
   });
 });
 
