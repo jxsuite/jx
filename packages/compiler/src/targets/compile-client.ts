@@ -15,6 +15,7 @@ import { classifyFunctionEntries } from "@jxsuite/schema/function-role";
 import { RESERVED_KEYS, camelToKebab } from "@jxsuite/runtime";
 import {
   ATTR_HELPER,
+  refuseBodyWithSrc,
   attrHelperSource,
   booleanAttrValue,
   DEFAULT_LIT_HTML_SRC,
@@ -442,6 +443,7 @@ function buildClientNode(
     if (!prop.startsWith("on") || prop === "observedAttributes") {
       continue;
     }
+    refuseBodyWithSrc(`inline "${prop}" handler`, val);
     const eventName = prop.slice(2).toLowerCase();
     if (isRefObject(val)) {
       const key = refToBindingKey(val.$ref);
@@ -774,6 +776,7 @@ function emitLitMapTemplate(def: JxMutableNode | null | undefined, preformatted 
     if (!prop.startsWith("on") || prop === "observedAttributes") {
       continue;
     }
+    refuseBodyWithSrc(`inline "${prop}" handler`, val);
     const eventName = prop.slice(2).toLowerCase();
     if (isRefObject(val)) {
       const key = refToBindingKey(val.$ref);
