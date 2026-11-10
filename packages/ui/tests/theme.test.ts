@@ -214,6 +214,35 @@ describe("theme", () => {
     }
   });
 
+  test("muted text keeps 4.5:1 on every surface it is painted on, in both schemes", () => {
+    // WCAG 2.2 SC 1.4.3. `--jx-fg-muted` is TEXT, not decoration: a menu item's shortcut, a
+    // Field's placeholder, a tab's secondary label, a disabled segment's caption. It used to be
+    // `--jx-gray-500` in both schemes, which measured 3.84:1 on the light page and 3.66:1 on a dark
+    // Popover, and nothing held it because the studio gate only checks `--fg-dim`. The four
+    // Backgrounds are every surface the kit paints text on: the page, a panel, a field and a
+    // Floating surface (a menu, a popover, a dialog).
+    for (const bg of ["--jx-bg", "--jx-bg-panel", "--jx-bg-input", "--jx-bg-overlay"]) {
+      for (const scheme of [0, 1] as const) {
+        const ratio = contrast(resolve("--jx-fg-muted", scheme), resolve(bg, scheme));
+        expect(
+          ratio,
+          `--jx-fg-muted on ${bg} (${scheme === 0 ? "light" : "dark"}): ${ratio.toFixed(2)}`,
+        ).toBeGreaterThanOrEqual(4.5);
+      }
+    }
+  });
+
+  test("muted text stays a step quieter than dim text, so the hierarchy survives the fix", () => {
+    // The fix could have been to alias muted to dim. Then a hint under a label would read at the
+    // Same weight as the label, and every `fg-muted` call site would be a no-op.
+    for (const scheme of [0, 1] as const) {
+      const bg = resolve("--jx-bg-panel", scheme);
+      expect(contrast(resolve("--jx-fg-muted", scheme), bg)).toBeLessThan(
+        contrast(resolve("--jx-fg-dim", scheme), bg),
+      );
+    }
+  });
+
   test("compact density keeps the 24px control and buys its density from the type", () => {
     /* Compact used to draw `--jx-control-h` at 20px, which put every compact row under WCAG 2.2
        SC 2.5.8's 24×24 CSS px minimum and left ui.md §11 unable to claim the criterion (#309). The
