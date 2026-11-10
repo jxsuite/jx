@@ -365,7 +365,7 @@
             "label": "Studio menu",
             "hint": "Studio menu",
             "icon": "list",
-            "size": "sm",
+            "size": "md",
             "haspopup": "menu",
             "expanded": {
               "$ref": "#/state/menuOpen"
@@ -548,7 +548,7 @@
                   },
                   "$props": {
                     "icon": "caret-down",
-                    "size": "sm",
+                    "size": "md",
                     "quiet": true,
                     "label": "Quick publish",
                     "hint": {
@@ -739,7 +739,7 @@
               "disabled": {
                 "$ref": "$map/item/disabled"
               },
-              "size": "sm",
+              "size": "md",
               "quiet": true
             },
             "attributes": {
@@ -918,7 +918,7 @@
             "label": "Settings",
             "hint": "Settings",
             "icon": "gear",
-            "size": "sm",
+            "size": "md",
             "haspopup": "menu",
             "expanded": {
               "$ref": "#/state/settingsOpen"
@@ -1013,7 +1013,7 @@
               "disabled": {
                 "$ref": "$map/item/disabled"
               },
-              "size": "sm"
+              "size": "md"
             },
             "attributes": {
               "data-command-id": "${$map.item.id}",
