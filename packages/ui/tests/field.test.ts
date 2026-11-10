@@ -396,6 +396,17 @@ describe("jx-field's boxes, as rule text measured in Chrome", () => {
     );
   });
 
+  test("a narrow container stacks the row exactly as span does, with no attribute", () => {
+    /* `ui.md` §5.3. Under 288px the 80px label column leaves the control too little room and cuts
+       a long label off, so the row stacks itself: the same two declarations `[data-span]` writes,
+       under the nearest inline-size container's width rather than an attribute. With no container
+       above it nothing matches, which is what keeps a dialog's form in two columns. */
+    expect(rules.filter((text) => text.startsWith("@container"))).toEqual([
+      "@container (max-width: 288px) { S { grid-template-columns: minmax(0, 1fr) } }",
+      '@container (max-width: 288px) { S > [part="label"] { width: auto; text-align: left } }',
+    ]);
+  });
+
   test("invalid is a state of the row, which is the whole of .jx-help-text--error", () => {
     // The fourth class existed only to recolour the sentence. It is one selector on the row now,
     // So a consumer cannot put the row in one state and its sentence in another.
@@ -447,6 +458,8 @@ describe("jx-field's boxes, as rule text measured in Chrome", () => {
       "S[hidden]",
       "S[data-span]",
       'S > [part="label"]',
+      "@container (max-width: 288px)",
+      "@container (max-width: 288px)",
       'S[data-span] > [part="label"]',
       'S[data-invalid] > [part="label"]',
       'S[data-warning] > [part="label"]',

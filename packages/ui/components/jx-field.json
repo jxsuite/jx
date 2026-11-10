@@ -85,6 +85,14 @@
       "textOverflow": "ellipsis",
       "whiteSpace": "nowrap"
     },
+    "@container (max-width: 288px)": {
+      "$description": "A narrow row stacks on its own: when the nearest inline-size container is under 288px, the label goes above the control and reads from the left, exactly as `span` draws it. Under that width the 80px label column leaves the control too little room and cuts long labels off. A host opts its regions in by declaring `container-type: inline-size` (Studio's side panels do); with no container above it a row keeps its two columns, so a dialog's form is unchanged. The width is a px literal because a container condition cannot read a custom property, and not rem because Studio roots its type at 12px, which would make 18rem 216px.",
+      "gridTemplateColumns": "minmax(0, 1fr)",
+      "& > [part=\"label\"]": {
+        "width": "auto",
+        "textAlign": "left"
+      }
+    },
     "&[data-span] > [part=\"label\"]": {
       "width": "auto",
       "textAlign": "left"

@@ -145,12 +145,16 @@
   background: var(--bg);
   border-right: 1px solid var(--border);
 }
+/* An inline-size container, like the Inspector dock beside it: the panel's width comes from the
+   grid, never from its content, so the containment costs nothing, and it is what lets a `jx-field`
+   in a narrow panel put its label above its control (ui.md §5.3). */
 #left-panel {
   grid-row: 2 / 4;
   grid-column: nav;
   overflow-y: auto;
   background: var(--bg-panel);
   border-right: 1px solid var(--border);
+  container-type: inline-size;
 }
 /* The Inspector dock. A flex COLUMN, not a scroll box: the header and the four-tab strip are
    fixed, and the selected tab's body is the only thing that scrolls — which is what lets the
@@ -163,6 +167,7 @@
   overflow: hidden;
   background: var(--bg);
   border-left: 1px solid var(--border);
+  container-type: inline-size;
 }
 /* A flex COLUMN in the pane's own grid column: the tab strip is fixed and the selected tab's body
    is the only thing that scrolls. It borders on the top only — the sides are the pane's, and a box
