@@ -34,6 +34,8 @@ import {
   scanBannedIdentifiers,
   scanHex,
   scanJsonStyle,
+  undersizedText,
+  MIN_FONT_PX,
   keyframeNames,
   jsonStyleBlocks,
   surfaceClasses,
@@ -380,6 +382,35 @@ describe("scanHex", () => {
     const { warnings } = scanHex("src/a.ts", "font-size: 12px; border-radius: 4px;");
     expect(warnings).toHaveLength(2);
     expect(scanHex("src/a.ts", "font-size: 13px; border-radius: 7px;").warnings).toEqual([]);
+  });
+
+  test("refuses text under the kit's smallest step, and accepts the step itself", () => {
+    // `ui.md` §4.3: `--jx-text-xs` is 11px, and the chrome may not draw a literal under it.
+    expect(scanHex("styles/x.css", "font-size: 9px;").errors).toHaveLength(1);
+    expect(scanHex("styles/x.css", "font-size: 10px;").errors[0]?.text).toContain("under 11px");
+    expect(scanHex("styles/x.css", "font-size: 11px;").errors).toEqual([]);
+    expect(scanHex("styles/x.css", "font-size: var(--jx-text-xs);").errors).toEqual([]);
+  });
+});
+
+describe("undersizedText", () => {
+  test("reads every font-size on the line, in either spelling", () => {
+    expect(
+      undersizedText(
+        "a.json",
+        3,
+        '"fontSize": "9px", "font-size": "10px"',
+        /"font-?[sS]ize"\s*:\s*"(\d+)px"/g,
+      ),
+    ).toHaveLength(2);
+    expect(MIN_FONT_PX).toBe(11);
+  });
+
+  test("a surface's style block is held to the same floor", () => {
+    const doc = JSON.stringify({ style: { "& [part=badge]": { fontSize: "9px" } } }, null, 2);
+    expect(scanJsonStyle("src/surfaces/x.json", doc).errors).toHaveLength(1);
+    const ok = JSON.stringify({ style: { "& [part=badge]": { fontSize: "var(--jx-text-xs)" } } });
+    expect(scanJsonStyle("src/surfaces/x.json", ok).errors).toEqual([]);
   });
 });
 

@@ -644,7 +644,7 @@ export const STYLEBOOK_CSS = `
   margin-bottom: 24px;
 }
 .sb-label {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -696,7 +696,7 @@ export const STYLEBOOK_CSS = `
 .element-card-preview > button,
 .element-card-preview > progress,
 .element-card-preview > meter {
-  font-size: 10px;
+  font-size: 11px;
 }
 /* An interactive element's state row (studio.md §7.2): one captioned copy per state, side by side. */
 .element-card-preview.sb-states {
@@ -725,16 +725,16 @@ export const STYLEBOOK_CSS = `
 .sb-state > textarea,
 .sb-state > select,
 .sb-state > button {
-  font-size: 10px;
+  font-size: 11px;
 }
 .sb-state-label {
-  font-size: 10px;
+  font-size: 11px;
   color: color-mix(in srgb, #808080 80%, transparent);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 .element-card-label {
   padding: 2px 6px;
-  font-size: 10px;
+  font-size: 11px;
   color: color-mix(in srgb, #808080 70%, transparent);
   background: color-mix(in srgb, #808080 8%, transparent);
   text-align: center;
