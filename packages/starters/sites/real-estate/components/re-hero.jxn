@@ -1,0 +1,367 @@
+/- kdl-version 2
+
+re-hero {
+    state {
+        eyebrow ""
+        heading ""
+        subheading ""
+        cta "Search homes"
+        ctaHref "/listings/"
+        bg type=string format=image default=""
+    }
+    style {
+        display block
+        position relative
+        overflow hidden
+        borderBottom "1px solid var(--color-border)"
+        backgroundColor "var(--color-bg-white)"
+        backgroundImage "linear-gradient(90deg, var(--color-bg-white) 0%, var(--color-bg-white) 38%, rgba(255,255,255,0.72) 52%, rgba(255,255,255,0.18) 72%, rgba(11,18,32,0.04) 100%), url('${state.bg}')"
+        backgroundSize "cover, cover"
+        backgroundPosition "center, right center"
+        backgroundRepeat no-repeat
+        @--md backgroundImage=none backgroundColor="var(--color-bg-cream)"
+    }
+    div {
+        style {
+            position relative
+            zIndex "2"
+            maxWidth "var(--max-width)"
+            margin "0 auto"
+            padding "clamp(3rem, 6vw, 5.5rem) 1.5rem clamp(3.5rem, 7vw, 6rem)"
+            display grid
+            gridTemplateColumns "1.02fr 0.98fr"
+            gap "clamp(2rem, 5vw, 4rem)"
+            alignItems center
+            @--md gridTemplateColumns="1fr" gap="2.25rem"
+        }
+        div {
+            p {
+                style {
+                    display inline-flex
+                    alignItems center
+                    gap "0.55rem"
+                    padding "0.4rem 0.85rem"
+                    borderRadius "999px"
+                    border "1px solid var(--color-border)"
+                    backgroundColor "var(--color-bg-white)"
+                    boxShadow "0 1px 2px rgba(15,23,42,0.04)"
+                    fontSize "0.8rem"
+                    fontWeight "600"
+                    color "var(--color-text-secondary)"
+                    margin "0 0 1.5rem"
+                }
+                span {
+                    style {
+                        width "0.5rem"
+                        height "0.5rem"
+                        borderRadius "999px"
+                        backgroundColor "var(--color-accent-bright)"
+                        boxShadow "0 0 0 3px var(--color-accent-soft)"
+                    }
+                }
+                span "${state.eyebrow}"
+            }
+            h1 "${state.heading}" {
+                style {
+                    fontFamily "var(--font-display)"
+                    fontSize "clamp(2.6rem, 5.4vw, 4.3rem)"
+                    fontWeight "500"
+                    lineHeight "1.04"
+                    letterSpacing "-0.02em"
+                    margin "0 0 1.25rem"
+                    color "var(--color-text-primary)"
+                    maxWidth "14ch"
+                }
+            }
+            p "${state.subheading}" {
+                style {
+                    fontSize "clamp(1.05rem, 1.6vw, 1.22rem)"
+                    lineHeight "1.6"
+                    color "var(--color-text-secondary)"
+                    margin "0 0 2rem"
+                    maxWidth "46ch"
+                }
+            }
+            div {
+                style display=flex alignItems=stretch gap="0" flexWrap=wrap
+                div {
+                    style paddingRight="1.4rem"
+                    div "20 yrs" {
+                        style {
+                            fontSize "1.55rem"
+                            fontWeight "800"
+                            letterSpacing "-0.02em"
+                            color "var(--color-text-primary)"
+                            fontVariantNumeric tabular-nums
+                        }
+                    }
+                    div "on the north shore" {
+                        style fontSize="0.82rem" color="var(--color-text-muted)" fontWeight="600"
+                    }
+                }
+                div {
+                    style padding="0 1.4rem" borderLeft="1px solid var(--color-border)"
+                    div "1,400+" {
+                        style {
+                            fontSize "1.55rem"
+                            fontWeight "800"
+                            letterSpacing "-0.02em"
+                            color "var(--color-text-primary)"
+                            fontVariantNumeric tabular-nums
+                        }
+                    }
+                    div "homes closed" {
+                        style fontSize="0.82rem" color="var(--color-text-muted)" fontWeight="600"
+                    }
+                }
+                div {
+                    style padding="0 1.4rem" borderLeft="1px solid var(--color-border)"
+                    div "98%" {
+                        style {
+                            fontSize "1.55rem"
+                            fontWeight "800"
+                            letterSpacing "-0.02em"
+                            color "var(--color-primary)"
+                            fontVariantNumeric tabular-nums
+                        }
+                    }
+                    div "of asking price" {
+                        style fontSize="0.82rem" color="var(--color-text-muted)" fontWeight="600"
+                    }
+                }
+            }
+        }
+        form action="/listings/" method=get {
+            style {
+                backgroundColor "var(--color-bg-white)"
+                border "1px solid var(--color-border)"
+                borderRadius "var(--radius-lg)"
+                boxShadow "var(--shadow-float)"
+                padding "clamp(1.25rem, 2vw, 1.6rem)"
+            }
+            div {
+                style {
+                    display flex
+                    gap "0.35rem"
+                    padding "0.3rem"
+                    borderRadius "999px"
+                    backgroundColor "var(--color-bg-tint)"
+                    marginBottom "1.25rem"
+                }
+                span "For Sale" {
+                    style {
+                        flex "1"
+                        textAlign center
+                        padding "0.5rem 0.5rem"
+                        borderRadius "999px"
+                        backgroundColor "var(--color-bg-white)"
+                        color "var(--color-text-primary)"
+                        fontWeight "700"
+                        fontSize "0.88rem"
+                        boxShadow "0 1px 3px rgba(15,23,42,0.12)"
+                    }
+                }
+                span "For Rent" {
+                    style {
+                        flex "1"
+                        textAlign center
+                        padding "0.5rem 0.5rem"
+                        borderRadius "999px"
+                        color "var(--color-text-muted)"
+                        fontWeight "600"
+                        fontSize "0.88rem"
+                    }
+                }
+                span Sold {
+                    style {
+                        flex "1"
+                        textAlign center
+                        padding "0.5rem 0.5rem"
+                        borderRadius "999px"
+                        color "var(--color-text-muted)"
+                        fontWeight "600"
+                        fontSize "0.88rem"
+                    }
+                }
+            }
+            label Location {
+                style {
+                    display block
+                    fontSize "0.72rem"
+                    fontWeight "700"
+                    textTransform uppercase
+                    letterSpacing "0.1em"
+                    color "var(--color-text-muted)"
+                    marginBottom "0.5rem"
+                }
+            }
+            div {
+                style {
+                    display flex
+                    alignItems center
+                    gap "0.5rem"
+                    padding "0 0.85rem"
+                    border "1px solid var(--color-border-strong)"
+                    borderRadius "var(--radius-sm)"
+                    backgroundColor "var(--color-bg-white)"
+                    marginBottom "1rem"
+                }
+                span 📍 {
+                    style color="var(--color-primary)" fontSize="1rem"
+                }
+                input type=text name=location placeholder="City, neighborhood, or ZIP" aria-label="Search by city, neighborhood, or ZIP" {
+                    style {
+                        flex "1"
+                        border none
+                        outline none
+                        padding "0.8rem 0"
+                        fontSize "0.98rem"
+                        fontFamily inherit
+                        color "var(--color-text-primary)"
+                        backgroundColor transparent
+                        minWidth "0"
+                    }
+                }
+            }
+            div {
+                style {
+                    display grid
+                    gridTemplateColumns "repeat(3, 1fr)"
+                    gap "0.6rem"
+                    marginBottom "1.25rem"
+                    @--sm gridTemplateColumns="1fr"
+                }
+                div {
+                    label "Max price" {
+                        style {
+                            display block
+                            fontSize "0.72rem"
+                            fontWeight "700"
+                            textTransform uppercase
+                            letterSpacing "0.1em"
+                            color "var(--color-text-muted)"
+                            marginBottom "0.5rem"
+                        }
+                    }
+                    select name=price aria-label="Maximum price" {
+                        style {
+                            width "100%"
+                            border "1px solid var(--color-border-strong)"
+                            borderRadius "var(--radius-sm)"
+                            padding "0.72rem 0.7rem"
+                            fontSize "0.92rem"
+                            fontFamily inherit
+                            fontWeight "600"
+                            color "var(--color-text-primary)"
+                            backgroundColor "var(--color-bg-white)"
+                            cursor pointer
+                        }
+                        option value="" "Any price"
+                        option value="400000" $400k
+                        option value="700000" $700k
+                        option value="1200000" $1.2M
+                    }
+                }
+                div {
+                    label Beds {
+                        style {
+                            display block
+                            fontSize "0.72rem"
+                            fontWeight "700"
+                            textTransform uppercase
+                            letterSpacing "0.1em"
+                            color "var(--color-text-muted)"
+                            marginBottom "0.5rem"
+                        }
+                    }
+                    select name=beds aria-label="Minimum bedrooms" {
+                        style {
+                            width "100%"
+                            border "1px solid var(--color-border-strong)"
+                            borderRadius "var(--radius-sm)"
+                            padding "0.72rem 0.7rem"
+                            fontSize "0.92rem"
+                            fontFamily inherit
+                            fontWeight "600"
+                            color "var(--color-text-primary)"
+                            backgroundColor "var(--color-bg-white)"
+                            cursor pointer
+                        }
+                        option value="" Any
+                        option value="2" "2+"
+                        option value="3" "3+"
+                        option value="4" "4+"
+                    }
+                }
+                div {
+                    label Baths {
+                        style {
+                            display block
+                            fontSize "0.72rem"
+                            fontWeight "700"
+                            textTransform uppercase
+                            letterSpacing "0.1em"
+                            color "var(--color-text-muted)"
+                            marginBottom "0.5rem"
+                        }
+                    }
+                    select name=baths aria-label="Minimum bathrooms" {
+                        style {
+                            width "100%"
+                            border "1px solid var(--color-border-strong)"
+                            borderRadius "var(--radius-sm)"
+                            padding "0.72rem 0.7rem"
+                            fontSize "0.92rem"
+                            fontFamily inherit
+                            fontWeight "600"
+                            color "var(--color-text-primary)"
+                            backgroundColor "var(--color-bg-white)"
+                            cursor pointer
+                        }
+                        option value="" Any
+                        option value="1" "1+"
+                        option value="2" "2+"
+                        option value="3" "3+"
+                    }
+                }
+            }
+            button type=submit {
+                style {
+                    display flex
+                    alignItems center
+                    justifyContent center
+                    gap "0.55rem"
+                    width "100%"
+                    backgroundColor "var(--color-primary)"
+                    color "var(--color-text-white)"
+                    border none
+                    padding "0.95rem 1.5rem"
+                    borderRadius "var(--radius-sm)"
+                    fontSize "1rem"
+                    fontFamily inherit
+                    fontWeight "700"
+                    cursor pointer
+                    boxShadow "0 12px 28px -12px rgba(15,118,110,0.7)"
+                    transition "background-color 0.15s, transform 0.15s"
+                    :hover backgroundColor="var(--color-primary-hover)" transform="translateY(-1px)"
+                }
+                span ⌕ {
+                    style fontSize="1.05rem"
+                }
+                span "${state.cta}"
+            }
+            p {
+                style {
+                    margin "1.05rem 0 0"
+                    fontSize "0.82rem"
+                    color "var(--color-text-muted)"
+                    textAlign center
+                }
+                span "Popular: " {
+                    style fontWeight="700" color="var(--color-text-secondary)"
+                }
+                span "Bayport · Maplewood · Lakeview · Harbor Hills"
+            }
+        }
+    }
+}

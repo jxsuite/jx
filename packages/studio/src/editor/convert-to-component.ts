@@ -30,7 +30,7 @@ import { transact } from "../tabs/transact";
 import { componentRegistry, computeRelativePath, loadComponentRegistry } from "../files/components";
 import { getPlatform } from "../platform";
 import { jsonClone } from "../utils/studio-utils";
-import { serializeJson } from "@jxsuite/schema/json-layout";
+import { JXN_FORMAT_NAME, NATIVE_EXT, formatSerialize } from "../format/format-host";
 import { notify } from "../services/notify";
 import { showPromptDialog } from "../ui/layers";
 import { validateComponentSlots } from "../services/cem-export";
@@ -76,7 +76,8 @@ export async function convertToComponent() {
 
 /**
  * Replace the selected element with an instance of a new component named `name`, and write the
- * component's definition to `components/<name>.json`.
+ * component's definition to `components/<name>.jxn`, the notation every new document is written
+ * in.
  *
  * The caller has validated `name` (`create/element-name.ts`). The reference goes into the document
  * FIRST, in one transaction, and the file is written only if that transaction landed — see below.
@@ -96,7 +97,7 @@ export async function convertSelectionToComponent(name: string): Promise<string 
   componentDef.tagName = name;
 
   // Compute paths
-  const componentFile = `components/${name}.json`;
+  const componentFile = `components/${name}${NATIVE_EXT}`;
   const refPath = computeRelativePath(tab.documentPath, componentFile);
 
   // Single atomic mutation: replace node + add $elements ref
@@ -134,7 +135,7 @@ export async function convertSelectionToComponent(name: string): Promise<string 
   });
   /* THE FILE IS WRITTEN ONLY IF THE DOCUMENT TOOK THE REFERENCE.
      `transact` consults the collab gate, which pauses structural editing while source is canonical.
-     A refusal used to be invisible here: the extraction still wrote `components/<name>.json` to
+     A refusal used to be invisible here: the extraction still wrote `components/<name>.json` (as it was then) to
      disk and still said "Converted to <name>" — leaving a component file nothing references, in a
      document the author was told had been changed. The gate raises its own toast saying why the
      edit is paused; the honest thing to add to it is nothing at all. */
@@ -145,11 +146,9 @@ export async function convertSelectionToComponent(name: string): Promise<string 
   // Write component file and refresh registry
   try {
     const platform = getPlatform();
-    /* Through the save serializer (`@jxsuite/schema/json-layout`) rather than `JSON.stringify`, so the new
-       file lands in the formatter's layout with its trailing newline and the first save from its
-       tab is a clean diff. No layout to carry: the subtree was lifted out of another document, and
-       its record there is keyed by that document's pointers. */
-    await platform.writeFile(componentFile, serializeJson(componentDef, null));
+    /* Through the serializer a save of a `.jxn` file uses, so the first save from its tab is a
+       clean diff. */
+    await platform.writeFile(componentFile, await formatSerialize(JXN_FORMAT_NAME, componentDef));
     await loadComponentRegistry();
     const warning = validateComponentSlots(componentDef);
     notify.success(`Converted to <${name}>`);

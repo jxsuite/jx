@@ -1,0 +1,27 @@
+/- kdl-version 2
+
+shp-stat {
+    state value="" label=""
+    style display=block
+    div "${state.value}" {
+        style {
+            fontFamily "var(--font-heading)"
+            fontSize "clamp(2.25rem, 5vw, 3rem)"
+            fontWeight "800"
+            lineHeight "1"
+            color "var(--color-primary)"
+            letterSpacing "-0.03em"
+            fontVariantNumeric tabular-nums
+        }
+    }
+    div "${state.label}" {
+        style {
+            marginTop "0.5rem"
+            fontSize "0.85rem"
+            color "var(--color-text-muted)"
+            textTransform uppercase
+            letterSpacing "0.08em"
+            fontWeight "600"
+        }
+    }
+}

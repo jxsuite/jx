@@ -1,0 +1,61 @@
+/- kdl-version 2
+
+ev-venue {
+    state {
+        image type=string format=image default=""
+        imageAlt ""
+        reverse #false
+    }
+    style display=block padding="clamp(3.5rem, 8vw, 6rem) 1.5rem"
+    div {
+        style {
+            maxWidth "var(--max-width)"
+            margin "0 auto"
+            display grid
+            gridTemplateColumns "1fr 1fr"
+            gap "clamp(2rem, 5vw, 4rem)"
+            alignItems center
+            @--md gridTemplateColumns="1fr"
+        }
+        div {
+            style order="${state.reverse ? '2' : '1'}"
+            div {
+                style {
+                    position relative
+                    borderRadius "1.15rem"
+                    padding "0.4rem"
+                    background "linear-gradient(150deg, rgba(34,224,255,0.55), rgba(168,85,247,0.35) 45%, rgba(255,61,154,0.5))"
+                    boxShadow "0 30px 70px -30px rgba(0,0,0,0.8), 0 0 80px -30px var(--glow-cyan)"
+                }
+                div {
+                    style {
+                        position relative
+                        borderRadius "0.85rem"
+                        overflow hidden
+                        aspectRatio "3 / 2"
+                        backgroundColor "var(--color-bg-elev)"
+                    }
+                    img src="${state.image}" alt="${state.imageAlt}" width="1600" height="1067" loading=lazy {
+                        style {
+                            position absolute
+                            inset "0"
+                            width "100%"
+                            height "100%"
+                            objectFit cover
+                            display block
+                        }
+                    }
+                }
+            }
+        }
+        div {
+            style {
+                order "${state.reverse ? '1' : '2'}"
+                fontSize "1.08rem"
+                lineHeight "1.8"
+                color "var(--color-text-primary)"
+            }
+            slot
+        }
+    }
+}

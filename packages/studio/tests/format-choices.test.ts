@@ -32,6 +32,7 @@ describe("creationFormats", () => {
   test("JSON first, then every extension the studio can both read and write", () => {
     expect(creationFormats()).toEqual([
       { ext: ".json", label: "JSON (.json)" },
+      { ext: ".jxn", label: "Jx Notation (.jxn)" },
       { ext: ".md", label: "Markdown (.md)" },
       { ext: ".toml", label: "Toml (.toml)" },
     ]);
@@ -44,13 +45,17 @@ describe("creationFormats", () => {
   });
 
   test("a document kind narrows the list", () => {
-    expect(creationFormats("page").map((row) => row.ext)).toEqual([".json", ".md"]);
+    expect(creationFormats("page").map((row) => row.ext)).toEqual([".json", ".jxn", ".md"]);
     expect(creationFormats("content").map((row) => row.ext)).toEqual([".json", ".md", ".toml"]);
   });
 
   test("an empty registry still offers JSON, so the picker is never a dead control", () => {
     setFormats([]);
-    expect(creationFormats()).toEqual([{ ext: ".json", label: "JSON (.json)" }]);
+    // Jx Notation is native, so it needs no format either.
+    expect(creationFormats()).toEqual([
+      { ext: ".json", label: "JSON (.json)" },
+      { ext: ".jxn", label: "Jx Notation (.jxn)" },
+    ]);
   });
 
   test("a split parse/serialize claim across two classes still yields the row", () => {
@@ -68,7 +73,7 @@ describe("creationFormats", () => {
         name: "Writer",
       },
     ]);
-    expect(creationFormats().map((row) => row.ext)).toEqual([".json", ".md"]);
+    expect(creationFormats().map((row) => row.ext)).toEqual([".json", ".jxn", ".md"]);
   });
 });
 
@@ -120,10 +125,14 @@ describe("convertTargets", () => {
     expect(convertTargets("styles/main.css")).toEqual([]);
   });
 
-  test("layouts refuse — they are JSON at both readers and no kind can say so", () => {
-    expect(convertTargets("layouts/base.json")).toEqual([]);
+  test("a layout converts only between its two native spellings, which both its readers read", () => {
+    expect(convertTargets("layouts/base.json")).toEqual([
+      { ext: ".jxn", label: "Jx Notation (.jxn)" },
+    ]);
+    expect(convertTargets("layouts/base.jxn")).toEqual([{ ext: ".json", label: "JSON (.json)" }]);
+    expect(convertTargets("layouts/notes.md")).toEqual([]);
     resetStudioState({ projectConfig: { ...POSTS, layout: "./components/base.json" } });
-    expect(convertTargets("components/base.json")).toEqual([]);
+    expect(convertTargets("components/base.json").map((t) => t.ext)).toEqual([".jxn"]);
     // …and only that one.
     expect(convertTargets("components/card.json").map((t) => t.ext)).toEqual([".jxn", ".md"]);
   });

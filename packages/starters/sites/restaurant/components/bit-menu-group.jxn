@@ -1,0 +1,51 @@
+/- kdl-version 2
+
+bit-menu-group {
+    state heading="" note=""
+    style display=block marginBottom="2.75rem" breakInside=avoid
+    div {
+        style display=flex alignItems=baseline gap="1rem" marginBottom="0.4rem"
+        span {
+            style {
+                width "0.5rem"
+                height "0.5rem"
+                flex "0 0 auto"
+                transform "rotate(45deg) translateY(-0.15rem)"
+                backgroundColor "var(--color-primary)"
+            }
+        }
+        h2 "${state.heading}" {
+            style {
+                fontFamily "var(--font-heading)"
+                fontSize "clamp(1.5rem, 2.6vw, 1.9rem)"
+                fontWeight "700"
+                letterSpacing "-0.01em"
+                margin "0"
+                color "var(--color-text-primary)"
+                whiteSpace nowrap
+            }
+        }
+        span {
+            style {
+                flex "1 1 auto"
+                borderBottom "1px solid var(--color-border-strong)"
+                transform "translateY(-0.4em)"
+            }
+        }
+    }
+    p "${state.note}" {
+        style {
+            display "${state.note ? 'block' : 'none'}"
+            margin "0 0 1rem"
+            paddingLeft "1.5rem"
+            fontFamily "var(--font-heading)"
+            fontStyle italic
+            fontSize "1rem"
+            color "var(--color-text-muted)"
+        }
+    }
+    div {
+        style marginTop="0.5rem"
+        slot
+    }
+}

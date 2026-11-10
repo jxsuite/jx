@@ -1,0 +1,73 @@
+/- kdl-version 2
+
+np-step {
+    state {
+        num ""
+        title ""
+        text ""
+        badgeBg "var(--color-primary-soft)"
+        badgeColor "var(--color-primary)"
+        href ""
+        linkText ""
+    }
+    style {
+        display flex
+        flexDirection column
+        padding "2rem 1.9rem 2.1rem"
+        backgroundColor "var(--color-bg-white)"
+        border "1px solid var(--color-border)"
+        borderRadius "var(--radius-lg)"
+        boxShadow "var(--shadow-card)"
+        transition "transform 0.18s"
+        :hover transform="translateY(-4px)"
+    }
+    div "${state.num}" {
+        style {
+            display inline-flex
+            alignItems center
+            justifyContent center
+            width "3.5rem"
+            height "3.5rem"
+            borderRadius "999px 999px 999px 6px"
+            backgroundColor "${state.badgeBg}"
+            color "${state.badgeColor}"
+            fontSize "1.6rem"
+            marginBottom "1.25rem"
+        }
+    }
+    h3 "${state.title}" {
+        style {
+            fontFamily "var(--font-display)"
+            fontSize "1.4rem"
+            fontWeight "600"
+            color "var(--color-primary-deep)"
+            margin "0 0 0.5rem"
+        }
+    }
+    p "${state.text}" {
+        style {
+            margin "0"
+            color "var(--color-text-muted)"
+            fontSize "1rem"
+            fontWeight "600"
+            lineHeight "1.65"
+            flex "1"
+        }
+    }
+    a href="${state.href}" {
+        style {
+            display "${state.linkText ? 'inline-flex' : 'none'}"
+            alignItems center
+            gap "0.45rem"
+            marginTop "1.35rem"
+            color "${state.badgeColor}"
+            fontWeight "800"
+            fontSize "0.95rem"
+            textDecoration none
+            transition "gap 0.18s"
+            :hover gap="0.85rem"
+        }
+        span "${state.linkText}"
+        span →
+    }
+}

@@ -109,7 +109,7 @@ describe("generateProject — starter project.json", () => {
       'project "Starter"',
       "",
       "// Where the starter's pages inherit from.",
-      'defaults layout="./layouts/base.json"',
+      'defaults layout="./layouts/base.jxn"',
       "",
     ].join("\n");
     writeFileSync(join(STARTER_FIXTURE, "project.jxn"), starter);

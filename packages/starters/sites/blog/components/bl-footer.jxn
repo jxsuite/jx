@@ -1,0 +1,85 @@
+/- kdl-version 2
+
+bl-footer {
+    state {
+        brand "The Long Field"
+        tagline "Slow essays on design, technology, and the craft of making things well."
+        email hello@thelongfield.co
+        cadence "A new essay most Sundays."
+    }
+    style {
+        display block
+        backgroundColor "var(--color-paper)"
+        borderTop "1.5px solid var(--color-rule)"
+        padding "clamp(3rem, 6vw, 4.5rem) 1.5rem 2.5rem"
+    }
+    div {
+        style maxWidth="var(--max-width)" margin="0 auto" textAlign=center
+        div "${state.brand}" {
+            style {
+                fontFamily "var(--font-heading)"
+                fontWeight "900"
+                fontSize "clamp(2rem, 6vw, 3.25rem)"
+                letterSpacing "-0.03em"
+                lineHeight "1"
+                margin "0 0 1rem"
+                color "var(--color-text-primary)"
+            }
+        }
+        p "${state.tagline}" {
+            style {
+                fontFamily "var(--font-heading)"
+                fontStyle italic
+                fontSize "1.15rem"
+                color "var(--color-text-muted)"
+                margin "0 auto 1.75rem"
+                maxWidth "42ch"
+            }
+        }
+        nav {
+            style {
+                display flex
+                justifyContent center
+                flexWrap wrap
+                gap "1.75rem"
+                paddingTop "1.75rem"
+                borderTop "1px solid var(--color-border)"
+                fontFamily "var(--font-body)"
+                fontSize "0.74rem"
+                fontWeight "500"
+                textTransform uppercase
+                letterSpacing "0.16em"
+            }
+            a href="/#latest" Essays {
+                style color="var(--color-text-primary)" textDecoration=none {
+                    :hover color="var(--color-primary)"
+                }
+            }
+            a href="/about/" About {
+                style color="var(--color-text-primary)" textDecoration=none {
+                    :hover color="var(--color-primary)"
+                }
+            }
+            a href="/contact/" Contact {
+                style color="var(--color-text-primary)" textDecoration=none {
+                    :hover color="var(--color-primary)"
+                }
+            }
+            a href="mailto:${state.email}" "${state.email}" {
+                style color="var(--color-text-primary)" textDecoration=none {
+                    :hover color="var(--color-primary)"
+                }
+            }
+        }
+        p "© The Long Field · Set in Fraunces & Newsreader · Built with Jx" {
+            style {
+                margin "1.75rem 0 0"
+                fontFamily "var(--font-body)"
+                fontSize "0.72rem"
+                textTransform uppercase
+                letterSpacing "0.14em"
+                color "var(--color-text-muted)"
+            }
+        }
+    }
+}

@@ -1,0 +1,32 @@
+/- kdl-version 2
+
+bl-contact-info {
+    state {
+        heading Elsewhere
+        intro "For letters, pitches, or corrections:"
+        email hello@thelongfield.co
+        note "New essays publish most Sundays. Replies to the newsletter come straight to me."
+    }
+    style {
+        display block
+        padding "2rem"
+        backgroundColor "var(--color-bg-cream)"
+        border "1px solid var(--color-border)"
+        borderRadius "var(--radius)"
+    }
+    h3 "${state.heading}" {
+        style fontFamily="var(--font-heading)" fontSize="1.4rem" fontWeight="600" margin="0 0 1rem"
+    }
+    p "${state.intro}" {
+        style margin="0 0 0.5rem" color="var(--color-text-muted)"
+    }
+    p {
+        style margin="0 0 1.25rem"
+        a href="mailto:${state.email}" "${state.email}" {
+            style color="var(--color-primary)" textDecoration=none fontWeight="600"
+        }
+    }
+    p "${state.note}" {
+        style margin="0" color="var(--color-text-muted)"
+    }
+}

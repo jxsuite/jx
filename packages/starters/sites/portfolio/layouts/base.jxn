@@ -1,0 +1,12 @@
+/- kdl-version 2
+$elements (ref)"../components/pv-nav.jxn" (ref)"../components/pv-footer.jxn"
+
+div {
+    style minHeight="100vh" display=flex flexDirection=column backgroundColor="var(--color-bg)"
+    pv-nav
+    main {
+        style flex="1"
+        slot
+    }
+    pv-footer
+}

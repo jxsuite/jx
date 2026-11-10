@@ -41,7 +41,7 @@
     ]
   },
   "a project with no document": {
-    "listing": "2308c10d37cc43f1e99cb47d43b74e11e8a9ea6f062a114d32c99c7bc58bf24e",
+    "listing": "30bab3cfcf7e5954af1a9e284aa293f0dd96175ce325fcdfa6ebda8e6ac72ab0",
     "offered": [
       "ask_user",
       "create_component",
@@ -71,7 +71,7 @@
     ]
   },
   "a document on the canvas": {
-    "listing": "bbdb86f62473c6e5388a759692ebb9e2c533d6b61dd36ef6a309a0eb5e20c6fe",
+    "listing": "6f9e92b8f95d3bf5ebde8191db8e0bf0a5ec437207ccbae07097567147bb030f",
     "offered": [
       "ask_user",
       "read_document",
@@ -107,7 +107,7 @@
     ]
   },
   "a document in Code view": {
-    "listing": "34cc02fcd0703114e961cb741bcd568be647b7110ac4b7ed64aaa876a9ec15fd",
+    "listing": "54566ba3f13938b73dd9058f1e070eaae83aa16ace9c84ae68da9e88fa3a1c31",
     "offered": [
       "ask_user",
       "read_document",
@@ -172,7 +172,7 @@
     ]
   },
   "a document on the canvas with no extension catalogue": {
-    "listing": "ae09c66035da38e3cf5b1c92e6f425236e95aae5eea5cedfb1f2224e0ae7d830",
+    "listing": "54b4355345809d357988d77f3c337a84cfbaa8eb503740804fce569f13f25faa",
     "offered": [
       "ask_user",
       "read_document",

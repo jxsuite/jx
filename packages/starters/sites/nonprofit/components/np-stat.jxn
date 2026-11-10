@@ -1,0 +1,51 @@
+/- kdl-version 2
+
+np-stat {
+    state number="" label="" note="" icon=""
+    style {
+        display flex
+        flexDirection column
+        alignItems flex-start
+        gap "0.35rem"
+        padding "1.6rem 1.6rem 1.75rem"
+        backgroundColor "var(--color-bg-white)"
+        borderRadius "var(--radius)"
+        boxShadow "var(--shadow-card)"
+    }
+    span "${state.icon}" {
+        style {
+            display "${state.icon ? 'inline-flex' : 'none'}"
+            alignItems center
+            justifyContent center
+            width "2.6rem"
+            height "2.6rem"
+            borderRadius "999px"
+            backgroundColor "var(--color-primary-soft)"
+            fontSize "1.3rem"
+            marginBottom "0.5rem"
+        }
+    }
+    div "${state.number}" {
+        style {
+            fontFamily "var(--font-display)"
+            fontSize "clamp(2.4rem, 5vw, 3.4rem)"
+            fontWeight "700"
+            lineHeight "1"
+            letterSpacing "-0.02em"
+            color "var(--color-primary)"
+        }
+    }
+    div "${state.label}" {
+        style fontWeight="800" fontSize="1.02rem" color="var(--color-text-primary)"
+    }
+    p "${state.note}" {
+        style {
+            display "${state.note ? 'block' : 'none'}"
+            margin "0.15rem 0 0"
+            fontSize "0.92rem"
+            fontWeight "600"
+            color "var(--color-text-muted)"
+            lineHeight "1.55"
+        }
+    }
+}

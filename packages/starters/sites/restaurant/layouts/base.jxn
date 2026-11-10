@@ -1,0 +1,17 @@
+/- kdl-version 2
+$elements (ref)"../components/bit-nav.jxn" (ref)"../components/bit-footer.jxn"
+
+div {
+    style {
+        minHeight "100vh"
+        display flex
+        flexDirection column
+        backgroundColor "var(--color-bg-paper)"
+    }
+    bit-nav
+    main {
+        style flex="1"
+        slot
+    }
+    bit-footer
+}

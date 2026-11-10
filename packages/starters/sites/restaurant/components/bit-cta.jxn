@@ -1,0 +1,105 @@
+/- kdl-version 2
+
+bit-cta {
+    state {
+        eyebrow Reservations
+        heading ""
+        headingAccent ""
+        text ""
+        cta "Reserve a Table"
+        ctaHref "/contact/"
+    }
+    style {
+        display block
+        position relative
+        overflow hidden
+        backgroundColor "var(--color-espresso)"
+        color "var(--color-text-white)"
+        padding "clamp(3.5rem, 9vw, 6rem) 1.5rem"
+        textAlign center
+    }
+    div {
+        style {
+            position absolute
+            inset "0"
+            background "radial-gradient(ellipse 55% 70% at 50% 120%, rgba(189,90,52,0.34), transparent 65%)"
+            pointerEvents none
+        }
+    }
+    div {
+        style position=relative zIndex="10" maxWidth="var(--max-width-narrow)" margin="0 auto"
+        div {
+            style {
+                display "${state.eyebrow ? 'flex' : 'none'}"
+                alignItems center
+                justifyContent center
+                gap "0.85rem"
+                marginBottom "1.25rem"
+            }
+            span {
+                style width="2.25rem" height="1px" backgroundColor="var(--color-amber)"
+            }
+            p "${state.eyebrow}" {
+                style {
+                    margin "0"
+                    fontFamily "var(--font-body)"
+                    textTransform uppercase
+                    letterSpacing "0.24em"
+                    fontSize "0.74rem"
+                    fontWeight "700"
+                    color "var(--color-amber)"
+                }
+            }
+            span {
+                style width="2.25rem" height="1px" backgroundColor="var(--color-amber)"
+            }
+        }
+        h2 {
+            style {
+                fontFamily "var(--font-heading)"
+                fontSize "clamp(2.1rem, 5vw, 3.25rem)"
+                fontWeight "700"
+                lineHeight "1.1"
+                letterSpacing "-0.02em"
+                margin "0 0 1.1rem"
+                color "var(--color-text-white)"
+            }
+            span "${state.heading}"
+            span " ${state.headingAccent}" {
+                style {
+                    display "${state.headingAccent ? 'inline' : 'none'}"
+                    fontStyle italic
+                    fontWeight "500"
+                    color "var(--color-amber)"
+                }
+            }
+        }
+        p "${state.text}" {
+            style {
+                fontFamily "var(--font-body)"
+                fontSize "1.12rem"
+                lineHeight "1.7"
+                opacity "0.82"
+                margin "0 auto 2rem"
+                maxWidth "50ch"
+            }
+        }
+        a href="${state.ctaHref}" "${state.cta}" {
+            style {
+                display inline-block
+                backgroundColor "var(--color-primary)"
+                color "var(--color-text-white)"
+                padding "0.95rem 2.4rem"
+                borderRadius "999px"
+                fontFamily "var(--font-body)"
+                fontSize "0.85rem"
+                fontWeight "700"
+                textTransform uppercase
+                letterSpacing "0.14em"
+                textDecoration none
+                transition "background-color 0.15s"
+                :hover backgroundColor="var(--color-primary-hover)"
+            }
+        }
+    }
+}

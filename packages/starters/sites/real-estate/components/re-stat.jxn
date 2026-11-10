@@ -1,0 +1,26 @@
+/- kdl-version 2
+
+re-stat {
+    state value="" label=""
+    style display=block padding="0.5rem 0"
+    div "${state.value}" {
+        style {
+            fontFamily "var(--font-heading)"
+            fontSize "clamp(2.4rem, 5vw, 3.25rem)"
+            fontWeight "800"
+            lineHeight "1"
+            letterSpacing "-0.03em"
+            color "var(--color-text-white)"
+            fontVariantNumeric tabular-nums
+        }
+    }
+    div "${state.label}" {
+        style {
+            marginTop "0.6rem"
+            fontSize "0.9rem"
+            color "rgba(255,255,255,0.62)"
+            fontWeight "600"
+            lineHeight "1.4"
+        }
+    }
+}

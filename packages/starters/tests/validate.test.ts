@@ -1,11 +1,12 @@
 /**
  * Structural validation of every shipped starter: project.json must satisfy the project-config
- * schema AND its committed bundled entry schema, every component/layout/page .json must validate
+ * schema AND its committed bundled entry schema, every component/layout/page document must validate
  * against the starter's bundled document schema (the same schema editors and the studio consume),
  * the committed entry documents must be self-contained (no relative $refs), and every content .md
  * must carry YAML frontmatter. (Full image-optimizing compilation is covered by CI screenshots — it
  * requires Sharp, which is unavailable on some dev machines.)
  */
+import { parseNativeDocument } from "@jxsuite/schema/jxn";
 import { parseProjectSource } from "@jxsuite/schema/project-file";
 import { projectFilePath } from "@jxsuite/schema/project-file/node";
 import { describe, expect, test } from "bun:test";
@@ -97,11 +98,11 @@ describe("starter sites validate", () => {
 
       test("every component/layout/page validates against the bundled document schema", () => {
         const validate = compileSchema(readFileSync(join(dir, "document.schema.json"), "utf8"));
-        const glob = new Bun.Glob("{components,layouts,pages}/**/*.json");
+        const glob = new Bun.Glob("{components,layouts,pages}/**/*.{json,jxn}");
         let count = 0;
         for (const rel of glob.scanSync({ cwd: dir })) {
           count += 1;
-          const doc: unknown = JSON.parse(readFileSync(join(dir, rel), "utf8"));
+          const doc: unknown = parseNativeDocument(readFileSync(join(dir, rel), "utf8"), rel);
           const valid = validate(doc);
           expect(
             valid,

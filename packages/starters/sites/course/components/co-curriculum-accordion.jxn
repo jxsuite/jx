@@ -1,0 +1,917 @@
+/- kdl-version 2
+
+co-curriculum-accordion {
+    state {
+        open -1
+        toggle0 {
+            $expression {
+                operator "="
+                target (ref)"#/state/open"
+                value {
+                    operator -
+                    target 0
+                    value {
+                        operator *
+                        target operator="===" target=(ref)"#/state/open" value=0
+                        value 1
+                    }
+                }
+            }
+        }
+        toggle1 {
+            $expression {
+                operator "="
+                target (ref)"#/state/open"
+                value {
+                    operator -
+                    target 1
+                    value {
+                        operator *
+                        target operator="===" target=(ref)"#/state/open" value=1
+                        value 2
+                    }
+                }
+            }
+        }
+        toggle2 {
+            $expression {
+                operator "="
+                target (ref)"#/state/open"
+                value {
+                    operator -
+                    target 2
+                    value {
+                        operator *
+                        target operator="===" target=(ref)"#/state/open" value=2
+                        value 3
+                    }
+                }
+            }
+        }
+        toggle3 {
+            $expression {
+                operator "="
+                target (ref)"#/state/open"
+                value {
+                    operator -
+                    target 3
+                    value {
+                        operator *
+                        target operator="===" target=(ref)"#/state/open" value=3
+                        value 4
+                    }
+                }
+            }
+        }
+        toggle4 {
+            $expression {
+                operator "="
+                target (ref)"#/state/open"
+                value {
+                    operator -
+                    target 4
+                    value {
+                        operator *
+                        target operator="===" target=(ref)"#/state/open" value=4
+                        value 5
+                    }
+                }
+            }
+        }
+        toggle5 {
+            $expression {
+                operator "="
+                target (ref)"#/state/open"
+                value {
+                    operator -
+                    target 5
+                    value {
+                        operator *
+                        target operator="===" target=(ref)"#/state/open" value=5
+                        value 6
+                    }
+                }
+            }
+        }
+    }
+    style {
+        display block
+        maxWidth "var(--max-width-narrow)"
+        margin "0 auto"
+        backgroundColor "var(--color-bg-white)"
+        border "1px solid var(--color-border)"
+        borderRadius "var(--radius)"
+        overflow hidden
+        boxShadow "0 12px 40px rgba(15,23,42,0.06)"
+    }
+    div {
+        style borderBottom="1px solid var(--color-border)"
+        button type=button aria-label="Toggle Foundations of the Web" onclick=(ref)"#/state/toggle0" {
+            style {
+                width "100%"
+                display flex
+                alignItems center
+                gap "1rem"
+                padding "1.1rem 1.35rem"
+                border none
+                background "${state.open === 0 ? 'rgba(79,70,229,0.06)' : 'transparent'}"
+                cursor pointer
+                textAlign left
+                font inherit
+                transition "background 0.15s"
+            }
+            span "1" {
+                style {
+                    flex none
+                    display inline-flex
+                    alignItems center
+                    justifyContent center
+                    width "2.25rem"
+                    height "2.25rem"
+                    borderRadius "0.5rem"
+                    backgroundColor "${state.open === 0 ? 'var(--color-primary)' : 'rgba(79,70,229,0.1)'}"
+                    color "${state.open === 0 ? 'var(--color-text-white)' : 'var(--color-primary)'}"
+                    fontFamily "var(--font-heading)"
+                    fontWeight "800"
+                    fontSize "1rem"
+                    transition "background-color 0.15s, color 0.15s"
+                }
+            }
+            span {
+                style flex="1"
+                span "Foundations of the Web" {
+                    style {
+                        display block
+                        fontFamily "var(--font-heading)"
+                        fontSize "1.15rem"
+                        fontWeight "700"
+                        color "var(--color-text-primary)"
+                    }
+                }
+                span "1 week" {
+                    style {
+                        display block
+                        fontSize "0.85rem"
+                        color "var(--color-text-muted)"
+                        marginTop "0.15rem"
+                    }
+                }
+            }
+            span "${state.open === 0 ? '−' : '+'}" {
+                style {
+                    flex none
+                    width "1.75rem"
+                    height "1.75rem"
+                    display inline-flex
+                    alignItems center
+                    justifyContent center
+                    fontSize "1.4rem"
+                    fontWeight "400"
+                    color "var(--color-primary)"
+                    lineHeight "1"
+                }
+            }
+        }
+        div {
+            style display="${state.open === 0 ? 'block' : 'none'}" padding="0.25rem 1.35rem 1.5rem"
+            ul {
+                style listStyle=none margin="0" padding="0"
+                li {
+                    style {
+                        padding "0.5rem 0"
+                        borderTop "1px solid var(--color-border)"
+                        color "var(--color-text-muted)"
+                        fontSize "0.98rem"
+                        display flex
+                        gap "0.6rem"
+                        alignItems baseline
+                    }
+                    span → {
+                        style color="var(--color-primary)" fontWeight="700"
+                    }
+                    span "How the web works: DNS, HTTP & the browser"
+                }
+                li {
+                    style {
+                        padding "0.5rem 0"
+                        borderTop "1px solid var(--color-border)"
+                        color "var(--color-text-muted)"
+                        fontSize "0.98rem"
+                        display flex
+                        gap "0.6rem"
+                        alignItems baseline
+                    }
+                    span → {
+                        style color="var(--color-primary)" fontWeight="700"
+                    }
+                    span "The command line & your dev environment"
+                }
+                li {
+                    style {
+                        padding "0.5rem 0"
+                        borderTop "1px solid var(--color-border)"
+                        color "var(--color-text-muted)"
+                        fontSize "0.98rem"
+                        display flex
+                        gap "0.6rem"
+                        alignItems baseline
+                    }
+                    span → {
+                        style color="var(--color-primary)" fontWeight="700"
+                    }
+                    span "Version control with Git & GitHub"
+                }
+                li {
+                    style {
+                        padding "0.5rem 0"
+                        borderTop "1px solid var(--color-border)"
+                        color "var(--color-text-muted)"
+                        fontSize "0.98rem"
+                        display flex
+                        gap "0.6rem"
+                        alignItems baseline
+                    }
+                    span → {
+                        style color="var(--color-primary)" fontWeight="700"
+                    }
+                    span "Your first deploy to the internet"
+                }
+            }
+        }
+    }
+    div {
+        style borderBottom="1px solid var(--color-border)"
+        button type=button aria-label="Toggle HTML & CSS" onclick=(ref)"#/state/toggle1" {
+            style {
+                width "100%"
+                display flex
+                alignItems center
+                gap "1rem"
+                padding "1.1rem 1.35rem"
+                border none
+                background "${state.open === 1 ? 'rgba(79,70,229,0.06)' : 'transparent'}"
+                cursor pointer
+                textAlign left
+                font inherit
+                transition "background 0.15s"
+            }
+            span "2" {
+                style {
+                    flex none
+                    display inline-flex
+                    alignItems center
+                    justifyContent center
+                    width "2.25rem"
+                    height "2.25rem"
+                    borderRadius "0.5rem"
+                    backgroundColor "${state.open === 1 ? 'var(--color-primary)' : 'rgba(79,70,229,0.1)'}"
+                    color "${state.open === 1 ? 'var(--color-text-white)' : 'var(--color-primary)'}"
+                    fontFamily "var(--font-heading)"
+                    fontWeight "800"
+                    fontSize "1rem"
+                    transition "background-color 0.15s, color 0.15s"
+                }
+            }
+            span {
+                style flex="1"
+                span "HTML & CSS" {
+                    style {
+                        display block
+                        fontFamily "var(--font-heading)"
+                        fontSize "1.15rem"
+                        fontWeight "700"
+                        color "var(--color-text-primary)"
+                    }
+                }
+                span "2 weeks" {
+                    style {
+                        display block
+                        fontSize "0.85rem"
+                        color "var(--color-text-muted)"
+                        marginTop "0.15rem"
+                    }
+                }
+            }
+            span "${state.open === 1 ? '−' : '+'}" {
+                style {
+                    flex none
+                    width "1.75rem"
+                    height "1.75rem"
+                    display inline-flex
+                    alignItems center
+                    justifyContent center
+                    fontSize "1.4rem"
+                    fontWeight "400"
+                    color "var(--color-primary)"
+                    lineHeight "1"
+                }
+            }
+        }
+        div {
+            style display="${state.open === 1 ? 'block' : 'none'}" padding="0.25rem 1.35rem 1.5rem"
+            ul {
+                style listStyle=none margin="0" padding="0"
+                li {
+                    style {
+                        padding "0.5rem 0"
+                        borderTop "1px solid var(--color-border)"
+                        color "var(--color-text-muted)"
+                        fontSize "0.98rem"
+                        display flex
+                        gap "0.6rem"
+                        alignItems baseline
+                    }
+                    span → {
+                        style color="var(--color-primary)" fontWeight="700"
+                    }
+                    span "Semantic HTML & document structure"
+                }
+                li {
+                    style {
+                        padding "0.5rem 0"
+                        borderTop "1px solid var(--color-border)"
+                        color "var(--color-text-muted)"
+                        fontSize "0.98rem"
+                        display flex
+                        gap "0.6rem"
+                        alignItems baseline
+                    }
+                    span → {
+                        style color="var(--color-primary)" fontWeight="700"
+                    }
+                    span "The box model & modern CSS layout"
+                }
+                li {
+                    style {
+                        padding "0.5rem 0"
+                        borderTop "1px solid var(--color-border)"
+                        color "var(--color-text-muted)"
+                        fontSize "0.98rem"
+                        display flex
+                        gap "0.6rem"
+                        alignItems baseline
+                    }
+                    span → {
+                        style color="var(--color-primary)" fontWeight="700"
+                    }
+                    span "Flexbox & CSS Grid in depth"
+                }
+                li {
+                    style {
+                        padding "0.5rem 0"
+                        borderTop "1px solid var(--color-border)"
+                        color "var(--color-text-muted)"
+                        fontSize "0.98rem"
+                        display flex
+                        gap "0.6rem"
+                        alignItems baseline
+                    }
+                    span → {
+                        style color="var(--color-primary)" fontWeight="700"
+                    }
+                    span "Responsive, accessible interfaces"
+                }
+            }
+        }
+    }
+    div {
+        style borderBottom="1px solid var(--color-border)"
+        button type=button aria-label="Toggle JavaScript Programming" onclick=(ref)"#/state/toggle2" {
+            style {
+                width "100%"
+                display flex
+                alignItems center
+                gap "1rem"
+                padding "1.1rem 1.35rem"
+                border none
+                background "${state.open === 2 ? 'rgba(79,70,229,0.06)' : 'transparent'}"
+                cursor pointer
+                textAlign left
+                font inherit
+                transition "background 0.15s"
+            }
+            span "3" {
+                style {
+                    flex none
+                    display inline-flex
+                    alignItems center
+                    justifyContent center
+                    width "2.25rem"
+                    height "2.25rem"
+                    borderRadius "0.5rem"
+                    backgroundColor "${state.open === 2 ? 'var(--color-primary)' : 'rgba(79,70,229,0.1)'}"
+                    color "${state.open === 2 ? 'var(--color-text-white)' : 'var(--color-primary)'}"
+                    fontFamily "var(--font-heading)"
+                    fontWeight "800"
+                    fontSize "1rem"
+                    transition "background-color 0.15s, color 0.15s"
+                }
+            }
+            span {
+                style flex="1"
+                span "JavaScript Programming" {
+                    style {
+                        display block
+                        fontFamily "var(--font-heading)"
+                        fontSize "1.15rem"
+                        fontWeight "700"
+                        color "var(--color-text-primary)"
+                    }
+                }
+                span "3 weeks" {
+                    style {
+                        display block
+                        fontSize "0.85rem"
+                        color "var(--color-text-muted)"
+                        marginTop "0.15rem"
+                    }
+                }
+            }
+            span "${state.open === 2 ? '−' : '+'}" {
+                style {
+                    flex none
+                    width "1.75rem"
+                    height "1.75rem"
+                    display inline-flex
+                    alignItems center
+                    justifyContent center
+                    fontSize "1.4rem"
+                    fontWeight "400"
+                    color "var(--color-primary)"
+                    lineHeight "1"
+                }
+            }
+        }
+        div {
+            style display="${state.open === 2 ? 'block' : 'none'}" padding="0.25rem 1.35rem 1.5rem"
+            ul {
+                style listStyle=none margin="0" padding="0"
+                li {
+                    style {
+                        padding "0.5rem 0"
+                        borderTop "1px solid var(--color-border)"
+                        color "var(--color-text-muted)"
+                        fontSize "0.98rem"
+                        display flex
+                        gap "0.6rem"
+                        alignItems baseline
+                    }
+                    span → {
+                        style color="var(--color-primary)" fontWeight="700"
+                    }
+                    span "Language fundamentals & data structures"
+                }
+                li {
+                    style {
+                        padding "0.5rem 0"
+                        borderTop "1px solid var(--color-border)"
+                        color "var(--color-text-muted)"
+                        fontSize "0.98rem"
+                        display flex
+                        gap "0.6rem"
+                        alignItems baseline
+                    }
+                    span → {
+                        style color="var(--color-primary)" fontWeight="700"
+                    }
+                    span "Functions, scope & the DOM"
+                }
+                li {
+                    style {
+                        padding "0.5rem 0"
+                        borderTop "1px solid var(--color-border)"
+                        color "var(--color-text-muted)"
+                        fontSize "0.98rem"
+                        display flex
+                        gap "0.6rem"
+                        alignItems baseline
+                    }
+                    span → {
+                        style color="var(--color-primary)" fontWeight="700"
+                    }
+                    span "Events & form handling"
+                }
+                li {
+                    style {
+                        padding "0.5rem 0"
+                        borderTop "1px solid var(--color-border)"
+                        color "var(--color-text-muted)"
+                        fontSize "0.98rem"
+                        display flex
+                        gap "0.6rem"
+                        alignItems baseline
+                    }
+                    span → {
+                        style color="var(--color-primary)" fontWeight="700"
+                    }
+                    span "Async, fetch & working with APIs"
+                }
+            }
+        }
+    }
+    div {
+        style borderBottom="1px solid var(--color-border)"
+        button type=button aria-label="Toggle Frontend Frameworks" onclick=(ref)"#/state/toggle3" {
+            style {
+                width "100%"
+                display flex
+                alignItems center
+                gap "1rem"
+                padding "1.1rem 1.35rem"
+                border none
+                background "${state.open === 3 ? 'rgba(79,70,229,0.06)' : 'transparent'}"
+                cursor pointer
+                textAlign left
+                font inherit
+                transition "background 0.15s"
+            }
+            span "4" {
+                style {
+                    flex none
+                    display inline-flex
+                    alignItems center
+                    justifyContent center
+                    width "2.25rem"
+                    height "2.25rem"
+                    borderRadius "0.5rem"
+                    backgroundColor "${state.open === 3 ? 'var(--color-primary)' : 'rgba(79,70,229,0.1)'}"
+                    color "${state.open === 3 ? 'var(--color-text-white)' : 'var(--color-primary)'}"
+                    fontFamily "var(--font-heading)"
+                    fontWeight "800"
+                    fontSize "1rem"
+                    transition "background-color 0.15s, color 0.15s"
+                }
+            }
+            span {
+                style flex="1"
+                span "Frontend Frameworks" {
+                    style {
+                        display block
+                        fontFamily "var(--font-heading)"
+                        fontSize "1.15rem"
+                        fontWeight "700"
+                        color "var(--color-text-primary)"
+                    }
+                }
+                span "3 weeks" {
+                    style {
+                        display block
+                        fontSize "0.85rem"
+                        color "var(--color-text-muted)"
+                        marginTop "0.15rem"
+                    }
+                }
+            }
+            span "${state.open === 3 ? '−' : '+'}" {
+                style {
+                    flex none
+                    width "1.75rem"
+                    height "1.75rem"
+                    display inline-flex
+                    alignItems center
+                    justifyContent center
+                    fontSize "1.4rem"
+                    fontWeight "400"
+                    color "var(--color-primary)"
+                    lineHeight "1"
+                }
+            }
+        }
+        div {
+            style display="${state.open === 3 ? 'block' : 'none'}" padding="0.25rem 1.35rem 1.5rem"
+            ul {
+                style listStyle=none margin="0" padding="0"
+                li {
+                    style {
+                        padding "0.5rem 0"
+                        borderTop "1px solid var(--color-border)"
+                        color "var(--color-text-muted)"
+                        fontSize "0.98rem"
+                        display flex
+                        gap "0.6rem"
+                        alignItems baseline
+                    }
+                    span → {
+                        style color="var(--color-primary)" fontWeight="700"
+                    }
+                    span "Components & reactive state"
+                }
+                li {
+                    style {
+                        padding "0.5rem 0"
+                        borderTop "1px solid var(--color-border)"
+                        color "var(--color-text-muted)"
+                        fontSize "0.98rem"
+                        display flex
+                        gap "0.6rem"
+                        alignItems baseline
+                    }
+                    span → {
+                        style color="var(--color-primary)" fontWeight="700"
+                    }
+                    span "Props, events & composition"
+                }
+                li {
+                    style {
+                        padding "0.5rem 0"
+                        borderTop "1px solid var(--color-border)"
+                        color "var(--color-text-muted)"
+                        fontSize "0.98rem"
+                        display flex
+                        gap "0.6rem"
+                        alignItems baseline
+                    }
+                    span → {
+                        style color="var(--color-primary)" fontWeight="700"
+                    }
+                    span "Client-side routing"
+                }
+                li {
+                    style {
+                        padding "0.5rem 0"
+                        borderTop "1px solid var(--color-border)"
+                        color "var(--color-text-muted)"
+                        fontSize "0.98rem"
+                        display flex
+                        gap "0.6rem"
+                        alignItems baseline
+                    }
+                    span → {
+                        style color="var(--color-primary)" fontWeight="700"
+                    }
+                    span "Fetching & displaying live data"
+                }
+            }
+        }
+    }
+    div {
+        style borderBottom="1px solid var(--color-border)"
+        button type=button aria-label="Toggle Backend & Databases" onclick=(ref)"#/state/toggle4" {
+            style {
+                width "100%"
+                display flex
+                alignItems center
+                gap "1rem"
+                padding "1.1rem 1.35rem"
+                border none
+                background "${state.open === 4 ? 'rgba(79,70,229,0.06)' : 'transparent'}"
+                cursor pointer
+                textAlign left
+                font inherit
+                transition "background 0.15s"
+            }
+            span "5" {
+                style {
+                    flex none
+                    display inline-flex
+                    alignItems center
+                    justifyContent center
+                    width "2.25rem"
+                    height "2.25rem"
+                    borderRadius "0.5rem"
+                    backgroundColor "${state.open === 4 ? 'var(--color-primary)' : 'rgba(79,70,229,0.1)'}"
+                    color "${state.open === 4 ? 'var(--color-text-white)' : 'var(--color-primary)'}"
+                    fontFamily "var(--font-heading)"
+                    fontWeight "800"
+                    fontSize "1rem"
+                    transition "background-color 0.15s, color 0.15s"
+                }
+            }
+            span {
+                style flex="1"
+                span "Backend & Databases" {
+                    style {
+                        display block
+                        fontFamily "var(--font-heading)"
+                        fontSize "1.15rem"
+                        fontWeight "700"
+                        color "var(--color-text-primary)"
+                    }
+                }
+                span "2 weeks" {
+                    style {
+                        display block
+                        fontSize "0.85rem"
+                        color "var(--color-text-muted)"
+                        marginTop "0.15rem"
+                    }
+                }
+            }
+            span "${state.open === 4 ? '−' : '+'}" {
+                style {
+                    flex none
+                    width "1.75rem"
+                    height "1.75rem"
+                    display inline-flex
+                    alignItems center
+                    justifyContent center
+                    fontSize "1.4rem"
+                    fontWeight "400"
+                    color "var(--color-primary)"
+                    lineHeight "1"
+                }
+            }
+        }
+        div {
+            style display="${state.open === 4 ? 'block' : 'none'}" padding="0.25rem 1.35rem 1.5rem"
+            ul {
+                style listStyle=none margin="0" padding="0"
+                li {
+                    style {
+                        padding "0.5rem 0"
+                        borderTop "1px solid var(--color-border)"
+                        color "var(--color-text-muted)"
+                        fontSize "0.98rem"
+                        display flex
+                        gap "0.6rem"
+                        alignItems baseline
+                    }
+                    span → {
+                        style color="var(--color-primary)" fontWeight="700"
+                    }
+                    span "HTTP servers & REST API design"
+                }
+                li {
+                    style {
+                        padding "0.5rem 0"
+                        borderTop "1px solid var(--color-border)"
+                        color "var(--color-text-muted)"
+                        fontSize "0.98rem"
+                        display flex
+                        gap "0.6rem"
+                        alignItems baseline
+                    }
+                    span → {
+                        style color="var(--color-primary)" fontWeight="700"
+                    }
+                    span "Relational data & SQL"
+                }
+                li {
+                    style {
+                        padding "0.5rem 0"
+                        borderTop "1px solid var(--color-border)"
+                        color "var(--color-text-muted)"
+                        fontSize "0.98rem"
+                        display flex
+                        gap "0.6rem"
+                        alignItems baseline
+                    }
+                    span → {
+                        style color="var(--color-primary)" fontWeight="700"
+                    }
+                    span "Authentication & sessions"
+                }
+                li {
+                    style {
+                        padding "0.5rem 0"
+                        borderTop "1px solid var(--color-border)"
+                        color "var(--color-text-muted)"
+                        fontSize "0.98rem"
+                        display flex
+                        gap "0.6rem"
+                        alignItems baseline
+                    }
+                    span → {
+                        style color="var(--color-primary)" fontWeight="700"
+                    }
+                    span "Deploying your API to the cloud"
+                }
+            }
+        }
+    }
+    div {
+        style borderBottom="1px solid var(--color-border)"
+        button type=button aria-label="Toggle Capstone Project" onclick=(ref)"#/state/toggle5" {
+            style {
+                width "100%"
+                display flex
+                alignItems center
+                gap "1rem"
+                padding "1.1rem 1.35rem"
+                border none
+                background "${state.open === 5 ? 'rgba(79,70,229,0.06)' : 'transparent'}"
+                cursor pointer
+                textAlign left
+                font inherit
+                transition "background 0.15s"
+            }
+            span "6" {
+                style {
+                    flex none
+                    display inline-flex
+                    alignItems center
+                    justifyContent center
+                    width "2.25rem"
+                    height "2.25rem"
+                    borderRadius "0.5rem"
+                    backgroundColor "${state.open === 5 ? 'var(--color-primary)' : 'rgba(79,70,229,0.1)'}"
+                    color "${state.open === 5 ? 'var(--color-text-white)' : 'var(--color-primary)'}"
+                    fontFamily "var(--font-heading)"
+                    fontWeight "800"
+                    fontSize "1rem"
+                    transition "background-color 0.15s, color 0.15s"
+                }
+            }
+            span {
+                style flex="1"
+                span "Capstone Project" {
+                    style {
+                        display block
+                        fontFamily "var(--font-heading)"
+                        fontSize "1.15rem"
+                        fontWeight "700"
+                        color "var(--color-text-primary)"
+                    }
+                }
+                span "3 weeks" {
+                    style {
+                        display block
+                        fontSize "0.85rem"
+                        color "var(--color-text-muted)"
+                        marginTop "0.15rem"
+                    }
+                }
+            }
+            span "${state.open === 5 ? '−' : '+'}" {
+                style {
+                    flex none
+                    width "1.75rem"
+                    height "1.75rem"
+                    display inline-flex
+                    alignItems center
+                    justifyContent center
+                    fontSize "1.4rem"
+                    fontWeight "400"
+                    color "var(--color-primary)"
+                    lineHeight "1"
+                }
+            }
+        }
+        div {
+            style display="${state.open === 5 ? 'block' : 'none'}" padding="0.25rem 1.35rem 1.5rem"
+            ul {
+                style listStyle=none margin="0" padding="0"
+                li {
+                    style {
+                        padding "0.5rem 0"
+                        borderTop "1px solid var(--color-border)"
+                        color "var(--color-text-muted)"
+                        fontSize "0.98rem"
+                        display flex
+                        gap "0.6rem"
+                        alignItems baseline
+                    }
+                    span → {
+                        style color="var(--color-primary)" fontWeight="700"
+                    }
+                    span "Scoping & planning your build"
+                }
+                li {
+                    style {
+                        padding "0.5rem 0"
+                        borderTop "1px solid var(--color-border)"
+                        color "var(--color-text-muted)"
+                        fontSize "0.98rem"
+                        display flex
+                        gap "0.6rem"
+                        alignItems baseline
+                    }
+                    span → {
+                        style color="var(--color-primary)" fontWeight="700"
+                    }
+                    span "Building with live mentor code review"
+                }
+                li {
+                    style {
+                        padding "0.5rem 0"
+                        borderTop "1px solid var(--color-border)"
+                        color "var(--color-text-muted)"
+                        fontSize "0.98rem"
+                        display flex
+                        gap "0.6rem"
+                        alignItems baseline
+                    }
+                    span → {
+                        style color="var(--color-primary)" fontWeight="700"
+                    }
+                    span "Testing, polish & performance"
+                }
+                li {
+                    style {
+                        padding "0.5rem 0"
+                        borderTop "1px solid var(--color-border)"
+                        color "var(--color-text-muted)"
+                        fontSize "0.98rem"
+                        display flex
+                        gap "0.6rem"
+                        alignItems baseline
+                    }
+                    span → {
+                        style color="var(--color-primary)" fontWeight="700"
+                    }
+                    span "Demo-day presentation"
+                }
+            }
+        }
+    }
+}

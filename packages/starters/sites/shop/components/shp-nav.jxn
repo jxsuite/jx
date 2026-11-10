@@ -1,0 +1,273 @@
+/- kdl-version 2
+
+shp-nav {
+    state brand=Cadence cartCount="2"
+    style display=block position=sticky top="0" zIndex="50"
+    div {
+        style backgroundColor="var(--color-bg-dark)" color="var(--color-text-white)"
+        div {
+            style {
+                maxWidth "var(--max-width)"
+                margin "0 auto"
+                padding "0.5rem 1.5rem"
+                display flex
+                alignItems center
+                justifyContent center
+                gap "1.4rem"
+                fontSize "0.72rem"
+                fontWeight "600"
+                textTransform uppercase
+                letterSpacing "0.14em"
+            }
+            span {
+                style {
+                    display inline-flex
+                    alignItems center
+                    gap "0.5rem"
+                    color "var(--color-brand-bright)"
+                }
+                span {
+                    style {
+                        width "0.42rem"
+                        height "0.42rem"
+                        borderRadius "999px"
+                        backgroundColor "var(--color-brand-bright)"
+                        boxShadow "0 0 0 3px rgba(38,208,124,0.22)"
+                    }
+                }
+                span "Free shipping over $50"
+            }
+            span • {
+                style opacity="0.32" {
+                    @--sm display=none
+                }
+            }
+            span "Free first tune-up on every new bike" {
+                style opacity="0.82" {
+                    @--sm display=none
+                }
+            }
+            span • {
+                style opacity="0.32" {
+                    @--md display=none
+                }
+            }
+            span "48-hour service turnaround" {
+                style opacity="0.82" {
+                    @--md display=none
+                }
+            }
+        }
+    }
+    div {
+        style {
+            backgroundColor "rgba(255,255,255,0.92)"
+            backdropFilter "blur(12px)"
+            borderBottom "1px solid var(--color-border)"
+        }
+        div {
+            style {
+                maxWidth "var(--max-width)"
+                margin "0 auto"
+                padding "0.85rem 1.5rem"
+                display flex
+                alignItems center
+                gap "1.5rem"
+            }
+            a href="/" aria-label="Cadence Cycles home" {
+                style {
+                    display inline-flex
+                    alignItems center
+                    gap "0.6rem"
+                    textDecoration none
+                    flexShrink "0"
+                }
+                span ◎ {
+                    style {
+                        display inline-flex
+                        alignItems center
+                        justifyContent center
+                        width "2.15rem"
+                        height "2.15rem"
+                        borderRadius "0.6rem"
+                        background "linear-gradient(150deg, var(--color-brand-bright), var(--color-primary))"
+                        color "var(--color-text-white)"
+                        fontSize "1.2rem"
+                        fontWeight "800"
+                        boxShadow "0 8px 18px -8px rgba(10,157,84,0.7)"
+                    }
+                }
+                span {
+                    style display=flex flexDirection=column lineHeight="1"
+                    span "${state.brand}" {
+                        style {
+                            fontFamily "var(--font-heading)"
+                            fontSize "1.28rem"
+                            fontWeight "800"
+                            letterSpacing "-0.03em"
+                            color "var(--color-text-primary)"
+                        }
+                    }
+                    span "Cycles Co." {
+                        style {
+                            fontSize "0.58rem"
+                            fontWeight "700"
+                            letterSpacing "0.28em"
+                            textTransform uppercase
+                            color "var(--color-primary)"
+                            marginTop "0.24rem"
+                        }
+                    }
+                }
+            }
+            nav {
+                style display=flex alignItems=center gap="1.35rem" {
+                    @--lg display=none
+                }
+                a href="/products/" Road {
+                    style {
+                        color "var(--color-text-secondary)"
+                        textDecoration none
+                        fontWeight "600"
+                        fontSize "0.9rem"
+                        transition "color 0.15s"
+                        :hover color="var(--color-primary)"
+                    }
+                }
+                a href="/products/" Mountain {
+                    style {
+                        color "var(--color-text-secondary)"
+                        textDecoration none
+                        fontWeight "600"
+                        fontSize "0.9rem"
+                        transition "color 0.15s"
+                        :hover color="var(--color-primary)"
+                    }
+                }
+                a href="/products/" Gravel {
+                    style {
+                        color "var(--color-text-secondary)"
+                        textDecoration none
+                        fontWeight "600"
+                        fontSize "0.9rem"
+                        transition "color 0.15s"
+                        :hover color="var(--color-primary)"
+                    }
+                }
+                a href="/products/" Kids {
+                    style {
+                        color "var(--color-text-secondary)"
+                        textDecoration none
+                        fontWeight "600"
+                        fontSize "0.9rem"
+                        transition "color 0.15s"
+                        :hover color="var(--color-primary)"
+                    }
+                }
+                a href="/products/" Sale {
+                    style {
+                        display inline-flex
+                        alignItems center
+                        gap "0.35rem"
+                        color "var(--color-sale)"
+                        textDecoration none
+                        fontWeight "700"
+                        fontSize "0.9rem"
+                        transition "opacity 0.15s"
+                        :hover opacity="0.75"
+                    }
+                }
+            }
+            label {
+                style {
+                    marginLeft auto
+                    display flex
+                    alignItems center
+                    gap "0.55rem"
+                    flex "0 1 320px"
+                    padding "0 0.9rem"
+                    height "2.5rem"
+                    borderRadius "999px"
+                    backgroundColor "var(--color-bg-cream)"
+                    border "1px solid var(--color-border)"
+                    transition "border-color 0.15s"
+                    @--md display=none
+                    :focus-within borderColor="var(--color-primary)"
+                }
+                span ⌕ {
+                    style color="var(--color-text-muted)" fontSize="0.95rem"
+                }
+                input type=search name=q placeholder="Search bikes, gear…" aria-label="Search products" {
+                    style {
+                        flex "1"
+                        minWidth "0"
+                        border none
+                        outline none
+                        background transparent
+                        fontFamily inherit
+                        fontSize "0.9rem"
+                        color "var(--color-text-primary)"
+                    }
+                }
+            }
+            a href="/products/" aria-label="Search products" ⌕ {
+                style {
+                    display none
+                    marginLeft auto
+                    alignItems center
+                    justifyContent center
+                    width "2.5rem"
+                    height "2.5rem"
+                    borderRadius "999px"
+                    border "1px solid var(--color-border)"
+                    color "var(--color-text-primary)"
+                    textDecoration none
+                    fontSize "1.05rem"
+                    @--md display=inline-flex
+                }
+            }
+            a href="/contact/" aria-label="View cart" {
+                style {
+                    position relative
+                    display inline-flex
+                    alignItems center
+                    gap "0.55rem"
+                    flexShrink "0"
+                    padding "0.55rem 1.1rem 0.55rem 0.95rem"
+                    borderRadius "999px"
+                    backgroundColor "var(--color-ink)"
+                    color "var(--color-text-white)"
+                    textDecoration none
+                    fontWeight "700"
+                    fontSize "0.9rem"
+                    transition "transform 0.15s, background-color 0.15s"
+                    :hover transform="translateY(-1px)" backgroundColor="#000000"
+                }
+                span 🛒 {
+                    style fontSize="1.1rem"
+                }
+                span Cart {
+                    style {
+                        @--sm display=none
+                    }
+                }
+                span "${state.cartCount}" {
+                    style {
+                        display inline-flex
+                        alignItems center
+                        justifyContent center
+                        minWidth "1.25rem"
+                        height "1.25rem"
+                        padding "0 0.35rem"
+                        borderRadius "999px"
+                        backgroundColor "var(--color-brand-bright)"
+                        color "var(--color-ink)"
+                        fontSize "0.72rem"
+                        fontWeight "800"
+                        fontVariantNumeric tabular-nums
+                    }
+                }
+            }
+        }
+    }
+}

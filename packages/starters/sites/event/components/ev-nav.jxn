@@ -1,0 +1,142 @@
+/- kdl-version 2
+
+ev-nav {
+    state brand=Horizon date="Jun 12, 2026" venue="Portland, OR"
+    style {
+        display block
+        position sticky
+        top "0"
+        zIndex "50"
+        backgroundColor "rgba(10, 7, 17, 0.7)"
+        backdropFilter "blur(16px)"
+        borderBottom "1px solid var(--color-border)"
+    }
+    div {
+        style height="2px" background="var(--grad)" opacity="0.9"
+    }
+    div {
+        style {
+            maxWidth "var(--max-width)"
+            margin "0 auto"
+            padding "0.8rem 1.5rem"
+            display flex
+            alignItems center
+            justifyContent space-between
+            gap "1.25rem"
+        }
+        a href="/" {
+            style {
+                display flex
+                alignItems center
+                gap "0.6rem"
+                fontFamily "var(--font-heading)"
+                fontSize "1.3rem"
+                fontWeight "800"
+                color "var(--color-text-white)"
+                textDecoration none
+                letterSpacing "-0.03em"
+            }
+            span H {
+                style {
+                    display inline-flex
+                    alignItems center
+                    justifyContent center
+                    width "1.7rem"
+                    height "1.7rem"
+                    borderRadius "0.55rem"
+                    background "var(--grad-btn)"
+                    boxShadow "0 0 18px var(--glow)"
+                    color "#ffffff"
+                    fontSize "0.9rem"
+                    fontWeight "800"
+                }
+            }
+            span "${state.brand}"
+            span '26 {
+                style {
+                    fontWeight "500"
+                    background "var(--grad)"
+                    backgroundClip text
+                    webkitBackgroundClip text
+                    webkitTextFillColor transparent
+                    color "var(--color-accent)"
+                }
+            }
+        }
+        div {
+            style {
+                display flex
+                alignItems center
+                gap "0.55rem"
+                padding "0.35rem 0.85rem"
+                borderRadius "999px"
+                border "1px solid var(--color-border)"
+                backgroundColor "rgba(255,255,255,0.03)"
+                fontSize "0.82rem"
+                fontWeight "600"
+                color "var(--color-text-muted)"
+                @--md display=none
+            }
+            span {
+                style {
+                    width "0.45rem"
+                    height "0.45rem"
+                    borderRadius "999px"
+                    background "var(--color-lime)"
+                    boxShadow "0 0 8px var(--color-lime)"
+                }
+            }
+            span "${state.date}" {
+                style color="var(--color-text-primary)"
+            }
+            span · {
+                style opacity="0.5"
+            }
+            span "${state.venue}"
+        }
+        nav {
+            style display=flex alignItems=center gap="1.6rem" {
+                @--sm gap="0.85rem"
+            }
+            a href="/schedule/" Schedule {
+                style {
+                    color "var(--color-text-muted)"
+                    textDecoration none
+                    fontWeight "600"
+                    fontSize "0.92rem"
+                    transition "color 0.15s"
+                    :hover color="var(--color-text-primary)"
+                }
+            }
+            a href="/speakers/" Speakers {
+                style {
+                    color "var(--color-text-muted)"
+                    textDecoration none
+                    fontWeight "600"
+                    fontSize "0.92rem"
+                    @--sm display=none
+                    transition "color 0.15s"
+                    :hover color="var(--color-text-primary)"
+                }
+            }
+            a href="/tickets/" "Get tickets" {
+                style {
+                    display inline-block
+                    background "var(--grad-btn)"
+                    color "#ffffff"
+                    padding "0.55rem 1.3rem"
+                    borderRadius "999px"
+                    textDecoration none
+                    fontWeight "700"
+                    fontSize "0.92rem"
+                    boxShadow "0 0 0 1px rgba(255,255,255,0.08), 0 10px 26px -8px var(--glow)"
+                    transition "transform 0.15s, box-shadow 0.15s"
+                    :hover {
+                        transform "translateY(-1px)"
+                        boxShadow "0 0 0 1px rgba(255,255,255,0.15), 0 14px 32px -8px var(--glow)"
+                    }
+                }
+            }
+        }
+    }
+}

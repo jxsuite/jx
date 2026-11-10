@@ -1,0 +1,90 @@
+/- kdl-version 2
+
+pf-logo-bar {
+    state {
+        label "Trusted by founders, operators, and boards"
+        logo1 "Northwind Labs"
+        logo2 "Harbor Freight Co."
+        logo3 "Cedar & Vine"
+        logo4 "Atlas Robotics"
+        logo5 "Riverstone Health"
+    }
+    style {
+        display block
+        backgroundColor "var(--color-paper)"
+        borderBottom "1px solid var(--color-rule)"
+        padding "clamp(1.75rem, 3vw, 2.5rem) 1.5rem"
+    }
+    div {
+        style {
+            maxWidth "var(--max-width)"
+            margin "0 auto"
+            display grid
+            gridTemplateColumns "auto 1fr"
+            gap "clamp(1.5rem, 4vw, 3rem)"
+            alignItems center
+            @--md gridTemplateColumns="1fr" gap="1.25rem"
+        }
+        p "${state.label}" {
+            style {
+                margin "0"
+                maxWidth "12ch"
+                fontFamily "var(--font-sans)"
+                fontSize "0.7rem"
+                fontWeight "600"
+                textTransform uppercase
+                letterSpacing "0.16em"
+                color "var(--color-muted)"
+                lineHeight "1.5"
+            }
+        }
+        div {
+            style display=flex flexWrap=wrap alignItems=center gap="1rem 2.5rem" {
+                @--md gap="0.75rem 1.75rem"
+            }
+            span "${state.logo1}" {
+                style {
+                    fontFamily "var(--font-serif)"
+                    fontSize "1.2rem"
+                    fontWeight "500"
+                    color "var(--color-ink)"
+                }
+            }
+            span "${state.logo2}" {
+                style {
+                    fontFamily "var(--font-serif)"
+                    fontSize "1.2rem"
+                    fontWeight "500"
+                    color "var(--color-ink)"
+                }
+            }
+            span "${state.logo3}" {
+                style {
+                    fontFamily "var(--font-serif)"
+                    fontSize "1.2rem"
+                    fontWeight "500"
+                    color "var(--color-ink)"
+                    @--sm display=none
+                }
+            }
+            span "${state.logo4}" {
+                style {
+                    fontFamily "var(--font-serif)"
+                    fontSize "1.2rem"
+                    fontWeight "500"
+                    color "var(--color-ink)"
+                    @--md display=none
+                }
+            }
+            span "${state.logo5}" {
+                style {
+                    fontFamily "var(--font-serif)"
+                    fontSize "1.2rem"
+                    fontWeight "500"
+                    color "var(--color-ink)"
+                    @--md display=none
+                }
+            }
+        }
+    }
+}

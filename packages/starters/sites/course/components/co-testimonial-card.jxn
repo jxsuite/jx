@@ -1,0 +1,69 @@
+/- kdl-version 2
+
+co-testimonial-card {
+    state quote="" author="" role=""
+    style {
+        display flex
+        flexDirection column
+        padding "1.85rem"
+        backgroundColor "var(--color-bg-white)"
+        border "1px solid var(--color-border)"
+        borderRadius "var(--radius)"
+        boxShadow "0 8px 26px -18px rgba(15,20,36,0.4)"
+    }
+    div {
+        style display=flex alignItems=center gap="0.6rem" marginBottom="1rem"
+        span ★★★★★ {
+            style color="#eab308" fontSize="0.95rem" letterSpacing="0.1em"
+        }
+        span "hired ✔" {
+            style fontFamily="var(--font-mono)" fontSize="0.7rem" color="#65a30d" fontWeight="600"
+        }
+    }
+    p "“${state.quote}”" {
+        style {
+            fontFamily "var(--font-heading)"
+            fontSize "1.08rem"
+            lineHeight "1.55"
+            fontWeight "500"
+            letterSpacing "-0.01em"
+            margin "0 0 1.35rem"
+            color "var(--color-text-primary)"
+            flex "1"
+        }
+    }
+    div {
+        style {
+            display flex
+            alignItems center
+            gap "0.75rem"
+            paddingTop "1rem"
+            borderTop "1px solid var(--color-border)"
+        }
+        div ❯ {
+            style {
+                flex none
+                display flex
+                alignItems center
+                justifyContent center
+                width "2.4rem"
+                height "2.4rem"
+                borderRadius "999px"
+                backgroundColor "var(--color-indigo-050)"
+                border "1px solid var(--color-indigo-line)"
+                color "var(--color-primary)"
+                fontFamily "var(--font-mono)"
+                fontWeight "700"
+                fontSize "1rem"
+            }
+        }
+        div {
+            div "${state.author}" {
+                style fontWeight="700" fontSize="0.95rem" color="var(--color-text-primary)"
+            }
+            div "${state.role}" {
+                style fontSize="0.85rem" color="var(--color-text-muted)"
+            }
+        }
+    }
+}

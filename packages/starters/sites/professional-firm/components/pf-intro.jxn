@@ -1,0 +1,68 @@
+/- kdl-version 2
+
+pf-intro {
+    state {
+        image type=string format=image default=""
+        imageAlt ""
+        kicker "The practice"
+        reverse #false
+    }
+    style display=block padding="clamp(3.5rem, 8vw, 6rem) 1.5rem"
+    div {
+        style {
+            maxWidth "var(--max-width)"
+            margin "0 auto"
+            display grid
+            gridTemplateColumns "0.85fr 1fr"
+            gap "clamp(2rem, 6vw, 5rem)"
+            alignItems center
+            @--md gridTemplateColumns="1fr" gap="2rem"
+        }
+        div {
+            style order="${state.reverse ? '2' : '1'}" position=relative
+            img src="${state.image}" alt="${state.imageAlt}" loading=lazy {
+                style {
+                    width "100%"
+                    height auto
+                    display block
+                    border "1px solid var(--color-rule)"
+                    filter "grayscale(1) contrast(1.03)"
+                }
+            }
+        }
+        div {
+            style order="${state.reverse ? '1' : '2'}" {
+                "& h3" {
+                    fontFamily "var(--font-serif)"
+                    fontSize "clamp(1.7rem, 3.4vw, 2.5rem)"
+                    fontWeight "500"
+                    lineHeight "1.15"
+                    letterSpacing "-0.02em"
+                    margin "0 0 1.25rem"
+                    color "var(--color-ink)"
+                }
+                "& p" {
+                    fontSize "1.08rem"
+                    lineHeight "1.75"
+                    color "var(--color-muted)"
+                    margin "0 0 1.1rem"
+                }
+                "& p:last-child" marginBottom="0"
+            }
+            p "${state.kicker}" {
+                style {
+                    fontFamily "var(--font-sans)"
+                    fontSize "0.72rem"
+                    fontWeight "600"
+                    textTransform uppercase
+                    letterSpacing "0.2em"
+                    color "var(--color-accent)"
+                    paddingBottom "1rem"
+                    marginBottom "1.5rem"
+                    borderBottom "1px solid var(--color-rule)"
+                }
+            }
+            slot
+        }
+    }
+}

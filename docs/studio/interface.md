@@ -176,7 +176,7 @@ A [content type](/docs/studio/projects/content-types) already fixes the format o
 - In the collection's **own folder**, **New File…** _is_ **New Entry**: the extension is the collection's, the fields are seeded from its schema, and the file opens where it is written (the canvas for a Markdown entry, the entry form for a JSON one).
 - In a **subfolder** of it, the picker is locked to the collection's format, because a document there is still one of its entries. **Other…** stays available for the images and notes you keep beside them. What **Other…** will not accept there is a document of a _different_ format, which would be discovered as an entry the collection cannot read.
 
-The new file is written with the starting content its type calls for: a content entry is seeded from its content type's fields, so it is valid the moment it exists. Creating in a collection's folder opens the new entry for you as well.
+Anywhere else, **New File…** asks for a name and a format. In `pages/`, `layouts/` and `components/` it starts on **Jx Notation (.jxn)**, the format every new document is written in, and elsewhere on **JSON (.json)**. The new file is written with the starting content its type calls for: a content entry is seeded from its content type's fields, so it is valid the moment it exists. Creating in a collection's folder opens the new entry for you as well.
 
 ## Converting a file to another format
 
