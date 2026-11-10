@@ -55,7 +55,7 @@
     },
     "& [part=\"badge\"][data-kind=\"map\"]": {
       "background": "var(--map)",
-      "fontSize": "9px",
+      "fontSize": "var(--jx-text-xs)",
       "letterSpacing": "0.5px"
     },
     "& [part=\"badge\"][data-kind=\"switch\"]": {
@@ -64,7 +64,7 @@
     "& [part=\"badge\"][data-kind=\"case\"]": {
       "maxWidth": "60px",
       "background": "var(--case-c)",
-      "fontSize": "9px",
+      "fontSize": "var(--jx-text-xs)",
       "fontStyle": "italic"
     },
     "& [part=\"badge\"][data-kind=\"slot\"]": {
@@ -74,7 +74,7 @@
       "$description": "The one badge that names no tag, so it is drawn in the neutral rather than in the tag colour — and on the page background rather than on `--accent-fg`, which is white and would sit on a light grey at a contrast nobody can read in the light theme.",
       "background": "var(--fg-dim)",
       "color": "var(--bg)",
-      "fontSize": "9px"
+      "fontSize": "var(--jx-text-xs)"
     },
     "& [part=\"row\"][data-italic=\"true\"] [part=\"label\"]": {
       "fontStyle": "italic"

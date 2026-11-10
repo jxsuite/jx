@@ -69,7 +69,7 @@
       "width": "18px",
       "padding": "0",
       "background": "var(--accent)",
-      "fontSize": "9px",
+      "fontSize": "var(--jx-text-xs)",
       "textAlign": "center"
     },
     "& [part=\"label\"]": {
