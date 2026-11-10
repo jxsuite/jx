@@ -94,7 +94,7 @@
       "whiteSpace": "nowrap",
       "textOverflow": "ellipsis"
     },
-    "& [part=\"summary\"]": {
+    "& span[part=\"summary\"]": {
       "flex": "0 1 auto",
       "minWidth": "0",
       "maxWidth": "64px",
@@ -104,11 +104,11 @@
       "whiteSpace": "nowrap",
       "textOverflow": "ellipsis"
     },
-    "& [part=\"summary\"][data-tone=\"pending\"]": {
+    "& span[part=\"summary\"][data-tone=\"pending\"]": {
       "$description": "PENDING IS A RESTING STATE, not progress. While you are editing, an automatic `Request` is deliberately not fetched \u2014 so a value that has not arrived is dim and STILL, and the pulse below is kept for the one moment something is actually in flight. An animation that never stops is a spinner for a thing that is not loading, and it is why `probe.idle()` could not call this panel quiet.",
       "opacity": "0.55"
     },
-    "&[data-refreshing] [part=\"summary\"][data-tone=\"pending\"]": {
+    "&[data-refreshing] span[part=\"summary\"][data-tone=\"pending\"]": {
       "opacity": "1",
       "animation": "jx-signals-pulse 1.5s ease-in-out infinite"
     },
@@ -269,7 +269,7 @@
       }
     },
     "@(prefers-reduced-motion: reduce)": {
-      "&[data-refreshing] [part=\"summary\"][data-tone=\"pending\"]": {
+      "&[data-refreshing] span[part=\"summary\"][data-tone=\"pending\"]": {
         "animation": "none"
       }
     },

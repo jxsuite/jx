@@ -51,6 +51,7 @@ import { shell } from "../src/shell";
 import { pluginSchemaCache } from "../src/services/code-services";
 import { isJsonObject } from "@jxsuite/schema/guards";
 import type { JsonObject } from "@jxsuite/schema/types";
+import { readFileSync } from "node:fs";
 
 beforeEach(() => {
   resetStudioState();
@@ -1101,5 +1102,19 @@ describe("reconciliation", () => {
     expect(nativeInput(control(after, "Description", "text"))).toBe(field);
     expect(document.activeElement).toBe(field);
     expect(listedNames(panel)).toEqual(["$a", "$b"]);
+  });
+});
+
+describe("the panel's own parts never reach into the kit's", () => {
+  test("the value preview's rules name the span, so the accordion's <summary> keeps its width", () => {
+    /* The preview is `[part="summary"]` and so is `jx-accordion-item`'s `<summary>`. A bare
+       descendant selector capped BOTH at 64px, which cut every category heading to "Stat…" and
+       "Dat…". Qualifying the rule with the preview's own tag is the whole fix. */
+    const style: unknown = JSON.parse(
+      readFileSync(new URL("../src/surfaces/panel-signals.json", import.meta.url), "utf8"),
+    ).style;
+    const keys = JSON.stringify(style).match(/"[^"]*\[part=\\"summary\\"\][^"]*":/g) ?? [];
+    expect(keys.length).toBeGreaterThan(0);
+    expect(keys.filter((selector) => !selector.includes(String.raw`span[part=\"summary\"]`))).toEqual([]);
   });
 });
