@@ -21,6 +21,7 @@ code:
   - packages/ui/src/behaviors/menu.ts
   - packages/ui/src/behaviors/textfield.ts
   - packages/ui/src/behaviors/number-field.ts
+  - packages/ui/src/behaviors/slider.ts
   - packages/ui/src/behaviors/select.ts
   - packages/ui/src/behaviors/listbox.ts
   - packages/ui/src/behaviors/combobox.ts
@@ -225,6 +226,44 @@ The events are the platform's two names and nothing else. When the reader types,
 :::doc-warning
 A number input throws away what it cannot parse, so a half-typed `1e` and a cleared field both read as an empty string. Before deleting a value because the field is empty, check `badInput` on the element, or its `data-bad-input` attribute. It is true while the reader is mid-way through typing something the control cannot represent yet.
 :::
+
+## Sliders
+
+`jx-slider` wraps one native range input, so the platform supplies the slider role, the announced value, the thumb, the drag, and the arrow, Home, End and Page keys. The kit adds a filled track and a few conveniences. Holding Shift with an arrow key moves ten steps.
+
+```json
+{
+  "tagName": "jx-slider",
+  "$props": { "label": "Volume", "min": 0, "max": 100, "step": 1, "value": 40 }
+}
+```
+
+`label` names the slider, or `labelledby` points at a visible label; a slider with neither is announced as "slider" and a number. `value`, `min`, `max` and `step` are numbers. `valuetext` is what the value is announced as, which matters when the track is not in the units you show: a zoom control whose thumb position runs 0 to 100 on a logarithmic scale sets it to "125%". `disabled` blocks the pointer and the keyboard alike.
+
+The events are the platform's two names, `input` while the thumb moves and `change` when the reader commits, and both come from the element, so `event.target.value` is a number you can read directly. A native `dblclick` is left alone and bubbles from the slider, so a host that wants double-click to reset to a default listens for it:
+
+```json
+{
+  "tagName": "jx-slider",
+  "$props": { "label": "Zoom", "min": 0, "max": 100, "value": { "$ref": "#/state/position" } },
+  "oninput": {
+    "$prototype": "Function",
+    "body": [
+      {
+        "operator": "=",
+        "target": { "$ref": "#/state/position" },
+        "value": { "$ref": "event#/target/value" }
+      }
+    ]
+  },
+  "ondblclick": {
+    "$prototype": "Function",
+    "body": [{ "operator": "=", "target": { "$ref": "#/state/position" }, "value": 65 }]
+  }
+}
+```
+
+The control is the full height of a button (`--jx-control-h`), so the whole box is the pointer target, not just the 4px track. The one part is `input`. Studio's [zoom controls](/docs/studio/interface/canvas#pan-and-zoom) in the status bar are built from it.
 
 ## Selects
 

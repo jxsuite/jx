@@ -14,7 +14,7 @@
  * and there is none.
  *
  * {@link PLACEMENT_MATRIX} is the normative table: each placement declares the set of levels it
- * admits. Mixed regions are mixed IN THE TABLE, never by prose exemption — the status bar is three
+ * admits. Mixed regions are mixed IN THE TABLE, never by prose exemption — the status bar is four
  * separate single-level placements, not one "mixed" one. `scripts/check-command-levels.ts`
  * validates every registered command's `menus` against this table, and `createCommandRegistry`
  * applies the same check at registration so a violation cannot reach a running app either.
@@ -62,6 +62,13 @@ export const PLACEMENTS = [
   "statusbar/project",
   "statusbar/document",
   "statusbar/selection",
+  /**
+   * The status bar's fourth field, at its far right: the focused pane's zoom. A document-level
+   * placement of its own, for the reason the other three are separate: the bar's mixedness is
+   * structural, one level per field, so a zoom verb never has to be excused from the PROJECT or the
+   * SELECTION field it would otherwise have to borrow.
+   */
+  "statusbar/zoom",
   "context/element",
   "context/file",
   "context/layer",
@@ -72,18 +79,26 @@ export const PLACEMENTS = [
    * The block action bar's SECOND cluster — inline formatting, shown while the caret is in text.
    *
    * A separate placement rather than a crowd inside `blockbar`, for the reason the status bar is
-   * three placements and not one "mixed" region: the bar's verb cluster is capped at five, and
-   * eight format verbs sharing that cap would push Bold into a `⋮` menu. Same level, same surface,
+   * four placements and not one "mixed" region: the bar's verb cluster is capped at five, and eight
+   * format verbs sharing that cap would push Bold into a `⋮` menu. Same level, same surface,
    * different budget — which is a row in the table, not an exemption in prose.
    */
   "blockbar/format",
   "outline/row",
   /**
+   * The Outline's action bar, above the tree: Expand All and Collapse All.
+   *
+   * A separate placement from `outline/row` because the two address different things: a row verb
+   * acts on that row's node and is `selection`-level, while the bar acts on the open document's
+   * whole tree and is `document`-level.
+   */
+  "outline/toolbar",
+  /**
    * The rail foot's ⚙ Settings menu — the settings FAMILY, and only it.
    *
    * A separate placement rather than a second use of `commandbar/overflow`, for the reason the
-   * status bar is three placements: the ⬢ menu is the chrome's residue for retired controls and
-   * this is a named family with its own trigger. Same admits, different surface, different budget.
+   * status bar is four placements: the ⬢ menu is the chrome's residue for retired controls and this
+   * is a named family with its own trigger. Same admits, different surface, different budget.
    */
   "settings/menu",
   "palette",
@@ -116,7 +131,8 @@ export const PLACEMENT_MATRIX: Readonly<Record<Placement, PlacementRule>> = {
   },
   "statusbar/project": { admits: ["project"], note: "the status bar's left field" },
   "statusbar/document": { admits: ["document"], note: "the status bar's centre field" },
-  "statusbar/selection": { admits: ["selection"], note: "the status bar's right field" },
+  "statusbar/selection": { admits: ["selection"], note: "the status bar's selection field" },
+  "statusbar/zoom": { admits: ["document"], note: "the status bar's zoom field, at its far right" },
   "context/element": { admits: ["selection"], note: "the canvas element menu acts on a selection" },
   "context/file": { admits: ["project"], note: "a file row addresses the project's file set" },
   "context/layer": { admits: ["selection"], note: "an outline row IS a selection" },
@@ -128,6 +144,10 @@ export const PLACEMENT_MATRIX: Readonly<Record<Placement, PlacementRule>> = {
     note: "the bar's inline-format cluster — a range inside the selection is still the selection",
   },
   "outline/row": { admits: ["selection"], note: "row actions act on the row's node" },
+  "outline/toolbar": {
+    admits: ["document"],
+    note: "the Outline's action bar acts on the open document's tree",
+  },
   "settings/menu": {
     admits: ["application", "project"],
     note:

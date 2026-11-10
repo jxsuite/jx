@@ -111,7 +111,6 @@ interface ViewState {
   _currentDropTargetRow: HTMLElement | null;
   layerDragSourceHeight: number;
   _completionRegistered: boolean;
-  _layersCollapsed: Set<string> | null;
 }
 
 export const view: ViewState = {
@@ -140,7 +139,4 @@ export const view: ViewState = {
   _completionRegistered: false,
 
   // Canvas / stylebook
-
-  // Layers panel collapsed state
-  _layersCollapsed: null,
 };

@@ -8,6 +8,7 @@
  *   children), stray-toggle clicks, and startLayerTitleEdit guards.
  * - Dnd: the onGenerateDragPreview suppressors for layer and component drags.
  */
+import { openOutlineKey } from "../src/panels/outline-expansion";
 import { flush, registerPrimaryStage, resetStudioState, resetWorkspaceWithTab } from "./harness";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import type { Instruction } from "@atlaskit/pragmatic-drag-and-drop-hitbox/tree-item";
@@ -15,7 +16,6 @@ import { isString } from "@jxsuite/schema/guards";
 import type { JsonObject, JxMutableNode } from "@jxsuite/schema/types";
 import { childList } from "../src/state";
 import type { JxPath } from "../src/state";
-import type { Tab } from "../src/tabs/tab";
 import type { ComponentEntry } from "../src/files/components";
 import { surfaceForPane } from "../src/canvas/surface-registry";
 
@@ -170,48 +170,56 @@ describe("buildStylebookDoc component filtering", () => {
 // ─── Pane chrome render catch ────────────────────────────────────────────────
 
 describe("pane-context interaction gaps", () => {
-  function makePaneCtx(overrides: Partial<Parameters<typeof paneContext.mount>[1]> = {}) {
-    return {
-      exportFile: mock(() => {}),
-      parseMediaEntries: () => ({ baseWidth: 1280, featureQueries: [], sizeBreakpoints: [] }),
-      setCanvasMode: mock((_tab: Tab | null, _mode: string) => {}),
-      ...overrides,
-    };
-  }
-
   afterEach(() => {
     paneContext.unmount();
     closeAllTabs();
     document.body.innerHTML = "";
   });
 
-  /** A control of the pane's chrome, by the `part` the document stamps on it. */
-  function podPart(root: HTMLElement, name: string): HTMLElement {
-    return root.querySelector<HTMLElement>(`[part="${name}"]`)!;
-  }
-
-  test("the pod's panzoom actions run without a panzoom surface", async () => {
+  test("the status bar's zoom actions run without a panzoom surface", async () => {
     resetStudioState();
     const tab = resetWorkspaceWithTab();
     tab.session.ui.zoom = 2.4;
-    /* THE PANE's mode, not the ctx's. The pod reads `canvasModeOfPane` now — a fixture that named
-       a mode only in the ctx was describing a state the app cannot be in, and a default `.json`
-       tab opens in `edit`, whose "−" drives `editZoom` rather than the panzoom `ui.zoom`. */
+    /* THE PANE's mode, not the ctx's: a default `.json` tab opens in `edit`, whose "−" drives
+       `editZoom` rather than the panzoom `ui.zoom`. */
     tab.session.ui.canvasMode = "design";
     surfaceForPane("primary").panzoomWrap = null; // Canvas-utils actions guard on this and no-op cleanly.
-    const root = document.createElement("div");
-    document.body.append(root);
-    paneContext.mount(root, makePaneCtx());
-    // A mounted document settles over several turns; the pod does not exist on the next tick.
+    const bar = document.createElement("div");
+    bar.id = "statusbar";
+    document.body.append(bar);
+    const { createCommandRegistry } = await import("../src/commands/registry");
+    const { makeContext } = await import("../src/commands/context");
+    const { canvasCommands } = await import("../src/editor/shortcuts");
+    const { setActiveRegistry } = await import("../src/commands/active-registry");
+    initShellRefs();
+    const registry = createCommandRegistry({
+      getContext: () => makeContext({ document: { open: true }, editor: { kind: "canvas" } }),
+    });
+    registry.registerAll(
+      canvasCommands(() => ({
+        applyTransform: () => {},
+        canvasMode: "design",
+        panX: 0,
+        panY: 0,
+        setPan: () => {},
+      })).filter((c) => c.id.startsWith("canvas.zoom")),
+    );
+    setActiveRegistry(registry);
+    const { mountStatusbar, unmountStatusbar } = await import("../src/surfaces/statusbar");
+    mountStatusbar();
+    // A mounted document settles over several turns; the field does not exist on the next tick.
     await flush(8);
 
-    podPart(root, "zoom-out").click();
+    const control = (name: string) => bar.querySelector<HTMLElement>(`[part="${name}"]`)!;
+    control("zoom-out").click();
     await flush(4);
     expect(tab.session.ui.zoom).toBeCloseTo(2);
 
-    podPart(root, "zoom-label").click();
+    control("zoom-label").click();
     await flush(4);
     expect(tab.session.ui.zoom).toBeCloseTo(2); // Guarded no-ops without a panzoom surface.
+    unmountStatusbar();
+    setActiveRegistry(null);
   });
 
   test("render after unmount is a guarded no-op", () => {
@@ -312,7 +320,6 @@ describe("layers-panel gaps", () => {
     `;
     initLayers();
     host = find(document, ".panel-body", HTMLElement);
-    view._layersCollapsed = new Set();
     view.dndCleanups = [];
     resetWorkspaceWithTab(makeDoc());
   });
@@ -359,13 +366,13 @@ describe("layers-panel gaps", () => {
     expect(await canMoveIn(["children", 5])).toBe(false);
   });
 
-  test("a click on the chevron collapses the row without also selecting it", async () => {
+  test("a click on the chevron opens the row without also selecting it", async () => {
     await renderLayers();
     const toggle = find(rowByKey(["children", 2])!, '[part="twisty"]', HTMLElement);
     toggle.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
     await flush();
-    expect(view._layersCollapsed!.has("children/2")).toBe(true);
-    // The chevron stops the click: collapsing a branch is not a way of selecting it.
+    expect(activeTab.value!.session.ui.outlineOpen["children/2"]).toBe(true);
+    // The chevron stops the click: opening a branch is not a way of selecting it.
     expect(activeTab.value!.session.selection).toEqual([]);
   });
 
@@ -374,6 +381,7 @@ describe("layers-panel gaps", () => {
        is still not renameable, because a text node has nowhere to put a `$title`. That is the
        branch a "the node is gone" guard could never reach: the node is right there. */
     elementAt(activeTab.value!.doc.document, 0).children = ["just words"];
+    openOutlineKey(activeTab.value!, "children/0");
     await renderLayers();
     const textRow = rowByKey(["children", 0, "children", 0])!;
     expect(textRow.dataset.kind).toBe("text");

@@ -1,6 +1,7 @@
 /// <reference lib="dom" />
 /**
- * The pane's own chrome — the pane context bar and the floating zoom pod.
+ * The pane's own chrome — the pane context bar. (Zoom, which used to float over the canvas as a
+ * pod, is the status bar's: `panels/zoom-control.ts`.)
  *
  * This replaces `#tab-bar`, which was a 28px band styled identically to the tab strip above it,
  * holding **five unrelated axes** with no labels on any of them: a document-stack breadcrumb
@@ -26,16 +27,14 @@
  *   you pick — and because a row of text fields is what made the 28px band unreadable.
  *
  * **This module is the FLOW; `surfaces/pane-context.json` is the markup.** Everything below decides
- * — which kinds a document declares, what a lens may never write, which pane's stage a zoom verb
- * lands on, what a route param's candidates are, what a typed test prop parses as — and hands one
- * projection of words and keyed rows to `surfaces/pane-context.ts`, one mount per pane. Nothing
- * here renders.
+ * — which kinds a document declares, what a lens may never write, what a route param's candidates
+ * are, what a typed test prop parses as — and hands one projection of words and keyed rows to
+ * `surfaces/pane-context.ts`, one mount per pane. Nothing here renders.
  *
  * **The bar is not a grid row.** It renders inside the pane's own cell (`#pane-chrome`, stacked
  * over `#canvas-wrap`), because a per-pane surface cannot be a row of the application grid — the
  * second pane would have no way to have one. The stage is offset by {@link PANE_CONTEXT_VAR} rather
- * than by a track, and the zoom pod floats bottom-right over the canvas, as
- * `docs/studio/interface/tabs.md` ("The pane context bar") describes it.
+ * than by a track, as `docs/studio/interface/tabs.md` ("The pane context bar") describes it.
  *
  * **The read-only banner rides with the bar.** `collab/collab-state.ts` says whether a guest may
  * write (`collab.md` §4); the surface that owes them the sentence is this one, because it is the
@@ -51,10 +50,8 @@ import { effect, effectScope } from "../reactivity";
 import { PRIMARY_PANE, focusPane, workspace } from "../workspace/workspace";
 import {
   activeMediaOfPane,
-  canvasModeOfPane,
   canvasModeOfTab,
   derivationOfPane,
-  surfaceForPane,
   tabOfPane,
 } from "../canvas/canvas-surface";
 import {
@@ -68,27 +65,16 @@ import {
 import { openMenu } from "../surfaces/menu";
 import { emptyPaneContextView, mountPaneContextSurface } from "../surfaces/pane-context";
 import { PANE_SELECTOR } from "../surfaces/pane-grid";
-import { diffShowsCode } from "../canvas/diff-view";
 import { backTargetOf, goBack } from "../workspace/workspace-back";
-import { homeWorkspaceOfTabId } from "../workspace/workspace-ids";
 import type { WorkspaceId } from "../workspace/workspace-ids";
-import { canRenderComparison } from "./git-diff-open";
-import { shell } from "../shell";
 import { paneRegion } from "../ui/regions";
-import { isNumber, isString } from "@jxsuite/schema/guards";
+import { isString } from "@jxsuite/schema/guards";
 import {
   CANVAS_VIEWS,
-  fitToScreen,
-  getFit,
-  resetZoom,
   canvasBaseViewOf,
   canvasBaseViewsFor,
   previewStateOf,
   setCanvasView,
-  setEditZoom,
-  setFit,
-  setUserZoom,
-  stageZoom,
 } from "../canvas/canvas-utils";
 import { editorKindOf, editorKindsOf, modeForEditorKind } from "../tabs/tab";
 import { collabState } from "../collab/collab-state";
@@ -104,7 +90,7 @@ import { isSchemeQuery } from "../utils/canvas-media";
 import { dynamicRouteParams, loadParamLabels, loadParamValues, pagePathsDef } from "../page-params";
 import { componentPropEntries, isComponentDoc } from "../component-props";
 import { mediaDisplayName } from "./shared";
-import type { CanvasView, FitMode } from "../canvas/canvas-utils";
+import type { CanvasView } from "../canvas/canvas-utils";
 import { EDITOR_KIND_LABELS } from "../commands/context";
 import type { EditorKind } from "../commands/context";
 import type { ParamLabels, ParamValues } from "../page-params";
@@ -177,7 +163,7 @@ export interface PaneContextCtx {
  * Where each pane's chrome renders. One entry per drawn cell.
  *
  * A Map rather than a `let _host`, for the reason the whole grid exists: this bar states one pane's
- * editor kind, canvas view, rendering context and zoom, and two panes have two of each.
+ * editor kind, canvas view and rendering context, and two panes have two of each.
  * `panels/pane-grid.ts` attaches a cell's `.pane-chrome` as the cell is built.
  */
 const _hosts = new Map<string, HTMLElement>();
@@ -298,17 +284,15 @@ export function mount(host: HTMLElement, ctx: PaneContextCtx) {
   _scope = effectScope();
   _scope.run(() => {
     effect(() => {
-      /* EVERY pane's tab. The bar states its own pane's editor kind, canvas view, rendering
-         context and zoom, so the unfocused one has to repaint when ITS document moves — tracking
+      /* EVERY pane's tab. The bar states its own pane's editor kind, canvas view and rendering
+         context, so the unfocused one has to repaint when ITS document moves — tracking
          `activeTab` alone left the side pane's bar frozen describing whatever it last drew. */
       for (const pane of workspace.panes) {
         /* NO DERIVATION READS HERE, and the reason is one rule rather than a tally. `render()`
            runs inside this effect and projects EVERY attached pane, so whatever the projection
            reads is ALREADY a dependency and restating it as a `void` line chooses nothing:
            `derived.kind` picks the bar's shape, `activeMediaOfPane` reads `kind`/`preset`/`media`
-           for the Context axis, `zoomOf` reads `derived.zoom` for the pod, and {@link podFor} asks
-           `canvasModeOfPane`, which for a lens answers `derived.mode` and decides whether the pod
-           is drawn at all — pinned by lens-chrome's "the pod is drawn from the LENS's mode".
+           for the Context axis.
            `status` and `reason` really are unread here, so tracking them only repainted this bar
            for a change it does not draw. The stage is the surface that needs those two declared,
            because `renderCanvasImpl` runs in a rAF rather than in an effect — see `studio.ts`. */
@@ -324,7 +308,6 @@ export function mount(host: HTMLElement, ctx: PaneContextCtx) {
         void tab.capabilities.modes;
         void tab.session.ui.activeMedia;
         void tab.session.ui.canvasMode;
-        void tab.session.ui.editZoom;
         void tab.session.ui.featureToggles;
         void tab.session.ui.preview;
         void tab.session.ui.previewColorScheme;
@@ -332,7 +315,6 @@ export function mount(host: HTMLElement, ctx: PaneContextCtx) {
         void tab.session.ui.previewParams;
         void tab.session.ui.previewProps;
         void tab.session.ui.showLayout;
-        void tab.session.ui.zoom;
         // The read-only banner (`collab.md` §4) is part of this chrome, so its two facts are
         // Tracked here too: a peer downgrading you mid-session must make the sentence appear, not
         // Wait for the next zoom.
@@ -672,8 +654,8 @@ export function presetRows(paneId: string): PresetRow[] {
  *
  * There is no takeover branch. Opening a function body or a formula reveals the dock's Logic tab
  * (§16.3) and leaves the canvas standing underneath it, so the axes still describe the document on
- * the stage and the zoom pod still has something to zoom. Suppressing them while the dock was open
- * removed the controls for the very document the reader could still see.
+ * the stage. Suppressing them while the dock was open removed the controls for the very document
+ * the reader could still see.
  *
  * **There is no breadcrumb either.** The address is the jump bar's job — `panels/jump-bar.ts`, the
  * status bar's trail — and the Logic tab's own header carries the Close. This bar drew a second
@@ -684,8 +666,7 @@ function viewFor(tab: Tab, paneId: string, ctx: PaneContextCtx): PaneContextView
      `ctx.setCanvasMode(tab, …)`, and that tab belongs to the pane beside this one — so a control
      drawn in the lens would flip the document the author is editing. The lens's own mode is the
      derivation, chosen when it was created and changed by re-deriving. The Context axis stays as
-     a static summary for the same reason (it writes `updateUi(tab, …)`), and the zoom pod stays
-     because zoom is the one view fact a lens genuinely owns. */
+     a static summary for the same reason (it writes `updateUi(tab, …)`). */
   const lens = derivationOfPane(paneId)?.kind === "lens";
   const readOnly = collabState(tab).active && collabState(tab).readOnly;
   const view: PaneContextView = {
@@ -702,7 +683,6 @@ function viewFor(tab: Tab, paneId: string, ctx: PaneContextCtx): PaneContextView
        in, twice on one screen, about a document it does not own. */
     bannerState: !lens && readOnly ? "shown" : "hidden",
     barMode: lens ? "lens" : "full",
-    ...podFor(tab, paneId),
   };
   if (lens) {
     view.summary = lensSummary(paneId);
@@ -748,7 +728,6 @@ function baseView(paneId: string): PaneContextView {
   return {
     ...emptyPaneContextView(),
     contextRegion: paneRegion(paneId, "context"),
-    zoomRegion: paneRegion(paneId, "zoom"),
   };
 }
 
@@ -1052,90 +1031,6 @@ function localeGroup(locale: PaneLocale | null): Partial<PaneContextView> {
   };
 }
 
-// ─── The floating zoom pod ───────────────────────────────────────────────────
-
-/** The fit entries the pod offers, in menu order. `1` is "actual size", a numeric fit. */
-const FIT_CHOICES: readonly { value: string; fit: FitMode; label: string }[] = [
-  { fit: "page", label: "Fit page", value: "page" },
-  { fit: "width", label: "Fit width", value: "width" },
-  { fit: 1, label: "Actual size", value: "actual" },
-  { fit: "none", label: "No fit", value: "none" },
-];
-
-/** Which entry the pod shows as chosen — a numeric fit reads as "actual size" only at 1. */
-function fitChoiceValue(fit: FitMode): string {
-  if (isNumber(fit)) {
-    return fit === 1 ? "actual" : "";
-  }
-  return fit;
-}
-
-/** The modes whose stage is the panzoom surface — the only ones with a fit to state. */
-const STAGE_ZOOM_MODES = new Set(["design", "stylebook", "git-diff"]);
-
-/**
- * The path this pane is comparing, or "" before it has a comparison.
- *
- * Resolved exactly as `canvas-render.ts`'s git-diff branch resolves the comparison it draws: a Diff
- * lens carries its own, and every other pane draws the Source Control panel's one app-level slot.
- * Both halves are reactive, so the pod repaints when either one lands or retargets.
- */
-function comparisonPathOf(paneId: string): string {
-  const derived = derivationOfPane(paneId);
-  const state =
-    derived?.kind === "lens" && derived.preset === "diff" ? derived.diff : shell.git.diffState;
-  return state?.filePath ?? "";
-}
-
-/**
- * Zoom and fit, floating over the canvas bottom-right.
- *
- * Two surfaces, one control: `edit` drives the content-reflow `editZoom`, while design / Stylebook
- * / git-diff render on the panzoom surface and drive `ui.zoom` — and only the panzoom surface has a
- * fit, because a fit is a statement about an artboard. Preview is deliberately absent: its frame is
- * a real viewport that scrolls its own document, so there is nothing to zoom. So is a comparison's
- * CODE half, for the same reason: see below.
- */
-function podFor(tab: Tab, paneId: string): Partial<PaneContextView> {
-  /* THIS pane's mode. `ctx.getCanvasMode()` answers for the focused pane, so the unfocused pod
-     offered an `editZoom` control over a stage drawing Design — and hid the fit that stage has. */
-  const mode = canvasModeOfPane(paneId);
-  /* And THIS pane's stage. Every zoom verb below takes a surface: without one they all defaulted to
-     `activeCanvasSurface()`, so the side pane's `+` magnified the primary's document by a factor
-     computed from the side pane's own zoom, and its "100%" button reset the primary. */
-  const surface = surfaceForPane(paneId);
-  if (mode === "edit") {
-    const { editZoom } = tab.session.ui;
-    return { podState: "shown", zoomLabel: `${Math.round(editZoom * 100)}%` };
-  }
-  if (!STAGE_ZOOM_MODES.has(mode)) {
-    return { podState: "hidden" };
-  }
-  /* NO POD OVER A COMPARISON'S CODE HALF. That half is one Monaco diff editor filling the stage,
-     with no panzoom surface under it, so `applyTransform` and `resetZoom` return early and + / − /
-     100% / Fit moved nothing but their own label. And it sat on Monaco's own scrollbar and diff
-     overview ruler at the stage's right edge, which no native measurement can see. The predicate is
-     the one the renderer chose the half with, so the two cannot disagree; `diff-view.ts` is not
-     reactive, so the Visual/Code switch repaints this chrome itself (`diff-toolbar.ts`). */
-  if (mode === "git-diff" && diffShowsCode(paneId, canRenderComparison(comparisonPathOf(paneId)))) {
-    return { podState: "hidden" };
-  }
-  /* NOR OVER REVIEW CHANGES. Its comparison is framed by the publish column, whose primary button
-     is where the pod would float, and the boards there are fitted to their middle column on
-     arrival; the wheel and its modifier still zoom them (studio.md §22.8). */
-  if (mode === "git-diff" && homeWorkspaceOfTabId(tab.id) === "publish") {
-    return { podState: "hidden" };
-  }
-  const zoom = stageZoom(surface);
-  return {
-    fitOptions: FIT_CHOICES.map(({ label, value }) => ({ label, value })),
-    fitState: "shown",
-    fitValue: fitChoiceValue(getFit(surface)),
-    podState: "shown",
-    zoomLabel: `${Math.round(zoom * 100)}%`,
-  };
-}
-
 // ─── What the controls do ────────────────────────────────────────────────────
 
 /**
@@ -1178,20 +1073,6 @@ function actionsFor(paneId: string, ctx: PaneContextCtx): PaneContextActions {
       }
       tab.session.ui.preview = false;
       ctx.setCanvasMode(tab, mode);
-    },
-    chooseFit: (value) => {
-      const choice = FIT_CHOICES.find((entry) => entry.value === value);
-      if (!choice) {
-        return;
-      }
-      const surface = surfaceForPane(paneId);
-      // "Fit page" from the control may magnify a small artboard past life size; the fit APPLIED
-      // On arrival never does. Same declared state, two caps — see fitToScreen's maxZoom.
-      if (choice.fit === "page") {
-        fitToScreen({ surface });
-        return;
-      }
-      setFit(choice.fit, surface);
     },
     chooseView: (value) => {
       const tab = tabNow();
@@ -1267,32 +1148,6 @@ function actionsFor(paneId: string, ctx: PaneContextCtx): PaneContextActions {
       const preview = previewStateOf(tab);
       const current = canvasBaseViewOf(tab);
       setCanvasView(tab, preview.on ? (current ?? "edit") : "preview", ctx.setCanvasMode);
-    },
-    zoomIn: () => {
-      const tab = tabNow();
-      const surface = surfaceForPane(paneId);
-      if (canvasModeOfPane(paneId) === "edit") {
-        setEditZoom((tab?.session.ui.editZoom ?? 1) * 1.2, surface);
-        return;
-      }
-      setUserZoom(stageZoom(surface) * 1.2, surface);
-    },
-    zoomOut: () => {
-      const tab = tabNow();
-      const surface = surfaceForPane(paneId);
-      if (canvasModeOfPane(paneId) === "edit") {
-        setEditZoom((tab?.session.ui.editZoom ?? 1) / 1.2, surface);
-        return;
-      }
-      setUserZoom(stageZoom(surface) / 1.2, surface);
-    },
-    zoomReset: () => {
-      const surface = surfaceForPane(paneId);
-      if (canvasModeOfPane(paneId) === "edit") {
-        setEditZoom(1, surface);
-        return;
-      }
-      resetZoom(surface);
     },
   };
 }

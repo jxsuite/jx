@@ -1890,6 +1890,22 @@ describe("the drag island", () => {
     expect(rowFor("beta.md").dataset.dragging).toBeUndefined();
   });
 
+  test("a press on a row's twisty is never a drag, so a drifting click still toggles it", async () => {
+    await seededTree();
+    const drag = dnd.draggables.find((d) => d.element?.dataset?.value === "beta.md");
+    const twisty = document.createElement("span");
+    twisty.setAttribute("part", "twisty");
+    const orig = document.elementFromPoint;
+    try {
+      document.elementFromPoint = () => twisty;
+      expect(drag.canDrag({ input: { clientX: 1, clientY: 1 } })).toBe(false);
+      document.elementFromPoint = () => drag.element;
+      expect(drag.canDrag({ input: { clientX: 1, clientY: 1 } })).toBe(true);
+    } finally {
+      document.elementFromPoint = orig;
+    }
+  });
+
   test("directory drop target accept/reject logic", async () => {
     await seededTree();
     const target = rowTarget("assets");

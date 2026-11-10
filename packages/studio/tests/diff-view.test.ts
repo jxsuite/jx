@@ -11,11 +11,13 @@ import {
   clearDiffView,
   diffChangeCount,
   diffChangeMapOf,
+  diffRenderableOf,
   diffShowsCode,
   diffStepOf,
   diffViewOf,
   resetDiffViews,
   setDiffChangeMap,
+  setDiffRenderable,
   setDiffView,
   stepDiff,
 } from "../src/canvas/diff-view";
@@ -137,7 +139,7 @@ describe("defaults", () => {
   });
 });
 
-/* The renderer's branch, its mount guard and the zoom pod all ask this one question. Two spellings
+/* The renderer's branch, its mount guard and the status bar's zoom field all ask this one question. Two spellings
    of it once left an empty stage; a third would put the pod over a Monaco it cannot zoom. */
 describe("which half a pane draws", () => {
   test("a renderable file shows the half the author chose, per pane", () => {
@@ -150,5 +152,28 @@ describe("which half a pane draws", () => {
   test("a file with no visual half is Code whatever the switch says", () => {
     expect(diffViewOf("primary")).toBe("visual");
     expect(diffShowsCode("primary", false)).toBe(true);
+  });
+});
+
+describe("renderability", () => {
+  test("an unknown pane is renderable, so a bar drawn before any pass still offers a choice", () => {
+    expect(diffRenderableOf("nowhere")).toBe(true);
+  });
+
+  test("is stored per pane and cleared with the rest of the pane's review state", () => {
+    setDiffRenderable("primary", false);
+    expect(diffRenderableOf("primary")).toBe(false);
+    expect(diffRenderableOf("secondary")).toBe(true);
+    clearDiffView("primary");
+    expect(diffRenderableOf("primary")).toBe(true);
+    setDiffRenderable("primary", false);
+    resetDiffViews();
+    expect(diffRenderableOf("primary")).toBe(true);
+  });
+
+  test("is independent of the change map, which only the Visual half computes", () => {
+    setDiffRenderable("primary", true);
+    setDiffChangeMap("primary", null);
+    expect(diffRenderableOf("primary")).toBe(true);
   });
 });

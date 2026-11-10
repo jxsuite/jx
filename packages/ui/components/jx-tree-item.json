@@ -181,8 +181,13 @@
       "justifyContent": "center",
       "inlineSize": "14px",
       "flex": "none",
+      "alignSelf": "stretch",
       "color": "var(--jx-fg-dim)",
       "--jx-icon-size": "12px"
+    },
+    "&[aria-expanded] [part=\"twisty\"]": {
+      "$description": "A row that can open answers a press on its twisty, so it says so: the cursor is `pointer` rather than whatever the row inherits (a host that makes the whole row a drag handle draws `grab`, and a chevron that looks grabbable is an invitation to start a drag instead of a toggle). The box is the row's whole height (`align-self: stretch` above), because a click target as tall as a 12px glyph loses the press to a pixel of vertical drift. A leaf has no `aria-expanded` and keeps its row's cursor: its dead cell is not a control.",
+      "cursor": "pointer"
     },
     "& [part=\"label\"]": {
       "flex": "1",

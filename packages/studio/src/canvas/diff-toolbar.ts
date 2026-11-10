@@ -27,6 +27,8 @@ import type { AnyCommand } from "../commands/registry";
 import {
   diffChangeCount,
   diffChangeMapOf,
+  diffRenderableOf,
+  diffShowsCode,
   diffStepOf,
   diffViewOf,
   setDiffView,
@@ -81,14 +83,15 @@ export function setDiffRepaint(repaint: (paneId: string) => void): void {
 }
 
 /**
- * How this module asks the pane CHROME to redraw, injected by `studio.ts`.
+ * How this module asks the status bar to redraw, injected by `studio.ts`.
  *
- * The zoom pod is not drawn over the Code half (`panels/pane-context.ts`, `podFor`), and the half
- * lives in `diff-view.ts`, which is deliberately not reactive — so nothing would tell the pod the
- * half had changed, and it would go on floating over Monaco until something unrelated repainted the
- * bar. Injected rather than imported for {@link setDiffRepaint}'s reason: the chrome module is far
- * outside this one's graph, and `studio.ts` is the one place that already holds both. Null until
- * then, which is only ever a test that drives the toolbar without the shell.
+ * The status bar's zoom field is not drawn over the Code half (`panels/zoom-control.ts`), and the
+ * half lives in `diff-view.ts`, which is deliberately not reactive — so nothing would tell the
+ * field the half had changed, and it would go on offering a zoom for a Monaco that has none until
+ * something unrelated repainted the bar. Injected rather than imported for {@link setDiffRepaint}'s
+ * reason: the chrome module is far outside this one's graph, and `studio.ts` is the one place that
+ * already holds both. Null until then, which is only ever a test that drives the toolbar without
+ * the shell.
  */
 let _chromeRepaint: (() => void) | null = null;
 
@@ -100,7 +103,7 @@ export function setDiffChromeRepaint(repaint: () => void): void {
 /**
  * Rebuild the whole stage, because Visual and Code are different renders rather than different
  * styling: one draws two artboards on a pan/zoom surface, the other one Monaco. And redraw the
- * pane's chrome after it, because whether the zoom pod is drawn at all depends on the half.
+ * status bar after it, because whether its zoom field is drawn at all depends on the half.
  *
  * `prevCanvasMode` is nulled first — the documented "this stage's structure is stale" signal, the
  * same one `resetCanvasView` ends on. Without it the repaint sees `modeChanged === false` (the
@@ -239,28 +242,33 @@ export function diffToolbarView(paneId: string): DiffToolbarView {
      view sat over a screenful of red and green saying "No changes, document settings changed".
      Monaco owns the line diff and its own navigation there, so the toolbar states what it is
      showing and steps out of the way. */
-  const code = diffViewOf(paneId) === "code" || map === null;
+  const renderable = diffRenderableOf(paneId);
+  const code = diffShowsCode(paneId, renderable);
   const total = code ? 0 : diffChangeCount(paneId);
   const index = code ? -1 : diffStepOf(paneId);
   const countLabel = code
     ? "Changed lines are marked"
-    : total === 0
-      ? "No changes"
-      : index < 0
-        ? `${total} ${total === 1 ? "change" : "changes"}`
-        : `${index + 1} of ${total}`;
+    : map === null
+      ? "Changes not marked"
+      : total === 0
+        ? "No changes"
+        : index < 0
+          ? `${total} ${total === 1 ? "change" : "changes"}`
+          : `${index + 1} of ${total}`;
   const showing = diffViewOf(paneId);
   return {
     codeChecked: showing === "code" ? "true" : "false",
     countLabel,
-    degraded: !code && map.degraded ? "shown" : "hidden",
+    degraded: !code && map?.degraded === true ? "shown" : "hidden",
     nextDisabled: index >= total - 1,
     prevDisabled: index <= 0,
-    rootKeys: !code && map.rootKeys.length > 0 ? "shown" : "hidden",
+    rootKeys: !code && map !== null && map.rootKeys.length > 0 ? "shown" : "hidden",
     rootKeysTitle: `Changed: ${map?.rootKeys.join(", ") ?? ""}`,
     stepper: total === 0 ? "hidden" : "shown",
-    // A file the canvas cannot render arrives with a null map: there is no visual half to offer.
-    viewMode: map === null ? "static" : "choice",
+    /* Drawn from RENDERABILITY, never from whether a change map exists: the map is only computed by
+       the Visual branch, so Code entered first (or after a non-document change) has none while the
+       file still has a visual half to go back to. specs/studio.md §21.3. */
+    viewMode: renderable ? "choice" : "static",
     visualChecked: showing === "visual" ? "true" : "false",
   };
 }

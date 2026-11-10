@@ -19,6 +19,7 @@ import {
   hover,
   isRefusing,
   mountOutline,
+  openEveryRow,
   needRow,
   outlineHost,
   part,
@@ -34,7 +35,7 @@ import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { activeTab, closeAllTabs } from "../src/workspace/workspace";
 import { pathKey } from "../src/store";
 import { childArray } from "@jxsuite/schema/doc-ops";
-import { view } from "../src/view";
+import { closeOutlineKey } from "../src/panels/outline-expansion";
 
 import type { JxMutableNode } from "@jxsuite/schema/types";
 import type { JxPath } from "../src/state";
@@ -54,7 +55,13 @@ let host: HTMLElement;
 const log = { dnd: 0, rerenders: 0 };
 
 async function draw(): Promise<HTMLElement> {
+  openEveryRow(host);
   return mountOutline(host, log);
+}
+
+/** The active tab's open record, which is the whole of what the Outline remembers. */
+function openRecord(): Record<string, boolean> {
+  return activeTab.value!.session.ui.outlineOpen;
 }
 
 function at(path: JxPath): HTMLElement {
@@ -432,13 +439,14 @@ describe("role=tree and the keyboard model", () => {
   });
 
   test("→ expands a collapsed row, then descends into it", async () => {
-    view._layersCollapsed = new Set([pathKey(["children", 0])]);
+    await draw();
+    closeOutlineKey(activeTab.value!, pathKey(["children", 0]));
     await draw();
     expect(at(["children", 0]).getAttribute("aria-expanded")).toBe("false");
 
     press(at(["children", 0]), "ArrowRight");
     await flush();
-    expect(view._layersCollapsed!.has(pathKey(["children", 0]))).toBe(false);
+    expect(openRecord()[pathKey(["children", 0])]).toBe(true);
     expect(at(["children", 0]).getAttribute("aria-expanded")).toBe("true");
 
     press(at(["children", 0]), "ArrowRight");
@@ -448,9 +456,10 @@ describe("role=tree and the keyboard model", () => {
 
   test("→ on a leaf does nothing", async () => {
     await draw();
+    const before = { ...openRecord() };
     press(at(["children", 2]), "ArrowRight");
     await flush();
-    expect(view._layersCollapsed!.size).toBe(0);
+    expect(openRecord()).toEqual(before);
     expect(activeTab.value!.session.selection).toEqual([]);
   });
 
@@ -458,7 +467,7 @@ describe("role=tree and the keyboard model", () => {
     await draw();
     press(at(["children", 0]), "ArrowLeft");
     await flush();
-    expect(view._layersCollapsed!.has(pathKey(["children", 0]))).toBe(true);
+    expect(openRecord()[pathKey(["children", 0])]).toBeUndefined();
     expect(row(host, pathKey(["children", 0, "children", 0]))).toBeNull();
 
     press(at(["children", 0]), "ArrowLeft");
@@ -765,7 +774,7 @@ describe("clicking a row", () => {
     const toggle = part(at(["children", 0]), "twisty");
     toggle.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
     await flush();
-    expect(view._layersCollapsed!.has(pathKey(["children", 0]))).toBe(true);
+    expect(openRecord()[pathKey(["children", 0])]).toBeUndefined();
     expect(activeTab.value!.session.selection).toEqual([]);
   });
 
@@ -810,7 +819,7 @@ describe("clicking a row", () => {
        click could touch the collapsed set is by taking a key OUT of it, and a set that started
        empty cannot tell a working guard from a missing one. The key is here because the row had
        children when it was last collapsed and an edit has since taken them away. */
-    view._layersCollapsed = new Set([pathKey(["children", 2])]);
+    activeTab.value!.session.ui.outlineOpen[pathKey(["children", 2])] = true;
     await draw();
     const toggle = part(at(["children", 2]), "twisty");
     expect(toggle.children).toHaveLength(0);
@@ -819,7 +828,7 @@ describe("clicking a row", () => {
     await flush();
 
     // The dead 14px in front of a row with nothing under it is a click that does nothing at all.
-    expect([...view._layersCollapsed!]).toEqual([pathKey(["children", 2])]);
+    expect(openRecord()[pathKey(["children", 2])]).toBe(true);
     expect(activeTab.value!.session.selection).toEqual([]);
   });
 });

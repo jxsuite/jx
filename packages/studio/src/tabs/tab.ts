@@ -127,6 +127,21 @@ export interface TabUi {
    */
   dataRows: Record<string, boolean>;
   /**
+   * Which Outline rows are OPEN, by `pathKey`. A row is open only when its key is here, so an empty
+   * record is a tree closed to its top level; the document root's key (`""`) is seeded open.
+   *
+   * PER TAB, for the reason `dataRows` is: the keys are paths, and a module-global record would
+   * have opened one document's branches in the next. The rule that follows the selection lives in
+   * `panels/outline-expansion.ts`.
+   */
+  outlineOpen: Record<string, boolean>;
+  /**
+   * The selection the Outline last opened its branches for (the JSON of the selection set), or the
+   * empty string before there has been one. A repaint that leaves the selection where it was is not
+   * the event that opens anything, which is what lets a branch the reader closed stay closed.
+   */
+  outlineSeen: string;
+  /**
    * How far each truncation marker in a Data row's value tree has been opened, keyed by tree path.
    *
    * PER TAB, for the reason `dataRows` is: the paths are entry names, and a module-global record
@@ -332,6 +347,8 @@ function createDefaultUi(canvasMode: string, preview = false): TabUi {
     styleFilter: "",
     styleSections: {},
     dataRows: {},
+    outlineOpen: { "": true },
+    outlineSeen: "",
     dataLimits: {},
     styleShorthands: {},
     zoom: 1,

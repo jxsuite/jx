@@ -13,15 +13,14 @@
  *
  * What CAN fail here is the set of controls: a lens must not offer the two axes that WRITE
  * (`ctx.setCanvasMode(tab, …)` on a tab the pane beside it owns), must not draw the writing banner
- * (its door belongs to the pane that owns the entry), must keep the zoom pod (zoom is the one view
- * fact a lens owns), and must draw a derivation chip where an ordinary pane draws tab chips.
+ * (its door belongs to the pane that owns the entry), and must draw a derivation chip where an
+ * ordinary pane draws tab chips. (Zoom, the one view fact a lens owns, is the status bar's field
+ * now, `statusbar-zoom.test.ts`.)
  */
 import { flush, installMockPlatform, resetStudioState, resetWorkspaceWithTab } from "./harness";
-import { hintOf } from "./kit-readers";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { documents } from "@jxsuite/ui/documents";
 import type { Tab } from "../src/tabs/tab";
-import type { PaneDerivation } from "../src/workspace/workspace";
 
 const paneContext = await import("../src/panels/pane-context");
 const tabStrip = await import("../src/panels/tab-strip");
@@ -46,7 +45,6 @@ const { paneCommands } = await import("../src/workspace/workspace");
 const { collabState } = await import("../src/collab/collab-state");
 const { activateTab, moveTabToPane } = await import("../src/workspace/workspace");
 const { shell } = await import("../src/shell");
-const { resetDiffViews, setDiffView } = await import("../src/canvas/diff-view");
 
 type Ctx = Parameters<typeof paneContext.mount>[1];
 
@@ -65,15 +63,6 @@ function makeCtx() {
       }
     }),
   } satisfies Ctx;
-}
-
-/** The lens record `paneId` carries, or a failure: every caller set one up with `lensGrid()`. */
-function lensOf(paneId: string): Extract<PaneDerivation, { kind: "lens" }> {
-  const derived = derivationOfPane(paneId);
-  if (derived?.kind !== "lens") {
-    throw new Error(`${paneId} is not drawing a lens`);
-  }
-  return derived;
 }
 
 /** The first HTML element under `scope` matching `selector`, or a failure naming the selector. */
@@ -169,23 +158,6 @@ function chromePart(host: HTMLElement, name: string): HTMLElement | null {
   return host.querySelector<HTMLElement>(`[part="${name}"]`);
 }
 
-/** What the pod's reset button reads — the scale this pane is drawing at. */
-function zoomLabelOf(host: HTMLElement): string | undefined {
-  return chromePart(host, "zoom-label")?.querySelector('[part="label"]')?.textContent.trim();
-}
-
-/** One of the pod's two write controls, addressed by the tooltip the author reads. */
-function zoomControl(host: HTMLElement, title: string): HTMLElement {
-  const button = [...host.querySelectorAll('[part="pod"] jx-action-button')].find((el) =>
-    hintOf(el)?.startsWith(title),
-  );
-  expect(button).toBeDefined();
-  if (!(button instanceof HTMLElement)) {
-    throw new TypeError(`no zoom control is titled ${title}`);
-  }
-  return button;
-}
-
 beforeEach(() => {
   closeAllTabs();
   resetStudioState();
@@ -235,41 +207,15 @@ describe("the context bar in a lens pane", () => {
     expect(chromePart(sideHost, "bar")).not.toBeNull();
   });
 
-  test("keeps the zoom pod, reading the LENS's own scale and not the source tab's", async () => {
+  test("draws no zoom pod: zoom is the status bar's field, which reads the lens's own scale", async () => {
     lensGrid();
-    // A breakpoint lens: Code has no pan-zoom in either pane, so the pod is absent there for a
-    // Reason that has nothing to do with derivation.
     const derived = derivationOfPane(SECONDARY_PANE)!;
     Object.assign(derived, { media: null, mode: "design", preset: "breakpoint", zoom: 0.4 });
     paneContext.attachPaneChromeHost(SECONDARY_PANE, sideHost);
     paneContext.mount(primaryHost, makeCtx());
     await flush(8);
-
-    expect(chromePart(sideHost, "pod")).not.toBeNull();
-    /* `session.ui.zoom` is per-TAB and the lens shares the source pane's tab, so a pod reading it
-       would report the desktop pane's scale and divide the wrong number on the minus button. */
-    expect(zoomLabelOf(sideHost)).toBe("40%");
-  });
-
-  /* …AND IT REPAINTS WHEN THE SCALE MOVES. The test above sets `zoom` BEFORE the mount, so it
-     proves the READ and says nothing about the subscription — and the subscription is the half
-     that can be wrong: `derived.zoom` is not on the tab, so none of the fifteen `tab.session.ui.*`
-     reads in this bar's effect track it. Untracked, the pod reports the scale the lens had one
-     interaction ago and the author's next ⌘− divides a stale number. Zoom is the ONE view fact a
-     lens owns, so it is also the only one this can happen to. */
-  test("the zoom pod follows the lens's scale — it is a tracked input, not a first-paint read", async () => {
-    lensGrid();
-    const derived = derivationOfPane(SECONDARY_PANE)!;
-    Object.assign(derived, { media: null, mode: "design", preset: "breakpoint", zoom: 1 });
-    paneContext.attachPaneChromeHost(SECONDARY_PANE, sideHost);
-    paneContext.mount(primaryHost, makeCtx());
-    await flush(8);
-    expect(zoomLabelOf(sideHost)).toBe("100%");
-
-    lensOf(SECONDARY_PANE).zoom = 0.5;
-    await flush();
-
-    expect(zoomLabelOf(sideHost)).toBe("50%");
+    expect(chromePart(sideHost, "pod")).toBeNull();
+    expect(chromePart(sideHost, "zoom-label")).toBeNull();
   });
 
   /* FINDING 10b. The trigger WAS drawn in a lens, and a test locked it in. From there every
@@ -1228,100 +1174,5 @@ describe("what a lens does NOT draw", () => {
       state.active = false;
       state.readOnly = false;
     }
-  });
-});
-
-describe("what a lens's chrome reads about ITS pane", () => {
-  /* THE POD IS DRAWN FROM `derived.mode`, and the bar's own comment used to deny it — it listed
-     `mode` among the derivation fields "no template here reads at all". `zoomPodTpl` asks
-     `canvasModeOfPane`, which for a lens answers the derivation's mode, and that answer decides
-     whether the pod exists: `source` has no pan-zoom surface, `design` has one. Same pane, same
-     tab, one field changed. The deletion of the `void` reads was still right — `render()` runs
-     inside the bar's effect, so a value a template reads is already a dependency, which this test
-     also demonstrates by not touching anything else. */
-  test("the pod is drawn from the LENS's mode, not from the tab's", async () => {
-    lensGrid();
-    paneContext.attachPaneChromeHost(SECONDARY_PANE, sideHost);
-    paneContext.mount(primaryHost, makeCtx());
-    await flush(8);
-    // A Code lens: no panzoom surface, so no pod.
-    expect(sideHost.querySelectorAll('[part="pod"]')).toHaveLength(0);
-
-    lensOf(SECONDARY_PANE).mode = "design";
-    await flush();
-
-    expect(sideHost.querySelectorAll('[part="pod"]')).toHaveLength(1);
-  });
-
-  /* A DIFF LENS CARRIES ITS OWN COMPARISON, and the pod asks about that one — the resolution
-     `canvas-render.ts`'s git-diff branch makes. Asked of `shell.git.diffState` instead, a lens
-     comparing a page beside a Source Control diff of a stylesheet would lose its pod over two
-     artboards it can zoom. Its Code half has nothing to zoom, exactly as the primary's does. */
-  test("a Diff lens's pod follows ITS comparison and ITS half", async () => {
-    lensGrid();
-    const derived = derivationOfPane(SECONDARY_PANE)!;
-    const comparison = (filePath: string) => ({
-      currentContent: "{}",
-      filePath,
-      fileStatus: "M",
-      originalContent: "{}",
-    });
-    // The app-level slot holds a file with no visual half; the lens compares a page.
-    shell.git.diffState = comparison("styles/site.css");
-    Object.assign(derived, {
-      diff: comparison("pages/index.json"),
-      mode: "git-diff",
-      preset: "diff",
-    });
-    try {
-      paneContext.attachPaneChromeHost(SECONDARY_PANE, sideHost);
-      paneContext.mount(primaryHost, makeCtx());
-      await flush(8);
-      expect(sideHost.querySelectorAll('[part="pod"]')).toHaveLength(1);
-
-      // The lens's own half, keyed by ITS pane.
-      setDiffView(SECONDARY_PANE, "code");
-      paneContext.render();
-      await flush();
-      expect(sideHost.querySelectorAll('[part="pod"]')).toHaveLength(0);
-
-      // And its own file: back to Visual, but now comparing a stylesheet.
-      setDiffView(SECONDARY_PANE, "visual");
-      Object.assign(derived, { diff: comparison("styles/other.css") });
-      await flush();
-      expect(sideHost.querySelectorAll('[part="pod"]')).toHaveLength(0);
-    } finally {
-      shell.git.diffState = null;
-      resetDiffViews();
-    }
-  });
-
-  /* THE BUTTONS TAKE A SURFACE, not just the readout. Every zoom verb defaults its `surface`
-     argument to `activeCanvasSurface()` — the FOCUSED pane's — so an unfocused lens's `−` read the
-     focused pane's scale, divided that, and wrote the result onto the focused pane's tab: the
-     author pressed zoom-out on the projection and the document beside it shrank. The readout is
-     covered above; these are the two controls that WRITE, and they are separate expressions. */
-  test("the zoom buttons drive THIS pane's stage, not the focused one", async () => {
-    const page = lensGrid();
-    const derived = derivationOfPane(SECONDARY_PANE)!;
-    Object.assign(derived, { media: null, mode: "design", preset: "breakpoint", zoom: 1 });
-    page.session.ui.zoom = 2;
-    paneContext.attachPaneChromeHost(SECONDARY_PANE, sideHost);
-    paneContext.mount(primaryHost, makeCtx());
-    await flush(8);
-    // The keyboard is in the pane that OWNS the document, which is the whole hazard.
-    expect(workspace.activePaneId).toBe(PRIMARY_PANE);
-
-    const lensZoom = () => lensOf(SECONDARY_PANE).zoom;
-
-    zoomControl(sideHost, "Zoom out").dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    await flush();
-    expect(lensZoom()).toBeCloseTo(1 / 1.2, 5);
-    expect(page.session.ui.zoom).toBe(2);
-
-    zoomControl(sideHost, "Zoom in").dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    await flush();
-    expect(lensZoom()).toBeCloseTo(1, 5);
-    expect(page.session.ui.zoom).toBe(2);
   });
 });

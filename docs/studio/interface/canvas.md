@@ -3,11 +3,15 @@ title: "The canvas"
 description: "Working on the Jx Studio canvas: pan, zoom, selection, the block action bar, inserting, drag and drop, and the context menu."
 spec:
   - studio.md#4.1
+  - studio.md#4.3
+  - studio.md#16.2
   - studio.md#4.4
   - studio.md#6.7
   - studio-ui-guidelines.md#8.1
 code:
   - packages/site/src/site-style.ts
+  - packages/studio/src/panels/zoom-control.ts
+  - packages/studio/src/surfaces/statusbar.ts
   - packages/studio/src/canvas/edit-width-drag.ts
   - packages/studio/src/surfaces/canvas-stage.ts
   - packages/studio/src/editor/shortcuts.ts
@@ -40,12 +44,14 @@ In **Edit** the canvas is a single centered column with a handle on each side. D
 In **Design** and **Project Styles** the canvas is an open surface you move around:
 
 - **Pan** with the mouse wheel or trackpad. Hold :kbd[Shift] while scrolling to pan sideways, or drag with the middle mouse button.
-- **Zoom** by holding :kbd[⌘] (macOS) or :kbd[Ctrl] (Windows/Linux) and scrolling; the canvas zooms toward your cursor, so whatever is under the pointer stays under it. :kbd[⌘=] / :kbd[Ctrl+=] zooms in, :kbd[⌘-] / :kbd[Ctrl+-] zooms out, and :kbd[⌘0] / :kbd[Ctrl+0] resets to 100%. The chords and the zoom pod's buttons zoom around the middle of the view.
-- The zoom pod floating at the canvas's bottom-right does the same, plus a **fit** picker offering **Fit page**, **Fit width** and **Actual size**, remembered per document.
+- **Zoom** by holding :kbd[⌘] (macOS) or :kbd[Ctrl] (Windows/Linux) and scrolling; the canvas zooms toward your cursor, so whatever is under the pointer stays under it. :kbd[⌘=] / :kbd[Ctrl+=] zooms in, :kbd[⌘-] / :kbd[Ctrl+-] zooms out, and the **100%** button resets. The chords and the status bar's buttons zoom around the middle of the view. (:kbd[⌘0] / :kbd[Ctrl+0] is not a zoom reset: it moves the keyboard to the first pane.)
+- The **zoom controls sit at the right end of the status bar**, on the focused pane. From left to right: a **fit** picker offering **Fit page**, **Fit width**, **Actual size** and **No fit**, remembered per document; **−** and **+**; a **slider**; and the current percentage, which is also the **100%** button. Drag the slider to zoom smoothly, or press :kbd[←] and :kbd[→] on it to step; :kbd[Shift] with an arrow moves ten steps. **Double-click the slider to reset to 100%.** The slider is logarithmic, because zooming is multiplicative: it runs from 5% to 500%, with 100% about two thirds of the way along. **Fit page** here may scale a small page up to fill the view, where the automatic fit on opening never goes past 100%.
+
+The controls follow whichever pane you last clicked into, so with two panes open the readout re-points when you click the other one. They are not announced by screen readers on every change, and they are absent where there is nothing to zoom (see below).
 
 **Design opens already fitted.** Switching into Design or Project Styles scales the canvas down so the whole thing is in view, so a wide layout never lands cut off at the edge of the panel. It never scales _up_ past 100%, and it never overrides you: once you have set a zoom yourself (with the controls, :kbd[Ctrl]-scroll or the chords), that file keeps your zoom for the rest of the session.
 
-In **Edit** mode the page scrolls like a normal browser page instead of panning, and :kbd[Ctrl]-scrolling zooms the content itself, so the text reflows at the new size, like browser page zoom. The element under your cursor stays under it while the page reflows around it. The zoom pod stays at the bottom-right in Edit, set in from the page's scrollbar so it never covers the track. In **Preview** the page scrolls too, and there is nothing to pan or zoom. See **[Modes](/docs/studio/interface/modes)**. The same goes for every editor that isn't a canvas: **Code**, the **Grid**, the **Content home**, an **entry form** and **[Project Settings](/docs/studio/projects/settings)** all scroll under the wheel exactly like an ordinary page, including the boxes inside them, the Source view of the project file for one. What none of them does is zoom: :kbd[Ctrl]-scroll and a trackpad pinch do nothing there, the same as anywhere else in Studio outside the canvas, so a stray pinch never rescales the whole window.
+In **Edit** mode the page scrolls like a normal browser page instead of panning, and :kbd[Ctrl]-scrolling zooms the content itself, so the text reflows at the new size, like browser page zoom. The element under your cursor stays under it while the page reflows around it. The status bar's zoom controls work in Edit too, driving the content zoom (25% to 300%), with the slider and buttons but no fit picker, because there is no artboard to fit. In **Preview** the page scrolls too, and there is nothing to pan or zoom. See **[Modes](/docs/studio/interface/modes)**. The same goes for every editor that isn't a canvas: **Code**, the **Grid**, the **Content home**, an **entry form** and **[Project Settings](/docs/studio/projects/settings)** all scroll under the wheel exactly like an ordinary page, including the boxes inside them, the Source view of the project file for one. What none of them does is zoom: :kbd[Ctrl]-scroll and a trackpad pinch do nothing there, the same as anywhere else in Studio outside the canvas, so a stray pinch never rescales the whole window.
 
 ## Selecting elements
 

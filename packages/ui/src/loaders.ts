@@ -38,6 +38,7 @@ export const KIT_LOADERS = {
   "jx-ui:/behaviors/action-group.ts": () => import("./behaviors/action-group.ts"),
   "jx-ui:/behaviors/popover.ts": () => import("./behaviors/popover.ts"),
   "jx-ui:/behaviors/select.ts": () => import("./behaviors/select.ts"),
+  "jx-ui:/behaviors/slider.ts": () => import("./behaviors/slider.ts"),
   "jx-ui:/behaviors/split.ts": () => import("./behaviors/split.ts"),
   "jx-ui:/behaviors/swatch-group.ts": () => import("./behaviors/swatch-group.ts"),
   "jx-ui:/behaviors/tabs.ts": () => import("./behaviors/tabs.ts"),

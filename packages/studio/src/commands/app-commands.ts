@@ -46,6 +46,7 @@ import { a11yCommands } from "../services/a11y-report";
 import { popoverCommands } from "../services/popover-report";
 import { liveElementCommands } from "../editor/context-menu";
 import { signalsCommands } from "../panels/signals-panel";
+import { outlineCommands } from "../panels/outline-expansion";
 import { formulaEditorCommands } from "../panels/formula-workspace";
 import { styleCommands } from "../panels/style-panel";
 import { gridCommands } from "../grid/grid-open";
@@ -146,6 +147,8 @@ export function appCommandSet(): AnyCommand[] {
     ...liveElementCommands(),
     ...dataExplorerCommands({ renderLeftPanel: NO_OP }),
     ...signalsCommands(),
+    // The Outline action bar's Expand All and Collapse All, which are also palette verbs.
+    ...outlineCommands(),
     ...formulaEditorCommands(),
     ...gridCommands(),
     ...settingsCommands(),

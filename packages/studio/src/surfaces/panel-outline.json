@@ -12,17 +12,29 @@
     "position": "relative",
     "fontFamily": "var(--jx-font-sans)",
     "color": "var(--fg)",
+    "& [part=\"toolbar\"]": {
+      "$description": "The band the bar sits in: right-aligned (the verbs are secondary to the tree), a hairline under it and the panel fill, so rows scrolling beneath it do not show through. Sticky against the Navigator, which is the scroller. Its height is a CONTRACT the rows' `scroll-margin-block-start` repeats, so change the two together.",
+      "position": "sticky",
+      "top": "0",
+      "zIndex": "1",
+      "display": "flex",
+      "justifyContent": "flex-end",
+      "padding": "var(--jx-space-1) var(--jx-space-3)",
+      "borderBottom": "1px solid var(--border)",
+      "background": "var(--bg-panel)"
+    },
     "& [part=\"tree\"]": {
       "$description": "`jx-tree` declares no scrollbar of its own — one Studio tree scrolls in itself and this one scrolls in the Navigator, which also holds its toolbar — so what it needs here is the block box and this package's own text colour, which the element would otherwise take from the kit's `--jx-fg` directly and stop following the studio alias.",
       "display": "block",
       "color": "var(--fg)"
     },
     "& [part=\"row\"]": {
-      "$description": "The four things the element cannot decide for this tree. The cluster is positioned against the row, so the row is the containing block. The indent is CAPPED — `--row-indent` is already `min(depth, 6) * 16 + 8`, and overriding the element's `level`-derived padding is what keeps a depth-12 row from pushing its badge out of a 240px column. The whole row is the drag handle, so the cursor says so. And the transition is what `panels/dnd.ts` animates the drop gap with.",
+      "$description": "The four things the element cannot decide for this tree. The cluster is positioned against the row, so the row is the containing block. The indent is CAPPED — `--row-indent` is already `min(depth, 6) * 16 + 8`, and overriding the element's `level`-derived padding is what keeps a depth-12 row from pushing its badge out of a 240px column. The whole row is the drag handle, so the cursor says so; the one exception is the twisty, which the kit draws with a pointer cursor and which `panels/dnd.ts` refuses to start a drag from, so a press on it that drifts a few pixels still toggles the row. And the transition is what `panels/dnd.ts` animates the drop gap with.",
       "position": "relative",
       "paddingInline": "var(--row-indent, var(--jx-space-3)) var(--jx-space-3)",
       "cursor": "grab",
-      "transition": "transform 150ms ease"
+      "transition": "transform 150ms ease",
+      "scrollMarginBlockStart": "calc(var(--jx-control-h) - 4px + 2 * var(--jx-space-1) + 1px)"
     },
     "& [part=\"row\"][data-dragging]": {
       "$description": "The lift is the element's; only the transition is this tree's, and it has to stop, or the dragged row animates back through every gap the rows below it open.",
@@ -139,6 +151,82 @@
     }
   },
   "children": [
+    {
+      "tagName": "div",
+      "$description": "The action bar's slot. Drawn only while there is a tree, so the empty page keeps its one sentence and one action. `display: contents` for the reason `body-slot` is: the slot is a `$switch` and nothing else, so the toolbar is a flex item of the Outline's own box.",
+      "attributes": {
+        "part": "bar-slot",
+        "role": "none"
+      },
+      "style": {
+        "display": "contents"
+      },
+      "$switch": {
+        "$ref": "#/state/view"
+      },
+      "cases": {
+        "rows": {
+          "tagName": "jx-toolbar",
+          "$description": "Expand All and Collapse All, as `outline/toolbar` command records (`panels/outline-expansion.ts`): the same two verbs the command palette lists. The kit's toolbar gives the `role=\"toolbar\"` and the roving arrow keys. It is STICKY, so a long tree keeps its bar under the pointer; the rows carry `scroll-margin-block-start` equal to its height so `scrollIntoView` does not park the selected row underneath it.",
+          "attributes": {
+            "part": "toolbar"
+          },
+          "$props": {
+            "label": "Outline actions"
+          },
+          "children": [
+            {
+              "$prototype": "Array",
+              "items": {
+                "$ref": "#/state/tools"
+              },
+              "key": {
+                "$ref": "$map/item/id"
+              },
+              "map": {
+                "tagName": "jx-action-button",
+                "attributes": {
+                  "part": "tool",
+                  "data-command": "${$map.item.id}"
+                },
+                "$props": {
+                  "label": {
+                    "$ref": "$map/item/title"
+                  },
+                  "hint": {
+                    "$ref": "$map/item/tooltip"
+                  },
+                  "icon": {
+                    "$ref": "$map/item/icon"
+                  },
+                  "disabled": {
+                    "$ref": "$map/item/disabled"
+                  },
+                  "size": "sm",
+                  "quiet": true
+                },
+                "onclick": {
+                  "$prototype": "Function",
+                  "body": [
+                    {
+                      "operator": "call",
+                      "target": {
+                        "$ref": "#/state/runTool"
+                      },
+                      "value": [
+                        {
+                          "$ref": "$map/item/id"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
     {
       "$description": "The `role=\"tree\"`, and the keyboard that used to be eight `$switch` cases under every row. `jx-tree` writes the role, the name, the roving tab stop and each row's `aria-level` / `aria-posinset` / `aria-setsize`, and it owns the walk: the arrows step the drawn rows without wrapping, `Home` and `End` reach the ends of the MODEL by way of the pads, `ArrowRight` opens a collapsed row and steps into an open one, `ArrowLeft` closes an open row and otherwise climbs to its parent, `Enter` activates, `Space` is a selection verb and a printable character is typeahead. `multiple` is on because this Outline has always accepted Ctrl-click and Shift-click, and it is also the GATE: with it off the element would resolve every modifier to a plain replace. Six events come back, and each is a decision `panels/layers-panel.ts` already owned.",
       "tagName": "jx-tree",

@@ -6,7 +6,6 @@
 import {
   flush,
   installMockPlatform,
-  installResizeObserver,
   resetStudioState,
   resetWorkspaceWithTab,
   standUpPaneGrid,
@@ -21,13 +20,11 @@ import { problems } from "../src/services/notify";
 import { initShellRefs, setProjectState } from "../src/store";
 import {
   activeCanvasSurface,
-  disposePaneSurface,
   registerCanvasSurface,
   surfaceForPane,
   tabOfPane,
   unregisterCanvasSurface,
 } from "../src/canvas/canvas-surface";
-import { STAGE_SCROLLBAR_VAR } from "../src/canvas/stage-scrollbar";
 import {
   activateTab,
   activeTab,
@@ -45,7 +42,13 @@ import { setFormats } from "../src/format/format-host";
 import { serializeJson } from "@jxsuite/schema/json-layout";
 import { canvasPanelEntry, setEditZoom } from "../src/canvas/canvas-utils";
 import { resetEditWidths, setEditWidth } from "../src/canvas/edit-width";
-import { diffChangeMapOf, diffViewOf, resetDiffViews, setDiffView } from "../src/canvas/diff-view";
+import {
+  diffChangeMapOf,
+  diffRenderableOf,
+  diffViewOf,
+  resetDiffViews,
+  setDiffView,
+} from "../src/canvas/diff-view";
 import { MARKDOWN_FORMAT } from "./format-fixture";
 import { createCommandRegistry } from "../src/commands/registry";
 import { makeContext } from "../src/commands/context";
@@ -2076,128 +2079,6 @@ describe("edit mode", () => {
   });
 });
 
-// ─── The stage's scrollbar, published for the zoom pod ────────────────────────
-/* The pod floats in chrome that spans the scrollbar gutter; Edit is the one mode whose stage
-   scrolls under it, so Edit publishes the width and every teardown puts it back to 0. */
-
-describe("the stage's scrollbar width, published on the cell", () => {
-  /** Put the primary stage inside a pane CELL, which is where the width is written. */
-  function cellAroundStage(): HTMLElement {
-    const cell = document.createElement("div");
-    cell.setAttribute("part", "pane");
-    document.body.append(cell);
-    cell.append(stageEl());
-    return cell;
-  }
-
-  function editScroller(): HTMLElement {
-    return stageEl().querySelector<HTMLElement>('[part="edit-canvas"]')!;
-  }
-
-  test("Edit observes its own scroller and writes the scrollbar's width on the cell", async () => {
-    const observers = installResizeObserver();
-    try {
-      const cell = cellAroundStage();
-      openSyncedTab();
-      setMode("edit");
-      renderCanvas();
-      await flush();
-
-      const scroller = editScroller();
-      expect(surfaceForPane("primary").stageScrollbar?.scroller).toBe(scroller);
-      expect(observers.observes(scroller)).toBe(true);
-      // Happy-dom lays nothing out, so there is no scrollbar yet.
-      expect(cell.style.getPropertyValue(STAGE_SCROLLBAR_VAR)).toBe("0px");
-
-      // The page outgrew the pane: a 15px classic scrollbar took the edge of the scroller.
-      Object.defineProperty(scroller, "offsetWidth", { configurable: true, value: 1144 });
-      Object.defineProperty(scroller, "clientWidth", { configurable: true, value: 1129 });
-      observers.resize(scroller);
-      expect(cell.style.getPropertyValue(STAGE_SCROLLBAR_VAR)).toBe("15px");
-
-      // A content-only repaint keeps the scroller, and with it the one observer.
-      const record = surfaceForPane("primary").stageScrollbar;
-      renderCanvas();
-      await flush();
-      expect(surfaceForPane("primary").stageScrollbar).toBe(record);
-    } finally {
-      observers.restore();
-    }
-  });
-
-  test("leaving Edit releases the scroller, so Design's pod is back at its plain inset", async () => {
-    const observers = installResizeObserver();
-    try {
-      const cell = cellAroundStage();
-      openSyncedTab();
-      setMode("edit");
-      renderCanvas();
-      await flush();
-      const scroller = editScroller();
-      Object.defineProperty(scroller, "offsetWidth", { configurable: true, value: 1144 });
-      Object.defineProperty(scroller, "clientWidth", { configurable: true, value: 1129 });
-      observers.resize(scroller);
-      expect(cell.style.getPropertyValue(STAGE_SCROLLBAR_VAR)).toBe("15px");
-
-      setMode("design");
-      renderCanvas();
-      await flush();
-
-      expect(surfaceForPane("primary").stageScrollbar).toBeNull();
-      expect(observers.observes(scroller)).toBe(false);
-      expect(cell.style.getPropertyValue(STAGE_SCROLLBAR_VAR)).toBe("0px");
-    } finally {
-      observers.restore();
-    }
-  });
-
-  test("clearing the stage to no tab releases it too", async () => {
-    const observers = installResizeObserver();
-    try {
-      const cell = cellAroundStage();
-      openSyncedTab();
-      setMode("edit");
-      renderCanvas();
-      await flush();
-      const scroller = editScroller();
-      Object.defineProperty(scroller, "offsetWidth", { configurable: true, value: 1144 });
-      Object.defineProperty(scroller, "clientWidth", { configurable: true, value: 1129 });
-      observers.resize(scroller);
-
-      closeAllTabs();
-      renderCanvas();
-
-      expect(surfaceForPane("primary").stageScrollbar).toBeNull();
-      expect(observers.observes(scroller)).toBe(false);
-      expect(cell.style.getPropertyValue(STAGE_SCROLLBAR_VAR)).toBe("0px");
-    } finally {
-      observers.restore();
-    }
-  });
-
-  test("a pane's own teardown disconnects its observer and zeroes its cell", () => {
-    const cell = document.createElement("div");
-    cell.setAttribute("part", "pane");
-    const stage = document.createElement("div");
-    cell.append(stage);
-    document.body.append(cell);
-    const doomed = registerCanvasSurface("scrollbar-teardown", stage);
-    const disconnect = mock(() => {});
-    doomed.stageScrollbar = {
-      observer: observerStub(disconnect),
-      scroller: document.createElement("div"),
-    };
-    cell.style.setProperty(STAGE_SCROLLBAR_VAR, "15px");
-
-    disposePaneSurface("scrollbar-teardown");
-
-    expect(disconnect).toHaveBeenCalledTimes(1);
-    expect(doomed.stageScrollbar).toBeNull();
-    expect(cell.style.getPropertyValue(STAGE_SCROLLBAR_VAR)).toBe("0px");
-    cell.remove();
-  });
-});
-
 // ─── Iframe render pipeline (success / staleness / rejection) ──────────────────
 
 describe("iframe render pipeline", () => {
@@ -3368,6 +3249,36 @@ describe("git-diff · a comparison with no visual half", () => {
     renderCanvas();
     await flush();
     expect(diffChangeMapOf("primary")).toBeNull();
+  });
+
+  test("renderability is stored per pass, so a document after a .txt offers Visual again", async () => {
+    /* The toolbar used to read "no change map" as "no visual half". Code entered first, or after a
+       non-document file, leaves no map while the document still has a visual half to go back to. */
+    openSyncedTab();
+    setMode("git-diff");
+    setDiffView("primary", "code");
+    ctx.gitDiffState = {
+      currentContent: "b",
+      filePath: "notes.txt",
+      fileStatus: "M",
+      originalContent: "a",
+    };
+    renderCanvas();
+    await flush();
+    expect(diffRenderableOf("primary")).toBe(false);
+
+    ctx.gitDiffState = {
+      currentContent: '{"tagName":"div"}',
+      filePath: "/project/index.json",
+      fileStatus: "M",
+      originalContent: '{"tagName":"section"}',
+    };
+    renderCanvas();
+    await flush();
+    // Still Code (the author's choice), still no map, and the file DOES have a visual half.
+    expect(diffViewOf("primary")).toBe("code");
+    expect(diffChangeMapOf("primary")).toBeNull();
+    expect(diffRenderableOf("primary")).toBe(true);
   });
 
   test("the mount guard agrees with the branch that built its container", async () => {
