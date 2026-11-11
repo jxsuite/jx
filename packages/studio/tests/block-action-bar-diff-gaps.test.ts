@@ -510,6 +510,33 @@ describe("the drag handle across a re-render", () => {
     expect(dnd.elements[1]!.getAttribute("part")).toBe("drag-handle");
   });
 
+  test("the Link panel is shown on its own jx-ready, not a descendant's", async () => {
+    /* `jx-ready` bubbles and the panel holds a `jx-action-group`-style descendant that announces
+       itself first. Showing on that answer calls `showPopover()` before the panel's own `popover`
+       attribute is on, which throws. */
+    setup(TWO_PARAGRAPHS, ["children", 1]);
+    renderBlockActionBar();
+    await flush(3);
+    const panel = document.querySelector<HTMLElement>('#layer-popover [part="link"]')!;
+    const shown: string[] = [];
+    Object.assign(panel, { showPopover: () => shown.push("shown") });
+    panel.removeAttribute("popover");
+
+    openLinkPopoverFromShortcut();
+    await flush(2);
+    expect(shown).toEqual([]);
+
+    panel.firstElementChild?.dispatchEvent(new Event("jx-ready", { bubbles: true }));
+    await flush(2);
+    expect(shown).toEqual([]);
+
+    panel.setAttribute("popover", "auto");
+    panel.dispatchEvent(new Event("jx-ready", { bubbles: true }));
+    await flush(2);
+    expect(shown).toEqual(["shown"]);
+    dismissLinkPopover();
+  });
+
   test("a repaint while the Link popover is open leaves the handle draggable", async () => {
     setup(TWO_PARAGRAPHS, ["children", 1]);
     renderBlockActionBar();
