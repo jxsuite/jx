@@ -125,7 +125,7 @@ export function buildHeaderRules(
           "policy would block every one of them.",
       );
     } else {
-      Object.assign(wide, buildCspHeaders(cspSources, cspConfig));
+      Object.assign(wide, buildCspHeaders(cspSources, cspConfig, security.frameOptions));
     }
   }
 

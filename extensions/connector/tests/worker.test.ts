@@ -4,7 +4,7 @@
  * grants, junction writes, and include expansion.
  */
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import { Database } from "bun:sqlite";
 import { createBunSqliteDialect } from "../src/dialects/bun-sqlite";
 import { Data, createDataMountState, handleDataRequest } from "../src/worker";
@@ -397,6 +397,7 @@ describe("wire contract", () => {
         data: tables,
       },
     };
+    const logged = spyOn(console, "error").mockImplementation(() => {});
     const missingConn = await handleDataRequest(
       new Request("http://x/_jx/data/x"),
       {},
@@ -411,8 +412,11 @@ describe("wire contract", () => {
       {},
     );
     expect(missingProv.status).toBe(500);
+    /* Which provider, env var or host failed is the owner's to read in the log, not a visitor's. */
     const body = await json(missingProv);
-    expect(body.error).toContain("provider");
+    expect(body.error).toBe("Connection error");
+    expect(String(logged.mock.calls.at(-1))).toContain("provider");
+    logged.mockRestore();
   });
 
   test("an error inside the action itself (not connection setup) is also a 500", async () => {
@@ -438,6 +442,7 @@ describe("wire contract", () => {
         data: { comments: TABLES.comments! },
       },
     };
+    const logged = spyOn(console, "error").mockImplementation(() => {});
     const response = await handleDataRequest(
       new Request("http://x/_jx/data/comments"),
       {},
@@ -445,8 +450,11 @@ describe("wire contract", () => {
       {},
     );
     expect(response.status).toBe(500);
+    /* A driver's message quotes statements and constraints, which is the schema. */
     const body = await json(response);
-    expect(body.error).toBe("disk I/O error");
+    expect(body.error).toBe("Server error");
+    expect(String(logged.mock.calls[0])).toContain("disk I/O error");
+    logged.mockRestore();
   });
 });
 

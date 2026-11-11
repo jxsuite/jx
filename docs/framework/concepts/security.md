@@ -36,7 +36,11 @@ The interpreting runtime, meaning the dev server, the Studio canvas, and `@jxsui
 
 Jx takes the half of [Trusted Types](https://www.w3.org/TR/trusted-types/) that applies to it and declines the half that cannot.
 
-**Nothing Jx ships writes `innerHTML`.** The runtime and the compiled element modules clear elements with `replaceChildren()` instead, which is identical behavior and not a DOM injection sink. That is a smaller surface in every site you build, whether or not any policy is enforcing.
+**Jx writes no `innerHTML` of its own.** The runtime and the compiled element modules clear elements with `replaceChildren()` instead, which is identical behavior and not a DOM injection sink. That is a smaller surface in every site you build, whether or not any policy is enforcing.
+
+:::doc-warning
+An `innerHTML` key you author is the exception, and it is written as you wrote it. Jx does not sanitize it, in the interpreter or in compiled output. Bind it only to markup you control. For anything a visitor typed or a third party supplied, use `textContent`.
+:::
 
 **Studio's markdown goes through a policy that refuses.** The assistant's rendered markdown is the one place a string becomes markup in Studio's own window, and it passes a policy whose `createHTML` throws, naming what it found, if anything script-shaped survived sanitization. Its `createScript` and `createScriptURL` refuse outright.
 

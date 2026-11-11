@@ -230,7 +230,8 @@ app.post('${baseUrl}/${exportName}', async (c) => {
   try {
     return c.json((await ${exportName}(args, c.env)) ?? null)
   } catch (e) {
-    return c.json({ ok: false, error: e?.message ?? 'Server error' }, 500)
+    console.error('jx: server function ${exportName} threw:', e)
+    return c.json({ ok: false, error: 'Server error' }, 500)
   }
 })`;
 }
