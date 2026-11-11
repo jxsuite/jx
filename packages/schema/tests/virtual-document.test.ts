@@ -487,6 +487,124 @@ describe("a body module", () => {
     expectSound(written, source);
   });
 
+  describe("a parameter that declares a type", () => {
+    /** A document whose one function is called with these parameters, each a line of a list. */
+    const typed = (defs: string[], ...parameters: string[]): string =>
+      file(
+        ...defs,
+        "div {",
+        "  state {",
+        "    go {",
+        "      $prototype Function",
+        "      parameters {",
+        ...parameters.map((line) => `        ${line}`),
+        "      }",
+        '      body "return 1"',
+        "    }",
+        "  }",
+        "}",
+      );
+    const TASK = ["$defs {", "  Task {", "    type object", "    properties {}", "  }", "}"];
+
+    test("is that type, its name and its text each beside where it was written", () => {
+      const source = typed(
+        [],
+        "- first",
+        "- { name price; type text=number }",
+        '- { name done; optional #true; type text="() => void" }',
+        "- name=qty type=integer",
+        "- name=bare",
+      );
+      const written = generate(source);
+      const [body] = written.supplemental;
+      expect(body?.text.split("\n").slice(0, 5)).toEqual([
+        'import type { State } from "./a.jxn";',
+        "declare const event: any;",
+        // Text is closed on a line of its own, so a comment it ends in takes nothing with it.
+        "export async function body(this: any, state: State, first: any, price: (number",
+        "), done: (() => void",
+        ") | undefined, qty: number, bare: any) {",
+      ]);
+      expect(mapped(body, source)).toEqual([
+        ["verbatim", "first", "first"],
+        ["verbatim", "price", "price"],
+        ["verbatim", "number", "number"],
+        ["verbatim", "done", "done"],
+        ["verbatim", "() => void", "() => void"],
+        ["verbatim", "qty", "qty"],
+        ["verbatim", "bare", "bare"],
+        ["verbatim", "return 1", "return 1"],
+      ]);
+      expectSound(written, source);
+    });
+
+    test("imports the document's definitions where one names them, and joins the name", () => {
+      const source = typed(
+        TASK,
+        '- name=task type=(ref)"#/$defs/Task"',
+        '- { name tasks; type text="$defs.Task[]" }',
+      );
+      const written = generate(source);
+      const [body] = written.supplemental;
+      expect(body?.text.split("\n").slice(0, 4)).toEqual([
+        'import type { State, $defs } from "./a.jxn";',
+        "declare const event: any;",
+        "export async function body(this: any, state: State, task: $defs.Task, tasks: ($defs.Task[]",
+        ")) {",
+      ]);
+      expect(mapped(body, source).slice(0, 4)).toEqual([
+        ["verbatim", "task", "task"],
+        ["verbatim", "Task", "Task"],
+        ["verbatim", "tasks", "tasks"],
+        ["verbatim", "$defs.Task[]", "$defs.Task[]"],
+      ]);
+      expectSound(written, source);
+    });
+
+    test("imports them for either way of naming one alone", () => {
+      const byRef = generate(typed(TASK, '- name=task type=(ref)"#/$defs/Task"'));
+      const byText = generate(typed(TASK, '- { name task; type text="$defs.Task" }'));
+      expect(headOf(byRef.supplemental[0])[0]).toBe('import type { State, $defs } from "./a.jxn";');
+      expect(headOf(byText.supplemental[0])[0]).toBe(
+        'import type { State, $defs } from "./a.jxn";',
+      );
+    });
+
+    test("imports nothing more where no type names one, or the document holds none", () => {
+      const unnamed = generate(typed(TASK, '- { name n; type text="my$defs.Task | a.$defs.b" }'));
+      const none = generate(typed([], '- { name task; type text="$defs.Task" }'));
+      expect(headOf(unnamed.supplemental[0])[0]).toBe('import type { State } from "./a.jxn";');
+      // The name is then an error at the text, which says what the document is missing.
+      expect(headOf(none.supplemental[0])[0]).toBe('import type { State } from "./a.jxn";');
+      expect(none.supplemental[0]?.text).toContain("task: ($defs.Task\n)) {");
+    });
+
+    test("stands in the event's place, in a body nested in a scope of its own too", () => {
+      const source = file(
+        "div {",
+        "  state { count 0 }",
+        "  section {",
+        "    state { inner 1 }",
+        "    input {",
+        "      (on)onkeydown {",
+        "        $prototype Function",
+        "        parameters {",
+        "          - { name e; type text=KeyboardEvent }",
+        "        }",
+        '        body "void e.key"',
+        "      }",
+        "    }",
+        "  }",
+        "}",
+      );
+      const written = generate(source);
+      const [body] = written.supplemental;
+      expect(body?.text).toContain('import type { State$1 as State } from "./a.jxn";');
+      expect(body?.text).toContain("body(this: any, state: State, e: (KeyboardEvent\n)) {");
+      expectSound(written, source);
+    });
+  });
+
   test("maps an escape as one piece, and the text either side of it exactly", () => {
     const source = file(
       "div {",

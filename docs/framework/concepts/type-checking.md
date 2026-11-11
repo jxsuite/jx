@@ -144,7 +144,7 @@ Inside a script, `State` is the type of the document's `state`, in scope without
 | `(fn)name` with a body                                     | A function, or any type when the document reads it as a computed value                                 |
 | A `$prototype` instance, an expression, a template, `null` | Any type                                                                                               |
 
-An entry the document cannot give a type to is any type, not an error. So is a parameter a function declares, except the one that receives the event ([Events and rows](#events-and-rows)).
+An entry the document cannot give a type to is any type, not an error. So is a parameter a function declares without a type ([A parameter's type](#a-parameters-type)), except the one that receives the event ([Events and rows](#events-and-rows)).
 
 A handler on an element inside a section with its own `state` sees that state and its parents'. A hover there names the inner section by number: `(property) State$1.local: number`. The number is the section's place in the document, so it changes when you add a section above it. A `.ts` file can import `State` and cannot import `State$1`.
 
@@ -223,6 +223,53 @@ Three rules decide the rest:
 A `$ref` to a definition the document does not have is an error at the name, which says that `$defs` has no exported member of that name. A `$ref` to another file, or deeper into a definition (`#/$defs/TodoItem/properties/id`), is any type.
 
 A `required` list needs more than one name to be a list. Write `(array)required id` for a single name, since `required id` alone is a string and makes nothing required.
+
+### A parameter's type
+
+A function written as a block lists its `parameters`, and each one can say its type. `text` is TypeScript, written as you would write it after the colon. Anything else in `type` is a schema, read by the table above. Either one can name a definition:
+
+```kdl
+$defs {
+  Task {
+    type object
+    properties {
+      id type=integer
+      title type=string
+    }
+    required id title
+  }
+}
+div {
+  state {
+    total 0
+    add {
+      $prototype Function
+      parameters {
+        - { name price; type text=number }
+        - name=task type=(ref)"#/$defs/Task"
+        - { name done; optional #true; type text="(task: $defs.Task) => void" }
+        - { name unit; type text=Currency }
+      }
+      body "state.total += price.length; task.title.toFixed(); done(task); void unit"
+    }
+  }
+}
+```
+
+```text
+pages/cart.jxn(20,34): error TS2304: Cannot find name 'Currency'.
+pages/cart.jxn(22,34): error TS2339: Property 'length' does not exist on type 'number'.
+pages/cart.jxn(22,53): error TS2551: Property 'toFixed' does not exist on type 'string'. Did you mean 'fixed'?
+pages/cart.jxn(22,64): error TS2722: Cannot invoke an object which is possibly 'undefined'.
+```
+
+- **`price`** is a `number` and **`task`** is a `$defs.Task`, so the body is held to both.
+- **`done`** is marked `optional`, so it may be `undefined` and has to be checked before it is called.
+- **`Currency`** names nothing, and the error is at the word in the `text`. Text can use any type TypeScript knows without an import (`KeyboardEvent`, `Record<string, number>`), and the document's own definitions as `$defs.Name`.
+
+A parameter written as a bare name, or with no `type`, is any type. A `type` that says nothing about what is inside gives way to the parameter's `default`, as an entry's does. `state` is always the document's `State`, whatever is written beside it. On an event handler, a type on the first parameter after `state` replaces the event's ([Events and rows](#events-and-rows)).
+
+The types hold inside the body only. What a caller passes is not checked against them ([Limits](#limits)).
 
 ## Events and rows
 
@@ -422,6 +469,7 @@ There is no Jx editor extension yet. Your editor has to be told by hand that a `
 - **Studio does not use the mapper.** Its code editor checks a body on its own, and does not check a script, a template or a reference yet. `tsc` is what checks those today.
 - **`jx build` does not run it.** A build still accepts a document with a type error, so run the script in CI.
 - **A class's methods** are not checked.
+- **A call is not checked against a function's parameters.** A parameter's type holds inside the body. `state.add("a")` is accepted whatever `add` declares, because a function entry is callable with anything, and the entry's own `type`, which says what it returns, is not read.
 - **`$defs` are read from the document that uses them.** A `$ref` to a definition in another file is any type, and so is a definition whose name is not an identifier, such as `todo-item`.
 - **Renaming a property does not rewrite `required`.** The list holds the old name, so the property becomes optional and the next check usually says so.
 - **Props are checked only in `$props`, and only against a `.jxn` component.** A property or an attribute written on the instance itself is not held against the component. A prop named for a private entry, such as `#cache`, is not reported here, though the page refuses to set it.

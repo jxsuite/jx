@@ -41,10 +41,11 @@ export function pointerInto(pointer: string, key: string | number): string {
 /** A name in a type that the document wrote. */
 export interface WrittenName {
   /**
-   * Which name it is: a `member` is the name of the property or definition at `pointer`, and a
-   * `ref` is the definition that the `$ref` at `pointer` ends in.
+   * Which name it is: a `member` is the name of the property or definition at `pointer`, a `ref` is
+   * the definition that the `$ref` at `pointer` ends in, and a `text` is no name but a whole type,
+   * the TypeScript the string at `pointer` holds.
    */
-  kind: "member" | "ref";
+  kind: "member" | "ref" | "text";
   /** The name as the document holds it. */
   name: string;
   pointer: string;

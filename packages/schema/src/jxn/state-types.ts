@@ -16,7 +16,6 @@ import {
   isNumber,
   isServerFnDef,
   isString,
-  paramNames,
   hasSchemaKeywords,
 } from "../guards";
 import { pointerInto, propertyName, schemaParts, written } from "./schema-types";
@@ -123,19 +122,77 @@ export function stateOf(node: JsonValue | undefined): Record<string, JsonValue> 
   return isJsonObject(node) && isJsonObject(node.state) ? node.state : null;
 }
 
-/** The names a function is called with: `state` first, then the declared names (`spec.md` §5.3). */
-export function parametersOf(definition: JsonValue | undefined): string[] {
-  if (!isJsonObject(definition)) {
-    return ["state"];
+/** One parameter a function's body is called with. */
+export interface DeclaredParameter {
+  /** Where the entry writes it in `parameters`, or -1 where it does not. */
+  at: number;
+  name: string;
+  /** The type the entry declares for it, or null where it declares none. */
+  type: TypePart[] | null;
+}
+
+/**
+ * The type a parameter written as an object declares (`spec.md` §23.3): the TypeScript its `text`
+ * holds, as a Custom Elements Manifest has it, or the schema it is, as a typed entry is one.
+ */
+function parameterType(parameter: JsonObject, site: SchemaSite): TypePart[] | null {
+  const { type } = parameter;
+  if (type === undefined) {
+    return null;
   }
-  const declared = Array.isArray(definition.parameters)
-    ? // SAFETY: `parameters` holds bare names or CEM parameter objects, the form `paramNames` reads.
-      paramNames(definition.parameters as Parameters<typeof paramNames>[0])
-    : (Array.isArray(definition.arguments) ? definition.arguments : []).filter(
-        (name): name is string => isString(name),
+  const text = isJsonObject(type) && isString(type.text) ? type.text : null;
+  if (text?.trim() === "") {
+    // Nothing is no type, and written as one it would be an error on a line nobody wrote.
+    return null;
+  }
+  const pointer = pointerInto(pointerInto(site.pointer, "type"), "text");
+  const declared: TypePart[] =
+    text === null
+      ? declaredParts(parameter, site)
+      : /* In brackets, so that what follows it is not read into a type that ends in a function's,
+           and closed on a line of its own, so that a comment the text ends in takes nothing. */
+        ["(", { kind: "text", name: text, pointer, written: text }, "\n)"];
+  return parameter.optional === true ? [...declared, " | undefined"] : declared;
+}
+
+/**
+ * The parameters a function's body is called with: `state` first, then the declared ones in their
+ * order (`spec.md` §5.3), each with the type it declares.
+ *
+ * @param definition The function's entry.
+ * @param site Where the entry is, and whether its document has `$defs`.
+ */
+export function declaredParameters(
+  definition: JsonValue | undefined,
+  site: SchemaSite,
+): DeclaredParameter[] {
+  const entry = isJsonObject(definition) ? definition : {};
+  const within = pointerInto(site.pointer, "parameters");
+  const listed: DeclaredParameter[] = Array.isArray(entry.parameters)
+    ? entry.parameters.flatMap((parameter, at) => {
+        if (isString(parameter)) {
+          return [{ at, name: parameter, type: null }];
+        }
+        // What is neither a name nor an object holding one is not a parameter the runtime could bind.
+        return isJsonObject(parameter) && isString(parameter.name)
+          ? [
+              {
+                at,
+                name: parameter.name,
+                type: parameterType(parameter, { ...site, pointer: pointerInto(within, at) }),
+              },
+            ]
+          : [];
+      })
+    : (Array.isArray(entry.arguments) ? entry.arguments : []).flatMap((name) =>
+        isString(name) ? [{ at: -1, name, type: null }] : [],
       );
   // A declared `state` is moved to the front, never repeated, as the runtime builds it.
-  return ["state", ...declared.filter((name) => name !== "state")];
+  const state = listed.find((parameter) => parameter.name === "state");
+  return [
+    { at: state?.at ?? -1, name: "state", type: null },
+    ...listed.filter((parameter) => parameter.name !== "state"),
+  ];
 }
 
 /** What a document is given that it does not say, which only its project knows. */

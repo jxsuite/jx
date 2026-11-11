@@ -49,7 +49,6 @@ import {
   isRef,
   isServerFnDef,
   isString,
-  paramNames,
 } from "../guards";
 import type { JsonObject, JsonValue, JxElement } from "../../types";
 import { classifyJxn } from "./classify.ts";
@@ -78,7 +77,7 @@ import {
   IDENTIFIER,
   propertyName,
 } from "./schema-types";
-import { entryParts, parametersOf, stateIndex, stateOf } from "./state-types";
+import { declaredParameters, entryParts, stateIndex, stateOf } from "./state-types";
 import { stringPieces } from "./string-pieces.ts";
 import type { TypePart } from "./schema-types";
 import type { OutsideState } from "./state-types";
@@ -465,6 +464,8 @@ function writeParts(out: Writer, reading: Reading, parts: readonly TypePart[]): 
   for (const part of parts) {
     if (isString(part)) {
       out.add(part);
+    } else if (part.kind === "text") {
+      out.value(part.written, tokens.values.get(part.pointer));
     } else if (part.kind === "member") {
       out.name(part.name, tokens.names.get(part.pointer), part.written);
     } else {
@@ -675,33 +676,54 @@ function layoutOf(reading: Reading): Layout {
   return layout;
 }
 
+/** `$defs.` where it begins a name, in TypeScript an author wrote as a parameter's type. */
+const NAMES_DEFINITION = /(?<![\w$.])\$defs\./u;
+
+/** Whether a type names a definition of the document: by a `$ref`, or in the text it is. */
+function namesDefinition(parts: readonly TypePart[]): boolean {
+  return parts.some(
+    (part) =>
+      !isString(part) &&
+      (part.kind === "ref" || (part.kind === "text" && NAMES_DEFINITION.test(part.written))),
+  );
+}
+
 /** Write the module for one body: the function it is the inside of. */
 function writeBody(reading: Reading, body: Body): VirtualUnit {
   const { tokens } = reading;
   const out = new Writer(reading.source);
-  const imported = body.state === "State" ? "State" : `${body.state} as State`;
+  const state = body.state === "State" ? "State" : `${body.state} as State`;
+  const declared = declaredParameters(body.definition, {
+    defs: reading.defs !== null,
+    pointer: body.pointer,
+  });
+  /* A type a parameter declares may name a definition, which only the main module holds. It is
+     imported where one does and nowhere else, since a project that reports an unused import would
+     report this one on a line the author did not write. */
+  const defined = declared.some((parameter) => namesDefinition(parameter.type ?? []));
+  const imported = defined && reading.defs ? `${state}, ${DEFINITIONS}` : state;
   out.add(`import type { ${imported} } from ${JSON.stringify(reading.specifier)};\n`);
-  const params = parametersOf(body.definition);
+  const params = declared.map((parameter) => parameter.name);
   /* The event a handler receives is bound to a name only when the entry declares one, though the
      runtime passes it and `window.event` holds it. Not declaring it would call a working handler
      an error, so it is declared wherever it is not a parameter. */
   const event = eventLines(body.event, params);
   out.add(event.head);
   out.add("export async function body(this: any");
-  const written = Array.isArray(body.definition.parameters)
-    ? // SAFETY: `parameters` holds bare names or CEM parameter objects, the form `paramNames` reads.
-      paramNames(body.definition.parameters as Parameters<typeof paramNames>[0])
-    : [];
-  /* `state` is first whether or not the entry names it, and wherever it names it, so a name is not
-     where it was written. The others keep their order, which finds each one's token. */
-  let next = 0;
-  for (const [index, name] of params.entries()) {
-    const at = index === 0 ? written.indexOf("state") : written.indexOf(name, next);
-    next = index > 0 && at !== -1 ? at + 1 : next;
-    const span = tokens.values.get(`${body.pointer}/parameters/${at}`);
-    // A handler is called with its state and the event, in that order (§5.3 4d).
-    const type = index === 0 ? "State" : index === 1 ? event.parameter : "any";
-    out.add(", ").name(name, span).add(`: ${type}`);
+  for (const [index, parameter] of declared.entries()) {
+    /* `state` is first whether or not the entry names it, and wherever it names it, so a name is
+       not where it was written. A bare name is the entry's own token, and one written as an object
+       is that object's `name`. */
+    const at = `${body.pointer}/parameters/${parameter.at}`;
+    const span = tokens.values.get(at) ?? tokens.values.get(`${at}/name`);
+    out.add(", ").name(parameter.name, span).add(": ");
+    if (index > 0 && parameter.type !== null) {
+      // A parameter that declares a type is that type, the event's place included (§23.3).
+      writeParts(out, reading, parameter.type);
+    } else {
+      // A handler is called with its state and the event, in that order (§5.3 4d).
+      out.add(index === 0 ? "State" : index === 1 ? event.parameter : "any");
+    }
   }
   /* A project that reports unused parameters would report these on a line the author did not
      write, for every body that does not happen to read one. */

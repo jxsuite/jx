@@ -582,10 +582,58 @@ describe("the types a document declares", () => {
     'export const item: $defs.TodoItem = { id: "x", text: "a" };',
     'export const state: $defs.Status = "loading";',
   );
+  const typed = lines(
+    "$defs {",
+    "  Task {",
+    "    type object",
+    "    properties {",
+    "      id type=integer",
+    "      name type=string",
+    "    }",
+    "    required id name",
+    "  }",
+    "}",
+    "div {",
+    "  state {",
+    "    count 0",
+    "    add {",
+    "      $prototype Function",
+    "      parameters {",
+    "        - { name price; type text=number }",
+    "        - state",
+    '        - name=task type=(ref)"#/$defs/Task"',
+    '        - { name done; optional #true; type text="() => void" }',
+    '        - { name tasks; type text="$defs.Task[]" }',
+    "        - { name lost; type text=Missing }",
+    '        - name=gone type=(ref)"#/$defs/Gone"',
+    "        - name=qty type=integer optional=#true",
+    '        - { name noted; type text="string // what it is for" }',
+    "        - bare",
+    "      }",
+    '      body """',
+    "        state.count = price + task.id;",
+    "        price.trim(); task.id.length; done();",
+    "        tasks[0].absent; qty.toFixed(); noted.missing;",
+    "        bare.anything; void lost; void gone;",
+    '        """',
+    "    }",
+    "  }",
+    "  input {",
+    "    (on)onkeydown {",
+    "      $prototype Function",
+    "      parameters {",
+    "        - { name pressed; type text=KeyboardEvent }",
+    "      }",
+    '      body "pressed.key.toPrecision(); pressed.unknown"',
+    "    }",
+    "  }",
+    "}",
+  );
   let findings: Finding[] = [];
 
   beforeAll(() => {
     const made = project();
+    made.write("src/typed.jxn", typed);
     made.write("src/site/project.jxn", lines('project "x"'));
     made.write("src/site/components/todo-list.jxn", list);
     made.write("src/site/pages/index.jxn", page);
@@ -621,6 +669,26 @@ describe("the types a document declares", () => {
   test("are what a component's props are held to in a document that uses it", () => {
     expect(about(findings, "site/pages/index.jxn")).toEqual([
       `${printed(page, 'status="nope"')} TS2322`,
+    ]);
+  });
+
+  test("are what a parameter is inside its body where it declares one, as text or as a schema", () => {
+    expect(about(findings, "typed.jxn")).toEqual([
+      // Text that names no type is an error where it is written, and so is a reference.
+      `${printed(typed, "Missing")} TS2304`,
+      `${printed(typed, "Gone")} TS2694`,
+      // Text is the type it says, and a schema the type it describes.
+      `${printed(typed, "trim")} TS2339`,
+      `${printed(typed, "length")} TS2339`,
+      // An optional parameter may be missing, whichever way its type is written.
+      `${printed(typed, "done()")} TS2722`,
+      `${printed(typed, "absent")} TS2339`,
+      `${printed(typed, "qty.toFixed")} TS18048`,
+      // Text that ends in a comment is still the type before it, and takes nothing after it.
+      `${printed(typed, "missing")} TS2339`,
+      // The first parameter after `state` is the type it declares and not the event's.
+      `${printed(typed, "toPrecision")} TS2339`,
+      `${printed(typed, "unknown")} TS2339`,
     ]);
   });
 
