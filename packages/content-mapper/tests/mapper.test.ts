@@ -81,12 +81,18 @@ describe("what a project gives a document", () => {
     });
   });
 
-  test("is its state and no layout, for a layout, which the default one does not wrap", () => {
+  test("is the pages it wraps and no layout, for a layout, which the default one does not wrap", () => {
     const root = folder({ "project.jxn": WITH_BOTH });
     expect(outsideOf(join(root, "layouts/base.jxn"), remembered())).toEqual({
       components: {},
-      layout: false,
       state: true,
+      wraps: true,
+    });
+    const bare = folder({ "project.jxn": WITH_NEITHER });
+    expect(outsideOf(join(bare, "layouts/nested/base.jxn"), remembered())).toEqual({
+      components: {},
+      state: false,
+      wraps: true,
     });
   });
 

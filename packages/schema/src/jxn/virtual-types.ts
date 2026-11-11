@@ -35,6 +35,7 @@ import {
 import type { Site, StateScope } from "./document-scopes";
 import { definitionParts, definitionsOf, pointerInto, propertyName, written } from "./schema-types";
 import { parametersOf, stateIndex, typeOfEntry } from "./state-types";
+import type { OutsideState } from "./state-types";
 import type { JsonObject, JsonValue, JxElement } from "../../types";
 
 /** Where a body sits in a document. */
@@ -146,12 +147,15 @@ function stateLines(site: Site, index: string, defs: boolean): string[] {
  * @param target Which body: a root `state` entry, or an inline handler on an element.
  * @param body The body's text, which need not be the text the document holds yet (an editor's
  *   buffer is checked as typed).
+ * @param outside What the document's project gives it, which makes `State` open. Nothing, when the
+ *   reader knows of no project.
  * @returns The file to check, and where the body sits in it.
  */
 export function generateBodyTypes(
   doc: JxElement,
   target: VirtualTarget,
   body: string,
+  outside: OutsideState = {},
 ): VirtualBody {
   // SAFETY: a document is JSON data; its types name what it holds.
   const data = doc as JsonObject;
@@ -169,7 +173,7 @@ export function generateBodyTypes(
   const head = [
     "export {};",
     ...(defs ? [written(definitionParts(defs, false))] : []),
-    ...stateLines(located.site, stateIndex(doc), defs !== null),
+    ...stateLines(located.site, stateIndex(doc, outside), defs !== null),
     `${event.head}async function body(${["this: any", ...signature].join(", ")}) {`,
     "",
   ].join("\n");

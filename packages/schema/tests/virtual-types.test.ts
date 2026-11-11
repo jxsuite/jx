@@ -227,6 +227,16 @@ describe("State", () => {
     );
     expect(signaturesOf(text)).toEqual(["  [key: `$${string}`]: any;"]);
   });
+
+  test("is open where the reader is told the project gives the document state", () => {
+    const doc = asDoc({ state: { a: 1 } });
+    for (const outside of [{ state: true }, { layout: true }, { wraps: true }]) {
+      const { text } = generateBodyTypes(doc, { key: "a", kind: "state" }, "", outside);
+      expect(signaturesOf(text)).toEqual(["  [key: string]: any;"]);
+    }
+    const { text } = generateBodyTypes(doc, { key: "a", kind: "state" }, "", { layout: false });
+    expect(signaturesOf(text)).toEqual(["  [key: `$${string}`]: any;"]);
+  });
 });
 
 describe("the names a function is called with", () => {

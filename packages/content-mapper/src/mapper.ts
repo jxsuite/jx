@@ -184,8 +184,12 @@ export function outsideOf(fileName: string, project: MapperProject): OutsideStat
     return { components };
   }
   const facts = givenBy(found, project);
-  // A layout is what wraps a page, and is not itself wrapped by the default one.
-  return { components, layout: facts.layout && folder !== "layouts", state: facts.state };
+  if (folder === "layouts") {
+    /* A layout is what wraps a page. The default one does not wrap it, and the state of each page
+       it wraps is merged over its own, which no layout can list. */
+    return { components, state: facts.state, wraps: true };
+  }
+  return { components, layout: facts.layout, state: facts.state };
 }
 
 /** One module in the form the protocol takes, with its offsets in the encoding agreed on. */

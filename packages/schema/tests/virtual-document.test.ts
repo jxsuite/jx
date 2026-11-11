@@ -304,6 +304,14 @@ describe("what a document is given from outside", () => {
     );
   });
 
+  test("opens State for a layout, which is given the state of every page it wraps", () => {
+    expect(membersOf(generate(page, { wraps: true }).main.text).at(-1)).toBe(OPEN);
+    // It is wrapped around a page whether or not anything wraps it.
+    const none = file("$layout #false", "div {", "  state { count 0 }", "}");
+    expect(membersOf(generate(none, { wraps: true }).main.text).at(-1)).toBe(OPEN);
+    expect(membersOf(generate(page, { wraps: false }).main.text).at(-1)).toBe(CLOSED);
+  });
+
   test("lets a document say for itself whether it has a layout", () => {
     const named = file('$layout "./layouts/base.jxn"', "div {", "  state { count 0 }", "}");
     expect(membersOf(generate(named).main.text).at(-1)).toBe(OPEN);

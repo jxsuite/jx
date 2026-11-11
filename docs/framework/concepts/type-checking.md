@@ -148,7 +148,7 @@ An entry the document cannot give a type to is any type, not an error. So is a p
 
 A handler on an element inside a section with its own `state` sees that state and its parents'. A hover there names the inner section by number: `(property) State$1.local: number`. The number is the section's place in the document, so it changes when you add a section above it. A `.ts` file can import `State` and cannot import `State$1`.
 
-**Whether an unknown name is an error depends on what surrounds the document.** A page with a layout, or in a project whose project file has `state` of its own, reads entries the page never declares. There `state.anything` is allowed, and only the names the page does declare are typed. A page with neither, and every component, is exact: `state.total` above is an error because nothing else could have declared it. A name that begins with `$`, such as `state.$media`, is always allowed.
+**Whether an unknown name is an error depends on what surrounds the document.** A page with a layout, or in a project whose project file has `state` of its own, reads entries the page never declares. There `state.anything` is allowed, and only the names the page does declare are typed. A layout in the project's `layouts` folder is open in the same way, because it reads the state of whichever page it wraps. A page with neither, and every component, is exact: `state.total` above is an error because nothing else could have declared it. A name that begins with `$`, such as `state.$media`, is always allowed.
 
 The mapper learns this from the nearest project file at or above the document, and looks no higher than the folder `tsconfig.jxn.json` is in. That is why the file goes beside your project file.
 

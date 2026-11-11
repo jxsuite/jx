@@ -149,20 +149,26 @@ export interface OutsideState {
   layout?: boolean | undefined;
   /** The project has `state` of its own, which every page reads (`site-architecture.md` §3.2). */
   state?: boolean | undefined;
+  /**
+   * The document is a layout. A page is merged with its layout before anything runs, the page's
+   * state over the layout's, so a layout reads names only a page declares (`spec.md` §23.3).
+   */
+  wraps?: boolean | undefined;
 }
 
 /**
  * The index signature that closes `State`.
  *
  * A page with a layout inherits state the page does not name, so its `State` is open, and so is one
- * in a project that has `state` of its own. Otherwise only the `$` members the host adds (`$media`,
- * `$props`) are. `$layout: false` is a page saying it has no layout, the project's default
- * included.
+ * in a project that has `state` of its own, and so is a layout, which is given the state of every
+ * page it wraps. Otherwise only the `$` members the host adds (`$media`, `$props`) are. `$layout:
+ * false` is a page saying it has no layout, the project's default included.
  *
  * @param doc The document.
  * @param outside What its project gives it. Nothing, when the reader knows of no project.
  */
 export function stateIndex(doc: JxElement, outside: OutsideState = {}): string {
   const wrapped = doc.$layout === undefined ? outside.layout === true : doc.$layout !== false;
-  return outside.state === true || wrapped ? "[key: string]: any;" : "[key: `$${string}`]: any;";
+  const given = outside.state === true || outside.wraps === true || wrapped;
+  return given ? "[key: string]: any;" : "[key: `$${string}`]: any;";
 }
