@@ -29,6 +29,7 @@
 
 import { layerHost } from "./layers";
 import { overlayRegion, REGION_ATTR } from "./regions";
+import { whenOwnReady } from "./own-ready";
 import { mountSurface } from "./surface";
 import type { JxHostScope, JxMountOptions, JxScope } from "@jxsuite/runtime/types";
 import type { MountSurfaceOptions, SurfaceHandle } from "./surface";
@@ -134,9 +135,7 @@ export function openPopoverSurface<S extends JxHostScope<S>>(
        attribute is on and it may be shown. Showing before that is a silent no-op — the panel is
        built, correctly styled, and never in the top layer. */
     if (!panel.hasAttribute("popover")) {
-      await new Promise<void>((resolve) => {
-        panel?.addEventListener("jx-ready", () => resolve(), { once: true });
-      });
+      await whenOwnReady(panel);
     }
     if (aborted()) {
       return;

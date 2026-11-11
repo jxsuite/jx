@@ -38,6 +38,7 @@
 
 import { reactive } from "../reactivity";
 import { clearLayerSlot, getLayerSlot } from "../ui/layers";
+import { whenOwnReady } from "../ui/own-ready";
 import { mountSurface, registerSurface } from "../ui/surface";
 import { overlayRegion, REGION_ATTR } from "../ui/regions";
 import slashMenuDoc from "./slash-menu.json";
@@ -262,9 +263,7 @@ export function openSlashMenuSurface(
     // A custom element connects asynchronously: `jx-ready` is the panel saying its `popover`
     // Attribute is on and it may be shown.
     if (!panel.hasAttribute("popover")) {
-      await new Promise<void>((resolve) => {
-        panel!.addEventListener("jx-ready", () => resolve(), { once: true });
-      });
+      await whenOwnReady(panel);
     }
     if (aborted()) {
       return;
