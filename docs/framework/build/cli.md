@@ -1,9 +1,10 @@
 ---
 title: "CLI commands"
-description: "Reference for bun create @jxsuite and the jx CLI: build, schema, validate, convert, and db push, with every flag as implemented."
+description: "Reference for bun create @jxsuite and the jx CLI: build, schema, validate, convert, format, and db push, with every flag as implemented."
 spec:
   - extensions.md#5.2 # generated entry documents (jx schema)
   - extensions.md#5.4 # validation (jx validate)
+  - compiler.md#2.3 # jx convert, jx format
 code:
   - packages/create/index.ts
   - packages/create/cli-args.ts
@@ -16,6 +17,10 @@ code:
   - packages/compiler/src/site/db-push.ts
   - packages/compiler/src/site/convert-command.ts
   - packages/server/src/convert.ts
+  - packages/compiler/src/site/server-command.ts
+  - packages/compiler/src/site/format-command.ts
+  - packages/server/src/format.ts
+  - packages/server/src/code-format.ts
 ---
 
 # CLI commands
@@ -152,6 +157,49 @@ The project file is written in its canonical form, as [Jx Notation](/docs/framew
 | `--drop-comments` | Convert a `.jxn` file to `.json` even though it has comments |
 
 It leaves a file alone, says why, and exits `1` when the file is already in the target format, is a `*.class.json`, belongs to a content collection, has a target name that already exists, or does not read. Converting a `.jxn` file with comments to `.json` is refused and gives the count, because `.json` has nowhere to keep them.
+
+## `jx format`
+
+Format the code in `.jxn` files, and the files around it. It runs under Bun and needs `@jxsuite/server` in the project, as `jx dev` does.
+
+```bash
+jx format [paths…] [--check]
+```
+
+A path may be a `.jxn` file or a directory. With no path, the whole project is formatted. A directory is searched for `.jxn` files, skipping `node_modules`, `dist` and any folder whose name starts with a dot.
+
+The code is every function's body and both sides of a document's script, formatted as TypeScript with two spaces and a line of 100 columns. It is the formatter Studio's code editor uses, so the two never undo each other.
+
+```
+button Go {
+    (fn)onclick "if(state.ready){state.count=state.count+1}"
+}
+```
+
+becomes
+
+```
+button Go {
+    (fn)onclick #"""
+        if (state.ready) {
+          state.count = state.count + 1;
+        }
+        """#
+}
+```
+
+| Flag      | Effect                                                               |
+| --------- | -------------------------------------------------------------------- |
+| `--check` | Write nothing, name each file that would change, and exit `1` if any |
+
+What it leaves alone:
+
+- **Comments.** A file with a comment keeps it, and keeps the layout of every node the formatter did not change. A file with no comment is written in the one layout Studio writes.
+- **Anything that is not code.** A `Request`'s `body`, a template string and a function written as statements are data, and stay as they are.
+- **Code that does not parse.** It stays as written and the command names it, as `pages/index.jxn#/state/save/body: Unexpected token (line 2)`, formats the rest of the file, and exits `1`.
+- **`.json` documents.** JSON has nowhere to break a line of code. Run [`jx convert`](#jx-convert) first.
+
+`oxfmt` and `oxlint` do not read `.jxn` files, so run `jx format --check` beside them in CI.
 
 ## `jx db push`
 
