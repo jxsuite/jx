@@ -291,18 +291,17 @@ describe("an inline handler", () => {
 
   test("sees its ancestors' state, the nearest element winning", () => {
     const unit = generateBodyTypes(doc, target, "state.inner = 1;");
-    // An interface cannot extend one it disagrees with, so what it keeps is listed by reference.
+    // An interface cannot extend one it disagrees with, so it extends that one less the name.
     expect(declarationsOf(unit.text)).toEqual([
+      "type $except<T, K extends PropertyKey> = { [P in keyof T as P extends K ? never : P]: T[P] };",
       "interface State$0 {",
       "  shared: number;",
       "  top: boolean;",
       "  [key: `$${string}`]: any;",
       "}",
-      "interface State {",
-      '  top: State$0["top"];',
+      'interface State extends $except<State$0, "shared"> {',
       "  inner: number;",
       "  shared: string;",
-      "  [key: `$${string}`]: any;",
       "}",
     ]);
     expect(unit.params).toEqual(["state", "e"]);

@@ -25,6 +25,8 @@ import {
   eventLines,
   eventType,
   itemType,
+  EXCEPT,
+  heritageOf,
   membersOf,
   readsRow,
   rootSite,
@@ -113,19 +115,19 @@ function stateLines(site: Site, index: string, defs: boolean): string[] {
   // The innermost is `State` itself, unless the row is written over it.
   const nameOf = (scope: StateScope): string =>
     scope === site.scope && !inRow ? "State" : `State$${chain.indexOf(scope)}`;
-  const lines: string[] = [];
+  // The helper is declared only where a scope reads through it: an unused one is a finding.
+  const lines: string[] = chain.some((scope) => membersOf(scope).shadowed.length > 0)
+    ? [EXCEPT]
+    : [];
   for (const scope of chain) {
-    const { inherited, own } = membersOf(scope);
+    const { own, shadowed } = membersOf(scope);
     const around = scope.parent ? nameOf(scope.parent) : null;
-    const closed = around === null || inherited !== null;
-    lines.push(`interface ${nameOf(scope)}${closed ? "" : ` extends ${around}`} {`);
-    for (const key of inherited ?? []) {
-      lines.push(`  ${propertyName(key)}: ${around}[${JSON.stringify(key)}];`);
-    }
+    const heritage = around === null ? "" : ` extends ${heritageOf(around, shadowed)}`;
+    lines.push(`interface ${nameOf(scope)}${heritage} {`);
     for (const { entry, key, role } of own) {
       lines.push(`  ${propertyName(key)}: ${typeOfEntry(entry, role, defs)};`);
     }
-    lines.push(...(closed ? [`  ${index}`, "}"] : ["}"]));
+    lines.push(...(around === null ? [`  ${index}`, "}"] : ["}"]));
   }
   if (site.row && inRow) {
     lines.push(

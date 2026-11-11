@@ -9,7 +9,9 @@ import {
   eachSite,
   eventLines,
   eventType,
+  EXCEPT,
   expressionsAt,
+  heritageOf,
   itemType,
   membersOf,
   readsRow,
@@ -137,28 +139,32 @@ describe("what a scope's interface declares", () => {
       pointer: "",
     };
     expect(membersOf(root)).toEqual({
-      inherited: null,
       own: [
         { entry: 0, key: "count", role: undefined },
         { entry: double, key: "double", role: "computed" },
         { entry: fn, key: "save", role: "callable" },
       ],
+      shadowed: [],
     });
-    expect(membersOf({ node: {}, parent: null, pointer: "" })).toEqual({
-      inherited: null,
-      own: [],
-    });
+    expect(membersOf({ node: {}, parent: null, pointer: "" })).toEqual({ own: [], shadowed: [] });
   });
 
   test("extends the scope around it where it declares none of that scope's names", () => {
     const root = scope({ a: 1 });
-    expect(membersOf(scope({ b: 2 }, root)).inherited).toBeNull();
+    const { shadowed } = membersOf(scope({ b: 2 }, root));
+    expect(shadowed).toEqual([]);
+    expect(heritageOf("State", shadowed)).toBe("State");
   });
 
-  test("lists by reference what it keeps of every scope around it, where it declares one of their names", () => {
+  test("extends it less each name it declares that any scope around it does", () => {
     const root = scope({ a: 1, b: 2 });
     const middle = scope({ c: 3 }, root);
-    expect(membersOf(scope({ a: "now a string", d: 4 }, middle)).inherited).toEqual(["c", "b"]);
+    const { shadowed } = membersOf(scope({ a: "now a string", c: null, d: 4 }, middle));
+    expect(shadowed).toEqual(["a", "c"]);
+    expect(heritageOf("State$1", shadowed)).toBe('$except<State$1, "a" | "c">');
+    expect(EXCEPT).toBe(
+      "type $except<T, K extends PropertyKey> = { [P in keyof T as P extends K ? never : P]: T[P] };",
+    );
   });
 });
 

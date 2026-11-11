@@ -141,11 +141,11 @@ function visibleKeys(scope: StateScope | null): Set<string> {
 /** What one scope's interface declares. */
 export interface ScopeMembers {
   /**
-   * The names of the scope around it that this one does not declare, when it declares one that
-   * scope has. An interface cannot extend one it disagrees with, so these are listed by reference
-   * instead. Null when nothing is shadowed, and the interface extends.
+   * Its own names that a scope around it declares too. An interface cannot extend one it disagrees
+   * with, so it extends that one without these (`EXCEPT`), and every other member is still the
+   * member it was declared as. Empty when nothing is shadowed, and the interface extends as is.
    */
-  inherited: string[] | null;
+  shadowed: string[];
   /** Its own entries, each with the role its document reads it in. */
   own: { entry: JsonValue | undefined; key: string; role: FunctionRole | undefined }[];
 }
@@ -160,11 +160,21 @@ export function membersOf(scope: StateScope): ScopeMembers {
     role: roles.get(key),
   }));
   const around = visibleKeys(scope.parent);
-  const shadows = own.some(({ key }) => around.has(key));
-  return {
-    inherited: shadows ? [...around].filter((key) => !own.some((mine) => mine.key === key)) : null,
-    own,
-  };
+  return { own, shadowed: own.flatMap(({ key }) => (around.has(key) ? [key] : [])) };
+}
+
+/**
+ * The helper a shadowing scope's interface extends through: `T` without the members named `K`.
+ * Mapped over `keyof T`, so each member it keeps is the one `T` declares (a rename started on
+ * either side reaches both) and an index signature is kept as one, which `Omit` does not do.
+ */
+export const EXCEPT =
+  "type $except<T, K extends PropertyKey> = { [P in keyof T as P extends K ? never : P]: T[P] };";
+
+/** What a scope's interface extends: the one around it, less what this one declares over it. */
+export function heritageOf(around: string, shadowed: readonly string[]): string {
+  const names = shadowed.map((key) => JSON.stringify(key)).join(" | ");
+  return shadowed.length === 0 ? around : `$except<${around}, ${names}>`;
 }
 
 /**
