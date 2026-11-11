@@ -65,7 +65,7 @@ A page, layout or component can also carry the server module itself, as text in 
 }
 ```
 
-Server functions share one set of names across the site, so two documents that each export `fetchMetrics` fail the build, and the error names both. Only `jx build` runs a server script so far: see [A module inside the document](/docs/framework/concepts/functions#a-module-inside-the-document).
+Server functions share one set of names across the site, so two documents that each export `fetchMetrics` fail the build, and the error names both. During development the dev server, the desktop app's backend and Live Preview run a server script from its document, and an edit to it answers without a restart. Live Preview leaves the server script out of every document it sends to the browser. A server script follows the same rules as a client one: see [Where a script runs](/docs/framework/concepts/functions#where-a-script-runs).
 
 ### Arguments
 

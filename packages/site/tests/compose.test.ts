@@ -172,6 +172,54 @@ describe("composePage", () => {
     ]);
   });
 
+  test("a page's script entries and its layout's each name their own document", async () => {
+    /* The regression this pins: a page is merged onto its layout, and `#client` says nothing
+       about which of the two it was written in, so both entries would have named one module. */
+    const page = await compose({
+      "layouts/base.json": JSON.stringify({
+        $script: { client: "export function toggle() {}", server: "export const secret = 1;" },
+        children: [{ tagName: "slot" }],
+        state: { toggle: { $prototype: "Function", $src: "#client" } },
+        tagName: "body",
+      }),
+      "pages/index.json": JSON.stringify({
+        $layout: "./layouts/base.json",
+        $script: { client: "export function bump() {}", server: "export const secret = 2;" },
+        children: ["Hi"],
+        state: {
+          bump: { $prototype: "Function", $src: "#client" },
+          history: { $export: "history", $src: "#server", timing: "server" },
+        },
+        tagName: "main",
+      }),
+    });
+    expect(page.doc.state).toMatchObject({
+      bump: { $prototype: "Function", $src: "jx-script:pages/index.json#client" },
+      history: {
+        $export: "history",
+        $src: "jx-script:pages/index.json#server",
+        timing: "server",
+      },
+      toggle: { $prototype: "Function", $src: "jx-script:layouts/base.json#client" },
+    });
+    // Neither document's modules travel in the page: the client one is fetched from its document.
+    expect(page.doc.$script).toBeUndefined();
+    expect(JSON.stringify(page.doc)).not.toContain("secret");
+  });
+
+  test("a page a host's parser reads is qualified like any other", async () => {
+    const io = treeIO({ "pages/index.md": "# Hi" }, () => ({
+      $script: { client: "export function bump() {}" },
+      state: { bump: { $prototype: "Function", $src: "#client" } },
+      tagName: "main",
+    }));
+    const page = await composeRoute(io, routeTable(io.paths()), {}, "/");
+    expect(page?.doc.state?.bump).toEqual({
+      $prototype: "Function",
+      $src: "jx-script:pages/index.md#client",
+    });
+  });
+
   test("project state fills only the keys neither the page nor its layout declares", async () => {
     const page = await compose(
       {

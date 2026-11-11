@@ -7,6 +7,7 @@
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { existsSync, mkdirSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { createProjectSession } from "../src/backend/project-session";
 import { hubFixture } from "./_hub-harness";
 import type { Fixture, Sent, WindowSocket } from "./_hub-harness";
@@ -159,6 +160,29 @@ describe("every way of binding a project asks first", () => {
         },
       );
       expect(response.ok).toBe(false);
+      expect(existsSync(marker)).toBe(false);
+
+      // Nor one to read a document from, for the server module a document carries (spec.md §23.2).
+      writeFileSync(
+        join(root, "boom.json"),
+        JSON.stringify({
+          $script: {
+            server: `import { writeFileSync } from "node:fs";\nexport function go() { writeFileSync(${JSON.stringify(marker)}, "ran"); return 1; }\n`,
+          },
+          tagName: "main",
+        }),
+      );
+      for (const named of ["boom.json", pathToFileURL(join(root, "boom.json")).href]) {
+        const carried = await fetch(
+          `${url.origin}/__jx_server__?token=${url.searchParams.get("token")}`,
+          {
+            body: JSON.stringify({ $export: "go", $src: `jx-script:${named}#server` }),
+            headers: { "content-type": "application/json" },
+            method: "POST",
+          },
+        );
+        expect(carried.ok).toBe(false);
+      }
       expect(existsSync(marker)).toBe(false);
     });
 

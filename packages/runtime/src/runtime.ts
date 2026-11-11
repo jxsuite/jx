@@ -80,7 +80,15 @@ import {
 import type { FunctionRole } from "@jxsuite/schema/function-role";
 import { formatSrcset, parseSrcset } from "@jxsuite/schema/asset-paths";
 import { runStatements } from "./statements.ts";
-import { compileBody, prepareBodies } from "./body-eraser.ts";
+import { canLoadModules, compileBody, moduleLoaderFor, prepareBodies } from "./body-eraser.ts";
+import {
+  isScriptSpecifier,
+  isTypeScriptPath,
+  parseScriptSpecifier,
+  qualifyScripts,
+  scriptRefSide,
+  scriptSpecifier,
+} from "@jxsuite/schema/document-scripts";
 
 import { readCookie, serializeCookie } from "./cookie.ts";
 import type {
@@ -107,8 +115,15 @@ export {
   prepareBodies,
   setBodyEraser,
   setBodyEraserLoader,
+  setModuleLoader,
 } from "./body-eraser.ts";
-export type { BodyEraser, BodyEraserLoader, BodyEraserModule } from "./body-eraser.ts";
+export type {
+  BodyEraser,
+  BodyEraserLoader,
+  BodyEraserModule,
+  ModuleLoader,
+  ModuleLoadOptions,
+} from "./body-eraser.ts";
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
@@ -236,7 +251,7 @@ function assertHostScope(scope: JxScope): void {
  * root it can remove and a `dispose()` that stops every effect the render created. Nothing here
  * writes a module global, so a shell can hold many roots with different needs at once.
  *
- * @param {JxDocument} doc - The document to render (already an object; use {@link resolve} for a
+ * @param {JxDocument} source - The document to render (already an object; use {@link resolve} for a
  *   URL)
  * @param {ParentNode} target - Where the rendered root is appended
  * @param {JxMountOptions} [options]
@@ -244,13 +259,14 @@ function assertHostScope(scope: JxScope): void {
  * @docs extending/embedding/runtime-host
  */
 export async function mount<S extends JxHostScope<S> = JxScope>(
-  doc: JxDocument,
+  source: JxDocument,
   target: ParentNode,
   options: JxMountOptions<S> = {},
 ): Promise<JxMount> {
   const hostScope: JxScope = options.scope ? hostScopeOf(options.scope) : {};
   assertHostScope(hostScope);
   const base = options.base ? new URL(options.base, location.href).href : location.href;
+  const doc = inlineDocument(source, base);
   const ctx: JxContext = {
     base,
     media: options.media ?? doc.$media ?? null,
@@ -377,7 +393,7 @@ export async function resolve(source: string | JxDocument, ctx?: JxContext): Pro
   // A mount's resolver answers for THIS mount and its hit never enters the shared cache.
   const served = ctx?.resolver?.(source);
   if (served) {
-    return served;
+    return withOwnScripts(await served, source);
   }
   if (_resolveCache.has(source)) {
     return _resolveCache.get(source)!;
@@ -422,7 +438,8 @@ export async function resolve(source: string | JxDocument, ctx?: JxContext): Pro
     return (await res.json()) as JxDocument;
   });
   // A body that needs the eraser has it before anything compiles, which happens synchronously.
-  const p = fetched.then(async (doc) => {
+  const p = fetched.then(async (read) => {
+    const doc = withOwnScripts(read, source);
     await prepareBodies(doc);
     return doc;
   });
@@ -900,18 +917,20 @@ function boundPropKey(
 /**
  * Build the reactive scope (state) from the document using the five-shape detection algorithm.
  *
- * @param {JxDocument} doc
+ * @param {JxDocument} source - The document
  * @param {JxScope} [parentScope] Default is `{}`
  * @param {string} [base] Base URL for resolving $src imports. Default is `location.href`
  * @param {JxContext} [ctx] The mount context; absent on the legacy direct path
  * @returns {Promise<JxScope>} Reactive proxy (state)
  */
 export async function buildScope(
-  doc: JxDocument,
+  source: JxDocument,
   parentScope: JxScope = {},
   base: string = location.href,
   ctx?: JxContext,
 ) {
+  // Already done for a document that was mounted or read from a URL; this is for one handed in raw.
+  const doc = inlineDocument(source, base);
   // A body run without an event dispatches from the mount's root, read when it fires.
   const dispatchRoot = (): EventTarget | null => ctx?.root ?? null;
   const raw: JxScope = {};
@@ -1478,6 +1497,14 @@ async function importSource(src: string, base?: string): Promise<ImportedModule>
     const specifier = src.slice(NPM_SCHEME.length);
     return importModule(_npmModuleResolver?.(specifier) ?? specifier);
   }
+  const typed = typeScriptSource(src, base);
+  // Asked only where an answer is possible, so a page with no loader waits no longer than it did.
+  if (typed !== null && (canLoadModules() || isScriptSpecifier(src))) {
+    const loaded = await importTypeScript(typed, src, base);
+    if (loaded) {
+      return loaded;
+    }
+  }
   if (base) {
     try {
       return await importModule(new URL(src, base).href);
@@ -1486,6 +1513,145 @@ async function importSource(src: string, base?: string): Promise<ImportedModule>
     }
   }
   return importModule(src);
+}
+
+/** The schemes a page can fetch a module's text from. */
+const FETCHED_SCHEMES = new Set(["http:", "https:"]);
+
+/**
+ * What the module loader is asked for when a `$src` names TypeScript (spec.md §23.2): a document
+ * script's specifier as it is, or the URL of a `.ts` file a page can fetch. Null for anything a
+ * browser imports as it is.
+ *
+ * @param {string} src - The `$src`, qualified if it named its document's script
+ * @param {string} [base] - The document's URL
+ * @returns {string | null}
+ * @throws {Error} For `#client` or `#server` in a document with no `$script`
+ */
+function typeScriptSource(src: string, base?: string): string | null {
+  if (isScriptSpecifier(src)) {
+    return src;
+  }
+  if (scriptRefSide(src) !== null) {
+    throw new Error(
+      `Jx: $src "${src}" names the script of the document it is written in, and that document ` +
+        `has no $script`,
+    );
+  }
+  const from = base ?? location.href;
+  if (!URL.canParse(src, from)) {
+    return null;
+  }
+  const url = new URL(src, from);
+  // A `file:` path is a test runner's, which imports TypeScript itself; a seeded scheme never gets here.
+  return FETCHED_SCHEMES.has(url.protocol) && isTypeScriptPath(url.pathname) ? url.href : null;
+}
+
+/**
+ * Import a module written in TypeScript through the host's module loader. Null when the page has
+ * none and the module is a `.ts` file, which is then imported as written: a host that transpiles
+ * what it serves still answers that. A document's script has no URL to fall back to, so it says
+ * what is missing.
+ *
+ * @param {string} specifier - What {@link typeScriptSource} gave
+ * @param {string} src - The `$src` as the document holds it
+ * @param {string} [base] - The document's URL
+ * @returns {Promise<ImportedModule | null>}
+ * @throws {Error} For a document's script on a page with no module loader
+ */
+async function importTypeScript(
+  specifier: string,
+  src: string,
+  base?: string,
+): Promise<ImportedModule | null> {
+  const load = await moduleLoaderFor();
+  if (load) {
+    const module = await load(specifier, {
+      base,
+      resolveNpm: _npmModuleResolver,
+      text: _documentScripts.get(src),
+    });
+    /* SAFETY: trust boundary, the same one as `importModule` below: the loader hands back the
+       module namespace `import()` gave it, read by export name and checked at each use. */
+    return module as ImportedModule;
+  }
+  if (isScriptSpecifier(src)) {
+    throw new Error(
+      `Jx: ${parseScriptSpecifier(src)?.path ?? src} has a script, and this page has nothing ` +
+        `that can load one. Give it a module loader with setModuleLoader(loadModule), loadModule ` +
+        `from @jxsuite/erase/browser, or let setBodyEraserLoader fetch that file when it is needed.`,
+    );
+  }
+  return null;
+}
+
+/**
+ * The text of each document's client script the runtime has read, by the qualified specifier that
+ * names it, so importing one fetches nothing.
+ */
+const _documentScripts = new Map<string, string>();
+
+/**
+ * A document as the runtime uses it: every `$src` naming its own script qualified with the
+ * document's address (spec.md §23.2), and its client script kept for the module loader.
+ *
+ * @param {JxDocument} doc - The document as read
+ * @param {string} source - Where it was read from: a URL, or a key a host serves it under
+ * @returns {JxDocument}
+ */
+function withOwnScripts(doc: JxDocument, source: string): JxDocument {
+  if (!doc.$script) {
+    return doc;
+  }
+  // Its absolute URL, so one document is one module however each reference to it was spelled.
+  const address = URL.canParse(source, location.href)
+    ? new URL(source, location.href).href
+    : source;
+  const { client } = doc.$script;
+  const specifier = scriptSpecifier(address, "client");
+  if (isString(client) && _documentScripts.get(specifier) !== client) {
+    /* Read again with its script edited, which an editing host does on every change: the module
+       made from the old text is not this document's any more. One the host seeded stays, because
+       the host is then what says what the module is. */
+    if (_documentScripts.has(specifier) && !_hostSeeded.has(specifier)) {
+      _moduleCache.delete(specifier);
+    }
+    _documentScripts.set(specifier, client);
+  }
+  const own = qualifyScripts(doc, address);
+  _addressed.set(own, own);
+  return own;
+}
+
+/**
+ * Each document that has a script, with the copy that names it: itself for one read from an
+ * address, so mounting what `resolve()` gave does not address it a second time.
+ */
+const _addressed = new WeakMap<JxDocument, JxDocument>();
+let _inlineCount = 0;
+
+/**
+ * A document handed over as an object, with every `$src` naming its own script qualified. It has no
+ * URL of its own, so it stands at its base, and under a name no other document on the page has: two
+ * documents mounted from one page are still two modules, and one mounted twice is one.
+ *
+ * @param {JxDocument} doc - The document as given
+ * @param {string} base - What its relative references resolve against
+ * @returns {JxDocument}
+ */
+function inlineDocument(doc: JxDocument, base: string): JxDocument {
+  if (!doc.$script) {
+    return doc;
+  }
+  let own = _addressed.get(doc);
+  if (!own) {
+    _inlineCount += 1;
+    const address = new URL(base, location.href);
+    address.hash = `jx-inline-${_inlineCount}`;
+    own = withOwnScripts(doc, address.href);
+    _addressed.set(doc, own);
+  }
+  return own;
 }
 
 function importModule(specifier: string): Promise<ImportedModule> {
@@ -5068,7 +5234,7 @@ export async function defineElement(source: string | JxDocument, baseUrl?: strin
     _definedSources.add(base);
     source_ = await resolve(source);
   } else {
-    source_ = source;
+    source_ = inlineDocument(source, new URL(base ?? location.href, location.href).href);
   }
   base ??= location.href;
 

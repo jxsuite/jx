@@ -2,12 +2,14 @@ import { describe, expect, test } from "bun:test";
 import {
   CLIENT_SCRIPT_REF,
   isScriptSpecifier,
+  isTypeScriptPath,
   parseScriptSpecifier,
   qualifyScripts,
   SCRIPT_SPECIFIER_PREFIX,
   scriptRefSide,
   scriptSpecifier,
   SERVER_SCRIPT_REF,
+  withoutServerScript,
 } from "../src/document-scripts.ts";
 import { parseJxn, serializeJxn } from "../src/jxn/index.ts";
 import { validateDocument } from "../src/schema.ts";
@@ -24,6 +26,48 @@ describe("scriptRefSide", () => {
     expect(scriptRefSide("npm:lodash")).toBeNull();
     expect(scriptRefSide("#clients")).toBeNull();
     expect(scriptRefSide("jx-script:a.jxn#client")).toBeNull();
+  });
+});
+
+describe("isTypeScriptPath", () => {
+  test("is true for each TypeScript module extension, in any case", () => {
+    for (const path of ["/lib/a.ts", "/lib/a.mts", "/lib/a.cts", "/LIB/A.TS"]) {
+      expect(isTypeScriptPath(path)).toBe(true);
+    }
+  });
+
+  test("is false for anything a browser imports as written", () => {
+    for (const path of ["/lib/a.js", "/lib/a.tsx", "/lib/ts", "/lib/a.ts.json", "/lib/a.jxn"]) {
+      expect(isTypeScriptPath(path)).toBe(false);
+    }
+  });
+});
+
+describe("withoutServerScript", () => {
+  test("leaves the server module out and keeps everything else", () => {
+    const doc: JxDocument = {
+      $script: { client: "export const a = 1;", server: "export const b = 2;" },
+      tagName: "div",
+    };
+    expect(withoutServerScript(doc)).toEqual({
+      $script: { client: "export const a = 1;" },
+      tagName: "div",
+    });
+    // The document given is not changed.
+    expect(doc.$script?.server).toBe("export const b = 2;");
+  });
+
+  test("keeps $script when the server module was all it held", () => {
+    // What is left still says the document has modules, so its entries are still qualified.
+    const serverOnly: JxDocument = { $script: { server: "export const b = 2;" } };
+    expect(withoutServerScript(serverOnly)).toEqual({ $script: {} });
+  });
+
+  test("returns a document with no server module as it is", () => {
+    const clientOnly: JxDocument = { $script: { client: "export const a = 1;" } };
+    const plain: JxDocument = { tagName: "div" };
+    expect(withoutServerScript(clientOnly)).toBe(clientOnly);
+    expect(withoutServerScript(plain)).toBe(plain);
   });
 });
 

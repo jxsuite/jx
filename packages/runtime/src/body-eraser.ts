@@ -7,6 +7,9 @@
  * with {@link setBodyEraserLoader}, which is fetched only when a document has a body that needs it.
  * With neither, a body compiles as written, and one that does not compile says what would fix it.
  *
+ * The same file carries what imports a module written in TypeScript (`spec.md` §23.2), so the same
+ * loader brings it: {@link moduleLoaderFor} is what the runtime asks before importing one.
+ *
  * @docs framework/concepts/functions
  */
 import { isFunctionEntry, isJsonObject, isString } from "@jxsuite/schema/guards";
@@ -25,9 +28,27 @@ export type BodyEraser = (text: string) => {
   problems: readonly BodyEraserProblem[];
 };
 
+/** What a host tells {@link ModuleLoader} about one import. */
+export interface ModuleLoadOptions {
+  /** The URL a relative specifier, and a document's path in a `jx-script:` one, resolves against. */
+  base?: string | undefined;
+  /** Where the host serves a package, as given to `setNpmModuleResolver`. */
+  resolveNpm?: ((specifier: string) => string) | null | undefined;
+  /** The module's text when the runtime already holds it, so nothing is fetched for it. */
+  text?: string | undefined;
+}
+
+/**
+ * What `loadModule` from `@jxsuite/erase/browser` is: a TypeScript module's URL, or a document
+ * script's `jx-script:` specifier, in and its namespace out (`spec.md` §23.2).
+ */
+export type ModuleLoader = (specifier: string, options: ModuleLoadOptions) => Promise<object>;
+
 /** What importing `@jxsuite/erase/browser` gives. */
 export interface BodyEraserModule {
   eraseBody: BodyEraser;
+  /** Absent from an eraser built before document scripts; a TypeScript module then cannot load. */
+  loadModule?: ModuleLoader;
 }
 
 /** A compiled body: called with what its caller passes, returning what its body returns. */
@@ -37,6 +58,7 @@ export type CompiledBody = (...args: never[]) => JxScopeValue;
 export type BodyEraserLoader = () => Promise<BodyEraserModule>;
 
 let eraser: BodyEraser | null = null;
+let moduleLoader: ModuleLoader | null = null;
 let loader: BodyEraserLoader | null = null;
 let loading: Promise<void> | null = null;
 
@@ -55,6 +77,53 @@ export function setBodyEraser(fn: BodyEraser | null): void {
     // Taken away, so a later document that needs one loads it again.
     loading = null;
   }
+}
+
+/**
+ * Install (or with `null`, remove) the function that imports a module written in TypeScript: a
+ * `.ts` file a `$src` names, or a document's own client script (`spec.md` §23.2). A host that sets
+ * {@link setBodyEraserLoader} needs no call to this: the loader it fetches brings one.
+ *
+ * @param fn `loadModule` from `@jxsuite/erase/browser`.
+ */
+export function setModuleLoader(fn: ModuleLoader | null): void {
+  moduleLoader = fn;
+  if (!fn) {
+    // Taken away, so a later module that needs one loads it again.
+    loading = null;
+  }
+}
+
+/** Whether this page can import a TypeScript module: a loader is installed, or can be fetched. */
+export function canLoadModules(): boolean {
+  return moduleLoader !== null || loader !== null;
+}
+
+/** Fetch the eraser through the host's loader, once, and install what it gives. */
+function fetchEraser(load: BodyEraserLoader): Promise<void> {
+  loading ??= load().then((module) => {
+    if (loader !== load) {
+      return;
+    }
+    if (!eraser) {
+      setBodyEraser(module.eraseBody);
+    }
+    if (!moduleLoader && module.loadModule) {
+      setModuleLoader(module.loadModule);
+    }
+  });
+  return loading;
+}
+
+/**
+ * What imports a TypeScript module on this page, fetching the eraser for it when the host said how
+ * and nothing is installed yet. Null when the host gave the page neither.
+ */
+export async function moduleLoaderFor(): Promise<ModuleLoader | null> {
+  if (!moduleLoader && loader) {
+    await fetchEraser(loader);
+  }
+  return moduleLoader;
 }
 
 /**
@@ -146,12 +215,7 @@ export async function prepareBodies(doc: JsonValue | JxDocument | JxClassDef): P
   if (!bodiesOf(tree).some((body) => bodyNeedsEraser(body))) {
     return;
   }
-  loading ??= load().then((module) => {
-    if (loader === load) {
-      setBodyEraser(module.eraseBody);
-    }
-  });
-  await loading;
+  await fetchEraser(load);
 }
 
 /** A body's JavaScript, through the eraser when one is installed. */

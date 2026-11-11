@@ -22,6 +22,8 @@ code:
   - packages/schema/src/document-scripts.ts
   - packages/compiler/src/site/document-scripts.ts
   - packages/compiler/src/site/bun-plugin.ts
+  - packages/erase/src/module-loader.ts
+  - packages/server/src/server-script.ts
 ---
 
 # Functions and sidecars
@@ -188,8 +190,16 @@ Everything said above about a sidecar export holds for a script's export: how it
 
 Keep using `$src` for an `npm:` package and for a module several documents share. The project file has no script, so an entry in its `state` cannot use `#client`.
 
-:::doc-warning
-Only `jx build` runs a document's script so far. Studio's canvas, Live Preview and `jx dev` do not load one yet, and they send the document to the browser with its server script still in it. Until they do, keep a function you need while editing in a `$src` file, and keep secrets out of a server script's text.
+### Where a script runs
+
+`jx build` bundles a script. Studio's canvas, Live Preview and a page that calls `mount()` import it in the browser instead: the types are erased and what is left is imported, and each relative `.ts` import is loaded the same way. Three rules follow from that, and they hold for a `$src` that names a `.ts` file too.
+
+- **Only types that can be removed.** `enum`, a value `namespace` and a parameter property need a compiler, so `jx build` refuses them in a script and names the document and the line.
+- **Mark an import that is only a type.** Write `import type { Row } from "./row.ts"`, or `import { type Row, load } from "./row.ts"`. A name imported without `type` is kept, and the browser then asks `row.ts` for an export it does not have.
+- **No import cycles.** Two `.ts` files that import each other build, and fail in the canvas and in Live Preview with an error that names both.
+
+:::doc-note
+Studio has no editor for a script yet, so you write `$script` in the document's source. The canvas has two gaps that Live Preview and a build do not. It does not yet answer a server function written in the document you are editing. It also draws a page and its layout as one document, so a page's `#client` function runs the layout's script there, and the canvas cannot draw the page when the layout has no script. Turn off **Show layout elements** in the canvas's [Context controls](/docs/studio/interface/modes) to work on such a page. A component's script is not affected.
 :::
 
 ### Testing a script
