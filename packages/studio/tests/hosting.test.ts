@@ -202,6 +202,15 @@ describe("studioShellHtml", () => {
     }
   });
 
+  test("declares the dark scheme before any stylesheet, so the first paint is not a white page", () => {
+    /* The theme stamp sets `color-scheme` in CSS and overrides this once styles load; until then
+       the declaration decides the canvas colour, the scrollbars and the form controls. */
+    const html = studioShellHtml();
+    const meta = html.indexOf('<meta name="color-scheme" content="dark" />');
+    expect(meta).toBeGreaterThan(-1);
+    expect(meta).toBeLessThan(html.indexOf('<link rel="stylesheet"'));
+  });
+
   test("carries an empty body — the frame is src/shell/tree.ts", () => {
     const body = studioShellHtml().split("<body>")[1]!;
     expect(body).not.toContain("<div");

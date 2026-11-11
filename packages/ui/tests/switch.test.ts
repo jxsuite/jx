@@ -432,3 +432,17 @@ describeHint("jx-switch", (attrs) => toggle(attrs), {
   declarative: false,
   trigger: '[part="control"]',
 });
+
+describe("jx-switch as a form control", () => {
+  test("required and value reach the control, and unset ones write nothing", async () => {
+    const bare = await toggle({ name: "wrap" });
+    expect(input(bare).required).toBe(false);
+    expect(input(bare).hasAttribute("value")).toBe(false);
+
+    const el = await toggle({ name: "wrap", required: "", value: "yes" });
+    expect(input(el).required).toBe(true);
+    expect(input(el).getAttribute("value")).toBe("yes");
+    // A switch has no aria-invalid: the role does not support it.
+    expect(input(el).hasAttribute("aria-invalid")).toBe(false);
+  });
+});

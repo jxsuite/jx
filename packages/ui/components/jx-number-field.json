@@ -17,6 +17,9 @@
     "labelledby",
     "describedby",
     "disabled",
+    "readonly",
+    "required",
+    "invalid",
     "stepper",
     "step-up-label",
     "step-down-label",
@@ -77,6 +80,24 @@
       "default": false,
       "attribute": "disabled",
       "description": "Cannot be edited, stepped or focused."
+    },
+    "readonly": {
+      "type": "boolean",
+      "default": false,
+      "attribute": "readonly",
+      "description": "The value can be read, selected and submitted and not changed: forwarded to the control, and the stepper buttons and the shifted arrows stand down with it, because the platform's own stepUp() ignores readonly."
+    },
+    "required": {
+      "type": "boolean",
+      "default": false,
+      "attribute": "required",
+      "description": "Forwarded to the control, which is the element that validates: an empty required field fails the form's own check."
+    },
+    "invalid": {
+      "type": "boolean",
+      "default": false,
+      "attribute": "invalid",
+      "description": "The value is refused: the control says aria-invalid and draws in the danger colour."
     },
     "stepper": {
       "type": "boolean",
@@ -205,7 +226,8 @@
     "data-size": "${state.size}",
     "data-disabled": "${state.disabled ? '' : null}",
     "data-stepper": "${state.stepper ? '' : null}",
-    "data-bad-input": "${state.badInput ? '' : null}"
+    "data-bad-input": "${state.badInput ? '' : null}",
+    "data-invalid": "${state.invalid ? '' : null}"
   },
   "style": {
     "display": "inline-flex",
@@ -262,6 +284,13 @@
         "opacity": "0.5",
         "cursor": "default"
       }
+    },
+    "&[data-invalid] [part=\"input\"]": {
+      "borderColor": "var(--jx-danger)"
+    },
+    "& [part=\"input\"]:user-invalid:is(:out-of-range, :required)": {
+      "$description": "The control's own verdict, once the reader has finished with it: a number outside min and max, or a required field left empty. Not a bare :user-invalid, which is also true of a step mismatch — and a field with no step attribute has a step of one, so every fraction a reader typed into it would draw as an error.",
+      "borderColor": "var(--jx-danger)"
     },
     "& [part=\"stepper-slot\"]": {
       "display": "contents"
@@ -332,12 +361,19 @@
             "aria-label": "${state.label || null}",
             "aria-labelledby": "${state.labelledby || null}",
             "aria-describedby": "${state.describedby || null}",
+            "aria-invalid": "${state.invalid ? 'true' : null}",
             "name": "${state.name || null}",
             "min": "${state.min || null}",
             "max": "${state.max || null}",
             "step": "${state.step || null}",
             "disabled": {
               "$ref": "#/state/disabled"
+            },
+            "readonly": {
+              "$ref": "#/state/readonly"
+            },
+            "required": {
+              "$ref": "#/state/required"
             },
             "value": "${state.value}"
           },
@@ -378,9 +414,7 @@
                     "type": "button",
                     "tabindex": "-1",
                     "aria-label": "${state.stepUpLabel}",
-                    "disabled": {
-                      "$ref": "#/state/disabled"
-                    }
+                    "disabled": "${state.disabled || state.readonly}"
                   },
                   "onclick": {
                     "$ref": "#/state/onStepUp"
@@ -408,9 +442,7 @@
                     "type": "button",
                     "tabindex": "-1",
                     "aria-label": "${state.stepDownLabel}",
-                    "disabled": {
-                      "$ref": "#/state/disabled"
-                    }
+                    "disabled": "${state.disabled || state.readonly}"
                   },
                   "onclick": {
                     "$ref": "#/state/onStepDown"

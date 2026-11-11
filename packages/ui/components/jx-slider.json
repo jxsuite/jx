@@ -5,6 +5,8 @@
   "observedAttributes": [
     "label",
     "labelledby",
+    "describedby",
+    "name",
     "value",
     "min",
     "max",
@@ -24,6 +26,18 @@
       "default": "",
       "attribute": "labelledby",
       "description": "Forwarded to the inner range as aria-labelledby, for a visible label the element does not own."
+    },
+    "describedby": {
+      "type": "string",
+      "default": "",
+      "attribute": "describedby",
+      "description": "The id of the sentence that describes the control, forwarded as its aria-describedby. A jx-field row writes it for a slider slotted into one."
+    },
+    "name": {
+      "type": "string",
+      "default": "",
+      "attribute": "name",
+      "description": "The name the value is submitted under, forwarded to the control."
     },
     "value": {
       "type": "number",
@@ -188,6 +202,8 @@
         "type": "range",
         "aria-label": "${state.label || null}",
         "aria-labelledby": "${state.labelledby || null}",
+        "aria-describedby": "${state.describedby || null}",
+        "name": "${state.name || null}",
         "aria-valuetext": "${state.valuetext || null}",
         "min": "${state.min}",
         "max": "${state.max}",

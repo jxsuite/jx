@@ -100,12 +100,21 @@ function themeStyleBlock(): typeof project.style {
 }
 
 describe("theme", () => {
+  test("a shadow follows the scheme in force, not only a forced one", () => {
+    /* The light values used to live under [data-theme="light"] alone, so a page following a light
+       operating system (no attribute at all) floated its panels on the dark theme's 60% shadow. */
+    for (const name of ["--jx-shadow-popover", "--jx-shadow-dialog"] as const) {
+      expect(String(themeTokens[name])).toContain("light-dark(rgb(0 0 0 / 0.");
+    }
+    expect(themeCSS()).not.toMatch(/data-theme="light"\] \{[^}]*--jx-shadow/u);
+  });
+
   test("is one layered sheet of tokens on :root", () => {
     const css = themeCSS();
     expect(css.startsWith(`@layer ${THEME_LAYER} {`)).toBe(true);
     expect(css).toContain(":root { --jx-gray-50: #f7f7f9;");
     expect(css).toContain("color-scheme: light dark");
-    expect(css).toContain(':root[data-theme="light"] { color-scheme: light;');
+    expect(css).toContain(':root[data-theme="light"] { color-scheme: light }');
     expect(css).toContain(':root[data-theme="dark"] { color-scheme: dark }');
     expect(css).toContain("@media (prefers-reduced-motion: reduce)");
     expect(css).toContain("--jx-dur-1: 0ms");

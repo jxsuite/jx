@@ -251,3 +251,28 @@ describe("the sidecar's handlers, called directly", () => {
     expect(s.value).toBe(15);
   });
 });
+
+describe("jx-slider as a form control", () => {
+  test("name and describedby reach the control, and unset ones write nothing", async () => {
+    const bare = await slider({ label: "Opacity" });
+    expect(control(bare).hasAttribute("name")).toBe(false);
+    expect(control(bare).hasAttribute("aria-describedby")).toBe(false);
+
+    const el = await slider({ describedby: "opacity-help", label: "Opacity", name: "opacity" });
+    expect(control(el).getAttribute("name")).toBe("opacity");
+    expect(control(el).getAttribute("aria-describedby")).toBe("opacity-help");
+  });
+
+  test("a row names and describes a slider slotted into it", async () => {
+    const row = document.createElement("jx-field");
+    row.setAttribute("label", "Opacity");
+    row.setAttribute("description", "How much of the layer shows.");
+    row.innerHTML = "<jx-slider></jx-slider>";
+    document.body.append(row);
+    await tick();
+    await tick();
+    const input = control(row);
+    expect(input.getAttribute("aria-labelledby")).toBe(row.querySelector('[part="label"]')!.id);
+    expect(input.getAttribute("aria-describedby")).toBe(row.querySelector('[part="help"]')!.id);
+  });
+});

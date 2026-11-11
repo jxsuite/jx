@@ -71,7 +71,9 @@ The theme is one stylesheet of custom properties on `:root`, inside the cascade 
 }
 ```
 
-Every colour token is a `light-dark()` pair, so the theme follows the operating system. Set `data-theme="light"` or `data-theme="dark"` on the root element to force one.
+Every colour token is a `light-dark()` pair, so the theme follows the operating system. Set `data-theme="light"` or `data-theme="dark"` on the root element to force one. The two shadow tokens, `--jx-shadow-popover` and `--jx-shadow-dialog`, follow the scheme the same way.
+
+Add `<meta name="color-scheme" content="light dark">` to your page's head, or name the one scheme you force. The browser reads it before any stylesheet loads, so a dark page does not flash white and the scrollbars and native controls match from the first frame.
 
 Text tokens step down in emphasis: `--jx-fg` for body text, `--jx-fg-dim` for labels and hints, and `--jx-fg-muted` for the quietest text, such as a shortcut in a menu or a placeholder. All three keep at least 4.5:1 contrast against the page, a panel, a field and a menu or popover, in both schemes, which is what WCAG 2.2 asks of normal-size text. A test holds them to it, so an override that makes muted text lighter than that is yours to check.
 
@@ -179,6 +181,8 @@ A `hint` is a real tooltip while the button can act. The element renders a `jx-t
 
 The native `input` and `change` events bubble from the field as they always do. `invalid` marks a refused value and reaches the control as `aria-invalid`; `error` draws the sentence explaining it under the field and announces it as it changes; while there is no error the paragraph takes no space, draws nothing and cannot be clicked; `help` draws a sentence of guidance. Each sentence carries an id the control names in `aria-describedby`, the error first, so a reader who tabs away and back hears why the value was refused rather than only catching the announcement once. `labelledby` and `describedby` forward to the control as well, and your own `describedby` is read after the field's own two sentences. `type` is any text-like input type, `size` is `sm`, `md` or `lg`, and `mono` draws the value in the monospace face for a path, a selector or a colour. `name`, `autocomplete`, `disabled`, `readonly` and `required` forward to the control. The control carries the field's value as its default value too, so resetting a form the field sits in leaves the control saying what the field says rather than emptying it: the value is the field's own state, and putting a different value back is a write of `value` from the host. To focus the field and select its value from a host, call `selectValue(host, "all" | "stem" | "none")` or `focusField(host)` from `@jxsuite/ui/behaviors/textfield`.
 
+A field that fails the browser's own validation, such as an empty `required` one, draws the same red border once the reader has interacted with it, with no `invalid` from you. Escape and Enter are left alone while an input method is composing, so cancelling a candidate does not clear the field.
+
 `clearable` adds a clear button inside the field, shown only while there is something to clear. Clicking it empties the value, puts focus back in the control and fires `input` and `change` from the field. Escape does the same from the keyboard. Both are keyed on `clearable` rather than on `type="search"`, because Firefox draws no clear button for a search field, and both go away on a `disabled` or `readonly` field so the reader is never handed a live control that empties a field they were refused permission to edit. On a single-line search field the element also cancels Enter, which would otherwise submit the form around it; on a textarea Enter still inserts a line.
 
 `grows` hands a multiline field's height to the content in it. Give `rows` as well to set a floor. On a browser without `field-sizing`, the field falls back to the height its `rows` asks for, or to the same three-row box a fixed field gets, so turning growth on never makes a field shorter.
@@ -202,6 +206,8 @@ Put the visible text inside the element instead of in `label` when it carries ma
 
 `jx-switch` takes a `hint`, and it is the same hybrid a button's is: a real tooltip while the switch can be flipped, rendered as a `jx-tooltip` child of the element and described on the input, and the native `title` of the wrapping label while the switch is `disabled`, which still shows on hover and is where a reason such as "sign in to publish" belongs. One thing differs from a button, and the browser decides it rather than the kit: a label cannot carry `interestfor`, since only `a`, `area` and `button` support it, so the switch wires its tip by `for` alone and the kit binds the row itself on every browser, Chrome 152 included. Read a switch's hint in a test the way you read a button's: from the tip's text, or from `title` on the label only while it is disabled. Both take `label`, `labelledby`, `describedby`, `name`, `disabled` and `size`. The native `change` and `input` bubble from the control, so `event.target.checked` reads as it would from a bare input. Both have the parts `control`, `input` and `label`, and on these two `control` is the `<label>` wrapping the input rather than the input itself.
 
+`required` and `value` forward to the native checkbox on both, so a form validates and submits them as it would a plain one. A checkbox also takes `invalid`, which reaches the control as `aria-invalid` and outlines the box in red; a required box left unticked draws the same outline once the reader has interacted with it. A switch has no `invalid`, because the switch role does not support it.
+
 :::doc-note
 Resetting a form these controls sit in leaves them where the reader left them, rather than snapping back. They are not form-associated yet, so a reset never reaches them; the control's default is kept in step with its live value so the two can never say different things. Putting a value back is a write from the host.
 :::
@@ -218,6 +224,8 @@ Resetting a form these controls sit in leaves them where the reader left them, r
 ```
 
 `value`, `min`, `max` and `step` are strings, not numbers. That is deliberate: an empty string is a value a number cannot express, and a numeric prop would turn a cleared field into a zero. Read the number back with `event.target.valueAsNumber`, which is `NaN` when the field is empty. `label`, `labelledby`, `describedby`, `placeholder`, `name`, `disabled` and `size` work as they do on a text field. The two stepping buttons are named `Increase` and `Decrease`; `step-up-label` and `step-down-label` rename them for another language.
+
+`required` and `readonly` forward to the control too. A read-only field disables its stepping buttons and ignores Shift-arrow. `invalid` reaches the control as `aria-invalid` and draws a red border, and so does a value outside `min` and `max`, or a required field left empty, once the reader has interacted with it.
 
 Stepping goes through the control's own `stepUp` and `stepDown`, so a value sits on the step grid measured from `min`. Adding the step yourself does not: with `min` 0 and `step` 0.3, stepping up from 0.5 gives 0.6, and 0.5 plus 0.3 gives 0.8.
 
@@ -263,7 +271,7 @@ The events are the platform's two names, `input` while the thumb moves and `chan
 }
 ```
 
-The control is the full height of a button (`--jx-control-h`), so the whole box is the pointer target, not just the 4px track. The one part is `input`. Studio's [zoom controls](/docs/studio/interface/canvas#pan-and-zoom) in the status bar are built from it.
+The control is the full height of a button (`--jx-control-h`), so the whole box is the pointer target, not just the 4px track. The one part is `input`. `name` and `describedby` forward to the range as well, so a slider submits with a form and can point at a sentence that explains it. Studio's [zoom controls](/docs/studio/interface/canvas#pan-and-zoom) in the status bar are built from it.
 
 ## Selects
 
@@ -302,7 +310,7 @@ You can also write rows yourself, as children: native `option` and `optgroup` el
 The parts are `control`, the `<select>` itself; `trigger` and `preview`, the closed face; `option`, `swatch`, `line`, `text` and `description` on each row; `group` and `group-heading`; `unlisted`, the stand-in row; and `error`, `help` and `help-slot`.
 
 :::doc-note
-The drawing needs a browser with customizable select: Chrome or Edge 135 and later. In an older engine the control still works, still submits and still reads correctly, but the browser draws the list and the faces, swatches and group headings do not show.
+The drawing needs a browser with customizable select: Chrome or Edge 135 and later. In an older engine the control still works, still submits and still reads correctly, but the browser draws the list: the faces, swatches and group headings do not show, and each row is its label alone, without its description.
 :::
 
 ## Comboboxes and lists
@@ -389,6 +397,8 @@ A `jx-option` belongs in a `jx-listbox` and nowhere else. Put one inside a `<sel
 Nothing here writes an id, and nothing writes `labelledby`. The field mints one and hands it to whatever you put inside it, which is the reason it is an element rather than three things you assemble each time.
 
 `required` draws a mark beside the label, drawn rather than added to the text so it stays out of the control's name. Marking the row does not make the control required: say so on the control as well, which is the element that validates. `invalid` turns the label and the help line red, and `warning` colours the label amber and leaves the sentence alone. Neither says anything to assistive technology; `aria-invalid` belongs on the control that holds the value. `span` gives the control the whole width instead of the two-column row, with the label above it. A row also does this on its own when it sits in a narrow region: if its nearest inline-size container (an ancestor with `container-type: inline-size`) is under 288px wide, the label moves above the control, because a fixed 80px label column leaves too little room there and cuts long labels off. Declare `container-type: inline-size` on a sidebar or panel to opt it in. Jx Studio's side panels do. With no such container above it, a row keeps its two columns.
+
+Clicking the label moves focus to the control, as a native label does. It never activates the control, so clicking the label beside a checkbox does not toggle it.
 
 `description` is the sentence under the row, and the `help` slot is the richer version of it: anything slotted into `help` replaces the description rather than stacking with it. The control is pointed at the sentence only when there is one at mount, so a sentence that starts empty and fills later should be slotted rather than passed as `description`. The parts are `label`, `control` and `help`.
 

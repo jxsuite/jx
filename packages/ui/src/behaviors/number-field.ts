@@ -87,7 +87,9 @@ function announce(host: HTMLElement): void {
 export function stepBy(state: NumberFieldState, event: Event, n: number): void {
   const host = hostOf(event);
   const control = host ? controlOf(host) : null;
-  if (!host || !control) {
+  /* `stepUp()` and `stepDown()` are script, and script may write a readonly control: the platform
+     only stops the reader's own keys. The element steps on the reader's behalf, so it stops too. */
+  if (!host || !control || control.readOnly) {
     return;
   }
   try {

@@ -344,3 +344,27 @@ describe("jx-checkbox", () => {
     expect(label.childNodes.length).toBeGreaterThan(0);
   });
 });
+
+describe("jx-checkbox as a form control", () => {
+  test("required, value and invalid reach the control, and unset ones write nothing", async () => {
+    const bare = await box({ name: "terms" }, "Accept");
+    expect(control(bare).required).toBe(false);
+    expect(control(bare).hasAttribute("value")).toBe(false);
+    expect(control(bare).hasAttribute("aria-invalid")).toBe(false);
+    expect(bare.dataset["invalid"]).toBeUndefined();
+
+    const el = await box({ invalid: "", name: "terms", required: "", value: "yes" }, "Accept");
+    expect(control(el).required).toBe(true);
+    expect(control(el).getAttribute("value")).toBe("yes");
+    expect(control(el).getAttribute("aria-invalid")).toBe("true");
+    expect(el.dataset["invalid"]).toBe("");
+  });
+
+  test("a refused box is ringed, and focus keeps the ring a keyboard reader is following", () => {
+    const rules = buildStyleRules(checkboxDoc.style, { scope: "S" }).map((rule) => rule.text);
+    const ring = rules.find((text) => text.includes(":user-invalid")) ?? "";
+    expect(ring).toContain('S[data-invalid] [part="input"]:not(:focus-visible)');
+    expect(ring).toContain('S [part="input"]:user-invalid:not(:focus-visible)');
+    expect(ring).toContain("outline: 1px solid var(--jx-danger)");
+  });
+});

@@ -50,6 +50,12 @@
       "$src": "jx-ui:/behaviors/textfield.ts",
       "$export": "nameFieldControl",
       "description": "Mints the row's id stem and names the slotted control with it. A document cannot do either: the closed operator set has no counter, and no body can write a property on an element other than the one whose handler is running. It runs once, over what is slotted then: a control APPENDED to the row afterwards lands outside the control part, unplaced and unnamed. Keep the control in the document and switch its state rather than adding it later."
+    },
+    "onLabelClick": {
+      "$prototype": "Function",
+      "$src": "jx-ui:/behaviors/textfield.ts",
+      "$export": "focusFieldControl",
+      "description": "A click on the label moves focus to the control the row holds, as a label's for would. It only focuses: it never ticks a box or flips a switch, because a row's label sits a column away from its control. The control is found at the click, so one a kit element has since replaced is still reached."
     }
   },
   "attributes": {
@@ -136,7 +142,10 @@
         "part": "label",
         "id": "${state.uid ? state.uid + '-label' : null}"
       },
-      "textContent": "${state.label}"
+      "textContent": "${state.label}",
+      "onclick": {
+        "$ref": "#/state/onLabelClick"
+      }
     },
     {
       "tagName": "div",

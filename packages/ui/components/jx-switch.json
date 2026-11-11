@@ -5,11 +5,13 @@
   "observedAttributes": [
     "checked",
     "disabled",
+    "required",
     "hint",
     "label",
     "labelledby",
     "describedby",
     "name",
+    "value",
     "size"
   ],
   "$elements": [
@@ -29,6 +31,12 @@
       "default": false,
       "attribute": "disabled",
       "description": "Cannot be flipped or focused. Disabled, never absent, and the hint moves from the tip to the row's title while it is: a disabled control cannot open a tip, and why the setting cannot be changed is exactly what the reader hovers to find out."
+    },
+    "required": {
+      "type": "boolean",
+      "default": false,
+      "attribute": "required",
+      "description": "Forwarded to the control: a required switch left off fails the form's own check."
     },
     "hint": {
       "type": "string",
@@ -59,6 +67,12 @@
       "default": "",
       "attribute": "name",
       "description": "The form field name, forwarded to the control."
+    },
+    "value": {
+      "type": "string",
+      "default": "",
+      "attribute": "value",
+      "description": "What a switch that is on submits under its name. Empty leaves the platform's own \"on\"."
     },
     "size": {
       "type": "string",
@@ -272,8 +286,12 @@
             "aria-describedby": "${[state.hasTip ? state.uid + '-tip' : null, state.describedby || null].filter(Boolean).join(' ') || null}",
             "tabindex": "${state.tabindex || null}",
             "name": "${state.name || null}",
+            "value": "${state.value || null}",
             "disabled": {
               "$ref": "#/state/disabled"
+            },
+            "required": {
+              "$ref": "#/state/required"
             },
             "checked": {
               "$ref": "#/state/checked"

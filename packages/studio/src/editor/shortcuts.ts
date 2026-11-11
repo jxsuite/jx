@@ -40,6 +40,7 @@ import {
   tabOfPane,
 } from "../canvas/canvas-surface";
 import type { CanvasSurface } from "../canvas/canvas-surface";
+import { installCompositionGuard } from "./composition-guard";
 import { STAGE_SELECTOR } from "../surfaces/pane-grid";
 import { primarySelection } from "../tabs/selection";
 import {
@@ -961,6 +962,8 @@ export function initShortcuts(registry: CommandRegistry, stageContext: StageCont
     }
   });
 
+  // Before the dispatcher and every surface handler: a key an input method is using is not ours.
+  installCompositionGuard();
   document.addEventListener("keydown", (e) => {
     dispatchKey(registry, e);
   });

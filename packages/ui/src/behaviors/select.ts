@@ -55,6 +55,20 @@ export interface SelectState {
   unlisted?: SelectRow[];
   /** This element's own id stem, minted at mount. */
   uid?: string;
+  /** Whether the engine draws a plain select: it has no `appearance: base-select`. */
+  plain?: boolean;
+}
+
+/**
+ * Whether the engine can draw a select's own list, which is what every row's drawing depends on.
+ *
+ * Asked of the engine and never guessed from its name. An engine without the feature still gives a
+ * working control, with the platform's own list: it ignores the trigger button and the group
+ * headings, and draws each row as its text. That is why the one thing the fallback has to change is
+ * text: a row's label and its description are two spans, and read as text they are one word.
+ */
+export function drawsOwnList(): boolean {
+  return typeof CSS !== "undefined" && CSS.supports("appearance", "base-select");
 }
 
 /** How many stems have been minted, so no two instances share one. */
@@ -136,6 +150,7 @@ export function syncSelect(state: SelectState, sel: HTMLSelectElement): void {
 export function mountSelect(state: SelectState, host: HTMLElement): void {
   minted += 1;
   state.uid = `jx-select-${minted}`;
+  state.plain = !drawsOwnList();
   const sel = controlOf(host);
   if (!sel) {
     return;

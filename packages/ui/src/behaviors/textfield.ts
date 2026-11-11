@@ -109,6 +109,44 @@ export function mintFieldId(state: TextfieldState): void {
 
 let namedRows = 0;
 
+/** The native controls a reader can be IN, which is where a row's label leads. */
+const FOCUSABLE_CONTROLS = "input:not([type=hidden]), select, textarea, button";
+
+/**
+ * A click on a `jx-field`'s label moves focus to the control the row holds, which is what a `<label
+ * for>` does and what a reader aiming at the bigger target expects.
+ *
+ * It is done here rather than with a `for`, because `for` needs an id on the native control and the
+ * control a kit element draws is its own to replace: `jx-textfield` swaps an `<input>` for a
+ * `<textarea>` when `multiline` changes, and an id minted at mount would not survive that. So the
+ * control is looked up at the click: the slotted element itself when it is a native control,
+ * otherwise the first one it draws.
+ *
+ * The click moves focus and nothing else. It does not tick a box or flip a switch: the row's label
+ * sits a column away from its control and Studio's rows are dense, so a label that toggled would
+ * change a setting on a click that was aimed at reading it. A disabled control takes no focus, and
+ * the platform is what says so.
+ *
+ * @param _state The row's reactive scope, which this never reads.
+ * @param event The click on the row's label.
+ */
+export function focusFieldControl(_state: FieldRowState, event: Event): void {
+  const label = event.currentTarget;
+  if (!(label instanceof Element)) {
+    return;
+  }
+  const control = label.nextElementSibling?.firstElementChild;
+  if (!control) {
+    return;
+  }
+  const target = control.matches(FOCUSABLE_CONTROLS)
+    ? control
+    : control.querySelector(FOCUSABLE_CONTROLS);
+  if (target instanceof HTMLElement) {
+    target.focus();
+  }
+}
+
 /** Whether an element's DEFINITION says it can be named — that it observes `labelledby`. */
 function observesNaming(el: Element): boolean {
   const def = customElements.get(el.localName);
