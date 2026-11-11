@@ -1,6 +1,9 @@
 {
   "$schema": "../document.schema.json",
   "$id": "UserCard",
+  "$script": {
+    "client": "const NAMES = [\n  { first: \"Jane\", last: \"Smith\" },\n  { first: \"Bob\", last: \"Johnson\" },\n  { first: \"Alice\", last: \"Wilson\" },\n  { first: \"Priya\", last: \"Patel\" },\n  { first: \"Marcus\", last: \"Chen\" },\n  { first: \"John\", last: \"Doe\" },\n];\n\nexport function changeName(state) {\n  const candidate = NAMES[Math.floor(Math.random() * NAMES.length)];\n  state.firstName = candidate.first;\n  state.lastName = candidate.last;\n}\n"
+  },
 
   "state": {
     "firstName": { "type": "string", "default": "John" },
@@ -32,8 +35,8 @@
     },
     "changeName": {
       "$prototype": "Function",
-      "$src": "./user-card.js",
-      "description": "Pick a random name (uses external function)"
+      "$src": "#client",
+      "description": "Pick a random name (an export of this document's own script)"
     }
   },
 

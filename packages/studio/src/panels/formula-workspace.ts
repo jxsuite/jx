@@ -65,17 +65,21 @@ import { emptyLogicWorkspaceView, mountLogicWorkspace } from "../surfaces/logic-
 
 import {
   argsSchema,
+  enumArg,
+  enumProperty,
   pathArg,
   pathProperty,
   stringArg,
   stringProperty,
 } from "../commands/command-args";
 
+import type { ScriptSide } from "@jxsuite/schema/document-scripts";
 import type { AnyCommand, CommandRegistry } from "../commands/registry";
 import type { PanelBody } from "./panel-registry";
 import type { SurfaceOption } from "../ui/surface";
 import type { ExpressionPreview } from "../services/preview-eval";
 import type { FormulaEditDef, FunctionEditDef } from "../types";
+import { scriptTargetName } from "../tabs/tab";
 import type { Tab } from "../tabs/tab";
 import type {
   JsonObject,
@@ -109,6 +113,9 @@ const NOTHING_OPEN = "Open a formula or a function to edit it here, beside the p
 
 /** The target names a document position that holds no expression: say so, keep the header. */
 const NO_EXPRESSION = "No expression found at this document position.";
+
+/** The sides a document has a module for (`spec.md` §23.2), as the palette offers them. */
+const SCRIPT_SIDES: readonly ScriptSide[] = ["client", "server"];
 
 /** The rail with no canvas snapshot behind it. */
 const NO_SNAPSHOT = "The values this formula can read appear here once the canvas has rendered.";
@@ -413,6 +420,15 @@ export function workspaceView(): LogicWorkspaceView {
   if (target.surface === "function") {
     _resolved = null;
     const { editing } = target;
+    if (editing.type === "script") {
+      const side = editing.side ?? "client";
+      return {
+        ...empty,
+        ...headerOf("ƒ", scriptTargetName(side), "document module", `$script/${side}`),
+        state: "ready",
+        surface: "code",
+      };
+    }
     const name = editing.defName ?? editing.eventKey ?? "?";
     return {
       ...empty,
@@ -824,6 +840,31 @@ export function formulaEditorCommands(): AnyCommand[] {
         openLogicTarget({ editing: { eventKey, path, type: "event" }, surface: "function" });
       },
       title: "Edit Event Handler",
+    },
+    {
+      args: argsSchema({
+        side: enumProperty(
+          SCRIPT_SIDES,
+          'Which of the document\'s modules to open: "client", which the browser runs, or ' +
+            '"server", which the server runs.',
+        ),
+      }),
+      category: "Document",
+      id: "formula.editScript",
+      level: "document",
+      menus: ["palette"],
+      group: "5_data",
+      requires: "an open document",
+      when: (ctx) => ctx.document.open,
+      run: (_commandCtx, args) => {
+        const side = enumArg("formula.editScript", args, "side", SCRIPT_SIDES);
+        if (!activeTab.value) {
+          throw new RangeError(`command "formula.editScript" needs an open document`);
+        }
+        // A document with no script yet opens an empty one: the first character typed creates it.
+        openLogicTarget({ editing: { side, type: "script" }, surface: "function" });
+      },
+      title: "Edit Script",
     },
   ];
 }

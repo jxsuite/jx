@@ -167,7 +167,7 @@ Statements execute sequentially. A step whose value is a promise is awaited befo
 ## Related
 
 - [Expressions](/docs/framework/concepts/expressions): the nodes statements are built from
-- [Functions and sidecars](/docs/framework/concepts/functions): the entries that own a `body`
+- [Functions and modules](/docs/framework/concepts/functions): the entries that own a `body`
 - [Switching](/docs/framework/concepts/switching): `$switch` at the element level
 - [Statements in Studio](/docs/studio/logic/statements): the visual step editor
 - [Code editing in Studio](/docs/studio/logic/code): the JavaScript escape hatch

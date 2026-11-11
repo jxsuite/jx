@@ -11,7 +11,8 @@
  *
  * **CRDT granularity is deliberately FINER than Studio's op-log granularity.** Every node is a
  * Y.Map; within it, "children" is a Y.Array, {@link TEXT_KEYS} are `Y.Text`,
- * {@link GRANULAR_OBJECT_KEYS} are nested Y.Maps, and everything else is a whole-JSON LWW value.
+ * {@link GRANULAR_OBJECT_KEYS} are nested Y.Maps, {@link TEXT_OBJECT_KEYS} are a Y.Map of `Y.Text`,
+ * and everything else is a whole-JSON LWW value.
  *
  * The two granularities used to match, on the reasoning that mutators emit whole-value set-keys so
  * deeper Y types would add merge surface nothing targets. That reasoning was wrong: it conflated
@@ -46,6 +47,11 @@ export const SOURCE_KEY = "source";
  * first edit to a given key, since the bridge replaces a non-granular container. Two clients
  * running DIFFERENT versions in one room would disagree about merge granularity — see §5 of
  * specs/collab.md on version skew, which this does not attempt to solve.
+ *
+ * Not bumped when a document's script texts moved to `Y.Text` ({@link TEXT_OBJECT_KEYS}): a client
+ * from before reads the texts as the strings they are and writes `$script` as one value, which a
+ * client from after reads as it is and turns back into texts on its next edit. Neither misreads the
+ * other; they merge per script rather than per character, which is what both did before.
  */
 export const COLLAB_SCHEMA_VERSION = 2;
 
@@ -123,6 +129,17 @@ export const TEXT_KEYS: ReadonlySet<string> = new Set(["textContent"]);
 export const GRANULAR_OBJECT_KEYS: ReadonlySet<string> = new Set(["style", "attributes", "$props"]);
 
 /**
+ * Node keys stored as a nested `Y.Map` whose STRING values are each a `Y.Text`.
+ *
+ * `$script` is a document's own modules (`spec.md` §23.2): two texts, each of which may run to
+ * hundreds of lines and is edited a character at a time. Stored whole, two people typing in one
+ * script took turns losing everything the other had typed since the last keystroke that landed. The
+ * key space is granular as well, so one person writing the client module and another the server
+ * module are not in each other's way at all.
+ */
+export const TEXT_OBJECT_KEYS: ReadonlySet<string> = new Set(["$script"]);
+
+/**
  * Rewrite a `Y.Text` to `next` with a minimal edit (common prefix/suffix trimmed).
  *
  * Minimal rather than replace-all for two reasons: the wire carries only the delta, and — the
@@ -196,6 +213,48 @@ export function mergeYObject(map: Y.Map<YStructureValue>, value: DocumentRecord)
   }
 }
 
+/** A plain object becomes a Y.Map whose string values are each a Y.Text; other values stay plain. */
+export function toYTextObject(value: DocumentRecord): Y.Map<YStructureValue> {
+  const map = new Y.Map<YStructureValue>();
+  for (const [key, entry] of Object.entries(value)) {
+    if (entry !== undefined) {
+      map.set(key, isString(entry) ? new Y.Text(entry) : cloneValue(entry));
+    }
+  }
+  return map;
+}
+
+/**
+ * Merge a plain object into an existing Y.Map of texts: a string onto the `Y.Text` already there as
+ * a minimal edit, so the characters a peer is typing into the same text keep their place. Removed
+ * keys are deleted, and a value that is no longer a string replaces its text, since there is
+ * nothing left to merge with.
+ */
+export function mergeYTextObject(map: Y.Map<YStructureValue>, value: DocumentRecord): void {
+  // Detached key list: deleting from a Y.Map while iterating its live keys is unsafe.
+  // oxlint-disable-next-line unicorn/no-useless-spread -- the copy is the point (mutation during iteration)
+  for (const key of [...map.keys()]) {
+    if (value[key] === undefined) {
+      map.delete(key);
+    }
+  }
+  for (const [key, entry] of Object.entries(value)) {
+    if (entry === undefined) {
+      continue;
+    }
+    const existing = map.get(key);
+    if (!isString(entry)) {
+      if (!map.has(key) || !deepEqualJson(existing, entry)) {
+        map.set(key, cloneValue(entry));
+      }
+    } else if (existing instanceof Y.Text) {
+      applyTextEdit(existing, entry);
+    } else {
+      map.set(key, new Y.Text(entry));
+    }
+  }
+}
+
 /** Structural equality over plain JSON, used to skip no-op key writes. */
 function deepEqualJson(a: YStructureValue | undefined, b: JxDocumentValue): boolean {
   if (a === b) {
@@ -245,6 +304,8 @@ export function toYNode(node: JxDocumentValue | undefined): Y.Map<YStructureValu
       map.set(key, new Y.Text(value));
     } else if (GRANULAR_OBJECT_KEYS.has(key) && isDocumentRecord(value)) {
       map.set(key, toYObject(value));
+    } else if (TEXT_OBJECT_KEYS.has(key) && isDocumentRecord(value)) {
+      map.set(key, toYTextObject(value));
     } else {
       map.set(key, cloneValue(value));
     }
@@ -357,6 +418,9 @@ export function seedStructure(
       }
       if (key === "children" && Array.isArray(value)) {
         structure.set(key, toYChildren(value));
+      } else if (TEXT_OBJECT_KEYS.has(key) && isDocumentRecord(value)) {
+        // A document's scripts exist only on the root, so this is the one place they are seeded.
+        structure.set(key, toYTextObject(value));
       } else {
         structure.set(key, cloneValue(value));
       }

@@ -13,6 +13,7 @@ code:
   - packages/studio/src/surfaces/style-panel.ts
   - packages/studio/src/surfaces/statusbar.ts
   - packages/studio/src/services/connection.ts
+  - packages/studio/src/services/module-report.ts
 ---
 
 # Problems and progress
@@ -72,6 +73,8 @@ Problems belong to the project you have open. Closing the project clears them, s
 Some Problems are about the document rather than about Studio. Saving a file checks its [popovers](/docs/framework/concepts/overlays) and files what it finds under **Popover**: a panel whose base style sets `display`, which cancels the browser's own hiding and lays the panel out on every page; `popovertarget` on an element that cannot invoke one; a target naming no popover; an exit animation that will be cut short.
 
 Where the fix is mechanical the row carries a **Fix** button that performs it in one step you can undo with one press: moving `display` into `:popover-open`, removing attributes that do nothing where they are, writing `popover="auto"`. Where it is not, the row is a sentence with no button, because a button that does not do what it says is worse than none. Which panel a control should point at is your decision, not something Studio can guess.
+
+A save also files advice under **Modules**. A function whose **Source** is a relative path to a script file gets a note that the module could be the document's [own script](/docs/studio/logic/code#a-documents-script), and a function marked to load late gets one when the script it is in loads with the page anyway. These rows are advice about a document that is right as it stands. They carry no **Fix** button, and they go away when the next save finds nothing to say.
 
 You can run the same check on demand: press :kbd[⌘K] and choose **Check Popovers**. **Check Accessibility** is its neighbor and files under **Accessibility** instead, with the WCAG criterion behind each finding; the rules it applies are listed on the [Accessibility](/docs/framework/concepts/accessibility) page, and `jx validate` applies the same ones. Both are also tools of the [AI assistant](/docs/studio/ai): ask it to check the open page and it runs the same command, reads back the rows it filed, and can fix what it finds in the same request.
 

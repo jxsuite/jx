@@ -28,6 +28,7 @@ import { generateClassSchema } from "@jxsuite/schema";
 import { validateProjectFile } from "@jxsuite/schema/validate-project";
 import { findA11yDefects } from "@jxsuite/schema/a11y";
 import { findDialogDefects } from "@jxsuite/schema/dialogs";
+import { findScriptAdvice } from "@jxsuite/schema/document-scripts";
 import { findPopoverDefects, overlayScopeFor } from "@jxsuite/schema/overlays";
 import type { OverlayScope } from "@jxsuite/schema/overlays";
 import { isJsonObject, isNonNullObject, isString } from "@jxsuite/schema/guards";
@@ -68,14 +69,19 @@ export interface ProjectTreeLintFinding {
   /** The node's path inside the document. */
   path: (string | number)[];
   /**
-   * Which lint: `popover`, `dialog`, `accessibility`, `notation` for a `.jxn` file's text, or
-   * `function-body` for a body whose meaning reading it as TypeScript changes (`spec.md` §23.1).
+   * Which lint: `popover`, `dialog`, `accessibility`, `notation` for a `.jxn` file's text,
+   * `function-body` for a body whose meaning reading it as TypeScript changes (`spec.md` §23.1), or
+   * `module` for advice about how a document names its modules (`spec.md` §23.2).
    */
-  source: "popover" | "dialog" | "accessibility" | "notation" | "function-body";
+  source: "popover" | "dialog" | "accessibility" | "notation" | "function-body" | "module";
   rule: string;
   message: string;
   detail: string;
-  severity: "error" | "warn";
+  /**
+   * `error` is certainly broken and `warn` very probably not what was meant. `info` is advice about
+   * a document that is right as it stands, and no option makes it fail a tree.
+   */
+  severity: "error" | "warn" | "info";
   /** The WCAG success criterion, for accessibility findings. */
   criterion?: string;
 }
@@ -374,7 +380,7 @@ function readJson(path: string): JsonValue {
   return JSON.parse(readFileSync(path, "utf8"));
 }
 
-/** The three lints over one document, as findings that name their file. */
+/** The lints over one document, and the advice about its modules, as findings that name their file. */
 function lintDocument(doc: JxElement, file: string, scope: OverlayScope): ProjectTreeLintFinding[] {
   const findings: ProjectTreeLintFinding[] = [];
   for (const defect of findPopoverDefects(doc, scope)) {
@@ -386,6 +392,9 @@ function lintDocument(doc: JxElement, file: string, scope: OverlayScope): Projec
   for (const defect of findA11yDefects(doc)) {
     findings.push({ ...pick(defect), criterion: defect.criterion, file, source: "accessibility" });
   }
+  for (const advice of findScriptAdvice(doc)) {
+    findings.push({ ...pick({ ...advice, severity: "info" }), file, source: "module" });
+  }
   return findings;
 }
 
@@ -395,7 +404,7 @@ function pick(defect: {
   path: (string | number)[];
   message: string;
   detail: string;
-  severity: "error" | "warn";
+  severity: "error" | "warn" | "info";
 }): Pick<ProjectTreeLintFinding, "rule" | "path" | "message" | "detail" | "severity"> {
   return {
     detail: defect.detail,

@@ -27,6 +27,7 @@ import {
   resolveLayoutDoc,
 } from "../site-context";
 import { documentBase } from "./canvas-origin";
+import { scriptCollector } from "./canvas-scripts";
 import { componentRegistry, computeRelativePath } from "../files/components";
 import { collectUsedTags } from "@jxsuite/schema/component-meta";
 import { injectContext } from "@jxsuite/site/context";
@@ -48,6 +49,7 @@ import { loadExtensions } from "../format/format-host";
 import { bakeRepeaterSources, extensionClassKeys, repeaterSourceKeys } from "./repeater-sources";
 
 import type { AssetContext } from "./asset-refs";
+import type { CanvasScripts, ScriptCollector } from "./canvas-scripts";
 import type {
   JsonValue,
   JxDocument,
@@ -147,23 +149,29 @@ export function markLayoutNodes(node: JxMutableNode, file: string, path: JxPath 
  * opening a locked node still opens the layout that holds it. A cycle stops at the first repeat
  * rather than recursing forever, and a parent that cannot be read leaves the chain where it is.
  *
+ * Each layout's own script is addressed to it before the levels are merged (`canvas-scripts.ts`),
+ * because the merged document cannot say which level an entry was written in.
+ *
  * @param {string} layoutPath - The `$layout` reference, project-relative as authored
  * @param {Set<string>} [seen] - Files already on the chain
+ * @param {ScriptCollector} [scripts] - Where each layout's client script is gathered
  * @returns {Promise<JxMutableNode | null>} The merged, marked layout, or null when unreadable
  */
 export async function resolveCanvasLayout(
   layoutPath: string,
   seen = new Set<string>(),
+  scripts: ScriptCollector | null = null,
 ): Promise<JxMutableNode | null> {
   const file = layoutPath.replace(/^\.\//, "");
   if (seen.has(file)) {
     return null;
   }
   seen.add(file);
-  const layoutDoc = await resolveLayoutDoc(layoutPath);
-  if (!layoutDoc) {
+  const read = await resolveLayoutDoc(layoutPath);
+  if (!read) {
     return null;
   }
+  const layoutDoc = scripts ? scripts.own(read, file) : read;
   // The SAME normalization resolveLayoutDoc reads the file with, so the marker's `file` is a path
   // The editor can hand straight to navigateToComponent when the author asks to open it.
   markLayoutNodes(layoutDoc, file);
@@ -171,7 +179,7 @@ export async function resolveCanvasLayout(
   if (!isString(parentRef) || !parentRef) {
     return layoutDoc;
   }
-  const parent = await resolveCanvasLayout(parentRef, seen);
+  const parent = await resolveCanvasLayout(parentRef, seen, scripts);
   if (!parent) {
     return layoutDoc;
   }
@@ -338,18 +346,21 @@ function entryRootOf(template: string, roots: ReadonlySet<string>): string | nul
  * @param path - The entry's file, project-relative
  * @param editable - Whether the render can be edited, so the page's whole-field text is marked as
  *   the entry's fields to type in place (Edit and Design; never Preview)
+ * @param scripts - Where the page's client script is gathered
  */
 export async function entryInPage(
   entry: JxMutableNode,
   path: string,
   editable = false,
+  scripts: ScriptCollector | null = null,
 ): Promise<EntryPage | null> {
   const match = collectionForFile(path);
   const page = match ? await collectionPage(match.name, entryLocale(path)) : null;
-  const doc = page ? await resolveLayoutDoc(page.path) : null;
-  if (!page || !doc) {
+  const read = page ? await resolveLayoutDoc(page.path) : null;
+  if (!page || !read) {
     return null;
   }
+  const doc = scripts ? scripts.own(read, page.path.replace(/^\.\//, "")) : read;
   const found = entryBodyOf(doc, entryRootsOf(doc));
   if (!found) {
     return null;
@@ -416,14 +427,25 @@ export async function resolveCanvasDocument(
   siteStyle: JxStyle | null;
   /** The state key of the entry drawn live inside its collection's page, or null for none. */
   entryRoot: string | null;
+  /** The client script of every document this render is composed from, by its specifier. */
+  scripts: CanvasScripts;
 }> {
   const S = { documentPath: tab?.documentPath, mode: tab?.doc.mode };
   const canvasMode = modeOverride ?? canvasModeOfTab(tab);
+  const fileBase = documentBase(projectState?.projectRoot);
+  /* Each document is addressed BEFORE it is merged with another (canvas-scripts.ts), and after it
+     is copied: the copy below is a structured clone in Preview, which a qualified copy still
+     holding the tab's reactive nodes could not be given to. */
+  const scripts = scriptCollector(fileBase);
+  const unsaved = tab?.doc.dirty === true;
 
-  let renderDoc =
+  let renderDoc = scripts.own(
     canvasMode === "preview"
       ? structuredClone(toRaw(doc))
-      : prepareForEditMode(stripEventHandlers(doc));
+      : prepareForEditMode(stripEventHandlers(doc)),
+    S.documentPath,
+    unsaved,
+  );
 
   let layoutWrapped = false;
   const isPage = S.documentPath && projectState?.isSiteProject && isPagePath(S.documentPath);
@@ -443,12 +465,22 @@ export async function resolveCanvasDocument(
       : getEffectiveLayoutPath(pageLayout(doc, tab));
     /* An entry goes into its collection's page first, and the page into the layout: the order the
        build composes them in (studio.md §22.5). */
-    let pageForSlots = canvasMode === "preview" ? structuredClone(toRaw(doc)) : renderDoc;
+    let pageForSlots =
+      canvasMode === "preview"
+        ? scripts.own(structuredClone(toRaw(doc)), S.documentPath, unsaved)
+        : renderDoc;
     if (isEntry && S.documentPath) {
-      entryPage = await entryInPage(pageForSlots, S.documentPath, canvasMode !== "preview");
+      entryPage = await entryInPage(
+        pageForSlots,
+        S.documentPath,
+        canvasMode !== "preview",
+        scripts,
+      );
       pageForSlots = entryPage?.doc ?? pageForSlots;
     }
-    const layoutDoc = layoutPath ? await resolveCanvasLayout(layoutPath) : null;
+    const layoutDoc = layoutPath
+      ? await resolveCanvasLayout(layoutPath, new Set<string>(), scripts)
+      : null;
     if (!layoutDoc && entryPage) {
       // A page with no layout: the page alone is the frame the entry is written in.
       const pageDoc = entryPage.doc;
@@ -496,7 +528,6 @@ export async function resolveCanvasDocument(
     });
   }
 
-  const fileBase = documentBase(projectState?.projectRoot);
   const docBase = S.documentPath ? new URL(S.documentPath, fileBase).href : undefined;
   /*
    * How this render addresses media, as PLAIN DATA — the resolver itself is a function and cannot
@@ -689,6 +720,7 @@ export async function resolveCanvasDocument(
       pageContentPrefix,
     },
     renderDoc,
+    scripts: scripts.scripts,
     siteStyle: projectState?.projectConfig?.style ?? null,
   };
 }

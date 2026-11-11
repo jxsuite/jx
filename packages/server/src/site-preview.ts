@@ -5,8 +5,8 @@
  * `dist/basics/fetch/index.html` links to `/basics/counter` and loads `/components/fetch-demo.js`.
  * So it is only browsable when those paths resolve against the OUTPUT — and on the editor's server
  * they resolve against the project's SOURCES, because that is the editor's whole job. The two are
- * the same URLs holding different bytes: `/components/fetch-demo.js` is the module of formulas the
- * compiler reads in the sources, and the custom-element definition the page needs in the output.
+ * the same URLs holding different bytes: a `/components/<name>.js` is the `$src` module a component
+ * keeps beside it in the sources, and the custom-element definition the page needs in the output.
  *
  * Serving the output as a 404 fallback on the editor's server looks like it works — the page and
  * the assets that exist in only one of the two spaces arrive — and then the reader gets the source

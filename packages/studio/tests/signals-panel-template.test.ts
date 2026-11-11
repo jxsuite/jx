@@ -782,6 +782,38 @@ describe("the function editor", () => {
     expect(docState().run!.$export).toBe("main");
   });
 
+  test("a function in the document's own script opens that script (spec.md §23.2)", async () => {
+    const { panel } = await drawSignals({
+      bump: { $export: "bump", $prototype: "Function", $src: "#client" },
+      history: { $export: "history", $src: "#server", timing: "server" },
+      tally: { $prototype: "Tally", $src: "#client" },
+    });
+    const editor = await openEntry(panel, "bump");
+    // No body to edit here, and no modes to switch between: one button, to the module.
+    expect(editor.querySelector('[part="code"]')).toBeNull();
+    expect(editor.querySelectorAll('[part="segment"]')).toHaveLength(0);
+    const button = editor.querySelector('[part="bar-button"][data-action="editor"]');
+    expect(button?.querySelector('[part="control"]')?.getAttribute("aria-label")).toBe(
+      "Open in code editor",
+    );
+
+    shell.docks.bottom.collapsed = true;
+    await press(button);
+    expect(activeTab.value!.session.ui.editingFunction).toEqual({ side: "client", type: "script" });
+    expect(shell.bottomTab).toBe("logic");
+    expect(shell.docks.bottom.collapsed).toBe(false);
+
+    // A server entry names the other module, and its button opens that one.
+    const serverEditor = await openEntry(panel, "history");
+    await press(serverEditor.querySelector('[part="bar-button"][data-action="editor"]'));
+    expect(activeTab.value!.session.ui.editingFunction).toEqual({ side: "server", type: "script" });
+
+    // And so does a class the script exports, which is drawn as a plugin entry.
+    const classEditor = await openEntry(panel, "tally");
+    await press(classEditor.querySelector('[part="bar-button"][data-action="editor"]'));
+    expect(activeTab.value!.session.ui.editingFunction).toEqual({ side: "client", type: "script" });
+  });
+
   test("basic parameters: chips render, Enter adds, remove drops the last one's key", async () => {
     const { panel } = await drawSignals({
       go: { $prototype: "Function", body: "", parameters: ["a", "b"] },

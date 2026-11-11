@@ -1,6 +1,6 @@
 ---
-title: "Functions and sidecars"
-description: "Function prototype entries in Jx: inline handlers, computed bodies, external .js sidecars, and how JavaScript reads and writes state."
+title: "Functions and modules"
+description: "Function prototype entries in Jx: inline handlers, computed bodies, a document's own script, $src modules, and how JavaScript reads and writes state."
 spec:
   - spec.md#4.2
   - spec.md#4.3
@@ -24,13 +24,15 @@ code:
   - packages/compiler/src/site/bun-plugin.ts
   - packages/erase/src/module-loader.ts
   - packages/server/src/server-script.ts
+  - packages/studio/src/canvas/canvas-scripts.ts
+  - packages/studio/src/canvas/iframe-scripts.ts
 ---
 
-# Functions and sidecars
+# Functions and modules
 
 > **Studio writes this format for you.** The Monaco editor behind every function body ([Code editing](/docs/studio/logic/code)) reads and writes these entries, and this page documents the JSON and the JavaScript contract around it.
 
-A Function entry is a `state` entry with `$prototype: "Function"`, the top rung of the escalation ladder, where logic becomes JavaScript. Its code lives either inline in a `body` or in an external `.js` **sidecar** file named by `$src`. Prefer [expressions](/docs/framework/concepts/expressions) and [statements](/docs/framework/concepts/statements) first; reach for a function when structure runs out.
+A Function entry is a `state` entry with `$prototype: "Function"`, the top rung of the escalation ladder, where logic becomes JavaScript. Its code lives inline in a `body`, or in a **module** named by `$src`: the document's own script, a file, or an npm package. Prefer [expressions](/docs/framework/concepts/expressions) and [statements](/docs/framework/concepts/statements) first; reach for a function when structure runs out.
 
 The smallest complete function is an inline handler:
 
@@ -85,15 +87,15 @@ Only a `return` with a value on the same line makes an entry a computed. A bare 
 }
 ```
 
-## External sidecars
+## Modules
 
-When a function outgrows a string, move it to a `.js` file and point `$src` at it. Each entry resolves to the named export matching its key (override with `$export`); npm specifiers work too:
+When a function outgrows a string, move it into a module and point `$src` at it. A module only one document uses is written in that document, as [its own script](#a-module-inside-the-document). A module several documents share is a `.js` or `.ts` file, and an installed package is an `npm:` specifier. Each entry resolves to the named export matching its key (override with `$export`):
 
 ```json
 {
   "state": {
-    "increment": { "$prototype": "Function", "$src": "./counter.js" },
-    "decrement": { "$prototype": "Function", "$src": "./counter.js" },
+    "increment": { "$prototype": "Function", "$src": "../lib/counter.js" },
+    "decrement": { "$prototype": "Function", "$src": "../lib/counter.js" },
     "validateEmail": {
       "$prototype": "Function",
       "$src": "npm:@myorg/validators",
@@ -112,13 +114,13 @@ export function decrement(state) {
 }
 ```
 
-A sidecar export is called exactly as its call site calls it: an event binding passes `(state, event)`, and `state.helper(a, b)` in a template passes `a` and `b`. Declared `parameters` document the export; they do not reorder its arguments.
+A module's export is called exactly as its call site calls it: an event binding passes `(state, event)`, and `state.helper(a, b)` in a template passes `a` and `b`. Declared `parameters` document the export; they do not reorder its arguments.
 
 When several entries share a `$src`, the module is imported once and its named exports extracted; module caching is automatic.
 
 An `npm:` specifier names an export of an installed package. `jx build` bundles it into the site. A page rendered live (on the Studio canvas, or by an app embedding the runtime) imports it from wherever that host serves packages: the Studio dev server bundles it from your project's `node_modules`, and an app can answer with an import map.
 
-A sidecar entry has no `body` to read, so its role follows its declaration and how the document uses it. Declare `parameters` and it stays a function wherever it is used. Otherwise, bind it to an event (on a child, or at a component's root beside `tagName`), invoke it as `state.helper(state)`, or name it a lifecycle hook, and it stays a function. Read it anywhere else, in a list's `items`, a `${}` interpolation or a property binding, and it becomes a computed value: what you get is the export's **return value**, recomputed when its inputs change, not the function itself. The export's own parameter count is never consulted, so a helper that only other JavaScript calls needs its `parameters` declared.
+An entry with a `$src` has no `body` to read, so its role follows its declaration and how the document uses it. Declare `parameters` and it stays a function wherever it is used. Otherwise, bind it to an event (on a child, or at a component's root beside `tagName`), invoke it as `state.helper(state)`, or name it a lifecycle hook, and it stays a function. Read it anywhere else, in a list's `items`, a `${}` interpolation or a property binding, and it becomes a computed value: what you get is the export's **return value**, recomputed when its inputs change, not the function itself. The export's own parameter count is never consulted, so a helper that only other JavaScript calls needs its `parameters` declared.
 
 ```json
 {
@@ -142,9 +144,9 @@ export function openLeads(state) {
 
 `items` reads `openLeads`, so it resolves to the filtered array and re-filters whenever `leads` arrives.
 
-## Loading a sidecar on first call
+## Loading a module on first call
 
-Add `"$lazy": true` to a sidecar entry and its module loads the first time the function is called, not with the page. The entry keeps its name, so call sites do not change, but the function now returns a promise. Use it for a module most visitors never reach, such as a search client, and only on an entry you call from a handler or a lifecycle hook: an entry read as a value would render a promise, so the build and Studio both refuse it.
+Add `"$lazy": true` to an entry with a `$src` and its module loads the first time the function is called, not with the page. The entry keeps its name, so call sites do not change, but the function now returns a promise. Use it for a module most visitors never reach, such as a search client, and only on an entry you call from a handler or a lifecycle hook: an entry read as a value would render a promise, so the build and Studio both refuse it.
 
 ```json
 {
@@ -177,7 +179,7 @@ A function that needs imports or helpers does not have to live in a file of its 
 }
 ```
 
-Everything said above about a sidecar export holds for a script's export: how it is called, how its role is decided, and what `$lazy` does. What differs is where the module comes from.
+Everything said above about a module's export holds for a script's export: how it is called, how its role is decided, and what `$lazy` does. What differs is where the module comes from.
 
 - **It is TypeScript.** The text is an ordinary module with `import` and `export`.
 - **It stands where the document stands.** A relative import resolves from the document's own folder, so `./math.ts` is the file beside the document.
@@ -190,6 +192,10 @@ Everything said above about a sidecar export holds for a script's export: how it
 
 Keep using `$src` for an `npm:` package and for a module several documents share. The project file has no script, so an entry in its `state` cannot use `#client`.
 
+In a `.jxn` document the script is a `script` node holding the module as plain multi-line text, and the entry is the one row `(export)bump`. See [Jx Notation](/docs/framework/concepts/jxn-files#a-documents-script).
+
+`jx validate` and Studio's [Problems](/docs/studio/interface/problems-and-progress#checks-over-your-own-content) point out an entry whose `$src` is a relative path to a script file, because that module could be the document's own script. This is advice. Nothing is wrong with the document, `jx validate` still passes, and a module several documents share is right as a file. They point out a `$lazy` entry of a script that another entry loads with the page, for the reason in the list above.
+
 ### Where a script runs
 
 `jx build` bundles a script. Studio's canvas, Live Preview and a page that calls `mount()` import it in the browser instead: the types are erased and what is left is imported, and each relative `.ts` import is loaded the same way. Three rules follow from that, and they hold for a `$src` that names a `.ts` file too.
@@ -199,7 +205,7 @@ Keep using `$src` for an `npm:` package and for a module several documents share
 - **No import cycles.** Two `.ts` files that import each other build, and fail in the canvas and in Live Preview with an error that names both.
 
 :::doc-note
-Studio has no editor for a script yet, so you write `$script` in the document's source. The canvas has two gaps that Live Preview and a build do not. It does not yet answer a server function written in the document you are editing. It also draws a page and its layout as one document, so a page's `#client` function runs the layout's script there, and the canvas cannot draw the page when the layout has no script. Turn off **Show layout elements** in the canvas's [Context controls](/docs/studio/interface/modes) to work on such a page. A component's script is not affected.
+In Studio, **Edit Script** opens a document's script in the Logic tab ([Code editing](/docs/studio/logic/code#a-documents-script)). The canvas runs a client script as its document was last saved, so save to see a change to one there. A function `body` is different: the canvas draws it as you type. A server function called from the canvas or Live Preview runs from the saved file as well.
 :::
 
 ### Testing a script
@@ -233,7 +239,7 @@ A `body` may also be a JSON array of statements instead of a source string, whic
 
 ## State access from JavaScript
 
-Inside `body` strings and sidecar files, `state` is the component's reactive scope, a proxy over every declared state entry and function. Read and write it directly; there are no `.get()`/`.set()` calls:
+Inside a `body` and a module's exports, `state` is the component's reactive scope, a proxy over every declared state entry and function. Read and write it directly; there are no `.get()`/`.set()` calls:
 
 ```js
 // Read
@@ -277,7 +283,7 @@ Functions marked `timing: "server"` are a separate mechanism: a plain `$src`/`$e
 - Studio's code editor checks the types in a body against the page's `state` and lists the errors in Problems. Nothing checks them outside Studio yet, so a `jx build` still accepts a body with a type error.
 - `state` is always reachable from a body, and a declared `state` receives it wherever it sits in the list. The first other declared name receives the event.
 - `this` is never used. All component state goes through the `state` proxy.
-- `$export` defaults to the entry's key name; sidecar exports must be named exports.
+- `$export` defaults to the entry's key name; a module's exports must be named exports.
 - `$src: "#client"` names the document's own `$script.client`. A Function entry that names `#server` fails the build.
 - Function entries use `camelCase` names, like all state entries.
 - Only `$prototype: "Function"` may point `$src` at a `.js` file. Other prototypes require a `.class.json` (see [Data prototypes](/docs/framework/concepts/data-prototypes)).
@@ -288,4 +294,4 @@ Functions marked `timing: "server"` are a separate mechanism: a plain `$src`/`$e
 - [Statements](/docs/framework/concepts/statements): structured bodies without JavaScript
 - [Timing](/docs/framework/concepts/timing): server functions and the RPC boundary
 - [Components](/docs/framework/concepts/components): where state and functions are declared
-- [Code editing in Studio](/docs/studio/logic/code): the editor for bodies and sidecars
+- [Code editing in Studio](/docs/studio/logic/code): the editor for bodies and scripts

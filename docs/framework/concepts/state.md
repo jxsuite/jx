@@ -145,6 +145,6 @@ At load time the runtime walks `state` once, classifying each entry by inspectio
 
 - [Reactivity](/docs/framework/concepts/reactivity): how `${}` bindings track dependencies
 - [Expressions](/docs/framework/concepts/expressions): the declarative Shape 5
-- [Functions](/docs/framework/concepts/functions): Function entries, sidecars, and statements
+- [Functions](/docs/framework/concepts/functions): Function entries, modules, and statements
 - [Data prototypes](/docs/framework/concepts/data-prototypes): Request, LocalStorage, collections
 - [Data panel](/docs/studio/logic/data): the Studio surface that writes these entries

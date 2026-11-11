@@ -58,13 +58,54 @@ import type { TypeCheckInit } from "../services/type-check";
 import type { BufferWrites } from "../services/monaco-buffer";
 import { noteTyping } from "../tabs/typing";
 import type { OxLintDiagnostic } from "../services/code-services";
-import type { JsonValue, JxDocumentValue, JxElement } from "@jxsuite/schema/types";
+import type { ScriptSide } from "@jxsuite/schema/document-scripts";
+import type {
+  JsonValue,
+  JxDocumentScripts,
+  JxDocumentValue,
+  JxElement,
+} from "@jxsuite/schema/types";
 import type { JxPath } from "../state";
 import type { Tab } from "../tabs/tab";
 
+/**
+ * What the code surface can hold: a state entry's body, an event binding's body, or one of the
+ * document's own modules (`spec.md` §23.2). The first two are function BODIES; the third is a whole
+ * module, with imports and exports of its own, and that difference is why it is neither formatted
+ * nor linted here: both of those wrap what they are given in a function.
+ */
 type EditingTarget =
   | { type: "def"; defName: string }
-  | { type: "event"; path: JxPath; eventKey: string };
+  | { type: "event"; path: JxPath; eventKey: string }
+  | { type: "script"; side: ScriptSide };
+
+/**
+ * A document's `$script` with one side replaced. An emptied side is removed rather than kept as an
+ * empty module, and a document left with neither side has no `$script` at all.
+ *
+ * @returns The new value, or `undefined` when nothing is left to hold.
+ */
+export function withScript(
+  scripts: JxDocumentValue | undefined,
+  side: ScriptSide,
+  text: string,
+): JxDocumentScripts | undefined {
+  const next: JxDocumentScripts = {};
+  if (isJsonObject(scripts)) {
+    if (isString(scripts.client)) {
+      next.client = scripts.client;
+    }
+    if (isString(scripts.server)) {
+      next.server = scripts.server;
+    }
+  }
+  if (text === "") {
+    delete next[side];
+  } else {
+    next[side] = text;
+  }
+  return next.client === undefined && next.server === undefined ? undefined : next;
+}
 
 /** The Monaco instance plus the four fields this module hangs off it (declared in `../view`). */
 type FunctionEditor = NonNullable<typeof view.functionEditor>;
@@ -117,6 +158,10 @@ function getFunctionBody(tab: Tab | null | undefined, editing: EditingTarget | n
   } else if (editing?.type === "event") {
     const node = getNodeAtPath(document!, editing.path);
     return node ? bodyOf(node[editing.eventKey]) : "";
+  } else if (editing?.type === "script") {
+    const scripts = document?.$script;
+    const text = isJsonObject(scripts) ? scripts[editing.side] : undefined;
+    return isString(text) ? text : "";
   }
   return "";
 }
@@ -164,9 +209,9 @@ export const CODE_HOST_SELECTOR = '[part="code-host"]';
 export function syncFunctionEditor(host: HTMLElement): void {
   const tab = activeTab.value;
   /* SAFETY: `editingFunction` is written only by openLogicTarget, and every caller that opens the
-     function surface (formula.editDef, formula.editEvent, the Data panel, the Logic tab's Open)
-     passes `{ type: "def", defName }` or `{ type: "event", path, eventKey }`, exactly the two
-     EditingTarget members. */
+     function surface (formula.editDef, formula.editEvent, formula.editScript, the Data panel, the
+     Logic tab's Open) passes `{ type: "def", defName }`, `{ type: "event", path, eventKey }` or
+     `{ type: "script", side }`, exactly the three EditingTarget members. */
   const editing = tab?.session.ui.editingFunction as EditingTarget | null | undefined;
   const container = editing && tab ? host.querySelector<HTMLElement>(CODE_HOST_SELECTOR) : null;
   if (!container || !tab || !editing) {
@@ -319,6 +364,17 @@ function bodyWriter(tab: Tab, editing: EditingTarget, writes?: BufferWrites) {
     let wrote = false;
     if (editing.type === "def") {
       wrote = transactDoc(tab, (t) => mutateUpdateDef(t, editing.defName, { body: newBody }));
+    } else if (editing.type === "script") {
+      // The whole `$script` is one value of the root, written as one undo step. The canvas does not
+      // Draw from it until the document is saved (`canvas/canvas-scripts.ts`).
+      wrote = transactDoc(tab, (t) =>
+        mutateUpdateProperty(
+          t,
+          [],
+          "$script",
+          withScript(t.doc.document.$script, editing.side, newBody),
+        ),
+      );
     } else {
       const node = getNodeAtPath(tab.doc.document, editing.path);
       /* THE ELEMENT THE HANDLER HANGS OFF CAN GO WHILE THE EDITOR IS OPEN — a collaborator's
@@ -380,8 +436,8 @@ function bodyWriter(tab: Tab, editing: EditingTarget, writes?: BufferWrites) {
  */
 export function closeFunctionEditor(): void {
   const tab = activeTab.value;
-  /* SAFETY: `editingFunction` is written only by openLogicTarget, whose callers pass one of the two
-     EditingTarget shapes (see syncFunctionEditor). */
+  /* SAFETY: `editingFunction` is written only by openLogicTarget, whose callers pass one of the
+     three EditingTarget shapes (see syncFunctionEditor). */
   const editing = tab?.session.ui.editingFunction as EditingTarget | null | undefined;
   if (!tab || !editing) {
     return;
@@ -512,6 +568,27 @@ async function mountFunctionEditor(
   }
 
   let lintGen = 0;
+
+  /* A MODULE IS NEITHER FORMATTED NOR LINTED HERE. Both services wrap what they are given in a
+     function with the body's parameters, which is what a body is and what a module is not: an
+     `import` or an `export` inside a function is a syntax error, so the formatter would refuse the
+     text and the lint would report its first line. Monaco's own syntax check still reads it as the
+     module it is. */
+  if (editing.type === "script") {
+    editor.onDidChangeModelContent(() => {
+      if (editor._ignoreNextChange) {
+        editor._ignoreNextChange = false;
+        return;
+      }
+      writes.markTyped();
+      noteTyping(tab.id);
+      writes.arm(BUFFER_COMMIT, 500, () => {
+        editor._commitBody?.(editor.getValue());
+        renderOnly("leftPanel");
+      });
+    });
+    return;
+  }
 
   // Format on open — show pretty-printed code, then run initial lint.
   //

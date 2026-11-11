@@ -65,6 +65,7 @@ import {
 import { resolveAssetRef } from "./asset-resolve";
 import { npmModuleUrl } from "./npm-modules";
 import { loadBodyEraser } from "./body-eraser";
+import { scriptAdopter } from "./iframe-scripts";
 import type { AssetContext } from "./asset-resolve";
 import { KIT_LOADERS } from "@jxsuite/ui/loaders";
 import type { CanvasEnvelope, IframeChannel } from "./iframe-channel";
@@ -115,6 +116,16 @@ setNpmModuleResolver((specifier) => npmModuleUrl(specifier, location.href));
  * fails to compile, and the host answers that with a full render, which loads it.
  */
 setBodyEraserLoader(loadBodyEraser);
+
+/**
+ * A document's own client script (`spec.md` §23.2) is text the render message carries beside the
+ * documents, and is registered with this realm's runtime under the specifier they name it by.
+ */
+const adoptScripts = scriptAdopter({
+  loadEraser: loadBodyEraser,
+  preload: preloadModule,
+  resolveNpm: (specifier) => npmModuleUrl(specifier, location.href),
+});
 
 /**
  * Resolve the drop placement for a forwarded cursor: point hit-test → nearest `[data-jx-path]` →
@@ -1058,6 +1069,8 @@ export function startCanvasIframe(opts: {
     // The format class, and a `.md` page and a native `.json` component do not agree. Absent means
     // A document with no format, where the studio's own element metadata answers on its own.
     setEditableVerdicts(msg.editableTags ?? null);
+    // Before anything is drawn: a document in this render may be the first to name one of them.
+    adoptScripts(msg.scripts);
     const { gen, mapperCtx } = msg;
     /* SAFETY: The host posts `shadowDoc` as a JSON round-trip of the tab's raw page document (or of
        the stylebook specimen), so it is a `JxMutableNode` in the forward-op coordinate space. */

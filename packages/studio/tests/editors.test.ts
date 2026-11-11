@@ -175,7 +175,7 @@ void mock.module("monaco-editor/editor", () => ({
 
 installTypeCheckDouble();
 
-const { closeFunctionEditor, registerFunctionCompletions, syncFunctionEditor } =
+const { closeFunctionEditor, registerFunctionCompletions, syncFunctionEditor, withScript } =
   await import("../src/panels/editors");
 const { html, nothing, render: litRender } = await import("lit-html");
 
@@ -624,6 +624,108 @@ describe("the code surface — event target", () => {
     await paintLogic();
     await flush();
     expect(created.at(-1)!.value).toBe("");
+  });
+});
+
+describe("the code surface, a document's own module (spec.md §23.2)", () => {
+  const MODULE = 'import { clamp } from "./math.ts";\nexport const bump = (n: number) => clamp(n);';
+
+  test("opens a side of $script as the module it is, neither formatted nor linted", async () => {
+    activeTab.value!.doc.document.$script = { client: MODULE, server: "export const a = 1;" };
+    setEditing({ side: "client", type: "script" });
+
+    await paintLogic();
+    await flush();
+
+    expect(created).toHaveLength(1);
+    expect(created[0]!.options.language).toBe("typescript");
+    expect(created[0]!.value).toBe(MODULE);
+    // Both services wrap their text in a function, and an `import` inside one is a syntax error.
+    expect(codeServiceCalls).toEqual([]);
+    // A body is checked against `state`; a module is not a body, and is not checked as one.
+    expect(typeChecks).toHaveLength(0);
+  });
+
+  test("the server side is its own buffer", async () => {
+    activeTab.value!.doc.document.$script = { client: MODULE, server: "export const a = 1;" };
+    setEditing({ side: "server", type: "script" });
+    await paintLogic();
+    await flush();
+    expect(created.at(-1)!.value).toBe("export const a = 1;");
+  });
+
+  test("a document with no script opens an empty one, and the first text creates it", async () => {
+    setEditing({ side: "client", type: "script" });
+    await paintLogic();
+    await flush();
+    const [ed] = created;
+    expect(ed!.value).toBe("");
+
+    ed!.type("export const one = 1;");
+    await sleep(600);
+
+    expect(activeTab.value!.doc.document.$script).toEqual({ client: "export const one = 1;" });
+    expect(leftPanelRender).toHaveBeenCalled();
+    // Typing in a module asks no service anything, however long it is left.
+    await sleep(300);
+    expect(codeServiceCalls).toEqual([]);
+  });
+
+  test("a write keeps the other side, and an emptied side leaves the document", async () => {
+    activeTab.value!.doc.document.$script = { client: MODULE, server: "export const a = 1;" };
+    setEditing({ side: "server", type: "script" });
+    await paintLogic();
+    await flush();
+
+    created.at(-1)!.type("export const a = 2;");
+    await sleep(600);
+    expect(activeTab.value!.doc.document.$script).toEqual({
+      client: MODULE,
+      server: "export const a = 2;",
+    });
+
+    created.at(-1)!.type("");
+    await sleep(600);
+    expect(activeTab.value!.doc.document.$script).toEqual({ client: MODULE });
+  });
+
+  test("emptying the only side removes $script, and Close writes what was typed", async () => {
+    activeTab.value!.doc.document.$script = { client: MODULE };
+    setEditing({ side: "client", type: "script" });
+    await paintLogic();
+    await flush();
+
+    created.at(-1)!.type("");
+    closeFunctionEditor();
+
+    expect("$script" in activeTab.value!.doc.document).toBe(false);
+    expect(activeTab.value!.session.ui.editingFunction).toBeNull();
+  });
+
+  test("a programmatic write to the buffer is not taken for typing", async () => {
+    activeTab.value!.doc.document.$script = { client: MODULE };
+    setEditing({ side: "client", type: "script" });
+    await paintLogic();
+    await flush();
+
+    // An edit from elsewhere (an undo, a collaborator) lands in the document and is shown.
+    activeTab.value!.doc.document.$script = { client: "export const two = 2;" };
+    await paintLogic();
+    expect(created).toHaveLength(1);
+    expect(created[0]!.value).toBe("export const two = 2;");
+    await sleep(600);
+    expect(activeTab.value!.doc.document.$script).toEqual({ client: "export const two = 2;" });
+    expect(tabBufferUnsaved(activeTab.value!)).toBe(false);
+  });
+
+  test("withScript reads only the two sides a document has", () => {
+    expect(withScript(undefined, "client", "a")).toEqual({ client: "a" });
+    expect(withScript("not an object", "server", "b")).toEqual({ server: "b" });
+    expect(withScript({ client: 1, extra: "x", server: "s" }, "client", "c")).toEqual({
+      client: "c",
+      server: "s",
+    });
+    expect(withScript({ client: "a" }, "client", "")).toBeUndefined();
   });
 });
 
