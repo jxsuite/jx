@@ -134,19 +134,8 @@ export function openPopoverSurface<S extends JxHostScope<S>>(
        attribute is on and it may be shown. Showing before that is a silent no-op — the panel is
        built, correctly styled, and never in the top layer. */
     if (!panel.hasAttribute("popover")) {
-      const own = panel;
       await new Promise<void>((resolve) => {
-        own.addEventListener("jx-ready", function onReady(event: Event) {
-          /* `jx-ready` BUBBLES, and a panel holding a menu, tabs or an action group is told it is
-             ready by a descendant before its own `popover` attribute is on (the same trap
-             `surfaces/dialog.ts` documents). Only the panel's own, or one that finds the attribute
-             already there, is the handshake. */
-          if (event.target !== own && !own.hasAttribute("popover")) {
-            return;
-          }
-          own.removeEventListener("jx-ready", onReady);
-          resolve();
-        });
+        panel?.addEventListener("jx-ready", () => resolve(), { once: true });
       });
     }
     if (aborted()) {

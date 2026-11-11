@@ -1614,8 +1614,53 @@ function seededModule(src: string): ImportedModule | Promise<ImportedModule> | u
 type ScopeFunction = (...args: JxScopeValue[]) => JxScopeValue;
 
 /**
- * Import the function a `$src` Function entry names: the module (seeded, cached or fetched), then
- * the export, which must be a function.
+ * The module a `$src` names: the host's seeded copy, the cached one, or a fetch that is cached when
+ * it settles. Returned as it comes, a module or a promise of one, so an eager caller adds no
+ * microtask of its own: a kit element's scope is ready a fixed number of ticks after it connects,
+ * and `jx-field` names the control it slots at the end of them.
+ *
+ * @param {string} src - The specifier
+ * @param {string} [base] - Base URL for resolving relative specifiers
+ */
+function acquireModule(src: string, base?: string): ImportedModule | Promise<ImportedModule> {
+  const seeded = seededModule(src);
+  if (seeded) {
+    return seeded;
+  }
+  const loading = importSource(src, base);
+  // A side branch: it caches the module without delaying what the caller awaits.
+  loading.then(
+    (mod) => {
+      _moduleCache.set(src, mod);
+    },
+    () => {},
+  );
+  return loading;
+}
+
+/**
+ * The function a `$src` Function entry names, out of its module.
+ *
+ * @param {JxFunctionDef} def
+ * @param {string} key - Def key name
+ * @param {ImportedModule} mod
+ */
+function exportedFunction(def: JxFunctionDef, key: string, mod: ImportedModule): ScopeFunction {
+  const exportName = def.$export ?? key;
+  const candidate = mod[exportName] ?? mod.default?.[exportName];
+  if (!isFunction(candidate)) {
+    throw new TypeError(
+      `Jx: export "${exportName}" not found or not a function in "${def.$src ?? ""}"`,
+    );
+  }
+  /* SAFETY: the guard proved a function, and a function accepts any call: the runtime passes the
+     scope first, as a Function entry's contract says, and binds the result as a scope member. */
+  return candidate as ScopeFunction;
+}
+
+/**
+ * Import the function a `$src` Function entry names, for a caller that can wait for it: a `$lazy`
+ * entry's first call. An eager entry does the same two steps inline, in `resolveFunction`.
  *
  * @param {JxFunctionDef} def
  * @param {string} key - Def key name
@@ -1626,28 +1671,10 @@ async function importFunctionExport(
   key: string,
   base?: string,
 ): Promise<ScopeFunction> {
-  const src = def.$src;
-  if (!src) {
+  if (!def.$src) {
     throw new Error(`Jx: '${key}' has neither body nor $src`);
   }
-  const exportName = def.$export ?? key;
-  let mod: ImportedModule;
-  const seeded = seededModule(src);
-  if (seeded instanceof Promise) {
-    mod = await seeded;
-  } else if (seeded) {
-    mod = seeded;
-  } else {
-    mod = await importSource(src, base);
-    _moduleCache.set(src, mod);
-  }
-  const candidate = mod[exportName] ?? mod.default?.[exportName];
-  if (!isFunction(candidate)) {
-    throw new TypeError(`Jx: export "${exportName}" not found or not a function in "${src}"`);
-  }
-  /* SAFETY: the guard proved a function, and a function accepts any call: the runtime passes the
-     scope first, as a Function entry's contract says, and binds the result as a scope member. */
-  return candidate as ScopeFunction;
+  return exportedFunction(def, key, await acquireModule(def.$src, base));
 }
 
 /**
@@ -1712,7 +1739,12 @@ async function resolveFunction(
     });
     return fn;
   } else {
-    fn = await importFunctionExport(def, key, base);
+    // $src: dynamic import (the body/$src dichotomy was validated above)
+    if (!def.$src) {
+      throw new Error(`Jx: '${key}' has neither body nor $src`);
+    }
+    const acquired = acquireModule(def.$src, base);
+    fn = exportedFunction(def, key, acquired instanceof Promise ? await acquired : acquired);
   }
 
   // The role comes from the document (spec.md §5.3 4b, 4d), never from the import's arity or source.
