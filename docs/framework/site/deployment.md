@@ -108,6 +108,8 @@ Content-Security-Policy: base-uri 'self'; default-src 'self'; font-src 'self'; f
 
 `script-src` is the strict part, and it costs you nothing: compiled Jx output contains no `eval` and no `new Function`, event handlers are attached as listeners rather than written as `onclick=` attributes, and the runtime is served from your own site. The only inline scripts on a page are the import map and the color-scheme pre-paint script, both identical on every page, so two hashes cover the whole site.
 
+`frame-ancestors` follows `security.frameOptions`, so the two framing headers always agree: the default `SAMEORIGIN` gives `'self'`, `DENY` gives `'none'`, and `false` leaves the directive out. An inline `<script type="speculationrules">` you add is hashed along with the other inline scripts, so your prerender rules keep working under the policy.
+
 If your pages load anything from another origin, such as an analytics script, Google Fonts or a YouTube embed, the build sees it in the finished HTML and adds that origin to the right directive. What it can't see is the second hop: a third-party script that loads _another_ script at runtime. That's the case to check.
 
 :::doc-tip

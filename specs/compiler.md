@@ -400,7 +400,7 @@ A file is a `.class.json` document when:
 For each `timing: "server"` entry, the compiler emits two artifacts:
 
 1. **Client-side:** a `POST` to `<base>/_jx/server/$export`, `<base>` being the deployment base (site-architecture.md §14.7), whose JSON body is the entry's `arguments` with each top-level `$ref` resolved (`#/state/`, `parent#/`, `window#/`, `document#/`; any other scheme fails the compile). The entry is `null` until a call answers and then holds the parsed response. When an argument is a `$ref` the call runs in an effect, so a change calls again and the answer to a superseded call is dropped. A non-2xx answer is not stored: the entry keeps its last value and the error is logged to the console. A page calls when its module loads, and an element calls in `connectedCallback`, after its props are merged, and stops on disconnect.
-2. **Server-side:** a route in the site worker (§6.3) that imports `$export` from `$src`, registered at `<base>/_jx/server/$export`, and answers the function's return value as JSON (`null` for `undefined`), or `{ ok: false, error }` with status 500 when it throws.
+2. **Server-side:** a route in the site worker (§6.3) that imports `$export` from `$src`, registered at `<base>/_jx/server/$export`, and answers the function's return value as JSON (`null` for `undefined`), or `{ ok: false, error: "Server error" }` with status 500 when it throws. The thrown value is written to the worker's log with `console.error` and is not sent: a message is written for whoever reads the log and quotes statements, env var names and upstream hosts. A function that wants its caller told something returns it.
 
 ### 6.2 Per-Route Server Handler (`compileServer`)
 
@@ -456,7 +456,8 @@ app.post("/_jx/server/sendContactEmail", async (c) => {
   try {
     return c.json(await sendContactEmail(args, c.env));
   } catch (e) {
-    return c.json({ ok: false, error: e?.message ?? "Server error" }, 500);
+    console.error("jx: server function sendContactEmail threw:", e);
+    return c.json({ ok: false, error: "Server error" }, 500);
   }
 });
 
@@ -747,6 +748,8 @@ The site build bundles Function-def `$src` modules for the browser (`packages/co
 - **Bundling** runs once after routes, components, and the worker are generated: one self-contained ESM bundle per unique specifier, with `@vue/reactivity` and `lit-html` left external (the page importmap provides them). `timing: "compiler"` code is never bundled.
 - **The server target**: when `build.adapter` is set, the generated worker entry (§6) is bundled self-contained through the same backend — `workerBundleOptions(adapter)` maps cloudflare adapters to `workerd`/`worker` resolution conditions with `cloudflare:*`/`node:*` external (nodejs_compat provides builtins), and node/bun to platform-native bundling. Extension mounts, connectors, hono, and user server modules are inlined, so `dist/` deploys and runs without `node_modules` — verified by importing the bundled worker from an empty directory in tests. The former copy of server sources into `dist/components/` is gone.
 - **The client runtime**: `@vue/reactivity` and `lit-html` are bundled from **this package's** dependencies into `/assets/vue-reactivity.js` and `/assets/lit-html.js`, and the emitted import map points there. They resolve from the compiler rather than the project because the compiler is what depends on those versions — a project that never installed them still gets the runtime its output was compiled against. If neither resolves, the map falls back to the CDN URLs with a warning, since a page with no runtime is worse than a page with a third-party one. Emitted once per build, and only when some page actually carries an import map.
+
+  **Outside a site build the import map names a CDN.** `compile`, `compileClient` and `compileElementPage` write a page with no `/assets/` beside it, so their import map defaults to one pinned `https://esm.sh` URL per runtime module (`DEFAULT_REACTIVITY_SRC`, `DEFAULT_LIT_HTML_SRC` in `shared.ts`, the same pair for all three). No integrity metadata is emitted, and none would help: the URL answers a re-export stub whose own imports a hash on the stub does not cover. A page compiled this way trusts that CDN with script execution, so `reactivitySrc` and `litHtmlSrc` take self-hosted URLs for anything that is deployed.
 
   **The set is read back out of the finished HTML**, not recorded where a map is written. A page acquires a map by more than one route — the component injector adds one, and the page-template tiers (§3) each emit their own — and a set filled at one of those sites describes the build only when that site is the one that ran. Recording only the component injector's meant a project with interactivity but no components shipped a map naming `/assets/vue-reactivity.js` with no `dist/assets/` at all: 404 on both modules, a blank page, and a build reporting success with zero errors. What the shipped HTML names and what the build writes are therefore one set, derived from the artifact rather than from an intention. Prefix keys (`"lit-html/"`) and CDN fallbacks are excluded: neither names a file this build produces.
 

@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { compileSiteServer, serverRoutePrefix } from "../src/targets/compile-server";
@@ -121,7 +121,8 @@ describe("the request gate", () => {
   let based: Worker;
 
   async function load(name: string, base: string): Promise<Worker> {
-    const source = compileSiteServer([{ exportName: "echo", src: "./fns.js" }], {
+    const entries = ["echo", "boom"].map((exportName) => ({ exportName, src: "./fns.js" }));
+    const source = compileSiteServer(entries, {
       adapter: "node",
       base,
       mounts: [
@@ -147,6 +148,7 @@ describe("the request gate", () => {
       resolve(TMP, "fns.js"),
       [
         "export const echo = (args) => ({ got: args })",
+        "export const boom = () => { throw new Error('SELECT * FROM users WHERE token = $1') }",
         "export const Rows = { mount: () => (request) =>",
         "  new URL(request.url).pathname.endsWith('/public')",
         "    ? Response.json([], { headers: { 'Cache-Control': 'public, max-age=60' } })",
@@ -174,6 +176,21 @@ describe("the request gate", () => {
     const res = await post(json, '{"a":1}');
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ got: { a: 1 } });
+  });
+
+  test("a function that throws answers 500 without its message, which goes to the log", async () => {
+    /* A thrown message is written for whoever reads the log: it quotes statements, env var names
+       and upstream hosts. A function that wants its caller told something returns it. */
+    const logged = spyOn(console, "error").mockImplementation(() => {});
+    const res = await app.request("/_jx/server/boom", {
+      body: "{}",
+      headers: json,
+      method: "POST",
+    });
+    expect(res.status).toBe(500);
+    expect(await res.json()).toEqual({ error: "Server error", ok: false });
+    expect(String(logged.mock.calls[0])).toContain("SELECT * FROM users");
+    logged.mockRestore();
   });
 
   test("the site's own script and a typed URL are served", async () => {

@@ -162,8 +162,10 @@ export async function handleDataRequest(
   try {
     ({ db, kind } = await getDb(state, options, env, tableDef.connection));
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    return fail(500, `Connection error: ${message}`);
+    /* The cause names an env var, a host or a driver: the owner's to read in the log, and nothing
+       a visitor should be handed. */
+    console.error(`jx data: connection "${tableDef.connection}" failed:`, error);
+    return fail(500, "Connection error");
   }
 
   const plan = planTable(tableName, tableDef, tables, kind);
@@ -190,8 +192,10 @@ export async function handleDataRequest(
       }
     }
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    return fail(500, message);
+    /* A driver's message quotes the statement, the table and the constraint that refused it. That
+       is the schema, so it goes to the log and the caller is told only that the request failed. */
+    console.error(`jx data: ${action} on "${tableName}" failed:`, error);
+    return fail(500, "Server error");
   }
 }
 

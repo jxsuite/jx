@@ -64,6 +64,16 @@ describe("collectCspSources", () => {
     expect(sources.scriptHashes.size).toBe(0);
   });
 
+  /*
+   * The exception among non-executing types: an inline speculation rule set is refused under
+   * `script-src` unless a hash admits it, so an unhashed one is dropped the moment CSP is on.
+   */
+  test("hashes an inline speculation rule set", () => {
+    const rules = '{"prerender":[{"where":{"href_matches":"/*"}}]}';
+    const sources = collect(`<script type="speculationrules">${rules}</script>`);
+    expect([...sources.scriptHashes]).toEqual([hashOf(rules)]);
+  });
+
   test("an external script contributes its origin, not a hash", () => {
     const sources = collect('<script src="https://plausible.io/js/x.js"></script>');
     expect([...sources.scriptOrigins]).toEqual(["https://plausible.io"]);
@@ -148,6 +158,13 @@ describe("buildCspHeaders", () => {
 
   test("frame-ancestors matches the X-Frame-Options emitted beside it", () => {
     expect(policy("<p>hi</p>")).toContain("frame-ancestors 'self'");
+    const framing = (frameOptions: "DENY" | "SAMEORIGIN" | false) =>
+      buildCspHeaders(emptyCspSources(), {}, frameOptions)["Content-Security-Policy"] ?? "";
+    expect(framing("SAMEORIGIN")).toContain("frame-ancestors 'self'");
+    expect(framing("DENY")).toContain("frame-ancestors 'none'");
+    /* Switched off, the directive is left out: a browser that sees both obeys this one, so a
+       default here would overrule the author who asked for no framing rule. */
+    expect(framing(false)).not.toContain("frame-ancestors");
   });
 
   test("report-only changes the header name, not the policy", () => {
