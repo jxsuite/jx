@@ -3,6 +3,7 @@
  * the text the author wrote, in the `.jxn` file, and never the TypeScript written from it.
  */
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { pathToFileURL } from "node:url";
 
 import type { JsonObject, JsonValue } from "@jxsuite/schema/types";
 
@@ -636,6 +637,42 @@ describe("an editor on a document whose element declares a name of the state aro
       ].toSorted(),
     );
   });
+});
+
+describe("an editor on a page of a project in a folder under the tsconfig", () => {
+  const PAGE = 'div {\n  (fn)onclick "void state.shared"\n}\n';
+
+  test(
+    "reads the page again when told the project's file has changed",
+    async () => {
+      const made = new Fixture();
+      const editor = new LanguageServer(made.root);
+      try {
+        const projectFile = made.write("src/site/project.jxn", 'project "x"\n');
+        const path = made.write("src/site/pages/index.jxn", PAGE);
+        await editor.open(made.root);
+        const opened = editor.edit(path, PAGE);
+        const codes = async (): Promise<JsonValue[]> => {
+          const answer = await editor.request("textDocument/diagnostic", { textDocument: opened });
+          // SAFETY: a pull of diagnostics is answered with a report holding its items.
+          return (answer as { items: { code: JsonValue }[] }).items.map((item) => item.code);
+        };
+        // The project has no state, so the page's own is all there is to read.
+        expect(await codes()).toEqual([2339]);
+
+        made.write("src/site/project.jxn", 'project "x"\nstate {\n  shared 1\n}\n');
+        // An editor watches the files a server asks it to, and says when one changes.
+        editor.notify("workspace/didChangeWatchedFiles", {
+          changes: [{ type: 2, uri: pathToFileURL(projectFile).href }],
+        });
+        expect(await codes()).toEqual([]);
+      } finally {
+        editor.stop();
+        made.remove();
+      }
+    },
+    SLOW,
+  );
 });
 
 describe("an editor that has not been let run the project's mappers", () => {

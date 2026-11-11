@@ -15,16 +15,18 @@
  * @docs framework/concepts/type-checking
  */
 import { readdirSync } from "node:fs";
+import type { Dirent } from "node:fs";
 import { dirname, join, relative, sep } from "node:path";
 
 import { isString } from "@jxsuite/schema/guards";
-import { baseName } from "@jxsuite/schema/project-file";
+import { baseName, isProjectFileName, PROJECT_FILE_NAMES } from "@jxsuite/schema/project-file";
 import {
   findEnclosingProjectOnDisk,
   isSameStamp,
   projectFileStamp,
   readProjectFile,
 } from "@jxsuite/schema/project-file/node";
+import type { EnclosingProject } from "@jxsuite/schema/project-file";
 import type { ProjectFileStamp } from "@jxsuite/schema/project-file/node";
 import type { JsonObject } from "@jxsuite/schema/types";
 import { generateVirtualDocument } from "@jxsuite/schema/virtual-document";
@@ -93,6 +95,44 @@ function factsOf(root: string, project: MapperProject): ProjectFacts {
   return facts;
 }
 
+/** What a project found on disk gives its documents: nothing is known of one that cannot be read. */
+function givenBy(found: EnclosingProject, project: MapperProject): ProjectFacts {
+  return found.verdict === "project" ? factsOf(found.root, project) : UNREADABLE;
+}
+
+/**
+ * The folders at or under one that hold a file named as a project file is.
+ *
+ * A `tsconfig` may sit above several projects, and the compiler says which files it reads only as
+ * it reads them, so the projects are looked for: in every folder but `node_modules` and one whose
+ * name begins with a dot, and through no link.
+ *
+ * @param root The folder holding the `tsconfig`.
+ * @returns Each folder, in the order of their paths.
+ */
+function projectFoldersUnder(root: string): string[] {
+  const found: string[] = [];
+  const pending = [root];
+  for (let at = pending.pop(); at !== undefined; at = pending.pop()) {
+    let entries: Dirent[];
+    try {
+      entries = readdirSync(at, { withFileTypes: true });
+    } catch {
+      // A folder that cannot be listed holds no project a document could be read from.
+      entries = [];
+    }
+    for (const entry of entries) {
+      if (entry.isDirectory() && entry.name !== "node_modules" && !entry.name.startsWith(".")) {
+        pending.push(join(at, entry.name));
+      }
+    }
+    if (entries.some((entry) => isProjectFileName(entry.name))) {
+      found.push(at);
+    }
+  }
+  return found.toSorted();
+}
+
 /** A component a project keeps, by its file: a tag, which has a hyphen, and `.jxn`. */
 const KEPT_COMPONENT = /^(?<tag>.+-.*)\.jxn$/u;
 
@@ -143,7 +183,7 @@ export function outsideOf(fileName: string, project: MapperProject): OutsideStat
     // A component is a scope of its own, and no state of the project's is merged into it.
     return { components };
   }
-  const facts = found.verdict === "project" ? factsOf(found.root, project) : UNREADABLE;
+  const facts = givenBy(found, project);
   // A layout is what wraps a page, and is not itself wrapped by the default one.
   return { components, layout: facts.layout && folder !== "layouts", state: facts.state };
 }
@@ -189,16 +229,28 @@ export function createMapper(): ContentMapperDefinition<JsonObject, MapperProjec
       if (root === null) {
         return { configIdentity: "", project };
       }
-      const stamp = projectFileStamp(root);
+      const folders = projectFoldersUnder(root);
       /* The compiler reads every file again when this changes, so it says only what would change
-         one: what the project beside the `tsconfig` gives its documents, and not when it was
-         saved. */
-      const facts = stamp === null ? null : factsOf(root, project);
+         one: what each project at or under the `tsconfig` gives its documents, and not when it
+         was saved. A file with a project file's name that is a page gives nothing, and is not
+         said. */
+      const given = new Map<string, ProjectFacts>();
+      for (const folder of folders) {
+        const found = findEnclosingProjectOnDisk(folder, folder);
+        if (found) {
+          const name = relative(root, folder).split(sep).join("/");
+          given.set(name === "" ? "." : name, givenBy(found, project));
+        }
+      }
+      /* Either name in each folder, so that a project changing its format is seen, and beside the
+         `tsconfig` whether one is there or not, so that one appearing is. */
+      const watched = new Set([root, ...folders]);
       return {
-        configIdentity: JSON.stringify(facts),
+        configIdentity: JSON.stringify(Object.fromEntries(given)),
         project,
-        // Either name, so that a project file appearing is seen as well as one changing.
-        watchedFiles: [`${root}${sep}project.jxn`, `${root}${sep}project.json`],
+        watchedFiles: [...watched].flatMap((folder) =>
+          PROJECT_FILE_NAMES.map((name) => join(folder, name)),
+        ),
       };
     },
     transform(params, context) {

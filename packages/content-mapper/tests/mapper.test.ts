@@ -3,7 +3,15 @@
  * compiler's protocol takes a document's modules in.
  */
 import { afterAll, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  utimesSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -259,7 +267,7 @@ describe("opening a project", () => {
   test("says what the project beside the tsconfig gives, and watches for either of its files", async () => {
     const root = folder({ "project.jxn": WITH_BOTH });
     const opened = await open(join(root, "tsconfig.json"));
-    expect(opened.configIdentity).toBe('{"layout":true,"state":true}');
+    expect(opened.configIdentity).toBe('{".":{"layout":true,"state":true}}');
     expect(opened.watchedFiles).toEqual([join(root, "project.jxn"), join(root, "project.json")]);
     expect(opened.project.root).toBe(root);
     // What it read to say so is what the first file mapped is answered from.
@@ -278,8 +286,60 @@ describe("opening a project", () => {
   test("says there is none where the folder holds no project, and still watches for one", async () => {
     const root = folder();
     const opened = await open(join(root, "tsconfig.json"));
-    expect(opened.configIdentity).toBe("null");
+    expect(opened.configIdentity).toBe("{}");
     expect(opened.watchedFiles).toEqual([join(root, "project.jxn"), join(root, "project.json")]);
+  });
+
+  test("says what every project under the tsconfig gives, and watches each one's files", async () => {
+    const root = folder({
+      // Neither is a folder a document is read from, so neither is looked in.
+      ".cache/project.jxn": WITH_BOTH,
+      "node_modules/kept/project.jxn": WITH_BOTH,
+      // A folder holding both files is a project nothing can be said of.
+      "both/project.json": "{}",
+      "both/project.jxn": WITH_NEITHER,
+      "sites/a/project.jxn": WITH_BOTH,
+      // A page may have the name, and its folder is watched in case it becomes a project.
+      "sites/b/pages/project.jxn": 'div "a page"\n',
+      "sites/b/project.jxn": WITH_NEITHER,
+    });
+    symlinkSync(join(root, "sites/a"), join(root, "linked"), "dir");
+    const opened = await open(join(root, "tsconfig.json"));
+    const all = { layout: true, state: true };
+    expect(JSON.parse(opened.configIdentity ?? "")).toEqual({
+      both: all,
+      "sites/a": all,
+      "sites/b": { layout: false, state: false },
+    });
+    expect(opened.watchedFiles).toEqual(
+      ["", "both", "sites/a", "sites/b", "sites/b/pages"].flatMap((at) => [
+        join(root, at, "project.jxn"),
+        join(root, at, "project.json"),
+      ]),
+    );
+    expect([...opened.project.facts.keys()]).toEqual([
+      join(root, "sites/a"),
+      join(root, "sites/b"),
+    ]);
+  });
+
+  test("says another thing when a project under the tsconfig gives another", async () => {
+    const root = folder({ "sites/a/project.jxn": WITH_NEITHER });
+    const first = await open(join(root, "tsconfig.json"));
+    writeFileSync(join(root, "sites/a/project.jxn"), WITH_BOTH);
+    const second = await open(join(root, "tsconfig.json"));
+    expect(second.configIdentity).not.toBe(first.configIdentity);
+    expect(second.watchedFiles).toEqual(first.watchedFiles);
+  });
+
+  test("finds no project in a folder that cannot be listed", async () => {
+    const root = folder();
+    const opened = await open(join(root, "gone/tsconfig.json"));
+    expect(opened.configIdentity).toBe("{}");
+    expect(opened.watchedFiles).toEqual([
+      join(root, "gone/project.jxn"),
+      join(root, "gone/project.json"),
+    ]);
   });
 
   test("has no folder to read for files the compiler holds without a tsconfig", async () => {
