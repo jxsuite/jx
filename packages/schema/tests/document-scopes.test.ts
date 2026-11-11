@@ -9,6 +9,7 @@ import {
   eachSite,
   eventLines,
   eventType,
+  expressionsAt,
   itemType,
   membersOf,
   pointerInto,
@@ -357,5 +358,195 @@ describe("the event a state function is given", () => {
     expect(given({ textContent: "${state.save$()}" })).toEqual(["/state/save"]);
     // A longer name that holds this one is another name.
     expect(given({ children: ["unsaved", "save_all"] })).toEqual(["/state/save", "/state/save$"]);
+  });
+});
+
+describe("what an object says outside its functions", () => {
+  /** Each template an object holds, as where it is and what it says. */
+  const templatesOf = (node: JsonObject, pointer = ""): [string, string][] =>
+    expressionsAt(node, pointer, plain).templates.map((found) => [found.pointer, found.text]);
+  /** Each reference an object holds, as where it is and what it says. */
+  const refsOf = (node: JsonObject, pointer = ""): [string, string][] =>
+    expressionsAt(node, pointer, plain).refs.map((found) => [found.pointer, found.ref]);
+  /** How one reference is read. */
+  const read = (ref: string) =>
+    expressionsAt({ title: { $ref: ref } }, "", plain).refs.map((found) => ({
+      path: found.path,
+      prefix: found.prefix,
+    }));
+
+  test("is a template wherever an element holds a string the runtime reads as one", () => {
+    const element = {
+      $id: "${not.read}",
+      $props: { $kept: "${not.read}", label: "${state.c}" },
+      attributes: { "aria-label": "${state.b}", count: 1, role: "note" },
+      children: ["${state.d}", "said", { tagName: "span" }],
+      hidden: true,
+      onclick: "${not.read}",
+      style: { ":hover": { color: "${state.f}" }, color: "${state.e}", width: "1px" },
+      tagName: "p",
+      textContent: "said",
+      title: "${state.a}",
+    };
+    expect(templatesOf(element, "/children/0")).toEqual([
+      ["/children/0/$props/label", "${state.c}"],
+      ["/children/0/attributes/aria-label", "${state.b}"],
+      ["/children/0/children/0", "${state.d}"],
+      ["/children/0/style/:hover/color", "${state.f}"],
+      ["/children/0/style/color", "${state.e}"],
+      ["/children/0/title", "${state.a}"],
+    ]);
+    // The root is an element whether or not it names a tag, and it says where it found each.
+    expect(expressionsAt({ title: "${state.a}" }, "", plain).templates).toEqual([
+      { pointer: "/title", site: plain, text: "${state.a}" },
+    ]);
+  });
+
+  test("is no template in what is not an element, where a string is data", () => {
+    const held = {
+      $props: { label: "${data}" },
+      attributes: { label: "${data}" },
+      children: ["${data}"],
+      style: { color: "${data}" },
+      title: "${data}",
+    };
+    expect(templatesOf(held, "/children/0/attributes")).toEqual([]);
+    // What is no object where an element has one says nothing.
+    expect(templatesOf({ $props: 1, attributes: "a", tagName: "p" }, "/children/0")).toEqual([]);
+  });
+
+  test("is a template in a state entry that is a string, and in what configures a prototype", () => {
+    const node = {
+      state: {
+        count: 0,
+        deep: { list: ["${data}", { text: "${data}" }] },
+        go: { $prototype: "Function", body: "return `${state.count}`", name: "${data}" },
+        label: "${state.count} left",
+        request: {
+          $prototype: "Request",
+          $src: "${not.read}",
+          headers: { accept: "${data}" },
+          url: "/api/${state.count}",
+        },
+      },
+    };
+    expect(templatesOf(node)).toEqual([
+      ["/state/label", "${state.count} left"],
+      ["/state/request/url", "/api/${state.count}"],
+    ]);
+    // A scope below the root says the same of its own.
+    expect(templatesOf({ state: { label: "${state.a}" } }, "/children/1")).toEqual([
+      ["/children/1/state/label", "${state.a}"],
+    ]);
+    // A `state` that is no object declares nothing, and is read as the member it is.
+    expect(templatesOf({ state: "${state.a}", tagName: "p" }, "/children/1")).toEqual([
+      ["/children/1/state", "${state.a}"],
+    ]);
+  });
+
+  test("is a reference wherever one is written into state or a row", () => {
+    const node = {
+      attributes: { href: { $ref: "#/state/never" } },
+      children: [{ $ref: "#/state/b" }, "said", { tagName: "span" }],
+      items: [{ $ref: "$map/item" }],
+      state: {
+        deep: { list: [1, { $ref: "#/state/d" }] },
+        held: { $ref: "#/state/c" },
+        load: {
+          $prototype: "Function",
+          arguments: { id: { $ref: "#/state/e" } },
+          timing: "server",
+        },
+      },
+      style: { ":hover": { color: { $ref: "#/state/g" } }, color: { $ref: "#/state/f" } },
+      tagName: "p",
+      title: { $ref: "#/state/a" },
+    };
+    // What `attributes` holds is found when the walk reaches it, and not from the element.
+    expect(refsOf(node, "/children/0")).toEqual([
+      ["/children/0/children/0", "#/state/b"],
+      ["/children/0/items/0", "$map/item"],
+      ["/children/0/state/deep/list/1", "#/state/d"],
+      ["/children/0/state/held", "#/state/c"],
+      ["/children/0/state/load/arguments/id", "#/state/e"],
+      ["/children/0/style/:hover/color", "#/state/g"],
+      ["/children/0/style/color", "#/state/f"],
+      ["/children/0/title", "#/state/a"],
+    ]);
+    expect(refsOf({ href: { $ref: "#/state/h" } }, "/children/0/attributes")).toEqual([
+      ["/children/0/attributes/href", "#/state/h"],
+    ]);
+    // The object a reference is says nothing more when the walk reaches it.
+    expect(refsOf({ $ref: "#/state/a" }, "/children/0/title")).toEqual([]);
+  });
+
+  test("reads a reference as the members it names, each where it is written", () => {
+    expect(read("#/state/a")).toEqual([
+      { path: [{ end: 9, key: "a", start: 8 }], prefix: "#/state/" },
+    ]);
+    expect(read("#/state/a/b~1c~0/0")).toEqual([
+      {
+        path: [
+          { end: 9, key: "a", start: 8 },
+          { end: 16, key: "b/c~", start: 10 },
+          { end: 18, key: "0", start: 17 },
+        ],
+        prefix: "#/state/",
+      },
+    ]);
+    // A row is read from `$map` on, in either spelling.
+    expect(read("$map/item/title")).toEqual([
+      {
+        path: [
+          { end: 4, key: "$map", start: 0 },
+          { end: 9, key: "item", start: 5 },
+          { end: 15, key: "title", start: 10 },
+        ],
+        prefix: "",
+      },
+    ]);
+    expect(read("#/$map/index")).toEqual([
+      {
+        path: [
+          { end: 6, key: "$map", start: 2 },
+          { end: 12, key: "index", start: 7 },
+        ],
+        prefix: "#/",
+      },
+    ]);
+  });
+
+  test("leaves out a reference that names something else, or no member", () => {
+    for (const ref of ["window#/name", "parent#/a", "#/$defs/a", "./a.jxn", "#/state"]) {
+      expect(read(ref)).toEqual([]);
+    }
+    for (const ref of ["#/state/", "#/state/a//b", "#/state/a/", "$map/"]) {
+      expect(read(ref)).toEqual([]);
+    }
+  });
+
+  test("says which handler a reference binds, on an element and nowhere else", () => {
+    const button = { onclick: { $ref: "#/state/save" }, tagName: "button" };
+    expect(expressionsAt(button, "/children/0", plain).refs.map((found) => found.binding)).toEqual([
+      { element: button, key: "onclick" },
+    ]);
+    const root = { onkeydown: { $ref: "#/state/save" } };
+    expect(expressionsAt(root, "", plain).refs.map((found) => found.binding)).toEqual([
+      { element: root, key: "onkeydown" },
+    ]);
+    const others = {
+      children: [{ $ref: "#/state/a" }],
+      state: { onclick: { $ref: "#/state/b" } },
+      tagName: "p",
+      title: { $ref: "#/state/save" },
+    };
+    expect(expressionsAt(others, "/children/0", plain).refs.map((found) => found.binding)).toEqual([
+      null,
+      null,
+      null,
+    ]);
+    // What is handed down is not bound here.
+    const props = { onsave: { $ref: "#/state/save" } };
+    expect(expressionsAt(props, "/children/0/$props", plain).refs[0]?.binding).toBeNull();
   });
 });
