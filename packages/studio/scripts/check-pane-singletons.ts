@@ -52,6 +52,7 @@
  */
 
 import { Glob } from "bun";
+import { existsSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { API } from "typescript/async";
 import {
@@ -649,10 +650,14 @@ export interface FocusSite {
  * defect: it says in public "the focused pane when you do not say", and eleven of the geometry
  * verbs are written that way.
  *
- * @param {string[]} files Absolute paths to analyse.
+ * @param {string[]} listed Absolute paths to analyse. One that does not exist has no entry.
  * @returns {Promise<Map<string, FocusSite[]>>} Absolute path → sites. Empty entries are omitted.
  */
-export async function analyzeFocusScope(files: string[]): Promise<Map<string, FocusSite[]>> {
+export async function analyzeFocusScope(listed: string[]): Promise<Map<string, FocusSite[]>> {
+  /* A list names PATHS, and a renamed file is still on it. TypeScript 7.1 refuses the whole
+     snapshot for one opened file that is not there (`no project found for opened file`), where 7.0
+     answered with no source file for it, so a path that is gone is left out before it is asked. */
+  const files = listed.filter((file) => existsSync(file));
   const api = new API({ cwd: ROOT });
   try {
     const snapshot = await api.createSnapshot({ openFiles: files });
