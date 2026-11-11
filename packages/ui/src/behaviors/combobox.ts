@@ -390,6 +390,15 @@ export function onComboboxKeydown(state: ComboboxState, event: KeyboardEvent): v
   if (!host || event.ctrlKey || event.metaKey) {
     return;
   }
+  /*
+   * An input method is composing: the arrows walk ITS candidate list and Enter accepts ITS
+   * candidate, so none of them is the reader's answer to this list yet. `keyCode` 229 is the same
+   * statement from the engines that fire the keydown before `compositionstart` sets the flag.
+   */
+  // oxlint-disable-next-line typescript/no-deprecated -- the only signal Safari gives for the Enter that ends a composition.
+  if (event.isComposing || event.keyCode === 229) {
+    return;
+  }
   const rows = rowsOf(state);
   const at = Number(state.activeIndex ?? -1);
   switch (event.key) {
