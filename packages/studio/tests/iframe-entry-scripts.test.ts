@@ -23,6 +23,12 @@ happyDOM.setURL("http://localhost:3000/packages/studio/canvas.html");
 
 type RenderMsg = Extract<ParentToIframe, { kind: "render" }>;
 
+/** How long one render may take before the test says it never ended, in milliseconds. */
+const RENDER_BUDGET = 20_000;
+
+/** A test's own limit: its renders, and Bun's default of five seconds is under one of them. */
+const TEST_BUDGET = 3 * RENDER_BUDGET;
+
 const PAGE = "jx-script:http://localhost:3000/pages/home.json#client";
 const LAYOUT = "jx-script:http://localhost:3000/layouts/base.json#client";
 
@@ -80,45 +86,63 @@ async function boot() {
   const container = document.createElement("div");
   document.body.append(container);
   teardown = startCanvasIframe({ channel: pair.iframe, container });
+  /* A render that names a script waits on the eraser, whose first load reads TypeScript's own
+     parser off disk: tens of milliseconds warm and seconds on a cold runner. So this waits for the
+     frame to say the render ended, and not for a number of turns that happens to be enough here. */
   const render = async (msg: RenderMsg) => {
     pair.parent.post(msg);
     pair.flush();
-    for (let turn = 0; turn < 20; turn += 1) {
+    const ended = (): IframeToParent | undefined =>
+      acks.find(
+        (ack) =>
+          (ack.kind === "renderComplete" || ack.kind === "renderError") && ack.gen === msg.gen,
+      );
+    const deadline = Date.now() + RENDER_BUDGET;
+    while (!ended() && Date.now() < deadline) {
       await flush();
       pair.flush();
     }
+    expect(ended()).toEqual({ gen: msg.gen, kind: "renderComplete" });
   };
   return { acks, container, render };
 }
 
 describe("a render's scripts", () => {
-  test("each entry runs the function of the document it was written in", async () => {
-    const { container, render } = await boot();
+  test(
+    "each entry runs the function of the document it was written in",
+    async () => {
+      const { container, render } = await boot();
 
-    await render(
-      renderMsg(1, merged(), {
-        [LAYOUT]: "export const greet = (): string => 'from the layout';",
-        [PAGE]: "export const greet = (): string => 'from the page';",
-      }),
-    );
+      await render(
+        renderMsg(1, merged(), {
+          [LAYOUT]: "export const greet = (): string => 'from the layout';",
+          [PAGE]: "export const greet = (): string => 'from the page';",
+        }),
+      );
 
-    expect(container.querySelector("header")?.textContent).toBe("from the layout");
-    expect(container.querySelector("p")?.textContent).toBe("from the page");
-  });
+      expect(container.querySelector("header")?.textContent).toBe("from the layout");
+      expect(container.querySelector("p")?.textContent).toBe("from the page");
+    },
+    TEST_BUDGET,
+  );
 
-  test("a later render with a saved script draws the new module", async () => {
-    const { container, render } = await boot();
-    const layout = "export const greet = () => 'layout';";
+  test(
+    "a later render with a saved script draws the new module",
+    async () => {
+      const { container, render } = await boot();
+      const layout = "export const greet = () => 'layout';";
 
-    await render(
-      renderMsg(1, merged(), { [LAYOUT]: layout, [PAGE]: "export const greet = () => 'one';" }),
-    );
-    expect(container.querySelector("p")?.textContent).toBe("one");
+      await render(
+        renderMsg(1, merged(), { [LAYOUT]: layout, [PAGE]: "export const greet = () => 'one';" }),
+      );
+      expect(container.querySelector("p")?.textContent).toBe("one");
 
-    await render(
-      renderMsg(2, merged(), { [LAYOUT]: layout, [PAGE]: "export const greet = () => 'two';" }),
-    );
-    expect(container.querySelector("p")?.textContent).toBe("two");
-    expect(container.querySelector("header")?.textContent).toBe("layout");
-  });
+      await render(
+        renderMsg(2, merged(), { [LAYOUT]: layout, [PAGE]: "export const greet = () => 'two';" }),
+      );
+      expect(container.querySelector("p")?.textContent).toBe("two");
+      expect(container.querySelector("header")?.textContent).toBe("layout");
+    },
+    TEST_BUDGET,
+  );
 });
