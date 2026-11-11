@@ -53,7 +53,7 @@ The names are the ones on the [Insert palette](/docs/studio/design/elements)'s c
 
 After the blocks, under a **Components** heading, the menu lists your components by tag, such as `<site-card>`: your project's own first, then the ones your installed packages provide. Filtering reaches them too, so `card` finds `<site-card>`. Choosing one places an instance of the component with its default settings, and adds the component (or its package) to the page's imports in the same step, the way dragging it from the [Insert palette](/docs/studio/design/elements) does. On an empty paragraph the component replaces it; on a line with text, it lands right after it.
 
-The canvas **+** between elements opens the same list, Components included.
+The canvas **+** between elements opens the same list, Components included. That menu is frozen over the **+** you clicked: moving the pointer across the page does not move it, so you can reach any row. It closes when you pick one, press `Escape`, click elsewhere, or scroll or zoom the canvas.
 
 :::doc-tip
 The same menu appears when you click the name badge on the block action bar to convert a selected element into something else; see **[The canvas](/docs/studio/interface/canvas)**.

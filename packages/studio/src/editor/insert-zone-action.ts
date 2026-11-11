@@ -20,8 +20,18 @@ import { activeTab } from "../workspace/workspace";
 import type { InsertZone } from "../canvas/iframe-protocol";
 import type { JxPath } from "../state";
 
-export function runInsertZoneAction(btn: HTMLElement, zone: InsertZone): void {
+/**
+ * `release` is the host's "the menu closed" signal: the "+" stays frozen under its menu until it
+ * fires, so pointer travel toward a row cannot move or hide the anchor (§10). `onDismiss` fires on
+ * every close, before `onSelect` on a pick.
+ */
+export function runInsertZoneAction(
+  btn: HTMLElement,
+  zone: InsertZone,
+  release: () => void = () => {},
+): void {
   showSlashMenu(btn, "", {
+    onDismiss: release,
     onSelect: (cmd) => {
       /* A pick from the Components group inserts an instance and imports the component, as a drop
          of the same component does (§5.7); every other pick inserts the element's default. */
