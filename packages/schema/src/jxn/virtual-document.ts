@@ -9,7 +9,9 @@
  * - **The main module** is the document's client script as written, followed by `State`: what the
  *   document's `state` proves, exported so that a `.ts` file importing the document can name it. An
  *   `(export)` entry has the type of the export it names, so a wrong name is an error at the entry
- *   and renaming the function renames the entry. After it comes one interface for each element
+ *   and renaming the function renames the entry. One written under its own name alone is one word
+ *   for both, so `State` takes that property from the module itself and a rename started at the
+ *   function, the entry or a body reaches all three. After it comes one interface for each element
  *   below the root that has `state` of its own, and one for each map a body is drawn in, so that
  *   every name a body reads is declared once, in one module, at the place its author wrote it.
  * - **The server module** is the server script, followed by what it adds to those interfaces: each
@@ -368,6 +370,63 @@ function hasScript(doc: JsonObject, side: "client" | "server"): boolean {
   return isJsonObject(doc.$script) && isString(doc.$script[side]);
 }
 
+/**
+ * What the main module declares before its interfaces when an entry is an export under its own
+ * name.
+ *
+ * Written `(export)double`, one word is both the entry and the export, so the two have to be one
+ * name to an editor or a rename started at either leaves the other behind. A property a mapped type
+ * takes from the module IS the export, to the language service: renaming `state.double` in a body
+ * reaches the function, and renaming the function reaches the body. An export the script does not
+ * have is `any`, so it is one error at the entry and none at each place the entry is read.
+ */
+const EXPORTED = [
+  "type $exportedAs<V, R> = R extends 1 ? (V extends (...args: any[]) => infer X ? X : any) : R extends 2 ? (V extends (...args: infer A) => infer X ? (...args: A) => Promise<Awaited<X>> : any) : V;",
+  "type $exported<T, K extends keyof T, R> = { [P in K]: $exportedAs<T[P], R> };",
+  "type $export<T, K extends PropertyKey, R, _At> = $exported<T, Extract<keyof T, K>, R> & { [P in Exclude<K, keyof T>]: any };",
+  "",
+].join("\n");
+
+/** How an entry reads the export it names: as it is, as what it returns, or as what it resolves to. */
+function exportReading(entry: JsonObject, role: FunctionRole | undefined): 0 | 1 | 2 {
+  if (role === "computed") {
+    return 1;
+  }
+  // A lazy entry imports on its first call, so what it returns is a promise (§5.3 4d).
+  return entry.$lazy === true ? 2 : 0;
+}
+
+/** An entry of a scope that is an export of the client script under the entry's own name. */
+interface LinkedExport {
+  entry: JsonObject;
+  key: string;
+  role: FunctionRole | undefined;
+}
+
+/**
+ * The entries of a scope that are each one word for an entry and an export. An entry that says its
+ * export apart, even under the same name, wrote two words and each is renamed alone.
+ */
+function linkedExports(reading: Reading, scope: StateScope): LinkedExport[] {
+  return membersOf(scope).own.flatMap(({ entry, key, role }) => {
+    const apart = reading.tokens.values.has(`${scope.pointer}/state/${token(key)}/$export`);
+    const linked = isJsonObject(entry) && !apart && exportOf(entry, key, CLIENT_SCRIPT_REF) === key;
+    return linked ? [{ entry, key, role }] : [];
+  });
+}
+
+/**
+ * Write what an interface extends for one such entry. The word is joined to the one place that
+ * names the export, inside a type nothing reads until the interface is checked: an export whose own
+ * type reads `State` would otherwise be asked for while `State` is still being put together.
+ */
+function writeLinkedExport(out: Writer, reading: Reading, pointer: string, linked: LinkedExport) {
+  const module = `typeof import(${JSON.stringify(reading.specifier)})`;
+  const reads = exportReading(linked.entry, linked.role);
+  out.add(`$export<${module}, ${JSON.stringify(linked.key)}, ${reads}, { at: ${module}.`);
+  return out.name(linked.key, reading.tokens.names.get(pointer)).add(" }>");
+}
+
 /** Write the type of an entry that names an export of the client script. */
 function writeClientExport(
   out: Writer,
@@ -421,7 +480,14 @@ function writeScope(out: Writer, reading: Reading, layout: Layout, scope: StateS
   /* It extends the one around it, so a member declared there is the same member here and renaming
      it in one place renames it in both. Where it cannot (see `membersOf`), it is closed itself. */
   const closed = around === undefined || inherited !== null;
-  out.add(`export interface ${layout.names.get(scope)}${closed ? "" : ` extends ${around}`} {\n`);
+  const linked = linkedExports(reading, scope);
+  out.add(`export interface ${layout.names.get(scope)}`);
+  out.add(closed ? "" : ` extends ${around}`);
+  for (const [index, one] of linked.entries()) {
+    out.add(index > 0 || !closed ? ",\n    " : "\n  extends ");
+    writeLinkedExport(out, reading, `${scope.pointer}/state/${token(one.key)}`, one);
+  }
+  out.add(" {\n");
   for (const key of inherited ?? []) {
     out.add(`  ${propertyName(key)}: ${around}[${JSON.stringify(key)}];\n`);
   }
@@ -430,6 +496,10 @@ function writeScope(out: Writer, reading: Reading, layout: Layout, scope: StateS
     const pointer = `${scope.pointer}/state/${token(key)}`;
     if (served && exportOf(entry, key, SERVER_SCRIPT_REF) !== null) {
       // The server module says what this is, because only it can see the function.
+      continue;
+    }
+    if (linked.some((one) => one.key === key)) {
+      // The interface extends what the export is, and declares nothing over it.
       continue;
     }
     out.add("  ").name(key, tokens.names.get(pointer), propertyName(key)).add(": ");
@@ -453,7 +523,9 @@ function writeMain(reading: Reading, layout: Layout): VirtualUnit {
     out.value(client, tokens.values.get("/$script/client"));
     out.add(client.endsWith("\n") ? "" : "\n");
   }
-  for (const scope of layout.names.keys()) {
+  const scopes = [...layout.names.keys()];
+  out.add(scopes.some((scope) => linkedExports(reading, scope).length > 0) ? EXPORTED : "");
+  for (const scope of scopes) {
     writeScope(out, reading, layout, scope);
   }
   const nameOf = (scope: StateScope): string => layout.names.get(scope) ?? "any";

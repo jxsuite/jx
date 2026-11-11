@@ -51,7 +51,7 @@ function expectSound(written: VirtualDocument, source: string): void {
   }
 }
 
-/** The members of the first interface a module declares, one to a line. */
+/** What the first interface a module declares says after its first line, one line to each. */
 function membersOf(text: string): string[] {
   const lines = text.split("\n");
   const start = lines.findIndex((line) => /^\s*(?:export )?interface /u.test(line));
@@ -83,6 +83,15 @@ const SIGNED = "export async function body(this: any, state: State) {";
 const OPEN = "[key: string]: any;";
 /** What a document that is no component says it defines, which ends its main module. */
 const DEFINES_NONE = "export interface $elements {}";
+/** What a main module declares first when an entry is an export under its own name. */
+const EXPORTED = [
+  "type $exportedAs<V, R> = R extends 1 ? (V extends (...args: any[]) => infer X ? X : any) : R extends 2 ? (V extends (...args: infer A) => infer X ? (...args: A) => Promise<Awaited<X>> : any) : V;",
+  "type $exported<T, K extends keyof T, R> = { [P in K]: $exportedAs<T[P], R> };",
+  "type $export<T, K extends PropertyKey, R, _At> = $exported<T, Extract<keyof T, K>, R> & { [P in Exclude<K, keyof T>]: any };",
+];
+/** What an interface extends for such an entry: `reads` is 0 as it is, 1 its result, 2 its promise. */
+const exported = (name: string, reads: 0 | 1 | 2): string =>
+  `$export<typeof import("./a.jxn"), "${name}", ${reads}, { at: typeof import("./a.jxn").${name} }>`;
 
 describe("the main module", () => {
   const source = file(
@@ -115,12 +124,13 @@ describe("the main module", () => {
         "  state.count += 1;",
         "  void event;",
         "}",
-        "export interface State {",
+        ...EXPORTED,
+        "export interface State",
+        `  extends ${exported("double", 1)},`,
+        `    ${exported("later", 2)} {`,
         "  count: number;",
         '  "my key": string;',
-        '  double: (typeof import("./a.jxn").double) extends (...args: any[]) => infer R ? R : any;',
         '  hello: typeof import("./a.jxn").greet;',
-        '  later: (typeof import("./a.jxn").later) extends (...args: infer A) => infer R ? (...args: A) => Promise<Awaited<R>> : any;',
         "  go: (...args: any[]) => any;",
         `  ${CLOSED}`,
         "}",
@@ -145,18 +155,65 @@ describe("the main module", () => {
 
   test("maps a name to its own token, and an export to the token that names it", () => {
     expect(mapped(written.main, source).slice(5)).toEqual([
+      // One word that is both an entry and an export is written once, where it names the export.
+      ["verbatim", "double", "double"],
+      ["verbatim", "later", "later"],
       ["verbatim", "count", "count"],
       // A name TypeScript writes differently stands for its token as a whole.
       ["atom", '"my key"', '"my key"'],
-      // One token is both the entry's name and the export's.
-      ["verbatim", "double", "double"],
-      ["verbatim", "double", "double"],
+      // An entry that says its export apart is two words, each joined to its own.
       ["verbatim", "hello", "hello"],
       ["verbatim", "greet", "greet"],
-      ["verbatim", "later", "later"],
-      ["verbatim", "later", "later"],
       ["verbatim", "go", "go"],
     ]);
+  });
+
+  test("takes from the script an export an entry names by its own name alone", () => {
+    const apart = file(
+      "div {",
+      '  script "export function a() {}; export function b() {}"',
+      "  state {",
+      "    (export)a",
+      "    (export)b $export=b",
+      "    (export)c $export=a",
+      "    (export)d $export=b $lazy=#true",
+      "  }",
+      '  (fn)onclick "state.a(); state.b(); state.d()"',
+      "}",
+    );
+    const made = generate(apart);
+    expect(made.main.text).toBe(
+      file(
+        "export function a() {}; export function b() {}",
+        ...EXPORTED,
+        "export interface State",
+        // A function an event calls is the export as it is.
+        `  extends ${exported("a", 0)} {`,
+        // Said apart, the export is a second word even under the same name, and is renamed alone.
+        '  b: typeof import("./a.jxn").b;',
+        // And one under another name is read as its own entry is: for what it returns, or lazily.
+        '  c: (typeof import("./a.jxn").a) extends (...args: any[]) => infer R ? R : any;',
+        '  d: (typeof import("./a.jxn").b) extends (...args: infer A) => infer R ? (...args: A) => Promise<Awaited<R>> : any;',
+        `  ${CLOSED}`,
+        "}",
+        DEFINES_NONE,
+      ),
+    );
+    expect(mapped(made.main, apart).slice(1)).toEqual([
+      ["verbatim", "a", "a"],
+      ["verbatim", "b", "b"],
+      ["verbatim", "b", "b"],
+      ["verbatim", "c", "c"],
+      ["verbatim", "a", "a"],
+      ["verbatim", "d", "d"],
+      ["verbatim", "b", "b"],
+    ]);
+    expectSound(made, apart);
+  });
+
+  test("declares nothing before State for a document with no such entry", () => {
+    const made = generate(file("div {", '  script "export const a = 1;"', "  state { n 1 }", "}"));
+    expect(made.main.text.includes("$export")).toBe(false);
   });
 
   test("ends a script that has no line ending of its own, and adds none to one that has", () => {
@@ -313,10 +370,7 @@ describe("the server module", () => {
   });
 
   test("leaves its entries out of the main module, which cannot see the functions", () => {
-    expect(membersOf(written.main.text)).toEqual([
-      'count: (typeof import("./a.jxn").count) extends (...args: any[]) => infer R ? R : any;',
-      CLOSED,
-    ]);
+    expect(membersOf(written.main.text)).toEqual([`extends ${exported("count", 1)} {`, CLOSED]);
   });
 
   test("augments JxState when that is what State is called", () => {
@@ -588,13 +642,14 @@ describe("a body inside a nested scope", () => {
     expect(written.main.text).toBe(
       file(
         "export const twice = (state: State$1) => state.n * 2;",
+        ...EXPORTED,
         "export interface State {",
         "  top: number;",
         `  ${CLOSED}`,
         "}",
-        "export interface State$1 extends State {",
+        "export interface State$1 extends State,",
+        `    ${exported("twice", 1)} {`,
         "  n: number;",
-        '  twice: (typeof import("./a.jxn").twice) extends (...args: any[]) => infer R ? R : any;',
         "}",
         "export interface State$2 extends State {",
         "  z: number;",

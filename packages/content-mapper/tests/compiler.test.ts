@@ -82,6 +82,7 @@ describe("an error in a document's code", () => {
     "    }",
     "    function helper() { return 1; }",
     "    export const wrong: string = helper();",
+    '    export const start = (state: State): State["count"] => state.count;',
     '    """#',
     '  script timing=server #"""',
     "    export async function user(args: { id: number }) {",
@@ -93,12 +94,14 @@ describe("an error in a document's code", () => {
     "    (export)double",
     "    (export)hello $export=greet",
     "    (export)missing",
+    "    (export)start",
     "    (server)user id=1",
     '    (fn)go "helper();"',
     "  }",
     "  button {",
     "    state { local 1 }",
     '    (fn)onclick "state.local += state.double; state.user?.name.toFixed(); state.hello(1)"',
+    '    (fn)onkeyup "state.missing.anything; state.start.toFixed(1, 2)"',
     "  }",
     "}",
   );
@@ -164,6 +167,9 @@ describe("an error in a document's code", () => {
       `${printed(script, "toFixed")} TS2551`,
       // An export is called as it is declared.
       `${printed(script, "state.hello(1)", "state.".length)} TS2554`,
+      // An entry named for no export is said once, on the entry, and is anything where it is read.
+      // And an export typed by the state that holds it is that type: `start` is a number.
+      `${printed(script, "2)")} TS2554`,
     ]);
   });
 

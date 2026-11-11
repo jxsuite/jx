@@ -23,6 +23,7 @@ const SOURCE = [
   "    (export)hello $export=greet",
   '    (fn)go a b """',
   "      state.count = a + b;",
+  "      void state.double;",
   "      state.nope = 1;",
   '      """',
   "  }",
@@ -131,7 +132,12 @@ describe("an editor on a document", () => {
   test("shows, over an entry's name, the export the entry names", async () => {
     expect(await hovered("(export)double", 9)).toEqual({
       over: span("(export)double", 8, 6),
-      text: "(property) State.double: number\n\nconst double: (state: State) => number",
+      text: "const double: (state: State) => number",
+    });
+    // And where a body reads the entry, what the entry is: a computed value is what it returns.
+    expect(await hovered("void state.double", 12)).toEqual({
+      over: span("void state.double", 11, 6),
+      text: "(property) double: number",
     });
   });
 
@@ -150,10 +156,19 @@ describe("an editor on a document", () => {
     });
   });
 
-  test("renames a script's export where an entry names it, as its own name or as $export", async () => {
-    expect(await renamed("const double", 6)).toEqual(
-      [span("const double", 6, 6), span("(export)double", 8, 6)].toSorted(),
-    );
+  test("renames an export under an entry's own name from the script, the entry or a body", async () => {
+    // The one word is the entry and the export, so wherever it starts a rename reaches all three.
+    const every = [
+      span("const double", 6, 6),
+      span("(export)double", 8, 6),
+      span("void state.double", 11, 6),
+    ].toSorted();
+    expect(await renamed("const double", 6)).toEqual(every);
+    expect(await renamed("(export)double", 9)).toEqual(every);
+    expect(await renamed("void state.double", 12)).toEqual(every);
+  });
+
+  test("renames a script's export where an entry's $export names it", async () => {
     expect(await renamed("function greet", 9)).toEqual(
       [span("function greet", 9, 5), span("$export=greet", 8, 5)].toSorted(),
     );
@@ -229,6 +244,13 @@ describe("an editor on a document", () => {
     // SAFETY: a completion is answered with a list of items, each with the text it offers.
     const { items } = answer as { items: { label: string }[] };
     expect(items.map((item) => item.label).toSorted()).toEqual(["count", "double", "go", "hello"]);
+  });
+
+  test("goes from an entry that is an export under its own name to the script", async () => {
+    const answer = await ask("textDocument/definition", "void state.double", 12);
+    // SAFETY: a definition is answered with the places that declare the name.
+    const places = answer as { range: Range; uri: string }[];
+    expect(places.map((place) => spanOf(place.range))).toEqual([span("const double", 6, 6)]);
   });
 
   test("goes from a call in a body to the entry, and through it to the script", async () => {
@@ -460,6 +482,74 @@ describe("an editor on a document that declares its types", () => {
     expect(await rewritten("text type=string", 0)).toEqual(
       [where("text type=string", 0, 4), where("text: 1", 0, 4), where("text}", 0, 4)].toSorted(),
     );
+  });
+});
+
+describe("an editor on a document whose entry is a server function under its own name", () => {
+  const SERVED = [
+    "div {",
+    '  script timing=server #"""',
+    "    export async function user(args: { id: number }) {",
+    '      return { name: "a", id: args.id };',
+    "    }",
+    '    """#',
+    "  state {",
+    "    (server)user id=1",
+    '    (fn)go "void state.user?.name"',
+    "  }",
+    "}",
+    "",
+  ].join("\n");
+  let made: Fixture;
+  let editor: LanguageServer;
+  let served: { uri: string };
+
+  /** A place and a length in the document. */
+  const where = (needle: string, delta: number, length: number): string => {
+    const { character, line } = position(SERVED, needle, delta);
+    return `${line}:${character}+${length}`;
+  };
+
+  /** Rename what is at a place, and say every span of the file the editor would rewrite. */
+  async function rewritten(needle: string, delta: number): Promise<string[]> {
+    const answer = await editor.request("textDocument/rename", {
+      newName: "renamed",
+      position: position(SERVED, needle, delta),
+      textDocument: served,
+    });
+    // SAFETY: a rename is answered with a workspace edit, its changes keyed by the file they are in.
+    const { changes } = answer as { changes: Record<string, { range: Range }[]> };
+    return (changes[served.uri] ?? []).map((edit) => spanOf(edit.range)).toSorted();
+  }
+
+  beforeAll(async () => {
+    made = new Fixture();
+    const path = made.write("src/served.jxn", SERVED);
+    editor = new LanguageServer(made.root);
+    await editor.open(made.root);
+    served = editor.edit(path, SERVED);
+  }, SLOW);
+
+  afterAll(() => {
+    editor.stop();
+    made.remove();
+  });
+
+  const declared = where("function user", 9, 4);
+  const entry = where("(server)user", 8, 4);
+  const read = where("state.user", 6, 4);
+
+  test("renames the function, the entry and what reads it, from the entry", async () => {
+    expect(await rewritten("(server)user", 9)).toEqual([declared, entry, read].toSorted());
+  });
+
+  // The server module cannot name itself, so the entry and the function stay two names there.
+  test("leaves what reads the entry when the rename starts at the function", async () => {
+    expect(await rewritten("function user", 9)).toEqual([declared, entry].toSorted());
+  });
+
+  test("leaves the function when the rename starts where the entry is read", async () => {
+    expect(await rewritten("state.user", 6)).toEqual([entry, read].toSorted());
   });
 });
 
