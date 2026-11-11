@@ -3,7 +3,7 @@
  * for a string, checked against what the parser read it as, and the token map that finds a string.
  */
 import { describe, expect, test } from "bun:test";
-import { parseJxnWithTokens } from "../src/jxn/index.ts";
+import { parseJxn, parseJxnWithTokens } from "../src/jxn/index.ts";
 import { stringPieces } from "../src/jxn/string-pieces.ts";
 import type { StringPiece } from "../src/jxn/string-pieces.ts";
 
@@ -340,5 +340,45 @@ describe("the token of what an element says", () => {
     expect(text("/children/3/style/width")).toBe('"${state.f}"');
     expect(text("/children/3/style/color")).toBe('"${state.g}"');
     expect(text("/children/3/style/:hover/color")).toBe('"${state.h}"');
+  });
+});
+
+describe("the token of each item of a list", () => {
+  const source = [
+    '$elements (ref)"./a-b.jxn" "pkg"',
+    "div {",
+    "  state {",
+    "    sizes 1 2",
+    '    (array)mixed "a" { - "b"; - { $ref "#/state/sizes" } }',
+    '    block { - "c"; - (ref)"#/state/sizes" }',
+    "  }",
+    "}",
+    "",
+  ].join("\n");
+  const { document, tokens } = parseJxnWithTokens(source);
+  const text = (pointer: string): string | null => {
+    const span = tokens.values.get(pointer);
+    return span ? source.slice(span.start, span.end) : null;
+  };
+
+  test("is under its index, for one written on the node's own line", () => {
+    expect(document.$elements).toEqual([{ $ref: "./a-b.jxn" }, "pkg"]);
+    expect(text("/$elements/0")).toBe('"./a-b.jxn"');
+    expect(text("/$elements/1")).toBe('"pkg"');
+    expect(text("/state/sizes/0")).toBe("1");
+    expect(text("/state/sizes/1")).toBe("2");
+  });
+
+  test("counts on from the line into the block, where a list is written both ways", () => {
+    expect(document.state).toMatchObject({ mixed: ["a", "b", { $ref: "#/state/sizes" }] });
+    expect(text("/state/mixed/0")).toBe('"a"');
+    expect(text("/state/mixed/1")).toBe('"b"');
+    expect(text("/state/mixed/2/$ref")).toBe('"#/state/sizes"');
+    expect(text("/state/block/0")).toBe('"c"');
+    expect(text("/state/block/1")).toBe('"#/state/sizes"');
+  });
+
+  test("is not recorded by a reader that was asked for no tokens", () => {
+    expect(parseJxn(source)).toEqual(document);
   });
 });

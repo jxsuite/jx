@@ -243,6 +243,110 @@ describe("an editor on a document", () => {
   });
 });
 
+describe("an editor on a document that gives a component its props", () => {
+  const CARD = [
+    "x-card {",
+    '  state { title "t"; count 0 }',
+    '  h2 "${state.title}"',
+    "}",
+    "",
+  ].join("\n");
+  const PAGE = [
+    '(array)$elements (ref)"./x-card.jxn"',
+    "div {",
+    '  state { heading "x" }',
+    '  x-card { $props title=(ref)"#/state/heading" count="3" }',
+    "}",
+    "",
+  ].join("\n");
+  let made: Fixture;
+  let editor: LanguageServer;
+  let card: { uri: string };
+  let page: { uri: string };
+
+  /** A span of one of the two files, as `uri line:character+length`. */
+  const within = (file: { uri: string }, source: string, needle: string, length: number) => {
+    const { character, line } = position(source, needle);
+    return `${file.uri} ${line}:${character}+${length}`;
+  };
+
+  /** Rename what is at a place, and say every span of either file the editor would rewrite. */
+  async function rewritten(file: { uri: string }, source: string, needle: string) {
+    const answer = await editor.request("textDocument/rename", {
+      newName: "renamed",
+      position: position(source, needle),
+      textDocument: file,
+    });
+    // SAFETY: a rename is answered with a workspace edit, its changes keyed by the file they are in.
+    const { changes } = answer as { changes: Record<string, { range: Range }[]> };
+    return Object.entries(changes)
+      .flatMap(([uri, edits]) => edits.map((edit) => `${uri} ${spanOf(edit.range)}`))
+      .toSorted();
+  }
+
+  beforeAll(async () => {
+    made = new Fixture();
+    const cardPath = made.write("src/x-card.jxn", CARD);
+    const pagePath = made.write("src/page.jxn", PAGE);
+    editor = new LanguageServer(made.root);
+    await editor.open(made.root);
+    card = editor.edit(cardPath, CARD);
+    page = editor.edit(pagePath, PAGE);
+  }, SLOW);
+
+  afterAll(() => {
+    editor.stop();
+    made.remove();
+  });
+
+  test(
+    "marks a prop the component does not take as that, at the prop's name",
+    async () => {
+      const answer = await editor.request("textDocument/diagnostic", { textDocument: page });
+      // SAFETY: a pull for diagnostics is answered with the file's whole list.
+      const { items } = answer as { items: { code: number; range: Range }[] };
+      expect(items.map((item) => `${page.uri} ${spanOf(item.range)} TS${item.code}`)).toEqual([
+        `${within(page, PAGE, 'count="3"', 5)} TS2322`,
+      ]);
+    },
+    SLOW,
+  );
+
+  test("shows, over a prop's name, what the component holds under it", async () => {
+    const answer = await editor.request("textDocument/hover", {
+      position: position(PAGE, "title="),
+      textDocument: page,
+    });
+    // SAFETY: a hover over a name is answered with its text and the range of the name.
+    const { contents, range } = answer as { contents: { value: string }; range: Range };
+    expect(`${page.uri} ${spanOf(range)}`).toBe(within(page, PAGE, "title=", 5));
+    expect(contents.value).toBe("(property) title?: string | null | undefined");
+  });
+
+  test("goes from a prop's name to the entry of the component it sets", async () => {
+    const answer = await editor.request("textDocument/definition", {
+      position: position(PAGE, "title="),
+      textDocument: page,
+    });
+    // SAFETY: a definition is answered with the places that declare the name.
+    const places = answer as { range: Range; uri: string }[];
+    expect(places.map((place) => `${place.uri} ${spanOf(place.range)}`)).toEqual([
+      within(card, CARD, 'title "t"', 5),
+    ]);
+  });
+
+  test("renames a component's entry in the component and in every document that sets it", async () => {
+    const everywhere = [
+      within(card, CARD, 'title "t"', 5),
+      within(card, CARD, "title}", 5),
+      within(page, PAGE, "title=", 5),
+    ].toSorted();
+    expect(await rewritten(card, CARD, 'title "t"')).toEqual(everywhere);
+    // And from the prop, which is the same name.
+    expect(await rewritten(page, PAGE, "title=")).toEqual(everywhere);
+  });
+});
+
 describe("an editor that has not been let run the project's mappers", () => {
   test(
     "says nothing of a document, and starts nothing to read it",

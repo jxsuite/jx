@@ -1,6 +1,6 @@
 # @jxsuite/content-mapper
 
-A TypeScript content mapper for [Jx Notation](https://jxsuite.com/docs/framework/concepts/jxn-files). It lets `tsc` and TypeScript's language server check the code inside a `.jxn` document: its script, the body of each function, each `${}` template and each `$ref` into `state`. Errors are printed at the line and column where you wrote them, and an editor's hover, completion and rename land on your own text.
+A TypeScript content mapper for [Jx Notation](https://jxsuite.com/docs/framework/concepts/jxn-files). It lets `tsc` and TypeScript's language server check the code inside a `.jxn` document: its script, the body of each function, each `${}` template, each `$ref` into `state` and each prop it gives a component. Errors are printed at the line and column where you wrote them, and an editor's hover, completion and rename land on your own text.
 
 Content mappers arrive in TypeScript 7.1, which is a beta today.
 
@@ -51,6 +51,7 @@ A language server runs a mapper only when the editor tells it the project may ru
 - The event each handler is given, typed by its binding and its element, and `state.$map`, the row of a repeated element.
 - Every `${}` template an element or a `state` entry holds, checked as the JavaScript the page runs.
 - Every `$ref` into `state` or a row, name by name. One on an `on` member is checked as the handler it binds.
+- Every prop in an instance's `$props`, against the `state` of the `.jxn` component its tag names: one the document lists in `$elements`, or one in the project's `components` folder.
 
 A `.json` document, `$defs` and a class's methods are not read. The [Type checking](https://jxsuite.com/docs/framework/concepts/type-checking) page has the full account, with the limits of rename.
 
