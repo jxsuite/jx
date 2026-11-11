@@ -622,11 +622,22 @@ async function expandIncludes(
   return expanded.map(({ payload }) => payload);
 }
 
+/** `application/json` or a `+json` structured-syntax type (RFC 6839), parameters allowed. */
+const JSON_MEDIA_TYPE = /^application\/(?:[\w.-]+\+)?json\b/iu;
+
 /**
  * Read a request body as JSON. `Body.json()` is `JSON.parse` of the body text, so the result is a
  * JSON value; an absent or malformed body reads as null, the same as a literal `null` body.
+ *
+ * A body that does not declare itself JSON reads as null too, whatever it holds. An HTML form can
+ * post JSON-shaped text as `text/plain` from any site, with the visitor's cookies and no preflight;
+ * it cannot set `application/json`, so requiring the type is what keeps a write a same-origin
+ * script's to make (specs/extensions.md §13).
  */
 function readJsonBody(request: Request): Promise<JsonValue> {
+  if (!JSON_MEDIA_TYPE.test(request.headers.get("content-type") ?? "")) {
+    return Promise.resolve(null);
+  }
   return request.json().catch(() => null);
 }
 

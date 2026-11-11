@@ -673,7 +673,11 @@ async function postToWorker(workerPath: string, exportNames: readonly string[], 
     const answers: Record<string, { status: number; body: unknown }> = {};
     for (const name of exportNames) {
       const response = await mod.default.fetch(
-        new Request(`http://localhost${prefix}/_jx/server/${name}`, { body: "{}", method: "POST" }),
+        new Request(`http://localhost${prefix}/_jx/server/${name}`, {
+          body: "{}",
+          headers: { "Content-Type": "application/json" },
+          method: "POST",
+        }),
         {},
       );
       answers[name] = { body: await response.json(), status: response.status };

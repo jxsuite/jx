@@ -627,6 +627,7 @@ A class provides database connections iff it has a top-level `connector` object 
 - Production: `wrangler secret put <NAME>` (or the platform's secret store).
 - Studio secret entry goes through the platform's secrets surface (`/__studio/secrets` — list returns **names only**, never values); the `"secret"` form control writes there, never to project.json.
 - Dev-server studio data routes (`/__studio/data/*`) are the owner console: they intentionally bypass table permission rules and are protected by the dev server's loopback/token boundary. Cloud backends must gate them on collaboration permission.
+- **Mounts sit behind the worker's request gate** (compiler.md §6.4): a cross-site or same-site request that is not a navigation never reaches `handle()`, and every response gains `nosniff`, `Cross-Origin-Resource-Policy: same-origin` and a default `Cache-Control: no-store`. A mount that reads a request body must not act on one that is not declared JSON, because a navigation (a form post from any site) passes the gate. The data mount answers `400` "Body must be JSON" to an insert or update whose `Content-Type` is not `application/json` or a `+json` type, in the dev server as in the worker.
 
 ### 13.1 Auth session cookies
 

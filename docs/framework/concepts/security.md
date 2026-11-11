@@ -8,6 +8,7 @@ spec:
 code:
   - extensions/connector/src/worker.ts
   - extensions/auth/src/worker.ts
+  - packages/compiler/src/targets/compile-server.ts
   - packages/studio/src/services/trusted-types.ts
 ---
 
@@ -62,6 +63,8 @@ A site with a database and sign-ins has a second security surface: the `/_jx/*` 
 **Authorization fails closed.** Anything beyond `public` and `none` needs the auth extension: it mounts first and publishes the session hooks the data mount authorizes against. Without it those rules deny: a missing auth mount answers 401, never a silent grant. The session lookup itself is fail-closed too: an unreachable auth backend reads as signed out rather than as trusted.
 
 **Ownership cannot be forged.** When a table declares an `ownerField`, the server stamps that column with the signed-in user's id on every session-granted insert, and scopes `owner` reads and writes to rows that match, so the value in the request body is not consulted. Roles work the same way: they live in the `user` table's `role` column, which sign-up input can never set.
+
+**Other sites can link to the worker, but they can't call it.** The generated worker checks the browser's [Fetch Metadata](https://www.w3.org/TR/fetch-metadata/) headers in front of every `/_jx/*` route and answers `403` to a request another origin's page makes, such as a `fetch()` or an `<img>`, whether that origin is unrelated or a sibling subdomain. Navigations pass, because a sign-in provider returns the visitor that way. A form posted from another site is a navigation too, so the routes that take a body accept only `Content-Type: application/json`, which a form can't send. Requests with no such headers (a webhook, `curl`, another server) are served as before. Every `/_jx/*` response is marked `nosniff`, `Cross-Origin-Resource-Policy: same-origin`, and `Cache-Control: no-store` unless your code sets its own caching.
 
 **Secrets stay names.** The project file records env-var _names_ (`urlEnv`, `secretEnv`, `clientIdEnv`), never values. Values reach code only through the server's `env`: from the git-ignored `.dev.vars` locally, and from your host's secret store in production. That is also why a `timing: "server"` entry is the right home for anything holding a credential. See [Auth and secrets](/docs/studio/data/auth-and-secrets).
 

@@ -41,6 +41,8 @@ Two layers of authorization exist on a running site, and they are deliberately d
 
 **The public mount surface (`/_jx/*`)** is governed by declared rules. The connector's table permissions (`public | none | authenticated | owner | role:<r>`) are evaluated on every request, and the system **fails closed**: a mount that gates writes on authorization must deny everything except explicitly-public rules when `ctx.auth` is absent from the [shared server context](/docs/extending/extensions/server). Absent auth means 401, not a silent grant. The auth mount's own `getSession` returns `null` on any backend failure for the same reason. Declared `ownerField` columns are stamped server-side with the session's user id, so clients can never forge ownership.
 
+The generated worker also puts a request gate in front of every mount: a cross-site or same-site request that isn't a navigation is answered `403` before your handler runs, and your responses gain `X-Content-Type-Options: nosniff`, `Cross-Origin-Resource-Policy: same-origin`, and `Cache-Control: no-store` when you set no `Cache-Control` of your own. Navigations still reach you, including a form posted from another site, so a handler that reads a body must refuse one that isn't declared `application/json`. The data mount does.
+
 **The Studio data routes (`/__studio/data/*`)** are the owner console: they intentionally bypass table permission rules and are protected by the dev server's loopback/token boundary instead. Cloud backends hosting Studio must gate them on collaboration permission ([Backend protocol](/docs/extending/embedding/backend-protocol)).
 
 :::doc-warning

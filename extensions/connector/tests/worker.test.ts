@@ -13,6 +13,8 @@ import type { JxAuthHooks, JxServerContext, TableDef } from "../src/types";
 import { isJsonObject, isNumber, isString } from "@jxsuite/schema/guards";
 import type { JsonObject, JsonValue } from "@jxsuite/schema/types";
 
+const JSON_HEADERS = { "Content-Type": "application/json" };
+
 const TABLES = {
   comments: {
     connection: "main",
@@ -83,7 +85,7 @@ function makeHarness(
     const init: RequestInit = { method };
     if (body !== undefined) {
       init.body = JSON.stringify(body);
-      init.headers = { "Content-Type": "application/json" };
+      init.headers = JSON_HEADERS;
     }
     const request = new Request(`http://site.test${path}`, init);
     return handleDataRequest(request, {}, options, ctx, state);
@@ -224,14 +226,44 @@ describe("wire contract", () => {
     const harness = makeHarness();
     const rawBad = new Request("http://site.test/_jx/data/comments", {
       body: "{not json",
+      headers: JSON_HEADERS,
       method: "POST",
     });
     const parsed = await handleDataRequest(rawBad, {}, harness.options, {}, harness.state);
     expect(parsed.status).toBe(400);
 
+    /*
+     * A well-formed body that does not say it is JSON is the shape a form on another site can post
+     * with the visitor's cookies (`enctype="text/plain"`): refused, and nothing is written.
+     */
+    const count = async () => {
+      const listed = await rows(harness.call("GET", "/_jx/data/comments"));
+      return listed.length;
+    };
+    expect(await count()).toBe(0);
+    for (const type of ["text/plain", "application/x-www-form-urlencoded"]) {
+      const forged = new Request("http://site.test/_jx/data/comments", {
+        body: JSON.stringify({ message: "forged" }),
+        headers: { "Content-Type": type },
+        method: "POST",
+      });
+      const refused = await handleDataRequest(forged, {}, harness.options, {}, harness.state);
+      expect(refused.status).toBe(400);
+    }
+    expect(await count()).toBe(0);
+    const typed = new Request("http://site.test/_jx/data/comments", {
+      body: JSON.stringify({ message: "typed" }),
+      headers: { "Content-Type": "application/vnd.api+json; charset=utf-8" },
+      method: "POST",
+    });
+    const accepted = await handleDataRequest(typed, {}, harness.options, {}, harness.state);
+    expect(accepted.status).toBe(201);
+    expect(await count()).toBe(1);
+
     // The same malformed-JSON guard on the PATCH path specifically (a distinct branch from POST's).
     const rawBadPatch = new Request(`http://site.test/_jx/data/comments/${created.id}`, {
       body: "{not json",
+      headers: JSON_HEADERS,
       method: "PATCH",
     });
     const parsedPatch = await handleDataRequest(
@@ -342,6 +374,7 @@ describe("wire contract", () => {
     const created = await handler(
       new Request("http://x/_jx/data/comments", {
         body: JSON.stringify({ message: "via mount" }),
+        headers: JSON_HEADERS,
         method: "POST",
       }),
       {},
@@ -452,7 +485,7 @@ describe("fail-closed permission matrix", () => {
     const authed = await handleDataRequest(
       new Request("http://x/_jx/data/drafts", {
         body: JSON.stringify({ body: "mine" }),
-        headers: { "x-user": "u1" },
+        headers: { ...JSON_HEADERS, "x-user": "u1" },
         method: "POST",
       }),
       {},
@@ -503,6 +536,7 @@ describe("fail-closed permission matrix", () => {
       const init: RequestInit = { method };
       if (body !== undefined) {
         init.body = JSON.stringify(body);
+        init.headers = JSON_HEADERS;
       }
       return handleDataRequest(
         new Request(`http://x${path}`, init),
