@@ -586,7 +586,7 @@ describe("a body inside a nested scope", () => {
     expectSound(written, source);
   });
 
-  test("lists the root's members by reference where an element declares one of its names", () => {
+  test("extends the root's less the name where an element declares one of its names", () => {
     const source = file(
       "div {",
       '  script "interface State { a: number }"',
@@ -601,24 +601,63 @@ describe("a body inside a nested scope", () => {
     expect(written.main.text).toBe(
       file(
         "interface State { a: number }",
+        "type $except<T, K extends PropertyKey> = { [P in keyof T as P extends K ? never : P]: T[P] };",
         "export interface JxState {",
         "  count: number;",
         '  "my key": number;',
         "  title: string;",
         `  ${OPEN}`,
         "}",
-        "export interface JxState$1 {",
-        '  "my key": JxState["my key"];',
-        '  title: JxState["title"];',
+        'export interface JxState$1 extends $except<JxState, "count"> {',
         "  count: string;",
         "  extra: number;",
-        `  ${OPEN}`,
         "}",
         DEFINES_NONE,
       ),
     );
     expect(headOf(written.supplemental[0])[0]).toBe(
       'import type { JxState$1 as State } from "./a.jxn";',
+    );
+    expectSound(written, source);
+  });
+
+  test("extends one that is itself less a name, beside what the script exports to it", () => {
+    const source = file(
+      "div {",
+      '  script "export const twice = (state: State$1) => state.n.length;"',
+      '  script timing=server "export async function user() { return 1; }"',
+      "  state { n 1; top 1 }",
+      "  p {",
+      '    state { n "a"; (export)twice; (server)top }',
+      "    b {",
+      "      state { twice 1; n 2; own 3 }",
+      "    }",
+      "  }",
+      "}",
+    );
+    const written = generate(source);
+    // A name the server gives the element is one it declares, though the server module says what.
+    expect(written.main.text).toBe(
+      file(
+        "export const twice = (state: State$1) => state.n.length;",
+        ...EXPORTED,
+        "type $except<T, K extends PropertyKey> = { [P in keyof T as P extends K ? never : P]: T[P] };",
+        "export interface State {",
+        "  n: number;",
+        "  top: number;",
+        `  ${CLOSED}`,
+        "}",
+        'export interface State$1 extends $except<State, "n" | "top">,',
+        `    ${exported("twice", 1)} {`,
+        "  n: string;",
+        "}",
+        'export interface State$2 extends $except<State$1, "twice" | "n"> {',
+        "  twice: number;",
+        "  n: number;",
+        "  own: number;",
+        "}",
+        DEFINES_NONE,
+      ),
     );
     expectSound(written, source);
   });

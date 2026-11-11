@@ -233,10 +233,10 @@ describe("what a document says of where a body stands", () => {
     '    (fn)onsubmit "event.preventDefault(); void event.submitter; event.currentTarget.reset(); event.target.reset()"',
     "  }",
     "  ul {",
-    '    state { label "x" }',
+    '    state { label "x"; count "now a string" }',
     '    $array items=(ref)"#/state/todos" {',
     "      li {",
-    '        (fn)onclick "state.$map.item.done = !state.$map.item.done; state.$map.item.gone; state.$map.index.toFixed(); state.label.toFixed()"',
+    '        (fn)onclick "state.$map.item.done = !state.$map.item.done; state.$map.item.gone; state.$map.index.toFixed(); state.label.toFixed(); void state.count.trim(); state.todos.wrong"',
     '        $array items=(ref)"$map/item/tags" {',
     '          b { (fn)onclick "state.$map.item.toUpperCase(); state.$map.item.missing" }',
     "        }",
@@ -253,6 +253,9 @@ describe("what a document says of where a body stands", () => {
     `${printed(source, "gone")} TS2339`,
     // A scope inside the document still reads what it declares: `label` is a string.
     `${printed(source, "toFixed(); state.label.toFixed", "toFixed(); state.label.".length)} TS2551`,
+    /* It declares `count` over the root's, which is a string there and nothing is said of its
+       `trim`. What it does not declare is still what the root holds: `todos` is a list. */
+    `${printed(source, "wrong")} TS2339`,
     // The row of the nearest map, whose list is read off the row around it: a tag is a string.
     `${printed(source, "missing")} TS2339`,
   ];

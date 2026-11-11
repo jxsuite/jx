@@ -65,6 +65,8 @@ import {
   eventType,
   expressionsAt,
   itemType,
+  EXCEPT,
+  heritageOf,
   membersOf,
   readsRow,
 } from "./document-scopes";
@@ -475,22 +477,19 @@ function writeParts(out: Writer, reading: Reading, parts: readonly TypePart[]): 
 /** Write one scope's interface: the root's `State`, or a nested element's under the one around it. */
 function writeScope(out: Writer, reading: Reading, layout: Layout, scope: StateScope): void {
   const { tokens } = reading;
-  const { inherited, own } = membersOf(scope);
+  const { own, shadowed } = membersOf(scope);
   const around = scope.parent ? layout.names.get(scope.parent) : undefined;
   /* It extends the one around it, so a member declared there is the same member here and renaming
-     it in one place renames it in both. Where it cannot (see `membersOf`), it is closed itself. */
-  const closed = around === undefined || inherited !== null;
+     it in one place renames it in both. That holds where it declares one over it too, because it
+     extends that one less the names it declares itself (see `membersOf`). */
   const linked = linkedExports(reading, scope);
   out.add(`export interface ${layout.names.get(scope)}`);
-  out.add(closed ? "" : ` extends ${around}`);
+  out.add(around === undefined ? "" : ` extends ${heritageOf(around, shadowed)}`);
   for (const [index, one] of linked.entries()) {
-    out.add(index > 0 || !closed ? ",\n    " : "\n  extends ");
+    out.add(index > 0 || around !== undefined ? ",\n    " : "\n  extends ");
     writeLinkedExport(out, reading, `${scope.pointer}/state/${token(one.key)}`, one);
   }
   out.add(" {\n");
-  for (const key of inherited ?? []) {
-    out.add(`  ${propertyName(key)}: ${around}[${JSON.stringify(key)}];\n`);
-  }
   const served = hasScript(reading.doc, "server");
   for (const { entry, key, role } of own) {
     const pointer = `${scope.pointer}/state/${token(key)}`;
@@ -511,7 +510,7 @@ function writeScope(out: Writer, reading: Reading, layout: Layout, scope: StateS
     }
     out.add(";\n");
   }
-  out.add(closed ? `  ${reading.index}\n}\n` : "}\n");
+  out.add(around === undefined ? `  ${reading.index}\n}\n` : "}\n");
 }
 
 /** Write the main module: the client script, then `State` and each interface under it. */
@@ -525,6 +524,7 @@ function writeMain(reading: Reading, layout: Layout): VirtualUnit {
   }
   const scopes = [...layout.names.keys()];
   out.add(scopes.some((scope) => linkedExports(reading, scope).length > 0) ? EXPORTED : "");
+  out.add(scopes.some((scope) => membersOf(scope).shadowed.length > 0) ? `${EXCEPT}\n` : "");
   for (const scope of scopes) {
     writeScope(out, reading, layout, scope);
   }

@@ -485,6 +485,51 @@ describe("an editor on a document that declares its types", () => {
   });
 });
 
+/** What a test asks of a document that has an editor to itself. */
+interface Alone {
+  /** Rename what is at a place, and say every span of the file the editor would rewrite. */
+  rewritten: (needle: string, delta: number) => Promise<string[]>;
+  /** A place and a length in the document. */
+  where: (needle: string, delta: number, length: number) => string;
+}
+
+/** Open one more document in an editor of its own, for as long as the `describe` around it runs. */
+function alone(name: string, source: string): Alone {
+  let made: Fixture;
+  let editor: LanguageServer;
+  let opened: { uri: string };
+
+  beforeAll(async () => {
+    made = new Fixture();
+    const path = made.write(name, source);
+    editor = new LanguageServer(made.root);
+    await editor.open(made.root);
+    opened = editor.edit(path, source);
+  }, SLOW);
+
+  afterAll(() => {
+    editor.stop();
+    made.remove();
+  });
+
+  return {
+    rewritten: async (needle, delta) => {
+      const answer = await editor.request("textDocument/rename", {
+        newName: "renamed",
+        position: position(source, needle, delta),
+        textDocument: opened,
+      });
+      // SAFETY: a rename is answered with a workspace edit, its changes keyed by their file.
+      const { changes } = answer as { changes: Record<string, { range: Range }[]> };
+      return (changes[opened.uri] ?? []).map((edit) => spanOf(edit.range)).toSorted();
+    },
+    where: (needle, delta, length) => {
+      const { character, line } = position(source, needle, delta);
+      return `${line}:${character}+${length}`;
+    },
+  };
+}
+
 describe("an editor on a document whose entry is a server function under its own name", () => {
   const SERVED = [
     "div {",
@@ -500,40 +545,7 @@ describe("an editor on a document whose entry is a server function under its own
     "}",
     "",
   ].join("\n");
-  let made: Fixture;
-  let editor: LanguageServer;
-  let served: { uri: string };
-
-  /** A place and a length in the document. */
-  const where = (needle: string, delta: number, length: number): string => {
-    const { character, line } = position(SERVED, needle, delta);
-    return `${line}:${character}+${length}`;
-  };
-
-  /** Rename what is at a place, and say every span of the file the editor would rewrite. */
-  async function rewritten(needle: string, delta: number): Promise<string[]> {
-    const answer = await editor.request("textDocument/rename", {
-      newName: "renamed",
-      position: position(SERVED, needle, delta),
-      textDocument: served,
-    });
-    // SAFETY: a rename is answered with a workspace edit, its changes keyed by the file they are in.
-    const { changes } = answer as { changes: Record<string, { range: Range }[]> };
-    return (changes[served.uri] ?? []).map((edit) => spanOf(edit.range)).toSorted();
-  }
-
-  beforeAll(async () => {
-    made = new Fixture();
-    const path = made.write("src/served.jxn", SERVED);
-    editor = new LanguageServer(made.root);
-    await editor.open(made.root);
-    served = editor.edit(path, SERVED);
-  }, SLOW);
-
-  afterAll(() => {
-    editor.stop();
-    made.remove();
-  });
+  const { rewritten, where } = alone("src/served.jxn", SERVED);
 
   const declared = where("function user", 9, 4);
   const entry = where("(server)user", 8, 4);
@@ -550,6 +562,79 @@ describe("an editor on a document whose entry is a server function under its own
 
   test("leaves the function when the rename starts where the entry is read", async () => {
     expect(await rewritten("state.user", 6)).toEqual([entry, read].toSorted());
+  });
+});
+
+describe("an editor on a document whose element declares a name of the state around it", () => {
+  const SHADOWED = [
+    "div {",
+    '  script "export const double = (state: State) => state.count * 2;"',
+    "  state {",
+    "    count 0",
+    '    label "x"',
+    "    (export)double",
+    '    (fn)go "void [state.count, state.label, state.double]"',
+    "  }",
+    "  section {",
+    '    state { count "now a string"; local 1 }',
+    '    (fn)onclick "void [state.count.trim(), state.label.trim(), state.double, state.local]"',
+    "    b {",
+    "      state { label 1 }",
+    '      (fn)onclick "void [state.label.toFixed(), state.count.length, state.local]"',
+    "    }",
+    "  }",
+    "}",
+    "",
+  ].join("\n");
+  const { rewritten, where } = alone("src/shadowed.jxn", SHADOWED);
+
+  /* The element's `State` extends the one around it less the name it declares, so every other
+     member is still the member the root declares, and the name it declares is a member of its own. */
+  test("renames an entry of the state around it from the root or from a body in the element", async () => {
+    const all = [
+      where('label "x"', 0, 5),
+      where("state.label, state.double", 6, 5),
+      where("state.label.trim", 6, 5),
+    ].toSorted();
+    expect(await rewritten('label "x"', 1)).toEqual(all);
+    expect(await rewritten("state.label.trim", 7)).toEqual(all);
+  });
+
+  test("renames the name the element declares where that one is read, and not the root's", async () => {
+    const inner = [
+      where('count "now', 0, 5),
+      where("state.count.trim", 6, 5),
+      where("state.count.length", 6, 5),
+    ].toSorted();
+    expect(await rewritten("state.count.length", 7)).toEqual(inner);
+    expect(await rewritten("count 0", 1)).toEqual(
+      [
+        where("count 0", 0, 5),
+        where("state.count * 2", 6, 5),
+        where("state.count, state.label", 6, 5),
+      ].toSorted(),
+    );
+  });
+
+  test("renames an entry of the element from a body in an element inside it that declares another", async () => {
+    expect(await rewritten("state.local]", 7)).toEqual(
+      [
+        where("local 1", 0, 5),
+        where("state.double, state.local", "state.double, state.".length, 5),
+        where("state.count.length, state.local", "state.count.length, state.".length, 5),
+      ].toSorted(),
+    );
+  });
+
+  test("renames an export under an entry's own name from a body in the element", async () => {
+    expect(await rewritten("state.double, state.local", 7)).toEqual(
+      [
+        where("const double", 6, 6),
+        where("(export)double", 8, 6),
+        where("state.double]", 6, 6),
+        where("state.double, state.local", 6, 6),
+      ].toSorted(),
+    );
   });
 });
 
