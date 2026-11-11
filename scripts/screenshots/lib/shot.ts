@@ -170,6 +170,129 @@ declare global {
     __jxShotFocus?: Element | null;
     /** Every element's scroll offsets, from `saveScrollState()` until `restoreScrollState()`. */
     __jxShotScroll?: [Element, number, number][] | undefined;
+    /** Every awaited step's own record of how it ended, written by `rootStep()`. */
+    __jxShotSteps?: Map<string, StepRecord>;
+  }
+}
+
+// ─── Awaited steps ────────────────────────────────────────────────────────────
+
+/** How one awaited step ended, as the page itself recorded it. */
+export interface StepRecord {
+  state: "pending" | "done" | "error";
+  /** What the step resolved with, once `state` is `done`. */
+  value?: unknown;
+  /** What the step rejected with, once `state` is `error`. */
+  message?: string;
+  /** The step's promise, held here until it settles so nothing in the page can let it go. */
+  promise?: Promise<unknown>;
+}
+
+/** How long a step whose promise the inspector lost is read back for before it counts as hung. */
+const STEP_DEADLINE_MS = 30_000;
+
+/** How often a lost step's record is read. */
+const STEP_POLL_MS = 50;
+
+/**
+ * Start one awaited step in the page, held from a page global and recording its own outcome there.
+ *
+ * The inspector holds the promise an evaluation awaits weakly, and reports `Promise was collected`
+ * for a step that is still running: within two seconds of the step starting, with no navigation and
+ * no crash beside it. `scripts/perf/trace-studio.ts` met the same answer and settled it the same
+ * way. The global is what {@link readStep} reads when the protocol loses the promise, so a step is
+ * judged by what it did and not by whether the inspector kept hold of it.
+ *
+ * Runs in the page: {@link evaluateStep} ships this function's source, so it may name nothing
+ * outside itself.
+ */
+export function rootStep<T>(key: string, start: () => T | Promise<T>): Promise<T> {
+  window.__jxShotSteps ??= new Map<string, StepRecord>();
+  const record: StepRecord = { state: "pending" };
+  window.__jxShotSteps.set(key, record);
+  const promise = (async () => start())();
+  record.promise = promise;
+  void (async () => {
+    try {
+      record.value = await promise;
+      record.state = "done";
+    } catch (error) {
+      record.message = error instanceof Error ? error.message : String(error);
+      record.state = "error";
+    }
+    delete record.promise;
+  })();
+  return promise;
+}
+
+/** The page-side expression that runs `fn(...args)` as the rooted step `key`. */
+export function stepExpression(key: string, fn: string, args: readonly JsonValue[]): string {
+  return `(${rootStep.toString()})(${JSON.stringify(key)}, () => (${fn})(...${JSON.stringify(args)}))`;
+}
+
+/** Whether a failed evaluation's message is the inspector losing the promise, not the step failing. */
+export function isCollectedPromise(message: string): boolean {
+  return message.includes("Promise was collected");
+}
+
+/** Steps started so far, so every one has its own record. */
+let stepSeq = 0;
+
+/**
+ * Read a lost step's record until the step settles, and answer as the step did.
+ *
+ * A timer rather than an animation frame: a frame wait is itself an awaited evaluation, which is
+ * the thing that was just lost.
+ */
+async function readStep<R>(page: Page, key: string): Promise<R> {
+  const deadline = Date.now() + STEP_DEADLINE_MS;
+  for (;;) {
+    const record = await page.evaluate((stepKey) => {
+      const found = window.__jxShotSteps?.get(stepKey);
+      return found
+        ? { message: found.message ?? "", state: found.state, value: found.value ?? null }
+        : { message: "", state: "missing", value: null };
+    }, key);
+    if (record.state === "done") {
+      /* SAFETY: `value` is what `fn` resolved with, serialised by the protocol exactly as the
+       * evaluation's own result would have been; `R` is `fn`'s declared result. */
+      return record.value as R;
+    }
+    if (record.state === "error") {
+      throw new Error(record.message);
+    }
+    if (record.state === "missing" || Date.now() >= deadline) {
+      throw new Error(
+        `the inspector lost a step's promise and the page's record of it is ${record.state}` +
+          ` after ${STEP_DEADLINE_MS}ms`,
+      );
+    }
+    await new Promise((resolve) => {
+      setTimeout(resolve, STEP_POLL_MS);
+    });
+  }
+}
+
+/**
+ * Evaluate one awaited step in the page, rooted ({@link rootStep}). When the inspector reports the
+ * promise collected the step is read back from the page's own record ({@link readStep}).
+ */
+async function evaluateStep<Args extends JsonValue[], R>(
+  page: Page,
+  fn: (...args: Args) => R | Promise<R>,
+  ...args: Args
+): Promise<R> {
+  stepSeq += 1;
+  const key = `step-${stepSeq}`;
+  try {
+    /* SAFETY: a string evaluation is untyped; its result is `fn`'s, which is `R`. */
+    return (await page.evaluate(stepExpression(key, fn.toString(), args))) as R;
+  } catch (error) {
+    if (!isCollectedPromise(error instanceof Error ? error.message : String(error))) {
+      throw error;
+    }
+    console.warn(`[${key}] the inspector lost the step's promise; reading the page's record`);
+    return readStep<R>(page, key);
   }
 }
 
@@ -372,7 +495,8 @@ async function quiescenceBlockers(page: Page, net: RequestTracker): Promise<stri
 
 /** One animation frame in the top document — the runner's only unit of waiting. */
 async function nextFrame(page: Page): Promise<void> {
-  await page.evaluate(
+  await evaluateStep(
+    page,
     () =>
       new Promise<void>((done) => {
         requestAnimationFrame(() => done());
@@ -417,7 +541,7 @@ async function waitForQuiescence(
  * fail, and the point of replacing them is that a slow subsystem now identifies itself.
  */
 async function probeIdle(page: Page): Promise<string[]> {
-  return page.evaluate(async (): Promise<string[]> => {
+  return evaluateStep(page, async (): Promise<string[]> => {
     // Called outside the try: a synchronous throw is a broken hook, not a report of what is busy.
     const idle = window.__jxAutomation.probe.idle();
     try {
@@ -595,15 +719,22 @@ async function restoreScrollState(page: Page): Promise<void> {
  * should fail, because that step is lying.
  */
 async function runCommand(page: Page, id: string, args: JsonObject): Promise<void> {
-  await page.evaluate(
-    (commandId, commandArgs) => window.__jxAutomation.run(commandId, commandArgs),
+  await evaluateStep(
+    page,
+    (commandId: string, commandArgs: JsonObject) =>
+      window.__jxAutomation.run(commandId, commandArgs),
     id,
     args,
   );
 }
 
 async function runSeed(page: Page, id: string, args: JsonObject): Promise<void> {
-  await page.evaluate((seedId, seedArgs) => window.__jxAutomation.seed(seedId, seedArgs), id, args);
+  await evaluateStep(
+    page,
+    (seedId: string, seedArgs: JsonObject) => window.__jxAutomation.seed(seedId, seedArgs),
+    id,
+    args,
+  );
 }
 
 /** The centre of a region's box, for a gesture that needs a real pointer. */
@@ -634,8 +765,9 @@ async function runInput(page: Page, step: InputStep, at: string): Promise<void> 
     // The shot fails later and somewhere else. `revealPath` scrolls/pans the node into view and
     // Returns the settled point, which is what makes a caret step survive a layout change: the
     // Document Header card (since removed) landing in-column once moved this node 203px down.
-    const point = await page.evaluate(
-      (path) => window.__jxAutomation.probe.revealPath(path),
+    const point = await evaluateStep(
+      page,
+      (path: (string | number)[]) => window.__jxAutomation.probe.revealPath(path),
       step.path,
     );
     if (!point) {

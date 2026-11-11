@@ -1,9 +1,18 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { bootUrl, DOCK_COMMAND, frameBlockers, matchState, OPEN_COMMANDS } from "./shot";
+import {
+  bootUrl,
+  DOCK_COMMAND,
+  frameBlockers,
+  isCollectedPromise,
+  matchState,
+  OPEN_COMMANDS,
+  rootStep,
+  stepExpression,
+} from "./shot";
 import { resolveShot, validateManifest } from "./types";
-import type { ShotContext } from "./shot";
+import type { ShotContext, StepRecord } from "./shot";
 import type { ResolvedOpen } from "./types";
 
 const ctx: ShotContext = {
@@ -209,5 +218,88 @@ describe("frameBlockers", () => {
   test("honours the set's own aggregate status", () => {
     installFrame([], "loading");
     expect(fontLines()).toEqual(["1 font face(s) loading"]);
+  });
+});
+
+// ─── Awaited steps ────────────────────────────────────────────────────────────
+
+/** Give `rootStep` the page global it writes to, empty, and hand back the map it will fill. */
+function installSteps(): Map<string, StepRecord> {
+  const steps = new Map<string, StepRecord>();
+  Object.assign(globalThis, { window: { __jxShotSteps: steps } });
+  return steps;
+}
+
+describe("a rooted step", () => {
+  test("is held from the page while it runs, and let go once it resolves", async () => {
+    const steps = installSteps();
+    let finish: (value: string[]) => void = () => {};
+    const step = rootStep(
+      "step-1",
+      () =>
+        new Promise<string[]>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    expect(steps.get("step-1")).toEqual({ promise: step, state: "pending" });
+    finish(["quiet"]);
+    expect(await step).toEqual(["quiet"]);
+    expect(steps.get("step-1")).toEqual({ state: "done", value: ["quiet"] });
+  });
+
+  test("records what it rejected with, and still rejects", async () => {
+    const steps = installSteps();
+    const step = rootStep("step-2", () => Promise.reject(new RangeError("no such section")));
+    let caught = "";
+    try {
+      await step;
+    } catch (error) {
+      caught = String(error);
+    }
+    expect(caught).toBe("RangeError: no such section");
+    expect(steps.get("step-2")).toEqual({ message: "no such section", state: "error" });
+  });
+
+  test("records a synchronous throw as the step's rejection", async () => {
+    const steps = installSteps();
+    const step = rootStep("step-3", () => {
+      throw new TypeError("broken hook");
+    });
+    await step.catch(() => {});
+    expect(steps.get("step-3")).toEqual({ message: "broken hook", state: "error" });
+  });
+
+  test("makes the global when the page has none yet", async () => {
+    const page: Pick<Window, "__jxShotSteps"> = {};
+    Object.assign(globalThis, { window: page });
+    await rootStep("step-4", () => 7);
+    expect(page.__jxShotSteps?.get("step-4")).toEqual({ state: "done", value: 7 });
+  });
+
+  test("ships as one expression that runs the function with its arguments", async () => {
+    const steps = installSteps();
+    const expression = stepExpression("step-5", "(a, b) => Promise.resolve(a + b.n)", [
+      2,
+      { n: 3 },
+    ]);
+    // oxlint-disable-next-line no-eval -- the page evaluates this same string
+    const result: unknown = await (0, eval)(expression);
+    expect(result).toBe(5);
+    expect(steps.get("step-5")).toEqual({ state: "done", value: 5 });
+  });
+});
+
+describe("isCollectedPromise", () => {
+  test("is the inspector's loss, in whatever the protocol wraps it", () => {
+    expect(
+      isCollectedPromise(
+        "Protocol error (script.callFunction): unknown error Protocol error (Runtime.callFunctionOn): Promise was collected",
+      ),
+    ).toBe(true);
+    expect(isCollectedPromise("Promise was collected")).toBe(true);
+  });
+
+  test("is not a step's own failure", () => {
+    expect(isCollectedPromise('"data" is not a registered settings section')).toBe(false);
   });
 });
