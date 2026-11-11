@@ -130,7 +130,13 @@ export function declaresParameters(def: JxFunctionDef): boolean {
  */
 export function handlerParamNames(def: JxFunctionDef): string[] {
   const names = paramNames(def.parameters ?? def.arguments);
-  return ["state", ...names.filter((name) => name !== "state")];
+  const list = ["state"];
+  for (const name of names) {
+    if (name !== "state") {
+      list.push(name);
+    }
+  }
+  return list;
 }
 
 /** The rules in order: the first that applies decides. */
