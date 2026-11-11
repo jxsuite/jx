@@ -1,4 +1,6 @@
-import { describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { compileSiteServer, serverRoutePrefix } from "../src/targets/compile-server";
 
 // ─── compileSiteServer ────────────────────────────────────────────────────
@@ -101,5 +103,158 @@ describe("compileSiteServer", () => {
     const entries = [{ exportName: "fn", src: "./fn.js" }];
     const result = compileSiteServer(entries, { baseUrl: "/api" });
     expect(result).toContain("app.post('/api/fn'");
+  });
+});
+
+// ─── The request gate, executed ───────────────────────────────────────────
+
+/**
+ * The worker is compiled, written beside this file (where `hono` resolves), loaded, and asked. A
+ * source-text assertion cannot tell a gate registered after the routes from one registered before.
+ */
+describe("the request gate", () => {
+  const TMP = resolve(import.meta.dir, "__test-request-gate__");
+  interface Worker {
+    request: (path: string, init?: RequestInit) => Response | Promise<Response>;
+  }
+  let app: Worker;
+  let based: Worker;
+
+  async function load(name: string, base: string): Promise<Worker> {
+    const source = compileSiteServer([{ exportName: "echo", src: "./fns.js" }], {
+      adapter: "node",
+      base,
+      mounts: [
+        {
+          basePath: `${base}/_jx/data`,
+          className: "Rows",
+          module: "./fns.js",
+          options: {},
+          order: 1,
+        },
+      ],
+    });
+    const file = resolve(TMP, `${name}.js`);
+    writeFileSync(file, source ?? "", "utf8");
+    const mod: { default: Worker } = await import(file);
+    return mod.default;
+  }
+
+  beforeAll(async () => {
+    rmSync(TMP, { force: true, recursive: true });
+    mkdirSync(TMP, { recursive: true });
+    writeFileSync(
+      resolve(TMP, "fns.js"),
+      [
+        "export const echo = (args) => ({ got: args })",
+        "export const Rows = { mount: () => (request) =>",
+        "  new URL(request.url).pathname.endsWith('/public')",
+        "    ? Response.json([], { headers: { 'Cache-Control': 'public, max-age=60' } })",
+        "    : Response.json([{ id: 1 }]) }",
+      ].join("\n"),
+      "utf8",
+    );
+    app = await load("root", "");
+    based = await load("based", "/m/site");
+  });
+
+  afterAll(() => {
+    rmSync(TMP, { force: true, recursive: true });
+  });
+
+  const json = { "Content-Type": "application/json" };
+  const statusOf = async (answer: Response | Promise<Response>) => {
+    const res = await answer;
+    return res.status;
+  };
+  const post = (headers: Record<string, string>, body = "{}") =>
+    app.request("/_jx/server/echo", { body, headers, method: "POST" });
+
+  test("a request with no Fetch Metadata is served: only a browser sends it", async () => {
+    const res = await post(json, '{"a":1}');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ got: { a: 1 } });
+  });
+
+  test("the site's own script and a typed URL are served", async () => {
+    expect(await statusOf(post({ ...json, "Sec-Fetch-Site": "same-origin" }))).toBe(200);
+    const typed = await app.request("/_jx/data/rows", { headers: { "Sec-Fetch-Site": "none" } });
+    expect(typed.status).toBe(200);
+  });
+
+  test("another site's script is refused before any handler runs, and so is a sibling origin's", async () => {
+    for (const site of ["cross-site", "same-site"]) {
+      const headers = { "Sec-Fetch-Mode": "cors", "Sec-Fetch-Site": site };
+      const fn = await post({ ...json, ...headers });
+      expect(fn.status).toBe(403);
+      expect(await fn.json()).toEqual({ error: "Cross-site request refused", ok: false });
+      expect(fn.headers.get("Cache-Control")).toBe("no-store");
+      const rows = await app.request("/_jx/data/rows", { headers });
+      expect(rows.status).toBe(403);
+    }
+    const image = await app.request("/_jx/data/rows", {
+      headers: {
+        "Sec-Fetch-Dest": "image",
+        "Sec-Fetch-Mode": "no-cors",
+        "Sec-Fetch-Site": "cross-site",
+      },
+    });
+    expect(image.status).toBe(403);
+  });
+
+  test("a cross-site navigation reaches the mount, whatever its method", async () => {
+    const nav = {
+      "Sec-Fetch-Dest": "document",
+      "Sec-Fetch-Mode": "navigate",
+      "Sec-Fetch-Site": "cross-site",
+    };
+    expect(await statusOf(app.request("/_jx/data/rows", { headers: nav }))).toBe(200);
+    const formPost = await app.request("/_jx/data/callback", {
+      body: "code=1",
+      headers: { ...nav, "Content-Type": "application/x-www-form-urlencoded" },
+      method: "POST",
+    });
+    expect(formPost.status).toBe(200);
+  });
+
+  test("a server function refuses a body that is not declared JSON", async () => {
+    const form = await post({ "Content-Type": "text/plain" }, '{"a":1}');
+    expect(form.status).toBe(415);
+    expect(await form.json()).toEqual({ error: "Expected an application/json body", ok: false });
+    expect(await statusOf(post({}))).toBe(415);
+    const structured = await post({
+      "Content-Type": "application/merge-patch+json; charset=utf-8",
+    });
+    expect(structured.status).toBe(200);
+  });
+
+  test("answers are not to be sniffed, embedded elsewhere or kept, unless the handler says otherwise", async () => {
+    const rows = await app.request("/_jx/data/rows");
+    expect(rows.headers.get("X-Content-Type-Options")).toBe("nosniff");
+    expect(rows.headers.get("Cross-Origin-Resource-Policy")).toBe("same-origin");
+    expect(rows.headers.get("Cache-Control")).toBe("no-store");
+    expect(await rows.json()).toEqual([{ id: 1 }]);
+
+    const open = await app.request("/_jx/data/public");
+    expect(open.headers.get("Cache-Control")).toBe("public, max-age=60");
+    expect(open.headers.get("X-Content-Type-Options")).toBe("nosniff");
+
+    const fn = await post(json);
+    expect(fn.headers.get("Cache-Control")).toBe("no-store");
+  });
+
+  test("the gate moves with the deployment base", async () => {
+    const headers = { "Sec-Fetch-Mode": "cors", "Sec-Fetch-Site": "cross-site" };
+    expect(await statusOf(based.request("/m/site/_jx/data/rows", { headers }))).toBe(403);
+    expect(await statusOf(based.request("/m/site/_jx/data/rows"))).toBe(200);
+  });
+
+  test("a custom function prefix outside /_jx is gated too, and a worker with nothing to guard has no gate", () => {
+    const custom = compileSiteServer([{ exportName: "fn", src: "./fn.js" }], { baseUrl: "/api" });
+    expect(custom).toContain("app.use('/_jx/*', jxGate)");
+    expect(custom).toContain("app.use('/api/*', jxGate)");
+    const inside = compileSiteServer([{ exportName: "fn", src: "./fn.js" }]);
+    expect(inside).not.toContain("app.use('/_jx/server/*'");
+    expect(compileSiteServer([], { adapter: "cloudflare-workers" })).not.toContain("jxGate");
   });
 });

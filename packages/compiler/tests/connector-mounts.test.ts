@@ -358,6 +358,7 @@ describe("prototype-resolver lower", () => {
       const seeded = await handleDataRequest(
         new Request("http://x/_jx/data/comments", {
           body: JSON.stringify({ message: "baked" }),
+          headers: { "Content-Type": "application/json" },
           method: "POST",
         }),
         env,

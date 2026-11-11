@@ -211,3 +211,85 @@ describe("registrationScript", () => {
     expect(script).toContain(".catch(");
   });
 });
+
+/*
+ * The emitted worker, run. Its `fetch` listener is handed requests against a fake network and a
+ * fake Cache, because "is this response written anywhere" is not a question source text answers.
+ */
+describe("what the worker keeps", () => {
+  interface FetchEventLike {
+    request: Request;
+    respondWith: (answer: Promise<Response>) => void;
+  }
+
+  /** Load the worker against a network that answers `respond(url)`, and report what was cached. */
+  function run(base: string, respond: (url: URL) => Response) {
+    const listeners = new Map<string, (event: FetchEventLike) => void>();
+    const stored: string[] = [];
+    const cache = {
+      put: (request: Request) => {
+        stored.push(new URL(request.url).pathname);
+        return Promise.resolve();
+      },
+    };
+    const scope = {
+      addEventListener: (type: string, fn: (event: FetchEventLike) => void) => {
+        listeners.set(type, fn);
+      },
+      location: { origin: "https://site.test" },
+    };
+    const caches = { match: () => Promise.resolve(), open: () => Promise.resolve(cache) };
+    const network = (request: Request) => Promise.resolve(respond(new URL(request.url)));
+    const { source } = buildServiceWorker({}, undefined, base);
+    // oxlint-disable-next-line no-new-func, typescript/no-implied-eval -- running the build's own output is the test.
+    new Function("self", "caches", "fetch", source)(scope, caches, network);
+
+    /** Dispatch one GET; `handled` says whether the worker answered it at all. */
+    async function get(path: string): Promise<boolean> {
+      let answer: Promise<Response> | undefined;
+      listeners.get("fetch")?.({
+        request: new Request(`https://site.test${path}`),
+        respondWith: (value) => {
+          answer = value;
+        },
+      });
+      await answer;
+      await Promise.resolve();
+      await Promise.resolve();
+      return answer !== undefined;
+    }
+    return { get, stored };
+  }
+
+  test("a page is answered network-first and cached for the next failure", async () => {
+    const sw = run("", () => new Response("<p>hi</p>"));
+    expect(await sw.get("/about/")).toBe(true);
+    expect(sw.stored).toEqual(["/about/"]);
+  });
+
+  test("sessions and application data are not handled at all", async () => {
+    const sw = run("", () => Response.json({ user: "u1" }));
+    expect(await sw.get("/_jx/auth/get-session")).toBe(false);
+    expect(await sw.get("/_jx/data/orders")).toBe(false);
+    expect(sw.stored).toEqual([]);
+    // A page that merely starts with the same letters is still a page.
+    expect(await sw.get("/_jxtra/")).toBe(true);
+  });
+
+  test("the exclusion moves with the deployment base", async () => {
+    const sw = run("/m/site", () => Response.json([]));
+    expect(await sw.get("/m/site/_jx/data/orders")).toBe(false);
+    expect(await sw.get("/m/site/about/")).toBe(true);
+  });
+
+  test("a response its server marked no-store or private is served and not kept", async () => {
+    const sw = run("", (url) =>
+      url.pathname === "/account/"
+        ? new Response("mine", { headers: { "Cache-Control": "private, max-age=0" } })
+        : new Response("never", { headers: { "Cache-Control": "no-store" } }),
+    );
+    expect(await sw.get("/account/")).toBe(true);
+    expect(await sw.get("/receipt/")).toBe(true);
+    expect(sw.stored).toEqual([]);
+  });
+});
