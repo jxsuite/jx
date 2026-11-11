@@ -17,7 +17,7 @@ import {
   applySiteStyle,
   installCanvasImageRetry,
   isRetryableImage,
-  renderResolvedDocument,
+  prepareResolvedDocument,
 } from "./iframe-render";
 import { measureHits, startInteraction } from "./iframe-interaction";
 import { parseJxPath, serializeJxPath } from "./path-mapping";
@@ -77,8 +77,8 @@ import type {
   LayoutHit,
   ParentToIframe,
 } from "./iframe-protocol";
-import type { JxDocument, JxMutableNode } from "@jxsuite/schema/types";
-import type { IframeRenderCtx, RenderHandle } from "./iframe-render";
+import type { JxDocument, JxMutableNode, JxStyle } from "@jxsuite/schema/types";
+import type { IframeRenderCtx, RenderDocumentOptions, RenderHandle } from "./iframe-render";
 import { setBundleBase } from "../services/bundle-base";
 
 /* Anchor shipped-asset URLs to this ENTRY's directory — see src/studio.ts for why only an
@@ -111,8 +111,8 @@ setNpmModuleResolver((specifier) => npmModuleUrl(specifier, location.href));
 /**
  * A function body may be TypeScript (`spec.md` §23.1). The eraser carries a compiler, so the canvas
  * loads it as its own chunk, the first time a document it renders has a body that needs it: the
- * render waits for it (`renderResolvedDocument`). A patch that brings in the first typed body fails
- * to compile, and the host answers that with a full render, which loads it.
+ * render waits for it (`prepareResolvedDocument`). A patch that brings in the first typed body
+ * fails to compile, and the host answers that with a full render, which loads it.
  */
 setBodyEraserLoader(loadBodyEraser);
 
@@ -328,6 +328,15 @@ export function startCanvasIframe(opts: {
   // Alongside the handle so a superseded render's refs can't keep posting.
   let stopDataScopeWatch: (() => void) | null = null;
   let latestGen = -1;
+  /** A `siteStyleUpdate` that arrived after the newest render message, while that render builds. */
+  let newerSiteStyle: { siteStyle: JxStyle | null; media: Record<string, string> } | null = null;
+  /** Write that update over the style a commit just wrote, which is the older of the two. */
+  const reapplyNewerSiteStyle = () => {
+    if (newerSiteStyle) {
+      applySiteStyle(newerSiteStyle.siteStyle, newerSiteStyle.media);
+      newerSiteStyle = null;
+    }
+  };
   // The root's language as the frame booted it, which a render with no language goes back to.
   const localeBaseline = captureLocaleBaseline(container.ownerDocument);
   // The raw page doc the current DOM was rendered from — the patch source-of-truth. `renderedGen`
@@ -1023,6 +1032,10 @@ export function startCanvasIframe(opts: {
     if (msg.kind === "siteStyleUpdate") {
       // Live design-token edit: swap the site-style sheet in place, no re-render.
       applySiteStyle(msg.siteStyle, msg.media);
+      /* Kept as well, for a render still building: its commit writes the site style its own
+         message carried, which is OLDER than this one. The sheet used to be written at receipt, so
+         on the FIFO channel a later update always won; the commit hands the win back below. */
+      newerSiteStyle = { media: msg.media, siteStyle: msg.siteStyle };
       return;
     }
     if (msg.kind !== "render" || msg.gen < latestGen) {
@@ -1038,6 +1051,8 @@ export function startCanvasIframe(opts: {
       stopEditing();
     }
     latestGen = msg.gen;
+    // This render was posted after any update already seen, so its site style is at least as new.
+    newerSiteStyle = null;
     liveAssets = msg.assets ?? null;
     // Adopt the document's caret vocabulary BEFORE rendering: which tags hold a caret depends on
     // The format class, and a `.md` page and a native `.json` component do not agree. Absent means
@@ -1049,18 +1064,7 @@ export function startCanvasIframe(opts: {
     const rawDoc = msg.shadowDoc as JxMutableNode;
     void (async () => {
       try {
-        // Drop the previous render's reactive scopes (root + any surgically-rendered subtrees).
-        disposeAllSubtrees();
-        stopDataScopeWatch?.();
-        stopDataScopeWatch = null;
-        handle?.dispose();
-        /* And its stylesheets. Scope teardown releases each element's rules on its own, so this is
-           belt to that braces — but a full re-render replaces every element in the frame, and the
-           canvas is the one place where "the sheet only ever grows" would be a live leak rather
-           than a theoretical one. It used to be exactly that, one orphaned `<style>` per styled
-           element per render. */
-        resetDocumentStyles(container.ownerDocument);
-        const renderOpts: Parameters<typeof renderResolvedDocument>[0] = {
+        const renderOpts: RenderDocumentOptions = {
           assets: versionedAssets(msg.assets ?? null),
           container,
           /* SAFETY: The host posts `doc` as a JSON round-trip of `resolveCanvasDocument`'s render
@@ -1083,40 +1087,69 @@ export function startCanvasIframe(opts: {
         if (msg.allowAutoRequests) {
           renderOpts.allowAutoRequests = true;
         }
-        handle = await renderResolvedDocument(renderOpts);
-        if (gen === latestGen) {
-          /* A render replaces the DOM, so the open attribute goes with it. The host sends the value
-             on the render message for exactly this reason; a frame that kept only its own copy
-             would reopen the wrong panel after a tab switch. */
-          popoverOpen = msg.popoverOpen ? serializeJxPath(msg.popoverOpen) : null;
-          dialogOpen = msg.dialogOpen ? serializeJxPath(msg.dialogOpen) : null;
-          applyCanvasPopoverOpen(container, popoverOpen);
-          applyCanvasDialogOpen(container, dialogOpen);
-          // Adopt this generation's shadow doc + render context only once it's the live render.
-          shadowDoc = rawDoc;
-          renderCtx = handle.ctx;
-          renderedGen = gen;
-          currentMode = msg.mode;
-          entryRoot = msg.entryRoot ?? null;
-          channel.post({ gen, kind: "renderComplete" });
-          armIdleWatch();
-          // Thread a serializable snapshot of the resolved $defs to the parent so the data-explorer
-          // Panel shows live data (the iframe, not the parent, now resolves the scope). Inside a
-          // Reactive effect: dev-proxy data sources ($prototype/$src) return a ref that fills AFTER
-          // BuildScope returns, and serializeDataScope reads defs[key], so the effect tracks those
-          // Refs and RE-POSTS an updated snapshot when the data settles (the host gen-gates stale
-          // Ones). Isolated in try/catch: a serialization failure never breaks the render ack above.
-          const { defs } = handle.ctx;
-          stopDataScopeWatch = observeScope(() => {
-            try {
-              channel.post({ gen, kind: "dataScope", scope: serializeDataScope(defs) });
-            } catch {
-              // A pathological scope can't be serialized — skip; the render itself succeeded.
-            }
-          });
-          // Size the iframe to the freshly-rendered content (the ResizeObserver tracks later reflows).
-          postContentHeight();
+        /* Everything that takes time happens here, against a frame still showing the previous
+           render whole: its DOM, its scopes and its rules. The frame used to release all three
+           BEFORE this await, so every escalation showed the old page stripped of its styles for as
+           long as the new one took to build (§4.1). A failure in here now leaves that picture, and
+           the shadow doc and context patches are applied against, exactly as they were. */
+        const commit = await prepareResolvedDocument(renderOpts);
+        /* A superseded render swaps nothing in. It used to swap its tree in regardless and adopt
+           only the bookkeeping conditionally, so a slow older render finishing after a newer one
+           left a stale picture under the newer one's shadow doc, and overwrote `handle` with a
+           scope nothing would ever stop. */
+        if (gen !== latestGen) {
+          return;
         }
+        // The old DOM stayed live across the await, so a caret may have opened in it since.
+        if (isEditing()) {
+          stopEditing();
+        }
+        /* Release the previous render and draw the next one in ONE task, so no frame can be
+           painted between them: its reactive scopes (the root, and any surgically rendered
+           subtrees), then its stylesheets. Scope teardown releases each page element's rules on
+           its own, but a component draws its internals in a scope nothing here stops, so the reset
+           is what reclaims those; without it the shared sheet grew by a component's rules on every
+           render. */
+        disposeAllSubtrees();
+        stopDataScopeWatch?.();
+        stopDataScopeWatch = null;
+        handle?.dispose();
+        handle = null;
+        resetDocumentStyles(container.ownerDocument);
+        handle = commit();
+        // In the same step, so the older style the commit just wrote is never painted.
+        reapplyNewerSiteStyle();
+        /* A render replaces the DOM, so the open attribute goes with it. The host sends the value
+           on the render message for exactly this reason; a frame that kept only its own copy
+           would reopen the wrong panel after a tab switch. */
+        popoverOpen = msg.popoverOpen ? serializeJxPath(msg.popoverOpen) : null;
+        dialogOpen = msg.dialogOpen ? serializeJxPath(msg.dialogOpen) : null;
+        applyCanvasPopoverOpen(container, popoverOpen);
+        applyCanvasDialogOpen(container, dialogOpen);
+        // Adopt this generation's shadow doc + render context now that it is the live render.
+        shadowDoc = rawDoc;
+        renderCtx = handle.ctx;
+        renderedGen = gen;
+        currentMode = msg.mode;
+        entryRoot = msg.entryRoot ?? null;
+        channel.post({ gen, kind: "renderComplete" });
+        armIdleWatch();
+        // Thread a serializable snapshot of the resolved $defs to the parent so the data-explorer
+        // Panel shows live data (the iframe, not the parent, now resolves the scope). Inside a
+        // Reactive effect: dev-proxy data sources ($prototype/$src) return a ref that fills AFTER
+        // BuildScope returns, and serializeDataScope reads defs[key], so the effect tracks those
+        // Refs and RE-POSTS an updated snapshot when the data settles (the host gen-gates stale
+        // Ones). Isolated in try/catch: a serialization failure never breaks the render ack above.
+        const { defs } = handle.ctx;
+        stopDataScopeWatch = observeScope(() => {
+          try {
+            channel.post({ gen, kind: "dataScope", scope: serializeDataScope(defs) });
+          } catch {
+            // A pathological scope can't be serialized — skip; the render itself succeeded.
+          }
+        });
+        // Size the iframe to the freshly-rendered content (the ResizeObserver tracks later reflows).
+        postContentHeight();
       } catch (error) {
         channel.post({ gen, kind: "renderError", message: failureText(error) });
       }

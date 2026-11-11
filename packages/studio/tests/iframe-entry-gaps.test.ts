@@ -368,8 +368,10 @@ describe("external file drag", () => {
 
       expect(event.defaultPrevented).toBe(true);
       const drop = findAck(acks, "fileDrop");
-      // FileList is not structured-cloneable; the iframe spreads it to a plain array.
-      expect(drop?.files).toEqual([file]);
+      // FileList is not structured-cloneable; the iframe spreads it to a plain array. A browser
+      // Delivers each entry as a File; happy-dom's File is not a platform object, so Bun's clone
+      // Carries only its own fields, and the name is what identifies it here.
+      expect(drop?.files.map((dropped) => dropped.name)).toEqual([file.name]);
     } finally {
       Reflect.deleteProperty(document, "elementFromPoint");
     }

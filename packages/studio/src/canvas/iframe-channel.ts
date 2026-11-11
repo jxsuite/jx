@@ -109,6 +109,11 @@ export interface FakeChannelPair<ParentOut, IframeOut> {
  * the `iframe` side's handlers (and vice versa) only when `flush()` is called — so tests drive the
  * inherently-async postMessage ordering deterministically. Messages posted _during_ a flush are
  * queued for the next flush, never delivered re-entrantly.
+ *
+ * `post` takes a `structuredClone` of the message, as `window.postMessage` does: an uncloneable
+ * payload (a reactive Proxy, a function, a DOM node) throws `DataCloneError` at the sender, and the
+ * receiver gets a copy that later mutation of the original cannot reach. Passing the object by
+ * reference let a Proxy in a patch op cross the fake while the real channel refused it (§4.1).
  */
 export function fakeChannelPair<ParentOut, IframeOut>(): FakeChannelPair<ParentOut, IframeOut> {
   let toIframe: ParentOut[] = [];
@@ -125,7 +130,7 @@ export function fakeChannelPair<ParentOut, IframeOut>(): FakeChannelPair<ParentO
       return () => parentHandlers.delete(handler);
     },
     post(message) {
-      toIframe.push(message);
+      toIframe.push(structuredClone(message));
     },
   };
 
@@ -138,7 +143,7 @@ export function fakeChannelPair<ParentOut, IframeOut>(): FakeChannelPair<ParentO
       return () => iframeHandlers.delete(handler);
     },
     post(message) {
-      toParent.push(message);
+      toParent.push(structuredClone(message));
     },
   };
 
