@@ -46,7 +46,7 @@ This plan enables two others: `plan:imports/canvas-project-context` fills the re
 ## Outcome
 
 - studio.md §4.1 → Implemented. A page (a routed file under `pages/`) renders wrapped in its whole layout chain and carries the `$site`, `$page`, project `state`, `$media`, `imports` and `$elements` that `injectContext` gives it in the build and the live preview, with a concrete `$page.url` once route parameters are chosen. What cannot be computed for one document is stated (Open below).
-- studio.md §3.6's marker loses its canvas sentence and stays Partial for its `state` row (`plan:studio/site-state-in-data-panel`) and component row (`plan:_shared/component-discovery`).
+- studio.md §3.6's marker loses its canvas sentence and stays Partial for its `state` row (`plan:studio/site-state-in-data-panel`); its component row already ships (studio.md §5.4).
 - studio.md stays draft; nothing graduates.
 
 ## Decisions

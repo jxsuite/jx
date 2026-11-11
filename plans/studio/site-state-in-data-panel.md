@@ -6,7 +6,6 @@ claims:
 requires:
   - studio/canvas-injects-context
   - site-architecture/site-state-scope
-  - _shared/component-discovery
 workspaces:
   - packages/studio
   - specs
@@ -27,8 +26,8 @@ The table row this plan owns (line 152): "`state` | Site-wide state entries are 
 The marker has three owners:
 
 - **Canvas sentence**: `plan:studio/canvas-injects-context` makes `resolveCanvasDocument` compose a page through `resolveLayout` and `injectContext` and drops the sentence. Its integration contract: for a page only, the render document's `state` carries `$site`, `$page` and every inherited project entry the page does not declare, as bare keys. A document that is not a page carries none of them. The layout wrap happens while layout elements are shown, and reads every level through `resolveLayoutDoc` (its `loadCanvasLayout`). `serializeDataScope` (`packages/studio/src/canvas/serialize-scope.ts`) posts every def key, so `tab.session.canvas.scope` carries the inherited values too. The panel will have the values, but no rows for them.
-- **Component clause**: `plan:_shared/component-discovery` rewrites the Component definitions row with studio.md §5.4 and cuts the clause from the marker.
-- **The `state` row**: this plan. It lands last and deletes the marker. The stub had "whichever lands second removes the marker" between this plan and `plan:_shared/component-discovery`, but landing this plan deletes this file, and §3.6 cannot keep an open clause with no owner (`unclaimed-open`). So that plan is now a hard prerequisite.
+- **Component clause**: landed with studio.md §5.4: the Component definitions row is rewritten and the clause is cut from the marker.
+- **The `state` row**: this plan. It lands last and deletes the marker. The stub had "whichever lands second removes the marker" between this plan and the component clause's, but landing this plan deletes this file, and §3.6 cannot keep an open clause with no owner (`unclaimed-open`). The component clause has since landed.
 
 **Verified at the detail pass** (paths under `packages/studio/src/`):
 
@@ -40,7 +39,7 @@ The marker has three owners:
 - `mutateAddDef` (`tabs/transact.ts`, line 1278) types its `def` as `Record<string, JsonValue>`, but a naked project entry (`"siteName": "Acme"`) is a legal `JxStateDefinition` too.
 - Docs: `docs/studio/logic/data.md` lists `signals-panel.ts` and `data-explorer.ts` in `code:` and says "Every entry belongs to the open file". No page's `spec:` cites `studio.md#3.6` or `#5.6`.
 
-**Related**: site-architecture.md §3.2 and §10.4 (`plan:site-architecture/site-state-scope`, which decides the two ways site state is addressed and exports `SITE_CONTEXT_KEYS`); studio.md §4.1 (`plan:studio/canvas-injects-context`); studio.md §5.4 (`plan:_shared/component-discovery`); studio.md §6.8 (`plan:studio/data-picker-pointer-paths`, the From data… list).
+**Related**: site-architecture.md §3.2 and §10.4 (`plan:site-architecture/site-state-scope`, which decides the two ways site state is addressed and exports `SITE_CONTEXT_KEYS`); studio.md §4.1 (`plan:studio/canvas-injects-context`); studio.md §5.4 (landed); studio.md §6.8 (`plan:studio/data-picker-pointer-paths`, the From data… list).
 
 ## Outcome
 
@@ -127,7 +126,7 @@ Coverage: `packages/studio/bunfig.toml` gates every file at `lines = 0.958, func
 
 **`specs/studio.md`**, in place:
 
-- §3.6 marker: delete it. By the time this lands, `plan:_shared/component-discovery` and `plan:studio/canvas-injects-context` have cut it to two sentences: "The `$media`, `style`, `$head` and component rows ship (…)" and the `state` row's "The `state` row does not: …". If anything else remains, stop and re-read those plans instead of deleting it.
+- §3.6 marker: delete it. By the time this lands, `plan:studio/canvas-injects-context` has cut it to two sentences: "The `$media`, `style`, `$head` and component rows ship (…)" and the `state` row's "The `state` row does not: …". If anything else remains, stop and re-read those plans instead of deleting it.
 - §3.6 table, the `state` row's effect becomes: "The Data panel lists each entry a page inherits, read-only and with its resolved value, in a **Site** section after the page's own (§5.6); an entry the page or its layout declares under the same name overrides it, as in the build (`site-architecture.md` §10.4)". Run `bun run format` to re-pad the table.
 - §3.6 closing paragraph: "Individual file `$media`, `$style`, and `$elements` merge on top of (not replace) site-level definitions." becomes "Individual file `$media`, `style`, `$elements` and `state` merge on top of (not replace) site-level definitions." This adds `state` and corrects `$style` in a sentence already being edited.
 - §5.6 opening line: "One list of the open document's state entries: **how each is defined, and what it resolved to.**" becomes "One list of the open document's state entries, and of those it inherits from the site (§3.6): **how each is defined, and what it resolved to.**"

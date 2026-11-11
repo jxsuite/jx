@@ -43,7 +43,7 @@ my-site/
 | `public/`     | Static assets copied verbatim to `dist/`. No processing.       | No        |
 | `dist/`       | Build output. Ignored by git.                                  | Generated |
 
-Files and directories whose names start with `_` inside `pages/` are excluded from routing, so components can live next to the pages that use them (`pages/blog/_blog-card.json`).
+Files and directories whose names start with `_` inside `pages/` are excluded from routing, so components can live next to the pages that use them (`pages/blog/_blog-card.json`). Name one in the page's `$elements` (`{ "$ref": "./_blog-card.json" }`) and `jx build` compiles it like any component in `components/`.
 
 ## Configuration
 

@@ -1427,7 +1427,7 @@ describe("buildSite — component compilation errors", () => {
   it("captures component compilation errors without crashing", async () => {
     const result = await buildSite(ERR_TMP);
     expect(result.errors.length).toBeGreaterThan(0);
-    expect(result.errors[0]).toContain("Error compiling component broken.json");
+    expect(result.errors[0]).toContain("Error compiling component components/broken.json");
   });
 });
 
@@ -2833,12 +2833,12 @@ This is a note.
     rmSync(MD_COMP_TMP, { force: true, recursive: true });
   });
 
-  it("compiles .md component files using transpileJxMarkdown", async () => {
+  it("leaves a components/ file in a format no extension registered out of the build", async () => {
     const result = await buildSite(MD_COMP_TMP, { verbose: true });
-    // Should compile without errors (may or may not generate CSS depending on the md content)
-    // The key coverage point is lines 148-150 (the .md branch of component compilation)
+    // No parser extension is enabled here, so `.md` is not a component extension: the file is not
+    // Listed, nothing is compiled, and no empty `dist/components/` is left behind.
     expect(result.errors).toHaveLength(0);
-    expect(existsSync(resolve(MD_COMP_TMP, "dist/components"))).toBe(true);
+    expect(existsSync(resolve(MD_COMP_TMP, "dist/components"))).toBe(false);
   });
 });
 

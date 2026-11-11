@@ -145,17 +145,17 @@ The `?open=` path must point to a `project.json` file. On startup, Studio checks
 
 ### 3.6 Site Context
 
-> **Status: Partial.** The `$media`, `style` and `$head` rows ship, and so does the component row's `$elements` merge (`getEffectiveMedia`, `getEffectiveStyle`, `getEffectiveHead` and `getEffectiveElements` in `packages/studio/src/site-context.ts`); the component row's `components/` limit is §5.4's rule, which is not what ships. The `state` row does not: nothing in `packages/studio/src` reads `project.json`'s `state`, so the Data panel (`panels/data-explorer.ts`, `panels/signals-panel.ts`) lists only the open document's entries, although the build merges them (`injectContext` in `packages/site/src/context.ts`). The canvas shows a page in only part of the context of the full site the closing sentence promises: it calls `injectContext` for a page, so `$site`, `$page` and project `state` reach the render, but over a one-level layout wrap and without a format-backed page's frontmatter (§4.1).
+> **Status: Partial.** The `$media`, `style`, `$head` and component rows ship (`getEffectiveMedia`, `getEffectiveStyle`, `getEffectiveHead` and `getEffectiveElements` in `packages/studio/src/site-context.ts`, and §5.4). The `state` row does not: nothing in `packages/studio/src` reads `project.json`'s `state`, so the Data panel (`panels/data-explorer.ts`, `panels/signals-panel.ts`) lists only the open document's entries, although the build merges them (`injectContext` in `packages/site/src/context.ts`). The canvas shows a page in only part of the context of the full site the closing sentence promises: it calls `injectContext` for a page, so `$site`, `$page` and project `state` reach the render, but over a one-level layout wrap and without a format-backed page's frontmatter (§4.1).
 
 When a site project is loaded (via `?open=`, `openProject()`, or `probeRootProject()`), Studio resolves `project.json` and establishes a **site context** that applies globally to every file edited within that project:
 
-| Inherited from `project.json` | Effect in Studio                                                                                                   |
-| ----------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `$media` breakpoints          | Media tabs, responsive presets, and canvas panel widths reflect the site's breakpoints — not the individual file's |
-| `style` (custom properties)   | Global CSS custom properties and stylesheet rules are applied to the canvas, stylebook, and component previews     |
-| Component definitions         | The Components panel shows only components defined in the current project's `components/` and `$elements`          |
-| `$head`                       | Global fonts, viewport, and other head entries are applied to canvas rendering                                     |
-| `state`                       | Site-wide state entries are available (read-only) in the state explorer                                            |
+| Inherited from `project.json` | Effect in Studio                                                                                                                        |
+| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `$media` breakpoints          | Media tabs, responsive presets, and canvas panel widths reflect the site's breakpoints — not the individual file's                      |
+| `style` (custom properties)   | Global CSS custom properties and stylesheet rules are applied to the canvas, stylebook, and component previews                          |
+| Component definitions         | The Components panel lists the project's components wherever they live, and the npm components the effective `$elements` enables (§5.4) |
+| `$head`                       | Global fonts, viewport, and other head entries are applied to canvas rendering                                                          |
+| `state`                       | Site-wide state entries are available (read-only) in the state explorer                                                                 |
 
 When navigating between components, pages, and layouts within a project, the site context persists. Individual file `$media`, `$style`, and `$elements` merge on top of (not replace) site-level definitions. This ensures the canvas always shows what the file will look like in the context of the full site.
 
@@ -432,14 +432,12 @@ The Elements tab is the HTML element palette, one section per category in the ki
 
 ### 5.4 Components Panel
 
-> **Status: Partial.** The panel ships as the Insert panel's Components tab (§5.3), scoped to the open project, with the live previews and drag sources described below (`componentViews` in `packages/studio/src/panels/elements-panel.ts`, `panels/component-preview.ts`, `loadComponentRegistry` in `files/components.ts`). Its `components/` rule is not what ships: every host's `discoverComponents` (`/__studio/components` in `packages/server/src/studio-api.ts`, `packages/desktop/src/backend/project-session.ts`, `packages/studio/src/platforms/cloud.ts`) returns every component document anywhere in the project tree outside `node_modules`, `dist` and `.claude`, drawn as one flat list, and the open document's `$elements` gates only the npm components, which only the dev server discovers (`enabledNpmTags`). site-architecture.md §10.3 states the same discovery rule, and desktop.md §6.2–§6.5 scope this panel differently, as an Active/Global split per document.
-
-Project component library discovered via the platform (`discoverComponents()`), scoped to the current site project. When a site context is active, only components from the project's `components/` directory and explicit `$elements` imports are shown — no components from other projects leak into the palette. Each component displays as a full-width card with:
+Project component library discovered via the platform (`discoverComponents()`), scoped to the current site project. When a site context is active, the section lists every component document the project holds, in whatever directory (site-architecture.md §10.3 states the rule), and the npm components the open document's effective `$elements` enables; no components from other projects leak into the palette. How the list is divided, a scope label at project level and Active and Global sections at document level, is desktop.md §6.2–§6.5's rule. Each component displays as a full-width card with:
 
 - **Live preview**: Component rendered via `defineElement(url)` + `document.createElement(tagName)` through the runtime — real component instances, not placeholders
 - **Tag label**: Component tag name below the preview
 
-Components are drag-and-drop sources for inserting into the canvas.
+Components are drag-and-drop sources for inserting into the canvas. A dropped project component is recorded in the open document's `$elements` as a `{ "$ref" }` relative to that document (§9.1.3), which is what a build compiles it from.
 
 **The Site panel's Components section (§5.7) is a second door onto this catalogue, not a second catalogue.** It reads the same registry and the same preview cache, and a drop from either inserts through the one path §9.1.3 names, so the two cannot disagree about which components a project has or whether one is imported.
 
