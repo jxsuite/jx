@@ -6,11 +6,7 @@
  */
 
 import { erasedDocument } from "../erased.ts";
-import {
-  classifyFunctionEntries,
-  declaresParameters,
-  handlerParamNames,
-} from "@jxsuite/schema/function-role";
+import { classifyFunctionEntries } from "@jxsuite/schema/function-role";
 import { RESERVED_KEYS, camelToKebab } from "@jxsuite/runtime";
 import {
   ATTR_HELPER,
@@ -54,6 +50,7 @@ import {
   isServerFnDef,
   isString,
   isTagExpression,
+  paramNames,
 } from "@jxsuite/schema/guards";
 import { isNativeDocumentPath, parseNativeDocument } from "@jxsuite/schema/jxn";
 import { resolveShadowMode } from "../shadow.ts";
@@ -530,20 +527,45 @@ export function emitElementModule(
         "    };",
       );
     } else {
-      /* One calling convention (spec.md §4.3, §5.3 4d): every event site and lifecycle call invokes
-         `s.fn(s, e)`, so a string body is built with `state` first and its other declared names after
-         it, which binds `state` by name and the event by position. A `$src` entry is its import,
-         called as its call site calls it. Nothing here maps a name onto an argument. */
-      const target = refAccessor("this.state", escapeToken(key));
-      if (def.$src) {
-        lines.push(`    ${target} = ${key};`);
+      const args = def.parameters ? paramNames(def.parameters) : (def.arguments ?? ["state"]);
+      const paramList = args.join(", ");
+      const body = isString(def.body) ? def.body : "";
+      // Every call site invokes a state function as `(state, event)` — the template's
+      // `s.fn(s, e)`, `onMount`, `onUnmount`. Declared names that already start with `state` line
+      // Up positionally, so they are emitted directly. Any other declaration — including the
+      // `"parameters": ["event"]` form that examples/components/{todo-app,fetch-demo}.json use — is
+      // Mapped onto the arguments by name, the way the client target does it
+      // (compile-client.ts), with `state` bound as the outer parameter so a body referencing bare
+      // `state` resolves regardless of the declared arity.
+      if (args[0] === "state") {
+        if (def.$src) {
+          // $src function — wrap imported function so it receives state
+          lines.push(
+            `    ${refAccessor("this.state", escapeToken(key))} = (${paramList}) => ${key}(${paramList});`,
+          );
+        } else {
+          lines.push(
+            `    ${refAccessor("this.state", escapeToken(key))} = (${paramList}) => {`,
+            `      ${body}`,
+            "    };",
+          );
+        }
       } else {
-        const body = isString(def.body) ? def.body : "";
-        lines.push(
-          `    ${target} = (${handlerParamNames(def).join(", ")}) => {`,
-          `      ${body}`,
-          "    };",
-        );
+        const callArgs = args.map((a: string) => (a === "state" ? "state" : "e")).join(", ");
+        if (def.$src) {
+          lines.push(
+            `    ${refAccessor("this.state", escapeToken(key))} = (state, e) => ${key}(${callArgs});`,
+          );
+        } else {
+          lines.push(
+            `    ${refAccessor("this.state", escapeToken(key))} = (state, e) => {`,
+            `      const _fn = (${paramList}) => {`,
+            `        ${body}`,
+            "      };",
+            `      return _fn(${callArgs});`,
+            "    };",
+          );
+        }
       }
     }
   }
@@ -1321,9 +1343,6 @@ function emitMappedArray(arrayDef: JxMappedArray, indent: string) {
         statePrefix: "s",
       });
       parts.push(`@${eventName}="\${(e) => { s.$map = $map; ${compiled}; }}"`);
-    } else if (isFunctionDef(val)) {
-      // A map root binds an inline handler as any other element does, with the iteration published.
-      parts.push(`@${eventName}="\${(e) => { s.$map = $map; ${inlineHandlerBody(val)} }}"`);
     }
   }
 
@@ -1476,12 +1495,15 @@ function inlineHandlerBody(def: JxFunctionDef) {
     });
   }
   const body = isString(def.body) ? def.body : "";
-  if (declaresParameters(def)) {
-    /* The same list every tier builds a body with, called `(s, e)` like any other handler: `state`
-       binds by name, the first other declared name is the event, and a declared `event` stops
-       silently resolving to the deprecated `window.event` global. The newline ends a last-line
-       comment before the brace does. */
-    return `((${handlerParamNames(def).join(", ")}) => { ${body}\n})(s, e);`;
+  const declared = def.parameters ? paramNames(def.parameters) : (def.arguments ?? []);
+  if (declared.length > 0) {
+    // The call site supplies only `(e)`, so map the declared names onto the arguments the handler
+    // Actually has — `state` to the `s` alias, anything else to the event. Binding by name means the
+    // Body needs no textual rewriting, and a declared `event` stops silently resolving to the
+    // Deprecated `window.event` global (any other declared name threw ReferenceError outright).
+    const args = declared.map((name: string) => (name === "state" ? "s" : "e")).join(", ");
+    // The newline ends a last-line comment before the brace does.
+    return `((${declared.join(", ")}) => { ${body}\n})(${args});`;
   }
   return `${rewriteState(body, "s", { bare: true })}\n`;
 }
