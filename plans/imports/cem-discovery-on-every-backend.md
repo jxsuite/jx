@@ -36,13 +36,13 @@ The marker holds at this commit. The audit record judges §2 on every Studio bac
 
 **What is missing:** the scan as a function any Bun backend can call; the desktop session calling it; a wire type that admits the entries; and the cloud adapter's omission stated where §2 and desktop.md §10.1 can be read.
 
-Unchanged and owned elsewhere: extension-format component discovery in the desktop session (the dev server scans `documentExtensions("component")`, the desktop `.json` only; `plan:_shared/component-discovery` states the discovery rule); the `/__studio/packages` and `/__studio/cem` handlers, which repeat the same package resolution (`plan:imports/packages-route-payload`, `plan:imports/cem-route-payload`).
+Unchanged and owned elsewhere: extension-format component discovery in the desktop session (the dev server scans `documentExtensions("component")`, the desktop `.json` only; site-architecture.md §10.3 states the discovery rule); the `/__studio/packages` and `/__studio/cem` handlers, which repeat the same package resolution (`plan:imports/packages-route-payload`, `plan:imports/cem-route-payload`).
 
 ## Outcome
 
 - imports.md §2 → Implemented (marker removed). The dev server and the desktop app return the same `source: "npm"` entries for the same project, from one scan in `@jxsuite/schema`; §2 states the scan and that a cloud session, having no installed dependencies, lists project components only.
 - desktop.md §10.1 states that omission beside its `discoverComponents` paragraph (a release of an Implemented section; not a claim).
-- Three markers owned elsewhere lose their "only the dev server" clause and stay Partial, each only if it still stands when this lands: imports.md §5 (`plan:imports/packages-panel-section`), desktop.md §6.2 (`plan:desktop/component-scope-sections`) and studio.md §5.4 (`plan:_shared/component-discovery`). Each of those plans deletes its marker, names no host in the text that replaces it, and requires nothing here, so a marker already gone needs no edit (the imports audit record's spec-wide decisions).
+- Three markers owned elsewhere lose their "only the dev server" clause and stay Partial, each only if it still stands when this lands: imports.md §5 (`plan:imports/packages-panel-section`), desktop.md §6.2 (`plan:desktop/component-scope-sections`) and studio.md §5.4 (its marker already deleted). Each of those plans deletes its marker, names no host in the text that replaces it, and requires nothing here, so a marker already gone needs no edit (the imports audit record's spec-wide decisions).
 
 ## Decisions
 
@@ -108,7 +108,7 @@ Map the bullet list onto the entry: tag names → `tagName`; attributes and thei
 
 > A cloud session discovers no npm components. Its project is a repository whose dependencies are not installed (a package change there edits `package.json`, and the site's build resolves it), so there is no manifest to read and no module its canvas could load. Its registry lists the project's own components (desktop.md §10.1).
 
-The next three are marker edits in sections other plans own. Make each only if that marker still carries the clause when this lands; its owner deletes the marker (`plan:imports/packages-panel-section` for imports.md §5, `plan:desktop/component-scope-sections` for desktop.md §6.2, `plan:_shared/component-discovery` for studio.md §5.4), and none of their replacement texts names a host, so a deleted marker needs nothing from this plan.
+The next three are marker edits in sections other plans own. Make each only if that marker still carries the clause when this lands; its owner deletes the marker (`plan:imports/packages-panel-section` for imports.md §5, `plan:desktop/component-scope-sections` for desktop.md §6.2, and studio.md §5.4's is already deleted), and none of their replacement texts names a host, so a deleted marker needs nothing from this plan.
 
 **imports.md §5** (marker only, stays Partial): "so they appear only under the dev server" becomes "so they appear under the dev server and in the desktop app, and not in a cloud session (§2)".
 

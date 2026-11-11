@@ -9,8 +9,10 @@ spec:
   - compiler.md#8.1 # fully static output, runtime-only reads left unresolved, component instances expanded at every level
   - compiler.md#9.1 # pre-rendered HTML + reactive JS
   - compiler.md#4.1 # element module output structure
+  - site-architecture.md#10.3 # which components a build compiles
 code:
   - packages/compiler/src/site/site-build.ts
+  - packages/compiler/src/site/component-set.ts
   - packages/compiler/src/site/client-runtime.ts
   - packages/compiler/src/site/bundler.ts
   - packages/compiler/src/site/pages-discovery.ts
@@ -32,10 +34,11 @@ Running `jx build` (see [CLI commands](/docs/framework/build/cli)) orchestrates 
 1. **Load the project file** and register the extensions it declares (`extensions`), which contribute file formats such as Markdown pages.
 2. **Discover routes** by scanning `pages/`: `pages/index.json` → `/`, `pages/about.json` → `/about`, `pages/blog/[slug].json` → `/blog/:slug`, `pages/docs/[...path].json` → catch-all. Files starting with `_` are not routed. `.json` pages are native; other extensions (like `.md`) route through a format registered by an enabled extension.
 3. **Expand dynamic routes**: a `[param]` page's `$paths` definition produces one concrete route per entry, or one per page of a [paged list](/docs/framework/site/routing#paging-a-list). The page's own URL pattern is handed to the extension that owns the `$paths` shape, which is how a content type with a `route` produces exactly the parameters each page needs (see [Routing](/docs/framework/site/routing)).
-4. **Compile each route**: resolve its layout, merge `$head` from site + layout + page, inject the read-only `$site`/`$page` context, resolve build-time data, transform images for responsive output, then hand the assembled document to the compiler.
-5. **Emit `dist/`**: one `index.html` per route (with `build.trailingSlash: "always"`, the default), compiled component modules and CSS under `dist/components/`, `public/` copied verbatim, plus `sitemap.xml` (when `url` is set in the project file), `_redirects`, and a bundled server worker when `build.adapter` is set (`worker.js`, or `_worker.js` + `_routes.json` for Cloudflare Pages).
+4. **Compile components**: every component file directly in `components/`, plus every component a page, one of its layouts or `project.json` names in `$elements` with `{ "$ref" }`, wherever the file lives (a subfolder of `components/`, or a `_`-prefixed file next to a page), and the components those name in turn. A `$ref` is relative to the file that declares it. A `$ref` that names no file, a file outside the project or a file with no hyphenated `tagName`, and two files declaring the same `tagName`, are build errors.
+5. **Compile each route**: resolve its layout, merge `$head` from site + layout + page, inject the read-only `$site`/`$page` context, resolve build-time data, transform images for responsive output, then hand the assembled document to the compiler.
+6. **Emit `dist/`**: one `index.html` per route (with `build.trailingSlash: "always"`, the default), compiled component modules and CSS under `dist/components/`, `public/` copied verbatim, plus `sitemap.xml` (when `url` is set in the project file), `_redirects`, and a bundled server worker when `build.adapter` is set (`worker.js`, or `_worker.js` + `_routes.json` for Cloudflare Pages).
 
-The build finishes with a summary (`Done: 12 routes → 34 files`) and exits non-zero if any route failed.
+The build finishes with a summary (`Done: 12 routes → 34 files`) and exits non-zero if any route or component failed.
 
 ## Static detection
 

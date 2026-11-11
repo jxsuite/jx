@@ -6,8 +6,6 @@ claims:
   - desktop.md#6.3
   - desktop.md#6.4
   - desktop.md#6.5
-requires:
-  - _shared/component-discovery
 workspaces:
   - packages/studio
   - specs
@@ -51,7 +49,7 @@ All four were unmarked before the census; the retired §11 roadmap carried them 
 
 - §6.1 and §6.4 name `$defs` as a source of sub-components. spec.md §5.2 makes `$defs` JSON Schema type definitions only, and spec.md §13.1 ("`#/$defs` could not be the place for one") rules out a document-local fragment there. The positions that name a component document by `$ref` are an `$elements` entry (spec.md §16.3) and an external `$switch` case (spec.md §14.1).
 - Lifting `collectTags` out of the canvas is not this plan's to do: the canvas walk's scope is imports.md §1.4's open item. This plan writes the palette's walk and offers it.
-- The studio.md §5.4 ownership question is `plan:_shared/component-discovery`'s second Open, which recommends that §5.4 own discovery and defer sectioning to desktop.md §6.2–§6.5. That plan claims `studio.md#5.4`, rewrites it and site-architecture.md §10.3 (the discovery rule §6.2 cites), which is why this plan requires it.
+- The studio.md §5.4 ownership question is settled: §5.4 owns discovery and defers sectioning to desktop.md §6.2–§6.5, and site-architecture.md §10.3 states the discovery rule §6.2 cites. Both have landed.
 
 ## Outcome
 
@@ -63,7 +61,7 @@ All four were unmarked before the census; the retired §11 roadmap carried them 
 
 ## Decisions
 
-- **Decided:** the sectioning rule lives in desktop.md §6 and studio.md §5.4 defers to it, as `plan:_shared/component-discovery` recommends. If that Open resolves the other way, this plan is redrafted (moved to `plans/_shared/`) before it can be `ready`. The `requires` edge is hard, not a courtesy: studio.md §5.4's marker, which that plan owns and deletes, states the panel as "one flat list" and cites `componentViews`, which this plan removes, and §6.2's rewrite cites the discovery rule that plan writes into site-architecture.md §10.3. Landing first, this plan would leave studio.md contradicting what ships with no plan here entitled to edit it.
+- **Decided:** the sectioning rule lives in desktop.md §6 and studio.md §5.4 defers to it, as studio.md §5.4 now states. studio.md §5.4's marker, which named the flat list this plan removes, is deleted, and §6.2's rewrite cites the discovery rule now in site-architecture.md §10.3.
 - **Decided:** a document references a component when it names the component's file by a `$ref` anywhere in it (its `$elements` entries included), when a node below its root carries the component's tag (every candidate of a tag expression, `tagNameCandidates` in `@jxsuite/schema/guards`), or, for an npm component, when its own `$elements` names the component's subpath or package. These are the positions `findReferences` counts for a component, taken for one document in memory, with two deliberate differences: `findReferences` skips a component's definition file whole and matches only a plain `tagName` string, where this rule excludes only the root (next item) and reads every candidate of a tag expression. Its other kinds (`imports`, `$src`, media paths) never name a component document. It is written again in Studio because the query is an asynchronous sweep in `packages/server`, and the palette needs a synchronous answer per repaint. The comparison is `hasElement`'s, so any spelling studio.md §9.1.3 matches is matched here with no further change.
 - **Decided:** the root's own `tagName` is not a use (a component's definition does not reference itself), but an instance of it below the root is, because spec.md §16.9 allows self-nesting with changing props. "Directly referenced" (§6.3) means the document's own JSON: what its layout or `project.json` declares does not make a component Active. That is the only reading under which the Active set can differ between two pages of one project.
 - **Decided:** document level means the focused pane has an active tab (`activeTab.value`, which for a focused lens pane is its source pane's), and project level means it has none; there is no `isSiteProject` branch, because the registry is only ever loaded for a site project. §6.2's "in the file tree" example goes: Files and Insert are both Navigator panels, so the palette is never on screen beside the tree. The no-project case is §6.1's and is built by `plan:desktop/single-file-mode`, not left here as a branch nothing reaches (the lesson studio.md §14.3 records).
@@ -134,7 +132,7 @@ New `packages/studio/tests/component-scope.test.ts` (first import `./with-dom.js
 - §6.1 (ride-along; its marker stays Pending): in the marker, "and nothing derives a Components list from the open document. The canvas does match the document's `tagName`s against the registry (`collectTags` in `packages/studio/src/canvas/canvas-live-render.ts`), but only to register elements for rendering." becomes "so there is no registry for the Active set (§6.4) to be drawn from." In the body, **Shown** becomes "The components the file references (§6.4)", and the paragraph "The component list is derived by walking…" with its three-item list becomes "The list is the file's Active set, by §6.4's rule."
 - Fragment: `bun run spec:change desktop.md minor -m "The Insert palette lists the components the focused document references apart from the rest of the project, under one All Components section when no document is open, and follows the active tab and pane"`.
 
-No other spec changes: studio.md §5.4's deferral to desktop.md §6.2–§6.5 and site-architecture.md §10.3's discovery rule are `plan:_shared/component-discovery`'s, already landed.
+No other spec changes: studio.md §5.4's deferral to desktop.md §6.2–§6.5 and site-architecture.md §10.3's discovery rule have already landed.
 
 **Docs** (no em dashes):
 

@@ -240,6 +240,6 @@ Site-level declarations cascade into every page automatically, with no imports n
 - `$media` breakpoints and `style` tokens are available in every component.
 - `defaults.lang` sets `<html lang>` everywhere.
 - `state` merges into page state (page wins) and is exposed as `$site`.
-- `imports` and `$elements` merge with page-level entries (page wins on collision).
+- `imports` and `$elements` merge with page-level entries (page wins on collision); a `$ref` in the project's `$elements` is relative to `project.json`.
 
 Everything else is deliberate: files in `data/` load via an explicit [`$ref`](/docs/framework/concepts/references), collection data requires `ContentCollection` or `ContentEntry` declarations, and components receive outside data only through [`$props`](/docs/framework/concepts/props-and-scope); scope never leaks across a component boundary.

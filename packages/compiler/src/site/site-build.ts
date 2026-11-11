@@ -13,7 +13,6 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
-  readdirSync,
   rmSync,
   statSync,
   writeFileSync,
@@ -68,6 +67,7 @@ import { collectAssetRefs, copyMountedAssets, loadAssetMounts } from "./asset-mo
 import type { AssetMount } from "@jxsuite/schema/asset-paths";
 import type { FormatEntry, FormatRegistry } from "@jxsuite/schema/format-registry";
 import type { ExtensionRegistry } from "@jxsuite/schema/extension-registry";
+import { collectSiteComponents } from "./component-set.ts";
 import { layoutChain, resolveLayout } from "./layout-resolver.ts";
 import { dedupeServerEntries, documentServerEntries } from "./server-entries.ts";
 import type { DedupedServerEntries, ServerEntryRecord } from "./server-entries.ts";
@@ -455,40 +455,32 @@ export async function buildSite(
   let fileCount = 0;
 
   // ── 5. Compile site components ──────────────────────────────────────────
-  const componentsDir = resolve(projectRoot, "components");
   const compiledComponentTags: string[] = [];
   const componentCSS = new Map<string, string>(); // TagName → CSS text
   const componentDefs = new Map<string, JxElement>(); // TagName → parsed component definition
   // TagName → the absolute path its definition was read from, for what is relative to that file.
   const componentPathByTag = new Map<string, string>();
-  if (existsSync(componentsDir)) {
+  /* What this build compiles: every file directly in `components/`, plus every component a page,
+     a layout or project.json names by `$ref`, wherever it lives (site-architecture.md §10.3). */
+  const { components: siteComponents, errors: componentErrors } = await collectSiteComponents({
+    formatRegistry,
+    pageSources: routes.map((route) => route.sourcePath),
+    projectConfig,
+    projectRoot,
+  });
+  for (const message of componentErrors) {
+    errors.push(message);
+    console.error(message);
+  }
+  if (siteComponents.length > 0) {
     log("Compiling components...");
-    const componentExtensions = [".json", ...formatRegistry.documentExtensions("component")];
-    /* Sorted, because this order is the order of the sheets in every page's `<head>`, and readdir
-       has none of its own: on ext4 it follows a hash of the name, so the same project built to
-       different bytes on different machines. */
-    const componentFiles = readdirSync(componentsDir)
-      .filter((f: string) => componentExtensions.some((ext) => f.endsWith(ext)))
-      .toSorted();
     const componentOutDir = resolve(outDir, "components");
     mkdirSync(componentOutDir, { recursive: true });
 
     // Emitted modules are named after the component's `tagName` — the name the page's loader
-    // `<script>` and the CSS sidecar both use. So a component whose source basename differs from
-    // Its tag needs its `$elements` imports renamed to match, and those get resolved before the
-    // Dependency itself is compiled. Hence: read every component's tag up front.
-    const componentTagByPath = new Map<string, string>();
-    for (const file of componentFiles) {
-      const componentPath = resolve(componentsDir, file);
-      try {
-        const { tagName: depTag } = await readPageDocument(componentPath, formatRegistry);
-        if (depTag) {
-          componentTagByPath.set(componentPath, depTag);
-        }
-      } catch {
-        // Left to the compile pass below, which reports the parse failure with its file context.
-      }
-    }
+    // `<script>` and the CSS sidecar both use, wherever the source file lives. So a component's
+    // `$elements` imports are renamed to match, which needs every component's tag up front.
+    const componentTagByPath = new Map(siteComponents.map((c) => [c.path, c.tagName]));
 
     /*
      * A component is a JavaScript module the page loads, and the page rewrite (`rewriteHtmlBase`) never
@@ -501,9 +493,8 @@ export async function buildSite(
     // So it is given the deployment base now (site-architecture.md §14.7).
     const serverBaseUrl = serverRoutePrefix(componentBase);
 
-    for (const file of componentFiles) {
+    for (const { doc, path: componentPath } of siteComponents) {
       try {
-        const componentPath = resolve(componentsDir, file);
         const elementOptions: CompileElementOptions = {
           formats: formatRegistry,
           resolveElementPath: (refPath: string, currentDir: string | null) => {
@@ -548,7 +539,6 @@ export async function buildSite(
         }
 
         // Pre-render component HTML scaffold and CSS sidecar
-        const doc = await readPageDocument(componentPath, formatRegistry);
         if (doc.tagName) {
           componentDefs.set(doc.tagName, doc);
           componentPathByTag.set(doc.tagName, componentPath);
@@ -576,6 +566,7 @@ export async function buildSite(
         }
       } catch (error) {
         const message = errorMessage(error);
+        const file = relative(projectRoot, componentPath).replaceAll("\\", "/");
         errors.push(`Error compiling component ${file}: ${message}`);
         console.error(`Error compiling component ${file}: ${message}`);
       }
@@ -1422,11 +1413,10 @@ async function compilePage(
    * `injectContext`: with no layout `resolveLayout` hands back `pageDoc` itself, and injection
    * then adds project.json's state to it, which `buildSite` collects once, as project.json's own.
    */
+  const layoutLevels = layoutChain(pageDoc, projectConfig, projectRoot);
   const serverEntries = [
     ...documentServerEntries(pageDoc, route.sourcePath, projectRoot),
-    ...layoutChain(pageDoc, projectConfig, projectRoot).flatMap((level) =>
-      documentServerEntries(level.doc, level.path, projectRoot),
-    ),
+    ...layoutLevels.flatMap((level) => documentServerEntries(level.doc, level.path, projectRoot)),
   ];
 
   // Extract head arrays before they get lost in the merge
@@ -1702,9 +1692,12 @@ async function compilePage(
     typeof e === "string" && !e.startsWith("./") && !e.startsWith("../");
   const npmElements = [
     ...new Set(
-      [...(layoutDoc.$elements ?? []), ...(pageDoc.$elements ?? [])].filter((e) =>
-        isNpmElementEntry(e),
-      ),
+      [
+        ...(layoutDoc.$elements ?? []),
+        // Every layout in the chain: resolution keeps only the outermost layout's entries.
+        ...layoutLevels.flatMap((level) => level.doc.$elements ?? []),
+        ...(pageDoc.$elements ?? []),
+      ].filter((e) => isNpmElementEntry(e)),
     ),
   ];
   if (npmElements.length > 0) {
