@@ -18,7 +18,6 @@ import { readdirSync } from "node:fs";
 import type { Dirent } from "node:fs";
 import { dirname, join, relative, sep } from "node:path";
 
-import { isString } from "@jxsuite/schema/guards";
 import { baseName, isProjectFileName, PROJECT_FILE_NAMES } from "@jxsuite/schema/project-file";
 import {
   findEnclosingProjectOnDisk,
@@ -29,8 +28,12 @@ import {
 import type { EnclosingProject } from "@jxsuite/schema/project-file";
 import type { ProjectFileStamp } from "@jxsuite/schema/project-file/node";
 import type { JsonObject } from "@jxsuite/schema/types";
-import { generateVirtualDocument } from "@jxsuite/schema/virtual-document";
-import type { OutsideState, VirtualUnit } from "@jxsuite/schema/virtual-document";
+import {
+  generateVirtualDocument,
+  givenByProject,
+  outsideAt,
+} from "@jxsuite/schema/virtual-document";
+import type { OutsideState, ProjectGives, VirtualUnit } from "@jxsuite/schema/virtual-document";
 import { SpanMapKind, stringIndexToPosition } from "ts-content-mapper";
 import type {
   ContentMapperDefinition,
@@ -45,18 +48,10 @@ export const DIAGNOSTIC_SOURCE = "jx";
 /** The file is not Jx Notation, so nothing in it could be read. */
 export const NOT_NOTATION = 1;
 
-/** What a project gives the documents in it. */
-interface ProjectFacts {
-  /** It names a default layout. */
-  layout: boolean;
-  /** It has `state` of its own. */
-  state: boolean;
-}
-
 /** What is remembered between files of one compile. */
 export interface MapperProject {
   /** Each project folder met, as its file last read. */
-  facts: Map<string, { facts: ProjectFacts; stamp: ProjectFileStamp }>;
+  facts: Map<string, { facts: ProjectGives; stamp: ProjectFileStamp }>;
   /** The folder holding the `tsconfig`, above which no project is looked for. */
   root: string | null;
 }
@@ -65,22 +60,16 @@ export interface MapperProject {
  * A project file that cannot be read gives nothing away, so a document in its folder is assumed to
  * inherit everything: the file's own error is the one to report, not a hundred about `state`.
  */
-const UNREADABLE: ProjectFacts = { layout: true, state: true };
+const UNREADABLE: ProjectGives = { layout: true, state: true };
 
 /** Read what a project gives its documents, from its file as it is now. */
-function readFacts(root: string): ProjectFacts {
+function readFacts(root: string): ProjectGives {
   const read = readProjectFile(root);
-  if (read === null || "error" in read) {
-    return UNREADABLE;
-  }
-  return {
-    layout: isString(read.config.defaults?.layout),
-    state: Object.keys(read.config.state ?? {}).length > 0,
-  };
+  return read === null || "error" in read ? UNREADABLE : givenByProject(read.config);
 }
 
 /** What a project gives its documents, read again only when its file has changed. */
-function factsOf(root: string, project: MapperProject): ProjectFacts {
+function factsOf(root: string, project: MapperProject): ProjectGives {
   const stamp = projectFileStamp(root);
   if (stamp === null) {
     // A folder holding both project files, which no host chooses between.
@@ -96,7 +85,7 @@ function factsOf(root: string, project: MapperProject): ProjectFacts {
 }
 
 /** What a project found on disk gives its documents: nothing is known of one that cannot be read. */
-function givenBy(found: EnclosingProject, project: MapperProject): ProjectFacts {
+function givenBy(found: EnclosingProject, project: MapperProject): ProjectGives {
   return found.verdict === "project" ? factsOf(found.root, project) : UNREADABLE;
 }
 
@@ -177,19 +166,11 @@ export function outsideOf(fileName: string, project: MapperProject): OutsideStat
   if (!found) {
     return {};
   }
-  const components = componentsOf(found.root, fileName);
   const [folder] = relative(found.root, fileName).split(sep);
-  if (folder === "components") {
-    // A component is a scope of its own, and no state of the project's is merged into it.
-    return { components };
-  }
-  const facts = givenBy(found, project);
-  if (folder === "layouts") {
-    /* A layout is what wraps a page. The default one does not wrap it, and the state of each page
-       it wraps is merged over its own, which no layout can list. */
-    return { components, state: facts.state, wraps: true };
-  }
-  return { components, layout: facts.layout, state: facts.state };
+  return {
+    ...outsideAt(folder, givenBy(found, project)),
+    components: componentsOf(found.root, fileName),
+  };
 }
 
 /** One module in the form the protocol takes, with its offsets in the encoding agreed on. */
@@ -238,7 +219,7 @@ export function createMapper(): ContentMapperDefinition<JsonObject, MapperProjec
          one: what each project at or under the `tsconfig` gives its documents, and not when it
          was saved. A file with a project file's name that is a page gives nothing, and is not
          said. */
-      const given = new Map<string, ProjectFacts>();
+      const given = new Map<string, ProjectGives>();
       for (const folder of folders) {
         const found = findEnclosingProjectOnDisk(folder, folder);
         if (found) {

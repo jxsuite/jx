@@ -38,6 +38,9 @@ import { parametersOf, stateIndex, typeOfEntry } from "./state-types";
 import type { OutsideState } from "./state-types";
 import type { JsonObject, JsonValue, JxElement } from "../../types";
 
+export { givenByProject, outsideAt } from "./state-types";
+export type { OutsideState, ProjectGives } from "./state-types";
+
 /** Where a body sits in a document. */
 export type VirtualTarget =
   | {

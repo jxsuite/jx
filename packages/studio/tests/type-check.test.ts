@@ -74,7 +74,7 @@ void mock.module("monaco-editor/languages/features/typescript/register", () => (
   getTypeScriptWorker: () => Promise.resolve(() => Promise.resolve(worker)),
 }));
 
-const { TYPE_MARKER_OWNER, TYPE_PROBLEM_SOURCE, createTypeCheck, findingsFor } =
+const { TYPE_MARKER_OWNER, TYPE_PROBLEM_SOURCE, createTypeCheck, findingsFor, outsideOfDocument } =
   await import("../src/services/type-check");
 const { problemFindings, resetNotifications } = await import("../src/services/notify");
 
@@ -180,6 +180,27 @@ describe("findingsFor", () => {
   });
 });
 
+describe("outsideOfDocument", () => {
+  const config = { defaults: { layout: "./layouts/base.json" }, state: { shared: 1 } };
+
+  test("is what the project gives a page, a layout and a component", () => {
+    expect(outsideOfDocument("pages/index.json", config)).toEqual({ layout: true, state: true });
+    expect(outsideOfDocument("./pages/blog/post.jxn", config)).toEqual({
+      layout: true,
+      state: true,
+    });
+    expect(outsideOfDocument("layouts/base.json", config)).toEqual({ state: true, wraps: true });
+    expect(outsideOfDocument("components/site-card.jxn", config)).toEqual({});
+    expect(outsideOfDocument("pages/index.json", {})).toEqual({ layout: false, state: false });
+  });
+
+  test("is nothing for a document with no path, or open in no project", () => {
+    expect(outsideOfDocument(null, config)).toEqual({});
+    expect(outsideOfDocument("pages/index.json", null)).toEqual({});
+    expect(outsideOfDocument(undefined, null)).toEqual({});
+  });
+});
+
 describe("createTypeCheck", () => {
   /** An editor that has the one thing a check asks of it, its model. */
   function editorWith(model: FakeTextModel | null): editor.IStandaloneCodeEditor {
@@ -263,6 +284,15 @@ describe("createTypeCheck", () => {
       path: "pages/index.json",
       severity: "error",
     });
+  });
+
+  test("checks the body against an open State where the project gives the document state", async () => {
+    await check().run(buffer.text);
+    await check({ outside: () => ({ state: true }) }).run(buffer.text);
+    expect(created.map((model) => model.text.includes("[key: string]: any;"))).toEqual([
+      false,
+      true,
+    ]);
   });
 
   test("replaces the last run's markers and Problems, and reuses its file", async () => {

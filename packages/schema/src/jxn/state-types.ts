@@ -20,7 +20,7 @@ import {
   hasSchemaKeywords,
 } from "../guards";
 import { pointerInto, propertyName, schemaParts, written } from "./schema-types";
-import type { JsonObject, JsonValue, JxElement } from "../../types";
+import type { JsonObject, JsonValue, JxElement, ProjectConfig } from "../../types";
 import type { SchemaSite, TypePart } from "./schema-types";
 
 /** The most levels of an object's shape written out before it is `any`. */
@@ -154,6 +154,46 @@ export interface OutsideState {
    * state over the layout's, so a layout reads names only a page declares (`spec.md` §23.3).
    */
   wraps?: boolean | undefined;
+}
+
+/** What a project gives the documents in it, which its file alone says. */
+export interface ProjectGives {
+  /** It names a default layout. */
+  layout: boolean;
+  /** It has `state` of its own. */
+  state: boolean;
+}
+
+/**
+ * What a project's file says the project gives its documents.
+ *
+ * @param config The project's configuration, as its file holds it.
+ */
+export function givenByProject(config: ProjectConfig): ProjectGives {
+  return {
+    layout: isString(config.defaults?.layout),
+    state: Object.keys(config.state ?? {}).length > 0,
+  };
+}
+
+/**
+ * What a document is given by where its project keeps it.
+ *
+ * A component is a scope of its own, and nothing of the project's is merged into it. A layout is
+ * what wraps a page: the default one does not wrap it, and the state of each page it wraps reaches
+ * it. Every other document is a page, as far as its state goes.
+ *
+ * @param folder The first folder on the document's path from its project: `layouts` for
+ *   `layouts/base.jxn`.
+ * @param gives What the project gives.
+ */
+export function outsideAt(folder: string | undefined, gives: ProjectGives): OutsideState {
+  if (folder === "components") {
+    return {};
+  }
+  return folder === "layouts"
+    ? { state: gives.state, wraps: true }
+    : { layout: gives.layout, state: gives.state };
 }
 
 /**
