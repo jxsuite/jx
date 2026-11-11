@@ -53,7 +53,7 @@ A `body` string is a raw function body. `state` is always in scope; `arguments` 
 }
 ```
 
-An event binding always calls the handler with the state and the event, and the names you declare bind **by name, not by position**: a parameter called `state` receives the reactive state, and any other name receives the event. So `["event"]`, `["state", "event"]`, and `["state"]` each bind exactly what they read, and a body may reference `state` whether or not it declared it. The same holds for a handler written inline on an `on*` property.
+An event binding always calls the handler with the state and the event. The body is built with `state` first and your other declared names after it, so `state` binds **by name, not by position**, and the first other name receives the event. So `["event"]`, `["state", "event"]`, `["event", "state"]` and `["state"]` each bind exactly what they read, and a body may reference `state` whether or not it declared it. A later name is an ordinary argument: an event leaves it `undefined`, and `state.key(state, a, b)` from a template fills it. The same holds for a handler written inline on an `on*` property.
 
 ## Inline computed values
 
@@ -105,6 +105,8 @@ export function decrement(state) {
   state.count = Math.max(0, state.count - 1);
 }
 ```
+
+A sidecar export is called exactly as its call site calls it: an event binding passes `(state, event)`, and `state.helper(a, b)` in a template passes `a` and `b`. Declared `parameters` document the export; they do not reorder its arguments.
 
 When several entries share a `$src`, the module is imported once and its named exports extracted; module caching is automatic.
 
@@ -165,7 +167,7 @@ Optional metadata makes a function legible to tooling:
 
 | Property      | Description                                                           |
 | ------------- | --------------------------------------------------------------------- |
-| `arguments`   | Parameter names as plain strings, bound by name                       |
+| `arguments`   | Parameter names as plain strings, after the implicit `state`          |
 | `parameters`  | CEM-compatible parameter objects, a richer alternative to `arguments` |
 | `returns`     | JSON Schema describing the return value                               |
 | `emits`       | CEM `Event` objects this function dispatches                          |
@@ -182,7 +184,7 @@ Functions marked `timing: "server"` are a separate mechanism: a plain `$src`/`$e
 - `body` and `$src` are mutually exclusive. Declaring both fails the build, fails in Studio's canvas, and is reported by `jx validate`.
 - A `body` may use TypeScript that can be removed without generating code: annotations, `as`, `!`, generics and type aliases. `jx build`, `jx validate`, Studio's canvas, its code editor and Live Preview accept it in any document format, and the editor saves it as you wrote it. `enum`, a value `namespace` and a module `import` are refused with the place they are written.
 - Studio's code editor checks the types in a body against the page's `state` and lists the errors in Problems. Nothing checks them outside Studio yet, so a `jx build` still accepts a body with a type error.
-- `state` is always reachable from a body. `arguments`/`parameters` bind by name: a parameter named `state` gets the state, any other name gets the event.
+- `state` is always reachable from a body, and a declared `state` receives it wherever it sits in the list. The first other declared name receives the event.
 - `this` is never used. All component state goes through the `state` proxy.
 - `$export` defaults to the entry's key name; sidecar exports must be named exports.
 - Function entries use `camelCase` names, like all state entries.

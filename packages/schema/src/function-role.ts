@@ -106,6 +106,33 @@ export function declaresBodyAndSrc(def: JxFunctionDef): boolean {
   return "body" in def && "$src" in def;
 }
 
+/**
+ * Does a Function declaration list any parameter of its own, by `parameters` or the legacy
+ * `arguments`? An inline handler that does not is rewritten to read `state` as the handler's alias,
+ * and one that does is built with {@link handlerParamNames}.
+ *
+ * @param def A Function declaration.
+ */
+export function declaresParameters(def: JxFunctionDef): boolean {
+  return paramNames(def.parameters ?? def.arguments).length > 0;
+}
+
+/**
+ * The formal parameters a string `body` is built with, in every tier (spec.md §5.3 4d): `state`
+ * first, then the other declared names in declared order. Binding is by position, as ECMAScript's
+ * is, so a name that is not `state` receives whatever the call site passes in that position. An
+ * event binding calls a handler `(state, event)`, so the first other name is the event and a later
+ * one is `undefined` from an event (a call with too few arguments), filled by a call site that
+ * passes it. A declared `state` is moved to the front rather than repeated, since a duplicate
+ * parameter is a sloppy-mode quirk in which the later one wins and `state` would be `undefined`.
+ *
+ * @param def A Function declaration, a `state` entry or a handler written inline on an `on*` key.
+ */
+export function handlerParamNames(def: JxFunctionDef): string[] {
+  const names = paramNames(def.parameters ?? def.arguments);
+  return ["state", ...names.filter((name) => name !== "state")];
+}
+
 /** The rules in order: the first that applies decides. */
 function functionEntryRole(
   key: string,
