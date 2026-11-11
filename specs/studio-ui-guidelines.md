@@ -1,8 +1,8 @@
 # Jx Studio UI/UX Interface Guidelines
 
-**Version:** 0.8.31-draft\
+**Version:** 0.8.35-draft\
 **Status:** Partial\
-**Updated:** 2026-10-29\
+**Updated:** 2026-11-11\
 **Applies to:** `packages/studio/`
 
 ---
@@ -983,6 +983,10 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.8.35-draft** (2026-11-11) — §3.1 The status bar's far-right field is the focused pane's zoom; §12.1 new statusbar/zoom placement admitting the document level, so the status bar is four single-level placements.
+- **0.8.34-draft** (2026-11-11) — 12.1 adds the outline/toolbar placement, document level, for the Outline's Expand All and Collapse All action bar.
+- **0.8.33-draft** (2026-11-11) — §3.1 the Command Bar's controls draw md (24px); the window controls keep sm.
+- **0.8.32-draft** (2026-11-11) — §2.2 the chrome draws no text under 11px, and check-styles.ts refuses a smaller literal.
 - **0.8.31-draft** (2026-10-29) — A right-click on the canvas places no caret outside the block being edited, so it selects without starting an edit.
 - **0.8.30-draft** (2026-10-29) — A menu asked for while a pointer button is held is shown when it is released, so a right-click menu is not light-dismissed by its own release.
 - **0.8.29-draft** (2026-10-27) — §12.4 the hand tree writers are the @jxsuite/ai/jx-tools producers over the Studio document host.

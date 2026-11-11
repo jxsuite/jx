@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.6.0](https://github.com/jxsuite/jx/compare/search-v0.5.5...search-v0.6.0) (2026-11-11)
+
+
+### Features
+
+* **schema,runtime,compiler:** one parameter list and call convention ([#607](https://github.com/jxsuite/jx/issues/607)) ([f013d6a](https://github.com/jxsuite/jx/commit/f013d6ae42e63ba6c108b7dcfd0524b5d7653c52))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/schema bumped to 5.6.0
+
 ## [0.5.5](https://github.com/jxsuite/jx/compare/search-v0.5.4...search-v0.5.5) (2026-11-08)
 
 

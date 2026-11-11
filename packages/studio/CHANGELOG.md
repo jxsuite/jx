@@ -1,5 +1,47 @@
 # Changelog
 
+## [10.9.0](https://github.com/jxsuite/jx/compare/studio-v10.8.0...studio-v10.9.0) (2026-11-11)
+
+
+### Features
+
+* edit function bodies as TypeScript and store them as written ([#593](https://github.com/jxsuite/jx/issues/593)) ([b53a192](https://github.com/jxsuite/jx/commit/b53a1924d5f3d241eccccb51f4df347b3c076c27))
+* new documents and the starters are Jx Notation ([#596](https://github.com/jxsuite/jx/issues/596)) ([f5bd517](https://github.com/jxsuite/jx/commit/f5bd517b28573f66d5b6e43fec3c1230c84eab0c))
+* run TypeScript function bodies in the canvas and Live Preview ([#592](https://github.com/jxsuite/jx/issues/592)) ([04f3d27](https://github.com/jxsuite/jx/commit/04f3d27863f3f8da2e86dc28a5705915692bf7e6))
+* **schema,runtime,compiler:** refuse a Function declaring both body and $src ([#604](https://github.com/jxsuite/jx/issues/604)) ([7d298b1](https://github.com/jxsuite/jx/commit/7d298b1746de17d4e94fff5a58c90318cc360133))
+* **schema,studio:** a component setting with an enum is a select ([#606](https://github.com/jxsuite/jx/issues/606)) ([1f8c45a](https://github.com/jxsuite/jx/commit/1f8c45af706a50233fa7393ef6000796bb888e23))
+* **schema,studio:** report type errors in a function body ([#603](https://github.com/jxsuite/jx/issues/603)) ([6750226](https://github.com/jxsuite/jx/commit/675022653c18ddf8ba5f2f9378ca5b13063086b7))
+* **studio,compiler:** a picture's focal point lives in the picture ([#591](https://github.com/jxsuite/jx/issues/591)) ([9103d7f](https://github.com/jxsuite/jx/commit/9103d7fd4feab76644101fd303303dee1eaa792e))
+* **studio:** a placed picture starts with its file's alt text ([#589](https://github.com/jxsuite/jx/issues/589)) ([47c425b](https://github.com/jxsuite/jx/commit/47c425b16e41ef96eb2b5168a54aa58b463f749d))
+* **studio:** the Command Bar's controls draw at the full 24px ([#602](https://github.com/jxsuite/jx/issues/602)) ([89b3710](https://github.com/jxsuite/jx/commit/89b3710fbf312eb9fac0fa4f3350ca387f3a306f))
+* **ui:** a jx-field in a narrow container stacks its label above the control ([#600](https://github.com/jxsuite/jx/issues/600)) ([7c2c765](https://github.com/jxsuite/jx/commit/7c2c765e09061a45bbe674baa5ee0361827e521d))
+* **ui:** section headings are one recipe, and the accordion draws it ([#601](https://github.com/jxsuite/jx/issues/601)) ([c975835](https://github.com/jxsuite/jx/commit/c97583561086c76c0ff17314a3a668253545b1eb))
+
+
+### Bug Fixes
+
+* **studio:** an Inspector edit patches the canvas, and a full render keeps the page styled ([#609](https://github.com/jxsuite/jx/issues/609)) ([d7d4b9f](https://github.com/jxsuite/jx/commit/d7d4b9f09fa1159db9d2fe3ba846a48ea089ecc4))
+* **studio:** the quick-insert menu stays frozen over the + that opened it ([#608](https://github.com/jxsuite/jx/issues/608)) ([53b0472](https://github.com/jxsuite/jx/commit/53b0472a99dbe2a177f9e550c020dae7f1dec3f7))
+* **studio:** zoom in the status bar, collapsed outline, reliable twisty, diff Code view back ([#605](https://github.com/jxsuite/jx/issues/605)) ([74fa66e](https://github.com/jxsuite/jx/commit/74fa66e27bcfbb618ee8af4b5565bb8755ec0697))
+* **ui:** 11px is the type floor, in the kit and in Studio's chrome ([#599](https://github.com/jxsuite/jx/issues/599)) ([b592d75](https://github.com/jxsuite/jx/commit/b592d751ef314b6b2b304122b328b86cee1ff1b1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/ai bumped to 0.43.4
+    * @jxsuite/collab bumped to 0.11.10
+    * @jxsuite/create bumped to 1.8.0
+    * @jxsuite/erase bumped to 0.2.0
+    * @jxsuite/formulas bumped to 0.0.32
+    * @jxsuite/markup bumped to 1.0.8
+    * @jxsuite/protocol bumped to 6.3.0
+    * @jxsuite/runtime bumped to 6.3.0
+    * @jxsuite/schema bumped to 5.6.0
+    * @jxsuite/site bumped to 2.6.0
+    * @jxsuite/ui bumped to 0.11.0
+
 ## [10.8.0](https://github.com/jxsuite/jx/compare/studio-v10.7.0...studio-v10.8.0) (2026-11-08)
 
 

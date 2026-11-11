@@ -1,5 +1,24 @@
 # Changelog
 
+## [6.3.0](https://github.com/jxsuite/jx/compare/runtime-v6.2.2...runtime-v6.3.0) (2026-11-11)
+
+
+### Features
+
+* classify Function entries through one shared classifier ([#595](https://github.com/jxsuite/jx/issues/595)) ([0cc68d7](https://github.com/jxsuite/jx/commit/0cc68d7f3cafbd8d23ca55c0a275f0ce64abbb78))
+* run TypeScript function bodies in the canvas and Live Preview ([#592](https://github.com/jxsuite/jx/issues/592)) ([04f3d27](https://github.com/jxsuite/jx/commit/04f3d27863f3f8da2e86dc28a5705915692bf7e6))
+* **schema,runtime,compiler:** one parameter list and call convention ([#607](https://github.com/jxsuite/jx/issues/607)) ([f013d6a](https://github.com/jxsuite/jx/commit/f013d6ae42e63ba6c108b7dcfd0524b5d7653c52))
+* **schema,runtime,compiler:** refuse a Function declaring both body and $src ([#604](https://github.com/jxsuite/jx/issues/604)) ([7d298b1](https://github.com/jxsuite/jx/commit/7d298b1746de17d4e94fff5a58c90318cc360133))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/schema bumped to 5.6.0
+  * devDependencies
+    * @jxsuite/erase bumped to 0.2.0
+
 ## [6.2.2](https://github.com/jxsuite/jx/compare/runtime-v6.2.1...runtime-v6.2.2) (2026-11-08)
 
 

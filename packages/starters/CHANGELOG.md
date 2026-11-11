@@ -1,5 +1,25 @@
 # Changelog
 
+## [3.5.0](https://github.com/jxsuite/jx/compare/starters-v3.4.0...starters-v3.5.0) (2026-11-11)
+
+
+### Features
+
+* edit function bodies as TypeScript and store them as written ([#593](https://github.com/jxsuite/jx/issues/593)) ([b53a192](https://github.com/jxsuite/jx/commit/b53a1924d5f3d241eccccb51f4df347b3c076c27))
+* new documents and the starters are Jx Notation ([#596](https://github.com/jxsuite/jx/issues/596)) ([f5bd517](https://github.com/jxsuite/jx/commit/f5bd517b28573f66d5b6e43fec3c1230c84eab0c))
+* **schema,runtime,compiler:** refuse a Function declaring both body and $src ([#604](https://github.com/jxsuite/jx/issues/604)) ([7d298b1](https://github.com/jxsuite/jx/commit/7d298b1746de17d4e94fff5a58c90318cc360133))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/protocol bumped to 6.3.0
+  * devDependencies
+    * @jxsuite/parser bumped to 4.3.4
+    * @jxsuite/runtime bumped to 6.3.0
+    * @jxsuite/schema bumped to 5.6.0
+
 ## [3.4.0](https://github.com/jxsuite/jx/compare/starters-v3.3.2...starters-v3.4.0) (2026-11-08)
 
 

@@ -1,5 +1,35 @@
 # Changelog
 
+## [8.7.0](https://github.com/jxsuite/jx/compare/server-v8.6.0...server-v8.7.0) (2026-11-11)
+
+
+### Features
+
+* edit function bodies as TypeScript and store them as written ([#593](https://github.com/jxsuite/jx/issues/593)) ([b53a192](https://github.com/jxsuite/jx/commit/b53a1924d5f3d241eccccb51f4df347b3c076c27))
+* run TypeScript function bodies in the canvas and Live Preview ([#592](https://github.com/jxsuite/jx/issues/592)) ([04f3d27](https://github.com/jxsuite/jx/commit/04f3d27863f3f8da2e86dc28a5705915692bf7e6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/ai bumped to 0.43.4
+    * @jxsuite/catalog bumped to 0.1.12
+    * @jxsuite/collab bumped to 0.11.10
+    * @jxsuite/compiler bumped to 8.6.0
+    * @jxsuite/create bumped to 1.8.0
+    * @jxsuite/erase bumped to 0.2.0
+    * @jxsuite/import bumped to 0.44.1
+    * @jxsuite/protocol bumped to 6.3.0
+    * @jxsuite/runtime bumped to 6.3.0
+    * @jxsuite/schema bumped to 5.6.0
+    * @jxsuite/site bumped to 2.6.0
+    * @jxsuite/starters bumped to 3.5.0
+  * devDependencies
+    * @jxsuite/auth bumped to 0.8.8
+    * @jxsuite/connector bumped to 0.8.8
+    * @jxsuite/parser bumped to 4.3.4
+
 ## [8.6.0](https://github.com/jxsuite/jx/compare/server-v8.5.0...server-v8.6.0) (2026-11-08)
 
 
