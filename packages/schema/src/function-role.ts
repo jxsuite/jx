@@ -129,8 +129,13 @@ export function declaresParameters(def: JxFunctionDef): boolean {
  * @param def A Function declaration, a `state` entry or a handler written inline on an `on*` key.
  */
 export function handlerParamNames(def: JxFunctionDef): string[] {
-  const names = paramNames(def.parameters ?? def.arguments);
-  return ["state", ...names.filter((name) => name !== "state")];
+  const list = ["state"];
+  for (const name of paramNames(def.parameters ?? def.arguments)) {
+    if (name !== "state") {
+      list.push(name);
+    }
+  }
+  return list;
 }
 
 /** The rules in order: the first that applies decides. */
