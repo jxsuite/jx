@@ -113,6 +113,12 @@ describe("an error in a document's code", () => {
     'export const u: State["user"] = 5;',
   );
   const page = lines("div {", '  (fn)onclick "state.fromProject; state.$media"', "}");
+  const wrapper = lines(
+    "div {",
+    "  state { own 1 }",
+    '  (fn)onclick "state.fromPage; state.own.wrong"',
+    "}",
+  );
   let findings: Finding[] = [];
 
   beforeAll(() => {
@@ -129,6 +135,9 @@ describe("an error in a document's code", () => {
     made.write("src/site/project.jxn", lines('project "x"', "state {", "  fromProject 1", "}"));
     made.write("src/site/pages/index.jxn", page);
     made.write("src/site/components/card.jxn", page);
+    made.write("src/bare/project.jxn", lines('project "x"'));
+    made.write("src/bare/layouts/base.jxn", wrapper);
+    made.write("src/bare/pages/index.jxn", wrapper);
     ({ findings } = made.check("--runExternalCode"));
   }, SLOW);
 
@@ -197,10 +206,23 @@ describe("an error in a document's code", () => {
     ]);
   });
 
+  test("is not a read of a page's state in a layout, which still holds its own to their types", () => {
+    // The project gives neither state nor a default layout, so its page is alone and exact.
+    expect(about(findings, "bare/pages/index.jxn")).toEqual([
+      `${printed(wrapper, "fromPage")} TS2339`,
+      `${printed(wrapper, "wrong")} TS2339`,
+    ]);
+    expect(about(findings, "bare/layouts/base.jxn")).toEqual([
+      `${printed(wrapper, "wrong")} TS2339`,
+    ]);
+  });
+
   test("is never reported where the author wrote nothing", () => {
     // `noUnusedLocals` and `noUnusedParameters` are on, and would say so of a line the mapper adds.
     expect(findings.map((finding) => finding.code).filter((code) => code === "TS6133")).toEqual([]);
     const named = [
+      "bare/layouts/base.jxn",
+      "bare/pages/index.jxn",
       "plain.jxn",
       "crlf.jxn",
       "raw.jxn",

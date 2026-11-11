@@ -15,20 +15,25 @@
  * @docs framework/concepts/type-checking
  */
 import { readdirSync } from "node:fs";
+import type { Dirent } from "node:fs";
 import { dirname, join, relative, sep } from "node:path";
 
-import { isString } from "@jxsuite/schema/guards";
-import { baseName } from "@jxsuite/schema/project-file";
+import { baseName, isProjectFileName, PROJECT_FILE_NAMES } from "@jxsuite/schema/project-file";
 import {
   findEnclosingProjectOnDisk,
   isSameStamp,
   projectFileStamp,
   readProjectFile,
 } from "@jxsuite/schema/project-file/node";
+import type { EnclosingProject } from "@jxsuite/schema/project-file";
 import type { ProjectFileStamp } from "@jxsuite/schema/project-file/node";
 import type { JsonObject } from "@jxsuite/schema/types";
-import { generateVirtualDocument } from "@jxsuite/schema/virtual-document";
-import type { OutsideState, VirtualUnit } from "@jxsuite/schema/virtual-document";
+import {
+  generateVirtualDocument,
+  givenByProject,
+  outsideAt,
+} from "@jxsuite/schema/virtual-document";
+import type { OutsideState, ProjectGives, VirtualUnit } from "@jxsuite/schema/virtual-document";
 import { SpanMapKind, stringIndexToPosition } from "ts-content-mapper";
 import type {
   ContentMapperDefinition,
@@ -43,18 +48,10 @@ export const DIAGNOSTIC_SOURCE = "jx";
 /** The file is not Jx Notation, so nothing in it could be read. */
 export const NOT_NOTATION = 1;
 
-/** What a project gives the documents in it. */
-interface ProjectFacts {
-  /** It names a default layout. */
-  layout: boolean;
-  /** It has `state` of its own. */
-  state: boolean;
-}
-
 /** What is remembered between files of one compile. */
 export interface MapperProject {
   /** Each project folder met, as its file last read. */
-  facts: Map<string, { facts: ProjectFacts; stamp: ProjectFileStamp }>;
+  facts: Map<string, { facts: ProjectGives; stamp: ProjectFileStamp }>;
   /** The folder holding the `tsconfig`, above which no project is looked for. */
   root: string | null;
 }
@@ -63,22 +60,16 @@ export interface MapperProject {
  * A project file that cannot be read gives nothing away, so a document in its folder is assumed to
  * inherit everything: the file's own error is the one to report, not a hundred about `state`.
  */
-const UNREADABLE: ProjectFacts = { layout: true, state: true };
+const UNREADABLE: ProjectGives = { layout: true, state: true };
 
 /** Read what a project gives its documents, from its file as it is now. */
-function readFacts(root: string): ProjectFacts {
+function readFacts(root: string): ProjectGives {
   const read = readProjectFile(root);
-  if (read === null || "error" in read) {
-    return UNREADABLE;
-  }
-  return {
-    layout: isString(read.config.defaults?.layout),
-    state: Object.keys(read.config.state ?? {}).length > 0,
-  };
+  return read === null || "error" in read ? UNREADABLE : givenByProject(read.config);
 }
 
 /** What a project gives its documents, read again only when its file has changed. */
-function factsOf(root: string, project: MapperProject): ProjectFacts {
+function factsOf(root: string, project: MapperProject): ProjectGives {
   const stamp = projectFileStamp(root);
   if (stamp === null) {
     // A folder holding both project files, which no host chooses between.
@@ -91,6 +82,44 @@ function factsOf(root: string, project: MapperProject): ProjectFacts {
   const facts = readFacts(root);
   project.facts.set(root, { facts, stamp });
   return facts;
+}
+
+/** What a project found on disk gives its documents: nothing is known of one that cannot be read. */
+function givenBy(found: EnclosingProject, project: MapperProject): ProjectGives {
+  return found.verdict === "project" ? factsOf(found.root, project) : UNREADABLE;
+}
+
+/**
+ * The folders at or under one that hold a file named as a project file is.
+ *
+ * A `tsconfig` may sit above several projects, and the compiler says which files it reads only as
+ * it reads them, so the projects are looked for: in every folder but `node_modules` and one whose
+ * name begins with a dot, and through no link.
+ *
+ * @param root The folder holding the `tsconfig`.
+ * @returns Each folder, in the order of their paths.
+ */
+function projectFoldersUnder(root: string): string[] {
+  const found: string[] = [];
+  const pending = [root];
+  for (let at = pending.pop(); at !== undefined; at = pending.pop()) {
+    let entries: Dirent[];
+    try {
+      entries = readdirSync(at, { withFileTypes: true });
+    } catch {
+      // A folder that cannot be listed holds no project a document could be read from.
+      entries = [];
+    }
+    for (const entry of entries) {
+      if (entry.isDirectory() && entry.name !== "node_modules" && !entry.name.startsWith(".")) {
+        pending.push(join(at, entry.name));
+      }
+    }
+    if (entries.some((entry) => isProjectFileName(entry.name))) {
+      found.push(at);
+    }
+  }
+  return found.toSorted();
 }
 
 /** A component a project keeps, by its file: a tag, which has a hyphen, and `.jxn`. */
@@ -137,15 +166,11 @@ export function outsideOf(fileName: string, project: MapperProject): OutsideStat
   if (!found) {
     return {};
   }
-  const components = componentsOf(found.root, fileName);
   const [folder] = relative(found.root, fileName).split(sep);
-  if (folder === "components") {
-    // A component is a scope of its own, and no state of the project's is merged into it.
-    return { components };
-  }
-  const facts = found.verdict === "project" ? factsOf(found.root, project) : UNREADABLE;
-  // A layout is what wraps a page, and is not itself wrapped by the default one.
-  return { components, layout: facts.layout && folder !== "layouts", state: facts.state };
+  return {
+    ...outsideAt(folder, givenBy(found, project)),
+    components: componentsOf(found.root, fileName),
+  };
 }
 
 /** One module in the form the protocol takes, with its offsets in the encoding agreed on. */
@@ -189,16 +214,28 @@ export function createMapper(): ContentMapperDefinition<JsonObject, MapperProjec
       if (root === null) {
         return { configIdentity: "", project };
       }
-      const stamp = projectFileStamp(root);
+      const folders = projectFoldersUnder(root);
       /* The compiler reads every file again when this changes, so it says only what would change
-         one: what the project beside the `tsconfig` gives its documents, and not when it was
-         saved. */
-      const facts = stamp === null ? null : factsOf(root, project);
+         one: what each project at or under the `tsconfig` gives its documents, and not when it
+         was saved. A file with a project file's name that is a page gives nothing, and is not
+         said. */
+      const given = new Map<string, ProjectGives>();
+      for (const folder of folders) {
+        const found = findEnclosingProjectOnDisk(folder, folder);
+        if (found) {
+          const name = relative(root, folder).split(sep).join("/");
+          given.set(name === "" ? "." : name, givenBy(found, project));
+        }
+      }
+      /* Either name in each folder, so that a project changing its format is seen, and beside the
+         `tsconfig` whether one is there or not, so that one appearing is. */
+      const watched = new Set([root, ...folders]);
       return {
-        configIdentity: JSON.stringify(facts),
+        configIdentity: JSON.stringify(Object.fromEntries(given)),
         project,
-        // Either name, so that a project file appearing is seen as well as one changing.
-        watchedFiles: [`${root}${sep}project.jxn`, `${root}${sep}project.json`],
+        watchedFiles: [...watched].flatMap((folder) =>
+          PROJECT_FILE_NAMES.map((name) => join(folder, name)),
+        ),
       };
     },
     transform(params, context) {
