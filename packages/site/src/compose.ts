@@ -28,6 +28,7 @@ import { resolveLayout } from "./layout.ts";
 import { mergeHead, withPageDescription } from "./head-merger.ts";
 import type { HeadMergeContext } from "./head-merger.ts";
 import { injectContext } from "./context.ts";
+import { qualifyScripts } from "@jxsuite/schema/document-scripts";
 import { isNonNullObject, isString } from "@jxsuite/schema/guards";
 import { localeDirection, localeOfRoute, resolveI18n } from "@jxsuite/schema/locale";
 import { isNativeDocumentPath, parseNativeDocument } from "@jxsuite/schema/jxn";
@@ -83,16 +84,23 @@ export function routeTable(paths: readonly string[]): PageRoute[] {
     .toSorted(compareRoutes);
 }
 
-/** Read and parse a page document, whatever format its extension claims. */
+/**
+ * Read and parse a document, whatever format its extension claims.
+ *
+ * Every entry naming the document's own script is qualified with the document's path here, as it is
+ * read (`spec.md` §23.2): a page is about to be merged onto its layout, and after that nothing
+ * records which of the two an entry was written in.
+ */
 async function readDocument(io: SiteIO, path: string): Promise<JxDocument | null> {
   const text = await io.read(path);
   if (text === null) {
     return null;
   }
   if (isNativeDocumentPath(path)) {
-    return parseNativeDocument(text, path);
+    return qualifyScripts(parseNativeDocument(text, path), path);
   }
-  return io.parse ? ((await io.parse(path, text)) ?? null) : null;
+  const parsed = io.parse ? await io.parse(path, text) : null;
+  return parsed ? qualifyScripts(parsed, path) : null;
 }
 
 /**
@@ -376,6 +384,10 @@ export async function composePage(
   delete merged.$head;
   delete merged._pageHead;
   delete merged._pageTitle;
+  /* A page merged onto a layout has one `$script` where there were two documents, so the text is
+     neither's to speak for; every entry already names its own document, and the page fetches the
+     client module from there. The server module is the other reason: a reader is never sent one. */
+  delete merged.$script;
 
   return { dir: localeDirection(lang), doc: merged, head, lang };
 }

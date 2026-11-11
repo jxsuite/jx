@@ -127,6 +127,28 @@ function strip(text: string, onError: (node: { pos: number }) => void): string {
 }
 
 /**
+ * Text with its types removed, and a problem for each thing in it that cannot be.
+ *
+ * @param text The text as authored.
+ * @param subject What the text is, to start the sentence that says what it may use.
+ * @param problems Collects what could not be removed.
+ */
+function stripped(text: string, subject: string, problems: EraseProblem[]): string {
+  return strip(text, (node) => {
+    const offset = startAt(text, node.pos);
+    const [word = "this"] = /^[\w$]+/u.exec(text.slice(offset)) ?? [];
+    problems.push(
+      problemAt(
+        text,
+        offset,
+        "unsupported",
+        `\`${word}\` is TypeScript that has to be compiled rather than erased. ${subject} may use only types that can be removed: no enum, value namespace or parameter property`,
+      ),
+    );
+  });
+}
+
+/**
  * Whether a body could read differently as TypeScript. A body that already parses as JavaScript and
  * has no `<` in its code cannot: every other TypeScript form either fails to parse as JavaScript
  * (`x!`, `(a: T)`, `enum`) or, like `as`, `satisfies`, `type` and `declare`, is TypeScript only
@@ -155,18 +177,7 @@ export function eraseBody(text: string): ErasedBody {
     return plain;
   }
   const problems: EraseProblem[] = [];
-  const code = strip(text, (node) => {
-    const offset = startAt(text, node.pos);
-    const [word = "this"] = /^[\w$]+/u.exec(text.slice(offset)) ?? [];
-    problems.push(
-      problemAt(
-        text,
-        offset,
-        "unsupported",
-        `\`${word}\` is TypeScript that has to be compiled rather than erased. A function body may use only types that can be removed: no enum, value namespace or parameter property`,
-      ),
-    );
-  });
+  const code = stripped(text, "A function body", problems);
   const masked = maskCode(code);
   for (const match of masked.matchAll(MODULE_STATEMENT)) {
     const offset = match.index + (match[1]?.length ?? 0) + (match[2]?.length ?? 0);
@@ -192,6 +203,34 @@ export function eraseBody(text: string): ErasedBody {
   }
   const erased: ErasedBody = { code, problems };
   cache.set(text, erased);
+  return erased;
+}
+
+const modules = new Map<string, ErasedBody>();
+
+/**
+ * Erase the TypeScript from a whole module: a document's own script (`spec.md` §23.2) or a `.ts`
+ * file a `$src` names.
+ *
+ * A module is TypeScript by declaration, so nothing asks whether it could be read as JavaScript,
+ * and its `import` and `export` are what make it a module. The rule is otherwise a body's: only
+ * what can be removed. The browser's module loader runs what this returns and a build refuses what
+ * this refuses, so a script cannot work built and fail interpreted.
+ *
+ * As with Node's own type stripping, an import is kept as written: a name imported only for its
+ * type has to say `import type`, or the module it names is asked for an export it does not have.
+ *
+ * @param text The module as authored.
+ */
+export function eraseModule(text: string): ErasedBody {
+  const known = modules.get(text);
+  if (known) {
+    return known;
+  }
+  const problems: EraseProblem[] = [];
+  const code = stripped(text, "A script", problems);
+  const erased: ErasedBody = { code, problems };
+  modules.set(text, erased);
   return erased;
 }
 

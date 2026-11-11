@@ -13,6 +13,8 @@
  * site legitimately asks for that this package cannot produce.
  */
 
+import { withoutServerScript } from "@jxsuite/schema/document-scripts";
+import { isJsonObject } from "@jxsuite/schema/guards";
 import { isJxnPath, parseJxn } from "@jxsuite/schema/jxn";
 import { errorMessage } from "@jxsuite/schema/parse";
 import { candidatePaths, contentTypeFor, normalizeRequestPath } from "./paths.ts";
@@ -20,7 +22,7 @@ import { ComposeError, composeRoute, readProjectConfig, routeTable } from "./com
 import type { PageRoute, SiteIO } from "./compose.ts";
 import { pageShell, problemShell } from "./shell.ts";
 import type { ShellOptions } from "./shell.ts";
-import type { ProjectConfig } from "@jxsuite/schema/types";
+import type { JsonValue, JxDocument, ProjectConfig } from "@jxsuite/schema/types";
 
 /** Reading bytes for a servable file — separate from {@link SiteIO} because assets are binary. */
 export interface AssetIO {
@@ -110,7 +112,7 @@ export async function serveSite(
       return jxnAsJson(bytes, candidate);
     }
     if (bytes) {
-      return new Response(bytes, {
+      return new Response(isJsonPath(candidate) ? jsonForReader(bytes) : bytes, {
         headers: siteHeaders(contentTypeFor(candidate)),
       });
     }
@@ -138,6 +140,49 @@ export async function serveSite(
   return plainNotFound();
 }
 
+/** A path naming a JSON file. */
+const JSON_PATH = /\.json$/iu;
+
+function isJsonPath(path: string): boolean {
+  return JSON_PATH.test(path);
+}
+
+/** The key a document's own modules are under, as a JSON file spells it. */
+const SCRIPT_KEY = '"$script"';
+
+/**
+ * A `.json` file as a reader may have it: a document's server module left out (`spec.md` §23.2),
+ * and every other file exactly the bytes it is.
+ *
+ * A file is parsed only when its text names `$script`, so an ordinary one is never read as
+ * anything, and one that does not parse is served as it is: what is wrong with it is the author's
+ * to see, and it holds no module this could have found.
+ *
+ * @param bytes The file.
+ */
+function jsonForReader(bytes: Uint8Array<ArrayBuffer>): Uint8Array<ArrayBuffer> | string {
+  const text = new TextDecoder().decode(bytes);
+  if (!text.includes(SCRIPT_KEY)) {
+    return bytes;
+  }
+  let value: JsonValue;
+  try {
+    /* SAFETY: trust boundary. The file parsed as JSON, which is all the type says; it is used
+       below only after it is seen to be an object. */
+    value = JSON.parse(text) as JsonValue;
+  } catch {
+    return bytes;
+  }
+  if (!isJsonObject(value)) {
+    return bytes;
+  }
+  /* SAFETY: every member of `JxDocument` is optional and `withoutServerScript` reads only
+     `$script`, through optional access, so any JSON object is a document as far as it looks. */
+  const document = value as JxDocument;
+  const stripped = withoutServerScript(document);
+  return stripped === document ? bytes : JSON.stringify(stripped);
+}
+
 /**
  * Compose a route into a response, turning a compose failure into a page that says so.
  *
@@ -150,7 +195,8 @@ export async function serveSite(
  * The runtime fetches a `$ref` and calls `res.json()`, on any origin, so answering JSON here keeps
  * a KDL parser out of every page. A file that does not read answers 422 with the reason, because
  * the runtime reports a failed fetch by its status and this one is the author's to fix. The dev
- * server's canvas origin answers the same way, with its own headers.
+ * server's canvas origin answers the same way, with its own headers. The document's server module
+ * is left out, as it is from a `.json` document (`spec.md` §23.2).
  *
  * @param bytes The file.
  * @param path Its path, which names it in an error.
@@ -162,7 +208,7 @@ export function jxnAsJson(
   headers: (type: string) => HeadersInit = siteHeaders,
 ): Response {
   try {
-    const document = parseJxn(new TextDecoder().decode(bytes), path);
+    const document = withoutServerScript(parseJxn(new TextDecoder().decode(bytes), path));
     return Response.json(document, { headers: headers("application/json;charset=utf-8") });
   } catch (error) {
     return new Response(errorMessage(error), {

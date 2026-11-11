@@ -36,6 +36,38 @@ export const CLIENT_SCRIPT_REF = "#client";
 export const SERVER_SCRIPT_REF = "#server";
 
 /** A qualified specifier, read back: the document it names, and which of its modules. */
+/** A URL path naming a TypeScript module. */
+const TYPESCRIPT_PATH = /\.[cm]?ts$/iu;
+
+/**
+ * True when a URL path names a TypeScript module: text a browser cannot import as written, which a
+ * page's module loader erases first.
+ *
+ * @param pathname A URL's path, without its query or fragment.
+ */
+export function isTypeScriptPath(pathname: string): boolean {
+  return TYPESCRIPT_PATH.test(pathname);
+}
+
+/**
+ * A document as a browser may have it: without its server module. The module is called over the
+ * network and never imported by a page, so its text is nothing a reader should be sent.
+ *
+ * The document given is not changed, and one with no server module is returned as it is. `$script`
+ * itself stays, however little is left in it: it is what says the document has modules of its own,
+ * which is what has a host qualify the entries that name them.
+ *
+ * @param doc The document as read.
+ */
+export function withoutServerScript<T extends JxDocument>(doc: T): T {
+  const script = doc.$script;
+  if (script?.server === undefined) {
+    return doc;
+  }
+  const { server: _server, ...kept } = script;
+  return { ...doc, $script: kept };
+}
+
 export interface ScriptSpecifier {
   /** The document's address, as it was qualified: `/`-separated and without a leading `./`. */
   path: string;

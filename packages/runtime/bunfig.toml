@@ -9,6 +9,8 @@ coveragePathIgnorePatterns = [
   # @jxsuite/erase is a test double for a host's eraser here, gated by its own run.
   "../erase/**",
   "**/tests/**",
+  # What the module loader makes importable in a test: a script's text, not a source file.
+  "blob:*",
   # The shared preload is gated by packages/test-support's own run, at 100%.
   "../test-support/**",
   "./result/**",

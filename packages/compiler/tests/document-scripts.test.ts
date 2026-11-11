@@ -20,6 +20,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { join, relative, resolve } from "node:path";
+import { EraseError } from "@jxsuite/erase";
 import { isString } from "@jxsuite/schema/guards";
 import { serializeJxn } from "@jxsuite/schema/jxn";
 import type { JsonValue, JxDocument } from "@jxsuite/schema/types";
@@ -448,6 +449,84 @@ export function go() { return secret; }
       expect(existsSync(resolve(root, "dist/assets/pages-index.json.js"))).toBe(false);
     },
   );
+
+  describe.each(["bun", "esbuild"] as const)(
+    "TypeScript a browser's loader could not erase (%s)",
+    (backend) => {
+      test("in a client script, by its document and the place", async () => {
+        const root = resolve(ROOT, `compiled-client-${backend}`);
+        writeSmallProject(root, {
+          $script: {
+            client: `export function go(): number {
+  return Size.Small;
+}
+enum Size {
+  Small,
+}
+`,
+          },
+          children: [{ onclick: { $ref: "#/state/go" }, tagName: "button", textContent: "go" }],
+          state: { go: fn("go") },
+          tagName: "main",
+        });
+
+        const { errors } = await withBackend(backend, () => buildSite(root, { verbose: false }));
+        expect(errors).toHaveLength(1);
+        expect(errors[0]).toContain("pages/index.json/$script/client: `enum` is TypeScript");
+        expect(errors[0]).toContain("(line 4, column 1)");
+        expect(existsSync(resolve(root, "dist/assets/pages-index.json.js"))).toBe(false);
+      });
+
+      test("in a server script, which is held to the same rule", async () => {
+        const root = resolve(ROOT, `compiled-server-${backend}`);
+        writeSmallProject(root, {
+          $script: {
+            server: `class Store {
+  constructor(private limit: number) {}
+}
+export async function history() {
+  return new Store(3);
+}
+`,
+          },
+          children: [{ tagName: "p", textContent: "${state.history}" }],
+          state: { history: { $export: "history", $src: "#server", timing: "server" } },
+          tagName: "main",
+        });
+
+        const { errors } = await withBackend(backend, () => buildSite(root, { verbose: false }));
+        expect(errors).toHaveLength(1);
+        expect(errors[0]).toContain("pages/index.json/$script/server: `private` is TypeScript");
+        expect(existsSync(resolve(root, "dist/worker.js"))).toBe(false);
+      });
+
+      test("in a document another script imports", async () => {
+        const root = resolve(ROOT, `compiled-import-${backend}`);
+        writeSmallProject(root, {
+          $script: {
+            client: `import { size } from "../lib/sizes.jxn";
+export function go(): number {
+  return size;
+}
+`,
+          },
+          children: [{ onclick: { $ref: "#/state/go" }, tagName: "button", textContent: "go" }],
+          state: { go: fn("go") },
+          tagName: "main",
+        });
+        write(root, "lib/sizes.jxn", {
+          $script: {
+            client: "namespace Sizes {\n  export const small = 1;\n}\nexport const size = 1;\n",
+          },
+          tagName: "div",
+        });
+
+        const { errors } = await withBackend(backend, () => buildSite(root, { verbose: false }));
+        expect(errors).toHaveLength(1);
+        expect(errors[0]).toContain("lib/sizes.jxn/$script/client: `namespace` is TypeScript");
+      });
+    },
+  );
 });
 
 describe("where a document's module stands", () => {
@@ -517,6 +596,17 @@ describe("documentScripts", () => {
     await expect(scripts.module("jx-script:broken.json#client")).rejects.toThrow(
       "Cannot read broken.json for its client script",
     );
+  });
+
+  test("module() refuses a script that has to be compiled, with every place it does", async () => {
+    const scripts = documentScripts(root, () => ({
+      $script: { client: "enum A {\n  One,\n}\nenum B {\n  Two,\n}\n" },
+    }));
+    const refused = await scripts.module("jx-script:lib/x.json#client").catch((error) => error);
+    expect(refused).toBeInstanceOf(EraseError);
+    expect(refused.site).toEqual({ path: "lib/x.json", pointer: "/$script/client" });
+    expect(refused.problems).toHaveLength(2);
+    expect(refused.message).toStartWith("lib/x.json/$script/client: `enum` is TypeScript");
   });
 
   test("a document is read once, with the reader a build passes", async () => {

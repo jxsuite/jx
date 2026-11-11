@@ -15,11 +15,14 @@
 import { existsSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join, normalize, resolve, sep } from "node:path";
+import { isScriptSpecifier } from "@jxsuite/schema/document-scripts";
 import { errorMessage } from "@jxsuite/schema/parse";
 import type { JsonObject } from "@jxsuite/schema/types";
 import { projectDevEnv } from "./dev-vars.ts";
 import { problem } from "./problem.ts";
-import { callServerExport } from "./resolve.ts";
+import { callServerExport, importServerScript } from "./resolve.ts";
+import type { ModuleNamespace } from "./resolve.ts";
+import { serverScriptAddress } from "./server-script.ts";
 import { createDevServer } from "./server.ts";
 import { injectSSE } from "./watch.ts";
 import { hasProjectFile } from "@jxsuite/schema/project-file/node";
@@ -100,7 +103,10 @@ export function createDistMiddleware(
 /** One server entry the last build collected: the export, and where the site worker imports it from. */
 export interface ServerEntry {
   exportName: string;
-  /** A `./` path from the project root, or a bare specifier, exactly as the worker bundle reads it. */
+  /**
+   * A `./` path from the project root, a document's server script by its qualified specifier, or a
+   * bare specifier, exactly as the worker bundle reads it.
+   */
   src: string;
 }
 
@@ -132,7 +138,8 @@ async function readArguments(req: Request): Promise<JsonObject> {
  * `process.env` under the project's `.dev.vars`), so it reads the same secrets in development.
  *
  * Each module is resolved as the worker bundle resolves it, from the project root: a `./` path
- * against the root, any other specifier through the project's own `package.json`. It applies no
+ * against the root, a document's own server script (`jx-script:pages/x.json#server`, spec.md §23.2)
+ * from that document, any other specifier through the project's own `package.json`. It applies no
  * containment check, because the module path comes from the build and never from the request;
  * containment stays in the `/__jx_server__` proxy, where the request names the module.
  *
@@ -156,18 +163,29 @@ export function createServerFunctionMiddleware(
       return problem("notFound", `The last build collected no server function "${name}"`);
     }
 
-    let modulePath: string;
-    try {
-      modulePath =
-        entry.src.startsWith("./") || entry.src.startsWith("../")
-          ? resolve(root, entry.src)
-          : requireFromProject.resolve(entry.src);
-    } catch (error) {
-      return Response.json({ error: errorMessage(error), ok: false }, { status: 500 });
+    let module: string | (() => Promise<ModuleNamespace>);
+    if (isScriptSpecifier(entry.src)) {
+      // A document's own server script (spec.md §23.2), which the build named by its project path.
+      const address = serverScriptAddress(entry.src);
+      if (address.kind !== "path") {
+        const error = `"${entry.src}" names no server script of a document in this project`;
+        return Response.json({ error, ok: false }, { status: 500 });
+      }
+      const documentPath = resolve(root, address.path);
+      module = () => importServerScript(documentPath, root);
+    } else {
+      try {
+        module =
+          entry.src.startsWith("./") || entry.src.startsWith("../")
+            ? resolve(root, entry.src)
+            : requireFromProject.resolve(entry.src);
+      } catch (error) {
+        return Response.json({ error: errorMessage(error), ok: false }, { status: 500 });
+      }
     }
 
     const args = await readArguments(req);
-    const result = await callServerExport(modulePath, entry.exportName, args, projectDevEnv(root));
+    const result = await callServerExport(module, entry.exportName, args, projectDevEnv(root));
     if (result.ok) {
       return Response.json(result.value ?? null);
     }

@@ -3,6 +3,9 @@ coverageReporter = ["text", "lcov"]
 coverageSkipTestFiles = true
 coveragePathIgnorePatterns = [
   "**/tests/**",
+  # A document's server script is bundled to a temporary file, imported and removed
+  # (src/server-script.ts). Those are fixtures' modules, not this package's source.
+  "**/jx-server-script-*",
   # @jxsuite/erase loads with every document read and is gated by its own run, at its own bar.
   "../erase/**",
   "./result/**",
