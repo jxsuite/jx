@@ -44,7 +44,8 @@ import {
   pureSchemeOf,
   resolveStaticValue,
   serverCallHelperSource,
-  srcImportBinding,
+  collectFunctionImports,
+  emitSrcImports,
   templateValueSource,
 } from "../shared.ts";
 import {
@@ -63,7 +64,7 @@ import {
   isTagExpression,
   tagNameCandidates,
 } from "@jxsuite/schema/guards";
-import type { CompileContext } from "../shared.ts";
+import type { CompileContext, SrcImports } from "../shared.ts";
 import {
   escapeToken,
   objectKey,
@@ -154,9 +155,6 @@ export function compileClient(
   const initBlocks: string[] = []; // Lines emitted after state for prototype init
   const serverCalls: string[] = []; // One block per `timing: "server"` entry, after the computed block
 
-  // Map $src path → Set of function names to import
-  const srcImportMap = new Map<string, Set<string>>();
-
   const defs = raw.state ?? {};
   for (const [key, def] of Object.entries(defs)) {
     if (!isNonNullObject(def) || Array.isArray(def)) {
@@ -204,13 +202,6 @@ export function compileClient(
           onEntries.push([key, { args: ["state", "e"], body: compiled }]);
         }
       } else if (def.$src) {
-        let names = srcImportMap.get(def.$src);
-        if (!names) {
-          names = new Set();
-          srcImportMap.set(def.$src, names);
-        }
-        names.add(srcImportBinding(key, def));
-
         if (roles.get(key) === "computed") {
           // Only read, never called: its return value is what the page uses.
           computedEntries.push([key, `() => { return ${key}(state); }`]);
@@ -300,6 +291,7 @@ export function compileClient(
   }
 
   // Generate the JS module
+  const srcImports = collectFunctionImports(defs, roles);
   const moduleContent = emitClientModule(
     stateEntries,
     computedEntries,
@@ -307,7 +299,7 @@ export function compileClient(
     onEntries,
     initBlocks,
     serverCalls,
-    srcImportMap,
+    srcImports,
     counter,
     reactivitySrc,
     opts.rewriteSrc,
@@ -917,7 +909,7 @@ function bareMapRefsToLit(body: string): string {
  * @param {[string, any][]} onEntries
  * @param {string[]} initBlocks
  * @param {string[]} serverCalls
- * @param {Map<string, Set<string>>} srcImportMap
+ * @param {SrcImports} srcImports
  * @param {{
  *   t: number;
  *   s: number;
@@ -937,7 +929,7 @@ function emitClientModule(
   onEntries: [string, HandlerDef][],
   initBlocks: string[],
   serverCalls: string[],
-  srcImportMap: Map<string, Set<string>>,
+  srcImports: SrcImports,
   counter: {
     t: number;
     s: number;
@@ -970,15 +962,12 @@ function emitClientModule(
 
   // $src imports — bundleable specifiers (npm:…, ./relative) are rewritten to their /assets/
   // Bundle URL; the site build bundles them after all documents compile (spec.md §12).
-  for (const [src, names] of srcImportMap) {
-    const importPath = rewriteSrc ? rewriteSrc(src) : src;
-    lines.push(`import { ${[...names].join(", ")} } from '${importPath}';`);
-  }
+  const src = emitSrcImports(srcImports, rewriteSrc);
 
   // State — reactive state
   /* The boolean-attribute rule, inlined because this module loads with `@vue/reactivity` and
      nothing else — see `attrHelperSource`. The hydration script below is its only caller. */
-  lines.push("", attrHelperSource());
+  lines.push(...src.imports, ...src.loaders, "", attrHelperSource());
   if (serverCalls.length > 0) {
     lines.push("", serverCallHelperSource());
   }

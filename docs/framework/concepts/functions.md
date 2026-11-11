@@ -136,6 +136,23 @@ export function openLeads(state) {
 
 `items` reads `openLeads`, so it resolves to the filtered array and re-filters whenever `leads` arrives.
 
+## Loading a sidecar on first call
+
+Add `"$lazy": true` to a sidecar entry and its module loads the first time the function is called, not with the page. The entry keeps its name, so call sites do not change, but the function now returns a promise. Use it for a module most visitors never reach, such as a search client, and only on an entry you call from a handler or a lifecycle hook: an entry read as a value would render a promise, so the build and Studio both refuse it.
+
+```json
+{
+  "state": {
+    "searchInit": {
+      "$prototype": "Function",
+      "$src": "npm:@jxsuite/search/client",
+      "$lazy": true,
+      "parameters": ["state"]
+    }
+  }
+}
+```
+
 ## Structured bodies
 
 A `body` may also be a JSON array of statements instead of a source string, which is multi-step logic that stays inspectable and visually editable. That form has its own page: [Statements](/docs/framework/concepts/statements).

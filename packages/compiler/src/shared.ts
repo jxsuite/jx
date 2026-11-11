@@ -11,6 +11,7 @@ import {
   declaresBodyAndSrc,
   handlerParamNames,
 } from "@jxsuite/schema/function-role";
+import type { FunctionRole } from "@jxsuite/schema/function-role";
 import {
   COLOR_SCHEME_ATTR,
   COLOR_SCHEME_STORAGE_KEY,
@@ -740,6 +741,108 @@ export function refuseBodyWithSrc(
       `${where} declares both "body" and "$src"; they are mutually exclusive (spec.md §5.3 4d). Keep one.`,
     );
   }
+}
+
+/** What a document's `$src` Function entries import, split by when the module loads. */
+export interface SrcImports {
+  /** Statically imported modules → the `import { … }` clause members each one supplies. */
+  eager: Map<string, Set<string>>;
+  /** `$lazy` modules → the (export, local binding) pairs each one supplies. */
+  lazy: Map<string, { binding: string; exportName: string }[]>;
+}
+
+/** The module text for a document's `$src` imports: static `import` lines, then lazy loaders. */
+export interface SrcImportText {
+  imports: string[];
+  loaders: string[];
+}
+
+/**
+ * The `$src` modules a document's Function entries import (spec.md §5.3 4d), for every compiled
+ * target. A `$lazy` entry is split off from the eager imports, because its module loads on the
+ * first call rather than with the page. One reader of `$lazy` is the point: two emitters of one
+ * feature is how the client target came to ignore it and ship a static import.
+ *
+ * Refuses a lazy entry the document uses as a computed value: a computed reads its value
+ * synchronously and a lazy binding can only hand back a promise, so binding it would render
+ * `[object Promise]`.
+ *
+ * @param defs The document's `state`.
+ * @param roles The document's verdicts from `classifyFunctionEntries`.
+ */
+export function collectFunctionImports(
+  defs: Record<string, JxStateDefinition>,
+  roles: ReadonlyMap<string, FunctionRole>,
+): SrcImports {
+  const imports: SrcImports = { eager: new Map(), lazy: new Map() };
+  for (const [key, def] of Object.entries(defs)) {
+    refuseBodyWithSrc(`state entry "${key}"`, def);
+    if (!isFunctionDef(def) || !def.$src) {
+      continue;
+    }
+    if (def.$lazy === true) {
+      if (roles.get(key) === "computed") {
+        throw new Error(
+          `"${key}" declares "$lazy": true but is used as a computed value, not called. ` +
+            `A lazily loaded function resolves to a promise; a computed must resolve now. ` +
+            `Remove "$lazy", or call ${key}() from a handler instead of binding its value.`,
+        );
+      }
+      let bindings = imports.lazy.get(def.$src);
+      if (!bindings) {
+        bindings = [];
+        imports.lazy.set(def.$src, bindings);
+      }
+      bindings.push({ binding: key, exportName: srcExportName(key, def) });
+      continue;
+    }
+    let names = imports.eager.get(def.$src);
+    if (!names) {
+      names = new Set();
+      imports.eager.set(def.$src, names);
+    }
+    names.add(srcImportBinding(key, def));
+  }
+  return imports;
+}
+
+/**
+ * The module text for {@link collectFunctionImports}: the static `import` lines, and the memoized
+ * dynamic loaders for `$lazy` entries. A static import is a download, a parse and an evaluate on
+ * every page that renders the component, whether or not anybody calls the function: jxsuite.com's
+ * search client is 70 kB of MiniSearch fetched by every visitor, most of whom never open search.
+ * The local binding keeps its name so every call site is unchanged; what changes is that it now
+ * returns a promise.
+ *
+ * @param imports What the document imports.
+ * @param rewriteSrc Maps a bundleable specifier (`npm:…`, `./relative`) to its `/assets/` bundle
+ *   URL; the site build bundles them after all documents compile (spec.md §12).
+ */
+export function emitSrcImports(
+  imports: SrcImports,
+  rewriteSrc?: (specifier: string) => string,
+): SrcImportText {
+  const importLines: string[] = [];
+  for (const [src, names] of imports.eager) {
+    importLines.push(
+      `import { ${[...names].join(", ")} } from '${rewriteSrc ? rewriteSrc(src) : src}';`,
+    );
+  }
+  const loaders: string[] = [];
+  let index = 0;
+  for (const [src, entries] of imports.lazy) {
+    const mod = `_jxLazy${index}`;
+    index += 1;
+    loaders.push(
+      `let ${mod};`,
+      `const ${mod}Load = () => (${mod} ??= import('${rewriteSrc ? rewriteSrc(src) : src}'));`,
+      ...entries.map(
+        ({ binding, exportName }) =>
+          `const ${binding} = (...args) => ${mod}Load().then((m) => m.${exportName}(...args));`,
+      ),
+    );
+  }
+  return { imports: importLines, loaders };
 }
 
 /**
