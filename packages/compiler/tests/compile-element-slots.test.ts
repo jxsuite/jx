@@ -213,6 +213,58 @@ describe("a compiled module distributes its slots", () => {
   });
 });
 
+describe("an element put back in a document", () => {
+  test("a moved card keeps what it drew and what was slotted into it, and still updates", async () => {
+    const host = await mount(
+      "<section><cs-card><h1 slot='head'>Title</h1><p>Body</p></cs-card></section><aside></aside>",
+    );
+    const el = host.querySelector("cs-card");
+    host.querySelector("aside")?.append(el!);
+    await settle();
+    expect(el?.parentElement?.tagName).toBe("ASIDE");
+    expect(text(host.querySelector("header"))).toBe("Title");
+    expect(text(host.querySelector("main"))).toBe("r1 Body");
+
+    stateOf(el).rows = ["r1", "r2"];
+    await settle();
+    expect(text(host.querySelector("main"))).toBe("r1 r2 Body");
+    host.remove();
+  });
+
+  test("a card removed and inserted again renders the state it left with", async () => {
+    const host = await mount("<cs-card><p>Body</p></cs-card>");
+    const el = host.querySelector("cs-card");
+    el?.remove();
+    stateOf(el).rows = ["late"];
+    host.append(el!);
+    await settle();
+    expect(text(host.querySelector("main"))).toBe("late Body");
+    host.remove();
+  });
+
+  test("a shadow element keeps its shadow tree across a move", async () => {
+    await load({
+      $shadow: "open",
+      children: [{ tagName: "p", textContent: "n=${state.n}" }, { tagName: "slot" }],
+      state: { n: "one" },
+      tagName: "cs-shadowed",
+    });
+    const host = await mount(
+      "<section><cs-shadowed><b>Light</b></cs-shadowed></section><aside></aside>",
+    );
+    const el = host.querySelector("cs-shadowed");
+    host.querySelector("aside")?.append(el!);
+    await settle();
+    expect(el?.shadowRoot?.querySelector("p")?.textContent).toBe("n=one");
+    expect(el?.querySelector("b")?.textContent).toBe("Light");
+
+    stateOf(el).n = "two";
+    await settle();
+    expect(el?.shadowRoot?.querySelector("p")?.textContent).toBe("n=two");
+    host.remove();
+  });
+});
+
 describe("forwarding", () => {
   test("a forwarded slot lands where the nested element puts it, whichever module is defined first", async () => {
     // Card already defined: the wrapper defined after it.

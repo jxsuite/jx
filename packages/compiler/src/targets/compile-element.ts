@@ -445,6 +445,7 @@ export function emitElementModule(
     // And a single list keeps every effect on the same lifecycle instead of leaking the ones nobody
     // Held a handle to.
     "  #effects = [];",
+    "  #rendered = false;",
     ...(shadow === null ? [] : ["  #root = null;"]),
     "",
     // Constructor: build reactive state
@@ -757,8 +758,19 @@ export function emitElementModule(
    * `data-jx-prerendered` goes and before the clear: a prerendered instance's children are its
    * markup, and capture recovers what the prerender placed from its brackets instead.
    */
+  /*
+   * Everything from here to the render effect happens to an instance ONCE. `connectedCallback` runs
+   * again each time the element is put back in a document (a list reordered with `append`, a panel
+   * moved between containers), and `disconnectedCallback` only stopped the effects: the tree lit
+   * drew is still there, and so is the part lit cached on the container for it. Clearing the
+   * container a second time removed the nodes that part still points at, so the render that
+   * followed updated a detached tree and the element stayed empty for good. A second capture is
+   * wrong for its own reason: by then the host's children are the component's own render, not
+   * what the author slotted.
+   */
+  lines.push("    const _first = !this.#rendered;", "    this.#rendered = true;");
   if (hasSlot) {
-    lines.push(`    const _slotted = ${SLOT_CAPTURE_HELPER}(this);`);
+    lines.push(`    const _slotted = _first ? ${SLOT_CAPTURE_HELPER}(this) : null;`);
   }
   lines.push(
     "    if (this.hasAttribute('data-jx-prerendered')) {",
@@ -774,7 +786,7 @@ export function emitElementModule(
        * `require-trusted-types-for 'script'`, and this one is emitted into every light-DOM element
        * module a site ships.
        */
-      "    this.replaceChildren();",
+      "    if (_first) this.replaceChildren();",
       "    this.#effects.push(effect(() => render(this.template(), this)));",
     );
   } else {
@@ -793,15 +805,17 @@ export function emitElementModule(
      */
     lines.push(
       "    const _root = this.#renderRoot();",
-      "    for (const _n of [..._root.childNodes]) {",
-      "      if (!(_n.nodeType === 1 && _n.tagName === 'LINK')) _n.remove();",
+      "    if (_first) {",
+      "      for (const _n of [..._root.childNodes]) {",
+      "        if (!(_n.nodeType === 1 && _n.tagName === 'LINK')) _n.remove();",
+      "      }",
       "    }",
       "    this.#effects.push(effect(() => render(this.template(), _root)));",
     );
   }
   if (hasSlot) {
     // Once, after the first render: a slot a later render draws stays literal (spec.md §8.5).
-    lines.push(`    ${SLOT_DISTRIBUTE_HELPER}(this, _slotted);`);
+    lines.push(`    if (_first) ${SLOT_DISTRIBUTE_HELPER}(this, _slotted);`);
   }
   lines.push(
     // Lifecycle: onMount (spec §16.4) — same microtask contract as the runtime
