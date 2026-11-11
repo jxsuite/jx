@@ -768,7 +768,7 @@ Add, remove, rename, and edit `state` entries. All four shapes supported:
 
 Monaco-powered editor for function `body` strings, opened as TypeScript (`spec.md` §23.1) and type-checked as §16.7 says. Integrated with server code services:
 
-- **Format** — via `oxfmt`, as TypeScript
+- **Format** — via `oxfmt`, as TypeScript, indented with two spaces; the formatter is the one `jx format` runs (`server.md` §5), so a body formatted here is one that command leaves alone
 - **Lint** — via `oxlint` with diagnostic display, as TypeScript
 
 **Close** writes the buffer back exactly as written. It used to minify the body first, which deletes types; compiled output is still minified.

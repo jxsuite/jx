@@ -312,11 +312,13 @@ OXC-powered code quality services for Studio's function-body editors.
 
 A body is TypeScript (`spec.md` §23.1), and plain JavaScript is TypeScript already, so both endpoints read it as a `.ts` file. Lint runs from the system temp directory, so a body gets oxlint's default rules rather than the configuration of the directory the server was started in. There is no minify endpoint: Studio stores a body as written, because minifying deletes its types.
 
-Snippets are function _bodies_: the handler wraps them in a synthetic function before formatting/linting, unwraps the result, and remaps diagnostic line/column positions back to the snippet.
+Snippets are function _bodies_: each is wrapped in a synthetic function before formatting or linting, a formatted body is taken back out, and a diagnostic's line and column are remapped to the snippet.
+
+**Formatting is one module** (`src/code-format.ts`), which this endpoint and `jx format` (`compiler.md` §2.3) both call, so the two agree on every body. It formats at oxfmt's defaults, with a two-space indent and a 100-column line counted from where the body starts and not from the wrapper, and it reads no `.oxfmtrc.json`: a body is in a document, and no file a configuration could be scoped to. Taking a body out of its wrapper is unindenting it, and a line the formatter did not write must not be unindented, since the lines of a template literal are the string's own text. So a body is formatted at two depths of nesting, and a line loses its indent only where the deeper reading moved it one level; a line both readings give alike is kept as it is, and a body the two readings disagree on is returned as written with no error. A body that does not parse is returned as written with one `{ message }` per error, each ending `(line N)` counted in the body. The formatting wrapper is `async`, so a body that awaits is formatted, as a class method that awaits must be; the lint wrapper is not, as the function a document's body becomes is not, so lint reports the `await`. `formatScript` formats a document's script (`spec.md` §23.2) as the module it is, with no wrapper; `jx format` calls it and the endpoint does not.
 
 The remapping is a constant: the wrapper is one synthetic header line, so a diagnostic loses one line and a fixed byte count (`adjustDiagnostics`). It is named here because it is the kind of thing that invites a source map, and a source map for a constant offset is more machinery than the thing it maps — see §8.
 
-> **Status: Implemented.** `src/code-api.ts` (oxfmt via its Node API, oxlint via its CLI binary).
+> **Status: Implemented.** `src/code-api.ts` and `src/code-format.ts` (oxfmt via its Node API, oxlint via its CLI binary); `src/format.ts` is `jx format`.
 
 ---
 
