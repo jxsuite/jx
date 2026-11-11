@@ -923,6 +923,7 @@
   "@jxsuite/collab" = copyPathToStore ./packages/collab;
   "@jxsuite/compiler" = copyPathToStore ./packages/compiler;
   "@jxsuite/connector" = copyPathToStore ./extensions/connector;
+  "@jxsuite/content-mapper" = copyPathToStore ./packages/content-mapper;
   "@jxsuite/create" = copyPathToStore ./packages/create;
   "@jxsuite/desktop" = copyPathToStore ./packages/desktop;
   "@jxsuite/erase" = copyPathToStore ./packages/erase;
@@ -4955,6 +4956,10 @@
     url = "https://registry.npmjs.org/ts-blank-space/-/ts-blank-space-0.9.0.tgz";
     hash = "sha512-TU6coIZm6RxGgAjroRKmi6aCQ7Pq7cT+1I+bTKBepD6joOuWqUCOptVlz+eurqTnatnQOimlR8XB5sQZ6ULwbw==";
   };
+  "ts-content-mapper@0.1.1" = fetchurl {
+    url = "https://registry.npmjs.org/ts-content-mapper/-/ts-content-mapper-0.1.1.tgz";
+    hash = "sha512-Lkci00riJ6+7cPxwhC6ENLTVEcT8vXb0zFeatJQ1fQInkcS0HWDyN/zE/SKWRxNHW7mev3OURfMUbUA+F3+WCA==";
+  };
   "ts-migrate-plugins@0.1.35" = fetchurl {
     url = "https://registry.npmjs.org/ts-migrate-plugins/-/ts-migrate-plugins-0.1.35.tgz";
     hash = "sha512-DUkx7ClKhxKYPWDha9DJTZ6LhwEUszL90uH5I/O11K/6TbA96ytln1O3HL6Pt83i4mAKOlg0mQ6AMsPtL5FFkQ==";
@@ -5182,6 +5187,10 @@
   "vitest@5.0.5" = fetchurl {
     url = "https://registry.npmjs.org/vitest/-/vitest-5.0.5.tgz";
     hash = "sha512-cPODOMF8YnkiiYtDdHo6n4wWmBrOBBbOIYH2d33M4l3CdNn72h+qMmO6uXffUN6A5AZFXNND/d+krS9mgkXRfg==";
+  };
+  "vscode-jsonrpc@10.0.0" = fetchurl {
+    url = "https://registry.npmjs.org/vscode-jsonrpc/-/vscode-jsonrpc-10.0.0.tgz";
+    hash = "sha512-USSfxg0vDIpTQqlQBGxF3mBARyoS8cU7LHLpbYNh6dOJt32dlskxPWB0Irrh5TllTmyf7oNLAvqDqzklbwwnpA==";
   };
   "walk-up-path@4.0.0" = fetchurl {
     url = "https://registry.npmjs.org/walk-up-path/-/walk-up-path-4.0.0.tgz";

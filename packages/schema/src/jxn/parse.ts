@@ -9,7 +9,7 @@
  * replaced, and its own `toJson` is not used, because it turns `x (ref)"p"` into `"p"`, silently.
  */
 import { InvalidKdlError, getLocation, parse } from "@bgotink/kdl";
-import type { Document, Entry, Node } from "@bgotink/kdl";
+import type { Document, Entry, Identifier, Node, Value } from "@bgotink/kdl";
 import type { JsonObject, JsonValue, JxDocument } from "../../types.ts";
 import { isJsonObject, isNumber, isString } from "../guards.ts";
 import { normalizeObject } from "../parse.ts";
@@ -27,11 +27,30 @@ const ANNOTATIONS = new Set(["array", "export", "fn", "object", "on", "ref", "se
 /** A child node name that means something other than an element. */
 const RESERVED_CHILDREN = new Set(["attributes", "script", "state", "style"]);
 
+/**
+ * Where single tokens are, by JSON Pointer (`spec.md` §23.3).
+ *
+ * A span says where a whole node or entry is, which is what a save needs. A type checker needs the
+ * token itself: a string with its quotes, so each character of a body can be put back where it was
+ * written, and a name alone, so renaming it in an editor rewrites the name and nothing beside it.
+ *
+ * A pointer here is built from a key as the file spells it, and a document's keys are NFC. A key
+ * the two disagree about is not found, which costs that name its mapping and never misplaces one.
+ */
+export interface JxnTokens {
+  /** The name of a keyed member: a node's name, or a property's. */
+  names: Map<string, JxnSpan>;
+  /** The one value a pointer holds, as written. */
+  values: Map<string, JxnSpan>;
+}
+
 /** What one read of a file is building. */
 export interface Reader {
   /** Where each thing came from, by JSON Pointer, when that was asked for. */
   spans: Map<string, JxnSpan> | null;
   text: string;
+  /** Where single tokens are, when that was asked for. */
+  tokens?: JxnTokens | undefined;
 }
 
 /** Set a key, refusing a repeat and a key that would be a prototype rather than data. */
@@ -58,8 +77,8 @@ export function failure(reader: Reader, at: Entry | Node, message: string): JxnE
   return new JxnError(message, start === undefined ? null : locate(reader.text, start));
 }
 
-/** Where a node or entry is, from the locations the parser stored. */
-function spanOf(at: Entry | Node): JxnSpan | null {
+/** Where a node, an entry or one token of either is, from the locations the parser stored. */
+function spanOf(at: Entry | Identifier | Node | Value): JxnSpan | null {
   const location = getLocation(at);
   return location ? { end: location.end.offset, start: location.start.offset } : null;
 }
@@ -70,6 +89,27 @@ export function mark(reader: Reader, pointer: string, at: Entry | Node): void {
   if (span) {
     reader.spans?.set(pointer, span);
   }
+}
+
+/** Record where a pointer's name was written. */
+function markName(reader: Reader, pointer: string, at: Identifier | null): void {
+  const span = reader.tokens && at ? spanOf(at) : null;
+  if (span) {
+    reader.tokens?.names.set(pointer, span);
+  }
+}
+
+/** Record where a pointer's one value was written. */
+function markValue(reader: Reader, pointer: string, at: Entry | undefined): void {
+  const span = reader.tokens && at ? spanOf(at.value) : null;
+  if (span) {
+    reader.tokens?.values.set(pointer, span);
+  }
+}
+
+/** The entries of a node that carry no name, in order. */
+function positionalEntries(node: Node): Entry[] {
+  return node.entries.filter((entry) => !entry.name);
 }
 
 /** A JSON Pointer token. */
@@ -140,7 +180,9 @@ function readFunction(reader: Reader, node: Node, pointer: string): JsonObject {
   const kids = childrenOf(node);
   for (const entry of properties(node)) {
     setKey(fn, nameOf(entry), valueOf(reader, entry), reader, entry);
+    markValue(reader, `${pointer}/${token(nameOf(entry))}`, entry);
   }
+  const written = reader.tokens ? positionalEntries(node) : [];
   if (kids.length > 0) {
     if (values.length > 0) {
       setKey(fn, "parameters", values, reader, node);
@@ -153,6 +195,10 @@ function readFunction(reader: Reader, node: Node, pointer: string): JsonObject {
       setKey(fn, "parameters", parameters, reader, node);
     }
     setKey(fn, "body", body, reader, node);
+    markValue(reader, `${pointer}/body`, written.pop());
+  }
+  for (const [index, entry] of written.entries()) {
+    markValue(reader, `${pointer}/parameters/${index}`, entry);
   }
   mark(reader, pointer, node);
   return fn;
@@ -173,6 +219,7 @@ function readExport(reader: Reader, node: Node, pointer: string): JsonObject {
   }
   for (const entry of properties(node)) {
     setKey(fn, nameOf(entry), valueOf(reader, entry), reader, entry);
+    markValue(reader, `${pointer}/${token(nameOf(entry))}`, entry);
   }
   if (!Object.hasOwn(fn, "$export")) {
     fn.$export = node.getName().normalize("NFC");
@@ -246,6 +293,7 @@ function readScript(reader: Reader, node: Node, element: JsonObject): void {
   }
   setKey(scripts, side, text, reader, node);
   mark(reader, `/$script/${side}`, node);
+  markValue(reader, `/$script/${side}`, positionalEntries(node)[0]);
 }
 
 /** The items of a block made of `-` nodes. */
@@ -291,6 +339,7 @@ export function readValue(reader: Reader, node: Node, pointer: string): JsonValu
       if (props.length > 0 || kids.length > 0) {
         throw failure(reader, node, "A value cannot also have names or a block");
       }
+      markValue(reader, pointer, positionalEntries(node)[0]);
       return values[0] ?? null;
     }
     if (kids.length > 0 && props.length === 0 && kids.every((kid) => kid.getName() === "-")) {
@@ -304,10 +353,13 @@ export function readValue(reader: Reader, node: Node, pointer: string): JsonValu
     const key = nameOf(entry);
     setKey(object, key, valueOf(reader, entry), reader, entry);
     mark(reader, `${pointer}/${token(key)}`, entry);
+    markName(reader, `${pointer}/${token(key)}`, entry.name);
+    markValue(reader, `${pointer}/${token(key)}`, entry);
   }
   for (const kid of kids) {
     const key = kid.getName();
     setKey(object, key, readValue(reader, kid, `${pointer}/${token(key)}`), reader, kid);
+    markName(reader, `${pointer}/${token(key)}`, kid.name);
   }
   return object;
 }
@@ -695,4 +747,15 @@ export function parseJxn(text: string, path?: string): JxDocument {
 export function parseJxnWithSpans(text: string) {
   const spans = new Map<string, JxnSpan>();
   return { document: readDocument({ spans, text }), spans };
+}
+
+/**
+ * Read a `.jxn` document, and where the single tokens a type checker reads were written.
+ *
+ * @param text The file.
+ * @throws {JxnError} When it is not one.
+ */
+export function parseJxnWithTokens(text: string) {
+  const tokens: JxnTokens = { names: new Map(), values: new Map() };
+  return { document: readDocument({ spans: null, text, tokens }), tokens };
 }

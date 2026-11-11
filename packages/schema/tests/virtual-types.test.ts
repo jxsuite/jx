@@ -136,6 +136,15 @@ describe("State", () => {
     );
     expect(signaturesOf(text)).toEqual(["  [key: string]: any;"]);
   });
+
+  test("is closed for a page that says it has no layout", () => {
+    const { text } = generateBodyTypes(
+      asDoc({ $layout: false, state: { a: 1 } }),
+      { key: "a", kind: "state" },
+      "",
+    );
+    expect(signaturesOf(text)).toEqual(["  [key: `$${string}`]: any;"]);
+  });
 });
 
 describe("the names a function is called with", () => {
@@ -145,6 +154,7 @@ describe("the names a function is called with", () => {
       b: { $prototype: "Function", body: "", parameters: ["event"] },
       c: { $prototype: "Function", body: "", parameters: ["state", { name: "n" }] },
       d: { $prototype: "Function", body: "", arguments: ["x", 1] },
+      e: { $prototype: "Function", body: "", parameters: ["a", "state", "b"] },
     },
   });
   const paramsOf = (key: string): string[] =>
@@ -156,6 +166,10 @@ describe("the names a function is called with", () => {
     expect(paramsOf("c")).toEqual(["state", "n"]);
     expect(paramsOf("d")).toEqual(["state", "x"]);
     expect(paramsOf("missing")).toEqual(["state"]);
+  });
+
+  test("move a declared state to the front, as the runtime does, and never repeat it", () => {
+    expect(paramsOf("e")).toEqual(["state", "a", "b"]);
   });
 
   test("type state as State and the rest as any, and leave event usable when undeclared", () => {

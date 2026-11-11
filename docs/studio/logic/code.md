@@ -49,7 +49,7 @@ A function that needs an `import`, or helpers of its own, lives in the document'
 
 The script opens in the same **Logic** tab as a function body and writes back the same way. Three things differ:
 
-- **It is a whole module.** The text has its own `import` and `export` lines, so it is not reformatted on open, and the linting and type checking a body gets do not run on it.
+- **It is a whole module.** The text has its own `import` and `export` lines, so it is not reformatted on open, and the linting and type checking a body gets do not run on it. From a terminal, `tsc` checks the script of a `.jxn` document ([Type checking](/docs/framework/concepts/type-checking)).
 - **The canvas runs it as last saved.** A body is drawn as you type. A half-typed module does not load, and loading one on every pause would run its top level again each time, so the canvas keeps running the script the document was last saved with. Save to see your change.
 - **An emptied script is removed.** Delete all of the text and the document no longer carries that script.
 
