@@ -81,6 +81,8 @@ const CLOSED = "[key: `$${string}`]: any;";
 /** The function of a body that names no parameter. */
 const SIGNED = "export async function body(this: any, state: State) {";
 const OPEN = "[key: string]: any;";
+/** What a document that is no component says it defines, which ends its main module. */
+const DEFINES_NONE = "export interface $elements {}";
 
 describe("the main module", () => {
   const source = file(
@@ -122,6 +124,7 @@ describe("the main module", () => {
         "  go: (...args: any[]) => any;",
         `  ${CLOSED}`,
         "}",
+        DEFINES_NONE,
       ),
     );
     expect(written.problems).toEqual([]);
@@ -169,9 +172,11 @@ describe("the main module", () => {
 
   test("is State alone for a document with no script", () => {
     expect(generate(file("div {", "  state { count 0 }", "}")).main.text).toBe(
-      file("export interface State {", "  count: number;", `  ${CLOSED}`, "}"),
+      file("export interface State {", "  count: number;", `  ${CLOSED}`, "}", DEFINES_NONE),
     );
-    expect(generate("").main.text).toBe(file("export interface State {", `  ${CLOSED}`, "}"));
+    expect(generate("").main.text).toBe(
+      file("export interface State {", `  ${CLOSED}`, "}", DEFINES_NONE),
+    );
   });
 
   test("leaves to the entry's own shape an export no token can carry", () => {
@@ -492,6 +497,7 @@ describe("a body inside a nested scope", () => {
         "export interface State$2 extends State$1 {",
         "  deep: boolean;",
         "}",
+        DEFINES_NONE,
       ),
     );
     // Every entry is its own token, so a rename from a body reaches the one that declares it.
@@ -554,6 +560,7 @@ describe("a body inside a nested scope", () => {
         "  extra: number;",
         `  ${OPEN}`,
         "}",
+        DEFINES_NONE,
       ),
     );
     expect(headOf(written.supplemental[0])[0]).toBe(
@@ -592,6 +599,7 @@ describe("a body inside a nested scope", () => {
         "export interface State$2 extends State {",
         "  z: number;",
         "}",
+        DEFINES_NONE,
       ),
     );
     // The root is augmented whatever it holds, and another scope only by what the server gives it.
@@ -650,6 +658,7 @@ describe("a body drawn by a map", () => {
         "export interface State$2 extends State {",
         `  $map: { item: (NonNullable<${tags}> extends readonly (infer I)[] ? I : any); index: number };`,
         "}",
+        DEFINES_NONE,
       ),
     );
     expectSound(written, source);
@@ -677,7 +686,7 @@ describe("a body drawn by a map", () => {
       ),
     );
     expect(own.main.text).toBe(
-      file("export interface State {", "  $map: number;", `  ${CLOSED}`, "}"),
+      file("export interface State {", "  $map: number;", `  ${CLOSED}`, "}", DEFINES_NONE),
     );
     expect(headOf(own.supplemental[0])[0]).toBe('import type { State } from "./a.jxn";');
   });
@@ -962,20 +971,209 @@ describe("a reference", () => {
   });
 });
 
+/** What the references module declares before it holds a prop against its component. */
+const PROPS = [
+  "type Props<S> = { [K in keyof S]?: S[K] | null | undefined };",
+  "declare function props<T extends string>(",
+  "  given: T extends keyof Elements ? Props<Elements[T]> : any,",
+  "): void;",
+  "declare const unchecked: any;",
+];
+
+describe("what a document defines", () => {
+  /** The last line of a document's main module. */
+  const defined = (source: string): string | undefined =>
+    generate(source).main.text.trimEnd().split("\n").at(-1);
+
+  test("is its State under its root's tag, when that is one a component has", () => {
+    expect(defined(file("my-card {", '  state { title "t"; count 0 }', "}"))).toBe(
+      'export interface $elements { "my-card": State }',
+    );
+  });
+
+  test("is JxState where that is what its State is called", () => {
+    const source = file(
+      "my-card {",
+      '  script "export interface State { a: 1 }"',
+      "  state { count 0 }",
+      "}",
+    );
+    expect(defined(source)).toBe('export interface $elements { "my-card": JxState }');
+  });
+
+  test("is nothing for a root the platform names, or one with no tag", () => {
+    expect(defined(file("div {", "  state { count 0 }", "}"))).toBe(DEFINES_NONE);
+    expect(defined(file("state { count 0 }"))).toBe(DEFINES_NONE);
+  });
+});
+
+describe("what a component is given", () => {
+  const source = file(
+    '$elements (ref)"./my-card.jxn" (ref)"./old.json" "pkg" (ref)"/abs/x-y.jxn"',
+    "div {",
+    '  state { heading "x"; total 3; rows { - { name "a" } } }',
+    "  my-card {",
+    '    $props title=(ref)"#/state/heading" count="3" "my key"=#true ratio=1.5 tpl="${state.total}" far=(ref)"window#/x" none=#null {',
+    "      list { - 1 }",
+    '      deep { inner (ref)"#/state/total" }',
+    "    }",
+    "  }",
+    '  other-thing { $props { c { $ref "#/state/rows/0/name" } } }',
+    '  p hidden=(ref)"#/state/total" { $props a=1 }',
+    '  $element "x-${state.heading}" { $props b=2 }',
+    "  ul {",
+    '    $array items=(ref)"#/state/rows" {',
+    '      my-card { $props title=(ref)"$map/item/name" }',
+    "    }",
+    "  }",
+    "}",
+  );
+  const written = generate(source, {
+    components: { "my-card": "./my-card.jxn", "other-thing": "../components/other-thing.jxn" },
+  });
+  const unit = written.supplemental.at(-1);
+
+  test("is held, one prop to a line, against the State of the document its tag names", () => {
+    expect(written.problems).toEqual([]);
+    expect(unit?.extension).toBe(".ts");
+    expect(unit?.text).toBe(
+      file(
+        'import type { State, State$1 } from "./a.jxn";',
+        // Itself, then each `.jxn` file `$elements` names, then each project component a prop names.
+        'import type { $elements as e0 } from "./a.jxn";',
+        'import type { $elements as e1 } from "./my-card.jxn";',
+        'import type { $elements as e2 } from "../components/other-thing.jxn";',
+        "export type Elements = e0 & e1 & e2;",
+        ...PROPS,
+        "declare const s0: State;",
+        "declare const s1: State$1;",
+        // A reference inside a prop's value is read for itself, and so is one that is no prop.
+        "void s0.total;",
+        "void s0.total;",
+        "void s0.rows;",
+        // One that is the prop is the prop's value, and is written the once.
+        'props<"my-card">({ title: s0.heading });',
+        'props<"my-card">({ count: "3" });',
+        'props<"my-card">({ "my key": true });',
+        'props<"my-card">({ ratio: 1.5 });',
+        // A template, a reference out of the document, nothing, a list and an object are not held.
+        'props<"my-card">({ tpl: unchecked });',
+        'props<"my-card">({ far: unchecked });',
+        'props<"my-card">({ none: unchecked });',
+        'props<"my-card">({ list: unchecked });',
+        'props<"my-card">({ deep: unchecked });',
+        'props<"other-thing">({ c: s0.rows?.["0"]?.name });',
+        'props<"my-card">({ title: s1.$map?.item?.name });',
+      ),
+    );
+  });
+
+  test("is joined to its name and its value, and a file to the entry that names it", () => {
+    const spans = mapped(unit, source);
+    expect(spans.slice(0, 1)).toEqual([["atom", '"./my-card.jxn"', '"./my-card.jxn"']]);
+    expect(spans.slice(7, 21)).toEqual([
+      ["verbatim", "title", "title"],
+      ["atom", "s0.", "#/state/"],
+      ["verbatim", "heading", "heading"],
+      ["verbatim", "count", "count"],
+      ["atom", '"3"', '"3"'],
+      ["atom", '"my key"', '"my key"'],
+      ["atom", "true", "#true"],
+      ["verbatim", "ratio", "ratio"],
+      ["atom", "1.5", "1.5"],
+      ["verbatim", "tpl", "tpl"],
+      ["verbatim", "far", "far"],
+      ["verbatim", "none", "none"],
+      ["verbatim", "list", "list"],
+      ["verbatim", "deep", "deep"],
+    ]);
+    expect(spans.slice(-6)).toEqual([
+      ["verbatim", "title", "title"],
+      ["atom", "s1.$map", "$map"],
+      ["atom", "?.", "/"],
+      ["verbatim", "item", "item"],
+      ["atom", "?.", "/"],
+      ["verbatim", "name", "name"],
+    ]);
+    expectSound(written, source);
+  });
+
+  test("leaves alone an element the platform names, and a tag that is made when it runs", () => {
+    expect(unit?.text).not.toContain("a: 1");
+    expect(unit?.text).not.toContain("b: 2");
+  });
+
+  test("takes anything where no document read here defines the tag", () => {
+    const alone = file("div {", "  my-card { $props count=3 }", "}");
+    const made = generate(alone);
+    expect(made.supplemental.map((each) => each.text)).toEqual([
+      file(
+        'import type { $elements as e0 } from "./a.jxn";',
+        "export type Elements = e0;",
+        ...PROPS,
+        'props<"my-card">({ count: 3 });',
+      ),
+    ]);
+    expect(mapped(made.supplemental[0], alone)).toEqual([
+      ["verbatim", "count", "count"],
+      ["atom", "3", "3"],
+    ]);
+    expectSound(made, alone);
+  });
+
+  test("is nothing where an instance is given no props", () => {
+    expect(generate(file("div {", '  my-card "text"', "}")).supplemental).toEqual([]);
+  });
+});
+
+describe("a document that names its components", () => {
+  const source = file(
+    "$elements {",
+    '  - { $ref "./x-y.jxn" }',
+    '  - (ref)"../z-z.jxn"',
+    '  - (ref)"./a.jxn"',
+    '  - "pkg"',
+    "}",
+    "div",
+  );
+  const written = generate(source);
+
+  test("imports each one though it gives them nothing, so a file that is not there is told of", () => {
+    expect(written.supplemental.map((each) => each.text)).toEqual([
+      file(
+        // The document itself is first, and naming it again is the same import.
+        'import type { $elements as e0 } from "./a.jxn";',
+        'import type { $elements as e1 } from "./x-y.jxn";',
+        'import type { $elements as e2 } from "../z-z.jxn";',
+        "export type Elements = e0 & e1 & e2;",
+      ),
+    ]);
+  });
+
+  test("joins each file to the string that names it, in either spelling", () => {
+    expect(mapped(written.supplemental[0], source)).toEqual([
+      ["atom", '"./a.jxn"', '"./a.jxn"'],
+      ["atom", '"./x-y.jxn"', '"./x-y.jxn"'],
+      ["atom", '"../z-z.jxn"', '"../z-z.jxn"'],
+    ]);
+    expectSound(written, source);
+  });
+});
+
 describe("a file that is not a document", () => {
-  test("is an empty module when it is a project file, which holds no code", () => {
+  test("is a module that defines nothing when it is a project file, which holds no code", () => {
     const written = generate(file('project "x"', 'defaults layout="./layouts/base.jxn"'));
     expect(written).toEqual({
-      main: { extension: ".ts", spans: [], text: "export {};\n" },
+      main: { extension: ".ts", spans: [], text: file(DEFINES_NONE) },
       problems: [],
       supplemental: [],
     });
   });
 
-  test("is an empty module and one problem when it is not Jx Notation", () => {
+  test("is a module that defines nothing, and one problem, when it is not Jx Notation", () => {
     const source = file("div {", "  state { count 0 }", "}", "p");
     const written = generate(source);
-    expect(written.main).toEqual({ extension: ".ts", spans: [], text: "export {};\n" });
+    expect(written.main).toEqual({ extension: ".ts", spans: [], text: file(DEFINES_NONE) });
     expect(written.supplemental).toEqual([]);
     expect(written.problems).toEqual([
       {

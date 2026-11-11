@@ -398,6 +398,111 @@ describe("an error outside a document's functions", () => {
   );
 });
 
+describe("what a component is given", () => {
+  const card = lines(
+    "x-card {",
+    "  state {",
+    '    title "t"',
+    "    count 0",
+    "    open #false",
+    "  }",
+    '  h2 "${state.title}"',
+    "}",
+  );
+  const band = lines("y-band {", '  state { tone "chalk" }', "  x-card { $props title=1 }", "}");
+  const page = lines(
+    "div {",
+    '  state { heading "x"; total 3; rows { - { name "a"; n 1 } } }',
+    '  x-card { $props title=(ref)"#/state/heading" count=(ref)"#/state/total" open=#true }',
+    '  x-card { $props title=(ref)"#/state/total" count="3" titel="x" label="${state.total}" }',
+    "  y-band { $props tone=1 nope=#null }",
+    "  z-none { $props anything=1 }",
+    "  ul {",
+    '    $array items=(ref)"#/state/rows" {',
+    '      x-card { $props title=(ref)"$map/item/n" count=(ref)"$map/item/n" }',
+    "    }",
+    "  }",
+    "}",
+  );
+  const lost = lines(
+    "$elements {",
+    '  - (ref)"../components/gone-card.jxn"',
+    '  - (ref)"../components/x-card.jxn"',
+    "}",
+    "div {",
+    "  x-card { $props title=1 }",
+    "}",
+  );
+  const widget = lines("my-card {", '  state { title "t" }', "}");
+  const uses = lines(
+    '(array)$elements (ref)"./my-card.jxn"',
+    "div {",
+    '  my-card { $props title="a" nope=1 }',
+    "}",
+  );
+  const loose = lines("div {", "  my-card { $props nope=1 }", "}");
+  let findings: Finding[] = [];
+
+  beforeAll(() => {
+    const made = project();
+    made.write("src/site/project.jxn", lines('project "x"', "state {", "  fromProject 1", "}"));
+    made.write("src/site/components/x-card.jxn", card);
+    made.write("src/site/components/y-band.jxn", band);
+    made.write("src/site/pages/index.jxn", page);
+    made.write("src/site/pages/lost.jxn", lost);
+    made.write("src/widgets/my-card.jxn", widget);
+    made.write("src/widgets/uses.jxn", uses);
+    made.write("src/widgets/loose.jxn", loose);
+    ({ findings } = made.check("--runExternalCode"));
+  }, SLOW);
+
+  test("is held against the State of a component its project keeps, at the prop's name", () => {
+    expect(about(findings, "site/pages/index.jxn")).toEqual([
+      // What a reference reads is not what the component holds there, and neither is a string.
+      `${printed(page, 'title=(ref)"#/state/total"')} TS2322`,
+      `${printed(page, 'count="3"')} TS2322`,
+      // A name the component does not have, with the one it is nearest to, and one it has not.
+      `${printed(page, "titel")} TS2561`,
+      `${printed(page, "label")} TS2353`,
+      // Each prop is told of by itself, so one mistake does not hide the next, whatever it is given.
+      `${printed(page, "tone=1")} TS2322`,
+      `${printed(page, "nope")} TS2353`,
+      // A row is typed where a prop reads it.
+      `${printed(page, 'title=(ref)"$map')} TS2322`,
+    ]);
+  });
+
+  test("is held the same in a component, which uses the others", () => {
+    expect(about(findings, "site/components/y-band.jxn")).toEqual([
+      `${printed(band, "title=1")} TS2322`,
+    ]);
+    expect(about(findings, "site/components/x-card.jxn")).toEqual([]);
+  });
+
+  test("is one error at the entry naming a file that is not there, until it is", () => {
+    expect(about(findings, "site/pages/lost.jxn")).toEqual([
+      `${printed(lost, '"../components/gone-card.jxn"')} TS2307`,
+    ]);
+  });
+
+  test("is held against a file `$elements` names, and is anything for a tag nothing names", () => {
+    expect(about(findings, "widgets/uses.jxn")).toEqual([`${printed(uses, "nope")} TS2353`]);
+    expect(about(findings, "widgets/loose.jxn")).toEqual([]);
+    expect(about(findings, "widgets/my-card.jxn")).toEqual([]);
+  });
+
+  test("is never reported where the author wrote nothing", () => {
+    expect(findings.map((finding) => finding.code).filter((code) => code === "TS6133")).toEqual([]);
+    const named = [
+      "site/pages/index.jxn",
+      "site/components/y-band.jxn",
+      "site/pages/lost.jxn",
+      "widgets/uses.jxn",
+    ];
+    expect(findings.length).toBe(named.flatMap((name) => about(findings, name)).length);
+  });
+});
+
 describe("a file that is not Jx Notation", () => {
   test(
     "is reported as the mapper's own error, at its position",

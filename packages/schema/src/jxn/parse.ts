@@ -305,13 +305,32 @@ function readScript(reader: Reader, node: Node, element: JsonObject): void {
   markValue(reader, `/$script/${side}`, positionalEntries(node)[0]);
 }
 
-/** The items of a block made of `-` nodes. */
-function readItems(reader: Reader, kids: readonly Node[], pointer: string): JsonValue[] {
+/** Record where each value of a list written on one line is, under the index it has in the list. */
+function markItems(reader: Reader, pointer: string, node: Node): void {
+  for (const [index, entry] of (reader.tokens ? positionalEntries(node) : []).entries()) {
+    markValue(reader, `${pointer}/${index}`, entry);
+  }
+}
+
+/**
+ * The items of a block made of `-` nodes.
+ *
+ * @param reader The file being read.
+ * @param kids The block.
+ * @param pointer Where the list is.
+ * @param before How many items the list holds ahead of the block, written on the node's own line.
+ */
+function readItems(
+  reader: Reader,
+  kids: readonly Node[],
+  pointer: string,
+  before = 0,
+): JsonValue[] {
   return kids.map((kid, index) => {
     if (kid.getName() !== "-") {
       throw failure(reader, kid, `A list holds only "-" items, and this is "${kid.getName()}"`);
     }
-    return readValue(reader, kid, `${pointer}/${index}`);
+    return readValue(reader, kid, `${pointer}/${before + index}`);
   });
 }
 
@@ -335,13 +354,15 @@ export function readValue(reader: Reader, node: Node, pointer: string): JsonValu
     if (props.length > 0) {
       throw failure(reader, node, "(array) holds items, and these are named");
     }
-    return [...values, ...readItems(reader, kids, pointer)];
+    markItems(reader, pointer, node);
+    return [...values, ...readItems(reader, kids, pointer, values.length)];
   }
   if (tag !== "object") {
     if (values.length > 1) {
       if (props.length > 0 || kids.length > 0) {
         throw failure(reader, node, "A list of values cannot also have names or a block");
       }
+      markItems(reader, pointer, node);
       return values;
     }
     if (values.length === 1) {

@@ -47,6 +47,7 @@ describe("what a project gives a document", () => {
   test("is its state and its default layout, for a page", () => {
     const root = folder({ "project.jxn": WITH_BOTH });
     expect(outsideOf(join(root, "pages/blog/a.jxn"), remembered())).toEqual({
+      components: {},
       layout: true,
       state: true,
     });
@@ -55,6 +56,7 @@ describe("what a project gives a document", () => {
   test("is neither, for a page of a project that has neither", () => {
     const root = folder({ "project.jxn": WITH_NEITHER });
     expect(outsideOf(join(root, "pages/a.jxn"), remembered())).toEqual({
+      components: {},
       layout: false,
       state: false,
     });
@@ -65,6 +67,7 @@ describe("what a project gives a document", () => {
       "project.json": JSON.stringify({ defaults: { layout: "./layouts/base.json" }, name: "x" }),
     });
     expect(outsideOf(join(root, "pages/a.jxn"), remembered())).toEqual({
+      components: {},
       layout: true,
       state: false,
     });
@@ -73,6 +76,7 @@ describe("what a project gives a document", () => {
   test("is its state and no layout, for a layout, which the default one does not wrap", () => {
     const root = folder({ "project.jxn": WITH_BOTH });
     expect(outsideOf(join(root, "layouts/base.jxn"), remembered())).toEqual({
+      components: {},
       layout: false,
       state: true,
     });
@@ -80,17 +84,21 @@ describe("what a project gives a document", () => {
 
   test("is nothing for a component, which is a scope of its own", () => {
     const root = folder({ "project.jxn": WITH_BOTH });
-    expect(outsideOf(join(root, "components/card.jxn"), remembered())).toEqual({});
+    expect(outsideOf(join(root, "components/card.jxn"), remembered())).toEqual({
+      components: {},
+    });
   });
 
   test("is everything when the project file cannot be read, so its own error is the one told", () => {
     const typo = folder({ "project.jxn": 'project "x"\nstate {\n' });
     expect(outsideOf(join(typo, "pages/a.jxn"), remembered())).toEqual({
+      components: {},
       layout: true,
       state: true,
     });
     const broken = folder({ "project.json": "{" });
     expect(outsideOf(join(broken, "pages/a.jxn"), remembered())).toEqual({
+      components: {},
       layout: true,
       state: true,
     });
@@ -99,12 +107,14 @@ describe("what a project gives a document", () => {
   test("is everything when the folder holds both project files, which nothing chooses between", () => {
     const both = folder({ "project.json": '{"name":"x"}', "project.jxn": WITH_NEITHER });
     expect(outsideOf(join(both, "pages/a.jxn"), remembered())).toEqual({
+      components: {},
       layout: true,
       state: true,
     });
     // The second is another tool's file by the same name, and still leaves two to choose between.
     const shared = folder({ "project.json": '{"targets":{}}', "project.jxn": WITH_NEITHER });
     expect(outsideOf(join(shared, "pages/a.jxn"), remembered())).toEqual({
+      components: {},
       layout: true,
       state: true,
     });
@@ -115,8 +125,51 @@ describe("what a project gives a document", () => {
     const page = join(root, "app/pages/a.jxn");
     const inside = remembered(join(root, "app"));
     expect(outsideOf(page, inside)).toEqual({});
-    expect(outsideOf(page, remembered(root))).toEqual({ layout: true, state: true });
-    expect(outsideOf(page, remembered())).toEqual({ layout: true, state: true });
+    expect(outsideOf(page, remembered(root))).toEqual({
+      components: {},
+      layout: true,
+      state: true,
+    });
+    expect(outsideOf(page, remembered())).toEqual({ components: {}, layout: true, state: true });
+  });
+
+  test("is each component the project keeps, by its tag, as a path from the document", () => {
+    const root = folder({
+      "components/README.md": "",
+      "components/card.jxn": "div\n",
+      "components/nested/in-ner.jxn": "in-ner\n",
+      "components/old-card.json": "{}",
+      "components/x-card.jxn": "x-card\n",
+      "components/y-band.jxn": "y-band\n",
+      "project.jxn": WITH_NEITHER,
+    });
+    // A file with no hyphen names no tag, a `.json` one says no types, and a folder is not read.
+    expect(outsideOf(join(root, "pages/blog/a.jxn"), remembered())).toEqual({
+      components: {
+        "x-card": "../../components/x-card.jxn",
+        "y-band": "../../components/y-band.jxn",
+      },
+      layout: false,
+      state: false,
+    });
+    expect(outsideOf(join(root, "index.jxn"), remembered()).components).toEqual({
+      "x-card": "./components/x-card.jxn",
+      "y-band": "./components/y-band.jxn",
+    });
+    // A component uses the others, and itself, as any document does.
+    expect(outsideOf(join(root, "components/x-card.jxn"), remembered())).toEqual({
+      components: { "x-card": "./x-card.jxn", "y-band": "./y-band.jxn" },
+    });
+  });
+
+  test("is a component added since the last document was read", () => {
+    const root = folder({ "project.jxn": WITH_NEITHER });
+    const page = join(root, "pages/a.jxn");
+    const project = remembered();
+    expect(outsideOf(page, project).components).toEqual({});
+    mkdirSync(join(root, "components"));
+    writeFileSync(join(root, "components/x-card.jxn"), "x-card\n");
+    expect(outsideOf(page, project).components).toEqual({ "x-card": "../components/x-card.jxn" });
   });
 
   test("is read again only when the project file has changed", () => {
@@ -126,16 +179,16 @@ describe("what a project gives a document", () => {
     const saved = new Date("2026-01-01T00:00:00Z");
     utimesSync(file, saved, saved);
     const project = remembered();
-    expect(outsideOf(page, project)).toEqual({ layout: true, state: true });
+    expect(outsideOf(page, project)).toEqual({ components: {}, layout: true, state: true });
 
     // Different text under the same name and time is the file the compile has already read.
     writeFileSync(file, WITH_NEITHER);
     utimesSync(file, saved, saved);
-    expect(outsideOf(page, project)).toEqual({ layout: true, state: true });
+    expect(outsideOf(page, project)).toEqual({ components: {}, layout: true, state: true });
 
     const later = new Date("2026-01-02T00:00:00Z");
     utimesSync(file, later, later);
-    expect(outsideOf(page, project)).toEqual({ layout: false, state: false });
+    expect(outsideOf(page, project)).toEqual({ components: {}, layout: false, state: false });
   });
 });
 

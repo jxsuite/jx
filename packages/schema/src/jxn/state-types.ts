@@ -128,6 +128,11 @@ export function parametersOf(definition: JsonValue | undefined): string[] {
 
 /** What a document is given that it does not say, which only its project knows. */
 export interface OutsideState {
+  /**
+   * The components the project keeps (`imports.md` §1.4), which a document uses without declaring
+   * them: the `.jxn` file each one is, by its tag, as a path from the document.
+   */
+  components?: Readonly<Record<string, string>> | undefined;
   /** The project names a default layout, which wraps a document that names none. */
   layout?: boolean | undefined;
   /** The project has `state` of its own, which every page reads (`site-architecture.md` §3.2). */
