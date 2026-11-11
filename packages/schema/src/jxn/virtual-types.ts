@@ -19,10 +19,21 @@
  *
  * @docs framework/concepts/functions
  */
-import { classifyFunctionEntries } from "../function-role";
 import { isJsonObject } from "../guards";
-import { parametersOf, propertyName, stateIndex, stateOf, typeOfEntry } from "./state-types";
-import type { JsonValue, JxElement } from "../../types";
+import {
+  boundEvents,
+  eventLines,
+  eventType,
+  itemType,
+  membersOf,
+  pointerInto,
+  readsRow,
+  rootSite,
+  siteInto,
+} from "./document-scopes";
+import type { Site, StateScope } from "./document-scopes";
+import { parametersOf, propertyName, stateIndex, typeOfEntry } from "./state-types";
+import type { JsonObject, JsonValue, JxElement } from "../../types";
 
 /** Where a body sits in a document. */
 export type VirtualTarget =
@@ -57,57 +68,73 @@ export interface VirtualBody {
  */
 export const UNRESOLVED_MODULE_CODES: ReadonlySet<number> = new Set([2307, 2792, 7016]);
 
-/**
- * The elements whose `state` a body can read, outermost first: the root, then each element on the
- * way down to the one holding the handler. A nested element's scope extends its parent's.
- */
-function scopeChain(doc: JxElement, path: readonly (string | number)[]): JsonValue[] {
-  // SAFETY: a document is JSON data; its types name what it holds.
-  let current: JsonValue | undefined = doc as JsonValue;
-  const chain: JsonValue[] = [current];
-  for (const segment of path) {
-    current = Array.isArray(current)
-      ? current[Number(segment)]
-      : isJsonObject(current)
-        ? current[String(segment)]
-        : undefined;
-    if (stateOf(current)) {
-      // SAFETY: `stateOf` only answers for an object.
-      chain.push(current as JsonValue);
-    }
-  }
-  return chain;
+/** What a target names: the function entry, and what surrounds the element that holds it. */
+interface Located {
+  definition: JsonValue | undefined;
+  /** The type of the event the body is given. */
+  event: string;
+  site: Site;
 }
 
-/** The function entry a target names. */
-function definitionOf(doc: JxElement, target: VirtualTarget): JsonValue | undefined {
-  // SAFETY: a document is JSON data; its types name what it holds.
-  const root = doc as JsonValue;
+/** Find a target in a document. */
+function locate(doc: JsonObject, target: VirtualTarget): Located {
+  let site = rootSite(doc);
   if (target.kind === "state") {
-    return stateOf(root)?.[target.key];
+    const event = boundEvents(doc).get(pointerInto("/state", target.key)) ?? "any";
+    return { definition: isJsonObject(doc.state) ? doc.state[target.key] : undefined, event, site };
   }
-  let owner: JsonValue | undefined = root;
+  let owner: JsonValue | undefined = doc;
+  let pointer = "";
   for (const segment of target.path) {
-    owner = Array.isArray(owner)
+    const child: JsonValue | undefined = Array.isArray(owner)
       ? owner[Number(segment)]
       : isJsonObject(owner)
         ? owner[String(segment)]
         : undefined;
+    pointer = pointerInto(pointer, segment);
+    site = siteInto(site, owner, segment, child, pointer);
+    owner = child;
   }
-  return isJsonObject(owner) ? owner[target.eventKey] : undefined;
+  return isJsonObject(owner)
+    ? { definition: owner[target.eventKey], event: eventType(owner, target.eventKey, site), site }
+    : { definition: undefined, event: "any", site };
 }
 
-/** The members of `State`, each from the innermost element that declares it. */
-function stateMembers(chain: readonly JsonValue[]): Map<string, string> {
-  const members = new Map<string, string>();
-  for (const node of chain) {
-    // SAFETY: a document is JSON data, and the chain holds only elements that carry state.
-    const roles = classifyFunctionEntries(node as JxElement);
-    for (const [key, entry] of Object.entries(stateOf(node) ?? {})) {
-      members.set(propertyName(key), typeOfEntry(entry, roles.get(key)));
-    }
+/**
+ * Write the `State` a body reads: one interface for each element on the way down that has `state`,
+ * each under the one around it, and over them the row of the map the body is drawn in.
+ */
+function stateLines(site: Site, index: string): string[] {
+  const chain: StateScope[] = [];
+  for (let at: StateScope | null = site.scope; at; at = at.parent) {
+    chain.unshift(at);
   }
-  return members;
+  const inRow = site.row !== null && readsRow(site.scope);
+  // The innermost is `State` itself, unless the row is written over it.
+  const nameOf = (scope: StateScope): string =>
+    scope === site.scope && !inRow ? "State" : `State$${chain.indexOf(scope)}`;
+  const lines: string[] = [];
+  for (const scope of chain) {
+    const { inherited, own } = membersOf(scope);
+    const around = scope.parent ? nameOf(scope.parent) : null;
+    const closed = around === null || inherited !== null;
+    lines.push(`interface ${nameOf(scope)}${closed ? "" : ` extends ${around}`} {`);
+    for (const key of inherited ?? []) {
+      lines.push(`  ${propertyName(key)}: ${around}[${JSON.stringify(key)}];`);
+    }
+    for (const { entry, key, role } of own) {
+      lines.push(`  ${propertyName(key)}: ${typeOfEntry(entry, role)};`);
+    }
+    lines.push(...(closed ? [`  ${index}`, "}"] : ["}"]));
+  }
+  if (site.row && inRow) {
+    lines.push(
+      `interface State extends ${nameOf(site.scope)} {`,
+      `  $map: { item: ${itemType(site.row, nameOf)}; index: number };`,
+      "}",
+    );
+  }
+  return lines;
 }
 
 /**
@@ -124,21 +151,21 @@ export function generateBodyTypes(
   target: VirtualTarget,
   body: string,
 ): VirtualBody {
-  const params = parametersOf(definitionOf(doc, target));
-  const chain = scopeChain(doc, target.kind === "event" ? target.path : []);
-  const members = [...stateMembers(chain)].map(([name, type]) => `  ${name}: ${type};`);
-  members.push(`  ${stateIndex(doc)}`);
-  const signature = params.map((name) => `${name}: ${name === "state" ? "State" : "any"}`);
+  // SAFETY: a document is JSON data; its types name what it holds.
+  const located = locate(doc as JsonObject, target);
+  const params = parametersOf(located.definition);
   /* The event a handler receives is bound to a name only when the entry declares one, though the
      runtime passes it and `window.event` holds it. Not declaring it would call a working handler
-     an error, so it is `any` wherever it is not a parameter. */
+     an error, so it is declared wherever it is not a parameter. */
+  const event = eventLines(located.event, params);
+  // A handler is called with its state and the event, in that order (`spec.md` §5.3).
+  const signature = params.map(
+    (name, at) => `${name}: ${at === 0 ? "State" : at === 1 ? event.parameter : "any"}`,
+  );
   const head = [
     "export {};",
-    "interface State {",
-    ...members,
-    "}",
-    "declare const event: any;",
-    `async function body(${["this: any", ...signature].join(", ")}) {`,
+    ...stateLines(located.site, stateIndex(doc)),
+    `${event.head}async function body(${["this: any", ...signature].join(", ")}) {`,
     "",
   ].join("\n");
   return {

@@ -48,6 +48,7 @@ A language server runs a mapper only when the editor tells it the project may ru
 - A document's client script and server script.
 - Every string `body`: a function in `state`, an event handler, at the root or in a nested section.
 - `State`, the type of the document's `state`, which a script names without importing and a `.ts` file can import from the document.
+- The event each handler is given, typed by its binding and its element, and `state.$map`, the row of a repeated element.
 
 A `.json` document, a `${}` template, `$defs` and a class's methods are not read. The [Type checking](https://jxsuite.com/docs/framework/concepts/type-checking) page has the full account, with the limits of rename.
 

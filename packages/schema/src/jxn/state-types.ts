@@ -85,10 +85,7 @@ function typeOfKeyword(type: JsonValue | undefined): string {
 }
 
 /** The type of one `state` entry, by the shapes of `spec.md` §5. */
-export function typeOfEntry(
-  entry: JsonValue | undefined,
-  role: "computed" | "callable" | undefined,
-): string {
+export function typeOfEntry(entry: JsonValue | undefined, role?: "computed" | "callable"): string {
   if (isString(entry)) {
     // A template is a computed value of a type the document does not give.
     return entry.includes("${") ? "any" : "string";
