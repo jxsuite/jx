@@ -12,7 +12,6 @@ import {
   expressionsAt,
   itemType,
   membersOf,
-  pointerInto,
   readsRow,
   rootSite,
   siteInto,
@@ -44,14 +43,6 @@ function sitesOf(doc: JsonObject): [string, string, boolean, boolean][] {
   });
   return seen;
 }
-
-describe("a pointer one step down", () => {
-  test("escapes what a JSON Pointer reads as its own", () => {
-    expect(pointerInto("", "state")).toBe("/state");
-    expect(pointerInto("/children", 0)).toBe("/children/0");
-    expect(pointerInto("/state", "a/b~c")).toBe("/state/a~1b~0c");
-  });
-});
 
 describe("what surrounds a value", () => {
   test("starts at the root, which is a scope whether or not it has state", () => {

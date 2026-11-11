@@ -117,8 +117,76 @@ describe("State", () => {
       "c: number;",
       "d: boolean;",
       "e: any[];",
-      "f: any;",
+      "f: { [key: string]: any; };",
     ]);
+  });
+
+  test("reads the schema a typed entry declares, in type or beside it", () => {
+    const doc = asDoc({
+      state: {
+        a: { default: [], type: { items: { type: "string" }, type: "array" } },
+        b: { default: "idle", enum: ["idle", "loading"], type: "string" },
+        c: { default: null, type: ["string", "null"] },
+        d: { properties: { id: { type: "integer" } }, required: ["id"], type: "object" },
+        e: { default: 1, type: { anyOf: [{ type: "number" }, { type: "string" }] } },
+      },
+    });
+    expect(stateOf(generateBodyTypes(doc, { key: "a", kind: "state" }, "").text)).toEqual([
+      "a: string[];",
+      'b: "idle" | "loading";',
+      "c: string | null;",
+      "d: { id: number; };",
+      "e: number | string;",
+    ]);
+  });
+
+  test("reads the value written beside a type that says nothing of what it holds", () => {
+    const doc = asDoc({
+      state: {
+        a: { default: [1, 2], type: "array" },
+        b: { default: { x: 1 }, type: "object" },
+        c: { default: [], type: "array" },
+        d: { default: null, type: "object" },
+        e: { default: "x", format: "image" },
+        f: { default: 1, type: "string" },
+      },
+    });
+    expect(stateOf(generateBodyTypes(doc, { key: "a", kind: "state" }, "").text)).toEqual([
+      "a: number[];",
+      "b: { x: number };",
+      "c: any[];",
+      "d: { [key: string]: any; };",
+      "e: string;",
+      "f: string;",
+    ]);
+  });
+
+  test("names a definition the document holds, which the file declares before State", () => {
+    const doc = asDoc({
+      $defs: {
+        Item: { properties: { id: { type: "integer" } }, required: ["id"], type: "object" },
+      },
+      state: {
+        items: { default: [], type: { items: { $ref: "#/$defs/Item" }, type: "array" } },
+        one: { default: null, type: { $ref: "#/$defs/Item" } },
+      },
+    });
+    const { text } = generateBodyTypes(doc, { key: "items", kind: "state" }, "");
+    expect(declarationsOf(text).slice(0, 3)).toEqual([
+      "namespace $defs {",
+      "  export type Item = { id: number; };",
+      "}",
+    ]);
+    expect(stateOf(text)).toEqual(["items: $defs.Item[];", "one: $defs.Item;"]);
+  });
+
+  test("reads a reference as any in a document that holds no definitions", () => {
+    const doc = asDoc({
+      state: { one: { default: null, type: { $ref: "#/$defs/Item" } } },
+    });
+    const { text } = generateBodyTypes(doc, { key: "one", kind: "state" }, "");
+    expect(text).not.toContain("namespace");
+    expect(stateOf(text)).toEqual(["one: any;"]);
   });
 
   test("types a callable and a computed Function entry differently", () => {

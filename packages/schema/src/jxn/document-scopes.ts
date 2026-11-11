@@ -16,7 +16,8 @@ import { classifyFunctionEntries } from "../function-role";
 import type { FunctionRole } from "../function-role";
 import { isFunctionDef, isJsonObject, isNumber, isRef, isString } from "../guards";
 import type { JsonObject, JsonValue, JxElement } from "../../types";
-import { propertyName, stateOf, typeOfEntry } from "./state-types";
+import { pointerInto, propertyName } from "./schema-types";
+import { stateOf, typeOfEntry } from "./state-types";
 
 /** An element whose `state` a body can read. */
 export interface StateScope {
@@ -57,11 +58,6 @@ export const EVENT_GLOBALS = [
   "}",
   "",
 ].join("\n");
-
-/** A JSON Pointer one step down. */
-export function pointerInto(pointer: string, key: string | number): string {
-  return `${pointer}/${String(key).replaceAll("~", "~0").replaceAll("/", "~1")}`;
-}
 
 /** The site of a document's root, which is a scope whether or not it has `state`. */
 export function rootSite(doc: JsonObject): Site {

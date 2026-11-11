@@ -7,6 +7,7 @@ code:
   - packages/schema/src/jxn/virtual-document.ts
   - packages/schema/src/jxn/document-scopes.ts
   - packages/schema/src/jxn/state-types.ts
+  - packages/schema/src/jxn/schema-types.ts
   - packages/content-mapper/src/mapper.ts
   - packages/content-mapper/src/server.ts
 ---
@@ -137,6 +138,7 @@ Inside a script, `State` is the type of the document's `state`, in scope without
 | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
 | A string, number or boolean                                | `string`, `number`, `boolean`                                                                          |
 | An object or an array                                      | Its shape, or the types of its items                                                                   |
+| An entry with a `type`                                     | What its schema says ([Declared types](#declared-types))                                               |
 | `(export)name`                                             | The type of the export it names, or of its return value when the document reads it as a computed value |
 | `(server)name`                                             | What the server function resolves to, or `null` before it has answered                                 |
 | `(fn)name` with a body                                     | A function, or any type when the document reads it as a computed value                                 |
@@ -149,6 +151,78 @@ A handler on an element inside a section with its own `state` sees that state an
 **Whether an unknown name is an error depends on what surrounds the document.** A page with a layout, or in a project whose project file has `state` of its own, reads entries the page never declares. There `state.anything` is allowed, and only the names the page does declare are typed. A page with neither, and every component, is exact: `state.total` above is an error because nothing else could have declared it. A name that begins with `$`, such as `state.$media`, is always allowed.
 
 The mapper learns this from the nearest project file at or above the document, and looks no higher than the folder `tsconfig.jxn.json` is in. That is why the file goes beside your project file.
+
+## Declared types
+
+An entry can say what it holds instead of leaving it to its first value. That matters most for a list that starts empty, which proves nothing about its items. Write the types once in `$defs`, and name them from `state`:
+
+```kdl
+$defs {
+  TodoItem {
+    type object
+    properties {
+      id type=integer
+      text type=string
+      done type=boolean
+    }
+    required id text
+  }
+  Status {
+    type string
+    enum idle loading
+  }
+}
+todo-list {
+  state {
+    items {
+      type type=array items=(ref)"#/$defs/TodoItem"
+      (array)default
+    }
+    status type=(ref)"#/$defs/Status" default=idle
+    (fn)add "state.items.push({ id: 1, text: 2 })"
+    (fn)finish "state.status = \"done\"; state.items[0].done.valueOf()"
+  }
+  p "${state.items[0].txt}"
+}
+```
+
+```text
+todo-list.jxn(23,40): error TS2322: Type 'number' is not assignable to type 'string'.
+todo-list.jxn(24,17): error TS2322: Type '"done"' is not assignable to type 'Status'.
+todo-list.jxn(24,42): error TS2532: Object is possibly 'undefined'.
+todo-list.jxn(26,23): error TS2551: Property 'txt' does not exist on type 'TodoItem'. Did you mean 'text'?
+```
+
+A definition is named in an error as you named it. Each one is a type in a namespace called `$defs`, so `#/$defs/TodoItem` is `$defs.TodoItem`, and a `.ts` file can use it:
+
+```ts
+import type { $defs } from "./components/todo-list.jxn";
+
+export const first: $defs.TodoItem = { id: 1, text: "Write the docs" };
+```
+
+A schema is read keyword by keyword:
+
+| Schema                                          | Type                                                                   |
+| ----------------------------------------------- | ---------------------------------------------------------------------- |
+| `type` of `string`, `number`, `boolean`, `null` | That type. `integer` is `number`                                       |
+| `type` with several names                       | Any one of them                                                        |
+| `enum`, `const`                                 | Exactly those values, when each is a string, number, boolean or `null` |
+| `type=array`                                    | A list of what `items` says                                            |
+| `type=object`                                   | Each of `properties`, optional unless `required` lists it              |
+| `anyOf`, `oneOf`                                | Any one of the schemas                                                 |
+| `allOf`                                         | All of the schemas at once                                             |
+| `$ref` to `#/$defs/Name`                        | That definition                                                        |
+
+Three rules decide the rest:
+
+- **A schema with no `type` is any type.** `properties` alone does not make an object, because in JSON Schema it constrains nothing until `type` says the value is one. Keywords that validate a value, such as `minimum`, `pattern` and `format`, say nothing about its type.
+- **An object is exact about its properties.** Reading or writing one the schema does not list is an error, which is how a misspelling is caught. Add `additionalProperties=#true` to allow any other key.
+- **A vague type gives way to the default.** `type=array` with no `items`, `type=object` with no `properties`, or no `type` at all says nothing about what is inside, so an entry with a `default` is typed from that value. `nums type=array` with a default of `1` and `2` is a list of numbers. A type that does say what is inside always wins over the default.
+
+A `$ref` to a definition the document does not have is an error at the name, which says that `$defs` has no exported member of that name. A `$ref` to another file, or deeper into a definition (`#/$defs/TodoItem/properties/id`), is any type.
+
+A `required` list needs more than one name to be a list. Write `(array)required id` for a single name, since `required id` alone is a string and makes nothing required.
 
 ## Events and rows
 
@@ -333,8 +407,8 @@ TypeScript 7.1's language server reads the same `tsconfig.jxn.json`, and through
 - **Errors** at the same positions `tsc` prints.
 - **Hover** on `state.count` in a body or a template, or on `count` in `"#/state/count"`, shows `(property) State.count: number`. Hover on an event parameter shows the event and the element, such as `KeyboardEvent & { readonly currentTarget: HTMLButtonElement; ... }`.
 - **Completion** after `state.` lists the document's entries.
-- **Go to definition** from `state.hello` in a body offers the entry and the function in the script that it exports. From a name in a `$ref` it goes to the entry, and from a prop's name it goes to the component's entry, in the component's file.
-- **Rename** of an entry rewrites the entry, the script, every body and template that reads it and every `$ref` that names it, in the document's `state` or a nested section's. It can start from any of them. Renaming a script's function rewrites the `$export` that names it. Renaming a component's entry also rewrites the prop in every `.jxn` document that sets it, and renaming the prop renames the entry.
+- **Go to definition** from `state.hello` in a body offers the entry and the function in the script that it exports. From a name in a `$ref` it goes to the entry, and from a prop's name it goes to the component's entry, in the component's file. From the name at the end of `"#/$defs/TodoItem"` it goes to the definition.
+- **Rename** of an entry rewrites the entry, the script, every body and template that reads it and every `$ref` that names it, in the document's `state` or a nested section's. It can start from any of them. Renaming a script's function rewrites the `$export` that names it. Renaming a component's entry also rewrites the prop in every `.jxn` document that sets it, and renaming the prop renames the entry. Renaming a definition rewrites every `$ref` to it in the document, and renaming a property in a definition rewrites the bodies and templates that read it.
 
 The language server runs a mapper only when the editor tells it the project may run external code, which is the editor's form of `--runExternalCode`. Until it does, a `.jxn` file gets no errors, no hover and no completion, and nothing says why.
 
@@ -345,7 +419,9 @@ There is no Jx editor extension yet. Your editor has to be told by hand that a `
 - **`.json` documents** are not read. Studio checks their bodies.
 - **Studio does not use the mapper.** Its code editor checks a body on its own, and does not check a script, a template or a reference yet. `tsc` is what checks those today.
 - **`jx build` does not run it.** A build still accepts a document with a type error, so run the script in CI.
-- **`$defs` and a class's methods** are not checked.
+- **A class's methods** are not checked.
+- **`$defs` are read from the document that uses them.** A `$ref` to a definition in another file is any type, and so is a definition whose name is not an identifier, such as `todo-item`.
+- **Renaming a property does not rewrite `required`.** The list holds the old name, so the property becomes optional and the next check usually says so.
 - **Props are checked only in `$props`, and only against a `.jxn` component.** A property or an attribute written on the instance itself is not held against the component. A prop named for a private entry, such as `#cache`, is not reported here, though the page refuses to set it.
 - **A new component is seen when a document is next read.** Add a file to `components` while your editor is open, and a page that already uses the tag is checked against it after the page's next edit.
 - **A handler reached through a longer path is not checked as one.** `onclick=(ref)"#/state/actions/save"` has its path checked, and not whether `save` is a function.

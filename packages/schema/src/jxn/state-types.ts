@@ -19,7 +19,9 @@ import {
   paramNames,
   hasSchemaKeywords,
 } from "../guards";
-import type { JsonValue, JxElement } from "../../types";
+import { pointerInto, propertyName, schemaParts, written } from "./schema-types";
+import type { JsonObject, JsonValue, JxElement } from "../../types";
+import type { SchemaSite, TypePart } from "./schema-types";
 
 /** The most levels of an object's shape written out before it is `any`. */
 const MAX_NESTING = 4;
@@ -27,13 +29,8 @@ const MAX_NESTING = 4;
 /** The most distinct item types an array's type is built from. */
 const MAX_ITEM_TYPES = 6;
 
-/** Whether a key can be written as a bare property name. */
-export const IDENTIFIER = /^[A-Za-z_$][\w$]*$/u;
-
-/** A property name as TypeScript writes it. */
-export function propertyName(key: string): string {
-  return IDENTIFIER.test(key) ? key : JSON.stringify(key);
-}
+/** What a `type` keyword says with nothing beside it, which a value written there says better. */
+const VAGUE = new Set(["any", "any[]", "{ [key: string]: any; }"]);
 
 /** The type a value's shape gives it, widened the way a mutable binding widens. */
 function typeOfValue(value: JsonValue | undefined, depth: number): string {
@@ -62,48 +59,63 @@ function typeOfValue(value: JsonValue | undefined, depth: number): string {
   return "any";
 }
 
-/** The type a JSON Schema `type` keyword names. */
-function typeOfKeyword(type: JsonValue | undefined): string {
-  switch (type) {
-    case "string": {
-      return "string";
-    }
-    case "number":
-    case "integer": {
-      return "number";
-    }
-    case "boolean": {
-      return "boolean";
-    }
-    case "array": {
-      return "any[]";
-    }
-    default: {
-      return "any";
-    }
-  }
+/**
+ * The type a typed entry declares (`spec.md` §5.3): `type` holds its schema, or is the first
+ * keyword of one whose others stand beside it.
+ */
+function declaredParts(entry: JsonObject, site: SchemaSite): TypePart[] {
+  const declared = isJsonObject(entry.type)
+    ? schemaParts(entry.type, { ...site, pointer: pointerInto(site.pointer, "type") })
+    : schemaParts(entry, site);
+  const { default: initial } = entry;
+  // `type: "array"` beside `default: [1, 2]` is a list of numbers, which only the value says.
+  const told = initial !== undefined && initial !== null && VAGUE.has(written(declared));
+  return told ? [typeOfValue(initial, 0)] : declared;
 }
 
-/** The type of one `state` entry, by the shapes of `spec.md` §5. */
-export function typeOfEntry(entry: JsonValue | undefined, role?: "computed" | "callable"): string {
+/**
+ * The type of one `state` entry, by the shapes of `spec.md` §5, in parts.
+ *
+ * @param entry The entry.
+ * @param role What its document uses it as, when it is a function.
+ * @param site Where it is, and whether its document has `$defs`.
+ */
+export function entryParts(
+  entry: JsonValue | undefined,
+  role: "computed" | "callable" | undefined,
+  site: SchemaSite,
+): TypePart[] {
   if (isString(entry)) {
     // A template is a computed value of a type the document does not give.
-    return entry.includes("${") ? "any" : "string";
+    return [entry.includes("${") ? "any" : "string"];
   }
   if (!isJsonObject(entry)) {
-    return typeOfValue(entry, 0);
+    return [typeOfValue(entry, 0)];
   }
   if (isFunctionDef(entry)) {
-    return role === "computed" ? "any" : "(...args: any[]) => any";
+    return [role === "computed" ? "any" : "(...args: any[]) => any"];
   }
   if (isString(entry.$prototype) || isExpressionDef(entry) || isServerFnDef(entry)) {
-    return "any";
+    return ["any"];
   }
-  if ("default" in entry) {
-    const { default: initial } = entry;
-    return initial === null ? typeOfKeyword(entry.type) : typeOfValue(initial, 0);
-  }
-  return hasSchemaKeywords(entry) ? typeOfKeyword(entry.type) : typeOfValue(entry, 0);
+  return "default" in entry || hasSchemaKeywords(entry)
+    ? declaredParts(entry, site)
+    : [typeOfValue(entry, 0)];
+}
+
+/**
+ * The type of one `state` entry, as text.
+ *
+ * @param entry The entry.
+ * @param role What its document uses it as, when it is a function.
+ * @param defs Whether its document has `$defs`.
+ */
+export function typeOfEntry(
+  entry: JsonValue | undefined,
+  role?: "computed" | "callable",
+  defs = false,
+): string {
+  return written(entryParts(entry, role, { defs, pointer: "" }));
 }
 
 /** The `state` object of an element, when it has one. */

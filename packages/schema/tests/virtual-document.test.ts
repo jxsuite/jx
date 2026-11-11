@@ -980,6 +980,162 @@ const PROPS = [
   "declare const unchecked: any;",
 ];
 
+describe("the types a document declares", () => {
+  const source = file(
+    "$defs {",
+    "  TodoItem {",
+    "    type object",
+    "    properties {",
+    "      id type=integer",
+    "      text type=string",
+    '      parent (ref)"#/$defs/TodoItem"',
+    '      "my key" { $ref "#/$defs/Status" }',
+    "    }",
+    "    required id text",
+    "  }",
+    "  Status {",
+    "    type string",
+    "    enum idle loading",
+    "  }",
+    '  "not-a-name" type=string',
+    "}",
+    "todo-list {",
+    "  state {",
+    "    items {",
+    '      type type=array items=(ref)"#/$defs/TodoItem"',
+    "      (array)default",
+    "    }",
+    '    status type=(ref)"#/$defs/Status" default=idle',
+    '    lost type=(ref)"#/$defs/Nope" default=#null',
+    '    odd type=(ref)"#/$defs/not-a-name" default=#null',
+    "    nums type=array {",
+    "      default { - 1; - 2 }",
+    "    }",
+    '    (fn)add "state.items.push({ id: 1, text: 2 })"',
+    "  }",
+    "}",
+  );
+  const written = generate(source);
+
+  /** Each span of the main module: what the module says, and the line and column it was written at. */
+  function placed(): string[] {
+    return written.main.spans.map((span) => {
+      const before = source.slice(0, span.originalStart).split("\n");
+      const text = written.main.text.slice(
+        span.virtualStart,
+        span.virtualStart + span.virtualLength,
+      );
+      return `${text} ${before.length}:${(before.at(-1)?.length ?? 0) + 1}`;
+    });
+  }
+
+  test("are a namespace of its definitions, which its State names", () => {
+    expect(written.main.text).toBe(
+      file(
+        "export interface State {",
+        "  items: $defs.TodoItem[];",
+        "  status: $defs.Status;",
+        "  lost: $defs.Nope;",
+        "  odd: any;",
+        "  nums: number[];",
+        "  add: (...args: any[]) => any;",
+        `  ${CLOSED}`,
+        "}",
+        "export namespace $defs {",
+        '  export type TodoItem = { id: number; text: string; parent?: $defs.TodoItem; "my key"?: $defs.Status; };',
+        '  export type Status = "idle" | "loading";',
+        "}",
+        'export interface $elements { "todo-list": State }',
+      ),
+    );
+    expect(written.problems).toEqual([]);
+    expectSound(written, source);
+  });
+
+  test("say where each name was written: an entry, a definition, a property, and the end of a reference", () => {
+    expect(placed()).toEqual([
+      "items 20:5",
+      "TodoItem 21:43",
+      "status 24:5",
+      "Status 24:31",
+      "lost 25:5",
+      "Nope 25:29",
+      "odd 26:5",
+      "nums 27:5",
+      "add 30:9",
+      "TodoItem 2:3",
+      "id 5:7",
+      "text 6:7",
+      "parent 7:7",
+      "TodoItem 7:28",
+      '"my key" 8:7',
+      "Status 8:32",
+      "Status 12:3",
+    ]);
+    expect(mapped(written.main, source).filter(([kind]) => kind !== "verbatim")).toEqual([
+      ["atom", '"my key"', '"my key"'],
+    ]);
+  });
+
+  test("are not written for a document that holds none, where a reference is any", () => {
+    const { main } = generate(
+      file("div {", '  state { one type=(ref)"#/$defs/Item" default=#null }', "}"),
+    );
+    expect(main.text).toBe(
+      file("export interface State {", "  one: any;", `  ${CLOSED}`, "}", DEFINES_NONE),
+    );
+  });
+
+  test("are an empty namespace where $defs holds nothing, so a reference into it is an error", () => {
+    const { main, problems } = generate(file("$defs", "div {", "  state { n 1 }", "}"));
+    expect(main.text).toBe(
+      file(
+        "export interface State {",
+        "  n: number;",
+        `  ${CLOSED}`,
+        "}",
+        "export namespace $defs {",
+        "}",
+        DEFINES_NONE,
+      ),
+    );
+    expect(problems).toEqual([]);
+  });
+
+  test("join every reference to a definition, however each is written and however often", () => {
+    const other = file(
+      "$defs {",
+      "  A type=string",
+      "  B {",
+      "    anyOf {",
+      '      - (ref)"#/$defs/A"',
+      '      - type="null"',
+      '      - $ref="#/$defs/A"',
+      '      - $ref=#"#/$defs/A"#',
+      "    }",
+      "  }",
+      "}",
+      "div {",
+      "  state { n 1 }",
+      "}",
+    );
+    const { main } = generate(other);
+    expect(main.text).toContain("  export type B = $defs.A | null | $defs.A | $defs.A;\n");
+    const refs = mapped(main, other).filter(([, text]) => text === "A");
+    expect(refs).toEqual([
+      ["verbatim", "A", "A"],
+      ["verbatim", "A", "A"],
+      ["verbatim", "A", "A"],
+      ["verbatim", "A", "A"],
+    ]);
+  });
+
+  test("are what a body in the document reads its state by", () => {
+    const body = written.supplemental.find((unit) => unit.text.includes("state.items.push"));
+    expect(headOf(body)).toContain('import type { State } from "./a.jxn";');
+  });
+});
+
 describe("what a document defines", () => {
   /** The last line of a document's main module. */
   const defined = (source: string): string | undefined =>
