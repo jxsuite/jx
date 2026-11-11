@@ -639,6 +639,50 @@ describe("an editor on a document whose element declares a name of the state aro
   });
 });
 
+describe("an editor on a document whose parameters declare their types", () => {
+  const TYPED = [
+    "$defs {",
+    "  Task {",
+    "    type object",
+    "    properties { id type=integer }",
+    "  }",
+    "}",
+    "div {",
+    "  state {",
+    "    add {",
+    "      $prototype Function",
+    "      parameters {",
+    '        - { name task; type text="$defs.Task[]" }',
+    '        - name=other type=(ref)"#/$defs/Task"',
+    "      }",
+    '      body "void [task.length, other.id]"',
+    "    }",
+    "  }",
+    "}",
+    "",
+  ].join("\n");
+  const { rewritten, where } = alone("src/typed.jxn", TYPED);
+
+  test("renames a parameter written with its type, at its name and where the body uses it", async () => {
+    const block = [where("name task", 5, 4), where("task.length", 0, 4)].toSorted();
+    expect(await rewritten("name task", 6)).toEqual(block);
+    expect(await rewritten("task.length", 1)).toEqual(block);
+    const line = [where("name=other", 5, 5), where("other.id", 0, 5)].toSorted();
+    expect(await rewritten("name=other", 6)).toEqual(line);
+    expect(await rewritten("other.id", 1)).toEqual(line);
+  });
+
+  test("renames a definition inside the text of a type and at the end of a reference", async () => {
+    const all = [
+      where("Task {", 0, 4),
+      where("$defs.Task[]", 6, 4),
+      where('#/$defs/Task"', 8, 4),
+    ].toSorted();
+    expect(await rewritten("Task {", 1)).toEqual(all);
+    expect(await rewritten("$defs.Task[]", 7)).toEqual(all);
+  });
+});
+
 describe("an editor on a page of a project in a folder under the tsconfig", () => {
   const PAGE = 'div {\n  (fn)onclick "void state.shared"\n}\n';
 

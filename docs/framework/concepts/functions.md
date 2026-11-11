@@ -266,9 +266,11 @@ Optional metadata makes a function legible to tooling:
 | ------------- | --------------------------------------------------------------------- |
 | `arguments`   | Parameter names as plain strings, after the implicit `state`          |
 | `parameters`  | CEM-compatible parameter objects, a richer alternative to `arguments` |
-| `returns`     | JSON Schema describing the return value                               |
+| `type`        | The return value, as a JSON Schema or CEM `{ text }`                  |
 | `emits`       | CEM `Event` objects this function dispatches                          |
 | `description` | Documentation string, surfaced in Studio's completions                |
+
+A parameter object can carry a `type`, and a body is checked against it ([A parameter's type](/docs/framework/concepts/type-checking#a-parameters-type)). The function's own `type` is for tooling and is not checked.
 
 ## How it works
 

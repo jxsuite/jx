@@ -34,7 +34,7 @@ import {
 } from "./document-scopes";
 import type { Site, StateScope } from "./document-scopes";
 import { definitionParts, definitionsOf, pointerInto, propertyName, written } from "./schema-types";
-import { parametersOf, stateIndex, typeOfEntry } from "./state-types";
+import { declaredParameters, stateIndex, typeOfEntry } from "./state-types";
 import type { OutsideState } from "./state-types";
 import type { JsonObject, JsonValue, JxElement } from "../../types";
 
@@ -163,16 +163,20 @@ export function generateBodyTypes(
   // SAFETY: a document is JSON data; its types name what it holds.
   const data = doc as JsonObject;
   const located = locate(data, target);
-  const params = parametersOf(located.definition);
+  const defs = definitionsOf(data);
+  const declared = declaredParameters(located.definition, { defs: defs !== null, pointer: "" });
+  const params = declared.map((parameter) => parameter.name);
   /* The event a handler receives is bound to a name only when the entry declares one, though the
      runtime passes it and `window.event` holds it. Not declaring it would call a working handler
      an error, so it is declared wherever it is not a parameter. */
   const event = eventLines(located.event, params);
-  // A handler is called with its state and the event, in that order (`spec.md` §5.3).
-  const signature = params.map(
-    (name, at) => `${name}: ${at === 0 ? "State" : at === 1 ? event.parameter : "any"}`,
-  );
-  const defs = definitionsOf(data);
+  /* A handler is called with its state and the event, in that order (`spec.md` §5.3), and a
+     parameter that declares a type is that type, the event's place included (§23.3). */
+  const signature = declared.map((parameter, at) => {
+    const untyped = at === 1 ? event.parameter : "any";
+    const type = parameter.type === null ? untyped : written(parameter.type);
+    return `${parameter.name}: ${at === 0 ? "State" : type}`;
+  });
   const head = [
     "export {};",
     ...(defs ? [written(definitionParts(defs, false))] : []),
