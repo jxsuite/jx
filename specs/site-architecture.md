@@ -128,8 +128,6 @@ my-site/
 
 ### 2.2 Component Co-location
 
-> **Status: Partial.** The routing half ships: `_`-prefixed entries under `pages/` are skipped by route discovery (`packages/compiler/src/site/pages-discovery.ts`), and Studio's palette finds a co-located component (§10.3). The build does not compile one: `buildSite` in `packages/compiler/src/site/site-build.ts` compiles only the files directly in `components/` and never reads a page's `{ "$ref" }` `$elements` entry, so a page naming `./_blog-card.json` ships an empty `<blog-card></blog-card>` with no module and no build error.
-
 Components may be co-located with their pages. Files prefixed with `_` in the `pages/` directory are excluded from routing (following Astro's convention):
 
 ```
@@ -139,6 +137,8 @@ pages/
 │   ├── [slug].json              # → /blog/:slug (routed)
 │   └── _blog-card.json          # Not routed — local component
 ```
+
+A co-located component is not routed, and nothing about its location is special to the build: a page or layout that names it in `$elements` (`{ "$ref": "./_blog-card.json" }` from `pages/blog/index.json`) gets it compiled like any component in `components/` (§10.3). One that no document names is not compiled.
 
 ### 2.3 The Project File
 
@@ -1537,14 +1537,14 @@ These cascade without explicit import:
 
 ### 10.3 Component Scoping
 
-> **Status: Partial.** Project scoping ships: no other project's components reach the palette, and project `imports` apply project-wide (`packages/site/src/context.ts`). Discovery is not limited to `components/`: the dev server (`/__studio/components` in `packages/server/src/studio-api.ts`), the desktop (`discoverComponents` in `packages/desktop/src/backend/project-session.ts`) and the cloud host (`discoverComponents` in `packages/studio/src/platforms/cloud.ts`) find a component document anywhere in the project tree, which is what §2.2's co-located components need. The build compiles a narrower set than it discovers, so the second bullet does not hold for `jx build`: `buildSite` in `packages/compiler/src/site/site-build.ts` compiles only the files directly in `components/` (a non-recursive listing) and never reads a page's or layout's `{ "$ref" }` `$elements` entries, so `../components/nested/deep-card.json` or `./_blog-card.json` named there ships as an empty custom-element tag with no module and no build error, and only a component's own `$elements` dependencies compile from elsewhere in the tree. Those dependencies add no server entry to the worker either: the site build reads component `timing: "server"` entries only from the files directly in `components/` (`componentDefs` in `packages/compiler/src/site/site-build.ts`, compiler.md §6.3), so an entry that a dependency compiled from elsewhere declares gets no `/_jx/server/<export>` route and no build error.
-
 Components are scoped to the site project. When a site context is active:
 
-- Only components in the project's `components/` directory are discoverable
-- Explicit `$elements` imports in individual files add to (not replace) the project set
+- Every component document in the project tree is discoverable, whatever directory holds it: `components/`, a subdirectory of it, or a `_`-prefixed file beside the pages that use it (§2.2). `node_modules`, `dist` and hidden directories are not searched. Every host lists `.json` component documents; the dev server, which runs the project's format registry, also lists components written in an enabled format, and the cloud host bounds its walk (six directory levels, 400 JSON files) and also skips `build`.
+- Explicit `$elements` imports add to (not replace) the project set: an npm package's components join it once a document's or the project's `$elements` names the package or one of its modules (imports.md §2 says which hosts discover them)
 - Components from other projects or global scope do not appear in the palette or autocomplete
 - The `imports` map in `project.json` defines project-wide `$prototype` resolutions
+
+Discovery is what an editor offers; compilation is what a build emits, and the two sets differ. `jx build` compiles every component document directly in `components/` (the ones a page may use undeclared, imports.md §1.4) and every component that a page, each layout wrapping it or `project.json` names by `{ "$ref" }` in `$elements`, followed through each compiled component's own `$elements`, wherever the file lives. A `$ref` resolves against the directory of the document that declares it, and `project.json`'s against the project root. Every compiled component is emitted by tag, as `components/<tag>.js` and `components/<tag>.css`, and its `timing: "server"` entries are served like any other component's (compiler.md §6.3). A declared `$ref` that names no file, a file outside the project or a document with no hyphenated `tagName` fails the build, and so do two compiled files that declare one `tagName`; the message names the declaring document, the entry and the path it resolved to, the page itself still builds, and the first file keeps the tag.
 
 This ensures that each site is a self-contained unit — moving between components, pages, and layouts within a project always sees the same component registry.
 
@@ -1694,7 +1694,8 @@ Discover pages/         → route table
 Discover content/       → content index, held entries left out (§7.6)
 Resolve $paths          → expand dynamic routes
     ↓
-Compile components/     → element modules + CSS
+Compile components      → element modules + CSS: components/, plus every
+                          component a page, layout or project.json names (§10.3)
 Collect server entries  → from components and project.json state
     ↓
 For each route:

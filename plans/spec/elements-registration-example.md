@@ -26,7 +26,7 @@ The prose under it says to register the document "in the top-level `$elements` m
 
 **What is wrong.** `git grep -n '"\$elements": *{' -- ':!*schema.json'` finds the keyed map in exactly three authored places: spec.md §13.1 (line 1505), `docs/framework/concepts/components.md` (line 228) and `docs/framework/concepts/props-and-scope.md` (line 34, which also says "register the component document under a custom-element tag in the top-level `$elements` map"). Everything else agrees with the code.
 
-**Outside this claim.** Which components a site build compiles for a page's `{ "$ref" }` entries is imports.md §1.3's rule (`plan:_shared/component-discovery` claims it): `buildSite` compiles the files directly in `components/` and never reads a page's entries. §13.1 specifies the document format, not the build's discovery, so it points there rather than waiting for it.
+**Outside this claim.** Which components a site build compiles for a page's `{ "$ref" }` entries is imports.md §1.3's rule, which the build meets. §13.1 specifies the document format, not the build's discovery, so it points there rather than waiting for it.
 
 ## Outcome
 
@@ -39,7 +39,7 @@ The prose under it says to register the document "in the top-level `$elements` m
 - **Decided:** reconcile the spec to the array, and do not accept the keyed map as an alias, because the schema, the interpreter, both compiled paths, §16.3, imports.md §1.3 and every other docs page already agree on the array, and a key would restate the definition's `tagName` with room to disagree with it (one document could then register under two names). The audit record's spec-wide decisions list this reconcile by name.
 - **Decided:** no new diagnostic for the map form, because `jx validate` (each project's `document.schema.json`) and every editor reading that schema already refuse it (`$elements` is `type: "array"`), and the three places that taught it are the ones this plan fixes. A friendlier runtime error would make this an `implement` on `packages/runtime` for a shape no correct source produces.
 - **Decided:** §13.1 leads with `> **Status: Implemented.**` rather than losing its marker, because the section's first marker is what the implementation-status page reads, and without a leading one the later `Removed` marker becomes first again, which is the misreading the census fixed.
-- **Decided:** no requires edge on `plan:_shared/component-discovery`, because the new marker cites imports.md §1.3 for the site build's discovery, a pointer that stays true whether that plan has landed or not.
+- **Decided:** no requires edge for the site build's discovery: the new marker cites imports.md §1.3, which has landed.
 - **Decided:** no fence validator for spec and docs examples, because no gate validates JSON fences today, many fences are deliberately partial documents, and the acceptance grep below proves this change. A general example gate would be its own plan.
 - **Decided:** fragment level `minor`, the program's level for a `reconcile`, and not `major`, because no author could rely on the map form: it never validated, and every tier that read it threw or ignored it.
 
