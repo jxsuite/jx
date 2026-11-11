@@ -861,7 +861,7 @@ export function buildInitialScope(
         // Names in order, so a call site's `(state, event)` binds by position.
         /* SAFETY: `new Function` returns an ordinary function of exactly those parameters; a call
            never checks its arguments, and what the body returns is one more scope member. */
-        const fn = new Function(...handlerParamNames(def), body) as (
+        const fn = new Function(handlerParamNames(def).join(", "), body) as (
           ...args: (JxScope | Event | undefined)[]
         ) => JxScope[string];
         const invoke = (...args: (JxScope | Event | undefined)[]) => fn(...args);
