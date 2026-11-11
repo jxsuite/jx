@@ -223,38 +223,6 @@ export function varDisplayName(varName: string, prefix: string) {
 }
 
 /**
- * Parse a CEM type.text string into a structured descriptor.
- *
- * @param {string | undefined | null} typeText
- * @returns {{ kind: "combobox"; options: string[] }
- *   | { kind: "boolean" }
- *   | { kind: "number" }
- *   | { kind: "text" }}
- */
-export function parseCemType(typeText: string | undefined | null) {
-  if (!typeText) {
-    return { kind: "text" };
-  }
-  const t = typeText
-    .trim()
-    .replaceAll(/\s*\|\s*undefined\b/g, "")
-    .trim();
-  if (t === "boolean") {
-    return { kind: "boolean" };
-  }
-  if (t === "number") {
-    return { kind: "number" };
-  }
-  // Detect enum: "'a' | 'b' | 'c'" — pipe-separated quoted literals
-  const enumMatch = t.match(/^'[^']*'(\s*\|\s*'[^']*')+$/);
-  if (enumMatch) {
-    const options = [...t.matchAll(/'([^']*)'/g)].map((m) => m[1]);
-    return { kind: "combobox", options };
-  }
-  return { kind: "text" };
-}
-
-/**
  * Clone a (possibly reactive) document tree via JSON round-trip. Unlike structuredClone, this works
  * on Vue reactive proxies and JSON-normalizes the tree (drops undefined values and functions) —
  * both required for document snapshots and clipboard payloads.

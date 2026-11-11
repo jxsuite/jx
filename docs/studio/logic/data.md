@@ -67,6 +67,7 @@ A **Value** is the workhorse: the counter, the search text, the "menu open" flag
 
 - **Type**: `string`, `integer`, `number`, `boolean`, `array`, or `object`. Defaults you type are converted to match.
 - **Format**, for strings only: `image`, `date`, or `color`. An image-formatted value gets a media picker for its default.
+- **Options**, for strings and numbers: the values the entry may hold, separated by commas (`left, center, right`). They are saved as the entry's `enum`, the **Default** becomes a choice among them, and a component's setting is offered as a dropdown of them wherever the component is placed. Clear the field to accept any value again.
 - **Default**: the starting value. Array and object defaults are typed as JSON.
 - **Description**: a note to your future self, also shown when the component is used elsewhere.
 
