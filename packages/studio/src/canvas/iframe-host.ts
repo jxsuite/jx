@@ -264,6 +264,16 @@ export interface HostState {
    */
   insertHover: boolean;
   /**
+   * Whether the menu the "+" opened is still open. While it is, the "+" is FROZEN: it stays drawn
+   * where it was clicked, because the menu is positioned against it, and the pointer's travel over
+   * the canvas toward a row must change nothing. A `null` zone, the grace timer, a different
+   * hovered node's zone and `mouseleave` all re-place or hide that one reused button, and the open
+   * menu followed it (to another block's edge, then to the window's corner once it was `display:
+   * none`). Set on click, cleared by the menu's own dismissal (a pick, Escape, a press outside) or
+   * by {@link closeInsertMenu} when the canvas moves under it.
+   */
+  insertLocked: boolean;
+  /**
    * Id of the tab whose document this host's iframe DOM currently reflects. Adopted from
    * {@link HostState.pendingTabIds} ONLY when the render acks (`renderComplete`), so on the FIFO
    * channel any edit-session commit the iframe posts ahead of that ack still routes to the tab the
@@ -1061,15 +1071,25 @@ export function setNativeDragEnterHandler(fn: (host: HostState) => void): void {
 export const INSERT_HIDE_DELAY = 300;
 
 /**
+ * What the "+" runs on click. `release` must be called when the menu it opens closes for ANY reason
+ * (a pick, Escape, a press outside): until then the host keeps the "+" frozen under the menu.
+ */
+export type InsertZoneClickHandler = (
+  btn: HTMLElement,
+  zone: InsertZone,
+  release: () => void,
+) => void;
+
+/**
  * The parent-realm insertion handler: open the slash menu anchored at the "+" `btn` and, on select,
  * run `transactDoc → mutateInsertNode` for the captured `zone`. Injected from studio.ts (which owns
  * the slash-menu / transact / defaultDef wiring) so this host module — and its tests — stay free of
  * the slash-menu and the mutation pipeline, mirroring the native-drag handler.
  */
-let insertZoneClickHandler: ((btn: HTMLElement, zone: InsertZone) => void) | null = null;
+let insertZoneClickHandler: InsertZoneClickHandler | null = null;
 
 /** Register the slash-menu → mutateInsertNode handler the insertion "+" runs on click. */
-export function setInsertZoneClickHandler(fn: (btn: HTMLElement, zone: InsertZone) => void): void {
+export function setInsertZoneClickHandler(fn: InsertZoneClickHandler): void {
   insertZoneClickHandler = fn;
 }
 
@@ -2037,6 +2057,7 @@ function ensureHost(canvasEl: HTMLElement): HostState {
     iframe,
     insertHideTimer: null,
     insertHover: false,
+    insertLocked: false,
     coSelectionKeys: new Set<string>(),
     insertZone: null,
     lastRenderedGen: -1,
@@ -2076,6 +2097,7 @@ function ensureHost(canvasEl: HTMLElement): HostState {
   });
   overlay.insertButton.addEventListener("mouseleave", () => {
     state.insertHover = false;
+    // A no-op while the "+" menu is open: the "+" is the menu's anchor and stays put.
     scheduleInsertHide(state);
   });
   channel.onMessage((msg) => handleMessage(state, msg));
@@ -2122,9 +2144,12 @@ function insertButtonHovered(state: HostState): boolean {
  */
 function scheduleInsertHide(state: HostState): void {
   cancelInsertHide(state);
+  if (state.insertLocked) {
+    return;
+  }
   state.insertHideTimer = setTimeout(() => {
     state.insertHideTimer = null;
-    if (insertButtonHovered(state)) {
+    if (state.insertLocked || insertButtonHovered(state)) {
       return;
     }
     hideInsertZoneNow(state);
@@ -2147,10 +2172,38 @@ function onInsertButtonClick(state: HostState, e: MouseEvent): void {
   e.stopPropagation();
   e.preventDefault();
   const zone = state.insertZone;
-  if (!zone) {
+  // A second click on the "+" whose menu is already open is not a second menu.
+  if (!zone || !insertZoneClickHandler || state.insertLocked) {
     return;
   }
-  insertZoneClickHandler?.(state.overlay.insertButton, zone);
+  // Freeze the "+" for as long as its menu lives (see {@link HostState.insertLocked}). A grace
+  // Timer armed by the iframe's late leave post must not fire into the open menu either.
+  cancelInsertHide(state);
+  state.insertLocked = true;
+  insertZoneClickHandler(state.overlay.insertButton, zone, () => {
+    state.insertLocked = false;
+    // Everything that was swallowed while the menu lived included the hide: the zone went away
+    // (or the pointer left for the sidebar) and no further `insertZones` post will arrive to say
+    // So, so a dismissal by Escape or a press outside would leave an orphaned "+" drawn. Skipped
+    // By the timer itself when the pointer is still on the button.
+    scheduleInsertHide(state);
+  });
+}
+
+/**
+ * Close the menu the "+" opened, because the thing it was opened over has moved or changed: the
+ * document re-rendered (a remote peer's edit counts), the canvas scrolled, panned or zoomed, or a
+ * press landed in the frame, which the parent's light dismissal cannot see. Pointer travel is NOT
+ * one of these. A no-op unless this host's "+" menu is the one open, so it never closes a "/"
+ * menu.
+ */
+function closeInsertMenu(state: HostState): void {
+  if (!state.insertLocked) {
+    return;
+  }
+  state.insertLocked = false;
+  canvasSlashHandler?.dismiss();
+  scheduleInsertHide(state);
 }
 
 /**
@@ -2214,6 +2267,8 @@ function handleMessage(state: HostState, msg: IframeToParent): void {
       return;
     }
     case "paneFocus": {
+      // A press in the frame is invisible to the parent's light dismissal of the "+" menu.
+      closeInsertMenu(state);
       /* The frame says only that a pointer went down in it. Every mode posts this, including
          preview — see the message's own docstring for the two holes in `hit` that it closes. */
       focusHostPane(state);
@@ -2296,6 +2351,7 @@ function handleMessage(state: HostState, msg: IframeToParent): void {
       return;
     }
     case "hit": {
+      closeInsertMenu(state);
       /* A click in a canvas is a click in a PANE, and the parent realm never saw it. See
          `focusHostPane`; it goes first so everything below writes into the pane the person is now
          in rather than starting a selection the Inspector will not show. `paneFocus` has usually
@@ -2370,6 +2426,7 @@ function handleMessage(state: HostState, msg: IframeToParent): void {
       return;
     }
     case "layoutHit": {
+      closeInsertMenu(state);
       // A click on layout chrome — a node with no page-document path, so it can never become a
       // `session.selection`. Before this it selected nothing and posted nothing, which is what made
       // The first click a new user makes (the site name in the header) appear to do nothing at all.
@@ -2420,6 +2477,10 @@ function handleMessage(state: HostState, msg: IframeToParent): void {
       // First zone's rect (scale=1, D-2 — the overlay is inside the scaled panzoom-wrap); a null/empty
       // Set arms the grace timer rather than hiding immediately, so the cursor can reach the button.
       const zone = msg.zones?.[0] ?? null;
+      // Frozen while its menu is open: the zone it was clicked on is the one a pick inserts into.
+      if (state.insertLocked) {
+        return;
+      }
       if (zone) {
         showInsertZone(state, zone);
       } else {
@@ -2704,6 +2765,8 @@ function handleMessage(state: HostState, msg: IframeToParent): void {
       return;
     }
     case "forwardWheel": {
+      // Scroll, pan and zoom move the insertion point out from under a menu frozen at it.
+      closeInsertMenu(state);
       // A wheel over the iframe — replay it on canvasWrap so the editor's zoom/pan handler fires (the
       // Cursor is mapped from iframe-viewport coords to parent-viewport via this host's scale + offset).
       redispatchWheel(state, msg);
@@ -2901,6 +2964,7 @@ function handleMessage(state: HostState, msg: IframeToParent): void {
       return;
     }
     case "contextMenu": {
+      closeInsertMenu(state);
       if (state.stylebook) {
         return; // The doc context menu's actions are meaningless for specimen paths.
       }
@@ -2953,6 +3017,7 @@ function onDomUpdated(state: HostState, gen: number): void {
   state.lastRenderedGen = gen;
   requestSelection(state, state.selectionPaths);
   requestPresence(state);
+  closeInsertMenu(state);
   hideInsertZoneNow(state);
   servePendingStylebookPan(state);
   if (state.pendingEnterEdit && gen >= state.pendingEnterEdit.minGen) {

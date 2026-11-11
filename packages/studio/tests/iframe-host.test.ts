@@ -2630,6 +2630,175 @@ describe("iframe canvas insertion '+' affordance", () => {
     expect(plus(canvasEl).style.display).toBe("none");
   });
 
+  describe("the '+' is frozen while its menu is open", () => {
+    const otherZone: InsertZone = {
+      edge: "bottom",
+      index: 5,
+      insertParentPath: ["children", 3],
+      rect: { height: 0, width: 200, x: 40, y: 480 },
+    };
+    let release: () => void = () => {};
+    let dismissals = 0;
+
+    /** Mount, hover a zone and click its "+", leaving the menu "open" (the handler is a stub). */
+    const openMenu = async () => {
+      const canvasEl = await mountReady();
+      setInsertZoneClickHandler((_btn, _zone, done) => {
+        release = done;
+      });
+      setCanvasSlashHandler({
+        dismiss: () => {
+          dismissals += 1;
+          release();
+        },
+        nav: () => {},
+        show: () => {},
+      });
+      channels[0]!.deliver({ kind: "insertZones", zones: [topZone] });
+      plus(canvasEl).dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      return canvasEl;
+    };
+
+    beforeEach(() => {
+      dismissals = 0;
+      release = () => {};
+    });
+
+    test("another hovered node's zone does not move the button", async () => {
+      const canvasEl = await openMenu();
+      const btn = plus(canvasEl);
+      const { left, top } = btn.style;
+      channels[0]!.deliver({ kind: "insertZones", zones: [otherZone] });
+      expect(btn.style.left).toBe(left);
+      expect(btn.style.top).toBe(top);
+      expect(btn.dataset.edge).toBe("top");
+    });
+
+    test("a null zone and the cursor leaving the button never hide it", async () => {
+      const canvasEl = await openMenu();
+      const btn = plus(canvasEl);
+      btn.dispatchEvent(new MouseEvent("mouseenter"));
+      channels[0]!.deliver({ kind: "insertZones", zones: null });
+      btn.dispatchEvent(new MouseEvent("mouseleave"));
+      await pastGrace();
+      expect(btn.style.display).toBe("grid");
+      expect(dismissals).toBe(0);
+    });
+
+    test("a grace timer armed before the click cannot hide it afterwards", async () => {
+      const canvasEl = await mountReady();
+      setInsertZoneClickHandler((_btn, _zone, done) => {
+        release = done;
+      });
+      channels[0]!.deliver({ kind: "insertZones", zones: [topZone] });
+      channels[0]!.deliver({ kind: "insertZones", zones: null }); // Arms the grace timer.
+      plus(canvasEl).dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await pastGrace();
+      expect(plus(canvasEl).style.display).toBe("grid");
+    });
+
+    test("a second click on the '+' does not open a second menu", async () => {
+      const canvasEl = await openMenu();
+      let calls = 0;
+      setInsertZoneClickHandler(() => {
+        calls += 1;
+      });
+      plus(canvasEl).dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      expect(calls).toBe(0);
+    });
+
+    test("dismissing the menu with the pointer elsewhere hides the '+' it left drawn", async () => {
+      const canvasEl = await openMenu();
+      const btn = plus(canvasEl);
+      // The pointer left for the sidebar while the menu was open: nothing further is posted.
+      channels[0]!.deliver({ kind: "insertZones", zones: null });
+      await pastGrace();
+      expect(btn.style.display).toBe("grid");
+      release();
+      await pastGrace();
+      expect(btn.style.display).toBe("none");
+    });
+
+    test("dismissing the menu with the pointer still on the '+' leaves it drawn", async () => {
+      const canvasEl = await openMenu();
+      const btn = plus(canvasEl);
+      btn.dispatchEvent(new MouseEvent("mouseenter"));
+      release();
+      await pastGrace();
+      expect(btn.style.display).toBe("grid");
+    });
+
+    test("once the menu closes the '+' follows the pointer and hides again", async () => {
+      const canvasEl = await openMenu();
+      const btn = plus(canvasEl);
+      release();
+      channels[0]!.deliver({ kind: "insertZones", zones: [otherZone] });
+      expect(btn.dataset.edge).toBe("bottom");
+      channels[0]!.deliver({ kind: "insertZones", zones: null });
+      await pastGrace();
+      expect(btn.style.display).toBe("none");
+    });
+
+    const wheel: IframeToParent = {
+      ctrlKey: false,
+      deltaX: 0,
+      deltaY: 1,
+      kind: "forwardWheel",
+      metaKey: false,
+      shiftKey: false,
+      x: 1,
+      y: 1,
+    };
+    const box = { height: 1, width: 1, x: 0, y: 0 };
+    const closers: [string, IframeToParent][] = [
+      ["a render", { gen: 1, kind: "renderComplete" }],
+      ["a patch", { gen: 1, kind: "patchComplete" }],
+      ["a press in the frame", { kind: "paneFocus" }],
+      ["a wheel (scroll, pan, zoom)", wheel],
+      ["a right-click", { kind: "contextMenu", path: null, x: 1, y: 1 }],
+      ["a canvas hit", { hit: { path: ["children", 0], rect: box }, kind: "hit" }],
+      [
+        "a layout hit",
+        {
+          hit: {
+            className: "",
+            layoutFile: "l.json",
+            layoutPath: [],
+            rect: box,
+            tagName: "header",
+          },
+          kind: "layoutHit",
+        },
+      ],
+    ];
+    test.each(closers)("%s closes the menu and unfreezes the '+'", async (_name, message) => {
+      const canvasEl = await openMenu();
+      channels[0]!.deliver(message);
+      expect(dismissals).toBe(1);
+      if (message.kind === "renderComplete" || message.kind === "patchComplete") {
+        expect(plus(canvasEl).style.display).toBe("none");
+      }
+      // Unfrozen: the next hovered node's zone is drawn again.
+      channels[0]!.deliver({ kind: "insertZones", zones: [otherZone] });
+      expect(plus(canvasEl).dataset.edge).toBe("bottom");
+    });
+
+    test("those messages leave a '/' menu alone when no '+' menu is open", async () => {
+      await mountReady();
+      let dismissed = 0;
+      setCanvasSlashHandler({
+        dismiss: () => {
+          dismissed += 1;
+        },
+        nav: () => {},
+        show: () => {},
+      });
+      channels[0]!.deliver(wheel);
+      channels[0]!.deliver({ kind: "paneFocus" });
+      expect(dismissed).toBe(0);
+    });
+  });
+
   test("a fresh insertZones post after a clear re-shows the '+' (cancels any pending hide)", async () => {
     const canvasEl = await mountReady();
     channels[0]!.deliver({ kind: "insertZones", zones: [topZone] });

@@ -122,6 +122,20 @@ describe("runInsertZoneAction", () => {
     expect(capturedOpts!.onSelect).toBeInstanceOf(Function);
   });
 
+  test("the host's release callback is the menu's onDismiss, so every close unfreezes the '+'", () => {
+    let released = 0;
+    runInsertZoneAction(anchorStub(), zone, () => {
+      released += 1;
+    });
+    capturedOpts!.onDismiss!();
+    expect(released).toBe(1);
+  });
+
+  test("called without a release callback, onDismiss is still safe to fire", () => {
+    runInsertZoneAction(anchorStub(), zone);
+    expect(() => capturedOpts!.onDismiss!()).not.toThrow();
+  });
+
   test("onSelect inserts the chosen tag's def and selects the new node's path", () => {
     runInsertZoneAction(anchorStub(), zone);
 
