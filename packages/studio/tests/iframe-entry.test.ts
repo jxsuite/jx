@@ -425,12 +425,12 @@ describe("startCanvasIframe", () => {
       container: document.createElement("div"),
     });
 
-    // A document whose children getter throws makes the runtime render reject.
+    // A Function entry declaring both `body` and `$src` is refused while the scope is built. The
+    // Failure has to be in the data: a real channel structured-clones the message, so a getter
+    // That throws never leaves the sender.
     pair.parent.post(
       renderMsg(1, {
-        get children(): JxMutableNode[] {
-          throw new Error("boom");
-        },
+        state: { broken: { $prototype: "Function", $src: "./broken.js", body: "return 1" } },
         tagName: "div",
       }),
     );

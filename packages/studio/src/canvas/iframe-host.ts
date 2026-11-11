@@ -23,6 +23,7 @@ import {
 } from "../editor/inline-edit-apply";
 import { canvasRectToParent, createOverlayLayer } from "./iframe-overlay";
 import { serializeJxPath } from "./path-mapping";
+import { cloneValue } from "../tabs/doc-op-apply";
 import { getActivePanel, panelMediaToActiveMedia } from "./canvas-helpers";
 import { panToParentRect, revealParentRect } from "./canvas-utils";
 import { clearDragGhost, moveDragGhost } from "../panels/drag-ghost";
@@ -1347,7 +1348,7 @@ export function postPopoverOpen(tab: { id: string }, path: JxPath | null): void 
     }
     if (host.ready && host.tabId === tab.id && !host.preview) {
       host.popoverOpen = path;
-      host.channel.post({ kind: "setPopoverOpen", path });
+      host.channel.post({ kind: "setPopoverOpen", path: plainCopy(path) });
     }
   }
 }
@@ -1364,7 +1365,7 @@ export function postDialogOpen(tab: { id: string }, path: JxPath | null): void {
     }
     if (host.ready && host.tabId === tab.id && !host.preview) {
       host.dialogOpen = path;
-      host.channel.post({ kind: "setDialogOpen", path });
+      host.channel.post({ kind: "setDialogOpen", path: plainCopy(path) });
     }
   }
 }
@@ -1446,7 +1447,8 @@ export function postEntryStateToHosts(tab: Tab): number {
   if (!path) {
     return 0;
   }
-  const value = liveEntryState(tab, path);
+  // A plain copy: the fields are read off the reactive tab, and a list-valued one is a Proxy.
+  const value = plainCopy(liveEntryState(tab, path));
   let posted = 0;
   for (const host of liveHosts) {
     if (!host.iframe.isConnected) {
@@ -1557,7 +1559,10 @@ function reconcileInstance(state: HostState, path: JxPath): void {
   if (!node) {
     return;
   }
-  postPatchToHosts([{ key: "$props", op: "set-key", path, value: node.$props }], tab.id);
+  postPatchToHosts(
+    [{ key: "$props", op: "set-key", path, value: cloneValue(node.$props) }],
+    tab.id,
+  );
 }
 
 function hostTab(state: HostState): Tab | null {
@@ -3315,8 +3320,8 @@ export async function mountIframeCanvas(
     locale: localeWireFor(viewTab),
     // Read at POST time for the same reason `colorScheme` is: a render replaces the DOM, so a panel
     // The author opened before this pass would close under them without it.
-    popoverOpen: viewTab?.session.ui.openPopover ?? null,
-    dialogOpen: viewTab?.session.ui.openDialog ?? null,
+    popoverOpen: plainCopy(viewTab?.session.ui.openPopover ?? null),
+    dialogOpen: plainCopy(viewTab?.session.ui.openDialog ?? null),
   };
   /* Diff marks are per-ARTBOARD, and post-time for a sharper version of the colour scheme's
      reason. `preparePassRender` memoizes on the document and hands the SAME payload object to every

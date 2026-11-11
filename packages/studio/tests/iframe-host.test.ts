@@ -17,7 +17,7 @@ import {
   SECONDARY_PANE,
   workspace,
 } from "../src/workspace/workspace";
-import { reactive } from "../src/reactivity";
+import { isReactive, reactive } from "../src/reactivity";
 import { resetProjectShell, shell } from "../src/shell";
 import { initShellRefs, registerRenderer, setProjectState } from "../src/store";
 import { activeCanvasSurface, surfaceForPane } from "../src/canvas/canvas-surface";
@@ -36,6 +36,9 @@ import type { resolveCanvasDocument } from "../src/canvas/canvas-live-render";
 import type { CanvasSlashRequest, HostState } from "../src/canvas/iframe-host";
 import type { CanvasPanel } from "../src/types";
 import type { Tab } from "../src/tabs/tab";
+import { primarySelection } from "../src/tabs/selection";
+import { setPatchConsumer } from "../src/tabs/patch-ops";
+import { mutateUpdateProp, transactDoc } from "../src/tabs/transact";
 import { registerCanvasSurface } from "../src/canvas/surface-registry";
 
 /* The panels of the FOCUSED pane's stage. Panels belong to a pane's surface now, not to the
@@ -1388,6 +1391,68 @@ describe("iframe canvas patch bridge", () => {
     expect(postEntryStateToHosts(tab)).toBe(0);
   });
 
+  test("an Inspector prop edit made with the reactive selection path posts a cloneable patch and does not escalate", async () => {
+    /* §4.1: a recorded op is plain data. The Inspector hands a mutator the selection, which is read
+       off reactive session state, and the real postMessage structured-clones what it is given. The
+       fake channel passes by reference, so the clone is asserted here at the wire. */
+    const { initCanvasPatcher } = await import("../src/canvas/canvas-patcher");
+    const tab = resetWorkspaceWithTab({
+      children: [{ $props: { title: "Local" }, tagName: "x-card" }],
+      tagName: "div",
+    });
+    const canvasEl = await mountReady();
+    const surface = surfaceForPane(PRIMARY_PANE);
+    surface.panels.push(stagePanel({ canvas: canvasEl, ready: true }));
+    initCanvasPatcher({ renderOverlays: () => {}, scheduleCanvasRender: () => {} });
+    resetCanvasPerf();
+    try {
+      tab.session.selection = [["children", 0]];
+      const path = primarySelection(tab.session.selection)!;
+      // The premise: without a Proxy here the test would pass against the unfixed recorder too.
+      expect(isReactive(path)).toBe(true);
+      channels[0]!.posts.length = 0;
+
+      transactDoc(tab, (t) => {
+        mutateUpdateProp(t, path, "title", "Regional");
+      });
+
+      const patches = postsOfKind(channels[0]!, "patch");
+      expect(patches).toHaveLength(1);
+      const [patch] = patches;
+      expect(() => structuredClone(patch)).not.toThrow();
+      const [op] = patch!.forwardOps;
+      expect(op).toMatchObject({ key: "$props", op: "set-key", value: { title: "Regional" } });
+      // Its own plain array: neither the Proxy nor the array behind it.
+      const opPath = op?.op === "set-key" ? op.path : null;
+      expect(isReactive(opPath)).toBe(false);
+      expect(opPath).toEqual(["children", 0]);
+      expect(canvasPerf.lastEscalationReason.startsWith("patch-apply-failed")).toBe(false);
+      expect(canvasPerf.escalations).toBe(0);
+      expect(canvasPerf.patchedOps).toBe(1);
+    } finally {
+      setPatchConsumer(null);
+      surface.panels.length = 0;
+    }
+  });
+
+  test("postEntryStateToHosts posts a cloneable value for an entry with a list-valued field", async () => {
+    const canvasEl = await mountReady();
+    channels[0]!.posts.length = 0;
+    const surface = surfaceForPane(PRIMARY_PANE);
+    surface.panels.push(stagePanel({ canvas: canvasEl, ready: true }));
+    const tab = activeTab.value!;
+    tab.documentPath = "content/posts/spring.md";
+    tab.doc.content.frontmatter = { tags: ["garden", "spring"], title: "Spring" };
+    // The fields are copied one level deep, so a list read off the reactive tab is still a Proxy.
+    expect(isReactive(tab.doc.content.frontmatter.tags)).toBe(true);
+
+    expect(postEntryStateToHosts(tab)).toBe(1);
+    const [post] = postsOfKind(channels[0]!, "entryState");
+    expect(() => structuredClone(post)).not.toThrow();
+    expect(post?.value).toMatchObject({ data: { tags: ["garden", "spring"], title: "Spring" } });
+    surface.panels.length = 0;
+  });
+
   test("postPatchToHosts returns 0 when no host is ready, so the caller escalates", async () => {
     const canvasEl = document.createElement("div");
     document.body.append(canvasEl);
@@ -1821,6 +1886,40 @@ describe("iframe canvas inline-edit bridge", () => {
       // Releasing the second would rebuild the first.
       expect(needsReleaseReconcile(false, '["children",1]', AT)).toBe(false);
     });
+  });
+
+  test("the reconciling patch of a no-op release carries a cloneable $props", async () => {
+    /* The instance is re-sent from the document, and the document is reactive: `node.$props` read
+       there is a Proxy, which the real postMessage refuses (§4.1). */
+    const tab = resetWorkspaceWithTab({
+      children: [{ $props: { tags: ["a", "b"], title: "Local" }, tagName: "x-card" }],
+      tagName: "div",
+    });
+    const canvasEl = await mountReady();
+    const surface = surfaceForPane(PRIMARY_PANE);
+    surface.panels.push(stagePanel({ canvas: canvasEl, ready: true }));
+    try {
+      const commit = { kind: "editCommitProp" as const, path: ["children", 0], prop: "title" };
+      // The idle tick writes and its patch is suppressed; the release posts the same string.
+      channels[0]!.deliver({ ...commit, inPlace: true, value: "Regional" });
+      channels[0]!.posts.length = 0;
+      channels[0]!.deliver({ ...commit, value: "Regional" });
+
+      expect(isReactive(elementChildren(tab.doc.document)[0]!.$props)).toBe(true);
+      const patches = postsOfKind(channels[0]!, "patch");
+      expect(patches).toHaveLength(1);
+      expect(() => structuredClone(patches[0])).not.toThrow();
+      expect(patches[0]!.forwardOps).toEqual([
+        {
+          key: "$props",
+          op: "set-key",
+          path: ["children", 0],
+          value: { tags: ["a", "b"], title: "Regional" },
+        },
+      ]);
+    } finally {
+      surface.panels.length = 0;
+    }
   });
 
   describe("clicking from one prop slot to another in the same instance", () => {
@@ -4313,6 +4412,41 @@ describe("commandTargetClick", () => {
         { kind: "setPopoverOpen", path: ["children", 1] },
         { kind: "setDialogOpen", path: ["children", 1] },
       ]);
+    } finally {
+      setActiveRegistry(null);
+    }
+  });
+
+  test("an overlay path read off the reactive session crosses to the frame as plain data", async () => {
+    const { setActiveRegistry, tab } = await withRegistry(DIALOG_DOC);
+    try {
+      const { postDialogOpen, postPopoverOpen } = await import("../src/canvas/iframe-host");
+      // What the shell really holds: the path it stored on the tab, read back as a Proxy.
+      tab.session.ui.openPopover = ["children", 1];
+      tab.session.ui.openDialog = ["children", 1];
+      const popoverPath = tab.session.ui.openPopover;
+      const dialogPath = tab.session.ui.openDialog;
+      expect(isReactive(popoverPath)).toBe(true);
+      expect(isReactive(dialogPath)).toBe(true);
+      channels[0]!.posts.length = 0;
+
+      postPopoverOpen(tab, popoverPath);
+      postDialogOpen(tab, dialogPath);
+      const [popover] = postsOfKind(channels[0]!, "setPopoverOpen");
+      const [dialog] = postsOfKind(channels[0]!, "setDialogOpen");
+      expect(() => structuredClone(popover)).not.toThrow();
+      expect(() => structuredClone(dialog)).not.toThrow();
+      expect(popover?.path).toEqual(["children", 1]);
+      expect(dialog?.path).toEqual(["children", 1]);
+
+      // A render replaces the DOM, so it re-states both overlays, from the same reactive fields.
+      const canvasEl = partOf(document, "iframe").parentElement!;
+      await mountIframeCanvas(2, {}, canvasEl, null, tab.id);
+      const render = postsOfKind(channels[0]!, "render").at(-1);
+      expect(render?.gen).toBe(2);
+      expect(() => structuredClone(render)).not.toThrow();
+      expect(render?.popoverOpen).toEqual(["children", 1]);
+      expect(render?.dialogOpen).toEqual(["children", 1]);
     } finally {
       setActiveRegistry(null);
     }
