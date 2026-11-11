@@ -68,14 +68,15 @@ import {
 } from "./document-scopes";
 import type { RefSite, Row, Site, StateScope } from "./document-scopes";
 import {
+  DEFINITIONS,
+  definitionParts,
+  definitionsOf,
   IDENTIFIER,
-  parametersOf,
   propertyName,
-  stateIndex,
-  stateOf,
-  typeOfEntry,
-} from "./state-types";
+} from "./schema-types";
+import { entryParts, parametersOf, stateIndex, stateOf } from "./state-types";
 import { stringPieces } from "./string-pieces.ts";
+import type { TypePart } from "./schema-types";
 import type { OutsideState } from "./state-types";
 import type { StringPiece } from "./string-pieces.ts";
 
@@ -258,6 +259,8 @@ class Writer {
 interface Reading {
   /** The document, as the JSON data it is. */
   doc: JsonObject;
+  /** The definitions it holds, when it has `$defs`. */
+  defs: JsonObject | null;
   /** The file each component of the document's project is, by its tag. */
   components: Readonly<Record<string, string>>;
   /** The index signature that closes every `State` of this document. */
@@ -378,6 +381,31 @@ function writeClientExport(
   }
 }
 
+/**
+ * Write a type, each name in it beside where the document wrote it. The definition a `$ref` ends in
+ * is the end of that reference's string, so renaming a definition rewrites every reference to it.
+ */
+function writeParts(out: Writer, reading: Reading, parts: readonly TypePart[]): void {
+  const { tokens } = reading;
+  for (const part of parts) {
+    if (isString(part)) {
+      out.add(part);
+    } else if (part.kind === "member") {
+      out.name(part.name, tokens.names.get(part.pointer), part.written);
+    } else {
+      // Written `(ref)"…"` the string is the member's own value, and in a block it is its `$ref`.
+      const span = tokens.values.get(part.pointer) ?? tokens.values.get(`${part.pointer}/$ref`);
+      const ref = `#/${DEFINITIONS}/${part.name}`;
+      if (span) {
+        const from = ref.length - part.name.length;
+        out.part(part.written, span, stringPieces(out.source, span, ref), from, ref.length);
+      } else {
+        out.add(part.written);
+      }
+    }
+  }
+}
+
 /** Write one scope's interface: the root's `State`, or a nested element's under the one around it. */
 function writeScope(out: Writer, reading: Reading, layout: Layout, scope: StateScope): void {
   const { tokens } = reading;
@@ -402,7 +430,7 @@ function writeScope(out: Writer, reading: Reading, layout: Layout, scope: StateS
     if (exported !== null && isJsonObject(entry)) {
       writeClientExport(out, reading, pointer, entry, exported, role);
     } else {
-      out.add(typeOfEntry(entry, role));
+      writeParts(out, reading, entryParts(entry, role, { defs: reading.defs !== null, pointer }));
     }
     out.add(";\n");
   }
@@ -425,6 +453,10 @@ function writeMain(reading: Reading, layout: Layout): VirtualUnit {
   for (const view of layout.views) {
     out.add(`export interface ${view.name} extends ${nameOf(view.scope)} {\n`);
     out.add(`  $map: { item: ${itemType(view.row, nameOf)}; index: number };\n}\n`);
+  }
+  if (reading.defs) {
+    writeParts(out, reading, definitionParts(reading.defs, true));
+    out.add("\n");
   }
   /* Every document says which element it defines, a page that defines none included, so that a
      document naming this one among its `$elements` can always ask. */
@@ -830,6 +862,7 @@ export function generateVirtualDocument(
   const scripts = isJsonObject(doc.$script) ? doc.$script : {};
   const reading: Reading = {
     components: options.outside?.components ?? {},
+    defs: definitionsOf(doc),
     doc,
     // SAFETY: a document is an element with `$` members beside it, and only `$layout` is read.
     index: stateIndex(doc as JxElement, options.outside),

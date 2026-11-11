@@ -26,13 +26,13 @@ import {
   eventType,
   itemType,
   membersOf,
-  pointerInto,
   readsRow,
   rootSite,
   siteInto,
 } from "./document-scopes";
 import type { Site, StateScope } from "./document-scopes";
-import { parametersOf, propertyName, stateIndex, typeOfEntry } from "./state-types";
+import { definitionParts, definitionsOf, pointerInto, propertyName, written } from "./schema-types";
+import { parametersOf, stateIndex, typeOfEntry } from "./state-types";
 import type { JsonObject, JsonValue, JxElement } from "../../types";
 
 /** Where a body sits in a document. */
@@ -104,7 +104,7 @@ function locate(doc: JsonObject, target: VirtualTarget): Located {
  * Write the `State` a body reads: one interface for each element on the way down that has `state`,
  * each under the one around it, and over them the row of the map the body is drawn in.
  */
-function stateLines(site: Site, index: string): string[] {
+function stateLines(site: Site, index: string, defs: boolean): string[] {
   const chain: StateScope[] = [];
   for (let at: StateScope | null = site.scope; at; at = at.parent) {
     chain.unshift(at);
@@ -123,7 +123,7 @@ function stateLines(site: Site, index: string): string[] {
       lines.push(`  ${propertyName(key)}: ${around}[${JSON.stringify(key)}];`);
     }
     for (const { entry, key, role } of own) {
-      lines.push(`  ${propertyName(key)}: ${typeOfEntry(entry, role)};`);
+      lines.push(`  ${propertyName(key)}: ${typeOfEntry(entry, role, defs)};`);
     }
     lines.push(...(closed ? [`  ${index}`, "}"] : ["}"]));
   }
@@ -152,7 +152,8 @@ export function generateBodyTypes(
   body: string,
 ): VirtualBody {
   // SAFETY: a document is JSON data; its types name what it holds.
-  const located = locate(doc as JsonObject, target);
+  const data = doc as JsonObject;
+  const located = locate(data, target);
   const params = parametersOf(located.definition);
   /* The event a handler receives is bound to a name only when the entry declares one, though the
      runtime passes it and `window.event` holds it. Not declaring it would call a working handler
@@ -162,9 +163,11 @@ export function generateBodyTypes(
   const signature = params.map(
     (name, at) => `${name}: ${at === 0 ? "State" : at === 1 ? event.parameter : "any"}`,
   );
+  const defs = definitionsOf(data);
   const head = [
     "export {};",
-    ...stateLines(located.site, stateIndex(doc)),
+    ...(defs ? [written(definitionParts(defs, false))] : []),
+    ...stateLines(located.site, stateIndex(doc), defs !== null),
     `${event.head}async function body(${["this: any", ...signature].join(", ")}) {`,
     "",
   ].join("\n");
