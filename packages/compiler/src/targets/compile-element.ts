@@ -6,6 +6,7 @@
  */
 
 import { erasedDocument } from "../erased.ts";
+import { qualifyScripts } from "@jxsuite/schema/document-scripts";
 import {
   classifyFunctionEntries,
   declaresParameters,
@@ -107,6 +108,13 @@ export interface CompileElementOptions {
    * so the base has to be known when it is compiled. Handed to every `$elements` dependency too.
    */
   serverBaseUrl?: string;
+  /**
+   * The project root, when the component is compiled as part of a project. With it, an entry naming
+   * its own document's script (`$src: "#client"`) reaches `rewriteSrc` qualified by the document's
+   * project-relative path (spec.md §23.2), for every `$elements` dependency too. Without it such a
+   * `$src` is emitted as written, and nothing can import it.
+   */
+  projectRoot?: string;
 }
 
 /**
@@ -154,6 +162,10 @@ export async function compileElement(
       }
       // Function bodies as JavaScript before anything analyses them (spec.md §23.1).
       doc = erasedDocument(doc, filePath);
+      if (opts.projectRoot !== undefined) {
+        const { relative } = await import("node:path");
+        doc = qualifyScripts(doc, relative(opts.projectRoot, filePath));
+      }
     } else {
       doc = erasedDocument(srcPath, srcPath.tagName ?? "a component");
       filePath = null;

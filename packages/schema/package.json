@@ -34,6 +34,7 @@
     "./project-file": "./src/project-file.ts",
     "./project-file/node": "./src/project-file-node.ts",
     "./doc-ops": "./src/doc-ops.ts",
+    "./document-scripts": "./src/document-scripts.ts",
     "./json-layout": "./src/json-layout.ts",
     "./defs": "./defs/index.ts",
     "./schema.json": "./schema.json",
