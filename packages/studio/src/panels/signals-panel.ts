@@ -25,6 +25,7 @@ import {
   displayTagName,
   isJsonObject,
   isNonNullObject,
+  isNumber,
   isRef,
   isString,
 } from "@jxsuite/schema/guards";
@@ -633,6 +634,29 @@ function nameField(S: SignalsPanelState, name: string): SignalFieldView {
   );
 }
 
+/** The members of a declared `enum` a select can offer, or null when it offers none. */
+function enumChoices(values: readonly unknown[]): (string | number)[] | null {
+  const out = values.filter((v): v is string | number => isString(v) || isNumber(v));
+  return out.length > 0 ? out : null;
+}
+
+/**
+ * The Options field's text as the entry's `enum`: comma-separated values, trimmed, each once, in
+ * the order typed. A numeric entry keeps only the numbers (an integer one only whole numbers), and
+ * no values at all removes the `enum`, so the prop takes any value again.
+ */
+function parseOptions(text: string, type: string | undefined): (string | number)[] | undefined {
+  const words = [...new Set(text.split(",").map((w) => w.trim()))].filter(Boolean);
+  const numeric = type === "number" || type === "integer";
+  const values: (string | number)[] = numeric
+    ? words.flatMap((w) => {
+        const n = Number(w);
+        return Number.isFinite(n) && (type === "number" || Number.isInteger(n)) ? [n] : [];
+      })
+    : words;
+  return values.length > 0 ? values : undefined;
+}
+
 /** A plain value entry: its type, its default, and the CEM facts a custom element adds. */
 function stateFields(S: SignalsPanelState, name: string, def: SignalDef): SignalFieldView[] {
   const patch = (value: DefPatch): void => {
@@ -656,7 +680,27 @@ function stateFields(S: SignalsPanelState, name: string, def: SignalDef): Signal
       ),
     );
   }
-  if (isMediaFormat(def.format)) {
+  const choosable = !def.type || ["string", "number", "integer"].includes(def.type);
+  const choices = choosable && Array.isArray(def.enum) ? enumChoices(def.enum) : null;
+  if (choosable && !isMediaFormat(def.format)) {
+    out.push(
+      textField(
+        name,
+        "enum",
+        "Options",
+        choices ? choices.map(String).join(", ") : "",
+        (v: string) => patch({ enum: parseOptions(v, def.type) }),
+        { placeholder: "Any value" },
+      ),
+    );
+  }
+  if (choices) {
+    out.push(
+      selectField(name, "default", "Default", ["", ...choices.map(String)], defaultVal, (v) =>
+        patch({ default: choices.find((c) => String(c) === v) }),
+      ),
+    );
+  } else if (isMediaFormat(def.format)) {
     out.push(
       field({
         key: "default",

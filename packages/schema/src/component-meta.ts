@@ -32,6 +32,11 @@ export interface ComponentPropDef {
   /** Absent for a full-form entry that declares no `default`. */
   default?: JsonValue | undefined;
   format?: unknown;
+  /**
+   * The values the entry admits, read from its JSON Schema `enum` (spec.md §5.3). Absent when the
+   * entry declares none, so a prop with a closed set of values is told apart from free text.
+   */
+  enum?: JsonValue[];
 }
 
 /** What discovery reports for one component document. */
@@ -150,12 +155,16 @@ function propFrom(name: string, def: JsonValue): ComponentPropDef | null {
   if (fields.$prototype || fields.$handler || fields.$compute) {
     return null;
   }
-  return {
+  const prop: ComponentPropDef = {
     default: fields.default,
     format: fields.format,
     name,
     type: fields.type,
   };
+  if (Array.isArray(fields.enum)) {
+    prop.enum = fields.enum;
+  }
+  return prop;
 }
 
 /**

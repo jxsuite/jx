@@ -103,13 +103,8 @@ import { INPUT_DEBOUNCE, LIVE_PREVIEW } from "../ui/timing";
 import { cloneValue } from "../tabs/doc-op-apply";
 import { openMenu } from "../surfaces/menu";
 import type { MenuHandle } from "../surfaces/menu";
-import {
-  attrLabel,
-  camelToLabel,
-  inferInputType,
-  isMediaFormat,
-  parseCemType,
-} from "../utils/studio-utils";
+import { attrLabel, camelToLabel, inferInputType, isMediaFormat } from "../utils/studio-utils";
+import { parseCemType, propChoices } from "../utils/prop-choices";
 import { classifyHref, composeHref } from "../utils/link-target";
 import type { LinkKind } from "../utils/link-target";
 import { clickAnythingTo, openPageAction, staleSelectionMessage } from "./empty-state";
@@ -1664,6 +1659,7 @@ function componentPropRows(
     const rawValue = currentVals[prop.name];
     const boundRef = isRef(rawValue) ? rawValue.$ref : null;
     const hasVal = rawValue !== undefined && rawValue !== null;
+    const choices = propChoices(prop);
     const parsed = parseCemType(prop.type);
     const onChange = (v?: JsonValue) => updateFn(prop.name, v);
     const staticVal = slotMode(rawValue) === "literal" ? String(rawValue ?? "") : "";
@@ -1692,6 +1688,27 @@ function componentPropRows(
       row.value = getFieldValue(propDraft, staticVal);
       plan.commit = (raw) => onChange(raw);
       plan.draft = propDraft;
+    } else if (choices) {
+      /* A closed set is a select whatever its members' type, so a numeric `enum` is picked rather
+         than typed. Each option's value is its member as text, and the pick commits the member
+         itself, so `2` goes back as a number and `"2"` as a string. */
+      row.kind = "select";
+      row.value = staticVal;
+      const listed = choices.some((c) => String(c) === staticVal);
+      row.options = [
+        CLEAR_OPTION,
+        ...choices.map((c) => ({ label: String(c), value: String(c) })),
+        /* A value the component no longer offers stays visible, so the select never reads blank
+           over a value the instance still holds. */
+        ...(staticVal && !listed
+          ? [{ label: `${staticVal} (not an option)`, value: staticVal }]
+          : []),
+      ];
+      plan.commit = (raw) => {
+        const picked = choices.find((c) => String(c) === raw);
+        onChange(picked ?? (raw || undefined));
+      };
+      plan.debounceMs = 0;
     } else if (parsed.kind === "boolean") {
       row.kind = "checkbox";
       row.checked = Boolean(staticVal);
@@ -1701,17 +1718,6 @@ function componentPropRows(
       row.value = getFieldValue(propDraft, staticVal);
       plan.commit = (raw) => onChange(raw);
       plan.draft = propDraft;
-    } else if (parsed.kind === "combobox") {
-      row.kind = "select";
-      row.value = staticVal;
-      row.options = [
-        CLEAR_OPTION,
-        /* SAFETY: `parseCemType` returns kind "combobox" only with `options` read from the capture
-           group of `'([^']*)'`, which takes part in every match, so each option is a string. */
-        ...(parsed.options as string[]).map((o) => ({ label: camelToLabel(o), value: o })),
-      ];
-      plan.commit = (raw) => onChange(raw || undefined);
-      plan.debounceMs = 0;
     } else {
       row.kind = "text";
       row.value = getFieldValue(propDraft, staticVal);
