@@ -45,6 +45,7 @@ import {
   bundleSource,
   resolveSidecarEntry,
 } from "./bundler.ts";
+import type { BundleRequest } from "./bundler.ts";
 import { loadProjectConfig } from "./site-loader.ts";
 import type { ResolvedProjectConfig } from "./site-loader.ts";
 import {
@@ -68,6 +69,12 @@ import type { AssetMount } from "@jxsuite/schema/asset-paths";
 import type { FormatEntry, FormatRegistry } from "@jxsuite/schema/format-registry";
 import type { ExtensionRegistry } from "@jxsuite/schema/extension-registry";
 import { collectSiteComponents } from "./component-set.ts";
+import { documentScripts, qualifiedDocument } from "./document-scripts.ts";
+import {
+  isScriptSpecifier,
+  parseScriptSpecifier,
+  scriptRefSide,
+} from "@jxsuite/schema/document-scripts";
 import { layoutChain, resolveLayout } from "./layout-resolver.ts";
 import { dedupeServerEntries, documentServerEntries } from "./server-entries.ts";
 import type { DedupedServerEntries, ServerEntryRecord } from "./server-entries.ts";
@@ -235,7 +242,9 @@ export async function buildSite(
   // Client sidecar bundles: bundleable Function-def `$src` specifiers (and lowered-def `$bundle`
   // Hints) are rewritten to their /assets/ URL during compilation, registered here, and bundled
   // In step 6d (spec.md §12). Keyed by asset path so duplicate specifiers bundle once.
-  const sidecarBundles = new Map<string, { entryPath: string; specifier: string }>();
+  /* A document's own script (spec.md §23.2) is bundled like a sidecar, but it is not a file: an
+     entry with `script` is one, named by its qualified specifier and read from its document. */
+  const sidecarBundles = new Map<string, { entryPath: string; specifier: string; script?: true }>();
   /*
    * Files a `$head` entry names by bare specifier — a package's stylesheet, most often. Copied
    * rather than bundled.
@@ -308,7 +317,57 @@ export async function buildSite(
     }
     assetClaims.set(assetPath, { entryPath, specifier });
   };
+  /*
+   * A document's client module: one bundle per document, keyed on the document's project-relative
+   * path, so two documents each exporting `bump` are two files (spec.md §23.2). Whether the
+   * document carries a client script at all is found when the bundle is made, which reports it.
+   */
+  const scriptErrors = new Set<string>();
+  /** A layout's entry is rewritten once per page it wraps, and its mistake is one mistake. */
+  const scriptError = (message: string) => {
+    if (!scriptErrors.has(message)) {
+      scriptErrors.add(message);
+      errors.push(message);
+      console.error(message);
+    }
+  };
+  const rewriteScriptSrc = (specifier: string): string => {
+    const parsed = parseScriptSpecifier(specifier);
+    if (parsed === null) {
+      scriptError(`$src "${specifier}" is not a document script specifier`);
+      return specifier;
+    }
+    if (parsed.side === "server") {
+      scriptError(
+        `${parsed.path}: a client function names "#server". A server module is called by a ` +
+          `timing: "server" entry and never imported by a page`,
+      );
+      return specifier;
+    }
+    try {
+      const assetPath = sidecarAssetPath(`./${parsed.path}`);
+      claimAsset(assetPath, specifier, specifier);
+      sidecarBundles.set(assetPath, { entryPath: specifier, script: true, specifier });
+      return assetPath;
+    } catch (error) {
+      scriptError(`Script of ${parsed.path}: ${errorMessage(error)}`);
+      return specifier;
+    }
+  };
   const rewriteSidecarSrc = (specifier: string, docDir: string | null): string => {
+    if (isScriptSpecifier(specifier)) {
+      return rewriteScriptSrc(specifier);
+    }
+    if (scriptRefSide(specifier) !== null) {
+      /* Every document the build reads is qualified as it is read, so this is an entry written
+         somewhere that has no document of its own to name: `project.json`'s `state`. */
+      scriptError(
+        `$src "${specifier}" names its own document's script, but it is not in a document: ` +
+          `project.json has no $script. Move the entry into the page, layout or component that ` +
+          `carries the script`,
+      );
+      return specifier;
+    }
     if (!isBundleableSrc(specifier)) {
       return specifier;
     }
@@ -354,6 +413,8 @@ export async function buildSite(
   // ── 1b. Build the extension registry from project.json#/extensions ─────
   const registry = await buildProjectExtensionRegistry(projectRoot, projectConfig);
   const formatRegistry = registry.formats;
+  // Every document's own modules (spec.md §23.2), read with the formats this project registered.
+  const scripts = documentScripts(projectRoot, (path) => readPageDocument(path, formatRegistry));
   if (formatRegistry.entries.length > 0) {
     log(
       `  Registered ${formatRegistry.entries.length} format(s): ${formatRegistry.entries
@@ -503,6 +564,7 @@ export async function buildSite(
             const depTag = componentTagByPath.get(depPath);
             return depTag ? `./${depTag}.js` : refPath.replace(/\.(?:json|jxn)$/i, ".js");
           },
+          projectRoot,
           rewriteSrc: (specifier: string, docDir: string | null) =>
             withBase(componentBase, rewriteSidecarSrc(specifier, docDir)),
           serverBaseUrl,
@@ -593,15 +655,25 @@ export async function buildSite(
     );
   }
   if (projectConfig.state) {
-    siteServerEntries.push(
-      ...documentServerEntries(
-        /* SAFETY: `ProjectConfig.state` is a plain record of state entries, and the collector reads
-           only a document's `state`, so a document carrying that one member is all it needs. */
-        { state: projectConfig.state } as JxElement,
-        projectFilePath(projectRoot),
-        projectRoot,
-      ),
+    const projectEntries = documentServerEntries(
+      /* SAFETY: `ProjectConfig.state` is a plain record of state entries, and the collector reads
+         only a document's `state`, so a document carrying that one member is all it needs. */
+      { state: projectConfig.state } as JxElement,
+      projectFilePath(projectRoot),
+      projectRoot,
     );
+    for (const entry of projectEntries) {
+      // `project.json` carries no `$script`, so a `#server` written there names nothing.
+      if (scriptRefSide(entry.src) === null) {
+        siteServerEntries.push(entry);
+      } else {
+        scriptError(
+          `Server function "${entry.exportName}" in ${entry.declaredIn} names "${entry.src}", ` +
+            `its own document's script, but project.json has no $script. Move the entry into ` +
+            `the page, layout or component that carries the script`,
+        );
+      }
+    }
   }
 
   // ── 6. Compile each route ───────────────────────────────────────────────
@@ -1007,6 +1079,8 @@ export async function buildSite(
         await bundleWorkerSource(workerSource, {
           adapter,
           outfile: resolve(outDir, workerName),
+          // A server function may live in a document's own server script (spec.md §23.2).
+          plugins: [scripts.serverPlugin],
           projectRoot,
         });
         fileCount += 1;
@@ -1078,10 +1152,20 @@ export async function buildSite(
       try {
         const outfile = resolve(outDir, assetPath.replace(/^\//, ""));
         mkdirSync(dirname(outfile), { recursive: true });
-        await bundleEntry(
-          { entryPath: bundle.entryPath, outfile },
-          { external: CLIENT_EXTERNALS, minify, target: "browser" },
-        );
+        /* A document's script is bundled from its text, standing beside its document. Every
+           bundle gets the plugin, because a file module may import a `.jxn` document too. */
+        const request: BundleRequest = { entryPath: bundle.entryPath, outfile };
+        if (bundle.script) {
+          const module = await scripts.module(bundle.specifier);
+          request.entryPath = module.path;
+          request.contents = module.contents;
+        }
+        await bundleEntry(request, {
+          external: CLIENT_EXTERNALS,
+          minify,
+          plugins: [scripts.clientPlugin],
+          target: "browser",
+        });
         fileCount += 1;
         log(`  ${bundle.specifier} → ${assetPath}`);
       } catch (error) {
@@ -1402,8 +1486,13 @@ async function compilePage(
      `projectConfig.url`, which is already here, so the two cannot disagree. */
   const basePath = siteBasePath(projectConfig.url);
 
-  // Load the raw page document (.json natively, other formats via the registry)
-  const pageDoc = await readPageDocument(route.sourcePath, formatRegistry);
+  // Load the raw page document (.json natively, other formats via the registry). Its `#client` and
+  // `#server` name this page from here on, before a layout's can meet them (spec.md §23.2).
+  const pageDoc = qualifiedDocument(
+    await readPageDocument(route.sourcePath, formatRegistry),
+    route.sourcePath,
+    projectRoot,
+  );
 
   // Resolve layout (wraps page in layout with slot distribution)
   const layoutDoc = await resolveLayout(pageDoc, projectConfig, projectRoot);

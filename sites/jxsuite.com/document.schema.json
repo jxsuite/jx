@@ -28605,6 +28605,21 @@
             }
           ]
         },
+        "$script": {
+          "additionalProperties": false,
+          "description": "This document's own modules, as TypeScript module text (spec.md §23.2). A state entry names an export of one with `$src: \"#client\"` or `$src: \"#server\"`. `client` runs in the browser; `server` runs only on the server and is never sent to one.",
+          "properties": {
+            "client": {
+              "description": "The module the browser runs. A Function entry with `$src: \"#client\"` is one of its exports.",
+              "type": "string"
+            },
+            "server": {
+              "description": "The module the server runs. A `timing: \"server\"` entry with `$src: \"#server\"` is one of its exports, called with `(args, env)`.",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
         "$shadow": {
           "description": "Render this component into a shadow root instead of the light DOM (spec.md §16.6). Off unless set: a shadow root isolates the component's styles from the page and replaces the <slot> emulation with real slot distribution, so it changes how the component composes. Overrides `defaults.shadow` in both directions — `false` opts one component out of a project that opted in.",
           "oneOf": [

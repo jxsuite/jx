@@ -9,6 +9,7 @@
  */
 
 import { erasedDocument } from "../erased.ts";
+import { qualifiedDocument } from "./document-scripts.ts";
 import { existsSync, readFileSync } from "node:fs";
 import { parseNativeDocument } from "@jxsuite/schema/jxn";
 import { errorMessage } from "@jxsuite/schema/parse";
@@ -28,10 +29,10 @@ export function nodeLayoutLoader(projectRoot: string): (layoutRef: string) => Jx
       throw new Error(`Layout not found: ${layoutRef} (resolved to ${layoutPath})`);
     }
     try {
-      return erasedDocument(
-        parseNativeDocument(readFileSync(layoutPath, "utf8"), layoutPath),
-        layoutPath,
-      );
+      // Qualified here, as the layout is read, so its `#client` and the page's stay two modules
+      // Through the merge (spec.md §23.2).
+      const layout = parseNativeDocument(readFileSync(layoutPath, "utf8"), layoutPath);
+      return qualifiedDocument(erasedDocument(layout, layoutPath), layoutPath, projectRoot);
     } catch (error) {
       throw new Error(`Invalid layout at ${layoutPath}: ${errorMessage(error)}`, {
         cause: error,

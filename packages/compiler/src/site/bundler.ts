@@ -25,7 +25,7 @@ import type {
 } from "./bundler-backend.ts";
 import { TRANSIENT_ENTRY_PREFIX } from "./bundler-backend.ts";
 
-export type { BundleTargetName } from "./bundler-backend.ts";
+export type { BundlePlugin, BundleTargetName, PluginBuild } from "./bundler-backend.ts";
 
 /** Import specifiers left external in client bundles — provided by the page importmap. */
 export const CLIENT_EXTERNALS = ["@vue/reactivity", "lit-html"];
@@ -75,6 +75,12 @@ export interface BundleRequest {
   entryPath: string;
   /** Absolute path of the bundled output file. */
   outfile: string;
+  /**
+   * The module's text, when it is not a file: a document's own script (spec.md §23.2), which lives
+   * inside the document. `entryPath` then only says where the module stands, so its relative
+   * imports resolve from that directory, and nothing is read from or written to it. TypeScript.
+   */
+  contents?: string;
 }
 
 /**
@@ -102,6 +108,8 @@ export interface BundleOptions {
   conditions?: string[];
   /** Resolution hooks, applied before the bundler's own resolution. */
   resolver?: BundleResolver;
+  /** Whole plugins, consulted after the hooks above. Written against {@link BundlePlugin}. */
+  plugins?: readonly BundlePlugin[];
   /**
    * Whether to minify the bundle.
    *
@@ -124,8 +132,9 @@ export interface BundleOptions {
 /** Wrap the hooks as the one-plugin array both backends take. */
 function hookPlugins(opts: BundleOptions): BundlePlugin[] {
   const { onFileLoaded, resolver } = opts;
+  const plugins = opts.plugins ?? [];
   if (resolver === undefined && onFileLoaded === undefined) {
-    return [];
+    return [...plugins];
   }
   const setup = (build: PluginBuild): void => {
     if (resolver !== undefined) {
@@ -138,7 +147,7 @@ function hookPlugins(opts: BundleOptions): BundlePlugin[] {
       });
     }
   };
-  return [{ name: "jx-bundle-hooks", setup }];
+  return [{ name: "jx-bundle-hooks", setup }, ...plugins];
 }
 
 /**
@@ -220,7 +229,11 @@ function backendOptions(opts: BundleOptions): Omit<BackendBuild, "entry"> {
  * diagnostics on failure.
  */
 export async function bundleEntry(request: BundleRequest, opts: BundleOptions): Promise<void> {
-  const code = await backend.build({ entry: { path: request.entryPath }, ...backendOptions(opts) });
+  const entry: BackendBuild["entry"] = { path: request.entryPath };
+  if (request.contents !== undefined) {
+    entry.contents = request.contents;
+  }
+  const code = await backend.build({ entry, ...backendOptions(opts) });
   writeFileSync(request.outfile, code, "utf8");
 }
 
@@ -301,7 +314,16 @@ export async function bundleSource(
  */
 export async function bundleWorkerSource(
   source: string,
-  { projectRoot, outfile, adapter }: { projectRoot: string; outfile: string; adapter: string },
+  {
+    projectRoot,
+    outfile,
+    adapter,
+    plugins,
+  }: { projectRoot: string; outfile: string; adapter: string; plugins?: readonly BundlePlugin[] },
 ): Promise<void> {
-  await bundleSource(source, { outfile, resolveDir: projectRoot }, workerBundleOptions(adapter));
+  const opts = workerBundleOptions(adapter);
+  if (plugins !== undefined) {
+    opts.plugins = plugins;
+  }
+  await bundleSource(source, { outfile, resolveDir: projectRoot }, opts);
 }

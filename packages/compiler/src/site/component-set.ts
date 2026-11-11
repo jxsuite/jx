@@ -22,6 +22,7 @@ import { errorMessage } from "@jxsuite/schema/parse";
 import { projectFilePath } from "@jxsuite/schema/project-file/node";
 import type { FormatRegistry } from "@jxsuite/schema/format-registry";
 import type { JxDocument, ProjectConfig } from "@jxsuite/schema/types";
+import { qualifiedDocument } from "./document-scripts.ts";
 import { layoutChain } from "./layout-resolver.ts";
 import { readPageDocument } from "./pages-discovery.ts";
 
@@ -104,7 +105,8 @@ export async function collectSiteComponents(
     visited.add(path);
     let doc: JxDocument;
     try {
-      doc = await readPageDocument(path, formatRegistry);
+      // Each `#client` and `#server` names this component from here on (spec.md §23.2).
+      doc = qualifiedDocument(await readPageDocument(path, formatRegistry), path, projectRoot);
     } catch (error) {
       errors.push(`Error compiling component ${where}: ${errorMessage(error)}`);
       return;

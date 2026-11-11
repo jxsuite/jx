@@ -5,6 +5,7 @@ spec:
   - spec.md#11.3
   - spec.md#11.4
   - compiler.md#6
+  - spec.md#23.2
 ---
 
 # Timing: client, server, compiler
@@ -50,6 +51,21 @@ export async function fetchMetrics(args, env) {
 ```
 
 A function that needs no bindings simply ignores the second parameter.
+
+A page, layout or component can also carry the server module itself, as text in `$script.server`, and name it with `$src: "#server"`. The function is the same function, with the same `(args, env)` signature:
+
+```json
+{
+  "$script": {
+    "server": "export async function fetchMetrics(args: { userId: string }, env: Env) {\n  return env.DB.prepare(\"SELECT * FROM metrics WHERE user = ?\").bind(args.userId).all();\n}\n"
+  },
+  "state": {
+    "metrics": { "$src": "#server", "$export": "fetchMetrics", "timing": "server" }
+  }
+}
+```
+
+Server functions share one set of names across the site, so two documents that each export `fetchMetrics` fail the build, and the error names both. Only `jx build` runs a server script so far: see [A module inside the document](/docs/framework/concepts/functions#a-module-inside-the-document).
 
 ### Arguments
 

@@ -385,6 +385,20 @@ export interface JxMappedArray {
   key?: JxRef;
 }
 
+/**
+ * A document's own modules, as `$script` holds them: TypeScript module text for each side.
+ *
+ * A type alias rather than an interface, because a document member has to be a `JxDocumentValue`,
+ * and only an alias is given the implicit index signature that makes an object type one.
+ */
+// oxlint-disable-next-line typescript/consistent-type-definitions -- See above.
+export type JxDocumentScripts = {
+  /** The module the browser runs. Its exports are what `$src: "#client"` entries name. */
+  client?: string;
+  /** The module the server runs. Its exports are what `$src: "#server"` entries name. */
+  server?: string;
+};
+
 export interface JxDocument extends JxElement {
   /**
    * The custom element's NAME, always a literal.
@@ -397,6 +411,8 @@ export interface JxDocument extends JxElement {
   tagName?: string;
   state?: Record<string, JxStateDefinition>;
   $layout?: string | false;
+  /** This document's own client and server modules (spec.md §23.2). */
+  $script?: JxDocumentScripts;
   /** This page's identity across languages, overriding the one its path implies (§13.5). */
   $translationKey?: string;
   $paths?: JxPathsDef;

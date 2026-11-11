@@ -1786,6 +1786,7 @@ export const RESERVED_KEYS = new Set([
   "$prototype",
   "$src",
   "$export",
+  "$script",
   "$media",
   "$map",
   "timing",

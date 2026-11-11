@@ -61,6 +61,7 @@ A body compiles with `new Function`, so it cannot `import`, hold module state or
 - **Decided:** the canvas picks up a `script` change on save. Bodies still update live. Module reload on every keystroke would rerun top-level code and hold unsaved imports, which isn't worth it in the first iteration.
 - **Decided:** `$script.server` is stripped from any document handed to a browser: in `composePage`, in `serveSite`'s file lane, and in the canvas payload. The file lane parses a document only when its text contains `$script`, or when it is `.jxn`, so an ordinary file is still served as bytes. `serveProjectFile` keeps serving the tree, since that is an editing host's protocol and `paths.ts` states that difference on purpose. `$script` joins `RESERVED_KEYS` and the schema. A test of bundles alone would not catch either leak, so tests also read the shell's output and the file lane's.
 - **Decided:** `timing: "server"` stays unavailable in a cloud preview, which passes no `resolveToken`. A `(server)` entry there stays `null`, as a `$src` server entry does today, and docs say so.
+- **Decided:** the browser loader erases and the build bundles, so a script using `enum` or a parameter property would run built and fail interpreted. The build refuses what the eraser refuses (§23.1's rule for a body, minus `import` and `export`, which a module has). Built with the loader in DSC.2, so the two land agreeing.
 - **Decided:** a bundler plugin resolves `./other.jxn` to that document's client module under both `JX_BUNDLER` backends, and a Bun test plugin does the same so a `.jxn` file's exports can be unit tested. Code moved inline would otherwise lose its coverage.
 - **Decided:** `$script.client`, `$script.server` and a `Function` entry's string `body` become `Y.Text` in the collaboration schema. Two people typing in one script otherwise lose one person's edits.
 - **Open:** an export used eagerly and another used with `$lazy` share one module, so `$lazy` saves nothing. Recommendation: `jx validate` advises moving the lazy export to its own `$src` module, since a document has only one client script.
@@ -107,7 +108,7 @@ my-counter {
 ### Where it lands
 
 - **`packages/schema`**: `$script` in the schema and `types`, `qualifyScripts(doc, path)`, the grammar rows in `src/jxn/`, `$src` advisory data.
-- **Compiler**: `site-build.ts` `rewriteSidecarSrc` treats a `jx-script:` specifier as a bundle entry. `BundleRequest` gains `virtualEntry: { contents, resolveDir }` in both backends (esbuild `stdin`, Bun virtual files), with relative imports resolving from the document's directory. `server-entries.ts` collects `#server` the same way. `Bun.build({ files })` has been run successfully in isolation.
+- **Compiler** (built in DSC.1): `site-build.ts` `rewriteSidecarSrc` treats a `jx-script:` specifier as a bundle entry. `BundleRequest` has `contents`, the text of a module at a path no file is at (`<document>.jx-client.ts`), in both backends (Bun `files`, an esbuild `onLoad`), so relative imports resolve from the document's directory. `site/document-scripts.ts` holds the one plugin that resolves `jx-script:` and `.jxn` imports for the page bundles and the worker's, and `@jxsuite/compiler/bun-plugin` is the same for Bun's module loader, with `?server` for a test of a server module. `server-entries.ts` needed no change: a qualified specifier passes through it. `RESERVED_KEYS` gained `$script` here rather than in DSC.2, since the schema accepts the key from this slice on.
 - **`packages/erase`**: `loadModule` in the browser entry, including import rewriting, which reads specifiers through the parser the stripper already carries.
 - **`packages/site`**: `composePage` qualifies before `resolveLayout`, and strips server scripts before `pageShell`. `serve.ts`'s file lane strips them too.
 - **Runtime**: `RESERVED_KEYS`, `setModuleLoader`, and the two cases in `importSource`. The eraser loader (`spec.md` §23.1) also fires for a document with `$script.client` or a `.ts` `$src`, and the runtime installs the `loadModule` it returns as well as `eraseBody`.
@@ -141,8 +142,8 @@ my-counter {
 
 ## Slices
 
-| Slice | Scope                                                                                  | Claims       | State |
-| ----- | -------------------------------------------------------------------------------------- | ------------ | ----- |
-| DSC.1 | `$script`, qualification, schema, bundling, server entries, `.jxn` imports             | spec.md#23.2 | open  |
-| DSC.2 | Browser module loader, `.ts` `$src`, Live Preview and file-lane stripping, reservation | spec.md#23.2 | open  |
-| DSC.3 | Grammar rows, Studio, advisory, `Y.Text`, examples; closes the marker                  | spec.md#23.2 | open  |
+| Slice | Scope                                                                                                                                                                                                  | Claims       | State  |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------ | ------ |
+| DSC.1 | `$script`, qualification, schema, bundling, server entries, `.jxn` imports, the Bun plugin                                                                                                             | spec.md#23.2 | merged |
+| DSC.2 | Browser module loader, `.ts` `$src`, Live Preview and file-lane stripping; `jx dev` and `/__jx_server__` answering a `jx-script:` server module; refusing non-erasable TypeScript in a script at build | spec.md#23.2 | open   |
+| DSC.3 | Grammar rows, Studio, advisory, `Y.Text`, examples; closes the marker                                                                                                                                  | spec.md#23.2 | open   |

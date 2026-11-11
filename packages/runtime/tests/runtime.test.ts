@@ -191,6 +191,8 @@ describe("RESERVED_KEYS", () => {
     "$map",
     "$src",
     "$export",
+    // A document's own modules (spec.md §23.2): text an entry names, never a `$`-local binding.
+    "$script",
     "timing",
     "default",
     "tagName",

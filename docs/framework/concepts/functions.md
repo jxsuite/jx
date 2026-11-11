@@ -7,6 +7,7 @@ spec:
   - spec.md#5.5
   - spec.md#5.3 # Function properties, parameter binding, $src classification
   - spec.md#23.1 # TypeScript in a body, erased as a document is read
+  - spec.md#23.2 # A document's own modules
 code:
   - packages/schema/src/function-role.ts
   - packages/schema/defs/function-def.schema.ts
@@ -18,6 +19,9 @@ code:
   - packages/compiler/src/targets/compile-element.ts
   - packages/compiler/src/targets/compile-client.ts
   - packages/runtime/src/runtime.ts
+  - packages/schema/src/document-scripts.ts
+  - packages/compiler/src/site/document-scripts.ts
+  - packages/compiler/src/site/bun-plugin.ts
 ---
 
 # Functions and sidecars
@@ -153,6 +157,66 @@ Add `"$lazy": true` to a sidecar entry and its module loads the first time the f
 }
 ```
 
+## A module inside the document
+
+A function that needs imports or helpers does not have to live in a file of its own. A document can carry the module as text in `$script.client`, and an entry names it with `$src: "#client"`:
+
+```json
+{
+  "tagName": "my-counter",
+  "$script": {
+    "client": "import { clamp } from \"./math.ts\";\n\nexport function bump(state: { count: number }): void {\n  state.count = clamp(state.count + 1, 0, 10);\n}\n"
+  },
+  "state": {
+    "count": 0,
+    "bump": { "$prototype": "Function", "$src": "#client", "$export": "bump" }
+  },
+  "children": [{ "tagName": "button", "onclick": { "$ref": "#/state/bump" }, "textContent": "Add" }]
+}
+```
+
+Everything said above about a sidecar export holds for a script's export: how it is called, how its role is decided, and what `$lazy` does. What differs is where the module comes from.
+
+- **It is TypeScript.** The text is an ordinary module with `import` and `export`.
+- **It stands where the document stands.** A relative import resolves from the document's own folder, so `./math.ts` is the file beside the document.
+- **It belongs to its document.** A page and its layout can each export a `bump` from their own script and each keeps its own. `jx build` writes one bundle per document.
+- **Another module can import it.** `import { clamp } from "../lib/shared.jxn"` imports that document's client script.
+- **A body cannot see into it.** An inline `body` reaches a script's function through the state entry that exports it, as `state.bump(…)`, and through nothing else.
+- **`$lazy` rarely helps.** Every `#client` entry of a document shares one module, so a lazy entry defers nothing while another entry of the same document loads with the page. Give a function you want loaded late a `$src` file of its own.
+
+`$script.server` is the same for server functions, named with `$src: "#server"`. See [Timing](/docs/framework/concepts/timing#server-the-rpc-function-boundary).
+
+Keep using `$src` for an `npm:` package and for a module several documents share. The project file has no script, so an entry in its `state` cannot use `#client`.
+
+:::doc-warning
+Only `jx build` runs a document's script so far. Studio's canvas, Live Preview and `jx dev` do not load one yet, and they send the document to the browser with its server script still in it. Until they do, keep a function you need while editing in a `$src` file, and keep secrets out of a server script's text.
+:::
+
+### Testing a script
+
+A script's exports can be unit tested from the document. Add the plugin to your project's `bunfig.toml`:
+
+```toml
+[test]
+preload = ["@jxsuite/compiler/bun-plugin"]
+```
+
+Then import the document in a Bun test. The plain path is its client script, and `?server` is its server script:
+
+```ts
+import { expect, test } from "bun:test";
+import { bump } from "./components/my-counter.jxn";
+import { history } from "./pages/index.jxn?server";
+
+test("bump stops at ten", () => {
+  const state = { count: 10 };
+  bump(state);
+  expect(state.count).toBe(10);
+});
+```
+
+The plugin reads `.jxn` documents. The `?server` spelling exists for tests only: the build refuses a server script imported by code a browser runs.
+
 ## Structured bodies
 
 A `body` may also be a JSON array of statements instead of a source string, which is multi-step logic that stays inspectable and visually editable. That form has its own page: [Statements](/docs/framework/concepts/statements).
@@ -204,6 +268,7 @@ Functions marked `timing: "server"` are a separate mechanism: a plain `$src`/`$e
 - `state` is always reachable from a body, and a declared `state` receives it wherever it sits in the list. The first other declared name receives the event.
 - `this` is never used. All component state goes through the `state` proxy.
 - `$export` defaults to the entry's key name; sidecar exports must be named exports.
+- `$src: "#client"` names the document's own `$script.client`. A Function entry that names `#server` fails the build.
 - Function entries use `camelCase` names, like all state entries.
 - Only `$prototype: "Function"` may point `$src` at a `.js` file. Other prototypes require a `.class.json` (see [Data prototypes](/docs/framework/concepts/data-prototypes)).
 

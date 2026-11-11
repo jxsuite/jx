@@ -20,15 +20,28 @@ export type BundleTargetName = "browser" | "node" | "bun" | "workerd";
  * backend.
  */
 export interface PluginBuild {
+  /**
+   * `external: true` leaves the import in the output as written. A result without it names the file
+   * the import IS, which need not exist when an `onLoad` answers for it.
+   */
   onResolve: (
     options: { filter: RegExp },
     callback: (args: {
       path: string;
       importer: string;
-    }) => { path: string; external: true } | undefined,
+    }) => { path: string; external?: boolean } | undefined,
   ) => void;
   /** An `undefined` result hands the file back to the backend's own loader. */
-  onLoad: (options: { filter: RegExp }, callback: (args: { path: string }) => undefined) => void;
+  onLoad: (
+    options: { filter: RegExp },
+    callback: (args: { path: string }) => LoadedModule | undefined | Promise<LoadedModule>,
+  ) => void;
+}
+
+/** A module's text as a plugin supplies it, in place of a read from disk. Always TypeScript. */
+export interface LoadedModule {
+  contents: string;
+  loader: "ts";
 }
 
 /** A plugin in the one shape both `Bun.build` and `esbuild.build` accept. */
@@ -39,8 +52,12 @@ export interface BundlePlugin {
 
 /** One bundle, with every option already decided by `bundler.ts`. */
 export interface BackendBuild {
-  /** A file to start from, or source text resolved as though it sat in `resolveDir`. */
-  entry: { path: string } | { source: string; resolveDir: string };
+  /**
+   * A file to start from; source text resolved as though it sat in `resolveDir`; or a TypeScript
+   * module AT `path`, which need not exist: its text is `contents`, and its relative imports
+   * resolve from `path`'s own directory, as a file there would.
+   */
+  entry: { path: string; contents?: string } | { source: string; resolveDir: string };
   target: BundleTargetName;
   external: string[];
   conditions?: string[];
