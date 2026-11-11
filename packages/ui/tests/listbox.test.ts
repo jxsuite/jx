@@ -21,6 +21,7 @@ import { afterEach, beforeAll, describe, expect, test } from "bun:test";
 
 import { documentStyleText } from "@jxsuite/runtime";
 import { findA11yDefects } from "@jxsuite/schema/a11y";
+import { getNestedStyle } from "@jxsuite/schema/guards";
 
 import { documents } from "../src/documents.ts";
 import { registerUi } from "../src/index.ts";
@@ -212,6 +213,18 @@ describe("jx-option", () => {
        what a reader can see. There is no default slot at all, which is jx-tab's answer to the same
        question — unnamed content in a content-named row joins its name. */
     expect(JSON.stringify(documents["jx-option"])).not.toContain('"aria-label"');
+  });
+
+  test("keeps the highlighted row visible when the system paints its own colours", () => {
+    /* Forced colours drop the background the highlight is drawn with, and the row carries no
+       other mark, so the keyboard position would vanish. The system pair is the one a reader in
+       that mode already knows as "selected". */
+    const forced = getNestedStyle(documents["jx-option"].style, "@(forced-colors: active)");
+    expect(getNestedStyle(forced, '&[aria-selected="true"]')).toMatchObject({
+      background: "Highlight",
+      color: "HighlightText",
+      forcedColorAdjust: "none",
+    });
   });
 
   test("draws the three preview channels, and pays no box for the ones it was not given", async () => {

@@ -264,6 +264,14 @@
     "&[aria-selected=\"true\"] [part=\"description\"], &[aria-selected=\"true\"] [part=\"end\"], &[aria-selected=\"true\"] [part=\"icon\"]": {
       "$description": "A highlighted row draws on the accent, and a muted grey on an accent fails SC 1.4.3. Every channel takes the row's own ink instead of keeping its own.",
       "color": "inherit"
+    },
+    "@(forced-colors: active)": {
+      "&[aria-selected=\"true\"]": {
+        "$description": "The highlighted row, redrawn. Forced colours replace the accent fill with the list's own Canvas, so the caret would move through a menu, a listbox or a combobox with nothing on screen following it. The system's selection pair says it instead, as jx-action-group does for its chosen segment; the description, end and icon already inherit the row's ink.",
+        "forcedColorAdjust": "none",
+        "background": "Highlight",
+        "color": "HighlightText"
+      }
     }
   },
   "children": [

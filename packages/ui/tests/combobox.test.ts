@@ -155,6 +155,21 @@ describe("jx-combobox", () => {
     expect(first!.getAttribute("aria-selected")).toBe("true");
   });
 
+  test("a key pressed inside an input-method composition is the composition's, not the list's", async () => {
+    /* An IME shows its own candidate list and uses the same arrows and Enter to walk and accept
+       it. Taking them here would open this list under the candidates, or commit a half-composed
+       word. keyCode 229 is what Safari sends for the key that ENDS a composition, where it reports
+       isComposing false for it. */
+    const el = await combobox();
+    const composing = press(el, "ArrowDown", { isComposing: true });
+    // oxlint-disable-next-line typescript/no-deprecated -- the deprecated field is the one the guard reads.
+    const ending = press(el, "ArrowDown", { keyCode: 229 });
+    await tick();
+    expect(el.open).toBe(false);
+    expect(composing.defaultPrevented).toBe(false);
+    expect(ending.defaultPrevented).toBe(false);
+  });
+
   test("the arrows wrap and step over a disabled row", async () => {
     const el = await combobox();
     press(el, "ArrowDown");

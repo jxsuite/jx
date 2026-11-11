@@ -150,6 +150,10 @@ describe("jx-dialog", () => {
       minHeight: "0",
       overflowY: "auto",
     });
+    /* A scroll that reaches either end stops there rather than chaining to the page underneath,
+       which a modal has made inert but not unscrollable. */
+    expect(block('& > [part="dialog"]')!["overscrollBehavior"]).toBe("contain");
+    expect(block('& > [part="dialog"] > [part="body"]')!["overscrollBehavior"]).toBe("contain");
     expect(
       block('& > [part="dialog"] > [part="header"], & > [part="dialog"] > [part="footer"]'),
     ).toEqual({ flex: "none" });

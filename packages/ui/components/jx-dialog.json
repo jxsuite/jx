@@ -214,6 +214,7 @@
       "fontSize": "var(--jx-text-md)",
       "lineHeight": "var(--jx-leading-md)",
       "overflow": "auto",
+      "overscrollBehavior": "contain",
       "&::backdrop": {
         "background": "rgba(0, 0, 0, 0.4)"
       },
@@ -234,7 +235,8 @@
       "$description": "The one region that scrolls. Child combinators, not the descendant ones the parts below use, because a consumer's content is light DOM inside this same box and a surface may name a [part=\"body\"] of its own.",
       "flex": "1 1 auto",
       "minHeight": "0",
-      "overflowY": "auto"
+      "overflowY": "auto",
+      "overscrollBehavior": "contain"
     },
     "&[data-size=\"md\"] > [part=\"dialog\"]": {
       "width": "min(90vw, 32rem)"
