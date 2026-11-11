@@ -84,6 +84,10 @@ import {
   bufferWrites,
   commitBufferWrites,
 } from "../services/monaco-buffer";
+import type { BufferWrites } from "../services/monaco-buffer";
+import { createSourceTypeCheck } from "../services/source-type-check";
+import type { SourceTypeCheckInit } from "../services/source-type-check";
+import { outsideOfDocument } from "../services/type-check";
 import { noteTyping } from "../tabs/typing";
 import { normalizeDocument } from "../tabs/bare-repeaters";
 import { unreadProblemKey } from "../tabs/tab";
@@ -548,9 +552,61 @@ function disposeSourceEditor(surface: CanvasSurface): void {
     return;
   }
   commitBufferWrites(editor, "source");
+  // Before the model goes: the check's markers are drawn on it, and its own models are its to drop.
+  editor._typeCheck?.dispose();
   editor.getModel()?.dispose();
   editor.dispose();
   surface.monacoEditor = null;
+}
+
+/** How many Code views have been checked, so each has a folder of its own in the worker. */
+let sourceCheckSeq = 0;
+
+/**
+ * Check the Code view of a `.jxn` file as it is typed (§16.7).
+ *
+ * The listener is its own, beside the one that commits the buffer, because the two disagree about
+ * what a change is. A commit follows a keystroke and must not follow the document's own text
+ * arriving; a check follows both, and a collaborator's edit too, since each is a new reading of the
+ * file. So it is installed for a co-edited tab as well, and never reads `_ignoreNextChange`.
+ */
+function checkSourceTypes(
+  tab: Tab,
+  surface: CanvasSurface,
+  sourceEditor: NonNullable<CanvasSurface["monacoEditor"]>,
+  filePath: string,
+  writes: BufferWrites,
+): void {
+  sourceCheckSeq += 1;
+  const init: SourceTypeCheckInit = {
+    editor: sourceEditor,
+    id: `src${sourceCheckSeq}`,
+    key: tab.id,
+    name: filePath.slice(filePath.lastIndexOf("/") + 1),
+    outside: () => outsideOfDocument(tab.documentPath, projectState?.projectConfig),
+    wanted: (text) =>
+      surface.monacoEditor === sourceEditor &&
+      tabIsLive(tab) &&
+      bufferIsLive(sourceEditor) &&
+      sourceEditor.getValue() === text,
+  };
+  if (tab.documentPath) {
+    init.path = tab.documentPath;
+  }
+  const check = createSourceTypeCheck(init);
+  sourceEditor._typeCheck = check;
+  let first = true;
+  sourceEditor.onDidChangeModelContent(() => {
+    if (surface.monacoEditor !== sourceEditor) {
+      return;
+    }
+    // The file's own text arriving is the first change, and has waited for nothing.
+    const wait = first ? 0 : 750;
+    first = false;
+    writes.arm("types", wait, () => {
+      void check.run(sourceEditor.getValue());
+    });
+  });
 }
 
 /**
@@ -851,6 +907,9 @@ async function mountSourceEditor(
   // And a timer outlived every teardown; hanging it off the instance gives it the instance's
   // Lifetime. Installed before the collab early-return so the canceller exists either way.
   const writes = bufferWrites(sourceEditor);
+  if (lang === "jxn") {
+    checkSourceTypes(tab, surface, sourceEditor, filePath, writes);
+  }
 
   // Debounced sync back to state (solo tabs only: co-edited buffers flow through the shared
   // Y.Text and the source reconciler's parse mirror instead of a whole-doc replace).
