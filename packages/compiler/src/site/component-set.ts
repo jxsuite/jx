@@ -19,6 +19,7 @@ import { existsSync, readdirSync } from "node:fs";
 import { dirname, isAbsolute, relative, resolve } from "node:path";
 import { isJsonObject, isString } from "@jxsuite/schema/guards";
 import { errorMessage } from "@jxsuite/schema/parse";
+import { projectFilePath } from "@jxsuite/schema/project-file/node";
 import type { FormatRegistry } from "@jxsuite/schema/format-registry";
 import type { JxDocument, ProjectConfig } from "@jxsuite/schema/types";
 import { layoutChain } from "./layout-resolver.ts";
@@ -154,7 +155,7 @@ export async function collectSiteComponents(
     }
   }
 
-  await visitDeclared(projectConfig, resolve(projectRoot, "project.json"), projectRoot);
+  await visitDeclared(projectConfig, projectFilePath(projectRoot), projectRoot);
 
   for (const pagePath of new Set(pageSources)) {
     try {

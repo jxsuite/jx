@@ -109,6 +109,15 @@ describe("collectSiteComponents", () => {
     expect(errors).toEqual([]);
   });
 
+  it("names the project file the project has when one of its entries cannot compile", async () => {
+    const root = project({}, { "project.jxn": "{}" });
+    const projectConfig: ProjectConfig = { $elements: [{ $ref: "./shared/x-gone.json" }] };
+    const { errors } = await collect(root, [], projectConfig);
+    expect(errors).toEqual([
+      'project.jxn: $elements entry "./shared/x-gone.json" names no file (shared/x-gone.json)',
+    ]);
+  });
+
   it("follows a component's own $ref entries transitively and lists each file once", async () => {
     const root = project({
       "components/a-host.json": comp("a-host", [{ $ref: "./nested/b-mid.json" }]),
