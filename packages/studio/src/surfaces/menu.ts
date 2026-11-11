@@ -25,6 +25,7 @@ import type { JxScope } from "@jxsuite/runtime/types";
 import { ensureCaret } from "@jxsuite/ui/behaviors/menu";
 import { reactive } from "../reactivity";
 import { clearLayerSlot, getLayerSlot } from "../ui/layers";
+import { whenOwnReady } from "../ui/own-ready";
 import { mountSurface, registerSurface } from "../ui/surface";
 import { rectOf } from "../utils/geometry";
 import menuDoc from "./menu.json";
@@ -303,9 +304,7 @@ export function openMenu(options: OpenMenuOptions): MenuHandle {
       }
     });
     if (!menu.hasAttribute("popover")) {
-      await new Promise<void>((resolve) => {
-        menu!.addEventListener("jx-ready", () => resolve(), { once: true });
-      });
+      await whenOwnReady(menu);
     }
     if (aborted()) {
       return;

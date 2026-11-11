@@ -31,6 +31,7 @@
 
 import { isJsonObject, isString } from "@jxsuite/schema/guards";
 import { reactive } from "../reactivity";
+import { whenOwnReady } from "../ui/own-ready";
 import { mountSurface, registerSurface } from "../ui/surface";
 import blockActionBarDoc from "./block-action-bar.json";
 
@@ -365,7 +366,7 @@ export function mountBlockActionBar(host: HTMLElement, actions: BlockBarActions)
       if (panel.hasAttribute("popover")) {
         show();
       } else {
-        panel.addEventListener("jx-ready", show, { once: true });
+        void whenOwnReady(panel).then(show);
       }
     },
     toolbar: () => (toolbarEl?.isConnected === true ? toolbarEl : null),
