@@ -1,6 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { classifyFunctionEntries, declaresBodyAndSrc, LIFECYCLE_KEYS } from "../src/function-role";
-import type { JxElement } from "../types";
+import {
+  classifyFunctionEntries,
+  declaresBodyAndSrc,
+  declaresParameters,
+  handlerParamNames,
+  LIFECYCLE_KEYS,
+} from "../src/function-role";
+import type { JxElement, JxFunctionDef } from "../types";
 
 /** The verdict for one entry of a document. */
 function roleOf(doc: JxElement, key: string): string | undefined {
@@ -180,5 +186,32 @@ describe("declaresBodyAndSrc", () => {
     expect(declaresBodyAndSrc({ $prototype: "Function", body: "return 1" })).toBe(false);
     expect(declaresBodyAndSrc({ $prototype: "Function", $src: "./a.js" })).toBe(false);
     expect(declaresBodyAndSrc({ $prototype: "Function" })).toBe(false);
+  });
+});
+
+describe("handlerParamNames", () => {
+  const namesOf = (def: Pick<JxFunctionDef, "arguments" | "parameters">) =>
+    handlerParamNames({ $prototype: "Function", ...def });
+
+  test("puts state first and keeps the other names in declared order", () => {
+    expect(namesOf({})).toEqual(["state"]);
+    expect(namesOf({ parameters: ["event"] })).toEqual(["state", "event"]);
+    expect(namesOf({ parameters: ["event", "state"] })).toEqual(["state", "event"]);
+    expect(namesOf({ parameters: ["a", "state", "b"] })).toEqual(["state", "a", "b"]);
+    expect(namesOf({ parameters: ["state"] })).toEqual(["state"]);
+  });
+
+  test("reads CEM parameter objects and the legacy arguments alias", () => {
+    expect(namesOf({ parameters: [{ name: "id" }, "n"] })).toEqual(["state", "id", "n"]);
+    expect(namesOf({ arguments: ["state", "event"] })).toEqual(["state", "event"]);
+  });
+});
+
+describe("declaresParameters", () => {
+  test("is true when a name is declared by either spelling, and false otherwise", () => {
+    expect(declaresParameters({ $prototype: "Function", parameters: ["event"] })).toBe(true);
+    expect(declaresParameters({ $prototype: "Function", arguments: ["event"] })).toBe(true);
+    expect(declaresParameters({ $prototype: "Function", parameters: [] })).toBe(false);
+    expect(declaresParameters({ $prototype: "Function" })).toBe(false);
   });
 });

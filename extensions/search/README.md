@@ -84,7 +84,7 @@ Compiled components do not go through lowering, so inside a component you use th
 }
 ```
 
-`searchInit(state)` returns `true` immediately, preloads (honouring `state.searchIndexUrl`), then sets `state.searchReady` and re-runs a pending `state.searchQuery`. `runSearch(state, event?)` reads the query from `event.target.value` (else `state.searchQuery`), searches within `state.searchScope` when it is a non-empty string, and publishes `state.searchResults`, `state.searchCount` and `state.searchActive`. `$src` parameters bind **by name, not position** (spec.md §5.3): a parameter literally named `state` gets reactive state, any other name gets the event.
+`searchInit(state)` returns `true` immediately, preloads (honouring `state.searchIndexUrl`), then sets `state.searchReady` and re-runs a pending `state.searchQuery`. `runSearch(state, event?)` reads the query from `event.target.value` (else `state.searchQuery`), searches within `state.searchScope` when it is a non-empty string, and publishes `state.searchResults`, `state.searchCount` and `state.searchActive`. A `$src` export is called as its call site calls it: an event binding passes `(state, event)` (spec.md §5.3).
 
 ## Surprises
 

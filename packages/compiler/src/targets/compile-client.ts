@@ -11,7 +11,11 @@
  * state + computed signals), bind (DOM getters), on (event handlers), hydrate()
  */
 
-import { classifyFunctionEntries } from "@jxsuite/schema/function-role";
+import {
+  classifyFunctionEntries,
+  declaresParameters,
+  handlerParamNames,
+} from "@jxsuite/schema/function-role";
 import { RESERVED_KEYS, camelToKebab } from "@jxsuite/runtime";
 import {
   ATTR_HELPER,
@@ -57,7 +61,6 @@ import {
   isServerFnDef,
   isString,
   isTagExpression,
-  paramNames,
   tagNameCandidates,
 } from "@jxsuite/schema/guards";
 import type { CompileContext } from "../shared.ts";
@@ -88,7 +91,8 @@ type RepeaterSlot = Omit<JxMappedArray, "items"> & { items?: JxMappedArray["item
 
 /** A compiled event handler entry: parameter names + function body. */
 interface HandlerDef {
-  args?: string[] | undefined;
+  /** The parameters the body is built with: `state` first, then the event under some name. */
+  args: string[];
   body?: string | undefined;
 }
 
@@ -187,7 +191,6 @@ export function compileClient(
 
     // $prototype: "Function"
     if (isFunctionDef(def)) {
-      const args = def.parameters ? paramNames(def.parameters) : def.arguments;
       const { body } = def;
       if (Array.isArray(body)) {
         // Structured body (spec §20) → an event handler compiled from statements.
@@ -213,21 +216,17 @@ export function compileClient(
           computedEntries.push([key, `() => { return ${key}(state); }`]);
         } else {
           /* Used as a callable: `state[key]` is the import, for a template or `call` site, and
-             `on[key]` adapts it for an event binding. Declared names map by name, and an undeclared
-             one is called as `(state, event)`, which is what the interpreter does. */
-          const callNames = args && args.length > 0 ? args : ["state", "event"];
+             `on[key]` adapts it for an event binding, which calls it `(state, event)` whatever it
+             declares (spec.md §4.3, §5.3 4d), as the interpreter does. */
           initBlocks.push(`state[${JSON.stringify(key)}] = ${key};`);
-          onEntries.push([
-            key,
-            { args: callNames, body: `return ${key}(${callNames.join(", ")});` },
-          ]);
+          onEntries.push([key, { args: ["state", "event"], body: `return ${key}(state, event);` }]);
         }
       } else if (isString(body) && roles.get(key) === "computed") {
         // Body contains return → computed
         computedEntries.push([key, `() => { ${body} }`]);
       } else {
         // No return → event handler
-        onEntries.push([key, { args: args ?? ["state"], body }]);
+        onEntries.push([key, { args: handlerParamNames(def), body }]);
       }
       continue;
     }
@@ -463,9 +462,7 @@ function buildClientNode(
               body: compileStatements(body, { eventParam: "e", statePrefix: "state" }),
             }
           : {
-              args: val.parameters
-                ? paramNames(val.parameters)
-                : (val.arguments ?? ["state", "event"]),
+              args: declaresParameters(val) ? handlerParamNames(val) : ["state", "event"],
               body,
             },
       );
@@ -790,9 +787,14 @@ function emitLitMapTemplate(def: JxMutableNode | null | undefined, preformatted 
        * or absent. An absent one (a `$src` function) reaches replaceAll and throws, as it always
        * has: a repeater handler is emitted inline and needs inline source.
        */
-      const body = mapRefsToLit(val.body as string);
-      // The newline ends a last-line comment before the brace does.
-      attrs += ` @${eventName}=\${(e) => { ${body}\n}}`;
+      const body = bareMapRefsToLit(val.body as string);
+      /* Published like the sibling branches, so a body reads `state.$map`; with a declaration the
+         body is built with the same list every tier uses and called `(state, e)`. The newline ends a
+         last-line comment before the brace does. */
+      const call = declaresParameters(val)
+        ? `((${handlerParamNames(val).join(", ")}) => { ${body}\n})(state, e);`
+        : `${body}\n`;
+      attrs += ` @${eventName}=\${(e) => { state.$map = { item, index }; ${call}}}`;
     } else if (isNonNullObject(val) && "$expression" in val) {
       /*
        * SAFETY: an `on*` member carrying `$expression` is a Shape 5 expression entry, whose
@@ -893,6 +895,17 @@ function emitArrayHole(arrayDef: RepeaterSlot): string {
  */
 function mapRefsToLit(str: string) {
   return str.replaceAll("$map.", "");
+}
+
+/**
+ * {@link mapRefsToLit} for a handler body, which also publishes `state.$map` before it runs: a bare
+ * `$map.item` becomes the callback's `item`, and a `state.$map.item` the author wrote is left to
+ * read the published context, rather than losing its `$map.` to `state.item`.
+ *
+ * @param body The handler body source.
+ */
+function bareMapRefsToLit(body: string): string {
+  return body.replaceAll(/(?<![\w$.])\$map\./gu, "");
 }
 
 // ─── JS module generation ─────────────────────────────────────────────────────
@@ -1020,12 +1033,9 @@ function emitClientModule(
   if (onEntries.length > 0) {
     lines.push("const on = {");
     for (const [key, def] of onEntries) {
-      const argNames = def.args ?? ["state"];
-      const callArgs = argNames.map((a: string) => (a === "state" ? "state" : "e")).join(", ");
+      // Every entry's list starts with `state`, and the event is the one argument after it.
       lines.push(
-        `  ${objectKey(key)}: (e) => { const fn = (${argNames.join(", ")}) => { ${def.body}\n}; fn(${
-          callArgs
-        }); },`,
+        `  ${objectKey(key)}: (e) => { const fn = (${def.args.join(", ")}) => { ${def.body}\n}; fn(state, e); },`,
       );
     }
     lines.push("};");
