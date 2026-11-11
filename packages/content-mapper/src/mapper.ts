@@ -135,7 +135,7 @@ function mappedOutput(unit: VirtualUnit, source: string, encoding: PositionEncod
       span.kind === "verbatim" ? SpanMapKind.Verbatim : SpanMapKind.Atom,
     ];
   });
-  return { extension: ".ts", mappings, text: unit.text };
+  return { extension: unit.extension, mappings, text: unit.text };
 }
 
 /**

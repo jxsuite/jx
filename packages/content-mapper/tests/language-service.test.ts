@@ -31,6 +31,7 @@ const SOURCE = [
   '    (fn)onclick "state.local += state.count; state.hello(1)"',
   '    (fn)onkeydown e "void e.key"',
   "  }",
+  '  p "${state.count} left" hidden=(ref)"#/state/count" title=(ref)"#/state/absent"',
   "}",
   "",
 ].join("\n");
@@ -114,6 +115,7 @@ describe("an editor on a document", () => {
       expect(items.map((item) => `${spanOf(item.range)} TS${item.code}`)).toEqual([
         `${span("state.nope", 6, 4)} TS2339`,
         `${span("state.hello(1)", 6, 5)} TS2554`,
+        `${span("absent", 0, 6)} TS2339`,
       ]);
     },
     SLOW,
@@ -166,8 +168,32 @@ describe("an editor on a document", () => {
         span("state.count = a", 6, 5),
         // A body in a scope of its own reads the document's state through the same declaration.
         span("state.count; state.hello", 6, 5),
+        // And so do a template and a reference, which are no body at all.
+        span("${state.count} left", 8, 5),
+        span('"#/state/count"', 9, 5),
       ].toSorted(),
     );
+  });
+
+  test("shows the type of state read in a template, and of what a reference names", async () => {
+    expect(await hovered("${state.count} left", 8)).toEqual({
+      over: span("${state.count} left", 8, 5),
+      text: "(property) State.count: number",
+    });
+    expect(await hovered('"#/state/count"', 9)).toEqual({
+      over: span('"#/state/count"', 9, 5),
+      text: "(property) State.count: number",
+    });
+  });
+
+  test("renames a state entry from a reference to it, and goes from one to the entry", async () => {
+    expect(await renamed('"#/state/count"', 9)).toEqual(await renamed("    count 0", 4));
+    const answer = await ask("textDocument/definition", '"#/state/count"', 9);
+    // SAFETY: a definition is answered with the places that declare the name.
+    const places = answer as { range: Range; uri: string }[];
+    expect(places.map((place) => `${place.uri} ${spanOf(place.range)}`)).toEqual([
+      `${document.uri} ${span("    count 0", 4, 5)}`,
+    ]);
   });
 
   test("renames an entry of a scope inside the document, where it is declared and read", async () => {

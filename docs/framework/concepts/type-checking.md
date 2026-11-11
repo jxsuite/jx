@@ -1,6 +1,6 @@
 ---
 title: "Type checking"
-description: "Check the TypeScript in a .jxn document with tsc and in your editor: scripts and function bodies, read through @jxsuite/content-mapper."
+description: "Check a .jxn document with tsc and in your editor: its scripts, function bodies, templates and references, read through @jxsuite/content-mapper."
 spec:
   - spec.md#23.3
 code:
@@ -13,12 +13,12 @@ code:
 
 # Type checking
 
-A `.jxn` document holds TypeScript in two places: its [script](/docs/framework/concepts/functions#a-module-inside-the-document) and the `body` of each function. `tsc` checks both, and prints each error at the line and column where you wrote it. An editor that runs TypeScript's language server shows the same errors, with hover, completion, rename and go to definition.
+A `.jxn` document holds TypeScript in two places: its [script](/docs/framework/concepts/functions#a-module-inside-the-document) and the `body` of each function. It names the same state in two more: each `${}` template, and each `$ref` into `state`. `tsc` checks all four, and prints each error at the line and column where you wrote it. An editor that runs TypeScript's language server shows the same errors, with hover, completion, rename and go to definition.
 
 The work is done by `@jxsuite/content-mapper`, a program TypeScript starts to read a kind of file it cannot read itself. Content mappers arrive in TypeScript 7.1, which is a beta today.
 
 :::doc-note
-Studio checks a function body as you type, with nothing to install ([Code editing](/docs/studio/logic/code#the-function-editor)). This page is about the terminal, CI and your own editor. Only `.jxn` documents are read here. A `.json` document's bodies are checked in Studio and nowhere else.
+Studio checks a function body as you type, with nothing to install ([Code editing](/docs/studio/logic/code#the-function-editor)). This page is about the terminal, CI and your own editor. Only `.jxn` documents are read here. A `.json` document's bodies are checked in Studio and nowhere else, and its templates and references are checked nowhere.
 :::
 
 ## Set it up
@@ -207,15 +207,69 @@ Three things are any type, by design:
 - **An event the browser does not name**, such as one your code dispatches.
 - **Everything, in a project without the DOM library.** If `compilerOptions.lib` leaves out `dom`, every event is any type and no handler is reported for reading one.
 
+## Templates and references
+
+A template and a `$ref` are not function bodies, and they name `state` all the same. Both are checked. Here is `pages/list.jxn`:
+
+```kdl
+main {
+  state {
+    todos {
+      - { title "Write"; done #false }
+    }
+    filter "all"
+    (fn)clear "state.todos = []"
+  }
+  h1 "${state.todos.length} to do, showing ${state.filtre}"
+  button "Clear" onclick=(ref)"#/state/clear"
+  input value=(ref)"#/state/fliter" onchange=(ref)"#/state/filter"
+  ul {
+    $array items=(ref)"#/state/todos" {
+      li "${index + 1}. ${item.title} ${item.finished ? 'done' : ''}" hidden=(ref)"$map/item/done"
+    }
+  }
+}
+```
+
+```text
+pages/list.jxn(9,52): error TS2551: Property 'filtre' does not exist on type 'State'. Did you mean 'filter'?
+pages/list.jxn(14,46): error TS2339: Property 'finished' does not exist on type '{ title: string; done: boolean; }'.
+pages/list.jxn(11,52): error TS2345: Argument of type 'string' is not assignable to parameter of type '(state: any, event: Event & { readonly currentTarget: HTMLInputElement; readonly target: HTMLInputElement; }) => unknown'.
+pages/list.jxn(11,29): error TS2551: Property 'fliter' does not exist on type 'State'. Did you mean 'filter'?
+```
+
+- **`${state.filtre}`** is a misspelling inside a template. The error is at the name, inside the string.
+- **`${item.finished}`** reads the row. In a template the row goes by four names, and all four are typed: `item`, `index`, `$map` and `state.$map`.
+- **`onchange=(ref)"#/state/filter"`** binds a handler to a string. A `$ref` on an `on` member has to name a function the binding can call, with that binding's event. The browser would attach nothing and say nothing.
+- **`#/state/fliter`** names an entry that is not there. The error is at the name inside the `$ref`.
+
+### Where a string is a template
+
+A string is checked as a template where the runtime reads it as one:
+
+- An element's text, a property, an attribute, a `style` value, and a value handed to a component as `$props`.
+- A `state` entry that is a string.
+- What configures a `$prototype` entry, such as the `url` of a `Request`.
+
+A string anywhere else is data. A `${` inside a list in `state` is text, and is left alone.
+
+A template is JavaScript and not TypeScript, because that is how the page runs it. A type written inside one is an error here (`TS8016`), as it is a syntax error on the page. Outside a repeated element, `item`, `index` and `$map` are any type, and so are `$site` and `$page`.
+
+### Which references are checked
+
+A `$ref` is checked when it reads `state` or a row: `#/state/...`, `$map/...` and `#/$map/...`. Each name in the path is checked against the one before it, so `#/state/todos/0/finished` is an error at `finished`. A step through an entry that is `null` until it loads is allowed, since the page reads it as nothing until then.
+
+A `$ref` with another scheme (`window#/`, `document#/`, `parent#/`, a file) is not checked.
+
 ## In an editor
 
 TypeScript 7.1's language server reads the same `tsconfig.jxn.json`, and through the mapper it answers for a `.jxn` file what it answers for a `.ts` file:
 
 - **Errors** at the same positions `tsc` prints.
-- **Hover** on `state.count` in a body shows `(property) State.count: number`. Hover on an event parameter shows the event and the element, such as `KeyboardEvent & { readonly currentTarget: HTMLButtonElement; ... }`.
+- **Hover** on `state.count` in a body or a template, or on `count` in `"#/state/count"`, shows `(property) State.count: number`. Hover on an event parameter shows the event and the element, such as `KeyboardEvent & { readonly currentTarget: HTMLButtonElement; ... }`.
 - **Completion** after `state.` lists the document's entries.
-- **Go to definition** from `state.hello` in a body offers the entry and the function in the script that it exports.
-- **Rename** of an entry rewrites the entry, the script and every body that reads it, in the document's `state` or a nested section's. Renaming a script's function rewrites the `$export` that names it.
+- **Go to definition** from `state.hello` in a body offers the entry and the function in the script that it exports. From a name in a `$ref` it goes to the entry.
+- **Rename** of an entry rewrites the entry, the script, every body and template that reads it and every `$ref` that names it, in the document's `state` or a nested section's. It can start from any of them. Renaming a script's function rewrites the `$export` that names it.
 
 The language server runs a mapper only when the editor tells it the project may run external code, which is the editor's form of `--runExternalCode`. Until it does, a `.jxn` file gets no errors, no hover and no completion, and nothing says why.
 
@@ -224,9 +278,10 @@ There is no Jx editor extension yet. Your editor has to be told by hand that a `
 ## Limits
 
 - **`.json` documents** are not read. Studio checks their bodies.
-- **Studio does not use the mapper.** Its code editor checks a body on its own, and does not check a script yet. `tsc` is what checks a script today.
+- **Studio does not use the mapper.** Its code editor checks a body on its own, and does not check a script, a template or a reference yet. `tsc` is what checks those today.
 - **`jx build` does not run it.** A build still accepts a document with a type error, so run the script in CI.
-- **`${}` templates, `$defs` and a class's methods** are not checked.
+- **`$defs` and a class's methods** are not checked.
+- **A handler reached through a longer path is not checked as one.** `onclick=(ref)"#/state/actions/save"` has its path checked, and not whether `save` is a function.
 - **Renaming an `(export)name` entry is half a rename.** The one word stands for two names, the state entry and the export. Renaming the function in the script rewrites the function and the entry, and leaves `state.name` in bodies. Renaming `state.name` from a body rewrites the bodies and the entry, and leaves the function. Either way the next check reports what was left behind. An entry written `(export)hello $export=greet` has two words and renames cleanly.
 
 ## Related

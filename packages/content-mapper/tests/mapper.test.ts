@@ -261,6 +261,30 @@ describe("mapping a file", () => {
     expect(result.supplemental?.[0]?.text).toContain("state.count += 1");
   });
 
+  test("answers a template as JavaScript, and what the document refers to as TypeScript", async () => {
+    const said = [
+      "div {",
+      "  state { count 0 }",
+      '  p "${state.count} left" hidden=(ref)"#/state/count"',
+      "}",
+      "",
+    ].join("\n");
+    const result = await transform("/somewhere/a.jxn", said);
+    expect(result.supplemental?.map((unit) => unit.extension)).toEqual([".js", ".ts"]);
+    const [template, refs] = result.supplemental ?? [];
+    expect(template?.text).toContain("return `${state.count} left`;");
+    expect(joined(template?.mappings, template?.text ?? "", said, "utf-16")).toContainEqual([
+      0,
+      "${state.count} left",
+      "${state.count} left",
+    ]);
+    expect(refs?.text).toContain("void s0.count;");
+    expect(joined(refs?.mappings, refs?.text ?? "", said, "utf-16")).toEqual([
+      [1, "s0.", "#/state/"],
+      [0, "count", "count"],
+    ]);
+  });
+
   test("joins each name and each body to where its author wrote it, counted in UTF-16", async () => {
     const result = await transform("/somewhere/a.jxn", source);
     expect(joined(result.mappings, result.text, source, "utf-16")).toEqual([

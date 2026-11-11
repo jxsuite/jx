@@ -285,6 +285,119 @@ describe("what a document says of where a body stands", () => {
   );
 });
 
+describe("an error outside a document's functions", () => {
+  const templates = lines(
+    "div {",
+    "  state {",
+    "    count 0",
+    '    name "a"',
+    "    todos {",
+    '      - { title "a"; done #false }',
+    "    }",
+    '    label "${state.count.toFixed()} of ${state.nolabel}"',
+    '    request { $prototype Request; url "/api/${state.count.nourl}" }',
+    "  }",
+    '  p "Said \\"${state.name.toFixed()}\\" and ${missing}" title="${state.notitle}"',
+    '  a { attributes { href "${state.nohref}" }; style { color "${state.nocolor}" } }',
+    '  p "${$site.any.thing} ${item} ${index} ${$map.x} ${$page.title}"',
+    "  ul {",
+    '    $array items=(ref)"#/state/todos" {',
+    '      li "${item.title.notext} ${index.noindex} ${$map.item.norow} ${state.$map.item.nostate}"',
+    "    }",
+    "  }",
+    "}",
+  );
+  const refs = lines(
+    "div {",
+    '  script #"""',
+    "    export function key(state: State, event: KeyboardEvent) { void state; void event; }",
+    "    export function any(state: State) { void state; }",
+    '    """#',
+    "  state {",
+    "    count 0",
+    "    user #null",
+    "    todos {",
+    '      - { title "a" }',
+    "    }",
+    "    (export)key",
+    "    (export)any",
+    "  }",
+    '  button "Go" onclick=(ref)"#/state/key" onkeydown=(ref)"#/state/key" onfocus=(ref)"#/state/any"',
+    '  button onclick=(ref)"#/state/count" hidden=(ref)"#/state/gone" title=(ref)"#/state/user/name"',
+    '  input value=(ref)"#/state/todos/0/title" placeholder=(ref)"#/state/todos/0/nope"',
+    "  ul {",
+    '    $array items=(ref)"#/state/todos" {',
+    '      li textContent=(ref)"$map/item/title" hidden=(ref)"$map/item/absent" id=(ref)"#/$map/index/zzz"',
+    "    }",
+    "  }",
+    "}",
+  );
+  const syntax = lines(
+    "div {",
+    "  state { count 0 }",
+    '  p "${(state.count as number)}"',
+    '  p title="${state.count"',
+    "}",
+  );
+  let findings: Finding[] = [];
+
+  beforeAll(() => {
+    const made = project();
+    made.write("src/templates.jxn", templates);
+    made.write("src/refs.jxn", refs);
+    ({ findings } = made.check("--runExternalCode"));
+  }, SLOW);
+
+  test("is at its own column in a template, wherever an element holds one", () => {
+    expect(about(findings, "templates.jxn")).toEqual([
+      // An entry of `state` that is a string, and what configures a `Request`.
+      `${printed(templates, "nolabel")} TS2551`,
+      `${printed(templates, "nourl")} TS2339`,
+      // What an element says, past an escape, and a name nothing declares.
+      `${printed(templates, "toFixed()}\\")} TS2551`,
+      `${printed(templates, "missing")} TS2304`,
+      `${printed(templates, "notitle")} TS2339`,
+      `${printed(templates, "nohref")} TS2339`,
+      `${printed(templates, "nocolor")} TS2339`,
+      // A row is typed in every name it goes by, and outside one those names are any.
+      `${printed(templates, "notext")} TS2339`,
+      `${printed(templates, "noindex")} TS2339`,
+      `${printed(templates, "norow")} TS2339`,
+      `${printed(templates, "nostate")} TS2339`,
+    ]);
+  });
+
+  test("is at the name a reference misses, and at a handler its binding cannot call", () => {
+    expect(about(findings, "refs.jxn")).toEqual([
+      // A click is no key press: the function is not one this binding can call.
+      `${printed(refs, '"#/state/key"', 1)} TS2345`,
+      // What is no function is no handler.
+      `${printed(refs, '"#/state/count"', 1)} TS2345`,
+      `${printed(refs, "gone")} TS2339`,
+      // Through what is null until it loads nothing is said, and through a list it is.
+      `${printed(refs, "nope")} TS2339`,
+      `${printed(refs, "absent")} TS2339`,
+      `${printed(refs, "zzz")} TS2339`,
+    ]);
+  });
+
+  test(
+    "is at its own column where a template is not JavaScript, or does not end",
+    () => {
+      // A mistake of syntax is all a run reports, so these have a project of their own.
+      const made = project();
+      made.write("src/syntax.jxn", syntax);
+      expect(about(made.check("--runExternalCode").findings, "syntax.jxn")).toEqual([
+        // A type is TypeScript, and the runtime compiles a template as JavaScript.
+        `${printed(syntax, "number")} TS8016`,
+        // Reported on the string it is: the quote that should have followed a brace.
+        `${printed(syntax, 'count"', "count".length)} TS1160`,
+      ]);
+    },
+    SLOW,
+  );
+});
+
 describe("a file that is not Jx Notation", () => {
   test(
     "is reported as the mapper's own error, at its position",
