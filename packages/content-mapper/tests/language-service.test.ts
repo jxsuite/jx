@@ -29,6 +29,7 @@ const SOURCE = [
   "  button {",
   "    state { local 1 }",
   '    (fn)onclick "state.local += state.count; state.hello(1)"',
+  '    (fn)onkeydown e "void e.key"',
   "  }",
   "}",
   "",
@@ -142,7 +143,8 @@ describe("an editor on a document", () => {
   test("shows the state of a scope inside the document, to a body in that scope", async () => {
     expect(await hovered("state.local", 6)).toEqual({
       over: span("state.local", 6, 5),
-      text: "(property) State.local: number",
+      // Each scope inside a document has an interface of its own, numbered from the root's.
+      text: "(property) State$1.local: number",
     });
   });
 
@@ -166,6 +168,28 @@ describe("an editor on a document", () => {
         span("state.count; state.hello", 6, 5),
       ].toSorted(),
     );
+  });
+
+  test("renames an entry of a scope inside the document, where it is declared and read", async () => {
+    expect(await renamed("state { local 1 }", 8)).toEqual(
+      [span("state { local 1 }", 8, 5), span("state.local", 6, 5)].toSorted(),
+    );
+  });
+
+  test("shows the event a handler is given, over the parameter that receives it", async () => {
+    expect(await hovered("void e.key", 5)).toEqual({
+      over: span("void e.key", 5, 1),
+      text: [
+        "(parameter) e: KeyboardEvent & {",
+        "    readonly currentTarget: HTMLButtonElement;",
+        "    readonly target: HTMLButtonElement;",
+        "}",
+      ].join("\n"),
+    });
+    // What it reads off the event is the platform's, with the platform's own account of it after.
+    const key = await hovered("void e.key", 7);
+    expect(key.over).toBe(span("void e.key", 7, 3));
+    expect(key.text).toStartWith("(property) KeyboardEvent.key: string");
   });
 
   test("renames a parameter where it is declared and where the body uses it", async () => {

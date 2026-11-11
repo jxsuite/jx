@@ -5,6 +5,7 @@ spec:
   - spec.md#23.3
 code:
   - packages/schema/src/jxn/virtual-document.ts
+  - packages/schema/src/jxn/document-scopes.ts
   - packages/schema/src/jxn/state-types.ts
   - packages/content-mapper/src/mapper.ts
   - packages/content-mapper/src/server.ts
@@ -141,23 +142,80 @@ Inside a script, `State` is the type of the document's `state`, in scope without
 | `(fn)name` with a body                                     | A function, or any type when the document reads it as a computed value                                 |
 | A `$prototype` instance, an expression, a template, `null` | Any type                                                                                               |
 
-An entry the document cannot give a type to is any type, not an error. The event a handler receives is any type too, and so is a declared parameter.
+An entry the document cannot give a type to is any type, not an error. So is a parameter a function declares, except the one that receives the event ([Events and rows](#events-and-rows)).
 
-A handler on an element inside a section with its own `state` sees that state and its parents'.
+A handler on an element inside a section with its own `state` sees that state and its parents'. A hover there names the inner section by number: `(property) State$1.local: number`. The number is the section's place in the document, so it changes when you add a section above it. A `.ts` file can import `State` and cannot import `State$1`.
 
 **Whether an unknown name is an error depends on what surrounds the document.** A page with a layout, or in a project whose project file has `state` of its own, reads entries the page never declares. There `state.anything` is allowed, and only the names the page does declare are typed. A page with neither, and every component, is exact: `state.total` above is an error because nothing else could have declared it. A name that begins with `$`, such as `state.$media`, is always allowed.
 
 The mapper learns this from the nearest project file at or above the document, and looks no higher than the folder `tsconfig.jxn.json` is in. That is why the file goes beside your project file.
+
+## Events and rows
+
+A handler knows which event it is given and which element it is on. Here is `pages/todos.jxn`:
+
+```kdl
+main {
+  state {
+    todos {
+      - { title "Write"; done #false }
+    }
+    draft ""
+  }
+  input {
+    (fn)onkeydown "if (event.key === 'Enter') state.draft = event.target.value"
+  }
+  form {
+    input
+    (fn)onsubmit "event.preventDefault(); event.target.reset()"
+  }
+  ul {
+    $array items=(ref)"#/state/todos" {
+      li {
+        (fn)onclick "state.$map.item.done = !state.$map.item.finished"
+      }
+    }
+  }
+}
+```
+
+```text
+pages/todos.jxn(13,43): error TS18047: 'event.target' is possibly 'null'.
+pages/todos.jxn(13,56): error TS2339: Property 'reset' does not exist on type 'EventTarget'.
+pages/todos.jxn(18,62): error TS2339: Property 'finished' does not exist on type '{ title: string; done: boolean; }'.
+```
+
+- **The `onkeydown` handler has no error.** On an `input`, `event` is a `KeyboardEvent`, so `event.key` is known. Both `event.currentTarget` and `event.target` are the `HTMLInputElement`, so `event.target.value` is a string.
+- **The `onsubmit` handler has two.** A form holds other elements, and a `submit` could have started on one of them, so `event.target` is `EventTarget | null`, as the browser declares it. Write `event.currentTarget.reset()`. `currentTarget` is always the element the handler is on.
+- **`state.$map`** is the row a repeated element is drawn for. `item` is one of `todos`, so `done` is a boolean and `finished` does not exist. `index` is a number.
+
+`event.target` is typed as the handler's own element in three cases, the ones where the event cannot have started anywhere else:
+
+- The element holds no other element: only text, or nothing.
+- The event does not bubble, such as `focus`, `blur`, `load` and `mouseenter`.
+- The element is a `select`, and the event is `change` or `input`.
+
+Name the event as a parameter (`(fn)onkeydown e "..."`) and `e` has the same type.
+
+A function in `state` that elements bind, such as `onclick=(ref)"#/state/save"`, gets the events of those bindings. Bound to a button's `onclick` and a form's `onsubmit`, its event is one or the other and it has to tell them apart. A function that anything else in the document names (a body that calls `state.save()`, a template) gets an event of any type, since a caller can pass whatever it likes.
+
+`item` is typed when the document says what the list holds: a list written in the document, a `state` entry, or part of an outer row (`items=(ref)"$map/item/tags"`). A list that is fetched or computed gives an `item` of any type.
+
+Three things are any type, by design:
+
+- **An element the browser does not name.** A custom element's events are its own.
+- **An event the browser does not name**, such as one your code dispatches.
+- **Everything, in a project without the DOM library.** If `compilerOptions.lib` leaves out `dom`, every event is any type and no handler is reported for reading one.
 
 ## In an editor
 
 TypeScript 7.1's language server reads the same `tsconfig.jxn.json`, and through the mapper it answers for a `.jxn` file what it answers for a `.ts` file:
 
 - **Errors** at the same positions `tsc` prints.
-- **Hover** on `state.count` in a body shows `(property) State.count: number`.
+- **Hover** on `state.count` in a body shows `(property) State.count: number`. Hover on an event parameter shows the event and the element, such as `KeyboardEvent & { readonly currentTarget: HTMLButtonElement; ... }`.
 - **Completion** after `state.` lists the document's entries.
 - **Go to definition** from `state.hello` in a body offers the entry and the function in the script that it exports.
-- **Rename** of an entry rewrites the entry, the script and every body that reads it. Renaming a script's function rewrites the `$export` that names it.
+- **Rename** of an entry rewrites the entry, the script and every body that reads it, in the document's `state` or a nested section's. Renaming a script's function rewrites the `$export` that names it.
 
 The language server runs a mapper only when the editor tells it the project may run external code, which is the editor's form of `--runExternalCode`. Until it does, a `.jxn` file gets no errors, no hover and no completion, and nothing says why.
 
@@ -170,7 +228,6 @@ There is no Jx editor extension yet. Your editor has to be told by hand that a `
 - **`jx build` does not run it.** A build still accepts a document with a type error, so run the script in CI.
 - **`${}` templates, `$defs` and a class's methods** are not checked.
 - **Renaming an `(export)name` entry is half a rename.** The one word stands for two names, the state entry and the export. Renaming the function in the script rewrites the function and the entry, and leaves `state.name` in bodies. Renaming `state.name` from a body rewrites the bodies and the entry, and leaves the function. Either way the next check reports what was left behind. An entry written `(export)hello $export=greet` has two words and renames cleanly.
-- **A nested section's entry is not renamed from a body.** Renaming `state.local`, where `local` is declared in an inner `state`, rewrites the body and not the declaration.
 
 ## Related
 
