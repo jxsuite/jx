@@ -6,7 +6,7 @@
  */
 
 // oxlint-disable-next-line unicorn/prefer-export-from -- JxDocOpPair is also used locally (TransactionRecord)
-import type { JxDocOpPair } from "@jxsuite/schema/doc-ops";
+import type { JxDocOp, JxDocOpPair } from "@jxsuite/schema/doc-ops";
 import type { JxDocumentValue, JxMutableNode } from "@jxsuite/schema/types";
 import type { JxPath } from "../state";
 import type { Tab } from "./tab.js";
@@ -139,10 +139,47 @@ export function recordPatch(op: JxPatchOp) {
   }
 }
 
-/** Record a replayable forward/inverse document-op pair. No-op outside a transaction. */
+/**
+ * `op` with every path it names copied into a plain array of its own.
+ *
+ * A mutator is handed the caller's path, and the Inspector's is the selection, read off reactive
+ * session state: a Proxy. Values were always cloned on the way into an op and paths never were, so
+ * the op that crossed to the canvas frame carried a Proxy, `postMessage` refused to clone it, and
+ * EVERY Inspector edit escalated to a full render with `patch-apply-failed: DataCloneError`. Only
+ * an edit typed on the canvas patched, because its path had arrived by structured clone and was
+ * plain already. The spread reads through the Proxy and yields strings and numbers, which is all a
+ * path holds.
+ */
+function ownPaths(op: JxDocOp): JxDocOp {
+  switch (op.op) {
+    case "set-key": {
+      return { ...op, path: [...op.path] };
+    }
+    case "move-child": {
+      return {
+        ...op,
+        fromParentPath: [...op.fromParentPath],
+        toParentPath: [...op.toParentPath],
+      };
+    }
+    default: {
+      return { ...op, parentPath: [...op.parentPath] };
+    }
+  }
+}
+
+/**
+ * Record a replayable forward/inverse document-op pair. No-op outside a transaction.
+ *
+ * **A recorded op is plain data, and this is where that is made true** (§4.1). One record has three
+ * readers: the canvas frame, which receives it by structured clone, history, which replays it, and
+ * the collab bridge. So the copy is taken here, at the one function every mutator and every replay
+ * passes through, rather than at the wire, where history and collab would still hold the caller's
+ * array. New objects, never a write to `pair`: a replay hands in the very op history is holding.
+ */
 export function recordDocOp(pair: JxDocOpPair) {
   if (_docOps) {
-    _docOps.push(pair);
+    _docOps.push({ forward: ownPaths(pair.forward), inverse: ownPaths(pair.inverse) });
   }
 }
 

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { fakeChannelPair, postMessageChannel } from "../src/canvas/iframe-channel";
 import type { CanvasEnvelope } from "../src/canvas/iframe-channel";
+import { reactive } from "../src/reactivity";
 
 interface P2I {
   kind: "render";
@@ -78,6 +79,79 @@ describe("fakeChannelPair", () => {
     pair.iframe.post({ kind: "ready" });
     pair.flush();
     expect(fromIframe).toHaveLength(0);
+  });
+
+  // The boundary a real window.postMessage draws (§4.1): the fake must draw it too, or a payload
+  // No browser would carry crosses in tests and only fails in the canvas.
+  describe("structured-clones at post time", () => {
+    interface PatchLike {
+      kind: "patch";
+      path: (string | number)[];
+    }
+
+    test("a message holding a reactive array throws DataCloneError at the sender", () => {
+      const pair = fakeChannelPair<PatchLike, PatchLike>();
+      // What a mutator hands over when it reads the selection path off reactive state.
+      const plain: (string | number)[] = ["children", 0];
+      const selection = reactive({ path: plain });
+
+      for (const end of [pair.parent, pair.iframe]) {
+        let thrown: unknown;
+        try {
+          end.post({ kind: "patch", path: selection.path });
+        } catch (error) {
+          thrown = error;
+        }
+        expect(thrown).toBeInstanceOf(Error);
+        expect(thrown).toHaveProperty("name", "DataCloneError");
+      }
+      // Nothing was queued: the failure belongs to the sender, not to a later flush.
+      expect(pair.pending()).toBe(0);
+
+      // A plain copy of the same path crosses.
+      pair.parent.post({ kind: "patch", path: [...selection.path] });
+      expect(pair.pending()).toBe(1);
+    });
+
+    test("the delivered message equals the posted one and is a different object", () => {
+      const pair = fakeChannelPair<PatchLike, PatchLike>();
+      const gotByIframe: PatchLike[] = [];
+      const gotByParent: PatchLike[] = [];
+      pair.iframe.onMessage((m) => gotByIframe.push(m));
+      pair.parent.onMessage((m) => gotByParent.push(m));
+
+      const down: PatchLike = { kind: "patch", path: ["children", 1] };
+      const up: PatchLike = { kind: "patch", path: ["children", 2] };
+      pair.parent.post(down);
+      pair.iframe.post(up);
+      pair.flush();
+
+      expect(gotByIframe).toEqual([down]);
+      expect(gotByIframe[0]).not.toBe(down);
+      expect(gotByIframe[0]?.path).not.toBe(down.path);
+      expect(gotByParent).toEqual([up]);
+      expect(gotByParent[0]).not.toBe(up);
+      expect(gotByParent[0]?.path).not.toBe(up.path);
+    });
+
+    test("a message mutated after post is delivered as it was posted", () => {
+      const pair = fakeChannelPair<PatchLike, PatchLike>();
+      const gotByIframe: PatchLike[] = [];
+      const gotByParent: PatchLike[] = [];
+      pair.iframe.onMessage((m) => gotByIframe.push(m));
+      pair.parent.onMessage((m) => gotByParent.push(m));
+
+      const down: PatchLike = { kind: "patch", path: ["children", 1] };
+      const up: PatchLike = { kind: "patch", path: ["children", 2] };
+      pair.parent.post(down);
+      pair.iframe.post(up);
+      down.path.push("textContent");
+      up.path[1] = 9;
+      pair.flush();
+
+      expect(gotByIframe).toEqual([{ kind: "patch", path: ["children", 1] }]);
+      expect(gotByParent).toEqual([{ kind: "patch", path: ["children", 2] }]);
+    });
   });
 });
 

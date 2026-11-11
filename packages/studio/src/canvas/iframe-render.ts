@@ -1138,12 +1138,8 @@ export function installCanvasImageRetry(root: HTMLElement, maxAttempts = 3): () 
   return () => root.removeEventListener("error", onError, true);
 }
 
-/**
- * Render a resolved document into `container`, replacing its current children. `mode` controls
- * whether server functions run (live in `preview`; skipped in `design`/`edit`). Returns a handle
- * whose `dispose()` stops the reactive scope.
- */
-export async function renderResolvedDocument(opts: {
+/** What a full render is given: the resolved document and everything that decides how it draws. */
+export interface RenderDocumentOptions {
   container: HTMLElement;
   doc: JxDocument;
   docBase: string;
@@ -1163,7 +1159,33 @@ export async function renderResolvedDocument(opts: {
   popoverOpen?: string | null;
   /** The dialog to draw open after this render, serialized; the twin of `popoverOpen`. */
   dialogOpen?: string | null;
-}): Promise<RenderHandle> {
+}
+
+/**
+ * The asynchronous half of a full render: register the document's components and build its scope,
+ * touching neither the container, nor the rules the picture already in it is drawn with, nor the
+ * canvas's own head-level sheets (the site style and the mode sheets). Resolves to the synchronous
+ * half, which draws the tree into `container` in place of its current children and returns a handle
+ * whose `dispose()` stops the reactive scope. `mode` controls whether server functions run (live in
+ * `preview`; skipped in `design`/`edit`).
+ *
+ * It does set the runtime's module-level render flags and append the document's `$head` before it
+ * awaits, because registering components and building the scope read them, and nothing undoes
+ * either for a render that never commits. A binding of the standing tree that re-runs meanwhile
+ * therefore draws under the next render's flags; the next render to be prepared sets them again.
+ *
+ * Split here because this half takes real time (150 to 300 ms on a site of components, measured)
+ * and the frame used to release the previous render BEFORE it: every escalation showed the old page
+ * with its rules gone for as long as the new one took to build (§4.1). Whatever a caller must
+ * release, it releases between the await and the call.
+ *
+ * **Nothing in the returned function may ever `await`.** Release, draw and swap sharing one task is
+ * the whole guarantee, since a browser cannot paint inside a task, and no test DOM can see a paint
+ * to catch the regression.
+ */
+export async function prepareResolvedDocument(
+  opts: RenderDocumentOptions,
+): Promise<() => RenderHandle> {
   /* FIRST, before anything emits CSS or an attribute. The resolver is module-global in the runtime,
      so it is set on every render — including to null — or a previous document's context would
      resolve this one's references. It cannot cross the realm as a function, which is why the parent
@@ -1203,17 +1225,7 @@ export async function renderResolvedDocument(opts: {
   // Iframe clears it (page-level templates are inert in design/edit via prepareForEditMode, so only
   // Component internals get stamped).
   setStampPropBindings(opts.mode === "design" || opts.mode === "edit");
-  applySiteStyle(opts.siteStyle, opts.doc.$media ?? {});
   injectHead(opts.doc, assets);
-  syncEditModeCss(opts.container.ownerDocument, opts.mode);
-  // The substitute rules for the attributes the de-link above renamed. Same predicate as the
-  // De-link, not the narrower design/edit one: a Stylebook specimen and a git-diff side rename
-  // Their overlays too, and without this sheet a closed panel would lay out in flow and an open
-  // Dialog could never be shown.
-  syncCanvasOverlayCss(opts.container.ownerDocument, opts.mode);
-  syncPreviewShell(opts.container.ownerDocument, opts.mode);
-  syncStylebookCss(opts.container.ownerDocument, opts.mode);
-  syncDiffCss(opts.container.ownerDocument, Boolean(opts.diffMarks?.length));
   // Seed the runtime's root $media before buildScope so a COMPONENT with its own `@--name` blocks
   // But no own `$media` resolves the breakpoint to its real query (the iframe path calls buildScope
   // Directly and never the runtime's `Jx()` entry, which is the only other place _rootMedia is set).
@@ -1230,6 +1242,30 @@ export async function renderResolvedDocument(opts: {
   // A typed function body compiles in buildScope, synchronously, so its eraser arrives first.
   await prepareBodies(opts.doc);
   const $defs = await buildScope(opts.doc, {}, opts.docBase);
+  return () => commitResolvedDocument(opts, $defs);
+}
+
+/**
+ * The synchronous half of a full render: the head-level sheets this mode and this site need, the
+ * tree, and the swap. See {@link prepareResolvedDocument} for why it must stay synchronous.
+ */
+function commitResolvedDocument(
+  opts: RenderDocumentOptions,
+  $defs: IframeRenderCtx["defs"],
+): RenderHandle {
+  /* The head-level sheets belong to the picture, so they change with it rather than ahead of it:
+     written before the awaits, a mode switch restyled the OLD tree with the new mode's rules for
+     as long as the new tree took to build, and a render that then failed left them that way. */
+  applySiteStyle(opts.siteStyle, opts.doc.$media ?? {});
+  syncEditModeCss(opts.container.ownerDocument, opts.mode);
+  // The substitute rules for the attributes the de-link renamed. Same predicate as the de-link,
+  // Not the narrower design/edit one: a Stylebook specimen and a git-diff side rename their
+  // Overlays too, and without this sheet a closed panel would lay out in flow and an open dialog
+  // Could never be shown.
+  syncCanvasOverlayCss(opts.container.ownerDocument, opts.mode);
+  syncPreviewShell(opts.container.ownerDocument, opts.mode);
+  syncStylebookCss(opts.container.ownerDocument, opts.mode);
+  syncDiffCss(opts.container.ownerDocument, Boolean(opts.diffMarks?.length));
   const onNodeCreated = makeStamper(opts.mapperCtx);
   // The scope MUST be the runtime's (runScoped): renderNode creates its binding effects with the
   // Runtime's copy of @vue/reactivity, and scope collection is per module instance — a studio

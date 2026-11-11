@@ -17,8 +17,8 @@ import {
   injectHead,
   installCanvasImageRetry,
   makeStamper,
+  prepareResolvedDocument,
   registerElements,
-  renderResolvedDocument,
   STYLEBOOK_STYLE_ID,
   syncCanvasOverlayCss,
   syncEditableRoot,
@@ -31,7 +31,14 @@ import { SITE_STYLE_ID } from "@jxsuite/site/site-style";
 import type { AssetContext } from "../src/canvas/asset-refs";
 import type { JxDocument } from "@jxsuite/schema/types";
 import type { PathMapCtx } from "../src/canvas/path-mapping";
+import type { RenderDocumentOptions, RenderHandle } from "../src/canvas/iframe-render";
 import { serializeJxPath } from "../src/canvas/path-mapping";
+
+/** Both halves of a full render in one call, for a container nothing must be released from. */
+async function renderResolvedDocument(opts: RenderDocumentOptions): Promise<RenderHandle> {
+  const commit = await prepareResolvedDocument(opts);
+  return commit();
+}
 
 /** The first element `root` holds for `selector`; a render that drew none fails the test here. */
 function rendered(root: ParentNode, selector: string): HTMLElement {
@@ -270,6 +277,82 @@ describe("renderResolvedDocument", () => {
     handle.dispose();
     defs.msg = "three";
     expect(p.textContent).toBe("two");
+  });
+});
+
+/*
+ * A full render in two halves (§4.1). The first takes time and must leave the picture already on
+ * screen alone, container and head-level sheets both; the second is the swap. A frame replacing a
+ * render releases the old one between them, which is only safe if the first half drew nothing.
+ */
+describe("prepareResolvedDocument", () => {
+  const OLD_SITE = "rgb(1, 1, 1)";
+  const NEW_SITE = "rgb(2, 2, 2)";
+
+  /** A container showing a previous picture: its own child, the old site style, no edit sheet. */
+  function previousPicture() {
+    const container = document.createElement("div");
+    const old = document.createElement("section");
+    container.append(old);
+    applySiteStyle({ color: OLD_SITE });
+    syncEditModeCss(document, "preview");
+    return { container, old, siteCss: installedSheet(SITE_STYLE_ID) };
+  }
+
+  const nextRender = (container: HTMLElement) => ({
+    container,
+    doc: { children: [{ children: ["new"], tagName: "p" }], tagName: "article" },
+    docBase: "http://localhost:3000/page.json",
+    mapperCtx: ctx,
+    mode: "edit" as const,
+    siteStyle: { color: NEW_SITE },
+  });
+
+  afterEach(() => {
+    applySiteStyle(null);
+    syncEditModeCss(document, "preview");
+  });
+
+  test("touches neither the container nor the head-level sheets until its result is called", async () => {
+    const { container, old, siteCss } = previousPicture();
+    expect(siteCss).toContain(OLD_SITE);
+
+    const commit = await prepareResolvedDocument(nextRender(container));
+
+    expect(container.childNodes).toHaveLength(1);
+    expect(container.firstElementChild).toBe(old);
+    expect(container.hasAttribute("contenteditable")).toBe(false);
+    expect(installedSheet(SITE_STYLE_ID)).toBe(siteCss);
+    expect(document.head.querySelector(`#${EDIT_PLACEHOLDER_STYLE_ID}`)).toBeNull();
+
+    const handle = commit();
+
+    // Read at once, with no await between: the swap is one synchronous step.
+    const root = firstElementOf(container);
+    expect(root).not.toBe(old);
+    expect(root.tagName).toBe("ARTICLE");
+    expect(root.dataset.jxPath).toBe("[]");
+    expect(old.isConnected).toBe(false);
+    expect(container.getAttribute("contenteditable")).toBe("true");
+    const swapped = installedSheet(SITE_STYLE_ID);
+    expect(swapped).toContain(NEW_SITE);
+    expect(swapped).not.toContain(OLD_SITE);
+    expect(document.head.querySelector(`#${EDIT_PLACEHOLDER_STYLE_ID}`)).not.toBeNull();
+    expect(handle.ctx.mode).toBe("edit");
+    handle.dispose();
+  });
+
+  test("the two halves in one call draw and swap", async () => {
+    const { container, old } = previousPicture();
+
+    const handle = await renderResolvedDocument(nextRender(container));
+
+    const root = firstElementOf(container);
+    expect(root).not.toBe(old);
+    expect(rendered(container, "p").textContent).toBe("new");
+    expect(installedSheet(SITE_STYLE_ID)).toContain(NEW_SITE);
+    expect(document.head.querySelector(`#${EDIT_PLACEHOLDER_STYLE_ID}`)).not.toBeNull();
+    handle.dispose();
   });
 });
 
