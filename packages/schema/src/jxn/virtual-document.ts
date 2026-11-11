@@ -988,3 +988,90 @@ export function generateVirtualDocument(
   supplemental.push(...writeReferences(reading, layout));
   return { main: writeMain(reading, layout), problems: [], supplemental };
 }
+
+// The stretch of a file a position maps back to is a place in it, which `errors.ts` already names.
+export type { JxnSpan } from "./errors.ts";
+
+/**
+ * The span a position of a module is in. A span that ends there counts where none holds it, so the
+ * place just past a name or a line is still the author's.
+ */
+function spanHolding(unit: VirtualUnit, offset: number): VirtualSpan | undefined {
+  let ending: VirtualSpan | undefined;
+  for (const span of unit.spans) {
+    if (span.virtualStart > offset) {
+      break;
+    }
+    const end = span.virtualStart + span.virtualLength;
+    if (offset < end) {
+      return span;
+    }
+    if (offset === end) {
+      ending = span;
+    }
+  }
+  return ending;
+}
+
+/** The last span that starts at or before a position of a module. */
+function spanBefore(unit: VirtualUnit, offset: number): VirtualSpan | undefined {
+  let last: VirtualSpan | undefined;
+  for (const span of unit.spans) {
+    if (span.virtualStart > offset) {
+      break;
+    }
+    last = span;
+  }
+  return last;
+}
+
+/** One past the last character of the file a span stands for. */
+const writtenEnd = (span: VirtualSpan): number => span.originalStart + span.originalLength;
+
+/**
+ * Where a stretch of a module was written in the file, which is how a reader that asks a compiler
+ * about the modules itself puts an answer back where the author can see it.
+ *
+ * @param unit The module.
+ * @param start The stretch's first character, an offset in the module's text.
+ * @param length How many characters it runs for. Nothing is read as one character.
+ * @returns The stretch of the file. A stretch that starts in a `verbatim` span starts at the same
+ *   character of the file, and one that starts in an `atom` takes the whole of what the atom stands
+ *   for. It ends where its last character was written, or at the end of the last span it reaches
+ *   where that character is the module's own. Null where it starts in text the author did not
+ *   write.
+ */
+export function writtenRange(unit: VirtualUnit, start: number, length: number): JxnSpan | null {
+  const first = spanHolding(unit, start);
+  if (!first) {
+    return null;
+  }
+  const from =
+    first.kind === "atom" ? first.originalStart : first.originalStart + start - first.virtualStart;
+  const lastAt = start + Math.max(length, 1) - 1;
+  const last = spanBefore(unit, lastAt) ?? first;
+  const inside = lastAt < last.virtualStart + last.virtualLength && last.kind === "verbatim";
+  const to = inside ? last.originalStart + lastAt - last.virtualStart + 1 : writtenEnd(last);
+  // Modules are not always written in the file's order, and a stretch cannot end before it starts.
+  return { end: to < from ? Math.max(writtenEnd(first), from) : to, start: from };
+}
+
+/**
+ * The end of the last thing the author wrote at or before a position of a module. A compiler places
+ * some syntax errors after the code that caused them (an unclosed brace is found where the module
+ * closes it), and this is where such an error belongs in the file.
+ *
+ * @param unit The module.
+ * @param offset A position in the module's text.
+ * @returns The place in the file, or null where the author wrote nothing before the position.
+ */
+export function writtenBefore(unit: VirtualUnit, offset: number): number | null {
+  const span = spanBefore(unit, offset);
+  if (!span) {
+    return null;
+  }
+  const into = offset - span.virtualStart;
+  return span.kind === "verbatim" && into < span.virtualLength
+    ? span.originalStart + into
+    : writtenEnd(span);
+}

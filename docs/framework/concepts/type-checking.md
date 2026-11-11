@@ -19,7 +19,7 @@ A `.jxn` document holds TypeScript in two places: its [script](/docs/framework/c
 The work is done by `@jxsuite/content-mapper`, a program TypeScript starts to read a kind of file it cannot read itself. Content mappers arrive in TypeScript 7.1, which is a beta today.
 
 :::doc-note
-Studio checks a function body as you type, with nothing to install ([Code editing](/docs/studio/logic/code#the-function-editor)). This page is about the terminal, CI and your own editor. Only `.jxn` documents are read here. A `.json` document's bodies are checked in Studio and nowhere else, and its templates and references are checked nowhere.
+Studio checks a function body as you type, and a whole `.jxn` file in its Code editor, with nothing to install ([Code editing](/docs/studio/logic/code#type-errors-in-a-jxn-file)). This page is about the terminal, CI and your own editor. Only `.jxn` documents are read here. A `.json` document's bodies are checked in Studio and nowhere else, and its templates and references are checked nowhere.
 :::
 
 ## Set it up
@@ -466,7 +466,7 @@ There is no Jx editor extension yet. Your editor has to be told by hand that a `
 ## Limits
 
 - **`.json` documents** are not read. Studio checks their bodies.
-- **Studio does not use the mapper.** Its code editor checks a body on its own, and does not check a script, a template or a reference yet. `tsc` is what checks those today.
+- **Studio does not use the mapper.** Its function editor checks a body on its own, and its Code editor checks one `.jxn` file at a time: the scripts, bodies, templates and references in it, and no prop given to a component kept in another file. `tsc` is what reads the whole project.
 - **`jx build` does not run it.** A build still accepts a document with a type error, so run the script in CI.
 - **A class's methods** are not checked.
 - **A call is not checked against a function's parameters.** A parameter's type holds inside the body. `state.add("a")` is accepted whatever `add` declares, because a function entry is callable with anything, and the entry's own `type`, which says what it returns, is not read.

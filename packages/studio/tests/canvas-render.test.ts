@@ -63,6 +63,7 @@ import type { CanvasSurface } from "../src/canvas/surface-registry";
 import type { WireDiffMarks } from "../src/canvas/iframe-protocol";
 import type * as stylebookPanel from "../src/panels/stylebook-panel";
 import type { Tab } from "../src/tabs/tab";
+import type { SourceTypeCheckInit } from "../src/services/source-type-check";
 
 /* The panels of the FOCUSED pane's stage. Panels belong to a pane's surface now, not to the
    app (`src/canvas/canvas-surface.ts`); the array identity is stable, so a module-level
@@ -389,6 +390,19 @@ void mock.module("../src/panels/formula-workspace.js", () => ({
 
 void mock.module("../src/services/notify.js", () => notifyModule((call) => notified(call.message)));
 
+/* The Code view's type check, doubled: the real one needs a TypeScript worker, and what this suite
+   asserts is that the mount ASKS for a check at the right moments (`source-type-check.test.ts` and
+   `source-type-check-worker.test.ts` cover the service). */
+const sourceChecks: SourceTypeCheckInit[] = [];
+const sourceCheckRun = mock((_text: string) => Promise.resolve());
+const sourceCheckDispose = mock(() => {});
+void mock.module("../src/services/source-type-check", () => ({
+  createSourceTypeCheck: (init: SourceTypeCheckInit) => {
+    sourceChecks.push(init);
+    return { dispose: sourceCheckDispose, run: sourceCheckRun };
+  },
+}));
+
 void mock.module("../src/panels/overlays.js", () => ({
   mount: () => {},
   render: overlaysRender,
@@ -633,10 +647,13 @@ beforeEach(() => {
     renderStylebookMode,
     parseSourceForPathMock,
     serializeDocumentMock,
+    sourceCheckRun,
+    sourceCheckDispose,
     ctx.setCanvasMode,
   ]) {
     m.mockClear();
   }
+  sourceChecks.length = 0;
   createdModels.length = 0;
   createdEditors.length = 0;
   createdDiffEditors.length = 0;
@@ -998,6 +1015,98 @@ describe("a logic target open in the dock", () => {
 });
 
 // ─── Source mode ──────────────────────────────────────────────────────────────
+
+describe("the Code view of a .jxn file (§16.7)", () => {
+  /** Jx Notation as the format host knows it: no media type, so the path names the language. */
+  const NOTATION: typeof MARKDOWN_FORMAT = { ...MARKDOWN_FORMAT, mediaType: null, name: "Jxn" };
+
+  /** A `.jxn` document open in the Code view, not yet rendered. */
+  function openNotation(): Tab {
+    setFormats([NOTATION]);
+    closeAllTabs();
+    const tab = openSyncedTab(undefined, { documentPath: "pages/page.jxn" });
+    tab.doc.sourceFormat = "Jxn";
+    setMode("source");
+    return tab;
+  }
+
+  test("is checked when the buffer first takes text, and 750 ms after each change", async () => {
+    const tab = openNotation();
+    await withFastTimers(async (runPending) => {
+      renderCanvas();
+      await waitForEditors(1);
+      expect(createdModels[0]!.lang).toBe("jxn");
+      expect(sourceChecks).toHaveLength(1);
+      const [init] = sourceChecks;
+      expect(init!.id).toMatch(/^src\d+$/u);
+      expect(init!.key).toBe(tab.id);
+      expect(init!.name).toBe("page.jxn");
+      expect(init!.path).toBe("pages/page.jxn");
+      expect(surfaceForPane("primary").monacoEditor!._typeCheck).toBeDefined();
+      // The file's own text arriving is no keystroke, and is the first thing to check.
+      expect(sourceCheckRun.mock.calls).toEqual([["# markdown source"]]);
+      expect(tabBufferUnsaved(tab)).toBe(false);
+
+      const [editor] = createdEditors;
+      editor!._model!._value = "div";
+      fireModelChange(editor!);
+      fireModelChange(editor!);
+      expect(sourceCheckRun).toHaveBeenCalledTimes(1);
+      await runPending();
+      expect(sourceCheckRun.mock.calls.at(-1)).toEqual(["div"]);
+      // And a programmatic write is a new reading of the file too.
+      editor!._ignoreNextChange = true;
+      editor!._model!.setValue("p");
+      await runPending();
+      expect(sourceCheckRun.mock.calls.map(([text]) => text)).toEqual([
+        "# markdown source",
+        "div",
+        "p",
+      ]);
+    });
+  });
+
+  test("an answer is wanted while this editor still holds the text it was asked about", async () => {
+    const tab = openNotation();
+    renderCanvas();
+    await waitForEditors(1);
+    const [init] = sourceChecks;
+    expect(init!.wanted("# markdown source")).toBe(true);
+    expect(init!.wanted("something typed since")).toBe(false);
+    // What the project gives the document is read when a check asks, not when the view opened.
+    resetStudioState({ projectConfig: { state: { shared: 1 } } });
+    expect(init!.outside?.()).toEqual({ layout: false, state: true });
+    resetStudioState({ projectConfig: {} });
+    expect(init!.outside?.()).toEqual({ layout: false, state: false });
+    closeAllTabs();
+    expect(init!.wanted("# markdown source")).toBe(false);
+    expect(tabOfPane(PRIMARY_PANE)).not.toBe(tab);
+  });
+
+  test("is released with its editor, and a change that follows arms nothing", async () => {
+    openNotation();
+    await withFastTimers(async (runPending) => {
+      renderCanvas();
+      await waitForEditors(1);
+      const [editor] = createdEditors;
+      closeAllTabs();
+      renderCanvas();
+      expect(sourceCheckDispose).toHaveBeenCalledTimes(1);
+      fireModelChange(editor!);
+      expect(await runPending()).toBe(0);
+      expect(sourceCheckRun).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  test("is not asked for when the Code view holds a .json document", async () => {
+    openSyncedTab();
+    setMode("source");
+    renderCanvas();
+    await waitForEditors(1);
+    expect(sourceChecks).toEqual([]);
+    expect(surfaceForPane("primary").monacoEditor!._typeCheck).toBeUndefined();
+  });
+});
 
 describe("source mode", () => {
   test("creates a monaco editor with the document JSON", async () => {

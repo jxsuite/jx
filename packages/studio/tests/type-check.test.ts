@@ -50,6 +50,9 @@ let worker: TypeWorker;
 let semantic: Diagnostic[] = [];
 let syntactic: Diagnostic[] = [];
 const asked: string[] = [];
+/** How often Monaco refuses its worker before handing it over, and how often it was asked. */
+let refusals = 0;
+let asks = 0;
 
 void mock.module("../src/services/monaco-lazy", () => ({
   loadedMonaco: () =>
@@ -71,11 +74,26 @@ void mock.module("../src/services/monaco-lazy", () => ({
       : null,
 }));
 void mock.module("monaco-editor/languages/features/typescript/register", () => ({
-  getTypeScriptWorker: () => Promise.resolve(() => Promise.resolve(worker)),
+  getTypeScriptWorker: () => {
+    asks += 1;
+    if (refusals > 0) {
+      refusals -= 1;
+      // As Monaco refuses: with a string, before the language's mode has been set up.
+      // eslint-disable-next-line prefer-promise-reject-errors -- what Monaco rejects with
+      return Promise.reject("TypeScript not registered!");
+    }
+    return Promise.resolve(() => Promise.resolve(worker));
+  },
 }));
 
-const { TYPE_MARKER_OWNER, TYPE_PROBLEM_SOURCE, createTypeCheck, findingsFor, outsideOfDocument } =
-  await import("../src/services/type-check");
+const {
+  TYPE_MARKER_OWNER,
+  TYPE_PROBLEM_SOURCE,
+  createTypeCheck,
+  findingsFor,
+  outsideOfDocument,
+  typeScriptWorker,
+} = await import("../src/services/type-check");
 const { problemFindings, resetNotifications } = await import("../src/services/notify");
 
 describe("findingsFor", () => {
@@ -180,6 +198,56 @@ describe("findingsFor", () => {
   });
 });
 
+describe("typeScriptWorker", () => {
+  /** Run `fn` with every wait over at once. */
+  async function withNoWaiting<T>(fn: () => Promise<T>): Promise<T> {
+    const real = globalThis.setTimeout;
+    const immediate = (callback: () => void): number => {
+      queueMicrotask(callback);
+      return 0;
+    };
+    // SAFETY: the one caller inside `fn` passes a callback and drops the handle it is given.
+    globalThis.setTimeout = immediate as typeof setTimeout;
+    try {
+      return await fn();
+    } finally {
+      globalThis.setTimeout = real;
+    }
+  }
+
+  beforeEach(() => {
+    asks = 0;
+    refusals = 0;
+    worker = {
+      getSemanticDiagnostics: () => Promise.resolve([]),
+      getSyntacticDiagnostics: () => Promise.resolve([]),
+    };
+  });
+
+  test("hands over the worker Monaco has set up", async () => {
+    const forModel = await typeScriptWorker();
+    const held: TypeWorker = await forModel();
+    expect(held).toBe(worker);
+    expect(asks).toBe(1);
+  });
+
+  test("asks again where Monaco refuses, until the worker is there", async () => {
+    refusals = 2;
+    const forModel = await typeScriptWorker();
+    const held: TypeWorker = await forModel();
+    expect(held).toBe(worker);
+    expect(asks).toBe(3);
+  });
+
+  test("gives up with what Monaco said, where the worker never comes", async () => {
+    refusals = Number.POSITIVE_INFINITY;
+    const said = await withNoWaiting(() => typeScriptWorker().catch((error: string) => error));
+    expect(said).toBe("TypeScript not registered!");
+    // The first asking, and every one of the two hundred after it.
+    expect(asks).toBe(201);
+  });
+});
+
 describe("outsideOfDocument", () => {
   const config = { defaults: { layout: "./layouts/base.json" }, state: { shared: 1 } };
 
@@ -242,6 +310,8 @@ describe("createTypeCheck", () => {
     markers.length = 0;
     created.length = 0;
     asked.length = 0;
+    asks = 0;
+    refusals = 0;
     monacoLoaded = true;
     semantic = [];
     syntactic = [];

@@ -193,7 +193,9 @@ function applyJsonSchemas(documentSchema: JsonObject, projectJsonSchema: JsonObj
    the runtime, so Monaco checks only the syntax of the buffer itself. Types are checked in a file
    written around the body (`services/type-check.ts`), which the worker reads as a program of its own,
    and these are the options it reads it under: strict, but not `noImplicitAny`, because a body is
-   as often JavaScript as TypeScript and an untyped callback parameter is not a mistake in it. */
+   as often JavaScript as TypeScript and an untyped callback parameter is not a mistake in it. The
+   Code view's check (`services/source-type-check.ts`) reads the modules of a whole `.jxn` file under
+   the same options, so a body says the same on both surfaces. */
 typescriptDefaults.setDiagnosticsOptions({ noSemanticValidation: true, noSyntaxValidation: false });
 typescriptDefaults.setCompilerOptions({
   allowNonTsExtensions: true,
