@@ -11,12 +11,20 @@
  * debounced state sync for defs and events, and the completion provider are unchanged and still
  * covered here.
  */
-import { flush, installMockPlatform, registerPrimaryStage, resetWorkspaceWithTab } from "./harness";
+import {
+  flush,
+  installMockPlatform,
+  registerPrimaryStage,
+  resetStudioState,
+  resetWorkspaceWithTab,
+} from "./harness";
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { surfaceForPane } from "../src/canvas/surface-registry";
 import {
   installTypeCheckDouble,
   resetTypeCheckDouble,
+  GIVEN,
+  outsideOfDocument,
   typeCheckDispose,
   typeCheckRun,
   typeChecks,
@@ -1353,6 +1361,22 @@ describe("type errors (studio.md §16.7)", () => {
     expect(typeChecks[0]!.document()).toBe(activeTab.value!.doc.document);
     closeAllTabs();
     expect(typeChecks[0]!.document()).toBeNull();
+  });
+
+  test("reads what the project gives the document, as the project is now", async () => {
+    setEditing({ defName: "greet", type: "def" });
+    await paintLogic();
+    await flush();
+    // Nothing is read until a check asks, so a setting changed since is the one it sees.
+    expect(outsideOfDocument).not.toHaveBeenCalled();
+    const config = { state: { shared: 1 } };
+    resetStudioState({ projectConfig: config });
+    try {
+      expect(typeChecks[0]!.outside?.()).toBe(GIVEN);
+      expect(outsideOfDocument.mock.calls).toEqual([["/project/pages/index.json", config]]);
+    } finally {
+      resetStudioState();
+    }
   });
 
   test("is asked again 750ms after a keystroke, with what was typed", async () => {

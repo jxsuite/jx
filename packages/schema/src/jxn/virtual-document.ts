@@ -84,7 +84,8 @@ import type { TypePart } from "./schema-types";
 import type { OutsideState } from "./state-types";
 import type { StringPiece } from "./string-pieces.ts";
 
-export type { OutsideState } from "./state-types";
+export { givenByProject, outsideAt } from "./state-types";
+export type { OutsideState, ProjectGives } from "./state-types";
 
 /** A stretch of a written module, and the stretch of the file it stands for. */
 export interface VirtualSpan {

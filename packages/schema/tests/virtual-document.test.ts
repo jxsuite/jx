@@ -3,7 +3,7 @@
  * and that every stretch of one that stands for the author's text says where that text is.
  */
 import { describe, expect, test } from "bun:test";
-import { generateVirtualDocument } from "../src/jxn/virtual-document.ts";
+import { generateVirtualDocument, givenByProject, outsideAt } from "../src/jxn/virtual-document.ts";
 import type { OutsideState, VirtualDocument, VirtualUnit } from "../src/jxn/virtual-document.ts";
 import { BOTH, CURRENT, EVENT_GLOBALS, eventOn } from "./event-types.ts";
 
@@ -302,6 +302,30 @@ describe("what a document is given from outside", () => {
     expect(membersOf(generate(page, { layout: false, state: false }).main.text).at(-1)).toBe(
       CLOSED,
     );
+  });
+
+  test("opens State for a layout, which is given the state of every page it wraps", () => {
+    expect(membersOf(generate(page, { wraps: true }).main.text).at(-1)).toBe(OPEN);
+    // It is wrapped around a page whether or not anything wraps it.
+    const none = file("$layout #false", "div {", "  state { count 0 }", "}");
+    expect(membersOf(generate(none, { wraps: true }).main.text).at(-1)).toBe(OPEN);
+    expect(membersOf(generate(page, { wraps: false }).main.text).at(-1)).toBe(CLOSED);
+  });
+
+  test("is read from the project's file, and from where the project keeps the document", () => {
+    const both = givenByProject({
+      defaults: { layout: "./layouts/base.jxn" },
+      state: { shared: 1 },
+    });
+    expect(both).toEqual({ layout: true, state: true });
+    expect(givenByProject({ defaults: {}, state: {} })).toEqual({ layout: false, state: false });
+    expect(givenByProject({})).toEqual({ layout: false, state: false });
+
+    expect(outsideAt("pages", both)).toEqual({ layout: true, state: true });
+    // A document beside the project file is a page as far as its state goes.
+    expect(outsideAt(undefined, both)).toEqual({ layout: true, state: true });
+    expect(outsideAt("layouts", both)).toEqual({ state: true, wraps: true });
+    expect(outsideAt("components", both)).toEqual({});
   });
 
   test("lets a document say for itself whether it has a layout", () => {

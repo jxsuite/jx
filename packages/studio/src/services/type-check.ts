@@ -21,9 +21,11 @@ import {
   UNRESOLVED_MODULE_CODES,
   bodyOffsetOf,
   generateBodyTypes,
+  givenByProject,
+  outsideAt,
 } from "@jxsuite/schema/virtual-types";
-import type { JxElement } from "@jxsuite/schema/types";
-import type { VirtualBody, VirtualTarget } from "@jxsuite/schema/virtual-types";
+import type { JxElement, ProjectConfig } from "@jxsuite/schema/types";
+import type { OutsideState, VirtualBody, VirtualTarget } from "@jxsuite/schema/virtual-types";
 import type { editor } from "monaco-editor";
 import type { Diagnostic } from "monaco-editor/languages/features/typescript/register";
 import { loadedMonaco } from "./monaco-lazy";
@@ -104,12 +106,37 @@ export function findingsFor(
   });
 }
 
+/**
+ * What a document is given by the project it is open in (`spec.md` §23.3): the project's own
+ * `state`, a default layout, or, for a layout, the state of each page it wraps. Each makes `State`
+ * open, because a body may read a name the document never declares.
+ *
+ * @param path The document's path from the project's folder.
+ * @param config The project's configuration.
+ * @returns Nothing for a document with no path or no project, which is read as alone.
+ */
+export function outsideOfDocument(
+  path: string | null | undefined,
+  config: ProjectConfig | null | undefined,
+): OutsideState {
+  if (!path || !config) {
+    return {};
+  }
+  const [folder] = path.replace(/^\.\//u, "").split("/");
+  return outsideAt(folder, givenByProject(config));
+}
+
 /** What {@link createTypeCheck} needs to know about the editor it serves. */
 export interface TypeCheckInit {
   /** The buffer the findings are drawn on. */
   editor: editor.IStandaloneCodeEditor;
   /** The document the body is in, read afresh for each check so `State` follows an edit. */
   document: () => JxElement | null;
+  /**
+   * What the document's project gives it, read afresh for each check so `State` follows the
+   * project's settings. A document checked without it is read as alone.
+   */
+  outside?: () => OutsideState;
   /** A name unique to this editor, for the file the worker reads. */
   id: string;
   /**
@@ -227,7 +254,7 @@ export function createTypeCheck(init: TypeCheckInit): TypeCheck {
       }
       generation += 1;
       const mine = generation;
-      const unit = generateBodyTypes(document, init.target, code);
+      const unit = generateBodyTypes(document, init.target, code, init.outside?.());
       const uri = monaco.Uri.parse(`file:///jx-virtual/${init.id}.ts`);
       if (model) {
         model.setValue(unit.text);
