@@ -864,11 +864,12 @@ export function buildInitialScope(
         const fn = new Function(...handlerParamNames(def), body) as (
           ...args: (JxScope | Event | undefined)[]
         ) => JxScope[string];
+        const invoke = (...args: (JxScope | Event | undefined)[]) => fn(...args);
         if (roles.get(key) === "computed") {
-          defineLazyScopeValue(scope, key, () => fn(scope));
+          defineLazyScopeValue(scope, key, () => invoke(scope));
           computedBodies.push([key, body]);
         } else {
-          setOwnScopeValue(scope, key, fn);
+          setOwnScopeValue(scope, key, invoke);
         }
       } else {
         // Bodyless `$src` Function — the real implementation is only loaded in the browser, so this
