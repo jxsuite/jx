@@ -9,7 +9,6 @@
 import {
   classifyFunctionEntries,
   declaresBodyAndSrc,
-  handlerParamNames,
 } from "@jxsuite/schema/function-role";
 import {
   COLOR_SCHEME_ATTR,
@@ -861,7 +860,8 @@ export function buildInitialScope(
         // Names in order, so a call site's `(state, event)` binds by position.
         /* SAFETY: `new Function` returns an ordinary function of exactly those parameters; a call
            never checks its arguments, and what the body returns is one more scope member. */
-        const fn = new Function(...handlerParamNames(def), body) as (
+        const declared = def.parameters ? def.parameters.map((x) => (typeof x === "string" ? x : x.name)) : (def.arguments ?? []);
+        const fn = new Function(...(declared.includes("state") ? declared : ["state", ...declared]), body) as (
           ...args: (JxScope | Event | undefined)[]
         ) => JxScope[string];
         const invoke = (...args: (JxScope | Event | undefined)[]) => fn(...args);
