@@ -53,7 +53,7 @@
 
 import { Glob } from "bun";
 import { dirname, join, relative } from "node:path";
-import { API } from "typescript/unstable/async";
+import { API } from "typescript/async";
 import {
   SyntaxKind,
   isArrowFunction,
@@ -69,7 +69,7 @@ import {
   isReturnStatement,
   isStringLiteral,
   isVariableStatement,
-} from "typescript/unstable/ast";
+} from "typescript/ast";
 import type {
   ArrowFunction,
   BindingName,
@@ -78,7 +78,7 @@ import type {
   MethodDeclaration,
   Node,
   SourceFile,
-} from "typescript/unstable/ast";
+} from "typescript/ast";
 
 const ROOT = join(import.meta.dir, "..");
 
@@ -655,7 +655,7 @@ export interface FocusSite {
 export async function analyzeFocusScope(files: string[]): Promise<Map<string, FocusSite[]>> {
   const api = new API({ cwd: ROOT });
   try {
-    const snapshot = await api.updateSnapshot({ openFiles: files });
+    const snapshot = await api.createSnapshot({ openFiles: files });
     const parsed = await Promise.all(
       files.map(async (file) => {
         const project = await snapshot.getDefaultProjectForFile(file);
