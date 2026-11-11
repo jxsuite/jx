@@ -232,6 +232,8 @@ The `props.*` attribute form is how a JSON-authored instance and an island-rende
 
 **Effect teardown.** Every effect the element creates — render, dynamic host styles, Request auto-fetch — is registered in one list and `stop()`ed in `disconnectedCallback`. Calling an `@vue/reactivity` runner re-runs its effect rather than ending it, so teardown must use `stop()`.
 
+**Reconnection.** `connectedCallback` runs again each time an instance is put back in a document: moved to another parent, or removed and inserted. The effects are started again, so the instance draws the state it left with, fetches again, and runs `onMount` again; what happens once per instance is not repeated. The container (the element, or its shadow root) is cleared of its prerender on the first connection only, and slotted children are captured and distributed on the first connection only (`spec.md` §8.5). Clearing a second time removed the tree lit had drawn while the part lit keeps for it on the container stayed, so the next render updated detached nodes and the element was left empty; a second capture would have taken the component's own render for slot content.
+
 ### 4.5 Nested CSS
 
 ```json

@@ -71,7 +71,7 @@ describe("the emitted module — light DOM (the default)", () => {
   // The emulation: save the host's children, render over them, splice them back at the `<slot>`.
   test("keeps the light-DOM slot emulation", async () => {
     const source = await moduleFor(component());
-    expect(source).toContain("const _slotted = __jxCaptureSlotted(this);");
+    expect(source).toContain("const _slotted = _first ? __jxCaptureSlotted(this) : null;");
     expect(source).toContain("__jxDistributeSlots(this, _slotted);");
     expect(source).not.toContain("this.querySelector('slot')");
   });

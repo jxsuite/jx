@@ -524,7 +524,7 @@ describe("compileElement — templates", () => {
     });
 
     const { content } = result.files[0]!;
-    expect(content).toContain("this.replaceChildren();");
+    expect(content).toContain("if (_first) this.replaceChildren();");
     expect(content).not.toContain("} else {");
     expect(content).not.toContain("} else {\n      this.replaceChildren();");
   });
@@ -833,7 +833,7 @@ describe("compileElement — slot handling", () => {
     });
 
     const { content } = result.files[0]!;
-    expect(content).toContain("const _slotted = __jxCaptureSlotted(this);");
+    expect(content).toContain("const _slotted = _first ? __jxCaptureSlotted(this) : null;");
     expect(content).toContain("__jxDistributeSlots(this, _slotted);");
     expect(content.split("function __jxDistributeSlots(").length).toBe(2);
     expect(content).not.toContain("querySelector('slot')");
