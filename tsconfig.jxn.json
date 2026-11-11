@@ -1,0 +1,21 @@
+{
+  "compilerOptions": {
+    "allowArbitraryExtensions": true,
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "noEmit": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "noImplicitAny": false,
+    "target": "ESNext",
+    "types": []
+  },
+  "contentMappers": [{ "extensions": [".jxn"], "package": "@jxsuite/content-mapper" }],
+  "include": [
+    "packages/starters/sites/**/*.jxn",
+    "packages/create/**/*.jxn",
+    "examples/**/*.jxn",
+    "sites/**/*.jxn"
+  ]
+}

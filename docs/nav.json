@@ -418,6 +418,10 @@
               "label": "Functions and modules"
             },
             {
+              "path": "framework/concepts/type-checking",
+              "label": "Type checking"
+            },
+            {
               "path": "framework/concepts/styling",
               "label": "Styling"
             },

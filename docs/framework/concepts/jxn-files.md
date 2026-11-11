@@ -184,4 +184,5 @@ New pages, templates and components are `.jxn`, from **Add new**, from convertin
 ## Related
 
 - [Documents](/docs/framework/concepts/documents)
+- [Type checking](/docs/framework/concepts/type-checking)
 - [CLI commands](/docs/framework/build/cli)

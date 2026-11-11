@@ -10,6 +10,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { isJsonObject, isString } from "../src/guards.ts";
 import { parseJxn } from "../src/jxn/index.ts";
+import { generateVirtualDocument } from "../src/jxn/virtual-document.ts";
 import { bodyOffsetOf, generateBodyTypes } from "../src/jxn/virtual-types.ts";
 import type { VirtualBody, VirtualTarget } from "../src/jxn/virtual-types.ts";
 import type { JsonValue, JxElement } from "../types";
@@ -186,5 +187,44 @@ describe("a seeded mistake", () => {
     // `state.` is six characters, so the property starts at column 7 of the body's own line.
     expect(error?.column).toBe(7);
     expect(bodyOffsetOf(unit, unit.bodyStart + body.length - 1)).toBe(body.length - 1);
+  });
+});
+
+describe("the repository's own .jxn files", () => {
+  const files = execFileSync("git", ["ls-files", "*.jxn"], { cwd: ROOT, encoding: "utf8" })
+    .split("\n")
+    .filter((file) => file !== "" && !file.includes("/fixtures/"));
+  const written = files.map((file) => {
+    const source = readFileSync(join(ROOT, file), "utf8");
+    return { file, read: generateVirtualDocument(source, { specifier: "./a.jxn" }), source };
+  });
+
+  test("are read in numbers that cannot pass by reading nothing", () => {
+    expect(written.length).toBeGreaterThan(200);
+    expect(written.filter((one) => one.read.supplemental.length > 0).length).toBeGreaterThan(1);
+  });
+
+  test("are every one of them Jx Notation", () => {
+    expect(written.filter((one) => one.read.problems.length > 0).map((one) => one.file)).toEqual(
+      [],
+    );
+  });
+
+  test("map every stretch of a module to the text it stands for", () => {
+    const unsound: string[] = [];
+    for (const { file, read, source } of written) {
+      for (const unit of [read.main, ...read.supplemental]) {
+        let end = 0;
+        for (const span of unit.spans) {
+          const from = source.slice(span.originalStart, span.originalStart + span.originalLength);
+          const to = unit.text.slice(span.virtualStart, span.virtualStart + span.virtualLength);
+          if (span.virtualStart < end || (span.kind === "verbatim" && from !== to)) {
+            unsound.push(`${file}: ${JSON.stringify(to)}`);
+          }
+          end = span.virtualStart + span.virtualLength;
+        }
+      }
+    }
+    expect(unsound).toEqual([]);
   });
 });
