@@ -172,6 +172,30 @@ describe("composePage", () => {
     ]);
   });
 
+  test("project state fills only the keys neither the page nor its layout declares", async () => {
+    const page = await compose(
+      {
+        "layouts/base.json": JSON.stringify({
+          children: [{ tagName: "slot" }],
+          state: { accent: "red", theme: "sepia" },
+          tagName: "body",
+        }),
+        "pages/index.json": JSON.stringify({
+          $layout: "./layouts/base.json",
+          state: { accent: "blue" },
+          tagName: "main",
+        }),
+      },
+      { state: { accent: "green", siteName: "Acme", theme: "dark" } },
+    );
+    expect(page.doc.state).toMatchObject({
+      $site: { accent: "green", siteName: "Acme", theme: "dark" },
+      accent: "blue",
+      siteName: "Acme",
+      theme: "sepia",
+    });
+  });
+
   test("$head is merged into the shell's head and REMOVED from the document", async () => {
     // Left on the document, the runtime would inject every entry a second time on mount.
     const page = await compose({
