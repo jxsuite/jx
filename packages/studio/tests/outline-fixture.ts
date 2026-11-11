@@ -16,7 +16,9 @@
  */
 import { flush } from "./harness";
 import { detachOutline, mountOutlinePanel } from "../src/panels/layers-panel";
+import { expandAllOutline } from "../src/panels/outline-expansion";
 import { initLayers } from "../src/ui/layers";
+import { activeTab } from "../src/workspace/workspace";
 import { view } from "../src/view";
 
 /**
@@ -56,9 +58,24 @@ export function outlineHost(scroller = false): HTMLElement {
     <div id="layer-dialog"></div>
   `;
   initLayers();
-  view._layersCollapsed = new Set();
   view.dndCleanups = [];
   return need(document, ".panel-body");
+}
+
+/**
+ * Open every row of the active tab's tree.
+ *
+ * The Outline opens CLOSED down to the top level (studio.md §5.2), and most suites assert on rows
+ * that sit deeper than that. They say so here, once, before they mount, rather than click their way
+ * down. The suites that are ABOUT the default never call it. It acts only while nothing is drawn
+ * yet, so a branch a test closes stays closed across the next draw.
+ */
+export function openEveryRow(host: HTMLElement): void {
+  const tab = activeTab.value;
+  // Only before the first paint: a later draw must not undo a branch the test itself closed.
+  if (tab && !host.querySelector('[part="row"]')) {
+    expandAllOutline(tab);
+  }
 }
 
 /**

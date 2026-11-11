@@ -27,6 +27,7 @@ import jxCombobox from "../components/jx-combobox.json";
 import jxListbox from "../components/jx-listbox.json";
 import jxOption from "../components/jx-option.json";
 import jxSelect from "../components/jx-select.json";
+import jxSlider from "../components/jx-slider.json";
 import jxSpinner from "../components/jx-spinner.json";
 import jxSplit from "../components/jx-split.json";
 import jxTooltip from "../components/jx-tooltip.json";
@@ -86,6 +87,7 @@ export const documents = {
   "jx-switch": kitDocument(jxSwitch),
   "jx-number-field": kitDocument(jxNumberField),
   "jx-select": kitDocument(jxSelect),
+  "jx-slider": kitDocument(jxSlider),
   "jx-option": kitDocument(jxOption),
   "jx-listbox": kitDocument(jxListbox),
   "jx-combobox": kitDocument(jxCombobox),

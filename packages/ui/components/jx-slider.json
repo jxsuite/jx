@@ -1,0 +1,205 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "JxSlider",
+  "tagName": "jx-slider",
+  "observedAttributes": [
+    "label",
+    "labelledby",
+    "value",
+    "min",
+    "max",
+    "step",
+    "valuetext",
+    "disabled"
+  ],
+  "state": {
+    "label": {
+      "type": "string",
+      "default": "",
+      "attribute": "label",
+      "description": "The accessible name, forwarded to the inner range as aria-label. Required unless labelledby names a visible one: a slider is in the accessibility lint's LABELLED_ROLES, so it may not take its name from anything it contains, and an unnamed track is announced as \"slider\" and a number."
+    },
+    "labelledby": {
+      "type": "string",
+      "default": "",
+      "attribute": "labelledby",
+      "description": "Forwarded to the inner range as aria-labelledby, for a visible label the element does not own."
+    },
+    "value": {
+      "type": "number",
+      "default": 0,
+      "attribute": "value",
+      "description": "Where the thumb is, in the track's own units. It is bound to the inner range BOTH ways: as the value property, which is the live value once the reader's first drag has set the control's dirty flag, and as the value attribute, which is the control's default."
+    },
+    "min": {
+      "type": "number",
+      "default": 0,
+      "attribute": "min",
+      "description": "The bottom of the range."
+    },
+    "max": {
+      "type": "number",
+      "default": 100,
+      "attribute": "max",
+      "description": "The top of the range."
+    },
+    "step": {
+      "type": "number",
+      "default": 1,
+      "attribute": "step",
+      "description": "The grid the value moves on, for the platform's own arrow keys and for the kit's ten-step Shift+Arrow."
+    },
+    "valuetext": {
+      "type": "string",
+      "default": "",
+      "attribute": "valuetext",
+      "description": "What the value is announced as, forwarded to aria-valuetext: \"125%\" rather than the bare track position. Empty leaves the number to be read, which is right for a track whose units are its position."
+    },
+    "disabled": {
+      "type": "boolean",
+      "default": false,
+      "attribute": "disabled",
+      "description": "Cannot be moved or focused. Forwarded to the inner range, so the refusal is the platform's rather than a style that only looks like one."
+    },
+    "fill": "${state.max > state.min ? Math.min(100, Math.max(0, (state.value - state.min) / (state.max - state.min) * 100)) : 0}",
+    "onInput": {
+      "$prototype": "Function",
+      "$src": "jx-ui:/behaviors/slider.ts",
+      "$export": "onSliderInput",
+      "emits": [
+        {
+          "name": "input",
+          "description": "The value is moving under the reader's hand. It comes from the ELEMENT, so e.target.value is the number in the track's own units."
+        }
+      ],
+      "description": "Mirrors the inner range into value and re-says the platform's own input from the host."
+    },
+    "onChange": {
+      "$prototype": "Function",
+      "$src": "jx-ui:/behaviors/slider.ts",
+      "$export": "onSliderChange",
+      "emits": [
+        {
+          "name": "change",
+          "description": "The reader committed the value; e.target is the element."
+        }
+      ],
+      "description": "The same mirror and the same re-say, for the commit."
+    },
+    "onKeydown": {
+      "$prototype": "Function",
+      "$src": "jx-ui:/behaviors/slider.ts",
+      "$export": "onSliderKeydown",
+      "description": "Shift+Arrow moves ten steps, which no range has of its own. A plain arrow, Home, End and the Page keys are the platform's and are not touched."
+    }
+  },
+  "oninput": {
+    "$ref": "#/state/onInput"
+  },
+  "onchange": {
+    "$ref": "#/state/onChange"
+  },
+  "onkeydown": {
+    "$ref": "#/state/onKeydown"
+  },
+  "attributes": {
+    "data-disabled": "${state.disabled ? '' : null}"
+  },
+  "style": {
+    "display": "block",
+    "&[hidden]": {
+      "display": "none"
+    },
+    "boxSizing": "border-box",
+    "inlineSize": "100%",
+    "minInlineSize": "64px",
+    "--jx-slider-track-h": "4px",
+    "--jx-slider-thumb": "12px",
+    "--jx-slider-fill": "${state.fill}%",
+    "&[data-disabled]": {
+      "opacity": "0.5"
+    },
+    "& [part=\"input\"]": {
+      "appearance": "none",
+      "display": "block",
+      "boxSizing": "border-box",
+      "inlineSize": "100%",
+      "blockSize": "var(--jx-control-h)",
+      "margin": "0",
+      "padding": "0",
+      "border": "0",
+      "background": "transparent",
+      "font": "inherit",
+      "cursor": "pointer",
+      "outline": "none",
+      ":focus-visible": {
+        "outline": "var(--jx-focus-ring)",
+        "outlineOffset": "1px",
+        "borderRadius": "var(--jx-radius-sm)"
+      },
+      ":disabled": {
+        "cursor": "default"
+      }
+    },
+    "& [part=\"input\"]::-webkit-slider-runnable-track": {
+      "blockSize": "var(--jx-slider-track-h)",
+      "borderRadius": "var(--jx-radius-sm)",
+      "background": "linear-gradient(to right, var(--jx-accent-solid) var(--jx-slider-fill), var(--jx-border-strong) var(--jx-slider-fill))"
+    },
+    "& [part=\"input\"]::-moz-range-track": {
+      "blockSize": "var(--jx-slider-track-h)",
+      "borderRadius": "var(--jx-radius-sm)",
+      "background": "var(--jx-border-strong)"
+    },
+    "& [part=\"input\"]::-moz-range-progress": {
+      "blockSize": "var(--jx-slider-track-h)",
+      "borderRadius": "var(--jx-radius-sm)",
+      "background": "var(--jx-accent-solid)"
+    },
+    "& [part=\"input\"]::-webkit-slider-thumb": {
+      "appearance": "none",
+      "boxSizing": "border-box",
+      "inlineSize": "var(--jx-slider-thumb)",
+      "blockSize": "var(--jx-slider-thumb)",
+      "marginBlockStart": "calc((var(--jx-slider-track-h) - var(--jx-slider-thumb)) / 2)",
+      "borderRadius": "50%",
+      "border": "2px solid var(--jx-bg)",
+      "boxShadow": "0 0 0 1px var(--jx-fg)",
+      "background": "var(--jx-fg)",
+      "cursor": "inherit"
+    },
+    "& [part=\"input\"]::-moz-range-thumb": {
+      "appearance": "none",
+      "boxSizing": "border-box",
+      "inlineSize": "var(--jx-slider-thumb)",
+      "blockSize": "var(--jx-slider-thumb)",
+      "borderRadius": "50%",
+      "border": "2px solid var(--jx-bg)",
+      "boxShadow": "0 0 0 1px var(--jx-fg)",
+      "background": "var(--jx-fg)",
+      "cursor": "inherit"
+    }
+  },
+  "children": [
+    {
+      "tagName": "input",
+      "attributes": {
+        "part": "input",
+        "type": "range",
+        "aria-label": "${state.label || null}",
+        "aria-labelledby": "${state.labelledby || null}",
+        "aria-valuetext": "${state.valuetext || null}",
+        "min": "${state.min}",
+        "max": "${state.max}",
+        "step": "${state.step}",
+        "value": "${state.value}",
+        "disabled": {
+          "$ref": "#/state/disabled"
+        }
+      },
+      "value": {
+        "$ref": "#/state/value"
+      }
+    }
+  ]
+}

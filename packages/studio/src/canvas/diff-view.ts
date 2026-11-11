@@ -4,8 +4,8 @@
  * **The store is a module-local `Map` keyed by pane**, the shape `_editWidths` in `edit-width.ts`
  * and `_fits` in `canvas-utils.ts` already use. The value is transient — it is rebuilt by the
  * render pass that computes the comparison — and its only readers are that pass, the stepper, the
- * diff header and the zoom pod (which asks only which half is showing), so a field on
- * `CanvasSurface` would buy nothing and a field on `shell` would be an app-level slot for a
+ * diff header and the status bar's zoom field (which asks only which half is showing), so a field
+ * on `CanvasSurface` would buy nothing and a field on `shell` would be an app-level slot for a
  * per-pane fact, which is exactly the defect the Diff LENS was built to avoid
  * (`workspace/pane-derive.ts`, finding 4: one app-level `diffState` meant two panes drew one
  * comparison).
@@ -29,6 +29,8 @@ interface DiffRecord {
   /** Index into `map.steps`, or -1 for "arrived, not yet stepping". */
   step: number;
   view: DiffView;
+  /** Whether the file has a visual half at all. Written by the render pass, read by the toolbar. */
+  renderable: boolean;
 }
 
 const _records = new Map<string, DiffRecord>();
@@ -38,7 +40,7 @@ function recordFor(paneId: string): DiffRecord {
   if (existing) {
     return existing;
   }
-  const fresh: DiffRecord = { map: null, step: -1, view: "visual" };
+  const fresh: DiffRecord = { map: null, renderable: true, step: -1, view: "visual" };
   _records.set(paneId, fresh);
   return fresh;
 }
@@ -112,9 +114,10 @@ export function diffViewOf(paneId: string): DiffView {
  * wanted; they were two spellings — the branch said "not renderable OR the author chose Code", the
  * guard said only "the author chose Code" — so for a file with no visual half the branch built the
  * Code container and the guard then refused to mount into it. An empty stage, no error, and a
- * toolbar correctly describing an editor that was never there. The third is the zoom pod
- * (`panels/pane-context.ts`), which is not drawn over the Code half: nothing there zooms, and it
- * sat on Monaco's own scrollbar.
+ * toolbar correctly describing an editor that was never there. The third is the status bar's zoom
+ * field (`panels/zoom-control.ts`), which is not drawn over the Code half: nothing there zooms.
+ *
+ * The toolbar, the fourth caller, reads the stored {@link diffRenderableOf} rather than asking.
  *
  * **Renderability is an ARGUMENT** — `canRenderComparison(path)` from `panels/git-diff-open.ts` —
  * so this file stays the leaf its header promises. Taking the path would have pulled the opener
@@ -125,11 +128,30 @@ export function diffShowsCode(paneId: string, renderable: boolean): boolean {
 }
 
 /**
+ * Record whether this pane's file has a visual half.
+ *
+ * **A stored fact rather than a derivation from the change map**, because the two are different
+ * questions. The map is computed only by the Visual branch of the render pass and is nulled by
+ * every notice and every non-document file, so a document entered in Code (or reached in Code after
+ * a stylesheet) arrives with no map while still having a visual half. The toolbar used "no map" to
+ * mean "no visual half" and degraded the Visual/Code choice to a static label, leaving no way back.
+ * The render pass writes this once per pass, before the toolbar is drawn.
+ */
+export function setDiffRenderable(paneId: string, renderable: boolean): void {
+  recordFor(paneId).renderable = renderable;
+}
+
+/** Whether this pane's file has a visual half; true for a pane nothing has been recorded for. */
+export function diffRenderableOf(paneId: string): boolean {
+  return _records.get(paneId)?.renderable ?? true;
+}
+
+/**
  * Show the visual comparison or the code one.
  *
  * The caller pairs this with a repaint: the store is deliberately not reactive (its writers are a
  * render pass and a toolbar click, both of which already know to redraw), so nothing observes it.
- * That repaint is the stage AND the pane chrome, because the zoom pod reads this through
+ * That repaint is the stage AND the status bar, because its zoom field reads this through
  * {@link diffShowsCode} — see `repaintDiffStage` in `diff-toolbar.ts`.
  */
 export function setDiffView(paneId: string, view: DiffView): void {

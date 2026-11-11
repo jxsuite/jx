@@ -16,6 +16,7 @@ import { flush, resetWorkspaceWithTab } from "./harness";
 import {
   click as clickRow,
   mountOutline,
+  openEveryRow,
   needRow,
   outlineHost,
   press,
@@ -24,7 +25,7 @@ import {
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { activeTab, closeAllTabs } from "../src/workspace/workspace";
 import { pathKey } from "../src/store";
-import { view } from "../src/view";
+import { closeOutlineKey } from "../src/panels/outline-expansion";
 import type { JxMutableNode } from "@jxsuite/schema/types";
 import type { JxPath } from "../src/state";
 
@@ -37,6 +38,7 @@ void mock.module("@atlaskit/pragmatic-drag-and-drop/element/adapter", () => ({
 let host: HTMLElement;
 
 async function renderLayers(): Promise<void> {
+  openEveryRow(host);
   await mountOutline(host);
 }
 
@@ -155,7 +157,7 @@ describe("shift-click selects the visible range", () => {
   });
 
   test("a collapsed branch is not in the range, because it is not on screen", async () => {
-    view._layersCollapsed = new Set([pathKey(SECTION)]);
+    closeOutlineKey(activeTab.value!, pathKey(SECTION));
     await renderLayers();
     await click(SECTION);
     await click(HR, { shiftKey: true });

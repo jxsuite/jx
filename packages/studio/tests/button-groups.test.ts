@@ -3,10 +3,10 @@
  *
  * A compact `jx-action-group` draws its members' segmented frame and selected segment itself,
  * whatever each member's `quiet` says. That fixed every switch Studio converted from Spectrum (the
- * Canvas view, the Style panel rows, Preferences' Theme, the zoom pod) in one place, because
- * `sp-action-button` was not quiet by default and `jx-action-button` is: every converted compact
- * group had been drawing as a gap-less row of bare words. It also makes three mistakes silent at
- * runtime, which is why they are caught here instead:
+ * Canvas view, the Style panel rows, Preferences' Theme, the status bar's zoom field) in one place,
+ * because `sp-action-button` was not quiet by default and `jx-action-button` is: every converted
+ * compact group had been drawing as a gap-less row of bare words. It also makes three mistakes
+ * silent at runtime, which is why they are caught here instead:
  *
  * - A member of a compact group that says `quiet: true` is framed anyway, so the author meant a row
  *   of quiet tools and got a segmented control. That row is `compact: false`.
@@ -291,39 +291,39 @@ describe("Studio's button groups", () => {
     ]);
   });
 
-  test("the zoom pod's Fit picker is a control beside the zoom group, not a fourth segment", () => {
-    /* It was the group's fourth child, inside a `display: contents` div, which made it a flex item
-       of a gap-0 segmented control that roves only jx-action-button: the `+` segment's rounded,
-       bordered end met the select's rounded, bordered start as a 2px rule notched at both corners.
-       A group frames the members it owns and nothing else, so the select is the pod's second
-       control, with the pod's gap between them — and the pod draws no box of its own around the
-       two frames it holds. */
-    const pane = surfaces.find(({ name }) => name === "pane-context.json")!.doc;
-    const all = elements(pane);
-    const pod = all.find((node) => partOf(node) === "pod")!;
-    const kids = childrenOf(pod).map((kid) => (isJsonObject(kid) ? partOf(kid) : ""));
-    expect(kids).toEqual(["zoom-group", "fit-slot"]);
-    const zoom = all.find((node) => partOf(node) === "zoom-group")!;
-    expect(members(zoom).map((member) => partOf(member))).toEqual([
+  test("the status bar's zoom field keeps the Fit picker and the slider out of any button group", () => {
+    /* The pod's Fit picker was once the group's fourth child, which made it a flex item of a gap-0
+       segmented control that roves only jx-action-button. The field keeps the lesson by not using a
+       group at all: the slider is not a segment, so the steppers, the slider and the percentage
+       are a plain row (`zoom-controls`), and the select is the field's first control, outside it. */
+    const bar = surfaces.find(({ name }) => name === "statusbar.json")!.doc;
+    const all = elements(bar);
+    const field = all.find((node) => partOf(node) === "zoom")!;
+    const shown = all.find((node) => partOf(node) === "zoom-fit-slot")!;
+    expect(shown).toBeDefined();
+    expect(all.filter((node) => node["tagName"] === "jx-action-group")).toHaveLength(0);
+    const kids = childrenOf(field).map((kid) => (isJsonObject(kid) ? partOf(kid) : ""));
+    expect(kids).toEqual(["zoom-fit-slot", "zoom-controls"]);
+    const row = all.find((node) => partOf(node) === "zoom-controls")!;
+    expect(childrenOf(row).map((kid) => (isJsonObject(kid) ? partOf(kid) : ""))).toEqual([
       "zoom-out",
-      "zoom-label",
+      "zoom-slider",
       "zoom-in",
+      "zoom-label",
     ]);
-    const rule = ruleOf(pane, '& [part="pod"]');
-    expect(rule["display"]).toBe("flex");
-    for (const own of ["border", "borderRadius", "background", "padding"]) {
-      expect(rule[own], `the pod draws its own ${own} around two framed controls`).toBeUndefined();
+    const rule = ruleOf(bar, '& [part="zoom"]');
+    for (const own of ["borderRadius", "background"]) {
+      expect(rule[own], `the field draws its own ${own} around framed controls`).toBeUndefined();
     }
   });
 
-  test("the zoom label's width is its host's and its face is its control's, so the frame has no hole", () => {
-    /* The rule used to set the mono face on the HOST, which the kit's control does not inherit
-       (it sets its own), and the 48px floor on a host whose control sat inside it at its content
-       width: a 6px gap opened in the segmented frame before the `+` segment. */
-    const pane = surfaces.find(({ name }) => name === "pane-context.json")!.doc;
-    const host = ruleOf(pane, '& [part="zoom-label"]');
-    const control = ruleOf(pane, '& [part="zoom-label"] > [part="control"]');
-    expect(host["minWidth"]).toBe("48px");
+  test("the zoom label's face is its control's, and its host only holds a floor", () => {
+    /* A mono face set on the HOST is not inherited by the kit's control (it sets its own), so the
+       face is on the control, where the tabular digits keep a changing percentage from jittering. */
+    const bar = surfaces.find(({ name }) => name === "statusbar.json")!.doc;
+    const host = ruleOf(bar, '& [part="zoom-label"]');
+    const control = ruleOf(bar, '& [part="zoom-label"] > [part="control"]');
+    expect(host["minWidth"]).toBe("44px");
     expect(host["fontFamily"]).toBeUndefined();
     expect(control["flex"]).toBe("1");
     expect(control["fontFamily"]).toBe("var(--font-mono)");

@@ -48,10 +48,12 @@ describe("the vocabularies", () => {
     }
   });
 
-  test("the status bar is three single-level placements, not one mixed region", () => {
+  test("the status bar is four single-level placements, not one mixed region", () => {
     expect(PLACEMENT_MATRIX["statusbar/project"].admits).toEqual(["project"]);
     expect(PLACEMENT_MATRIX["statusbar/document"].admits).toEqual(["document"]);
     expect(PLACEMENT_MATRIX["statusbar/selection"].admits).toEqual(["selection"]);
+    // The ZOOM field at its far right: the focused pane's viewport, which is a document fact.
+    expect(PLACEMENT_MATRIX["statusbar/zoom"].admits).toEqual(["document"]);
   });
 
   test("the categories are the twelve the palette groups by", () => {
@@ -132,6 +134,14 @@ describe("checkRecordPlacements", () => {
 });
 
 describe("checkPlacements", () => {
+  test("statusbar/zoom admits a document command and refuses a selection one", () => {
+    const violations = checkPlacements([
+      { id: "z.ok", level: "document", menus: ["statusbar/zoom"] },
+      { id: "z.bad", level: "selection", menus: ["statusbar/zoom"] },
+    ]);
+    expect(violations.map((v) => v.commandId)).toEqual(["z.bad"]);
+  });
+
   test("flattens across a whole set", () => {
     const violations = checkPlacements([
       { id: "a.one", level: "selection", menus: ["blockbar"] },

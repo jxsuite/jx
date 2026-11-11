@@ -1,29 +1,28 @@
 /// <reference lib="dom" />
 /**
- * The pane's chrome as a mounted document — the pane context bar and the floating zoom pod, one
- * mount per pane.
+ * The pane's chrome as a mounted document — the pane context bar, one mount per pane. Zoom is the
+ * status bar's (`surfaces/statusbar.ts`), not this bar's.
  *
  * `panels/pane-context.ts` is the flow: which editor kinds a document declares, which canvas views
- * it has, whether preview is a flag over one of them, what a lens may never write, which pane's
- * stage a zoom verb lands on, what a route param's candidate values are, and what a typed test prop
- * parses as. This is the surface it draws into — the reactive scope the document reads, the words
- * it discriminates on, and the two popovers whose open state a command has to be able to write.
+ * it has, whether preview is a flag over one of them, what a lens may never write, what a route
+ * param's candidate values are, and what a typed test prop parses as. This is the surface it draws
+ * into — the reactive scope the document reads, the words it discriminates on, and the two popovers
+ * whose open state a command has to be able to write.
  *
  * **The mount is per pane and the handle is the caller's**, which is the whole reason this module
  * exports a factory rather than an `attach`/`render` pair: this bar states one pane's editor kind,
- * canvas view, rendering context and zoom, and two panes have two of each
+ * canvas view and rendering context, and two panes have two of each
  * (`scripts/check-pane-singletons.ts`). Nothing here is module state.
  *
  * **The host is not cleared.** `.pane-chrome` belongs to this surface alone — `panels/pane-grid.ts`
- * renders nothing inside it — and the document's root is `display: contents`, so the band and the
- * pod become the flex items the chrome layer's `justify-content: space-between` pushes apart,
- * exactly as the two lit children did.
+ * renders nothing inside it — and the document's root is `display: contents`, so the band is a flex
+ * item of the chrome layer, exactly as the lit child it replaced was.
  *
  * **The region goes on the BAR, not on the host.** `mountSurface`'s own `region` option stamps the
- * host, and the host is `.pane-chrome` — a larger box wrapping both regions. `resolveRegion` takes
- * the LAST match, so an id on the wrapper as well as on the bar is a silently widened crop
+ * host, and the host is `.pane-chrome` — a larger box around the bar. `resolveRegion` takes the
+ * LAST match, so an id on the wrapper as well as on the bar is a silently widened crop
  * (`panels/pane-grid.ts` says so at the ref that hands this module its host). The document carries
- * `pane.<id>/context` and `pane.<id>/zoom` in its own markup instead.
+ * `pane.<id>/context` in its own markup instead.
  *
  * @docs studio/interface/tabs
  */
@@ -92,8 +91,6 @@ export interface PaneContextProp {
 export interface PaneContextView {
   /** `pane.<id>/context`, stamped on the bar itself. */
   contextRegion: string;
-  /** `pane.<id>/zoom`, stamped on the pod. */
-  zoomRegion: string;
   /** `full` draws the three axes; `lens` draws the rendering context as a read-only summary. */
   barMode: "full" | "lens";
   presetState: "shown" | "hidden";
@@ -155,12 +152,6 @@ export interface PaneContextView {
   layoutOn: boolean;
 
   exportState: "shown" | "hidden";
-
-  podState: "shown" | "hidden";
-  zoomLabel: string;
-  fitState: "shown" | "hidden";
-  fitValue: string;
-  fitOptions: SurfaceOption[];
 }
 
 /** What a control can ask the pane to do. Every one of them is a decision the flow owns. */
@@ -180,10 +171,6 @@ export interface PaneContextActions {
   setParam: (name: string, value: string) => void;
   setProp: (name: string, raw: string) => void;
   exportFile: () => void;
-  zoomOut: () => void;
-  zoomIn: () => void;
-  zoomReset: () => void;
-  chooseFit: (value: string) => void;
 }
 
 export interface PaneContextSurfaceHandle {
@@ -236,7 +223,6 @@ type PopoverElement = HTMLElement & { open?: boolean };
 /** Write a projection into the scope. Assignment by assignment, so an unchanged field is inert. */
 function project(scope: PaneContextScope, view: PaneContextView): void {
   scope.contextRegion = view.contextRegion;
-  scope.zoomRegion = view.zoomRegion;
   scope.barMode = view.barMode;
   scope.presetState = view.presetState;
   scope.backState = view.backState;
@@ -272,11 +258,6 @@ function project(scope: PaneContextScope, view: PaneContextView): void {
   scope.layoutState = view.layoutState;
   scope.layoutOn = view.layoutOn;
   scope.exportState = view.exportState;
-  scope.podState = view.podState;
-  scope.zoomLabel = view.zoomLabel;
-  scope.fitState = view.fitState;
-  scope.fitValue = view.fitValue;
-  scope.fitOptions = view.fitOptions;
 }
 
 /** The projection a pane's chrome starts from — a bar with nothing in it yet. */
@@ -297,16 +278,12 @@ export function emptyPaneContextView(): PaneContextView {
     exportState: "hidden",
     featureState: "hidden",
     features: [],
-    fitOptions: [],
-    fitState: "hidden",
-    fitValue: "",
     layoutOn: true,
     layoutState: "hidden",
     localeHint: "",
     locales: [],
     localeState: "hidden",
     params: [],
-    podState: "hidden",
     presetState: "hidden",
     previewHint: "",
     previewOn: false,
@@ -322,8 +299,6 @@ export function emptyPaneContextView(): PaneContextView {
     summary: "Base",
     views: [],
     viewState: "hidden",
-    zoomLabel: "100%",
-    zoomRegion: "",
   };
 }
 

@@ -880,46 +880,27 @@ const MUTANTS: Mutant[] = [
         replace: `  const mode = tab.session.ui.canvasMode;`,
       },
     ],
-    file: "src/panels/pane-context.ts",
-    id: "pane-context.ts · the zoom pod is drawn from THIS pane's mode",
+    file: "src/panels/zoom-control.ts",
+    id: "zoom-control.ts · the zoom field is drawn from THIS pane's mode",
     means:
-      "the pod asks what the shared TAB is showing, so a lens gets the controls of the pane " +
-      "beside it — an `editZoom` slider over a stage drawing Design, or no pod at all over one " +
-      "that has a fit",
-    test: "tests/lens-chrome.test.ts",
-  },
-  {
-    edits: [{ find: `  const zoom = stageZoom(surface);`, replace: `  const zoom = stageZoom();` }],
-    file: "src/panels/pane-context.ts",
-    id: "pane-context.ts · the pod READS this pane's scale",
-    means: "a lens at 40% reports whatever the focused pane is at",
-    test: "tests/lens-chrome.test.ts",
+      "the status bar's zoom field asks what the shared TAB is showing, so a lens gets the controls " +
+      "of the pane beside it — an `editZoom` slider over a stage drawing Design, or no field at " +
+      "all over one that has a fit",
+    test: "tests/statusbar-zoom.test.ts",
   },
   {
     edits: [
       {
-        find: `      setUserZoom(stageZoom(surface) / 1.2, surface);`,
-        replace: `      setUserZoom(stageZoom() / 1.2);`,
+        find: `  setUserZoom(stageZoom() * factor);`,
+        replace: `  setUserZoom(tab.session.ui.zoom * factor);`,
       },
     ],
-    file: "src/panels/pane-context.ts",
-    id: "pane-context.ts · the pod's − WRITES this pane's scale",
+    file: "src/editor/shortcuts.ts",
+    id: "shortcuts.ts · − and + step the focused pane's own scale",
     means:
-      "zooming out on the projection divides the focused pane's scale and writes the result onto " +
-      "the focused pane — the author presses − on one pane and the other one shrinks",
-    test: "tests/lens-chrome.test.ts",
-  },
-  {
-    edits: [
-      {
-        find: `      setUserZoom(stageZoom(surface) * 1.2, surface);`,
-        replace: `      setUserZoom(stageZoom() * 1.2);`,
-      },
-    ],
-    file: "src/panels/pane-context.ts",
-    id: "pane-context.ts · the pod's + WRITES this pane's scale",
-    means: "the same, magnifying — the two buttons are two expressions and only one was covered",
-    test: "tests/lens-chrome.test.ts",
+      "zooming a lens multiplies the SOURCE tab's scale and writes the result onto the lens — the " +
+      "author presses + on one pane and the other one's scale becomes the lens's",
+    test: "tests/statusbar-zoom.test.ts",
   },
 
   // ─── panels/properties-panel.ts ─────────────────────────────────────────────

@@ -140,7 +140,7 @@ describe("uniqueness with two stages standing", () => {
    * inside EVERY pane's stage, and this file was green through all of it.
    *
    * So the DOM comes from the app: the real pane grid builds the cells, and the real pane chrome
-   * draws the context bar and the zoom pod into each. Every id in the document is then one some
+   * draws the context bar into each. Every id in the document is then one some
    * renderer actually emitted.
    */
   const paneCtx = {

@@ -455,7 +455,8 @@ describe("items are a rendering of the registry", () => {
     resetStudioState({ name: "Site", projectRoot: "/p" });
     resetWorkspaceWithTab();
     await render();
-    expect(barHost().querySelectorAll("button")).toHaveLength(0);
+    // The ZOOM field's own buttons are not items: this counts the item buttons the registry gates.
+    expect(barHost().querySelectorAll('button[part="item"]')).toHaveLength(0);
   });
 
   test("an item whose command is unregistered disappears; the field survives", async () => {

@@ -7,6 +7,7 @@
 import type { CanvasPanel } from "../types";
 
 import { renderOnly } from "../store";
+import { ref } from "../reactivity";
 import {
   activeCanvasSurface,
   activeMediaOfPane,
@@ -457,9 +458,10 @@ const _editZoomRafs = new Map<string, number>();
 const _editZoomAnchors = new Map<string, number | null>();
 
 /**
- * Wheel-rate edit-zoom setter: the reactive `editZoom` write lands immediately (the zoom pod's
- * label tracks it), but the DOM work — an iframe width resize, i.e. a real reflow — is coalesced to
- * one `applyEditZoom()` per animation frame so a fast ctrl+scroll burst doesn't thrash layout.
+ * Wheel-rate edit-zoom setter: the reactive `editZoom` write lands immediately (the status bar's
+ * zoom readout tracks it), but the DOM work — an iframe width resize, i.e. a real reflow — is
+ * coalesced to one `applyEditZoom()` per animation frame so a fast ctrl+scroll burst doesn't thrash
+ * layout.
  */
 export function requestEditZoom(
   zoom: number,
@@ -633,6 +635,16 @@ function isFitWord(value: unknown): value is Exclude<FitMode, number> {
 const _fits = new Map<string, FitMode>();
 
 /**
+ * A reactive stamp for {@link _fits}, which is a plain `Map` and so cannot be tracked.
+ *
+ * The Fit select in the status bar's zoom field reads {@link getFit}. A fit that does not move the
+ * zoom (choosing "Fit width" on an artboard already that wide, or "No fit") writes nothing else the
+ * field reads, so without a stamp the select would keep showing the choice before it. Bumped on a
+ * real change only, so a declaration that restates the fit repaints nothing.
+ */
+const _fitStamp = ref(0);
+
+/**
  * The registry key for the document a STAGE is showing (null when its pane shows none).
  *
  * It read `activeTab`, which is why the unfocused pane's zoom pod reported the focused pane's fit —
@@ -654,12 +666,18 @@ function fitKey(surface: CanvasSurface): string | null {
 function declareFit(fit: FitMode, surface: CanvasSurface): void {
   const key = fitKey(surface);
   if (key) {
+    const changed = _fits.get(key) !== fit;
     _fits.set(key, fit);
+    // After the write: effects run synchronously on the bump, and must read the fit just declared.
+    if (changed) {
+      _fitStamp.value += 1;
+    }
   }
 }
 
-/** A stage's declared fit, or {@link DEFAULT_FIT}. Readable by that pane's zoom control. */
+/** A stage's declared fit, or {@link DEFAULT_FIT}. Reactive, for the status bar's zoom field. */
 export function getFit(surface: CanvasSurface = activeCanvasSurface()): FitMode {
+  void _fitStamp.value;
   const key = fitKey(surface);
   return (key === null ? undefined : _fits.get(key)) ?? DEFAULT_FIT;
 }
@@ -673,6 +691,7 @@ export function hasDeclaredFit(surface: CanvasSurface = activeCanvasSurface()): 
 /** Drop every declared fit — a fresh session, and the tests. */
 export function resetFits(): void {
   _fits.clear();
+  _fitStamp.value += 1;
 }
 
 /** Honour a fit right now. Defaults to the STAGE's own declared one. */
@@ -714,7 +733,7 @@ export function setUserZoom(
     return;
   }
   // The fit is declared BEFORE the reactive write, not after: `ui.zoom` is tracked, effects run
-  // Synchronously on assignment, and the zoom pod reads `getFit()` while it renders — so declaring
+  // Synchronously on assignment, and the status bar's zoom field reads `getFit()` while it renders — so declaring
   // Second means the control repaints one interaction behind the state it is reporting.
   const next = clampPanZoom(zoom);
   const ratio = next / zoomOf(surface);
@@ -1300,6 +1319,25 @@ export function canvasViewCommands(deps: CanvasCommandDeps): AnyCommand[] {
         setFit(fitArg("canvas.setFit", args, "fit"));
       },
       title: "Set Fit",
+    },
+    {
+      category: "View",
+      id: "canvas.fitPage",
+      level: "document",
+      menus: ["statusbar/zoom", "palette"],
+      group: "3_canvas",
+      requires: "a document on the pan-zoom surface",
+      when: documentOpen,
+      enablement: () => PANZOOM_MODES.has(deps.getCanvasMode()),
+      /* The status bar's Fit page choice, and the one fit with two caps. `canvas.setFit "page"` is
+         the fit APPLIED on arrival, which never magnifies past life size; asking to fit the page
+         from the zoom field may, so a small artboard fills the stage. Same declared state, two
+         caps — see `fitToScreen`'s `maxZoom`. */
+      run: () => {
+        requireTab("canvas.fitPage");
+        fitToScreen();
+      },
+      title: "Fit Page",
     },
     {
       args: argsSchema({

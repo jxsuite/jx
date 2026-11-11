@@ -1,13 +1,13 @@
 {
   "$schema": "https://jxsuite.com/schema/v1",
   "$id": "StudioPaneContext",
-  "$description": "The pane's own chrome — the pane context bar and the floating zoom pod, one mount per pane. It replaces `#tab-bar`, a 28px band styled identically to the tab strip above it that held five unrelated axes with no labels on any of them; the three axes here each say what they are, and the label is what stops the band re-accreting into an anonymous strip of chips. `panels/pane-context.ts` keeps every decision — which editor kinds a document declares, which canvas views it has, whether preview is a flag over them, what a lens may not write, which pane's stage a zoom verb lands on, and what a route param's candidate values are — and hands this document one projection of words, booleans and keyed rows. The bar and the banner share `[part=\"band\"]` so the adapter can MEASURE what the stage must clear: a banner's height is its wrapped text, and only layout knows how many lines that is.",
+  "$description": "The pane's own chrome — the pane context bar, one mount per pane. (The floating zoom pod that used to ride with it is the status bar's zoom field now: `surfaces/statusbar.json`.) It replaces `#tab-bar`, a 28px band styled identically to the tab strip above it that held five unrelated axes with no labels on any of them; the three axes here each say what they are, and the label is what stops the band re-accreting into an anonymous strip of chips. `panels/pane-context.ts` keeps every decision — which editor kinds a document declares, which canvas views it has, whether preview is a flag over them, what a lens may not write, and what a route param's candidate values are — and hands this document one projection of words, booleans and keyed rows. The bar and the banner share `[part=\"band\"]` so the adapter can MEASURE what the stage must clear: a banner's height is its wrapped text, and only layout knows how many lines that is.",
   "tagName": "div",
   "attributes": {
     "part": "chrome"
   },
   "style": {
-    "$description": "The `.pc-*` rules of `styles/canvas.css`, keyed on `part` and carried here, plus `.jx-collab-banner` from `styles/shell.css` — the banner rides in this band and the rule rides with it. Three token repairs travel with them, all of one shape: `--spectrum-font-size-75` and `--spectrum-font-size-50` resolved only inside `<sp-theme>` and a document mounts outside it, so every rule reading one would silently have taken its px fallback; they are `--jx-text-md` (12px) and `--jx-text-sm` (11px) here, at the same values. Four rules are DELETED rather than moved because the kit already draws them: `.pc-derive-trigger`'s hand-built 22×20 box and its hover are `jx-action-button` quiet, `.pc-preview-toggle[selected]`'s four Spectrum custom-property overrides are the `emphasized` prop, and `.pc-ctx-manage:hover`'s underline is the only half of that rule worth keeping. The one rule ADDED is `pointer-events: auto` on the band, the pod and the popovers: `.pane-chrome` is `pointer-events: none` and gave it to its direct children through `.pane-chrome > *`, which a document root with `display: contents` is not — so the three surfaces that take the pointer say so themselves, which is also the honest place for it.",
+    "$description": "The `.pc-*` rules of `styles/canvas.css`, keyed on `part` and carried here, plus `.jx-collab-banner` from `styles/shell.css` — the banner rides in this band and the rule rides with it. Three token repairs travel with them, all of one shape: `--spectrum-font-size-75` and `--spectrum-font-size-50` resolved only inside `<sp-theme>` and a document mounts outside it, so every rule reading one would silently have taken its px fallback; they are `--jx-text-md` (12px) and `--jx-text-sm` (11px) here, at the same values. Four rules are DELETED rather than moved because the kit already draws them: `.pc-derive-trigger`'s hand-built 22×20 box and its hover are `jx-action-button` quiet, `.pc-preview-toggle[selected]`'s four Spectrum custom-property overrides are the `emphasized` prop, and `.pc-ctx-manage:hover`'s underline is the only half of that rule worth keeping. The one rule ADDED is `pointer-events: auto` on the band and the popovers: `.pane-chrome` is `pointer-events: none` and gave it to its direct children through `.pane-chrome > *`, which a document root with `display: contents` is not — so the two surfaces that take the pointer say so themselves, which is also the honest place for it.",
     "display": "contents",
     "& [part=\"band\"]": {
       "$description": "The pane's top band: the bar plus the standing statements that must be readable before the first keystroke. One element so the adapter can MEASURE what the stage has to clear — a banner's height is its wrapped text, which only layout knows.",
@@ -90,42 +90,6 @@
       "background": "var(--hover-bg)",
       "color": "var(--fg-dim)",
       "fontSize": "var(--jx-text-md)"
-    },
-    "& [part=\"pod\"]": {
-      "$description": "Bottom-right of the pane, over the stage — a viewport control, which is not a document axis and so never belonged in a band beside one. It is a ROW of two controls and draws no box of its own: a 1px border and a 6px radius round 2px/4px of padding framed the zoom group's own frame and the Fit select's own frame, a frame inside a frame and busier than any other group in the chrome. Each control draws itself and takes `--pod-lift` to stand off the document under it, which is what the pod's fill and border used to do for both at once, and the gap between them says they are two controls rather than one strip with a seam. The right inset ADDS `--stage-scrollbar-w` because the chrome layer spans the whole cell, scrollbar gutter included: a fixed 12px put the pod 3px into Edit's 15px track, painting over it and swallowing its clicks. CSS cannot measure a scrollbar and this document cannot see the scroller, so `canvas/stage-scrollbar.ts` measures the stage's own and writes the width on the cell, where this reads it by cascade. It is 0 wherever the stage does not scroll or the scrollbar is an overlay. Physical right on purpose: Studio's chrome is never mirrored.",
-      "--pod-lift": "0 2px 8px rgb(0 0 0 / 25%)",
-      "alignSelf": "flex-end",
-      "display": "flex",
-      "alignItems": "center",
-      "gap": "var(--jx-space-2)",
-      "pointerEvents": "auto",
-      "margin": "0 calc(var(--jx-space-4) + var(--stage-scrollbar-w, 0px)) var(--jx-space-4) 0"
-    },
-    "& [part=\"zoom-group\"]": {
-      "$description": "The segmented frame floats on its own now that the pod draws no box around it. The radius is the one the first and last segments already draw, so the shadow follows the shape of the strip instead of a rectangle around it — the host's box IS that strip, since the group has no padding and each member's -1px pulls its own host in by a pixel.",
-      "borderRadius": "var(--jx-radius-sm)",
-      "boxShadow": "var(--pod-lift)"
-    },
-    "& [part=\"pod\"] > [part=\"zoom-group\"][data-compact] > jx-action-button > [part=\"control\"]": {
-      "$description": "One resting ink across the pod. A compact group rests its unselected members on `--jx-fg-dim` and brightens the chosen one, which is how a segmented control says which segment is on — and nothing in this pod is ever chosen: the three are a viewport verb, a readout and a verb. So the dim ink said nothing here and made `100%` read as disabled beside the Fit select's value, which is the same kind of readout at `--jx-fg`. (0,5,1) over the group's own resting rule at (0,4,1); the group's hover is (0,6,1) and still wins, which now leaves it only the wash.",
-      "color": "var(--fg)"
-    },
-    "& [part=\"zoom-label\"]": {
-      "$description": "A floor under the percentage, so the pod does not shift as the value changes length. The width is the host's and the face is the control's, below: the control sets its own font and sits inside the host at its content width, so this rule used to carry a mono face nothing inherited and to open a 6px hole in the segmented frame before the `+` segment (measured: a 48px host round a 41.8px control, drawn in Inter).",
-      "minWidth": "48px"
-    },
-    "& [part=\"zoom-label\"] > [part=\"control\"]": {
-      "$description": "The control fills its 48px host, closing the frame, and draws the percentage in the mono face with tabular digits so a changing value does not jitter. (0,3,0) outranks the kit control's own face at (0,2,0).",
-      "flex": "1",
-      "fontFamily": "var(--font-mono)",
-      "fontVariantNumeric": "tabular-nums"
-    },
-    "& [part=\"fit\"]": {
-      "maxWidth": "120px"
-    },
-    "& [part=\"fit\"] > [part=\"control\"]": {
-      "$description": "The pod's second control lifts off the document the way the first does, on the frame the kit's select already draws. On the control rather than the host, because the host is a column whose error region and help slot are the select's neighbours: the shadow has to follow the box that is painted.",
-      "boxShadow": "var(--pod-lift)"
     },
     "& [part=\"popover\"]": {
       "$description": "Both panels take the pointer that `.pane-chrome` withholds. A popover is in the top layer while it shows, which changes where it PAINTS and not where it is in the tree, so it inherits `pointer-events: none` from the chrome layer exactly as the band does.",
@@ -975,166 +939,6 @@
           }
         }
       ]
-    },
-    {
-      "tagName": "div",
-      "attributes": {
-        "part": "pod-slot",
-        "role": "none"
-      },
-      "style": {
-        "display": "contents"
-      },
-      "$switch": {
-        "$ref": "#/state/podState"
-      },
-      "cases": {
-        "shown": {
-          "tagName": "div",
-          "attributes": {
-            "part": "pod",
-            "data-jx-region": "${state.zoomRegion}"
-          },
-          "children": [
-            {
-              "tagName": "jx-action-group",
-              "attributes": {
-                "part": "zoom-group"
-              },
-              "$props": {
-                "compact": true,
-                "label": "Zoom"
-              },
-              "children": [
-                {
-                  "tagName": "jx-action-button",
-                  "attributes": {
-                    "part": "zoom-out"
-                  },
-                  "$props": {
-                    "size": "sm",
-                    "icon": "minus",
-                    "label": "Zoom out",
-                    "hint": "Zoom out (Ctrl+-)"
-                  },
-                  "onclick": {
-                    "$prototype": "Function",
-                    "body": [
-                      {
-                        "operator": "call",
-                        "target": {
-                          "$ref": "#/state/zoomOut"
-                        },
-                        "value": []
-                      }
-                    ]
-                  }
-                },
-                {
-                  "tagName": "jx-action-button",
-                  "attributes": {
-                    "part": "zoom-label"
-                  },
-                  "$props": {
-                    "size": "sm",
-                    "hint": "Reset to 100% (Ctrl+0)",
-                    "label": "Reset zoom"
-                  },
-                  "onclick": {
-                    "$prototype": "Function",
-                    "body": [
-                      {
-                        "operator": "call",
-                        "target": {
-                          "$ref": "#/state/zoomReset"
-                        },
-                        "value": []
-                      }
-                    ]
-                  },
-                  "children": [
-                    {
-                      "tagName": "span",
-                      "textContent": "${state.zoomLabel}"
-                    }
-                  ]
-                },
-                {
-                  "tagName": "jx-action-button",
-                  "attributes": {
-                    "part": "zoom-in"
-                  },
-                  "$props": {
-                    "size": "sm",
-                    "icon": "plus",
-                    "label": "Zoom in",
-                    "hint": "Zoom in (Ctrl+=)"
-                  },
-                  "onclick": {
-                    "$prototype": "Function",
-                    "body": [
-                      {
-                        "operator": "call",
-                        "target": {
-                          "$ref": "#/state/zoomIn"
-                        },
-                        "value": []
-                      }
-                    ]
-                  }
-                }
-              ]
-            },
-            {
-              "tagName": "div",
-              "attributes": {
-                "part": "fit-slot",
-                "role": "none"
-              },
-              "style": {
-                "display": "contents"
-              },
-              "$switch": {
-                "$ref": "#/state/fitState"
-              },
-              "cases": {
-                "shown": {
-                  "tagName": "jx-select",
-                  "attributes": {
-                    "part": "fit"
-                  },
-                  "$props": {
-                    "label": "Fit",
-                    "size": "sm",
-                    "options": {
-                      "$ref": "#/state/fitOptions"
-                    },
-                    "value": {
-                      "$ref": "#/state/fitValue"
-                    }
-                  },
-                  "onchange": {
-                    "$prototype": "Function",
-                    "body": [
-                      {
-                        "operator": "call",
-                        "target": {
-                          "$ref": "#/state/chooseFit"
-                        },
-                        "value": [
-                          {
-                            "$ref": "event#/target/value"
-                          }
-                        ]
-                      }
-                    ]
-                  }
-                }
-              }
-            }
-          ]
-        }
-      }
     },
     {
       "tagName": "jx-popover",

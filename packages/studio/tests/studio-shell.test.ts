@@ -1459,10 +1459,10 @@ describe("wiring arrows", () => {
     expect(blockBarCtx.getCanvasMode()).toBe("content");
   });
 
-  test("the diff's Visual/Code switch repaints the pane chrome, where the zoom pod is decided", async () => {
-    /* The half lives in `diff-view.ts`, which is not reactive, and the pod is not drawn over the
-       Code half — so without this arrow the pod would float over a Monaco it cannot zoom until
-       something unrelated repainted the bar. */
+  test("the diff's Visual/Code switch repaints the status bar, where the zoom field is decided", async () => {
+    /* The half lives in `diff-view.ts`, which is not reactive, and the status bar's zoom field is
+       not drawn over the Code half — so without this arrow the field would offer a zoom for a
+       Monaco that has none until something unrelated repainted the bar. */
     const { diffCommands } = await import("../src/canvas/diff-toolbar");
     const { resetDiffViews } = await import("../src/canvas/diff-view");
     const { emptyContext } = await import("../src/commands/context");
@@ -1474,11 +1474,14 @@ describe("wiring arrows", () => {
       ctx: CommandContext,
       args: CommandArgValues,
     ) => Promise<void> | void;
+    renderStatusbarMock.mockClear();
     paneChromeRenderMock.mockClear();
     try {
       await run(emptyContext(), { pane: "primary", view: "code" });
-      // Once, with no pane named: the chrome repaints every pane's bar.
-      expect(paneChromeRenderMock.mock.calls).toEqual([[]]);
+      // Once, with no arguments: the status bar repaints whole.
+      // The pane chrome has no pod to repaint any more, so it is not asked.
+      expect(renderStatusbarMock.mock.calls).toEqual([[]]);
+      expect(paneChromeRenderMock.mock.calls).toEqual([]);
     } finally {
       resetDiffViews();
     }

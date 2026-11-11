@@ -14,7 +14,7 @@
  * `project.json`'s custom properties are listed by the Styles workspace's own Navigator panel
  * (`panels/styles-panel.ts`, §7.1).
  *
- * Four things this file is deliberate about.
+ * Five things this file is deliberate about.
  *
  * **Rows are `registry.forPlacement("outline/row")`.** Every row used to carry five hand-built
  * action buttons, always visible, on every row. They collapse to the selected row plus the hovered
@@ -36,6 +36,12 @@
  * collapses then ascends, Enter/F2 renames. The keys are cases in the document (`$switch` on
  * `event#/key`); what each one MEANS is {@link onOutlineKey}.
  *
+ * **The tree opens closed, and follows the selection.** What is open is a per-tab record
+ * (`panels/outline-expansion.ts`), not a set of what the reader closed, so an empty record is a
+ * page showing its top level. {@link outlineValues} lets that module open the branches above a
+ * selection that has MOVED before it builds the rows, and the action bar above the tree (Expand
+ * All, Collapse All) is `registry.forPlacement("outline/toolbar")`. The rule is studio.md §5.2's.
+ *
  * **The rows are a MODEL, and the DOM holds a window onto it** ({@link OutlineRow}, `ui/
  * virtual-window.ts`). A 5 000-node page drew 5 000 rows on every repaint. It now draws the
  * viewport plus three rows of overscan — and because the DOM is no longer the whole list, nothing
@@ -51,7 +57,6 @@
 import { nothing } from "lit-html";
 import {
   displayTagName,
-  isMappedArray,
   isNonNullObject,
   isNumber,
   isString,
@@ -79,7 +84,6 @@ import {
 import type { JxPath } from "../state";
 import type { JxMutableNode } from "@jxsuite/schema/types";
 import { mutateUpdateProperty, transactDoc } from "../tabs/transact";
-import { view } from "../view";
 import { setActivityTab } from "../shell";
 import { registerPanel } from "./panel-registry";
 import {
@@ -107,6 +111,14 @@ import {
   watchListWindow,
 } from "../ui/virtual-window";
 import { mountOutlineSurface } from "../surfaces/panel-outline";
+import { rectOf } from "../utils/geometry";
+import {
+  closeOutlineKey,
+  isExpandableNode,
+  openOutlineKey,
+  setOutlineRedraw,
+  syncOutlineToSelection,
+} from "./outline-expansion";
 import type { AnyCommand, CommandRegistry } from "../commands/registry";
 import type { ListWindowWatch } from "../ui/virtual-window";
 import type { PanelBody } from "./panel-registry";
@@ -114,6 +126,7 @@ import type {
   OutlineCommandView,
   OutlineRowView,
   OutlineSurfaceHandle,
+  OutlineToolView,
   OutlineValues,
 } from "../surfaces/panel-outline";
 
@@ -421,7 +434,18 @@ function visibleRowPaths(): JxPath[] {
  * The repaint is the scroll watch's, not this function's — see `revealListRow`.
  */
 function revealOutlineRow(index: number): boolean {
-  return revealListRow(_outlineList, index, outlineRowHeight());
+  return revealListRow(_outlineList, index, outlineRowHeight(), outlineBarInset());
+}
+
+/**
+ * How much of the scroller's top the sticky action bar covers once the list has scrolled under it.
+ *
+ * A revealed row must clear it, or the arithmetic reveal parks the selected row where the bar hides
+ * it. The drawn-row path gets the same clearance from the rows' `scroll-margin-block-start`.
+ */
+function outlineBarInset(): number {
+  const bar = _outlineList?.parentElement?.querySelector<HTMLElement>('[part="toolbar"]');
+  return bar ? rectOf(bar).height : 0;
 }
 
 /**
@@ -597,20 +621,20 @@ function selectOutlineRow(key: string, mode: string): void {
  * which way a toggle was going. The guard is still load bearing, in BOTH directions: a leaf's
  * twisty box is drawn empty and still answers a click, and the element reads a leaf's expansion as
  * "open me" — so the dead 14px in front of a row with nothing under it is a click that must change
- * nothing at all, rather than one that quietly reaches into the collapsed set on its way past. The
- * row must also still be in the model: a key from a stale projection would go into that set with
+ * nothing at all, rather than one that quietly reaches into the open record on its way past. The
+ * row must also still be in the model: a key from a stale projection would go into that record with
  * nothing left to take it out again.
  */
 function expandOutlineRow(key: string, expanded: boolean): void {
   const row = _outlineRows[outlineIndexOfKey(key)];
-  if (!row || !isExpandable(row)) {
+  const tab = activeTab.value;
+  if (!row || !tab || !isExpandable(row)) {
     return;
   }
-  const collapsed = outlineCollapsed();
   if (expanded) {
-    collapsed.delete(key);
+    openOutlineKey(tab, key);
   } else {
-    collapsed.add(key);
+    closeOutlineKey(tab, key);
   }
   redrawOutline();
 }
@@ -820,40 +844,42 @@ function editCancel(): void {
 
 // ─── The rows, and the window ────────────────────────────────────────────────
 
-/** The collapsed set, which is module state on `view` and survives every repaint. */
-function outlineCollapsed(): Set<string> {
-  view._layersCollapsed ||= new Set();
-  return view._layersCollapsed;
-}
-
 /**
  * Pass one: the rows the Outline WOULD draw, in display order.
  *
- * Every line here is a decision about VISIBILITY — a collapsed ancestor, an inline element the
- * canvas edits as text rather than as a block, the root the content mode does not own — and no line
- * here builds a projection. That split is the whole saving: the walk is O(nodes) and costs a few
+ * Every line here is a decision about VISIBILITY — a closed ancestor, an inline element the canvas
+ * edits as text rather than as a block, the root the content mode does not own — and no line here
+ * builds a projection. That split is the whole saving: the walk is O(nodes) and costs a few
  * comparisons per node, while the half it defers mounts a kit element per verb on the rows that
  * offer them. Only the rows in the window ever pay it.
  *
- * @param {JxMutableNode} doc @param {string} mode @param {Set<string>} collapsed
+ * A row's children are drawn only when its key is in `open`, the tab's record
+ * (`panels/outline-expansion.ts`); the content mode's hidden root is the one row that is open
+ * whatever the record says, because there is no row to open it by.
+ *
+ * @param {JxMutableNode} doc @param {string} mode @param {Record<string, boolean>} open
  */
-function buildOutlineRows(doc: JxMutableNode, mode: string, collapsed: Set<string>): OutlineRow[] {
+function buildOutlineRows(
+  doc: JxMutableNode,
+  mode: string,
+  open: Readonly<Record<string, boolean>>,
+): OutlineRow[] {
   const rows: OutlineRow[] = [];
   /** Indices of the rows still open above the row being decided; the last of them is its parent. */
   const ancestors: number[] = [];
-  // Rows arrive in pre-order, so "is any ancestor collapsed?" is a running depth comparison rather
+  // Rows arrive in pre-order, so "is any ancestor closed?" is a running depth comparison rather
   // Than a per-row walk back up the path. The old form did `path.slice(0, d)` + `pathKey(sub)` for
   // Every ancestor of every row — O(depth) array copies and string joins per row, on every render.
-  let collapsedAtDepth: number | null = null;
+  let closedAtDepth: number | null = null;
   for (const { node, path, depth, nodeType } of flattenTree(doc)) {
-    if (collapsedAtDepth !== null && depth > collapsedAtDepth) {
+    if (closedAtDepth !== null && depth > closedAtDepth) {
       continue;
     }
-    // Back at or above the collapsed ancestor's depth: it no longer covers this row.
-    collapsedAtDepth = null;
+    // Back at or above the closed ancestor's depth: it no longer covers this row.
+    closedAtDepth = null;
     const key = pathKey(path);
-    if (collapsed.has(key)) {
-      collapsedAtDepth = depth;
+    if (open[key] !== true && !(mode === "content" && path.length === 0)) {
+      closedAtDepth = depth;
     }
 
     if (mode === "content" && path.length === 0) {
@@ -932,15 +958,7 @@ function numberOutlineSets(rows: OutlineRow[]): OutlineRow[] {
 
 /** Whether the row has anything under it — children, a map template, or `$switch` cases. */
 function isExpandable(row: OutlineRow): boolean {
-  if (!row.item) {
-    return false;
-  }
-  const { node } = row;
-  const hasChildren = Array.isArray(node.children) && node.children.length > 0;
-  const hasMapChildren = isMappedArray(node.children);
-  const hasCases =
-    Boolean(node.$switch) && isNonNullObject(node.cases) && Object.keys(node.cases).length > 0;
-  return hasChildren || hasMapChildren || hasCases || (row.nodeType === "map" && Boolean(node.map));
+  return row.item && isExpandableNode(row.node, row.nodeType);
 }
 
 /** The badge: what it says, which of the six drawings it gets, and what it says on hover. */
@@ -1018,7 +1036,7 @@ function textRowView(row: OutlineRow): OutlineRowView {
 function outlineRowView(
   row: OutlineRow,
   doc: { selection: JxPath[]; mode: string },
-  collapsed: Set<string>,
+  open: Readonly<Record<string, boolean>>,
   registry: CommandRegistry,
 ): OutlineRowView {
   if (!row.item) {
@@ -1038,7 +1056,7 @@ function outlineRowView(
   const structural = (nodeType === "element" || nodeType === "map") && isNumber(childIndex(path));
   const isRoot = doc.mode === "content" ? path.length === 0 : path.length < 2;
   const grabbable = structural && !isRoot;
-  const open = expandable && !collapsed.has(key);
+  const isOpen = expandable && open[key] === true;
   const editing = isEditing(key);
 
   /* The cluster exists for the selected row and the hovered one, and for no other. While the row is
@@ -1058,7 +1076,7 @@ function outlineRowView(
     badgeTitle,
     commands,
     dndDepth: structural ? String(depth) : null,
-    dndExpanded: structural && open ? "" : null,
+    dndExpanded: structural && isOpen ? "" : null,
     dndRow: structural ? key : null,
     dndVoid: structural && isVoidEl ? "" : null,
     draggable: grabbable ? "true" : "false",
@@ -1068,7 +1086,7 @@ function outlineRowView(
        and write no `aria-expanded`, and what makes `ArrowRight` on a row with nothing under it do
        nothing instead of stepping onto the row below. The chevron used to be a second field saying
        the same three things. */
-    expanded: expandable ? (open ? "true" : "false") : "",
+    expanded: expandable ? (isOpen ? "true" : "false") : "",
     indent: `${indentWidth(depth) + INDENT_BASE}px`,
     jxPath: JSON.stringify(path),
     key,
@@ -1106,20 +1124,40 @@ function outlineCaretKey(window: OutlineRow[], selection: JxPath[]): string {
 }
 
 /**
+ * The action bar's buttons, projected from the `outline/toolbar` records.
+ *
+ * Not under {@link withCommandTarget}: these are document-level, so there is no row to address.
+ */
+function outlineToolViews(registry: CommandRegistry): OutlineToolView[] {
+  return registry.forPlacement("outline/toolbar").map((command) => ({
+    disabled: registry.disabledReason(command.id) !== undefined,
+    icon: command.icon ?? "",
+    id: command.id,
+    title: command.title,
+    tooltip: commandTooltip(registry, command),
+  }));
+}
+
+/**
  * What the surface should be showing right now.
  *
  * Exported because it is the half of this module that is worth testing on its own: given the open
- * document, the collapsed set and the window, it is the whole of what the Outline draws.
+ * document, the open record and the window, it is the whole of what the Outline draws.
  *
  * @returns {OutlineValues}
  */
 export function outlineValues(): OutlineValues {
   const tab = activeTab.value;
-  const collapsed = outlineCollapsed();
   const registry = selectionCommandRegistry();
   const mode = tab?.doc.mode ?? "";
 
-  _outlineRows = tab ? buildOutlineRows(tab.doc.document, mode, collapsed) : [];
+  /* BEFORE the walk, so the first paint and the reveal arithmetic both see the rows the selection
+     opened. It only acts when the selection moved since it last did (studio.md §5.2). */
+  if (tab) {
+    syncOutlineToSelection(tab);
+  }
+  const open = tab?.session.ui.outlineOpen ?? {};
+  _outlineRows = tab ? buildOutlineRows(tab.doc.document, mode, open) : [];
   // The window is computed from the PREVIOUS render's tree element, because that is the only one
   // That exists while this projection is being built. On the first paint of a session there is none
   // And `listWindow` answers "all of them" — which is exactly what the Outline did before it
@@ -1136,7 +1174,8 @@ export function outlineValues(): OutlineValues {
     emptyMessage: "This page is empty. Everything you add to it is listed here, in order.",
     padBottom: range.padBottom,
     padTop: range.padTop,
-    rows: drawn.map((row) => outlineRowView(row, { mode, selection }, collapsed, registry)),
+    rows: drawn.map((row) => outlineRowView(row, { mode, selection }, open, registry)),
+    tools: outlineToolViews(registry),
     view: _outlineRows.length === 0 ? "empty" : "rows",
   };
 }
@@ -1158,6 +1197,9 @@ let _registerDnD: (() => void) | null = null;
 function redrawOutline(): void {
   standing?.handle.update(outlineValues());
 }
+
+// The action bar's commands repaint through this, so a run from the palette is seen at once.
+setOutlineRedraw(redrawOutline);
 
 /**
  * The selection the last reveal followed, or null before there has been one.
@@ -1328,6 +1370,10 @@ export function mountOutlinePanel(
             control.blur();
           }
           runCommand(selectionCommandRegistry(), id, pathFromKey(key));
+          redrawOutline();
+        },
+        runTool: (id) => {
+          runCommand(selectionCommandRegistry(), id);
           redrawOutline();
         },
         select: selectOutlineRow,

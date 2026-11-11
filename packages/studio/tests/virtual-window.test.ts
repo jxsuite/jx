@@ -514,6 +514,15 @@ describe("scrollTopToReveal", () => {
   test("never asks for a negative scroll position", () => {
     expect(scrollTopToReveal({ ...spec, index: 0, listOffset: 0, scrollTop: 10 })).toBe(0);
   });
+
+  test("clears sticky chrome over the top: a row above lands BELOW the inset, not under it", () => {
+    // Row 2 sits at 80; with a 32px bar over the top it must stop 32px short of the edge.
+    expect(scrollTopToReveal({ ...spec, index: 2, topInset: 32 })).toBe(48);
+    // A row inside the covered strip counts as above the viewport.
+    expect(scrollTopToReveal({ ...spec, index: 8, topInset: 32 })).toBe(168);
+    // A row below the strip is left alone.
+    expect(scrollTopToReveal({ ...spec, index: 12, topInset: 32 })).toBeNull();
+  });
 });
 
 describe("revealListRow", () => {
@@ -522,6 +531,15 @@ describe("revealListRow", () => {
     const list = listIn(scroller, 0);
     expect(revealListRow(list, 100, 24)).toBe(true);
     expect(scroller.scrollTop).toBe(101 * 24 - 240);
+  });
+
+  test("passes the sticky inset through to the arithmetic", () => {
+    const scroller = scrollBox({ clientHeight: 240, scrollHeight: 4800 });
+    scroller.scrollTop = 1000;
+    const list = listIn(scroller, 0);
+    // Row 10 is at 240px, far above the viewport; the 32px bar must stay clear of it.
+    expect(revealListRow(list, 10, 24, 32)).toBe(true);
+    expect(scroller.scrollTop).toBe(240 - 32);
   });
 
   test("does nothing for a row that is already visible", () => {

@@ -16,6 +16,7 @@ import {
   control,
   isRefusing,
   mountOutline,
+  openEveryRow,
   needRow,
   outlineHost,
   resetOutline,
@@ -27,7 +28,6 @@ import {
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { activeTab, closeAllTabs } from "../src/workspace/workspace";
 import { pathKey } from "../src/store";
-import { view } from "../src/view";
 import { NAVIGATOR_PANEL_IDS, shell } from "../src/shell";
 import { isString } from "@jxsuite/schema/guards";
 import type { JxMutableNode } from "@jxsuite/schema/types";
@@ -60,6 +60,7 @@ function outlineActionSpies(): OutlineActions {
     rename: () => {},
     reveal: () => {},
     runRow: () => {},
+    runTool: () => {},
     select: () => {},
     treeReady: () => {},
     typeahead: () => {},
@@ -105,6 +106,7 @@ let host: HTMLElement;
 const log = { dnd: 0, rerenders: 0 };
 
 async function draw(): Promise<HTMLElement> {
+  openEveryRow(host);
   return mountOutline(host, log);
 }
 
@@ -288,13 +290,13 @@ describe("selection and collapse", () => {
 
     click(toggle());
     await flush();
-    expect(view._layersCollapsed!.has("children/0")).toBe(true);
+    expect(activeTab.value!.session.ui.outlineOpen["children/0"]).toBeUndefined();
     expect(maybe(["children", 0, "children", 0])).toBeNull();
     expect(at(["children", 0]).getAttribute("aria-expanded")).toBe("false");
 
     click(toggle());
     await flush();
-    expect(view._layersCollapsed!.has("children/0")).toBe(false);
+    expect(activeTab.value!.session.ui.outlineOpen["children/0"]).toBe(true);
     expect(maybe(["children", 0, "children", 0])).not.toBeNull();
   });
 
@@ -306,9 +308,10 @@ describe("selection and collapse", () => {
 
   test("clicking the label is not a collapse", async () => {
     await draw();
+    const before = { ...activeTab.value!.session.ui.outlineOpen };
     click(required(at(["children", 0]), '[part="label"]'));
     await flush();
-    expect(view._layersCollapsed!.size).toBe(0);
+    expect(activeTab.value!.session.ui.outlineOpen).toEqual(before);
   });
 
   test("a right-click on a row selects it and opens the element menu", async () => {
@@ -623,6 +626,7 @@ describe("the mounted surface", () => {
         padBottom: 0,
         padTop: 0,
         rows: [],
+        tools: [],
         view: "empty",
       },
       outlineActionSpies(),
@@ -664,6 +668,7 @@ describe("the mounted surface", () => {
         padBottom: 0,
         padTop: 0,
         rows: [],
+        tools: [],
         view: "empty",
       },
       outlineActionSpies(),

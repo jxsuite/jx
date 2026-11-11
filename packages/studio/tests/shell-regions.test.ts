@@ -6,6 +6,7 @@
  * surface having authored its id, so a panel rename, a tab re-split or an overlay moving layer
  * propagates here instead of leaving a stale address behind.
  */
+import { openOutlineKey } from "../src/panels/outline-expansion";
 import { flush, resetStudioState, resetWorkspaceWithTab } from "./harness";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { mountShellTree } from "../src/shell/tree";
@@ -43,7 +44,6 @@ beforeEach(async () => {
   await mountShellTree();
   initShellRefs();
   view.dndCleanups = [];
-  view._layersCollapsed = new Set();
   resetStudioState();
 });
 
@@ -256,14 +256,37 @@ describe("statusbar/selection", () => {
   });
 });
 
+// ─── statusbar/zoom ───────────────────────────────────────────────────────────
+
+describe("statusbar/zoom", () => {
+  test("the zoom field is its own region inside the bar, and absent where nothing zooms", async () => {
+    const tab = resetWorkspaceWithTab();
+    tab.session.ui.canvasMode = "design";
+    mountStatusbar();
+    renderStatusbar();
+    await flush(6);
+    const field = resolveRegion("statusbar/zoom");
+    expect(field).not.toBeNull();
+    expect(resolveRegion("statusbar")!.contains(field)).toBe(true);
+    // The old per-pane pod region is gone: one field, addressed once.
+    expect(resolveRegion("pane.primary/zoom")).toBeNull();
+
+    tab.session.ui.canvasMode = "source";
+    await flush(6);
+    expect(resolveRegion("statusbar/zoom")).toBeNull();
+  });
+});
+
 // ─── data-jx-path on Outline rows ─────────────────────────────────────────────
 
 describe("Outline rows carry node identity", () => {
   test("every row names its JxPath, and a text row names one too", async () => {
-    resetWorkspaceWithTab({
+    const tab = resetWorkspaceWithTab({
       children: [{ children: ["Hello"], tagName: "p" }],
       tagName: "div",
     });
+    // The Outline opens closed to the top level; the text row sits one level down.
+    openOutlineKey(tab, "children/0");
     shell.leftTab = "layers";
     leftPanelModule.mount(leftCtx());
     await flush(3);

@@ -610,6 +610,36 @@ describe("resetZoom", () => {
   });
 });
 
+describe("the declared fit is a tracked input", () => {
+  /* `_fits` is a plain Map, so without a stamp a reader could only repaint when something ELSE it
+     read moved. The status bar's Fit select reads `getFit`, and "Fit width" on an artboard already
+     that wide moves nothing else. */
+  test("an effect reading getFit re-runs when the fit changes, and only then", async () => {
+    const { effect, effectScope } = await import("../src/reactivity");
+    resetWorkspaceWithTab();
+    resetFits();
+    const seen: unknown[] = [];
+    const scope = effectScope();
+    scope.run(() => {
+      effect(() => {
+        seen.push(getFit(primary()));
+      });
+    });
+    expect(seen).toEqual(["page"]);
+
+    setFit("width", primary());
+    expect(seen).toEqual(["page", "width"]);
+
+    // Restating the fit declares nothing new.
+    setFit("width", primary());
+    expect(seen).toEqual(["page", "width"]);
+
+    resetFits();
+    expect(seen).toEqual(["page", "width", "page"]);
+    scope.stop();
+  });
+});
+
 // ─── Edit-mode content zoom ───────────────────────────────────────────────────
 
 /** Build the edit-mode panel DOM applyEditZoom operates on, with stubbed layout metrics. */
@@ -1156,7 +1186,7 @@ describe("a lens shares the tab and none of its geometry", () => {
     unregisterCanvasSurface(SECONDARY_PANE);
   });
 
-  test("the zoom pod in a lens reports the LENS's scale", () => {
+  test("the zoom readout in a lens reports the LENS's scale", () => {
     const { a, side } = lensBeside("breakpoint", "md");
     a.session.ui.zoom = 2;
     lensDerivation().zoom = 0.4;

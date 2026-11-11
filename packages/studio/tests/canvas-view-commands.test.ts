@@ -210,6 +210,8 @@ describe("the records themselves", () => {
       "canvas.setMode",
       "canvas.setZoom",
       "canvas.setFit",
+      // The status bar's Fit page choice, which may magnify where `canvas.setFit "page"` never does.
+      "canvas.fitPage",
       "canvas.setEditZoom",
       // The addressable form of the Edit column's resize handles. It is a SETTER over a width in
       // Px, so it names the state it ends in the way its neighbours do; the drag itself bypasses
@@ -442,6 +444,23 @@ describe("canvas.setFit", () => {
   test("refuses when no tab is open", () => {
     closeAllTabs();
     expect(() => registry.run("canvas.setFit", { fit: "page" })).toThrow("needs an open document");
+  });
+});
+
+describe("canvas.fitPage", () => {
+  test("declares the page fit and is placed in the status bar's zoom field and the palette", () => {
+    void registry.run("canvas.setFit", { fit: "width" });
+    expect(getFit()).toBe("width");
+    void registry.run("canvas.fitPage");
+    expect(getFit()).toBe("page");
+    const record = registry.get("canvas.fitPage");
+    expect(record?.menus).toEqual(["statusbar/zoom", "palette"]);
+    expect(record?.level).toBe("document");
+  });
+
+  test("refuses when no tab is open", () => {
+    closeAllTabs();
+    expect(() => registry.run("canvas.fitPage")).toThrow("needs an open document");
   });
 });
 
@@ -823,8 +842,9 @@ describe("the pan-zoom family agrees with itself", () => {
    * open document". Five verbs over one surface, two rules, and the two that disagreed were the
    * ones that WRITE.
    *
-   * The rule is the mode, not merely the document: `pane-context.ts` already draws the zoom pod for
-   * exactly design / stylebook / git-diff, and these two records now ask the same question.
+   * The rule is the mode, not merely the document: the status bar's zoom field is drawn for
+   * exactly design / stylebook / git-diff (and Edit's own content zoom), and these records ask the
+   * same question.
    */
   const PANZOOM = ["design", "stylebook", "git-diff"];
   const OFF_SURFACE = ["edit", "preview", "source", "grid"];
@@ -841,6 +861,7 @@ describe("the pan-zoom family agrees with itself", () => {
       canvasMode = mode;
       expect([mode, registry.isEnabled("canvas.setZoom")]).toEqual([mode, true]);
       expect([mode, registry.isEnabled("canvas.setFit")]).toEqual([mode, true]);
+      expect([mode, registry.isEnabled("canvas.fitPage")]).toEqual([mode, true]);
     }
   });
 
@@ -849,6 +870,7 @@ describe("the pan-zoom family agrees with itself", () => {
       canvasMode = mode;
       expect([mode, registry.isEnabled("canvas.setZoom")]).toEqual([mode, false]);
       expect([mode, registry.isEnabled("canvas.setFit")]).toEqual([mode, false]);
+      expect([mode, registry.isEnabled("canvas.fitPage")]).toEqual([mode, false]);
     }
   });
 

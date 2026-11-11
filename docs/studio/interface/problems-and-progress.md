@@ -142,7 +142,7 @@ If a panel is showing a yellow **New changes** strip, that's Studio waiting: som
 
 ## What the status bar does instead
 
-The status bar along the bottom carries **ambient state only**, three fields in scope order: your project, then the document, then the selection. It's the project name and branch, how many people are editing alongside you, and the [jump bar](/docs/studio/interface#the-jump-bar): a breadcrumb trail from the open file down to the element you have selected. Every item is clickable and runs a command: the peer count opens what's happening in this document, the problem count opens the list, and a crumb selects its element.
+The status bar along the bottom carries **ambient state only**, three fields in scope order (your project, then the document, then the selection) and, at the far right, the focused pane's zoom controls. It's the project name and branch, how many people are editing alongside you, and the [jump bar](/docs/studio/interface#the-jump-bar): a breadcrumb trail from the open file down to the element you have selected. Every item is clickable and runs a command: the peer count opens what's happening in this document, the problem count opens the list, and a crumb selects its element.
 
 The selection field carries what a trail can't state: **3 selected** when more than one element is picked, or the style rule the Style panel is editing. The trail names the _primary_ element, the one the Inspector and the block action bar are pointed at, and the count is what stops it reading as though it described everything you have selected.
 

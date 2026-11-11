@@ -1,7 +1,7 @@
 {
   "$schema": "https://jxsuite.com/schema/v1",
   "$id": "StudioStatusbar",
-  "$description": "The status bar: ambient state in the shell's level order, PROJECT then DOCUMENT then SELECTION. The adapter hands in the fields either side of the DOCUMENT field (`leading` and `trailing`), each with its region and its items; an item with a command is a button that runs it through `run`, and an item without one is a readout. The DOCUMENT field between them is the `trail` slot, an empty box `panels/jump-bar.ts` mounts the breadcrumb trail into. Nothing here decides what the bar says.",
+  "$description": "The status bar: ambient state in the shell's level order, PROJECT then DOCUMENT then SELECTION, and the focused pane's ZOOM at the far right. The adapter hands in the fields either side of the DOCUMENT field (`leading` and `trailing`), each with its region and its items; an item with a command is a button that runs it through `run`, and an item without one is a readout. The DOCUMENT field between them is the `trail` slot, an empty box `panels/jump-bar.ts` mounts the breadcrumb trail into. The ZOOM field is the one field that is not a list of items: a Fit select, a stepper, a slider and the percentage, each of which hands its gesture to the adapter, which runs the matching command. Nothing here decides what the bar says.",
   "tagName": "div",
   "attributes": { "part": "bar" },
   "style": {
@@ -16,7 +16,6 @@
       "minWidth": "0",
       "padding": "0 var(--jx-space-3)"
     },
-    "& > [part=\"field\"]:last-child": { "overflow": "hidden" },
     "& > :not([hidden]) ~ :not([hidden])": {
       "$description": "A rule between fields rather than a run of \"|\" characters: the boundary between PROJECT, DOCUMENT and SELECTION is structural. Every visible field after a visible field draws one, so a hidden DOCUMENT slot leaves no doubled rule behind.",
       "borderLeft": "1px solid var(--jx-border)"
@@ -48,7 +47,44 @@
       ":disabled": { "cursor": "default", "opacity": "0.6" },
       ":focus-visible": { "outline": "var(--jx-focus-ring)", "outlineOffset": "-2px" }
     },
-    "& [part=\"state\"]": { "cursor": "default" }
+    "& [part=\"state\"]": { "cursor": "default" },
+    "& > [part=\"trail\"] ~ [part=\"field\"]": {
+      "$description": "The fields after the trail (SELECTION) shrink and clip rather than push the ZOOM field off the bar. The trail itself takes the width the fields leave, so it gives way first.",
+      "overflow": "hidden"
+    },
+    "& [part=\"zoom\"]": {
+      "$description": "The ZOOM field, at the far right. `flex: none` keeps it whole: the trail (flex 1, min-width 0) is what gives way when the window narrows, never the slider. It carries its own rule because the wrapper it sits in is `display: contents`, so the bar's `> [part=\"field\"]` selectors cannot reach it. `aria-live=\"off\"` is stamped in the document: the bar is the app's polite status region, and a percentage that changes on every wheel tick would be read aloud on every tick.",
+      "display": "flex",
+      "flex": "none",
+      "alignItems": "center",
+      "gap": "var(--jx-space-2)",
+      "padding": "0 var(--jx-space-3)",
+      "borderLeft": "1px solid var(--jx-border)"
+    },
+    "& [part=\"zoom-controls\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "2px"
+    },
+    "& [part=\"zoom-fit\"]": {
+      "$description": "The Fit select keeps its kit frame at the small size and a ceiling, so the longest choice (\"Actual size\") does not widen the field.",
+      "maxWidth": "120px"
+    },
+    "& [part=\"zoom-slider\"]": {
+      "$description": "A fixed track. The kit slider fills its container, so the width is the host's to give; 96px keeps a pointer drag usable and the field under about 330px with the Fit select drawn.",
+      "flex": "none",
+      "inlineSize": "96px"
+    },
+    "& [part=\"zoom-label\"]": {
+      "$description": "A floor under the percentage so the field does not shift as the value changes length.",
+      "minWidth": "44px"
+    },
+    "& [part=\"zoom-label\"] > [part=\"control\"]": {
+      "$description": "Mono face with tabular digits, so a changing value does not jitter.",
+      "flex": "1",
+      "fontFamily": "var(--font-mono)",
+      "fontVariantNumeric": "tabular-nums"
+    }
   },
   "children": [
     {
@@ -156,6 +192,222 @@
             }
           }
         ]
+      }
+    },
+    {
+      "tagName": "span",
+      "attributes": {
+        "part": "zoom-slot"
+      },
+      "style": {
+        "display": "contents"
+      },
+      "$switch": {
+        "$ref": "#/state/zoom/state"
+      },
+      "cases": {
+        "shown": {
+          "tagName": "div",
+          "attributes": {
+            "part": "zoom",
+            "data-jx-region": "statusbar/zoom",
+            "aria-live": "off"
+          },
+          "children": [
+            {
+              "tagName": "span",
+              "attributes": {
+                "part": "zoom-fit-slot"
+              },
+              "style": {
+                "display": "contents"
+              },
+              "$switch": {
+                "$ref": "#/state/zoom/fitState"
+              },
+              "cases": {
+                "shown": {
+                  "tagName": "jx-select",
+                  "attributes": {
+                    "part": "zoom-fit"
+                  },
+                  "$props": {
+                    "label": "Fit",
+                    "size": "sm",
+                    "options": {
+                      "$ref": "#/state/zoom/fitOptions"
+                    },
+                    "value": {
+                      "$ref": "#/state/zoom/fitValue"
+                    }
+                  },
+                  "onchange": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "operator": "call",
+                        "target": {
+                          "$ref": "#/state/chooseFit"
+                        },
+                        "value": [
+                          {
+                            "$ref": "event#/target/value"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                }
+              }
+            },
+            {
+              "tagName": "div",
+              "attributes": {
+                "part": "zoom-controls",
+                "role": "group",
+                "aria-label": "Zoom"
+              },
+              "children": [
+                {
+                  "tagName": "jx-action-button",
+                  "attributes": {
+                    "part": "zoom-out"
+                  },
+                  "$props": {
+                    "size": "sm",
+                    "icon": "minus",
+                    "label": "Zoom out",
+                    "hint": {
+                      "$ref": "#/state/zoom/zoomOutHint"
+                    }
+                  },
+                  "onclick": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "operator": "call",
+                        "target": {
+                          "$ref": "#/state/zoomOut"
+                        },
+                        "value": []
+                      }
+                    ]
+                  }
+                },
+                {
+                  "tagName": "jx-slider",
+                  "attributes": {
+                    "part": "zoom-slider",
+                    "title": "${state.zoom.sliderHint}"
+                  },
+                  "$props": {
+                    "label": "Zoom",
+                    "min": {
+                      "$ref": "#/state/zoom/min"
+                    },
+                    "max": {
+                      "$ref": "#/state/zoom/max"
+                    },
+                    "step": {
+                      "$ref": "#/state/zoom/step"
+                    },
+                    "value": {
+                      "$ref": "#/state/zoom/position"
+                    },
+                    "valuetext": {
+                      "$ref": "#/state/zoom/valuetext"
+                    }
+                  },
+                  "oninput": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "operator": "call",
+                        "target": {
+                          "$ref": "#/state/zoomSlide"
+                        },
+                        "value": [
+                          {
+                            "$ref": "event#/target/value"
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  "ondblclick": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "operator": "call",
+                        "target": {
+                          "$ref": "#/state/zoomReset"
+                        },
+                        "value": []
+                      }
+                    ]
+                  }
+                },
+                {
+                  "tagName": "jx-action-button",
+                  "attributes": {
+                    "part": "zoom-in"
+                  },
+                  "$props": {
+                    "size": "sm",
+                    "icon": "plus",
+                    "label": "Zoom in",
+                    "hint": {
+                      "$ref": "#/state/zoom/zoomInHint"
+                    }
+                  },
+                  "onclick": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "operator": "call",
+                        "target": {
+                          "$ref": "#/state/zoomIn"
+                        },
+                        "value": []
+                      }
+                    ]
+                  }
+                },
+                {
+                  "tagName": "jx-action-button",
+                  "attributes": {
+                    "part": "zoom-label"
+                  },
+                  "$props": {
+                    "size": "sm",
+                    "label": "Reset zoom",
+                    "hint": {
+                      "$ref": "#/state/zoom/resetHint"
+                    }
+                  },
+                  "onclick": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "operator": "call",
+                        "target": {
+                          "$ref": "#/state/zoomReset"
+                        },
+                        "value": []
+                      }
+                    ]
+                  },
+                  "children": [
+                    {
+                      "tagName": "span",
+                      "textContent": "${state.zoom.label}"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
       }
     }
   ]

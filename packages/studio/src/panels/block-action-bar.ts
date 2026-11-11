@@ -71,6 +71,7 @@ import { getLayerSlot, isModalOpen } from "../ui/layers";
 import { showSlashMenu } from "../editor/slash-menu";
 import { getConvertTargets } from "../editor/convert-targets";
 import { rectOf } from "../utils/geometry";
+import { outlineCommands } from "./outline-expansion";
 import { createCommandRegistry } from "../commands/registry";
 import { runReported } from "../commands/run-reported";
 import { editorKindForMode, makeContext } from "../commands/context";
@@ -855,6 +856,8 @@ export function selectionCommandRegistry(): CommandRegistry {
   // Own registry has to hold them — otherwise `keymap.formatBinding("format.bold")` has nothing to
   // Format and the tooltip goes back to the hardcoded `Cmd+B` this change deleted.
   registry.registerAll(formatCommands());
+  // The Outline's action bar renders `outline/toolbar` from this same registry.
+  registry.registerAll(outlineCommands());
   _registry = registry;
   return registry;
 }

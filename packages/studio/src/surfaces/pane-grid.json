@@ -45,7 +45,7 @@
       "display": "none"
     },
     "& > [part=\"row\"] > [part=\"pane\"] > [part=\"chrome\"]": {
-      "$description": "The pane context bar and the floating zoom pod. The layer itself is inert and only its children take the pointer; `surfaces/pane-context.json` owns what they look like.",
+      "$description": "The pane context bar. The layer itself is inert and only its children take the pointer; `surfaces/pane-context.json` owns what it looks like.",
       "gridRow": "2",
       "gridColumn": "1",
       "position": "relative",

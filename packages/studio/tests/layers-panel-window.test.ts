@@ -28,7 +28,6 @@ import {
 } from "./outline-fixture";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { activeTab, closeAllTabs } from "../src/workspace/workspace";
-import { view } from "../src/view";
 import { getPanel, resetPanels } from "../src/panels/panel-registry";
 import type { JxMutableNode } from "@jxsuite/schema/types";
 import type { JxPath } from "../src/state";
@@ -461,6 +460,5 @@ describe("the panel takes its own body down", () => {
     // Both bodies are APPENDED into the same content box, so a body nobody takes down sits under
     // The one that replaced it for the rest of the session.
     expect(host.querySelector('[part="outline"]')).toBeNull();
-    expect(view._layersCollapsed).toBeDefined();
   });
 });

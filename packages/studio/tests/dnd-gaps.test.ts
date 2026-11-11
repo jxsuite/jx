@@ -229,7 +229,6 @@ beforeEach(() => {
   componentRegistry.length = 0;
   view.dndCleanups = [];
   view._currentDropTargetRow = null;
-  view._layersCollapsed = null;
   view.layerDragSourceHeight = 0;
 });
 
@@ -326,6 +325,32 @@ describe("registerLayersDnD — registration", () => {
     const orig = document.elementFromPoint;
     try {
       document.elementFromPoint = () => button;
+      expect(
+        dragFor(rows[0]!).canDrag!({ element: rows[0], input: { clientX: 1, clientY: 1 } }),
+      ).toBe(false);
+      document.elementFromPoint = () => rows[0] ?? null;
+      expect(
+        dragFor(rows[0]!).canDrag!({ element: rows[0], input: { clientX: 1, clientY: 1 } }),
+      ).toBe(true);
+    } finally {
+      document.elementFromPoint = orig;
+    }
+  });
+
+  test("canDrag rejects a press on the twisty, so a drifting click still toggles the row", async () => {
+    const { rows } = await setupLayers();
+    /* The twisty is 14px wide and a human press drifts. Past a few pixels the browser starts a
+       native drag on the draggable row and the `click` is never delivered, which is why a row
+       that toggled in one try refused in the next. Refusing the drag AT THE PRESS is what lets
+       the click through. */
+    const twisty = document.createElement("span");
+    twisty.setAttribute("part", "twisty");
+    const glyph = document.createElement("span");
+    twisty.append(glyph);
+    rows[0]!.append(twisty);
+    const orig = document.elementFromPoint;
+    try {
+      document.elementFromPoint = () => glyph;
       expect(
         dragFor(rows[0]!).canDrag!({ element: rows[0], input: { clientX: 1, clientY: 1 } }),
       ).toBe(false);
@@ -495,10 +520,12 @@ describe("registerLayersDnD — monitor", () => {
     expect(JSON.stringify(tab.doc.document)).toBe(before);
   });
 
-  test("onDrop applies the instruction and persists collapse for expanded sources", async () => {
+  test("onDrop applies the instruction and lands an expanded source closed", async () => {
     const { rows } = await setupLayers();
     const tab = resetWorkspaceWithTab(makeDoc());
     tab.session.selection = [["children", 2]];
+    // The moved node lands at children/0/children/1; whatever was open under that key is closed.
+    tab.session.ui.outlineOpen["children/0/children/1"] = true;
     monitors[0]!.onDrop({
       location: {
         current: {
@@ -510,13 +537,14 @@ describe("registerLayersDnD — monitor", () => {
     });
     const [section] = elementChildren(tab.doc.document);
     expect(elementChildren(section).map((c) => c.textContent)).toEqual(["title", "second"]);
-    expect(view._layersCollapsed?.has("children/0/children/1")).toBe(true);
+    expect(tab.session.ui.outlineOpen["children/0/children/1"]).toBeUndefined();
   });
 
-  test("onDrop from a non-expanded source does not touch the collapsed set", async () => {
+  test("onDrop from a non-expanded source does not touch the open record", async () => {
     const { rows } = await setupLayers();
     const tab = resetWorkspaceWithTab(makeDoc());
     tab.session.selection = [["children", 2]];
+    const opened = { ...tab.session.ui.outlineOpen };
     monitors[0]!.onDrop({
       location: {
         current: {
@@ -525,7 +553,7 @@ describe("registerLayersDnD — monitor", () => {
       },
       source: { data: { path: ["children", 2], type: "tree-node" }, element: rows[3] },
     });
-    expect(view._layersCollapsed).toBeNull();
+    expect(tab.session.ui.outlineOpen).toEqual(opened);
     expect(elementChildren(tab.doc.document)[0]!.textContent).toBe("second");
   });
 

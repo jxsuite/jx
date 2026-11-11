@@ -8,12 +8,20 @@
  * (`services/notify.ts`); what remains here is state that is TRUE for as long as it is shown.
  *
  * **Three fields, in the shell's own left-to-right level order** (§16.2), so the bar restates the
- * containment model on every glance:
+ * containment model on every glance, and a fourth at the far right for the viewport:
  *
  * ```text
- * PROJECT                        ‖ DOCUMENT                           ‖ SELECTION
- * name · branch ↑n↓n · problems  ‖ file › ancestor › … › element ⌃     ‖ count · style rule
+ * PROJECT                        ‖ DOCUMENT                           ‖ SELECTION            ‖ ZOOM
+ * name · branch ↑n↓n · problems  ‖ file › ancestor › … › element ⌃     ‖ count · style rule   ‖ Fit - ──●── + 100%
  * ```
+ *
+ * **The ZOOM field follows the focused pane.** It used to be a pod floating over each pane's
+ * canvas; the bar is the shell's one ambient strip, drawn once, so it reports the pane the author
+ * is working in (the one the jump bar and the Inspector follow, and the one `canvas.zoomIn`,
+ * `canvas.zoomOut` and `canvas.zoomReset` act on) and re-points when the other pane takes focus.
+ * `panels/zoom-control.ts` decides what it says and where it is absent; this module hands it in and
+ * runs its gestures as commands. Unlike the three item fields it is not read aloud: it declares
+ * `aria-live="off"`, because a percentage that changes on every wheel tick is not news.
  *
  * **The DOCUMENT field is the jump bar** (`panels/jump-bar.ts`): the focused pane's address, every
  * step a button that selects it. This module renders the fields either side of it and leaves the
@@ -24,8 +32,8 @@
  * prevent), and unsaved changes are stated by the tab strip's dirty marker and the Command Bar's
  * Save. A trail of ancestors is worth more on this row than any of the three.
  *
- * `statusbar/project`, `statusbar/document` and `statusbar/selection` are three placements the
- * level × placement matrix already declares, each admitting exactly one level — so the bar's
+ * `statusbar/project`, `statusbar/document`, `statusbar/selection` and `statusbar/zoom` are four
+ * placements the level × placement matrix declares, each admitting exactly one level — so the bar's
  * mixedness is structural rather than an exemption.
  *
  * **Every interactive item is a command.** There are no click handlers in this file: an item names
@@ -46,7 +54,7 @@ import { projectState, statusbarEl } from "../store";
 import { attachJumpBarHost, mountJumpBar, unmountJumpBar } from "../panels/jump-bar";
 import { shell } from "../shell";
 import { effect, effectScope, reactive } from "../reactivity";
-import { activeTab } from "../workspace/workspace";
+import { activeTab, workspace } from "../workspace/workspace";
 import { PROJECT_STYLES_VIEW } from "../style/project-styles";
 import { stylebookTarget } from "../style/stylebook-target";
 import { activeRegistry } from "../commands/active-registry";
@@ -54,6 +62,13 @@ import { runReported } from "../commands/run-reported";
 import { deployStatusItem } from "../publish/deploy-checklist";
 import { collabState } from "../collab/collab-state";
 import { problemCount, problems } from "../services/notify";
+import {
+  fitCommandFor,
+  hiddenZoomProjection,
+  slideCommandFor,
+  zoomProjectionFor,
+} from "../panels/zoom-control";
+import type { ZoomProjection } from "../panels/zoom-control";
 import { mountSurface, registerSurface } from "../ui/surface";
 import statusbarDoc from "./statusbar.json";
 import type { CommandArgValues } from "../commands/command-args";
@@ -297,7 +312,30 @@ interface StatusbarScope {
   hasDocument: boolean;
   /** The fields after it: SELECTION. */
   trailing: ProjectedField[];
+  /** The ZOOM field: the focused pane's zoom and fit. `state: "hidden"` draws no field. */
+  zoom: ZoomProjection;
   run: (key: string) => void;
+  /** The field's gestures. Each runs a command through the registry; none writes zoom itself. */
+  zoomOut: () => void;
+  zoomIn: () => void;
+  zoomReset: () => void;
+  /** The slider moved to a position on its track. */
+  zoomSlide: (position: number) => void;
+  chooseFit: (value: string) => void;
+}
+
+/**
+ * Run one of the zoom field's commands.
+ *
+ * The field carries values (a slider position, a fit choice) that `run(key)` cannot, so it has its
+ * own handlers; they still go through the registry, so the control and the verb are one thing, the
+ * `when` and `enablement` gates apply, and a refusal lands in Problems like any other.
+ */
+function runZoom(id: string, args: CommandArgValues): void {
+  const registry = activeRegistry();
+  if (registry) {
+    void runReported(registry, id, args, "Status Bar");
+  }
 }
 
 let _state: StatusbarScope | null = null;
@@ -319,6 +357,26 @@ function state(): StatusbarScope {
       }
     },
     trailing: [],
+    zoom: hiddenZoomProjection(),
+    zoomIn: () => {
+      runZoom("canvas.zoomIn", {});
+    },
+    zoomOut: () => {
+      runZoom("canvas.zoomOut", {});
+    },
+    zoomReset: () => {
+      runZoom("canvas.zoomReset", {});
+    },
+    zoomSlide: (position: number) => {
+      const command = slideCommandFor(state().zoom, Number(position));
+      runZoom(command.id, command.args);
+    },
+    chooseFit: (value: string) => {
+      const command = fitCommandFor(value);
+      if (command) {
+        runZoom(command.id, command.args);
+      }
+    },
   });
   return _state;
 }
@@ -356,6 +414,11 @@ export function renderStatusbar(): void {
   scope.leading = present([projectField_(registry)]);
   scope.hasDocument = activeTab.value !== null;
   scope.trailing = present([selectionField(registry)]);
+  /* The FOCUSED pane's zoom, read here so the mount effect tracks everything the projection reads:
+     the focused pane, its tab's zoom and mode, a lens's own derivation, and the declared fit. */
+  scope.zoom = activeTab.value
+    ? zoomProjectionFor(workspace.activePaneId, registry)
+    : hiddenZoomProjection();
   ensureMounted();
 }
 

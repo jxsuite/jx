@@ -23,6 +23,7 @@ import * as numberField from "./behaviors/number-field.ts";
 import * as actionGroup from "./behaviors/action-group.ts";
 import * as popover from "./behaviors/popover.ts";
 import * as select from "./behaviors/select.ts";
+import * as slider from "./behaviors/slider.ts";
 import * as split from "./behaviors/split.ts";
 import * as swatchGroup from "./behaviors/swatch-group.ts";
 import * as tabs from "./behaviors/tabs.ts";
@@ -68,6 +69,7 @@ export const KIT_MODULES = {
   "jx-ui:/behaviors/action-group.ts": actionGroup,
   "jx-ui:/behaviors/popover.ts": popover,
   "jx-ui:/behaviors/select.ts": select,
+  "jx-ui:/behaviors/slider.ts": slider,
   "jx-ui:/behaviors/split.ts": split,
   "jx-ui:/behaviors/swatch-group.ts": swatchGroup,
   "jx-ui:/behaviors/tabs.ts": tabs,

@@ -52,6 +52,7 @@ import {
 } from "../tabs/transact";
 import {
   applyEditZoom,
+  resetZoom,
   requestEditZoom,
   setEditZoom,
   setUserZoom,
@@ -337,17 +338,21 @@ function isContentZoom(ctx: CommandContext): boolean {
   return ctx.canvas.view === "edit";
 }
 
-function zoomReset(ctx: CommandContext, resetPan: () => void): void {
+/**
+ * Back to 100%. In Edit that is the content zoom; on the artboard it is {@link resetZoom}, which
+ * recentres and declares 100% as this document's fit, so the Fit select reads "Actual size" and the
+ * next arrival at the document keeps it. The focused pane's stage, like every other zoom verb
+ * here.
+ */
+function zoomReset(ctx: CommandContext): void {
   if (isContentZoom(ctx)) {
     setEditZoom(1);
     return;
   }
-  const tab = activeTab.value;
-  if (!tab) {
+  if (!activeTab.value) {
     return;
   }
-  tab.session.ui.zoom = 1;
-  resetPan();
+  resetZoom();
 }
 
 function zoomBy(ctx: CommandContext, factor: number, redraw: () => void): void {
@@ -359,7 +364,7 @@ function zoomBy(ctx: CommandContext, factor: number, redraw: () => void): void {
     setEditZoom(tab.session.ui.editZoom * factor);
     return;
   }
-  // Around the stage's middle, like the zoom pod's buttons.
+  // Around the stage's middle, like the status bar's zoom buttons.
   setUserZoom(stageZoom() * factor);
   redraw();
 }
@@ -687,10 +692,6 @@ export async function openProjectFlow(hooks: StudioCommandHooks): Promise<void> 
  * is the question the palette, `__jxAutomation` and the assistant ask instead.
  */
 export function canvasCommands(pointer: () => ShortcutPointerContext): AnyCommand[] {
-  const resetPan = () => {
-    pointer().setPan(16, 16);
-    pointer().applyTransform();
-  };
   const redraw = () => pointer().applyTransform();
   return [
     // Copy and Cut are `editor/context-menu.ts`'s, beside the `copyNode`/`cutNode` this file
@@ -801,12 +802,14 @@ export function canvasCommands(pointer: () => ShortcutPointerContext): AnyComman
       id: "canvas.zoomReset",
       /* No chord. `⌘0` is `pane.focusPrimary`, pairing with `pane.focusSecondary`'s `⌘⌥0` —
          the re-bind `workspace/workspace.ts` deferred to this workstream by name. Resetting the
-         zoom keeps its button in the floating zoom pod (`panels/pane-context.ts`), which is where
-         the whole zoom cluster lives; focusing a pane has no control at all and needs the key. */
+         zoom keeps its controls in the status bar's zoom field (`surfaces/statusbar.ts`, the 100%
+         button and a double-click on the slider), which is where the whole zoom cluster lives;
+         focusing a pane has no control at all and needs the key. */
       keyScope: "canvas",
       level: "document",
+      menus: ["statusbar/zoom", "palette"],
       requires: "an open document",
-      run: (ctx) => zoomReset(ctx, resetPan),
+      run: (ctx) => zoomReset(ctx),
       title: "Reset Zoom",
       undo: "none",
       when: inDocument,
@@ -820,6 +823,7 @@ export function canvasCommands(pointer: () => ShortcutPointerContext): AnyComman
       keybinding: ["mod+=", "mod++", "mod+shift++"],
       keyScope: "canvas",
       level: "document",
+      menus: ["statusbar/zoom", "palette"],
       requires: "an open document",
       run: (ctx) => zoomBy(ctx, ZOOM_STEP, redraw),
       title: "Zoom In",
@@ -833,6 +837,7 @@ export function canvasCommands(pointer: () => ShortcutPointerContext): AnyComman
       keybinding: "mod+-",
       keyScope: "canvas",
       level: "document",
+      menus: ["statusbar/zoom", "palette"],
       requires: "an open document",
       run: (ctx) => zoomBy(ctx, 1 / ZOOM_STEP, redraw),
       title: "Zoom Out",

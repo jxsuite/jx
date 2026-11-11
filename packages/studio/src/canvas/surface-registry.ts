@@ -77,12 +77,6 @@ export interface CanvasSurface {
   stage: CanvasStageHandle | null;
   /** The observer that re-centres this stage until the author pans it. One per stage. */
   centerObserver: ResizeObserver | null;
-  /**
-   * The observer publishing this stage's scroller's scrollbar width to its cell, and the scroller
-   * it watches. Edit only: it is the one mode whose stage scrolls under the zoom pod. See
-   * `canvas/stage-scrollbar.ts`.
-   */
-  stageScrollbar: { observer: ResizeObserver; scroller: HTMLElement } | null;
   /** Whether this stage still wants re-centring — cleared by the first deliberate pan. */
   needsCenter: boolean;
   panX: number;
@@ -187,7 +181,6 @@ function freshSurface(paneId: string): CanvasSurface {
     prevStylebookFilter: null,
     renderGeneration: 0,
     sourceCollabCleanup: null,
-    stageScrollbar: null,
     wrap: null,
   };
   /* SAFETY: `wrap` is the only member that differs from CanvasSurface, and it is null only until
