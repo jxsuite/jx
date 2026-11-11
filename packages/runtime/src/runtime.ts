@@ -1643,15 +1643,19 @@ function acquireModule(src: string, base?: string): ImportedModule | Promise<Imp
  *
  * @param {JxFunctionDef} def
  * @param {string} key - Def key name
+ * @param {string} src - The specifier the module came from
  * @param {ImportedModule} mod
  */
-function exportedFunction(def: JxFunctionDef, key: string, mod: ImportedModule): ScopeFunction {
+function exportedFunction(
+  def: JxFunctionDef,
+  key: string,
+  src: string,
+  mod: ImportedModule,
+): ScopeFunction {
   const exportName = def.$export ?? key;
   const candidate = mod[exportName] ?? mod.default?.[exportName];
   if (!isFunction(candidate)) {
-    throw new TypeError(
-      `Jx: export "${exportName}" not found or not a function in "${def.$src ?? ""}"`,
-    );
+    throw new TypeError(`Jx: export "${exportName}" not found or not a function in "${src}"`);
   }
   /* SAFETY: the guard proved a function, and a function accepts any call: the runtime passes the
      scope first, as a Function entry's contract says, and binds the result as a scope member. */
@@ -1664,17 +1668,16 @@ function exportedFunction(def: JxFunctionDef, key: string, mod: ImportedModule):
  *
  * @param {JxFunctionDef} def
  * @param {string} key - Def key name
+ * @param {string} src - The entry's `$src`
  * @param {string} [base] - Base URL for resolving relative specifiers
  */
 async function importFunctionExport(
   def: JxFunctionDef,
   key: string,
+  src: string,
   base?: string,
 ): Promise<ScopeFunction> {
-  if (!def.$src) {
-    throw new Error(`Jx: '${key}' has neither body nor $src`);
-  }
-  return exportedFunction(def, key, await acquireModule(def.$src, base));
+  return exportedFunction(def, key, src, await acquireModule(src, base));
 }
 
 /**
@@ -1719,6 +1722,7 @@ async function resolveFunction(
       value: def.name ?? key,
     });
   } else if (def.$lazy === true && def.$src) {
+    const { $src: src } = def;
     /* Loaded on the first call, not here (spec.md §5.3 4d), as a compiled page does. The first call
        starts the import and every call waits on it, so the module loads once and a call returns a
        promise from then on. A computed reads its value now, which a promise cannot give, so the
@@ -1731,7 +1735,8 @@ async function resolveFunction(
       );
     }
     let loaded: Promise<ScopeFunction> | undefined;
-    const load = (): Promise<ScopeFunction> => (loaded ??= importFunctionExport(def, key, base));
+    const load = (): Promise<ScopeFunction> =>
+      (loaded ??= importFunctionExport(def, key, src, base));
     fn = (...args: JxScopeValue[]) => load().then((target) => target(...args));
     Object.defineProperty(fn, "name", {
       configurable: true,
@@ -1744,7 +1749,12 @@ async function resolveFunction(
       throw new Error(`Jx: '${key}' has neither body nor $src`);
     }
     const acquired = acquireModule(def.$src, base);
-    fn = exportedFunction(def, key, acquired instanceof Promise ? await acquired : acquired);
+    fn = exportedFunction(
+      def,
+      key,
+      def.$src,
+      acquired instanceof Promise ? await acquired : acquired,
+    );
   }
 
   // The role comes from the document (spec.md §5.3 4b, 4d), never from the import's arity or source.
