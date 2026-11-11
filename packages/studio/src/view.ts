@@ -46,6 +46,12 @@ export type DiffSurface = editor.IStandaloneDiffEditor & { _diffKey?: string };
 
 export type MonacoSurface = editor.IStandaloneCodeEditor & {
   _ignoreNextChange?: boolean;
+  /**
+   * The type check drawn on this buffer, released with it: a body's on the function editor
+   * (`services/type-check.ts`), a whole file's on the Code view of a `.jxn` file
+   * (`services/source-type-check.ts`).
+   */
+  _typeCheck?: TypeCheck;
   /** The debounced work armed over this buffer, with this editor's exact lifetime. */
   _writes?: BufferWrites;
   /**
@@ -93,8 +99,6 @@ interface ViewState {
     | (MonacoSurface & {
         _editingTarget?: string | null;
         _commitBody?: (body: string) => boolean;
-        /** The type check drawn on this buffer (`services/type-check.ts`), released with it. */
-        _typeCheck?: TypeCheck;
       })
     | null;
   blockActionBarEl: HTMLElement | null;
