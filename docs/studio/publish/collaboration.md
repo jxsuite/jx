@@ -30,7 +30,7 @@ When two people open the same file through the same Studio backend, the tab beco
 
 ## How co-editing behaves
 
-- **Edits merge.** Everyone edits the same live document. Changes apply as they arrive, and simultaneous edits to different parts of a file both land. No locking, no taking turns.
+- **Edits merge.** Everyone edits the same live document. Changes apply as they arrive, and simultaneous edits to different parts of a file both land. Two people working in the same [document script](/docs/framework/concepts/functions) both keep what they wrote. No locking, no taking turns.
 - **Undo is yours alone.** :kbd[⌘Z] / :kbd[Ctrl+Z] steps back through _your_ edits only, so you can't undo what a teammate just did. The status pill's tooltip says so, because it is the kind of rule that is easier to be told than to discover.
 - **Forms sync too.** Page metadata and frontmatter fields co-edit the same way the canvas does.
 - **Code view takes precedence, including over the person in it.** While someone is editing the file as text, the text is the truth: structural editing pauses for everyone, the text editor included. Their Outline, their Inspector and their canvas refuse the same edits everyone else's do, and say the same thing when they try. A **Code view held** flag stands beside the status pill for as long as it lasts, so a refused edit has a visible cause rather than looking like a fault. When the last text editor leaves Code view, normal editing resumes.

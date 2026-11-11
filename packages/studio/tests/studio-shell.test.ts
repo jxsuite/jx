@@ -2020,6 +2020,38 @@ describe("remaining wiring arrows", () => {
     expect(entry?.props).toEqual([{ default: "", format: "image", name: "imageSrc" }]);
   });
 
+  test("saving a document's script draws every pane again, and a save that leaves it alone does not", async () => {
+    /* A script reaches the canvas when its document is saved (`spec.md` §23.2), and a save changes
+       nothing in the document, so no pane would draw again without being told. */
+    const tab = openShellTab(
+      { $script: { client: "export const greet = () => 'one';" }, tagName: "x-greeter" },
+      { documentPath: "components/x-greeter.json" },
+    );
+    // A document is addressed by the URL a frame reads it from, and this page is at about:blank.
+    platform.canvasUrl = "http://localhost:3000/packages/studio/canvas.html";
+    try {
+      tab.doc.dirty = true;
+      renderCanvasMock.mockClear();
+      await toolbarCtx.saveFile();
+      expect(renderCanvasMock).toHaveBeenCalled();
+
+      // Saved again with the script as it was: nothing a canvas shows has moved.
+      tab.doc.dirty = true;
+      renderCanvasMock.mockClear();
+      await toolbarCtx.saveFile();
+      expect(renderCanvasMock).not.toHaveBeenCalled();
+
+      tab.doc.document.$script = { client: "export const greet = () => 'two';" };
+      tab.doc.dirty = true;
+      await toolbarCtx.saveFile();
+      expect(renderCanvasMock).toHaveBeenCalled();
+      // And what was drawn is what was written.
+      expect(state.files.get("components/x-greeter.json")).toContain("'two'");
+    } finally {
+      delete platform.canvasUrl;
+    }
+  });
+
   test("a grid save tells source control, as a document save does", async () => {
     /* A grid commits through its source, not through the document save path, so the bootstrap
        wires the grid's own saved listener to source control: without it the Publish count stayed

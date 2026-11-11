@@ -10,8 +10,9 @@
  */
 
 import { cloneValue } from "@jxsuite/schema/doc-ops";
+import { isJsonObject } from "@jxsuite/schema/guards";
 import type { JxMutableNode } from "@jxsuite/schema/types";
-import { metaMap, structureMap, toYChildren } from "./schema.ts";
+import { metaMap, structureMap, TEXT_OBJECT_KEYS, toYChildren, toYTextObject } from "./schema.ts";
 import type * as Y from "yjs";
 
 export * from "./diff-core.ts";
@@ -36,6 +37,9 @@ export function replaceYStructure(doc: Y.Doc, document: JxMutableNode, origin: s
       }
       if (key === "children" && Array.isArray(value)) {
         structure.set(key, toYChildren(value));
+      } else if (TEXT_OBJECT_KEYS.has(key) && isJsonObject(value)) {
+        // The scripts exist only on the root: left plain here, they would never be texts again.
+        structure.set(key, toYTextObject(value));
       } else {
         structure.set(key, cloneValue(value));
       }

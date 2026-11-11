@@ -1,6 +1,6 @@
 ---
 title: "Components"
-description: "How Jx components work: self-describing JSON, state management, external sidecars, custom elements, and the shadow-DOM opt-in."
+description: "How Jx components work: self-describing JSON, state management, a component's own script, custom elements, and the shadow-DOM opt-in."
 spec:
   - spec.md#16.6
   - spec.md#16.9
@@ -15,7 +15,7 @@ code:
 
 > **Studio writes this format for you.** This page documents the underlying JSON, which is useful when you want to hand-edit a file, review a diff, or understand what the visual tools produce.
 
-A Jx component is a single `.json` file. All state, computed values, and functions are declared in `state`. Simple components need no sidecar file.
+A Jx component is a single `.json` file. All state, computed values, and functions are declared in `state`. A component that needs a module of its own carries it too, so a component never needs a second file.
 
 ## A component is one file
 
@@ -110,31 +110,27 @@ An object with `$prototype` for functions and data sources:
 }
 ```
 
-## External sidecars
+## A component's script
 
-When functions grow complex, extract them to a `.js` file:
+When functions grow complex, or need an `import`, write them as a module the component carries with it and name it with `$src: "#client"`:
 
 ```json
 {
+  "tagName": "my-counter",
+  "$script": {
+    "client": "export function increment(state) {\n  state.count++;\n}\n\nexport function decrement(state) {\n  state.count = Math.max(0, state.count - 1);\n}\n"
+  },
   "state": {
-    "increment": { "$prototype": "Function", "$src": "./counter.js" },
-    "decrement": { "$prototype": "Function", "$src": "./counter.js" }
+    "count": 0,
+    "increment": { "$prototype": "Function", "$src": "#client" },
+    "decrement": { "$prototype": "Function", "$src": "#client" }
   }
-}
-```
-
-```js
-export function increment(state) {
-  state.count++;
-}
-export function decrement(state) {
-  state.count = Math.max(0, state.count - 1);
 }
 ```
 
 The first parameter is always `state`, the component's reactive scope. `this` is never used.
 
-A component can also carry that module itself, as text in `$script.client`, with entries naming it by `$src: "#client"`. `jx build` bundles it per component, and Studio's canvas and Live Preview import it in the browser. See [A module inside the document](/docs/framework/concepts/functions#a-module-inside-the-document) for the rules.
+The script is TypeScript, and the component is still one file. `jx build` bundles it per component, and Studio's canvas and Live Preview import it in the browser. In a [`.jxn` component](/docs/framework/concepts/jxn-files#a-documents-script) the module is plain multi-line text with no escaping. A module several components share is a `.js` or `.ts` file, named by its path in `$src`. See [Functions and modules](/docs/framework/concepts/functions#modules).
 
 ## Custom elements
 

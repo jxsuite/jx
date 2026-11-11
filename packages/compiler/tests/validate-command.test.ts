@@ -144,6 +144,34 @@ describe("validateProjectTree", () => {
     }
   });
 
+  it("advises on a relative $src, and no option makes advice fail the tree (spec.md §23.2)", async () => {
+    /* The document is right as it stands, so this is `info` and stays out of the verdict even
+       under `strict`, which fails a tree on a lint ERROR. A package and the document's own script
+       have no other spelling, and neither is mentioned. */
+    writeFile("components/tally-card.json", {
+      $script: { client: "export const reset = () => {}" },
+      children: [{ tagName: "p", textContent: "tally" }],
+      state: {
+        bump: { $prototype: "Function", $src: "./tally.js" },
+        debounce: { $prototype: "Function", $src: "npm:lodash-es" },
+        reset: { $prototype: "Function", $src: "#client" },
+      },
+      tagName: "tally-card",
+    });
+    try {
+      const result = await validateProjectTree(TMP, { strict: true });
+      expect(result.valid).toBe(true);
+      expect(result.lint.map((f) => [f.file, f.source, f.rule, f.severity, f.path])).toEqual([
+        ["components/tally-card.json", "module", "relative-src", "info", ["state", "bump"]],
+      ]);
+      expect(formatProjectTreeLint(result)).toEqual([
+        'components/tally-card.json: info: "bump" imports ./tally.js, which the document could carry as its own script [module/relative-src]',
+      ]);
+    } finally {
+      rmSync(resolve(TMP, "components/tally-card.json"), { force: true });
+    }
+  });
+
   it("a clean tree carries no lint, and a document with a schema error is not linted", async () => {
     const result = await validateProjectTree(TMP, { strict: true });
     expect(result.lint).toEqual([]);

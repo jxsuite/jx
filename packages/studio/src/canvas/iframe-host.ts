@@ -8,7 +8,8 @@
  */
 
 import { postMessageChannel } from "./iframe-channel";
-import { canvasBaseOrigin } from "./canvas-origin";
+import { canvasBaseOrigin, documentBase } from "./canvas-origin";
+import { ownShadow } from "./canvas-scripts";
 import { getPreviewNavigateHandler } from "./preview-navigate";
 import { resolveCanvasDocument } from "./canvas-live-render";
 import { liveEntryState } from "./live-entry";
@@ -3274,8 +3275,14 @@ function preparePassRender(
     // Reactive proxy artifacts that would otherwise raise DataCloneError and silently drop the
     // Entire message.
     const cloneableDoc = plainCopy(resolved.renderDoc);
-    // The RAW page doc (forward-op + data-jx-path coordinate space) crosses as the shadow doc.
-    const cloneableShadow = plainCopy(doc);
+    // The RAW page doc (forward-op + data-jx-path coordinate space) crosses as the shadow doc,
+    // Addressed as the drawn one is and without its script: a root key no path runs through, and
+    // Text the frame is not sent.
+    const cloneableShadow = ownShadow(
+      plainCopy(doc),
+      viewTab?.documentPath,
+      documentBase(projectState?.projectRoot),
+    );
     // Which tags can hold a caret depends on the document's vocabulary, so the format's verdicts
     // Ride with the render rather than being baked into the frame. Absent for a native document,
     // Where the studio's own element metadata answers on its own.
@@ -3299,6 +3306,9 @@ function preparePassRender(
       shadowDoc: cloneableShadow,
       siteStyle: resolved.siteStyle,
     };
+    if (Object.keys(resolved.scripts).length > 0) {
+      prepared.scripts = resolved.scripts;
+    }
     if (editableTags) {
       prepared.editableTags = editableTags;
     }

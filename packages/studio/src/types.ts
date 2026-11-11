@@ -940,6 +940,8 @@ export interface FunctionEditDef {
   defName?: string;
   path?: JxPath;
   eventKey?: string;
+  /** Which of the document's own modules, for `type: "script"` (`spec.md` §23.2). */
+  side?: "client" | "server";
   key?: string;
   body?: string;
   parameters?: string[];

@@ -295,6 +295,6 @@ In production, `?:` and `switch` evaluate only the taken branch. In Studio's edi
 - [Operator reference](/docs/framework/reference/operators): every blessed token
 - [Formula catalog](/docs/framework/reference/formulas): composite formulas in Studio's palette
 - [Statements](/docs/framework/concepts/statements): multi-step bodies built from expression nodes
-- [Functions and sidecars](/docs/framework/concepts/functions): the escape hatch to real JavaScript
+- [Functions and modules](/docs/framework/concepts/functions): the escape hatch to real JavaScript
 - [Reactivity](/docs/framework/concepts/reactivity): how computed values track their inputs
 - [Formulas and expressions in Studio](/docs/studio/logic/formulas): the visual editor for all of this

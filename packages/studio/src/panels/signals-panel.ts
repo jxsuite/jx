@@ -51,6 +51,7 @@ import {
 } from "./data-explorer";
 import { disposeDetachedDataTrees } from "../surfaces/panel-data";
 import { openLogicTarget } from "./formula-workspace";
+import { scriptRefSide } from "@jxsuite/schema/document-scripts";
 import { bindableSignalNames } from "./properties-panel";
 import { mountStatementEditor } from "./statement-editor";
 import { NAVIGATOR_STATEMENTS_REGION } from "../ui/regions";
@@ -945,6 +946,7 @@ function externalFields(S: SignalsPanelState, name: string, def: SignalDef): Sig
       }),
     );
   }
+  out.push(...scriptFields(name, def));
   if (def.$export) {
     out.push(
       textField(name, "export", "Export", def.$export || "", (v) =>
@@ -1204,6 +1206,45 @@ function emitsField(name: string, def: SignalDef): SignalFieldView {
 }
 
 /**
+ * The way from an entry to the module it names, when that module is the document's own (`spec.md`
+ * §23.2): one button that opens the script in the Logic tab. An entry naming any other module gets
+ * nothing, because that module is a file and the Files panel is the way to a file.
+ */
+function scriptFields(name: string, def: SignalDef): SignalFieldView[] {
+  const side = def.$src ? scriptRefSide(def.$src) : null;
+  if (side === null) {
+    return [];
+  }
+  return [
+    field(
+      {
+        buttons: [
+          {
+            field: "script",
+            icon: "code",
+            key: "editor",
+            label: "Open in code editor",
+            signal: name,
+          },
+        ],
+        key: "script",
+        kind: "bar",
+        label: side === "server" ? "Server script" : "Script",
+        prop: "Script",
+        signal: name,
+      },
+      {
+        live: "none",
+        press: () => {
+          openLogicTarget({ editing: { side, type: "script" }, surface: "function" });
+        },
+        value: "",
+      },
+    ),
+  ];
+}
+
+/**
  * A function: what it is for, what it takes, what it emits, and its body.
  *
  * Structured bodies (`spec.md` §20) are a body MODE rather than a new entity: "Statements" is the
@@ -1231,6 +1272,7 @@ function functionFields(S: SignalsPanelState, name: string, def: SignalDef): Sig
       textField(name, "export", "Export", def.$export || "", (v) =>
         patch({ $export: v || undefined }),
       ),
+      ...scriptFields(name, def),
     );
     return out;
   }
@@ -1402,7 +1444,9 @@ function editorFields(S: SignalsPanelState, name: string, def: SignalDef): Signa
   const head = nameField(S, name);
   switch (defCategory(def)) {
     case "state": {
-      return [head, ...stateFields(S, name, def)];
+      // A server function has no `$prototype`, so it is read as state: its way to the document's
+      // Server script hangs here.
+      return [head, ...stateFields(S, name, def), ...scriptFields(name, def)];
     }
     case "computed": {
       return [head, ...computedFields(name, def)];

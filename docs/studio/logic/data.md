@@ -83,7 +83,7 @@ A **Function** entry is behavior you can bind to events or call from formulas. I
 - **Parameters**: type a name and press :kbd[Enter] to add one as a chip; **Advanced** switches to full rows with a type, description, and optional flag per parameter.
 - **Body**, with a **Statements**/**Code** toggle: build the body as visual steps, or write JavaScript. See **[Statements](/docs/studio/logic/statements)** and **[Code editing](/docs/studio/logic/code)**.
 
-A function stored in a separate file shows **Source** and **Export** fields instead of a body. See the sidecar section of **[Code editing](/docs/studio/logic/code)**.
+A function the document's own script exports shows **Script** with an **Open in code editor** button instead of a body, and one stored in a separate file shows **Source** and **Export** fields. See **[A document's script](/docs/studio/logic/code#a-documents-script)**.
 
 ## Components: props, attributes, and events
 

@@ -114,12 +114,13 @@ Only `tagName` is required. A `tagName` containing a hyphen makes the document a
 "itemCount": "${state.items.length} items"
 ```
 
-**4. Function**: `$prototype: "Function"`, with an inline `body` or an external `.js` sidecar:
+**4. Function**: `$prototype: "Function"`, with an inline `body`, or a `$src` naming the document's own script (`#client`), a module file, or an npm package:
 
 ```json
 "increment": { "$prototype": "Function", "body": "state.count++" },
 "handleInput": { "$prototype": "Function", "arguments": ["event"], "body": "state.value = event.target.value" },
-"validate": { "$prototype": "Function", "$src": "./validators.js", "$export": "validateEmail" },
+"bump": { "$prototype": "Function", "$src": "#client" },
+"validate": { "$prototype": "Function", "$src": "../lib/validators.js", "$export": "validateEmail" },
 "openSearch": { "$prototype": "Function", "$src": "npm:@jxsuite/search/client", "$lazy": true }
 ```
 
@@ -379,7 +380,7 @@ Two rules bind all three. **Secrets are never values in the project file**: the 
 5. A component's `tagName` must contain a hyphen (Web Components requires it).
 6. `$defs` holds JSON Schema type definitions only: no functions, no defaults, no runtime artifacts.
 7. Template strings (`${}`) are pure expressions, with no statements and no assignments.
-8. Function `body` strings are raw JavaScript where `state` is in scope; a sidecar export takes `state` as its first parameter.
+8. Function `body` strings are raw JavaScript where `state` is in scope; a module's export takes `state` as its first parameter.
 9. `"$lazy": true` on a `$src` Function loads the module on first call instead of importing it with the page. The function then returns a promise, so only use it for entries you **call** from a handler or lifecycle hook, never for one bound as a value; the build and Studio both reject the latter. Reach for it when the module is large and most visitors never trigger it.
 10. `$head` entries are `{ tagName, attributes }` objects, never HTML strings.
 11. Layouts inject content with `{ "tagName": "slot" }`. There is no `$slot` or `$content`.

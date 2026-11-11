@@ -26,7 +26,8 @@ import {
   toolbarEl,
   updateSession,
 } from "./store";
-import { getEffectiveRenderLocale } from "./site-context";
+import { getEffectiveRenderLocale, invalidateLayoutCache } from "./site-context";
+import { documentBase } from "./canvas/canvas-origin";
 
 import {
   PRIMARY_PANE,
@@ -134,6 +135,7 @@ import {
 } from "./files/files";
 import { resetIgnoreCache } from "./files/gitignore";
 import { resetAssetVersions } from "./files/asset-versions";
+import { noteSavedScript, resetSavedScripts, scriptAddress } from "./canvas/canvas-scripts";
 import { startFsSync } from "./files/fs-events";
 import { invalidateParamValues } from "./page-params";
 import {
@@ -1127,6 +1129,7 @@ if (_projectParam) {
 
           resetIgnoreCache();
           resetAssetVersions();
+          resetSavedScripts();
           setProjectState({
             dirs: new Map(),
             expanded: new Set(),
@@ -1518,6 +1521,7 @@ async function openRecentProject(root: string) {
     closeAllTabs();
     resetIgnoreCache();
     resetAssetVersions();
+    resetSavedScripts();
 
     setProjectState({
       ...projectState,
@@ -1750,6 +1754,15 @@ setDocumentSavedListener((path, doc, tab) => {
   if (noteComponentSaved(path, doc)) {
     renderPropertiesPanel();
     renderLeftPanel();
+  }
+  /* A script reaches the canvas when its document is saved (`spec.md` §23.2), and saving changes
+     nothing in the document, so no pane would draw again by itself. A layout is read once and
+     kept, so it is read again too: its script is part of what was kept. */
+  if (noteSavedScript(scriptAddress(path, documentBase(projectState?.projectRoot)), doc)) {
+    invalidateLayoutCache();
+    for (const pane of workspace.panes) {
+      renderCanvas(pane.id);
+    }
   }
 });
 /* A grid save writes files through its source, not through the document save path above, so it

@@ -62,6 +62,7 @@ void mock.module("../src/canvas/canvas-live-render", () => ({
         pageContentPrefix: null,
       },
       renderDoc: { children: ["hi"], tagName: "div" },
+      scripts: {},
       siteStyle: null,
     }),
 }));
