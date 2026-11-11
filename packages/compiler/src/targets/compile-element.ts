@@ -27,6 +27,8 @@ import {
   compileOperandSource,
   compileStatements,
   emitFormulaFn,
+  collectFunctionImports,
+  emitSrcImports,
   refuseBodyWithSrc,
   emitRequestFetch,
   emitServerCall,
@@ -35,8 +37,6 @@ import {
   isSchemaOnly,
   rewriteState,
   serverCallHelperSource,
-  srcExportName,
-  srcImportBinding,
   tagNameToClassName,
   templateValueSource,
 } from "../shared.ts";
@@ -338,50 +338,12 @@ export function emitElementModule(
   }
 
   // Collect $src imports from state entries before emitting other imports
-  const srcImportMap = new Map<string, string[]>();
-  /** `$lazy` `$src` modules → the (export, local binding) pairs each one supplies. */
-  const lazySrcMap = new Map<string, { binding: string; exportName: string }[]>();
   const defs = doc.state ?? {};
   const roles = classifyFunctionEntries(doc);
-  for (const [key, def] of Object.entries(defs)) {
-    refuseBodyWithSrc(`state entry "${key}"`, def);
-    if (isFunctionDef(def) && def.$src) {
-      const srcPath = def.$src;
-      if (def.$lazy === true) {
-        /*
-         * A computed reads its value synchronously, and a lazy binding can only ever hand back a
-         * promise. Silently producing `computed(() => Promise)` would render "[object Promise]" in
-         * whatever the template bound it to, so this is a build error rather than a surprise.
-         */
-        if (roles.get(key) === "computed") {
-          throw new Error(
-            `"${key}" declares "$lazy": true but is used as a computed value, not called. ` +
-              `A lazily loaded function resolves to a promise; a computed must resolve now. ` +
-              `Remove "$lazy", or call ${key}() from a handler instead of binding its value.`,
-          );
-        }
-        let lazyBindings = lazySrcMap.get(srcPath);
-        if (!lazyBindings) {
-          lazyBindings = [];
-          lazySrcMap.set(srcPath, lazyBindings);
-        }
-        lazyBindings.push({ binding: key, exportName: srcExportName(key, def) });
-        continue;
-      }
-      let bindings = srcImportMap.get(srcPath);
-      if (!bindings) {
-        bindings = [];
-        srcImportMap.set(srcPath, bindings);
-      }
-      bindings.push(srcImportBinding(key, def));
-    }
-  }
-  for (const [srcPath, names] of srcImportMap) {
-    // Bundleable specifiers (npm:…, ./relative) are rewritten to their /assets/ bundle URL;
-    // The site build bundles them after all documents compile (spec.md §12).
-    const importPath = rewriteSrc ? rewriteSrc(srcPath) : srcPath;
-    lines.push(`import { ${names.join(", ")} } from '${importPath}';`);
-  }
+  const srcImports = emitSrcImports(collectFunctionImports(defs, roles), rewriteSrc);
+  // Bundleable specifiers (npm:…, ./relative) are rewritten to their /assets/ bundle URL;
+  // The site build bundles them after all documents compile (spec.md §12).
+  lines.push(...srcImports.imports);
 
   // `$prototype: "Request"` entries each get an auto-fetch effect in connectedCallback, plus the
   // Machinery to stop those effects again on disconnect. Both are emitted only when one exists, so
@@ -415,29 +377,9 @@ export function emitElementModule(
     lines.push(slotHelperSource());
   }
 
-  /*
-   * `$lazy` swaps the static import for a memoized dynamic one. A static import is a download, a
-   * parse and an evaluate on every page that renders the component, whether or not anybody calls
-   * the function: jxsuite.com's search client is 70 kB of MiniSearch fetched by every visitor, most
-   * of whom never open search. The local binding keeps its name so every call site is unchanged;
-   * what changes is that it now returns a promise.
-   */
-  let lazyIndex = 0;
-  for (const [srcPath, entries] of lazySrcMap) {
-    const importPath = rewriteSrc ? rewriteSrc(srcPath) : srcPath;
-    const mod = `_jxLazy${lazyIndex}`;
-    lazyIndex += 1;
-    lines.push(
-      `let ${mod};`,
-      `const ${mod}Load = () => (${mod} ??= import('${importPath}'));`,
-      ...entries.map(
-        ({ binding, exportName }) =>
-          `const ${binding} = (...args) => ${mod}Load().then((m) => m.${exportName}(...args));`,
-      ),
-    );
-  }
-
+  // `$lazy` entries load on their first call instead of with the page (spec.md §5.3 4d).
   lines.push(
+    ...srcImports.loaders,
     "",
     `class ${className} extends HTMLElement {`,
     // One registry for every effect the element creates — render, dynamic host styles, Request

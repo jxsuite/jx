@@ -101,7 +101,8 @@ describe("a component whose site url carries a path", () => {
 
   test("so does the page's own module", async () => {
     const { page } = await buildAt("https://example.pages.dev/m/probe/");
-    expect(page).toMatch(/from '\/m\/probe\/assets\/[^']+\.js'/);
+    // The page's `pageLater` is `$lazy`, so its module is a dynamic import in the page too.
+    expect(page).toMatch(/import\('\/m\/probe\/assets\/[^']+\.js'\)/);
     expect(page).not.toMatch(/(?:import\(|from )'\/assets\//);
   });
 
@@ -109,7 +110,7 @@ describe("a component whose site url carries a path", () => {
     const { component, page } = await buildAt("https://example.pages.dev/");
     expect(component).toMatch(/import\('\/assets\/[^']+\.js'\)/);
     expect(component).toMatch(/from '\/assets\/[^']+\.js'/);
-    expect(page).toMatch(/from '\/assets\/[^']+\.js'/);
+    expect(page).toMatch(/import\('\/assets\/[^']+\.js'\)/);
     expect(component + page).not.toContain("/m/probe");
   });
 });

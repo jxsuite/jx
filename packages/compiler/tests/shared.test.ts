@@ -7,7 +7,9 @@ import {
   buildInner,
   cloneValue,
   collectServerEntries,
+  collectFunctionImports,
   collectSrcImports,
+  emitSrcImports,
   colorSchemePrePaintScript,
   compileStyles,
   createCompileContext,
@@ -1797,5 +1799,53 @@ describe("a static build says what it drops", () => {
     takeDroppedReactiveStyles();
     buildComponentCSS("x-b", { color: "red", ":hover": { color: "blue" } });
     expect(takeDroppedReactiveStyles()).toEqual([]);
+  });
+});
+
+describe("collectFunctionImports (spec.md §5.3 4d)", () => {
+  const entry = (extra: Record<string, string | boolean> = {}) => ({
+    $prototype: "Function" as const,
+    $src: "./lib.js",
+    ...extra,
+  });
+
+  test("splits eager and lazy entries by module", () => {
+    const imports = collectFunctionImports(
+      {
+        a: entry(),
+        b: entry({ $export: "beta" }),
+        c: entry({ $lazy: true, $src: "./lazy.js" }),
+        d: "plain",
+      },
+      new Map([["c", "callable"]]),
+    );
+    expect([...imports.eager]).toEqual([["./lib.js", new Set(["a", "beta as b"])]]);
+    expect([...imports.lazy]).toEqual([["./lazy.js", [{ binding: "c", exportName: "c" }]]]);
+  });
+
+  test("refuses a lazy entry the document uses as a computed", () => {
+    expect(() =>
+      collectFunctionImports({ total: entry({ $lazy: true }) }, new Map([["total", "computed"]])),
+    ).toThrow('"total" declares "$lazy": true but is used as a computed value');
+  });
+
+  test("refuses an entry declaring both body and $src", () => {
+    expect(() => collectFunctionImports({ go: entry({ body: "state.n++" }) }, new Map())).toThrow(
+      'state entry "go" declares both',
+    );
+  });
+
+  test("emits the static imports and the memoized loaders, rewriting specifiers", () => {
+    const imports = collectFunctionImports(
+      { a: entry(), c: entry({ $lazy: true, $src: "./lazy.js" }) },
+      new Map([["c", "callable"]]),
+    );
+    const out = emitSrcImports(imports, (spec) => `/assets/${spec.slice(2)}`);
+    expect(out.imports).toEqual(["import { a } from '/assets/lib.js';"]);
+    expect(out.loaders).toEqual([
+      "let _jxLazy0;",
+      "const _jxLazy0Load = () => (_jxLazy0 ??= import('/assets/lazy.js'));",
+      "const c = (...args) => _jxLazy0Load().then((m) => m.c(...args));",
+    ]);
   });
 });

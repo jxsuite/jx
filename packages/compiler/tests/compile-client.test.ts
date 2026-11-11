@@ -1594,3 +1594,67 @@ describe("compileClient: an inline handler on a list item", () => {
     );
   });
 });
+
+describe("compileClient: $lazy $src (spec.md §5.3 4d)", () => {
+  // SAFETY: a document literal whose state entries are Function declarations.
+  const page = (state: Record<string, JsonObject>) =>
+    ({
+      children: [{ onclick: { $ref: "#/state/search" }, tagName: "button" }],
+      state,
+      tagName: "div",
+    }) as JxDocument;
+  const lazy = (extra: JsonObject = {}): JsonObject => ({
+    $lazy: true,
+    $prototype: "Function",
+    $src: "./search.js",
+    ...extra,
+  });
+  const js = (state: Record<string, JsonObject>, rewriteSrc?: (s: string) => string) => {
+    const options: Parameters<typeof compileClient>[1] = { title: "T" };
+    if (rewriteSrc) {
+      options.rewriteSrc = rewriteSrc;
+    }
+    return compileClient(page(state), options).files[0]!.content;
+  };
+
+  test("emits a memoized dynamic import instead of a static one", () => {
+    const out = js({ search: lazy() });
+    expect(out).not.toContain("import { search }");
+    expect(out).toMatch(/\?\?=\s*import\('\.\/search\.js'\)/);
+  });
+
+  test("the binding keeps its name, so state and the on adapter are unchanged", () => {
+    const out = js({ search: lazy() });
+    expect(out).toContain("const search = (...args) =>");
+    expect(out).toContain('state["search"] = search;');
+    expect(out).toContain("return search(state, event);");
+  });
+
+  test("$export selects the export off the namespace", () => {
+    expect(js({ search: lazy({ $export: "boot" }) })).toContain("m.boot(...args)");
+  });
+
+  test("two entries from one module share one import", () => {
+    const out = js({ other: lazy({ parameters: ["x"] }), search: lazy() });
+    expect(out.match(/import\('\.\/search\.js'\)/g)).toHaveLength(1);
+  });
+
+  test("rewriteSrc applies to the dynamic import", () => {
+    const out = js({ search: lazy() }, (spec) => `/assets/${spec.slice(2)}`);
+    expect(out).toContain("import('/assets/search.js')");
+  });
+
+  test("a static $src is still a static import", () => {
+    expect(js({ search: { $prototype: "Function", $src: "./search.js" } })).toContain(
+      "import { search } from './search.js';",
+    );
+  });
+
+  test("a lazy entry the page reads as a value is a build error", () => {
+    const doc: JxDocument = {
+      ...page({ total: lazy() }),
+      children: [{ tagName: "p", textContent: "${state.total}" }],
+    };
+    expect(() => compileClient(doc, { title: "T" })).toThrow('"total" declares "$lazy": true');
+  });
+});
