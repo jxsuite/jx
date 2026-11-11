@@ -1,6 +1,9 @@
 {
   "$schema": "../document.schema.json",
   "$id": "FetchDemo",
+  "$script": {
+    "client": "export function filteredPosts(state) {\n  const posts = state.allPosts || [];\n  const term = (state.searchTerm || \"\").toLowerCase();\n  const userId = state.selectedUserId ? Number(state.selectedUserId) : null;\n\n  return posts.filter((p) => {\n    if (userId && p.userId !== userId) {\n      return false;\n    }\n    if (term && !p.title.toLowerCase().includes(term) && !p.body.toLowerCase().includes(term)) {\n      return false;\n    }\n    return true;\n  });\n}\n\nexport function paginatedPosts(state) {\n  const filtered = state.filteredPosts || [];\n  const page = state.currentPage || 1;\n  const perPage = state.perPage || 10;\n  const start = (page - 1) * perPage;\n  return filtered.slice(start, start + perPage);\n}\n\nexport function statsText(state) {\n  const total = (state.allPosts || []).length;\n  const filtered = (state.filteredPosts || []).length;\n  if (filtered === total) {\n    return `${total} posts`;\n  }\n  return `${filtered} of ${total} posts`;\n}\n"
+  },
 
   "state": {
     "searchTerm": { "type": "string", "default": "" },
@@ -28,12 +31,12 @@
     },
     "filteredPosts": {
       "$prototype": "Function",
-      "$src": "./fetch-demo.js",
+      "$src": "#client",
       "description": "Posts filtered by searchTerm + selectedUserId"
     },
     "paginatedPosts": {
       "$prototype": "Function",
-      "$src": "./fetch-demo.js",
+      "$src": "#client",
       "description": "Current page slice of filteredPosts"
     },
     "totalPages": {
@@ -42,7 +45,7 @@
     },
     "statsText": {
       "$prototype": "Function",
-      "$src": "./fetch-demo.js"
+      "$src": "#client"
     },
 
     "onSearch": {

@@ -19,7 +19,7 @@
  */
 
 import { isJsonObject, isString } from "./guards";
-import type { JsonValue, JxDocument, JxDocumentValue } from "../types";
+import type { JsonValue, JxDocument, JxDocumentValue, JxElement } from "../types";
 
 export type { JxDocumentScripts } from "../types";
 
@@ -174,4 +174,131 @@ export function qualifyScripts<T extends JxDocument>(doc: T, path: string): T {
   /* SAFETY: `qualifiedValue` returns its argument or a copy of it with `$src` strings replaced, so
      a document goes in and the same kind of document comes out. */
   return qualifiedValue(doc, path) as T;
+}
+
+// ─── Advice ─────────────────────────────────────────────────────────────────────
+
+/** The two things worth saying about how a document names its modules. */
+export type ScriptAdviceRule = "relative-src" | "lazy-shares-script";
+
+/**
+ * One piece of advice about a `$src`. Advice, not a defect: the document is correct and runs as
+ * written everywhere, so nothing that reports one may fail on it.
+ */
+export interface ScriptAdvice {
+  rule: ScriptAdviceRule;
+  /** The entry the `$src` is written on, in the segment vocabulary a document path uses. */
+  path: (string | number)[];
+  /** One sentence naming what was found, in the author's language. */
+  message: string;
+  /** What to do instead, and what happens when nothing is done. */
+  detail: string;
+}
+
+/** Matches a `$src` naming a file beside its document: `./counter.js`, `../lib/format.ts`. */
+const RELATIVE_SRC = /^\.{1,2}\//u;
+
+/** Matches a `$src` naming a JSON document, which is a class schema and never a script (§12.2). */
+const JSON_SRC = /\.json$/iu;
+
+/**
+ * True when a `$src` names a script file by a relative path: the one spelling a document's own
+ * script can stand in for. An `npm:` package, a kit behaviour (`jx-ui:/…`), an absolute URL and a
+ * `.class.json` schema have no other spelling, and `#client` is already the script.
+ *
+ * @param src An entry's `$src`.
+ */
+export function isRelativeScriptSrc(src: string): boolean {
+  return RELATIVE_SRC.test(src) && !JSON_SRC.test(src);
+}
+
+/** True when a `$src` names its document's client module, as authored or once qualified. */
+function namesClientScript(src: string): boolean {
+  return scriptRefSide(src) === "client" || parseScriptSpecifier(src)?.side === "client";
+}
+
+/** An entry carrying a `$src`, as the walk found it. */
+interface SrcEntry {
+  path: (string | number)[];
+  src: string;
+  lazy: boolean;
+}
+
+/** Every object in a document that carries a string `$src`, in document order. */
+function srcEntries(
+  value: JxDocumentValue,
+  path: (string | number)[],
+  found: SrcEntry[],
+): SrcEntry[] {
+  if (Array.isArray(value)) {
+    for (const [index, item] of value.entries()) {
+      srcEntries(item, [...path, index], found);
+    }
+    return found;
+  }
+  if (!isJsonObject(value)) {
+    return found;
+  }
+  if (isString(value.$src)) {
+    found.push({ lazy: value.$lazy === true, path, src: value.$src });
+  }
+  for (const [key, member] of Object.entries(value)) {
+    // `$script` is the modules' text, not entries that name one.
+    if (key !== "$script") {
+      srcEntries(member, [...path, key], found);
+    }
+  }
+  return found;
+}
+
+/** What an entry is called in a sentence: its key, or `this entry` for one in a list. */
+function entryName(path: (string | number)[]): string {
+  const last = path.at(-1);
+  return isString(last) ? `"${last}"` : "this entry";
+}
+
+/**
+ * What there is to say about how a document names its modules (spec.md §23.2).
+ *
+ * - **`relative-src`**: an entry imports a file beside the document. A module only that document uses
+ *   can be the document's own script, which makes the document one file. A `$lazy` entry is left
+ *   alone: a module of its own is exactly what it needs.
+ * - **`lazy-shares-script`**: a `$lazy` entry names the client script that another entry loads up
+ *   front. A document has one client script, so the deferral defers nothing.
+ *
+ * `jx validate` and Studio's Problems both report from here, so the two say the same thing about
+ * the same document.
+ *
+ * @param doc The document as written, or as qualified: both spellings of `#client` are read.
+ */
+export function findScriptAdvice(doc: JxDocument | JxElement): ScriptAdvice[] {
+  const entries = srcEntries(doc, [], []);
+  const eagerClient = entries.some((entry) => !entry.lazy && namesClientScript(entry.src));
+  const advice: ScriptAdvice[] = [];
+  for (const entry of entries) {
+    const name = entryName(entry.path);
+    if (!entry.lazy && isRelativeScriptSrc(entry.src)) {
+      advice.push({
+        detail:
+          "A module only this document uses can be the document's own script: move the code " +
+          'into the client script (the server script for a `timing: "server"` entry) and name ' +
+          'it with `$src: "#client"` or `$src: "#server"`. A module several documents import ' +
+          "stays a file, and this one keeps working as it is.",
+        message: `${name} imports ${entry.src}, which the document could carry as its own script`,
+        path: entry.path,
+        rule: "relative-src",
+      });
+    } else if (entry.lazy && eagerClient && namesClientScript(entry.src)) {
+      advice.push({
+        detail:
+          "A document has one client script, and another entry imports it as the page loads, " +
+          "so `$lazy` defers nothing here. Move this export to a `$src` module of its own to " +
+          "load it on its first call.",
+        message: `${name} is $lazy, but the script it is in loads with the page`,
+        path: entry.path,
+        rule: "lazy-shares-script",
+      });
+    }
+  }
+  return advice;
 }

@@ -10,6 +10,14 @@ import { describe, expect, mock, test } from "bun:test";
 import type { JxDocOp, TransactionRecord } from "../src/tabs/patch-ops";
 import type { Tab } from "../src/tabs/tab";
 
+/* Happy-dom starts at about:blank, whose origin is "null": no base a document's address resolves
+   against. SAFETY: with-dom's GlobalRegistrator copies happy-dom's window members onto globalThis,
+   `happyDOM` among them. */
+const { happyDOM } = globalThis as typeof globalThis & {
+  happyDOM: { setURL: (url: string) => void };
+};
+happyDOM.setURL("http://localhost:3000/");
+
 /* Capture what the parent posts to the bridge instead of reaching a real (cross-origin) iframe host.
 
    There is no `gen` here any more, and its absence is the point: the generation a frame checks a
@@ -31,6 +39,7 @@ void mock.module("../src/canvas/iframe-host", () => ({
 
 const { applyPatchBatch } = await import("../src/canvas/canvas-patcher");
 const { canvasPerf, resetCanvasPerf } = await import("../src/canvas/canvas-perf");
+const { documentBase } = await import("../src/canvas/canvas-origin");
 const { closeAllTabs, openTab } = await import("../src/workspace/workspace");
 
 /**
@@ -138,5 +147,91 @@ describe("parent → iframe patch wire format", () => {
     expect(() => applyPatchBatch(...batch())).toThrow(/no-ready-iframe-host/);
     expect(canvasPerf.patchedOps).toBe(2);
     readyHosts = 1;
+  });
+});
+
+describe("a document's own script and the patch wire (`spec.md` §23.2)", () => {
+  /** A transaction that wrote the root's `$script`, alone or beside `more`. */
+  function scriptEdit(more: TransactionRecord["docOps"] = []): TransactionRecord {
+    return {
+      docOps: [
+        {
+          forward: { key: "$script", op: "set-key", path: [], value: { client: "export {};" } },
+          inverse: { key: "$script", op: "set-key", path: [], value: undefined },
+        },
+        ...more,
+      ],
+      fmOps: [],
+      invertible: true,
+      ops: [{ isEvent: false, key: "$script", op: "set-prop", path: [] }],
+    };
+  }
+
+  test("typing a script posts nothing: the canvas draws it as its document was last saved", () => {
+    captured = null;
+    resetCanvasPerf();
+    readyHosts = 0;
+    const record = scriptEdit();
+
+    // No host is asked, so no missing host can escalate the edit into a render either.
+    expect(() => applyPatchBatch(showingTab(), record.ops, record)).not.toThrow();
+
+    expect(captured).toBeNull();
+    expect(canvasPerf.patchedOps).toBe(0);
+    readyHosts = 1;
+  });
+
+  test("the script's text never rides along with the rest of a transaction", () => {
+    captured = null;
+    const record = scriptEdit([
+      {
+        forward: { key: "title", op: "set-key", path: ["children", 0], value: "new" },
+        inverse: { key: "title", op: "set-key", path: ["children", 0], value: "old" },
+      },
+    ]);
+
+    applyPatchBatch(showingTab(), record.ops, record);
+
+    expect(captured!.forwardOps).toEqual([
+      { key: "title", op: "set-key", path: ["children", 0], value: "new" },
+    ]);
+  });
+
+  test("a `$script` key anywhere but the root is an ordinary property", () => {
+    captured = null;
+    const forward: JxDocOp = { key: "$script", op: "set-key", path: ["children", 0], value: "x" };
+    applyPatchBatch(showingTab(), [{ key: "$script", op: "set-prop", path: ["children", 0] }], {
+      docOps: [{ forward, inverse: { ...forward, value: undefined } }],
+      fmOps: [],
+      invertible: true,
+      ops: [{ key: "$script", op: "set-prop", path: ["children", 0] }],
+    });
+    expect(captured!.forwardOps).toEqual([forward]);
+  });
+
+  test("a node inserted with an entry reading the script names the document's module", () => {
+    captured = null;
+    const tab = showingTab();
+    const node = {
+      state: { greet: { $export: "greet", $prototype: "Function", $src: "#client" } },
+      tagName: "x-card",
+    };
+    applyPatchBatch(tab, [{ index: 0, op: "insert", parentPath: [] }], {
+      docOps: [
+        {
+          forward: { index: 0, node, op: "insert-child", parentPath: [] },
+          inverse: { index: 0, op: "remove-child", parentPath: [] },
+        },
+      ],
+      fmOps: [],
+      invertible: true,
+      ops: [{ index: 0, op: "insert", parentPath: [] }],
+    });
+
+    const [insert] = captured!.forwardOps;
+    const address = new URL("/p/index.json", documentBase()).href;
+    expect(insert).toHaveProperty("node.state.greet.$src", `jx-script:${address}#client`);
+    // The recorded op is history's, and still says what the author wrote.
+    expect(node.state.greet.$src).toBe("#client");
   });
 });

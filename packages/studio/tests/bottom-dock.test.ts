@@ -9,6 +9,8 @@
  */
 import { flush, installMockPlatform, resetWorkspaceWithTab } from "./harness";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { isJsonObject } from "@jxsuite/schema/guards";
+import type { JsonObject } from "@jxsuite/schema/types";
 import {
   activeBottomPanel,
   bottomDockValues,
@@ -419,5 +421,31 @@ describe("the projection, without a host", () => {
     expect(host().querySelector<HTMLElement>('[part="dock-body"]')?.dataset.jxRegion).toBe(
       "dock.bottom/panel:problems",
     );
+  });
+});
+
+/* Happy-dom does no layout, so what is held is the chain of declarations a filling tab's height
+   comes down: the panel is a flex item of the dock, the body is as tall as the panel, and the Logic
+   workspace is as tall as the body. With the body left at `auto` the workspace's percentage
+   resolved against nothing, its column was as tall as its header, and Monaco measured a host five
+   pixels high — which is what the committed screenshot of the code editor showed. */
+describe("a tab that fills the dock has a height to fill", () => {
+  async function rules(surface: string): Promise<JsonObject> {
+    const doc: unknown = await Bun.file(
+      new URL(`../src/surfaces/${surface}.json`, import.meta.url),
+    ).json();
+    if (!isJsonObject(doc) || !isJsonObject(doc.style)) {
+      throw new Error(`${surface}.json has no style block`);
+    }
+    return doc.style;
+  }
+
+  test("the body takes the panel's height, and the Logic workspace takes the body's", async () => {
+    const dock = await rules("bottom-dock");
+    expect(dock['& [part="panel"]']).toMatchObject({ flex: "1", minHeight: "0" });
+    expect(dock['& [part="dock-body"]']).toMatchObject({ height: "100%", minHeight: "0" });
+    const logic = await rules("logic-workspace");
+    expect(logic).toMatchObject({ display: "flex", flexDirection: "column", height: "100%" });
+    expect(logic['& [part="code-host"]']).toMatchObject({ flex: "1", minHeight: "0" });
   });
 });

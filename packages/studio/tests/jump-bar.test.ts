@@ -352,6 +352,13 @@ describe("jumpSegments", () => {
     const tab = resetWorkspaceWithTab();
     tab.session.ui.editingFunction = { eventKey: "onclick", type: "event" };
     expect(jumpSegments(tab).at(-1)!.label).toBe("ƒ onclick");
+    // A document's own module has neither an entry nor an event: it is named by its side.
+    tab.session.ui.editingFunction = { side: "client", type: "script" };
+    expect(jumpSegments(tab).at(-1)!.label).toBe("ƒ script");
+    tab.session.ui.editingFunction = { side: "server", type: "script" };
+    expect(jumpSegments(tab).at(-1)!.label).toBe("ƒ server script");
+    tab.session.ui.editingFunction = { type: "mystery" };
+    expect(jumpSegments(tab).at(-1)!.label).toBe("ƒ editor");
     tab.session.ui.editingFunction = null;
     tab.session.ui.editingFormula = { defName: "total", type: "def" };
     expect(jumpSegments(tab).at(-1)!.label).toBe("fx total");

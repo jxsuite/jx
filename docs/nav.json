@@ -415,7 +415,7 @@
             },
             {
               "path": "framework/concepts/functions",
-              "label": "Functions and sidecars"
+              "label": "Functions and modules"
             },
             {
               "path": "framework/concepts/styling",

@@ -110,6 +110,12 @@ export type ParentToIframe =
       allowAutoRequests?: boolean;
       docBase: string;
       /**
+       * The client script of every document this render is composed from, as each was last saved,
+       * under the `jx-script:` specifier the document's entries name it by (`canvas-scripts.ts`).
+       * Absent when none of them has one. The documents themselves cross without `$script`.
+       */
+      scripts?: Record<string, string>;
+      /**
        * How this host addresses project media, or null/absent when the canvas origin serves the
        * site's own URL space (desktop, `jx dev`) and no reference needs resolving.
        *

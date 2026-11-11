@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import {
   CLIENT_SCRIPT_REF,
+  findScriptAdvice,
+  isRelativeScriptSrc,
   isScriptSpecifier,
   isTypeScriptPath,
   parseScriptSpecifier,
@@ -251,5 +253,126 @@ describe("$script in the document schema", () => {
     expect(notText.valid).toBe(false);
     const third = await validateDocument({ $script: { worker: "" }, tagName: "my-counter" });
     expect(third.valid).toBe(false);
+  });
+});
+
+describe("isRelativeScriptSrc", () => {
+  test("is true for a script file beside the document", () => {
+    expect(isRelativeScriptSrc("./counter.js")).toBe(true);
+    expect(isRelativeScriptSrc("../lib/format.ts")).toBe(true);
+  });
+
+  test("is false for every $src with no other spelling", () => {
+    expect(isRelativeScriptSrc("npm:lodash-es")).toBe(false);
+    expect(isRelativeScriptSrc("jx-ui:/behaviors/dialog.ts")).toBe(false);
+    expect(isRelativeScriptSrc("/lib/x.js")).toBe(false);
+    expect(isRelativeScriptSrc("https://example.com/x.js")).toBe(false);
+    expect(isRelativeScriptSrc("@jxsuite/md")).toBe(false);
+    expect(isRelativeScriptSrc("./lib/Weather.class.json")).toBe(false);
+    expect(isRelativeScriptSrc(CLIENT_SCRIPT_REF)).toBe(false);
+    expect(isRelativeScriptSrc("jx-script:a.jxn#client")).toBe(false);
+  });
+});
+
+describe("findScriptAdvice", () => {
+  test("advises moving a relative $src into the document's script", () => {
+    const advice = findScriptAdvice({
+      state: {
+        bump: { $prototype: "Function", $src: "./counter.js" },
+        history: { $export: "history", $src: "../server/history.ts", timing: "server" },
+      },
+      tagName: "my-counter",
+    });
+    expect(advice.map((entry) => [entry.rule, entry.path])).toEqual([
+      ["relative-src", ["state", "bump"]],
+      ["relative-src", ["state", "history"]],
+    ]);
+    expect(advice[0]?.message).toBe(
+      '"bump" imports ./counter.js, which the document could carry as its own script',
+    );
+    expect(advice[0]?.detail).toContain('$src: "#client"');
+  });
+
+  test("says nothing about a package, a kit behaviour, a class schema or the script itself", () => {
+    expect(
+      findScriptAdvice({
+        $script: { client: "export const bump = () => {}" },
+        state: {
+          bump: { $prototype: "Function", $src: "#client" },
+          debounce: { $prototype: "Function", $src: "npm:lodash-es" },
+          forecast: { $prototype: "Forecast", $src: "./lib/Forecast.class.json" },
+          open: { $prototype: "Function", $src: "jx-ui:/behaviors/dialog.ts" },
+        },
+        tagName: "my-counter",
+      }),
+    ).toEqual([]);
+  });
+
+  test("finds a handler written on an element, and names it by where it is", () => {
+    const advice = findScriptAdvice({
+      children: [
+        { onclick: { $prototype: "Function", $src: "./counter.js" }, tagName: "button" },
+        { $map: [{ $prototype: "Function", $src: "./rows.js" }], tagName: "ul" },
+      ],
+      tagName: "my-counter",
+    });
+    expect(advice.map((entry) => entry.path)).toEqual([
+      ["children", 0, "onclick"],
+      ["children", 1, "$map", 0],
+    ]);
+    expect(advice[0]?.message).toStartWith('"onclick" imports');
+    expect(advice[1]?.message).toStartWith("this entry imports");
+  });
+
+  test("does not read the script's own text for entries", () => {
+    /* SAFETY: a `$script` is two strings; an object there is what a walk that read it would trip
+       over, which is the thing under test. */
+    const doc = { $script: { client: { $src: "./x.js" } }, tagName: "my-counter" } as never;
+    expect(findScriptAdvice(doc)).toEqual([]);
+  });
+
+  test("leaves a $lazy entry its own module", () => {
+    expect(
+      findScriptAdvice({
+        state: { chart: { $lazy: true, $prototype: "Function", $src: "./chart.js" } },
+        tagName: "my-chart",
+      }),
+    ).toEqual([]);
+  });
+
+  test("advises that $lazy defers nothing in a script another entry loads up front", () => {
+    const doc: JxDocument = {
+      $script: { client: "export const bump = () => {}; export const chart = () => {}" },
+      state: {
+        bump: { $prototype: "Function", $src: "#client" },
+        chart: { $lazy: true, $prototype: "Function", $src: "#client" },
+      },
+      tagName: "my-chart",
+    };
+    const advice = findScriptAdvice(doc);
+    expect(advice.map((entry) => [entry.rule, entry.path])).toEqual([
+      ["lazy-shares-script", ["state", "chart"]],
+    ]);
+    expect(advice[0]?.message).toBe(
+      '"chart" is $lazy, but the script it is in loads with the page',
+    );
+    // The same document once a host has given it its address says the same.
+    expect(findScriptAdvice(qualifyScripts(doc, "components/chart.jxn"))).toEqual(advice);
+  });
+
+  test("says nothing when every entry in the script is $lazy, or the eager one is the server's", () => {
+    expect(
+      findScriptAdvice({
+        $script: {
+          client: "export const chart = () => {}",
+          server: "export const rows = () => []",
+        },
+        state: {
+          chart: { $lazy: true, $prototype: "Function", $src: "#client" },
+          rows: { $src: "#server", timing: "server" },
+        },
+        tagName: "my-chart",
+      }),
+    ).toEqual([]);
   });
 });

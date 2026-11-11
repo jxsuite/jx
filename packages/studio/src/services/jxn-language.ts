@@ -70,7 +70,7 @@ export const JXN_MONARCH: languages.IMonarchLanguage = {
       [/\/\/.*$/u, "comment"],
       [/\/\*/u, "comment", "@blockComment"],
       [/\/-/u, "comment"],
-      [/\((?:array|fn|object|on|ref)\)/u, "type"],
+      [/\((?:array|export|fn|object|on|ref|server)\)/u, "type"],
       [/\([^)\s]*\)/u, "invalid"],
       [/#"""/u, { next: '@rawLines."""#', nextEmbedded: "typescript", token: "string.quote" }],
       [/##+"""/u, { next: '@rawLines."""$0', nextEmbedded: "typescript", token: "string.quote" }],

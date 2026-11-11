@@ -301,6 +301,335 @@ describe("the on* rule", () => {
   });
 });
 
+describe("a document's own script", () => {
+  const CLIENT =
+    'import { clamp } from "./math.ts";\n\nexport function bump(state) {\n  state.count = clamp(state.count + 1);\n}\n';
+  const SERVER = "export async function history(args, env) {\n  return [];\n}\n";
+
+  test.each<[string, string, JsonValue]>([
+    [
+      "a script in the root element is the client module",
+      'div {\n  script "export const a = 1"\n}',
+      { $script: { client: "export const a = 1" }, tagName: "div" },
+    ],
+    [
+      "timing=server makes it the server module",
+      'div {\n  script timing=server "export const a = 1"\n}',
+      { $script: { server: "export const a = 1" }, tagName: "div" },
+    ],
+    [
+      "a document holds one of each, in either order",
+      'div {\n  script timing=server "s"\n  script "c"\n  p\n}',
+      { $script: { client: "c", server: "s" }, children: [{ tagName: "p" }], tagName: "div" },
+    ],
+    ["a tagless root holds one too", '$element {\n  script "c"\n}', { $script: { client: "c" } }],
+    [
+      "a <script> element is still $element",
+      'div {\n  $element "script" "x()"\n}',
+      { children: [{ tagName: "script", textContent: "x()" }], tagName: "div" },
+    ],
+    [
+      "a <script> in $head is an element",
+      "$head {\n  script src=x\n}\ndiv",
+      { $head: [{ attributes: { src: "x" }, tagName: "script" }], tagName: "div" },
+    ],
+    [
+      "(export) is a function the client module exports, under the node's name",
+      "div {\n  state {\n    (export)bump\n  }\n}",
+      {
+        state: { bump: { $export: "bump", $prototype: "Function", $src: "#client" } },
+        tagName: "div",
+      },
+    ],
+    [
+      "(export) takes another export name, and any other member",
+      "div {\n  state {\n    (export)add $export=bump $lazy=#true\n  }\n}",
+      {
+        state: {
+          add: { $export: "bump", $lazy: true, $prototype: "Function", $src: "#client" },
+        },
+        tagName: "div",
+      },
+    ],
+    [
+      "(server) is a function the server module exports",
+      "div {\n  state {\n    (server)history\n  }\n}",
+      {
+        state: { history: { $export: "history", $src: "#server", timing: "server" } },
+        tagName: "div",
+      },
+    ],
+    [
+      "(server) holds its arguments as names",
+      'div {\n  state {\n    (server)history limit=(ref)"#/state/limit" kind=all\n  }\n}',
+      {
+        state: {
+          history: {
+            $export: "history",
+            $src: "#server",
+            arguments: { kind: "all", limit: { $ref: "#/state/limit" } },
+            timing: "server",
+          },
+        },
+        tagName: "div",
+      },
+    ],
+  ])("%s", (_label, text, expected) => {
+    expect(read(text)).toEqual(expected);
+  });
+
+  test("a multi-line script is its text, with the file's indent gone", () => {
+    const text = [
+      "my-counter {",
+      '    script #"""',
+      '        import { clamp } from "./math.ts";',
+      "",
+      "        export function bump(state) {",
+      "          state.count = clamp(state.count + 1);",
+      "        }",
+      "",
+      '        """#',
+      "}",
+    ].join("\n");
+    expect(read(text)).toEqual({ $script: { client: CLIENT }, tagName: "my-counter" });
+  });
+
+  test("the writer spells a script as script nodes, first in the root element", () => {
+    const written = serializeJxn(
+      asDoc({
+        $id: "Counter",
+        $script: { client: CLIENT, server: SERVER },
+        state: {
+          bump: { $export: "bump", $prototype: "Function", $src: "#client" },
+          count: 0,
+          history: {
+            $export: "history",
+            $src: "#server",
+            arguments: { limit: { $ref: "#/state/limit" } },
+            timing: "server",
+          },
+          limit: 20,
+          other: { $export: "bump", $prototype: "Function", $src: "#client" },
+        },
+        tagName: "my-counter",
+      }),
+    );
+    expect(written).toBe(
+      [
+        "/- kdl-version 2",
+        "$id Counter",
+        "",
+        "my-counter {",
+        '    script #"""',
+        '        import { clamp } from "./math.ts";',
+        "",
+        "        export function bump(state) {",
+        "          state.count = clamp(state.count + 1);",
+        "        }",
+        "",
+        '        """#',
+        '    script timing=server #"""',
+        "        export async function history(args, env) {",
+        "          return [];",
+        "        }",
+        "",
+        '        """#',
+        "    state {",
+        "        (export)bump",
+        "        count 0",
+        '        (server)history limit=(ref)"#/state/limit"',
+        "        limit 20",
+        "        (export)other $export=bump",
+        "    }",
+        "}",
+        "",
+      ].join("\n"),
+    );
+  });
+
+  test.each<[string, JsonValue]>([
+    ["both scripts", { $script: { client: CLIENT, server: SERVER }, tagName: "x" }],
+    ["a server script alone", { $script: { server: SERVER }, tagName: "x" }],
+    ["a one-line script", { $script: { client: "export const a = 1" }, tagName: "x" }],
+    ["an empty script", { $script: { client: "" }, tagName: "x" }],
+    ["a script holding a raw-string breaker", { $script: { client: 'a\n"""#\nb' }, tagName: "x" }],
+    ["a script with CRLF", { $script: { client: "a\r\nb" }, tagName: "x" }],
+    ["a script on a tagless root", { $script: { client: "a" }, textContent: "x" }],
+    ["a script with no root element", { $id: "A", $script: { client: "a" } }],
+    ["an empty $script", { $script: {}, tagName: "x" }],
+    ["a $script with another member", { $script: { client: "a", worker: "b" }, tagName: "x" }],
+    ["a $script member that is not text", { $script: { client: 5 }, tagName: "x" }],
+    ["a $script that is not an object", { $script: "a", tagName: "x" }],
+    [
+      "an export under its own name",
+      { state: { f: { $export: "f", $prototype: "Function", $src: "#client" } }, tagName: "x" },
+    ],
+    [
+      "an export under another name",
+      { state: { f: { $export: "g", $prototype: "Function", $src: "#client" } }, tagName: "x" },
+    ],
+    [
+      "an export with other members",
+      {
+        state: {
+          f: { $export: "f", $lazy: true, $prototype: "Function", $src: "#client", emits: "a" },
+        },
+        tagName: "x",
+      },
+    ],
+    [
+      "an export naming no export, which has no row",
+      { state: { f: { $prototype: "Function", $src: "#client" } }, tagName: "x" },
+    ],
+    [
+      "an export with parameters, which is a function row",
+      {
+        state: {
+          f: {
+            $export: "f",
+            $prototype: "Function",
+            $src: "#client",
+            body: "x",
+            parameters: ["a"],
+          },
+        },
+        tagName: "x",
+      },
+    ],
+    [
+      "an export with a member that needs a block",
+      {
+        state: { f: { $export: "f", $prototype: "Function", $src: "#client", emits: ["a"] } },
+        tagName: "x",
+      },
+    ],
+    [
+      "a server function with no arguments",
+      { state: { f: { $export: "f", $src: "#server", timing: "server" } }, tagName: "x" },
+    ],
+    [
+      "a server function with arguments",
+      {
+        state: {
+          f: {
+            $export: "f",
+            $src: "#server",
+            arguments: { a: 1, b: "two", c: { $ref: "#/state/c" }, d: null },
+            timing: "server",
+          },
+        },
+        tagName: "x",
+      },
+    ],
+    [
+      "a server function with empty arguments, which has no row",
+      {
+        state: { f: { $export: "f", $src: "#server", arguments: {}, timing: "server" } },
+        tagName: "x",
+      },
+    ],
+    [
+      "a server function with an argument that needs a block",
+      {
+        state: {
+          f: { $export: "f", $src: "#server", arguments: { a: { b: 1 } }, timing: "server" },
+        },
+        tagName: "x",
+      },
+    ],
+    [
+      "a server function with arguments that are not an object",
+      {
+        state: { f: { $export: "f", $src: "#server", arguments: "a", timing: "server" } },
+        tagName: "x",
+      },
+    ],
+    [
+      "a server function under another name",
+      { state: { f: { $export: "g", $src: "#server", timing: "server" } }, tagName: "x" },
+    ],
+    [
+      "a server function with another member",
+      {
+        state: { f: { $export: "f", $lazy: true, $src: "#server", timing: "server" } },
+        tagName: "x",
+      },
+    ],
+    [
+      "a server function in a module of its own",
+      { state: { f: { $export: "f", $src: "./a.server.js", timing: "server" } }, tagName: "x" },
+    ],
+  ])("%s comes back as it was", (_label, value) => {
+    expect(roundTrip(value)).toEqual(value);
+  });
+
+  test.each<[string, JsonValue, string]>([
+    ["a script on a document with a root", { $script: { client: "a" }, tagName: "x" }, "script a"],
+    ["a script with no root", { $id: "A", $script: { client: "a" } }, "$script client=a"],
+    [
+      "a $script with another member",
+      { $script: { client: "a", worker: "b" }, tagName: "x" },
+      "$script client=a worker=b",
+    ],
+    [
+      "an export naming no export",
+      { state: { f: { $prototype: "Function", $src: "#client" } }, tagName: "x" },
+      '(fn)f $src="#client"',
+    ],
+    [
+      "a server function under another name",
+      { state: { f: { $export: "g", $src: "#server", timing: "server" } }, tagName: "x" },
+      'f $export=g $src="#server" timing=server',
+    ],
+  ])("%s is written as what reads back", (_label, value, line) => {
+    expect(
+      serializeJxn(asDoc(value))
+        .split("\n")
+        .map((row) => row.trim()),
+    ).toContain(line);
+  });
+
+  test("a script's place in the file is recorded under its pointer", () => {
+    const text =
+      'div {\n  script "c"\n  script timing=server "s"\n  state {\n    (server)f a=1\n  }\n}';
+    const { spans } = parseJxnWithSpans(text);
+    const at = (pointer: string): string => {
+      const span = spans.get(pointer);
+      return span ? text.slice(span.start, span.end) : "";
+    };
+    expect(at("/$script/client")).toBe('script "c"');
+    expect(at("/$script/server")).toBe('script timing=server "s"');
+    expect(at("/state/f/arguments/a")).toBe("a=1");
+  });
+
+  test("every tracked component comes back with a script written into it", () => {
+    let checked = 0;
+    for (const file of trackedDocuments()) {
+      const parsed = readTracked(file);
+      if (isJsonObject(parsed) && isString(parsed.tagName) && !("$script" in parsed)) {
+        checked += 1;
+        const state = isJsonObject(parsed.state) ? parsed.state : {};
+        const scripted = {
+          ...parsed,
+          $script: { client: CLIENT, server: SERVER },
+          state: {
+            ...state,
+            "jx-script-export": { $export: "bump", $prototype: "Function", $src: "#client" },
+            "jx-script-server": {
+              $export: "jx-script-server",
+              $src: "#server",
+              arguments: { limit: 20 },
+              timing: "server",
+            },
+          },
+        };
+        expect([file, sortKeys(roundTrip(scripted))]).toEqual([file, sortKeys(scripted)]);
+      }
+    }
+    expect(checked).toBeGreaterThan(300);
+  }, 60_000);
+});
+
 describe("what would silently lose data is refused", () => {
   test.each([
     ["a repeated property", "div a=1 a=2", "written twice"],
@@ -320,7 +649,32 @@ describe("what would silently lose data is refused", () => {
     ["more than one value", 'p "a" "b"', "one text value"],
     ["more than one root", "div\nspan", "second"],
     ["a raw control character", 'p "\u001B"', "control character"],
-    ["a reserved script node", 'div {\n  script "x"\n}', "reserved"],
+    ["a script below the root element", 'div {\n  p {\n    script "x"\n  }\n}', "root element"],
+    ["two client scripts", 'div {\n  script "a"\n  script "b"\n}', "written twice"],
+    [
+      "two server scripts",
+      'div {\n  script timing=server "a"\n  script timing=server "b"\n}',
+      "written twice",
+    ],
+    ["a script and a $script block", '$script { client "a" }\ndiv {\n  script "b"\n}', "twice"],
+    ["a $script member and a script", 'div $script=a {\n  script "b"\n}', "written twice"],
+    ["a script with another timing", 'div {\n  script timing=client "a"\n}', "timing=server"],
+    ["a script with another name", 'div {\n  script type=module "a"\n}', "timing=server"],
+    ["a script with timing twice", 'div {\n  script timing=server timing=server "a"\n}', "twice"],
+    ["a script with no text", "div {\n  script\n}", "one string"],
+    ["a script with two strings", 'div {\n  script "a" "b"\n}', "one string"],
+    ["a script that is not a string", "div {\n  script 5\n}", "one string"],
+    ["a script with a block", 'div {\n  script "a" { b }\n}', "one string"],
+    ["an annotated script", 'div {\n  (fn)script "a"\n}', "not one"],
+    ["a script with another annotation", 'div {\n  (array)script "a"\n}', "annotate a script"],
+    ["(export) with a body", 'div {\n  state {\n    (export)a "x"\n  }\n}', "no body"],
+    ["(export) with a block", "div {\n  state {\n    (export)a { - 1 }\n  }\n}", "no body"],
+    ["(export) with $src", 'div {\n  state {\n    (export)a $src="./a.js"\n  }\n}', "twice"],
+    ["(export) on an element", "div {\n  (export)a\n}", "annotate an element"],
+    ["(server) with a value", "div {\n  state {\n    (server)a 1\n  }\n}", "name=value"],
+    ["(server) with a block", "div {\n  state {\n    (server)a { b 1 }\n  }\n}", "name=value"],
+    ["(server) with a name twice", "div {\n  state {\n    (server)a b=1 b=2\n  }\n}", "twice"],
+    ["(server) on an element", "div {\n  (server)a\n}", "annotate an element"],
     [
       "a selector that needs quotes",
       "div {\n  style {\n    > li color=red\n  }\n}",

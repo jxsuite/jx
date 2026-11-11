@@ -1,6 +1,6 @@
 ---
 title: "Code editing"
-description: "Drop down to real code when you need it: Monaco for function bodies, sidecar files, and the Code editor for a document's raw source."
+description: "Drop down to real code when you need it: Monaco for function bodies and document scripts, and the Code editor for a document's raw source."
 code:
   - packages/studio/src/panels/editors.ts
   - packages/studio/src/panels/formula-workspace.ts
@@ -43,9 +43,19 @@ Type checking is as strict as TypeScript is, except that an untyped parameter is
 
 Inside a body, `state` holds your entries (`state.$count += 1` is the code twin of a **Set state** statement), event handlers also receive `event`, and a function's declared parameters are available by name.
 
-## Sidecar files
+## A document's script
 
-A function body normally lives inside the component's JSON. When one grows large enough to deserve its own file, it can live in a separate `.js` file instead: the function entry then shows **Source** (the file's path) and **Export** (which function to use from it) in the Data panel, in place of a body. The format is documented in **[Components](/docs/framework/concepts/components)**.
+A function that needs an `import`, or helpers of its own, lives in the document's script: a TypeScript module the document carries with it, documented in **[Functions](/docs/framework/concepts/functions#a-module-inside-the-document)**. An entry that uses one of its exports shows **Script** in the Data panel in place of a body, or **Server script** for a server function. Click **Open in code editor** beside it, or run **Edit Script** from the [command palette](/docs/studio/interface/quick-access) and choose the client or the server script. A document with no script yet opens an empty one, and the first character you type creates it.
+
+The script opens in the same **Logic** tab as a function body and writes back the same way. Three things differ:
+
+- **It is a whole module.** The text has its own `import` and `export` lines, so it is not reformatted on open, and the linting and type checking a body gets do not run on it.
+- **The canvas runs it as last saved.** A body is drawn as you type. A half-typed module does not load, and loading one on every pause would run its top level again each time, so the canvas keeps running the script the document was last saved with. Save to see your change.
+- **An emptied script is removed.** Delete all of the text and the document no longer carries that script.
+
+## Module files
+
+A function can also come from a module in a file of its own, which is the right place for code several documents share. The function entry then shows **Source** (the file's path) and **Export** (which function to use from it) in the Data panel, in place of a body. When that path is a relative one, saving the document files a note in **[Problems](/docs/studio/interface/problems-and-progress#checks-over-your-own-content)** under **Modules**, suggesting the document's own script. It is advice, and a shared module is right as it is.
 
 ## The Code editor: the whole file as source
 

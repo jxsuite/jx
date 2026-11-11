@@ -204,6 +204,73 @@ function writeFunction(key: string, fn: JsonObject, indent: string, where: strin
   return [parts.join(" ")];
 }
 
+/**
+ * Whether a Function is an export of the document's own script (`spec.md` §23.2) with the
+ * `(export)` spelling. One with a body or parameters is a `(fn)` row, as any Function is.
+ */
+function isExportRow(value: JsonValue | undefined): value is JsonObject {
+  if (
+    !isObject(value) ||
+    value.$prototype !== "Function" ||
+    value.$src !== "#client" ||
+    !isString(value.$export) ||
+    Object.hasOwn(value, "body") ||
+    Object.hasOwn(value, "parameters")
+  ) {
+    return false;
+  }
+  return Object.values(value).every((entry) => scalar(entry, "", "") !== null);
+}
+
+/** An `(export)` node. The export is the node's name unless it is written. */
+function writeExport(key: string, fn: JsonObject, indent: string, where: string): string[] {
+  const { $export, $prototype: _prototype, $src: _src, ...rest } = fn;
+  const parts = [`${indent}(export)${writeName(key, where)}`];
+  if ($export !== key) {
+    parts.push(`$export=${scalar($export, indent, down(where, "$export"))}`);
+  }
+  for (const [name, value] of Object.entries(rest)) {
+    parts.push(`${writeName(name, where)}=${scalar(value, indent, down(where, name))}`);
+  }
+  return [parts.join(" ")];
+}
+
+/** What a `(server)` row may hold, and nothing else: anything more is a plain block. */
+const SERVER_ROW_KEYS = new Set(["$export", "$src", "arguments", "timing"]);
+
+/**
+ * Whether an entry is a function of the document's own server script with the `(server)` spelling:
+ * exported under the entry's own name, with arguments that each fit in a value.
+ */
+function isServerRow(key: string, value: JsonValue | undefined): value is JsonObject {
+  if (
+    !isObject(value) ||
+    value.timing !== "server" ||
+    value.$src !== "#server" ||
+    value.$export !== key ||
+    !Object.keys(value).every((entry) => SERVER_ROW_KEYS.has(entry))
+  ) {
+    return false;
+  }
+  const { arguments: args } = value;
+  if (args === undefined) {
+    return true;
+  }
+  const values = isObject(args) ? Object.values(args) : [];
+  return values.length > 0 && values.every((entry) => scalar(entry, "", "") !== null);
+}
+
+/** A `(server)` node, with its arguments as names. */
+function writeServer(key: string, entry: JsonObject, indent: string, where: string): string[] {
+  const parts = [`${indent}(server)${writeName(key, where)}`];
+  const at = down(where, "arguments");
+  const args = isObject(entry.arguments) ? entry.arguments : {};
+  for (const [name, value] of Object.entries(args)) {
+    parts.push(`${writeName(name, at)}=${scalar(value, indent, down(at, name))}`);
+  }
+  return [parts.join(" ")];
+}
+
 /** A JSON block. */
 export function writeValue(key: string, value: JsonValue, indent: string, where: string): string[] {
   const name = writeName(key, where);
@@ -211,6 +278,12 @@ export function writeValue(key: string, value: JsonValue, indent: string, where:
   const single = scalar(value, indent, where);
   if (single !== null) {
     return [`${head} ${single}`];
+  }
+  if (isExportRow(value)) {
+    return writeExport(key, value, indent, where);
+  }
+  if (isServerRow(key, value)) {
+    return writeServer(key, value, indent, where);
   }
   if (isFunctionRow(value)) {
     return writeFunction(key, value, indent, where);
@@ -358,11 +431,40 @@ function isPlainAttribute(key: string, spelled: string | null): spelled is strin
   );
 }
 
-/** An element. */
-function writeElement(element: JsonObject, indent: string, where: string): string[] {
+/**
+ * A document's `$script` as the `script` nodes of its root element (`spec.md` §23.2), or null when
+ * it holds anything a `script` node cannot say and so has to be a plain `$script` block.
+ */
+function writeScripts(scripts: JsonValue, indent: string): string[] | null {
+  const sides = isObject(scripts) ? Object.entries(scripts) : [];
+  const lines: string[] = [];
+  for (const [side, text] of sides) {
+    if ((side !== "client" && side !== "server") || !isString(text)) {
+      return null;
+    }
+    const timing = side === "server" ? "timing=server " : "";
+    lines.push(`${indent}script ${timing}${writeString(text, indent, `/$script/${side}`)}`);
+  }
+  return lines.length > 0 ? lines : null;
+}
+
+/**
+ * An element.
+ *
+ * @param element The element.
+ * @param indent Where it sits.
+ * @param where Its JSON Pointer.
+ * @param scripts The document's `script` nodes, which only its root element holds.
+ */
+function writeElement(
+  element: JsonObject,
+  indent: string,
+  where: string,
+  scripts: string[] = [],
+): string[] {
   const parts = [writeHead(element, indent, where)];
   const inner = indent + INDENT;
-  const blocks: string[] = [];
+  const blocks: string[] = [...scripts];
   const leftoverAttributes: JsonObject = {};
   let textPositional: string | null = null;
   for (const [key, value] of Object.entries(element)) {
@@ -519,8 +621,14 @@ function writeCanonical(document: JxDocument): string {
   const source = document;
   const lines = ["/- kdl-version 2"];
   const root: JsonObject = {};
+  const hasRoot = Object.keys(source).some((key) => !key.startsWith("$"));
+  let scripts: string[] = [];
   for (const [key, value] of Object.entries(source)) {
-    if (key === "$head" && Array.isArray(value)) {
+    // A script is written inside the root element, so a document with none keeps the plain block.
+    const written = key === "$script" && hasRoot ? writeScripts(value, INDENT) : null;
+    if (written) {
+      scripts = written;
+    } else if (key === "$head" && Array.isArray(value)) {
       lines.push(...writeHeadBlock(value, INDENT));
     } else if (key === "$head") {
       // Not a list, so not rows. The annotation is what stops it being read as them.
@@ -532,7 +640,7 @@ function writeCanonical(document: JxDocument): string {
     }
   }
   if (Object.keys(root).length > 0) {
-    lines.push("", ...writeElement(root, "", ""));
+    lines.push("", ...writeElement(root, "", "", scripts));
   }
   return `${lines.join("\n")}\n`;
 }

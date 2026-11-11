@@ -40,7 +40,9 @@
       "overflowY": "auto"
     },
     "& [part=\"dock-body\"]": {
+      "$description": "As tall as the panel it is slotted into, so a tab that fills its dock (Logic's code editor, whose host is a flex item of a column sized `height: 100%`) has a height to take a share of. With `auto` here that percentage resolved against nothing, the column was as tall as its header, and Monaco measured a host five pixels high. A tab longer than the dock still overflows this box and scrolls in the panel.",
       "display": "block",
+      "height": "100%",
       "minHeight": "0"
     }
   },

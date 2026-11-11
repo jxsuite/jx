@@ -87,6 +87,7 @@ import type {
   ViewportPoint,
 } from "../surfaces/menu";
 import type { JumpBarSurface, ProjectedStep } from "../surfaces/jump-bar";
+import { scriptTargetName } from "../tabs/tab";
 import type { Tab } from "../tabs/tab";
 import type { PaneDerivation } from "../workspace/workspace";
 import type { EffectScope } from "@vue/reactivity";
@@ -346,6 +347,11 @@ export function jumpSegments(
   return segments;
 }
 
+/** What the address calls a document's own module, or nothing for a target that is not one. */
+function scriptLabel(def: FunctionEditDef | FormulaEditDef): string | undefined {
+  return "side" in def ? scriptTargetName(def.side) : undefined;
+}
+
 function editorSegment(sigil: string, def: FunctionEditDef | FormulaEditDef): JumpSegment {
   return {
     choices: [],
@@ -355,7 +361,7 @@ function editorSegment(sigil: string, def: FunctionEditDef | FormulaEditDef): Ju
     // Exactly that, a Back of its own, until this excision removed it.
     command: null,
     kind: "editor",
-    label: `${sigil} ${def.defName ?? def.eventKey ?? "editor"}`,
+    label: `${sigil} ${def.defName ?? def.eventKey ?? scriptLabel(def) ?? "editor"}`,
   };
 }
 

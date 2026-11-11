@@ -20,7 +20,9 @@
 
 import { getNodeAtPath } from "@jxsuite/schema/doc-ops";
 import { isString } from "@jxsuite/schema/guards";
-import { parentElementPath } from "../store";
+import { parentElementPath, projectState } from "../store";
+import { documentBase } from "./canvas-origin";
+import { ownPatch } from "./canvas-scripts";
 import { canvasModeOfPane, surfacesShowingTab } from "./canvas-surface";
 import { toRaw } from "../reactivity";
 import { postEntryStateToHosts, postPatchToHosts } from "./iframe-host";
@@ -277,6 +279,16 @@ function replaceVerdict(tab: Tab, path: JxPath): string | null {
 }
 
 /**
+ * True for a write of the document's own script: the root's `$script`.
+ *
+ * The canvas draws a script as its document was last saved (`canvas-scripts.ts`), so typing one
+ * changes nothing a frame shows, and its text is nothing a frame is sent.
+ */
+function isScriptEdit(path: JxPath, key: string): boolean {
+  return path.length === 0 && key === "$script";
+}
+
+/**
  * Per-op patchability in the current document. Returns null when patchable, else the reason.
  *
  * @param {Tab} tab
@@ -312,8 +324,11 @@ function opVerdict(tab: Tab, op: JxPatchOp): string | null {
     }
     case "set-prop": {
       // Event bindings are stripped from design/edit renders — editing them is a canvas no-op.
+      // So is the script of a document that has a file, which the canvas draws as last saved.
       // Other property changes re-render the node's subtree in place.
-      return op.isEvent ? null : replaceVerdict(tab, op.path);
+      return op.isEvent || (isScriptEdit(op.path, op.key) && Boolean(tab.documentPath))
+        ? null
+        : replaceVerdict(tab, op.path);
     }
     case "set-attr":
     case "replace": {
@@ -453,7 +468,14 @@ export function applyPatchBatch(tab: Tab, _ops: JxPatchOp[], record?: Transactio
   // Its shadow doc). Throwing when no host received it escalates to a full render (the suppressed
   // Render then runs), so an edit is never dropped.
   timeSpan(SPAN_PATCH_BATCH, () => {
-    const forwardOps = (record?.docOps ?? []).map((pair) => pair.forward);
+    const recorded = (record?.docOps ?? []).map((pair) => pair.forward);
+    const forwardOps = recorded.filter(
+      (op) => !(op.op === "set-key" && isScriptEdit(op.path, op.key)),
+    );
+    // Nothing but the script moved, and that is the saved file's to show: no frame has work to do.
+    if (recorded.length > 0 && forwardOps.length === 0) {
+      return;
+    }
     /* ONE call, and no generation. Each host checks the patch against the generation of the stage
        it is mounted on, resolved inside `postPatchToHosts` — see the note there on why a single
        number for a multi-pane fan-out is the bug rather than a parameter needing a better value.
@@ -464,7 +486,10 @@ export function applyPatchBatch(tab: Tab, _ops: JxPatchOp[], record?: Transactio
        returned patchable in the statement above it, and {@link classifyOps} rejects
        `inactive-tab` for exactly the case the guard was checking. A tab no pane is showing posts
        to no host anyway, `hosts` falls to 0, and the throw below escalates the batch. */
-    const hosts = postPatchToHosts(forwardOps, tab.id);
+    const hosts = postPatchToHosts(
+      ownPatch(forwardOps, tab.documentPath, documentBase(projectState?.projectRoot)),
+      tab.id,
+    );
     if (hosts === 0) {
       throw new Error("no-ready-iframe-host");
     }

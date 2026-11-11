@@ -1,6 +1,9 @@
 {
   "$schema": "../document.schema.json",
   "$id": "DynamicList",
+  "$script": {
+    "client": "// Every change to state.items is persisted by the LocalStorage prototype: nothing here saves.\n\nexport function addItem(state) {\n  const text = state.newText.trim();\n  if (!text) {\n    return;\n  }\n  state.items.push(text);\n  state.newText = \"\";\n}\n\nexport function addKeydown(state, event) {\n  if (event.key === \"Enter\") {\n    addItem(state);\n  }\n}\n\nexport function removeItem(state) {\n  const index = state.$map?.index ?? -1;\n  if (index < 0) {\n    return;\n  }\n  state.items.splice(index, 1);\n}\n\nexport function saveEdit(state, event) {\n  const index = state.$map?.index ?? -1;\n  if (index < 0) {\n    return;\n  }\n  const text = event.target.textContent.trim();\n  if (!text) {\n    event.target.textContent = state.$map?.item ?? \"\";\n    return;\n  }\n  state.items[index] = text;\n}\n\nexport function editKeydown(state, event) {\n  if (event.key === \"Enter\") {\n    event.preventDefault();\n    event.target.blur();\n  } else if (event.key === \"Escape\") {\n    event.target.textContent = state.$map?.item ?? \"\";\n    event.target.blur();\n  }\n}\n\nexport function updateText(state, event) {\n  state.newText = event.target.value;\n}\n"
+  },
 
   "state": {
     "items": {
@@ -12,12 +15,12 @@
     "newText": { "type": "string", "default": "" },
     "itemCount": "${state.items.length + ' ' + (state.items.length === 1 ? 'item' : 'items')}",
 
-    "addItem": { "$prototype": "Function", "$src": "./dynamic-list.js" },
-    "addKeydown": { "$prototype": "Function", "$src": "./dynamic-list.js" },
-    "removeItem": { "$prototype": "Function", "$src": "./dynamic-list.js" },
-    "saveEdit": { "$prototype": "Function", "$src": "./dynamic-list.js" },
-    "editKeydown": { "$prototype": "Function", "$src": "./dynamic-list.js" },
-    "updateText": { "$prototype": "Function", "$src": "./dynamic-list.js" }
+    "addItem": { "$prototype": "Function", "$src": "#client" },
+    "addKeydown": { "$prototype": "Function", "$src": "#client" },
+    "removeItem": { "$prototype": "Function", "$src": "#client" },
+    "saveEdit": { "$prototype": "Function", "$src": "#client" },
+    "editKeydown": { "$prototype": "Function", "$src": "#client" },
+    "updateText": { "$prototype": "Function", "$src": "#client" }
   },
 
   "tagName": "dynamic-list",

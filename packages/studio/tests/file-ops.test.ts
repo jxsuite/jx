@@ -5,6 +5,8 @@ import { exportFile, openFile, parseSourceForPath, saveFile } from "../src/files
 import { activeTab, closeTab, openTab } from "../src/workspace/workspace";
 import { openMediaTab } from "../src/media/media-open";
 import { mockFormatAction, seedMarkdownFormat } from "./format-fixture";
+import { MODULE_PROBLEM_SOURCE } from "../src/services/module-report";
+import { problems, resetNotifications } from "../src/services/notify";
 import { isString } from "@jxsuite/schema/guards";
 import type { Mock } from "bun:test";
 import type { StudioPlatform } from "../src/types";
@@ -322,6 +324,27 @@ describe("saveFile", () => {
     expect(written).not.toBeNull();
     expect(written!.path).toBe("components/my-card.json");
     expect(activeTab.value!.doc.dirty).toBe(false);
+  });
+
+  test("a save files the advice about the document's modules (spec.md §23.2)", async () => {
+    registerPartialPlatform({ writeFile: async () => {} });
+    openTab({
+      document: {
+        state: { bump: { $prototype: "Function", $src: "./counter.js" } },
+        tagName: "my-counter",
+      },
+      documentPath: "components/my-counter.json",
+      id: "test-module-advice",
+    });
+    activeTab.value!.doc.dirty = true;
+
+    await saveFile();
+
+    const advice = problems.filter((record) => record.source === MODULE_PROBLEM_SOURCE);
+    expect(advice.map((record) => [record.severity, record.key, record.path])).toEqual([
+      ["info", "module.relative-src.state/bump", "components/my-counter.json"],
+    ]);
+    resetNotifications();
   });
 
   test("component with valid slots saves without warning", async () => {

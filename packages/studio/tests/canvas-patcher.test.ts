@@ -176,6 +176,22 @@ describe("classifyOps", () => {
     ).toBe(true);
   });
 
+  test("a write of the document's own script is a canvas no-op, where any other root key redraws", () => {
+    // The canvas draws a script as its document was last saved (`spec.md` §23.2).
+    tab.documentPath = "pages/home.json";
+    expect(classifyOps(tab, [{ key: "$script", op: "set-prop", path: [] }]).patchable).toBe(true);
+    // A document with no file has no saved script to draw: its edit redraws, like any root key.
+    tab.documentPath = null;
+    expect(classifyOps(tab, [{ key: "$script", op: "set-prop", path: [] }]).reason).toBe(
+      "replace-root",
+    );
+    tab.documentPath = "pages/home.json";
+    expect(classifyOps(tab, [{ key: "title", op: "set-prop", path: [] }])).toEqual({
+      patchable: false,
+      reason: "replace-root",
+    });
+  });
+
   test("rejects outside design/edit modes", () => {
     canvasMode = "preview";
     tab.session.ui.canvasMode = "preview";

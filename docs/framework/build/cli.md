@@ -115,7 +115,7 @@ Checks, in order: that both committed entry documents are self-contained (every 
 
 Prints `Project is valid (N files checked)` on success; otherwise lists each file's violations with their instance paths and exits `1`.
 
-After the schema checks, every well-formed document is also judged by the popover, dialog and [accessibility](/docs/framework/concepts/accessibility) rules. Their findings print beside the verdict, one per line as `file: severity: message [source/rule, WCAG n]`, and they are advisory: a well-formed project stays valid. Pass `--strict` to fail the run, and exit `1`, on a lint error. A warning never fails it.
+After the schema checks, every well-formed document is also judged by the popover, dialog and [accessibility](/docs/framework/concepts/accessibility) rules. Their findings print beside the verdict, one per line as `file: severity: message [source/rule, WCAG n]`, and they are advisory: a well-formed project stays valid. Pass `--strict` to fail the run, and exit `1`, on a lint error. A warning or an `info` line never fails it.
 
 :::doc-note
 `jx validate` never writes. If an entry document is older than the project file it composes a current one in memory for the duration of the run and leaves the committed file exactly as it is. Run `jx schema` when you want the file itself updated. A checker that edits what it is checking can report green on bytes it just wrote.
@@ -126,6 +126,8 @@ The output shape is meant to be read by whatever wrote the file, a person or a g
 A `.jxn` document that does not read is reported with its line and column, and a `\\s` or `\\b` in a quoted string is a `notation/escape` warning. See [Jx Notation](/docs/framework/concepts/jxn-files).
 
 A function body that uses TypeScript which can't be erased (`enum`, a value `namespace`, a module `import`) is reported with its file, its place in the document, and its line and column, because `jx build` would stop on it. A body whose meaning changes when it's read as TypeScript, such as `a < b > (c)`, is a `function-body/typescript-reading` warning. See [Functions](/docs/framework/concepts/functions).
+
+An entry whose `$src` is a relative path to a script file is a `module/relative-src` line at severity `info`, because that module could be the document's [own script](/docs/framework/concepts/functions#a-module-inside-the-document). A `$lazy` entry of a script that another entry loads with the page is `module/lazy-shares-script`. Both are advice about a document that is right as it stands, so no flag makes them fail the run, `--strict` included.
 
 ## `jx convert`
 

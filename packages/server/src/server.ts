@@ -528,7 +528,7 @@ export async function createDevServer(options: {
         /* The project's BUILT SITE is deliberately NOT served here, at any position in this chain.
            This server's URL space means the project's SOURCES — that is what the canvas reads —
            and a built page addresses the same paths meaning its own output
-           (`/components/fetch-demo.js` is the formulas here and the custom element there). Filling
+           (a `/components/<name>.js` is a `$src` module here and the custom element there). Filling
            404s from the output looked like it worked and handed the reader whichever of the two
            happened to be missing. `site-preview.ts` gives the built site its own origin instead,
            where every path has exactly one meaning. */

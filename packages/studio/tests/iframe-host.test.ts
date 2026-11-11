@@ -178,6 +178,7 @@ const DEFAULT_RESOLVED: ResolvedFixture = {
     pageContentPrefix: null,
   },
   renderDoc: { children: ["hi"], tagName: "div" },
+  scripts: {},
   siteStyle: null,
 };
 let resolved: ResolvedFixture = structuredClone(DEFAULT_RESOLVED);
@@ -860,6 +861,40 @@ describe("mountIframeCanvas", () => {
     expect(posted.shadowDoc).toEqual({ children: ["raw"], tagName: "section" });
     // It's a clone, not the resolved render doc (which the live-render mock returns as DEFAULT_RESOLVED).
     expect(posted.doc).toEqual(DEFAULT_RESOLVED.renderDoc);
+  });
+
+  test("a document's script crosses as text beside it, and in neither document (`spec.md` §23.2)", async () => {
+    const { closeAllTabs, openTab } = await import("../src/workspace/workspace");
+    const specifier = "jx-script:http://localhost:3000/pages/home.json#client";
+    const raw: JxMutableNode = {
+      $script: { client: "export const greet = () => 'hi';" },
+      state: { greet: { $export: "greet", $prototype: "Function", $src: "#client" } },
+      tagName: "section",
+    };
+    const viewTab = openTab({ document: raw, documentPath: "pages/home.json", id: "scripted" });
+    resolved = {
+      ...DEFAULT_RESOLVED,
+      scripts: { [specifier]: "export const greet = () => 'hi';" },
+    };
+    const canvasEl = document.createElement("div");
+    await mountIframeCanvas(1, raw, canvasEl, null, viewTab.id, viewTab);
+    channels[0]!.deliver({ kind: "ready" });
+
+    const posted = channels[0]!.posts.find(ofKind("render"))!;
+    expect(posted.scripts).toEqual({ [specifier]: "export const greet = () => 'hi';" });
+    // The shadow doc is the edited document, addressed the way the drawn one is.
+    expect(posted.shadowDoc).toEqual({
+      state: { greet: { $export: "greet", $prototype: "Function", $src: specifier } },
+      tagName: "section",
+    });
+    closeAllTabs();
+  });
+
+  test("a render composed of no scripted document carries no `scripts` at all", async () => {
+    const canvasEl = document.createElement("div");
+    await mountIframeCanvas(1, { tagName: "section" }, canvasEl);
+    channels[0]!.deliver({ kind: "ready" });
+    expect(channels[0]!.posts.find(ofKind("render"))).not.toHaveProperty("scripts");
   });
 
   test("reuses a single iframe + channel across re-renders of the same canvas", async () => {

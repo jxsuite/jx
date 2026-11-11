@@ -383,6 +383,14 @@ const ALL_MODES = ["edit", "design", "preview", "source", "stylebook", "git-diff
  * @returns {Tab}
  */
 /**
+ * What a document's own module is called where an editing target is named: the Logic tab's header
+ * and the jump bar's address (`spec.md` §23.2).
+ */
+export function scriptTargetName(side: "client" | "server"): string {
+  return side === "server" ? "server script" : "script";
+}
+
+/**
  * The deduplication key of the Problem saying a file does not read, which the source-view commit
  * that makes it read withdraws.
  *

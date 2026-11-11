@@ -13,6 +13,7 @@ import { flush, resetWorkspaceWithTab } from "./harness";
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { createCommandRegistry } from "../src/commands/registry";
 import { makeContext } from "../src/commands/context";
+import { paletteArgs } from "../src/panels/quick-search";
 import { checkPlacements } from "../src/commands/levels";
 import { activeTab, closeAllTabs, openTab } from "../src/workspace/workspace";
 import { setBottomTab, setDockCollapsed, shell } from "../src/shell";
@@ -107,6 +108,7 @@ describe("the records themselves", () => {
       "formula.openWorkspace",
       "formula.editDef",
       "formula.editEvent",
+      "formula.editScript",
       "style.openSelectorMenu",
       "style.setSelector",
     ]);
@@ -319,6 +321,48 @@ describe("formula.editDef / formula.editEvent", () => {
     closeAllTabs();
     expect(() => registry.run("formula.editEvent", { eventKey: "onclick", path: [] })).toThrow(
       'command "formula.editEvent" needs an open document',
+    );
+  });
+});
+
+describe("formula.editScript (spec.md §23.2)", () => {
+  test("opens a side of the document's script in the Logic dock tab", () => {
+    setDockCollapsed("bottom", true);
+    setBottomTab("problems");
+    void registry.run("formula.editScript", { side: "server" });
+    expect(activeTab.value?.session.ui.editingFunction).toEqual({ side: "server", type: "script" });
+    expect(activeTab.value?.session.ui.editingFormula).toBeNull();
+    expect(shell.docks.bottom.collapsed).toBe(false);
+    expect(shell.bottomTab).toBe("logic");
+  });
+
+  test("a document with no script yet opens too: typing is what creates one", () => {
+    void registry.run("formula.editScript", { side: "client" });
+    expect(activeTab.value?.session.ui.editingFunction).toEqual({ side: "client", type: "script" });
+  });
+
+  test("the palette can ask which side: the argument is a closed list, not free text", () => {
+    const command = registry.get("formula.editScript");
+    expect(command && paletteArgs(command)).toEqual({
+      choices: [
+        { label: "client", value: "client" },
+        { label: "server", value: "server" },
+      ],
+      kind: "choice",
+      name: "side",
+    });
+  });
+
+  test("refuses a side a document has no module for", () => {
+    expect(() => registry.run("formula.editScript", { side: "edge" })).toThrow(
+      '"edge" is not declared — declared: client, server',
+    );
+  });
+
+  test("refuses with no document open", () => {
+    closeAllTabs();
+    expect(() => registry.run("formula.editScript", { side: "client" })).toThrow(
+      'command "formula.editScript" needs an open document',
     );
   });
 });

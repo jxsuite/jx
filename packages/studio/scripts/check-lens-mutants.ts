@@ -460,9 +460,9 @@ const MUTANTS: Mutant[] = [
           `      // Only the host that originated this edit already has the DOM the patch describes. A`,
       },
       {
-        find: `import { canvasBaseOrigin } from "./canvas-origin";`,
+        find: `import { canvasBaseOrigin, documentBase } from "./canvas-origin";`,
         replace:
-          `import { canvasBaseOrigin } from "./canvas-origin";\n` +
+          `import { canvasBaseOrigin, documentBase } from "./canvas-origin";\n` +
           `import { allCanvasSurfaces } from "./surface-registry";`,
       },
     ],

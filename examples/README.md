@@ -2,17 +2,17 @@
 
 The monorepo's feature-demo project is a real, buildable Jx project (`"name": "Jx Examples"`, declaring `"url": "https://examples.jxsuite.dev"`, which no workflow here deploys) that doubles as the end-to-end fixture for the toolchain. It is a Bun workspace member, so its `@jxsuite/*` dependencies are `workspace:^` and resolve through symlinks back into this repo. The project enables exactly one extension, `@jxsuite/parser`.
 
-| Path                                             | Contents                                                                                                            |
-| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------- |
-| [`project.jxn`](./project.jxn)                   | Project definition, in Jx Notation: defaults, `$head`, the `posts` content collection, `build.outDir`, `extensions` |
-| [`pages/`](./pages)                              | Routes: `index.json` plus a `basics/` tier (one custom element each) and an `advanced/` tier                        |
-| [`components/`](./components)                    | JSON component documents, two Markdown-authored ones (`todo-app.md`, `todo-item.md`), and `fetch-demo.js` (`$src`)  |
-| [`layouts/`](./layouts)                          | `base.json` (page shell) and `example.json`, which nests it via `$layout` and adds the sidebar nav                  |
-| [`content/posts/`](./content/posts)              | The content collection `project.jxn` declares, and the fixture data behind the blog page                            |
-| `project.schema.json`                            | **Generated.** Editor schema for `project.jxn`                                                                      |
-| `document.schema.json`                           | **Generated.** Editor schema for every page, component, and layout here                                             |
-| [`tests/`](./tests)                              | One placeholder `bun:test` file, so the workspace's `test` script has something to run                              |
-| [`.dev-server-smoke.ts`](./.dev-server-smoke.ts) | Hand-run dev-server smoke check on port 5199. Nothing in the repo calls it                                          |
+| Path                                             | Contents                                                                                                                              |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------- |
+| [`project.jxn`](./project.jxn)                   | Project definition, in Jx Notation: defaults, `$head`, the `posts` content collection, `build.outDir`, `extensions`                   |
+| [`pages/`](./pages)                              | Routes: `index.json` plus a `basics/` tier (one custom element each) and an `advanced/` tier                                          |
+| [`components/`](./components)                    | JSON component documents, three carrying their own script (`$script`), and two Markdown-authored ones (`todo-app.md`, `todo-item.md`) |
+| [`layouts/`](./layouts)                          | `base.json` (page shell) and `example.json`, which nests it via `$layout` and adds the sidebar nav                                    |
+| [`content/posts/`](./content/posts)              | The content collection `project.jxn` declares, and the fixture data behind the blog page                                              |
+| `project.schema.json`                            | **Generated.** Editor schema for `project.jxn`                                                                                        |
+| `document.schema.json`                           | **Generated.** Editor schema for every page, component, and layout here                                                               |
+| [`tests/`](./tests)                              | One placeholder `bun:test` file, so the workspace's `test` script has something to run                                                |
+| [`.dev-server-smoke.ts`](./.dev-server-smoke.ts) | Hand-run dev-server smoke check on port 5199. Nothing in the repo calls it                                                            |
 
 Between them the pages exercise reactive state, computed values, list rendering, forms, `Request` data sources, `$switch` routing, responsive `$media`, nested custom elements, a `MarkdownCollection` blog, Markdown-authored components, and third-party web components (Shoelace).
 

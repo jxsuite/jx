@@ -22,7 +22,7 @@ import { EVENT_HANDLER_NAMES } from "./event-handlers.ts";
 const RAW_CONTROL = /(?![\t\n\v\f\r])\p{Cc}/u;
 
 /** The annotations the grammar gives meaning to. Any other is a mistake, and not a thing to ignore. */
-const ANNOTATIONS = new Set(["array", "fn", "object", "on", "ref"]);
+const ANNOTATIONS = new Set(["array", "export", "fn", "object", "on", "ref", "server"]);
 
 /** A child node name that means something other than an element. */
 const RESERVED_CHILDREN = new Set(["attributes", "script", "state", "style"]);
@@ -158,6 +158,96 @@ function readFunction(reader: Reader, node: Node, pointer: string): JsonObject {
   return fn;
 }
 
+/**
+ * An export of the document's client module (`spec.md` §23.2): a Function whose `$src` is
+ * `#client`. The node's name is the export unless `$export` says another.
+ */
+function readExport(reader: Reader, node: Node, pointer: string): JsonObject {
+  const fn: JsonObject = { $prototype: "Function", $src: "#client" };
+  if (positionals(reader, node).length > 0 || childrenOf(node).length > 0) {
+    throw failure(
+      reader,
+      node,
+      "(export) names a function the document's script exports, and holds no body of its own",
+    );
+  }
+  for (const entry of properties(node)) {
+    setKey(fn, nameOf(entry), valueOf(reader, entry), reader, entry);
+  }
+  if (!Object.hasOwn(fn, "$export")) {
+    fn.$export = node.getName().normalize("NFC");
+  }
+  mark(reader, pointer, node);
+  return fn;
+}
+
+/**
+ * A function of the document's server module (`spec.md` §23.2, §11.4): a `timing: "server"` entry
+ * whose `$src` is `#server`, exported under the node's name, with the node's named values as its
+ * `arguments`.
+ */
+function readServer(reader: Reader, node: Node, pointer: string): JsonObject {
+  if (positionals(reader, node).length > 0 || childrenOf(node).length > 0) {
+    throw failure(
+      reader,
+      node,
+      "(server) names a function the document's server script exports. Its arguments are written name=value",
+    );
+  }
+  const entry: JsonObject = {
+    $export: node.getName().normalize("NFC"),
+    $src: "#server",
+    timing: "server",
+  };
+  const named = properties(node);
+  if (named.length > 0) {
+    const args: JsonObject = {};
+    for (const argument of named) {
+      const key = nameOf(argument);
+      setKey(args, key, valueOf(reader, argument), reader, argument);
+      mark(reader, `${pointer}/arguments/${token(key)}`, argument);
+    }
+    entry.arguments = args;
+  }
+  mark(reader, pointer, node);
+  return entry;
+}
+
+/** The `$script` objects made from `script` nodes, which a second `script` node may add a side to. */
+const SCRIPT_BLOCKS = new WeakSet<JsonObject>();
+
+/**
+ * A `script` node of the root element: one of the document's two modules (`spec.md` §23.2).
+ *
+ * @param reader The read.
+ * @param node The `script` node.
+ * @param element The root element, which gains `$script.client` or `$script.server`.
+ */
+function readScript(reader: Reader, node: Node, element: JsonObject): void {
+  const named: JsonObject = {};
+  for (const entry of properties(node)) {
+    const key = nameOf(entry);
+    setKey(named, key, valueOf(reader, entry), reader, entry);
+    if (key !== "timing" || named[key] !== "server") {
+      throw failure(reader, entry, "A script takes timing=server, and nothing else");
+    }
+  }
+  const values = positionals(reader, node);
+  const [text] = values;
+  if (values.length !== 1 || !isString(text) || childrenOf(node).length > 0) {
+    throw failure(reader, node, "A script holds one string, which is the text of its module");
+  }
+  const side = Object.hasOwn(named, "timing") ? "server" : "client";
+  let scripts = element.$script;
+  if (!isJsonObject(scripts) || !SCRIPT_BLOCKS.has(scripts)) {
+    scripts = {};
+    SCRIPT_BLOCKS.add(scripts);
+    setKey(element, "$script", scripts, reader, node);
+  }
+  setKey(scripts, side, text, reader, node);
+  mark(reader, `/$script/${side}`, node);
+}
+
 /** The items of a block made of `-` nodes. */
 function readItems(reader: Reader, kids: readonly Node[], pointer: string): JsonValue[] {
   return kids.map((kid, index) => {
@@ -168,12 +258,18 @@ function readItems(reader: Reader, kids: readonly Node[], pointer: string): Json
   });
 }
 
-/** A JSON block: JSON-in-KDL, plus `(ref)` and `(fn)`. */
+/** A JSON block: JSON-in-KDL, plus `(ref)`, `(fn)`, `(export)` and `(server)`. */
 export function readValue(reader: Reader, node: Node, pointer: string): JsonValue {
   const tag = annotationOf(reader, node);
   mark(reader, pointer, node);
   if (tag === "fn") {
     return readFunction(reader, node, pointer);
+  }
+  if (tag === "export") {
+    return readExport(reader, node, pointer);
+  }
+  if (tag === "server") {
+    return readServer(reader, node, pointer);
   }
   const values = positionals(reader, node);
   const props = properties(node);
@@ -447,7 +543,17 @@ function readElementChild(
     // `(on)` has done its job by saying this is a handler, and what it holds is a JSON block.
     setKey(element, name, readValue(reader, kid, member(name)), reader, kid);
   } else if (name === "script") {
-    throw failure(reader, kid, `"script" is reserved. A <script> element is $element "script"`);
+    if (pointer !== "") {
+      throw failure(
+        reader,
+        kid,
+        `"script" is the document's module, and is written in its root element. A <script> element is $element "script"`,
+      );
+    }
+    if (tag !== null) {
+      throw failure(reader, kid, `(${tag}) cannot annotate a script`);
+    }
+    readScript(reader, kid, element);
   } else if (name === "state") {
     setKey(element, "state", readValue(reader, kid, member("state")), reader, kid);
   } else if (name === "style") {

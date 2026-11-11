@@ -2546,15 +2546,21 @@ my-counter {
 | `- value`                                     | Text or `$ref` child, or a list item in a JSON block                                                                    |
 | `(ref)"pointer"`                              | `{ "$ref": "pointer" }`, in any value position, JSON blocks included                                                    |
 | `(fn)name [params] body`                      | `$prototype: "Function"`. A last string is always the body; a child block of `-` items is a structured body (§20)       |
+| `(export)name [$x=value]`                     | A Function the document's client module exports (§23.2): `$prototype: "Function"`, `$src: "#client"`, `$export: name`   |
+| `(server)name [k=v…]`                         | A function of the document's server module (§23.2): `timing: "server"`, `$src: "#server"`, `$export: name`, `arguments` |
+| `script "module"`, in the root element        | `$script.client`, the document's client module (§23.2)                                                                  |
+| `script timing=server "module"`               | `$script.server`, its server module                                                                                     |
 | `$array items= key= [filter=] [sort=] { el }` | `$prototype: "Array"`, with `el` as `map`                                                                               |
 | `$element [tag] [text]`                       | Escape for a tagless node, or a reserved tag: `state`, `style`, `attributes`, `script`, `project`, `-`, or one with `$` |
 | `(object)name`, `(array)name`                 | A JSON block that is an object or a list, where its contents would not say which                                        |
-| Everything else                               | A JSON block: JSON-in-KDL plus `(ref)` and `(fn)`                                                                       |
+| Everything else                               | A JSON block: JSON-in-KDL plus `(ref)`, `(fn)`, `(export)` and `(server)`                                               |
 
 Some forms follow from that table and are worth stating:
 
 - A lone `$array` child is a list of one, which is the common case. When the whole of `children` is one mapped array or one `$switch`, the object form is spelled `.children { $array … }`.
-- `script` and a top-level `project` are reserved. `$element "script"` and `$element "project"` are those tags as elements.
+- A top-level `project` is reserved, and `script` is the document's module, so `$element "project"` and `$element "script"` are those tags as elements. A `script` node is read in the root element only: anywhere deeper it is refused, naming `$element "script"`, and a `<script>` row of `$head` is an element as every row there is.
+- A `script` node holds one string and at most `timing=server`. A document has one of each at most, and a second, or a `$script` written beside one, is a key written twice (§22.2). A `$script` that holds anything but those two strings, and one on a document with no root element, is written as the plain `$script` block.
+- `(export)name` exports under the node's name unless `$export` names another, and takes no body: a Function with `parameters` or a `body` is a `(fn)` row whatever its `$src`. `(server)name` exports under the node's name and its named values are the whole of `arguments`, so an entry whose export differs from its name, or that holds any other member, an empty `arguments`, or an argument that is itself a block, is a plain JSON block. None of this changes what a document is: each row reads to the entry the table names, and the writer uses a row only where the row reads back to the same entry.
 - Inside `.map` and each value of `.cases`, the element grammar applies, and each holds exactly one element.
 - A `style` value may be a list, which is what `@font-face` needs. A style key that needs quoting has to be quoted: `> li` is a node `>` with the value `li`, and the reader refuses it rather than misreading it.
 - `div {}` equals `div`. `state {}` is `{}`. Empty `children` is `(array).children`. Parameters without a body have no sugar and use a JSON block.
@@ -2652,7 +2658,7 @@ A string `body` in any document format is TypeScript, limited to syntax that can
 
 ### 23.2 Document Scripts
 
-> **Status: Partial.** `jx build` bundles each document's client module, serves its server module from the site worker, and resolves an import of a `.jxn` document (compiler.md §12, §6.3), and `@jxsuite/compiler/bun-plugin` lets a Bun test import one. Every interpreting host imports a document's client module in the browser (embedding.md §6.3), `jx dev` and the `/__jx_server__` proxy answer its server module (server.md §3.3), and Live Preview sends a reader no server module (server.md §3.4). `.jxn` has no notation for a script, so one is written as the `$script` property, and Studio has no editor for it. Studio's canvas hands its frame the document being edited as an object, with its server module in it and under no path, so a server function written in that document is not answered there. It also draws a page inside its layout by merging the two before either is qualified, and the merged document keeps the layout's `$script` alone: there, a page's `#client` entry runs its layout's module, and a page that names its own script inside a layout that has none is not drawn.
+> **Status: Implemented.** `jx build` bundles each document's client module, serves its server module from the site worker, and resolves an import of a `.jxn` document (compiler.md §12, §6.3), and `@jxsuite/compiler/bun-plugin` lets a Bun test import one. Every interpreting host imports a document's client module in the browser (embedding.md §6.3), `jx dev` and the `/__jx_server__` proxy answer its server module (server.md §3.3), and Live Preview sends a reader no server module (server.md §3.4). `.jxn` writes a script as a `script` node and its entries as `(export)` and `(server)` rows (§22.1). Studio edits a script on its code surface and draws a document with one on the canvas (studio.md §4.1, §16.7), `jx validate` and Studio give the advice below (`findScriptAdvice` in `packages/schema/src/document-scripts.ts`), and a shared session merges two authors' edits to one script (collab.md §3.1).
 
 A document may carry its own client and server modules, so a component does not need a separate file for its own code. `$src` keeps working, and stays the only spelling for `npm:` packages and for modules shared between documents.
 
@@ -2699,9 +2705,15 @@ A document may carry its own client and server modules, so a component does not 
 
 **Server names are site-wide.** A document's server exports are served under their export names with every other server function of the site (§11.4), so two documents exporting one server name fail the build, naming both.
 
+**A host that edits a document draws its script as saved.** A host drawing a document while it is being edited composes a page from documents it holds as objects, so it qualifies each with the URL the document would be fetched from, before any merge, and a page and its layout stay two modules there as in a build. It hands its renderer no `$script`: a client module's text travels beside the document under the specifier that names it, and a server module's text goes nowhere, because a server function is called over the network and answered from the saved file. The client text it uses for the document being edited is the text that document was last saved with. A string `body` is one expression of an entry and may be drawn as it is typed; a module that is half typed does not load, and one loaded again on every pause would run its top level each time.
+
+**Tools advise, and advice is never a defect.** Two things about a document that is right as written are worth saying to its author, and `findScriptAdvice` (`@jxsuite/schema/document-scripts`) is the one statement of both. `relative-src`: an entry whose `$src` is a relative path (`./` or `../`) to a script file names a module the document could carry itself. A class schema (`.json`), an `npm:` specifier, a kit module (`jx-ui:`) and an entry with `$lazy` are not advised, the last because a lazy entry is better off outside a shared script. `lazy-shares-script`: an entry with `$lazy` names the document's client module while another entry of the same document names it without, so the module loads with the page and `$lazy` defers nothing. `jx validate` reports each as `module/<rule>` at severity `info`, and no option, `--strict` included, makes advice fail a tree; Studio files each in Problems when the document is saved (studio.md §16.6).
+
+**Two authors in one script both keep their edits.** A shared session stores each side of `$script` as its own text and merges it per character (collab.md §3.1).
+
 ### 23.3 Type Checking
 
-> **Status: Partial.** Studio's function editor reports type errors in a body (`studio.md` §16.7). Nothing in the terminal or in another editor does.
+> **Status: Partial.** Studio's function editor reports type errors in a body (`studio.md` §16.7), and not yet in a document's script, which it edits on the same surface (§23.2). Nothing in the terminal or in another editor does.
 
 Type errors in a document's bodies and modules are reported at their real positions, in the terminal and in an editor, and a scaffolded project is set up to report them.
 

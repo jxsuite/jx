@@ -113,7 +113,7 @@ The scope builder injects any import-mapped `$src`, constructs the class with th
 
 ## Rules
 
-- A non-Function `$src` **must** point to a `.class.json` file. Direct `.js` sources are for `$prototype: "Function"` only (see [Functions and sidecars](/docs/framework/concepts/functions)).
+- A non-Function `$src` **must** point to a `.class.json` file. Direct `.js` sources are for `$prototype: "Function"` only (see [Functions and modules](/docs/framework/concepts/functions)).
 - Reserved keys (`$prototype`, `$src`, `$export`, `timing`, `default`, `description`) are never passed to the constructor.
 - Import-map values must end in `.class.json`; anything else is warned about and skipped.
 - An entry's own `$src` always beats the import map.

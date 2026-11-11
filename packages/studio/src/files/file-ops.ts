@@ -33,6 +33,7 @@ import { notify } from "../services/notify";
 import type { NotifyOptions } from "../services/notify";
 import { isString } from "@jxsuite/schema/guards";
 import { validateComponentSlots } from "../services/cem-export";
+import { reportModuleAdvice } from "../services/module-report";
 import { reportPopoverProblems } from "../services/popover-report";
 import { getPlatform } from "../platform";
 import { getGridController } from "../grid/grid-controller";
@@ -297,6 +298,8 @@ function reportSaved(tab: Tab) {
      lint would be the alternative and is the wrong shape — there is no render-lint pipeline, and a
      record re-filed every frame is exactly the noise `NotifyOptions.key` exists to prevent. */
   reportPopoverProblems(doc, tab.documentPath ?? undefined);
+  // And what there is to say about its modules, which is advice rather than a defect (spec.md §23.2).
+  reportModuleAdvice(doc, tab.documentPath ?? undefined);
 }
 
 /**

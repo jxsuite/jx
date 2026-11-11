@@ -48,24 +48,59 @@ my-counter {
 
 ## How it reads
 
-| You write                                | It means                                      |
-| ---------------------------------------- | --------------------------------------------- |
-| A top-level `$x` node                    | Document metadata, such as `$id` or `$schema` |
-| The other top-level node                 | The root element, with its name as `tagName`  |
-| One value after the name                 | `textContent`                                 |
-| `name=value`                             | The attribute `name`                          |
-| `.name=value`                            | The member `name`, such as a DOM property     |
-| `$x=value`                               | A Jx member                                   |
-| `state`, `style` and `attributes` blocks | Those members                                 |
-| Any other child node                     | A child element                               |
-| `- "text"`                               | A text child, or a list item in a data block  |
-| `(ref)"#/state/x"`                       | A `$ref`, anywhere a value goes               |
-| `(fn)name params "body"`                 | A function                                    |
-| `on*=(ref)"#/state/x"`                   | An event handler                              |
-| `$array items=(ref)"…" { li }`           | A repeater, with its one element as `map`     |
-| `$element "style" "a{}"`                 | An element whose tag is reserved here         |
+| You write                                | It means                                                   |
+| ---------------------------------------- | ---------------------------------------------------------- |
+| A top-level `$x` node                    | Document metadata, such as `$id` or `$schema`              |
+| The other top-level node                 | The root element, with its name as `tagName`               |
+| One value after the name                 | `textContent`                                              |
+| `name=value`                             | The attribute `name`                                       |
+| `.name=value`                            | The member `name`, such as a DOM property                  |
+| `$x=value`                               | A Jx member                                                |
+| `state`, `style` and `attributes` blocks | Those members                                              |
+| Any other child node                     | A child element                                            |
+| `- "text"`                               | A text child, or a list item in a data block               |
+| `(ref)"#/state/x"`                       | A `$ref`, anywhere a value goes                            |
+| `(fn)name params "body"`                 | A function                                                 |
+| `script "module"`, in the root element   | The document's own client module                           |
+| `script timing=server "module"`          | The document's own server module                           |
+| `(export)name`                           | A function the client module exports                       |
+| `(server)name k=v`                       | A server function of the server module, with its arguments |
+| `on*=(ref)"#/state/x"`                   | An event handler                                           |
+| `$array items=(ref)"…" { li }`           | A repeater, with its one element as `map`                  |
+| `$element "style" "a{}"`                 | An element whose tag is reserved here                      |
 
 The [specification](https://github.com/jxsuite/jx/blob/main/specs/spec.md#22-jx-notation-jxn) has the whole grammar.
+
+## A document's script
+
+A document that carries [its own module](/docs/framework/concepts/functions#a-module-inside-the-document) writes it as a `script` node in the root element, and each entry that uses it as one short row:
+
+```kdl
+my-counter {
+    script #"""
+        import { clamp } from "./math.ts";
+
+        export function bump(state: { count: number }): void {
+          state.count = clamp(state.count + 1, 0, 10);
+        }
+        """#
+    script timing=server #"""
+        export async function history(args: { limit: number }, env: Env) {
+          return env.DB.prepare("SELECT * FROM bumps LIMIT ?").bind(args.limit).all();
+        }
+        """#
+    state {
+        count 0
+        (export)bump
+        (server)history limit=10
+    }
+    button onclick=(ref)"#/state/bump" Add
+}
+```
+
+`(export)bump` is the Function entry `bump` with `$src: "#client"`, and `(server)history limit=10` is the server function `history` with `$src: "#server"` and `arguments: { limit: 10 }`. An export under another name is `(export)bump $export=increment`.
+
+`script` means the module in the root element only. A `<script>` element is written `$element "script"`, and a `script` node anywhere deeper is refused with that spelling in the message.
 
 ## What a reader refuses
 

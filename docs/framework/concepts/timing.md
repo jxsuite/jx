@@ -129,7 +129,7 @@ Compiler-timed entries never produce runtime artifacts at all. The site build re
 ## Related
 
 - [Data prototypes](/docs/framework/concepts/data-prototypes): the entries `timing` applies to
-- [Functions and sidecars](/docs/framework/concepts/functions): client-side functions by contrast
+- [Functions and modules](/docs/framework/concepts/functions): client-side functions by contrast
 - [The build](/docs/framework/build): where server bundling and baking happen
 - [Dev server](/docs/framework/build/dev-server): server timing during development
 - [Data sources in Studio](/docs/studio/logic/data-sources): the Timing field in the editor

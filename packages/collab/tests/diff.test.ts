@@ -4,7 +4,7 @@ import { isString } from "@jxsuite/schema/guards";
 import type { JxMutableNode } from "@jxsuite/schema/types";
 import { applyDocOpToDoc, childArray } from "../src/ops.ts";
 import { deepEqual, diffDocs, replaceYStructure } from "../src/diff.ts";
-import { metaMap, seedStructure, yDocToJson } from "../src/schema.ts";
+import { metaMap, seedStructure, structureMap, yDocToJson } from "../src/schema.ts";
 
 /** The element (not bare-string) child at `index`; the fixtures below put one at every index used. */
 function elementAt(node: JxMutableNode, index: number): JxMutableNode {
@@ -221,6 +221,20 @@ describe("deepEqual", () => {
 });
 
 describe("replaceYStructure", () => {
+  test("stores the replacement's scripts as texts, since the root is the only place they are", () => {
+    const ydoc = new Y.Doc();
+    seedStructure(ydoc, DOC);
+    replaceYStructure(
+      ydoc,
+      { $script: { client: "export const bump = () => 1;\n" }, tagName: "my-counter" },
+      "test",
+    );
+    const scripts = structureMap(ydoc).get("$script");
+    expect(scripts).toBeInstanceOf(Y.Map);
+    expect(scripts instanceof Y.Map && scripts.get("client")).toBeInstanceOf(Y.Text);
+    expect(yDocToJson(ydoc).$script).toEqual({ client: "export const bump = () => 1;\n" });
+  });
+
   test("hard-replaces the tree and bumps canonicalRev", () => {
     const ydoc = new Y.Doc();
     seedStructure(ydoc, DOC);

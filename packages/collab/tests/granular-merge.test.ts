@@ -21,7 +21,7 @@ import {
   yValueToJson,
 } from "../src/schema.ts";
 import { applyDocOpToDoc, childArray } from "../src/ops.ts";
-import type { JxMutableNode } from "@jxsuite/schema/types";
+import type { JxDocumentValue, JxMutableNode } from "@jxsuite/schema/types";
 import type { JxDocOp } from "../src/ops.ts";
 import type { YStructureValue } from "../src/schema.ts";
 
@@ -247,6 +247,117 @@ describe("concurrent style edits on one element", () => {
   });
 });
 
+const client = "let count = 0;\nexport const bump = () => ++count;\n";
+const server = "export const history = async () => [];\n";
+
+const COUNTER: JxMutableNode = {
+  $script: { client, server },
+  state: { bump: { $prototype: "Function", $src: "#client" } },
+  tagName: "my-counter",
+};
+
+/** The replica's `$script` as the live Y.Map, for identity checks. */
+function scriptMap(doc: Y.Doc): Y.Map<YStructureValue> {
+  const scripts = structureMap(doc).get("$script");
+  if (!(scripts instanceof Y.Map)) {
+    throw new TypeError("the replica's $script is not a Y.Map");
+  }
+  return scripts;
+}
+
+/** A whole-value write of `$script`, as the code surface records one. */
+function writeScripts(doc: Y.Doc, value: JxDocumentValue): void {
+  applyDocOpsToY(doc, [{ key: "$script", op: "set-key", path: [], value }], LOCAL_ORIGIN);
+}
+
+describe("concurrent edits to one document script (spec.md §23.2)", () => {
+  test("both authors' characters survive in one module", () => {
+    const { a, b, sync } = pair(COUNTER);
+
+    // A adds an import at the top; B adds an export at the bottom. Each writes the whole `$script`.
+    writeScripts(a, { client: `import { clamp } from "./clamp.ts";\n${client}`, server });
+    writeScripts(b, { client: `${client}export const reset = () => (count = 0);\n`, server });
+    sync();
+
+    const merged = yDocToJson(a).$script;
+    expect(merged).toEqual(yDocToJson(b).$script);
+    expect(merged).toEqual({
+      client: `import { clamp } from "./clamp.ts";\n${client}export const reset = () => (count = 0);\n`,
+      server,
+    });
+  });
+
+  test("a room is seeded with texts, so the first two edits already merge", () => {
+    const { a } = pair(COUNTER);
+    const scripts = scriptMap(a);
+    expect(scripts.get("client")).toBeInstanceOf(Y.Text);
+    expect(scripts.get("server")).toBeInstanceOf(Y.Text);
+    // And the state beside it is the whole value it always was.
+    expect(structureMap(a).get("state")).toEqual(COUNTER.state);
+  });
+
+  test("one author in the client module and one in the server module do not meet", () => {
+    const { a, b, sync } = pair(COUNTER);
+    writeScripts(a, { client: `${client}// a\n`, server });
+    writeScripts(b, { client, server: `${server}// b\n` });
+    sync();
+    expect(yDocToJson(a).$script).toEqual({ client: `${client}// a\n`, server: `${server}// b\n` });
+    expect(yDocToJson(b).$script).toEqual(yDocToJson(a).$script);
+  });
+
+  test("the texts keep their identity across a whole-value write, and a side can be added or removed", () => {
+    const { a } = pair(COUNTER);
+    const clientText = scriptMap(a).get("client");
+    writeScripts(a, { client: "export const bump = () => 1;\n" });
+    // The same Y.Text, rewritten in place; the server module is gone because the value left it out.
+    expect(scriptMap(a).get("client")).toBe(clientText);
+    expect(yDocToJson(a).$script).toEqual({ client: "export const bump = () => 1;\n" });
+
+    writeScripts(a, { client: "export const bump = () => 1;\n", server: "export {};\n" });
+    expect(scriptMap(a).get("server")).toBeInstanceOf(Y.Text);
+    expect(scriptMap(a).get("client")).toBe(clientText);
+  });
+
+  test("a document gains its first script, and loses its last, as one key", () => {
+    const { a, b, sync } = pair({ tagName: "my-counter" });
+    writeScripts(a, { client: "export const bump = () => 1;\n" });
+    sync();
+    expect(scriptMap(b).get("client")).toBeInstanceOf(Y.Text);
+
+    applyDocOpsToY(a, [{ key: "$script", op: "set-key", path: [] }], LOCAL_ORIGIN);
+    sync();
+    expect("$script" in yDocToJson(b)).toBe(false);
+  });
+
+  test("a script stored whole by an earlier client becomes texts on the next write", () => {
+    const { a } = pair(COUNTER);
+    structureMap(a).set("$script", { client: "export {};\n" });
+    writeScripts(a, { client: "export const bump = () => 1;\n" });
+    expect(scriptMap(a).get("client")).toBeInstanceOf(Y.Text);
+    expect(yDocToJson(a).$script).toEqual({ client: "export const bump = () => 1;\n" });
+  });
+
+  test("a value that is not text is stored as it is, and replaces a text it takes the place of", () => {
+    // The schema refuses such a document; the store still has to hold what it is handed.
+    const { a } = pair(COUNTER);
+    const odd = { client: 1, server: "export {};\n" };
+    writeScripts(a, odd);
+    expect(scriptMap(a).get("client")).toBe(1);
+    // Written again unchanged, the plain value is left alone rather than set a second time.
+    let writes = 0;
+    scriptMap(a).observe(() => {
+      writes += 1;
+    });
+    writeScripts(a, odd);
+    expect(writes).toBe(0);
+    writeScripts(a, { client: 2, server: "export {};\n" });
+    expect(scriptMap(a).get("client")).toBe(2);
+    // Seeded that way, it is stored that way too.
+    const { a: seeded } = pair({ $script: { client: 1 }, tagName: "my-counter" });
+    expect(scriptMap(seeded).get("client")).toBe(1);
+  });
+});
+
 describe("inbound events collapse back to whole-value ops", () => {
   /** Capture the ops a remote transaction produces, the way collab-session does. */
   function opsFromRemote(doc: Y.Doc, mutate: () => void): JxDocOp[] | null {
@@ -298,6 +409,20 @@ describe("inbound events collapse back to whole-value ops", () => {
         path: ["children", 0],
         value: { color: "red", padding: "8px" },
       },
+    ]);
+  });
+
+  test("a remote edit inside a script becomes one whole-value set-key for $script", () => {
+    const { a, b } = pair(COUNTER);
+    const next = { client: "export const bump = () => 2;\n", server: "export {};\n" };
+    writeScripts(a, next);
+    const update = Y.encodeStateAsUpdate(a, Y.encodeStateVector(b));
+    const ops = opsFromRemote(b, () => Y.applyUpdate(b, update));
+    // One event per module that changed, each collapsing to the whole value: the op log addresses
+    // The root's `$script`, never a text inside it.
+    expect(ops).toEqual([
+      { key: "$script", op: "set-key", path: [], value: next },
+      { key: "$script", op: "set-key", path: [], value: next },
     ]);
   });
 

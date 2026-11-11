@@ -58,6 +58,8 @@ describe("the language", () => {
     ["a line comment", "// x", "comment"],
     ["a slashdash", "/- x", "comment"],
     ["a known annotation", "(ref)", "type"],
+    ["a script's export", "(export)", "type"],
+    ["a script's server export", "(server)", "type"],
     ["an unknown one", "(nope)", "invalid"],
     ["a keyword", "#true", "keyword"],
     ["a number", "12.5e3", "number"],

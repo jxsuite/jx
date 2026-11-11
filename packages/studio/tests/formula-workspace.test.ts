@@ -702,6 +702,25 @@ describe("workspaceView", () => {
     expect(view.titleHint).toBe("onclick");
   });
 
+  test("a document's own module is named by its side, on the code surface", async () => {
+    const tab = await openWorkspace();
+    tab.session.ui.editingFunction = { side: "client", type: "script" };
+    let view = workspaceView();
+    expect(view.surface).toBe("code");
+    expect(view.name).toBe("script");
+    expect(view.kind).toBe("document module");
+    expect(view.titleHint).toBe("$script/client");
+
+    tab.session.ui.editingFunction = { side: "server", type: "script" };
+    view = workspaceView();
+    expect(view.name).toBe("server script");
+    expect(view.titleHint).toBe("$script/server");
+
+    // A target written without a side is read as the client module, which is the common one.
+    tab.session.ui.editingFunction = { type: "script" };
+    expect(workspaceView().titleHint).toBe("$script/client");
+  });
+
   test("a mutating root reports the effect as a note rather than as a value", async () => {
     await openWorkspace({ eventKey: "onclick", path: ["children", 0], type: "event" });
     const view = workspaceView();

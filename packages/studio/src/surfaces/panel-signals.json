@@ -167,6 +167,10 @@
       "$description": "The Body switch is the kit's segmented control, which draws its own row, frame and selected segment; all the bar asks of it is not to shrink.",
       "flex": "none"
     },
+    "& [part=\"bar-segments\"]:not(:has([part=\"segment\"]))": {
+      "$description": "A bar with nothing to switch between is a label and its buttons: the way from an entry to its document's script has one verb and no modes. The group is taken out of the row and out of the accessibility tree, where an empty radiogroup would announce a choice that is not there.",
+      "display": "none"
+    },
     "& [part=\"bar-buttons\"]": {
       "display": "flex",
       "flex": "none",

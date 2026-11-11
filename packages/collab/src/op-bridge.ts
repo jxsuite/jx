@@ -20,11 +20,14 @@ import {
   applyTextEdit,
   GRANULAR_OBJECT_KEYS,
   mergeYObject,
+  mergeYTextObject,
   resolveYPath,
   TEXT_KEYS,
+  TEXT_OBJECT_KEYS,
   toYChild,
   toYChildren,
   toYObject,
+  toYTextObject,
   yChildToJson,
   yValueToJson,
 } from "./schema.ts";
@@ -100,6 +103,14 @@ function setNodeKey(node: Y.Map<YStructureValue>, key: string, value: JxDocument
       mergeYObject(existing, value);
     } else {
       node.set(key, toYObject(value));
+    }
+    return;
+  }
+  if (TEXT_OBJECT_KEYS.has(key) && isJsonObject(value)) {
+    if (existing instanceof Y.Map) {
+      mergeYTextObject(existing, value);
+    } else {
+      node.set(key, toYTextObject(value));
     }
     return;
   }
@@ -208,7 +219,7 @@ function granularOwner(path: JxPath): { nodePath: JxPath; key: string } | null {
     if (!isString(segment)) {
       continue;
     }
-    if (GRANULAR_OBJECT_KEYS.has(segment)) {
+    if (GRANULAR_OBJECT_KEYS.has(segment) || TEXT_OBJECT_KEYS.has(segment)) {
       return { key: segment, nodePath: path.slice(0, i) };
     }
     if (TEXT_KEYS.has(segment)) {

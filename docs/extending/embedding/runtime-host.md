@@ -96,7 +96,7 @@ host.addEventListener("jx-notify", (event) => {
 });
 ```
 
-## Bundle documents and sidecars
+## Bundle documents and modules
 
 A bundled document still names the things it depends on by URL and by `$src`. Register them before you mount, and nothing is fetched.
 
@@ -111,7 +111,7 @@ preloadModule("jx-ui:/behaviors/menu.ts", behaviors);
 
 A document that lists `{ "$ref": "jx-ui:/components/jx-button.json" }` in `$elements`, or `"$src": "jx-ui:/behaviors/menu.ts"` on a function, now resolves from those registrations.
 
-A sidecar you would rather not load until something needs it takes a function instead of a namespace. The loader runs once, the first time a document names the specifier, and the bundler splits the import into its own chunk:
+A module you would rather not load until something needs it takes a function instead of a namespace. The loader runs once, the first time a document names the specifier, and the bundler splits the import into its own chunk:
 
 ```ts
 preloadModule("jx-ui:/behaviors/menu.ts", () => import("./behaviors/menu.ts"));
