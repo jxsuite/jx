@@ -92,12 +92,26 @@ describe("code-api", () => {
       expect(data.code).toContain("return a + b");
     });
 
-    test("returns original code with errors on syntax error", async () => {
+    test("returns the code as written, with why, where it does not parse", async () => {
       const { req, url } = codeRequest("format", { code: "const x = ;" });
       const res = await handleCodeApi(req, url);
       const data = await handled(res).json();
-      // Oxfmt may return errors or the original code
-      expect(data.code).toBeDefined();
+      expect(data).toEqual({
+        code: "const x = ;",
+        errors: [{ message: "Unexpected token (line 1)" }],
+      });
+    });
+
+    test("a body that awaits is formatted, which a method of a class may", async () => {
+      const { req, url } = codeRequest("format", { code: "const r=await load();return r" });
+      const data = await handled(await handleCodeApi(req, url)).json();
+      expect(data).toEqual({ code: "const r = await load();\nreturn r;", errors: [] });
+    });
+
+    test("indents with two spaces, as the editor does", async () => {
+      const { req, url } = codeRequest("format", { code: "if(a){b()}" });
+      const data = await handled(await handleCodeApi(req, url)).json();
+      expect(data.code).toBe("if (a) {\n  b();\n}");
     });
   });
 
@@ -151,6 +165,15 @@ describe("code-api", () => {
       const res = await handleCodeApi(req, url);
       const data = await handled(res).json();
       expect(Array.isArray(data.diagnostics)).toBe(true);
+    });
+
+    test("a body that awaits is told so, as the function a document's body becomes is not async", async () => {
+      const { req, url } = codeRequest("lint", { code: "const r = await load();\nreturn r;" });
+      const res = await handleCodeApi(req, url);
+      const data = await handled(res).json();
+      expect(data.error).toBeUndefined();
+      expect(JSON.stringify(data.diagnostics)).toContain("await");
+      expect(data.diagnostics[0].labels[0].span.line).toBe(1);
     });
 
     test("accepts custom args for lint", async () => {

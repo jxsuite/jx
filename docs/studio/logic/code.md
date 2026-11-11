@@ -6,6 +6,7 @@ code:
   - packages/studio/src/panels/formula-workspace.ts
   - packages/studio/src/canvas/canvas-render.ts
   - packages/studio/src/services/code-services.ts
+  - packages/server/src/code-format.ts
   - packages/studio/src/services/type-check.ts
   - packages/studio/src/settings/project-sections.ts
 ---
@@ -30,7 +31,7 @@ A function body in **Code** mode (the **Statements**/**Code** toggle) is TypeScr
 
 What you get:
 
-- **Formatting on open**: the body is pretty-printed before you start.
+- **Formatting on open**: the body is pretty-printed before you start, with two spaces. [`jx format`](/docs/framework/build/cli#jx-format) does the same from a terminal, so the two never undo each other.
 - **Live linting**: problems are underlined as you type, with the message on hover.
 - **Type errors**: a body is checked against your page's `state`, so `state.nope = 1` is underlined with `Property 'nope' does not exist on type 'State'`, and each error is also listed in **Problems** under **Type check**. Nothing needs installing: the editor does the checking itself, in the desktop app and in the cloud editor alike.
 - **Completions**: type `state.` to see every entry from the **[Data panel](/docs/studio/logic/data)** (your values, data sources, and functions), and `window.` for the standard library (`Math`, `JSON`, …). Named formulas carry their descriptions into the suggestions.

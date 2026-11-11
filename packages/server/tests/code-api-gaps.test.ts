@@ -64,15 +64,3 @@ describe("code-api — lint diagnostics adjustment", () => {
     expect(label.span.line).toBe(2);
   });
 });
-
-describe("code-api — format error path", () => {
-  test("returns original code with an error when wrapping fails", async () => {
-    // Args is not an array → wrapBody throws before formatting
-    const { req, url } = codeRequest("format", { args: 123, code: "return 1;" });
-    const res = await handleCodeApi(req, url);
-    const data = await handled(res).json();
-    expect(data.code).toBe("return 1;");
-    expect(data.errors.length).toBe(1);
-    expect(data.errors[0].message).toBeString();
-  });
-});

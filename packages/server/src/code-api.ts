@@ -1,8 +1,8 @@
 /**
  * Code-api.js — OXC-powered code services for the studio function editor
  *
- * Endpoints under /__studio/code/* that format (oxfmt) and lint (oxlint CLI) a function body. A
- * body may be TypeScript (`spec.md` §23.1), so both read it as `.ts`.
+ * Endpoints under /__studio/code/* that format (oxfmt, through `code-format.ts`) and lint (oxlint
+ * CLI) a function body. A body may be TypeScript (`spec.md` §23.1), so both read it as `.ts`.
  */
 
 import { tmpdir } from "node:os";
@@ -11,7 +11,7 @@ import type { JsonValue } from "@jxsuite/schema/types";
 import { dirname, join } from "node:path";
 import { existsSync } from "node:fs";
 import { unlink } from "node:fs/promises";
-import { format } from "oxfmt";
+import { formatBody } from "./code-format.ts";
 import { problem } from "./problem.ts";
 
 /** A label's source span; oxlint's other span members pass through to the client unchanged. */
@@ -67,28 +67,16 @@ export function resolveOxlintBin(startDir: string = import.meta.dir): string | n
 // ─── Wrapper utilities ───────────────────────────────────────────────────────
 
 /**
+ * A body inside a function with its parameters, so the linter knows each name it is called with.
+ * The function is not `async`, as the one a document's body becomes is not, so a body that awaits
+ * is told so here and not first when it runs.
+ *
  * @param {string} body
  * @param {string[]} [args]
  */
 function wrapBody(body: string, args: string[] = ["state", "event"]) {
   const params = args.join(", ");
   return `function __jx_fn__(${params}) {\n${body}\n}`;
-}
-
-/** @param {string} formatted */
-function unwrapFormatted(formatted: string) {
-  const lines = formatted.split("\n");
-  // Remove first line (function header) and last non-empty line (closing brace)
-  let end = lines.length - 1;
-  while (end > 0 && lines[end]!.trim() === "") {
-    end -= 1;
-  }
-  if (lines[end]!.trim() === "}") {
-    end -= 1;
-  }
-  const bodyLines = lines.slice(1, end + 1);
-  // Dedent by one tab (oxfmt uses the project's indentStyle)
-  return bodyLines.map((l) => (l.startsWith("\t") ? l.slice(1) : l)).join("\n");
 }
 
 /**
@@ -137,17 +125,16 @@ export async function handleCodeApi(req: Request, url: URL) {
   // ── Format ─────────────────────────────────────────────────────────────────
 
   if (action === "format") {
-    const { code, args } = body;
+    const { code } = body;
     if (!code?.trim()) {
       return Response.json({ code: "", errors: [] });
     }
 
     try {
-      const wrapped = wrapBody(code, args);
-      const result = await format("fn.ts", wrapped, { useTabs: true });
+      const result = await formatBody(code);
       return Response.json({
-        code: unwrapFormatted(result.code),
-        errors: result.errors,
+        code: result.code,
+        errors: result.errors.map((message) => ({ message })),
       });
     } catch (error) {
       return Response.json({

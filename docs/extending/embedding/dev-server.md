@@ -54,7 +54,7 @@ So `?path=`, `?dir=` and a rename's `from`/`to` all resolve against the server r
 
 `resolve.ts` implements the two endpoints the runtime uses to run server-side code during development. `handleResolve` takes a `$prototype`/`$src` entry, imports the module server-side (`.js` directly; `.class.json` via its `$implementation`, or a class constructed from the schema), instantiates it with the config, and returns the resolved value. `handleServerFunction` imports a module and invokes a named export with an arguments object. Both do dynamic `import()` of project code. They are remote-code-execution surfaces by design, which is why the security model below exists.
 
-`code-api.ts` adds the code services behind the `codeService` platform member: `oxfmt` formatting, `oxlint` diagnostics, and `Bun.Transpiler` minification for the function-body editor.
+`code-api.ts` adds the code services behind the `codeService` platform member: `oxfmt` formatting (through `code-format.ts`, which `jx format` shares) and `oxlint` diagnostics for the function-body editor.
 
 ## Extension server mounts
 

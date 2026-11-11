@@ -206,6 +206,21 @@ void mock.module("../src/site/convert-command.ts", () => ({
   },
 }));
 
+export const runFormatCalls: { argv: readonly string[]; root: string }[] = [];
+
+let runFormatImpl: (root: string, argv: readonly string[]) => void = () => ({});
+
+export function setRunFormat(impl: typeof runFormatImpl) {
+  runFormatImpl = impl;
+}
+
+void mock.module("../src/site/format-command.ts", () => ({
+  runFormat: (root: string, argv: readonly string[]) => {
+    runFormatCalls.push({ argv, root });
+    return runFormatImpl(root, argv);
+  },
+}));
+
 export const previewCalls: { distDir: string; port: number }[] = [];
 
 void mock.module("../src/site/preview-server.ts", () => ({

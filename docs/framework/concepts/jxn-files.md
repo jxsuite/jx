@@ -14,6 +14,7 @@ code:
   - packages/schema/src/jxn/document.ts
   - packages/schema/src/jxn/lint.ts
   - packages/server/src/convert.ts
+  - packages/server/src/format.ts
   - packages/site/src/serve.ts
   - packages/studio/src/services/jxn-language.ts
   - packages/studio/src/format/format-host.ts
@@ -170,6 +171,17 @@ A build never ships Jx Notation: components become modules and pages become HTML
 ## Saving keeps your comments
 
 Saving a `.jxn` file changes only what you changed. A node that still means the same keeps its exact text, including its comments and blank lines, whether the save came from Studio or from a rename repairing a reference. A comment directly above a node belongs to that node, so deleting the node deletes it.
+
+## Formatting
+
+`oxfmt` does not read `.jxn` files, so the code inside one is formatted by its own command:
+
+```bash
+jx format
+jx format pages/index.jxn --check
+```
+
+It formats every function body and both sides of a document's script as TypeScript, the same way Studio's code editor does, and it keeps the comments of a file that has any. See [`jx format`](/docs/framework/build/cli#jx-format) for what it leaves alone.
 
 ## In Studio
 
