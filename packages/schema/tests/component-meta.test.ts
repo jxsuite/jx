@@ -82,6 +82,29 @@ describe("componentMetaFrom", () => {
       ]);
     });
 
+    test("an entry's enum is carried through, and only when it is a list", () => {
+      const meta = componentMetaFrom(
+        {
+          state: {
+            align: { default: "center", enum: ["left", "center", "right"], type: "string" },
+            loose: { default: "", enum: "left", type: "string" },
+          },
+          tagName: "a-b",
+        },
+        "a.json",
+      );
+      expect(meta?.props).toEqual([
+        {
+          default: "center",
+          enum: ["left", "center", "right"],
+          format: undefined,
+          name: "align",
+          type: "string",
+        },
+        { default: "", format: undefined, name: "loose", type: "string" },
+      ]);
+    });
+
     test("no state at all yields no props, not a throw", () => {
       expect(componentMetaFrom({ tagName: "a-b" }, "a.json")?.props).toEqual([]);
     });

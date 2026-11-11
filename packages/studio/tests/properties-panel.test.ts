@@ -763,6 +763,39 @@ describe("component props section", () => {
     expect(firstChild().$props).toBeUndefined();
   });
 
+  /*
+   * A Jx component says the same thing with JSON Schema `enum` on its state entry, which discovery
+   * carries as `prop.enum`: a closed set wins over the base type, so a numeric list is picked rather
+   * than typed, and the pick goes back as the member itself, number and all.
+   */
+  test("a declared enum is a select, and the pick commits the member as declared", async () => {
+    registerCard({
+      props: [
+        { enum: ["start", "center", "end"], name: "align", type: "string" },
+        { enum: [1, 2, 3], name: "columns", type: "number" },
+      ],
+    });
+    openDoc(cardDoc(), ["children", 0]);
+    const c = await renderPanel();
+    expect(options(control(c, "align"))).toEqual(["", "start", "center", "end"]);
+    expect(options(control(c, "columns"))).toEqual(["", "1", "2", "3"]);
+    commit(control(c, "columns"), "2");
+    expect(firstChild().$props!.columns).toBe(2);
+
+    await renderPanel();
+    commit(control(c, "align"), "end");
+    expect(firstChild().$props!.align).toBe("end");
+  });
+
+  test("a value the enum no longer offers stays listed under the select", async () => {
+    registerCard({ props: [{ enum: ["sm", "md"], name: "space", type: "string" }] });
+    openDoc(cardDoc({ space: "xl" }), ["children", 0]);
+    const c = await renderPanel();
+    expect(options(control(c, "space"))).toEqual(["", "sm", "md", "xl"]);
+    commit(control(c, "space"), "md");
+    expect(firstChild().$props!.space).toBe("md");
+  });
+
   test("date prop commits via its text field", async () => {
     registerCard();
     openDoc(cardDoc(), ["children", 0]);

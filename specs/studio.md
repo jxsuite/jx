@@ -577,10 +577,12 @@ Displays and edits element properties (`tagName`, `className`, `textContent`, et
 When a Jx component is selected, the property panel renders its declared `state` entries as form controls. Widget selection priority:
 
 1. `format` → format-specific control (see table)
-2. `type === "boolean"` → checkbox
-3. `type === "number"` → number field
-4. `type` has enum/union → select (`jx-select`)
+2. a closed set of values → select (`jx-select`)
+3. `type === "boolean"` → checkbox
+4. `type === "number"` → number field
 5. Fallback → text field
+
+**A closed set has two spellings, and they are one list** (`utils/prop-choices.ts`). A Jx component declares it as JSON Schema `enum` on the state entry (`spec.md` §5.3), which discovery carries as the prop's `enum` (`componentMetaFrom` in `@jxsuite/schema/component-meta`); a Custom Elements Manifest declares it as a union of literals in the member's `type.text` (`'sm' | 'lg'`, `"a" | "b"`, `1 | 2`, `true | 'auto'`), which is what an npm package's attribute carries. The entry's own `enum` wins when a prop carries both. A list holding a member a select cannot offer (an object, an array, `null`) is no closed set, and the row falls through. The set is checked before the base type, so a numeric `enum` is picked rather than typed, and each option commits the member itself: `2` goes back as a number, `"2"` as a string. A value the instance holds that the list no longer names is kept as one more option, labelled "(not an option)", so the select never reads blank over a value the instance still has.
 
 | `format`  | Control                                                          |
 | --------- | ---------------------------------------------------------------- |
@@ -739,7 +741,7 @@ One control: a search input filtering CSS properties by name or label (case-inse
 Add, remove, rename, and edit `state` entries. All four shapes supported:
 
 - Naked values — inline editing
-- Typed values — type constraints displayed
+- Typed values — type constraints displayed. A string, number or integer entry carries an **Options** field, comma-separated values written as the entry's `enum` (numbers only for a numeric type, whole ones for an integer); with options the **Default** is a select among them, and clearing the field removes the `enum` (`stateFields` in `panels/signals-panel.ts`)
 - Template strings — expression editing
 - Functions — opens code editor
 

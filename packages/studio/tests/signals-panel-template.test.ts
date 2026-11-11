@@ -484,6 +484,42 @@ describe("the value editor", () => {
     expect(fieldProps(editor)).not.toContain("Format");
   });
 
+  test("Options writes the entry's enum, and Default becomes a pick among them", async () => {
+    const { panel } = await drawSignals({ $align: { default: "", type: "string" } });
+    let editor = await openEntry(panel, "$align");
+    await commitText(control(editor, "Options", "text"), " left, center ,right,, center");
+    expect(docState().$align!.enum).toEqual(["left", "center", "right"]);
+
+    editor = editorFor(panel, "$align");
+    await pick(control(editor, "Default", "select"), "center");
+    expect(docState().$align!.default).toBe("center");
+
+    editor = editorFor(panel, "$align");
+    await commitText(control(editor, "Options", "text"), "");
+    expect(docState().$align!.enum).toBeUndefined();
+    expect(control(editorFor(panel, "$align"), "Default", "text")).not.toBeNull();
+  });
+
+  test("a numeric entry's options are numbers, and its Default commits one", async () => {
+    const { panel } = await drawSignals({ $cols: { default: 1, type: "integer" } });
+    let editor = await openEntry(panel, "$cols");
+    await commitText(control(editor, "Options", "text"), "1, 2, 2.5, three, 4");
+    expect(docState().$cols!.enum).toEqual([1, 2, 4]);
+
+    editor = editorFor(panel, "$cols");
+    await pick(control(editor, "Default", "select"), "4");
+    expect(docState().$cols!.default).toBe(4);
+  });
+
+  test("Options is not offered for a boolean, or for a media value", async () => {
+    const { panel } = await drawSignals({
+      $img: { default: "", format: "image", type: "string" },
+      $on: { default: false, type: "boolean" },
+    });
+    expect(fieldProps(await openEntry(panel, "$on"))).not.toContain("Options");
+    expect(fieldProps(await openEntry(panel, "$img"))).not.toContain("Options");
+  });
+
   test("default values parse per type", async () => {
     const { panel } = await drawSignals({
       $arr: { default: [], type: "array" },
@@ -568,7 +604,14 @@ describe("the value editor", () => {
   test("a plain document has no CEM fields", async () => {
     const { panel } = await drawSignals({ $s: { default: "" } });
     const editor = await openEntry(panel, "$s");
-    expect(fieldProps(editor)).toEqual(["Name", "Type", "Format", "Default", "Description"]);
+    expect(fieldProps(editor)).toEqual([
+      "Name",
+      "Type",
+      "Format",
+      "Options",
+      "Default",
+      "Description",
+    ]);
   });
 });
 
@@ -1115,6 +1158,8 @@ describe("the panel's own parts never reach into the kit's", () => {
     ).style;
     const keys = JSON.stringify(style).match(/"[^"]*\[part=\\"summary\\"\][^"]*":/g) ?? [];
     expect(keys.length).toBeGreaterThan(0);
-    expect(keys.filter((selector) => !selector.includes(String.raw`span[part=\"summary\"]`))).toEqual([]);
+    expect(
+      keys.filter((selector) => !selector.includes(String.raw`span[part=\"summary\"]`)),
+    ).toEqual([]);
   });
 });

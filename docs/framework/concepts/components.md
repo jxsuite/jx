@@ -65,6 +65,16 @@ An object with a `default` property and optional `type`:
 }
 ```
 
+A typed value can limit itself to a fixed set of values with JSON Schema's `enum`. On a component, that set is what the setting offers: Studio draws it as a dropdown on every instance.
+
+```json
+{
+  "state": {
+    "align": { "type": "string", "enum": ["start", "center", "end"], "default": "start" }
+  }
+}
+```
+
 ### Shape 3: a computed template string
 
 A string containing `${}` syntax:
