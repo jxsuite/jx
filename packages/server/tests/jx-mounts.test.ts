@@ -43,6 +43,7 @@ function call(method: string, path: string, body?: JsonObject): Promise<Response
   const init: RequestInit = { method };
   if (body !== undefined) {
     init.body = JSON.stringify(body);
+    init.headers = { "Content-Type": "application/json" };
   }
   return handleJxMounts(new Request(url, init), new URL(url), TMP);
 }

@@ -39,6 +39,12 @@ export const SERVICE_WORKER_PATH = "sw.js";
  */
 export const CACHE_FIRST_PREFIX = "/images/_optimized/";
 
+/**
+ * The subtree the site worker answers (compiler.md §6.4): sessions, table rows and server-function
+ * results. The emitted worker leaves every request under it alone.
+ */
+export const DYNAMIC_PREFIX = "/_jx";
+
 export interface ServiceWorkerOutput {
   /** Path relative to `outDir`, or null when nothing should be emitted. */
   path: string | null;
@@ -152,6 +158,7 @@ export function buildServiceWorker(
   const cachedPrecache = precache.map((url) => withBase(base, url));
   const cacheFirst = withBase(base, CACHE_FIRST_PREFIX);
   const offlineFallback = fallback === undefined ? null : withBase(base, fallback);
+  const dynamic = `${withBase(base, DYNAMIC_PREFIX)}/`;
 
   const cache = `jx-${configId(config)}`;
   const source = `/*
@@ -162,6 +169,11 @@ const CACHE = ${JSON.stringify(cache)};
 const PRECACHE = ${JSON.stringify(cachedPrecache)};
 const CACHE_FIRST = ${JSON.stringify(cacheFirst)};
 const OFFLINE_FALLBACK = ${JSON.stringify(offlineFallback)};
+const DYNAMIC = ${JSON.stringify(dynamic)};
+
+// A response its server marked as one visitor's, or as not to be kept, is never written to a cache.
+const storable = (res) =>
+  res.ok && !/\\b(?:no-store|private)\\b/i.test(res.headers.get("Cache-Control") ?? "");
 
 self.addEventListener("install", (event) => {
   // Take over as soon as possible: a half-updated pair of workers is harder to reason about than
@@ -202,6 +214,12 @@ self.addEventListener("fetch", (event) => {
   if (request.method !== "GET") return;
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
+  /*
+   * Sessions and application data. They are answered by the site worker for one visitor at one
+   * moment, so a cached copy is somebody's rows served after sign-out, or to the next person on the
+   * device. Not handled at all: the request goes to the network exactly as if no worker existed.
+   */
+  if (url.pathname.startsWith(DYNAMIC)) return;
 
   // Content-addressed output only: the filename embeds a digest, so a hit can never be stale.
   if (url.pathname.startsWith(CACHE_FIRST)) {
@@ -227,7 +245,7 @@ self.addEventListener("fetch", (event) => {
     (async () => {
       try {
         const res = await fetch(request);
-        if (res.ok) {
+        if (storable(res)) {
           const copy = res.clone();
           caches.open(CACHE).then((c) => c.put(request, copy));
         }
