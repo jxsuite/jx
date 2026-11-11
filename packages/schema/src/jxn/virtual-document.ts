@@ -18,6 +18,12 @@
  *   where it stands, the event its handler is given, and the names the runtime binds (`spec.md`
  *   §5.3 4d). A body does not see what the script declares (§23.2), which is why it is not written
  *   into the main module.
+ * - **One module for each template**: the function a `${}` string is the value of, given the names
+ *   the runtime gives one. It is JavaScript and not TypeScript, because that is what the runtime
+ *   compiles it as, so a type written inside one is an error here as it is a blank on the page.
+ * - **One module for every `$ref`** into `state` or the row of a map: each path read off the `State`
+ *   of where it stands, so a name that is not there is an error at the name, and renaming an entry
+ *   renames what refers to it. An `on*` member's is checked as the handler it binds.
  *
  * It is pure: text in, text and spans out, with no compiler, DOM or Node. A mapper for `tsc` is one
  * reader of it and an editor inside Studio can be another, and neither can disagree with the other
@@ -37,13 +43,15 @@ import type { JxnTokens } from "./parse.ts";
 import {
   boundEvents,
   eachSite,
+  EVENT_GLOBALS,
   eventLines,
   eventType,
+  expressionsAt,
   itemType,
   membersOf,
   readsRow,
 } from "./document-scopes";
-import type { Row, Site, StateScope } from "./document-scopes";
+import type { RefSite, Row, Site, StateScope } from "./document-scopes";
 import {
   IDENTIFIER,
   parametersOf,
@@ -74,6 +82,8 @@ export interface VirtualSpan {
 
 /** One module a checker reads. Offsets count UTF-16 code units, as a JavaScript string does. */
 export interface VirtualUnit {
+  /** What the module is written in. A template is JavaScript, as the runtime compiles it. */
+  extension: ".js" | ".ts";
   /** In the order written, which is ascending in the module. */
   spans: VirtualSpan[];
   text: string;
@@ -179,9 +189,43 @@ class Writer {
       : this.mapped(written, span.start, span.end, "atom");
   }
 
+  /**
+   * Part of a string's value, written as itself or as something that stands for it.
+   *
+   * @param written What the module says.
+   * @param span The string's token, which the part stands for whole when no piece of it does.
+   * @param pieces The string's pieces.
+   * @param from Where the part starts in the value.
+   * @param to One past where it ends.
+   */
+  part(
+    written: string,
+    span: JxnSpan,
+    pieces: readonly StringPiece[],
+    from: number,
+    to: number,
+  ): this {
+    let { end, start } = span;
+    let met = false;
+    let offset = 0;
+    for (const piece of pieces) {
+      const next = offset + piece.text.length;
+      if (next > from && offset < to) {
+        // A piece that is not the source character for character is indivisible.
+        const first = piece.verbatim ? piece.start + Math.max(0, from - offset) : piece.start;
+        start = met ? start : first;
+        end = piece.verbatim ? piece.start + Math.min(piece.text.length, to - offset) : piece.end;
+        met = true;
+      }
+      offset = next;
+    }
+    const kind = this.source.slice(start, end) === written ? "verbatim" : "atom";
+    return this.mapped(written, start, end, kind);
+  }
+
   /** The module, ended. */
-  unit(): VirtualUnit {
-    return { spans: this.spans, text: this.text };
+  unit(extension: VirtualUnit["extension"] = ".ts"): VirtualUnit {
+    return { extension, spans: this.spans, text: this.text };
   }
 }
 
@@ -216,11 +260,30 @@ interface Body {
   text: string;
 }
 
+/** A `${}` string, and what the main module says of where it stands. */
+interface Template {
+  /** Its token. */
+  span: JxnSpan;
+  /** The interface its `state` is, by the name the main module exports it under. */
+  state: string;
+  text: string;
+}
+
+/** A `$ref` into `state` or a row, and what the main module says of where it stands. */
+interface Reference extends RefSite {
+  /** The token of the string it is written as. */
+  span: JxnSpan;
+  /** The interface it reads, by the name the main module exports it under. */
+  state: string;
+}
+
 /** What a document's elements declare, in the order the main module writes it. */
 interface Layout {
   bodies: Body[];
   /** What each scope's interface is called. The root's is `State`. */
   names: Map<StateScope, string>;
+  refs: Reference[];
+  templates: Template[];
   views: RowView[];
 }
 
@@ -359,7 +422,8 @@ function isStringBody(value: JsonValue | undefined): value is JsonObject & { bod
 /** Read what a document's elements declare: its scopes, the rows its bodies read, and its bodies. */
 function layoutOf(reading: Reading): Layout {
   const { doc, stateName } = reading;
-  const layout: Layout = { bodies: [], names: new Map(), views: [] };
+  const layout: Layout = { bodies: [], names: new Map(), refs: [], templates: [], views: [] };
+  const { values } = reading.tokens;
   const bound = boundEvents(doc);
   let declared = 0;
   /** What a scope's interface is called, decided the first time it is met. */
@@ -412,6 +476,23 @@ function layoutOf(reading: Reading): Layout {
         });
       }
     }
+    /* One the file does not place is left out: an error in it would be shown at a place in a
+       module nobody wrote, which is worse than not being told. */
+    const said = expressionsAt(node, pointer, site);
+    for (const template of said.templates) {
+      const span = values.get(template.pointer);
+      if (span) {
+        layout.templates.push({ span, state: stateAt(site), text: template.text });
+      }
+    }
+    for (const ref of said.refs) {
+      // Written `(ref)name "…"` the string is the member's own, and in a block it is its `$ref`.
+      const span = values.get(ref.pointer) ?? values.get(`${ref.pointer}/$ref`);
+      if (span) {
+        const row = ref.path[0]?.key === "$map";
+        layout.refs.push({ ...ref, span, state: row ? stateAt(site) : scopeName(site.scope) });
+      }
+    }
   });
   return layout;
 }
@@ -452,9 +533,92 @@ function writeBody(reading: Reading, body: Body): VirtualUnit {
   return out.add("\n}\n").unit();
 }
 
+/** What every template module says before the template: the names the runtime gives one. */
+const TEMPLATE_HEAD = [
+  "/**",
+  " * @param {State} state",
+  ' * @param {State["$map"]} $map',
+  ' * @param {State["$map"] extends { item: infer I } ? I : any} item',
+  ' * @param {State["$map"] extends { index: infer I } ? I : any} index',
+  ' * @param {State["$site"]} $site',
+  ' * @param {State["$page"]} $page',
+  " */",
+  "export function template(state, $map, item, index, $site, $page) {",
+  // A template that does not read one of them is not an error.
+  "void [state, $map, item, index, $site, $page];",
+  "return ",
+].join("\n");
+
+/** Write the module for one template: the function it is the value of. */
+function writeTemplate(reading: Reading, template: Template): VirtualUnit {
+  const { span } = template;
+  const out = new Writer(reading.source);
+  const imported = template.state === "State" ? "State" : `${template.state} as State`;
+  // Without this line a JavaScript module is not checked at all.
+  out.add("// @ts-check\n");
+  out.add(`/** @import { ${imported} } from ${JSON.stringify(reading.specifier)} */\n`);
+  out.add(TEMPLATE_HEAD);
+  /* The quotes stand for the backticks, so a template that does not end is reported on the string
+     it is, and not at the end of a module nobody wrote. */
+  out.mapped("`", span.start, span.start + 1, "atom");
+  out.value(template.text, span);
+  return out.mapped("`;\n}\n", span.end - 1, span.end, "atom").unit(".js");
+}
+
+/** What the references module declares when it checks a handler: what a binding calls one with. */
+const BOUND = "declare function bound<E>(handler: (state: any, event: E) => unknown): void;\n";
+
+/** Whether a reference is the handler of the `on*` member it is written at. */
+function bindsHandler(ref: Reference): boolean {
+  return ref.binding !== null && ref.prefix === "#/state/" && ref.path.length === 1;
+}
+
+/** Write one reference: its path read off the interface it stands in. */
+function writeReference(out: Writer, ref: Reference, receiver: string): void {
+  const { binding, site, span } = ref;
+  const pieces = stringPieces(out.source, span, ref.ref);
+  const handler = binding !== null && bindsHandler(ref);
+  out.add(handler ? `bound<${eventType(binding.element, binding.key, site)}>(` : "void ");
+  for (const [index, { end, key, start }] of ref.path.entries()) {
+    const plain = IDENTIFIER.test(key);
+    const member = plain ? key : `[${JSON.stringify(key)}]`;
+    if (index > 0) {
+      // A token that matches nothing reads as nothing (§7.1), so each step after the first asks.
+      out.part("?.", span, pieces, start - 1, start).part(member, span, pieces, start, end);
+    } else if (ref.prefix === "") {
+      out.part(`${receiver}${plain ? "." : ""}${member}`, span, pieces, start, end);
+    } else {
+      out.part(`${receiver}${plain ? "." : ""}`, span, pieces, 0, ref.prefix.length);
+      out.part(member, span, pieces, start, end);
+    }
+  }
+  out.add(handler ? ");\n" : ";\n");
+}
+
+/** Write the module for a document's references, or nothing when it has none. */
+function writeReferences(reading: Reading, layout: Layout): VirtualUnit[] {
+  const { refs } = layout;
+  if (refs.length === 0) {
+    return [];
+  }
+  const out = new Writer(reading.source);
+  const states = [...new Set(refs.map((ref) => ref.state))];
+  out.add(`import type { ${states.join(", ")} } from ${JSON.stringify(reading.specifier)};\n`);
+  if (refs.some((ref) => bindsHandler(ref))) {
+    out.add(EVENT_GLOBALS).add(BOUND);
+  }
+  for (const [index, state] of states.entries()) {
+    out.add(`declare const s${index}: ${state};\n`);
+  }
+  for (const ref of refs) {
+    writeReference(out, ref, `s${states.indexOf(ref.state)}`);
+  }
+  return [out.unit()];
+}
+
 /** A file no module can be written around. */
 function unreadable(problems: VirtualProblem[]): VirtualDocument {
-  return { main: { spans: [], text: EMPTY_MODULE }, problems, supplemental: [] };
+  return { main: { extension: ".ts", spans: [], text: EMPTY_MODULE }, problems, supplemental: [] };
 }
 
 /**
@@ -503,5 +667,9 @@ export function generateVirtualDocument(
   for (const body of layout.bodies) {
     supplemental.push(writeBody(reading, body));
   }
+  for (const template of layout.templates) {
+    supplemental.push(writeTemplate(reading, template));
+  }
+  supplemental.push(...writeReferences(reading, layout));
   return { main: writeMain(reading, layout), problems: [], supplemental };
 }

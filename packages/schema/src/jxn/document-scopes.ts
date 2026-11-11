@@ -49,7 +49,7 @@ export interface Site {
 const NOT_WALKED: ReadonlySet<string> = new Set(["$defs", "$script", "state", "style"]);
 
 /** The interfaces a lookup reads, declared empty so that a project without the DOM library has them. */
-const EVENT_GLOBALS = [
+export const EVENT_GLOBALS = [
   "declare global {",
   "  interface HTMLElementEventMap {}",
   "  interface HTMLElementTagNameMap {}",
@@ -418,4 +418,158 @@ export function boundEvents(doc: JsonObject): Map<string, string> {
     }
   }
   return new Map([...types].map(([entry, each]) => [entry, [...each].join(" | ")]));
+}
+
+/** A string the runtime reads as a template (`spec.md` §6), and where it stands. */
+export interface TemplateSite {
+  pointer: string;
+  site: Site;
+  text: string;
+}
+
+/** The handler an `on*` member binds, when a `$ref` is what binds it. */
+export interface HandlerBinding {
+  element: JsonObject;
+  key: string;
+}
+
+/** A `$ref` into `state` or into the row of a map, and where it stands. */
+export interface RefSite {
+  /** The handler it binds, or null when it is read as a value. */
+  binding: HandlerBinding | null;
+  /** The members it names, outermost first, each with where in the `$ref` it is written. */
+  path: RefSegment[];
+  /** Where the object holding `$ref` is. */
+  pointer: string;
+  /** What comes before the first member: `#/state/`, `#/`, or nothing. */
+  prefix: string;
+  ref: string;
+  site: Site;
+}
+
+/** One member a `$ref` names. */
+export interface RefSegment {
+  /** One past its last character in the `$ref`. */
+  end: number;
+  /** The member, unescaped. */
+  key: string;
+  start: number;
+}
+
+/** What one object of a document says outside its functions that a checker reads. */
+export interface Expressions {
+  refs: RefSite[];
+  templates: TemplateSite[];
+}
+
+/** The members a `$ref` names after a prefix, each with where it is written. */
+function segmentsAfter(ref: string, prefix: string): RefSegment[] {
+  const path: RefSegment[] = [];
+  let start = prefix.length;
+  for (const part of ref.slice(prefix.length).split("/")) {
+    const [key = part] = segments(part);
+    path.push({ end: start + part.length, key, start });
+    start += part.length + 1;
+  }
+  return path;
+}
+
+/** Read a `$ref` as a path into `state` or a row, or null when it names something else. */
+function readRef(ref: string): Pick<RefSite, "path" | "prefix"> | null {
+  // Both spellings of a row, as the runtime reads both.
+  const prefix = ["#/state/", "#/$map/", "$map/"].find((start) => ref.startsWith(start));
+  if (prefix === undefined) {
+    return null;
+  }
+  const before = prefix === "#/state/" ? prefix : prefix.slice(0, -"$map/".length);
+  const path = segmentsAfter(ref, before);
+  // A path with nothing between two slashes names no member, and is the runtime's to refuse.
+  return path.some(({ key }) => key === "") ? null : { path, prefix: before };
+}
+
+/**
+ * What one object of a document says outside its functions: each `${}` template it holds, and each
+ * `$ref` into `state` or the row of a map.
+ *
+ * A template is a string of an element: a member, an attribute, a `style` value, a child, a value
+ * handed down as `$props`, or an entry of its `state`. A string anywhere else is data, and is not
+ * read, because a `${` in data is text. A `$ref` is read wherever it is written, since nothing else
+ * is spelled that way, and one that names a file, a definition or the window is left out.
+ *
+ * @param node The object, as `eachSite` visits it.
+ * @param pointer Where it is.
+ * @param site What surrounds it.
+ * @returns Both, in the order the object holds them.
+ */
+export function expressionsAt(node: JsonObject, pointer: string, site: Site): Expressions {
+  const found: Expressions = { refs: [], templates: [] };
+  // The root is an element whether or not it names a tag.
+  const element = pointer === "" || isString(node.tagName);
+  const template = (value: JsonValue | undefined, at: string): void => {
+    if (isString(value) && value.includes("${")) {
+      found.templates.push({ pointer: at, site, text: value });
+    }
+  };
+  const refAt = (value: JsonValue | undefined, at: string, binding: HandlerBinding | null) => {
+    const read = isRef(value) ? readRef(value.$ref) : null;
+    if (isRef(value) && read) {
+      found.refs.push({ ...read, binding, pointer: at, ref: value.$ref, site });
+    }
+    return isRef(value);
+  };
+  /** The strings an object holds directly, under names that are its own. */
+  const members = (value: JsonObject, at: string): void => {
+    for (const [name, item] of Object.entries(value)) {
+      if (!name.startsWith("$")) {
+        template(item, pointerInto(at, name));
+      }
+    }
+  };
+  /** A value `eachSite` does not walk: each `$ref` in it, and each string where those are templates. */
+  const within = (value: JsonValue | undefined, at: string, templates: boolean): void => {
+    if (refAt(value, at, null)) {
+      return;
+    }
+    if (templates) {
+      template(value, at);
+    }
+    if (Array.isArray(value) || isJsonObject(value)) {
+      for (const [key, item] of Object.entries(value)) {
+        within(item, pointerInto(at, key), templates);
+      }
+    }
+  };
+  for (const [key, value] of Object.entries(node)) {
+    const at = pointerInto(pointer, key);
+    const handler = key.startsWith("on");
+    if (refAt(value, at, element && handler ? { element: node, key } : null)) {
+      continue;
+    }
+    if (key === "state" && isJsonObject(value)) {
+      for (const [name, entry] of Object.entries(value)) {
+        const entryAt = pointerInto(at, name);
+        // An entry that is a string is a template, and so is what configures a prototype.
+        template(entry, entryAt);
+        if (isJsonObject(entry) && isString(entry.$prototype) && !isFunctionDef(entry)) {
+          members(entry, entryAt);
+        }
+        // Anything deeper is data, in which only a `$ref` is read.
+        within(entry, entryAt, false);
+      }
+    } else if (key === "style") {
+      within(value, at, element);
+    } else if (Array.isArray(value)) {
+      for (const [index, item] of value.entries()) {
+        const child = pointerInto(at, index);
+        if (!refAt(item, child, null) && element && key === "children") {
+          template(item, child);
+        }
+      }
+    } else if (element && (key === "attributes" || key === "$props") && isJsonObject(value)) {
+      members(value, at);
+    } else if (element && !handler && !key.startsWith("$") && key !== "tagName") {
+      template(value, at);
+    }
+  }
+  return found;
 }

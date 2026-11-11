@@ -21,10 +21,10 @@ function generate(source: string, outside?: OutsideState): VirtualDocument {
 }
 
 /** What each span of a module says: its kind, the module's text, and the file's. */
-function mapped(unit: VirtualUnit, source: string): string[][] {
-  return unit.spans.map((span) => [
+function mapped(unit: VirtualUnit | undefined, source: string): string[][] {
+  return (unit?.spans ?? []).map((span) => [
     span.kind,
-    unit.text.slice(span.virtualStart, span.virtualStart + span.virtualLength),
+    (unit?.text ?? "").slice(span.virtualStart, span.virtualStart + span.virtualLength),
     source.slice(span.originalStart, span.originalStart + span.originalLength),
   ]);
 }
@@ -656,7 +656,8 @@ describe("a body drawn by a map", () => {
   });
 
   test("shares one State between the bodies of a row, and reads the nearest map's", () => {
-    expect(written.supplemental.map((unit) => [headOf(unit)[0], insideOf(unit)[1]])).toEqual([
+    const bodies = written.supplemental.slice(0, 4);
+    expect(bodies.map((unit) => [headOf(unit)[0], insideOf(unit)[1]])).toEqual([
       ['import type { State } from "./a.jxn";', "state.todos"],
       ['import type { State$1 as State } from "./a.jxn";', "state.$map.item.title"],
       ['import type { State$1 as State } from "./a.jxn";', "state.$map.index"],
@@ -758,11 +759,214 @@ describe("the event a body is given", () => {
   });
 });
 
+/** The module of one template: the function it is the value of. */
+const templateOf = (imported: string, value: string): string =>
+  file(
+    "// @ts-check",
+    `/** @import { ${imported} } from "./a.jxn" */`,
+    "/**",
+    " * @param {State} state",
+    ' * @param {State["$map"]} $map',
+    ' * @param {State["$map"] extends { item: infer I } ? I : any} item',
+    ' * @param {State["$map"] extends { index: infer I } ? I : any} index',
+    ' * @param {State["$site"]} $site',
+    ' * @param {State["$page"]} $page',
+    " */",
+    "export function template(state, $map, item, index, $site, $page) {",
+    "void [state, $map, item, index, $site, $page];",
+    `return \`${value}\`;`,
+    "}",
+  );
+
+describe("a template", () => {
+  const source = file(
+    "div {",
+    "  state {",
+    "    count 0",
+    '    label "${state.count} left"',
+    "    todos {",
+    '      - { title "a" }',
+    "    }",
+    "  }",
+    '  p "Said \\"${state.label}\\"" title="${state.count}"',
+    "  ul {",
+    '    $array items=(ref)"#/state/todos" {',
+    '      li #"${item.title}"#',
+    "    }",
+    "  }",
+    "}",
+  );
+  const written = generate(source);
+
+  test("is a module of JavaScript, as the runtime compiles it, after the bodies", () => {
+    expect(written.supplemental.map((unit) => unit.extension)).toEqual([
+      ".js",
+      ".js",
+      ".js",
+      ".js",
+      ".ts",
+    ]);
+    expect(
+      generate(file("div {", '  (fn)onclick "void 0"', '  p "${1}"', "}")).supplemental,
+    ).toEqual([
+      expect.objectContaining({ extension: ".ts" }),
+      expect.objectContaining({ extension: ".js" }),
+    ]);
+  });
+
+  test("is the function it is the value of, given the names the runtime gives one", () => {
+    expect(written.supplemental.slice(0, 4).map((unit) => unit.text)).toEqual([
+      templateOf("State", "${state.count} left"),
+      templateOf("State", 'Said "${state.label}"'),
+      templateOf("State", "${state.count}"),
+      // In a row it reads the row's State, by the name every module calls its own.
+      templateOf("State$1 as State", "${item.title}"),
+    ]);
+  });
+
+  test("is joined to the string it is, its quotes standing for the backticks", () => {
+    expect(mapped(written.supplemental[0], source)).toEqual([
+      ["atom", "`", '"'],
+      ["verbatim", "${state.count} left", "${state.count} left"],
+      ["atom", "`;\n}\n", '"'],
+    ]);
+    // An escape is one stretch, and so is each end of a string written raw.
+    expect(mapped(written.supplemental[1], source)).toEqual([
+      ["atom", "`", '"'],
+      ["verbatim", "Said ", "Said "],
+      ["atom", '"', String.raw`\"`],
+      ["verbatim", "${state.label}", "${state.label}"],
+      ["atom", '"', String.raw`\"`],
+      ["atom", "`;\n}\n", '"'],
+    ]);
+    expect(mapped(written.supplemental[3], source)).toEqual([
+      ["atom", "`", "#"],
+      ["verbatim", "${item.title}", "${item.title}"],
+      ["atom", "`;\n}\n", "#"],
+    ]);
+    expectSound(written, source);
+  });
+
+  test("is not read where a string is data", () => {
+    const data = generate(
+      file(
+        "div {",
+        "  state {",
+        '    list { - "${data}" }',
+        '    (fn)go "return `${1}`"',
+        "  }",
+        "}",
+      ),
+    );
+    expect(data.supplemental.map((unit) => unit.extension)).toEqual([".ts"]);
+  });
+});
+
+describe("a reference", () => {
+  const source = file(
+    "div {",
+    "  state {",
+    "    count 0",
+    '    "my key" { "a/b" 1 }',
+    "    todos {",
+    '      - { title "a" }',
+    "    }",
+    '    (fn)save "void 0"',
+    "  }",
+    '  p (ref)"#/state/count" title=(ref)"#/state/my key/a~1b" hidden=(ref)"#/state/todos/0/title"',
+    String.raw`  button onclick=(ref)"#/state/save" onkeydown=(ref)"#/state/todos/0" lang=(ref)"#/state/sa\u{76}e"`,
+    "  ul {",
+    '    $array items=(ref)"#/state/todos" {',
+    String.raw`      li textContent=(ref)"$map/item/title" title=(ref)"#/$map/index" id=(ref)"\u{24}map/item" {`,
+    '        lang { $ref "#/state/count" }',
+    "      }",
+    "    }",
+    "  }",
+    '  i title=(ref)"window#/name"',
+    "}",
+  );
+  const written = generate(source);
+  const unit = written.supplemental.at(-1);
+  const click = eventOn("button", "click", BOTH);
+
+  test("is its path read off the State of where it stands, in one module for them all", () => {
+    expect(written.supplemental).toHaveLength(2);
+    expect(unit?.extension).toBe(".ts");
+    expect(unit?.text).toBe(
+      file(
+        'import type { State, State$1 } from "./a.jxn";',
+        ...EVENT_GLOBALS,
+        "declare function bound<E>(handler: (state: any, event: E) => unknown): void;",
+        "declare const s0: State;",
+        "declare const s1: State$1;",
+        "void s0.count;",
+        // A name that is no identifier is read by its string, and each step after the first asks.
+        'void s0["my key"]?.["a/b"];',
+        'void s0.todos?.["0"]?.title;',
+        // A handler is given to what a binding calls, and only a function of state itself is one.
+        `bound<${click}>(s0.save);`,
+        'void s0.todos?.["0"];',
+        "void s0.save;",
+        "void s0.todos;",
+        // One written out as a block is the same reference.
+        "void s0.count;",
+        // A row is read off the State that declares it, in either spelling.
+        "void s1.$map?.item?.title;",
+        "void s1.$map?.index;",
+        "void s1.$map?.item;",
+      ),
+    );
+  });
+
+  test("is joined name by name to the string it is written as", () => {
+    const spans = mapped(unit, source);
+    expect(spans.slice(0, 6)).toEqual([
+      ["atom", "s0.", "#/state/"],
+      ["verbatim", "count", "count"],
+      ["atom", "s0", "#/state/"],
+      ["atom", '["my key"]', "my key"],
+      ["atom", "?.", "/"],
+      ["atom", '["a/b"]', "a~1b"],
+    ]);
+    // A name the file spells another way is one stretch, whole.
+    expect(spans).toContainEqual(["atom", "save", String.raw`sa\u{76}e`]);
+    expect(spans.slice(-12)).toEqual([
+      ["atom", "s1.$map", "$map"],
+      ["atom", "?.", "/"],
+      ["verbatim", "item", "item"],
+      ["atom", "?.", "/"],
+      ["verbatim", "title", "title"],
+      ["atom", "s1.", "#/"],
+      ["verbatim", "$map", "$map"],
+      ["atom", "?.", "/"],
+      ["verbatim", "index", "index"],
+      ["atom", "s1.$map", String.raw`\u{24}map`],
+      ["atom", "?.", "/"],
+      ["verbatim", "item", "item"],
+    ]);
+    expectSound(written, source);
+  });
+
+  test("declares nothing for a handler where no reference binds one", () => {
+    const plain = generate(file("div {", "  state { count 0 }", '  p (ref)"#/state/count"', "}"));
+    expect(plain.supplemental.map((each) => each.text)).toEqual([
+      file('import type { State } from "./a.jxn";', "declare const s0: State;", "void s0.count;"),
+    ]);
+  });
+
+  test("is no module where a document refers to nothing in state or a row", () => {
+    const none = generate(
+      file("div {", '  i title=(ref)"window#/name" lang=(ref)"#/$defs/a"', "}"),
+    );
+    expect(none.supplemental).toEqual([]);
+  });
+});
+
 describe("a file that is not a document", () => {
   test("is an empty module when it is a project file, which holds no code", () => {
     const written = generate(file('project "x"', 'defaults layout="./layouts/base.jxn"'));
     expect(written).toEqual({
-      main: { spans: [], text: "export {};\n" },
+      main: { extension: ".ts", spans: [], text: "export {};\n" },
       problems: [],
       supplemental: [],
     });
@@ -771,7 +975,7 @@ describe("a file that is not a document", () => {
   test("is an empty module and one problem when it is not Jx Notation", () => {
     const source = file("div {", "  state { count 0 }", "}", "p");
     const written = generate(source);
-    expect(written.main).toEqual({ spans: [], text: "export {};\n" });
+    expect(written.main).toEqual({ extension: ".ts", spans: [], text: "export {};\n" });
     expect(written.supplemental).toEqual([]);
     expect(written.problems).toEqual([
       {
