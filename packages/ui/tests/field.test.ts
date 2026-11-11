@@ -12,7 +12,7 @@ import { resolve } from "node:path";
 import { buildStyleRules } from "@jxsuite/runtime/css";
 import type { JsonObject, JxStyle } from "@jxsuite/schema/types";
 import fieldDoc from "../components/jx-field.json";
-import { nameFieldControl } from "../src/behaviors/textfield.ts";
+import { focusFieldControl, nameFieldControl } from "../src/behaviors/textfield.ts";
 import { registerUi } from "../src/index.ts";
 
 const tick = () =>
@@ -519,5 +519,48 @@ describe("the stylebook, after the row became an element", () => {
       alignItems: "flex-start",
       gap: "var(--jx-space-5)",
     });
+  });
+});
+
+describe("jx-field's label as a way in to its control", () => {
+  test("a click on the label focuses the control a kit element draws", async () => {
+    const el = await row({ label: "Name" }, "<jx-textfield></jx-textfield>");
+    const input = el.querySelector<HTMLInputElement>('jx-textfield [part="input"]')!;
+    expect(document.activeElement).not.toBe(input);
+    part(el, "label").click();
+    expect(document.activeElement).toBe(input);
+  });
+
+  test("the control is found at the click, so one the element has replaced is still reached", async () => {
+    const el = await row({ label: "Notes" }, "<jx-textfield></jx-textfield>");
+    /* SAFETY: jx-textfield is registered in beforeAll and its document declares `multiline`. */
+    const field = el.querySelector("jx-textfield") as HTMLElement & { multiline: boolean };
+    field.multiline = true;
+    await tick();
+    part(el, "label").click();
+    expect(document.activeElement?.localName).toBe("textarea");
+  });
+
+  test("it only focuses: a box is not ticked from a column away", async () => {
+    const el = await row({ label: "Wrap" }, "<jx-checkbox></jx-checkbox>");
+    const input = el.querySelector<HTMLInputElement>('jx-checkbox [part="input"]')!;
+    part(el, "label").click();
+    expect(document.activeElement).toBe(input);
+    expect(input.checked).toBe(false);
+  });
+
+  test("a native control slotted straight in is focused too, and an empty row has nowhere to go", async () => {
+    const native = await row({ label: "Language" }, '<input type="text">');
+    part(native, "label").click();
+    expect(document.activeElement).toBe(native.querySelector("input"));
+
+    const text = await row({ label: "Status" }, "<span>Saved</span>");
+    part(text, "label").click();
+    expect(document.activeElement).toBe(native.querySelector("input"));
+
+    const empty = await row({ label: "Nothing" });
+    expect(() => part(empty, "label").click()).not.toThrow();
+    // Called with an event that came from nowhere: there is no label to start from.
+    expect(() => focusFieldControl({}, new Event("click"))).not.toThrow();
   });
 });
