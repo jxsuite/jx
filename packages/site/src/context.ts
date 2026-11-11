@@ -4,11 +4,19 @@
  * Injects project-level and page-level context variables into a page's state before compilation.
  * These are available as $site.* and $page.* in template expressions.
  *
- * Per site-architecture spec §10: $site.name — from project.json name $site.url — from project.json
- * url $site.state.* — site-wide reactive state $page.url — current page URL path $page.title — page
- * title $page.params — dynamic route parameters (if any) $page.locale/$page.dir — the route's
- * language and writing direction (§13.4) $page.alternates — this page in every language it exists
- * in (§13.5) $page.pagination — where a paged route's page sits in its list (§4.3)
+ * Per site-architecture spec §10:
+ *
+ * - `$site.name`, `$site.url`: from the project file's `name` and `url`.
+ * - `$site.<key>`: each project `state` entry as written, read-only, never replacing the four names
+ *   in {@link SITE_CONTEXT_KEYS} (§10.4).
+ * - `$page.url`, `$page.title`, `$page.params`: the current page's URL path, title and dynamic route
+ *   parameters.
+ * - `$page.locale`, `$page.dir`: the route's language and writing direction (§13.4).
+ * - `$page.alternates`: this page in every language it exists in (§13.5).
+ * - `$page.pagination`: where a paged route's page sits in its list (§4.3).
+ *
+ * Each project `state` entry is also copied into the page's own `state` unless the page or its
+ * layout declares the key.
  *
  * The site build is not the only thing that has to produce this state. A page rendered live — on
  * the studio's canvas, or by the cloud's preview origin — binds `${$site.name}` and `${$page.url}`
@@ -57,6 +65,17 @@ export interface SiteRoute {
 export type ImportRebaser = (src: string, route: SiteRoute) => string;
 
 /**
+ * The names `$site` defines itself (site-architecture.md §5.5). A project `state` entry with one of
+ * these names reaches the page as bare state only (§10.4).
+ */
+export const SITE_CONTEXT_KEYS: ReadonlySet<string> = new Set([
+  "defaultLocale",
+  "locales",
+  "name",
+  "url",
+]);
+
+/**
  * Inject $site and $page context into a page document's state.
  *
  * @param {JxDocument} doc - The page document (mutated)
@@ -86,13 +105,17 @@ export function injectContext(
     localeFields.defaultLocale = i18n.defaultLocale;
     localeFields.locales = i18n.locales;
   }
-  /* Project state is spread last, so a key it shares with the fields above overrides it in place.
-     A spread, not `Object.assign`: an authored `__proto__` key stays an own data property. */
+  /* Project state goes first and the context's own names last, so a state entry called `name` can
+     never stand in for the project's name; it is left out altogether so that a project without
+     `i18n` does not grow a `$site.locales` from its state. `Object.fromEntries` and a spread, not
+     `Object.assign`: an authored `__proto__` key stays an own data property. */
   doc.state.$site = {
+    ...Object.fromEntries(
+      Object.entries(projectConfig.state ?? {}).filter(([key]) => !SITE_CONTEXT_KEYS.has(key)),
+    ),
     name: projectConfig.name ?? "Jx Site",
     url: projectConfig.url ?? "",
     ...localeFields,
-    ...projectConfig.state,
   };
 
   /*
@@ -153,7 +176,8 @@ export function injectContext(
   }
   doc.state.$page = page;
 
-  // Merge project-level state into page state (page wins on conflicts)
+  // Merge project-level state into page state: the page, then its layout, wins
+  // (site-architecture.md §10.4)
   if (projectConfig.state) {
     for (const [key, value] of Object.entries(projectConfig.state)) {
       if (key !== "$site" && key !== "$page" && !(key in doc.state)) {
