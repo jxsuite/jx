@@ -38,8 +38,15 @@ function bunTarget(target: BundleTargetName): "browser" | "node" | "bun" {
   return target;
 }
 
-/** Bundle one file with `Bun.build` and return the output's text. */
-async function buildFile(entryPath: string, request: BackendBuild): Promise<string> {
+/**
+ * Bundle one file with `Bun.build` and return the output's text. With `contents`, the file is the
+ * text given and nothing is read from `entryPath`.
+ */
+async function buildFile(
+  entryPath: string,
+  request: BackendBuild,
+  contents?: string,
+): Promise<string> {
   const config: BuildConfig = {
     entrypoints: [entryPath],
     external: request.external,
@@ -54,6 +61,11 @@ async function buildFile(entryPath: string, request: BackendBuild): Promise<stri
   }
   if (request.define) {
     config.define = request.define;
+  }
+  if (contents !== undefined) {
+    // An in-memory file: Bun never asks a plugin to resolve an entry point, so a module that is not
+    // On disk can only be an entry this way.
+    config.files = { [entryPath]: contents };
   }
   const result = await Bun.build(config);
   if (!result.success || result.outputs.length === 0) {
@@ -70,7 +82,7 @@ export async function build(request: BackendBuild): Promise<string> {
   }
   const { entry } = request;
   if ("path" in entry) {
-    return buildFile(entry.path, request);
+    return buildFile(entry.path, request, entry.contents);
   }
   // Bun.build has no stdin input: write a transient entry in `resolveDir` so resolution matches
   // The stdin/resolveDir behaviour, and always remove it.

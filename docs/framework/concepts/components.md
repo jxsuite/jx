@@ -134,6 +134,8 @@ export function decrement(state) {
 
 The first parameter is always `state`, the component's reactive scope. `this` is never used.
 
+A component can also carry that module itself, as text in `$script.client`, with entries naming it by `$src: "#client"`. `jx build` bundles it per component. See [A module inside the document](/docs/framework/concepts/functions#a-module-inside-the-document) for the rules and for what does not run it yet.
+
 ## Custom elements
 
 A component whose `tagName` contains a hyphen is a custom element:

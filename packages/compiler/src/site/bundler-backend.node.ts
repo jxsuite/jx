@@ -5,7 +5,7 @@
 import { createRequire } from "node:module";
 import { join } from "node:path";
 import type { BuildOptions } from "esbuild";
-import type { BackendBuild, BundleTargetName } from "./bundler-backend.ts";
+import type { BackendBuild, BundlePlugin, BundleTargetName } from "./bundler-backend.ts";
 
 /** Which bundler this backend runs. */
 export function backendName(): "bun" | "esbuild" {
@@ -20,6 +20,26 @@ export function resolveBare(specifier: string, fromDir: string): string {
 /** Map a bundle target to esbuild's platform (conditions carry the workerd specifics). */
 function esbuildPlatform(target: BundleTargetName): "browser" | "node" {
   return target === "node" || target === "bun" ? "node" : "browser";
+}
+
+/** Escape a string for use as a literal inside a `RegExp`. */
+function literalPattern(text: string): RegExp {
+  return new RegExp(`^${text.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`)}$`);
+}
+
+/**
+ * A plugin that makes `path` a module whose text is `contents`, whether or not a file is there.
+ * esbuild asks plugins to resolve an entry point, so answering for the one path is enough.
+ */
+function inMemoryEntry(path: string, contents: string): BundlePlugin {
+  const filter = literalPattern(path);
+  return {
+    name: "jx-in-memory-entry",
+    setup: (plugin) => {
+      plugin.onResolve({ filter }, () => ({ path }));
+      plugin.onLoad({ filter }, () => ({ contents, loader: "ts" }));
+    },
+  };
 }
 
 /** Bundle to one ESM module and return its text. Throws with esbuild's diagnostics on failure. */
@@ -45,6 +65,9 @@ export async function build(request: BackendBuild): Promise<string> {
   }
   if ("path" in entry) {
     options.entryPoints = [entry.path];
+    if (entry.contents !== undefined) {
+      options.plugins = [inMemoryEntry(entry.path, entry.contents), ...request.plugins];
+    }
   } else {
     options.stdin = {
       contents: entry.source,
