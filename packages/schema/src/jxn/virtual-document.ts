@@ -9,12 +9,15 @@
  * - **The main module** is the document's client script as written, followed by `State`: what the
  *   document's `state` proves, exported so that a `.ts` file importing the document can name it. An
  *   `(export)` entry has the type of the export it names, so a wrong name is an error at the entry
- *   and renaming the function renames the entry.
- * - **The server module** is the server script, followed by what it adds to `State`: each `(server)`
- *   entry is what its function resolves to, or `null` before it has answered.
- * - **One module for each body**: the function a string `body` is the inside of, with `State` and the
- *   names the runtime binds (`spec.md` §5.3 4d). A body does not see what the script declares
- *   (§23.2), which is why it is not written into the main module.
+ *   and renaming the function renames the entry. After it comes one interface for each element
+ *   below the root that has `state` of its own, and one for each map a body is drawn in, so that
+ *   every name a body reads is declared once, in one module, at the place its author wrote it.
+ * - **The server module** is the server script, followed by what it adds to those interfaces: each
+ *   `(server)` entry is what its function resolves to, or `null` before it has answered.
+ * - **One module for each body**: the function a string `body` is the inside of, with the `State` of
+ *   where it stands, the event its handler is given, and the names the runtime binds (`spec.md`
+ *   §5.3 4d). A body does not see what the script declares (§23.2), which is why it is not written
+ *   into the main module.
  *
  * It is pure: text in, text and spans out, with no compiler, DOM or Node. A mapper for `tsc` is one
  * reader of it and an editor inside Studio can be another, and neither can disagree with the other
@@ -23,7 +26,6 @@
  * @docs framework/concepts/type-checking
  */
 import { CLIENT_SCRIPT_REF, SERVER_SCRIPT_REF } from "../document-scripts";
-import { classifyFunctionEntries } from "../function-role";
 import type { FunctionRole } from "../function-role";
 import { isFunctionDef, isJsonObject, isServerFnDef, isString, paramNames } from "../guards";
 import type { JsonObject, JsonValue, JxElement } from "../../types";
@@ -32,6 +34,16 @@ import { JxnError } from "./errors.ts";
 import type { JxnSpan } from "./errors.ts";
 import { parseJxnWithTokens, token } from "./parse.ts";
 import type { JxnTokens } from "./parse.ts";
+import {
+  boundEvents,
+  eachSite,
+  eventLines,
+  eventType,
+  itemType,
+  membersOf,
+  readsRow,
+} from "./document-scopes";
+import type { Row, Site, StateScope } from "./document-scopes";
 import {
   IDENTIFIER,
   parametersOf,
@@ -100,9 +112,6 @@ const FALLBACK_STATE = "JxState";
 /** A script that declares or imports a `State`, which ours would collide or merge with. */
 const DECLARES_STATE =
   /\b(?:interface|type|class|enum|namespace|const|let|var|function)\s+State\b|\bimport\b[^;]*\bState\b/u;
-
-/** Members of a document that hold no element and no handler. */
-const NOT_WALKED: ReadonlySet<string> = new Set(["$defs", "$script", "state", "style"]);
 
 /** One module being written. */
 class Writer {
@@ -189,18 +198,30 @@ interface Reading {
   tokens: JxnTokens;
 }
 
-/** An element whose `state` a body can read, and where it is. */
-interface Scope {
-  node: JsonObject;
-  pointer: string;
+/** The `State` of a body inside a map: its scope's, and the row it is drawn for. */
+interface RowView {
+  name: string;
+  row: Row;
+  scope: StateScope;
 }
 
-/** A string body, and the scopes it reads: the root first, then each element on the way down. */
+/** A string body, and what the main module says of where it stands. */
 interface Body {
-  chain: readonly Scope[];
   definition: JsonObject;
+  /** The type of the event it is given. */
+  event: string;
   pointer: string;
+  /** The interface its `state` is, by the name the main module exports it under. */
+  state: string;
   text: string;
+}
+
+/** What a document's elements declare, in the order the main module writes it. */
+interface Layout {
+  bodies: Body[];
+  /** What each scope's interface is called. The root's is `State`. */
+  names: Map<StateScope, string>;
+  views: RowView[];
 }
 
 /** The export a `state` entry names in one of the document's own modules, or null. */
@@ -250,21 +271,21 @@ function writeClientExport(
   }
 }
 
-/** Write the main module: the client script, then `State`. */
-function writeMain(reading: Reading): VirtualUnit {
-  const { doc, tokens } = reading;
-  const out = new Writer(reading.source);
-  const client = isJsonObject(doc.$script) ? doc.$script.client : undefined;
-  if (isString(client)) {
-    out.value(client, tokens.values.get("/$script/client"));
-    out.add(client.endsWith("\n") ? "" : "\n");
+/** Write one scope's interface: the root's `State`, or a nested element's under the one around it. */
+function writeScope(out: Writer, reading: Reading, layout: Layout, scope: StateScope): void {
+  const { tokens } = reading;
+  const { inherited, own } = membersOf(scope);
+  const around = scope.parent ? layout.names.get(scope.parent) : undefined;
+  /* It extends the one around it, so a member declared there is the same member here and renaming
+     it in one place renames it in both. Where it cannot (see `membersOf`), it is closed itself. */
+  const closed = around === undefined || inherited !== null;
+  out.add(`export interface ${layout.names.get(scope)}${closed ? "" : ` extends ${around}`} {\n`);
+  for (const key of inherited ?? []) {
+    out.add(`  ${propertyName(key)}: ${around}[${JSON.stringify(key)}];\n`);
   }
-  // SAFETY: a document is an element with `$` members beside it, which the classifier ignores.
-  const roles = classifyFunctionEntries(doc as JxElement);
-  const served = hasScript(doc, "server");
-  out.add(`export interface ${reading.stateName} {\n`);
-  for (const [key, entry] of Object.entries(stateOf(doc) ?? {})) {
-    const pointer = `/state/${token(key)}`;
+  const served = hasScript(reading.doc, "server");
+  for (const { entry, key, role } of own) {
+    const pointer = `${scope.pointer}/state/${token(key)}`;
     if (served && exportOf(entry, key, SERVER_SCRIPT_REF) !== null) {
       // The server module says what this is, because only it can see the function.
       continue;
@@ -272,34 +293,62 @@ function writeMain(reading: Reading): VirtualUnit {
     out.add("  ").name(key, tokens.names.get(pointer), propertyName(key)).add(": ");
     const exported = exportOf(entry, key, CLIENT_SCRIPT_REF);
     if (exported !== null && isJsonObject(entry)) {
-      writeClientExport(out, reading, pointer, entry, exported, roles.get(key));
+      writeClientExport(out, reading, pointer, entry, exported, role);
     } else {
-      out.add(typeOfEntry(entry, roles.get(key)));
+      out.add(typeOfEntry(entry, role));
     }
     out.add(";\n");
   }
-  return out.add(`  ${reading.index}\n}\n`).unit();
+  out.add(closed ? `  ${reading.index}\n}\n` : "}\n");
 }
 
-/** Write the server module: the server script, then what its functions add to `State`. */
-function writeServer(reading: Reading, script: string): VirtualUnit {
+/** Write the main module: the client script, then `State` and each interface under it. */
+function writeMain(reading: Reading, layout: Layout): VirtualUnit {
   const { doc, tokens } = reading;
+  const out = new Writer(reading.source);
+  const client = isJsonObject(doc.$script) ? doc.$script.client : undefined;
+  if (isString(client)) {
+    out.value(client, tokens.values.get("/$script/client"));
+    out.add(client.endsWith("\n") ? "" : "\n");
+  }
+  for (const scope of layout.names.keys()) {
+    writeScope(out, reading, layout, scope);
+  }
+  const nameOf = (scope: StateScope): string => layout.names.get(scope) ?? "any";
+  for (const view of layout.views) {
+    out.add(`export interface ${view.name} extends ${nameOf(view.scope)} {\n`);
+    out.add(`  $map: { item: ${itemType(view.row, nameOf)}; index: number };\n}\n`);
+  }
+  return out.unit();
+}
+
+/** Write the server module: the server script, then what its functions add to each interface. */
+function writeServer(reading: Reading, layout: Layout, script: string): VirtualUnit {
+  const { tokens } = reading;
   const out = new Writer(reading.source);
   out.value(script, tokens.values.get("/$script/server"));
   out.add(script.endsWith("\n") ? "" : "\n");
   out.add(`declare module ${JSON.stringify(reading.specifier)} {\n`);
-  out.add(`  interface ${reading.stateName} {\n`);
-  for (const [key, entry] of Object.entries(stateOf(doc) ?? {})) {
-    const name = exportOf(entry, key, SERVER_SCRIPT_REF);
-    if (name !== null) {
-      const pointer = `/state/${token(key)}`;
+  for (const [scope, name] of layout.names) {
+    const served = Object.entries(stateOf(scope.node) ?? {}).flatMap(([key, entry]) => {
+      const exported = exportOf(entry, key, SERVER_SCRIPT_REF);
+      return exported === null ? [] : [{ exported, key }];
+    });
+    // The root's is written whatever it holds, so the module always says what it is for.
+    if (served.length === 0 && scope.parent) {
+      continue;
+    }
+    out.add(`  interface ${name} {\n`);
+    for (const { exported, key } of served) {
+      const pointer = `${scope.pointer}/state/${token(key)}`;
       out.add("    ").name(key, tokens.names.get(pointer), propertyName(key));
-      out.add(": typeof ").name(name, exportToken(reading, pointer));
+      out.add(": typeof ").name(exported, exportToken(reading, pointer));
       out.add(" extends (...args: any[]) => infer R ? Awaited<R> | null : any;\n");
     }
+    out.add("  }\n");
   }
   // A module with no import and no export is a script, and a script cannot augment a module.
-  return out.add("  }\n}\nexport {};\n").unit();
+  return out.add("}\nexport {};\n").unit();
 }
 
 /** Whether a value is a function written as a string body, which is what a body module holds. */
@@ -307,95 +356,79 @@ function isStringBody(value: JsonValue | undefined): value is JsonObject & { bod
   return isFunctionDef(value) && isString(value.body) && value.$src === undefined;
 }
 
-/** Find every string body under a value, with the scopes each one reads. */
-function findBodies(
-  value: JsonValue | undefined,
-  pointer: string,
-  chain: readonly Scope[],
-  found: Body[],
-): void {
-  if (Array.isArray(value)) {
-    for (const [index, item] of value.entries()) {
-      findBodies(item, `${pointer}/${index}`, chain, found);
+/** Read what a document's elements declare: its scopes, the rows its bodies read, and its bodies. */
+function layoutOf(reading: Reading): Layout {
+  const { doc, stateName } = reading;
+  const layout: Layout = { bodies: [], names: new Map(), views: [] };
+  const bound = boundEvents(doc);
+  let declared = 0;
+  /** What a scope's interface is called, decided the first time it is met. */
+  const scopeName = (scope: StateScope): string => {
+    let name = layout.names.get(scope);
+    if (name === undefined) {
+      declared += scope.parent ? 1 : 0;
+      name = scope.parent ? `${stateName}$${declared}` : stateName;
+      layout.names.set(scope, name);
     }
-    return;
-  }
-  if (!isJsonObject(value)) {
-    return;
-  }
-  const state = stateOf(value);
-  // The root is a scope whether or not it has state, so every chain starts with it.
-  const scopes = state && pointer !== "" ? [...chain, { node: value, pointer }] : chain;
-  for (const [key, entry] of Object.entries(state ?? {})) {
-    if (isStringBody(entry)) {
-      const at = `${pointer}/state/${token(key)}`;
-      found.push({ chain: scopes, definition: entry, pointer: at, text: entry.body });
+    return name;
+  };
+  /** The interface a body at a site reads, declared the first time one does. */
+  const stateAt = (site: Site): string => {
+    const { row, scope } = site;
+    if (!row || !readsRow(scope)) {
+      return scopeName(scope);
     }
-  }
-  for (const [key, child] of Object.entries(value)) {
-    if (NOT_WALKED.has(key)) {
-      continue;
+    let view = layout.views.find((made) => made.row === row && made.scope === scope);
+    if (!view) {
+      declared += 1;
+      view = { name: `${stateName}$${declared}`, row, scope };
+      layout.views.push(view);
     }
-    const at = `${pointer}/${token(key)}`;
-    if (key.startsWith("on") && isStringBody(child)) {
-      found.push({ chain: scopes, definition: child, pointer: at, text: child.body });
-    } else {
-      findBodies(child, at, scopes, found);
+    return view.name;
+  };
+  eachSite(doc, (node, pointer, site) => {
+    // Each scope is met first at its own element, so the root is first and a parent before a child.
+    scopeName(site.scope);
+    for (const [key, entry] of Object.entries(stateOf(node) ?? {})) {
+      if (isStringBody(entry)) {
+        const at = `${pointer}/state/${token(key)}`;
+        layout.bodies.push({
+          definition: entry,
+          event: bound.get(at) ?? "any",
+          pointer: at,
+          state: stateAt(site),
+          text: entry.body,
+        });
+      }
     }
-  }
-}
-
-/**
- * Write the `State` a body inside a nested scope reads: the root's, under each nested element's
- * own.
- *
- * It extends the root's, so a root member is the same member here and renaming it in one place
- * renames it in both. An interface cannot extend one it disagrees with, so where a nested element
- * declares a name the root also has, the root's other members are listed by reference instead.
- */
-function writeNestedState(out: Writer, reading: Reading, chain: readonly Scope[]): void {
-  const [root, ...nested] = chain;
-  const inherited = Object.keys(stateOf(root?.node) ?? {});
-  const members = new Map<string, string>();
-  let shadows = false;
-  for (const scope of nested) {
-    // SAFETY: a scope is an element that carries state.
-    const roles = classifyFunctionEntries(scope.node as JxElement);
-    for (const [key, entry] of Object.entries(stateOf(scope.node) ?? {})) {
-      members.set(propertyName(key), typeOfEntry(entry, roles.get(key)));
-      shadows ||= inherited.includes(key);
+    for (const [key, entry] of Object.entries(node)) {
+      if (key.startsWith("on") && isStringBody(entry)) {
+        layout.bodies.push({
+          definition: entry,
+          event: eventType(node, key, site),
+          pointer: `${pointer}/${token(key)}`,
+          state: stateAt(site),
+          text: entry.body,
+        });
+      }
     }
-  }
-  const specifier = JSON.stringify(reading.specifier);
-  out.add(`import type { ${reading.stateName} as Root } from ${specifier};\n`);
-  out.add(shadows ? "interface State {\n" : "interface State extends Root {\n");
-  if (shadows) {
-    for (const key of inherited.filter((name) => !members.has(propertyName(name)))) {
-      out.add(`  ${propertyName(key)}: Root[${JSON.stringify(key)}];\n`);
-    }
-  }
-  for (const [name, type] of members) {
-    out.add(`  ${name}: ${type};\n`);
-  }
-  out.add(shadows ? `  ${reading.index}\n}\n` : "}\n");
+  });
+  return layout;
 }
 
 /** Write the module for one body: the function it is the inside of. */
 function writeBody(reading: Reading, body: Body): VirtualUnit {
   const { tokens } = reading;
   const out = new Writer(reading.source);
-  if (body.chain.length > 1) {
-    writeNestedState(out, reading, body.chain);
-  } else {
-    const imported = reading.stateName === "State" ? "State" : `${reading.stateName} as State`;
-    out.add(`import type { ${imported} } from ${JSON.stringify(reading.specifier)};\n`);
-  }
+  const imported = body.state === "State" ? "State" : `${body.state} as State`;
+  out.add(`import type { ${imported} } from ${JSON.stringify(reading.specifier)};\n`);
+  const params = parametersOf(body.definition);
   /* The event a handler receives is bound to a name only when the entry declares one, though the
      runtime passes it and `window.event` holds it. Not declaring it would call a working handler
-     an error, so it is `any` wherever it is not a parameter. */
-  out.add("declare const event: any;\n");
+     an error, so it is declared wherever it is not a parameter. */
+  const event = eventLines(body.event, params);
+  out.add(event.head);
   out.add("export async function body(this: any");
-  const params = parametersOf(body.definition);
   const written = Array.isArray(body.definition.parameters)
     ? // SAFETY: `parameters` holds bare names or CEM parameter objects, the form `paramNames` reads.
       paramNames(body.definition.parameters as Parameters<typeof paramNames>[0])
@@ -407,10 +440,9 @@ function writeBody(reading: Reading, body: Body): VirtualUnit {
     const at = index === 0 ? written.indexOf("state") : written.indexOf(name, next);
     next = index > 0 && at !== -1 ? at + 1 : next;
     const span = tokens.values.get(`${body.pointer}/parameters/${at}`);
-    out
-      .add(", ")
-      .name(name, span)
-      .add(index === 0 ? ": State" : ": any");
+    // A handler is called with its state and the event, in that order (§5.3 4d).
+    const type = index === 0 ? "State" : index === 1 ? event.parameter : "any";
+    out.add(", ").name(name, span).add(`: ${type}`);
   }
   /* A project that reports unused parameters would report these on a line the author did not
      write, for every body that does not happen to read one. */
@@ -463,14 +495,13 @@ export function generateVirtualDocument(
       isString(scripts.client) && DECLARES_STATE.test(scripts.client) ? FALLBACK_STATE : "State",
     tokens: read.tokens,
   };
+  const layout = layoutOf(reading);
   const supplemental: VirtualUnit[] = [];
   if (isString(scripts.server)) {
-    supplemental.push(writeServer(reading, scripts.server));
+    supplemental.push(writeServer(reading, layout, scripts.server));
   }
-  const bodies: Body[] = [];
-  findBodies(doc, "", [{ node: doc, pointer: "" }], bodies);
-  for (const body of bodies) {
+  for (const body of layout.bodies) {
     supplemental.push(writeBody(reading, body));
   }
-  return { main: writeMain(reading), problems: [], supplemental };
+  return { main: writeMain(reading, layout), problems: [], supplemental };
 }

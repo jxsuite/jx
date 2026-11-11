@@ -9,6 +9,7 @@ import {
   bodyOffsetOf,
   generateBodyTypes,
 } from "../src/jxn/virtual-types.ts";
+import { BOTH, EVENT_GLOBALS, eventOn } from "./event-types.ts";
 
 /** A document literal; each test decides what it holds. */
 function asDoc(value: JsonValue): JxElement {
@@ -22,6 +23,19 @@ const linesOf = (text: string): string[] => text.split("\n");
 /** The index signatures of the `State` interface. */
 const signaturesOf = (text: string): string[] =>
   linesOf(text).filter((line) => line.trim().startsWith("["));
+
+/** Every interface a generated file declares before the function, line for line. */
+function declarationsOf(text: string): string[] {
+  const lines = linesOf(text);
+  const end = lines.findIndex((line) => line.startsWith("declare ") || line.startsWith("async "));
+  return lines.slice(lines.indexOf("export {};") + 1, end);
+}
+
+/** The lines that say what a body's event is: its declaration and the function's signature. */
+const eventOf = (text: string): string[] =>
+  linesOf(text).filter(
+    (line) => line.startsWith("declare const event") || line.startsWith("async function body"),
+  );
 
 /** The members of the `State` interface, one per line, without the index signature. */
 function stateOf(text: string): string[] {
@@ -209,8 +223,43 @@ describe("an inline handler", () => {
 
   test("sees its ancestors' state, the nearest element winning", () => {
     const unit = generateBodyTypes(doc, target, "state.inner = 1;");
-    expect(stateOf(unit.text)).toEqual(["shared: string;", "top: boolean;", "inner: number;"]);
+    // An interface cannot extend one it disagrees with, so what it keeps is listed by reference.
+    expect(declarationsOf(unit.text)).toEqual([
+      "interface State$0 {",
+      "  shared: number;",
+      "  top: boolean;",
+      "  [key: `$${string}`]: any;",
+      "}",
+      "interface State {",
+      '  top: State$0["top"];',
+      "  inner: number;",
+      "  shared: string;",
+      "  [key: `$${string}`]: any;",
+      "}",
+    ]);
     expect(unit.params).toEqual(["state", "e"]);
+  });
+
+  test("reads a State that extends the one around it where no name is declared twice", () => {
+    const nested = asDoc({
+      children: [
+        {
+          children: [{ onclick: { $prototype: "Function", body: "" }, tagName: "button" }],
+          state: { inner: 0 },
+          tagName: "section",
+        },
+      ],
+      state: { top: true },
+    });
+    expect(declarationsOf(generateBodyTypes(nested, target, "").text)).toEqual([
+      "interface State$0 {",
+      "  top: boolean;",
+      "  [key: `$${string}`]: any;",
+      "}",
+      "interface State extends State$0 {",
+      "  inner: number;",
+      "}",
+    ]);
   });
 
   test("reads a path that leaves the document as the root alone", () => {
@@ -219,6 +268,132 @@ describe("an inline handler", () => {
     expect(unit.params).toEqual(["state"]);
     expect(generateBodyTypes(doc, { ...target, path: ["children", 0, 1] }, "").params).toEqual([
       "state",
+    ]);
+  });
+});
+
+describe("a handler drawn by a map", () => {
+  const handler = { $prototype: "Function", body: "" };
+  const doc = asDoc({
+    children: [
+      {
+        $prototype: "Array",
+        items: { $ref: "#/state/todos" },
+        map: {
+          children: [
+            {
+              $prototype: "Array",
+              items: { $ref: "$map/item/tags" },
+              map: { onclick: handler, tagName: "span" },
+            },
+          ],
+          onclick: handler,
+          tagName: "li",
+        },
+      },
+    ],
+    state: { todos: [{ done: false, tags: ["a"] }] },
+    tagName: "ul",
+  });
+  const row = ["children", 0, "map"] as const;
+  const item =
+    "(NonNullable<(State$0 extends { todos: infer V } ? V : any)> extends readonly (infer I)[] ? I : any)";
+
+  test("reads the row it is drawn for as $map, over the state around it", () => {
+    const { text } = generateBodyTypes(doc, { eventKey: "onclick", kind: "event", path: row }, "");
+    expect(declarationsOf(text)).toEqual([
+      "interface State$0 {",
+      "  todos: { done: boolean; tags: string[] }[];",
+      "  [key: `$${string}`]: any;",
+      "}",
+      "interface State extends State$0 {",
+      `  $map: { item: ${item}; index: number };`,
+      "}",
+    ]);
+  });
+
+  test("reads the row of the nearest map, whose list may be read off the row around it", () => {
+    const path = [...row, "children", 0, "map"];
+    const { text } = generateBodyTypes(doc, { eventKey: "onclick", kind: "event", path }, "");
+    const tags = `(NonNullable<${item}> extends { tags: infer V } ? V : any)`;
+    expect(declarationsOf(text).slice(-3)).toEqual([
+      "interface State extends State$0 {",
+      `  $map: { item: (NonNullable<${tags}> extends readonly (infer I)[] ? I : any); index: number };`,
+      "}",
+    ]);
+  });
+
+  test("is told nothing of $map where the document's own state has one", () => {
+    const own: JxElement = { ...doc, state: { $map: 1, todos: [] } };
+    const { text } = generateBodyTypes(own, { eventKey: "onclick", kind: "event", path: row }, "");
+    expect(declarationsOf(text)).toEqual([
+      "interface State {",
+      "  $map: number;",
+      "  todos: any[];",
+      "  [key: `$${string}`]: any;",
+      "}",
+    ]);
+  });
+});
+
+describe("the event a handler is given", () => {
+  const click = eventOn("button", "click", BOTH);
+  const target = { eventKey: "onclick", kind: "event", path: ["children", 0] } as const;
+  const button = (parameters: string[]): JxElement =>
+    asDoc({
+      children: [{ onclick: { $prototype: "Function", body: "", parameters }, tagName: "button" }],
+    });
+
+  test("is the platform's for the binding, on the platform's element for the tag", () => {
+    const { text } = generateBodyTypes(button(["e"]), target, "");
+    expect(eventOf(text)).toEqual([
+      `declare const event: ${click};`,
+      "async function body(this: any, state: State, e: typeof event) {",
+    ]);
+    // A project without the DOM library still has the interfaces the lookup reads.
+    expect(linesOf(text).slice(4, 9)).toEqual(EVENT_GLOBALS);
+  });
+
+  test("is declared as event where the handler names no parameter for it", () => {
+    const { text } = generateBodyTypes(button([]), target, "");
+    expect(eventOf(text)).toEqual([
+      `declare const event: ${click};`,
+      "async function body(this: any, state: State) {",
+    ]);
+  });
+
+  test("is written on a parameter called event, which hides the declared one", () => {
+    const { text } = generateBodyTypes(button(["event", "more"]), target, "");
+    expect(eventOf(text)).toEqual([
+      `async function body(this: any, state: State, event: ${click}, more: any) {`,
+    ]);
+  });
+
+  test("is any on an element with no tag", () => {
+    const doc = asDoc({ children: [{ onclick: { $prototype: "Function", body: "" } }] });
+    expect(eventOf(generateBodyTypes(doc, target, "").text)).toEqual([
+      "declare const event: any;",
+      "async function body(this: any, state: State) {",
+    ]);
+  });
+
+  test("is the binding's for a state function a handler names, and any once it is named elsewhere", () => {
+    const save = { $prototype: "Function", body: "", parameters: ["e"] };
+    const bound = asDoc({
+      children: [{ onclick: { $ref: "#/state/save" }, tagName: "button" }],
+      state: { save },
+    });
+    expect(eventOf(generateBodyTypes(bound, { key: "save", kind: "state" }, "").text)).toEqual([
+      `declare const event: ${click};`,
+      "async function body(this: any, state: State, e: typeof event) {",
+    ]);
+    const called: JxElement = {
+      ...bound,
+      state: { other: { $prototype: "Function", body: "state.save(1)" }, save },
+    };
+    expect(eventOf(generateBodyTypes(called, { key: "save", kind: "state" }, "").text)).toEqual([
+      "declare const event: any;",
+      "async function body(this: any, state: State, e: any) {",
     ]);
   });
 });

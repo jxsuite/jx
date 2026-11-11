@@ -207,6 +207,84 @@ describe("an error in a document's code", () => {
   });
 });
 
+describe("what a document says of where a body stands", () => {
+  const source = lines(
+    "div {",
+    "  state {",
+    "    count 0",
+    "    todos {",
+    '      - { title "a"; done #false; tags { - "x" } }',
+    "    }",
+    '    (fn)save e "e.currentTarget.disabled = true; e.currentTarget.nope; void e.target.form"',
+    '    (fn)pick e "state.count = e.currentTarget.selectedIndex; void e.target.value; e.key"',
+    "  }",
+    '  button "Go" onclick=(ref)"#/state/save"',
+    '  select onchange=(ref)"#/state/pick" {',
+    '    option "a"',
+    "  }",
+    "  form {",
+    "    input",
+    '    (fn)onsubmit "event.preventDefault(); void event.submitter; event.currentTarget.reset(); event.target.reset()"',
+    "  }",
+    "  ul {",
+    '    state { label "x" }',
+    '    $array items=(ref)"#/state/todos" {',
+    "      li {",
+    '        (fn)onclick "state.$map.item.done = !state.$map.item.done; state.$map.item.gone; state.$map.index.toFixed(); state.label.toFixed()"',
+    '        $array items=(ref)"$map/item/tags" {',
+    '          b { (fn)onclick "state.$map.item.toUpperCase(); state.$map.item.missing" }',
+    "        }",
+    "      }",
+    "    }",
+    "  }",
+    '  svg { circle { (fn)onclick "void event.currentTarget.r.baseVal; event.currentTarget.absent" } }',
+    '  my-el { (fn)onchange "void event.detail.anything" }',
+    "}",
+  );
+  /** What every project is told, with the DOM library or without: what `state` holds. */
+  const ofState = [
+    // A row is an item of the list the map names, so what the item lacks is an error.
+    `${printed(source, "gone")} TS2339`,
+    // A scope inside the document still reads what it declares: `label` is a string.
+    `${printed(source, "toFixed(); state.label.toFixed", "toFixed(); state.label.".length)} TS2551`,
+    // The row of the nearest map, whose list is read off the row around it: a tag is a string.
+    `${printed(source, "missing")} TS2339`,
+  ];
+
+  test(
+    "is the element and the event of each handler, and the row of each map",
+    () => {
+      const made = project();
+      made.write("src/a.jxn", source);
+      const { findings } = made.check("--runExternalCode");
+      expect(about(findings, "a.jxn")).toEqual([
+        // A function a handler names is given that binding's event, on that element.
+        `${printed(source, "nope")} TS2339`,
+        // A `change` is no key press, though the element it is on is the `select`.
+        `${printed(source, "e.key", 2)} TS2339`,
+        // Inside a form, what an event started on is not known to be the form.
+        `${printed(source, "event.target.reset")} TS18047`,
+        `${printed(source, "event.target.reset", "event.target.".length)} TS2339`,
+        ...ofState,
+        // An element inside `svg` is SVG's.
+        `${printed(source, "absent")} TS2339`,
+      ]);
+    },
+    SLOW,
+  );
+
+  test(
+    "is any event at all in a project without the DOM library, and the same state",
+    () => {
+      const made = project({ compilerOptions: { lib: ["esnext"] } });
+      made.write("src/a.jxn", source);
+      const { findings } = made.check("--runExternalCode");
+      expect(about(findings, "a.jxn")).toEqual(ofState);
+    },
+    SLOW,
+  );
+});
+
 describe("a file that is not Jx Notation", () => {
   test(
     "is reported as the mapper's own error, at its position",

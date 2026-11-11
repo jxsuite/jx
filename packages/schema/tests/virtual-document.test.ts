@@ -5,6 +5,7 @@
 import { describe, expect, test } from "bun:test";
 import { generateVirtualDocument } from "../src/jxn/virtual-document.ts";
 import type { OutsideState, VirtualDocument, VirtualUnit } from "../src/jxn/virtual-document.ts";
+import { BOTH, CURRENT, EVENT_GLOBALS, eventOn } from "./event-types.ts";
 
 const SPECIFIER = "./a.jxn";
 
@@ -58,7 +59,27 @@ function membersOf(text: string): string[] {
   return lines.slice(start + 1, end).map((line) => line.trim());
 }
 
+/** The line a body module adds for the names it is given, and the body's first line. */
+function insideOf(unit: VirtualUnit): string[] {
+  const lines = unit.text.split("\n");
+  const start = lines.findIndex((line) => line.startsWith("void ["));
+  return lines.slice(start, start + 2);
+}
+
+/** What a body module says before the function: what it imports, and what its event is. */
+function headOf(unit: VirtualUnit | undefined): string[] {
+  const lines = unit?.text.split("\n") ?? [];
+  return lines
+    .slice(
+      0,
+      lines.findIndex((line) => line.startsWith("void [")),
+    )
+    .filter((line) => !EVENT_GLOBALS.includes(line));
+}
+
 const CLOSED = "[key: `$${string}`]: any;";
+/** The function of a body that names no parameter. */
+const SIGNED = "export async function body(this: any, state: State) {";
 const OPEN = "[key: string]: any;";
 
 describe("the main module", () => {
@@ -422,7 +443,7 @@ describe("a body module", () => {
       "}",
     );
     const written = generate(source);
-    expect(written.supplemental.map((unit) => unit.text.split("\n").slice(3, 5))).toEqual([
+    expect(written.supplemental.map((unit) => insideOf(unit))).toEqual([
       ["void [state];", "return 1"],
       ["void [state];", "state.go()"],
       ["void [state, e];", "void e"],
@@ -443,7 +464,7 @@ describe("a body module", () => {
 });
 
 describe("a body inside a nested scope", () => {
-  test("reads a State that extends the root's, under each element on the way down", () => {
+  test("reads a State the main module declares, under each element on the way down", () => {
     const source = file(
       "div {",
       "  state { count 0 }",
@@ -458,44 +479,49 @@ describe("a body inside a nested scope", () => {
       "}",
     );
     const written = generate(source);
-    expect(written.supplemental.map((unit) => unit.text)).toEqual([
+    expect(written.main.text).toBe(
       file(
-        'import type { State as Root } from "./a.jxn";',
-        "interface State extends Root {",
+        "export interface State {",
+        "  count: number;",
+        `  ${CLOSED}`,
+        "}",
+        "export interface State$1 extends State {",
         "  label: string;",
         "  pick: any;",
         "}",
-        "declare const event: any;",
-        "export async function body(this: any, state: State) {",
-        "void [state];",
-        "return 1",
-        "}",
-      ),
-      file(
-        'import type { State as Root } from "./a.jxn";',
-        "interface State extends Root {",
-        "  label: string;",
-        "  pick: any;",
-        "}",
-        "declare const event: any;",
-        "export async function body(this: any, state: State) {",
-        "void [state];",
-        "state.label",
-        "}",
-      ),
-      file(
-        'import type { State as Root } from "./a.jxn";',
-        "interface State extends Root {",
-        "  label: string;",
-        "  pick: any;",
+        "export interface State$2 extends State$1 {",
         "  deep: boolean;",
         "}",
-        "declare const event: any;",
-        "export async function body(this: any, state: State, e: any) {",
-        "void [state, e];",
-        "state.deep",
-        "}",
       ),
+    );
+    // Every entry is its own token, so a rename from a body reaches the one that declares it.
+    expect(mapped(written.main, source)).toEqual([
+      ["verbatim", "count", "count"],
+      ["verbatim", "label", "label"],
+      ["verbatim", "pick", "pick"],
+      ["verbatim", "deep", "deep"],
+    ]);
+    expect(written.supplemental.map((unit) => [headOf(unit), insideOf(unit)])).toEqual([
+      [
+        ['import type { State$1 as State } from "./a.jxn";', "declare const event: any;", SIGNED],
+        ["void [state];", "return 1"],
+      ],
+      [
+        [
+          'import type { State$1 as State } from "./a.jxn";',
+          `declare const event: ${eventOn("ul", "keydown", CURRENT)};`,
+          SIGNED,
+        ],
+        ["void [state];", "state.label"],
+      ],
+      [
+        [
+          'import type { State$2 as State } from "./a.jxn";',
+          `declare const event: ${eventOn("li", "click", BOTH)};`,
+          "export async function body(this: any, state: State, e: typeof event) {",
+        ],
+        ["void [state, e];", "state.deep"],
+      ],
     ]);
     expectSound(written, source);
   });
@@ -512,23 +538,222 @@ describe("a body inside a nested scope", () => {
       "}",
     );
     const written = generate(source, { state: true });
-    expect(written.supplemental[0]?.text).toBe(
+    expect(written.main.text).toBe(
       file(
-        'import type { JxState as Root } from "./a.jxn";',
-        "interface State {",
-        '  "my key": Root["my key"];',
-        '  title: Root["title"];',
+        "interface State { a: number }",
+        "export interface JxState {",
+        "  count: number;",
+        '  "my key": number;',
+        "  title: string;",
+        `  ${OPEN}`,
+        "}",
+        "export interface JxState$1 {",
+        '  "my key": JxState["my key"];',
+        '  title: JxState["title"];',
         "  count: string;",
         "  extra: number;",
         `  ${OPEN}`,
         "}",
-        "declare const event: any;",
-        "export async function body(this: any, state: State) {",
-        "void [state];",
-        "state.count",
+      ),
+    );
+    expect(headOf(written.supplemental[0])[0]).toBe(
+      'import type { JxState$1 as State } from "./a.jxn";',
+    );
+    expectSound(written, source);
+  });
+
+  test("is given what the scripts export to an entry of that scope", () => {
+    const source = file(
+      "div {",
+      '  script "export const twice = (state: State$1) => state.n * 2;"',
+      '  script timing=server "export async function user() { return 1; }"',
+      "  state { top 1 }",
+      "  p {",
+      "    state { n 1; (export)twice; (server)user }",
+      '    (fn)onclick "state.twice"',
+      "  }",
+      "  b {",
+      "    state { z 1 }",
+      "  }",
+      "}",
+    );
+    const written = generate(source);
+    expect(written.main.text).toBe(
+      file(
+        "export const twice = (state: State$1) => state.n * 2;",
+        "export interface State {",
+        "  top: number;",
+        `  ${CLOSED}`,
+        "}",
+        "export interface State$1 extends State {",
+        "  n: number;",
+        '  twice: (typeof import("./a.jxn").twice) extends (...args: any[]) => infer R ? R : any;',
+        "}",
+        "export interface State$2 extends State {",
+        "  z: number;",
         "}",
       ),
     );
+    // The root is augmented whatever it holds, and another scope only by what the server gives it.
+    expect(written.supplemental[0]?.text).toBe(
+      file(
+        "export async function user() { return 1; }",
+        'declare module "./a.jxn" {',
+        "  interface State {",
+        "  }",
+        "  interface State$1 {",
+        "    user: typeof user extends (...args: any[]) => infer R ? Awaited<R> | null : any;",
+        "  }",
+        "}",
+        "export {};",
+      ),
+    );
+    expectSound(written, source);
+  });
+});
+
+describe("a body drawn by a map", () => {
+  const source = file(
+    "ul {",
+    "  state {",
+    "    todos {",
+    '      - { title "a"; tags { - "x" } }',
+    "    }",
+    "  }",
+    '  $array items=(ref)"#/state/todos" {',
+    "    li {",
+    '      (fn)onclick "state.$map.item.title"',
+    '      (fn)onkeydown "state.$map.index"',
+    '      $array items=(ref)"$map/item/tags" {',
+    '        b { (fn)onclick "state.$map.item" }',
+    "      }",
+    "    }",
+    "  }",
+    '  (fn)onscroll "state.todos"',
+    "}",
+  );
+  const written = generate(source);
+  const item =
+    "(NonNullable<(State extends { todos: infer V } ? V : any)> extends readonly (infer I)[] ? I : any)";
+
+  test("reads the row it is drawn for as $map, declared over the state around it", () => {
+    const tags = `(NonNullable<${item}> extends { tags: infer V } ? V : any)`;
+    expect(written.main.text).toBe(
+      file(
+        "export interface State {",
+        "  todos: { title: string; tags: string[] }[];",
+        `  ${CLOSED}`,
+        "}",
+        "export interface State$1 extends State {",
+        `  $map: { item: ${item}; index: number };`,
+        "}",
+        "export interface State$2 extends State {",
+        `  $map: { item: (NonNullable<${tags}> extends readonly (infer I)[] ? I : any); index: number };`,
+        "}",
+      ),
+    );
+    expectSound(written, source);
+  });
+
+  test("shares one State between the bodies of a row, and reads the nearest map's", () => {
+    expect(written.supplemental.map((unit) => [headOf(unit)[0], insideOf(unit)[1]])).toEqual([
+      ['import type { State } from "./a.jxn";', "state.todos"],
+      ['import type { State$1 as State } from "./a.jxn";', "state.$map.item.title"],
+      ['import type { State$1 as State } from "./a.jxn";', "state.$map.index"],
+      ['import type { State$2 as State } from "./a.jxn";', "state.$map.item"],
+    ]);
+  });
+
+  test("is told nothing of $map where the document's own state declares one", () => {
+    const own = generate(
+      file(
+        "ul {",
+        "  state { $map 1 }",
+        '  $array items=(ref)"#/state/todos" {',
+        '    li { (fn)onclick "state.$map" }',
+        "  }",
+        "}",
+      ),
+    );
+    expect(own.main.text).toBe(
+      file("export interface State {", "  $map: number;", `  ${CLOSED}`, "}"),
+    );
+    expect(headOf(own.supplemental[0])[0]).toBe('import type { State } from "./a.jxn";');
+  });
+});
+
+describe("the event a body is given", () => {
+  const source = file(
+    "div {",
+    "  state {",
+    '    (fn)save e "void e"',
+    '    (fn)both e "void e"',
+    '    (fn)called e "state.called(e)"',
+    '    (fn)free "return 1"',
+    "  }",
+    '  button "Go" onclick=(ref)"#/state/save" onkeydown=(ref)"#/state/both"',
+    '  form onsubmit=(ref)"#/state/both" {',
+    '    input oninput=(ref)"#/state/called"',
+    '    (fn)onreset event more "event.preventDefault()"',
+    "  }",
+    "  svg {",
+    '    circle { (fn)onclick "event.currentTarget.r" }',
+    '    foreignObject { p { (fn)onclick "event" } }',
+    "  }",
+    '  my-el { (fn)onchange "event.detail" }',
+    "}",
+  );
+  const written = generate(source);
+  const heads = written.supplemental.map((unit) => headOf(unit).slice(1));
+
+  test("is the event of the binding that names a state function, and any of several", () => {
+    expect(heads.slice(0, 2)).toEqual([
+      [
+        `declare const event: ${eventOn("button", "click", BOTH)};`,
+        "export async function body(this: any, state: State, e: typeof event) {",
+      ],
+      [
+        `declare const event: ${eventOn("button", "keydown", BOTH)} | ${eventOn("form", "submit", CURRENT)};`,
+        "export async function body(this: any, state: State, e: typeof event) {",
+      ],
+    ]);
+  });
+
+  test("is any for a function the document also calls, and for one nothing binds", () => {
+    expect(heads.slice(2, 4)).toEqual([
+      [
+        "declare const event: any;",
+        "export async function body(this: any, state: State, e: any) {",
+      ],
+      ["declare const event: any;", SIGNED],
+    ]);
+  });
+
+  test("is written on a parameter called event, and nothing after it is typed", () => {
+    expect(heads[4]).toEqual([
+      `export async function body(this: any, state: State, event: ${eventOn("form", "reset", CURRENT)}, more: any) {`,
+    ]);
+  });
+
+  test("is read off the SVG elements inside svg, and off HTML's again inside foreignObject", () => {
+    expect(heads.slice(5, 7)).toEqual([
+      [`declare const event: ${eventOn("circle", "click", BOTH, "SVGElementTagNameMap")};`, SIGNED],
+      [`declare const event: ${eventOn("p", "click", BOTH)};`, SIGNED],
+    ]);
+  });
+
+  test("is looked up for a custom element too, which answers any unless the project names it", () => {
+    expect(heads[7]).toEqual([
+      `declare const event: ${eventOn('"my-el"', "change", BOTH)};`,
+      SIGNED,
+    ]);
+  });
+
+  test("declares the interfaces it reads, so a project without the DOM library has them", () => {
+    const lines = written.supplemental[0]?.text.split("\n") ?? [];
+    expect(lines.slice(1, 6)).toEqual(EVENT_GLOBALS);
+    // Where the event is any there is nothing to read.
+    expect(written.supplemental[3]?.text).not.toContain("declare global");
     expectSound(written, source);
   });
 });
