@@ -90,20 +90,26 @@ function within(typed: Typed, around: "&" | "|" | "[]"): TypePart[] {
   return apart ? ["(", ...typed.parts, ")"] : typed.parts;
 }
 
-/** Several types as one, each said once. */
+/**
+ * Several types as one. A member that is only words is said once. One that holds a name the
+ * document wrote is said each time it is written, because each is a place a rename has to reach.
+ */
 function joined(members: readonly Typed[], by: "&" | "|"): Typed {
   const seen = new Set<string>();
-  const parts: TypePart[] = [];
-  let only: Typed = plain("any");
+  const kept: Typed[] = [];
   for (const member of members) {
     const text = written(member.parts);
-    if (!seen.has(text)) {
-      parts.push(...(seen.size === 0 ? [] : [` ${by} `]), ...within(member, by));
-      only = member;
+    if (!member.parts.every(isString) || !seen.has(text)) {
+      kept.push(member);
       seen.add(text);
     }
   }
-  return seen.size > 1 ? { joins: by, parts } : only;
+  const [only = plain("any"), ...rest] = kept;
+  const parts = [...within(only, by)];
+  for (const member of rest) {
+    parts.push(` ${by} `, ...within(member, by));
+  }
+  return rest.length > 0 ? { joins: by, parts } : only;
 }
 
 /** The type of a list of values that are each a type themselves, or null when one is not. */

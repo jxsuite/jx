@@ -167,6 +167,11 @@ describe("schemas combined", () => {
     expect(typed({ anyOf: [{ anyOf: [text, count] }, flag] })).toBe("string | number | boolean");
   });
 
+  test("say once a member that is only words", () => {
+    expect(typed({ anyOf: [text, count, text] })).toBe("string | number");
+    expect(typed({ allOf: [text, text] })).toBe("string");
+  });
+
   test("bracket either inside a list", () => {
     expect(typed({ items: { allOf: [text, count] }, type: "array" })).toBe("(string & number)[]");
   });
@@ -224,6 +229,16 @@ describe("the names of a type", () => {
         pointer: "/$defs/Node/properties/other/anyOf/1",
         written: "Node",
       },
+    ]);
+  });
+
+  test("are each kept where a type is written twice, so a rename reaches both", () => {
+    const schema = { anyOf: [{ $ref: "#/$defs/A" }, { type: "null" }, { $ref: "#/$defs/A" }] };
+    const parts = schemaParts(schema, { defs: true, pointer: "/$defs/B" });
+    expect(written(parts)).toBe("$defs.A | null | $defs.A");
+    expect(names(parts).map((part) => part.pointer)).toEqual([
+      "/$defs/B/anyOf/0",
+      "/$defs/B/anyOf/2",
     ]);
   });
 

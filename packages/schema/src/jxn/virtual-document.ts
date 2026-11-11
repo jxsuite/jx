@@ -249,6 +249,19 @@ class Writer {
     return this.mapped(written, start, end, kind);
   }
 
+  /**
+   * The end of a string's value, mapped when the file says where the string is.
+   *
+   * @param written What the value ends in, which is what the module says.
+   * @param span The string's token, when the read recorded one.
+   * @param value The value.
+   */
+  ending(written: string, span: JxnSpan | undefined, value: string): this {
+    const pieces = span ? stringPieces(this.source, span, value) : [];
+    const from = value.length - written.length;
+    return span ? this.part(written, span, pieces, from, value.length) : this.add(written);
+  }
+
   /** The module, ended. */
   unit(extension: VirtualUnit["extension"] = ".ts"): VirtualUnit {
     return { extension, spans: this.spans, text: this.text };
@@ -395,13 +408,7 @@ function writeParts(out: Writer, reading: Reading, parts: readonly TypePart[]): 
     } else {
       // Written `(ref)"…"` the string is the member's own value, and in a block it is its `$ref`.
       const span = tokens.values.get(part.pointer) ?? tokens.values.get(`${part.pointer}/$ref`);
-      const ref = `#/${DEFINITIONS}/${part.name}`;
-      if (span) {
-        const from = ref.length - part.name.length;
-        out.part(part.written, span, stringPieces(out.source, span, ref), from, ref.length);
-      } else {
-        out.add(part.written);
-      }
+      out.ending(part.written, span, `#/${DEFINITIONS}/${part.name}`);
     }
   }
 }

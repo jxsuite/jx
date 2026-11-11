@@ -1102,6 +1102,34 @@ describe("the types a document declares", () => {
     expect(problems).toEqual([]);
   });
 
+  test("join every reference to a definition, however each is written and however often", () => {
+    const other = file(
+      "$defs {",
+      "  A type=string",
+      "  B {",
+      "    anyOf {",
+      '      - (ref)"#/$defs/A"',
+      '      - type="null"',
+      '      - $ref="#/$defs/A"',
+      '      - $ref=#"#/$defs/A"#',
+      "    }",
+      "  }",
+      "}",
+      "div {",
+      "  state { n 1 }",
+      "}",
+    );
+    const { main } = generate(other);
+    expect(main.text).toContain("  export type B = $defs.A | null | $defs.A | $defs.A;\n");
+    const refs = mapped(main, other).filter(([, text]) => text === "A");
+    expect(refs).toEqual([
+      ["verbatim", "A", "A"],
+      ["verbatim", "A", "A"],
+      ["verbatim", "A", "A"],
+      ["verbatim", "A", "A"],
+    ]);
+  });
+
   test("are what a body in the document reads its state by", () => {
     const body = written.supplemental.find((unit) => unit.text.includes("state.items.push"));
     expect(headOf(body)).toContain('import type { State } from "./a.jxn";');
