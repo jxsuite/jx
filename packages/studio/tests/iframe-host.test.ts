@@ -234,7 +234,8 @@ const {
   setToolbarRefresh,
 } = await import("../src/canvas/iframe-host");
 const { flushCanvasEdits } = await import("../src/canvas/iframe-host");
-const { needsReleaseReconcile, setEntryFieldWriter } = await import("../src/canvas/iframe-host");
+const { needsRefusalRedraw, needsReleaseReconcile, setEntryFieldWriter } =
+  await import("../src/canvas/iframe-host");
 const { commitEntryTextField } = await import("../src/content/entry-fields");
 
 beforeEach(() => {
@@ -1955,6 +1956,212 @@ describe("iframe canvas inline-edit bridge", () => {
     } finally {
       surface.panels.length = 0;
     }
+  });
+
+  describe("a commit that would store a binding's value in its place", () => {
+    /* A string member of `children` is drawn resolved, so the frame commits "Hello Ada" for a block
+       that holds `${state.name}`. The apply refuses it; the host owns the canvas and the toast. */
+    const bound = () => ({
+      children: [{ children: ["Hello ", "${state.name}"], tagName: "p" }],
+      state: { name: "Ada" },
+      tagName: "div",
+    });
+    const drawn = { children: null, path: ["children", 0], textContent: "Hello Ada" };
+
+    async function mountBound() {
+      const tab = resetWorkspaceWithTab(bound());
+      const canvasEl = await mountReady();
+      const surface = surfaceForPane(PRIMARY_PANE);
+      surface.panels.push(stagePanel({ canvas: canvasEl, ready: true }));
+      channels[0]!.posts.length = 0;
+      return { ch: channels[0]!, surface, tab };
+    }
+
+    test("leaves the document alone, draws the block again from it, and says so", async () => {
+      const { toasts } = await import("../src/services/notify");
+      toasts.length = 0;
+      const { ch, surface, tab } = await mountBound();
+      try {
+        ch.deliver({ ...drawn, kind: "editCommit" });
+
+        expect(tab.doc.document).toEqual(bound());
+        const patches = postsOfKind(ch, "patch");
+        expect(patches).toHaveLength(1);
+        expect(() => structuredClone(patches[0])).not.toThrow();
+        expect(patches[0]!.forwardOps).toEqual([
+          {
+            key: "children",
+            op: "set-key",
+            path: ["children", 0],
+            value: bound().children[0]!.children,
+          },
+        ]);
+        expect(toasts.map((toast) => toast.key)).toEqual(["canvas.binding-kept"]);
+      } finally {
+        surface.panels.length = 0;
+        ch.deliver({ gen: 1, kind: "patchComplete" });
+      }
+    });
+
+    test("an idle-tick commit is redrawn too: its echo is not suppressed", async () => {
+      const { ch, surface } = await mountBound();
+      try {
+        ch.deliver({ ...drawn, inPlace: true, kind: "editCommit" });
+        const patches = postsOfKind(ch, "patch");
+        expect(patches).toHaveLength(1);
+        expect(patches[0]!.echoPaths).toBeUndefined();
+      } finally {
+        surface.panels.length = 0;
+        ch.deliver({ gen: 1, kind: "patchComplete" });
+      }
+    });
+
+    test("the commit the frame posts while closing the session is not redrawn again", async () => {
+      // The redraw replaces the block the caret is in; the frame commits once more on the way out.
+      const { ch, surface, tab } = await mountBound();
+      try {
+        ch.deliver({ ...drawn, inPlace: true, kind: "editCommit" });
+        ch.deliver({ ...drawn, kind: "editCommit" });
+        expect(postsOfKind(ch, "patch")).toHaveLength(1);
+
+        // Once the frame has answered, the next refusal is a new one.
+        ch.deliver({ gen: 1, kind: "patchComplete" });
+        ch.deliver({ ...drawn, kind: "editCommit" });
+        expect(postsOfKind(ch, "patch")).toHaveLength(2);
+        expect(tab.doc.document).toEqual(bound());
+
+        // A patch the frame could not apply is an answer as well.
+        ch.deliver({ gen: 1, kind: "patchError", message: "x" });
+        ch.deliver({ ...drawn, kind: "editCommit" });
+        expect(postsOfKind(ch, "patch")).toHaveLength(3);
+      } finally {
+        surface.panels.length = 0;
+        ch.deliver({ gen: 1, kind: "patchComplete" });
+      }
+    });
+
+    test("an older patch's answer does not stand for the redraw's", async () => {
+      /* One unrelated patch is in flight when the commit is refused. The frame answers in order, so
+         its first answer is for that patch: the redraw has not landed, and the commit the frame
+         posts while closing the session for it must not be answered with a second redraw. */
+      const { ch, surface, tab } = await mountBound();
+      try {
+        postPatchToHosts(
+          [{ key: "className", op: "set-key", path: ["children", 0], value: "x" }],
+          tab.id,
+        );
+        ch.deliver({ ...drawn, inPlace: true, kind: "editCommit" });
+        expect(postsOfKind(ch, "patch")).toHaveLength(2);
+
+        ch.deliver({ gen: 1, kind: "patchComplete" });
+        ch.deliver({ ...drawn, kind: "editCommit" });
+        expect(postsOfKind(ch, "patch")).toHaveLength(2);
+
+        // The redraw's own answer: from here a refusal is a new one.
+        ch.deliver({ gen: 1, kind: "patchComplete" });
+        ch.deliver({ ...drawn, kind: "editCommit" });
+        expect(postsOfKind(ch, "patch")).toHaveLength(3);
+        expect(tab.doc.document).toEqual(bound());
+      } finally {
+        surface.panels.length = 0;
+        ch.deliver({ gen: 1, kind: "patchComplete" });
+      }
+    });
+
+    test("with no canvas to redraw, a later refusal still asks", async () => {
+      // No stage resolves, so nothing is posted and nothing is in flight to wait for.
+      const tab = resetWorkspaceWithTab(bound());
+      await mountReady();
+      const ch = channels[0]!;
+      ch.posts.length = 0;
+      ch.deliver({ ...drawn, kind: "editCommit" });
+      expect(postsOfKind(ch, "patch")).toHaveLength(0);
+      expect(needsRefusalRedraw(null, ch, '["children",0]')).toBe(true);
+      expect(tab.doc.document).toEqual(bound());
+    });
+
+    test("a split and a slash insert are refused the same way", async () => {
+      const { ch, surface, tab } = await mountBound();
+      try {
+        ch.deliver({
+          after: { textContent: "Ada" },
+          before: { textContent: "Hello " },
+          kind: "editSplit",
+          path: ["children", 0],
+        });
+        ch.deliver({ gen: 1, kind: "patchComplete" });
+        ch.deliver({
+          cmd: { description: "", label: "Heading", tag: "h2" },
+          commitData: { textContent: "Hello Ada" },
+          kind: "editInsert",
+          path: ["children", 0],
+        });
+        ch.deliver({ gen: 1, kind: "patchComplete" });
+        expect(tab.doc.document).toEqual(bound());
+        expect(postsOfKind(ch, "patch")).toHaveLength(2);
+      } finally {
+        surface.panels.length = 0;
+        ch.deliver({ gen: 1, kind: "patchComplete" });
+      }
+    });
+
+    test("a range replace over the block is refused the same way; a merge keeps the binding", async () => {
+      const two = () => ({
+        children: [
+          { children: ["Hello ", "${state.name}"], tagName: "p" },
+          { tagName: "p", textContent: "Tail" },
+        ],
+        state: { name: "Ada" },
+        tagName: "div",
+      });
+      const tab = resetWorkspaceWithTab(two());
+      const canvasEl = await mountReady();
+      const surface = surfaceForPane(PRIMARY_PANE);
+      surface.panels.push(stagePanel({ canvas: canvasEl, ready: true }));
+      const ch = channels[0]!;
+      ch.posts.length = 0;
+      try {
+        // "Hello Ada" on the canvas: offset 8 is inside the stored template.
+        ch.deliver({
+          between: [],
+          from: { offset: 8, path: ["children", 0] },
+          kind: "editRangeReplace",
+          text: "",
+          to: { offset: 2, path: ["children", 1] },
+        });
+        expect(tab.doc.document).toEqual(two());
+        const patches = postsOfKind(ch, "patch");
+        expect(patches).toHaveLength(1);
+        expect(patches[0]!.forwardOps).toEqual([
+          {
+            key: "children",
+            op: "set-key",
+            path: ["children", 0],
+            value: two().children[0]!.children,
+          },
+        ]);
+        ch.deliver({ gen: 1, kind: "patchComplete" });
+
+        // A merge joins what is stored, so there is nothing to refuse and the binding is kept.
+        ch.deliver({ fromPath: ["children", 1], intoPath: ["children", 0], kind: "editMerge" });
+        expect(tab.doc.document.children).toEqual([
+          { tagName: "p", textContent: "Hello ${state.name}Tail" },
+        ]);
+      } finally {
+        surface.panels.length = 0;
+        ch.deliver({ gen: 1, kind: "patchComplete" });
+        ch.deliver({ gen: 1, kind: "patchComplete" });
+      }
+    });
+
+    test("needsRefusalRedraw: only the same block of the same host is already answered", () => {
+      const host = {};
+      const pending = { host, path: "a" };
+      expect(needsRefusalRedraw(null, host, "a")).toBe(true);
+      expect(needsRefusalRedraw(pending, host, "a")).toBe(false);
+      expect(needsRefusalRedraw(pending, host, "b")).toBe(true);
+      expect(needsRefusalRedraw(pending, {}, "a")).toBe(true);
+    });
   });
 
   describe("clicking from one prop slot to another in the same instance", () => {

@@ -8,7 +8,7 @@
  */
 
 import { getNodeAtPath } from "@jxsuite/schema/doc-ops";
-import { isNonNullObject, isNumber, isString } from "@jxsuite/schema/guards";
+import { isNonNullObject, isNumber, isString, templateExpressions } from "@jxsuite/schema/guards";
 import { childIndex, parentElementPath } from "../store";
 import { isAncestor } from "../state";
 import { isTabActive } from "../workspace/workspace";
@@ -22,7 +22,8 @@ import {
 import { defaultDef } from "../panels/shared";
 import { componentInstance, mutateImportComponent } from "./insert-component";
 
-import { contentLength, contentOf, spliceAcross, toStored } from "./content-slice";
+import { contentLength, contentOf, sliceContent, spliceAcross, toStored } from "./content-slice";
+import type { Content, StoredContent } from "./content-slice";
 import type { JxContentResult, SlashCommand } from "./inline-edit";
 import type { JxPath } from "../state";
 import type { Tab } from "../tabs/tab";
@@ -55,6 +56,104 @@ export function isEmptyContent(commitData?: JxContentResult): boolean {
   return kids.length === 1 && isNonNullObject(only) && only.tagName === "br";
 }
 
+// ─── Bindings a commit must not write over ───────────────────────────────────────
+
+/**
+ * Told the path of a block whose commit was refused because it would have dropped a binding.
+ *
+ * The document is unchanged when this runs, and the canvas may be showing what was not saved, so
+ * the caller that owns the canvas draws the block again from the document and says so.
+ */
+export type CommitRefused = (path: JxPath) => void;
+
+/** Add each `${…}` of `text`, as written, to `into`. */
+function countBindings(text: string, into: Map<string, number>): void {
+  for (const { start, end } of templateExpressions(text)) {
+    const binding = text.slice(start, end);
+    into.set(binding, (into.get(binding) ?? 0) + 1);
+  }
+}
+
+/**
+ * The bindings held by STRING MEMBERS of `children`, at any depth of inline markup.
+ *
+ * These are the ones the canvas draws resolved: a member string is rendered as a bound text node,
+ * so what the caret meets, and what a commit serializes, is the value (`Ada`) and not the template
+ * (`${state.name}`). A `textContent` template is not counted, here or in a nested element: it is
+ * drawn as its binding and restored to its source when the caret enters, so it comes back from an
+ * edit as itself, and one that does not was deleted by the author.
+ */
+function memberBindings(children: Content, into: Map<string, number>): Map<string, number> {
+  for (const child of children) {
+    if (isString(child)) {
+      countBindings(child, into);
+    } else if (isNonNullObject(child) && Array.isArray(child.children)) {
+      memberBindings(child.children, into);
+    }
+  }
+  return into;
+}
+
+/** Every binding `content` carries, wherever it sits: a member string or an element's own text. */
+function carriedBindings(
+  content: JxContentResult | StoredContent | undefined,
+  into: Map<string, number>,
+): void {
+  if (!content) {
+    return;
+  }
+  if (isString(content.textContent)) {
+    countBindings(content.textContent, into);
+  }
+  for (const child of content.children ?? []) {
+    if (isString(child)) {
+      countBindings(child, into);
+    } else if (isNonNullObject(child)) {
+      carriedBindings(
+        {
+          children: Array.isArray(child.children) ? child.children : [],
+          textContent: isString(child.textContent) ? child.textContent : null,
+        },
+        into,
+      );
+    }
+  }
+}
+
+/**
+ * Whether writing `committed` over `node`'s content would lose a binding that a string member of
+ * its stored `children` holds.
+ *
+ * The canvas draws such a member resolved, and a contenteditable session commits when the caret
+ * leaves whether or not anything was typed, so without this an author who clicked into `["Hello ",
+ * "${state.name}"]` and out again had `"Hello Ada"` stored in its place: the template replaced by
+ * one of its values, with nothing on screen changing. A commit that still carries every such
+ * binding, as many times as the block held it, is an edit of the text around them and goes through.
+ * `committed` is every piece the write keeps (a split keeps two).
+ */
+export function dropsMemberBinding(
+  node: JxMutableNode | undefined | null,
+  committed: readonly (JxContentResult | StoredContent | undefined)[],
+): boolean {
+  if (!node || !Array.isArray(node.children)) {
+    return false;
+  }
+  const held = memberBindings(node.children, new Map<string, number>());
+  if (held.size === 0) {
+    return false;
+  }
+  const carried = new Map<string, number>();
+  for (const content of committed) {
+    carriedBindings(content, carried);
+  }
+  for (const [binding, count] of held) {
+    if ((carried.get(binding) ?? 0) < count) {
+      return true;
+    }
+  }
+  return false;
+}
+
 /** The slot of the block at `path`. */
 function blockSlot(path: JxPath): SpliceCoordinate {
   /* SAFETY: a block with a sibling position has an element path ending in `"children", <index>`, so
@@ -69,18 +168,28 @@ function blockSlot(path: JxPath): SpliceCoordinate {
  * textContent). No-op if unchanged or the originating tab is gone. `tab` is the tab the edit
  * session belonged to (resolved host-side from the posting iframe) — NEVER the active tab at
  * message time, which may have changed while the commit was in flight.
+ *
+ * Refused, with the document untouched and `opts.onRefused` told, when the commit would drop a
+ * binding a string member of the stored `children` holds ({@link dropsMemberBinding}).
  */
 export function applyInlineCommit(
   tab: Tab | null,
   path: JxPath,
   children: (JxMutableNode | string)[] | null,
   textContent: string | null,
-  opts: { coalesceKey?: string | null } = {},
+  opts: { coalesceKey?: string | null; onRefused?: CommitRefused } = {},
 ): void {
   if (!tab) {
     return;
   }
   const node = getNodeAtPath(tab.doc.document, path);
+  if (
+    (children || textContent != null) &&
+    dropsMemberBinding(node, [children ? { children } : { textContent }])
+  ) {
+    opts.onRefused?.(path);
+    return;
+  }
   // Only clear the counterpart key when it actually exists: deleting an absent key is a semantic
   // No-op, but the recorded op isn't — a spurious `set-prop children` turns a cheap in-place text
   // Patch into a subtree re-render (and, pre-relaxation, forced a full render inside components).
@@ -244,11 +353,17 @@ export function applyInlineSplit(
   path: JxPath,
   before: JxContentResult,
   after: JxContentResult,
+  onRefused?: CommitRefused,
 ): JxPath {
   const { parentPath, index: idx } = blockSlot(path);
   const newPath = [...parentPath, "children", idx + 1];
   if (!tab) {
     return newPath;
+  }
+  // Both halves come from the canvas, so a binding drawn resolved is in neither: the block stays.
+  if (dropsMemberBinding(getNodeAtPath(tab.doc.document, path), [before, after])) {
+    onRefused?.(path);
+    return path;
   }
   const newNode: JxMutableNode = { tagName: "p" };
   if (after.textContent != null) {
@@ -320,13 +435,22 @@ function insertComponentBlock(
  * Apply a slash-insert at `path` of `tab`'s document: swap the (empty) node's tag in place, or
  * commit pending content and insert a new element after it. Returns the path to edit next (the
  * swapped node or the new one); nothing is mutated when `tab` is gone.
+ *
+ * `commitData` is the block as the canvas drew it, and both branches write it (the empty one by
+ * clearing the block), so an insert that would drop a binding is refused like a commit is: the
+ * block is returned as the path to edit and `onRefused` is told.
  */
 export function applyInlineInsert(
   tab: Tab | null,
   path: JxPath,
   cmd: SlashCommand,
   commitData: JxContentResult | undefined,
+  onRefused?: CommitRefused,
 ): JxPath {
+  if (tab && dropsMemberBinding(getNodeAtPath(tab.doc.document, path), [commitData])) {
+    onRefused?.(path);
+    return path;
+  }
   const instance = cmd.component === true ? componentInstance(cmd.tag) : null;
   if (instance) {
     return insertComponentBlock(tab, path, instance, commitData);
@@ -383,7 +507,22 @@ export function applyInlineInsert(
  * rendered DOM — the same reason a boundary merge names its neighbour there.
  *
  * Returns the caret's position after the collapse (the join point, plus any typed text), or null
- * when the range does not resolve.
+ * when the range does not resolve or the replace was refused.
+ *
+ * Refused over a binding a string member of either end holds. The content cut here is the stored
+ * one, but the OFFSETS are the canvas's, counted over the resolved value: against `["Hi ",
+ * "${state.name}"]` drawn as "Hi Ada" they fall anywhere in the template, and a cut through it
+ * stores `"Hi ${sta"`. The two ends are judged apart, because they are cut on opposite sides:
+ *
+ * - The HEAD keeps what precedes its offset, so a head that holds such a binding is always refused.
+ *   Either the cut loses the binding, or the offset lies past it and is wrong by the difference
+ *   between the template's length and its value's: the binding would survive and the text around it
+ *   would be cut somewhere the author did not point.
+ * - The TAIL keeps what follows its offset, which is exact up to the first binding, so it is refused
+ *   only when what it keeps has lost one. It is counted against its own kept part alone: a binding
+ *   the head's text happens to spell the same way does not stand in for it.
+ *
+ * A block that is removed whole (`between`) is a deletion the author asked for and is not checked.
  */
 export function applyRangeReplace(
   tab: Tab | null,
@@ -391,6 +530,7 @@ export function applyRangeReplace(
   to: { path: JxPath; offset: number },
   between: JxPath[],
   text: string,
+  onRefused?: CommitRefused,
 ): { path: JxPath; offset: number } | null {
   if (!tab) {
     return null;
@@ -404,9 +544,13 @@ export function applyRangeReplace(
     return null;
   }
 
-  const joined = toStored(
-    spliceAcross(contentOf(head), from.offset, contentOf(tail), to.offset, text),
-  );
+  const tailContent = contentOf(tail);
+  const tailKept = sliceContent(tailContent, to.offset, contentLength(tailContent));
+  if (dropsMemberBinding(head, []) || dropsMemberBinding(tail, [{ children: tailKept }])) {
+    onRefused?.(from.path);
+    return null;
+  }
+  const joined = toStored(spliceAcross(contentOf(head), from.offset, tailContent, to.offset, text));
   // Remove the deepest/last paths first so an earlier removal cannot shift a later one's index.
   const removals = [...between, to.path].toSorted(comparePathsDescending);
 
