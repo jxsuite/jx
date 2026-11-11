@@ -2,9 +2,9 @@
 
 ## Declarative Document Object Model — JSON Edition
 
-**Version:** 0.9.3-draft\
+**Version:** 0.9.9-draft\
 **Status:** Partial\
-**Updated:** 2026-11-08\
+**Updated:** 2026-11-11\
 **License:** MIT
 
 ---
@@ -2877,6 +2877,12 @@ This rewrites the mutating handlers of Appendix A's idiom using `$expression`, l
 
 ## Changelog
 
+- **0.9.9-draft** (2026-11-11) — §4.2 and §5.3 4d: every tier builds a string body with state first and its other declared names after it, binding by position, and calls a $src export with (state, event) from an event binding whatever it declares.
+- **0.9.8-draft** (2026-11-11) — §5.3 4d: declaring both body and $src is refused in every tier and by the schema, for state entries and inline handlers alike.
+- **0.9.7-draft** (2026-11-11) — §23.3: a body is checked as the function it is the inside of, with State declared from its document, and Studio reports the errors; Partial until the terminal and other editors do.
+- **0.9.6-draft** (2026-11-11) — §5.3 4b and 4d: every tier classifies Function entries through one shared classifier; a Function that declares parameters is never a computed, an external Function's role follows its declaration and the document's use rather than the imported function's arity, and a definition's root-level handlers count as a callable use.
+- **0.9.5-draft** (2026-11-11) — §23.1: Studio's code editor edits a function body as TypeScript and stores it as written; the section is Implemented.
+- **0.9.4-draft** (2026-11-11) — §23.1: the interpreter, Studio's canvas and Live Preview erase TypeScript function bodies through a runtime seam, and a class member named by its role is a function entry.
 - **0.9.3-draft** (2026-11-08) — §23.1: jx build, jx validate and the server erase TypeScript from function bodies as each document is read; analysis reads code without comments; spliced bodies end with a newline.
 - **0.9.2-draft** (2026-11-08) — Project files have a grammar: §22.5 reads and writes a project.jxn, with the project node, style rows and a comment-keeping save.
 - **0.9.1-draft** (2026-11-07) — §22 is Implemented. §22.4: saving a .jxn file keeps what did not change, and a merge can cost comments and never data.
@@ -2991,4 +2997,4 @@ This rewrites the mutating handlers of Appendix A's idiom using `$expression`, l
 
 ---
 
-_Jx Specification v0.9.3-draft — subject to revision_
+_Jx Specification v0.9.9-draft — subject to revision_

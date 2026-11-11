@@ -1,5 +1,19 @@
 # Changelog
 
+## [6.3.0](https://github.com/jxsuite/jx/compare/protocol-v6.2.5...protocol-v6.3.0) (2026-11-11)
+
+
+### Features
+
+* edit function bodies as TypeScript and store them as written ([#593](https://github.com/jxsuite/jx/issues/593)) ([b53a192](https://github.com/jxsuite/jx/commit/b53a1924d5f3d241eccccb51f4df347b3c076c27))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/schema bumped to 5.6.0
+
 ## [6.2.5](https://github.com/jxsuite/jx/compare/protocol-v6.2.4...protocol-v6.2.5) (2026-11-08)
 
 

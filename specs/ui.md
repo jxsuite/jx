@@ -2,9 +2,9 @@
 
 ## Interface Elements Authored as Jx Documents
 
-**Version:** 0.1.61-draft\
+**Version:** 0.1.67-draft\
 **Status:** Partial\
-**Updated:** 2026-10-21\
+**Updated:** 2026-11-11\
 **License:** MIT\
 **Applies to:** `packages/ui/`, `packages/studio/src/surfaces/`
 
@@ -446,6 +446,12 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.1.67-draft** (2026-11-11) — §5.3 New element jx-slider: one native range with a filled track, valuetext, a ten-step Shift+Arrow and the host-dispatched input/change pair; a native dblclick bubbles for the host to answer.
+- **0.1.66-draft** (2026-11-11) — 5.5 says the jx-tree-item twisty is a pointer-cursor target spanning the row height that a draggable host must not start a drag from.
+- **0.1.65-draft** (2026-11-11) — four --jx-heading-* tokens are the section-heading recipe; jx-accordion-item's summary and Studio's panel headings draw them.
+- **0.1.64-draft** (2026-11-11) — --jx-text-xs is 11px, the type floor; a stacked jx-action-button draws no inline padding.
+- **0.1.63-draft** (2026-11-11) — jx-field stacks its label above the control when its nearest inline-size container is under 288px.
+- **0.1.62-draft** (2026-11-11) — --jx-fg-muted meets 4.5:1 on every text background in both schemes, through two new ramp steps (gray-450, gray-550).
 - **0.1.61-draft** (2026-10-21) — The jx-inline-edit rationale names the Page tab's title field rather than the removed Document Header card.
 - **0.1.60-draft** (2026-10-21) — The window-drag platform class is named app-region-drag, and the hint fallback note refers to the Electron build's bundled Chromium.
 - **0.1.59-draft** (2026-10-17) — Bound kit props render live in Design mode (§10).
@@ -511,4 +517,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_Jx UI Kit Specification v0.1.61-draft_
+_Jx UI Kit Specification v0.1.67-draft_

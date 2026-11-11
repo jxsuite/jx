@@ -1,5 +1,18 @@
 # Changelog
 
+## [5.6.0](https://github.com/jxsuite/jx/compare/schema-v5.5.0...schema-v5.6.0) (2026-11-11)
+
+
+### Features
+
+* classify Function entries through one shared classifier ([#595](https://github.com/jxsuite/jx/issues/595)) ([0cc68d7](https://github.com/jxsuite/jx/commit/0cc68d7f3cafbd8d23ca55c0a275f0ce64abbb78))
+* edit function bodies as TypeScript and store them as written ([#593](https://github.com/jxsuite/jx/issues/593)) ([b53a192](https://github.com/jxsuite/jx/commit/b53a1924d5f3d241eccccb51f4df347b3c076c27))
+* run TypeScript function bodies in the canvas and Live Preview ([#592](https://github.com/jxsuite/jx/issues/592)) ([04f3d27](https://github.com/jxsuite/jx/commit/04f3d27863f3f8da2e86dc28a5705915692bf7e6))
+* **schema,runtime,compiler:** one parameter list and call convention ([#607](https://github.com/jxsuite/jx/issues/607)) ([f013d6a](https://github.com/jxsuite/jx/commit/f013d6ae42e63ba6c108b7dcfd0524b5d7653c52))
+* **schema,runtime,compiler:** refuse a Function declaring both body and $src ([#604](https://github.com/jxsuite/jx/issues/604)) ([7d298b1](https://github.com/jxsuite/jx/commit/7d298b1746de17d4e94fff5a58c90318cc360133))
+* **schema,studio:** a component setting with an enum is a select ([#606](https://github.com/jxsuite/jx/issues/606)) ([1f8c45a](https://github.com/jxsuite/jx/commit/1f8c45af706a50233fa7393ef6000796bb888e23))
+* **schema,studio:** report type errors in a function body ([#603](https://github.com/jxsuite/jx/issues/603)) ([6750226](https://github.com/jxsuite/jx/commit/675022653c18ddf8ba5f2f9378ca5b13063086b7))
+
 ## [5.5.0](https://github.com/jxsuite/jx/compare/schema-v5.4.0...schema-v5.5.0) (2026-11-08)
 
 

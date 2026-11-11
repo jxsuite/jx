@@ -2,9 +2,9 @@
 
 ## File-Based Routing, Content Collections, Layouts, and Static Site Generation
 
-**Version:** 0.8.6-draft\
+**Version:** 0.8.8-draft\
 **Status:** Partial\
-**Updated:** 2026-11-08\
+**Updated:** 2026-11-11\
 **License:** MIT
 
 ---
@@ -2413,6 +2413,8 @@ This spec builds on existing Jx primitives wherever possible:
 
 ## Changelog
 
+- **0.8.8-draft** (2026-11-11) — §2.4: starter documents are .jxn.
+- **0.8.7-draft** (2026-11-11) — §9.2.8: an <img> takes its file's focal point (IPTC Image Region) as its object-position; §16 binds IPTC Photo Metadata.
 - **0.8.6-draft** (2026-11-08) — §2.4: new projects are provisioned with project.jxn, with editor support for KDL highlighting.
 - **0.8.5-draft** (2026-11-08) — §2.3: jx convert moves the project file, Studio names the file the project has, a project file that does not parse opens as text in the Code view, and the project file never joins a collaboration session.
 - **0.8.4-draft** (2026-11-08) — §2.3's marker says the project.jxn grammar exists and no host reads it yet.

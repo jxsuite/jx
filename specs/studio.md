@@ -2,9 +2,9 @@
 
 ## Visual Builder for Jx Documents
 
-**Version:** 0.16.37-draft\
+**Version:** 0.16.48-draft\
 **Status:** Partial\
-**Updated:** 2026-11-08\
+**Updated:** 2026-11-11\
 **License:** MIT
 
 ---
@@ -2459,6 +2459,17 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.16.48-draft** (2026-11-11) — §4.1: a recorded document op is plain data that owns a copy of every path it names, and a full render keeps the previous picture standing while the new tree builds and then releases, draws and swaps in one synchronous step, so an escalation no longer shows the old page stripped of its rules.
+- **0.16.47-draft** (2026-11-11) — The slash menu opened from the canvas + is frozen over its trigger until it closes: hover, leaving the + and other nodes' zones no longer move or hide it, and a pick, Escape, an outside press, a press in the frame, scroll/zoom or a re-render close it.
+- **0.16.46-draft** (2026-11-11) — §4.3 Zoom is controlled from the status bar and follows the focused pane: Fit select, stepper, a logarithmic slider (double-click resets to 100%) and the percentage; §16.2 the status bar gains a fourth, right-hand ZOOM field (statusbar/zoom, aria-live off, absent where nothing zooms); §21.3 the code half of a comparison draws no zoom field, and the Visual/Code switch repaints the status bar; §22.8 Review changes draws none.
+- **0.16.45-draft** (2026-11-11) — 21.3: the Visual/Code switch is drawn from renderability, not from whether a change map exists.
+- **0.16.44-draft** (2026-11-11) — 5.2 states how the Outline opens: closed to the top level, branches along the selection opened when it moves and left alone by repaints, a per-tab open record, Expand All and Collapse All in an outline/toolbar action bar, and a twisty press that never starts a drag.
+- **0.16.43-draft** (2026-11-11) — §6.1: a prop's closed set of values is a select whether it is spelled as the state entry's enum or a CEM literal union, ahead of the base type, and discovery carries the enum; §6.3: a string or number entry edits its enum as Options.
+- **0.16.42-draft** (2026-11-11) — §16.7: the function editor reports type errors in a body, checked by Monaco's own TypeScript worker in a file written around the body, and files each as a Problem that outlives the editor.
+- **0.16.41-draft** (2026-11-11) — §8.5 and §9.1.1: Add new, New File in a document folder and Convert to Component write new documents as .jxn; a layout converts between .json and .jxn; a template or component whose other native spelling exists is refused, and so is a collection page beside a [slug] page in either spelling.
+- **0.16.40-draft** (2026-11-11) — §6.4: the function editor opens a body as TypeScript, and Close stores it as written instead of minifying it.
+- **0.16.39-draft** (2026-11-11) — §22.6: a picture's focal point is an IPTC Image Region in its own XMP, set in the Media detail pane, moved by Image editor saves and applied by the build.
+- **0.16.38-draft** (2026-11-11) — §22.6: a picture placed on a page starts with its file's alt text as its alt.
 - **0.16.37-draft** (2026-11-08) — §22.6: a picture's alt text and tags live in the picture's own XMP (IPTC Alt Text (Accessibility) and dc:subject), edited in the Media workspace's detail pane; Missing alt text and a Tags section filter by them and the search matches them; §9.3 Replace and §9.5 saves carry them across an overwrite; §19 binds IPTC Photo Metadata and ISO 16684-1. §22.6 is Implemented.
 - **0.16.36-draft** (2026-11-08) — Review changes' publish column says where the site is hosted, beside the choice of destination (§22.8).
 - **0.16.35-draft** (2026-11-08) — Publish › Hosting numbers its three setup steps, each marked Done or To do (§22.8).
@@ -2698,4 +2709,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_`@jxsuite/studio` Specification v0.16.37-draft_
+_`@jxsuite/studio` Specification v0.16.48-draft_
