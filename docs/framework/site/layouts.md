@@ -113,7 +113,7 @@ Compiling a page against its layout produces one document:
 - **Children**: page children are distributed into the layout's slots.
 - **State**: the layout's `state` is kept and the page's is merged over it; **the page wins** on any shared key. Project `state` fills in any key neither declares. Layouts can carry state of their own; jxsuite.com's docs layout loads the sidebar nav with a `ContentEntry`. In a built site, a layout's `timing: "server"` entries are served like a page's, with a relative `$src` resolved from the layout's own file (see [Timing](/docs/framework/concepts/timing)).
 - **`$media`, `style`, `attributes`**: merged the same way, page over layout.
-- **`$script`**: not merged. A layout's [script](/docs/framework/concepts/functions#a-module-inside-the-document) and a page's stay two modules in a build, so each can export a function of the same name, and a `#client` entry calls the script of the file it is written in.
+- **`$script`**: not merged. A layout's [script](/docs/framework/concepts/functions#a-module-inside-the-document) and a page's stay two modules, in a build and in Live Preview, so each can export a function of the same name, and a `#client` entry calls the script of the file it is written in.
 - **`$elements`**: in a build, every level counts. The page's, each layout's and the project's entries are all registered, and each `$ref` is relative to the file that declares it.
 - **`$head`**: merged site → layout → page, later entries winning for singletons like `<title>`; see [SEO and metadata](/docs/framework/site/seo).
 

@@ -18,7 +18,8 @@
  */
 
 import { readFileSync } from "node:fs";
-import { dirname, isAbsolute, relative, resolve } from "node:path";
+import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
+import { EraseError, eraseModule } from "@jxsuite/erase";
 import { parseScriptSpecifier, qualifyScripts } from "@jxsuite/schema/document-scripts";
 import type { ScriptSide } from "@jxsuite/schema/document-scripts";
 import { parseNativeDocument } from "@jxsuite/schema/jxn";
@@ -104,7 +105,12 @@ export function qualifiedDocument<T extends JxDocument>(
   documentPath: string,
   projectRoot: string,
 ): T {
-  return qualifyScripts(doc, relative(projectRoot, documentPath));
+  return qualifyScripts(doc, projectRelative(documentPath, projectRoot));
+}
+
+/** `path` from the project root, with `/` separators whatever the platform's own. */
+function projectRelative(path: string, projectRoot: string): string {
+  return relative(projectRoot, path).split(sep).join("/");
 }
 
 /** Read a `.json` or `.jxn` document, the two formats every build reads without an extension. */
@@ -125,7 +131,7 @@ export function documentScripts(
   read: DocumentReader = readNativeDocument,
 ): DocumentScripts {
   const documents = new Map<string, Promise<JxDocument>>();
-  const named = (path: string) => relative(projectRoot, path).replaceAll("\\", "/");
+  const named = (path: string) => projectRelative(path, projectRoot);
 
   const documentAt = (path: string): Promise<JxDocument> => {
     let pending = documents.get(path);
@@ -151,6 +157,16 @@ export function documentScripts(
         `${named(documentPath)} has no ${side} script: nothing in it is $script.${side}, ` +
           `but something names its ${side} module`,
       );
+    }
+    /* What a browser's module loader would refuse, a build refuses (spec.md §23.2): the bundler
+       compiles an `enum` without a word, and the same script would then run built and stop a page
+       that interprets it. A server module is held to the one rule, so a script is one language. */
+    const [refused, ...rest] = eraseModule(text).problems;
+    if (refused !== undefined) {
+      throw new EraseError({ path: named(documentPath), pointer: `/$script/${side}` }, [
+        refused,
+        ...rest,
+      ]);
     }
     return text;
   };

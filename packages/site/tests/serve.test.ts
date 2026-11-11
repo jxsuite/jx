@@ -163,6 +163,68 @@ describe("serveSite", () => {
   });
 });
 
+describe("a document with modules of its own, on a site origin", () => {
+  const SCRIPTED = {
+    $script: { client: "export function bump() {}", server: "export const secret = 1;" },
+    state: { bump: { $prototype: "Function", $src: "#client" } },
+    tagName: "x-counter",
+  };
+
+  test("is served without its server module, and otherwise as it is", async () => {
+    const response = await serve(
+      { "components/x-counter.json": JSON.stringify(SCRIPTED) },
+      "/components/x-counter.json",
+    );
+    expect(response.headers.get("Content-Type")).toBe("application/json; charset=utf-8");
+    const text = await response.text();
+    expect(text).not.toContain("secret");
+    expect(JSON.parse(text)).toEqual({
+      ...SCRIPTED,
+      $script: { client: "export function bump() {}" },
+    });
+  });
+
+  test("written as .jxn is served without its server module too", async () => {
+    const jxn = [
+      "x-counter {",
+      "    $script {",
+      '        client "export function bump() {}"',
+      '        server "export const secret = 1;"',
+      "    }",
+      "}",
+      "",
+    ].join("\n");
+    const response = await serve({ "components/x-counter.jxn": jxn }, "/components/x-counter.jxn");
+    const text = await response.text();
+    expect(text).not.toContain("secret");
+    expect(JSON.parse(text)).toEqual({
+      $script: { client: "export function bump() {}" },
+      tagName: "x-counter",
+    });
+  });
+
+  test("with only a client module is the bytes the tree has", async () => {
+    const authored = JSON.stringify({ $script: { client: "export const a = 1;" } }, null, 4);
+    const response = await serve({ "components/a.json": authored }, "/components/a.json");
+    expect(await response.text()).toBe(authored);
+  });
+
+  test("a page's shell carries neither module, and names the page's own", async () => {
+    const response = await serve({ "pages/index.json": JSON.stringify(SCRIPTED) }, "/");
+    const html = await response.text();
+    expect(html).not.toContain("secret");
+    expect(html).not.toContain("$script");
+    expect(html).toContain('"$src":"jx-script:pages/index.json#client"');
+  });
+
+  test("a file that only mentions the key is served as the bytes it is", async () => {
+    for (const authored of ['["$script"]', '{ "$script": ', '{"note":"$script","$script":null}']) {
+      const response = await serve({ "data/odd.json": authored }, "/data/odd.json");
+      expect(await response.text()).toBe(authored);
+    }
+  });
+});
+
 describe("a .jxn file on a site origin", () => {
   test("is answered as JSON, so a reader never needs a parser", async () => {
     const response = await serve({ "components/x-a.jxn": 'x-a "hi"' }, "/components/x-a.jxn");

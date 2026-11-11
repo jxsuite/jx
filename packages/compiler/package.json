@@ -37,6 +37,7 @@
     "./site-loader": "./src/site/site-loader.ts",
     "./types": "./src/types.ts",
     "./db-push": "./src/site/db-push.ts",
+    "./document-scripts": "./src/site/document-scripts.ts",
     "./bundler": "./src/site/bundler.ts",
     "./bun-plugin": "./src/site/bun-plugin.ts"
   },

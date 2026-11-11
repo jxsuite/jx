@@ -8,10 +8,12 @@ spec:
   - embedding.md#5 # per-mount context
   - embedding.md#6 # preloading bundled documents and modules
   - embedding.md#6.2 # TypeScript function bodies
+  - embedding.md#6.3 # TypeScript modules and document scripts
   - embedding.md#7 # redefining an element
 code:
   - packages/runtime/src/runtime.ts
   - packages/runtime/src/body-eraser.ts
+  - packages/erase/src/module-loader.ts
 ---
 
 # Embedding the runtime in your app
@@ -139,6 +141,27 @@ setBodyEraserLoader(() => import("/assets/eraser.js"));
 ```
 
 With a loader, a page whose bodies are all JavaScript downloads nothing more. If you render a document you built yourself rather than one the runtime resolved, call `await prepareBodies(doc)` before rendering it, so the loader runs first. Install the eraser eagerly instead when you bind handlers from documents you edit live with no step in which to fetch it.
+
+## Load TypeScript modules and document scripts
+
+A `$src` may name a `.ts` file, and a document may carry its own client module as text in `$script.client`. A browser imports neither as it is, so the runtime asks your host for a module loader. The same `@jxsuite/erase/browser` file exports it. If you set `setBodyEraserLoader`, you are done: the runtime fetches that file the first time a document needs a module loaded and installs the loader with the eraser. To install it now instead:
+
+```ts
+import { setModuleLoader } from "@jxsuite/runtime";
+import { loadModule } from "@jxsuite/erase/browser";
+
+setModuleLoader(loadModule);
+```
+
+The loader fetches a module's text, erases its types and imports the result from a `blob:` URL, loading each relative `.ts` import the same way. It reports four things as errors that name the module: an import cycle, a package import when you gave no `setNpmModuleResolver`, TypeScript that has to be compiled rather than erased, and a document with no client script. A page whose Content-Security-Policy refuses `blob:` in `script-src` cannot use it.
+
+A document you pass to `mount()` as an object runs its client script too, and its relative imports resolve from the mount's `base`. Its server script cannot run, because your backend has no file to read it from. A document with a server script is one to read with `resolve(url)`, or to hand to `Jx(url)`, so the runtime knows where it came from.
+
+To bundle a document's client module yourself, register it under the specifier the runtime gives it, which is the document's absolute URL between `jx-script:` and `#client`:
+
+```ts
+preloadModule("jx-script:https://app.example/components/counter.json#client", counterModule);
+```
 
 ## Configure each mount
 

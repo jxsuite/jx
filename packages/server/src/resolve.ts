@@ -4,11 +4,13 @@ import { eraseClass } from "@jxsuite/erase";
 import { siteBasePath } from "@jxsuite/schema/asset-paths";
 import { dirname, isAbsolute, relative, resolve } from "node:path";
 import { errorMessage, parseClassDef } from "@jxsuite/schema/parse";
+import { isScriptSpecifier } from "@jxsuite/schema/document-scripts";
 import { isFunction, isNonNullObject, isString } from "@jxsuite/schema/guards";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { projectDevEnv } from "./dev-vars.ts";
 import { containedPath } from "./net-guard.ts";
+import { serverScriptAddress, serverScriptImporter } from "./server-script.ts";
 import { buildProjectExtensionRegistry } from "@jxsuite/compiler/format-host";
 import { loadProjectSections } from "@jxsuite/compiler/project-sections";
 import { loadAssetMounts } from "@jxsuite/compiler/asset-mounts";
@@ -58,7 +60,7 @@ interface ExportedObject {
  * A loaded module's namespace object. `default` is read as an object because the proxies only ever
  * read a named member off it, which is defined for any non-nullish value.
  */
-interface ModuleNamespace extends ExportedObject {
+export interface ModuleNamespace extends ExportedObject {
   readonly default?: ExportedObject;
 }
 
@@ -172,16 +174,43 @@ function baseDirectory($base: string, root: string, projectRoot: string): string
   const url = new URL($base);
   const pathname = decodeURIComponent(url.pathname);
   const urlDir = pathname.slice(0, pathname.lastIndexOf("/") + 1);
-  const spellsPath = urlDir.startsWith("//") || /^\/[A-Za-z]:/.test(urlDir);
-  const fsDir = spellsPath ? urlDir.slice(1) : url.protocol === "file:" ? urlDir : null;
+  return pathOfUrl(url, urlDir, root, projectRoot);
+}
+
+/**
+ * The file a document's URL names, by the rule {@link baseDirectory} reads a directory with: the
+ * address a browser read a document from, back to the document on disk.
+ *
+ * @param {URL} url - The document's URL
+ * @param {string} root - The root a site URL names a path under
+ * @param {string} projectRoot - The active project, which may sit outside `root`
+ * @returns {string} An absolute path
+ */
+function documentFile(url: URL, root: string, projectRoot: string): string {
+  return pathOfUrl(url, decodeURIComponent(url.pathname), root, projectRoot);
+}
+
+/**
+ * The filesystem path one URL path names: itself when it spells a path under `root` or the active
+ * project, and otherwise a path under `root`.
+ *
+ * @param {URL} url - The URL the path was read from, for its scheme
+ * @param {string} urlPath - The decoded path to map: the URL's own, or its directory
+ * @param {string} root - The root a site URL names a path under
+ * @param {string} projectRoot - The active project, which may sit outside `root`
+ * @returns {string} An absolute path
+ */
+function pathOfUrl(url: URL, urlPath: string, root: string, projectRoot: string): string {
+  const spellsPath = urlPath.startsWith("//") || /^\/[A-Za-z]:/.test(urlPath);
+  const fsPath = spellsPath ? urlPath.slice(1) : url.protocol === "file:" ? urlPath : null;
   if (
-    fsDir !== null &&
-    isAbsolute(fsDir) &&
-    (containedPath(fsDir, root) !== null || containedPath(fsDir, projectRoot) !== null)
+    fsPath !== null &&
+    isAbsolute(fsPath) &&
+    (containedPath(fsPath, root) !== null || containedPath(fsPath, projectRoot) !== null)
   ) {
-    return resolve(fsDir);
+    return resolve(fsPath);
   }
-  return resolve(root, `.${urlDir}`);
+  return resolve(root, `.${urlPath}`);
 }
 
 /**
@@ -474,23 +503,38 @@ export async function handleServerFunction(req: Request, root: string, projectRo
     return problem("invalidRequest", "Missing $src or $export");
   }
 
-  let moduleAbsPath;
-  try {
-    moduleAbsPath = $base
-      ? resolve(baseDirectory($base, root, projectRoot), $src)
-      : resolve(root, $src);
-  } catch (error) {
-    return problem("invalidRequest", `Cannot resolve $src: ${errorMessage(error)}`);
-  }
+  let module: string | (() => Promise<ModuleNamespace>);
+  if (isScriptSpecifier($src)) {
+    // The document's own server script (spec.md §23.2): text inside a document, named by where
+    // Whoever read the document found it.
+    const address = serverScriptAddress($src);
+    if (address.kind === "refused") {
+      return problem("invalidRequest", address.reason);
+    }
+    const documentPath =
+      address.kind === "path"
+        ? resolve(projectRoot, address.path)
+        : documentFile(address.url, root, projectRoot);
+    if (!isImportable(documentPath, root, projectRoot)) {
+      return new Response(`$src "${$src}" escapes the project root`, { status: 403 });
+    }
+    module = () => importServerScript(documentPath, projectRoot);
+  } else {
+    try {
+      module = $base ? resolve(baseDirectory($base, root, projectRoot), $src) : resolve(root, $src);
+    } catch (error) {
+      return problem("invalidRequest", `Cannot resolve $src: ${errorMessage(error)}`);
+    }
 
-  if (!isImportable(moduleAbsPath, root, projectRoot)) {
-    return new Response(`$src "${$src}" escapes the project root`, { status: 403 });
+    if (!isImportable(module, root, projectRoot)) {
+      return new Response(`$src "${$src}" escapes the project root`, { status: 403 });
+    }
   }
 
   // Match the production contract `fn(args, env)` (compiler emits `fn(args, c.env)`): the dev proxy
   // Runs server-side, so its `env` is the extension mounts' own, `process.env` merged under the
   // Project's `.dev.vars` plus `JX_PROJECT_ROOT` (server.md §3.3).
-  const result = await callServerExport(moduleAbsPath, xport, args, projectDevEnv(projectRoot));
+  const result = await callServerExport(module, xport, args, projectDevEnv(projectRoot));
   if (result.ok) {
     return Response.json(result.value ?? null);
   }
@@ -518,21 +562,23 @@ export type ServerExportResult =
  * run: the proxy's caller names one in a request and checks containment first, while the stand-in
  * route's modules come from the build, so each does its own checking before it gets here.
  *
- * @param {string} modulePath - Absolute path of the module, or a specifier already resolved
+ * @param {string | (() => Promise<ModuleNamespace>)} module - Absolute path of the module or a
+ *   specifier already resolved, or how the module is imported when it is no file: a document's own
+ *   server script (`importServerScript`)
  * @param {string} exportName - The export to call
  * @param {JsonObject} args - The function's first argument
  * @param {ProjectDevEnv} env - The function's second argument: the platform environment
  * @returns {Promise<ServerExportResult>}
  */
 export async function callServerExport(
-  modulePath: string,
+  module: string | (() => Promise<ModuleNamespace>),
   exportName: string,
   args: JsonObject,
   env: ProjectDevEnv,
 ): Promise<ServerExportResult> {
   let mod: ModuleNamespace;
   try {
-    mod = await importModule(modulePath);
+    mod = await (isString(module) ? importModule(module) : module());
   } catch (error) {
     return { message: errorMessage(error), ok: false, stage: "import" };
   }
@@ -566,6 +612,15 @@ async function importModule(path: string): Promise<ModuleNamespace> {
      exports; every member the proxies read off one is checked to be a function before use. */
   return (await import(path)) as ModuleNamespace;
 }
+
+/**
+ * Import the server module a document carries (spec.md §23.2), as its namespace object. One
+ * importer for every dev host in the process, so a script is imported once whichever route asks.
+ *
+ * @param documentPath Absolute path of the document. The caller has checked it may be read.
+ * @param projectRoot The project the document belongs to.
+ */
+export const importServerScript = serverScriptImporter(importModule);
 
 /** What a constructed class answers with: its `resolve()` result, else its `value`, else itself. */
 async function instanceResult(
