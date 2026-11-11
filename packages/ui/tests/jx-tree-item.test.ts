@@ -127,6 +127,18 @@ describe("jx-tree-item", () => {
     expect(rules(item).get('& [part="twisty"]')).toContain("inline-size: 14px");
   });
 
+  test("the twisty is a pointer target the height of the row, and a leaf's is not", async () => {
+    /* A host that makes rows draggable inherits `grab` onto the chevron, and a target as tall as a
+       12px glyph loses the press to a pixel of vertical drift. So the twisty stretches to the row,
+       and says "pointer" only where there is something to open: a leaf's dead cell keeps its row's
+       cursor, because it is not a control. */
+    const { item } = await render({ value: "a", label: "main", level: "1", expanded: "false" });
+    const all = rules(item);
+    expect(all.get('& [part="twisty"]')).toContain("align-self: stretch");
+    expect(all.get('&[aria-expanded] [part="twisty"]')).toContain("cursor: pointer");
+    expect(all.get('& [part="twisty"]')).not.toContain("cursor");
+  });
+
   test("a branch says which way it is, and draws the matching caret", async () => {
     const { item } = await render({ value: "a", label: "main", level: "1", expanded: "false" });
     /* Read as a PROPERTY: the caret is given to `jx-icon` through `$props`, and the runtime does not

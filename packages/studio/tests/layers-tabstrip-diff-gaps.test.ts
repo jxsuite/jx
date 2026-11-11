@@ -24,6 +24,7 @@ import {
   tabCommands,
   workspace,
 } from "../src/workspace/workspace";
+import { openOutlineKey } from "../src/panels/outline-expansion";
 import { view } from "../src/view";
 import { getLayerSlot, initLayers, toastsAreHeld } from "../src/ui/layers";
 import { createCommandRegistry } from "../src/commands/registry";
@@ -109,6 +110,10 @@ function rows(): HTMLElement[] {
   return [...host.querySelectorAll<HTMLElement>('[part="row"][role="treeitem"]')];
 }
 
+function openRecord(): Record<string, boolean> {
+  return activeTab.value!.session.ui.outlineOpen;
+}
+
 function selection(): JxPath[] {
   return activeTab.value!.session.selection;
 }
@@ -127,7 +132,6 @@ function setUpOutlineDom(): void {
   Object.defineProperty(scroller, "clientHeight", { configurable: true, value: VIEWPORT });
   stubRect(scroller, { height: VIEWPORT, top: 0 });
   host = required(document, ".panel-body");
-  view._layersCollapsed = new Set();
   view.dndCleanups = [];
   treeTop = () => -scroller.scrollTop;
   onRerender = () => {};
@@ -153,6 +157,8 @@ describe("the Outline's walk off the end of its model", () => {
       value: ROW_COUNT * OUTLINE_ROW_HEIGHT,
     });
     resetWorkspaceWithTab(TAIL_DOC);
+    // The Outline opens closed to the top level; this suite is about the row that is open.
+    openOutlineKey(activeTab.value!, "children/1");
     onRerender = () => {
       void renderOutline(ROW_COUNT);
     };
@@ -192,6 +198,7 @@ describe("the Outline's walk off the end of its model", () => {
     await flush();
     last.focus();
     const drawn = rows().length;
+    const opened = { ...openRecord() };
 
     const errors = captureErrors();
     key(last, "ArrowRight");
@@ -201,7 +208,7 @@ describe("the Outline's walk off the end of its model", () => {
     expect(errors.messages).toEqual([]);
     // Nothing moved: no collapse was toggled, the row count is what it was, and the keyboard is
     // Still here. The only child below this row is a TEXT line, so the descent has nowhere to land.
-    expect(view._layersCollapsed!.size).toBe(0);
+    expect(openRecord()).toEqual(opened);
     expect(selection()).toEqual([["children", 1]]);
     expect(rows()).toHaveLength(drawn);
     expect(document.activeElement).toBe(rowByKey("children/1"));
@@ -210,10 +217,10 @@ describe("the Outline's walk off the end of its model", () => {
     // Rather than a key nothing is bound to.
     key(last, "ArrowLeft");
     await flush(2);
-    expect(view._layersCollapsed!.has("children/1")).toBe(true);
+    expect(openRecord()["children/1"]).toBeUndefined();
     key(rowByKey("children/1")!, "ArrowRight");
     await flush(2);
-    expect(view._layersCollapsed!.size).toBe(0);
+    expect(openRecord()).toEqual(opened);
   });
 
   test("a row activation with no document open leaves the closed tab's selection alone", () => {

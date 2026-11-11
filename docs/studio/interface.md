@@ -271,11 +271,12 @@ Almost nothing in Studio blocks the whole app any more. Installing dependencies 
 
 ## Status bar
 
-The strip along the bottom carries **ambient state only** (things that are true until something changes them) in three fields, in the same order as the levels above them:
+The strip along the bottom carries **ambient state only** (things that are true until something changes them) in three fields, in the same order as the levels above them, and the focused pane's zoom controls at the far right:
 
 - **Project** shows the project name, the git branch with its ahead/behind counts, a count of open problems, and who else is in the document with you.
 - **Document** is the [jump bar](#the-jump-bar): the open file, then every element above the one you have selected, each one a button that selects it.
 - **Selection** shows what the trail can't say: **3 selected** when more than one element is picked, or the style rule the Style panel is editing, while Project Styles is the tab in front. The rule stays picked when you switch workspaces and shows again when you come back.
+- **Zoom**, at the right end, is the focused pane's zoom: a fit picker, **−** and **+**, a slider and the percentage. Double-click the slider, or press the percentage, to return to 100%. It follows the pane you last clicked into, and it is not there when the pane has nothing to zoom (Preview, Code, the Grid, a workspace home). See **[Pan and zoom](/docs/studio/interface/canvas#pan-and-zoom)**.
 
 Nearly every item is a button that runs the command behind it: the project name opens your recents, the branch opens the Publish workspace on **Review changes** (its tooltip counts the changed files), the problem count opens the Bottom dock, and a crumb selects its element. Whether a document has unsaved changes is shown by the dot on its tab and by the Command Bar's **Save**; which view a pane is in is on its [context bar](/docs/studio/interface/tabs#the-pane-context-bar).
 

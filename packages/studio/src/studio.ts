@@ -178,6 +178,7 @@ import {
   mountSignalsPanel,
   registerSignalsCommands,
 } from "./panels/signals-panel";
+import { outlineCommands } from "./panels/outline-expansion";
 import { loadComponentRegistry, noteComponentSaved } from "./files/components";
 import { ensureDependenciesInstalled } from "./packages/ensure-deps";
 import { maybePromptJxsuiteUpdate } from "./packages/jxsuite-update";
@@ -593,9 +594,10 @@ paneContext.mount(primaryCell?.chrome ?? document.createElement("div"), {
   closeTab: tabStrip.requestClose,
   focusHome: focusWorkspaceHome,
 });
-/* The diff's Visual/Code switch decides whether the zoom pod is drawn, and the half it writes is
-   not reactive — so the switch repaints the chrome as well as the stage. See `setDiffChromeRepaint`. */
-setDiffChromeRepaint(paneContext.render);
+/* The diff's Visual/Code switch decides whether the status bar's zoom field is drawn, and the half
+   it writes is not reactive — so the switch repaints the bar as well as the stage. See
+   `setDiffChromeRepaint`. */
+setDiffChromeRepaint(renderStatusbar);
 
 overlaysPanel.mount({
   isEditing,
@@ -1782,6 +1784,7 @@ commandRegistry.registerAll(liveElementCommands());
 setContextMenuNavigate(navigateToComponent);
 registerDataExplorerCommands(commandRegistry, { renderLeftPanel });
 registerSignalsCommands(commandRegistry);
+commandRegistry.registerAll(outlineCommands());
 registerFormulaEditorCommands(commandRegistry);
 registerGridCommands(commandRegistry);
 registerSettingsCommands(commandRegistry);

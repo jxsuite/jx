@@ -84,7 +84,6 @@ beforeEach(() => {
      Without one registered, `getPlatform()` throws inside the Navigator's render. */
   installMockPlatform();
   view.dndCleanups = [];
-  view._layersCollapsed = new Set();
   resetStudioState();
   resetWorkspaceWithTab({
     children: [{ tagName: "p", textContent: "Hello" }],

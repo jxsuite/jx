@@ -906,8 +906,8 @@ describe("the old dispatch — twelve modifier chords", () => {
 
   /* ⌘0 is `pane.focusPrimary` now, pairing with `pane.focusSecondary`'s ⌘⌥0 — the re-bind
      `workspace/workspace.ts` deferred to the pane work by name. `canvas.zoomReset` keeps the verb
-     and its button in the floating zoom pod; what it gives up is a chord that was the second way to
-     reach a control already on screen, while focusing a pane had no way at all. */
+     and its controls in the status bar's zoom field; what it gives up is a chord that was the second
+     way to reach a control already on screen, while focusing a pane had no way at all. */
   test("⌘0 no longer resets the zoom — the chord belongs to the pane", () => {
     activeTab.value!.session.ui.zoom = 2.5;
     pressDoc("0", { ctrlKey: true });
@@ -922,12 +922,24 @@ describe("the old dispatch — twelve modifier chords", () => {
     ).toBe("mod+0");
   });
 
-  test("Reset Zoom still works as a verb, from the pod and the palette", () => {
+  test("Reset Zoom still works as a verb, from the status bar's zoom field and the palette", async () => {
+    const { getFit, hasDeclaredFit, resetFits } = await import("../src/canvas/canvas-utils");
+    resetFits();
     activeTab.value!.session.ui.zoom = 2.5;
+    expect(hasDeclaredFit()).toBe(false);
     void registry.run("canvas.zoomReset");
-    expect(activeTab.value!.session.ui.zoom).toBe(1);
-    expect(setPan).toHaveBeenCalledWith(16, 16);
-    expect(applyTransform).toHaveBeenCalled();
+    /* The stage's own reset (`resetZoom`), which the zoom field's 100% button used to call directly:
+       it declares 100% as the document's fit so the Fit select reads "Actual size", and it recentres
+       (the old verb pinned the pan at 16,16 and left the declared fit behind). With no panzoom
+       wrapper mounted in this fixture only the declaration is observable. */
+    expect(getFit()).toBe(1);
+    expect(setPan).not.toHaveBeenCalled();
+  });
+
+  test("the zoom verbs declare the status bar's zoom field as a placement", () => {
+    for (const id of ["canvas.zoomIn", "canvas.zoomOut", "canvas.zoomReset"]) {
+      expect(registry.get(id)?.menus, id).toEqual(["statusbar/zoom", "palette"]);
+    }
   });
 
   test('⌘= zooms in and ⌘- zooms out (`case "="` / `case "-"`)', () => {

@@ -229,9 +229,9 @@
 #app.tabs-hidden #pane-grid [data-pane-id] > [part="strip"]:not(:has([part="derivation"])) {
   display: none;
 }
-/* ⑫ Status bar Three fields in the shell's own level order, separated by a rule rather than by a
-   run of "|" characters: the boundary between PROJECT, DOCUMENT and SELECTION is structural, and
-   the eye should be able to find it without reading. */
+/* ⑫ Status bar Four fields in the shell's own level order, separated by a rule rather than by a
+   run of "|" characters: the boundary between PROJECT, DOCUMENT, SELECTION and the focused pane's
+   ZOOM is structural, and the eye should be able to find it without reading. */
 #statusbar {
   grid-row: 4;
   grid-column: 1 / -1;

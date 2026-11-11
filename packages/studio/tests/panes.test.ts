@@ -676,7 +676,7 @@ describe("the pane commands", () => {
 
   test("⌘0 is claimed once — `canvas.zoomReset` gave it up rather than sharing it", () => {
     /* Two commands claiming one chord throws at bootstrap, so this is the assertion that keeps
-       the pair legal. `canvas.zoomReset` kept its button in the floating zoom pod; focusing a pane
+       the pair legal. `canvas.zoomReset` kept its control in the status bar's zoom field; focusing a pane
        has no control at all, which is the whole argument for the re-bind. */
     const source = readFileSync(
       join(resolve(import.meta.dir, "..", "src"), "editor", "shortcuts.ts"),

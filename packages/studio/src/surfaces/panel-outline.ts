@@ -74,6 +74,24 @@ export interface OutlineCommandView {
 }
 
 /**
+ * One button of the Outline's action bar, projected from an `outline/toolbar` record.
+ *
+ * The bar acts on the open document's whole tree, so unlike {@link OutlineCommandView} there is no
+ * row to name: `disabled` and `tooltip` are the registry's own answers.
+ */
+export interface OutlineToolView {
+  /** The record's id: the reconcile key, and what a click runs. */
+  id: string;
+  /** The accessible name, which is the record's own `title`. */
+  title: string;
+  /** The tooltip: the chord when it can act, the `requires` sentence when it cannot. */
+  tooltip: string;
+  /** The glyph by its name in the kit's manifest. */
+  icon: string;
+  disabled: boolean;
+}
+
+/**
  * One line of the Outline, as the document draws it. Every field is a value: no paths, no nodes, no
  * closures, and nothing the document has to compute.
  */
@@ -133,6 +151,8 @@ export interface OutlineValues {
   /** `rows` or `empty` — whether this document has anything in it at all. */
   view: string;
   rows: OutlineRowView[];
+  /** The action bar above the tree: Expand All and Collapse All. */
+  tools: OutlineToolView[];
   /** The windowed list's two spacers, in pixels. */
   padTop: number;
   padBottom: number;
@@ -207,6 +227,8 @@ export interface OutlineActions {
   editCancel: () => void;
   /** The one thing an empty page offers. */
   emptyAction: () => void;
+  /** An action bar button was pressed: run the command with this id. */
+  runTool: (id: string) => void;
   /** The tree element exists: the window is measured against it and the scroll watch binds to it. */
   treeReady: (element: HTMLElement) => void;
   /** The rename input exists, detached and empty. Where the caret goes is the host's decision. */
@@ -231,6 +253,7 @@ interface OutlineScope extends OutlineValues, OutlineActions {}
 function project(scope: OutlineScope, values: OutlineValues): void {
   scope.view = values.view;
   scope.rows = values.rows;
+  scope.tools = values.tools;
   scope.padTop = values.padTop;
   scope.padBottom = values.padBottom;
   scope.current = values.current;
@@ -277,7 +300,9 @@ export function mountOutlineSurface(
     rename: actions.rename,
     reveal: actions.reveal,
     rows: [],
+    tools: [],
     runRow: actions.runRow,
+    runTool: actions.runTool,
     select: actions.select,
     treeReady: actions.treeReady,
     typeahead: actions.typeahead,

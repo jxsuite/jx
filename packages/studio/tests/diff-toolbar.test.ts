@@ -87,7 +87,7 @@ void mock.module("../src/services/announce.js", () => ({
   announce: (message: string) => announced.push(message),
 }));
 
-/* …and the pane CHROME, because the zoom pod is not drawn over the Code half and the half is not
+/* …and the STATUS BAR, because its zoom field is not drawn over the Code half and the half is not
    reactive. Injected from `studio.ts` for the same reason, so a spy here too. */
 let chromeRepaints = 0;
 
@@ -102,7 +102,7 @@ setDiffRepaint((paneId: string) => repainted.push(paneId));
 setDiffChromeRepaint(() => {
   chromeRepaints += 1;
 });
-const { diffStepOf, diffViewOf, resetDiffViews, setDiffChangeMap, setDiffView } =
+const { diffStepOf, diffViewOf, resetDiffViews, setDiffChangeMap, setDiffRenderable, setDiffView } =
   await import("../src/canvas/diff-view");
 const { flush } = await import("./harness");
 const { emptyContext, makeContext } = await import("../src/commands/context");
@@ -246,11 +246,53 @@ describe("what the toolbar says", () => {
   test("draws Code as static text when the comparison has no visual half", async () => {
     // A file the canvas cannot render reaches the toolbar with a null map. The Visual button is
     // Never drawn disabled — that is the rule a one-value axis follows everywhere else.
+    setDiffRenderable("primary", false);
     setDiffChangeMap("primary", null);
     const el = await draw("primary");
     expect(el.querySelector('[part="view-static"]')?.textContent).toBe("Code");
     expect(radios(el)).toHaveLength(0);
     expect(el.textContent).toContain("Changed lines are marked");
+  });
+
+  test("Code with NO change map still offers the way back to Visual", async () => {
+    /* The regression: Code entered first, or after a non-document file, leaves no map (only the
+       Visual half computes one). The bar read that as "no visual half" and degraded to a static
+       label, so Visual was reachable only from the palette. */
+    setDiffRenderable("primary", true);
+    setDiffChangeMap("primary", null);
+    setDiffView("primary", "code");
+    const el = await draw("primary");
+    expect(el.querySelector('[part="view-static"]')).toBeNull();
+    expect(radios(el).map((button) => checked(button))).toEqual(["false", "true"]);
+    expect(el.textContent).toContain("Changed lines are marked");
+    expect(stepper(el, "next")).toBeNull();
+
+    radios(el)[0]!.click();
+    await flush();
+    expect(diffViewOf("primary")).toBe("visual");
+    expect(repainted).toEqual(["primary"]);
+  });
+
+  test("the way back to Visual is reachable from the keyboard", async () => {
+    setDiffChangeMap("primary", null);
+    setDiffView("primary", "code");
+    const el = await draw("primary");
+    const visual = radios(el)[0]!;
+    const control = visual.querySelector<HTMLElement>('[part="control"]')!;
+    control.focus();
+    control.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Enter" }));
+    control.dispatchEvent(new KeyboardEvent("keyup", { bubbles: true, key: "Enter" }));
+    control.click();
+    await flush();
+    expect(diffViewOf("primary")).toBe("visual");
+  });
+
+  test("a Visual half with no map keeps the choice and does not claim marked lines", async () => {
+    setDiffChangeMap("primary", null);
+    const el = await draw("primary");
+    expect(radios(el)).toHaveLength(2);
+    expect(el.textContent).not.toContain("Changed lines are marked");
+    expect(el.textContent).toContain("Changes not marked");
   });
 
   test("the Code button switches the view and rebuilds the stage", async () => {
@@ -263,7 +305,7 @@ describe("what the toolbar says", () => {
     // The documented "this stage's structure is stale" signal, without which the repaint sees
     // `modeChanged === false` and skips the setup the other branch needs.
     expect(surfaces.get("primary")?.prevCanvasMode).toBeNull();
-    // And the chrome, or the zoom pod would go on floating over a Monaco it cannot zoom.
+    // And the status bar, or its zoom field would go on offering a zoom for a Monaco that has none.
     expect(chromeRepaints).toBe(1);
   });
 

@@ -1,5 +1,5 @@
 /**
- * The pane's chrome — the context bar and the floating zoom pod.
+ * The pane's chrome — the context bar. (Zoom is the status bar's, `statusbar-zoom.test.ts`.)
  *
  * These cases are the old `tab-bar` suite re-aimed at what replaced it, and then re-aimed again at
  * the DOCUMENT that replaced the lit template. The claims that changed:
@@ -10,7 +10,7 @@
  *   and a separate `aria-pressed` toggle says whether preview is on.
  * - **The rendering context only selects.** Its popover ends in "Manage contexts…", which runs
  *   `settings.open` — the definition site — rather than defining anything itself.
- * - **The pod floats.** Zoom left the band; the fit picker writes the declared {@link FitMode}.
+ * - **Zoom is not here.** It left the band for a pod and the pod for the status bar's ZOOM field.
  * - **The band is where a standing statement goes.** The read-only banner (collab.md §4) is drawn
  *   here, inside the band the stage is offset by, because this is the per-document chrome directly
  *   above the editing surface.
@@ -47,7 +47,7 @@ const {
   splitRight,
   workspace,
 } = await import("../src/workspace/workspace");
-const { getFit, hasDeclaredFit, resetFits } = await import("../src/canvas/canvas-utils");
+const { resetFits } = await import("../src/canvas/canvas-utils");
 const { createCommandRegistry } = await import("../src/commands/registry");
 const { makeContext } = await import("../src/commands/context");
 const { activeRegistry, setActiveRegistry } = await import("../src/commands/active-registry");
@@ -57,7 +57,6 @@ const { getEffectiveLocales } = await import("../src/site-context");
 const { tabOfPane } = await import("../src/canvas/canvas-surface");
 const { localeLabel } = await import("@jxsuite/schema/locale");
 const { shell } = await import("../src/shell");
-const { diffViewOf, resetDiffViews, setDiffView } = await import("../src/canvas/diff-view");
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
 
@@ -482,9 +481,9 @@ describe("a logic editor open in the dock", () => {
   // The bar used to blank itself the moment `editingFunction` or `editingFormula` was set, on the
   // Grounds that a full-screen sub-editor owned the stage. Both moved into the Bottom dock's Logic
   // Tab and left the page rendering underneath, so the axes describe the document that is still on
-  // Screen and the pod still has something to zoom. Suppressing them removed the controls for the
+  // Screen. Suppressing them removed the controls for the
   // Document the reader could see.
-  test("leaves all three axes and the zoom pod exactly where they were", async () => {
+  test("leaves all three axes exactly where they were", async () => {
     const tab = openTestTab();
     await mountBar();
     const before = axes();
@@ -493,13 +492,11 @@ describe("a logic editor open in the dock", () => {
     tab.session.ui.editingFunction = { defName: "greet", type: "def" };
     await flush(4);
     expect(axes()).toEqual(before);
-    expect(part("pod")).not.toBeNull();
 
     tab.session.ui.editingFunction = null;
     tab.session.ui.editingFormula = { defName: "total", type: "def" };
     await flush(4);
     expect(axes()).toEqual(before);
-    expect(part("pod")).not.toBeNull();
   });
 
   test("draws no Back and no breadcrumb — the dock header and the jump bar own both", async () => {
@@ -1411,195 +1408,40 @@ describe("resolving with", () => {
   });
 });
 
-// ─── The floating zoom pod ────────────────────────────────────────────────────
+// ─── Zoom is not this bar's ───────────────────────────────────────────────────
 
-describe("zoom pod", () => {
-  /** What the pod's reset button reads. */
-  function zoomLabel(host: HTMLElement = root): string {
-    return nameOf(part("zoom-label", host)!);
-  }
-
-  test("floats outside the bar, and shows the edit-mode content zoom", async () => {
+/* Zoom and Fit used to float over the canvas as a pod this surface drew. They are the status bar's
+   ZOOM field now (`statusbar-zoom.test.ts`), which follows the focused pane, so the pane context bar
+   draws nothing for them in ANY mode: a second copy over the stage is the chrome duplication the
+   budget exists to prevent. */
+describe("zoom", () => {
+  test("is drawn by no mode of the bar: no pod, no stepper, no percentage, no Fit", async () => {
     const tab = openTestTab();
-    tab.session.ui.editZoom = 1.5;
-    await mountBar();
-
-    const pod = part("pod")!;
-    expect(pod).not.toBeNull();
-    expect(part("bar")!.contains(pod)).toBe(false);
-    expect(pod.dataset.jxRegion).toBe("pane.primary/zoom");
-    expect(zoomLabel()).toBe("150%");
-    // Edit mode has no artboard, so it has no fit.
-    expect(part("fit")).toBeNull();
-  });
-
-  test("− / + step the edit zoom and the label tracks reactively", async () => {
-    const tab = openTestTab();
-    await mountBar();
-
-    pointer(part("zoom-in")!, "click");
-    await flush(4);
-    expect(tab.session.ui.editZoom).toBeCloseTo(1.2);
-    expect(zoomLabel()).toBe("120%");
-
-    pointer(part("zoom-out")!, "click");
-    await flush(4);
-    expect(tab.session.ui.editZoom).toBeCloseTo(1);
-
-    pointer(part("zoom-label")!, "click");
-    await flush(4);
-    expect(tab.session.ui.editZoom).toBe(1);
-  });
-
-  test("design mode drives ui.zoom and declares each step as the document's fit", async () => {
-    const tab = openTestTab();
-    tab.session.ui.zoom = 2;
-    await mountBar(ctxInMode("design"));
-    expect(zoomLabel()).toBe("200%");
-    expect(hasDeclaredFit()).toBe(false);
-
-    pointer(part("zoom-in")!, "click");
-    await flush(4);
-    expect(tab.session.ui.zoom).toBeCloseTo(2.4);
-    expect(tab.session.ui.editZoom).toBe(1);
-    expect(getFit()).toBeCloseTo(2.4, 5);
-
-    pointer(part("zoom-out")!, "click");
-    await flush(4);
-    expect(tab.session.ui.zoom).toBeCloseTo(2);
-  });
-
-  test("the fit picker writes the declared fit, and 100% declares the number 1", async () => {
-    openTestTab();
-    await mountBar(ctxInMode("design"));
-
-    const fit = select("fit")!;
-    expect([...fit.querySelectorAll("option")].map((o) => o.textContent.trim())).toEqual([
-      "Fit page",
-      "Fit width",
-      "Actual size",
-      "No fit",
-    ]);
-
-    choose(fit, "width");
-    expect(getFit()).toBe("width");
-
-    choose(fit, "page");
-    expect(getFit()).toBe("page");
-
-    choose(fit, "none");
-    expect(getFit()).toBe("none");
-
-    choose(fit, "actual");
-    expect(getFit()).toBe(1);
-
-    // An unknown value is ignored rather than clearing the declared fit.
-    fit.dispatchEvent(new Event("change", { bubbles: true }));
-    fit.value = "";
-    fit.dispatchEvent(new Event("change", { bubbles: true }));
-    expect(getFit()).toBe(1);
-
-    resetFits();
-    pointer(part("zoom-label")!, "click");
-    expect(getFit()).toBe(1);
-  });
-
-  test("the picker shows an author-chosen zoom as no named fit", async () => {
-    const tab = openTestTab();
-    tab.session.ui.zoom = 2;
-    await mountBar(ctxInMode("design"));
-    pointer(part("zoom-in")!, "click");
-    await flush(4);
-    expect(select("fit")!.value).toBe("");
-  });
-
-  test("stylebook is on the panzoom surface; preview and source have no pod", async () => {
-    openTestTab();
-    await mountBar(ctxInMode("stylebook"));
-    expect(part("pod")).not.toBeNull();
-
-    paneContext.unmount();
-    await mountBar(ctxInMode("preview"));
-    expect(part("pod")).toBeNull();
-
-    paneContext.unmount();
-    await mountBar(ctxInMode("source"));
-    expect(part("pod")).toBeNull();
-  });
-
-  /* A comparison has two halves and only one of them zooms. The Visual half is two artboards on the
-     panzoom surface; the Code half is one Monaco diff editor filling the stage, where + / − / Fit
-     drove nothing and the pod sat on Monaco's own scrollbar. */
-  describe("over a comparison", () => {
-    function compare(filePath: string): void {
-      shell.git.diffState = {
-        currentContent: "{}",
-        filePath,
-        fileStatus: "M",
-        originalContent: "{}",
-      };
+    for (const mode of ["edit", "design", "stylebook", "git-diff", "preview", "source"]) {
+      tab.session.ui.canvasMode = mode;
+      paneContext.unmount();
+      await mountBar(ctxInMode(mode));
+      expect(part("pod"), mode).toBeNull();
+      expect(part("zoom-label"), mode).toBeNull();
+      expect(part("zoom-in"), mode).toBeNull();
+      expect(part("fit"), mode).toBeNull();
     }
+  });
 
-    afterEach(() => {
-      shell.git.diffState = null;
-      resetDiffViews();
-    });
+  test("the bar's controls are the three axes, the leading slot and Export, and no zoom control", async () => {
+    openTestTab();
+    await mountBar(ctxInMode("design"));
+    expect(labels().some((name) => /zoom/i.test(name))).toBe(false);
+  });
 
-    test("the Visual half is on the panzoom surface: the pod and its fit are drawn", async () => {
-      openTestTab();
-      compare("/project/index.json");
-      await mountBar(ctxInMode("git-diff"));
-      expect(part("pod")).not.toBeNull();
-      expect(select("fit")).not.toBeNull();
-    });
-
-    test("the Code half has nothing to zoom, so no pod; the switch back redraws it", async () => {
-      openTestTab();
-      compare("/project/index.json");
-      setDiffView(PRIMARY_PANE, "code");
-      await mountBar(ctxInMode("git-diff"));
-      expect(part("pod")).toBeNull();
-
-      // The half is not reactive, so the switch repaints this chrome itself (`diff-toolbar.ts`).
-      setDiffView(PRIMARY_PANE, "visual");
-      paneContext.render();
-      await flush(6);
-      expect(part("pod")).not.toBeNull();
-    });
-
-    test("a file with no visual half is only ever Code: no pod, whatever the switch says", async () => {
-      openTestTab();
-      compare("styles/site.css");
-      await mountBar(ctxInMode("git-diff"));
-      expect(diffViewOf(PRIMARY_PANE)).toBe("visual");
-      expect(part("pod")).toBeNull();
-    });
-
-    test("before a comparison has landed there is nothing to zoom either", async () => {
-      openTestTab();
-      await mountBar(ctxInMode("git-diff"));
-      expect(part("pod")).toBeNull();
-    });
-
-    test("Review changes draws no pod: its publish column stands where the pod would float", async () => {
-      openTestTab();
-      const { openWorkspaceHome } = await import("../src/workspace/workspace-home");
-      openWorkspaceHome("publish");
-      compare("/project/index.json");
-      await mountBar(ctxInMode("git-diff"));
-      expect(part("pod")).toBeNull();
-    });
-
-    test("the comparison is a tracked input: retargeting it to a stylesheet takes the pod away", async () => {
-      openTestTab();
-      compare("/project/index.json");
-      await mountBar(ctxInMode("git-diff"));
-      expect(part("pod")).not.toBeNull();
-
-      compare("styles/site.css");
-      await flush(6);
-      expect(part("pod")).toBeNull();
-    });
+  test("a zoom write repaints nothing here: the bar does not track either scale", async () => {
+    const tab = openTestTab();
+    await mountBar(ctxInMode("design"));
+    const before = root.innerHTML;
+    tab.session.ui.zoom = 3;
+    tab.session.ui.editZoom = 2;
+    await flush(4);
+    expect(root.innerHTML).toBe(before);
   });
 });
 
@@ -1674,7 +1516,7 @@ describe("two bars, two panes", () => {
     await twoBars(makeCtx());
     expect(part("bar")!.dataset.jxRegion).toBe("pane.primary/context");
     expect(part("bar", sideHost)!.dataset.jxRegion).toBe(`pane.${SECONDARY_PANE}/context`);
-    expect(part("pod", sideHost)!.dataset.jxRegion).toBe(`pane.${SECONDARY_PANE}/zoom`);
+    expect(part("pod", sideHost)).toBeNull();
   });
 
   test("each bar's popovers carry their own ids — one pane's trigger cannot open the other's panel", async () => {

@@ -119,6 +119,7 @@ import { restoreSession } from "../workspace/session";
 import { cleanupSourceControl } from "../publish/source-control";
 import { addRecentProject, trackRecentFile } from "../recent-projects";
 import { listWindow, revealListRow, watchListWindow } from "../ui/virtual-window";
+import { dragStartsOnTwisty, trackTwistyPress } from "../utils/twisty-press";
 import type { JsonObject, JxMutableNode } from "@jxsuite/schema/types";
 import { isString } from "@jxsuite/schema/guards";
 import type { CommandArgValues } from "../commands/command-args";
@@ -1365,11 +1366,15 @@ export function pickAndUploadTo(dir: string, renderLeftPanel: () => void): void 
  * true.
  */
 function adoptFileRow(element: HTMLElement, path: string, type: string): void {
+  trackTwistyPress();
   releaseRowDnD(element);
   _fileRowEls.set(path, element);
 
   const cleanups = [
     draggable({
+      /* A press on the twisty is a toggle, never a drag: it is a 14px target and a press that
+         drifts a few pixels would start a native drag and swallow the click. */
+      canDrag: ({ input }) => !dragStartsOnTwisty(input),
       element,
       getInitialData() {
         return { entryType: type, path, type: "file-tree" };

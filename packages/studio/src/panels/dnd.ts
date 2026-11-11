@@ -24,10 +24,12 @@ import {
   isAncestor,
   leftPanel,
   parentElementPath,
+  pathKey,
   renderOnly,
 } from "../store";
 import { mutateInsertNode, mutateMoveNode, transactDoc } from "../tabs/transact";
 import { primarySelection } from "../tabs/selection";
+import { closeOutlineKey } from "./outline-expansion";
 import { activeTab } from "../workspace/workspace";
 import { view } from "../view";
 import { buildComponentInstance, componentRegistry } from "../files/components";
@@ -35,6 +37,7 @@ import { mutateImportComponent } from "../editor/insert-component";
 import { renderComponentPreview } from "./component-preview";
 import { defaultDef, unsafeTags } from "./shared";
 import { elementAtPoint } from "../utils/geometry";
+import { dragStartsOnTwisty, trackTwistyPress } from "../utils/twisty-press";
 import type { JxPath } from "../state";
 import type { Tab } from "../tabs/tab";
 import type { JxMutableNode } from "@jxsuite/schema/types";
@@ -77,7 +80,6 @@ interface DropSlot {
 const OUTLINE_ROOT = '[part="outline"]';
 const OUTLINE_ROWS = '[part="row"]';
 const OUTLINE_ACTIONS = '[part="verbs"]';
-
 /**
  * The frame a queued Outline registration is waiting on, so a second call REPLACES it.
  *
@@ -115,6 +117,7 @@ export function registerLayersDnD() {
     cleanup();
   }
   view.dndCleanups = [];
+  trackTwistyPress();
   _layersFrame = requestAnimationFrame(() => {
     _layersFrame = null;
     const container = leftPanel?.querySelector<HTMLElement>(OUTLINE_ROOT);
@@ -136,10 +139,9 @@ export function registerLayersDnD() {
         draggable({
           canDrag({ element: _el, input }: DragCanDragArgs) {
             const target = elementAtPoint(input.clientX, input.clientY);
-            if (target?.closest(OUTLINE_ACTIONS)) {
-              return false;
-            }
-            return true;
+            /* The twisty is a toggle, never a drag handle: refusing the drag at the press is what
+               lets its click survive a few pixels of drift (`utils/twisty-press.ts`). */
+            return !target?.closest(OUTLINE_ACTIONS) && !dragStartsOnTwisty(input);
           },
           element: row,
           getInitialData() {
@@ -240,10 +242,9 @@ export function registerLayersDnD() {
         if (wasExpanded) {
           const tab = activeTab.value;
           const newPath = primarySelection(tab?.session.selection);
-          if (newPath) {
-            view._layersCollapsed ||= new Set();
-            const collapsed = view._layersCollapsed;
-            collapsed.add(newPath.join("/"));
+          if (tab && newPath) {
+            // The moved node lands closed; the selection rule opens the chain above it.
+            closeOutlineKey(tab, pathKey(newPath));
           }
         }
       },

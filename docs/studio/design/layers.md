@@ -2,9 +2,11 @@
 title: "Outline panel"
 description: "The Outline panel in Jx Studio: read your page's structure as a tree, select one element or many, rename, reorder by drag and drop, and act on them."
 spec:
+  - studio.md#5.2
   - studio.md#6.7
 code:
   - packages/studio/src/panels/layers-panel.ts
+  - packages/studio/src/panels/outline-expansion.ts
   - packages/studio/src/surfaces/panel-outline.json
   - packages/studio/src/surfaces/panel-outline.ts
   - packages/studio/src/panels/dnd.ts
@@ -30,7 +32,20 @@ Each row shows a badge and a name. The badge tells you what the row is:
 
 Hover any badge for the plain-English version of what it marks.
 
-Text sits in its own dimmed, italic rows, and rows with children get a chevron. Click it to collapse or expand that branch without changing the selection.
+Text sits in its own dimmed, italic rows, and rows with children get a chevron. Click it to expand or collapse that branch without changing the selection.
+
+## Expand and collapse
+
+A page opens with its top level showing and every branch below it collapsed, so even a long page starts as a short list. The panel then follows what you select: pick an element on the canvas, from Problems or with the keyboard, and the branches above it open so its row is in view. Only the path to the element opens. Its siblings' branches and the element's own children stay as they were.
+
+Opening and closing a branch by hand is always yours. A branch you collapse stays collapsed while you scroll, hover or click elsewhere, and it opens again only when the selection moves to something inside it, because a selected row hidden behind a collapsed parent would be out of reach of the keyboard. Each file keeps its own open branches, so switching tabs brings back the tree as you left it.
+
+The **Outline actions** bar above the tree holds two buttons:
+
+- **Expand All** opens every branch in the page. It is cheap on a large page, because the tree only ever draws the rows on screen.
+- **Collapse All** closes every branch but the page's top level, so you are back to the short list. The selection stays as it is, and its branch opens again the next time the selection changes.
+
+Both are also in the [command palette](/docs/studio/interface/quick-access) as **Expand All** and **Collapse All**, and they work there even when the Outline is not the panel on screen.
 
 An empty page has no tree to show, so the panel says so and offers **Add an element**, which opens the **[Insert palette](/docs/studio/design/elements)**. With no document open at all, the panel says what it needs: "Open a page to see the elements it is built from."
 
@@ -85,7 +100,7 @@ A row's buttons act on **that row**, the one under your pointer, which is not al
 The tree is keyboard-navigable. :kbd[↑] and :kbd[↓] walk the rows and take the selection with them, :kbd[→] expands a row or steps into it, :kbd[←] collapses it or climbs to its parent, and :kbd[Home] / :kbd[End] jump to the ends. Typing a letter jumps to the next row whose name starts with it, which beats arrowing through a long page. It searches the whole document, not only the rows currently on screen. The arrows stop at the ends rather than wrapping around, so a long walk never quietly puts you back where you started.
 :::
 
-For bigger moves, drag the **⠿** handle (it appears on any row you hover) or the row itself. An indicator shows where the element will land: above or below the row under the cursor, or inside it as a child. You can also drag a row straight onto the canvas and drop it at the spot you see. Press :kbd[Esc] mid-drag to cancel with nothing changed. Dropping an element into itself or its own descendants is blocked.
+For bigger moves, drag the **⠿** handle (it appears on any row you hover) or the row itself. An indicator shows where the element will land: above or below the row under the cursor, or inside it as a child. You can also drag a row straight onto the canvas and drop it at the spot you see. Press :kbd[Esc] mid-drag to cancel with nothing changed. Dropping an element into itself or its own descendants is blocked. The chevron is the one part of a row that never starts a drag, so a press on it always toggles the branch even when your pointer wobbles.
 
 ## Right-click for everything else
 

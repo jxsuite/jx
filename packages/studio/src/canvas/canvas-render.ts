@@ -39,9 +39,8 @@ import {
 import { collabSourceContext } from "../collab/collab-session";
 import { buildChangeMap } from "./diff-marks";
 import type { ChangeMap, ChangeMark } from "./diff-marks";
-import { clearDiffView, diffShowsCode, setDiffChangeMap } from "./diff-view";
+import { clearDiffView, diffShowsCode, setDiffChangeMap, setDiffRenderable } from "./diff-view";
 import { canRenderComparison } from "../panels/git-diff-open";
-import { releaseStageScrollbar, trackStageScrollbar } from "./stage-scrollbar";
 import { renderDiffToolbar, setDiffRepaint, setDiffToolbarHost } from "./diff-toolbar";
 import { attachCursorStyles } from "../collab/monaco-cursors";
 import { monacoTheme, shell } from "../shell";
@@ -690,7 +689,6 @@ function resetCanvasView(surface: CanvasSurface) {
     surface.centerObserver.disconnect();
     surface.centerObserver = null;
   }
-  releaseStageScrollbar(surface);
   for (const p of surface.panels) {
     p.renderScope?.stop();
     p.renderScope = null;
@@ -1323,10 +1321,6 @@ function renderCanvasImpl(surface: CanvasSurface) {
       surface.centerObserver.disconnect();
       surface.centerObserver = null;
     }
-    /* Edit's scroller leaves with its stage, and the pod must not keep Edit's inset in a mode that
-       has no scrollbar under it: missed here, Design's pod would float 15px short of its corner. */
-    releaseStageScrollbar(surface);
-
     // Destroy the grid panel if switching away from grid mode
     detachGridPanel(surface.paneId);
 
@@ -1602,11 +1596,14 @@ function renderCanvasImpl(surface: CanvasSurface) {
        a Diff lens, the Editor axis) and only this one sees every arrival. Forcing it here also
        leaves `diffView` alone, so a document opened after a `.css` still comes up Visual. */
     const renderable = canRenderComparison(gitDiffState.filePath);
+    // Stored before either half draws, so the Compare bar offers a switch exactly when there is one.
+    setDiffRenderable(surface.paneId, renderable);
     if (diffShowsCode(surface.paneId, renderable)) {
-      /* A null map is how the toolbar learns there is no visual half to offer: it draws Code as a
-         static label rather than as half of a choice, and reports the line marks instead of a node
-         count. Cleared rather than left, so a pane that compared a document and then a stylesheet
-         does not keep the document's count over the stylesheet's text. */
+      /* `renderable` (stored above) is how the toolbar learns there is no visual half to offer: it
+         draws Code as a static label rather than as half of a choice. The map is NOT that signal,
+         since only the Visual branch computes one. Cleared for a file with no visual half, so a pane
+         that compared a document and then a stylesheet does not keep the document's count over the
+         stylesheet's text. */
       if (!renderable) {
         setDiffChangeMap(surface.paneId, null);
       }
@@ -1842,11 +1839,6 @@ function renderCanvasImpl(surface: CanvasSurface) {
       /* SAFETY: the edit stage view always draws its `edit-canvas` part, and this runs only once
          drawStage settled with that stage (the `!stage` return above). */
       entry.panel.scrollContainer = scroller as HTMLElement;
-      /* The one mode whose stage SCROLLS under the zoom pod, so the one that tells the pane how
-         wide its scrollbar is. The pod floats in the pane's chrome layer, which spans the gutter
-         too, and without this it sat 3px into the track. A same-scroller repaint is a no-op, and
-         every teardown below releases it back to 0. See `canvas/stage-scrollbar.ts`. */
-      trackStageScrollbar(surface, scroller);
       // The one writer of the column's width — see the note above.
       if (editColumn) {
         editColumn.style.maxWidth = `${Math.round(columnWidth)}px`;
@@ -2154,7 +2146,6 @@ setSurfaceTeardown((surface) => {
   disposeSourceEditor(surface);
   surface.centerObserver?.disconnect();
   surface.centerObserver = null;
-  releaseStageScrollbar(surface);
   surface.panzoomWrap = null;
   detachCanvasStage(surface);
 });

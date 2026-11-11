@@ -1,0 +1,151 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StylebookSlider",
+  "tagName": "main",
+  "$elements": [
+    {
+      "$ref": "../components/jx-slider.json"
+    }
+  ],
+  "state": {
+    "level": 40
+  },
+  "style": {
+    "fontFamily": "var(--jx-font-sans)",
+    "fontSize": "var(--jx-text-md)",
+    "color": "var(--jx-fg)",
+    "background": "var(--jx-bg)",
+    "padding": "var(--jx-space-6)",
+    "minHeight": "100vh",
+    "& > h1": {
+      "fontSize": "var(--jx-text-lg)",
+      "fontWeight": "600",
+      "margin": "0 0 var(--jx-space-5)"
+    },
+    "& > h2": {
+      "fontSize": "var(--jx-text-md)",
+      "fontWeight": "600",
+      "margin": "var(--jx-space-6) 0 var(--jx-space-3)"
+    },
+    "& > p": {
+      "color": "var(--jx-fg-dim)",
+      "margin": "0 0 var(--jx-space-5)"
+    },
+    "& [role=\"group\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "var(--jx-space-4)",
+      "margin": "0 0 var(--jx-space-4)",
+      "maxWidth": "420px"
+    },
+    "& [role=\"group\"] > span": {
+      "width": "90px",
+      "color": "var(--jx-fg-muted)",
+      "fontSize": "var(--jx-text-sm)"
+    },
+    "& [role=\"group\"] > jx-slider": {
+      "flex": "1 1 200px"
+    }
+  },
+  "children": [
+    {
+      "tagName": "h1",
+      "textContent": "jx-slider"
+    },
+    {
+      "tagName": "p",
+      "textContent": "One native range. The platform supplies the slider role, the announced value, the thumb, the drag, the arrow keys with their clamping, and Home, End, PageUp and PageDown; the element adds a filled track, a ten-step Shift+Arrow and valuetext, and re-says the platform's own input and change from itself, so a listener always reads e.target.value off the element."
+    },
+    {
+      "tagName": "h2",
+      "textContent": "Bound"
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "role": "group",
+        "aria-label": "Level, bound both ways"
+      },
+      "children": [
+        {
+          "tagName": "span",
+          "textContent": "Level"
+        },
+        {
+          "tagName": "jx-slider",
+          "$props": {
+            "label": "Level",
+            "valuetext": "${Math.round(state.level)} percent",
+            "value": {
+              "$ref": "#/state/level"
+            }
+          },
+          "oninput": {
+            "$prototype": "Function",
+            "body": [
+              {
+                "operator": "=",
+                "target": {
+                  "$ref": "#/state/level"
+                },
+                "value": {
+                  "$ref": "event#/target/value"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "tagName": "span",
+          "textContent": "${Math.round(state.level)}%"
+        }
+      ]
+    },
+    {
+      "tagName": "h2",
+      "textContent": "States"
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "role": "group",
+        "aria-label": "A coarse grid and a refusal"
+      },
+      "children": [
+        {
+          "tagName": "span",
+          "textContent": "Step 25"
+        },
+        {
+          "tagName": "jx-slider",
+          "$props": {
+            "label": "Quarter steps",
+            "step": 25,
+            "value": 50
+          }
+        }
+      ]
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "role": "group",
+        "aria-label": "Disabled"
+      },
+      "children": [
+        {
+          "tagName": "span",
+          "textContent": "Disabled"
+        },
+        {
+          "tagName": "jx-slider",
+          "$props": {
+            "label": "Locked",
+            "disabled": true,
+            "value": 70
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -420,11 +420,14 @@ export function scrollTopToReveal(spec: {
   listOffset: number;
   scrollTop: number;
   viewportHeight: number;
+  /** Height of sticky chrome over the top of the scroller, which a revealed row must clear. */
+  topInset?: number;
 }): number | null {
+  const inset = spec.topInset ?? 0;
   const top = spec.listOffset + spec.index * spec.rowHeight;
   const bottom = top + spec.rowHeight;
-  if (top < spec.scrollTop) {
-    return Math.max(0, top);
+  if (top < spec.scrollTop + inset) {
+    return Math.max(0, top - inset);
   }
   if (bottom > spec.scrollTop + spec.viewportHeight) {
     return Math.max(0, bottom - spec.viewportHeight);
@@ -440,7 +443,12 @@ export function scrollTopToReveal(spec: {
  * the one thing that decides when a scroll is worth a repaint. A caller that repainted as well
  * would paint twice for one keystroke.
  */
-export function revealListRow(list: HTMLElement | null, index: number, rowHeight: number): boolean {
+export function revealListRow(
+  list: HTMLElement | null,
+  index: number,
+  rowHeight: number,
+  topInset = 0,
+): boolean {
   const scroller = list?.isConnected === true ? scrollerFor(list) : null;
   if (!scroller || !list || index < 0 || !(rowHeight > 0)) {
     return false;
@@ -451,6 +459,7 @@ export function revealListRow(list: HTMLElement | null, index: number, rowHeight
     listOffset: scrollTop - listScrollTop(scroller, list),
     rowHeight,
     scrollTop,
+    topInset,
     viewportHeight: scroller.clientHeight,
   });
   if (next === null) {

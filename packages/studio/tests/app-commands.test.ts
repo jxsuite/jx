@@ -97,6 +97,9 @@ describe("the set", () => {
       "insert",
       "inspector",
       "media",
+      // `outline.expandAll` and `outline.collapseAll` — the Outline action bar's two verbs
+      // (studio.md §5.2), which are also palette verbs and change view state only.
+      "outline",
       // `packages.remove` — uninstalling an extension's dependency, which the Extensions section
       // And the Packages table both render from.
       "packages",
