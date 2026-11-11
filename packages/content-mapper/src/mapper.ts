@@ -9,11 +9,13 @@
  *
  * What it adds is the one thing a file cannot say about itself: what its project gives it. A page
  * in a project with `state` of its own, or with a default layout, reads state the page never names,
- * so its `State` is open, and only the project file says which.
+ * so its `State` is open, and only the project file says which. And a document uses the components
+ * its project keeps without declaring them, so only the project's folder says what a tag names.
  *
  * @docs framework/concepts/type-checking
  */
-import { dirname, relative, sep } from "node:path";
+import { readdirSync } from "node:fs";
+import { dirname, join, relative, sep } from "node:path";
 
 import { isString } from "@jxsuite/schema/guards";
 import { baseName } from "@jxsuite/schema/project-file";
@@ -91,6 +93,39 @@ function factsOf(root: string, project: MapperProject): ProjectFacts {
   return facts;
 }
 
+/** A component a project keeps, by its file: a tag, which has a hyphen, and `.jxn`. */
+const KEPT_COMPONENT = /^(?<tag>.+-.*)\.jxn$/u;
+
+/**
+ * The components a project keeps, which every document of it uses without declaring them
+ * (`imports.md` §1.4): each `.jxn` file directly in `components/` that is named for its tag.
+ *
+ * It is read from the folder each time, and not remembered, because a component is added by writing
+ * a file, which nothing here is told of.
+ *
+ * @param root The project's folder.
+ * @param fileName The document they are for.
+ * @returns How the document imports each one, by its tag.
+ */
+function componentsOf(root: string, fileName: string): Record<string, string> {
+  const folder = join(root, "components");
+  let names: string[];
+  try {
+    names = readdirSync(folder);
+  } catch {
+    // A project with no components has no folder for them.
+    return {};
+  }
+  const from = dirname(fileName);
+  return Object.fromEntries(
+    names.toSorted().flatMap((name) => {
+      const tag = KEPT_COMPONENT.exec(name)?.groups?.tag;
+      const path = relative(from, join(folder, name)).split(sep).join("/");
+      return tag === undefined ? [] : [[tag, path.startsWith(".") ? path : `./${path}`]];
+    }),
+  );
+}
+
 /**
  * What a document is given by the project it is in.
  *
@@ -102,14 +137,15 @@ export function outsideOf(fileName: string, project: MapperProject): OutsideStat
   if (!found) {
     return {};
   }
+  const components = componentsOf(found.root, fileName);
   const [folder] = relative(found.root, fileName).split(sep);
   if (folder === "components") {
-    // A component is a scope of its own, and nothing of the project's is merged into it.
-    return {};
+    // A component is a scope of its own, and no state of the project's is merged into it.
+    return { components };
   }
   const facts = found.verdict === "project" ? factsOf(found.root, project) : UNREADABLE;
   // A layout is what wraps a page, and is not itself wrapped by the default one.
-  return { layout: facts.layout && folder !== "layouts", state: facts.state };
+  return { components, layout: facts.layout && folder !== "layouts", state: facts.state };
 }
 
 /** One module in the form the protocol takes, with its offsets in the encoding agreed on. */

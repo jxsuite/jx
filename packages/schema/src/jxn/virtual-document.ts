@@ -24,6 +24,12 @@
  * - **One module for every `$ref`** into `state` or the row of a map: each path read off the `State`
  *   of where it stands, so a name that is not there is an error at the name, and renaming an entry
  *   renames what refers to it. An `on*` member's is checked as the handler it binds.
+ * - **What a component is given** is checked in that module too. The main module ends with
+ *   `$elements`: the tag the document defines, and its `State`. Each value an instance passes as
+ *   `$props` is held against the `State` of the component its tag names, which is found among the
+ *   document itself, the `.jxn` files its `$elements` names and the components its project keeps. A
+ *   prop the component does not declare is an error at its name, a value of the wrong type is one
+ *   at the value, and renaming a component's entry renames the prop.
  *
  * It is pure: text in, text and spans out, with no compiler, DOM or Node. A mapper for `tsc` is one
  * reader of it and an editor inside Studio can be another, and neither can disagree with the other
@@ -33,7 +39,16 @@
  */
 import { CLIENT_SCRIPT_REF, SERVER_SCRIPT_REF } from "../document-scripts";
 import type { FunctionRole } from "../function-role";
-import { isFunctionDef, isJsonObject, isServerFnDef, isString, paramNames } from "../guards";
+import {
+  isBoolean,
+  isFunctionDef,
+  isJsonObject,
+  isNumber,
+  isRef,
+  isServerFnDef,
+  isString,
+  paramNames,
+} from "../guards";
 import type { JsonObject, JsonValue, JxElement } from "../../types";
 import { classifyJxn } from "./classify.ts";
 import { JxnError } from "./errors.ts";
@@ -113,8 +128,8 @@ export interface VirtualDocumentOptions {
   specifier: string;
 }
 
-/** What a file that is not a document is to a checker: a module with nothing in it. */
-const EMPTY_MODULE = "export {};\n";
+/** What a file that is not a document is to a checker: a module that defines no element. */
+const EMPTY_MODULE = "export interface $elements {}\n";
 
 /** The name `State` takes when the script has a `State` of its own. */
 const FALLBACK_STATE = "JxState";
@@ -150,6 +165,16 @@ class Writer {
       virtualStart: this.text.length,
     });
     return this.add(text);
+  }
+
+  /**
+   * Text that stands for a whole token, when the file says where it is.
+   *
+   * @param text What the module says.
+   * @param span The token, when the read recorded one.
+   */
+  whole(text: string, span: JxnSpan | undefined): this {
+    return span ? this.mapped(text, span.start, span.end, "atom") : this.add(text);
   }
 
   /** A string's value, each run of it beside where it was written. */
@@ -233,6 +258,8 @@ class Writer {
 interface Reading {
   /** The document, as the JSON data it is. */
   doc: JsonObject;
+  /** The file each component of the document's project is, by its tag. */
+  components: Readonly<Record<string, string>>;
   /** The index signature that closes every `State` of this document. */
   index: string;
   source: string;
@@ -277,11 +304,28 @@ interface Reference extends RefSite {
   state: string;
 }
 
+/** One value an element with a component's tag passes as `$props`. */
+interface Prop {
+  key: string;
+  /** Where the value is. */
+  pointer: string;
+  tag: string;
+  value: JsonValue | undefined;
+}
+
+/** A `.jxn` file a document's `$elements` names. */
+interface DeclaredElement {
+  /** The token of the string it is written as. */
+  span: JxnSpan | undefined;
+  specifier: string;
+}
+
 /** What a document's elements declare, in the order the main module writes it. */
 interface Layout {
   bodies: Body[];
   /** What each scope's interface is called. The root's is `State`. */
   names: Map<StateScope, string>;
+  props: Prop[];
   refs: Reference[];
   templates: Template[];
   views: RowView[];
@@ -382,7 +426,11 @@ function writeMain(reading: Reading, layout: Layout): VirtualUnit {
     out.add(`export interface ${view.name} extends ${nameOf(view.scope)} {\n`);
     out.add(`  $map: { item: ${itemType(view.row, nameOf)}; index: number };\n}\n`);
   }
-  return out.unit();
+  /* Every document says which element it defines, a page that defines none included, so that a
+     document naming this one among its `$elements` can always ask. */
+  const tag = doc.tagName;
+  const defined = isComponentTag(tag) ? ` ${JSON.stringify(tag)}: ${reading.stateName} ` : "";
+  return out.add(`export interface $elements {${defined}}\n`).unit();
 }
 
 /** Write the server module: the server script, then what its functions add to each interface. */
@@ -414,6 +462,11 @@ function writeServer(reading: Reading, layout: Layout, script: string): VirtualU
   return out.add("}\nexport {};\n").unit();
 }
 
+/** Whether a tag is one a component can be registered under, which a name with a hyphen is. */
+function isComponentTag(tag: JsonValue | undefined): tag is string {
+  return isString(tag) && tag.includes("-") && !tag.includes("${");
+}
+
 /** Whether a value is a function written as a string body, which is what a body module holds. */
 function isStringBody(value: JsonValue | undefined): value is JsonObject & { body: string } {
   return isFunctionDef(value) && isString(value.body) && value.$src === undefined;
@@ -422,7 +475,14 @@ function isStringBody(value: JsonValue | undefined): value is JsonObject & { bod
 /** Read what a document's elements declare: its scopes, the rows its bodies read, and its bodies. */
 function layoutOf(reading: Reading): Layout {
   const { doc, stateName } = reading;
-  const layout: Layout = { bodies: [], names: new Map(), refs: [], templates: [], views: [] };
+  const layout: Layout = {
+    bodies: [],
+    names: new Map(),
+    props: [],
+    refs: [],
+    templates: [],
+    views: [],
+  };
   const { values } = reading.tokens;
   const bound = boundEvents(doc);
   let declared = 0;
@@ -474,6 +534,12 @@ function layoutOf(reading: Reading): Layout {
           state: stateAt(site),
           text: entry.body,
         });
+      }
+    }
+    const { $props: given, tagName: tag } = node;
+    if (isComponentTag(tag) && isJsonObject(given)) {
+      for (const [key, value] of Object.entries(given)) {
+        layout.props.push({ key, pointer: `${pointer}/$props/${token(key)}`, tag, value });
       }
     }
     /* One the file does not place is left out: an error in it would be shown at a place in a
@@ -573,12 +639,10 @@ function bindsHandler(ref: Reference): boolean {
   return ref.binding !== null && ref.prefix === "#/state/" && ref.path.length === 1;
 }
 
-/** Write one reference: its path read off the interface it stands in. */
-function writeReference(out: Writer, ref: Reference, receiver: string): void {
-  const { binding, site, span } = ref;
+/** Write what a reference reads: its path off the interface it stands in. */
+function writePath(out: Writer, ref: Reference, receiver: string): void {
+  const { span } = ref;
   const pieces = stringPieces(out.source, span, ref.ref);
-  const handler = binding !== null && bindsHandler(ref);
-  out.add(handler ? `bound<${eventType(binding.element, binding.key, site)}>(` : "void ");
   for (const [index, { end, key, start }] of ref.path.entries()) {
     const plain = IDENTIFIER.test(key);
     const member = plain ? key : `[${JSON.stringify(key)}]`;
@@ -592,26 +656,141 @@ function writeReference(out: Writer, ref: Reference, receiver: string): void {
       out.part(member, span, pieces, start, end);
     }
   }
+}
+
+/** Write one reference that is read for itself: a value, or the handler an `on*` member binds. */
+function writeReference(out: Writer, ref: Reference, receiver: string): void {
+  const { binding, site } = ref;
+  const handler = binding !== null && bindsHandler(ref);
+  out.add(handler ? `bound<${eventType(binding.element, binding.key, site)}>(` : "void ");
+  writePath(out, ref, receiver);
   out.add(handler ? ");\n" : ";\n");
 }
 
-/** Write the module for a document's references, or nothing when it has none. */
+/** A path from one document to another beside or below a folder above it, as `$elements` writes one. */
+const RELATIVE_NOTATION = /^\.{1,2}\/.*\.jxn$/u;
+
+/** The `.jxn` files a document's `$elements` names. A package, or a `.json` file, says no types. */
+function declaredElements(reading: Reading): DeclaredElement[] {
+  const { doc, tokens } = reading;
+  const entries = Array.isArray(doc.$elements) ? doc.$elements : [];
+  return entries.flatMap((entry, index) => {
+    if (!isRef(entry) || !RELATIVE_NOTATION.test(entry.$ref)) {
+      return [];
+    }
+    // Written `(ref)"…"` the string is the item's own, and in a block it is its `$ref`.
+    const at = `/$elements/${index}`;
+    return [
+      { span: tokens.values.get(at) ?? tokens.values.get(`${at}/$ref`), specifier: entry.$ref },
+    ];
+  });
+}
+
+/**
+ * What the references module declares when a document passes props: what a tag may be given, which
+ * is any of its component's `State`, or anything at all for a tag no document read here defines. A
+ * prop may be empty, because a reference that finds nothing passes nothing (`spec.md` §7.1).
+ */
+const PROPS = [
+  "type Props<S> = { [K in keyof S]?: S[K] | null | undefined };",
+  "declare function props<T extends string>(",
+  "  given: T extends keyof Elements ? Props<Elements[T]> : any,",
+  "): void;",
+  "declare const unchecked: any;",
+  "",
+].join("\n");
+
+/**
+ * Write which documents define the elements this one uses: itself, each `.jxn` file its `$elements`
+ * names, and each component of its project that an instance names by its tag.
+ */
+function writeElements(
+  out: Writer,
+  reading: Reading,
+  layout: Layout,
+  declared: readonly DeclaredElement[],
+): void {
+  const from = new Map<string, JxnSpan | undefined>([[reading.specifier, undefined]]);
+  for (const { span, specifier } of declared) {
+    from.set(specifier, span);
+  }
+  for (const { tag } of layout.props) {
+    const specifier = reading.components[tag];
+    if (specifier !== undefined && !from.has(specifier)) {
+      from.set(specifier, undefined);
+    }
+  }
+  const names = [...from].map(([specifier, span], index) => {
+    // A file that is not there is an error at the entry that names it.
+    out.add(`import type { $elements as e${index} } from `);
+    out.whole(JSON.stringify(specifier), span).add(";\n");
+    return `e${index}`;
+  });
+  // Exported, so that a document which names components and gives them nothing leaves none unused.
+  out.add(`export type Elements = ${names.join(" & ")};\n`);
+}
+
+/**
+ * Write one prop: its name and its value, held against what the component its tag names takes.
+ *
+ * @param out The module.
+ * @param reading The file.
+ * @param prop The prop.
+ * @param read Writes the path the prop's value reads, when it is a reference into `state`.
+ */
+function writeProp(out: Writer, reading: Reading, prop: Prop, read: (() => void) | null): void {
+  const { key, pointer, value } = prop;
+  const { tokens } = reading;
+  out.add(`props<${JSON.stringify(prop.tag)}>({ `);
+  out.name(key, tokens.names.get(pointer), propertyName(key)).add(": ");
+  if (read) {
+    read();
+  } else if (isBoolean(value) || isNumber(value) || (isString(value) && !value.includes("${"))) {
+    out.whole(JSON.stringify(value), tokens.values.get(pointer));
+  } else {
+    /* A template is checked as the function it is, and what it makes is not known here. Anything
+       else (a list, an object, a reference to another document) is not held against a type. */
+    out.add("unchecked");
+  }
+  out.add(" });\n");
+}
+
+/**
+ * Write the module for a document's references and the props it passes, or nothing when it has
+ * neither and names no component.
+ */
 function writeReferences(reading: Reading, layout: Layout): VirtualUnit[] {
-  const { refs } = layout;
-  if (refs.length === 0) {
+  const { props, refs } = layout;
+  const declared = declaredElements(reading);
+  if (refs.length === 0 && props.length === 0 && declared.length === 0) {
     return [];
   }
   const out = new Writer(reading.source);
   const states = [...new Set(refs.map((ref) => ref.state))];
-  out.add(`import type { ${states.join(", ")} } from ${JSON.stringify(reading.specifier)};\n`);
+  if (states.length > 0) {
+    out.add(`import type { ${states.join(", ")} } from ${JSON.stringify(reading.specifier)};\n`);
+  }
+  if (props.length > 0 || declared.length > 0) {
+    writeElements(out, reading, layout, declared);
+  }
   if (refs.some((ref) => bindsHandler(ref))) {
     out.add(EVENT_GLOBALS).add(BOUND);
   }
+  out.add(props.length > 0 ? PROPS : "");
   for (const [index, state] of states.entries()) {
     out.add(`declare const s${index}: ${state};\n`);
   }
+  const receiver = (ref: Reference): string => `s${states.indexOf(ref.state)}`;
+  const given = new Set(props.map((prop) => prop.pointer));
   for (const ref of refs) {
-    writeReference(out, ref, `s${states.indexOf(ref.state)}`);
+    // One that is a prop is written as the prop's value, so that it is told of once.
+    if (!given.has(ref.pointer)) {
+      writeReference(out, ref, receiver(ref));
+    }
+  }
+  for (const prop of props) {
+    const ref = refs.find((made) => made.pointer === prop.pointer);
+    writeProp(out, reading, prop, ref ? () => writePath(out, ref, receiver(ref)) : null);
   }
   return [out.unit()];
 }
@@ -650,6 +829,7 @@ export function generateVirtualDocument(
   const doc = read.document as JsonObject;
   const scripts = isJsonObject(doc.$script) ? doc.$script : {};
   const reading: Reading = {
+    components: options.outside?.components ?? {},
     doc,
     // SAFETY: a document is an element with `$` members beside it, and only `$layout` is read.
     index: stateIndex(doc as JxElement, options.outside),

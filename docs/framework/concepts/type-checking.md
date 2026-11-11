@@ -1,6 +1,6 @@
 ---
 title: "Type checking"
-description: "Check a .jxn document with tsc and in your editor: its scripts, function bodies, templates and references, read through @jxsuite/content-mapper."
+description: "Check a .jxn document with tsc and in your editor: its scripts, function bodies, templates, references and the props it gives a component."
 spec:
   - spec.md#23.3
 code:
@@ -13,7 +13,7 @@ code:
 
 # Type checking
 
-A `.jxn` document holds TypeScript in two places: its [script](/docs/framework/concepts/functions#a-module-inside-the-document) and the `body` of each function. It names the same state in two more: each `${}` template, and each `$ref` into `state`. `tsc` checks all four, and prints each error at the line and column where you wrote it. An editor that runs TypeScript's language server shows the same errors, with hover, completion, rename and go to definition.
+A `.jxn` document holds TypeScript in two places: its [script](/docs/framework/concepts/functions#a-module-inside-the-document) and the `body` of each function. It names the same state in two more: each `${}` template, and each `$ref` into `state`. And it names another document's state wherever it gives a component its `$props`. `tsc` checks all five, and prints each error at the line and column where you wrote it. An editor that runs TypeScript's language server shows the same errors, with hover, completion, rename and go to definition.
 
 The work is done by `@jxsuite/content-mapper`, a program TypeScript starts to read a kind of file it cannot read itself. Content mappers arrive in TypeScript 7.1, which is a beta today.
 
@@ -261,6 +261,71 @@ A `$ref` is checked when it reads `state` or a row: `#/state/...`, `$map/...` an
 
 A `$ref` with another scheme (`window#/`, `document#/`, `parent#/`, a file) is not checked.
 
+## Component props
+
+A component is a document, and its `state` is what an instance can be given. So each prop is checked against the component's `State`. Here is `components/site-card.jxn`:
+
+```kdl
+site-card {
+  state {
+    heading ""
+    count 0
+    featured #false
+  }
+  h2 "${state.heading}"
+}
+```
+
+And a page that uses it twice, `pages/index.jxn`:
+
+```kdl
+main {
+  state {
+    title "Latest"
+    total 3
+  }
+  site-card {
+    $props heading=(ref)"#/state/title" count="3" featured=#true
+  }
+  site-card {
+    $props heading=(ref)"#/state/total" headline="New"
+  }
+}
+```
+
+```text
+pages/index.jxn(7,41): error TS2322: Type 'string' is not assignable to type 'number'.
+pages/index.jxn(10,12): error TS2322: Type 'number' is not assignable to type 'string'.
+pages/index.jxn(10,41): error TS2561: Object literal may only specify known properties, but 'headline' does not exist in type 'Props<State>'. Did you mean to write 'heading'?
+```
+
+- **`count="3"`** gives a string to an entry the card declares as a number. The error is at the prop's name.
+- **`heading=(ref)"#/state/total"`** passes a number where the card holds a string. A `$ref` has the type of the entry it names.
+- **`headline`** is not an entry of the card. The page would render without it and say nothing.
+
+Each prop is checked by itself, so one mistake does not hide the next.
+
+### Which document a tag names
+
+The mapper finds a component's document in two places:
+
+- **`$elements`.** Each `.jxn` file the document lists by a relative path, such as `(ref)"../components/site-card.jxn"`. A file that is not there is an error at its entry (`TS2307`), and until it is there no prop in that document is checked.
+- **The project's `components` folder.** Each `.jxn` file directly inside it that is named for its tag, such as `components/site-card.jxn`. A project uses these without declaring them, and so does the mapper.
+
+A tag that neither one names takes any prop. That covers a custom element from a package, a `.json` component and a component kept in a subfolder that no `$elements` entry points at.
+
+### What a value is checked as
+
+| Value                                                         | Checked as                                  |
+| ------------------------------------------------------------- | ------------------------------------------- |
+| A `$ref` into `state` or a row                                | The type of the entry it names              |
+| A string, a number or a boolean                               | Itself                                      |
+| A template, `null`, a list, an object, a `$ref` anywhere else | Any type. The prop's name is still checked. |
+
+A prop may always be `null` or `undefined`, so a `$ref` to an entry that is `null` until it loads is no error for that.
+
+A component whose own `State` allows unknown names ([What `State` says](#what-state-says)) takes any prop name, and only the names it declares are typed. Every file in a project's `components` folder is exact.
+
 ## In an editor
 
 TypeScript 7.1's language server reads the same `tsconfig.jxn.json`, and through the mapper it answers for a `.jxn` file what it answers for a `.ts` file:
@@ -268,8 +333,8 @@ TypeScript 7.1's language server reads the same `tsconfig.jxn.json`, and through
 - **Errors** at the same positions `tsc` prints.
 - **Hover** on `state.count` in a body or a template, or on `count` in `"#/state/count"`, shows `(property) State.count: number`. Hover on an event parameter shows the event and the element, such as `KeyboardEvent & { readonly currentTarget: HTMLButtonElement; ... }`.
 - **Completion** after `state.` lists the document's entries.
-- **Go to definition** from `state.hello` in a body offers the entry and the function in the script that it exports. From a name in a `$ref` it goes to the entry.
-- **Rename** of an entry rewrites the entry, the script, every body and template that reads it and every `$ref` that names it, in the document's `state` or a nested section's. It can start from any of them. Renaming a script's function rewrites the `$export` that names it.
+- **Go to definition** from `state.hello` in a body offers the entry and the function in the script that it exports. From a name in a `$ref` it goes to the entry, and from a prop's name it goes to the component's entry, in the component's file.
+- **Rename** of an entry rewrites the entry, the script, every body and template that reads it and every `$ref` that names it, in the document's `state` or a nested section's. It can start from any of them. Renaming a script's function rewrites the `$export` that names it. Renaming a component's entry also rewrites the prop in every `.jxn` document that sets it, and renaming the prop renames the entry.
 
 The language server runs a mapper only when the editor tells it the project may run external code, which is the editor's form of `--runExternalCode`. Until it does, a `.jxn` file gets no errors, no hover and no completion, and nothing says why.
 
@@ -281,6 +346,8 @@ There is no Jx editor extension yet. Your editor has to be told by hand that a `
 - **Studio does not use the mapper.** Its code editor checks a body on its own, and does not check a script, a template or a reference yet. `tsc` is what checks those today.
 - **`jx build` does not run it.** A build still accepts a document with a type error, so run the script in CI.
 - **`$defs` and a class's methods** are not checked.
+- **Props are checked only in `$props`, and only against a `.jxn` component.** A property or an attribute written on the instance itself is not held against the component. A prop named for a private entry, such as `#cache`, is not reported here, though the page refuses to set it.
+- **A new component is seen when a document is next read.** Add a file to `components` while your editor is open, and a page that already uses the tag is checked against it after the page's next edit.
 - **A handler reached through a longer path is not checked as one.** `onclick=(ref)"#/state/actions/save"` has its path checked, and not whether `save` is a function.
 - **Renaming an `(export)name` entry is half a rename.** The one word stands for two names, the state entry and the export. Renaming the function in the script rewrites the function and the entry, and leaves `state.name` in bodies. Renaming `state.name` from a body rewrites the bodies and the entry, and leaves the function. Either way the next check reports what was left behind. An entry written `(export)hello $export=greet` has two words and renames cleanly.
 
