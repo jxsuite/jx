@@ -347,6 +347,122 @@ describe("an editor on a document that gives a component its props", () => {
   });
 });
 
+describe("an editor on a document that declares its types", () => {
+  const LIST = [
+    "$defs {",
+    "  TodoItem {",
+    "    type object",
+    "    properties {",
+    "      text type=string",
+    '      next (ref)"#/$defs/TodoItem"',
+    "    }",
+    "    (array)required text",
+    "  }",
+    "}",
+    "todo-list {",
+    "  state {",
+    "    items {",
+    '      type type=array items=(ref)"#/$defs/TodoItem"',
+    "      (array)default",
+    "    }",
+    '    (fn)add "state.items.push({ text: 1 })"',
+    "  }",
+    '  p "${state.items[0].text}"',
+    "}",
+    "",
+  ].join("\n");
+  let made: Fixture;
+  let editor: LanguageServer;
+  let list: { uri: string };
+
+  /** A span of the file, as `line:character+length`. */
+  const where = (needle: string, delta: number, length: number): string => {
+    const { character, line } = position(LIST, needle, delta);
+    return `${line}:${character}+${length}`;
+  };
+
+  /** Ask about a place in the file. */
+  async function asked(method: string, needle: string, delta: number, more: JsonObject = {}) {
+    return await editor.request(method, {
+      position: position(LIST, needle, delta),
+      textDocument: list,
+      ...more,
+    });
+  }
+
+  /** Rename what is at a place, and say every span of the file the editor would rewrite. */
+  async function rewritten(needle: string, delta: number): Promise<string[]> {
+    const answer = await asked("textDocument/rename", needle, delta, { newName: "Renamed" });
+    // SAFETY: a rename is answered with a workspace edit, its changes keyed by the file they are in.
+    const { changes } = answer as { changes: Record<string, { range: Range }[]> };
+    expect(Object.keys(changes)).toEqual([list.uri]);
+    return (changes[list.uri] ?? []).map((edit) => spanOf(edit.range)).toSorted();
+  }
+
+  beforeAll(async () => {
+    made = new Fixture();
+    const path = made.write("src/todo-list.jxn", LIST);
+    editor = new LanguageServer(made.root);
+    await editor.open(made.root);
+    list = editor.edit(path, LIST);
+  }, SLOW);
+
+  afterAll(() => {
+    editor.stop();
+    made.remove();
+  });
+
+  test(
+    "marks a value a definition does not take, where the author wrote it",
+    async () => {
+      const answer = await editor.request("textDocument/diagnostic", { textDocument: list });
+      // SAFETY: a pull for diagnostics is answered with the file's whole list.
+      const { items } = answer as { items: { code: number; range: Range }[] };
+      expect(items.map((item) => `${spanOf(item.range)} TS${item.code}`)).toEqual([
+        `${where("text: 1", 0, 4)} TS2322`,
+      ]);
+    },
+    SLOW,
+  );
+
+  test("shows state by the definition it names, and the definition over a reference to it", async () => {
+    const answer = await asked("textDocument/hover", "state.items.push", 6);
+    // SAFETY: a hover over a name is answered with its text and the range of the name.
+    const { contents, range } = answer as { contents: { value: string }; range: Range };
+    expect(spanOf(range)).toBe(where("state.items.push", 6, 5));
+    expect(contents.value).toBe("(property) State.items: $defs.TodoItem[]");
+    const over = await asked("textDocument/hover", 'TodoItem"\n      (array)', 0);
+    // SAFETY: as above.
+    const named = over as { contents: { value: string }; range: Range };
+    expect(spanOf(named.range)).toBe(where('TodoItem"\n      (array)', 0, 8));
+    expect(named.contents.value).toContain("type $defs.TodoItem = {");
+  });
+
+  test("goes from a reference to the definition it names", async () => {
+    const answer = await asked("textDocument/definition", 'TodoItem"\n      (array)', 0);
+    // SAFETY: a definition is answered with the places that declare the name.
+    const places = answer as { range: Range; uri: string }[];
+    expect(places.map((place) => spanOf(place.range))).toEqual([where("TodoItem {", 0, 8)]);
+  });
+
+  test("renames a definition where it is declared and at the end of every reference to it", async () => {
+    const everywhere = [
+      where("TodoItem {", 0, 8),
+      where('TodoItem"\n    }', 0, 8),
+      where('TodoItem"\n      (array)', 0, 8),
+    ].toSorted();
+    expect(await rewritten("TodoItem {", 0)).toEqual(everywhere);
+    // And from a reference, which is the same name.
+    expect(await rewritten('TodoItem"\n      (array)', 0)).toEqual(everywhere);
+  });
+
+  test("renames a property of a definition where it is declared and where code reads it", async () => {
+    expect(await rewritten("text type=string", 0)).toEqual(
+      [where("text type=string", 0, 4), where("text: 1", 0, 4), where("text}", 0, 4)].toSorted(),
+    );
+  });
+});
+
 describe("an editor that has not been let run the project's mappers", () => {
   test(
     "says nothing of a document, and starts nothing to read it",

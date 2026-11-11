@@ -503,6 +503,101 @@ describe("what a component is given", () => {
   });
 });
 
+describe("the types a document declares", () => {
+  const list = lines(
+    "$defs {",
+    "  TodoItem {",
+    "    type object",
+    "    properties {",
+    "      id type=integer",
+    "      text type=string",
+    "      done type=boolean",
+    "    }",
+    "    required id text",
+    "  }",
+    "  Status {",
+    "    type string",
+    "    enum idle loading",
+    "  }",
+    "}",
+    "todo-list {",
+    "  state {",
+    "    items {",
+    '      type type=array items=(ref)"#/$defs/TodoItem"',
+    "      (array)default",
+    "    }",
+    '    status type=(ref)"#/$defs/Status" default=idle',
+    '    lost type=(ref)"#/$defs/Nope" default=#null',
+    '    (fn)add "state.items.push({ id: 1, text: 2 })"',
+    String.raw`    (fn)flip "state.status = \"done\"; state.items[0].done.valueOf()"`,
+    String.raw`    (fn)fine "state.status = \"loading\"; state.items.push({ id: 1, text: \"a\" })"`,
+    "  }",
+    '  p "${state.items[0].txt}"',
+    "  ul {",
+    '    $array items=(ref)"#/state/items" {',
+    '      li { (fn)onclick "state.$map.item.text.toFixed(); state.$map.item.absent" }',
+    "    }",
+    "  }",
+    "}",
+  );
+  const page = lines(
+    "div {",
+    '  todo-list { $props status="nope" }',
+    '  todo-list { $props status="idle" }',
+    "}",
+  );
+  const uses = lines(
+    'import type { $defs } from "./site/components/todo-list.jxn";',
+    'export const item: $defs.TodoItem = { id: "x", text: "a" };',
+    'export const state: $defs.Status = "loading";',
+  );
+  let findings: Finding[] = [];
+
+  beforeAll(() => {
+    const made = project();
+    made.write("src/site/project.jxn", lines('project "x"'));
+    made.write("src/site/components/todo-list.jxn", list);
+    made.write("src/site/pages/index.jxn", page);
+    made.write("src/uses.ts", uses);
+    ({ findings } = made.check("--runExternalCode"));
+  }, SLOW);
+
+  test("are what its code is held to, at the name a reference ends in where that is no definition", () => {
+    expect(about(findings, "site/components/todo-list.jxn")).toEqual([
+      // A reference to a definition the document does not hold, at the name and not the string.
+      `${printed(list, "Nope")} TS2694`,
+      // A property of a definition is the type its schema says.
+      `${printed(list, "text: 2")} TS2322`,
+      // An enumeration is its values and no other.
+      `${printed(list, "state.status")} TS2322`,
+      // A property that is not required may be missing.
+      `${printed(list, "state.items[0].done")} TS2532`,
+      // A row of a list of a definition is that definition.
+      `${printed(list, "toFixed")} TS2551`,
+      `${printed(list, "absent")} TS2339`,
+      // A template reads the same State.
+      `${printed(list, "txt")} TS2551`,
+    ]);
+  });
+
+  test("name each definition in what the compiler says, as the document does", () => {
+    const said = findings.map((finding) => finding.message).join("\n");
+    expect(said).toContain("'Status'");
+    expect(said).toContain("'TodoItem'");
+    expect(said).toContain("has no exported member 'Nope'");
+  });
+
+  test("are what a component's props are held to in a document that uses it", () => {
+    expect(about(findings, "site/pages/index.jxn")).toEqual([
+      `${printed(page, 'status="nope"')} TS2322`,
+    ]);
+  });
+
+  test("are what a module that imports the document can name", () => {
+    expect(about(findings, "uses.ts")).toEqual([`${printed(uses, 'id: "x"')} TS2322`]);
+  });
+});
+
 describe("a file that is not Jx Notation", () => {
   test(
     "is reported as the mapper's own error, at its position",
