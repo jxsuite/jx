@@ -31,6 +31,7 @@
     "./parse": "./src/parse.ts",
     "./jxn": "./src/jxn/index.ts",
     "./virtual-types": "./src/jxn/virtual-types.ts",
+    "./virtual-document": "./src/jxn/virtual-document.ts",
     "./project-file": "./src/project-file.ts",
     "./project-file/node": "./src/project-file-node.ts",
     "./doc-ops": "./src/doc-ops.ts",

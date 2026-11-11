@@ -6,6 +6,7 @@ claims:
 requires: []
 workspaces:
   - packages/schema
+  - packages/content-mapper
   - packages/studio
   - packages/create
   - packages/starters
@@ -21,9 +22,9 @@ size: L
 
 ## Context
 
-`specs/spec.md` §23.3 is Partial: Studio's function editor checks a body (`studio.md` §16.7, landed with JTC.1), and nothing in the terminal or another editor does. TypeScript is the default language (`spec.md` §23.1), so this plan is what makes that default worth having.
+`specs/spec.md` §23.3 is Partial: Studio's function editor checks a body (`studio.md` §16.7, landed with JTC.1), and `tsc` and a language server check a `.jxn` document's bodies and scripts through `@jxsuite/content-mapper` (landed with JTC.2). What is missing is the depth of what the mapper reads, an editor extension, and a scaffold set up for any of it. TypeScript is the default language (`spec.md` §23.1), so this plan is what makes that default worth having.
 
-**TypeScript 7.1 content mappers** (`7.1.0-beta` on npm on 2026-11-05, `latest` is 7.0.2, and the repository pins `^7.0.2`). A mapper is a process speaking JSON-RPC over stdio (`initialize`, `openProject`, `transform`, `closeProject`), declared under `contentMappers` in a tsconfig. `tsc` refuses it without `--runExternalCode`, and VS Code requires workspace trust. Rename, completion and formatting edits write back only through `Verbatim` spans. Design source: microsoft/typescript-go#4712.
+**TypeScript 7.1 content mappers** (`7.1.0-beta` on npm on 2026-11-05, `latest` is 7.0.2, and the repository pins `7.1.0-beta` exactly since JTC.2). A mapper is a process speaking JSON-RPC over stdio (`initialize`, `openProject`, `transform`, `closeProject`), declared under `contentMappers` in a tsconfig. `tsc` refuses it without `--runExternalCode`, and VS Code requires workspace trust. Rename, completion and formatting edits write back only through `Verbatim` spans. Design source: microsoft/typescript-go#4712.
 
 **Measured so far.**
 
@@ -40,7 +41,20 @@ size: L
 | `Request`, `ContentEntry`, `$expression` and layout state cannot be derived from the document alone                        | Same                                    |
 | `Unknown compiler option 'contentMappers'`, exit 1, and rule findings gone                                                 | `oxlint` with tsgolint 7.0.2005         |
 
-**Not tested:** VS Code, `node` on the desktop app's PATH (it appears not to be there), whether `--runExternalCode` trusts all mappers in a project, and Monaco's worker on generated text.
+**Measured in JTC.2, with the real mapper and committed as tests** (`packages/content-mapper/tests`).
+
+| Result                                                                                                                                                         | Test                                     |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------- |
+| Exact `file(line,col)` through escapes, multi-line strings, raw strings of any `#` count, CRLF, tabs and characters of two code units                          | `compiler.test.ts`                       |
+| `--runExternalCode` starts every mapper the `tsconfig` declares that has a matching file, and none without the flag (`TS18068`)                                | `compiler.test.ts`, "running the mapper" |
+| A language server without `initializationOptions.runExternalCode` answers nothing for a `.jxn` file, and says nothing about why                                | `language-service.test.ts`               |
+| Hover, completion, definition and rename answer within a request, with no wait for the mapper                                                                  | `language-service.test.ts`               |
+| Renaming a root `state` key rewrites the entry, the script and every body, a nested section's included                                                         | Same                                     |
+| A shorthand `(export)name` is one token for two names, so a rename from either side leaves the other, and the compiler reports what is left (TS2339 or TS2694) | Observed, and stated in the docs' limits |
+| A nested section's entry name has no span, so renaming `state.local` rewrites only the body                                                                    | Same                                     |
+| `allowArbitraryExtensions` is not needed for a `.ts` file to import a `.jxn` document                                                                          | Observed while writing the docs example  |
+
+**Not tested:** VS Code, `node` on the desktop app's PATH (it appears not to be there), Monaco's worker on generated text, and whether a running editor session notices a change to a project file that is not beside the `tsconfig` (only the two names beside it are in `watchedFiles`).
 
 **The gaps this leaves for users.** No scaffold has a `tsconfig` or `typescript` dependency (`packages/create/generate.ts`), and no starter manifest has a `typecheck` script. Desktop is the only end-user path to Studio, and it has no `tsc`. `.json` gets completion from `$schema` with no tooling, in Studio (`services/monaco-setup.ts:155`) and in VS Code, and `.jxn` would have none.
 
@@ -73,14 +87,21 @@ size: L
 - **Open:** should the grammar and schema completion of JTC.4 leave this plan? Neither needs a mapper, and `project.jxn` loses `project.json`'s no-tooling completion in VS Code (`site-architecture.md` §2.3). Document scripts have landed and 7.1 is adopted as a beta, so that half no longer waits for anything but the marketplace account. Recommendation: split it into its own plan requiring only `spec.md` §22, leaving `registerContentMappers` here, once someone is ready to take on the marketplace account.
 - **Open:** how an author types what the checker cannot derive. Recommendation: a `$type` key on a state entry holding a TypeScript type, such as `"Task[]"`, resolved against the client script and globals, and ignored by every tier but the checker. Parameters would use a `name: Type` string in `(fn)` nodes, read the same way. The 47 measured errors include real cases that need this.
 - **Open:** whether `tsc` checks bodies in `.json` documents. A mapper claims files by extension, and claiming `.json` would capture every data file and has not been tried. Recommendation: not in this plan. Studio checks both formats through the generator, and `jx convert` moves a file into `tsc`'s reach. A `jx typecheck` that writes the generator's output to temporary `.ts` files could cover `.json` later, with no design change.
-- **Open:** whether `--runExternalCode` trusts every mapper in a project or only the named one. If every one, a scaffold's `typecheck` script makes that trust decision for the user, and docs must state it. Answer it in JTC.2 by test.
+- **Decided (JTC.2, by test):** `--runExternalCode` trusts every mapper a `tsconfig` declares, not the named one. `spec.md` §23.3 and `docs/framework/concepts/type-checking.md` say so, and it is the second reason the mapper has a `tsconfig.jxn.json` of its own: the flag then covers one short file. A scaffold's `typecheck` script (JTC.5) makes that decision for the user, so the scaffold's `tsconfig.jxn.json` names this mapper and no other.
+- **Decided (JTC.2):** whether `State` is open is read from the project. A page's `State` takes any name when its project file has `state`, or when the page is wrapped by a layout (its own `$layout`, or the project's default where the page names none and is not itself in `layouts/`). A component is always exact. The mapper finds the project file at or above the document and no higher than the `tsconfig`'s folder. A project file it cannot read, or a folder holding both names, opens `State`, so the project's own error is the one reported.
+- **Decided (JTC.2):** the generator for a whole document is `generateVirtualDocument` (`@jxsuite/schema/virtual-document`), beside JTC.1's `generateBodyTypes`. Both read an entry's type from `state-types.ts`, which is what keeps the two from disagreeing.
 
 ## Implementation
 
-1. **Generator** (landed in JTC.1). `packages/schema/src/jxn/virtual-types.ts` (`@jxsuite/schema/virtual-types`): `generateBodyTypes(doc, target, body)` writes the function around one body from a `JxDocument`, whichever format the file is in, and `bodyOffsetOf` maps a position back by one shift. It handles root `state` functions and inline `on*` handlers, with `State` built from the element chain. It does not yet read `$script` (which a document can carry now, `spec.md` §23.2: `(export)` entries are the import itself on `state`, and a server export takes `(args, env)`), `$defs` or class methods, and it does not read `.jxn` text for a whole-file span map: a `.jxn` body is checked through its parsed document. What remains for JTC.2 to add is the span map for a body inside `.jxn` text, which a mapper needs.
-2. **Studio** (landed in JTC.1). `services/type-check.ts` checks the wrapped body in a hidden Monaco model through Monaco's TypeScript worker and draws the findings as `jx-types` markers on the function editor, and files them as Problems (source **Type check**, keyed by tab and body, kept after the editor closes because the Problems tab shares the dock). The editor's own model stays syntax-only. Not done: the `.jxn` Code view (source mode) is a whole-file editor, and its bodies are `.jxn` strings whose offsets need the span map above, so it waits for JTC.2.
-3. **Mapper.** `ts-content-mapper` 0.1.1 as a thin layer; a syntax error is reported as `error jx1` at its position, and `tsc` then reports only syntax errors for that run. TS bump to `7.1.0-beta`, pinned exactly, in the same slice.
-4. **Mapper depth.** Event types, `${}` template expressions, `$ref` checks, `$map` scope, `$props` from imported `.jxn` components, `$defs`.
+1. **Generator** (landed in JTC.1). `packages/schema/src/jxn/virtual-types.ts` (`@jxsuite/schema/virtual-types`): `generateBodyTypes(doc, target, body)` writes the function around one body from a `JxDocument`, whichever format the file is in, and `bodyOffsetOf` maps a position back by one shift. It handles root `state` functions and inline `on*` handlers, with `State` built from the element chain. It does not yet read `$script` (which a document can carry now, `spec.md` §23.2: `(export)` entries are the import itself on `state`, and a server export takes `(args, env)`), `$defs` or class methods, and it does not read `.jxn` text for a whole-file span map: a `.jxn` body is checked through its parsed document. JTC.2 added the whole-document reader beside it: `virtual-document.ts` (`generateVirtualDocument`) writes the main, server and per-body modules from `.jxn` text with a span for every stretch, `string-pieces.ts` maps a position through each KDL string form, and `state-types.ts` holds what an entry's type is for both readers.
+2. **Studio** (landed in JTC.1). `services/type-check.ts` checks the wrapped body in a hidden Monaco model through Monaco's TypeScript worker and draws the findings as `jx-types` markers on the function editor, and files them as Problems (source **Type check**, keyed by tab and body, kept after the editor closes because the Problems tab shares the dock). The editor's own model stays syntax-only. Not done: the `.jxn` Code view (source mode) is a whole-file editor, and its bodies are `.jxn` strings whose offsets need the span map above, and JTC.2 wrote that span map (`generateVirtualDocument`), so the Code view's checking lands with item 5, beside its completion provider.
+3. **Mapper** (landed in JTC.2). `packages/content-mapper`: `src/mapper.ts` is `ts-content-mapper` 0.1.1 as a thin layer over `generateVirtualDocument`, adding only what a project gives a document, and `src/server.ts` is the process `tsc` starts with `node`. A syntax error is reported as `error jx1` at its position, and `tsc` then reports only syntax errors for that run. TypeScript is `7.1.0-beta`, pinned exactly. The repository checks its own documents with `bun run typecheck:jxn` over `tsconfig.jxn.json`, in `checks` and in `all-the-things`. **Owner action before the first release:** `@jxsuite/content-mapper` needs an npm trusted publisher, or the release that first publishes it fails.
+4. **Mapper depth.** Event types, `${}` template expressions, `$ref` checks, `$map` scope, `$props` from imported `.jxn` components, `$defs`, class methods and `$type`. Left by JTC.2 for this item, each stated in the docs' limits today:
+   - A shorthand `(export)name` renames on one side only. It needs the one token to answer for both names, or the rename to be refused there.
+   - A nested section's entry names have no span, so rename and definition stop at the body.
+   - A name a nested `state` declares over a parent's is typed as the nearer one, and nothing lists the shadowing.
+   - Only the project file beside the `tsconfig` is in `watchedFiles` and `configIdentity`, and a project above the `tsconfig`'s folder is not looked for.
+   - A layout's `State` is exact unless its project has `state` or it names a `$layout` of its own.
 5. **Editors and format.** The VS Code extension: TextMate grammar, TypeScript injection, `registerContentMappers`, and completion from the schema through the span map. Studio's `.jxn` Code view gets the same completion provider. `jx format` wraps `serializeJxn` and runs `oxfmt` on code strings. `oxfmt` and `oxlint` do not see `.jxn` otherwise.
 6. **Scaffolds and the flip.**
    - `packages/create/generate.ts`: `tsconfig.jxn.json`, `typescript`, the mapper and a `typecheck` script. Its layouts and Studio's new documents are `.jxn` already.
@@ -91,7 +112,7 @@ size: L
 
 ## Tests
 
-- `packages/content-mapper`: `tsc` fixtures asserting exact `file(line,col)` for CRLF, tabs, multibyte, `#`-count variants, escapes, a syntax error, no `state`, no root. A body calling a script helper reports TS2304. Rename reaches `(export)` names. Language-service fixtures for hover, rename and completion.
+- `packages/content-mapper` (landed in JTC.2, 100% of lines and functions): `tsc` fixtures asserting exact `file(line,col)` for CRLF, tabs, multibyte, `#`-count variants, escapes, a syntax error, no `state`, no root. A body calling a script helper reports TS2304. Rename reaches `(export)` names. Language-service fixtures for hover, rename, completion and definition. The mapper's protocol is spoken to directly in `server.test.ts`, and what a project gives a document in `mapper.test.ts`.
 - `packages/schema`: generator goldens, span round trips, and the corpus check: every body in starters and examples produces no false error once annotated, with the remaining `any`s listed in the test.
 - `packages/studio`: a seeded error shows at its position and in Problems, with no Node. A TS2307 is suppressed. Chrome MCP pass.
 - `packages/create`, `packages/starters`: a scaffold's `typecheck` passes and fails as seeded. `validate-projects.test.ts` fails if it finds no `.jxn`.
@@ -119,7 +140,7 @@ Order: JTC.1, then JTC.2 on TypeScript `7.1.0-beta`, then JTC.3 and JTC.4, and J
 | Slice | Scope                                                                                      | Claims         | State  |
 | ----- | ------------------------------------------------------------------------------------------ | -------------- | ------ |
 | JTC.1 | Generator, Studio diagnostics, Problems; closes §16.7                                      | studio.md#16.7 | merged |
-| JTC.2 | `@jxsuite/content-mapper`, TypeScript 7.1, `tsconfig.jxn.json`, `--runExternalCode` answer | spec.md#23.3   | open   |
+| JTC.2 | `@jxsuite/content-mapper`, TypeScript 7.1, `tsconfig.jxn.json`, `--runExternalCode` answer | spec.md#23.3   | merged |
 | JTC.3 | Mapper depth: events, templates, `$ref`, `$map`, `$props`, `$type`                         | spec.md#23.3   | open   |
 | JTC.4 | VS Code extension, completions in both editors, `jx format`                                | spec.md#23.3   | open   |
 | JTC.5 | Scaffolds, starters, examples, AI, the premise and recommendation; closes §23.3            | spec.md#23.3   | open   |

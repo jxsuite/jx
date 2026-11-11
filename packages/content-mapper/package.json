@@ -1,0 +1,49 @@
+{
+  "name": "@jxsuite/content-mapper",
+  "version": "0.0.0",
+  "description": "A TypeScript content mapper for Jx Notation: tsc and an editor check the code in a .jxn document",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jxsuite/jx.git",
+    "directory": "packages/content-mapper"
+  },
+  "files": [
+    "bin/",
+    "src/",
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    ".": "./src/mapper.ts",
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "provenance": true
+  },
+  "scripts": {
+    "prepare": "bun build src/server.ts --outdir=dist --format=esm --target=node",
+    "build": "bun run prepare",
+    "test": "bun test --isolate",
+    "test:coverage": "bun test --isolate --coverage"
+  },
+  "dependencies": {
+    "@jxsuite/schema": "workspace:^",
+    "ts-content-mapper": "0.1.1"
+  },
+  "peerDependencies": {
+    "typescript": ">=7.1.0-beta"
+  },
+  "typescript": {
+    "contentMapper": {
+      "dynamicConfig": true,
+      "exec": [
+        "node",
+        "bin/server.js"
+      ]
+    }
+  },
+  "engines": {
+    "node": "^22.18.0 || >=24.11.0"
+  }
+}

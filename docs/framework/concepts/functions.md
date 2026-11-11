@@ -280,7 +280,7 @@ Functions marked `timing: "server"` are a separate mechanism: a plain `$src`/`$e
 
 - `body` and `$src` are mutually exclusive. Declaring both fails the build, fails in Studio's canvas, and is reported by `jx validate`.
 - A `body` may use TypeScript that can be removed without generating code: annotations, `as`, `!`, generics and type aliases. `jx build`, `jx validate`, Studio's canvas, its code editor and Live Preview accept it in any document format, and the editor saves it as you wrote it. `enum`, a value `namespace` and a module `import` are refused with the place they are written.
-- Studio's code editor checks the types in a body against the page's `state` and lists the errors in Problems. Nothing checks them outside Studio yet, so a `jx build` still accepts a body with a type error.
+- Studio's code editor checks the types in a body against the page's `state` and lists the errors in Problems. Outside Studio, `tsc` checks the bodies and scripts of a `.jxn` document ([Type checking](/docs/framework/concepts/type-checking)). `jx build` runs neither, so a build still accepts a body with a type error.
 - `state` is always reachable from a body, and a declared `state` receives it wherever it sits in the list. The first other declared name receives the event.
 - `this` is never used. All component state goes through the `state` proxy.
 - `$export` defaults to the entry's key name; a module's exports must be named exports.
@@ -293,5 +293,6 @@ Functions marked `timing: "server"` are a separate mechanism: a plain `$src`/`$e
 - [Expressions](/docs/framework/concepts/expressions): the declarative rung below functions
 - [Statements](/docs/framework/concepts/statements): structured bodies without JavaScript
 - [Timing](/docs/framework/concepts/timing): server functions and the RPC boundary
+- [Type checking](/docs/framework/concepts/type-checking): `tsc` and your editor over a document's scripts and bodies
 - [Components](/docs/framework/concepts/components): where state and functions are declared
 - [Code editing in Studio](/docs/studio/logic/code): the editor for bodies and scripts

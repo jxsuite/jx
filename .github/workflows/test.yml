@@ -353,6 +353,11 @@ jobs:
       - run: bun run typecheck:ai-worker
       - run: bun --cwd packages/studio scripts/check-icons.ts
       - run: bun run typecheck
+      # The code inside the repository's own .jxn documents (spec.md §23.3), through the content
+      # mapper. It is a separate tsconfig because tsgolint refuses `contentMappers`, and the flag
+      # is what lets tsc start the one mapper that tsconfig names. The script builds the mapper
+      # first, so it reads the tree's own source and never a bundle left by an install.
+      - run: bun run typecheck:jxn
       # packages/desktop is EXCLUDED from the root tsconfig (it does not yet pass the root's two
       # strictest flags) so it needs its own pass — without this, nothing there is typechecked at
       # all, and an unbound identifier once shipped through. See packages/desktop/tsconfig.json.

@@ -2713,11 +2713,41 @@ A document may carry its own client and server modules, so a component does not 
 
 ### 23.3 Type Checking
 
-> **Status: Partial.** Studio's function editor reports type errors in a body (`studio.md` §16.7), and not yet in a document's script, which it edits on the same surface (§23.2). Nothing in the terminal or in another editor does.
+> **Status: Partial.** Studio's function editor reports type errors in a body (`studio.md` §16.7), and `tsc` and a TypeScript language server report them in a `.jxn` document's bodies and scripts through `@jxsuite/content-mapper`. Not yet: Studio checks no script, which it edits on the same surface (§23.2), and marks nothing in a `.jxn` file's Code view; nothing outside Studio checks a `.json` document; the mapper reads no `${}` template, `$defs`, class method, `$map` scope or component `$props`, and types every event `any`; no editor extension registers the mapper; and no scaffolded project is set up to run it.
 
 Type errors in a document's bodies and modules are reported at their real positions, in the terminal and in an editor, and a scaffolded project is set up to report them.
 
 A body is checked as the function it is the inside of, with `State` declared from its document's `state` and the names the runtime binds as its parameters. `@jxsuite/schema/virtual-types` writes that file and maps a position in it back to the body, with no dependency on a compiler, so every surface that checks types reads the same file. What `State` says is what the document proves: `state.nope` is an error, a value the document does not determine is `any`.
+
+**A whole document.** `@jxsuite/schema/virtual-document` writes the TypeScript a checker reads for a `.jxn` file from its text, as modules, and says for each stretch of them where in the file it was written. It is as free of a compiler as the body's file is, and declares `State` by the same rules.
+
+- **The main module** is the document's client script, line for line, followed by an exported `State`. An `(export)` entry has the type of the export it names, so an entry naming no export is an error at the entry, and a `.ts` module that imports the document reads its exports and its `State`.
+- **The server module** is the server script, followed by what it adds to `State`: each `(server)` entry is what its function resolves to, or `null` before it has answered.
+- **One module for each body**, which imports `State` and nothing else. A body therefore cannot name what a script declares and does not export (§23.2), and one that does is an error at the name. A body inside an element with `state` of its own reads that scope's `State`, which extends the document's.
+
+A name or a line the author wrote is joined to its place in the file: the name of a state entry, the name an entry exports, a parameter, each line of a script and each line of a body. Where the file spells text differently from the code it stands for (an escape in a quoted string, a quoted name) the stretch is joined as a whole. So an error is reported at the line and column the author wrote it, counted in UTF-16 code units as TypeScript counts, whatever the file's line endings, indentation and string form, and a rename rewrites the file. A file that is not Jx Notation is one error at the place it stops being one, and a project file (§22.5) is an empty module.
+
+`State` is closed where the document can prove it is alone: reading a key it does not declare is an error, except a key beginning `$`, which the runtime supplies. It is open, an undeclared key being `any`, where state reaches the document from outside it: a page of a project that has `state` of its own, or a document a layout wraps, by the project's default or by its own `$layout`. A component is a scope of its own and is always closed. Only a reader that knows the document's project can say which, and a reader that does not treats the document as alone.
+
+**In the terminal and in an editor.** TypeScript reads a `.jxn` file through a content mapper, `@jxsuite/content-mapper`, which a `tsconfig` names for the extension:
+
+```json
+{
+  "compilerOptions": { "allowArbitraryExtensions": true, "noEmit": true, "strict": true },
+  "contentMappers": [{ "extensions": [".jxn"], "package": "@jxsuite/content-mapper" }],
+  "include": ["**/*.jxn"]
+}
+```
+
+The mapper answers each file with the modules above and reads the file's project for what it gives the document: the nearest project file at or above the document, looking no higher than the `tsconfig`'s folder. Its own errors carry the source `jx`: `jx1` is a file that is not Jx Notation, and a run that reports one reports nothing else, as with any syntax error.
+
+A mapper is a program the compiler starts, so it starts none unless told it may: `tsc` requires `--runExternalCode` and reports `TS18068` without it, and a language server requires the same permission from its editor and says nothing about a `.jxn` file until it has it. **The permission is not given to one mapper.** It lets the compiler start every mapper the `tsconfig` names that has a file to read. A project therefore names this mapper in a `tsconfig` of its own, `tsconfig.jxn.json`, which names no other, and gives the flag to that run alone:
+
+```sh
+tsc -p tsconfig.jxn.json --runExternalCode
+```
+
+The file is separate for a second reason: a tool that reads `tsconfig.json` and does not know `contentMappers` refuses the whole file.
 
 ---
 

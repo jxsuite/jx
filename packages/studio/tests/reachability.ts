@@ -51,9 +51,9 @@
 
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
-import { API } from "typescript/unstable/async";
-import type * as TsApi from "typescript/unstable/async";
-import { SyntaxKind } from "typescript/unstable/ast";
+import { API } from "typescript/async";
+import type * as TsApi from "typescript/async";
+import { SyntaxKind } from "typescript/ast";
 import { isJsonObject, isString } from "@jxsuite/schema/guards";
 
 /** A node in the AST as the compiler API hands it back; shapes vary by kind, so this stays loose. */
@@ -257,6 +257,33 @@ async function followAliases(
   return symbols.map((s) => (s && isAlias(s) ? (resolved.get(s.id) ?? s) : s));
 }
 
+/**
+ * {@link followAliases} for symbols that came from more than one project.
+ *
+ * A symbol is followed by the checker that produced it: `projects[i]` is the project `symbols[i]`
+ * was read from. Asking another project's checker is an error since TypeScript 7.1 (`source file is
+ * not part of the requested program`), where 7.0 answered from whichever program it was handed.
+ */
+async function followAliasesEach(
+  projects: readonly TsApi.Project[],
+  symbols: readonly (TsApi.Symbol | undefined)[],
+): Promise<(TsApi.Symbol | undefined)[]> {
+  const indexes = Map.groupBy(symbols.keys(), (i) => projects[i]!);
+  const out = [...symbols];
+  await Promise.all(
+    [...indexes].map(async ([project, own]) => {
+      const followed = await followAliases(
+        project,
+        own.map((i) => symbols[i]),
+      );
+      for (const [k, i] of own.entries()) {
+        out[i] = followed[k];
+      }
+    }),
+  );
+  return out;
+}
+
 /** Walk the call graph of `packages/studio/src` and report the functions no entry point reaches. */
 export async function analyzeReachability(): Promise<ReachabilityReport> {
   const api = new API({ cwd: REPO });
@@ -270,13 +297,13 @@ export async function analyzeReachability(): Promise<ReachabilityReport> {
 async function run(api: API): Promise<ReachabilityReport> {
   // The repo tsconfig covers `packages/*/src` and `extensions/*/src`; `scripts/`, `sites/` and
   // `packages/desktop` are outside it, and they hold real callers, so they are opened alongside.
-  const first = await api.updateSnapshot({ openProjects: [TSCONFIG] });
+  const first = await api.createSnapshot({ openProjects: [TSCONFIG] });
   const main = first.getProjects()[0]!;
   const programFiles = await main.program.getSourceFileNames();
   const inProgram = new Set(programFiles.map((file) => canonical(file)));
   const extra = callerFiles(REPO).filter((f) => !inProgram.has(f) && namesStudio(f));
 
-  const snapshot = await api.updateSnapshot({ openProjects: [TSCONFIG], openFiles: extra });
+  const snapshot = await api.createSnapshot({ openProjects: [TSCONFIG], openFiles: extra });
   const configured = snapshot.getProjects().find((p) => p.configFileName === TSCONFIG)!;
 
   const studioFiles = [...inProgram].filter(
@@ -466,14 +493,15 @@ async function run(api: API): Promise<ReachabilityReport> {
     }
   }
 
+  const shorthandProjects = shorthands.map((h) =>
+    owner.get(canonical(h.node.getSourceFile().fileName))!,
+  );
   const shorthandValues = await Promise.all(
-    shorthands.map((h) =>
-      owner
-        .get(canonical(h.node.getSourceFile().fileName))!
-        .checker.getShorthandAssignmentValueSymbol(h.node),
+    shorthands.map((h, i) =>
+      shorthandProjects[i]!.checker.getShorthandAssignmentValueSymbol(h.node),
     ),
   );
-  const shorthandTargets = await followAliases(configured, shorthandValues);
+  const shorthandTargets = await followAliasesEach(shorthandProjects, shorthandValues);
   for (const [i, h] of shorthands.entries()) {
     link(h.from, shorthandTargets[i]);
   }
@@ -505,7 +533,10 @@ async function run(api: API): Promise<ReachabilityReport> {
   const properties = await Promise.all(
     wanted.map((w) => w.project.checker.getPropertyOfType(w.type, w.name)),
   );
-  const propertyTargets = await followAliases(configured, properties);
+  const propertyTargets = await followAliasesEach(
+    wanted.map((w) => w.project),
+    properties,
+  );
   for (const [i, w] of wanted.entries()) {
     link(w.from, propertyTargets[i]);
   }
