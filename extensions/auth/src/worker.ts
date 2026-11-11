@@ -99,11 +99,38 @@ export async function handleAuthRequest(
 ): Promise<Response> {
   try {
     const auth = await getAuthForEnv(state, options, env);
-    return await auth.handler(request);
+    const response = await auth.handler(request);
+    return isSignOut(request) && response.ok ? clearingSiteData(response) : response;
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    return Response.json({ error: message }, { status: 500 });
+    /* The cause names a secret's env var, a connection or a driver. It is the owner's to read in
+       the log; a visitor is told only that sign-in is not working. */
+    console.error("jx auth: request failed:", error);
+    return Response.json({ error: "Authentication is unavailable" }, { status: 500 });
   }
+}
+
+/** Whether a request is the sign-out call, whatever base the site is deployed under. */
+function isSignOut(request: Request): boolean {
+  return request.method === "POST" && new URL(request.url).pathname.endsWith("/sign-out");
+}
+
+/**
+ * The same response, asking the browser to drop what it cached for this origin.
+ *
+ * Better Auth expires the session cookie, which ends the session and leaves every page the person
+ * saw while signed in one Back press away: in the HTTP cache, and in the back/forward cache, which
+ * restores a page without asking the server anything. `"cache"` empties both. `"storage"` is
+ * deliberately not sent: it would also delete the site's own localStorage (a theme, a cart) and
+ * unregister its service worker, which is the site's decision and not this mount's.
+ */
+function clearingSiteData(response: Response): Response {
+  const headers = new Headers(response.headers);
+  headers.set("Clear-Site-Data", '"cache"');
+  return new Response(response.body, {
+    headers,
+    status: response.status,
+    statusText: response.statusText,
+  });
 }
 
 /** The mount + section-owner class for the `auth` section. */

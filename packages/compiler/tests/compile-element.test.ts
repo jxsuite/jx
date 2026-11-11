@@ -1,6 +1,7 @@
 import { enumeratedAttrNames } from "@jxsuite/runtime";
 import { describe, expect, test } from "bun:test";
 import { compileElement, compileElementPage } from "../src/compiler";
+import { DEFAULT_LIT_HTML_SRC, DEFAULT_REACTIVITY_SRC } from "../src/shared";
 import { emitElementModule } from "../src/targets/compile-element";
 import { resolve } from "node:path";
 import type {
@@ -613,6 +614,9 @@ describe("compileElementPage", () => {
     expect(result.html).toContain("<title>Test Page</title>");
     expect(result.html).toContain('"@vue/reactivity"');
     expect(result.html).toContain('"lit-html"');
+    // One pinned version per runtime module, whichever target wrote the import map.
+    expect(result.html).toContain(DEFAULT_REACTIVITY_SRC);
+    expect(result.html).toContain(DEFAULT_LIT_HTML_SRC);
     expect(result.html).toContain("<test-page></test-page>");
     expect(result.html).toContain('type="module"');
   });

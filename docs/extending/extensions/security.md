@@ -43,6 +43,10 @@ Two layers of authorization exist on a running site, and they are deliberately d
 
 The generated worker also puts a request gate in front of every mount: a cross-site or same-site request that isn't a navigation is answered `403` before your handler runs, and your responses gain `X-Content-Type-Options: nosniff`, `Cross-Origin-Resource-Policy: same-origin`, and `Cache-Control: no-store` when you set no `Cache-Control` of your own. Navigations still reach you, including a form posted from another site, so a handler that reads a body must refuse one that isn't declared `application/json`. The data mount does.
 
+**A `500` does not say why.** When a mount fails, the data and auth mounts write the cause to the log and answer a fixed sentence (`Connection error`, `Server error`, `Authentication is unavailable`). A database driver's message quotes the statement and the table, and a configuration error names the missing env var, so read the cause in your terminal or with `wrangler tail`. Do the same in a mount you write. A `400` still describes what was wrong with the request.
+
+**Signing out clears the browser's caches for your site.** The auth mount answers a successful sign-out with `Clear-Site-Data: "cache"`, so the pages a person saw while signed in are not restored by the Back button on a shared computer. It does not clear `localStorage` or unregister a service worker.
+
 **The Studio data routes (`/__studio/data/*`)** are the owner console: they intentionally bypass table permission rules and are protected by the dev server's loopback/token boundary instead. Cloud backends hosting Studio must gate them on collaboration permission ([Backend protocol](/docs/extending/embedding/backend-protocol)).
 
 :::doc-warning

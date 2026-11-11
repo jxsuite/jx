@@ -2169,6 +2169,8 @@ Content-Security-Policy: base-uri 'self'; default-src 'self'; font-src 'self'; f
   script-src 'self' 'sha256-…' 'sha256-…'; style-src 'self' 'unsafe-inline'
 ```
 
+`frame-ancestors` follows `security.frameOptions`, so the two framing headers never disagree: `SAMEORIGIN` (the default) is `'self'`, `DENY` is `'none'`, and `false` leaves the directive out, because a browser given both obeys `frame-ancestors` and a default there would overrule the author who switched framing rules off. An inline `<script type="speculationrules">` is hashed with the executable scripts: it is not executed, and `script-src` governs it all the same, so an unhashed rule set is dropped the moment the policy is on.
+
 Four decisions in that line:
 
 - **`script-src` is strict.** Compiled output contains no `eval` and no `new Function` (a committed test asserts it), and event handlers are bound as listeners rather than emitted as `onclick=` attributes — so there is nothing for `'unsafe-inline'` or `'unsafe-eval'` to be needed for. Since §12 the runtime is same-origin too, so `'self'` plus the constant hashes is the whole directive.

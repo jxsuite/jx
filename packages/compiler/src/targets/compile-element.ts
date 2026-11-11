@@ -14,6 +14,8 @@ import {
 import { RESERVED_KEYS, camelToKebab } from "@jxsuite/runtime";
 import {
   ATTR_HELPER,
+  DEFAULT_LIT_HTML_SRC,
+  DEFAULT_REACTIVITY_SRC,
   attrHelperSource,
   booleanAttrValue,
   definitionHasSlot,
@@ -237,8 +239,8 @@ export async function compileElementPage(
 ) {
   const {
     title = "Jx App",
-    reactivitySrc = "https://esm.sh/@vue/reactivity@3.5.13",
-    litHtmlSrc = "https://esm.sh/lit-html@3.3.0",
+    reactivitySrc = DEFAULT_REACTIVITY_SRC,
+    litHtmlSrc = DEFAULT_LIT_HTML_SRC,
   } = opts;
 
   const result = await compileElement(sourcePath, opts);

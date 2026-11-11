@@ -54,11 +54,22 @@ export function emptyCspSources(): CspSources {
 /**
  * Script `type` values the browser executes, and therefore the ones `script-src` governs.
  *
- * An empty or absent type is classic JavaScript. Everything else — `application/ld+json` above all
- * — is a _data block_: the browser never executes it, CSP never checks it, and hashing it would add
- * a hash that authorizes nothing. Verified in Chrome against an enforced policy.
+ * An empty or absent type is classic JavaScript. Almost everything else — `application/ld+json`
+ * above all — is a _data block_: the browser never executes it, CSP never checks it, and hashing it
+ * would add a hash that authorizes nothing. Verified in Chrome against an enforced policy.
  */
-const EXECUTABLE_TYPES = new Set(["", "module", "importmap", "text/javascript", "module-shim"]);
+const EXECUTABLE_TYPES = new Set([
+  "",
+  "module",
+  "importmap",
+  "text/javascript",
+  "module-shim",
+  /* Not executed, and governed all the same: an inline speculation rule set is refused under
+     `script-src` unless a hash, a nonce or `'inline-speculation-rules'` admits it, because a rule
+     set decides what the page fetches and prerenders. Unhashed, an author's rules were silently
+     dropped the moment the policy was switched on. */
+  "speculationrules",
+]);
 
 const SCRIPT_TAG = /<script\b([^>]*)>([\s\S]*?)<\/script>/gi;
 const LINK_TAG = /<link\b([^>]*)>/gi;
@@ -157,6 +168,21 @@ function srcsetUrls(srcset: string | undefined): string[] {
         .filter(Boolean);
 }
 
+/** `build.headers.security.frameOptions`: a header value, or `false` for no framing rule at all. */
+export type FrameOptions = NonNullable<HeadersConfig["security"]>["frameOptions"];
+
+/**
+ * The `frame-ancestors` source each `frameOptions` setting means. `false` is the author saying the
+ * site may be framed by anyone, so the directive is left out rather than set to `'self'`, which
+ * would overrule them: where both are present a browser ignores `X-Frame-Options`.
+ */
+function frameAncestors(frameOptions: FrameOptions): string | false {
+  if (frameOptions === false) {
+    return false;
+  }
+  return frameOptions === "DENY" ? "'none'" : "'self'";
+}
+
 /** Normalize the config's three spellings into one shape, or null when CSP is off. */
 export function normalizeCspConfig(security: HeadersConfig["security"]): CspConfig | null {
   const csp = security?.csp;
@@ -187,7 +213,11 @@ export function normalizeCspConfig(security: HeadersConfig["security"]): CspConf
  * @param {CspConfig} config
  * @returns {CspHeaders}
  */
-export function buildCspHeaders(sources: CspSources, config: CspConfig): CspHeaders {
+export function buildCspHeaders(
+  sources: CspSources,
+  config: CspConfig,
+  frameOptions: FrameOptions = "SAMEORIGIN",
+): CspHeaders {
   const list = (fixed: string[], origins: Set<string>) => [...fixed, ...origins].join(" ");
 
   // The computed directives, in the same shape as the overrides `config.directives` merges in.
@@ -196,9 +226,9 @@ export function buildCspHeaders(sources: CspSources, config: CspConfig): CspHead
     "default-src": "'self'",
     "font-src": list(["'self'"], sources.fontOrigins),
     "form-action": "'self'",
-    // Matches the `X-Frame-Options: SAMEORIGIN` emitted beside it; two headers disagreeing about
-    // Framing is a worse outcome than either answer.
-    "frame-ancestors": "'self'",
+    // Follows the `X-Frame-Options` emitted beside it; two headers disagreeing about framing is a
+    // Worse outcome than either answer, and `frame-ancestors` is the one a browser obeys.
+    "frame-ancestors": frameAncestors(frameOptions),
     "frame-src": list(["'self'"], sources.frameOrigins),
     "img-src": list(["'self'", "data:"], sources.imgOrigins),
     "object-src": "'none'",

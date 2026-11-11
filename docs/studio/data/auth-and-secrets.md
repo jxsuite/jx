@@ -55,11 +55,15 @@ The section is a single form, and every field is optional. The defaults below ar
 
 - **connection**: which of your **[connections](/docs/studio/data/connections)** stores the account tables. Defaults to the first one you declared.
 - **secretEnv**: the _name_ of the environment variable holding the signing secret that protects sessions. Defaults to `BETTER_AUTH_SECRET`. It renders as a secret field: paste any long random string and it's stored as described above. Auth refuses to start without a value for it.
-- **methods**: first-party sign-in methods; **emailPassword** (on by default) enables classic email + password accounts.
+- **methods**: first-party sign-in methods; **emailPassword** (on by default) enables classic email + password accounts. Jx sends no verification email, so the address on an account is whatever the person typed. See the warning below.
 - **providers**: social sign-in, keyed by provider (`github`, `google`, …), each with a **clientIdEnv** and **clientSecretEnv**. As everywhere, these are env-var _names_; leave them blank and the provider's own defaults apply (`GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET`). Setting one up takes a couple more steps; see **Social sign-in** below.
 - **redirects**: **afterSignIn** and **afterSignOut**, the paths a visitor lands on after each. Leave them empty and the page stays where it is.
 - **roles**: role names you want to grant (say `admin`, `editor`), usable in table rules as `role:admin`. Declaring any role is also what adds the `role` column to the `user` table.
 - **trustedOrigins**: extra origins allowed to call the sign-in routes; most sites leave this empty, since a site's own pages are always allowed.
+
+:::doc-warning
+An email + password account is created without checking that the person owns the address. Do not grant a role or open a table because of what an email address says (a company domain, for example). Assign roles yourself in the data grid, or turn **emailPassword** off and use a social provider, which hands you an address the provider has already verified.
+:::
 
 ### Account tables and roles
 

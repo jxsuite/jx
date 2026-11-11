@@ -7,7 +7,7 @@
  * composes.
  */
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
 import { mkdirSync, rmSync } from "node:fs";
 import { resolve } from "node:path";
 import { Sqlite } from "@jxsuite/connector";
@@ -165,14 +165,36 @@ describe("Auth.mount", () => {
   });
 
   test("handleAuthRequest surfaces construction errors as 500", async () => {
+    const logged = spyOn(console, "error").mockImplementation(() => {});
     const response = await handleAuthRequest(
       new Request("http://localhost:3000/_jx/auth/get-session"),
       { JX_PROJECT_ROOT: TMP },
       options,
     );
     expect(response.status).toBe(500);
+    /* The missing secret's name is in the log for the owner, and not in the answer. */
     const body: JsonValue = await response.json();
-    expect(stringAt(body, "error")).toContain("BETTER_AUTH_SECRET");
+    expect(stringAt(body, "error")).toBe("Authentication is unavailable");
+    expect(String(logged.mock.calls[0])).toContain("BETTER_AUTH_SECRET");
+    logged.mockRestore();
+  });
+
+  test("signing out asks the browser to drop what it cached, and nothing else does", async () => {
+    /* The cookie's expiry ends the session; the pages seen while signed in are still one Back
+       press away in the HTTP and back/forward caches until this header empties them. */
+    const { auth } = mountBoth();
+    const cookie = await signUp(auth, "leaving@example.com");
+    const session = await auth(
+      new Request("http://localhost:3000/_jx/auth/get-session", { headers: { cookie } }),
+    );
+    expect(session.headers.get("Clear-Site-Data")).toBeNull();
+
+    const out = await auth(
+      jsonRequest("POST", "http://localhost:3000/_jx/auth/sign-out", {}, cookie),
+    );
+    expect(out.status).toBe(200);
+    expect(out.headers.get("Clear-Site-Data")).toBe('"cache"');
+    expect(out.headers.get("set-cookie")).toContain("Max-Age=0");
   });
 
   test("memoizes the Better Auth instance per env identity", async () => {
