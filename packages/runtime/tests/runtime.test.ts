@@ -1319,6 +1319,66 @@ describe("resolvePrototype", () => {
   });
 });
 
+// ─── $lazy (spec.md §5.3 4d) ─────────────────────────────────────────────────
+
+describe("$lazy $src (spec.md §5.3 4d)", () => {
+  const srcUrl = new URL("_test_lazy_module.js", import.meta.url).href;
+  const loads = () => globalThis.__jxLazyLoads ?? 0;
+  // SAFETY: a state document literal; the entry shapes are the ones the schema defines.
+  const lazyDoc = (extra: JsonObject = {}) =>
+    ({
+      children: [{ onclick: { $ref: "#/state/lazyBump" }, tagName: "button" }],
+      state: {
+        count: 0,
+        lazyBump: { $lazy: true, $prototype: "Function", $src: srcUrl },
+        ...extra,
+      },
+    }) as JxDocument;
+
+  test("a $lazy entry is not imported at scope build", async () => {
+    const before = loads();
+    const state = await buildScope(lazyDoc(), {}, BASE);
+    expect(state.lazyBump).toBeTypeOf("function");
+    expect(loads()).toBe(before);
+  });
+
+  test("its first call returns a promise and loads the module, and later calls reuse it", async () => {
+    const state = await buildScope(lazyDoc(), {}, BASE);
+    const bump = fnOf(state, "lazyBump");
+    const first = bump(state, 2);
+    const second = bump(state, 3);
+    expect(first).toBeInstanceOf(Promise);
+    expect(await Promise.resolve(first)).toBe(2);
+    expect(await Promise.resolve(second)).toBe(5);
+    // Module evaluation is cached either way, so this witnesses the deferral, not the memo.
+    expect(loads()).toBeGreaterThan(0);
+  });
+
+  test("a $lazy entry read as a value is refused at scope build", async () => {
+    // oxlint-disable-next-line typescript/await-thenable -- bun-types types `.rejects.toThrow()` as void, but it returns a Promise at runtime that must be awaited
+    await expect(
+      buildScope(
+        {
+          children: [{ tagName: "p", textContent: "${state.total}" }],
+          state: { total: { $lazy: true, $prototype: "Function", $src: srcUrl } },
+        },
+        {},
+        BASE,
+      ),
+    ).rejects.toThrow('"total" declares "$lazy": true');
+  });
+
+  test("a missing export surfaces on the first call, not at build", async () => {
+    const state = await buildScope(
+      lazyDoc({ nope: { $lazy: true, $prototype: "Function", $src: srcUrl, parameters: ["a"] } }),
+      {},
+      BASE,
+    );
+    // oxlint-disable-next-line typescript/await-thenable -- bun-types types `.rejects.toThrow()` as void, but it returns a Promise at runtime that must be awaited
+    await expect(fnOf(state, "nope")(state)).rejects.toThrow('export "nope" not found');
+  });
+});
+
 // ─── Parameter binding at event call sites (spec.md §5.3 4d) ─────────────────
 
 describe("parameter binding at event call sites (spec.md §5.3 4d)", () => {
