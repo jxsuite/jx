@@ -119,6 +119,7 @@ export function studioShellHtml(options: DocumentOptions = {}): string {
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
 ${bootMeta}    <title>${options.title ?? "Jx Studio"}</title>
     <link rel="icon" href="${url(STUDIO_FAVICON)}" />
 ${links}${preload}

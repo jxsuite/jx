@@ -54,7 +54,7 @@ import { isFunctionDef, isNonNullObject } from "@jxsuite/schema/guards";
 import type { JxDocumentValue, JxElement, JxFunctionDef } from "@jxsuite/schema/types";
 import { documents } from "../src/documents.ts";
 import { registerUi } from "../src/index.ts";
-import { mountSelect, syncSelect } from "../src/behaviors/select.ts";
+import { drawsOwnList, mountSelect, syncSelect } from "../src/behaviors/select.ts";
 import type { SelectState } from "../src/behaviors/select.ts";
 import { expectInertWhileEmpty } from "./error-region.ts";
 
@@ -78,6 +78,7 @@ interface Row {
   line?: string;
 }
 type JxSelect = HTMLElement & {
+  plain: boolean;
   value: string;
   options: Row[];
   groups: { id: string; label: string; rows: Row[] }[];
@@ -825,5 +826,56 @@ describe("jx-select", () => {
     syncSelect(state, sel);
     expect(sel.value).toBe('"Times New Roman", serif');
     expect(state.unlisted).toEqual([]);
+  });
+});
+
+describe("jx-select on an engine that draws a plain select", () => {
+  test("asks the engine, and an engine with no answer draws plain", async () => {
+    const original = Object.getOwnPropertyDescriptor(globalThis, "CSS");
+    const asked: string[][] = [];
+    Object.defineProperty(globalThis, "CSS", {
+      configurable: true,
+      value: {
+        supports: (...args: string[]) => {
+          asked.push(args);
+          return true;
+        },
+      },
+    });
+    expect(drawsOwnList()).toBe(true);
+    expect(asked).toEqual([["appearance", "base-select"]]);
+    const own = await select({ label: "Font" }, { options: GENERIC });
+    expect(own.plain).toBe(false);
+
+    Object.defineProperty(globalThis, "CSS", { configurable: true, value: undefined });
+    expect(drawsOwnList()).toBe(false);
+    if (original) {
+      Object.defineProperty(globalThis, "CSS", original);
+    } else {
+      Reflect.deleteProperty(globalThis, "CSS");
+    }
+  });
+
+  test("a plain select draws a row as its text, so the description is left out of it", async () => {
+    /* A plain select ignores every span and prints the option's text. Label and description are
+       two spans, and as text they are one word: "system-uisystem". */
+    const el = await select({ label: "Font" }, { options: GENERIC });
+    const row = () => control(el).options[0]!;
+    el.plain = false;
+    await tick();
+    expect(row().textContent).toBe("system-uisystem");
+    expect(row().querySelector('[part="description"]')!.hasAttribute("hidden")).toBe(false);
+
+    el.plain = true;
+    await tick();
+    expect(row().textContent).toBe("system-ui");
+    expect(row().querySelector('[part="description"]')!.hasAttribute("hidden")).toBe(true);
+    // The value the row reports back is untouched.
+    expect(row().value).toBe("system-ui");
+  });
+
+  test("the control's own refusal draws as the host's does", async () => {
+    const el = await select({ label: "Font", required: "" }, { options: GENERIC });
+    expect(ruleFor(el, "select:user-invalid")).toContain("border-color: var(--jx-danger)");
   });
 });

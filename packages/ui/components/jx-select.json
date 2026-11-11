@@ -102,6 +102,11 @@
       "default": "",
       "description": "This element's own id stem, minted on mount. The error and help sentences take their ids from it, and the control names those ids in aria-describedby."
     },
+    "plain": {
+      "type": "boolean",
+      "default": false,
+      "description": "Written at mount, never authored: the engine has no appearance: base-select, so the control is the platform's plain select. A plain select draws an option as its text and nothing else, which would run a row's label and its description together into one word, so the description is left out of the row while this is true. Faces, swatches and group headings are drawing only and simply do not appear."
+    },
     "hasError": {
       "$expression": {
         "operator": "!==",
@@ -264,6 +269,10 @@
       }
     },
     "&[data-invalid] select": {
+      "borderColor": "var(--jx-danger)"
+    },
+    "& select:user-invalid": {
+      "$description": "The control's own verdict after the reader has been through it, drawn as the host's is: a required select left on its empty row.",
       "borderColor": "var(--jx-danger)"
     },
     "& [part=\"trigger\"]": {
@@ -500,9 +509,9 @@
                 "tagName": "span",
                 "attributes": {
                   "part": "description",
-                  "hidden": "${!$map.item.description}"
+                  "hidden": "${state.plain || !$map.item.description}"
                 },
-                "textContent": "${$map.item.description || ''}"
+                "textContent": "${state.plain ? '' : $map.item.description || ''}"
               }
             ]
           }
@@ -600,9 +609,9 @@
                       "tagName": "span",
                       "attributes": {
                         "part": "description",
-                        "hidden": "${!$map.item.description}"
+                        "hidden": "${state.plain || !$map.item.description}"
                       },
-                      "textContent": "${$map.item.description || ''}"
+                      "textContent": "${state.plain ? '' : $map.item.description || ''}"
                     }
                   ]
                 }

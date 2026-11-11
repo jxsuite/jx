@@ -570,3 +570,68 @@ describe("the number-field sidecar", () => {
     expect(state.value).toBe("1");
   });
 });
+
+describe("jx-number-field as a form control", () => {
+  test("required, readonly and invalid reach the control, and unset ones write nothing", async () => {
+    const bare = await field({ label: "Width" });
+    expect(control(bare).required).toBe(false);
+    expect(control(bare).readOnly).toBe(false);
+    expect(control(bare).hasAttribute("aria-invalid")).toBe(false);
+    expect(bare.dataset["invalid"]).toBeUndefined();
+
+    const el = await field({ invalid: "", label: "Width", readonly: "", required: "" });
+    expect(control(el).required).toBe(true);
+    expect(control(el).readOnly).toBe(true);
+    expect(control(el).getAttribute("aria-invalid")).toBe("true");
+    expect(el.dataset["invalid"]).toBe("");
+  });
+
+  test("a readonly field does not step: the element stands down where the platform would not", async () => {
+    /* `stepUp()` is script, and script may write a readonly control. The buttons and the shifted
+       arrows step on the reader's behalf, so they are what has to refuse. */
+    const el = await field({ label: "Width", readonly: "", stepper: "", value: "4" });
+    const up = el.querySelector<HTMLButtonElement>('[part="step-up"]')!;
+    const down = el.querySelector<HTMLButtonElement>('[part="step-down"]')!;
+    expect(up.disabled).toBe(true);
+    expect(down.disabled).toBe(true);
+
+    const heard: string[] = [];
+    el.parentElement!.addEventListener("input", () => heard.push("input"));
+    const event = new KeyboardEvent("keydown", {
+      bubbles: true,
+      cancelable: true,
+      key: "ArrowUp",
+      shiftKey: true,
+    });
+    control(el).dispatchEvent(event);
+    await tick();
+    expect(control(el).value).toBe("4");
+    expect(el.value).toBe("4");
+    expect(heard).toEqual([]);
+
+    // A field that is neither disabled nor readonly keeps both buttons.
+    const live = await field({ label: "Width", stepper: "", value: "4" });
+    expect(live.querySelector<HTMLButtonElement>('[part="step-up"]')!.disabled).toBe(false);
+  });
+
+  test("a refused value draws in the danger colour, and a fraction is not a refusal", async () => {
+    const el = await field({ label: "Width" });
+    const scope = `[data-jx="${el.dataset["jx"]}"]`;
+    const sheet = documentStyleText()
+      .split("\n")
+      .filter((line) => line.startsWith(scope));
+    const rule = (selector: string) =>
+      sheet.find((line) => line.slice(0, line.indexOf("{")).includes(selector)) ?? "";
+    expect(rule('[data-invalid] [part="input"]')).toContain("border-color: var(--jx-danger)");
+    expect(rule(":user-invalid:is(:out-of-range, :required)")).toContain(
+      "border-color: var(--jx-danger)",
+    );
+    // A bare :user-invalid is also a step mismatch, and a field with no step has a step of one.
+    expect(sheet.some((line) => /:user-invalid\s*\{/u.test(line))).toBe(false);
+    expect(
+      isString(
+        document_.style['& [part="input"]:user-invalid:is(:out-of-range, :required)'].$description,
+      ),
+    ).toBe(true);
+  });
+});

@@ -501,3 +501,46 @@ describe("jx-textfield", () => {
     expect(one.uid).not.toBe(two.uid);
   });
 });
+
+describe("jx-textfield and the control's own verdict", () => {
+  test("a key pressed inside an input-method composition is the composition's", async () => {
+    /* An IME takes Enter to accept a candidate and Escape to dismiss its list. Neither is a submit
+       or a clear. keyCode 229 is what Safari sends for the key that ENDS a composition, where it
+       reports isComposing false for it. */
+    const el = await field({ clearable: "", label: "Search", type: "search", value: "にほん" });
+    const heard: string[] = [];
+    record(el, heard);
+    const during = (key: string, init: KeyboardEventInit) => {
+      const event = new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key, ...init });
+      control(el).dispatchEvent(event);
+      return event;
+    };
+    expect(during("Escape", { isComposing: true }).defaultPrevented).toBe(false);
+    expect(during("Enter", { isComposing: true }).defaultPrevented).toBe(false);
+    // oxlint-disable-next-line typescript/no-deprecated -- the deprecated field is the one the guard reads.
+    expect(during("Escape", { keyCode: 229 }).defaultPrevented).toBe(false);
+    // oxlint-disable-next-line typescript/no-deprecated -- the deprecated field is the one the guard reads.
+    expect(during("Enter", { keyCode: 229 }).defaultPrevented).toBe(false);
+    await tick();
+    expect(el.value).toBe("にほん");
+    expect(heard).toEqual([]);
+
+    // The same keys outside a composition are still the field's.
+    expect(enter(el).defaultPrevented).toBe(true);
+    expect(escape(el).defaultPrevented).toBe(true);
+    expect(el.value).toBe("");
+  });
+
+  test("the control's own refusal draws as the host's does, and only after the reader has been through it", async () => {
+    const el = await field({ label: "Email", required: "", type: "email" });
+    const own = ruleFor(el, '[part="input"]:user-invalid');
+    expect(own).toContain("border-color: var(--jx-danger)");
+    expect(ruleFor(el, '[data-invalid] [part="input"]')).toContain(
+      "border-color: var(--jx-danger)",
+    );
+    // Never the bare pseudo-class, which is true of a required field nobody has touched.
+    expect(rules(el).some((line) => /:invalid\b/u.test(line.replace(":user-invalid", "")))).toBe(
+      false,
+    );
+  });
+});
