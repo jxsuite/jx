@@ -127,6 +127,7 @@ Every Jx document is a JSON object with the following top-level fields:
 | `$id`      | Recommended | Component identifier, used by tooling                                                                                                                                                                           |
 | `$defs`    | Optional    | Pure JSON Schema type definitions — tooling only, no runtime artifacts                                                                                                                                          |
 | `state`    | Optional    | Reactive state: signals, computed values, functions, and data sources                                                                                                                                           |
+| `$script`  | Optional    | The document's own client and server modules, as TypeScript text (§23.2)                                                                                                                                        |
 | `tagName`  | Required    | HTML tag name for the root element                                                                                                                                                                              |
 | `children` | Optional    | Array of child element definitions, text nodes (strings/numbers), and/or Array namespaces (repeaters) mixed freely. A bare Array namespace (the whole children slot is one repeater) is also accepted. See §10. |
 
@@ -192,6 +193,8 @@ export function decrement(state) {
 ```
 
 When multiple Function entries share a `$src`, the runtime imports the module once and extracts named exports. Module caching is automatic.
+
+A document may carry the module instead of naming a file: `$src: "#client"` names the client module in the document's own `$script` (§23.2), and its exports follow the same contract.
 
 ### 4.3 Handler Binding
 
@@ -422,6 +425,8 @@ A body counts as returning a value only when something follows `return` on the s
   "$export": "validateEmail"
 }
 ```
+
+`$src: "#client"` names the document's own client module, the text in its `$script.client` (§23.2), and `$export` names the export as it does for any other module. It is the one `$src` that says nothing about a file, so a host gives it its document's path as the document is read, and the entry is from then on an ordinary external Function.
 
 An `npm:` specifier names a package export, and each renderer resolves it where its packages are: the build bundles it (`packages/compiler/src/site/bundler.ts`), and the interpreter imports it through the host's package resolver (`setNpmModuleResolver`), which a live renderer installs to say where its packages are served; with none installed it imports the bare specifier, which an import map can answer. It never hands `import()` the `npm:` URL itself, which no browser fetches.
 
@@ -1299,6 +1304,8 @@ export async function fetchMetrics({ userId }) {
 }
 ```
 
+`$src: "#server"` names the document's own server module, the text in its `$script.server` (§23.2). Everything else about the entry is as above: the export is async, takes `(args, env)`, and is served under its export name.
+
 #### Arguments
 
 An optional `arguments` field passes named parameters. Values may be static or reactive `$ref` references:
@@ -1829,6 +1836,7 @@ One boundary separates the two sides. The interpreter asks rule 1 only within a 
 | `$prototype`         | Constructor name — Web API class, `"Function"`, or external class |
 | `$src`               | External module specifier                                         |
 | `$export`            | Named export within `$src` module                                 |
+| `$script`            | The document's own client and server modules (§23.2)              |
 | `$switch`            | Dynamic component switching                                       |
 | `$map`               | Iteration context namespace                                       |
 | `$media`             | Named media breakpoint declarations                               |
@@ -2644,9 +2652,44 @@ A string `body` in any document format is TypeScript, limited to syntax that can
 
 ### 23.2 Document Scripts
 
-> **Status: Pending.** A function that outgrows a body moves to a separate module named by `$src` (§5.3 4c).
+> **Status: Partial.** `jx build` bundles each document's client module, serves its server module from the site worker, and resolves an import of a `.jxn` document (compiler.md §12, §6.3), and `@jxsuite/compiler/bun-plugin` lets a Bun test import one. No interpreting host loads a document's module yet: Studio's canvas, Live Preview, `jx dev` and a page that calls `mount()` cannot import a `#client` entry, `jx dev` and the `/__jx_server__` proxy answer no `#server` function, and each still hands the browser the document with its server module in it. `.jxn` has no notation for a script, so one is written as the `$script` property, and Studio has no editor for it.
 
 A document may carry its own client and server modules, so a component does not need a separate file for its own code. `$src` keeps working, and stays the only spelling for `npm:` packages and for modules shared between documents.
+
+**`$script` holds the text.** At a document's root, `$script` is an object with up to two members, `client` and `server`, each the TypeScript source of one ECMAScript module. It is a reserved key (§17): never an element property and never a `$`-local binding.
+
+```json
+{
+  "tagName": "my-counter",
+  "$script": {
+    "client": "import { clamp } from \"./math.ts\";\n\nexport function bump(state: State): void {\n  state.count = clamp(state.count + 1, 0, 10);\n}\n",
+    "server": "export async function history(args: { limit: number }, env: Env) {\n  return env.DB.prepare(\"SELECT * FROM counts LIMIT ?\").bind(args.limit).all();\n}\n"
+  },
+  "state": {
+    "count": 0,
+    "bump": { "$prototype": "Function", "$src": "#client", "$export": "bump" },
+    "history": {
+      "$src": "#server",
+      "$export": "history",
+      "timing": "server",
+      "arguments": { "limit": 20 }
+    }
+  },
+  "children": [{ "tagName": "button", "onclick": { "$ref": "#/state/bump" }, "textContent": "Add" }]
+}
+```
+
+**An entry names its own document's module.** `$src: "#client"` on a `$prototype: "Function"` entry is an external Function (§5.3 4c) whose module is `$script.client`; `$src: "#server"` on a `timing: "server"` entry is a server function (§11.4) whose module is `$script.server`. Nothing else about either entry changes: the calling convention is §5.3 4d's, a server export takes `(args, env)`, and `$lazy` means what it means for any module. A client Function naming `#server` is an error, because a server module is called and never imported by a page. Only a document has a script. `project.json` has none, so `#client` or `#server` in its `state` is an error naming the entry.
+
+**Qualified as the document is read.** `#client` says nothing about which document, and a page is merged with its layout and with the project's state before anything runs. So a host rewrites the two authored forms once, as it reads a document and before any merge, to `jx-script:<path>#client` and `jx-script:<path>#server`, `<path>` being the document's project-relative path with `/` separators. After that a page's module and its layout's are different specifiers, and module caching, bundling and the worker's one function per export name apply to them as to any two modules. The qualified form is never authored and never saved: the document on disk keeps `#client`. Qualifying an already qualified document changes nothing.
+
+**A module stands where its document stands.** A relative import in a script resolves from the document's directory, as it would from a file beside the document, and a script may import `.ts`. Importing a `.jxn` document (`import { clamp } from "../lib/shared.jxn"`) imports that document's client module. A document's server module is imported by nothing: an import that reaches one from code a browser runs fails the build.
+
+**One module for each side of a document.** Every entry naming `#client` in one document shares one module, evaluated once on a page however many entries name it and however many instances of the component there are. An entry with `$lazy` shares it too, so it defers nothing when another entry of the same document loads eagerly; a function worth loading late belongs in a `$src` module of its own.
+
+**A body is not inside the module.** A string `body` (§23.1) sees `state` and its declared parameters and none of the names a script declares. A body reaches a script's function through the state entry that exports it, as `state.clamp(…)`.
+
+**Server names are site-wide.** A document's server exports are served under their export names with every other server function of the site (§11.4), so two documents exporting one server name fail the build, naming both.
 
 ### 23.3 Type Checking
 
