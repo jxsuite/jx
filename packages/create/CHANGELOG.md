@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.8.0](https://github.com/jxsuite/jx/compare/create-v1.7.0...create-v1.8.0) (2026-11-11)
+
+
+### Features
+
+* new documents and the starters are Jx Notation ([#596](https://github.com/jxsuite/jx/issues/596)) ([f5bd517](https://github.com/jxsuite/jx/commit/f5bd517b28573f66d5b6e43fec3c1230c84eab0c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/schema bumped to 5.6.0
+    * @jxsuite/starters bumped to 3.5.0
+
 ## [1.7.0](https://github.com/jxsuite/jx/compare/create-v1.6.0...create-v1.7.0) (2026-11-08)
 
 

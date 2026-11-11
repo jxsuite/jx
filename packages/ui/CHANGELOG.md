@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.11.0](https://github.com/jxsuite/jx/compare/ui-v0.10.4...ui-v0.11.0) (2026-11-11)
+
+
+### Features
+
+* classify Function entries through one shared classifier ([#595](https://github.com/jxsuite/jx/issues/595)) ([0cc68d7](https://github.com/jxsuite/jx/commit/0cc68d7f3cafbd8d23ca55c0a275f0ce64abbb78))
+* edit function bodies as TypeScript and store them as written ([#593](https://github.com/jxsuite/jx/issues/593)) ([b53a192](https://github.com/jxsuite/jx/commit/b53a1924d5f3d241eccccb51f4df347b3c076c27))
+* **schema,runtime,compiler:** refuse a Function declaring both body and $src ([#604](https://github.com/jxsuite/jx/issues/604)) ([7d298b1](https://github.com/jxsuite/jx/commit/7d298b1746de17d4e94fff5a58c90318cc360133))
+* **ui:** a jx-field in a narrow container stacks its label above the control ([#600](https://github.com/jxsuite/jx/issues/600)) ([7c2c765](https://github.com/jxsuite/jx/commit/7c2c765e09061a45bbe674baa5ee0361827e521d))
+* **ui:** section headings are one recipe, and the accordion draws it ([#601](https://github.com/jxsuite/jx/issues/601)) ([c975835](https://github.com/jxsuite/jx/commit/c97583561086c76c0ff17314a3a668253545b1eb))
+
+
+### Bug Fixes
+
+* **studio:** zoom in the status bar, collapsed outline, reliable twisty, diff Code view back ([#605](https://github.com/jxsuite/jx/issues/605)) ([74fa66e](https://github.com/jxsuite/jx/commit/74fa66e27bcfbb618ee8af4b5565bb8755ec0697))
+* **ui:** 11px is the type floor, in the kit and in Studio's chrome ([#599](https://github.com/jxsuite/jx/issues/599)) ([b592d75](https://github.com/jxsuite/jx/commit/b592d751ef314b6b2b304122b328b86cee1ff1b1))
+* **ui:** muted text meets 4.5:1 on every surface, in both schemes ([#598](https://github.com/jxsuite/jx/issues/598)) ([9e73430](https://github.com/jxsuite/jx/commit/9e73430663727b9924f635fc3093706c6cf6089d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/runtime bumped to 6.3.0
+    * @jxsuite/schema bumped to 5.6.0
+
 ## [0.10.4](https://github.com/jxsuite/jx/compare/ui-v0.10.3...ui-v0.10.4) (2026-11-08)
 
 

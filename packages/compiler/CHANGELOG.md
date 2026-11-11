@@ -1,5 +1,30 @@
 # Changelog
 
+## [8.6.0](https://github.com/jxsuite/jx/compare/compiler-v8.5.0...compiler-v8.6.0) (2026-11-11)
+
+
+### Features
+
+* classify Function entries through one shared classifier ([#595](https://github.com/jxsuite/jx/issues/595)) ([0cc68d7](https://github.com/jxsuite/jx/commit/0cc68d7f3cafbd8d23ca55c0a275f0ce64abbb78))
+* new documents and the starters are Jx Notation ([#596](https://github.com/jxsuite/jx/issues/596)) ([f5bd517](https://github.com/jxsuite/jx/commit/f5bd517b28573f66d5b6e43fec3c1230c84eab0c))
+* **schema,runtime,compiler:** one parameter list and call convention ([#607](https://github.com/jxsuite/jx/issues/607)) ([f013d6a](https://github.com/jxsuite/jx/commit/f013d6ae42e63ba6c108b7dcfd0524b5d7653c52))
+* **schema,runtime,compiler:** refuse a Function declaring both body and $src ([#604](https://github.com/jxsuite/jx/issues/604)) ([7d298b1](https://github.com/jxsuite/jx/commit/7d298b1746de17d4e94fff5a58c90318cc360133))
+* **studio,compiler:** a picture's focal point lives in the picture ([#591](https://github.com/jxsuite/jx/issues/591)) ([9103d7f](https://github.com/jxsuite/jx/commit/9103d7fd4feab76644101fd303303dee1eaa792e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/create bumped to 1.8.0
+    * @jxsuite/erase bumped to 0.2.0
+    * @jxsuite/runtime bumped to 6.3.0
+    * @jxsuite/schema bumped to 5.6.0
+    * @jxsuite/site bumped to 2.6.0
+  * devDependencies
+    * @jxsuite/connector bumped to 0.8.8
+    * @jxsuite/parser bumped to 4.3.4
+
 ## [8.5.0](https://github.com/jxsuite/jx/compare/compiler-v8.4.0...compiler-v8.5.0) (2026-11-08)
 
 

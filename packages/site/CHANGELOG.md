@@ -1,5 +1,21 @@
 # Changelog
 
+## [2.6.0](https://github.com/jxsuite/jx/compare/site-v2.5.1...site-v2.6.0) (2026-11-11)
+
+
+### Features
+
+* run TypeScript function bodies in the canvas and Live Preview ([#592](https://github.com/jxsuite/jx/issues/592)) ([04f3d27](https://github.com/jxsuite/jx/commit/04f3d27863f3f8da2e86dc28a5705915692bf7e6))
+* **studio,compiler:** a picture's focal point lives in the picture ([#591](https://github.com/jxsuite/jx/issues/591)) ([9103d7f](https://github.com/jxsuite/jx/commit/9103d7fd4feab76644101fd303303dee1eaa792e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/runtime bumped to 6.3.0
+    * @jxsuite/schema bumped to 5.6.0
+
 ## [2.5.1](https://github.com/jxsuite/jx/compare/site-v2.5.0...site-v2.5.1) (2026-11-08)
 
 
