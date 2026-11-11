@@ -1,6 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { compileClient } from "../src/targets/compile-client";
-import type { JsonObject, JsonValue, JxAttributeValue, JxDocument } from "@jxsuite/schema/types";
+import type {
+  JsonObject,
+  JsonValue,
+  JxAttributeValue,
+  JxDocument,
+  JxFunctionDef,
+} from "@jxsuite/schema/types";
 
 /** A stand-in for `fetch` that answers each call with a canned response. */
 type StubFetch = (url: string, init: RequestInit) => Promise<Response>;
@@ -984,9 +990,28 @@ describe("compileClient — $src function handlers", () => {
     expect(js).not.toContain('state["doSomething"] = doSomething;');
   });
 
-  test("a $src handler's declared names map by name", () => {
+  test("a $src handler is called with (state, event) whatever it declares", () => {
     const { files } = compileClient(withButton({ parameters: ["event"] }), { title: "Test" });
-    expect(files[0]!.content).toContain("return doSomething(event);");
+    expect(files[0]!.content).toContain("return doSomething(state, event);");
+    expect(files[0]!.content).not.toContain("return doSomething(event);");
+  });
+
+  test("a handler declaring [event, state] binds both", () => {
+    const doc = {
+      children: [{ onclick: { $ref: "#/state/go" }, tagName: "button" }],
+      state: {
+        go: {
+          $prototype: "Function",
+          body: "state.n = event.detail",
+          parameters: ["event", "state"],
+        },
+        n: 0,
+      },
+      tagName: "div",
+    };
+    const js = compileClient(doc, { title: "Test" }).files[0]!.content;
+    expect(js).toContain("const fn = (state, event) => { state.n = event.detail");
+    expect(js).toContain("fn(state, e);");
   });
 
   test("a parameterised string body that returns a value is a handler", () => {
@@ -1518,6 +1543,54 @@ describe("compileClient: body and $src are mutually exclusive (spec.md §5.3 4d)
     };
     expect(() => compileClient(doc, { title: "T" })).toThrow(
       'inline "onclick" handler declares both',
+    );
+  });
+});
+
+describe("compileClient: an inline handler on a list item", () => {
+  const doc = (parameters?: string[]): JxDocument => {
+    const handler: JxFunctionDef = {
+      $prototype: "Function",
+      body: "state.picked = state.$map.index",
+    };
+    if (parameters) {
+      handler.parameters = parameters;
+    }
+    return {
+      children: [
+        {
+          children: {
+            $prototype: "Array",
+            items: { $ref: "#/state/rows" },
+            map: { onclick: handler, tagName: "li" },
+          },
+          tagName: "ul",
+        },
+      ],
+      state: { picked: -1, rows: [1, 2] },
+      tagName: "div",
+    };
+  };
+
+  test("binds its declared names and publishes $map", () => {
+    const js = compileClient(doc(["event"]), { title: "T" }).files[0]!.content;
+    expect(js).toContain("state.$map = { item, index };");
+    expect(js).toContain("((state, event) => { state.picked = state.$map.index\n})(state, e);");
+  });
+
+  test("a bare $map read in the body still becomes the callback's own", () => {
+    const bare = doc(["event"]);
+    const js = compileClient(
+      JSON.parse(JSON.stringify(bare).replace("state.$map.index", "$map.index")),
+      { title: "T" },
+    ).files[0]!.content;
+    expect(js).toContain("state.picked = index");
+  });
+
+  test("publishes $map and keeps an undeclared body as written", () => {
+    const js = compileClient(doc(), { title: "T" }).files[0]!.content;
+    expect(js).toContain(
+      "(e) => { state.$map = { item, index }; state.picked = state.$map.index\n}",
     );
   });
 });

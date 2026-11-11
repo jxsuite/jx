@@ -70,10 +70,13 @@ import {
   isString,
   isTagExpression,
   isTemplateString,
-  paramNames,
 } from "@jxsuite/schema/guards";
 import type { TagNameSlot } from "@jxsuite/schema/guards";
-import { classifyFunctionEntries, declaresBodyAndSrc } from "@jxsuite/schema/function-role";
+import {
+  classifyFunctionEntries,
+  declaresBodyAndSrc,
+  handlerParamNames,
+} from "@jxsuite/schema/function-role";
 import type { FunctionRole } from "@jxsuite/schema/function-role";
 import { formatSrcset, parseSrcset } from "@jxsuite/schema/asset-paths";
 import { runStatements } from "./statements.ts";
@@ -1631,7 +1634,7 @@ async function resolveFunction(
   base?: string,
 ) {
   if (!def.body && !def.$src) {
-    const params = resolveParamNames(def);
+    const params = handlerParamNames(def);
     const noop = new Function(...params, "");
     Object.defineProperty(noop, "name", {
       configurable: true,
@@ -1643,7 +1646,7 @@ async function resolveFunction(
   let fn: ScopeFunction;
 
   if (isString(def.body)) {
-    const params = resolveParamNames(def);
+    const params = handlerParamNames(def);
     /* SAFETY: `new Function` returns an ordinary function of the named parameters, `state` first.
        A call never checks its arguments, and what the body returns is one more scope member. */
     fn = compileBody(params, def.body, `'${key}'`) as ScopeFunction;
@@ -1686,19 +1689,6 @@ async function resolveFunction(
 }
 
 // ─── Step 3: Render ───────────────────────────────────────────────────────────
-
-/**
- * Extract parameter names from a function definition. Supports both legacy "arguments" (string
- * array) and CEM-compatible "parameters" (object array). Always ensures "state" is the first
- * parameter.
- *
- * @param {JxFunctionDef | JxPrototypeDef} def
- * @returns {string[]}
- */
-function resolveParamNames(def: JxFunctionDef | JxPrototypeDef) {
-  const names = def.parameters ? paramNames(def.parameters) : (def.arguments ?? []);
-  return names.length > 0 && names[0] === "state" ? names : ["state", ...names];
-}
 
 /**
  * Reserved Jx keys — never set as DOM properties.
@@ -2154,7 +2144,7 @@ function bindHandler(
     return true;
   }
   if (isFunctionDef(val) && isString(val.body)) {
-    const params = resolveParamNames(val);
+    const params = handlerParamNames(val);
     /* SAFETY: `new Function` returns an ordinary function of the named parameters, `state` first;
        the listener calls it with the scope and the event, and discards what it returns. */
     const fn = compileBody(params, val.body, `the ${type} handler`) as JxEventHandler;

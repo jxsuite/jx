@@ -47,6 +47,10 @@ const DOC: JxDocument = {
       },
     },
     { id: "picked", tagName: "p", textContent: "picked=${state.picked}" },
+    // A positional helper a template calls, and a handler that takes (state, event) undeclared.
+    { id: "pair", tagName: "p", textContent: "${state.pair(state.x, state.y)}" },
+    { id: "ping", onclick: { $ref: "#/state/onPing" }, tagName: "button" },
+    { id: "pinged", tagName: "p", textContent: "pinged=${state.pinged}" },
   ],
   state: {
     // #106: $export differs from the key. #107: read in `items`, so it must be a computed.
@@ -64,9 +68,14 @@ const DOC: JxDocument = {
       $prototype: "Function",
       body: "state.picked = state.$map.item.name + ':' + state.$map.index",
     },
+    onPing: { $prototype: "Function", $src: "./lib.js" },
+    pair: { $prototype: "Function", $src: "./lib.js", parameters: ["a", "b"] },
     picked: "",
+    pinged: "",
     rows: { $export: "getRows", $prototype: "Function", $src: "./lib.js" },
     term: "",
+    x: 1,
+    y: 2,
   },
   tagName: "ls-board",
 };
@@ -104,7 +113,9 @@ beforeAll(async () => {
 
   writeFileSync(
     resolve(TMP, "lib.js"),
-    "export function getRows(state) { return (state.raw || []).filter((r) => r.on); }\n",
+    "export function getRows(state) { return (state.raw || []).filter((r) => r.on); }\n" +
+      "export function pair(a, b) { return a + ':' + b; }\n" +
+      "export function onPing(state, event) { state.pinged = event.type; }\n",
     "utf8",
   );
 
@@ -173,6 +184,21 @@ describe("compiled element — runtime behaviour", () => {
     // Proves both halves of #113: `event` was the event (not the state object), and the body's bare
     // `state` resolved instead of throwing ReferenceError.
     expect(host.querySelector("#term")?.textContent).toBe("q=hello");
+  });
+});
+
+describe("compiled element — one calling convention (spec.md §5.3 4d)", () => {
+  test("a $src helper declaring parameters gets the template's arguments", () => {
+    // The element target used to rewrite a declared helper to `pair(e, e)`, so this read 2:2.
+    expect(host.querySelector("#pair")?.textContent).toBe("1:2");
+  });
+
+  test("an undeclared $src handler receives the event as its second argument", () => {
+    rendered(host.querySelector("#ping"), "#ping").dispatchEvent(
+      new win.Event("click", { bubbles: true }),
+    );
+
+    expect(host.querySelector("#pinged")?.textContent).toBe("pinged=click");
   });
 });
 

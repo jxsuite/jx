@@ -1319,6 +1319,68 @@ describe("resolvePrototype", () => {
   });
 });
 
+// ─── Parameter binding at event call sites (spec.md §5.3 4d) ─────────────────
+
+describe("parameter binding at event call sites (spec.md §5.3 4d)", () => {
+  test("a state handler declaring [event, state] binds both", async () => {
+    const state = await buildScope(
+      {
+        state: {
+          h: {
+            $prototype: "Function",
+            body: "state.last = event.type;",
+            parameters: ["event", "state"],
+          },
+          last: "",
+        },
+      },
+      {},
+      BASE,
+    );
+    renderNode({ onclick: { $ref: "#/state/h" }, tagName: "button" }, state).dispatchEvent(
+      new Event("click"),
+    );
+    expect(state.last).toBe("click");
+  });
+
+  test("an inline handler declaring [event, state] binds both", () => {
+    const state = reactive({ last: "" });
+    const node: JxElement = {
+      onclick: {
+        $prototype: "Function",
+        body: "state.last = event.type;",
+        parameters: ["event", "state"],
+      },
+      tagName: "button",
+    };
+    renderNode(node, state).dispatchEvent(new Event("click"));
+    expect(state.last).toBe("click");
+  });
+
+  test("a second name after the event is undefined from an event and positional from a call", async () => {
+    const state = await buildScope(
+      {
+        state: {
+          h: {
+            $prototype: "Function",
+            body: "state.seen = typeof e + ',' + typeof extra;",
+            parameters: ["e", "extra"],
+          },
+          seen: "",
+        },
+      },
+      {},
+      BASE,
+    );
+    renderNode({ onclick: { $ref: "#/state/h" }, tagName: "button" }, state).dispatchEvent(
+      new Event("click"),
+    );
+    expect(state.seen).toBe("object,undefined");
+    fnOf(state, "h")(state, { type: "x" }, 5);
+    expect(state.seen).toBe("object,number");
+  });
+});
+
 // ─── renderNode ───────────────────────────────────────────────────────────────
 
 describe("renderNode", () => {

@@ -764,7 +764,7 @@ describe("compileElement — $src imports", () => {
 
     const { content } = result.files[0]!;
     expect(content).toContain("import { handler } from './utils.js'");
-    expect(content).toContain("this.state.handler = (state) => handler(state)");
+    expect(content).toContain("this.state.handler = handler;");
   });
 
   test("computed Function with $src generates import and computed wrapper", async () => {
@@ -1349,19 +1349,19 @@ describe("compileElement — bodyless $src classification", () => {
 
     const { content } = result.files[0]!;
     expect(content).toContain("this.state.rows = computed(() => rows(this.state));");
-    expect(content).not.toContain("this.state.rows = (state) => rows(state);");
+    expect(content).not.toContain("this.state.rows = rows;");
   });
 
   test("a bodyless $src bound to an on* event stays callable", async () => {
     const result = await compile([{ onclick: { $ref: "#/state/rows" }, tagName: "button" }]);
 
-    expect(result.files[0]!.content).toContain("this.state.rows = (state) => rows(state);");
+    expect(result.files[0]!.content).toContain("this.state.rows = rows;");
   });
 
   test("a bodyless $src invoked from a template string stays callable", async () => {
     const result = await compile([{ tagName: "p", textContent: "n=${state.rows(state)}" }]);
 
-    expect(result.files[0]!.content).toContain("this.state.rows = (state) => rows(state);");
+    expect(result.files[0]!.content).toContain("this.state.rows = rows;");
   });
 
   test("a bodyless $src invoked by an $expression call node stays callable", async () => {
@@ -1369,7 +1369,7 @@ describe("compileElement — bodyless $src classification", () => {
       total: { $expression: { operator: "call", target: { $ref: "#/state/rows" }, value: [] } },
     });
 
-    expect(result.files[0]!.content).toContain("this.state.rows = (state) => rows(state);");
+    expect(result.files[0]!.content).toContain("this.state.rows = rows;");
   });
 
   test("a root-level on* $ref keeps a bodyless $src entry callable", async () => {
@@ -1381,7 +1381,7 @@ describe("compileElement — bodyless $src classification", () => {
     });
 
     const { content } = result.files[0]!;
-    expect(content).toContain("this.state.rows = (state) => rows(state);");
+    expect(content).toContain("this.state.rows = rows;");
     expect(content).not.toContain("this.state.rows = computed(");
   });
 
@@ -1416,7 +1416,7 @@ describe("compileElement — bodyless $src classification", () => {
 
     const { content } = result.files[0]!;
     // A computed here would be *evaluated* by the `typeof … === 'function'` probe and never called.
-    expect(content).toContain("this.state.onMount = (state) => onMount(state);");
+    expect(content).toContain("this.state.onMount = onMount;");
     expect(content).not.toContain("this.state.onMount = computed(");
   });
 });
@@ -1617,7 +1617,7 @@ describe("compileElement — Request auto-fetch", () => {
 // ─── Declared handler parameters (issue #113) ──────────────────────────────
 
 describe("compileElement — declared handler parameters", () => {
-  test('maps a declared ["event"] onto the event argument, binding state too', async () => {
+  test('builds a declared ["event"] with state first, so the event is the second argument', async () => {
     const result = await compileElement({
       children: [{ oninput: { $ref: "#/state/onSearch" }, tagName: "input" }],
       state: {
@@ -1632,10 +1632,8 @@ describe("compileElement — declared handler parameters", () => {
     });
 
     const { content } = result.files[0]!;
-    // Call sites pass (state, event); the declared name is mapped by name, not by position.
-    expect(content).toContain("this.state.onSearch = (state, e) => {");
-    expect(content).toContain("const _fn = (event) => {");
-    expect(content).toContain("return _fn(e);");
+    // Call sites pass (state, event), and the body is built with exactly that list.
+    expect(content).toContain("this.state.onSearch = (state, event) => {");
     expect(content).toContain('@input="${(e) => s.onSearch(s, e)}"');
   });
 
@@ -1647,11 +1645,10 @@ describe("compileElement — declared handler parameters", () => {
     });
 
     const { content } = result.files[0]!;
-    expect(content).toContain("this.state.bump = (state, e) => {");
-    expect(content).toContain("return _fn();");
+    expect(content).toContain("this.state.bump = (state) => {");
   });
 
-  test('emits the direct form when the declaration already starts with "state"', async () => {
+  test("keeps declared state where the body is built, and never repeats it", async () => {
     const result = await compileElement({
       children: [],
       state: {
@@ -1666,6 +1663,19 @@ describe("compileElement — declared handler parameters", () => {
     expect(content).toContain("this.state.a = (state) => {");
     expect(content).toContain("this.state.b = (state, event) => {");
     expect(content).not.toContain("const _fn =");
+  });
+
+  test('moves a declared "state" to the front instead of repeating it', async () => {
+    const result = await compileElement({
+      children: [],
+      state: {
+        n: 0,
+        swap: { $prototype: "Function", body: "state.n = 1;", parameters: ["event", "state"] },
+      },
+      tagName: "test-param-swapped",
+    });
+
+    expect(result.files[0]!.content).toContain("this.state.swap = (state, event) => {");
   });
 
   test("binds declared parameters on an inline on* handler too", async () => {
@@ -1724,7 +1734,29 @@ describe("compileElement — declared handler parameters", () => {
     expect(result.files[0]!.content).toContain('@click="${(e) => { s.text = 1\n }}"');
   });
 
-  test("maps a $src handler's declared parameters as well", async () => {
+  test("an inline handler declaring only event can still reach state", async () => {
+    const result = await compileElement({
+      children: [
+        {
+          onclick: {
+            $prototype: "Function",
+            body: "state.n = event.detail;",
+            parameters: ["event"],
+          },
+          tagName: "button",
+        },
+      ],
+      state: { n: 0 },
+      tagName: "test-inline-event-state",
+    });
+
+    // The body is built `(state, event)`, so the `state` it reads is a parameter, not a ReferenceError.
+    expect(result.files[0]!.content).toContain(
+      "((state, event) => { state.n = event.detail;\n})(s, e);",
+    );
+  });
+
+  test("a $src callable is its import, whatever it declares", async () => {
     const result = await compileElement({
       children: [{ onclick: { $ref: "#/state/save" }, tagName: "button" }],
       state: {
@@ -1733,7 +1765,9 @@ describe("compileElement — declared handler parameters", () => {
       tagName: "test-param-src",
     });
 
-    expect(result.files[0]!.content).toContain("this.state.save = (state, e) => save(e);");
+    const { content } = result.files[0]!;
+    expect(content).toContain("this.state.save = save;");
+    expect(content).toContain('@click="${(e) => s.save(s, e)}"');
   });
 });
 
@@ -2177,5 +2211,35 @@ describe("compileElement: body and $src are mutually exclusive (spec.md §5.3 4d
     };
     // oxlint-disable-next-line typescript/await-thenable -- bun-types types `.rejects.toThrow()` as void, but it returns a Promise at runtime that must be awaited
     await expect(build(doc)).rejects.toThrow('inline "onclick" handler declares both');
+  });
+});
+
+describe("compileElement: an inline handler on a map root", () => {
+  test("is bound with the iteration published", async () => {
+    const result = await compileElement({
+      children: [
+        {
+          children: {
+            $prototype: "Array",
+            items: { $ref: "#/state/rows" },
+            map: {
+              onclick: {
+                $prototype: "Function",
+                body: "state.picked = state.$map.index;",
+                parameters: ["event"],
+              },
+              tagName: "li",
+            },
+          },
+          tagName: "ul",
+        },
+      ],
+      state: { picked: -1, rows: [1, 2] },
+      tagName: "test-map-root-handler",
+    });
+
+    expect(result.files[0]!.content).toContain(
+      '@click="${(e) => { s.$map = $map; ((state, event) => { state.picked = state.$map.index;\n})(s, e); }}"',
+    );
   });
 });

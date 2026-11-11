@@ -33,6 +33,7 @@ import {
   titleToTagName,
 } from "../src/shared";
 import type { JsonObject, JxElement, JxMutableNode } from "@jxsuite/schema/types";
+import type { JxScope } from "@jxsuite/runtime/types";
 
 // ─── Detection ──────────────────────────────────────────────────────────────
 
@@ -288,6 +289,19 @@ describe("hasAnyIsland", () => {
 // ─── Scope / value resolution ───────────────────────────────────────────────
 
 describe("buildInitialScope", () => {
+  test("binds a second declared name by position, not by name", () => {
+    const scope = buildInitialScope({
+      f: { $prototype: "Function", body: "state.sum = a + b", parameters: ["a", "b"] },
+      sum: 0,
+    });
+    /* SAFETY: a string-body Function entry is built with `new Function`, an ordinary function that
+       accepts any call; `a` and `b` are positional numbers here. */
+    const call = scope.f as (...args: (JxScope | number)[]) => void;
+    // The old by-name mapper gave `b` the event too, so this was 2.
+    call(scope, 1, 2);
+    expect(scope.sum).toBe(3);
+  });
+
   test("an entry declaring both body and $src is refused", () => {
     expect(() =>
       buildInitialScope({ go: { $prototype: "Function", $src: "./a.js", body: "state.n++" } }),

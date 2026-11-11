@@ -6,7 +6,11 @@
  * compilation targets (static, client, element, server).
  */
 
-import { classifyFunctionEntries, declaresBodyAndSrc } from "@jxsuite/schema/function-role";
+import {
+  classifyFunctionEntries,
+  declaresBodyAndSrc,
+  handlerParamNames,
+} from "@jxsuite/schema/function-role";
 import {
   COLOR_SCHEME_ATTR,
   COLOR_SCHEME_STORAGE_KEY,
@@ -47,7 +51,6 @@ import {
   isString,
   isTagExpression,
   isTemplateString,
-  paramNames,
   tagNameCandidates,
   maskCode,
 } from "@jxsuite/schema/guards";
@@ -853,27 +856,19 @@ export function buildInitialScope(
           void runStatements(body, s ?? scope, event ?? null);
         });
       } else if (isString(def.body)) {
-        const declared = def.parameters ? paramNames(def.parameters) : (def.arguments ?? []);
         const { body } = def;
-        // Declared names bind by name, not by position (spec.md §5.3 4d): a parameter literally
-        // Named `state` receives the scope, anything else receives the event. `state` is prepended
-        // When undeclared so a body may always reference it. Unconditionally prepending it instead —
-        // The older behaviour here — produced a duplicate parameter for the `["state", "event"]`
-        // Form that examples/components/task-manager.json uses, leaving `state` undefined.
-        const params = declared.includes("state") ? declared : ["state", ...declared];
-        /* SAFETY: `new Function` returns an ordinary function of exactly `params`; `invoke` below is
-           its only caller and passes the scope or the event in each position, and what the body
-           returns is one more scope member. */
-        const fn = new Function(...params, body) as (
+        // One parameter list in every tier (spec.md §5.3 4d): `state` first, then the other declared
+        // Names in order, so a call site's `(state, event)` binds by position.
+        /* SAFETY: `new Function` returns an ordinary function of exactly those parameters; a call
+           never checks its arguments, and what the body returns is one more scope member. */
+        const fn = new Function(...handlerParamNames(def), body) as (
           ...args: (JxScope | Event | undefined)[]
         ) => JxScope[string];
-        const invoke = (state: JxScope, event?: Event) =>
-          fn(...params.map((name) => (name === "state" ? state : event)));
         if (roles.get(key) === "computed") {
-          defineLazyScopeValue(scope, key, () => invoke(scope));
+          defineLazyScopeValue(scope, key, () => fn(scope));
           computedBodies.push([key, body]);
         } else {
-          setOwnScopeValue(scope, key, invoke);
+          setOwnScopeValue(scope, key, fn);
         }
       } else {
         // Bodyless `$src` Function — the real implementation is only loaded in the browser, so this
