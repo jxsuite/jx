@@ -124,7 +124,7 @@ Every component in the project can reference `var(--color-accent)` and use `"@--
 
 ## Site state and shared types
 
-`state` declares site-wide data. Every page receives it two ways: merged directly into the page's own `state` (the page wins when it declares the same key), and under the read-only `$site` entry as `$site.name`, `$site.url`, plus each site state key.
+`state` declares site-wide data. Every page and layout receives it two ways. Under the read-only `$site` entry, each key sits beside `$site.name` and `$site.url`, and a state key with one of those names (or `locales` and `defaultLocale`) never replaces them. As the page's own `state`, each key is copied in unless the page or its layout declares the same key, in which case theirs wins; the copy is ordinary state the page may change. A built page keeps that copy only if something on it still reads `state.<key>` in the browser, so a value read through `$site`, or only in text the build fills in, never adds JavaScript. To keep an entry on every page regardless, declare it in the layout's own `state`.
 
 ```json
 {
@@ -239,7 +239,7 @@ Site-level declarations cascade into every page automatically, with no imports n
 - `$head` entries are prepended to every page's `<head>`.
 - `$media` breakpoints and `style` tokens are available in every component.
 - `defaults.lang` sets `<html lang>` everywhere.
-- `state` merges into page state (page wins) and is exposed as `$site`.
+- `state` merges into page state (the page or its layout wins) and is exposed, read-only, as `$site`.
 - `imports` and `$elements` merge with page-level entries (page wins on collision); a `$ref` in the project's `$elements` is relative to `project.json`.
 
 Everything else is deliberate: files in `data/` load via an explicit [`$ref`](/docs/framework/concepts/references), collection data requires `ContentCollection` or `ContentEntry` declarations, and components receive outside data only through [`$props`](/docs/framework/concepts/props-and-scope); scope never leaks across a component boundary.

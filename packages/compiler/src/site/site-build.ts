@@ -84,6 +84,7 @@ import type { SiteConnectorSpec, SiteMountSpec } from "../targets/compile-server
 import {
   buildComponentCSS,
   buildInitialScope,
+  collectSrcImports,
   buildInstanceScope,
   collectStyles,
   colorSchemePrePaintScript,
@@ -1436,7 +1437,13 @@ async function compilePage(
   delete layoutDoc._pageTitle;
 
   // Inject $site and $page context
+  const declaredStateKeys = new Set(Object.keys(layoutDoc.state ?? {}));
   injectContext(layoutDoc, projectConfig, route, projectRoot, locale.i18n, locale.translations);
+  /* The project `state` entries this page did not declare, nor its layout: the ones the injection
+     just copied in, which the page keeps only while something on it reads them (compiler.md §8.1). */
+  const inheritedStateKeys = Object.keys(projectConfig.state ?? {}).filter(
+    (key) => key !== "$site" && key !== "$page" && !declaredStateKeys.has(key),
+  );
 
   /*
    * The page's language and writing direction. `$lang` on the document wins over the locale its
@@ -1526,8 +1533,9 @@ async function compilePage(
     // Expansion is one consumer, not the only one: the same array is routinely also read by a
     // Computed at runtime, and dropping it there left `state.rows` undefined in the browser while
     // The build reported success (issue #122). `timing: "compiler"` is excluded from this rescue —
-    // That is the author declaring the entry build-time-only, so it is stripped as before.
-    const strippable = new Set<string>();
+    // That is the author declaring the entry build-time-only, so it is stripped as before. An
+    // Inherited project entry is only droppable on the same terms (compiler.md §8.1).
+    const droppable = new Set<string>();
     for (const [key, def] of Object.entries(layoutDoc.state)) {
       if (key === "$site" || key === "$page") {
         continue;
@@ -1535,26 +1543,49 @@ async function compilePage(
       if (isJsonObject(def) && def.timing === "compiler") {
         delete layoutDoc.state[key];
       } else if (Array.isArray(def)) {
-        strippable.add(key);
+        droppable.add(key);
       }
     }
-    // Iterated to a fixpoint: rescuing one array can reveal a read of another from its own def.
+    for (const key of inheritedStateKeys) {
+      if (key in layoutDoc.state) {
+        droppable.add(key);
+      }
+    }
+    // Iterated to a fixpoint: rescuing one entry can reveal a read of another from its own def.
     let rescued = true;
     while (rescued) {
       rescued = false;
       const surviving = { ...layoutDoc.state };
-      for (const key of strippable) {
+      /* `$site` holds project definitions as written and never runs, so a handler body there is no
+         read; scanning it would keep every entry a project handler names alive on every page. */
+      delete surviving.$site;
+      delete surviving.$page;
+      for (const key of droppable) {
         delete surviving[key];
       }
-      const haystack = JSON.stringify({ children: layoutDoc.children, state: surviving });
-      for (const key of strippable) {
+      /* The whole document, because a root-level `attributes`, `style` or `$switch` read is a read;
+         minus `$head` and `title`, which are resolved into `<head>` and never reach the island. */
+      const { $head: _head, title: _title, ...body } = layoutDoc;
+      const probe: JxElement = { ...body, state: surviving };
+      /* A `$src` module's reads are invisible to the scan below, so while one survives every
+         inherited entry stays. Judged on the surviving state: a project-level `$src` Function is
+         itself inherited, and must not keep everything alive on pages that never use it. */
+      if (collectSrcImports(probe).length > 0) {
+        for (const key of inheritedStateKeys) {
+          if (droppable.delete(key)) {
+            rescued = true;
+          }
+        }
+      }
+      const haystack = JSON.stringify(probe);
+      for (const key of droppable) {
         if (referencesStateKey(haystack, key)) {
-          strippable.delete(key);
+          droppable.delete(key);
           rescued = true;
         }
       }
     }
-    for (const key of strippable) {
+    for (const key of droppable) {
       delete layoutDoc.state[key];
     }
   }

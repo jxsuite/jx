@@ -51,11 +51,12 @@ The routing decision is a single recursive tree walk (`isDynamic()`) that never 
 - a mapped array (`$prototype: "Array"`)
 - any child that is itself dynamic
 
-Three kinds of state are exempt because they are resolved during the build and then removed:
+Four kinds of state are exempt because they are resolved during the build and then removed:
 
 - the injected `$site` and `$page` context (read-only, never reactive)
 - entries with `timing: "compiler"` (resolved at build time and baked into the HTML)
 - schema-only definitions (pure type information produces no output)
+- a `project.json` `state` entry the page inherits but nothing on it still reads as `state.<key>` once templates are filled in (dropped from that page)
 
 ## What compiles away
 
@@ -180,7 +181,7 @@ A component that renders itself with the same props can never finish expanding, 
 
 Work the static-detection list backwards:
 
-- **Live `state` on the page document**, even `{"count": 0}`, makes the page dynamic. If the data never changes after the build, move it to `timing: "compiler"` or reference `$site`/`$page` context instead.
+- **Live `state` on the page document**, even `{"count": 0}`, makes the page dynamic. If the data never changes after the build, move it to `timing: "compiler"` or reference `$site`/`$page` context instead. A `project.json` `state` entry counts only on the pages where something still reads it as `state.<key>` in the browser.
 - **A `${…}` template string** whose inputs exist only at runtime keeps its binding alive. Templates over build-time data compile away.
 - **`$switch`, `$ref` bindings, and mapped arrays** over runtime state need the client tier; mapped arrays over build-resolved content do not.
 - **Interactive components** cost their own module on the pages that use them. The rest of the page stays static.

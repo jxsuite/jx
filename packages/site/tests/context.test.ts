@@ -169,6 +169,37 @@ describe("injectContext", () => {
     expect(doc.state?.$site).toMatchObject({ analytics: "GA-123" });
   });
 
+  test("a name $site defines itself is never replaced by project state", () => {
+    const project = {
+      ...baseProject,
+      state: { defaultLocale: "zz", locales: ["zz"], name: "Shadow", theme: "dark", url: "/x" },
+    };
+    const i18n = {
+      defaultLocale: "en",
+      locales: ["en", "fr"],
+      routing: "prefix-always" as const,
+    };
+    const doc: JxDocument = {};
+    injectContext(doc, project, baseRoute, null, i18n);
+    expect(doc.state?.$site).toEqual({
+      defaultLocale: "en",
+      locales: ["en", "fr"],
+      name: "Test Site",
+      theme: "dark",
+      url: "https://example.com",
+    });
+    // The entry is not lost: it still arrives as the page's own state.
+    expect(doc.state?.name).toBe("Shadow");
+  });
+
+  test("without i18n, a state entry named locales is bare state only", () => {
+    const project = { ...baseProject, state: { locales: ["zz"] } };
+    const doc: JxDocument = {};
+    injectContext(doc, project, baseRoute);
+    expect(doc.state?.$site).toEqual({ name: "Test Site", url: "https://example.com" });
+    expect(doc.state?.locales).toEqual(["zz"]);
+  });
+
   test("defaults $site.name to 'Jx Site' when project name missing", () => {
     const doc: JxDocument = {};
     injectContext(doc, {}, baseRoute);

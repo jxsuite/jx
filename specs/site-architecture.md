@@ -241,7 +241,7 @@ The project file at the project root (`project.jxn`, or `project.json` in an old
 | `$head`            | `array`  | Global `<head>` elements injected into every page                                                                                                     |
 | `$media`           | `object` | Named media query breakpoints, available to all components                                                                                            |
 | `style`            | `object` | Root-level CSS custom properties and global styles                                                                                                    |
-| `state`            | `object` | Site-wide state accessible to all pages and components                                                                                                |
+| `state`            | `object` | Site-wide state every page and layout reads (§10.4); components get none                                                                              |
 | `redirects`        | `object` | Static redirect rules (see §11)                                                                                                                       |
 | `imports`          | `object` | Import map: `$prototype` name → `.class.json` path (see spec §12.4)                                                                                   |
 | `extensions`       | `array`  | Extension packages (bare npm names or relative paths) providing formats, connectors, and project sections                                             |
@@ -259,10 +259,10 @@ Site-level declarations cascade to all pages:
 - `$head` entries are prepended to every page's `<head>`
 - `$media` breakpoints are available in every component's style objects
 - `style` properties prefixed with `--` are compiled to `:root {}` automatically — including inside conditional `@--name` blocks (spec §9.5); element selectors use nested objects
-- `state` entries are available to every page (read-only from the page's perspective)
+- `state` entries are available to every page and its layout, read-only as `$site.<key>` and as the page's own `state` entries (§10.4)
 - `imports` entries cascade to all pages; page-level entries take precedence on collision
 
-Pages may override any inherited value. A page declaring its own `$head` entries appends to (does not replace) the site-level `$head`. A page may shadow a site-level `state` entry with its own.
+Pages may override any inherited value. A page declaring its own `$head` entries appends to (does not replace) the site-level `$head`. A page or its layout may shadow a site-level `state` entry by declaring the same key; `$site.<key>` still reads the site's value.
 
 **The cascade is why editing this file is editing every page.** A bare tag key in `style` compiles to a global rule — `h1 { … }`, not a scoped one — and components render into light DOM, so it applies inside every component instance too. Studio states that blast radius before the first keystroke rather than after the fact (`studio.md` §6.2), and edits `project.json` as a document under undo (`studio.md` §17), because a file whose every property reaches every route is the last place a silent write belongs.
 
@@ -556,7 +556,7 @@ This allows `blog-post.json` layout to wrap within `base.json`, providing blog-s
 
 ### 5.5 Layout Props
 
-> **Status: Partial.** `injectContext` (`packages/site/src/context.ts`) supplies `$page.title`, `url`, `params`, `locale`, `dir` and `alternates`, and `$site.name`, `url`, `locales` and `defaultLocale`. `$page.description`, `$page.$head`, `$page.frontmatter` and `$site.$head` are never injected, the `$site.state` row describes a nesting that does not exist (§10.4), and `$site.locales` puts the default first only when it was missing from `locales` (`resolveI18n` in `packages/schema/src/locale.ts`, §13.6). `$page.title` never comes from a `$head` title, and in a built page wrapped in a layout it is the layout's own `title`, else the project `name`, never the page's: `compilePage` in `packages/compiler/src/site/site-build.ts` deletes the page-title carrier (`_pageTitle`) before calling `injectContext`, where the canvas composer (`composePage` in `packages/site/src/compose.ts`) calls it first, so the canvas and the build disagree.
+> **Status: Partial.** `injectContext` (`packages/site/src/context.ts`) supplies `$page.title`, `url`, `params`, `locale`, `dir` and `alternates`, and `$site.name`, `url`, `locales` and `defaultLocale`. `$page.description`, `$page.$head`, `$page.frontmatter` and `$site.$head` are never injected, and `$site.locales` puts the default first only when it was missing from `locales` (`resolveI18n` in `packages/schema/src/locale.ts`, §13.6). `$page.title` never comes from a `$head` title, and in a built page wrapped in a layout it is the layout's own `title`, else the project `name`, never the page's: `compilePage` in `packages/compiler/src/site/site-build.ts` deletes the page-title carrier (`_pageTitle`) before calling `injectContext`, where the canvas composer (`composePage` in `packages/site/src/compose.ts`) calls it first, so the canvas and the build disagree.
 
 Layouts receive page metadata via the `$page` context object:
 
@@ -574,14 +574,14 @@ Layouts receive page metadata via the `$page` context object:
 
 The `$site` context provides site-level data:
 
-| Property              | Source                        | Description                     |
-| --------------------- | ----------------------------- | ------------------------------- |
-| `$site.name`          | `project.json` `name`         | Site name                       |
-| `$site.url`           | `project.json` `url`          | Production URL                  |
-| `$site.state`         | `project.json` `state`        | Site-wide state                 |
-| `$site.$head`         | `project.json` `$head`        | Global head entries             |
-| `$site.locales`       | `i18n.locales`, canonicalized | Declared locales, default first |
-| `$site.defaultLocale` | `i18n.defaultLocale`          | The locale `/` serves           |
+| Property              | Source                                        | Description                                          |
+| --------------------- | --------------------------------------------- | ---------------------------------------------------- |
+| `$site.name`          | `project.json` `name`                         | Site name                                            |
+| `$site.url`           | `project.json` `url`                          | Production URL                                       |
+| `$site.$head`         | `project.json` `$head`                        | Global head entries                                  |
+| `$site.locales`       | `i18n.locales`, canonicalized                 | Declared locales, default first                      |
+| `$site.defaultLocale` | `i18n.defaultLocale`                          | The locale `/` serves                                |
+| `$site.<key>`         | Each `project.json` `state` entry, as written | Site-wide state; never replaces a name above (§10.4) |
 
 ---
 
@@ -1514,12 +1514,12 @@ project.json
               └── component.json (via $ref or $elements)
 ```
 
-| Scope Level   | Inherits From          | What Cascades                                                                         |
-| ------------- | ---------------------- | ------------------------------------------------------------------------------------- |
-| **Component** | Nothing (encapsulated) | Own `state`, own `style`. Receives `$props` explicitly.                               |
-| **Page**      | Site + Layout          | Site `state` (read-only), site `$media`, site CSS custom properties, layout structure |
-| **Layout**    | Site                   | Site `state`, site `$media`, site CSS custom properties, site `$head`                 |
-| **Site**      | Nothing (root)         | Defines global `$media`, global CSS custom properties, global `$head`, global `state` |
+| Scope Level   | Inherits From          | What Cascades                                                                                                       |
+| ------------- | ---------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| **Component** | Nothing (encapsulated) | Own `state`, own `style`. Receives `$props` explicitly.                                                             |
+| **Page**      | Site + Layout          | Site `state` (as page state, and read-only as `$site`), site `$media`, site CSS custom properties, layout structure |
+| **Layout**    | Site                   | Site `state`, site `$media`, site CSS custom properties, site `$head`                                               |
+| **Site**      | Nothing (root)         | Defines global `$media`, global CSS custom properties, global `$head`, global `state`                               |
 
 ### 10.2 What Inherits Automatically
 
@@ -1550,11 +1550,11 @@ This ensures that each site is a self-contained unit — moving between componen
 
 ### 10.4 What Requires Explicit Access
 
-> **Status: Partial.** Data files through `$ref`, `ContentCollection` and `ContentEntry` declarations, and `$props`-only component inputs ship. Item 1 does not hold: `injectContext` (`packages/site/src/context.ts`) spreads project `state` flat onto `$site` (`$site.siteName`, not `$site.state.siteName`) and also merges it into the page's own `state` as bare keys, the page winning, which is what §3.2 describes; item 1 and §5.5's `$site.state` row describe a nesting that does not exist.
+> **Status: Implemented.** `injectContext` (`packages/site/src/context.ts`) gives a page both paths in the build and the live preview, and `compilePage` (`packages/compiler/src/site/site-build.ts`) drops a bare copy nothing on the built page reads.
 
 These require deliberate reference:
 
-1. **Site state** — Available in pages/layouts as `$site.state.foo`, not as bare `state.foo`. This prevents naming collisions and makes the data source clear.
+1. **Site state** — The one inherited value a page reads by name, and it stops at the component boundary (item 4). A page or layout reaches a project `state` entry two ways. As **`$site.<key>`** it is read-only: `$site` is injected context, which never makes a page dynamic, so this is the path for a site-wide constant. It holds the entry as written, and a name `$site` defines itself (§5.5) is never replaced: an entry called `name` is `state.name`, while `$site.name` stays the project `name`. As **bare `state.<key>`** it is the page's own entry, copied in only when neither the page nor its layout declares the key, so either one shadows it. The copy behaves as the page's own entry of that shape (spec.md §5.3): writable, with a write reaching that page alone. A built page keeps the copy only while something on it still reads `state.<key>` once the build has resolved its templates (compiler.md §8.1), so a site constant costs nothing on a page that reads it through `$site`, only in templates the build resolves, or not at all.
 
 2. **Data files** — Static data from `data/` must be explicitly loaded via `$ref`:
 
