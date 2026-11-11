@@ -104,7 +104,7 @@ With several elements selected the bar sits on the last one you clicked and name
 
 Three ways to add something to the page:
 
-- **The + affordance.** Move the pointer between two elements and a **+** appears at the insertion point. Click it and pick an element from the menu; the new element lands right there, selected.
+- **The + affordance.** Move the pointer between two elements and a **+** appears at the insertion point. Click it and pick an element from the menu; the new element lands right there, selected. The menu stays where it opened while you move the pointer toward a row, whatever the pointer passes over; it closes when you pick, press `Escape`, click anywhere else, or scroll or zoom the canvas.
 - **The slash menu.** While editing text, type `/` at the start of a line to insert headings, lists, images, buttons, and more without leaving the keyboard. See [Edit mode](/docs/studio/editing).
 - **The Insert panel.** Click **Insert** on the Navigator rail and drag an element or component card onto the canvas. Drop it on the empty canvas below your content to add it at the end of the page.
 
