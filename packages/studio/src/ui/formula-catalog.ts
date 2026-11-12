@@ -14,7 +14,12 @@ import { BLESSED_GLOBALS, BLESSED_OPERATORS, PURE_METHOD_OPS } from "@jxsuite/ru
 import { catalog } from "@jxsuite/formulas";
 import { isJsonObject, isNamedFormulaDef, isNonNullObject, isString } from "@jxsuite/schema/guards";
 
-import type { CemParameter, JxExpressionNode, JxStateDefinition } from "@jxsuite/schema/types";
+import type {
+  CemParameter,
+  JsonObject,
+  JxExpressionNode,
+  JxStateDefinition,
+} from "@jxsuite/schema/types";
 import type { JsonValue } from "../types";
 
 export interface FormulaParameterInfo {
@@ -23,6 +28,14 @@ export interface FormulaParameterInfo {
   type?: string;
   description?: string;
   default?: JsonValue;
+  /** True when the declaration marks the parameter `optional`. */
+  optional?: boolean;
+  /**
+   * The JSON Schema the declared type carries beside its display `text`, when it carries one: the
+   * `type`, `enum`, `properties` and so on a field for the argument is derived from (§6.9). Absent
+   * for a type declared as display text alone.
+   */
+  schema?: JsonObject;
 }
 
 export interface FormulaCatalogEntry {
@@ -441,11 +454,18 @@ function toParameterInfo(p: string | CemParameter): FormulaParameterInfo | null 
   if (isString(type)) {
     info.type = type;
   } else if (isJsonObject(type)) {
-    if (isString(type.text)) {
-      info.type = type.text;
+    const { text, ...schema } = type;
+    if (isString(text)) {
+      info.type = text;
     } else if (isString(type.type)) {
       info.type = type.type;
     }
+    if (Object.keys(schema).length > 0) {
+      info.schema = schema;
+    }
+  }
+  if (p.optional === true) {
+    info.optional = true;
   }
   if (isString(p.description)) {
     info.description = p.description;
@@ -474,12 +494,13 @@ export function namedFormulaEntries(
       continue;
     }
     const parameters = parameterInfos(def.parameters);
+    /* `$description` is the key the schema gives an expression entry, and the one a packaged
+       formula is copied in with. `description`, the key a Function entry uses, is read behind it
+       for a hand-written formula that borrowed it. */
     const description =
-      isString(def.description) && def.description
-        ? def.description
-        : isString(def.$title) && def.$title
-          ? def.$title
-          : `Named formula "${key}" from document state.`;
+      [def.$description, def.description, def.$title].find(
+        (text): text is string => isString(text) && text !== "",
+      ) ?? `Named formula "${key}" from document state.`;
     out.push({
       description,
       group: "Formulas",

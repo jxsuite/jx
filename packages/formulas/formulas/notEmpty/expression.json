@@ -1,0 +1,46 @@
+{
+  "operator": "&&",
+  "target": {
+    "operator": "&&",
+    "target": {
+      "operator": "!",
+      "target": {
+        "operator": "!",
+        "target": {
+          "$ref": "$args/value"
+        }
+      }
+    },
+    "value": {
+      "operator": "!==",
+      "target": {
+        "$ref": "$args/value"
+      },
+      "value": "0"
+    }
+  },
+  "value": {
+    "operator": "!",
+    "target": {
+      "operator": "&&",
+      "target": {
+        "operator": "call",
+        "target": {
+          "$ref": "window#/Array/isArray"
+        },
+        "value": [
+          {
+            "$ref": "$args/value"
+          }
+        ]
+      },
+      "value": {
+        "operator": "===",
+        "target": {
+          "$ref": "$args/value/length"
+        },
+        "value": 0
+      }
+    }
+  }
+}

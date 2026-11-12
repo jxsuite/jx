@@ -1,0 +1,38 @@
+{
+  "operator": "?:",
+  "target": {
+    "operator": "||",
+    "target": {
+      "operator": "||",
+      "target": {
+        "operator": "===",
+        "target": {
+          "$ref": "$args/value"
+        },
+        "value": "0"
+      },
+      "value": {
+        "operator": "===",
+        "target": {
+          "$ref": "$args/value"
+        },
+        "value": 0
+      }
+    },
+    "value": {
+      "operator": "===",
+      "target": {
+        "$ref": "$args/value"
+      },
+      "value": false
+    }
+  },
+  "value": "",
+  "initial": {
+    "operator": "??",
+    "target": {
+      "$ref": "$args/value"
+    },
+    "value": ""
+  }
+}

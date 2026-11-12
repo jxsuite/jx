@@ -912,25 +912,31 @@ A field holding an object is offered with its members, because a component can t
 
 ### 6.9 Dynamic tags
 
-> **Status: Pending.** Only the splitter ships: `templateExpressions` in `packages/schema/src/guards.ts` finds each `${…}` of a template with quotes and braces read as JavaScript reads them, and the runtime, the canvas transform and the inline formatter all read templates through it. A `${…}` in text is edited as raw template text on the **Mixed text** rung (§6.6) and drawn on the canvas as `❪ expr ❫` (§4.1); Insert data writes the template's characters into the text; no tag grammar, tag popover, Bound pill or packaged format formula exists.
+> **Status: Pending.** Only the splitter ships: `templateExpressions` in `packages/schema/src/guards.ts` finds each `${…}` of a template with quotes and braces read as JavaScript reads them, and the runtime, the canvas transform and the inline formatter all read templates through it. A `${…}` in text is edited as raw template text on the **Mixed text** rung (§6.6) and drawn on the canvas as `❪ expr ❫` (§4.1); Insert data writes the template's characters into the text; no tag popover or Bound pill exists. The tag grammar ships as a reader and a printer with no caller in Studio yet (`parseDynamicTag`, `printDynamicTag`, `templateSegments` and `dynamicTagLabel` in `packages/schema/src/dynamic-tag.ts`), and the format formulas ship in `@jxsuite/formulas` with typed parameters that `toParameterInfo` (`packages/studio/src/ui/formula-catalog.ts`) reads.
 
 A **dynamic tag** is one `${…}` of a template, or one `{ "$ref" }`, presented as a named, structured thing instead of as code. It is the unit §4.5 draws as a chip.
 
 **Templates stay JavaScript.** A template expression is JavaScript and is evaluated as JavaScript (spec.md §5.3); nothing here adds a template language or narrows what an author may write. A tag is a **recognised subset** of that JavaScript, the shapes Studio can show as fields and print back exactly:
 
 ```text
-tag   := "!"{0,2} pipe ( ( "??" | "||" ) literal )?
-pipe  := "state." ident "(" pipe ( "," json )* ")" | path
-path  := root ( "." ident | "?." ident | "[" json "]" )*
+tag     := "!"{0,2} pipe ( ( "??" | "||" ) literal )?
+pipe    := "state." ident "(" pipe ( "," literal )* ")" | path
+path    := root ( "." ident | "?." ident | "[" key "]" | "?.[" key "]" )*
+root    := "state" | "item" | "index" | "$map" | "$page" | "$site"
+key     := string | number
+literal := a JSON value | a single-quoted string
+ident   := [A-Za-z_$] [A-Za-z0-9_$]*
 ```
 
-A `path` reads a value: a state entry, a member of one, or the repeater's `item` and `index`. A `pipe` passes that value through a named formula of the document's state, with any further arguments written as JSON. The optional tail is a fallback literal after `??` or `||`, and the optional head is one or two `!`. The `||` and `!` forms are in the grammar because converted and hand-written sites use them for "show this or nothing" as often as they use `??`.
+A `path` reads a value from a `root`: page state (`state`), the repeater's row (`$map.item` and `$map.index`, or the bare `item` and `index` a row template may use), or the injected context (`$page`, `$site`). A step is a member, an optional member, or a bracketed `key`, which is a string or a number and never an expression. A `pipe` passes that value through a named formula of the document's state, with any further arguments written as literals. The optional tail is a fallback literal after `??` or `||`, and the optional head is one or two `!`. The `||` and `!` forms are in the grammar because converted and hand-written sites use them for "show this or nothing" as often as they use `??`. A `literal` is a JSON value, or a single-quoted string using only the escapes JSON has plus `\'`, so its value is the same read as JSON and as JavaScript; converted sites write `''` far more often than `""`. Two JSON values are refused for the same reason: an object with a `__proto__` key at any depth, which JavaScript reads as the object's prototype and not as a key, and a number beyond the range of a double (`1e999`), which both read as `Infinity`.
 
-**Reading never normalizes.** Parsing an expression into a tag and printing an unedited tag back yields the expression the author wrote, byte for byte: its spacing, its quote style, and its choice of `??` or `||` are the author's. A tag is reprinted only for the part an edit changed. A reader that tidied on the way in would make opening a popover a change to the document.
+**Reading never normalizes.** Parsing an expression into a tag and printing an unedited tag back yields the expression the author wrote, byte for byte, when it is written canonically; its quote style, the text of each literal, and its choice of `??` or `||` are always the author's, because a literal is kept as the text it was written as and printed from that. A reader that tidied on the way in would make opening a popover a change to the document.
 
-**Everything else is a Custom expression.** An expression outside the grammar (a ternary, arithmetic, a method call on a value, a regular expression, anything the splitter cannot close) is a tag of kind **Custom expression**: it is drawn with its live value like any other, its popover offers the raw expression and nothing structured, and it is stored untouched. Raw code never draws on the canvas. Splitting a template into its `${…}` parts is quote-aware and brace-aware, so an object literal or a string containing `}` inside an expression does not end it.
+**White space is accepted in four places and written in one way.** The canonical form has no white space around the tag, one space on each side of the fallback operator, a comma and one space between arguments, and none inside the parentheses. The reader also accepts white space in those four places, so `${ state.title  ??  '' }` is a tag and not a Custom expression; white space anywhere else (inside a path, after `!`, before `(`) is outside the grammar. The printer writes the canonical form. A tag is therefore printed only when an edit changed it: every reader of a template is handed each tag with the verbatim `${…}` it came from (`templateSegments`), and a tag nobody edited is stored as that text, never as its printed form.
 
-**A tag has a kind and a name.** The kinds are field (a path), format (a pipe), ref (a `{ "$ref" }`) and custom. A tag's name is what a person would call it: the field's title from its schema where one is declared ("Post date"), otherwise the path's last member made readable. The same name is used by the chip, the pills and the popover, so an author meets one name for a value (§6.8).
+**Everything else is a Custom expression.** An expression outside the grammar (a ternary, arithmetic, a lambda, a parenthesised operand, a chain of two fallbacks, a path as a fallback, a method call on a value, a step after a formula call, a regular expression, anything the splitter cannot close) is a tag of kind **Custom expression**: it is drawn with its live value like any other, its popover offers the raw expression and nothing structured, and it is stored untouched. Raw code never draws on the canvas. Splitting a template into its `${…}` parts is quote-aware and brace-aware, so an object literal or a string containing `}` inside an expression does not end it.
+
+**A tag has a kind and a name.** The kinds are field (a path), format (a pipe), ref (a `{ "$ref" }`) and custom. A tag's name is what a person would call it: the field's title from its schema where one is declared ("Post date"), otherwise the path's last meaningful member made readable (`featuredImage` is "Featured image"), where a numeric index and the container word `data` are passed over, so `entry.data` is "Entry"; a path with no member to name is named for its root. The same name is used by the chip, the pills and the popover, so an author meets one name for a value (§6.8).
 
 **The tag popover edits one tag.** It is opened on a chip while the caret is in its block, and by `canvas.setTagPopover`, which names the tag to show or `null` to close; exactly one is open per tab, as view state. Its fields, top to bottom:
 
@@ -956,10 +962,12 @@ A formula's parameter fields are derived from the types its definition declares,
 | -------------- | ------------------------------------------------------------------------------------- |
 | `formatDate`   | A date formatted in the page's locale; an empty input gives an empty string, no throw |
 | `formatNumber` | A number formatted in the page's locale                                               |
-| `relativeTime` | A date as a distance from now ("3 days ago")                                          |
+| `relativeTime` | A signed count of units as a relative time in the page's locale ("3 days ago")        |
 | `notEmpty`     | Whether a value has content, for `hidden` and conditions                              |
-| `orBlank`      | The value, or an empty string when it is missing                                      |
-| `escapeHtml`   | A string made safe to place in `innerHTML`                                            |
+| `orBlank`      | The value, or an empty string when it is missing, `"0"`, `0` or `false`               |
+| `escapeHtml`   | A string made safe to place in `innerHTML` or an attribute value                      |
+
+Their exact results are spec.md §19.4c's. A parameter declares its type as display text and, where a field needs more, a JSON Schema beside it (the `dateStyle` and `timeStyle` enums of `formatDate`'s options, `relativeTime`'s units); the catalog hands that schema to the popover with the parameter.
 
 A pure named formula in a page's state does not by itself make the page dynamic (compiler.md §3): a page whose only use of state is a date tag still builds static.
 

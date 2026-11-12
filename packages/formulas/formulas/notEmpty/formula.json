@@ -1,0 +1,12 @@
+{
+  "name": "notEmpty",
+  "description": "True when a value has content: false for a missing value, \"\", \"0\", 0, false, NaN and an empty array (the test PHP's empty() makes), true for anything else.",
+  "parameters": [
+    {
+      "name": "value",
+      "type": {
+        "text": "unknown"
+      }
+    }
+  ]
+}

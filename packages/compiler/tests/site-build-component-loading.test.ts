@@ -259,7 +259,8 @@ describe("buildSite — a build-time-empty repeater is not collapsed", () => {
    * `expandMappedArrayStatic` returns `[]` for a list that resolves to empty at build time, and
    * `[]` is truthy — so the repeater used to be replaced with nothing at all, discarding the
    * definition the client needed. The list then rendered nothing forever, however much state
-   * changed.
+   * changed. `rows` here is client state that starts empty, which is the case the guard protects;
+   * an empty list the build itself resolved does collapse (`site-build-empty-list.test.ts`).
    *
    * @param {string} dir
    * @param {JsonValue} children

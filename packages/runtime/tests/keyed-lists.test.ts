@@ -298,6 +298,36 @@ describe("keyed $map — tracking and teardown", () => {
     expect(reported.length).toBe(2);
   });
 
+  test("onNodeMoved reports the row's root only, never the nodes inside it", async () => {
+    // Every descendant's path begins with the row's and so moved with it; a host that stamped the
+    // Subtree rewrites that prefix itself, from this one report.
+    const rows = reactive([row("a"), row("b")]);
+    const created: JxPath[] = [];
+    const moved = mock((_node: HTMLElement | Text, _path: JxPath) => null);
+    const map: JxElement = {
+      children: [{ children: [{ tagName: "b", textContent: "${item.title}" }], tagName: "span" }],
+      tagName: "li",
+    };
+    await mount(listDoc({}, map), host, {
+      onNodeCreated: (_el, path) => {
+        created.push([...path]);
+      },
+      onNodeMoved: moved,
+      scope: { rows },
+    });
+    // The <ul>, then three nodes per row.
+    expect(created).toHaveLength(7);
+    const [a, b] = two(host.firstElementChild!);
+    rows.reverse();
+    await tick();
+    expect(moved).toHaveBeenCalledTimes(2);
+    expect(moved.mock.calls.map(([node]) => node === a || node === b)).toEqual([true, true]);
+    expect(moved.mock.calls.map(([, path]) => path)).toEqual([
+      ["children", 0, "map", 0],
+      ["children", 0, "map", 1],
+    ]);
+  });
+
   test("items that are not an array, or a missing map, render no rows and keep siblings", async () => {
     const state = reactive({ rows: "nope" });
     await mount(

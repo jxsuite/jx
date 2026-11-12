@@ -1,0 +1,30 @@
+{
+  "operator": "?:",
+  "target": {
+    "operator": "===",
+    "target": {
+      "operator": "??",
+      "target": {
+        "$ref": "$args/value"
+      },
+      "value": ""
+    },
+    "value": ""
+  },
+  "value": "",
+  "initial": {
+    "operator": "call",
+    "target": {
+      "$ref": "window#/Intl/formatDate"
+    },
+    "value": [
+      {
+        "$ref": "$args/value"
+      },
+      null,
+      {
+        "$ref": "$args/options"
+      }
+    ]
+  }
+}

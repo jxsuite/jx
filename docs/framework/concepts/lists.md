@@ -5,8 +5,11 @@ spec:
   - spec.md#10
   - spec.md#10.2 # iteration context, including state.$map from a handler
   - spec.md#10.4 # keys
+  - spec.md#10.5 # empty lists at build time
+  - compiler.md#8.1 # an empty expansion collapses only when the build resolved the list
 code:
   - packages/compiler/src/targets/compile-element.ts
+  - packages/compiler/src/site/site-build.ts
 ---
 
 # Lists and iteration
@@ -178,6 +181,15 @@ A keyed row keeps its element when the list changes. Reordering moves the elemen
 Use `{ "$ref": "$map/item" }` to key by the item itself, which works for objects and for primitive values. A key that is missing on an item falls back to that item's position, and the runtime warns once. Two rows with the same key also warn once; the second and later rows are rebuilt on every change.
 
 Without a key, rows are matched by position. That is fine for a list that only grows at the end, and wrong for one that reorders or inserts in the middle, because the element at each position is reused for whatever item lands there.
+
+## Empty lists
+
+An empty list renders nothing: no rows and no wrapper. What a [build](/docs/framework/build) leaves behind depends on where the data comes from.
+
+- **Data the build resolved** is final. A content collection or any other `timing: "compiler"` entry, the slice of a paged route, `$site` and `$page`, a `$map/` pointer inside a row the build expanded, and a literal array are all finished when the build ends. An empty one is removed from the page with its binding, so the page stays as static as it would be with rows.
+- **Client state** is a starting value. A list over `{ "rows": { "default": [] } }`, over an entry a handler writes, or over a `Request` keeps its binding, and the rows appear when the data does.
+
+So a page that lists "related posts" from a collection ships no JavaScript for the list on the pages where there are none.
 
 ## How it works
 

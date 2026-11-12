@@ -1,5 +1,11 @@
 /// <reference lib="dom" />
-import type { JxDocument, JxDocumentValue, JxElement, JxPath } from "@jxsuite/schema/types";
+import type {
+  JxDocument,
+  JxDocumentValue,
+  JxElement,
+  JxMappedArray,
+  JxPath,
+} from "@jxsuite/schema/types";
 import type { Ref } from "@vue/reactivity";
 
 export type { JxPath } from "@jxsuite/schema/types";
@@ -146,6 +152,22 @@ export interface JxMountOptions<S = JxScope> {
   signal?: AbortSignal;
   onNodeCreated?: JxRenderOptions["onNodeCreated"];
   onNodeMoved?: JxRenderOptions["onNodeMoved"];
+  /** Authoring hook, off by default: see {@link JxRenderOptions.rowLimit}. */
+  rowLimit?: JxRenderOptions["rowLimit"];
+  /** Authoring hook, off by default: see {@link JxRenderOptions.emptyRow}. */
+  emptyRow?: JxRenderOptions["emptyRow"];
+  /** Authoring hook, off by default: see {@link JxRenderOptions.onListReconciled}. */
+  onListReconciled?: JxRenderOptions["onListReconciled"];
+}
+
+/** What one reconciliation of a mapped array drew: see {@link JxRenderOptions.onListReconciled}. */
+export interface JxListReconciliation {
+  /** How many items the list resolved to, after `filter` and `sort` and before any `rowLimit`. */
+  count: number;
+  /** How many rows stand in the DOM, the `emptyRow` placeholder included. */
+  rendered: number;
+  /** Whether the list resolved to no items (so a row that is drawn is the `emptyRow` one). */
+  empty: boolean;
 }
 
 /** A mounted document: its live scope, its root node, and the disposer that tears it down. */
@@ -182,8 +204,15 @@ export interface JxRenderOptions {
   /** The namespace the parent element established — SVG and MathML descendants inherit it. */
   _ns?: string | null;
   /**
-   * Called for each created node. `state` is the local scope the node's children render with —
-   * callers can capture it to re-render a subtree in isolation later.
+   * Called for each created ELEMENT (a text node is not reported). `state` is the local scope the
+   * node's children render with — callers can capture it to re-render a subtree in isolation
+   * later.
+   *
+   * `path` is the node's document path, with two exceptions that name something the document does
+   * not hold as a node. A mapped row is at `[…array, "map", index]`. A node a template splices in
+   * (spec.md §8.4) is at the template's own position followed by its index in the resolved array:
+   * `[…, "children", j]` for a whole-`children` template, `[…, "children", i, j]` for a templated
+   * string member at `children[i]`; its `def` is the resolved value, not a member of the document.
    */
   onNodeCreated?: (
     el: HTMLElement | Text,
@@ -195,8 +224,32 @@ export interface JxRenderOptions {
    * Called when a keyed mapped-array row is reused at a new index. The node is the same one
    * `onNodeCreated` reported; `path` is its new document path, so a host that stamped the old one
    * can re-stamp it.
+   *
+   * Only the row's ROOT is reported. Every descendant's path changed with it (each begins with the
+   * row's), and none of them is reported: a host that stamped the subtree rewrites that prefix
+   * itself.
    */
   onNodeMoved?: (node: HTMLElement | Text, path: JxPath) => void;
+  /**
+   * Authoring hook, off by default: the most rows any one mapped array draws. Items past it are not
+   * rendered at all (no node, no scope, no effects). A value that is not a number of zero or more
+   * is ignored; a fraction is floored. It applies to every list this render reaches, nested ones
+   * included, and after `emptyRow`, so a limit of zero draws nothing.
+   */
+  rowLimit?: number;
+  /**
+   * Authoring hook, off by default: called when a mapped array that has a `map` resolves to no
+   * items (an empty array, or `items` that is not an array yet). Returning anything but `undefined`
+   * draws ONE row with that value as its `$map.item` at index 0, so an editor has a row to show and
+   * select; returning `undefined` draws nothing, as without the hook. `path` is the array's own
+   * document path. The row is replaced by real rows as soon as the list has any.
+   */
+  emptyRow?: (arrayDef: JxMappedArray, path: JxPath) => JxScopeValue;
+  /**
+   * Authoring hook, off by default: called after each reconciliation of a mapped array, the first
+   * render included, with the array's own document path.
+   */
+  onListReconciled?: (path: JxPath, result: JxListReconciliation) => void;
 }
 
 /**

@@ -180,6 +180,47 @@ A resolver answer is private to its mount. It never enters the shared cache, so 
 
 A template binding that throws, such as `${state.posts.length}` before the posts load, renders nothing and fills in once its data arrives. To check whether a document renders at all, await `lookupsSettled()` after `buildScope` so templates read real data (put your own time limit on it, because a lookup can hang), then install `setTemplateErrorHandler((error, source) => …)` around the render to receive every such error, and pass `null` afterwards. Without a handler, a failing template logs one console warning, held until any class lookup, `timing: "server"` call or `Request` in flight has settled, so a template that only read its data too early logs nothing. A handler is not held: it hears those early reads too.
 
+## Hooks for an editor
+
+A host that draws a document so people can edit it, rather than use it, can ask a few more things of a mount. Each is off unless you name it, and a mount without them renders exactly as before.
+
+| Option             | What it does                                                                                                |
+| ------------------ | ----------------------------------------------------------------------------------------------------------- |
+| `onNodeCreated`    | Called with each element as it is created, its document path, its definition and its scope.                 |
+| `onNodeMoved`      | Called when a keyed repeater row is reused at a new index, with the row's root node and its new path.       |
+| `rowLimit`         | The most rows any one repeater draws. Items past it are not rendered at all.                                |
+| `emptyRow`         | Called for a repeater with no items. Return a sample item to draw one row from it, or `undefined` for none. |
+| `onListReconciled` | Called each time a repeater settles, with its path and `{ count, rendered, empty }`.                        |
+
+```ts
+const handle = await mount(doc, target, {
+  rowLimit: 20,
+  emptyRow: (arrayDef, path) => ({ data: { title: "Sample title" } }),
+  onListReconciled: (path, { count, rendered, empty }) => {
+    // count: the items the list resolved to, after filter and sort
+    // rendered: the rows on the page, the sample row included
+    // empty: true when the list resolved to no items
+  },
+});
+```
+
+`onNodeMoved` reports the row's root only. The elements inside the row moved with it and are not reported, so a host that keeps a path on each of them rewrites the row's part of those paths itself. A row is at `[…repeater, "map", index]`.
+
+`rowLimit` reaches nested repeaters too, and each one is capped for itself. It applies after `emptyRow`, so a limit of `0` draws no rows at all. The sample row from `emptyRow` is replaced by real rows as soon as the list has any, and returns when the list empties again.
+
+Elements that a template adds are reported to `onNodeCreated` at the template's own position followed by their index in the array it resolved to: `[…, "children", 2, 0]` for the first node of a templated string at `children[2]`. That path names no node in the document, because the document holds a string there.
+
+To read the value a template would have without rendering it, call `evaluateTemplateValue(template, scope)`:
+
+```ts
+import { evaluateTemplateValue } from "@jxsuite/runtime";
+
+evaluateTemplateValue("${state.posts.length}", handle.scope); // 3
+evaluateTemplateValue("${state.posts.length} posts", handle.scope); // "3 posts"
+```
+
+A template that is one whole `${…}` answers the expression's own value, and anything else answers a string, which is the same line the renderer draws. The expression sees `state`, `$site` and `$page`, and inside a repeater row `$map`, `item` and `index`: pass the scope `onNodeCreated` handed you for a node in that row. It throws whatever the expression throws.
+
 ## Redefine an element
 
 A host that lets people edit a component while it is in use can replace its definition without reloading the page:

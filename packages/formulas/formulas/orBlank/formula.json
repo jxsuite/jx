@@ -1,0 +1,12 @@
+{
+  "name": "orBlank",
+  "description": "The value as given, or an empty string when it is missing, \"0\", 0 or false (what a PHP template prints for a field it reads as unset).",
+  "parameters": [
+    {
+      "name": "value",
+      "type": {
+        "text": "unknown"
+      }
+    }
+  ]
+}

@@ -146,6 +146,8 @@ Bare strings and numbers are valid `children` items. They produce DOM `Text` nod
 
 That is the HTML `<p>Hello <strong>world</strong>!</p>`. Template strings in text nodes are reactive: `{ "children": ["Welcome, ${state.name}!"] }`.
 
+A string child that is one whole `${…}` and resolves to an array is not text. It stands for the nodes in that array, which are drawn where the string stood, between its siblings: `{ "children": [{ "tagName": "h2", "textContent": "${item.data.title}" }, "${item.$children ?? []}"] }` draws a heading and then the entry's body. Every member of the array is drawn, elements and bare strings alike, and an empty array draws nothing. The site build and the runtime read it the same way, so a page looks the same prerendered and rendered live. Any other value stays a text node.
+
 The whole `children` value can also be one `${…}` template that resolves to an array of child definitions, which is how an element draws parsed content such as a content entry's body: `{ "tagName": "div", "children": "${item.$children ?? []}" }`. The site build expands it into the page. On a built page it must resolve during the build, because the compiled output does not evaluate a template left unresolved. The runtime, which renders the source document, does evaluate it, and a result that is not an array draws nothing.
 
 ## Slots

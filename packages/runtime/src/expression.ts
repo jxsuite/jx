@@ -341,6 +341,19 @@ function withPageLocale(path: string, args: JxScopeValue[], state: JxScope): JxS
   return filled;
 }
 
+/**
+ * The object a `window#/…` ref reads from. A site build prerenders in a process with no `window`,
+ * where the standard library the blessed list names (Math, JSON, Array, …) hangs off the global
+ * object itself, so the read falls back to it and a formula resolves at build as it does in a
+ * page.
+ */
+function windowRoot(): object {
+  /* SAFETY: the DOM lib types `window` as always present; outside a browser the property is simply
+     absent, which is the one fact this read exists to observe. */
+  const root = (globalThis as { window?: object }).window;
+  return root ?? globalThis;
+}
+
 /** Whether a `window#/…` callee ref is on the blessed pure-globals list. */
 export function isBlessedGlobal(ref: string): boolean {
   return ref.startsWith("window#/") && BLESSED_GLOBALS.has(ref.slice("window#/".length));
@@ -526,7 +539,7 @@ function resolveExprRef(ref: string, state: JxScope, event: Event | null, iterCt
     return readPath(state, ref.slice("parent#/".length));
   }
   if (ref.startsWith("window#/")) {
-    return readPath(globalThis.window, ref.slice("window#/".length));
+    return readPath(windowRoot(), ref.slice("window#/".length));
   }
   if (ref.startsWith("document#/")) {
     return readPath(globalThis.document, ref.slice("document#/".length));
@@ -712,14 +725,12 @@ function evaluateNode(
           ...withPageLocale(globalPath, argValues, state),
         );
       }
+      const root = windowRoot();
       /* SAFETY: `isBlessedGlobal` admitted `globalPath`, and every BLESSED_GLOBALS entry without a
          synthetic helper names a standard-library function on `window` (Math.max, JSON.parse, …). */
-      const fn = readPath(globalThis.window, globalPath) as FormulaCallable;
+      const fn = readPath(root, globalPath) as FormulaCallable;
       const lastSlash = globalPath.lastIndexOf("/");
-      const thisArg =
-        lastSlash === -1
-          ? globalThis.window
-          : readPath(globalThis.window, globalPath.slice(0, lastSlash));
+      const thisArg = lastSlash === -1 ? root : readPath(root, globalPath.slice(0, lastSlash));
       return fn.apply(thisArg, argValues);
     }
 

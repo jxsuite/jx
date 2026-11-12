@@ -1,0 +1,64 @@
+{
+  "name": "formatDate",
+  "description": "Format a date or timestamp in the page's locale (Intl.DateTimeFormat, UTC unless options name a timeZone); an empty string for a missing or empty value instead of a thrown RangeError.",
+  "parameters": [
+    {
+      "name": "value",
+      "type": {
+        "text": "string | number | null",
+        "type": ["string", "number", "null"]
+      },
+      "description": "An ISO 8601 date string or a timestamp in milliseconds."
+    },
+    {
+      "name": "options",
+      "optional": true,
+      "description": "How to write it: a preset pair (dateStyle, timeStyle) or individual fields.",
+      "type": {
+        "text": "Intl.DateTimeFormatOptions",
+        "type": "object",
+        "properties": {
+          "dateStyle": {
+            "enum": ["full", "long", "medium", "short"]
+          },
+          "timeStyle": {
+            "enum": ["full", "long", "medium", "short"]
+          },
+          "weekday": {
+            "enum": ["long", "short", "narrow"]
+          },
+          "era": {
+            "enum": ["long", "short", "narrow"]
+          },
+          "year": {
+            "enum": ["numeric", "2-digit"]
+          },
+          "month": {
+            "enum": ["numeric", "2-digit", "long", "short", "narrow"]
+          },
+          "day": {
+            "enum": ["numeric", "2-digit"]
+          },
+          "hour": {
+            "enum": ["numeric", "2-digit"]
+          },
+          "minute": {
+            "enum": ["numeric", "2-digit"]
+          },
+          "second": {
+            "enum": ["numeric", "2-digit"]
+          },
+          "hour12": {
+            "type": "boolean"
+          },
+          "timeZoneName": {
+            "enum": ["short", "long"]
+          },
+          "timeZone": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  ]
+}
