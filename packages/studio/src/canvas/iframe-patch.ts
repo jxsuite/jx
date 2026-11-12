@@ -66,7 +66,7 @@ import {
 } from "./path-mapping";
 import { carryRowMarks, instancesOf, syncRows } from "./iframe-rows";
 import { disposeSubtree, renderSubtreeIframe } from "./iframe-subtree";
-import { deliveredOutsideProps } from "./iframe-inline-edit";
+import { deliveredOutsideProps } from "../utils/prop-source";
 import { isEditableMode } from "./iframe-render";
 import { isEditableBlock } from "../editor/inline-edit";
 import { stampKept } from "../editor/kept-node";
