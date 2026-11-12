@@ -149,6 +149,21 @@ describe("createOverlayLayer", () => {
     expect(hover.style.display).toBe("none");
   });
 
+  test("setHover labels the box with what the block draws from data, and only then", () => {
+    const layer = createOverlayLayer(document);
+    const hover = part(layer.root, ".overlay-hover");
+    const label = part(hover, ".overlay-bound-label");
+    layer.setHover({ height: 8, left: 1, top: 2, width: 40 }, "Title · Post date");
+    expect(label.style.display).toBe("block");
+    expect(label.textContent).toBe("Title · Post date");
+    // A block with nothing bound has no label, and a hidden box says nothing.
+    layer.setHover({ height: 8, left: 1, top: 2, width: 40 });
+    expect(label.style.display).toBe("none");
+    expect(label.textContent).toBe("");
+    layer.setHover(null, "Title");
+    expect(label.style.display).toBe("none");
+  });
+
   test("dispose removes the layer from its parent", () => {
     const layer = createOverlayLayer(document);
     document.body.append(layer.root);

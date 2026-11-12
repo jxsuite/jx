@@ -267,6 +267,7 @@ void mock.module("../src/panels/block-action-bar.ts", () => ({
   registerSelectionCommands: mock(() => {}),
   releaseBlockActionBar: releaseBarMock,
   renderBlockActionBar: mock(() => {}),
+  returnFocusToCanvas: mock(() => {}),
   suppressBlockActionBar: suppressBarMock,
 }));
 
@@ -1739,7 +1740,9 @@ describe("parent-chrome commit guard", () => {
   test("the bootstrap injects the release as the canvas-pointerdown signal", () => {
     // The other door out of suppression, and the only one that can answer a click on the element
     // That is already selected: the parent never sees that pointer, the frame reports it.
-    expect(canvasPointerDown).toBe(releaseBarMock);
+    const before = releaseBarMock.mock.calls.length;
+    canvasPointerDown?.();
+    expect(releaseBarMock.mock.calls.length).toBe(before + 1);
   });
 });
 

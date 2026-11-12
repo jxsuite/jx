@@ -76,8 +76,12 @@ export interface OverlayLayer {
    * selection box and nothing else, exactly as it did before the selection became a list.
    */
   setCoSelection: (placements: OverlayPlacement[]) => void;
-  /** Position the hover box (or hide it when `placement` is null). */
-  setHover: (placement: OverlayPlacement | null) => void;
+  /**
+   * Position the hover box (or hide it when `placement` is null). `label` names what the hovered
+   * block draws from data (studio.md §4.5): it is drawn on this overlay and not in the page, so it
+   * takes the place of nothing the author wrote.
+   */
+  setHover: (placement: OverlayPlacement | null, label?: string) => void;
   /**
    * Draw the drop indicator for a drag-over (Phase 4c). `placement` is the reference node's rect in
    * overlay-local coords (the caller maps the iframe-space `referenceRect` via
@@ -152,6 +156,10 @@ export function createOverlayLayer(doc: Document = document): OverlayLayer {
   const hoverBox = doc.createElement("div");
   hoverBox.className = "overlay-box overlay-hover";
   hoverBox.style.display = "none";
+  const hoverLabel = doc.createElement("div");
+  hoverLabel.className = "overlay-label overlay-bound-label";
+  hoverLabel.style.display = "none";
+  hoverBox.append(hoverLabel);
 
   // Reuses the legacy `.canvas-drop-indicator` CSS (`.line` = thin bar, `.inside` = dashed box).
   const dropBox = doc.createElement("div");
@@ -196,7 +204,12 @@ export function createOverlayLayer(doc: Document = document): OverlayLayer {
     insertButton,
     root,
     setDropIndicator: (placement, edge = "inside") => placeDropIndicator(dropBox, placement, edge),
-    setHover: (placement) => place(hoverBox, placement),
+    setHover: (placement, label) => {
+      place(hoverBox, placement);
+      const shown = placement !== null && label !== undefined && label !== "";
+      hoverLabel.textContent = shown ? label : "";
+      hoverLabel.style.display = shown ? "block" : "none";
+    },
     setInsertZone: (placement, edge = "center") => placeInsertButton(insertButton, placement, edge),
     setReplaceTarget: (placement) => place(replaceBox, placement),
     setSuppressed: (suppressed) => {

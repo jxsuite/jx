@@ -41,8 +41,9 @@ import { startEditableRoot } from "./iframe-editable-root";
 import { adjacentBlock, blocksInOrder, offsetOf } from "./iframe-position";
 import { chipSourcesBetween } from "./iframe-chips";
 import { isTagActiveInSelection, toggleInlineFormat } from "../editor/inline-format";
-import { applyLink, insertTemplateToken, linkStateForSelection } from "../editor/inline-link";
+import { applyLink, linkStateForSelection } from "../editor/inline-link";
 import { deliveredOutsideProps } from "../utils/prop-source";
+import { insertChip } from "./iframe-tags";
 import { rectOfRange } from "../utils/geometry";
 import { getNodeAtPath } from "../state";
 import { parseJxPath, serializeJxPath } from "./path-mapping";
@@ -57,6 +58,7 @@ import type {
 import type { DocPos } from "./iframe-position";
 import { isString } from "@jxsuite/schema/guards";
 import type { JxPath } from "../state";
+import type { TagTitles } from "../utils/edit-display";
 import type { JxMutableNode } from "@jxsuite/schema/types";
 
 /** The commit a block session posts when its text reaches the document. */
@@ -151,6 +153,8 @@ export function startIframeInlineEdit(
      * read as the session continuing, with no session behind it.
      */
     onRoot?: (forget: () => void) => void;
+    /** The titles a chip placed by Insert is named by (the render's `tagTitles`). */
+    getTagTitles?: () => TagTitles | null;
   },
 ): () => void {
   const doc = container.ownerDocument;
@@ -287,6 +291,13 @@ export function startIframeInlineEdit(
    */
   let removedTags: string[] = [];
 
+  /**
+   * Whether a chip was placed in the active block since its content last reached the document
+   * (Insert, studio.md §6.9). A placed chip is empty: its value is the runtime's to draw, so the
+   * write that stores it is not left in place and the block is drawn again from the document.
+   */
+  let chipPlaced = false;
+
   /** Hand over what has been deleted since the last write, leaving none. */
   const takeRemovedTags = (): string[] => {
     const taken = removedTags;
@@ -306,6 +317,7 @@ export function startIframeInlineEdit(
   const enterEditAt = (el: HTMLElement, path: JxPath) => {
     // A new block starts with nothing deleted: a deletion belongs to the block it happened in.
     removedTags = [];
+    chipPlaced = false;
     channel.post({ kind: "editStart", path });
     startEditing(el, path, {
       // `inPlace` and `removedTags` ride along only when set: both are optional, so omitting them
@@ -321,7 +333,9 @@ export function startIframeInlineEdit(
         /* A commit that deletes a chip is not left in place: the block is drawn again from the
            document, so what the canvas says of its bindings (the names in its bound-block label)
            is what the document now holds, not what it held before the chip went. */
-        if (inPlace && commit.removedTags === undefined) {
+        const placed = chipPlaced;
+        chipPlaced = false;
+        if (inPlace && commit.removedTags === undefined && !placed) {
           commit.inPlace = true;
         }
         channel.post(commit);
@@ -467,7 +481,20 @@ export function startIframeInlineEdit(
       // A binding the link held that the author just replaced is their deletion, like a chip's.
       removedTags.push(...applyLink(el, intent.href));
     } else if (intent.command === "insertData") {
-      insertTemplateToken(el, intent.token);
+      /* A tag, not characters (studio.md §6.9): the chip stands in the block at once, and the
+         input reported for it is what schedules the commit that writes its expression. */
+      insertChip(el, intent.token, opts?.getTagTitles?.() ?? null);
+      chipPlaced = true;
+      /* The pick was made in a list the parent drew, so the keyboard is still there: hand it to the
+         text, with the caret where the chip left it, so the author goes on writing. */
+      const placed = window.getSelection();
+      const caret = placed && placed.rangeCount > 0 ? placed.getRangeAt(0).cloneRange() : null;
+      el.focus({ preventScroll: true });
+      if (placed && caret) {
+        placed.removeAllRanges();
+        placed.addRange(caret);
+      }
+      el.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText" }));
     } else {
       const tag = CMD_TO_TAG[intent.command];
       if (tag) {

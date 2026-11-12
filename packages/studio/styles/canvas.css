@@ -194,6 +194,15 @@
   white-space: nowrap;
   pointer-events: none;
 }
+/* What a hovered block draws from data (studio.md §4.5). Drawn here, on the host's overlay, so it
+   is no part of the page: as the block's own `::before` it replaced one the author wrote, and an
+   image, which has no pseudo-elements, had none. The outline it labels is the frame's. */
+.overlay-bound-label {
+  background: var(--jx-tag);
+  color: var(--jx-accent-fg);
+  border-radius: var(--jx-radius-xs);
+  top: -22px;
+}
 
 /* ── The diff stage's toolbar ──────────────────────────────────────────────
    Absolutely positioned over the stage rather than in flow: the artboards live on a pan/zoom

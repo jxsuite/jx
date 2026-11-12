@@ -322,6 +322,8 @@ void mock.module("../src/canvas/canvas-live-render.js", () => ({
 }));
 
 void mock.module("../src/canvas/iframe-host.js", () => ({
+  requestTemplateEval: () => Promise.resolve(null),
+  flushCanvasEdits: () => Promise.resolve(),
   adoptCanvasPreviewMode: (canvas: HTMLElement, preview: boolean) =>
     previewAdoptions.push({ canvas, preview }),
   commitActiveEditSession: () => {},

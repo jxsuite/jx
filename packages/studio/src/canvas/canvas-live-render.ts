@@ -49,8 +49,10 @@ import { loadExtensions } from "../format/format-host";
 import { bakeRepeaterSources, extensionClassKeys, repeaterSourceKeys } from "./repeater-sources";
 import { withStateValues } from "./state-values";
 import { getPlatform } from "../platform";
-import { repeaterSampleItems } from "../editor/repeater-scope";
+import { repeaterSampleItems, tagTitlesOf } from "../editor/repeater-scope";
 import type { RepeaterSamples } from "../editor/repeater-scope";
+import type { TagTitles } from "../utils/edit-display";
+import { withSwitchCases } from "./switch-cases";
 
 import type { AssetContext } from "./asset-refs";
 import type { CanvasScripts, ScriptCollector } from "./canvas-scripts";
@@ -433,6 +435,8 @@ export async function resolveCanvasDocument(
   entryRoot: string | null;
   /** A sample item per repeater of the document, by the repeater's serialized path. */
   rowSamples: RepeaterSamples;
+  /** The titles the project's schemas give row fields, which chips are named by (studio.md §6.9). */
+  tagTitles: TagTitles;
   /** The client script of every document this render is composed from, by its specifier. */
   scripts: CanvasScripts;
   /**
@@ -450,11 +454,23 @@ export async function resolveCanvasDocument(
      holding the tab's reactive nodes could not be given to. */
   const scripts = scriptCollector(fileBase);
   const unsaved = tab?.doc.dirty === true;
+  /* What each row field is called, read off the project's schemas once for the render: every walk
+     below names its chips by it, and so does the frame for a node it draws again. */
+  const tagTitles =
+    canvasMode === "preview" ? {} : tagTitlesOf(doc, projectState?.projectConfig ?? null);
+
+  /* A `$switch` case chosen for the canvas (`canvas.setSwitchCase`, studio.md §4.5) is in the
+     document the editable views prepare, at the switch's own path; the value it reads joins the
+     state at the end, with the values set for the canvas. Preview draws the page as it ships. */
+  const switched =
+    tab && canvasMode !== "preview"
+      ? withSwitchCases(doc, tab.session.ui.switchCases)
+      : { doc, state: {} };
 
   let renderDoc = scripts.own(
     canvasMode === "preview"
       ? structuredClone(toRaw(doc))
-      : prepareForEditMode(stripEventHandlers(doc)),
+      : prepareForEditMode(stripEventHandlers(switched.doc), tagTitles),
     S.documentPath,
     unsaved,
   );
@@ -497,7 +513,9 @@ export async function resolveCanvasDocument(
       // A page with no layout: the page alone is the frame the entry is written in.
       const pageDoc = entryPage.doc;
       renderDoc =
-        canvasMode === "preview" ? pageDoc : prepareForEditMode(stripEventHandlers(pageDoc));
+        canvasMode === "preview"
+          ? pageDoc
+          : prepareForEditMode(stripEventHandlers(pageDoc), tagTitles);
       layoutWrapped = true;
       const pageContent = findPageContentPrefix(pageDoc);
       pageContentPrefix = pageContent?.prefix ?? null;
@@ -506,7 +524,9 @@ export async function resolveCanvasDocument(
     if (layoutDoc) {
       const merged = distributePageIntoLayout(layoutDoc, pageForSlots);
       renderDoc =
-        canvasMode === "preview" ? merged : prepareForEditMode(stripEventHandlers(merged));
+        canvasMode === "preview"
+          ? merged
+          : prepareForEditMode(stripEventHandlers(merged), tagTitles);
       layoutWrapped = true;
       if (S.documentPath) {
         /* SAFETY: a document's `$elements` entries are tag-name strings, `{ $ref }` imports or
@@ -692,6 +712,9 @@ export async function resolveCanvasDocument(
   if (tab && canvasMode !== "preview") {
     renderDoc = withStateValues(renderDoc, doc.state, tab.session.ui.stateValues);
   }
+  if (Object.keys(switched.state).length > 0) {
+    renderDoc = { ...renderDoc, state: { ...renderDoc.state, ...switched.state } };
+  }
 
   return {
     assets,
@@ -710,6 +733,7 @@ export async function resolveCanvasDocument(
     rowSamples: canvasMode === "preview" ? {} : repeaterSampleItems(doc, projectConfig),
     scripts: scripts.scripts,
     siteStyle: projectState?.projectConfig?.style ?? null,
+    tagTitles,
     unresolvedSources,
   };
 }

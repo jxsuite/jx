@@ -34,7 +34,7 @@ import type {
 import type { JxDocOp } from "../src/tabs/patch-ops";
 import type { IframeChannel, postMessageChannel } from "../src/canvas/iframe-channel";
 import type { resolveCanvasDocument } from "../src/canvas/canvas-live-render";
-import type { CanvasSlashRequest, HostState } from "../src/canvas/iframe-host";
+import type { CanvasSlashRequest, CanvasTagClick, HostState } from "../src/canvas/iframe-host";
 import type { CanvasPanel } from "../src/types";
 import type { Tab } from "../src/tabs/tab";
 import { primarySelection } from "../src/tabs/selection";
@@ -180,6 +180,7 @@ const DEFAULT_RESOLVED: ResolvedFixture = {
   },
   renderDoc: { children: ["hi"], tagName: "div" },
   rowSamples: {},
+  tagTitles: {},
   scripts: {},
   siteStyle: null,
   unresolvedSources: [],
@@ -226,9 +227,11 @@ const {
   postStyleUpdateToStylebookHosts,
   releaseCanvasHosts,
   requestCanvasEval,
+  requestTemplateEval,
   sawIframeDragOver,
   setCanvasContextMenuHandler,
   setCanvasPointerDownHandler,
+  setCanvasTagClickHandler,
   setCanvasSlashHandler,
   setIframePatchEscalation,
   setFileDropHandler,
@@ -1279,6 +1282,270 @@ describe("iframe canvas interaction", () => {
       kind: "hit",
     });
     expect(shell.layoutSelection).toBeNull();
+  });
+
+  test("a hover over a bound block labels its box with what the block draws from data", async () => {
+    const canvasEl = await mountReady();
+    const label = partOf(partOf(canvasEl, ".overlay-hover"), ".overlay-bound-label");
+    channels[0]!.deliver({
+      hit: {
+        bound: "Title · Post date",
+        path: ["children", 1],
+        rect: { height: 8, width: 40, x: 2, y: 3 },
+      },
+      kind: "hover",
+    });
+    expect(label.style.display).toBe("block");
+    expect(label.textContent).toBe("Title · Post date");
+    channels[0]!.deliver({
+      hit: { path: ["children", 2], rect: { height: 8, width: 40, x: 2, y: 3 } },
+      kind: "hover",
+    });
+    expect(label.style.display).toBe("none");
+  });
+
+  test("a chip click is handed on with the tab, the chip's box on screen, and whether its block was chosen", async () => {
+    const tab = resetWorkspaceWithTab();
+    await mountReady();
+    const ch = channels[0]!;
+    const clicks: CanvasTagClick[] = [];
+    setCanvasTagClickHandler((click) => clicks.push(click));
+    try {
+      const click = {
+        active: false,
+        kind: "tagClick" as const,
+        occurrence: 1,
+        path: ["children", 0],
+        rect: { height: 10, width: 30, x: 5, y: 7 },
+        ref: null,
+        source: "${state.x}",
+      };
+      // The first press on a block: its `hit` replaced another selection, and no caret was in it.
+      tab.session.selection = [["children", 3]];
+      ch.deliver({ hit: { path: ["children", 0], rect: click.rect }, kind: "hit" });
+      ch.deliver(click);
+      // The second: the block was the selection before this press's own `hit`.
+      ch.deliver({ hit: { path: ["children", 0], rect: click.rect }, kind: "hit" });
+      ch.deliver(click);
+      // Or the frame says the block held the caret.
+      tab.session.selection = [["children", 3]];
+      ch.deliver({ hit: { path: ["children", 0], rect: click.rect }, kind: "hit" });
+      ch.deliver({ ...click, active: true });
+      expect(clicks.map((seen) => seen.chosen)).toEqual([false, true, true]);
+      expect(clicks[0]).toMatchObject({
+        occurrence: 1,
+        path: ["children", 0],
+        ref: null,
+        source: "${state.x}",
+      });
+      expect(clicks[0]?.tab.id).toBe(tab.id);
+      // The frame's rect, in the parent's viewport: no layout under happy-dom, so the offset is 0.
+      expect(clicks[0]?.rect).toEqual({ height: 10, left: 5, top: 7, width: 30 });
+    } finally {
+      setCanvasTagClickHandler(null);
+    }
+  });
+
+  test("a chip's box is placed by the frame's offset on screen and its scale", async () => {
+    const tab = resetWorkspaceWithTab();
+    const canvasEl = await mountReady();
+    const iframe = canvasEl.querySelector("iframe")!;
+    // A frame drawn at half size, 100px from the left and 50px from the top of the window.
+    stubRect(iframe, { height: 240, left: 100, top: 50, width: 600 });
+    Object.defineProperty(iframe, "clientWidth", { configurable: true, value: 300 });
+    const clicks: CanvasTagClick[] = [];
+    setCanvasTagClickHandler((click) => clicks.push(click));
+    try {
+      channels[0]!.deliver({
+        active: true,
+        kind: "tagClick",
+        occurrence: 0,
+        path: ["children", 0],
+        rect: { height: 10, width: 30, x: 5, y: 7 },
+        ref: null,
+        source: "${state.x}",
+      });
+      expect(clicks[0]?.tab.id).toBe(tab.id);
+      expect(clicks[0]?.rect).toEqual({ height: 20, left: 110, top: 64, width: 60 });
+    } finally {
+      setCanvasTagClickHandler(null);
+    }
+  });
+
+  test("the titles the render resolved ride with the render message", async () => {
+    resetWorkspaceWithTab();
+    resolved = {
+      ...structuredClone(DEFAULT_RESOLVED),
+      tagTitles: { "item.data.date": "Post date" },
+    };
+    await mountReady();
+    const render = channels[0]!.posts.find((message) => message.kind === "render");
+    expect(render?.kind === "render" && render.tagTitles).toEqual({
+      "item.data.date": "Post date",
+    });
+  });
+
+  test("a render with no titles carries none", async () => {
+    resetWorkspaceWithTab();
+    await mountReady();
+    const render = channels[0]!.posts.find((message) => message.kind === "render");
+    expect(render?.kind).toBe("render");
+    expect(render).not.toHaveProperty("tagTitles");
+  });
+
+  test("a Preview host and a stylebook host report no chip", async () => {
+    resetWorkspaceWithTab();
+    const canvasEl = await mountReady();
+    const clicks: CanvasTagClick[] = [];
+    setCanvasTagClickHandler((click) => clicks.push(click));
+    try {
+      adoptCanvasPreviewMode(canvasEl, true);
+      channels[0]!.deliver({
+        active: true,
+        kind: "tagClick",
+        occurrence: 0,
+        path: ["children", 0],
+        rect: { height: 1, width: 1, x: 0, y: 0 },
+        ref: null,
+        source: "${state.x}",
+      });
+      expect(clicks).toEqual([]);
+    } finally {
+      setCanvasTagClickHandler(null);
+    }
+  });
+
+  test("requestTemplateEval asks the tab's frame and answers with its results and row count", async () => {
+    const tab = resetWorkspaceWithTab();
+    await mountReady();
+    const ch = channels[0]!;
+    // A frame that never announced `tags` cannot answer: nothing is posted.
+    ch.posts.length = 0;
+    expect(await requestTemplateEval(tab.id, { path: null, templates: [] })).toBeNull();
+    expect(ch.posts).toHaveLength(0);
+
+    ch.deliver({ capabilities: ["tags"], kind: "ready" });
+    ch.posts.length = 0;
+    const asked = requestTemplateEval(tab.id, {
+      formulas: {
+        orBlank: { $expression: { operator: "??", target: 1, value: 2 }, parameters: ["v"] },
+      },
+      path: ["children", 0],
+      repeater: ["children", 0],
+      templates: [{ id: "now", template: "${state.x}" }],
+    });
+    const post = ch.posts.find((message) => message.kind === "evalTemplate");
+    expect(post).toMatchObject({
+      gen: 1,
+      path: ["children", 0],
+      repeater: ["children", 0],
+      templates: [{ id: "now", template: "${state.x}" }],
+    });
+    expect(Object.keys((post?.kind === "evalTemplate" && post.formulas) || {})).toEqual([
+      "orBlank",
+    ]);
+    const reqId = post?.kind === "evalTemplate" ? post.reqId : -1;
+    ch.deliver({
+      gen: 1,
+      kind: "templateResult",
+      reqId,
+      results: [{ id: "now", text: "X", type: "string" }],
+      rows: { active: 0, drawn: 3, total: 3 },
+    });
+    expect(await asked).toEqual({
+      results: [{ id: "now", text: "X", type: "string" }],
+      rows: { active: 0, drawn: 3, total: 3 },
+    });
+    // A reply nobody is waiting for is dropped.
+    ch.deliver({ gen: 1, kind: "templateResult", reqId, results: [] });
+  });
+
+  test("requestTemplateEval answers null for another tab, a stale render, and a frame that never replies", async () => {
+    const tab = resetWorkspaceWithTab();
+    await mountReady();
+    const ch = channels[0]!;
+    ch.deliver({ capabilities: ["tags"], kind: "ready" });
+    expect(await requestTemplateEval("another-tab", { path: null, templates: [] })).toBeNull();
+    expect(await requestTemplateEval(null, { path: null, templates: [] })).toBeNull();
+
+    ch.posts.length = 0;
+    const stale = requestTemplateEval(tab.id, { path: null, templates: [] });
+    const post = ch.posts.find((message) => message.kind === "evalTemplate");
+    ch.deliver({
+      gen: 7,
+      kind: "templateResult",
+      reqId: post?.kind === "evalTemplate" ? post.reqId : -1,
+      results: [],
+    });
+    expect(await stale).toBeNull();
+    // No formulas and no repeater: neither field is sent.
+    expect(post).not.toHaveProperty("formulas");
+    expect(post).not.toHaveProperty("repeater");
+
+    expect(await requestTemplateEval(tab.id, { path: null, templates: [] }, 5)).toBeNull();
+  });
+
+  describe("requestTemplateEval chooses the frame that answers", () => {
+    /** Mount a frame for `tabId` in its own stage and say it is ready, with the `tags` capability. */
+    async function frameFor(tabId: string, ready = true): Promise<number> {
+      const stage = document.createElement("div");
+      stage.className = "pane-stage";
+      stage.dataset.jxRegion = "pane.primary";
+      document.body.append(stage);
+      const canvasEl = document.createElement("div");
+      stage.append(canvasEl);
+      const before = channels.length;
+      await mountIframeCanvas(1, {}, canvasEl, null, tabId);
+      const at = before;
+      if (ready) {
+        channels[at]!.deliver({ capabilities: ["tags"], kind: "ready" });
+        channels[at]!.deliver({ gen: 1, kind: "renderComplete" });
+      }
+      channels[at]!.posts.length = 0;
+      return at;
+    }
+
+    const evalsOf = (at: number): number =>
+      channels[at]!.posts.filter((message) => message.kind === "evalTemplate").length;
+
+    test("only a frame drawing the tab, and only one that is ready", async () => {
+      const tab = resetWorkspaceWithTab();
+      const { openTab } = await import("../src/workspace/workspace");
+      const other = openTab({
+        document: { tagName: "div" },
+        documentPath: "pages/other.json",
+        id: "other-tab",
+      });
+      const notReady = await frameFor(tab.id, false);
+      const elsewhere = await frameFor(other.id);
+      const answering = await frameFor(tab.id);
+      void requestTemplateEval(tab.id, { path: null, templates: [] }, 5);
+      expect([evalsOf(notReady), evalsOf(elsewhere), evalsOf(answering)]).toEqual([0, 0, 1]);
+      void requestTemplateEval(other.id, { path: null, templates: [] }, 5);
+      expect([evalsOf(notReady), evalsOf(elsewhere), evalsOf(answering)]).toEqual([0, 1, 1]);
+    });
+
+    test("not a frame that has left the page", async () => {
+      const tab = resetWorkspaceWithTab();
+      const gone = await frameFor(tab.id);
+      document.querySelectorAll("iframe")[gone]?.remove();
+      const live = await frameFor(tab.id);
+      void requestTemplateEval(tab.id, { path: null, templates: [] }, 5);
+      expect([evalsOf(gone), evalsOf(live)]).toEqual([0, 1]);
+    });
+
+    test("the frame holding the caret is preferred over the others of the tab", async () => {
+      const tab = resetWorkspaceWithTab();
+      const first = await frameFor(tab.id);
+      const second = await frameFor(tab.id);
+      void requestTemplateEval(tab.id, { path: null, templates: [] }, 5);
+      expect([evalsOf(first), evalsOf(second)]).toEqual([1, 0]);
+      // The second reports the caret in it: it is the one the author is looking at.
+      channels[second]!.deliver({ kind: "editStart", path: ["children", 0] });
+      channels[first]!.posts.length = 0;
+      void requestTemplateEval(tab.id, { path: null, templates: [] }, 5);
+      expect([evalsOf(first), evalsOf(second)]).toEqual([0, 1]);
+    });
   });
 
   test("hover draws the hover box unless it coincides with the selection", async () => {
@@ -4660,6 +4927,26 @@ describe("stylebook host capability", () => {
     expect(render.doc).not.toBe(render.shadowDoc);
     const iframe = canvasEl.querySelector("iframe")!;
     expect(iframe.style.width).toBe("768px");
+  });
+
+  test("a chip pressed in a stylebook frame is nobody's: the stylebook draws no document", async () => {
+    const { channel } = await mountStylebookReady(480);
+    const clicks: CanvasTagClick[] = [];
+    setCanvasTagClickHandler((click) => clicks.push(click));
+    try {
+      channel.deliver({
+        active: true,
+        kind: "tagClick",
+        occurrence: 0,
+        path: ["children", 0],
+        rect: { height: 1, width: 1, x: 0, y: 0 },
+        ref: null,
+        source: "${state.x}",
+      });
+      expect(clicks).toEqual([]);
+    } finally {
+      setCanvasTagClickHandler(null);
+    }
   });
 
   test("a null width mounts full-width (the no-$media single panel)", async () => {

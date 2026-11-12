@@ -184,6 +184,10 @@
               "label": "Writing and formatting"
             },
             {
+              "path": "studio/editing/dynamic-tags",
+              "label": "Dynamic tags"
+            },
+            {
               "path": "studio/editing/slash-commands",
               "label": "Slash commands"
             },

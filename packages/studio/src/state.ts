@@ -12,6 +12,7 @@
  */
 
 import type { ProjectState } from "./types";
+import { readableTemplate } from "./utils/edit-display";
 import {
   displayTagName,
   isBoolean,
@@ -313,7 +314,8 @@ export function nodeLabel(node: JxMutableNode | null | undefined) {
   const tag = displayTagName(node.tagName) || "div";
   const suffix = node.$switch ? " ⇆" : "";
   if (isString(node.textContent) && node.textContent.length > 0) {
-    return `${tag} — ${node.textContent.slice(0, 24)}${suffix}`;
+    // A bound text is named by what it draws from, not by the characters of its expression.
+    return `${tag} — ${readableTemplate(node.textContent).slice(0, 24)}${suffix}`;
   }
   return tag + suffix;
 }

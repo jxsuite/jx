@@ -2363,6 +2363,40 @@
           "of": "pane.primary"
         }
       ]
+    },
+    {
+      "name": "binding-names",
+      "docs": ["studio/editing/dynamic-tags"],
+      "open": {
+        "project": "scripts/screenshots/fixtures/first-collection",
+        "file": "pages/blog.json",
+        "view": "edit"
+      },
+      "steps": [
+        {
+          "args": {
+            "tab": "layers"
+          },
+          "cmd": "view.setActivity"
+        },
+        {
+          "args": {
+            "open": false
+          },
+          "cmd": "view.setNavigator"
+        },
+        {
+          "args": {
+            "display": "names"
+          },
+          "cmd": "canvas.setBindingDisplay"
+        }
+      ],
+      "capture": [
+        {
+          "image": "binding-names"
+        }
+      ]
     }
   ]
 }

@@ -291,7 +291,7 @@ data[data-jx-tag]:empty::before {
   border-radius: 0.25em;
   background: color-mix(in srgb, var(--jx-canvas-binding, #7c3aed) 14%, transparent);
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--jx-canvas-binding, #7c3aed) 45%, transparent);
-  cursor: default;
+  cursor: pointer;
 }
 [data-jx-active-block] data[data-jx-tag]:not(:has(> *))::before {
   content: attr(data-jx-tag-label);
@@ -325,22 +325,6 @@ data[data-jx-tag]:empty::before {
 [data-jx-bound-field]:is(:hover:not(:has([data-jx-bound-field]:hover)), [data-jx-active-block]) {
   outline: 1.5px dotted color-mix(in srgb, var(--jx-canvas-binding, #7c3aed) 70%, transparent);
   outline-offset: 3px;
-}
-[data-jx-bound-field]:is(:hover:not(:has([data-jx-bound-field]:hover)), [data-jx-active-block])::before {
-  content: attr(data-jx-bound-field);
-  position: absolute;
-  z-index: 2;
-  transform: translateY(calc(-100% - 5px));
-  padding: 1px 6px;
-  border-radius: 4px;
-  background: var(--jx-canvas-binding, #7c3aed);
-  color: #fff;
-  font: 500 11px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-  font-style: normal;
-  letter-spacing: normal;
-  text-transform: none;
-  white-space: nowrap;
-  pointer-events: none;
 }
 [${TEMPLATE_ROW_ATTR}] {
   outline: 1.5px dashed color-mix(in srgb, var(--jx-canvas-binding, #7c3aed) 55%, transparent);
@@ -417,23 +401,26 @@ data[data-jx-tag][${STATUS_ATTR}]:empty::before {
  * - One that resolved to nothing draws its name, dimmed, so a binding with no value yet (no sample
  *   row, an empty field) still says what goes there instead of collapsing to nothing.
  * - While the caret is in its block (`[data-jx-active-block]`) it is a named token: tinted, with its
- *   name before its value. No padding and no border, so only the name's own width moves text.
+ *   name before its value, and a pointer over it, since a press there opens the tag (§6.9). No
+ *   padding and no border, so only the name's own width moves text.
  *
  * `data-jx-binding-display="names"` on the root is `canvas.setBindingDisplay`: every text chip
  * draws its name INSTEAD of its value. The value is hidden by a zero font size, so the name is set
  * in a fixed chrome size rather than the block's own.
  *
- * A bound block's dotted outline and label are drawn while it is hovered or holds the caret, and at
- * no other time. Only the innermost hovered one draws, or every bound ancestor would light up with
- * it. The label is absolutely positioned with NO inset and no positioned host: it sits at its
- * static position (the start of the block's content) and is lifted above it, so the block's own
- * `position` is left alone. Making every bound element `position: relative` would re-anchor the
- * author's absolutely positioned descendants.
+ * A bound block's dotted outline is drawn while it is hovered or holds the caret, and at no other
+ * time. Only the innermost hovered one draws, or every bound ancestor would light up with it. Its
+ * LABEL is not drawn here at all: the frame reports the names with the hover (`NodeHit.bound`) and
+ * the host draws them on its own overlay, and on a selected block the Bound pills of the block
+ * action bar say them. A label drawn as the block's own `::before` took the place of a `::before`
+ * the author wrote, and an image, which has no pseudo-elements, got none.
  *
  * A repeater with no items draws one row of its template (`data-jx-template-row`), marked at all
  * times, because that row is no item of the list and must not pass for one. The last row of a list
  * the row cap cut short says how many are drawn of how many while it is hovered. Both labels are
- * positioned the way the bound block's is. An echo row has no rule: it reads as the page.
+ * absolutely positioned with NO inset and no positioned host: each sits at its static position and
+ * is lifted clear of the row, so the row's own `position` is left alone. They are still the row's
+ * own pseudo-elements. An echo row has no rule: it reads as the page.
  *
  * A binding that has no value to draw says why, quietly (`data-jx-status`, written by
  * `stampStatuses` in `iframe-remote.ts`): still loading, failed, or not run on the canvas at all. A

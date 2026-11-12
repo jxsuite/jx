@@ -15,6 +15,8 @@ import { mockFormatAction, seedMarkdownFormat } from "./format-fixture";
 // The save path is reachable without mounting a canvas, and record that it was asked to flush.
 let flushCalls = 0;
 void mock.module("../src/canvas/iframe-host", () => ({
+  requestTemplateEval: () => Promise.resolve(null),
+  revealCanvasPath: () => Promise.resolve(null),
   flushCanvasEdits: async () => {
     flushCalls += 1;
   },

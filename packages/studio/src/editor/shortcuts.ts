@@ -62,7 +62,7 @@ import {
 import { openQuickSearch } from "../panels/quick-search";
 import { inspectorTab } from "../panels/right-panel";
 import { requestClose } from "../panels/tab-strip";
-import { layerHost } from "../ui/layers";
+import { isPopoverOpen, layerHost } from "../ui/layers";
 import { openDialogSurface } from "../surfaces/dialog";
 import {
   DOCK_IDS,
@@ -949,6 +949,19 @@ export function registerStudioCommands(
  * rather than an exception out of the keydown listener.
  */
 function dispatchKey(registry: CommandRegistry, event: KeyboardEvent): string | undefined {
+  /* Bare Escape with a popover up is the platform's, which closes the popover as the key's default
+     action: a chord that ran too would move the selection under a panel that stays open, and
+     claiming the key would cancel the close. */
+  if (
+    event.key === "Escape" &&
+    !event.ctrlKey &&
+    !event.metaKey &&
+    !event.altKey &&
+    !event.shiftKey &&
+    isPopoverOpen()
+  ) {
+    return undefined;
+  }
   const commandId = registry.handleKeyEvent(event, keyScopeStack(registry.context()));
   if (commandId) {
     event.preventDefault();

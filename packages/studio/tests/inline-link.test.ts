@@ -9,7 +9,7 @@
  */
 import "./with-dom.js";
 import { afterEach, describe, expect, test } from "bun:test";
-import { applyLink, insertTemplateToken, linkStateForSelection } from "../src/editor/inline-link";
+import { applyLink, linkStateForSelection } from "../src/editor/inline-link";
 
 function mountEditable(html: string): HTMLElement {
   const el = document.createElement("p");
@@ -109,15 +109,5 @@ describe("applyLink", () => {
     const calls = stubExecCommand();
     applyLink(el, "");
     expect(calls).toEqual([]);
-  });
-});
-
-describe("insertTemplateToken", () => {
-  test("focuses the root and inserts ${token} via execCommand('insertText')", () => {
-    const el = mountEditable("");
-    selectContents(el);
-    const calls = stubExecCommand();
-    insertTemplateToken(el, "state.title");
-    expect(calls).toEqual([["insertText", false, "${state.title}"]]);
   });
 });

@@ -12,10 +12,15 @@ import {
   isTextRun,
   prepareForEditMode,
   prepareTextMember,
+  readableTemplate,
+  refLabel,
+  rowFieldKey,
   tagMarkOf,
+  withTagTitles,
 } from "../src/utils/edit-display";
 import { makeStamper } from "../src/canvas/iframe-render";
 import { renderNode } from "@jxsuite/runtime";
+import { parseDynamicTag } from "@jxsuite/schema/dynamic-tag";
 import { isNodeObject, isString } from "@jxsuite/schema/guards";
 import type { JxScope } from "@jxsuite/runtime/types";
 import type { JsonValue, JxDocumentValue, JxMutableNode } from "@jxsuite/schema/types";
@@ -188,6 +193,51 @@ describe("prepareForEditMode bound text", () => {
       [CUSTOM_TAG_LABEL, "custom"],
       ["Deep", "field"],
     ]);
+  });
+
+  test("a schema title names a tag wherever the row field is read, and no other", () => {
+    const titles = { index: "Position", "item.data.date": "Post date" };
+    const label = (expr: string): string => describeTag(expr, titles).label;
+    expect(label("$map.item.data.date ?? ''")).toBe("Post date");
+    expect(label("item.data.date")).toBe("Post date");
+    expect(label('state.formatDate($map.item.data.date, {"dateStyle":"long"})')).toBe("Post date");
+    expect(label("$map.index")).toBe("Position");
+    expect(label("index")).toBe("Position");
+    // Not the row's: the path names itself.
+    expect(label("state.item.data.date")).toBe("Date");
+    expect(label("$map.other.date")).toBe("Date");
+    expect(label("$map")).toBe("Item");
+    expect(label('item["my-field"]')).toBe("My field");
+    expect(rowFieldKey(parseDynamicTag('item["my-field"].x')!)).toBe('item["my-field"].x');
+    expect(rowFieldKey(parseDynamicTag("item.rows[0]")!)).toBe("item.rows[0]");
+    expect(label("a ? b : c")).toBe(CUSTOM_TAG_LABEL);
+    // A pointer into the row is named the same way; any other by its last segment.
+    expect(refLabel("$map/item/data/date", titles)).toBe("Post date");
+    expect(refLabel("#/state/date", titles)).toBe("Date");
+    expect(refLabel("window#/location/href", titles)).toBe("Href");
+  });
+
+  test("the transform names its chips, and a bound block's own names, by the titles it is given", () => {
+    const doc: JxMutableNode = {
+      attributes: { title: { $ref: "$map/item/data/date" } },
+      tagName: "p",
+      textContent: "On ${$map.item.data.date ?? ''}",
+    };
+    const titled = prepareForEditMode(doc, { "item.data.date": "Post date" });
+    const plain = prepareForEditMode(doc);
+    const chipLabel = (node: JxMutableNode): string | undefined =>
+      (Array.isArray(node.children) ? node.children : [])
+        .map((child) => tagMarkOf(child)?.label)
+        .find((name) => name !== undefined);
+    expect(chipLabel(titled)).toBe("Post date");
+    expect(chipLabel(plain)).toBe("Date");
+    expect(titled.attributes?.["data-jx-bound-field"]).toBe("Post date");
+    // The titles are the walk's own: a walk after it, given none, names by the path again.
+    expect(describeTag("item.data.date").label).toBe("Date");
+    expect(
+      withTagTitles({ "item.data.date": "Inside" }, () => describeTag("item.data.date").label),
+    ).toBe("Inside");
+    expect(describeTag("item.data.date").label).toBe("Date");
   });
 
   test("describeTag names a path, a formula and anything else", () => {
@@ -1010,5 +1060,18 @@ describe("prepareForEditMode empty placeholders", () => {
         tagName: "section",
       }),
     ).toBe("empty-container-placeholder");
+  });
+});
+
+describe("readableTemplate", () => {
+  test("text stays, and each tag is its name in braces: a title where there is one, else the words", () => {
+    expect(readableTemplate("Plain")).toBe("Plain");
+    expect(readableTemplate("By ${item.data.author} on ${item.data.date}!")).toBe(
+      "By {Author} on {Date}!",
+    );
+    expect(readableTemplate("On ${item.data.date}", { "item.data.date": "Post date" })).toBe(
+      "On {Post date}",
+    );
+    expect(readableTemplate("${(d) => d}")).toBe(`{${CUSTOM_TAG_LABEL}}`);
   });
 });

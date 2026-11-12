@@ -10,6 +10,7 @@
 import { installMockPlatform, resetStudioState, resetWorkspaceWithTab } from "./harness";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { resolveCanvasDocument } from "../src/canvas/canvas-live-render";
+import { getNodeAtPath } from "../src/state";
 import { invalidateLayoutCache } from "../src/site-context";
 import { setExtensions } from "../src/format/format-host";
 import { invalidateRepeaterSources } from "../src/canvas/repeater-sources";
@@ -522,6 +523,104 @@ describe("resolveCanvasDocument", () => {
     tab.session.ui.stateValues = { view: "open" };
     const preview = await resolveCanvasDocument(tab.doc.document, tab, "preview");
     expect(preview.renderDoc.state?.view).toEqual(component.state?.view);
+  });
+
+  test("a $switch case chosen for the canvas is drawn in place of the live one, and the document is untouched", async () => {
+    const tabs: JxMutableNode = {
+      children: [
+        {
+          $switch: { $ref: "#/state/tab" },
+          cases: { one: { tagName: "p" }, two: { tagName: "p" } },
+          tagName: "section",
+        },
+      ],
+      state: { tab: "one" },
+      tagName: "x-tabs",
+    };
+    const tab = resetWorkspaceWithTab(tabs, { documentPath: "components/x-tabs.json" });
+    tab.session.ui.canvasMode = "edit";
+    tab.session.ui.switchCases = { '["children",0]': "two" };
+    const before = JSON.stringify(tab.doc.document);
+    const edit = await resolveCanvasDocument(tab.doc.document, tab);
+    const drawn = getNodeAtPath(edit.renderDoc, ["children", 0]);
+    expect(drawn?.$switch).toEqual({ $ref: "#/state/$__case:0" });
+    expect(edit.renderDoc.state?.["$__case:0"]).toEqual({ default: "two" });
+    // The document's own discriminant and state are as they were.
+    expect(edit.renderDoc.state?.tab).toBe("one");
+    expect(JSON.stringify(tab.doc.document)).toBe(before);
+    expect(tab.doc.dirty).toBe(false);
+
+    // Cleared, and in Preview, the switch reads what the page reads.
+    tab.session.ui.switchCases = {};
+    const cleared = await resolveCanvasDocument(tab.doc.document, tab);
+    expect(getNodeAtPath(cleared.renderDoc, ["children", 0])?.$switch).toEqual({
+      $ref: "#/state/tab",
+    });
+    tab.session.ui.switchCases = { '["children",0]': "two" };
+    const preview = await resolveCanvasDocument(tab.doc.document, tab, "preview");
+    expect(getNodeAtPath(preview.renderDoc, ["children", 0])?.$switch).toEqual({
+      $ref: "#/state/tab",
+    });
+    expect(preview.renderDoc.state).not.toHaveProperty("$__case:0");
+  });
+
+  test("the titles a project's schemas give row fields ride with the render, and name its chips", async () => {
+    resetStudioState({
+      projectConfig: {
+        content: {
+          posts: { schema: { properties: { date: { title: "Post date", type: "string" } } } },
+        },
+      },
+    });
+    const list: JxMutableNode = {
+      children: [
+        {
+          $prototype: "Array",
+          items: { $ref: "#/state/posts" },
+          map: { tagName: "time", textContent: "${item.data.date}" },
+        },
+      ],
+      state: { posts: { $prototype: "ContentCollection", contentType: "posts" } },
+      tagName: "main",
+    };
+    const tab = resetWorkspaceWithTab(list, { documentPath: "components/x-list.json" });
+    tab.session.ui.canvasMode = "edit";
+    const edit = await resolveCanvasDocument(tab.doc.document, tab);
+    expect(edit.tagTitles).toEqual({ "item.data.date": "Post date" });
+    expect(JSON.stringify(edit.renderDoc)).toContain('"label":"Post date"');
+    // Preview draws no chips, so it carries no names for them.
+    const preview = await resolveCanvasDocument(tab.doc.document, tab, "preview");
+    expect(preview.tagTitles).toEqual({});
+  });
+
+  test("a page drawn inside its layout names its chips by the same titles", async () => {
+    resetStudioState({
+      isSiteProject: true,
+      projectConfig: {
+        content: {
+          posts: { schema: { properties: { date: { title: "Post date", type: "string" } } } },
+        },
+      },
+    });
+    installMockPlatform({}, { "layouts/base.json": JSON.stringify(LAYOUT) });
+    const page: JxMutableNode = {
+      $layout: "./layouts/base.json",
+      children: [
+        {
+          $prototype: "Array",
+          items: { $ref: "#/state/posts" },
+          map: { tagName: "time", textContent: "${item.data.date}" },
+        },
+      ],
+      state: { posts: { $prototype: "ContentCollection", contentType: "posts" } },
+      tagName: "div",
+    };
+    const tab = resetWorkspaceWithTab(page, { documentPath: "pages/home.json" });
+    tab.session.ui.canvasMode = "edit";
+    const result = await resolveCanvasDocument(tab.doc.document, tab);
+    expect(result.mapperCtx.layoutWrapped).toBe(true);
+    expect(result.tagTitles).toEqual({ "item.data.date": "Post date" });
+    expect(JSON.stringify(result.renderDoc)).toContain('"label":"Post date"');
   });
 
   test("a state value set for the canvas wins over a component's test value for the same entry", async () => {

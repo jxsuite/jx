@@ -1212,6 +1212,97 @@
               }
             },
             {
+              "tagName": "div",
+              "attributes": {
+                "part": "binding-slot",
+                "role": "none"
+              },
+              "style": {
+                "display": "contents"
+              },
+              "$switch": {
+                "$ref": "#/state/bindingState"
+              },
+              "cases": {
+                "shown": {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "ctx-group",
+                    "data-group": "bindings"
+                  },
+                  "children": [
+                    {
+                      "tagName": "span",
+                      "attributes": {
+                        "part": "ctx-group-label"
+                      },
+                      "textContent": "Bound data"
+                    },
+                    {
+                      "tagName": "jx-action-group",
+                      "attributes": {
+                        "part": "bindings"
+                      },
+                      "$props": {
+                        "selects": "single",
+                        "compact": true,
+                        "label": "Show bound data as"
+                      },
+                      "children": [
+                        {
+                          "$prototype": "Array",
+                          "items": {
+                            "$ref": "#/state/bindings"
+                          },
+                          "key": {
+                            "$ref": "$map/item/key"
+                          },
+                          "map": {
+                            "tagName": "jx-action-button",
+                            "attributes": {
+                              "part": "bindings-item",
+                              "data-value": "${$map.item.value}"
+                            },
+                            "$props": {
+                              "size": "sm",
+                              "checked": {
+                                "$ref": "$map/item/checked"
+                              },
+                              "hint": {
+                                "$ref": "$map/item/hint"
+                              }
+                            },
+                            "onclick": {
+                              "$prototype": "Function",
+                              "body": [
+                                {
+                                  "operator": "call",
+                                  "target": {
+                                    "$ref": "#/state/setBindingDisplay"
+                                  },
+                                  "value": [
+                                    {
+                                      "$ref": "$map/item/value"
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            "children": [
+                              {
+                                "tagName": "span",
+                                "textContent": "${$map.item.label}"
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            },
+            {
               "tagName": "button",
               "attributes": {
                 "part": "manage",
