@@ -93,6 +93,42 @@ afterEach(() => {
   document.body.innerHTML = "";
 });
 
+describe("project formulas on a render message (spec.md §13.4)", () => {
+  test("reach the components the frame draws", async () => {
+    const pair = fakeChannelPair<ParentToIframe, IframeToParent>();
+    const container = document.createElement("div");
+    document.body.append(container);
+    teardown = startCanvasIframe({ channel: pair.iframe, container });
+    const doc: JxMutableNode = {
+      $elements: [
+        {
+          children: [{ tagName: "output", textContent: "${state.double(state.n)}" }],
+          state: { n: 4 },
+          tagName: "ieg-doubled",
+        },
+      ],
+      children: [{ tagName: "ieg-doubled" }],
+      tagName: "div",
+    };
+    const double = {
+      $expression: { operator: "*", target: { $ref: "$args/n" }, value: 2 },
+      parameters: ["n"],
+    };
+    const message = renderMsg(1, doc);
+    if (message.kind === "render") {
+      message.projectFormulas = { double };
+    }
+    pair.parent.post(message);
+    pair.flush();
+    await flush();
+    pair.flush();
+    await new Promise((r) => {
+      setTimeout(r, 150);
+    });
+    expect(container.querySelector("output")?.textContent).toBe("8");
+  });
+});
+
 describe("previewAt with a resolvable target", () => {
   test("a dragMove over a stamped element posts a concrete placement preview", async () => {
     const { acks, container, pair } = await bootRendered(3);

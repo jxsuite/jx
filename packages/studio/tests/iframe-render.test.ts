@@ -407,6 +407,51 @@ describe("component registration ordering (props applied)", () => {
     container.remove();
   });
 
+  test("a component drawn in the frame calls the project's formulas, until a render sends none (spec.md §13.4)", async () => {
+    const tag = uniqueTag();
+    const doc: JxDocument = {
+      $elements: [
+        {
+          children: [{ tagName: "output", textContent: "${typeof state.double}:${state.n}" }],
+          state: { n: 4 },
+          tagName: tag,
+        },
+      ],
+      children: [{ tagName: tag }],
+      tagName: "div",
+    };
+    const double = {
+      $expression: { operator: "*", target: { $ref: "$args/n" }, value: 2 },
+      parameters: ["n"],
+    };
+    const draw = async (projectFormulas?: RenderDocumentOptions["projectFormulas"]) => {
+      const container = document.createElement("div");
+      document.body.append(container);
+      const options: RenderDocumentOptions = {
+        container,
+        doc,
+        docBase: "http://localhost:3000/page.json",
+        mapperCtx: ctx,
+        mode: "preview",
+      };
+      if (projectFormulas) {
+        options.projectFormulas = projectFormulas;
+      }
+      const handle = await renderResolvedDocument(options);
+      await new Promise((r) => {
+        setTimeout(r, 150);
+      });
+      const text = rendered(container, "output").textContent;
+      handle.dispose();
+      container.remove();
+      return text;
+    };
+
+    expect(await draw({ double })).toBe("function:4");
+    // The next render names no formulas, and the frame's runtime is cleared of the last one's.
+    expect(await draw()).toBe("undefined:4");
+  });
+
   test("registerElements resolves before renderNode produces the element", async () => {
     const tag = uniqueTag();
     // A component that has no template but records whether its tag was defined at render time. We

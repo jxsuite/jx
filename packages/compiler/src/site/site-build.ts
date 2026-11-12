@@ -103,6 +103,7 @@ import {
   definitionHasSlot,
   escapeStyleText,
   evaluateStaticTemplate,
+  inheritProjectFormulas,
   isComponentFullyStatic,
   isPureNamedFormula,
   isRuntimeOnlyStateKey,
@@ -562,7 +563,10 @@ export async function buildSite(
     // So it is given the deployment base now (site-architecture.md §14.7).
     const serverBaseUrl = serverRoutePrefix(componentBase);
 
-    for (const { doc, path: componentPath } of siteComponents) {
+    for (const { doc: written, path: componentPath } of siteComponents) {
+      /* The definition every page prerenders from, with the project formulas it reads (spec.md
+         §13.4). The module is compiled from the file, and is given the same project state. */
+      const doc = inheritProjectFormulas(written, projectConfig.state);
       try {
         const elementOptions: CompileElementOptions = {
           formats: formatRegistry,
@@ -572,6 +576,7 @@ export async function buildSite(
             return depTag ? `./${depTag}.js` : refPath.replace(/\.(?:json|jxn)$/i, ".js");
           },
           projectRoot,
+          projectState: projectConfig.state,
           rewriteSrc: (specifier: string, docDir: string | null) =>
             withBase(componentBase, rewriteSidecarSrc(specifier, docDir)),
           serverBaseUrl,

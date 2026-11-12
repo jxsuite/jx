@@ -36,7 +36,12 @@ import {
   isNestedSelectorKey,
   transposeCanvasOverlaySelector,
 } from "./css.ts";
-import { evaluateExpression, evaluateOperand, isMutating } from "./expression.ts";
+import {
+  evaluateExpression,
+  evaluateOperand,
+  inheritableFormulas,
+  isMutating,
+} from "./expression.ts";
 import { readPath } from "./pointer.ts";
 import type {
   JxContext,
@@ -107,6 +112,7 @@ import type {
   JxPrototypeDef,
   JxRef,
   JxServerFnDef,
+  JxStateDefinition,
   JxStyle,
 } from "@jxsuite/schema/types";
 import type { EffectScope, Ref } from "@vue/reactivity";
@@ -3839,7 +3845,8 @@ function renderSwitch(def: JxElement, state: JxScope, options?: JxRenderOptions)
           if (gen !== generation) {
             return;
           }
-          const childScope = await buildScope(doc, {}, href, options?._ctx);
+          // An external case is a component boundary, so it inherits what a component does (§13.4).
+          const childScope = await buildScope(withProjectFormulas(doc), {}, href, options?._ctx);
           if (gen !== generation) {
             return;
           }
@@ -5039,6 +5046,50 @@ export async function redefineElement(doc: JxDocument, baseUrl?: string): Promis
   _elementDefs.set(tagName, { base, doc });
 }
 
+/** The project formulas every component scope in this realm inherits (spec.md §13.4). */
+let _projectFormulas: Record<string, JxStateDefinition> = {};
+/** A definition with the inherited formulas merged in, built once per definition. */
+let _withFormulas = new WeakMap<JxDocument, JxDocument>();
+
+/**
+ * Give this realm its project's `state`, from which a component inherits the pure named formulas
+ * (spec.md §13.4, §19.4c).
+ *
+ * A page receives project state merged into its own document, but a component's document is its own
+ * scope and is fetched as written, so the host that knows the project says so once: the site shell
+ * before it renders the page, Studio before it draws a canvas. Only closed pure formulas are taken
+ * (`inheritableFormulas`); data state never crosses. Realm-wide because the custom element registry
+ * is: one tag has one definition per realm, whatever mounted it.
+ *
+ * @param {Record<string, JxStateDefinition> | null} [projectState] - `project.json` `state`; absent
+ *   or null clears it, and a component is then exactly its own document
+ */
+export function setProjectFormulas(projectState?: Record<string, JxStateDefinition> | null): void {
+  _projectFormulas = inheritableFormulas(projectState);
+  _withFormulas = new WeakMap();
+}
+
+/**
+ * A component document as its scope is built: the inherited formulas first, then its own `state`,
+ * so an entry the component declares shadows a project formula of that name. The document itself
+ * when the project gives it nothing.
+ *
+ * @param {JxDocument} doc
+ * @returns {JxDocument}
+ */
+function withProjectFormulas(doc: JxDocument): JxDocument {
+  const cached = _withFormulas.get(doc);
+  if (cached) {
+    return cached;
+  }
+  const own = doc.state ?? {};
+  const added = Object.entries(_projectFormulas).filter(([key]) => !(key in own));
+  const merged =
+    added.length > 0 ? { ...doc, state: { ...Object.fromEntries(added), ...own } } : doc;
+  _withFormulas.set(doc, merged);
+  return merged;
+}
+
 /**
  * Seed the module-level root `$media` map used as the fallback for components that declare their
  * own `@--name` style blocks but carry no own `$media` (buildScope ~279-280). `Jx()` sets this from
@@ -5468,7 +5519,8 @@ export async function defineElement(source: string | JxDocument, baseUrl?: strin
 
       // The definition as it stands NOW — a redefinition since this class was made is honoured.
       const live = _elementDefs.get(tagName) ?? { base: initialBase, doc: initialDef };
-      const def = live.doc;
+      // With the project's formulas under its own state (§13.4): the scope, and what a prop may set.
+      const def = withProjectFormulas(live.doc);
       const defBase = live.base;
 
       // The element is its own dispatch root: a body run without an event emits from the host.
@@ -5576,8 +5628,18 @@ export async function defineElement(source: string | JxDocument, baseUrl?: strin
        * accessor: the property-first interface IS the props mechanism, so defining one would leave
        * `el["#cache"] = x` writing straight through everything above.
        */
+      const declared = live.doc.state ?? {};
       for (const key of Object.keys(def.state ?? {})) {
         if (isPrivateStateKey(key)) {
+          continue;
+        }
+        /* An inherited project formula (§13.4) is a function in the scope, not part of the
+           element's interface: the component's author never chose its name. An accessor for one
+           would put a project formula called `append`, `remove` or `title` over the host's own
+           member of that name, on every component in the realm, and the render below then calls
+           the formula instead of the DOM method. Only an instance that was GIVEN the name as a prop
+           gets the accessor, so a live `$props` binding of that name still reaches state. */
+        if (!(key in declared) && !(key in supplied)) {
           continue;
         }
         /* A name the platform already owns (`title`, `lang`, `hidden`) keeps its native setter, so

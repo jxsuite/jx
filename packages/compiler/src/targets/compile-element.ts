@@ -36,6 +36,7 @@ import {
   emitRequestFetch,
   emitServerCall,
   escapeHtml,
+  inheritProjectFormulas,
   isMutating,
   isSchemaOnly,
   rewriteState,
@@ -115,6 +116,13 @@ export interface CompileElementOptions {
    * `$src` is emitted as written, and nothing can import it.
    */
   projectRoot?: string;
+  /**
+   * The project's `state`, when the component is compiled as part of a project. The component, and
+   * every `$elements` dependency, inherits the pure named formulas it reads from it (spec.md
+   * §13.4), each written into that component's own module. Without it a component is its own
+   * document.
+   */
+  projectState?: Record<string, JxStateDefinition> | undefined;
 }
 
 /**
@@ -176,6 +184,8 @@ export async function compileElement(
         visited.add(doc.tagName);
       }
     }
+
+    doc = inheritProjectFormulas(doc, opts.projectState);
 
     const { tagName } = doc;
     if (!tagName || !tagName.includes("-")) {

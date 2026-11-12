@@ -7,13 +7,14 @@ spec:
   - spec.md#16.5
 code:
   - packages/runtime/src/runtime.ts
+  - packages/runtime/src/expression.ts
 ---
 
 # Props and scope
 
 > **Studio writes this format for you.** Editing an instance's props in the Inspector's **Content** view (see [Working with components](/docs/studio/design/components)) writes the `$props` objects on this page.
 
-Scope is where a name can be seen. Within one document, every `state` entry is visible to every descendant element, with no passing required. Across a component boundary, nothing is visible unless it is passed explicitly through `$props`. That single rule makes data flow statically knowable: you can read a file and see exactly what it depends on.
+Scope is where a name can be seen. Within one document, every `state` entry is visible to every descendant element, with no passing required. Across a component boundary, no state is visible unless it is passed explicitly through `$props`. The one exception is not state at all: a component can call its project's [formulas](#project-formulas). That single rule makes data flow statically knowable: you can read a file and see exactly what it depends on.
 
 ```json
 {
@@ -95,6 +96,34 @@ When a name is looked up, scopes are consulted in order:
 4. `window` globals
 5. `document` globals
 
+## Project formulas
+
+A [named formula](/docs/framework/concepts/expressions#named-formulas-and-call) is a function, not a value, so it is the one thing a component gets from its project without being passed it. Declare `formatDate` once in the project file's `state` and a template inside any component of that project can call it:
+
+```json
+{
+  "tagName": "post-date",
+  "state": { "date": "" },
+  "children": [
+    {
+      "tagName": "time",
+      "textContent": "${state.formatDate(state.date, {\"dateStyle\":\"long\"})}"
+    }
+  ]
+}
+```
+
+What crosses is deliberately narrow:
+
+- **Only pure formulas that read no project data.** The entry has `parameters`, an `$expression` that changes nothing, and reads only its arguments, globals and other inherited formulas. A formula that reads a project value such as `state.currency` stays on the page side, together with anything that calls it. Pass the value as a parameter and it crosses.
+- **Never data.** Project values, `$site` and `$page` are still invisible inside a component. A formula that formats in the page's language therefore uses the default language inside a component, unless the component is passed the language as a prop and hands it on as an argument.
+- **The component's own names win.** A `state` entry or a prop with the same name as a project formula replaces it for that component.
+- **From the project, not from the page.** State declared on a page or a layout never reaches a component, so a component renders the same on every page.
+
+A component used outside a project inherits nothing. If you publish a component for other projects, copy the formulas it calls into its own `state`. That copy also wins over the project's, so the component behaves the same wherever it lands.
+
+In a built site each component's module carries the formulas that component calls, and a static component that calls one is still plain HTML (see [How compilation works](/docs/framework/build#static-detection)).
+
 ## Attribute props
 
 A component that lists an entry in `observedAttributes` can also be given that prop from markup, which is how a component reached from plain HTML or from another framework gets its values:
@@ -128,16 +157,17 @@ Give any prop you expect a host to clear a `default` you would be happy to see. 
 
 ## How it works
 
-Each component builds its own reactive scope from its own `state`. When the runtime renders an instance, it resolves each `$props` entry against the **parent's** scope, then layers the results onto the child's scope: plain values as initial settings, `$ref` values as live references into the parent's reactive state. Nothing else crosses over: a template string or `$ref` inside the child can only see the child's scope plus what was passed.
+Each component builds its own reactive scope from its own `state`. When the runtime renders an instance, it resolves each `$props` entry against the **parent's** scope, then layers the results onto the child's scope: plain values as initial settings, `$ref` values as live references into the parent's reactive state. Nothing else crosses over: a template string or `$ref` inside the child can only see the child's scope plus what was passed. In a project, that scope starts with the project's pure formulas, underneath the component's own entries.
 
 ## Rules
 
 - `$props` is the only mechanism for passing state across a component boundary. Scope never leaks implicitly.
+- A project's pure named formulas are functions, not state, and every component of the project can call them.
 - Within a single component, all `state` entries are available to all descendant elements without passing.
 - Signal scope is bounded at the component (custom element) level, like a CSS custom property.
 - Private `#`-prefixed state entries can never be set via `$props`.
 - A `$ref` prop is live in both directions; a plain value is per-instance and static.
-- Every external dependency must appear in `$props`, which is what makes documents statically analyzable.
+- Every external data dependency must appear in `$props`, which is what makes documents statically analyzable.
 
 ## Related
 

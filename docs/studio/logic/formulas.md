@@ -99,6 +99,8 @@ Library formulas are **copied in**, not linked: picking one writes its full defi
 
 An **Expression** entry in the Data panel is a formula with a name. Once it declares parameters, it becomes callable from any other formula via the `call` operator. The palette lists it under **Formulas**, and its argument rows are labeled with the parameter names. Library formulas arrive with their parameters declared; to add parameters to a formula of your own, edit its entry in the **[Code editor](/docs/studio/logic/code)**. That's how you build a vocabulary: define `discountedPrice` once, call it everywhere.
 
+A formula defined in the project file reaches further than the file it is in. Every page can call it, and so can every component of the project, on the canvas and in the built site, as long as the formula only calculates: it changes nothing and reads no project value other than its own arguments. A component that defines a formula of the same name uses its own.
+
 ## Next
 
 - Give a big formula the whole canvas in the **[Formula workspace](/docs/studio/logic/formula-workspace)**
