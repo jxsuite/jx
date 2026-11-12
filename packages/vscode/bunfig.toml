@@ -1,0 +1,9 @@
+[install]
+registry = "https://registry.npmjs.org"
+
+[test]
+coverageReporter = ["text", "lcov"]
+coverageSkipTestFiles = true
+# The reader and the mapper are dependencies, each gated by its own workspace's run.
+coveragePathIgnorePatterns = ["**/tests/**", "**/dist/**", "../schema/**", "../content-mapper/**"]
+coverageThreshold = { lines = 0.99, functions = 0.99 }

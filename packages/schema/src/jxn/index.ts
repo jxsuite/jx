@@ -6,13 +6,24 @@
  * @docs framework/concepts/jxn-files
  */
 export { classifyJxn } from "./classify.ts";
-export { isJxnPath, isNativeDocumentPath, parseNativeDocument } from "./document.ts";
+export {
+  isJxnPath,
+  isNativeDocumentPath,
+  JXN_LANGUAGE_ID,
+  parseNativeDocument,
+} from "./document.ts";
 export type { JxnKind } from "./classify.ts";
 export { JxnError } from "./errors.ts";
 export type { JxnSpan } from "./errors.ts";
 export { countJxnComments, lintJxn } from "./lint.ts";
 export type { JxnWarning } from "./lint.ts";
-export { kdlProblem, parseJxn, parseJxnWithSpans, parseJxnWithTokens } from "./parse.ts";
+export {
+  JXN_ANNOTATIONS,
+  kdlProblem,
+  parseJxn,
+  parseJxnWithSpans,
+  parseJxnWithTokens,
+} from "./parse.ts";
 export type { JxnTokens } from "./parse.ts";
 export { reconcileJxn } from "./reconcile.ts";
 export type { JxnReader, JxnReading } from "./reconcile.ts";

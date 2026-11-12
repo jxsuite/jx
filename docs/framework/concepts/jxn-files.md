@@ -19,6 +19,9 @@ code:
   - packages/site/src/serve.ts
   - packages/studio/src/services/jxn-language.ts
   - packages/studio/src/format/format-host.ts
+  - packages/vscode/src/extension.ts
+  - packages/vscode/src/completion.ts
+  - packages/vscode/src/schemas.ts
 ---
 
 # Jx Notation (`.jxn`)
@@ -195,6 +198,14 @@ The Code view completes a `.jxn` file from your project's schemas as you type: t
 :::doc-note
 New pages, templates and components are `.jxn`, from **Add new**, from converting a selection to a component, and from New File in `pages/`, `layouts/` and `components/`. The starters and `create-jxsuite` ship their documents as `.jxn` too. A `.json` document you already have stays `.json` until you convert it. Studio's own surfaces and the kit stay `.json`, and so do `*.class.json`, `jx-extension.json`, schemas and data files.
 :::
+
+## In VS Code
+
+The Jx Suite extension for VS Code knows a `.jxn` file as the language `jxn`. It is not published yet, and is built and run from a checkout of the repository ([The VS Code extension](/docs/extending/contributing/monorepo#the-vs-code-extension)).
+
+- **Highlighting.** Nodes, members, strings, numbers and comments are coloured, and so are the annotations Jx Notation gives meaning to, such as `(fn)` and `(ref)`. Any other annotation is marked as a mistake. A multi-line raw string is coloured as TypeScript, because that is where a function body and a script are written.
+- **Completion.** It offers what Studio's Code view offers, from the same reader: tag names, an element's members, the values a member allows, and pointers into the file's `state`. The schemas are the `document.schema.json` and `project.schema.json` in your project's folder, read again whenever they are written again. A file outside any project, and a project that has no schema files yet, are completed from the core schema, which knows no extension's part.
+- **Type checking** of the code the file holds, through TypeScript's language server. See [Type checking](/docs/framework/concepts/type-checking#in-vs-code) for what that needs.
 
 ## Related
 

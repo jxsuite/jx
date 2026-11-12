@@ -21,8 +21,20 @@ import { EVENT_HANDLER_NAMES } from "./event-handlers.ts";
 /** Bytes KDL's parser admits that a person should never have in a text file. */
 const RAW_CONTROL = /(?![\t\n\v\f\r])\p{Cc}/u;
 
-/** The annotations the grammar gives meaning to. Any other is a mistake, and not a thing to ignore. */
-const ANNOTATIONS = new Set(["array", "export", "fn", "object", "on", "ref", "server"]);
+/**
+ * The annotations the grammar gives meaning to. Any other is a mistake, and not a thing to ignore.
+ *
+ * Exported for an editor's grammar, which paints the same set and is tested against this one.
+ */
+export const JXN_ANNOTATIONS: ReadonlySet<string> = new Set([
+  "array",
+  "export",
+  "fn",
+  "object",
+  "on",
+  "ref",
+  "server",
+]);
 
 /** A child node name that means something other than an element. */
 const RESERVED_CHILDREN = new Set(["attributes", "script", "state", "style"]);
@@ -128,7 +140,7 @@ export function token(key: string): string {
 /** A node's annotation, checked. */
 export function annotationOf(reader: Reader, node: Node): string | null {
   const tag = node.getTag();
-  if (tag !== null && !ANNOTATIONS.has(tag)) {
+  if (tag !== null && !JXN_ANNOTATIONS.has(tag)) {
     throw failure(reader, node, `(${tag}) is not an annotation Jx Notation has`);
   }
   if (tag === "ref") {

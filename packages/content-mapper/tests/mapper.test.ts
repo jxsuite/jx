@@ -350,7 +350,8 @@ describe("opening a project", () => {
 
   test("has no folder to read for files the compiler holds without a tsconfig", async () => {
     const opened = await open("");
-    expect(opened.configIdentity).toBe("");
+    // Not empty: the language server reads an empty identity as none, and refuses every file.
+    expect(opened.configIdentity).toBe("inferred");
     expect(opened.watchedFiles).toBeUndefined();
     expect(opened.project.root).toBeNull();
   });
