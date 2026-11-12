@@ -12,11 +12,13 @@
  */
 
 import { mock } from "bun:test";
+import type { IPosition, languages } from "monaco-editor/editor";
 import type { DiagnosticsOptions } from "monaco-editor/languages/features/json/register";
 import type {
   CompilerOptions,
   DiagnosticsOptions as TypeScriptDiagnosticsOptions,
 } from "monaco-editor/languages/features/typescript/register";
+import type { JxnCompletionKinds, JxnCompletionModel } from "../src/services/jxn-completion";
 
 /** The three entries that carry VALUES monaco-setup reads. */
 export const MONACO_EDITOR_ENTRY = "monaco-editor/editor";
@@ -38,10 +40,36 @@ export const MONACO_SETUP_ENTRIES: readonly string[] = [
   ...MONACO_SIDE_EFFECT_ENTRIES,
 ];
 
+/**
+ * The completion provider monaco-setup registers for `.jxn`, as far as a suite drives it: it reads
+ * the model's text and two conversions between a position and an offset, and answers at once.
+ */
+export interface CompletionProviderDouble {
+  provideCompletionItems: (
+    model: JxnCompletionModel,
+    position: IPosition,
+  ) => { suggestions: languages.CompletionItem[] };
+  triggerCharacters?: string[];
+}
+
+/** The `languages` namespace: what teaching Monaco Jx Notation and completing it call. */
+export interface MonacoLanguagesDouble {
+  CompletionItemKind: JxnCompletionKinds;
+  register: (language: languages.ILanguageExtensionPoint) => void;
+  registerCompletionItemProvider: (
+    language: string,
+    provider: CompletionProviderDouble,
+  ) => { dispose: () => void };
+  setLanguageConfiguration: (language: string) => { dispose: () => void };
+  setMonarchTokensProvider: (language: string) => { dispose: () => void };
+}
+
 /** The slice of the `monaco-editor/editor` namespace monaco-setup reaches for. */
 export interface MonacoEditorApiDouble {
   /** The `editor` namespace; monaco-setup calls only `remeasureFonts` on it, once fonts are ready. */
   editor?: { remeasureFonts: () => void };
+  /** Absent in a suite that drives neither the `.jxn` language nor its completion. */
+  languages?: MonacoLanguagesDouble;
 }
 
 export interface MonacoSetupMockOptions {

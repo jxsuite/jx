@@ -893,6 +893,9 @@ async function mountSourceEditor(
       tabSize: 2,
       theme: monacoTheme(),
       wordWrap: "on",
+      // Where the schema offers nothing in a `.jxn` file, nothing is offered (§4.2.1). Monaco would
+      // Otherwise fill the list with the words of the file, which reads as the schema's advice.
+      ...(lang === "jxn" && { wordBasedSuggestions: "off" as const }),
     },
   );
   surface.monacoEditor = sourceEditor;

@@ -13,6 +13,7 @@ code:
   - packages/schema/src/jxn/reconcile.ts
   - packages/schema/src/jxn/document.ts
   - packages/schema/src/jxn/lint.ts
+  - packages/schema/src/jxn/complete.ts
   - packages/server/src/convert.ts
   - packages/server/src/format.ts
   - packages/site/src/serve.ts
@@ -186,6 +187,8 @@ It formats every function body and both sides of a document's script as TypeScri
 ## In Studio
 
 Studio treats a `.jxn` page, layout or component the same as a `.json` one. It lists them in the Site panel, offers them as layouts, draws them on the canvas and as component cards, and finds them in Quick Open. Saving changes only what you changed and keeps every comment. That holds in a shared session too: a comment someone else adds in the Code view survives your edit on the canvas.
+
+The Code view completes a `.jxn` file from your project's schemas as you type: tag names, an element's members, the values a member allows, and pointers into the file's `state`. It also marks type errors in the code the file holds. See [Code editing](/docs/studio/logic/code#completion-in-a-jxn-file).
 
 **Convert to another format** offers Jx Notation for any page or component, and JSON for a `.jxn` one. A layout converts only between `.json` and `.jxn`, because those are the two spellings a layout is read in.
 

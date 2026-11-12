@@ -149,6 +149,8 @@ interface FakeEditor {
   _focused: boolean;
   _ignoreNextChange: boolean;
   _model: FakeModel | null;
+  /** What the editor was created with, where the test reads it. */
+  _wordBasedSuggestions: string | undefined;
   dispose: ReturnType<typeof mock>;
   getModel: () => FakeModel | null;
   getValue: () => string;
@@ -220,12 +222,13 @@ void mock.module("monaco-editor/editor", () => ({
   MarkerSeverity: { Error: 8, Warning: 4 },
   Uri: { parse: (s: string) => ({ toString: () => s }) },
   editor: {
-    create: (_el: HTMLElement, opts?: { model?: FakeModel }) => {
+    create: (_el: HTMLElement, opts?: { model?: FakeModel; wordBasedSuggestions?: string }) => {
       const ed: FakeEditor = {
         _changeHandlers: [],
         _focused: false,
         _ignoreNextChange: false,
         _model: opts?.model ?? null,
+        _wordBasedSuggestions: opts?.wordBasedSuggestions,
         /**
          * Mirrors Monaco, and this is the line that makes the source view's orphan debounce
          * visible: `dispose()` runs `_detachModel()`, so `getModel()` answers null and `getValue()`
@@ -1036,6 +1039,8 @@ describe("the Code view of a .jxn file (§16.7)", () => {
       renderCanvas();
       await waitForEditors(1);
       expect(createdModels[0]!.lang).toBe("jxn");
+      // The schema is the one source of what the list offers (§4.2.1).
+      expect(createdEditors[0]!._wordBasedSuggestions).toBe("off");
       expect(sourceChecks).toHaveLength(1);
       const [init] = sourceChecks;
       expect(init!.id).toMatch(/^src\d+$/u);
