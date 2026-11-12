@@ -1,0 +1,111 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Jx Notation",
+  "scopeName": "source.jxn",
+  "patterns": [
+    { "include": "#comment" },
+    { "include": "#annotation" },
+    { "include": "#code" },
+    { "include": "#string" },
+    { "include": "#constant" },
+    { "include": "#punctuation" },
+    { "include": "#name" }
+  ],
+  "repository": {
+    "comment": {
+      "patterns": [
+        { "name": "comment.line.double-slash.jxn", "match": "//.*$" },
+        { "include": "#blockComment" },
+        { "name": "comment.block.slashdash.jxn", "match": "/-" }
+      ]
+    },
+    "blockComment": {
+      "name": "comment.block.jxn",
+      "begin": "/\\*",
+      "end": "\\*/",
+      "patterns": [{ "include": "#blockComment" }]
+    },
+    "annotation": {
+      "patterns": [
+        {
+          "match": "(\\((?:export|fn|on|server)\\))([^\\s=(){};\"#/\\\\\\[\\]]+)",
+          "captures": {
+            "1": { "name": "storage.type.annotation.jxn" },
+            "2": { "name": "entity.name.function.jxn" }
+          }
+        },
+        {
+          "name": "storage.type.annotation.jxn",
+          "match": "\\((?:array|export|fn|object|on|ref|server)\\)"
+        },
+        { "name": "invalid.illegal.annotation.jxn", "match": "\\([^)\\s]*\\)" }
+      ]
+    },
+    "code": {
+      "begin": "(#+)\"\"\"",
+      "end": "\"\"\"\\1",
+      "beginCaptures": {
+        "0": { "name": "string.quoted.other.raw.jxn punctuation.definition.string.begin.jxn" }
+      },
+      "endCaptures": {
+        "0": { "name": "string.quoted.other.raw.jxn punctuation.definition.string.end.jxn" }
+      },
+      "contentName": "meta.embedded.block.typescript",
+      "patterns": [{ "include": "source.ts" }]
+    },
+    "string": {
+      "patterns": [
+        {
+          "name": "string.quoted.other.raw.jxn",
+          "begin": "(#+)\"",
+          "end": "\"\\1"
+        },
+        {
+          "name": "string.quoted.triple.jxn",
+          "begin": "\"\"\"",
+          "end": "\"\"\"",
+          "patterns": [{ "include": "#escape" }]
+        },
+        {
+          "name": "string.quoted.double.jxn",
+          "begin": "\"",
+          "end": "\"",
+          "patterns": [{ "include": "#escape" }]
+        }
+      ]
+    },
+    "escape": { "name": "constant.character.escape.jxn", "match": "\\\\." },
+    "constant": {
+      "patterns": [
+        { "name": "constant.language.jxn", "match": "#(?:true|false|null|inf|-inf|nan)\\b" },
+        {
+          "name": "constant.numeric.jxn",
+          "match": "[-+]?\\d[\\d_]*(?:\\.\\d[\\d_]*)?(?:[eE][-+]?\\d+)?(?=[\\s;{})]|$)"
+        }
+      ]
+    },
+    "punctuation": {
+      "patterns": [
+        { "name": "punctuation.section.block.begin.jxn", "match": "\\{" },
+        { "name": "punctuation.section.block.end.jxn", "match": "\\}" },
+        { "name": "punctuation.terminator.jxn", "match": ";" },
+        { "name": "punctuation.separator.key-value.jxn", "match": "=" }
+      ]
+    },
+    "name": {
+      "patterns": [
+        { "name": "keyword.other.jxn", "match": "\\$[^\\s=(){};\"]*" },
+        {
+          "match": "^\\s*([^\\s=(){};\"#/\\\\\\[\\]$\\d+-][^\\s=(){};\"#/\\\\\\[\\]]*)(?=[\\s{;]|$)",
+          "captures": { "1": { "name": "entity.name.tag.jxn" } }
+        },
+        {
+          "match": "^\\s*(-)(?=[\\s{;]|$)",
+          "captures": { "1": { "name": "entity.name.tag.jxn" } }
+        },
+        { "name": "entity.other.attribute-name.jxn", "match": "[^\\s=(){};\"#]+(?==)" },
+        { "name": "string.unquoted.jxn", "match": "[^\\s=(){};\"#]+" }
+      ]
+    }
+  }
+}

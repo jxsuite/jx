@@ -1,0 +1,85 @@
+{
+  "name": "jx-vscode",
+  "displayName": "Jx Suite",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Jx Notation in VS Code: highlighting, completion from a project's schemas, and type checking of the code in a .jxn file",
+  "categories": [
+    "Programming Languages"
+  ],
+  "keywords": [
+    "jx",
+    "jxn",
+    "kdl"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jxsuite/jx.git",
+    "directory": "packages/vscode"
+  },
+  "publisher": "jxsuite",
+  "type": "module",
+  "main": "./dist/extension.cjs",
+  "scripts": {
+    "build": "bun run --cwd ../content-mapper build && bun build src/extension.ts --outfile=dist/extension.cjs --format=cjs --target=node --external=vscode && bun build ../content-mapper/bin/server.js --outfile=dist/mapper.mjs --format=esm --target=node",
+    "test": "bun test --isolate",
+    "test:coverage": "bun test --isolate --coverage"
+  },
+  "devDependencies": {
+    "@jxsuite/content-mapper": "workspace:^",
+    "@jxsuite/schema": "workspace:^",
+    "@types/vscode": "1.100.0",
+    "vscode-oniguruma": "2.0.1",
+    "vscode-textmate": "9.3.2"
+  },
+  "contributes": {
+    "languages": [
+      {
+        "id": "jxn",
+        "aliases": [
+          "Jx Notation",
+          "jxn"
+        ],
+        "extensions": [
+          ".jxn"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "jxn",
+        "scopeName": "source.jxn",
+        "path": "./syntaxes/jxn.tmLanguage.json",
+        "embeddedLanguages": {
+          "meta.embedded.block.typescript": "typescript"
+        }
+      }
+    ],
+    "configurationDefaults": {
+      "[jxn]": {
+        "editor.quickSuggestions": {
+          "strings": "on"
+        },
+        "editor.wordBasedSuggestions": "off"
+      }
+    }
+  },
+  "activationEvents": [
+    "onLanguage:jxn"
+  ],
+  "engines": {
+    "vscode": "^1.100.0"
+  },
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": "limited",
+      "description": "Highlighting and completion work everywhere. The code in a .jxn file is type checked only in a trusted workspace, because checking it starts a program."
+    },
+    "virtualWorkspaces": {
+      "supported": "limited",
+      "description": "Highlighting works everywhere. Completion from a project's own schemas and type checking read the project from disk."
+    }
+  }
+}
