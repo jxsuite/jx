@@ -39,6 +39,7 @@ import {
   isSymbol,
   paramNames,
   tagNameCandidates,
+  templateExpressions,
 } from "../src/guards";
 import type { JxStyle } from "../types";
 
@@ -619,5 +620,130 @@ describe("isPrivateStateKey", () => {
    */
   test("a hash elsewhere in the name does not count", () => {
     expect(isPrivateStateKey("colour#hex")).toBe(false);
+  });
+});
+
+describe("templateExpressions", () => {
+  /** The expressions alone: what most cases are about. */
+  const exprs = (template: string): string[] => templateExpressions(template).map((p) => p.expr);
+
+  test("a string with no expression has none", () => {
+    expect(templateExpressions("plain text")).toEqual([]);
+    expect(templateExpressions("costs $5 {really}")).toEqual([]);
+  });
+
+  test("reports where each expression starts and ends", () => {
+    const template = "a ${b} c ${d.e}";
+    const parts = templateExpressions(template);
+    expect(parts).toEqual([
+      { end: 6, expr: "b", start: 2 },
+      { end: 15, expr: "d.e", start: 9 },
+    ]);
+    expect(parts.map((p) => template.slice(p.start, p.end))).toEqual(["${b}", "${d.e}"]);
+  });
+
+  test("an object literal's braces do not close the expression", () => {
+    expect(exprs('${f(x, {"a":1})}')).toEqual(['f(x, {"a":1})']);
+    expect(exprs("${{ a: { b: 1 } }.a.b} and ${c}")).toEqual(["{ a: { b: 1 } }.a.b", "c"]);
+  });
+
+  test("a brace inside a string does not close or open anything", () => {
+    expect(exprs('${a ? "}" : "{"} tail')).toEqual(['a ? "}" : "{"']);
+    expect(exprs("${'it\\'s }'}")).toEqual([String.raw`'it\'s }'`]);
+  });
+
+  test("a brace inside a comment does not close the expression", () => {
+    expect(exprs("${a /* } */ + b}")).toEqual(["a /* } */ + b"]);
+  });
+
+  test("a nested template literal is part of the expression that holds it", () => {
+    expect(exprs("${`${a}-x`}")).toEqual(["`${a}-x`"]);
+    expect(exprs("${`a${`b${c}`}}`} ${d}")).toEqual(["`a${`b${c}`}}`", "d"]);
+  });
+
+  test("a regular expression literal is not read as code", () => {
+    expect(exprs('${x.replace(/"/g, "")} and ${y}')).toEqual(['x.replace(/"/g, "")', "y"]);
+    expect(exprs("${/[/}]/.test(x)}")).toEqual(["/[/}]/.test(x)"]);
+    expect(exprs('${s.replace(/\\/}/, "")}')).toEqual([String.raw`s.replace(/\/}/, "")`]);
+  });
+
+  test("a division is not a regular expression", () => {
+    expect(exprs("${a / b} ${c / d}")).toEqual(["a / b", "c / d"]);
+    expect(exprs("${(a) / 2 + (b) / 2}")).toEqual(["(a) / 2 + (b) / 2"]);
+    // A `/` where an operand may start, with nothing closing it on its line, divides.
+    expect(exprs("${a = /\n 2}")).toEqual(["a = /\n 2"]);
+    expect(exprs("${a * / 2}")).toEqual(["a * / 2"]);
+  });
+
+  test("a backtick or an escape in the template's own text is text", () => {
+    expect(exprs("no `${a}` here")).toEqual(["a"]);
+    expect(exprs("\\${a} then ${b}")).toEqual(["b"]);
+  });
+
+  test("an expression that never closes is not reported: its `${` is text", () => {
+    expect(templateExpressions("${a")).toEqual([]);
+    expect(exprs("${a} then ${b + (c")).toEqual(["a"]);
+    expect(templateExpressions("${a}${")).toEqual([{ end: 4, expr: "a", start: 0 }]);
+  });
+
+  test("a complete expression after one that never closes is still found", () => {
+    // What a text node holds mid-typing; inline formatting snaps a selection to these offsets.
+    expect(templateExpressions("cost ${ and ${a}")).toEqual([{ end: 16, expr: "a", start: 12 }]);
+    expect(templateExpressions(":+${${}")).toEqual([{ end: 7, expr: "", start: 4 }]);
+  });
+
+  test("a division after `++` or `--` is not a regular expression", () => {
+    // Read as one, it ran to the `/` of the NEXT expression and the two were reported as one.
+    expect(exprs("${a++ / 2} and ${b / 3}")).toEqual(["a++ / 2", "b / 3"]);
+    expect(exprs("${a-- / 2} and ${b / 3}")).toEqual(["a-- / 2", "b / 3"]);
+    // One `+` or `-` is still an operator a literal may follow, in this expression or the next.
+    expect(exprs("${a + /}/.test(b)} ${c}")).toEqual(["a + /}/.test(b)", "c"]);
+    expect(exprs("${a++}${/}/.test(b)}")).toEqual(["a++", "/}/.test(b)"]);
+  });
+
+  test("adjacent expressions, an empty one, and text braces around them", () => {
+    expect(templateExpressions("${a}${b}")).toEqual([
+      { end: 4, expr: "a", start: 0 },
+      { end: 8, expr: "b", start: 4 },
+    ]);
+    expect(templateExpressions("${}")).toEqual([{ end: 3, expr: "", start: 0 }]);
+    expect(templateExpressions("} ${a}} {")).toEqual([{ end: 6, expr: "a", start: 2 }]);
+    expect(exprs("$${a} it's ${b} isn't")).toEqual(["a", "b"]);
+  });
+
+  test("a `${` inside a quoted string of an expression opens nothing", () => {
+    expect(exprs("${'${b}'} ${c}")).toEqual(["'${b}'", "c"]);
+    expect(exprs('${"\\"}"} ${c}')).toEqual([String.raw`"\"}"`, "c"]);
+  });
+
+  test("offsets count UTF-16 units, as a string index does", () => {
+    const template = "\u{1F600}${'\u{1F600}}'}\u{1F600}${b}";
+    const parts = templateExpressions(template);
+    expect(parts.map((part) => template.slice(part.start, part.end))).toEqual([
+      "${'\u{1F600}}'}",
+      "${b}",
+    ]);
+  });
+
+  test("an unterminated string falls back to brace depth for that expression", () => {
+    expect(exprs('${a + "} ${b}')).toEqual(['a + "', "b"]);
+    expect(exprs("${a // }")).toEqual(["a // "]);
+  });
+
+  test("the same template is scanned once", () => {
+    const template = "${a} ${{ b: 1 }.b}";
+    expect(templateExpressions(template)).toBe(templateExpressions(template));
+  });
+
+  test("the cache is bounded", () => {
+    for (let i = 0; i < 2100; i += 1) {
+      templateExpressions(`\${n${i}}`);
+    }
+    expect(exprs("${after}")).toEqual(["after"]);
+  });
+
+  test("maskCode still reads a body as code, not as a template", () => {
+    // The template scan shares maskCode's scanner; a body's top-level `${` is not a substitution.
+    expect(maskCode("a = '}'; b = `x${c}`")).toBe("a = ' '; b = ` ${c}`");
   });
 });

@@ -71,7 +71,7 @@ function attr(value: string): string {
  * `<` is escaped as `\u003c`, which JSON.parse restores and an HTML parser cannot mistake for the
  * start of a tag — so no value inside the document, however it was authored, can close the block.
  */
-function jsonPayload(doc: JxDocument): string {
+function jsonPayload(doc: JxDocument | NonNullable<ComposedPage["formulas"]>): string {
   return JSON.stringify(doc).replaceAll("<", String.raw`\u003c`);
 }
 
@@ -86,6 +86,14 @@ export function pageShell(page: ComposedPage, options: ShellOptions): string {
   if (options.eraserUrl) {
     names.push("setBodyEraserLoader");
     setup += `\nsetBodyEraserLoader(() => import(${JSON.stringify(options.eraserUrl)}));`;
+  }
+  /* The project's formulas, for the components the page instantiates (spec.md §13.4). Set before
+     the render, in a block of their own for the reason the document has one. */
+  let formulas = "";
+  if (page.formulas) {
+    names.push("setProjectFormulas");
+    formulas = `\n<script type="application/json" id="jx-project-formulas">${jsonPayload(page.formulas)}</script>`;
+    setup += `\nsetProjectFormulas(JSON.parse(document.getElementById("jx-project-formulas").textContent));`;
   }
   const imports = names.join(", ");
   const style = options.styleUrl
@@ -105,7 +113,7 @@ export function pageShell(page: ComposedPage, options: ShellOptions): string {
   <script>history.scrollRestoration = "manual";</script>
 </head>
 <body>
-<script type="application/json" id="jx-page-document">${jsonPayload(page.doc)}</script>
+<script type="application/json" id="jx-page-document">${jsonPayload(page.doc)}</script>${formulas}
 <script type="module">
 import { ${imports} } from "${attr(options.runtimeUrl)}";${setup}
 const source = document.getElementById("jx-page-document").textContent;

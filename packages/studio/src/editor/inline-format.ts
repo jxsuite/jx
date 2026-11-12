@@ -7,6 +7,8 @@
  * normalization, and whitespace management.
  */
 
+import { templateExpressions } from "@jxsuite/schema/guards";
+
 /** Tags considered inline formatting wrappers */
 const FORMAT_TAGS = new Set([
   "strong",
@@ -586,8 +588,9 @@ function expandBoundary(range: Range, isStart: boolean) {
 
   const text = node.textContent ?? "";
 
-  // Find all ${...} expression spans in this text node (supporting nested braces)
-  const exprs = findTemplateExpressions(text);
+  /* Each ${...} of this text node, by the scanner every reader of a template shares: a brace in a
+     string or an object literal inside the expression does not end it. */
+  const exprs = templateExpressions(text);
   for (const expr of exprs) {
     // Expr = { start, end } — character indices of "$" and the closing "}" + 1
     if (isStart) {
@@ -600,39 +603,4 @@ function expandBoundary(range: Range, isStart: boolean) {
       range.setEnd(node, expr.end);
     }
   }
-}
-
-/**
- * Find all `${...}` expression spans in a string, handling nested braces. Returns array of { start,
- * end } where start is the index of '$' and end is one past the closing '}'.
- *
- * @param {string} text
- * @returns {{ start: number; end: number }[]}
- */
-export function findTemplateExpressions(text: string) {
-  /** @type {{ start: number; end: number }[]} */
-  const results = [];
-  let i = 0;
-  while (i < text.length - 1) {
-    if (text[i] === "$" && text[i + 1] === "{") {
-      const start = i;
-      let depth = 1;
-      let j = i + 2;
-      while (j < text.length && depth > 0) {
-        if (text[j] === "{") {
-          depth += 1;
-        } else if (text[j] === "}") {
-          depth -= 1;
-        }
-        j += 1;
-      }
-      if (depth === 0) {
-        results.push({ end: j, start });
-        i = j;
-        continue;
-      }
-    }
-    i += 1;
-  }
-  return results;
 }

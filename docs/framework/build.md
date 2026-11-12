@@ -51,12 +51,15 @@ The routing decision is a single recursive tree walk (`isDynamic()`) that never 
 - a mapped array (`$prototype: "Array"`)
 - any child that is itself dynamic
 
-Four kinds of state are exempt because they are resolved during the build and then removed:
+Five kinds of state are exempt because they are resolved during the build and then removed:
 
 - the injected `$site` and `$page` context (read-only, never reactive)
 - entries with `timing: "compiler"` (resolved at build time and baked into the HTML)
 - schema-only definitions (pure type information produces no output)
 - a `project.json` `state` entry the page inherits but nothing on it still reads as `state.<key>` once templates are filled in (dropped from that page)
+- a pure [named formula](/docs/framework/concepts/expressions#named-formulas-and-call) that nothing left for the browser still calls, wherever it is declared (a formula is a function, not a value, so a page whose only state is a `formatDate` it calls from a template stays zero-JS)
+
+A formula that a handler, a computed value or a template the build could not resolve still reads as `state.<name>` or `#/state/<name>` ships with the page, along with any formula it calls. A formula that writes state is not pure and always counts as state.
 
 ## What compiles away
 
@@ -159,6 +162,7 @@ Every page is prerendered: the compiler evaluates `${state.…}` against the bui
 - **A constant bakes.** `{"tagline": {"type": "string", "default": "Ship JSON"}}` read as `${state.tagline}` becomes text in the HTML, with no JavaScript behind it.
 - **An entry a handler writes to stays bound.** If any handler in the document assigns to `state.saved` (`=`, `+=`, `++`, or an in-place `push`/`splice`/`sort`), every template reading it keeps its binding, even though the entry has a perfectly ordinary build-time value.
 - **A computed over changing state stays bound.** A computed `$prototype: "Function"` (a body that returns a value and declares no parameters) is evaluated at build time, so a computed is left unresolved too when it reads a written entry, a `$src` value, or a `Request`, however many steps removed.
+- **An empty list is static when the build resolved its data.** A list over a content collection, a `timing: "compiler"` entry, a paged slice, `$site` or `$page`, or a literal array that turns out empty renders nothing and leaves no JavaScript behind. A list over client state that starts empty (`{"rows": {"default": []}}`) keeps its binding, because the browser may still fill it.
 - **An array a computed still reads stays in client state.** Expanding an array into a list at build time no longer drops it: if a computed or a template still reads `state.rows` at runtime, the array ships with the island. Mark it `timing: "compiler"` to say the data really is build-time only.
 
 :::doc-note
@@ -170,6 +174,7 @@ One case the compiler cannot see: a handler loaded through `$src` lives in a Jav
 A component instance is expanded wherever it is written: on a page, slotted into another component, or inside another component's own `children`. Each level is prerendered against its own props, so a card that renders a button that renders an icon comes out as three levels of real markup, with no JavaScript when all three are static. Two details follow from that:
 
 - **Props flow down at build time.** A `$props` value written as a template (`"icon": "${state.icon}"`) resolves against the parent component's state, and the child's host `style` templates (a mask image chosen from a prop, say) resolve against the child's own props (the definition's defaults when the instance passes none) and land on the element as an inline `style`.
+- **A component brings the project formulas it calls.** A formula declared in the project file reaches every component (see [Project formulas](/docs/framework/concepts/props-and-scope#project-formulas)). The build resolves a call inside a static component into the markup, and writes the formula into the module of a live component that still calls it, so a page does not have to keep a formula alive for a component on it.
 - **Each component decides its own JavaScript.** A live component nested inside a static one is prerendered as a shell that loads its own module and upgrades in place; the static parent still ships none.
 - **Children land in the slot they name, at every level.** A live component finds the children it was given when it upgrades, so its first paint and its live render place them alike.
 

@@ -249,7 +249,7 @@ Props are passed via `$props` on an instance node, which is the only mechanism f
 }
 ```
 
-Signal scope is bounded at the component level. No implicit scope leaking.
+Signal scope is bounded at the component level. No implicit scope leaking. A project's formulas are functions rather than signals, so a component can call them without being passed anything: see [Project formulas](/docs/framework/concepts/props-and-scope#project-formulas).
 
 In a `.jxn` document, `tsc` checks each prop against the component's `state`: a name the component does not declare, or a value its entry cannot hold, is an error at the prop. See [Component props](/docs/framework/concepts/type-checking#component-props).
 

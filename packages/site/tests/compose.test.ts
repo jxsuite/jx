@@ -244,6 +244,24 @@ describe("composePage", () => {
     });
   });
 
+  test("the project's pure formulas are set aside for components, and its data is not", async () => {
+    const double = {
+      $expression: { operator: "*", target: { $ref: "$args/n" }, value: 2 },
+      parameters: ["n"],
+    };
+    const page = await compose(
+      { "pages/index.json": JSON.stringify({ tagName: "main" }) },
+      { state: { double, siteName: "Acme" } },
+    );
+    expect(page.formulas).toEqual({ double });
+
+    const bare = await compose(
+      { "pages/index.json": JSON.stringify({ tagName: "main" }) },
+      { state: { siteName: "Acme" } },
+    );
+    expect("formulas" in bare).toBe(false);
+  });
+
   test("$head is merged into the shell's head and REMOVED from the document", async () => {
     // Left on the document, the runtime would inject every entry a second time on mount.
     const page = await compose({

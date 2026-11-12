@@ -6,6 +6,9 @@
  * compile 5. Emit compiled files to dist/ 6. Generate redirects
  *
  * This is the Phase 1 implementation of site-architecture spec §12.
+ *
+ * @docs framework/build
+ * @docs framework/concepts/lists
  */
 
 import {
@@ -23,6 +26,7 @@ import {
   isJsonObject,
   isMappedArray,
   isNonNullObject,
+  isPrototypeDef,
   isRef,
   isString,
   isTemplateString,
@@ -99,12 +103,16 @@ import {
   definitionHasSlot,
   escapeStyleText,
   evaluateStaticTemplate,
+  inheritProjectFormulas,
   isComponentFullyStatic,
+  isPureNamedFormula,
+  isRuntimeOnlyStateKey,
   isSingleExpression,
   liftPropsAttributes,
   nextSlotId,
   preRenderComponentHtml,
   pureSchemeOf,
+  referencesStateKey,
   renderStaticNode,
   resolveHostStyle,
   resolveRefValue,
@@ -555,7 +563,10 @@ export async function buildSite(
     // So it is given the deployment base now (site-architecture.md §14.7).
     const serverBaseUrl = serverRoutePrefix(componentBase);
 
-    for (const { doc, path: componentPath } of siteComponents) {
+    for (const { doc: written, path: componentPath } of siteComponents) {
+      /* The definition every page prerenders from, with the project formulas it reads (spec.md
+         §13.4). The module is compiled from the file, and is given the same project state. */
+      const doc = inheritProjectFormulas(written, projectConfig.state);
       try {
         const elementOptions: CompileElementOptions = {
           formats: formatRegistry,
@@ -565,6 +576,7 @@ export async function buildSite(
             return depTag ? `./${depTag}.js` : refPath.replace(/\.(?:json|jxn)$/i, ".js");
           },
           projectRoot,
+          projectState: projectConfig.state,
           rewriteSrc: (specifier: string, docDir: string | null) =>
             withBase(componentBase, rewriteSidecarSrc(specifier, docDir)),
           serverBaseUrl,
@@ -1550,6 +1562,9 @@ async function compilePage(
    * A page of a paged list gets its slice in place of the entry it pages. The entry was resolved
    * once while the route was expanded, so it is not queried again for every page.
    */
+  /* The state as authored, read after resolution to tell which entries the build itself resolved
+     (see `buildResolvedStateKeys`). A shallow copy: only the identity of each entry is compared. */
+  const authoredState = { ...layoutDoc.state };
   if (route.pagedState && layoutDoc.state && route.pagedState.key in layoutDoc.state) {
     layoutDoc.state[route.pagedState.key] = route.pagedState.items;
   }
@@ -1563,6 +1578,12 @@ async function compilePage(
     registry,
     sections,
   });
+
+  const buildResolved = buildResolvedStateKeys(
+    authoredState,
+    layoutDoc.state ?? {},
+    route.pagedState?.key,
+  );
 
   // Build scope from resolved state so template strings in title/$head can be evaluated
   const scope = buildInitialScope(layoutDoc.state ?? {});
@@ -1599,7 +1620,7 @@ async function compilePage(
 
   // Resolve template strings in the document tree (innerHTML, textContent, style, attributes)
   // So that timing: "compiler" data is baked into the static HTML
-  resolveDocTemplates(layoutDoc, scope);
+  resolveDocTemplates(layoutDoc, scope, buildResolved);
 
   // Expand registered custom elements (apply $props, pre-render, mark static/prerendered).
   // Slot children are serialized to HTML strings during expansion — before compileStyles can walk
@@ -1624,7 +1645,12 @@ async function compilePage(
     // The build reported success (issue #122). `timing: "compiler"` is excluded from this rescue —
     // That is the author declaring the entry build-time-only, so it is stripped as before. An
     // Inherited project entry is only droppable on the same terms (compiler.md §8.1).
+    // A pure named formula is droppable on those terms too, wherever it is declared: every call
+    // The build resolved is gone from the tree, so a formula nothing left for the client reads is
+    // Dead, and keeping it would make a page with one date tag a client page (compiler.md §3).
     const droppable = new Set<string>();
+    /** Entries a `$src` module may read unseen: the inherited ones, and every pure formula. */
+    const unseenReads = new Set<string>(inheritedStateKeys);
     for (const [key, def] of Object.entries(layoutDoc.state)) {
       if (key === "$site" || key === "$page") {
         continue;
@@ -1633,6 +1659,9 @@ async function compilePage(
         delete layoutDoc.state[key];
       } else if (Array.isArray(def)) {
         droppable.add(key);
+      } else if (isPureNamedFormula(def)) {
+        droppable.add(key);
+        unseenReads.add(key);
       }
     }
     for (const key of inheritedStateKeys) {
@@ -1653,14 +1682,17 @@ async function compilePage(
         delete surviving[key];
       }
       /* The whole document, because a root-level `attributes`, `style` or `$switch` read is a read;
-         minus `$head` and `title`, which are resolved into `<head>` and never reach the island. */
-      const { $head: _head, title: _title, ...body } = layoutDoc;
+         minus `$head` and `title`, which are resolved into `<head>` and never reach the island, and
+         `$paths`, which route discovery consumed before this page existed: its `paginate` pointer
+         names the paged entry, and read as a reference it kept every page of a paged list dynamic. */
+      const { $head: _head, $paths: _paths, title: _title, ...body } = layoutDoc;
       const probe: JxElement = { ...body, state: surviving };
       /* A `$src` module's reads are invisible to the scan below, so while one survives every
-         inherited entry stays. Judged on the surviving state: a project-level `$src` Function is
-         itself inherited, and must not keep everything alive on pages that never use it. */
+         inherited entry stays, and every pure formula with it. Judged on the surviving state: a
+         project-level `$src` Function is itself inherited, and must not keep everything alive on
+         pages that never use it. */
       if (collectSrcImports(probe).length > 0) {
-        for (const key of inheritedStateKeys) {
+        for (const key of unseenReads) {
           if (droppable.delete(key)) {
             rescued = true;
           }
@@ -2221,8 +2253,13 @@ function evaluateMapTemplate(str: string, scope: JxScope): JxScope[string] {
  *
  * @param {JxElement | string} node
  * @param {JxScope} scope
+ * @param {ReadonlySet<string>} buildResolved - See {@link buildResolvedStateKeys}
  */
-function resolveDocTemplates(node: JxElement | string, scope: JxScope) {
+function resolveDocTemplates(
+  node: JxElement | string,
+  scope: JxScope,
+  buildResolved: ReadonlySet<string>,
+) {
   // Children are authored JSON, so a member reached by recursion may be neither node nor string.
   if (!isNonNullObject(node)) {
     return;
@@ -2291,14 +2328,14 @@ function resolveDocTemplates(node: JxElement | string, scope: JxScope) {
   }
   const rawChildren = node.children;
   // Legacy whole-children repeater: expand the items into the node's static children.
-  // Only when the expansion actually produced nodes. `expandMappedArrayStatic` returns `null` when
-  // `items` cannot be resolved at build time and `[]` when it resolves to an empty array — and `[]`
-  // Is truthy, so an empty build-time list used to replace the repeater with nothing, discarding the
-  // Definition the client needed. There is no prerendered output to preserve in that case, so the
-  // Repeater is left in place for the client to bind (a page containing one is never zero-JS).
+  // `expandMappedArrayStatic` answers `null` for a list the client must keep: one whose `items`
+  // Cannot be resolved at build time, and one that resolves to an EMPTY array out of client state.
+  // Replacing the second with its empty expansion would discard the definition the client needs,
+  // And the list could never populate. An empty array comes back only for a list the build itself
+  // Resolved, which renders nothing and leaves nothing for the client (compiler.md §8.1).
   if (isMappedArray(rawChildren)) {
-    const expanded = expandMappedArrayStatic(rawChildren, scope);
-    if (expanded && expanded.length > 0) {
+    const expanded = expandMappedArrayStatic(rawChildren, scope, buildResolved);
+    if (expanded) {
       node.children = expanded;
       return;
     }
@@ -2311,7 +2348,7 @@ function resolveDocTemplates(node: JxElement | string, scope: JxScope) {
       const resolvedNodes = resolved as (JxElement | string)[];
       node.children = resolvedNodes;
       for (const child of resolvedNodes) {
-        resolveDocTemplates(child, scope);
+        resolveDocTemplates(child, scope, buildResolved);
       }
     }
   } else if (Array.isArray(node.children)) {
@@ -2326,58 +2363,120 @@ function resolveDocTemplates(node: JxElement | string, scope: JxScope) {
           const resolvedNodes = resolved as (JxElement | string)[];
           node.children.splice(i, 1, ...resolvedNodes);
           for (const spliced of resolvedNodes) {
-            resolveDocTemplates(spliced, scope);
+            resolveDocTemplates(spliced, scope, buildResolved);
           }
           i += resolvedNodes.length;
           continue;
         }
       }
-      // Array pseudo-element among siblings: expand its items in place, on the same
-      // Produced-nothing rule as the whole-children branch above.
+      // Array pseudo-element among siblings: expand its items in place, on the same rule as the
+      // Whole-children branch above. An empty expansion removes the member and nothing else.
       if (isMappedArray(child)) {
-        const expanded = expandMappedArrayStatic(child, scope);
-        if (expanded && expanded.length > 0) {
+        const expanded = expandMappedArrayStatic(child, scope, buildResolved);
+        if (expanded) {
           node.children.splice(i, 1, ...expanded);
           i += expanded.length;
           continue;
         }
       }
-      resolveDocTemplates(child, scope);
+      resolveDocTemplates(child, scope, buildResolved);
       i += 1;
     }
   }
 }
 
 /**
- * Whether a serialized document fragment still reads a given state key — as a `${state.key}`
- * template, a bare `state.key` inside a handler or computed body, or a `#/state/key` $ref.
+ * The top-level state keys whose value the BUILD produced, so nothing in the browser fills them in
+ * later: an entry resolved through its class (`timing: "compiler"`, or no `timing` and a class
+ * mapping, which is how a content collection is written), the entry a paged route replaced with its
+ * slice, and the injected `$site` and `$page` context.
  *
- * @param {string} haystack - JSON-serialized document fragment
- * @param {string} key
- * @returns {boolean}
+ * An authored value is not in the set, whatever its shape: `{ "default": [] }` and a bare `[]` are
+ * client state that starts empty, and a list over one is the client's to populate. A key in the set
+ * that a handler writes is excluded where the set is read ({@link isBuildResolvedListSource}).
+ *
+ * @param {Record<string, JxStateDefinition>} authored - The state before `resolvePrototypes` ran
+ * @param {Record<string, JxStateDefinition>} resolved - The same state afterwards
+ * @param {string} [pagedKey] - The entry a paged route replaced with its slice
+ * @returns {Set<string>}
  */
-function referencesStateKey(haystack: string, key: string): boolean {
-  const escaped = key.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
-  return new RegExp(String.raw`\bstate\.${escaped}\b|#/state/${escaped}(?=["/])`).test(haystack);
+function buildResolvedStateKeys(
+  authored: Record<string, JxStateDefinition>,
+  resolved: Record<string, JxStateDefinition>,
+  pagedKey?: string,
+): Set<string> {
+  const keys = new Set<string>(["$site", "$page"]);
+  if (pagedKey !== undefined) {
+    keys.add(pagedKey);
+  }
+  for (const [key, def] of Object.entries(authored)) {
+    // `resolvePrototypes` replaces an entry it resolved and leaves one it could not resolve as the
+    // Same object, so identity says which happened. A client- or server-timed entry it LOWERED is
+    // Replaced too, by a definition the browser runs, and is not build-resolved.
+    if (
+      isPrototypeDef(def) &&
+      (def.timing === undefined || def.timing === "compiler") &&
+      resolved[key] !== def
+    ) {
+      keys.add(key);
+    }
+  }
+  return keys;
 }
 
 /**
- * Statically expand a mapped array to its resolved item nodes when `items` resolves to an array at
- * build time, or null otherwise (leave the array node for client-side rendering).
+ * Whether a mapped array's `items` is a source the build fully resolved, so an empty result is the
+ * list's final answer: a literal, a `$map/` pointer (a row exists only while the build expands it),
+ * or a `#/state/` pointer into a build-resolved entry no handler writes.
+ *
+ * @param {JxMappedArray["items"]} itemsSrc
+ * @param {JxScope} scope
+ * @param {ReadonlySet<string>} buildResolved - See {@link buildResolvedStateKeys}
+ * @returns {boolean}
+ */
+function isBuildResolvedListSource(
+  itemsSrc: JxMappedArray["items"],
+  scope: JxScope,
+  buildResolved: ReadonlySet<string>,
+): boolean {
+  if (!isRef(itemsSrc)) {
+    return true;
+  }
+  const ref = itemsSrc.$ref;
+  if (ref.startsWith("$map/")) {
+    return true;
+  }
+  // The first reference token, unescaped as RFC 6901 §4 orders it (`~1` before `~0`). A pointer in
+  // Any other scheme names nothing the build is known to have resolved.
+  const [token = ""] = ref.slice("#/state/".length).split("/");
+  const key = token.replaceAll("~1", "/").replaceAll("~0", "~");
+  return ref.startsWith("#/state/") && buildResolved.has(key) && !isRuntimeOnlyStateKey(scope, key);
+}
+
+/**
+ * Statically expand a mapped array to its resolved item nodes, or null when the array node is left
+ * for client-side rendering: `items` does not resolve to an array at build time, or it resolves to
+ * an empty one out of client state, which the client may still fill. An empty array is returned
+ * only for a source the build fully resolved ({@link isBuildResolvedListSource}).
  *
  * @param {JxMappedArray} arrayDef
  * @param {JxScope} scope
+ * @param {ReadonlySet<string>} buildResolved - See {@link buildResolvedStateKeys}
  * @returns {(JxElement | string)[] | null}
  */
 function expandMappedArrayStatic(
   arrayDef: JxMappedArray,
   scope: JxScope,
+  buildResolved: ReadonlySet<string>,
 ): (JxElement | string)[] | null {
   const itemsSrc = arrayDef.items;
   // A non-array, non-ref `items` falls through to the array check below and expands to nothing.
   const items = isRef(itemsSrc) ? resolveRefValue(itemsSrc.$ref, scope) : itemsSrc;
   const mapTemplate = arrayDef.map;
   if (!Array.isArray(items) || !mapTemplate) {
+    return null;
+  }
+  if (items.length === 0 && !isBuildResolvedListSource(itemsSrc, scope, buildResolved)) {
     return null;
   }
   const rows: readonly JxScope[string][] = items;
@@ -2389,7 +2488,7 @@ function expandMappedArrayStatic(
     childScope["$map/item"] = item;
     childScope["$map/index"] = index;
     const expanded = expandMapTemplate(mapTemplate, childScope);
-    resolveDocTemplates(expanded, childScope);
+    resolveDocTemplates(expanded, childScope, buildResolved);
     return expanded;
   });
 }

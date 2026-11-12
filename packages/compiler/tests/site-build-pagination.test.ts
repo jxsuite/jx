@@ -158,6 +158,13 @@ describe("a paged route", () => {
     expect(last).toContain("3 of 3");
   });
 
+  it("ships no script for a page whose list the build wrote out", () => {
+    // `$paths.paginate` points at the paged entry, and is route metadata, not a read of it.
+    for (const page of ["blog/index.html", "blog/3/index.html", "tags/odd/2/index.html"]) {
+      expect(read(page)).not.toContain("<script");
+    }
+  });
+
   it("pages a list once per value of its each source", () => {
     const even = read("tags/even/index.html");
     expect(even).toContain("<li>Post 4</li>");
