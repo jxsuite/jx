@@ -174,6 +174,28 @@ describe("disconnected-host pruning", () => {
     expect(posts.length).toBe(before);
   });
 
+  test("a stylebook specimen is sent the project's formulas, and none without a project's", async () => {
+    const double = {
+      $expression: { operator: "*", target: { $ref: "$args/n" }, value: 2 },
+      parameters: ["n"],
+    };
+    resetStudioState({ projectConfig: { state: { brand: "Acme", double } } });
+    const withFormulas = document.createElement("div");
+    document.body.append(withFormulas);
+    mountStylebookCanvas(1, STYLEBOOK_GENERATED(), withFormulas, 800);
+    channels.at(-1)!.deliver({ kind: "ready" });
+    expect(postsOfKind(channels.at(-1)!, "render")[0]!.projectFormulas).toEqual({ double });
+    withFormulas.remove();
+
+    resetStudioState();
+    const bare = document.createElement("div");
+    document.body.append(bare);
+    mountStylebookCanvas(1, STYLEBOOK_GENERATED(), bare, 800);
+    channels.at(-1)!.deliver({ kind: "ready" });
+    expect(postsOfKind(channels.at(-1)!, "render")[0]).not.toHaveProperty("projectFormulas");
+    bare.remove();
+  });
+
   test("postStyleUpdateToStylebookHosts prunes a disconnected stylebook host", async () => {
     const canvasEl = document.createElement("div");
     document.body.append(canvasEl);

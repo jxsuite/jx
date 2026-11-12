@@ -26,6 +26,7 @@ import {
   setCanvasDelinkPopovers,
   setCanvasViewportTranspose,
   setDocumentParser,
+  setProjectFormulas,
   setRootMedia,
   setSkipAutoRequests,
   setSkipServerFunctions,
@@ -43,7 +44,7 @@ import { SITE_STYLE_ID, buildSiteStyleCSS } from "@jxsuite/site/site-style";
 import type { CanvasMode, WireDiffMarks, WireLocale } from "./iframe-protocol";
 import { isNonNullObject, isString, isTemplateString } from "@jxsuite/schema/guards";
 import { BOUND_FIELD_ATTR } from "../utils/edit-display";
-import type { JxDocument, JxElement, JxStyle } from "@jxsuite/schema/types";
+import type { JxDocument, JxElement, JxStateDefinition, JxStyle } from "@jxsuite/schema/types";
 import type { PathMapCtx } from "./path-mapping";
 
 /**
@@ -1153,6 +1154,8 @@ export interface RenderDocumentOptions {
   assets?: AssetContext | null;
   /** This render may fetch automatic `Request` entries even outside preview (Data-panel Refresh). */
   allowAutoRequests?: boolean;
+  /** The project's pure named formulas a component inherits (spec.md §13.4); absent for none. */
+  projectFormulas?: Record<string, JxStateDefinition>;
   /** Change marks for a git-diff artboard, in this side's own document coordinates. */
   diffMarks?: WireDiffMarks | null;
   /** Serialized path of the popover to draw open, or null/absent for none. */
@@ -1231,6 +1234,9 @@ export async function prepareResolvedDocument(
   // Directly and never the runtime's `Jx()` entry, which is the only other place _rootMedia is set).
   // Set it every render (even to `{}`) so a stale map from a previous document cannot leak.
   setRootMedia(opts.doc.$media ?? {});
+  /* The project's formulas, for every component the frame instantiates (spec.md §13.4). Before the
+     elements are registered, and every render, so a project that dropped one stops supplying it. */
+  setProjectFormulas(opts.projectFormulas ?? null);
   // Register components BEFORE renderNode. The runtime only applies a custom element's `$props` when
   // That element is ALREADY defined (renderNode gates renderCustomElementWithProps on a truthy
   // `customElements.get(tagName)`); if we register after render, every component paints with its

@@ -13,12 +13,15 @@ import {
   INTL_HELPER_PATHS,
   INTL_LOCALE_PARAM,
 } from "@jxsuite/schema/intl";
-import { isFunction, isNonNullObject, isString } from "@jxsuite/schema/guards";
+import { isFunction, isNamedFormulaDef, isNonNullObject, isString } from "@jxsuite/schema/guards";
 import type {
   CemParameter,
+  JxDocumentValue,
+  JxExpressionDef,
   JxExpressionNode,
   JxExpressionOperand,
   JxRef,
+  JxStateDefinition,
 } from "@jxsuite/schema/types";
 import type { JxScope, JxScopeValue } from "./types.ts";
 import { readPath, refAccessor, refSegments } from "./pointer.ts";
@@ -365,6 +368,125 @@ export function isBlessedGlobal(ref: string): boolean {
  */
 export function isMutating(op: string) {
   return MUTATING_OPS.has(op);
+}
+
+// ─── Pure named formulas, and the ones a component inherits ─────────────────
+
+/** Whether an operand, or any node nested in it, carries a mutating operator. */
+function operandMutates(operand: JxExpressionOperand | undefined): boolean {
+  if (Array.isArray(operand)) {
+    return operand.some((item) => operandMutates(item));
+  }
+  if (operand === undefined || !isNodeOperand(operand)) {
+    return false;
+  }
+  return (
+    isMutating(operand.operator) ||
+    [operand.target, operand.value, operand.initial, operand.default].some((part) =>
+      operandMutates(part),
+    ) ||
+    Object.values(operand.cases ?? {}).some((part) => operandMutates(part))
+  );
+}
+
+/**
+ * Whether a state entry is a pure named formula (spec.md §19.4c): an `$expression` with
+ * `parameters` whose body mutates nothing.
+ *
+ * Such an entry is a function, not reactive state. It holds no value, nothing can write it, and
+ * reading it subscribes to nothing, so the entry by itself gives a page nothing to do in the
+ * browser: only a read of it that is left for the client does (compiler.md §3).
+ *
+ * @param {JxDocumentValue | JxStateDefinition | undefined} def
+ * @returns {boolean}
+ */
+export function isPureNamedFormula(
+  def: JxDocumentValue | JxStateDefinition | undefined,
+): def is JxExpressionDef & { parameters: unknown[] } {
+  return isNamedFormulaDef(def) && !operandMutates(def.$expression);
+}
+
+/** The ref schemes a formula body reads that are not the scope it is built in (spec.md §7.4). */
+const OUTSIDE_SCOPE_REF = /^(?:\$args\/|\$reduce\/|\$map\/|window#\/|document#\/|event#\/)/;
+
+/**
+ * Collect into `into` the state key each scope `$ref` in an operand names. A plain-object literal
+ * is a value, not a tree (spec.md §19.2), so nothing inside one is a read.
+ */
+function collectScopeReads(operand: JxExpressionOperand | undefined, into: Set<string>): void {
+  if (Array.isArray(operand)) {
+    for (const item of operand) {
+      collectScopeReads(item, into);
+    }
+    return;
+  }
+  if (operand === undefined || !isNonNullObject(operand)) {
+    return;
+  }
+  if (isRefOperand(operand)) {
+    if (!OUTSIDE_SCOPE_REF.test(operand.$ref)) {
+      // `#/state/x`, `parent#/x` and a bare `x` all resolve in the scope (spec.md §15.4).
+      const path = operand.$ref.replace(/^(?:#\/state\/|parent#\/)/, "");
+      into.add(refSegments(path)[0] ?? "");
+    }
+    return;
+  }
+  if (isNodeOperand(operand)) {
+    const parts = [operand.target, operand.value, operand.initial, operand.default];
+    for (const part of [...parts, ...Object.values(operand.cases ?? {})]) {
+      collectScopeReads(part, into);
+    }
+  }
+}
+
+/**
+ * The state keys a named formula's body reads from the scope it is built in: every `#/state/key`,
+ * `parent#/key` or schemeless `$ref` in it, by the key it names. `$args/`, an iteration context and
+ * a global are not the scope.
+ *
+ * @param {JxExpressionDef} def
+ * @returns {string[]}
+ */
+export function formulaScopeReads(def: JxExpressionDef): string[] {
+  const reads = new Set<string>();
+  collectScopeReads(def.$expression, reads);
+  return [...reads];
+}
+
+/**
+ * The project `state` entries a component inherits (spec.md §13.4): the pure named formulas that
+ * are closed, meaning every scope read in the body names another inherited formula.
+ *
+ * Only a function crosses the component boundary. A formula that reads project data state would
+ * carry that state across with it, so it stays on the page side, and so does anything that calls
+ * it. The project's injected context names (`$site`, `$page`) are never entries of this kind.
+ *
+ * @param {Record<string, JxStateDefinition> | null | undefined} projectState - `project.json`
+ *   `state`
+ * @returns {Record<string, JxStateDefinition>} In the project's order; empty when there are none
+ * @docs framework/concepts/props-and-scope
+ */
+export function inheritableFormulas(
+  projectState: Record<string, JxStateDefinition> | null | undefined,
+): Record<string, JxStateDefinition> {
+  const candidates = new Map<string, JxExpressionDef>();
+  for (const [key, def] of Object.entries(projectState ?? {})) {
+    if (!key.startsWith("$") && isPureNamedFormula(def)) {
+      candidates.set(key, def);
+    }
+  }
+  // Drop what reads outside the set until nothing does: a caller of a dropped formula goes too.
+  let settled = false;
+  while (!settled) {
+    settled = true;
+    for (const [key, def] of candidates) {
+      if (formulaScopeReads(def).some((read) => !candidates.has(read))) {
+        candidates.delete(key);
+        settled = false;
+      }
+    }
+  }
+  return Object.fromEntries(candidates);
 }
 
 // ─── Runtime Evaluation ──────────────────────────────────────────────────────
