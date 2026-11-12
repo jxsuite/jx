@@ -5,6 +5,8 @@ code:
   - packages/studio/src/editor/convert-to-repeater.ts
   - packages/studio/src/editor/repeater-scope.ts
   - packages/studio/src/utils/edit-display.ts
+  - packages/studio/src/canvas/iframe-rows.ts
+  - packages/studio/src/canvas/path-mapping.ts
   - packages/studio/src/panels/events-panel.ts
 ---
 
@@ -42,7 +44,7 @@ The Content tab has nothing to say about a repeating list, and says so: select o
 
 ## Edit the template
 
-Select the repeater and click **Edit template →** in the **Repeating list** section, or just click into the repeated content on the canvas. On the design canvas the template renders once, as the single element you design; switch on the **Preview** toggle to see the list expanded with its real items (see **[Modes and preview](/docs/studio/interface/modes)**).
+Select the repeater and click **Edit template →** in the **Repeating list** section, or just click into the repeated content on the canvas. The canvas draws the whole list, one copy of the template per item, each filled in from its own item. See [Rows on the canvas](#rows-on-the-canvas) for how the copies behave.
 
 Inside the template, each item's data is in scope:
 
@@ -68,7 +70,7 @@ A Markdown entry's body can fill any empty element in the template, such as the 
 2. In the Inspector's **Content** view, open the **Element** section and set the **Text Content** row's value source to **From data…**.
 3. Pick `item.$children`.
 
-The row now reads **Content**. The canvas draws the first entry's own headings, paragraphs and links in the element. They belong to the entry rather than to the page, so you can select the element but not type into them. To go back to text, pick another field or switch the row to **Fixed value**.
+The row now reads **Content**. In each row the canvas draws that entry's own headings, paragraphs and links in the element. They belong to the entry rather than to the page, so you can select the element but not type into them. To go back to text, pick another field or switch the row to **Fixed value**.
 
 `item.$children` is only offered on this row, because the rest of Studio's bindings hold a single value and a body is a tree of elements. It is not offered for a collection in a format with no parsed body, such as CSV, or on an element that already has children of its own.
 
@@ -76,7 +78,20 @@ The row now reads **Content**. The canvas draws the first entry's own headings, 
 The pick is stored as computed children rather than as a pointer, so in a Markdown page it reads `::div{children="${item.$children ?? []}"}`. Keep `@jxsuite/parser` current in a site that uses this: versions from before Studio offered this binding drop the attribute on save.
 :::
 
-On the canvas the template is drawn once, with the list's first item: its title, dates and picture are the first entry's, whether the template is a component or plain elements. Text that reads the item is a tag you can type around, and what you save is the binding, so the edit applies to every row. A list with no items yet draws the template with empty tags that show their names.
+## Rows on the canvas
+
+In Edit and Design the canvas draws every item of the list: each row shows its own title, dates and picture, whether the template is a component or plain elements. There is still only one template. Every row is a copy of it, so whatever you change in one row changes in all of them.
+
+- **Click any row to work in it.** Clicking selects the element you clicked, in that row, and a caret goes where you put it. Text that reads the item is a tag you can type around, and what you save is the binding, so typing beside a title in the third row changes the template and every row redraws with its own title.
+- **One row is active at a time.** Selection boxes, the block action bar and the caret all sit in the row you last clicked. The other rows are a live picture of the same template. Clicking another row moves everything there, and nothing is written to your document when you do.
+- **Selecting the repeater itself** in the Outline draws one box around the whole list.
+- **A list inside a list** works the same way at both levels: click an inner item and its outer row becomes the active one too.
+- **Dragging onto the edge of a row** places what you drag before or after the whole list, since a template has one root element. The middle of a row is inside the template.
+- **A text selection stays in its row.** Drag or :kbd[Shift]-click from one row into the next and the selection stops at the end of the row you started in. The next row is the same template, so there is no more text there to select.
+
+A long list is cut short on the canvas so the page stays quick to work with: 24 rows are drawn, and the last one says how many there are when you point at it. Your site always gets the whole list. Studio has no control for drawing more rows yet. The number is set by the `canvas.setRepeaterRows` command, listed with the rest in **[Commands](/docs/studio/interface/commands)**, which a script or an assistant can run.
+
+A list with no items still shows its template, as one row marked **No items: showing the template**. Its tags are empty, so each shows its name, and the parts a condition would hide are all shown so you can reach them. The row goes as soon as the list has an item.
 
 :::doc-warning
 The template is one element styled once, so changes to it apply to every repeated item. To make one item special, style by position with a selector like `:first-child` (see **[Hover states and selectors](/docs/studio/design/states-and-selectors)**) or use data-driven styling.

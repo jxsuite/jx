@@ -18,6 +18,7 @@ import { patchDisturbsActiveEdit } from "../src/canvas/iframe-entry";
 import { applyIframePatch, textOpRedraws } from "../src/canvas/iframe-patch";
 import { blockTextLength, offsetOf } from "../src/canvas/iframe-position";
 import { makeStamper, MISSING_IMAGE_SELECTOR } from "../src/canvas/iframe-render";
+import { newRowView, rowHooks, syncRows } from "../src/canvas/iframe-rows";
 import {
   isAtomicInline,
   isWholeTemplate,
@@ -57,7 +58,6 @@ import type { JxDocumentValue, JxMutableNode } from "@jxsuite/schema/types";
 import type { JxPath } from "../src/state";
 
 const MAPPER = {
-  arrayPaths: new Set<string>(),
   canvasMode: "edit",
   layoutWrapped: false,
   pageContentOffset: null,
@@ -823,16 +823,34 @@ describe("a binding that reads a row is not evaluated without one", () => {
 
   test("an empty list's template row is not hidden, and its links are not /p/undefined", async () => {
     const doc = LIST([]);
-    const el = canvas(doc, await scopeOf({ rows: [] }));
+    // Drawn as the frame draws a document: with the list hooks, which give an empty list one row.
+    const view = newRowView({
+      samples: { '["children",0]': { img: "", published: false, slug: "" } },
+    });
+    const prepared = prepareForEditMode(structuredClone(doc));
+    const el = renderNode(prepared, await scopeOf({ rows: [] }), {
+      ...rowHooks(view, MAPPER, () => {}),
+      _path: [],
+      onNodeCreated: makeStamper(MAPPER, view),
+    });
+    if (!(el instanceof HTMLElement)) {
+      throw new TypeError("expected an element");
+    }
+    syncRows(el, view);
     const article = el.querySelector("article");
+    // The template row IS drawn, and says so; `!item.published` is true of its made-up item.
+    expect(article?.dataset.jxTemplateRow).toBe("");
     expect(article?.hasAttribute("hidden")).toBe(false);
     expect(article?.dataset.href).toBeUndefined();
     expect(el.querySelector("p")?.hasAttribute("hidden")).toBe(false);
-    // Its images name no source at all, which the edit stylesheet draws as the placeholder.
-    for (const img of el.querySelectorAll("img")) {
-      expect(img.hasAttribute("src")).toBe(false);
+    /* Its images name no source: the property reads the made-up item's empty field, and the
+       attribute is left off. The edit stylesheet draws both as the placeholder. */
+    const [byProperty, byAttribute] = el.querySelectorAll("img");
+    expect(byProperty?.getAttribute("src") ?? "").toBe("");
+    expect(byAttribute?.hasAttribute("src")).toBe(false);
+    for (const img of [byProperty, byAttribute]) {
+      expect(MISSING_IMAGE_SELECTOR.split(",").some((part) => img?.matches(part))).toBe(true);
     }
-    expect(MISSING_IMAGE_SELECTOR.split(",").some((part) => el.querySelector(part))).toBe(true);
   });
 
   test("with a row, the row decides", async () => {
@@ -955,8 +973,10 @@ describe("a patch that redraws the caret's block", () => {
   const CTX = async (): Promise<IframeRenderCtx> => ({
     defs: await scopeOf(),
     docBase: "http://localhost/",
+    hooks: {},
     mapperCtx: { ...MAPPER },
     mode: "edit",
+    rows: newRowView(),
   });
 
   /** A container holding `doc` as the frame's full render stamps it. */

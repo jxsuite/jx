@@ -1,9 +1,20 @@
+import "./harness";
 import { describe, expect, test } from "bun:test";
-import { classifyRenderNode, parseJxPath, serializeJxPath } from "../src/canvas/path-mapping";
+import {
+  classifyRenderNode,
+  enclosingRepeaterPaths,
+  jxInstanceSelector,
+  pageDocPath,
+  parseJxPath,
+  rowsOf,
+  serializeJxPath,
+  stampedPathOf,
+  stripRowIndices,
+  withRowIndices,
+} from "../src/canvas/path-mapping";
 import type { PathMapCtx } from "../src/canvas/path-mapping";
 
 const plain: PathMapCtx = {
-  arrayPaths: new Set(),
   canvasMode: "design",
   layoutWrapped: false,
   pageContentOffset: null,
@@ -24,6 +35,7 @@ describe("classifyRenderNode", () => {
     expect(classifyRenderNode(["children", 1], { tagName: "p" }, plain)).toEqual({
       kind: "path",
       path: ["children", 1],
+      rows: [],
     });
   });
 
@@ -40,6 +52,7 @@ describe("classifyRenderNode", () => {
     expect(classifyRenderNode(["children", 0], marker, plain)).toEqual({
       kind: "path",
       path: ["children", 0],
+      rows: [],
     });
   });
 
@@ -95,42 +108,134 @@ describe("classifyRenderNode", () => {
     expect(classifyRenderNode(["children", 0, "children", 2, "children", 3], {}, ctx)).toEqual({
       kind: "path",
       path: ["children", 1, "children", 3],
+      rows: [],
     });
   });
 
-  test("collapses a repeater-perimeter template hop to a map segment", () => {
-    const ctx: PathMapCtx = { ...plain, arrayPaths: new Set(["children/2"]) };
-    // [...P, "children", 0, ...rest] with P = ["children", 2] → [...P, "map", ...rest].
-    expect(classifyRenderNode(["children", 2, "children", 0, "children", 1], {}, ctx)).toEqual({
+  test("a row's index is a coordinate of its own, never part of the path", () => {
+    // The runtime draws row 3 of the repeater at ["children", 2] at [...P, "map", 3, ...rest].
+    expect(classifyRenderNode(["children", 2, "map", 3, "children", 1], {}, plain)).toEqual({
       kind: "path",
       path: ["children", 2, "map", "children", 1],
+      rows: [3],
     });
+    // Every row's instance of a node has the template's path, so the paths of two rows are equal.
+    const first = classifyRenderNode(["children", 2, "map", 0, "children", 1], {}, plain);
+    const fourth = classifyRenderNode(["children", 2, "map", 3, "children", 1], {}, plain);
+    expect(first).toMatchObject({ path: ["children", 2, "map", "children", 1], rows: [0] });
+    expect(fourth).toMatchObject({ path: ["children", 2, "map", "children", 1], rows: [3] });
   });
 
-  test("preview does not remap, because preview populates no arrayPaths", () => {
-    // The empty set IS preview's answer. `canvas-live-render.ts` fills `arrayPaths` only where it
-    // Also ran `prepareForEditMode`, so a preview ctx carrying repeater paths is unconstructible
-    // Outside a test — which is why this asserts the reachable state rather than the old mode check.
-    const ctx: PathMapCtx = { ...plain, canvasMode: "preview", arrayPaths: new Set() };
-    expect(classifyRenderNode(["children", 2, "children", 0], {}, ctx)).toEqual({
+  test("a row's root, a nested repeater and a whole-children repeater each strip", () => {
+    expect(classifyRenderNode(["children", 2, "map", 5], {}, plain)).toEqual({
       kind: "path",
-      path: ["children", 2, "children", 0],
+      path: ["children", 2, "map"],
+      rows: [5],
+    });
+    // Outer row 1, inner row 4: one coordinate per repeater, outermost first.
+    expect(
+      classifyRenderNode(
+        ["children", 0, "map", 1, "children", 2, "map", 4, "children", 0],
+        {},
+        plain,
+      ),
+    ).toEqual({
+      kind: "path",
+      path: ["children", 0, "map", "children", 2, "map", "children", 0],
+      rows: [1, 4],
+    });
+    expect(classifyRenderNode(["children", 0, "children", "map", 2], {}, plain)).toEqual({
+      kind: "path",
+      path: ["children", 0, "children", "map"],
+      rows: [2],
     });
   });
 
-  test("remaps in git-diff, where the perimeters exist and the collapse used to be skipped", () => {
-    // The regression this pair exists for: `prepareForEditMode` builds repeater perimeters for
-    // Every non-preview mode, so a git-diff artboard HAS them. Naming only design and edit here
-    // Stamped every node under a repeater with a render path the document cannot address, and a
-    // Diff mark addressed in document space would then resolve to nothing or to the wrong element.
+  test("rows are stripped below a layout prefix, in every mode that renders them", () => {
     const ctx: PathMapCtx = {
       ...plain,
       canvasMode: "git-diff",
-      arrayPaths: new Set(["children/2"]),
+      layoutWrapped: true,
+      pageContentOffset: 1,
+      pageContentPrefix: ["children", 0, "children"],
     };
-    expect(classifyRenderNode(["children", 2, "children", 0, "children", 1], {}, ctx)).toEqual({
-      kind: "path",
-      path: ["children", 2, "map", "children", 1],
+    expect(
+      classifyRenderNode(["children", 0, "children", 3, "map", 2, "children", 0], {}, ctx),
+    ).toEqual({ kind: "path", path: ["children", 2, "map", "children", 0], rows: [2] });
+    // The prefix alone, with the rows left in: what a list's own render path maps to.
+    expect(pageDocPath(["children", 0, "children", 3, "map", 2], ctx)).toEqual([
+      "children",
+      2,
+      "map",
+      2,
+    ]);
+    // A path that is not under the prefix is not the page's, and is left as it is.
+    expect(pageDocPath(["children", 4], ctx)).toEqual(["children", 4]);
+  });
+});
+
+describe("row coordinates", () => {
+  test("a $switch case named `map` is a key, not a row", () => {
+    // The body of a case is a node, so no number follows; a `cases` key is skipped all the same.
+    expect(stripRowIndices(["cases", "map", "children", 0])).toEqual({
+      path: ["cases", "map", "children", 0],
+      rows: [],
     });
+    expect(stripRowIndices(["cases", "map", 3])).toEqual({ path: ["cases", "map", 3], rows: [] });
+    expect(enclosingRepeaterPaths(["cases", "map", "children", 0])).toEqual([]);
+    expect(withRowIndices(["cases", "map", "children", 0], [7])).toEqual([
+      "cases",
+      "map",
+      "children",
+      0,
+    ]);
+  });
+
+  test("the repeaters around a path are the prefixes before each map", () => {
+    expect(enclosingRepeaterPaths(["children", 1])).toEqual([]);
+    expect(
+      enclosingRepeaterPaths(["children", 0, "map", "children", 2, "map", "children", 0]),
+    ).toEqual([
+      ["children", 0],
+      ["children", 0, "map", "children", 2],
+    ]);
+  });
+
+  test("withRowIndices is the inverse of stripRowIndices", () => {
+    const render = ["children", 0, "map", 1, "children", 2, "map", 4, "children", 0];
+    const { path, rows } = stripRowIndices(render);
+    expect(withRowIndices(path, rows)).toEqual(render);
+    // A repeater with no row named is left without one, and extra rows name nothing.
+    expect(withRowIndices(path, [1])).toEqual([
+      "children",
+      0,
+      "map",
+      1,
+      "children",
+      2,
+      "map",
+      "children",
+      0,
+    ]);
+    expect(withRowIndices(["children", 1], [9])).toEqual(["children", 1]);
+  });
+
+  test("an element's path and rows are read from whichever attribute holds them", () => {
+    document.body.innerHTML =
+      `<p id="a" data-jx-path='["children",0,"map"]' data-jx-row="[0]"></p>` +
+      `<p id="b" data-jx-echo-path='["children",0,"map"]' data-jx-row="[1]"></p>` +
+      `<p id="c"></p>`;
+    const [a, b, c] = ["a", "b", "c"].map((id) => document.querySelector<HTMLElement>(`#${id}`)!);
+    expect(stampedPathOf(a!)).toBe('["children",0,"map"]');
+    expect(stampedPathOf(b!)).toBe('["children",0,"map"]');
+    expect(stampedPathOf(c!)).toBeUndefined();
+    expect(rowsOf(a!)).toEqual([0]);
+    expect(rowsOf(b!)).toEqual([1]);
+    expect(rowsOf(c!)).toEqual([]);
+    // Both rows answer the instance selector; a path with a quote in it is escaped like the other.
+    const selector = jxInstanceSelector('["children",0,"map"]');
+    expect(document.querySelectorAll(selector).length).toBe(2);
+    expect(jxInstanceSelector(`["it's"]`)).toContain(String.raw`it\'s`);
+    document.body.innerHTML = "";
   });
 });

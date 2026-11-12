@@ -83,6 +83,7 @@ import {
   allowAutoRequestsOnNextRender,
   getEditSnapshot,
   isCaretActive,
+  postActiveRowsToLiveHosts,
   postBindingDisplayToLiveHosts,
   postColorSchemeToLiveHosts,
   postLocaleToLiveHosts,
@@ -856,6 +857,8 @@ function installPaneRenderEffects(paneId: string): void {
       void tab.session.ui.preview;
       void tab.session.ui.previewParams;
       void tab.session.ui.previewProps;
+      // The row cap decides which nodes exist, so a new one is a render (`canvas.setRepeaterRows`).
+      void tab.session.ui.repeaterRows;
       void tab.session.ui.showLayout;
     }
     // Project-level render inputs: the stylebook catalogue's filters are shell state, so a change
@@ -877,6 +880,14 @@ function installPaneRenderEffects(paneId: string): void {
     // `canvas.setBindingDisplay`: per tab, so scoped to this pane's stage like the scheme above.
     postBindingDisplayToLiveHosts(
       tabOfPane(paneId)?.session.ui.bindingDisplay ?? "values",
+      surfaceForPane(paneId).wrap,
+    );
+  });
+  effect(() => {
+    // `canvas.setActiveRow`, and a press in an echo row: per tab, scoped like the two above. The
+    // Frame renames attributes; nothing is rendered again.
+    postActiveRowsToLiveHosts(
+      tabOfPane(paneId)?.session.ui.activeRows ?? {},
       surfaceForPane(paneId).wrap,
     );
   });

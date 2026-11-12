@@ -825,6 +825,41 @@ describe("a template binding that throws", () => {
     warn.mockRestore();
   });
 
+  test("a style binding survives its expression throwing, and writes once it can", async () => {
+    /* The one template binding that was a bare effect: a throw there escaped the render, so one
+       early read of `state.theme.accent` blanked the page, and a row whose item had no `data`
+       took the whole list with it. */
+    const warn = spyOn(console, "warn").mockImplementation(() => {});
+    const state = reactive<{ theme: { accent: string } | null }>({ theme: null });
+    const el = renderNode(
+      {
+        children: [{ tagName: "b", textContent: "still drawn" }],
+        style: {
+          ":hover": { color: "${state.theme.accent}" },
+          "--accent": "${state.theme.accent}",
+        },
+        tagName: "p",
+      },
+      state,
+    );
+    // The render finished: the node and its children are there, and no variable was written.
+    expect(el.querySelector("b")?.textContent).toBe("still drawn");
+    expect(el.style.getPropertyValue("--accent")).toBe("");
+    expect(el.style.getPropertyValue("--jx-s0")).toBe("");
+    state.theme = { accent: "teal" };
+    await wait();
+    expect(el.style.getPropertyValue("--accent")).toBe("teal");
+    expect(el.style.getPropertyValue("--jx-s0")).toBe("teal");
+    // Throwing again keeps what was last written, as an attribute binding does.
+    state.theme = null;
+    await wait();
+    expect(el.style.getPropertyValue("--accent")).toBe("teal");
+    expect(
+      warn.mock.calls.filter(([msg]) => String(msg).includes("state.theme.accent")),
+    ).toHaveLength(1);
+    warn.mockRestore();
+  });
+
   test("a host's handler hears every throw, in place of the once-per-source warning", () => {
     // Studio's render critic must still refuse a page whose template can never evaluate.
     const warn = spyOn(console, "warn").mockImplementation(() => {});

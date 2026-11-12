@@ -87,7 +87,6 @@ function overlaySheet(): string {
 }
 
 const ctx: PathMapCtx = {
-  arrayPaths: new Set(),
   canvasMode: "design",
   layoutWrapped: false,
   pageContentOffset: null,

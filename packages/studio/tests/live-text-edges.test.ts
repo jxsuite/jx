@@ -22,6 +22,7 @@ import {
 import { applyIframePatch } from "../src/canvas/iframe-patch";
 import { blockTextLength, offsetOf } from "../src/canvas/iframe-position";
 import { makeStamper } from "../src/canvas/iframe-render";
+import { newRowView } from "../src/canvas/iframe-rows";
 import { parseJxPath } from "../src/canvas/path-mapping";
 import { contentLength, sameContent, sliceContent, toStored } from "../src/editor/content-slice";
 import {
@@ -62,7 +63,6 @@ import type { JxMutableNode } from "@jxsuite/schema/types";
 import type { JxPath } from "../src/state";
 
 const MAPPER = {
-  arrayPaths: new Set<string>(),
   canvasMode: "edit",
   layoutWrapped: false,
   pageContentOffset: null,
@@ -787,8 +787,10 @@ describe("a visit that re-spells nothing in the document leaves the canvas match
     const ctx: IframeRenderCtx = {
       defs: f.scope,
       docBase: "http://localhost/",
+      hooks: {},
       mapperCtx: MAPPER,
       mode: "edit",
+      rows: newRowView(),
     };
     // The redraw a re-spelled commit asks for: the block's own content, set again.
     applyIframePatch(
@@ -992,8 +994,10 @@ describe("an inline element keeps what its node holds besides content", () => {
     const ctx: IframeRenderCtx = {
       defs: f.scope,
       docBase: "http://localhost/",
+      hooks: {},
       mapperCtx: MAPPER,
       mode: "edit",
+      rows: newRowView(),
     };
     const slot = ["children", 0, "children", 1];
     applyIframePatch(
@@ -1331,10 +1335,9 @@ describe("a cut never falls inside a unit, in either end, whatever stands before
   });
 });
 
-describe("a style patched in place inside a repeater reads the repeater's sample row", () => {
-  test("a row-bound declaration is resolved against the row, as the full render resolves it", async () => {
-    const mapper = { ...MAPPER, arrayPaths: new Set(["children/0"]) };
-    const state = { rows: [{ tint: "rgb(1, 2, 3)" }] };
+describe("a style patched in place inside a repeater reads each row's own item", () => {
+  test("a row-bound declaration resolves per row, where the page's scope has no row at all", async () => {
+    const state = { rows: [{ tint: "rgb(1, 2, 3)" }, { tint: "rgb(4, 5, 6)" }] };
     const scope: JxScope = await buildScope({ state, tagName: "div" }, {}, "http://localhost/");
     const doc: JxMutableNode = {
       children: [
@@ -1347,13 +1350,15 @@ describe("a style patched in place inside a repeater reads the repeater's sample
       tagName: "ul",
     };
     const prepared = prepareForEditMode(structuredClone(doc));
+    const rows = newRowView();
     const container = document.createElement("div");
     container.append(
-      renderNode(prepared, scope, { _path: [], onNodeCreated: makeStamper(mapper) }),
+      renderNode(prepared, scope, { _path: [], onNodeCreated: makeStamper(MAPPER, rows) }),
     );
     document.body.append(container);
-    const row = container.querySelector("li");
-    expect(row?.dataset.jxPath).toBe('["children",0,"map"]');
+    const [first, second] = container.querySelectorAll("li");
+    expect(first?.dataset.jxPath).toBe('["children",0,"map"]');
+    expect(second?.dataset.jxEchoPath).toBe('["children",0,"map"]');
     applyIframePatch(
       structuredClone(doc),
       [
@@ -1365,9 +1370,17 @@ describe("a style patched in place inside a repeater reads the repeater's sample
         },
       ],
       container,
-      { defs: scope, docBase: "http://localhost/", mapperCtx: mapper, mode: "edit" },
+      {
+        defs: scope,
+        docBase: "http://localhost/",
+        hooks: {},
+        mapperCtx: MAPPER,
+        mode: "edit",
+        rows,
+      },
     );
     // The runtime writes a bound declaration as a custom property holding its resolved value.
-    expect(row?.getAttribute("style")).toContain("rgb(1, 2, 3)");
+    expect(first?.getAttribute("style")).toContain("rgb(1, 2, 3)");
+    expect(second?.getAttribute("style")).toContain("rgb(4, 5, 6)");
   });
 });

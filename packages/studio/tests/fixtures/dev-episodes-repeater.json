@@ -1,0 +1,298 @@
+{
+  "$prototype": "Array",
+  "items": {
+    "$ref": "#/state/episode_q1"
+  },
+  "map": {
+    "tagName": "div",
+    "className": "cc-query-item",
+    "children": [
+      {
+        "tagName": "a",
+        "className": "div-teaser block-link",
+        "attributes": {
+          "href": "${$map.item.data.url ?? ''}"
+        },
+        "style": {
+          "color": "var(--color-1)",
+          "display": "flex",
+          "width": "100%",
+          "paddingTop": "1rem",
+          "paddingBottom": "1rem"
+        },
+        "children": [
+          {
+            "tagName": "div",
+            "className": "columns-c555f05",
+            "style": {
+              "alignItems": "center",
+              "justifyContent": "flex-start",
+              "display": "grid",
+              "flexDirection": "row",
+              "gridTemplateColumns": "repeat(2, 1fr)",
+              "& > div:nth-of-type(1)": {
+                "gridColumn": "1 / 2",
+                "gridRow": "1 / 2"
+              },
+              "& > div:nth-of-type(2)": {
+                "gridColumn": "2 / 3",
+                "gridRow": "1 / 2"
+              },
+              "@--md": {
+                "alignItems": "center",
+                "display": "grid",
+                "gridTemplateColumns": "repeat(1, 1fr)",
+                "& > div:nth-of-type(1)": {
+                  "gridColumn": "1 / 2",
+                  "gridRow": "1 / 2"
+                },
+                "& > div:nth-of-type(2)": {
+                  "gridColumn": "1 / 2",
+                  "gridRow": "2 / 3"
+                }
+              },
+              "@--sm": {
+                "display": "grid",
+                "gridTemplateColumns": "repeat(1, 1fr)",
+                "& > div:nth-of-type(1)": {
+                  "gridColumn": "1 / 2",
+                  "gridRow": "1 / 2"
+                },
+                "& > div:nth-of-type(2)": {
+                  "gridColumn": "1 / 2",
+                  "gridRow": "2 / 3"
+                }
+              }
+            },
+            "children": [
+              {
+                "tagName": "div",
+                "className": "column-ca0665d cc-clmn",
+                "style": {
+                  "alignItems": "center",
+                  "justifyContent": "center",
+                  "display": "flex",
+                  "flexDirection": "column"
+                },
+                "children": [
+                  {
+                    "tagName": "img",
+                    "className": "image-c86b020 cc-img",
+                    "attributes": {
+                      "src": "${($map.item.data.featuredImage?.src ?? '') || '/media/2021/02/Covid19-and-Brotherhood.jpeg'}",
+                      "alt": "${$map.item.data.featuredImage?.alt ?? ''}"
+                    },
+                    "style": {
+                      "backgroundColor": "var(--color-6)",
+                      "borderRadius": "9px",
+                      "display": "flex",
+                      "objectFit": "contain",
+                      "aspectRatio": "16 / 9"
+                    }
+                  }
+                ]
+              },
+              {
+                "tagName": "div",
+                "className": "column-c463fb7 cc-clmn",
+                "style": {
+                  "alignItems": "flex-start",
+                  "justifyContent": "center",
+                  "rowGap": "0.5rem",
+                  "display": "flex",
+                  "flexDirection": "column",
+                  "padding": "2rem"
+                },
+                "children": [
+                  {
+                    "tagName": "p",
+                    "className": "jx-95ae2aed1c pill",
+                    "attributes": {
+                      "hidden": "${!(((v) => !!v && v != '0' && !(Array.isArray(v) && !v.length))($map.item.data.premium))}"
+                    },
+                    "style": {
+                      "&[hidden]": {
+                        "display": "none !important"
+                      }
+                    },
+                    "textContent": "PARTNER CONTENT"
+                  },
+                  {
+                    "tagName": "h3",
+                    "textContent": "${$map.item.data.title ?? ''}"
+                  },
+                  {
+                    "tagName": "div",
+                    "className": "div-c164872",
+                    "style": {
+                      "alignItems": "flex-start",
+                      "justifyContent": "flex-start",
+                      "display": "flex",
+                      "flexDirection": "column"
+                    },
+                    "children": [
+                      {
+                        "tagName": "div",
+                        "className": "jx-95ae2aed1c div-horizontal-row",
+                        "attributes": {
+                          "hidden": "${!(((v) => !!v && v != '0' && !(Array.isArray(v) && !v.length))($map.item.data.id))}"
+                        },
+                        "style": {
+                          "&[hidden]": {
+                            "display": "none !important"
+                          }
+                        },
+                        "children": [
+                          {
+                            "tagName": "div",
+                            "className": "icon-query-episode icon-meta cc-icn",
+                            "style": {
+                              "& svg": {
+                                "height": "1.25rem",
+                                "width": "1.25rem"
+                              }
+                            },
+                            "children": [
+                              {
+                                "tagName": "svg",
+                                "attributes": {
+                                  "xmlns": "http://www.w3.org/2000/svg",
+                                  "viewBox": "0 0 32 32"
+                                },
+                                "innerHTML": "<path d=\"M26 22.006v-17.006c-0.001-1.104-0.896-1.999-2-2h-16c-1.104 0.001-1.999 0.896-2 2v17.007c0 0.002-0 0.004 0 0.006v5.987c0 0 0 0 0 0 0 0.552 0.448 1 1 1 0.178 0 0.346-0.047 0.491-0.128l-0.005 0.003 8.514-4.73 8.515 4.73c0.14 0.079 0.307 0.126 0.486 0.126 0.552 0 1-0.448 1-1v0-5.987c0-0.002 0-0.004 0-0.007zM24 5v15.301l-7.515-4.175c-0.14-0.079-0.307-0.126-0.486-0.126s-0.346 0.047-0.491 0.128l0.005-0.003-7.513 4.175v-15.3zM16.485 22.126c-0.14-0.079-0.307-0.126-0.486-0.126s-0.346 0.047-0.491 0.128l0.005-0.003-7.513 4.175v-3.712l7.999-4.444 8.001 4.444v3.712z\"></path>"
+                              }
+                            ]
+                          },
+                          {
+                            "tagName": "p",
+                            "textContent": "Episode",
+                            "style": {
+                              "margin": "0px",
+                              "padding": "0px"
+                            }
+                          },
+                          {
+                            "tagName": "p",
+                            "textContent": "${((t) => t == '0' ? '' : t ?? '')($map.item.data.id)}",
+                            "style": {
+                              "margin": "0px",
+                              "padding": "0px"
+                            }
+                          }
+                        ]
+                      },
+                      {
+                        "tagName": "div",
+                        "className": "div-meta-layout-date div-horizontal-row",
+                        "style": {
+                          "position": "relative"
+                        },
+                        "children": [
+                          {
+                            "tagName": "div",
+                            "className": "icon-cedc537 icon-meta cc-icn",
+                            "style": {
+                              "color": "var(--color-1)",
+                              "position": "relative",
+                              "display": "block",
+                              "width": "fit-content",
+                              "& svg": {
+                                "height": "1.25rem",
+                                "width": "1.25rem"
+                              }
+                            },
+                            "children": [
+                              {
+                                "tagName": "svg",
+                                "attributes": {
+                                  "xmlns": "http://www.w3.org/2000/svg",
+                                  "viewBox": "0 0 32 32"
+                                },
+                                "innerHTML": "<path d=\"M26 4h-3v-1c0-0.552-0.448-1-1-1s-1 0.448-1 1v0 1h-10v-1c0-0.552-0.448-1-1-1s-1 0.448-1 1v0 1h-3c-1.104 0.001-1.999 0.896-2 2v20c0.001 1.104 0.896 1.999 2 2h20c1.104-0.001 1.999-0.896 2-2v-20c-0.001-1.104-0.896-1.999-2-2h-0zM6 6h3v1c0 0.552 0.448 1 1 1s1-0.448 1-1v0-1h10v1c0 0.552 0.448 1 1 1s1-0.448 1-1v0-1h3l0 4h-20zM26 26h-20v-14h20l0.001 14zM16 20.5c0 0 0 0 0 0 0 1.657-1.343 3-3 3-0.828 0-1.577-0.335-2.12-0.877l0 0c-0.181-0.181-0.293-0.431-0.293-0.708 0-0.552 0.448-1 1-1 0.276 0 0.526 0.112 0.707 0.293v0c0.181 0.181 0.431 0.292 0.707 0.292 0.552 0 1-0.448 1-1s-0.448-1-1-1c0 0 0 0 0 0v0c0 0-0 0-0 0-0.552 0-1-0.448-1-1 0-0.237 0.083-0.455 0.221-0.627l-0.002 0.002 0.7-0.875h-1.419c-0.552 0-1-0.448-1-1s0.448-1 1-1v0h3.5c0 0 0 0 0 0 0.552 0 1 0.448 1 1 0 0.237-0.083 0.455-0.221 0.627l0.002-0.002-1.109 1.386c0.805 0.546 1.327 1.457 1.328 2.49v0zM21 16v6.5c0 0.552-0.448 1-1 1s-1-0.448-1-1v0-4.5l-0.4 0.3c-0.165 0.125-0.374 0.2-0.6 0.2-0.552 0-1-0.448-1-1 0-0.326 0.156-0.616 0.398-0.798l0.003-0.002 2-1.5c0.165-0.125 0.374-0.2 0.6-0.2 0.552 0 1 0.448 1 1v0z\"></path>"
+                              }
+                            ]
+                          },
+                          {
+                            "tagName": "p",
+                            "className": "paragraph-c02d850 no-spacing",
+                            "style": {
+                              "margin": "0px",
+                              "position": "relative",
+                              "display": "block"
+                            },
+                            "textContent": "${($map.item.data.date) ? ((d) => ((p) => '' + ['January','February','March','April','May','June','July','August','September','October','November','December'][p.month - 1] + ' ' + p.day + ', ' + String(p.year).padStart(4, '0'))(Object.assign(Object.fromEntries(new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',year:'numeric',month:'numeric',day:'numeric'}).formatToParts(d).map(q => [q.type, q.type === 'weekday' ? q.value : +q.value])))))(new Date($map.item.data.date)) : ''}"
+                          }
+                        ]
+                      },
+                      {
+                        "tagName": "div",
+                        "className": "div-meta-layout-author div-horizontal-row",
+                        "style": {
+                          "position": "relative"
+                        },
+                        "children": [
+                          {
+                            "tagName": "div",
+                            "className": "icon-cb66f49 cc-icn",
+                            "style": {
+                              "color": "var(--color-1)",
+                              "position": "relative",
+                              "display": "block",
+                              "width": "fit-content",
+                              "& svg": {
+                                "height": "1.25rem",
+                                "width": "1.25rem"
+                              }
+                            },
+                            "children": [
+                              {
+                                "tagName": "svg",
+                                "attributes": {
+                                  "xmlns": "http://www.w3.org/2000/svg",
+                                  "viewBox": "0 0 32 32"
+                                },
+                                "innerHTML": "<path d=\"M25.192 6.808c-2.353-2.354-5.604-3.81-9.195-3.81-7.18 0-13 5.82-13 13 0 3.591 1.456 6.842 3.81 9.195l0 0c2.353 2.354 5.604 3.81 9.195 3.81 7.18 0 13-5.82 13-13 0-3.591-1.456-6.842-3.81-9.195l-0-0zM13.871 16h4.259l1.846 4.001c-0.761 0.006-1.454 0.295-1.978 0.768l0.003-0.002c-0.528-0.476-1.23-0.766-2-0.766s-1.472 0.291-2.003 0.769l0.003-0.002c-0.522-0.47-1.214-0.76-1.975-0.766h-0.001zM14.794 14l1.206-2.614 1.206 2.614zM19 23c0-0.552 0.448-1 1-1s1 0.448 1 1v0 2.801c-0.568 0.298-1.231 0.565-1.923 0.765l-0.077 0.019zM11 23c0-0.552 0.448-1 1-1s1 0.448 1 1v0 3.585c-0.769-0.219-1.432-0.486-2.060-0.813l0.060 0.028zM15 26.954v-3.954c0-0.552 0.448-1 1-1s1 0.448 1 1v0 3.954c-0.331 0.030-0.664 0.046-1 0.046s-0.669-0.017-1-0.046zM23.778 23.778q-0.374 0.374-0.778 0.707v-2.485c-0-0.152-0.034-0.296-0.095-0.425l0.003 0.006-6-13c-0.162-0.346-0.508-0.581-0.908-0.581s-0.746 0.235-0.905 0.575l-0.003 0.006-6 13c-0.058 0.123-0.092 0.267-0.092 0.419v0 2.485q-0.403-0.334-0.778-0.707c-1.991-1.991-3.222-4.741-3.222-7.778 0-6.075 4.925-11 11-11s11 4.925 11 11c0 3.038-1.231 5.787-3.222 7.778v0z\"></path>"
+                              }
+                            ]
+                          },
+                          {
+                            "tagName": "p",
+                            "className": "paragraph-c9a6017 no-spacing",
+                            "style": {
+                              "margin": "0px",
+                              "position": "relative",
+                              "display": "block"
+                            },
+                            "textContent": "${$map.item.data.author ?? ''}"
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "tagName": "p",
+                    "innerHTML": "${((s) => { const b = new TextEncoder().encode(s); if (b.length <= 250) return s; const c = b.subarray(0, 250); const i = c.lastIndexOf(32); return i < 0 ? '' : new TextDecoder().decode(c.subarray(0, i)); })(String(($map.item.data.excerpt) ?? '').replace(/<(script|style)[^>]*?>[\\s\\S]*?<\\/\\1>/gi, '').replace(/<[^>]*>/g, '').replace(/^[ \\t\\n\\r\\0\\x0B]+|[ \\t\\n\\r\\0\\x0B]+$/g, ''))}\u2026"
+                  },
+                  {
+                    "tagName": "div",
+                    "className": "button-ceaaf2c cc-btn",
+                    "style": {
+                      "fontWeight": "600",
+                      "alignItems": "center",
+                      "position": "relative",
+                      "flexDirection": "row",
+                      ":hover": {
+                        "color": "var(--color-2)"
+                      }
+                    },
+                    "textContent": "Read More"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

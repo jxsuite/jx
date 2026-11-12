@@ -86,22 +86,25 @@ export function cloneLiveScope(
 /**
  * Bind repeater `$map` contexts for a node at `contextPath`: walk the shadow doc along the path
  * and, at every repeater crossing (a `$prototype: "Array"` node entered through its `map`
- * template), resolve the repeater's `items` against the scope built so far and layer the FIRST
- * item's `$map` context (item + index 0) over it — the same shape `renderMappedArrayInto` gives
- * rendered items, so `$map/item` / `$map/index` refs preview against real data. Nested repeaters
- * chain naturally (an inner `items` ref may read the outer `$map/item`).
+ * template), resolve the repeater's `items` against the scope built so far and layer the ACTIVE
+ * row's `$map` context (its item and index) over it — the same shape `renderMappedArrayInto` gives
+ * rendered items, so `$map/item` / `$map/index` refs preview against the row the author is working
+ * in (studio.md §4.5). `activeRows` names each repeater's active row by its serialized path; a
+ * repeater it does not name, or a row the list does not have, reads the nearest row there is.
+ * Nested repeaters chain naturally (an inner `items` ref may read the outer `$map/item`).
  */
 export function bindRepeaterContext(
   scope: JxScope,
   shadowDoc: JxMutableNode | null,
   contextPath: (string | number)[] | null,
+  activeRows: ReadonlyMap<string, number> = new Map(),
 ): JxScope {
   if (!contextPath || contextPath.length === 0) {
     return scope;
   }
   let node: JxDocumentValue | undefined = shadowDoc;
   let bound = scope;
-  for (const seg of contextPath) {
+  for (const [depth, seg] of contextPath.entries()) {
     if (!isNonNullObject(node)) {
       break;
     }
@@ -113,16 +116,17 @@ export function bindRepeaterContext(
       const itemsDef = rec["items"];
       const items = isRef(itemsDef) ? resolveRef(itemsDef.$ref, bound) : itemsDef;
       if (Array.isArray(items) && items.length > 0) {
-        const [first] = items;
+        const wanted = activeRows.get(JSON.stringify(contextPath.slice(0, depth))) ?? 0;
+        const index = Math.min(wanted, items.length - 1);
         // Items resolved from the shadow doc (a literal array) must not be mutable through the
         // Preview scope — clone; scope-resolved items are already clone data, so this is free.
-        const item = cloneOrNull(first);
+        const item = cloneOrNull(items[index]);
         /* SAFETY: `Object.create(bound)` is an empty object whose prototype is the scope built so far,
            so it is a scope that reads every outer key through and owns only the three set below. */
         const child = Object.create(bound) as JxScope;
-        child["$map"] = { index: 0, item };
+        child["$map"] = { index, item };
         child["$map/item"] = item;
-        child["$map/index"] = 0;
+        child["$map/index"] = index;
         bound = child;
       }
     }
@@ -141,6 +145,7 @@ export function evaluateLiveExprs(
   defs: JxScope,
   shadowDoc: JxMutableNode | null,
   contextPath: (string | number)[] | null,
+  activeRows?: ReadonlyMap<string, number>,
 ): EvalExprResult[] {
   const rawState = shadowDoc?.state ?? null;
   return exprs.map(({ id, node }) => {
@@ -149,7 +154,12 @@ export function evaluateLiveExprs(
     // Leak into the next expression's evaluation (or the live canvas).
     let scope: JxScope;
     try {
-      scope = bindRepeaterContext(cloneLiveScope(defs, rawState), shadowDoc, contextPath);
+      scope = bindRepeaterContext(
+        cloneLiveScope(defs, rawState),
+        shadowDoc,
+        contextPath,
+        activeRows,
+      );
     } catch (error) {
       return { error: error instanceof Error ? error.message : String(error), id, values: [] };
     }

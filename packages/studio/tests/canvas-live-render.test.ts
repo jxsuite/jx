@@ -99,7 +99,6 @@ describe("resolveCanvasDocument", () => {
     expect(result.renderDoc.tagName).toBe("div");
     expect(result.docBase).toContain("doc.json");
     expect(result.mapperCtx).toMatchObject({
-      arrayPaths: [],
       canvasMode: "design",
       layoutWrapped: false,
       pageContentPrefix: null,
@@ -113,7 +112,7 @@ describe("resolveCanvasDocument", () => {
     expect(result.siteStyle).toEqual({ "--brand": "#0f0", color: "red" });
   });
 
-  test("collects mapped-array document paths in edit mode", async () => {
+  test("a repeater passes through with a sample item for its empty state", async () => {
     const result = await resolve(
       {
         children: [{ $prototype: "Array", map: { tagName: "li" } }],
@@ -122,7 +121,10 @@ describe("resolveCanvasDocument", () => {
       { canvasMode: "edit" },
     );
     expect(result.mapperCtx.canvasMode).toBe("edit");
-    expect(result.mapperCtx.arrayPaths).toContain("children/0");
+    // The Array node reaches the frame as written: the runtime draws its rows (studio.md §4.5).
+    expect(nodeAt(result.renderDoc.children, 0).$prototype).toBe("Array");
+    // Nothing says what an item holds here, so there is no sample item to draw the template with.
+    expect(result.rowSamples).toEqual({ '["children",0]': null });
   });
 
   test("wraps page documents in their layout", async () => {
@@ -203,7 +205,8 @@ describe("resolveCanvasDocument", () => {
     const p = nodeAt(result.renderDoc.children, 0);
     // Preview passes the raw template through; design/edit would rewrite it to a display token.
     expect(p.textContent).toBe("${state.x}");
-    expect(result.mapperCtx.arrayPaths).toEqual([]);
+    // Preview draws the page as it ships: no sample row stands in for an empty list.
+    expect(result.rowSamples).toEqual({});
   });
 
   test("substitutes chosen preview params into renderDoc, leaving the source doc intact", async () => {

@@ -225,7 +225,7 @@ describe("classifyOps", () => {
     ).toBe(true);
   });
 
-  test("array member node: structural ops on it patch; structural ops inside its template escalate", () => {
+  test("a repeater among children: structural ops beside it and inside its template escalate", () => {
     // Array pseudo-element as a member at children[3].
     childrenOf(doc()).push({
       $prototype: "Array",
@@ -233,16 +233,39 @@ describe("classifyOps", () => {
       map: { children: [{ tagName: "span" }], tagName: "li" },
     });
 
-    // Removing/moving the array node itself is a normal sibling splice → patchable.
-    expect(classifyOps(tab, [{ op: "remove", path: ["children", 3] }]).patchable).toBe(true);
-    expect(
+    /* The repeater draws a node PER ROW, so a child's index in the document is not its index in
+       the DOM, and the frame finds where to splice by counting DOM children. Every structural op
+       whose parent holds one is drawn whole instead (studio.md §4.5): a sibling's as much as the
+       repeater's own. Without the repeater the same three ops patch, which is what makes this a
+       test of the rule and not of the fixture. */
+    const beside = (): string[] => [
+      classifyOps(tab, [{ op: "remove", path: ["children", 0] }]).reason,
       classifyOps(tab, [{ fromPath: ["children", 3], op: "move", toIndex: 0, toParentPath: [] }])
-        .patchable,
-    ).toBe(true);
-    // Inserting a sibling next to the array (parent is the root children array) → patchable.
-    expect(classifyOps(tab, [{ index: 3, op: "insert", parentPath: [] }]).patchable).toBe(true);
+        .reason,
+      classifyOps(tab, [{ index: 3, op: "insert", parentPath: [] }]).reason,
+    ];
+    expect(beside()).toEqual([
+      "structure-beside-repeater",
+      "structure-beside-repeater",
+      "structure-beside-repeater",
+    ]);
+    // A whole `${…}` string member splices an array's members in as nodes: the same hazard.
+    const members = childrenOf(doc());
+    members[3] = "${state.items}";
+    expect(beside()).toEqual([
+      "structure-beside-repeater",
+      "structure-beside-repeater",
+      "structure-beside-repeater",
+    ]);
+    members[3] = { tagName: "p" };
+    expect(beside()).toEqual(["", "", ""]);
+    members[3] = {
+      $prototype: "Array",
+      items: ["a", "b"],
+      map: { children: [{ tagName: "span" }], tagName: "li" },
+    };
 
-    // Structural edits *inside* the repeater template escalate (the perimeter holds one instance).
+    // Structural edits *inside* the repeater template escalate: every row would need the splice.
     expect(
       classifyOps(tab, [{ index: 1, op: "insert", parentPath: ["children", 3, "map"] }]).reason,
     ).toBe("structure-on-map-path");
@@ -680,7 +703,7 @@ describe("custom-element ancestor classification", () => {
     ).toBe("structure-in-custom-element");
   });
 
-  test("a replace under an innerHTML parent or inside a repeater template still escalates", () => {
+  test("a replace under an innerHTML parent escalates; inside a template it patches every row", () => {
     childrenOf(doc()).push({
       children: [{ tagName: "b", textContent: "x" }],
       innerHTML: "<b>x</b>",
@@ -695,10 +718,28 @@ describe("custom-element ancestor classification", () => {
       map: { children: [{ tagName: "span" }], tagName: "li" },
       tagName: "ul",
     });
+    // A node of the template is drawn again in each row, with that row's scope (studio.md §4.5).
     expect(
       classifyOps(tab, [
         { key: "children", op: "set-prop", path: ["children", 4, "map", "children", 0] },
-      ]).reason,
-    ).toBe("structure-on-map-path");
+      ]),
+    ).toEqual({ patchable: true, reason: "" });
+    expect(
+      classifyOps(tab, [
+        { attr: "title", op: "set-attr", path: ["children", 4, "map", "children", 0] },
+      ]).patchable,
+    ).toBe(true);
+    // The row's ROOT is drawn again too: the frame hands the runtime's list the new one.
+    expect(
+      classifyOps(tab, [{ key: "className", op: "set-prop", path: ["children", 4, "map"] }]),
+    ).toEqual({ patchable: true, reason: "" });
+    // The repeater has no element at all.
+    expect(classifyOps(tab, [{ key: "items", op: "set-prop", path: ["children", 4] }]).reason).toBe(
+      "replace-repeater",
+    );
+    // A style on the row's root is re-emitted in place, row by row, and patches.
+    expect(classifyOps(tab, [{ op: "set-style", path: ["children", 4, "map"] }]).patchable).toBe(
+      true,
+    );
   });
 });

@@ -115,7 +115,7 @@ describe("layout wrapping with irregular trees", () => {
   });
 });
 
-describe("findArrayPaths edge shapes", () => {
+describe("row samples over edge shapes", () => {
   test("walks the legacy whole-children repeater form", async () => {
     const tab = resetWorkspaceWithTab();
     const legacy: JxMutableNode = {
@@ -132,7 +132,8 @@ describe("findArrayPaths edge shapes", () => {
       tagName: "div",
     };
     const result = await resolveCanvasDocument(legacy, tab);
-    expect(result.mapperCtx.arrayPaths).toContain("children/0/children");
+    // One sample per repeater, by its serialized path: the whole-`children` one ends in "children".
+    expect(Object.keys(result.rowSamples)).toEqual(['["children",0,"children"]']);
   });
 
   test("walks $switch cases (including nested repeaters and primitive case values)", async () => {
@@ -150,7 +151,7 @@ describe("findArrayPaths edge shapes", () => {
       tagName: "div",
     });
     const result = await resolveCanvasDocument(doc, tab);
-    expect(result.mapperCtx.arrayPaths).toContain("cases/list/children/0");
+    expect(Object.keys(result.rowSamples)).toEqual(['["cases","list","children",0]']);
   });
 
   test("nested map templates and primitive children are walked safely", async () => {
@@ -167,8 +168,7 @@ describe("findArrayPaths edge shapes", () => {
       tagName: "div",
     });
     const result = await resolveCanvasDocument(doc, tab);
-    expect(result.mapperCtx.arrayPaths).toContain("children/1");
-    expect(result.mapperCtx.arrayPaths).toContain("children/1/map");
+    expect(Object.keys(result.rowSamples)).toEqual(['["children",1]', '["children",1,"map"]']);
   });
 });
 

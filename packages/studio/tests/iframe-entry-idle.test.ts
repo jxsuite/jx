@@ -230,7 +230,6 @@ describe("the frame's quiescence report", () => {
       gen: 5,
       kind: "render",
       mapperCtx: {
-        arrayPaths: [],
         canvasMode: "design",
         layoutWrapped: false,
         pageContentOffset: null,

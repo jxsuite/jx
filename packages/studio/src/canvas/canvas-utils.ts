@@ -34,15 +34,18 @@ import {
   boundedNumberArg,
   enumArg,
   enumProperty,
+  integerArg,
   numberProperty,
+  pathProperty,
   stringArg,
   stringProperty,
 } from "../commands/command-args";
 import type { CanvasStageHandle, CanvasStagePanelItem } from "../surfaces/canvas-stage";
 import type { AnyCommand, CommandRegistry } from "../commands/registry";
 import type { CommandArgValues } from "../commands/command-args";
-import { isNumber, isString } from "@jxsuite/schema/guards";
-import { BINDING_DISPLAYS } from "./iframe-protocol";
+import { isMappedArray, isNumber, isString } from "@jxsuite/schema/guards";
+import { getNodeAtPath } from "@jxsuite/schema/doc-ops";
+import { BINDING_DISPLAYS, MAX_ROW_LIMIT } from "./iframe-protocol";
 import type { Tab } from "../tabs/tab";
 
 /*
@@ -1539,6 +1542,105 @@ export function canvasViewCommands(deps: CanvasCommandDeps): AnyCommand[] {
         );
       },
       title: "Set Binding Display",
+    },
+    /*
+     * Which row of a repeater is the ACTIVE one (studio.md §4.5).
+     *
+     * A repeater draws every row, and one of them is addressable: the row a selection, a caret and
+     * a patch find when they look a document path up. Pressing in another row does this from the
+     * canvas (the frame reports it and the host writes the same state); the command is the same
+     * choice by name, so a script or a documentation screenshot can make it. View state: the
+     * tab's, written nowhere in the document, and posted to the frame as one map that it applies by
+     * renaming attributes. Nothing is rendered again.
+     */
+    {
+      args: argsSchema(
+        {
+          ...paneArg,
+          path: pathProperty("Document path of the repeater: the node whose $prototype is Array."),
+          row: {
+            description: "Index of the row to make active, counted from 0.",
+            minimum: 0,
+            type: "integer",
+          },
+        },
+        ["path", "row"],
+      ),
+      category: "View",
+      id: "canvas.setActiveRow",
+      level: "document",
+      menus: ["palette"],
+      group: "3_canvas",
+      requires: "an open document with a repeater",
+      when: documentOpen,
+      run: (_commandCtx, args) => {
+        const tab = contextTab("canvas.setActiveRow", args);
+        /* SAFETY: `registry.run` coerces args against this record's schema before `run`, and the
+           schema declares `path` an array of strings and numbers, which is what a JxPath is. */
+        const path = args["path"] as JxPath;
+        const row = integerArg("canvas.setActiveRow", args, "row");
+        if (row < 0) {
+          throw new RangeError(
+            `command "canvas.setActiveRow" argument "row": expected a row index of 0 or more, got ${row}`,
+          );
+        }
+        /* REFUSES a path that names no repeater, the rule `canvas.setBreakpoint` applies to a
+           breakpoint key: a row chosen for a node that draws no rows would sit in the tab's state
+           naming nothing, until an edit moved a repeater onto that path. */
+        if (!isMappedArray(getNodeAtPath(tab.doc.document, path))) {
+          throw new RangeError(
+            'command "canvas.setActiveRow" argument "path": names no repeater in this document. ' +
+              'A repeater is a node whose "$prototype" is "Array"',
+          );
+        }
+        const key = JSON.stringify(path);
+        if (tab.session.ui.activeRows[key] !== row) {
+          tab.session.ui.activeRows = { ...tab.session.ui.activeRows, [key]: row };
+        }
+      },
+      title: "Set Active Repeater Row",
+    },
+    /*
+     * How many rows of a repeater the canvas draws at most (studio.md §4.5).
+     *
+     * A list of three hundred entries is three hundred copies of a template the author is styling
+     * once, so the canvas stops at a cap until asked for more. The cap decides which nodes exist,
+     * so unlike the active row this one is a render.
+     */
+    {
+      args: argsSchema(
+        {
+          ...paneArg,
+          rows: {
+            description: "The most rows of any one repeater to draw.",
+            maximum: MAX_ROW_LIMIT,
+            minimum: 1,
+            type: "integer",
+          },
+        },
+        ["rows"],
+      ),
+      category: "View",
+      id: "canvas.setRepeaterRows",
+      level: "document",
+      menus: ["palette"],
+      group: "3_canvas",
+      requires: "an open document",
+      when: documentOpen,
+      run: (_commandCtx, args) => {
+        const tab = contextTab("canvas.setRepeaterRows", args);
+        const rows = integerArg("canvas.setRepeaterRows", args, "rows");
+        if (rows < 1 || rows > MAX_ROW_LIMIT) {
+          throw new RangeError(
+            `command "canvas.setRepeaterRows" argument "rows": expected 1 to ${MAX_ROW_LIMIT}, got ${rows}`,
+          );
+        }
+        if (tab.session.ui.repeaterRows !== rows) {
+          tab.session.ui.repeaterRows = rows;
+          repaint(args);
+        }
+      },
+      title: "Set Repeater Rows",
     },
     /*
      * The language a pane RENDERS AS — and only that.

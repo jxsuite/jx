@@ -6,7 +6,14 @@
  * the iframe only reports what was pointed at.
  */
 
-import { jxPathSelector, parseJxPath, serializeJxPath } from "./path-mapping";
+import {
+  jxPathSelector,
+  parseJxPath,
+  rowsOf,
+  serializeJxPath,
+  stampedPathOf,
+} from "./path-mapping";
+import { nearestStampedEl, repeaterRect } from "./iframe-rows";
 import { isFunction } from "@jxsuite/schema/guards";
 import { isDisplayContents, rectOf } from "../utils/geometry";
 import { computeInsertZones, insertZonesKey } from "./iframe-insert";
@@ -104,6 +111,10 @@ function isRendered(el: Element): boolean {
  *
  * The serialized path is the same string the renderer stamps, so a stored selection path
  * round-trips back to its element.
+ *
+ * A REPEATER has no element: its node is drawn as its rows. Its path is answered with the union of
+ * its rows' boxes, every row and not only the active one, so selecting one in the Outline draws a
+ * box around the whole list (studio.md §4.5). With no row rendered it is hidden, like any node.
  */
 export function measureHits(paths: (string | number)[][], doc: Document = document) {
   const hits: NodeHit[] = [];
@@ -111,6 +122,12 @@ export function measureHits(paths: (string | number)[][], doc: Document = docume
   for (const path of paths) {
     const el = doc.querySelector(jxPathSelector(serializeJxPath(path)));
     if (!el) {
+      const { rect, rows } = repeaterRect(doc, path, isRendered);
+      if (rect) {
+        hits.push({ path, rect });
+      } else if (rows > 0) {
+        hidden.push(path);
+      }
       continue;
     }
     if (isRendered(el)) {
@@ -240,6 +257,13 @@ export interface InteractionDeps {
    * different edge. Absent = a single fixed gen (no resets).
    */
   getGen?: () => number;
+  /**
+   * Called on every press, before anything else hears it, with what was pressed. The entry makes
+   * the pressed repeater row the active one there (studio.md §4.5), so by the time the caret lands
+   * and the click is reported the pressed element is the one its path names. `extending` says the
+   * press was made with Shift held, which extends a selection rather than starting one.
+   */
+  onPress?: (target: EventTarget | null, extending: boolean) => void;
 }
 
 /**
@@ -283,8 +307,9 @@ export function startInteraction(
    * It carries nothing, which is what makes it safe to send from preview: the parent moves pane
    * focus and does not touch the document, so the page underneath is still just a page.
    */
-  const onPointerDown = () => {
+  const onPointerDown = (e: Event) => {
     channel.post({ kind: "paneFocus" });
+    deps?.onPress?.(e.target, e instanceof MouseEvent && e.shiftKey);
   };
 
   const onClick = (e: MouseEvent) => {
@@ -346,12 +371,16 @@ export function startInteraction(
     if (isPreview()) {
       return;
     }
-    const key = el?.dataset.jxPath ?? null;
+    /* An echo row hovers as its own element, under the path it echoes: the box is drawn where the
+       pointer is, and the press that follows makes that row the addressable one. The row is part
+       of the key, since the same path in the next row is another element to measure. */
+    const path = el ? (stampedPathOf(el) ?? null) : null;
+    const key = el && path !== null ? `${path}@${rowsOf(el).join(",")}` : null;
     if (key === lastHoverKey) {
       return;
     }
     lastHoverKey = key;
-    channel.post({ hit: el && key ? measureHit(el, key) : null, kind: "hover" });
+    channel.post({ hit: el && path !== null ? measureHit(el, path) : null, kind: "hover" });
   };
 
   /**
@@ -374,7 +403,7 @@ export function startInteraction(
     }
     syncZoneGen();
     const shadowDoc = deps.getShadowDoc();
-    const el = nearestPathEl(target instanceof Element ? target : null);
+    const el = nearestStampedEl(target instanceof Element ? target : null);
     const zones = el && shadowDoc ? computeInsertZones(el, cursor, shadowDoc) : null;
     const key = insertZonesKey(zones);
     if (key === lastZonesKey) {
@@ -406,7 +435,7 @@ export function startInteraction(
     movePending = 0;
     const target = moveTarget;
     moveTarget = null;
-    reportHover(nearestPathEl(target instanceof Element ? target : null));
+    reportHover(nearestStampedEl(target instanceof Element ? target : null));
     reportInsertZones(target, { x: moveX, y: moveY });
   };
 

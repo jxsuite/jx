@@ -168,6 +168,8 @@ export interface JxListReconciliation {
   rendered: number;
   /** Whether the list resolved to no items (so a row that is drawn is the `emptyRow` one). */
   empty: boolean;
+  /** The root node of each row that stands in the DOM, in order: `rendered` of them. */
+  nodes: readonly (HTMLElement | Text)[];
 }
 
 /** A mounted document: its live scope, its root node, and the disposer that tears it down. */

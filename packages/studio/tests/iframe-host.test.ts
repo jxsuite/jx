@@ -171,13 +171,13 @@ const DEFAULT_RESOLVED: ResolvedFixture = {
   docBase: "http://localhost:3000/doc.json",
   entryRoot: null,
   mapperCtx: {
-    arrayPaths: [],
     canvasMode: "design",
     layoutWrapped: false,
     pageContentOffset: null,
     pageContentPrefix: null,
   },
   renderDoc: { children: ["hi"], tagName: "div" },
+  rowSamples: {},
   scripts: {},
   siteStyle: null,
 };
@@ -212,6 +212,7 @@ const {
   mountStylebookCanvas,
   panToStylebookTag,
   postApplyFormat,
+  postActiveRowsToLiveHosts,
   postBindingDisplayToLiveHosts,
   postColorSchemeToLiveHosts,
   postLocaleToLiveHosts,
@@ -1239,6 +1240,116 @@ describe("iframe canvas interaction", () => {
     });
     channels[0]!.deliver({ hit: null, kind: "hover" });
     expect(hover.style.display).toBe("none");
+  });
+
+  test("a render carries the tab's rows: the active ones, the cap and the samples", async () => {
+    const tab = resetWorkspaceWithTab();
+    tab.session.ui.activeRows = { '["children",0]': 2 };
+    tab.session.ui.repeaterRows = 60;
+    resolved = { ...DEFAULT_RESOLVED, rowSamples: { '["children",0]': { title: "" } } };
+    await mountReady();
+    const render = channels[0]!.posts.find((post) => post.kind === "render");
+    expect(render).toMatchObject({
+      activeRows: { '["children",0]': 2 },
+      rowLimit: 60,
+      rowSamples: { '["children",0]': { title: "" } },
+    });
+    // A document with no repeater sends no samples, and a host with no tab the defaults.
+    resolved = structuredClone(DEFAULT_RESOLVED);
+    const bare = document.createElement("div");
+    document.body.append(bare);
+    await mountIframeCanvas(2, { tagName: "p" }, bare, null, null, null);
+    channels[1]!.deliver({ kind: "ready" });
+    const second = channels[1]!.posts.find((post) => post.kind === "render");
+    expect(second).toMatchObject({ activeRows: {}, rowLimit: 24 });
+    expect(second).not.toHaveProperty("rowSamples");
+  });
+
+  test("a row the frame activated is the tab's, and reaches every frame that draws rows", async () => {
+    const tab = resetWorkspaceWithTab();
+    const canvasEl = await mountReady();
+    const ch = channels[0]!;
+    ch.deliver({ capabilities: ["rows"], kind: "ready" });
+    tab.session.selection = [["children", 0, "map"]];
+    await flush();
+    ch.posts.length = 0;
+
+    ch.deliver({ kind: "rowActivated", path: ["children", 0], row: 2 });
+    expect(tab.session.ui.activeRows).toEqual({ '["children",0]': 2 });
+    // The same row again writes nothing: the record a pane's effect watches is the same one.
+    const held = tab.session.ui.activeRows;
+    ch.deliver({ kind: "rowActivated", path: ["children", 0], row: 2 });
+    expect(tab.session.ui.activeRows).toBe(held);
+    // What is not a row index is not recorded.
+    ch.deliver({ kind: "rowActivated", path: ["children", 0], row: -1 });
+    ch.deliver({ kind: "rowActivated", path: ["children", 0], row: 1.5 });
+    expect(tab.session.ui.activeRows).toBe(held);
+
+    // The pane's effect posts the map; the selected path now names another row's element.
+    postActiveRowsToLiveHosts(tab.session.ui.activeRows, canvasEl.parentElement);
+    expect(ch.posts.map((post) => post.kind)).toEqual(["setActiveRows", "measure"]);
+    expect(ch.posts[0]).toEqual({ kind: "setActiveRows", rows: { '["children",0]': 2 } });
+    expect(ch.posts[1]).toMatchObject({ kind: "measure", paths: [["children", 0, "map"]] });
+  });
+
+  test("a second repeater's row is added to the tab's map, and the first's is kept", async () => {
+    const tab = resetWorkspaceWithTab();
+    await mountReady();
+    const ch = channels[0]!;
+    ch.deliver({ capabilities: ["rows"], kind: "ready" });
+    // A press in a nested repeater posts one message per repeater around the pressed node.
+    ch.deliver({ kind: "rowActivated", path: ["children", 0], row: 2 });
+    ch.deliver({ kind: "rowActivated", path: ["children", 0, "map", "children", 1], row: 1 });
+    expect(tab.session.ui.activeRows).toEqual({
+      '["children",0,"map","children",1]': 1,
+      '["children",0]': 2,
+    });
+  });
+
+  test("a Preview host takes no row from its frame", async () => {
+    const tab = resetWorkspaceWithTab();
+    const canvasEl = await mountReady();
+    const ch = channels[0]!;
+    ch.deliver({ capabilities: ["rows"], kind: "ready" });
+    adoptCanvasPreviewMode(canvasEl, true);
+    ch.deliver({ kind: "rowActivated", path: ["children", 0], row: 2 });
+    expect(tab.session.ui.activeRows).toEqual({});
+  });
+
+  test("postActiveRowsToLiveHosts skips a frame that draws one row, another stage, and a stage that is gone", async () => {
+    resetWorkspaceWithTab();
+    const canvasEl = await mountReady();
+    const ch = channels[0]!;
+    ch.posts.length = 0;
+    // `mountReady` announced no capability: an older frame build, which would drop the message.
+    postActiveRowsToLiveHosts({ a: 1 });
+    expect(ch.posts).toHaveLength(0);
+    ch.deliver({ capabilities: ["bindingDisplay", "rows"], kind: "ready" });
+    ch.posts.length = 0;
+    postActiveRowsToLiveHosts({ a: 1 }, document.createElement("div"));
+    expect(ch.posts).toHaveLength(0);
+    postActiveRowsToLiveHosts({ a: 1 });
+    expect(ch.posts.filter((post) => post.kind === "setActiveRows")).toHaveLength(1);
+    canvasEl.remove();
+    ch.posts.length = 0;
+    postActiveRowsToLiveHosts({ a: 2 });
+    expect(ch.posts).toHaveLength(0);
+  });
+
+  test("a stylebook host draws no document, so a row it reports is nobody's", async () => {
+    const tab = resetWorkspaceWithTab();
+    const canvasEl = document.createElement("div");
+    document.body.append(canvasEl);
+    mountStylebookCanvas(
+      1,
+      { doc: { tagName: "div" }, pathToTag: new Map(), tagToCardPath: new Map() },
+      canvasEl,
+      null,
+    );
+    const ch = channels.at(-1)!;
+    ch.deliver({ capabilities: ["rows"], kind: "ready" });
+    ch.deliver({ kind: "rowActivated", path: ["children", 0], row: 3 });
+    expect(tab.session.ui.activeRows).toEqual({});
   });
 
   test("flipping the binding display re-measures the selection: the page reflows under its box", async () => {

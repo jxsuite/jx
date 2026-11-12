@@ -219,7 +219,6 @@ describe("writing an entry inside its layout", () => {
     const tab = openEntryTab();
     const result = await resolveCanvasDocument(tab.doc.document, tab);
     const ctx: PathMapCtx = {
-      arrayPaths: new Set(result.mapperCtx.arrayPaths),
       canvasMode: result.mapperCtx.canvasMode,
       layoutWrapped: result.mapperCtx.layoutWrapped,
       pageContentOffset: result.mapperCtx.pageContentOffset,
@@ -243,7 +242,7 @@ describe("writing an entry inside its layout", () => {
     const rendered = renderNodeAt(result.renderDoc, renderPath);
     expect(rendered.textContent).toBe("The cold frame is full again.");
     const mapped = classifyRenderNode(renderPath, rendered, ctx);
-    expect(mapped).toEqual({ kind: "path", path: ["children", 1] });
+    expect(mapped).toEqual({ kind: "path", path: ["children", 1], rows: [] });
     // The mapped path addresses the entry's paragraph, so a mutation through it edits the entry.
     const target = getNodeAtPath(tab.doc.document, ["children", 1]);
     expect(target?.textContent).toBe("The cold frame is full again.");
@@ -337,7 +336,6 @@ describe("writing an entry inside its collection's page", () => {
     tab.session.ui.canvasMode = mode;
     const result = await resolveCanvasDocument(tab.doc.document, tab);
     const ctx: PathMapCtx = {
-      arrayPaths: new Set(result.mapperCtx.arrayPaths),
       canvasMode: result.mapperCtx.canvasMode,
       layoutWrapped: result.mapperCtx.layoutWrapped,
       pageContentOffset: result.mapperCtx.pageContentOffset,
@@ -367,6 +365,7 @@ describe("writing an entry inside its collection's page", () => {
     expect(classifyRenderNode(renderPath, rendered, ctx)).toEqual({
       kind: "path",
       path: ["children", 1],
+      rows: [],
     });
     expect(getNodeAtPath(tab.doc.document, ["children", 1])?.textContent).toBe(
       "The cold frame is full again.",

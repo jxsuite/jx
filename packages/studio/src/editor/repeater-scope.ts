@@ -8,12 +8,12 @@
  * for the one field that is neither text nor a value: `$children`, which an element draws by
  * holding it as computed children (spec.md §8.4).
  *
- * There is no live `$map` in edit mode: `prepareForEditMode` renders a mapped array as a
- * `repeater-perimeter` wrapping one glyph-ified template instance, so `renderMappedArrayInto`
- * (which sets `child.$map`) never runs. Instead we resolve field names PARENT-SIDE from the
- * repeater's binding + the project's content-type / state schema, keyed off the selected element's
- * document path (which carries a real `"map"` segment — see canvas/path-mapping.ts
- * `classifyRenderNode`).
+ * The canvas draws every row against its own item (studio.md §4.5), but the rows are in the frame's
+ * realm and say what one list holds today, not what an item may hold. So field names are resolved
+ * PARENT-SIDE from the repeater's binding + the project's content-type / state schema, keyed off
+ * the selected element's document path (which carries a real `"map"` segment — see
+ * canvas/path-mapping.ts `classifyRenderNode`). The same walk yields the sample item a repeater
+ * with nothing to draw shows its template with ({@link repeaterSampleItems}).
  *
  * Pure and DOM-free: deps limited to `@jxsuite/schema` guards/types, the runtime's pointer grammar
  *
@@ -46,8 +46,8 @@ import type {
 const FIELD_CAP = 50;
 
 /**
- * Find the repeater (`$prototype: "Array"`) that encloses the node at `path`. The stamper rewrites
- * an edit-mode perimeter render path back to `[...P, "map", …]` where `P` is the repeater's own doc
+ * Find the repeater (`$prototype: "Array"`) that encloses the node at `path`. The stamper strips a
+ * row's index from its render path, leaving `[...P, "map", …]` where `P` is the repeater's own doc
  * path, so an element inside a repeater carries a real-doc path containing a `"map"` segment. We
  * take the LAST `"map"` (innermost repeater wins for nesting) and resolve the node at the prefix
  * before it.
@@ -406,4 +406,140 @@ export function mapRefLabel(ref: string): string | null {
   return ref.startsWith("$map/item/")
     ? fieldToken(refSegments(ref.slice("$map/item/".length)))
     : null;
+}
+
+/** What a schema's `type` says a value is, when it says so in a word. */
+function schemaType(schema: JsonObject): string | null {
+  const { type } = schema;
+  if (isString(type)) {
+    return type;
+  }
+  // `["string", "null"]`: the first that is not null is what a sample should look like.
+  for (const member of Array.isArray(type) ? type : []) {
+    if (isString(member) && member !== "null") {
+      return member;
+    }
+  }
+  return null;
+}
+
+/**
+ * A value of the shape `schema` describes, with nothing in it: an object with every declared
+ * member, an empty list, a zero, a false, and an empty string for anything else or unknown.
+ *
+ * Empty on purpose. The row it is drawn in is no item of the list, so it must not read as one: a
+ * chip whose value is empty draws its NAME (studio.md §4.5), which is what shows a template whole.
+ * A declared `default` or the first `enum` member is used where the schema gives one.
+ */
+function sampleValue(
+  schema: JsonObject | null,
+  ctx: ItemSources,
+  depth: number,
+  via: readonly string[],
+): JsonValue {
+  const resolved = followPointers(schema, ctx);
+  if (!resolved || depth > DEPTH_CAP) {
+    return "";
+  }
+  const entryType = isString(resolved[ENTRY_TYPE]) ? resolved[ENTRY_TYPE] : null;
+  if (entryType !== null && via.includes(entryType)) {
+    // A post's author's posts: the cycle ends on an empty entry.
+    return {};
+  }
+  const passed = entryType === null ? via : [...via, entryType];
+  if (isJsonObject(resolved.properties)) {
+    return Object.fromEntries(
+      Object.entries(resolved.properties).map(([key, member]) => [
+        key,
+        key === NODES_MEMBER
+          ? []
+          : sampleValue(isJsonObject(member) ? member : null, ctx, depth + 1, passed),
+      ]),
+    );
+  }
+  if (resolved.default !== undefined) {
+    // SAFETY: a schema is JSON, so its `default` is a JSON value.
+    return resolved.default as JsonValue;
+  }
+  if (Array.isArray(resolved.enum) && resolved.enum.length > 0) {
+    // SAFETY: as above, an `enum` member is a JSON value.
+    return resolved.enum[0] as JsonValue;
+  }
+  const type = schemaType(resolved);
+  if (type === "array" || isJsonObject(resolved.items)) {
+    return [];
+  }
+  if (type === "number" || type === "integer") {
+    return 0;
+  }
+  if (type === "boolean") {
+    return false;
+  }
+  return type === "object" ? {} : "";
+}
+
+/**
+ * Whether `schema` says anything about what an item is: its members, its type, a default, its own
+ * items. A list declared as nothing more than a list (client state written `[]`, `{ "default": []
+ * }`) has an item schema that says none of it, and a sample made from that would be an empty
+ * string: an ITEM, whose every field reads `undefined` and is spelled that way in the row.
+ */
+function describesItem(schema: JsonObject | null, ctx: ItemSources): schema is JsonObject {
+  const resolved = followPointers(schema, ctx);
+  return (
+    resolved !== null &&
+    (isJsonObject(resolved.properties) ||
+      resolved.default !== undefined ||
+      Array.isArray(resolved.enum) ||
+      schemaType(resolved) !== null ||
+      isJsonObject(resolved.items))
+  );
+}
+
+/** A sample item per repeater, by the repeater's serialized document path. */
+export type RepeaterSamples = Record<string, JsonValue>;
+
+/**
+ * A sample item for every repeater in `doc`, by the repeater's document path as `JSON.stringify`
+ * writes it: what the canvas draws one row of the template with when the list has no items, or
+ * cannot be resolved (studio.md §4.5). A repeater whose item shape cannot be deduced gets `null`:
+ * its template is still drawn, and every binding in it that reads the item draws nothing.
+ *
+ * @param doc - The tab's document root (`tab.doc.document`).
+ * @param projectConfig - Parsed `project.json` (`projectState?.projectConfig`).
+ */
+export function repeaterSampleItems(
+  doc: JxMutableNode,
+  projectConfig: ProjectConfig | null | undefined,
+) {
+  const ctx: ItemSources = { config: projectConfig, doc };
+  const samples: RepeaterSamples = {};
+  const walk = (value: JxDocumentValue | undefined, path: JxPath): void => {
+    if (Array.isArray(value)) {
+      for (const [index, member] of value.entries()) {
+        walk(member, [...path, index]);
+      }
+      return;
+    }
+    if (!isJsonObject(value)) {
+      return;
+    }
+    if (isMappedArray(value)) {
+      const template: JxPath = [...path, "map"];
+      const schema = itemSchemaAt(template, ctx);
+      samples[JSON.stringify(path)] = describesItem(schema, ctx)
+        ? sampleValue(schema, ctx, 0, [])
+        : null;
+      walk(value.map, template);
+      return;
+    }
+    walk(value.children, [...path, "children"]);
+    if (isJsonObject(value.cases)) {
+      for (const [key, body] of Object.entries(value.cases)) {
+        walk(body, [...path, "cases", key]);
+      }
+    }
+  };
+  walk(doc, []);
+  return samples;
 }

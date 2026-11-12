@@ -15,9 +15,9 @@
  * - `textContent` is written in place only on a node whose text is LITERAL, before and after the op.
  *   A node with any bound property is re-rendered instead, through the transform the full render
  *   uses, which is also what puts a chip back when text gains or loses a `${…}`.
- * - `style` is re-emitted whole through the runtime's own `reapplyStyle`, with the same edit-mode
- *   transform (and the same sample row inside a repeater), so a bound declaration stays the
- *   runtime's binding rather than becoming a value written here.
+ * - `style` is re-emitted whole through the runtime's own `reapplyStyle`, against the scope the node
+ *   was drawn with, so a bound declaration stays the runtime's binding rather than becoming a value
+ *   written here.
  * - Every other key that changes rendered output re-renders the node's subtree via
  *   {@link renderSubtreeIframe}: `attributes`, `$props`, `cases`, `children`, `tagName`, a
  *   property. `insert-child` and `set-child` render the new subtree the same way.
@@ -27,15 +27,44 @@
  *   document is drawn again ({@link refuseBesideBoundText}).
  * - An event binding is stripped from an editing render, so its op changes nothing.
  *
+ * **A path under a repeater names every row's instance** (studio.md §4.5). The document holds a
+ * repeater's template once and the canvas draws it once per item, so an op on a `map` path is
+ * applied to each element drawn for it ({@link instancesOf}), each with the scope of its own row:
+ * text is written, a style re-emitted and a subtree drawn again in every row, and each row shows
+ * its own item's values. A row's ROOT is drawn again like any other node and handed to the
+ * runtime's list, which holds each row by its root ({@link replaceInstance}). An op that would
+ * splice children by index beside a repeater or inside a template throws instead, for the reasons
+ * given where each is refused.
+ *
+ * **A row the list draws later is drawn from the document.** The runtime's list keeps the template
+ * it was created with, so once a patch has changed a template, a row a list adds on its own (the
+ * list grew, an empty one filled, a keyed item was replaced) would show the template as it was.
+ * Each such row is drawn again from the shadow document as soon as its list reports it
+ * ({@link redrawStaleRows}).
+ *
  * Any op it cannot apply throws, which the caller reports as `patchError` so the parent escalates
  * to a full render.
  */
 
-import { reapplyStyle, updateInstanceProps } from "@jxsuite/runtime";
-import { isJsonObject, isNumber, isRef, isTemplateString } from "@jxsuite/schema/guards";
+import { reapplyStyle, replaceListRow, updateInstanceProps } from "@jxsuite/runtime";
+import {
+  isJsonObject,
+  isMappedArray,
+  isNumber,
+  isRef,
+  isTemplateString,
+} from "@jxsuite/schema/guards";
 import { getNodeAtPath } from "@jxsuite/schema/doc-ops";
 import { applyDocOpToDoc } from "../tabs/doc-op-apply";
-import { parseJxPath, serializeJxPath } from "./path-mapping";
+import {
+  ECHO_PATH_ATTR,
+  STAMPED_SELECTOR,
+  parseJxPath,
+  rowsOf,
+  serializeJxPath,
+  stampedPathOf,
+} from "./path-mapping";
+import { carryRowMarks, instancesOf, syncRows } from "./iframe-rows";
 import { disposeSubtree, renderSubtreeIframe } from "./iframe-subtree";
 import { deliveredOutsideProps } from "./iframe-inline-edit";
 import { isEditableMode } from "./iframe-render";
@@ -44,14 +73,13 @@ import { stampKept } from "../editor/kept-node";
 import {
   BOUND_FIELD_ATTR,
   computeEmptyPlaceholderClass,
-  editModeStyle,
+  drawsManyNodes,
   EMPTY_PLACEHOLDER_CLASSES,
-  sampleRowAt,
 } from "../utils/edit-display";
 import type { IframeRenderCtx } from "./iframe-render";
 import type { JxDocOp } from "../tabs/patch-ops";
 import type { JxPath } from "../state";
-import type { JxMutableNode, JxStyle } from "@jxsuite/schema/types";
+import type { JxMutableNode } from "@jxsuite/schema/types";
 
 /**
  * Apply a batch of forward ops. Every op is folded into the shadow doc first (so DOM reads see
@@ -80,27 +108,106 @@ export function applyIframePatch(
       }
     }
     applyDocOpToDoc(shadowDoc, op);
+    /* From here on a row a list draws by itself is drawn from a template this op has changed
+       (`redrawStaleRows`). A structural op inside a template is refused below, so the path of a
+       key or of a replaced child is the whole of what can change one. */
+    if (ctx && (op.op === "set-key" ? op.path : opParentPath(op)).includes("map")) {
+      ctx.rows.templatesPatched = true;
+    }
   }
-  if (!echoPaths?.length) {
+  try {
+    if (!echoPaths?.length) {
+      for (const op of forwardOps) {
+        applyOpToDom(shadowDoc, op, container, ctx, propsBefore);
+        restampKept(shadowDoc, op, container, ctx);
+      }
+      return;
+    }
+    // An ECHO: these ops describe DOM this frame already has, because its own caret produced it.
+    // The shadow doc still needs them (it is the patch source of truth), but re-rendering the
+    // Subtree the user is typing in would destroy the caret and the selection inside it.
+    const echoed = new Set(echoPaths.map((p) => serializeJxPath(p)));
+    /* The caret produced that DOM in ONE row. Every other row draws the same node and has not
+       been told, so each echoed path is drawn again there, once, after the batch: an edit in a
+       row is an edit to the template (studio.md §4.5). */
+    const echoRows = new Map<string, JxPath>();
     for (const op of forwardOps) {
+      if (op.op === "set-key" && echoed.has(serializeJxPath(op.path))) {
+        // The content is already right; only the model-derived placeholder class can be stale, and
+        // Reconciling a class touches neither the caret nor the text under it.
+        syncEchoedPlaceholder(shadowDoc, op.path, container);
+        echoRows.set(serializeJxPath(op.path), op.path);
+        continue;
+      }
       applyOpToDom(shadowDoc, op, container, ctx, propsBefore);
       restampKept(shadowDoc, op, container, ctx);
     }
+    for (const path of echoRows.values()) {
+      redrawEchoRows(shadowDoc, path, container, ctx);
+    }
+  } finally {
+    /* Whatever was drawn was stamped by the view's choice alone; settle it against the rows that
+       are now in the DOM. In a `finally` because an op that throws mid-batch has still drawn the
+       ones before it, and the full render that answers it is a round trip away. */
+    if (ctx) {
+      syncRows(container, ctx.rows);
+    }
+  }
+}
+
+/** The path of the node whose `children` a structural op splices. */
+function opParentPath(op: Exclude<JxDocOp, { op: "set-key" }>): JxPath {
+  return op.op === "move-child" ? op.toParentPath : op.parentPath;
+}
+
+/**
+ * Draw again every row a list has drawn, on its own, from a template a patch has since changed
+ * (`RowView.stale`, filled by the list hook in iframe-rows.ts), and settle the stamps. Called
+ * whenever a list reports a redraw; with nothing waiting it does nothing.
+ *
+ * The runtime's list reads its template once, when it is created, and the patcher changes the
+ * shadow document and the rows that are on screen. Without this a row added after a text or a class
+ * edit showed the old text and the old class beside rows that showed the new ones.
+ */
+export function redrawStaleRows(
+  shadowDoc: JxMutableNode,
+  container: HTMLElement,
+  ctx: IframeRenderCtx,
+): void {
+  const { stale } = ctx.rows;
+  if (stale.length === 0) {
     return;
   }
-  // An ECHO: these ops describe DOM this frame already has, because its own caret produced it.
-  // The shadow doc still needs them (it is the patch source of truth), but re-rendering the
-  // Subtree the user is typing in would destroy the caret and the selection inside it.
-  const echoed = new Set(echoPaths.map((p) => serializeJxPath(p)));
-  for (const op of forwardOps) {
-    if (op.op === "set-key" && echoed.has(serializeJxPath(op.path))) {
-      // The content is already right; only the model-derived placeholder class can be stale, and
-      // Reconciling a class touches neither the caret nor the text under it.
-      syncEchoedPlaceholder(shadowDoc, op.path, container);
+  for (let el = stale.shift(); el; el = stale.shift()) {
+    const serialized = stampedPathOf(el);
+    // A row that has gone again, or was drawn again by something else, has nothing to redraw.
+    if (serialized === undefined || !container.contains(el)) {
       continue;
     }
-    applyOpToDom(shadowDoc, op, container, ctx, propsBefore);
-    restampKept(shadowDoc, op, container, ctx);
+    const path = parseJxPath(serialized);
+    if (getNodeAtPath(shadowDoc, path)) {
+      replaceInstance(shadowDoc, path, el, ctx);
+    }
+  }
+  syncRows(container, ctx.rows);
+}
+
+/**
+ * Draw the node at `path` again in every ECHO row, leaving the addressable one as the caret made
+ * it. A path with one element (anything outside a repeater) has no echo row, and nothing happens.
+ */
+function redrawEchoRows(
+  doc: JxMutableNode,
+  path: JxPath,
+  container: HTMLElement,
+  ctx: IframeRenderCtx | undefined,
+): void {
+  const echoes = instancesOf(container, path).filter((el) => el.hasAttribute(ECHO_PATH_ATTR));
+  if (echoes.length === 0 || !ctx) {
+    return;
+  }
+  for (const el of echoes) {
+    replaceInstance(doc, path, el, ctx);
   }
 }
 
@@ -182,6 +289,11 @@ function applyOpToDom(
         patchStyle(doc, op.path, container, ctx);
         return;
       }
+      /* A repeater has no element: a key of the Array node itself (its `items`, its `filter`)
+         changes which rows exist, which only the runtime's own list can redraw. */
+      if (isMappedArray(getNodeAtPath(doc, op.path))) {
+        throw new Error("iframe-patch-repeater-node");
+      }
       /* One writer per property: bound text is the runtime's to write, as chips (§4.5), which a
          text write cannot draw, and neither can it take the chips off text that stopped being
          bound. Either way the node is drawn again, as the full render would draw it. */
@@ -197,7 +309,13 @@ function applyOpToDom(
       if (op.key.startsWith("on")) {
         return;
       }
-      if (op.key === "$props" && patchProps(op, container, propsBefore.get(op))) {
+      /* In place only for an instance drawn once: inside a repeater a prop is as a rule a
+         binding on the row, and each row's instance is drawn again with its own. */
+      if (
+        op.key === "$props" &&
+        !op.path.includes("map") &&
+        patchProps(op, container, propsBefore.get(op))
+      ) {
         return;
       }
       // Any other key (attributes / cases / tagName / a non-event prop), and a `$props` change the
@@ -248,6 +366,28 @@ function refuseBesideBoundText(parentNode: JxMutableNode | undefined): void {
   }
 }
 
+/**
+ * Refuse a structural op whose parent holds a repeater or a computed list, or that sits inside a
+ * repeater's template, so the caller draws the whole document again (studio.md §4.5).
+ *
+ * Beside a repeater a child's index in the document and its index in the DOM are different numbers,
+ * and {@link domChildReference} counts DOM children: an insert spliced by index landed in the wrong
+ * place, between two rows as likely as not, with every stamped path agreeing with the document.
+ * Inside a template the splice would have to be repeated in every row, each with its own scope, and
+ * a row the list draws later would not have it. The parent's `containerVerdict`
+ * (`canvas-patcher.ts`) refuses both first; this is the frame's own word, because the two builds
+ * can differ.
+ */
+function refuseBesideRepeater(parentPath: JxPath, parentNode: JxMutableNode | undefined): void {
+  if (parentPath.includes("map")) {
+    throw new Error("iframe-patch-structure-on-map-path");
+  }
+  const children = parentNode?.children;
+  if (Array.isArray(children) && children.some((child) => drawsManyNodes(child))) {
+    throw new Error("iframe-patch-structure-beside-repeater");
+  }
+}
+
 /** Render the inserted node and splice it into the parent's DOM, shifting later siblings up. */
 function insertChild(
   doc: JxMutableNode,
@@ -259,6 +399,7 @@ function insertChild(
   const parentEl = requireElement(container, parentPath);
   const parentNode = getNodeAtPath(doc, parentPath);
   refuseBesideBoundText(parentNode);
+  refuseBesideRepeater(parentPath, parentNode);
   const newEl = renderSubtreeIframe(doc, [...parentPath, "children", index], ctx);
   // Remap existing siblings BEFORE attaching the new subtree so it isn't itself remapped.
   remapChildPaths(container, parentPath, index, 1);
@@ -266,15 +407,58 @@ function insertChild(
   syncPlaceholderClass(parentEl, parentNode);
 }
 
-/** Re-render the node at `docPath` and swap it into the DOM in place (disposing the old subtree). */
+/**
+ * Re-render the node at `docPath` and swap it into the DOM in place (disposing the old subtree), in
+ * every row that draws it.
+ */
 function replaceSubtree(
   doc: JxMutableNode,
   docPath: JxPath,
   container: HTMLElement,
   ctx: IframeRenderCtx,
 ): void {
-  const oldEl = requireElement(container, docPath);
-  const newEl = renderSubtreeIframe(doc, docPath, ctx);
+  requireElement(container, docPath);
+  for (const el of instancesOf(container, docPath)) {
+    replaceInstance(doc, docPath, el, ctx);
+  }
+}
+
+/**
+ * Draw one row's instance of the node at `docPath` again, with the scope and the row it was drawn
+ * with, and swap it in.
+ *
+ * A row's ROOT is handed to the runtime's list (`replaceListRow`). The list holds that node: it
+ * moves it when the list reorders and removes it when the row goes, so a root swapped in behind its
+ * back would be left standing by the list's next redraw and the old one put back, stale. Told, the
+ * list keeps the row (its key, its item, its index) and holds the new node for it. The marks the
+ * list wrote on the old root go to the new one. Everything below the root is the row's content and
+ * is replaced directly.
+ */
+function replaceInstance(
+  doc: JxMutableNode,
+  docPath: JxPath,
+  oldEl: HTMLElement,
+  ctx: IframeRenderCtx,
+): void {
+  const scope = ctx.rows.scopes.get(oldEl);
+  const newEl = renderSubtreeIframe(
+    doc,
+    docPath,
+    ctx,
+    scope ? { rows: rowsOf(oldEl), scope } : undefined,
+  );
+  if (
+    newEl instanceof HTMLElement &&
+    docPath.at(-1) === "map" &&
+    oldEl.dataset.jxRow !== undefined
+  ) {
+    carryRowMarks(oldEl, newEl);
+    ctx.rows.known.add(newEl);
+    if (replaceListRow(oldEl, newEl, () => disposeSubtree(newEl))) {
+      disposeSubtree(oldEl);
+      return;
+    }
+  }
   disposeSubtree(oldEl);
   oldEl.replaceWith(newEl);
 }
@@ -325,6 +509,9 @@ function removeChild(
   container: HTMLElement,
 ): void {
   refuseBesideBoundText(getNodeAtPath(doc, parentPath));
+  /* The removed child is already out of the folded doc, so what is asked is whether a repeater
+     REMAINS beside it; removing the repeater itself finds no element below and escalates there. */
+  refuseBesideRepeater(parentPath, getNodeAtPath(doc, parentPath));
   const el = requireElement(container, [...parentPath, "children", index]);
   const parentEl = el.parentElement;
   disposeSubtree(el);
@@ -351,6 +538,8 @@ function moveChild(
 ): void {
   refuseBesideBoundText(getNodeAtPath(doc, fromParentPath));
   refuseBesideBoundText(getNodeAtPath(doc, toParentPath));
+  refuseBesideRepeater(fromParentPath, getNodeAtPath(doc, fromParentPath));
+  refuseBesideRepeater(toParentPath, getNodeAtPath(doc, toParentPath));
   const fromPath = [...fromParentPath, "children", fromIndex];
   const el = requireElement(container, fromPath);
   const fromParentEl = el.parentElement;
@@ -417,9 +606,10 @@ function domChildReference(
 }
 
 /**
- * Shift the child-index segment of every `data-jx-path` under `container` whose path is
- * `[...parentPath, "children", i, ...]` with `i >= fromIndex`, by `delta`. Mirrors the legacy
- * patcher's `elToPath` remap, but the iframe stores paths as `data-jx-path` attributes.
+ * Shift the child-index segment of every stamped path under `container` that is `[...parentPath,
+ * "children", i, ...]` with `i >= fromIndex`, by `delta`. Mirrors the legacy patcher's `elToPath`
+ * remap, but the iframe stores paths as attributes: `data-jx-path`, and for a node in an echo row
+ * `data-jx-echo-path`, which names the same document node and moves with it.
  */
 function remapChildPaths(
   container: HTMLElement,
@@ -428,7 +618,7 @@ function remapChildPaths(
   delta: number,
 ): void {
   const depth = parentPath.length;
-  for (const el of container.querySelectorAll<HTMLElement>("[data-jx-path]")) {
+  for (const el of container.querySelectorAll<HTMLElement>(STAMPED_SELECTOR)) {
     const p = elementPath(el);
     if (!p || p.length < depth + 2 || p[depth] !== "children") {
       continue;
@@ -442,30 +632,43 @@ function remapChildPaths(
     }
     const np = [...p];
     np[depth + 1] = idx + delta;
-    el.dataset.jxPath = serializeJxPath(np);
+    writeElementPath(el, np);
   }
 }
 
-/** Rewrite the `data-jx-path` of `el` and its descendants, replacing `oldPrefix` with `newPrefix`. */
+/**
+ * Rewrite the stamped path of `el` and its descendants, replacing `oldPrefix` with `newPrefix`,
+ * whichever of the two attributes each carries it in.
+ */
 function rewriteSubtreePathPrefix(el: HTMLElement, oldPrefix: JxPath, newPrefix: JxPath): void {
-  const targets: HTMLElement[] = [el, ...el.querySelectorAll<HTMLElement>("[data-jx-path]")];
+  const targets: HTMLElement[] = [el, ...el.querySelectorAll<HTMLElement>(STAMPED_SELECTOR)];
   for (const t of targets) {
     const p = elementPath(t);
     if (!p || p.length < oldPrefix.length || !oldPrefix.every((seg, i) => p[i] === seg)) {
       continue;
     }
-    t.dataset.jxPath = serializeJxPath([...newPrefix, ...p.slice(oldPrefix.length)]);
+    writeElementPath(t, [...newPrefix, ...p.slice(oldPrefix.length)]);
   }
 }
 
-/** Read an element's stamped document path, or null when it carries no `data-jx-path`. */
+/** Read an element's stamped document path, or null when it is no node of the document. */
 function elementPath(el: HTMLElement): JxPath | null {
-  const raw = el.dataset.jxPath;
+  const raw = stampedPathOf(el);
   return raw === undefined ? null : parseJxPath(raw);
 }
 
+/** Write an element's document path back into the attribute it was read from. */
+function writeElementPath(el: HTMLElement, path: JxPath): void {
+  if (el.dataset.jxPath === undefined) {
+    el.dataset.jxEchoPath = serializeJxPath(path);
+  } else {
+    el.dataset.jxPath = serializeJxPath(path);
+  }
+}
+
 /**
- * Re-emit the node's style onto its element, matching the full render's edit-mode style transform.
+ * Re-emit the node's style onto its element, and inside a repeater onto every row's, each against
+ * the scope it was drawn with, so a declaration that reads the row resolves to that row's value.
  * Pass the document's merged `$media` map (the same one resolveCanvasDocument put on the render
  * doc, carried on the render ctx's built scope) through to reapplyStyle so an `@--name` block
  * resolves to its real `@media (min-width:…)` query — otherwise a surgical edit on a media-bearing
@@ -478,15 +681,14 @@ function patchStyle(
   container: HTMLElement,
   ctx: IframeRenderCtx | undefined,
 ): void {
-  const el = requireElement(container, path);
+  requireElement(container, path);
   const node = getNodeAtPath(doc, path);
   /* SAFETY: buildScope writes `$media` only from the document's own `$media` map or the runtime's
    * root media map, both Record<string, string>, and the host scope may not supply the key. */
   const mediaQueries = (ctx?.defs["$media"] as Record<string, string> | undefined) ?? {};
-  /* SAFETY: the edit-mode transform of a style object is a style object: it rebuilds the same
-   * keys with the same kinds of value, and answers undefined only for an absent style. */
-  const style = editModeStyle(node?.style, sampleRowAt(doc, path)) as JxStyle | undefined;
-  reapplyStyle(el, style, mediaQueries, ctx?.defs ?? {});
+  for (const el of instancesOf(container, path)) {
+    reapplyStyle(el, node?.style, mediaQueries, ctx?.rows.scopes.get(el) ?? ctx?.defs ?? {});
+  }
 }
 
 /**
@@ -494,11 +696,14 @@ function patchStyle(
  * reached for a bound node ({@link isBoundNode}): its text is the runtime's to write.
  */
 function patchText(doc: JxMutableNode, path: (string | number)[], container: HTMLElement): void {
-  const el = requireElement(container, path);
+  requireElement(container, path);
   const node = getNodeAtPath(doc, path);
   const text = node?.textContent;
-  el.textContent = text == null ? "" : String(text);
-  syncPlaceholderClass(el, node);
+  // Every row draws this node, and literal text is the same text in each.
+  for (const el of instancesOf(container, path)) {
+    el.textContent = text == null ? "" : String(text);
+    syncPlaceholderClass(el, node);
+  }
 }
 
 /**
