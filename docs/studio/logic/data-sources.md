@@ -28,7 +28,7 @@ Each source's editor shows just the fields that source needs.
 - **Method**: `GET`, `POST`, `PUT`, `DELETE`, or `PATCH`.
 - **Timing**: `client` fetches in the visitor's browser; `server` runs the request on the server instead, which is useful when an API can't be called from a browser.
 
-While the request is in flight the entry reads as `pending` in the **[Data panel](/docs/studio/logic/data)**; the resolved response then flows wherever the entry is used.
+While you edit, a `GET` request runs once and its answer is kept for the tab, so the canvas shows the real response without calling the API on every edit. While it is in flight the entry reads **Loading** in the **[Data panel](/docs/studio/logic/data#fetched-once)**; the resolved response then flows wherever the entry is used. A request with any other method is not sent from the canvas, and reads **Not run** there.
 
 ## LocalStorage and SessionStorage: remember in the browser
 

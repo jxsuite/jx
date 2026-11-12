@@ -28,10 +28,12 @@ import {
   setDocumentParser,
   setProjectFormulas,
   setRootMedia,
+  setRemoteLookupHandler,
   setSkipAutoRequests,
   setSkipServerFunctions,
   setStampPropBindings,
 } from "@jxsuite/runtime";
+import type { RemoteLookupHandler } from "@jxsuite/runtime";
 import { resolveAssetRef } from "./asset-resolve";
 import { fillPreviewImages } from "./preview-placeholder";
 import { ROW_ATTR, classifyRenderNode, jxPathSelector, serializeJxPath } from "./path-mapping";
@@ -53,6 +55,7 @@ import { SITE_STYLE_ID, buildSiteStyleCSS } from "@jxsuite/site/site-style";
 import type { CanvasMode, WireDiffMarks, WireLocale } from "./iframe-protocol";
 import { isNonNullObject, isRef, isString, isTemplateString } from "@jxsuite/schema/guards";
 import { isTextRun, tagMarkOf } from "../utils/edit-display";
+import { STATUS_ATTR, STATUS_NOTE_ATTR } from "./iframe-remote";
 import type { JxDocument, JxElement, JxStateDefinition, JxStyle } from "@jxsuite/schema/types";
 import type { PathMapCtx } from "./path-mapping";
 import type { RowHooks, RowView } from "./iframe-rows";
@@ -359,6 +362,30 @@ data[data-jx-tag]:empty::before {
   white-space: nowrap;
   pointer-events: none;
 }
+data[data-jx-tag][${STATUS_ATTR}] {
+  text-decoration: underline dotted color-mix(in srgb, #808080 70%, transparent);
+  text-underline-offset: 0.2em;
+}
+data[data-jx-tag][${STATUS_ATTR}="failed"] {
+  text-decoration: underline wavy color-mix(in srgb, var(--jx-canvas-danger, #d92d20) 70%, transparent);
+}
+data[data-jx-tag][${STATUS_ATTR}]:empty::before {
+  content: attr(data-jx-tag-label) " \\00B7  " attr(${STATUS_NOTE_ATTR});
+}
+[${STATUS_ATTR}]:not(data) {
+  outline: 1.5px dotted color-mix(in srgb, #808080 60%, transparent);
+  outline-offset: 2px;
+}
+[${STATUS_ATTR}="failed"]:not(data) {
+  outline-color: color-mix(in srgb, var(--jx-canvas-danger, #d92d20) 60%, transparent);
+}
+[${TEMPLATE_ROW_ATTR}][${STATUS_ATTR}]::before {
+  content: attr(${STATUS_NOTE_ATTR}) ": showing the template";
+  background: color-mix(in srgb, #808080 85%, transparent);
+}
+[${TEMPLATE_ROW_ATTR}][${STATUS_ATTR}="failed"]::before {
+  background: color-mix(in srgb, var(--jx-canvas-danger, #d92d20) 85%, transparent);
+}
 [${ROWS_MORE_ATTR}]:hover::after {
   content: attr(${ROWS_MORE_ATTR});
   position: absolute;
@@ -407,6 +434,14 @@ data[data-jx-tag]:empty::before {
  * times, because that row is no item of the list and must not pass for one. The last row of a list
  * the row cap cut short says how many are drawn of how many while it is hovered. Both labels are
  * positioned the way the bound block's is. An echo row has no rule: it reads as the page.
+ *
+ * A binding that has no value to draw says why, quietly (`data-jx-status`, written by
+ * `stampStatuses` in `iframe-remote.ts`): still loading, failed, or not run on the canvas at all. A
+ * chip is underlined, dotted in grey or wavy in red for a failure, and one with nothing in it draws
+ * its name and the reason where an empty chip draws its name alone. A bound block gets a grey or
+ * red dotted outline at all times, since nothing else about an image with no source says which of
+ * the three it is. A template row says the reason in place of "No items". None of them is ever the
+ * expression's text.
  */
 
 /**
@@ -1184,6 +1219,11 @@ export function makeStamper(ctx: PathMapCtx, view: RowView = newRowView()) {
       if (tag.ref !== undefined) {
         created.dataset.jxTagRef = tag.ref;
       }
+      /* The scope the chip was drawn with, so a chip that drew nothing can be asked why
+         (`chipFailure`): a row's chip reads the row, and only its own scope has it. */
+      if (scope) {
+        view.scopes.set(created, scope);
+      }
       drawn.push(path);
       return;
     }
@@ -1393,8 +1433,13 @@ export interface RenderDocumentOptions {
    * space (desktop, `jx dev`) and references need no resolution at all.
    */
   assets?: AssetContext | null;
-  /** This render may fetch automatic `Request` entries even outside preview (Data-panel Refresh). */
-  allowAutoRequests?: boolean;
+  /**
+   * Who answers this render's remote lookups (studio.md §4.5): the frame's own handler over the
+   * tab's kept answers, under which an automatic `GET` request and a `timing: "server"` call each
+   * run once. Absent or null outside an editable view, and for a host that sent no remote data:
+   * neither then runs anywhere but in Preview.
+   */
+  remoteLookup?: RemoteLookupHandler | null;
   /** The project's pure named formulas a component inherits (spec.md §13.4); absent for none. */
   projectFormulas?: Record<string, JxStateDefinition>;
   /** Change marks for a git-diff artboard, in this side's own document coordinates. */
@@ -1418,8 +1463,9 @@ export interface RenderDocumentOptions {
  * touching neither the container, nor the rules the picture already in it is drawn with, nor the
  * canvas's own head-level sheets (the site style and the mode sheets). Resolves to the synchronous
  * half, which draws the tree into `container` in place of its current children and returns a handle
- * whose `dispose()` stops the reactive scope. `mode` controls whether server functions run (live in
- * `preview`; skipped in `design`/`edit`).
+ * whose `dispose()` stops the reactive scope. `mode` and `remoteLookup` decide whether server
+ * functions and automatic requests run (as the page runs them in `preview`; once each, through the
+ * handler, in an editable view that has one; not at all otherwise).
  *
  * It does set the runtime's module-level render flags and append the document's `$head` before it
  * awaits, because registering components and building the scope read them, and nothing undoes
@@ -1444,14 +1490,19 @@ export async function prepareResolvedDocument(
      posts the plain-data context and the resolver is closed over it here. */
   const assets = opts.assets ?? null;
   setCanvasAssetResolver(assets ? (value) => resolveAssetRef(value, assets) : null);
-  setSkipServerFunctions(opts.mode !== "preview");
+  /* Remote data (studio.md §4.5). `buildScope` resolves every state entry again on each full
+     render, so a lookup the runtime were simply allowed to start would be started by every
+     escalating authoring action (a Data panel edit, Enter inside component-wrapped content). An
+     editable view therefore answers each one itself (`iframe-remote.ts`): the first ask runs, and
+     every later one is handed what it answered. Preview runs them as the page does. With no
+     handler and no Preview nothing runs, which is every other mode and a host that sent none.
+     Set every render, to null too: the handler is realm-wide, like the two switches. */
+  const remoteLookup = opts.mode === "preview" ? null : (opts.remoteLookup ?? null);
+  setRemoteLookupHandler(remoteLookup);
+  const runsRemote = opts.mode === "preview" || remoteLookup !== null;
+  setSkipServerFunctions(!runsRemote);
   setDocumentParser(parseDocumentText);
-  // Same gate for automatic `$prototype: "Request"` state entries. `buildScope` re-resolves every
-  // State entry on each full render, so without this an escalating authoring action (a signals-panel
-  // Edit, or Enter inside component-wrapped content) issued an HTTP request per render. Edit/design
-  // Render the pre-fetch (null) state; preview fetches, and so does a render the Data activity's
-  // Refresh armed (`allowAutoRequests`) — re-firing fetches on demand is that button's purpose.
-  setSkipAutoRequests(opts.mode !== "preview" && !opts.allowAutoRequests);
+  setSkipAutoRequests(!runsRemote);
   // Transpose viewport units (vh/vw/…) → container units (cqh/cqw/…) so they resolve against the
   // Canvas's fixed-size query container (canvas.html) instead of the iframe element. That decouples
   // Them from the iframe height, letting the host size the iframe to its content without `100vh`

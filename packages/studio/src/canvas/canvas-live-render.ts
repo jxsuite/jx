@@ -47,6 +47,8 @@ import { collectionPage, entryLayoutPath, entryLocale } from "../content/collect
 import { isPagePath, pageContextFor } from "./canvas-page-context";
 import { loadExtensions } from "../format/format-host";
 import { bakeRepeaterSources, extensionClassKeys, repeaterSourceKeys } from "./repeater-sources";
+import { withStateValues } from "./state-values";
+import { getPlatform } from "../platform";
 import { repeaterSampleItems } from "../editor/repeater-scope";
 import type { RepeaterSamples } from "../editor/repeater-scope";
 
@@ -433,6 +435,12 @@ export async function resolveCanvasDocument(
   rowSamples: RepeaterSamples;
   /** The client script of every document this render is composed from, by its specifier. */
   scripts: CanvasScripts;
+  /**
+   * The state keys of the collections this render reads that this host cannot resolve, because it
+   * has no backend to resolve a class through (the cloud). Empty everywhere else. Each list that
+   * reads one draws its template row (studio.md §4.5).
+   */
+  unresolvedSources: string[];
 }> {
   const S = { documentPath: tab?.documentPath, mode: tab?.doc.mode };
   const canvasMode = modeOverride ?? canvasModeOfTab(tab);
@@ -592,7 +600,9 @@ export async function resolveCanvasDocument(
   if (canvasMode !== "preview") {
     bakeKeys.push(...repeaterSourceKeys(doc));
   }
-  renderDoc = await bakeRepeaterSources(renderDoc, [...new Set(bakeKeys)], docBase, classes);
+  const sourceKeys = [...new Set(bakeKeys)];
+  renderDoc = await bakeRepeaterSources(renderDoc, sourceKeys, docBase, classes);
+  const unresolvedSources = getPlatform().resolveClass === undefined ? sourceKeys : [];
 
   /* A component inherits the project's pure named formulas (spec.md §13.4). An instance gets them
      from the frame's runtime, which is handed the same set below; a definition drawn as the
@@ -676,6 +686,13 @@ export async function resolveCanvasDocument(
     };
   }
 
+  /* A state value set for the canvas (`canvas.setStateValue`, studio.md §4.5), last, so nothing
+     above (a test prop, an injected context) is drawn over the author's choice. Editable views
+     only: Preview draws the page as it ships. */
+  if (tab && canvasMode !== "preview") {
+    renderDoc = withStateValues(renderDoc, doc.state, tab.session.ui.stateValues);
+  }
+
   return {
     assets,
     docBase,
@@ -693,5 +710,6 @@ export async function resolveCanvasDocument(
     rowSamples: canvasMode === "preview" ? {} : repeaterSampleItems(doc, projectConfig),
     scripts: scripts.scripts,
     siteStyle: projectState?.projectConfig?.style ?? null,
+    unresolvedSources,
   };
 }

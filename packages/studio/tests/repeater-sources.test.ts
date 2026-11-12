@@ -65,6 +65,48 @@ describe("repeaterSourceKeys", () => {
     // `live` holds a template (re-resolved by the runtime), `literal` is data, `$map/…` is a row.
     expect(repeaterSourceKeys(PAGE)).toEqual(["shows"]);
   });
+
+  test("names the collections computed children read, as a whole child or a string member", () => {
+    /* A converted site writes most of its lists as an expression that answers nodes (spec.md
+       §8.4). Left to the runtime, each drew nothing on the first render and its nodes on a second,
+       once the collection had come back. */
+    const page: JxMutableNode = {
+      children: [
+        { children: "${state.shows.map((show) => ({ tagName: 'li' }))}", tagName: "ul" },
+        {
+          children: [
+            "Latest: ",
+            '${state["essays"].slice(0, 3).map((essay) => essay.title)}',
+            { children: ["${state?.people.length} people"], tagName: "em" },
+            "${item.state.hidden} ${mystate.other} plain state.authors text",
+          ],
+          tagName: "p",
+        },
+        { tagName: "p", textContent: "${state.unlisted.length}" },
+        // A spread is a read like any other: the converted site copies a list before sorting it.
+        { children: ["${[...state.spread].sort().map((entry) => entry.title)}"], tagName: "ol" },
+      ],
+      state: {
+        authors: SHOWS,
+        essays: SHOWS,
+        hidden: SHOWS,
+        live: {
+          $prototype: "ContentCollection",
+          $src: "@x/C.class.json",
+          q: "${state.q}",
+        },
+        other: SHOWS,
+        people: SHOWS,
+        shows: SHOWS,
+        spread: SHOWS,
+        unlisted: SHOWS,
+      },
+      tagName: "main",
+    };
+    // `authors` is prose outside any expression; `hidden` and `other` belong to other objects;
+    // `unlisted` is read by a text binding, which draws no list.
+    expect(repeaterSourceKeys(page).toSorted()).toEqual(["essays", "people", "shows", "spread"]);
+  });
 });
 
 describe("extensionClassKeys", () => {

@@ -116,13 +116,6 @@ export type ParentToIframe =
        */
       editableTags?: Record<string, boolean>;
       mode: CanvasMode;
-      /**
-       * Let automatic `$prototype: "Request"` state entries fetch on THIS render even outside
-       * preview mode. Edit/design suppress them by default (a full render re-resolves every state
-       * entry, so an escalating authoring action would issue a request each time), but the Data
-       * activity's Refresh exists precisely to re-fire them on demand. Absent = follow the mode.
-       */
-      allowAutoRequests?: boolean;
       docBase: string;
       /**
        * The client script of every document this render is composed from, as each was last saved,
@@ -179,6 +172,15 @@ export type ParentToIframe =
        * parent from the project's content schemas, which the frame never sees. Absent for none.
        */
       rowSamples?: Readonly<Record<string, JsonValue>>;
+      /**
+       * The document's remote data for this render (studio.md §4.5): which session of the tab's
+       * cache it is drawn from, every answer that session holds, and whether THIS frame is the one
+       * that fetches what the session lacks. Present only for an editable view, and filled in when
+       * the render is posted, so a render queued for a frame still booting says what is true once
+       * the frame is up. Absent, the frame starts no automatic `Request` and no `timing: "server"`
+       * call outside Preview, as it never did; a frame that predates the field ignores it.
+       */
+      remote?: RemoteWire;
       /**
        * Which nodes to tint on a `git-diff` artboard, in this side's own coordinates.
        *
@@ -249,6 +251,12 @@ export type ParentToIframe =
    * the active one ends that session first. Guarded by the `rows` capability.
    */
   | { kind: "setActiveRows"; rows: ActiveRows }
+  /**
+   * Answers another frame of the same tab fetched (studio.md §4.5): one frame fetches what the
+   * tab's session lacks, and the host hands each answer to the others, which were told to wait.
+   * Dropped by a frame drawing another `session`. Guarded by the `bindingStatus` capability.
+   */
+  | { kind: "remoteResults"; session: string; results: Readonly<Record<string, RemoteResult>> }
   /**
    * Draw the popover at `path` open, and every other one closed. `null` closes them all.
    *
@@ -589,15 +597,87 @@ export type BindingDisplay = "values" | "names";
 export const BINDING_DISPLAYS = ["values", "names"] as const satisfies readonly BindingDisplay[];
 
 /**
+ * One remote lookup's settled answer, as the tab's session keeps it: the value, or why there is
+ * none. JSON, because it crosses the frame boundary in both directions.
+ */
+export type RemoteResult = { ok: true; value: JsonValue } | { ok: false; error: string };
+
+/** What a render says about the document's remote data (studio.md §4.5). */
+export interface RemoteWire {
+  /**
+   * The tab's cache session. A frame is reused from tab to tab, and Refresh starts a new session,
+   * so a frame that sees another string forgets every answer it holds.
+   */
+  session: string;
+  /** Whether this frame fetches what the session lacks. Exactly one frame of a tab does. */
+  fetch: boolean;
+  /**
+   * Whether the host has a backend that can run a `timing: "server"` function. Without one the
+   * frame calls nothing and the entry reads "Runs on the live page".
+   */
+  server: boolean;
+  /** Every answer the session holds, by lookup key (`remoteKey` in `canvas/iframe-remote.ts`). */
+  results: Readonly<Record<string, RemoteResult>>;
+}
+
+/**
+ * Where one binding, or one state entry, stands on the canvas (studio.md §4.5).
+ *
+ * - `resolved`: it has its value.
+ * - `pending`: it reads a lookup that has not answered yet.
+ * - `failed`: its expression threw, or the lookup it reads failed; `error` says how.
+ * - `not-run`: it reads something the canvas does not run (a request that is not a `GET`, a `manual`
+ *   one, a server function on a host with no backend).
+ */
+export type BindingState = "resolved" | "pending" | "failed" | "not-run";
+
+/** What a binding that reads an entry the canvas does not run says, on the canvas and beside it. */
+export const NOT_RUN_NOTE = "Runs on the live page";
+
+/** What a binding still waiting for its data says. */
+export const PENDING_NOTE = "Loading";
+
+/** What a binding whose data could not be had says. */
+export const FAILED_NOTE = "Could not load";
+
+/**
+ * What a binding whose own expression throws says. Other words than {@link FAILED_NOTE}, because
+ * nothing was fetched: the mistake is in the expression, and the page would draw nothing there
+ * too.
+ */
+export const THROWN_NOTE = "Has an error";
+
+/** One state entry's standing: {@link BindingState}, and what the canvas says about it. */
+export interface EntryStatus {
+  status: BindingState;
+  /** Why it failed. Present on `failed` alone. */
+  error?: string;
+}
+
+/** One binding drawn on the canvas, and where it stands. */
+export interface BindingStatus extends EntryStatus {
+  /** The document path of the node the binding is drawn in, or null for one with no path. */
+  path: (string | number)[] | null;
+  /** The expression, verbatim: a `${…}`, or a `{ "$ref" }` as JSON. */
+  source: string;
+}
+
+/**
  * A thing a frame build may or may not understand, announced on `ready`.
  *
  * - `bindingDisplay`: the `setBindingDisplay` message.
  * - `rows`: repeaters drawn as real rows, the `setActiveRows` message and the `rowActivated` reply.
+ * - `bindingStatus`: remote data fetched once (the render's `remote` field, the `remoteResults`
+ *   message and the `remoteSettled` reply) and the `bindingStatus` report.
  */
-export type FrameCapability = "bindingDisplay" | "rows";
+export type FrameCapability = "bindingDisplay" | "rows" | "bindingStatus";
 
 /** Every capability this build of the frame announces. */
-export const FRAME_CAPABILITIES: readonly FrameCapability[] = ["bindingDisplay", "rows"];
+export const FRAME_CAPABILITIES: readonly FrameCapability[] = [
+  "bindingDisplay",
+  "rows",
+  "bindingStatus",
+];
 
 /** Messages the canvas iframe sends back to the editor (parent). */
 export type IframeToParent =
@@ -617,6 +697,26 @@ export type IframeToParent =
    * inside nested repeaters posts one for each.
    */
   | { kind: "rowActivated"; path: (string | number)[]; row: number }
+  /*
+   * A lookup this frame ran has answered (studio.md §4.5). The host keeps the answer in the tab's
+   * session, which is what every later render and every other frame of the tab is given, so the
+   * lookup is never started twice. `session` is the one the lookup was asked in, which need not be
+   * the one the frame draws now (a frame is handed another tab's document while a request is
+   * out); the host finds the tab by it, and drops an answer for a session a Refresh has replaced.
+   */
+  | { kind: "remoteSettled"; session: string; key: string; result: RemoteResult }
+  /*
+   * Where every state entry and every binding of the drawn document stands (studio.md §4.5).
+   * Posted after a render and again whenever an answer changes it. `entries` is the root scope's
+   * remote entries by state key; `bindings` is the chips and bound blocks drawn, in document
+   * order. `gen` lets the host drop a report from a superseded render.
+   */
+  | {
+      kind: "bindingStatus";
+      gen: number;
+      entries: Readonly<Record<string, EntryStatus>>;
+      bindings: readonly BindingStatus[];
+    }
   // Acknowledges a `flushEdits`: every pending commit for this frame has been posted.
   | { kind: "flushComplete"; reqId: number }
   | { kind: "renderComplete"; gen: number }

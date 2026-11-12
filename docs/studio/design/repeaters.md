@@ -91,7 +91,7 @@ In Edit and Design the canvas draws every item of the list: each row shows its o
 
 A long list is cut short on the canvas so the page stays quick to work with: 24 rows are drawn, and the last one says how many there are when you point at it. Your site always gets the whole list. Studio has no control for drawing more rows yet. The number is set by the `canvas.setRepeaterRows` command, listed with the rest in **[Commands](/docs/studio/interface/commands)**, which a script or an assistant can run.
 
-A list with no items still shows its template, as one row marked **No items: showing the template**. Its tags are empty, so each shows its name, and the parts a condition would hide are all shown so you can reach them. The row goes as soon as the list has an item.
+A list with no items still shows its template, as one row marked **No items: showing the template**. Its tags are empty, so each shows its name, and the parts a condition would hide are all shown so you can reach them. The row goes as soon as the list has an item. When the list is empty because its data has not arrived, the row says that instead: **Loading**, **Could not load** or **Runs on the live page**, as described in **[Your site's data](/docs/studio/interface/canvas#your-sites-data)**.
 
 :::doc-warning
 The template is one element styled once, so changes to it apply to every repeated item. To make one item special, style by position with a selector like `:first-child` (see **[Hover states and selectors](/docs/studio/design/states-and-selectors)**) or use data-driven styling.

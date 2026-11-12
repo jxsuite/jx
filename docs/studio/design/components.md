@@ -63,6 +63,8 @@ A component file open on its own renders with its defaults, but defaults are oft
 
 Test values are a preview lens only: they're never saved into the component, and clearing a field returns the prop to its default. They pair with the **Preview** toggle described in **[Modes and preview](/docs/studio/interface/modes)**.
 
+A component's other states work the same way. A menu that opens on a click is only ever drawn closed on the editing canvas, because nothing you click there runs. Open the **Data** panel, expand the value that holds the state, and set it in the **On canvas** field to draw the component that way. It is not saved either. See **[Set a value for the canvas](/docs/studio/logic/data#set-a-value-for-the-canvas)**.
+
 ## Run a component in your browser
 
 The canvas shows you a component. To use one, with its buttons, forms and scripts doing what they will do on a real page, press **Open in Browser** (:kbd[⇧⌘O] on macOS, :kbd[Ctrl+Shift+O] on Windows/Linux) while the component's file is the open document. Your browser opens the component on its own, on a page that holds nothing else. That page still has your site's styles, fonts and `<head>`, and the same site data a real page gets, so the component looks and behaves the way it will once it's placed. It has no layout around it.

@@ -7,6 +7,12 @@ code:
   - packages/studio/src/surfaces/panel-signals.ts
   - packages/studio/src/surfaces/panel-data.ts
   - packages/studio/src/component-props.ts
+  - packages/studio/src/canvas/iframe-remote.ts
+  - packages/studio/src/canvas/remote-data.ts
+  - packages/studio/src/canvas/state-values.ts
+spec:
+  - studio.md#5.6 # the Data panel
+  - studio.md#4.5 # remote data fetched once, and a state value set for the canvas
 ---
 
 # Data panel
@@ -33,7 +39,7 @@ Entries are grouped into collapsible sections with counts: **State**, **Computed
 - The entry's name.
 - One summary: what the entry **resolved to** once the canvas has rendered, and how it is **defined** before that.
 
-The resolved summary reads as `Array(12)` for a list and how many items it holds, `{5}` for an object and how many fields, `string` / `number` / `boolean` for a plain value's type, or `pending` for no value yet (a data source that hasn't finished resolving, or failed to). Before the canvas has rendered anything there is nothing to report, so the row shows the definition instead: a Request's method and URL, a storage entry's key, the first line of a function.
+The resolved summary reads as `Array(12)` for a list and how many items it holds, `{5}` for an object and how many fields, `string` / `number` / `boolean` for a plain value's type, or `pending` for no value yet. A source the canvas fetches says more than that, in a word or two because the row is narrow: **Loading** while its answer is out, **Failed** when it could not be loaded (hover the summary for the reason), and **Not run** for a source the canvas does not run at all, which runs on the live page. A source whose URL reads another source says what that one says while it is loading or failed, because it cannot ask until the other has answered. See **[Fetched once](#fetched-once)**. Before the canvas has rendered anything there is nothing to report, so the row shows the definition instead: a Request's method and URL, a storage entry's key, the first line of a function.
 
 Functions and expressions that assign never show a value, because they don't hold one. They are things the page _does_. Those rows keep their definition summary.
 
@@ -100,13 +106,38 @@ Name an entry with a leading `#` (like `#cache`) to keep it private: private ent
 Everything in this panel is written to the `state` object of the open file's JSON. The shapes Studio writes are documented in **[Components](/docs/framework/concepts/components)** and **[Reactivity](/docs/framework/concepts/reactivity)**: plain values, computed entries, `$prototype` sources, functions.
 :::
 
+## Fetched once
+
+While you edit, the canvas draws your real data. A **Fetch from a URL** source that uses `GET`, and a server function, each run **once** when you open the document. The answer is kept for as long as the tab stays open, and every re-render after that reuses it. Editing a page re-renders the canvas many times, so this is what keeps your edits from calling the API over and over.
+
+- **Change the source and it fetches again.** The answer is kept against what the source asks for: its method, URL, headers and body, with any values in the URL filled in. Edit the URL and that is a new question, fetched once. Change it back and the earlier answer is still there.
+- **Only `GET` runs.** A source with any other method (`POST`, `PUT`, `DELETE`, `PATCH`) changes something on a server, so the canvas never sends it. The same goes for a method that is not written as plain text. Its row reads **Not run**, its editor ends with **Runs on the live page**, and anything bound to it on the canvas says the same.
+- **A failure is kept too.** A source that failed stays failed until you ask again. Its row reads **Failed**, and its editor ends with the reason.
+- **Nothing waits.** The page is drawn straight away and fills in when the answer arrives. A request with no answer after 30 seconds is given up as failed.
+
+On the canvas, text bound to a source with no value never shows its expression. It shows the binding's name and one of the same three states, quietly underlined: **Loading**, **Could not load** or **Runs on the live page**. A binding whose own expression fails, such as reading a field of a value that is `null`, says **Has an error** instead, with the error when you rest the pointer on it. Nothing failed to load there: the expression needs fixing.
+
 ## Refresh
 
-The values are a snapshot from the canvas render. Click **Refresh** in the panel's toolbar to re-render the canvas and read them again. That helps after editing a data source, or when you want to re-fire a fetch. The button says **Refreshing…** until the canvas actually reports back, so a slow fetch looks slow rather than looking like a button that did nothing.
+Click **Refresh** in the panel's toolbar to fetch everything again: Studio forgets the answers it kept for this tab, re-reads the collections your lists use, and re-renders the canvas. Use it after the data behind a URL has changed, or to retry a source that failed. The button says **Refreshing…** until every source has answered or failed, so a slow fetch looks slow rather than looking like a button that did nothing.
 
 :::doc-note
-While you are editing, **Fetch from a URL** sources do not call out to the network on their own. They sit empty until you ask. Editing the page re-renders the canvas many times, and re-running every fetch each time would be slow and would hammer the API. Click **Refresh** to fetch for real, or switch on the **preview** toggle, where data behaves exactly as it will on the built site.
+To see a `POST` run, or a server function with your deployment's real secrets, use **[Open in Browser](/docs/studio/interface#command-bar)**, where the page behaves as it will on the built site.
 :::
+
+## Set a value for the canvas
+
+Nothing you click on the editing canvas runs, so a state the page only reaches through a click (a menu that is open, a tab that is chosen, a form that has failed) is never drawn there by itself. To look at it, set the value for the canvas:
+
+1. Open a plain value's row. Its editor ends with an **On canvas** field.
+2. Choose or type the value to draw. A flag offers `true` and `false`, a value with **Options** offers those, and anything else is a text field, read as the entry's own type (a number for a number, JSON for a list or an object).
+3. The canvas re-renders with that value. Nothing is fetched again.
+
+The row now shows the value you set, in the accent color with an `=` in front, and gains a **Use the document's value** button. A long value is cut short in the row, so rest the pointer on it to read it whole. Click the button, or pick the first choice in the **On canvas** field, to go back. Setting the value the document already holds goes back too, since there is nothing to set.
+
+A value set this way is part of your editing session, like the row you last clicked in a list. It is never written to the file, so it does not mark the document as changed and there is nothing to undo. Only plain values have the field: a computed value, an expression, a function and a data source get their value from somewhere else.
+
+The same thing is a command, **Set State Value on Canvas** (`canvas.setStateValue`), which takes the entry's `key` and a `value`, where `null` clears it.
 
 ## Test values for component options
 
@@ -123,9 +154,10 @@ Test values are a preview aid. They live with your editing session, not in the c
 
 ## Debug with it
 
-- A `pending` Request usually means the URL is wrong or the server didn't answer. Check the entry's URL in its editor, then **Refresh**.
+- A Request that reads **Failed** has the reason in its editor: usually a wrong URL, or a server that did not answer. Fix the URL and it fetches again, or click **Refresh** to retry the same one.
+- A Request that reads **Not run** is not broken. Its method is not `GET`, so the canvas does not send it.
 - A computed value that shows the wrong result: open the entries it depends on and read what they actually resolved to; most "formula bugs" are surprising input data.
-- Events not visibly doing anything? Trigger them with **Preview** on and watch the target entry's row change.
+- Want to see what an event leads to? Set the entry it writes with the **On canvas** field and look at the canvas, or trigger the event for real with **Preview** on and watch the entry's row change.
 
 ## Next
 
