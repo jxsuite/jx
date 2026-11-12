@@ -30,6 +30,7 @@ import { documentBase } from "./canvas-origin";
 import { scriptCollector } from "./canvas-scripts";
 import { componentRegistry, computeRelativePath } from "../files/components";
 import { collectUsedTags } from "@jxsuite/schema/component-meta";
+import { inheritableFormulas } from "@jxsuite/runtime/expression";
 import { injectContext } from "@jxsuite/site/context";
 import { documentUrlPattern } from "@jxsuite/site/routes";
 import { entryBoundFields, entryRootsOf, prepareForEditMode } from "../utils/edit-display";
@@ -56,6 +57,7 @@ import type {
   JxElement,
   JxMutableNode,
   JxPath,
+  JxStateDefinition,
   JxStyle,
 } from "@jxsuite/schema/types";
 import type { ComponentEntry } from "../files/components.js";
@@ -425,6 +427,8 @@ export async function resolveCanvasDocument(
   assets: AssetContext | null;
   mapperCtx: WireMapperCtx;
   siteStyle: JxStyle | null;
+  /** The project's pure named formulas, which a component inherits (spec.md §13.4), when any. */
+  projectFormulas?: Record<string, JxStateDefinition>;
   /** The state key of the entry drawn live inside its collection's page, or null for none. */
   entryRoot: string | null;
   /** The client script of every document this render is composed from, by its specifier. */
@@ -590,6 +594,14 @@ export async function resolveCanvasDocument(
   }
   renderDoc = await bakeRepeaterSources(renderDoc, [...new Set(bakeKeys)], docBase, classes);
 
+  /* A component inherits the project's pure named formulas (spec.md §13.4). An instance gets them
+     from the frame's runtime, which is handed the same set below; a definition drawn as the
+     document itself is not an instance, so they go under its own state here. A rebuild, as above. */
+  const projectFormulas = inheritableFormulas(projectState?.projectConfig?.state);
+  if (!isPage && isComponentDoc(renderDoc) && Object.keys(projectFormulas).length > 0) {
+    renderDoc = { ...renderDoc, state: { ...projectFormulas, ...renderDoc.state } };
+  }
+
   // Component definition docs (non-page): seed chosen test-prop values into the render doc's state
   // So a non-instantiated component previews with real data — templates, dataScope snapshots, and
   // Live/snapshot expression previews all see the values (M6, the previewParams mirror). Pure
@@ -719,6 +731,7 @@ export async function resolveCanvasDocument(
       pageContentOffset,
       pageContentPrefix,
     },
+    projectFormulas,
     renderDoc,
     scripts: scripts.scripts,
     siteStyle: projectState?.projectConfig?.style ?? null,

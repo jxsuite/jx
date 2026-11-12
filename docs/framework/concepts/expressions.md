@@ -191,7 +191,7 @@ A callee may also be a pure standard-library global through `window#/`, gated by
 }
 ```
 
-Formulas declared in the project file `state` are available on every page. A catalog of ready-made composite formulas ships with Studio's palette. See the [formula catalog](/docs/framework/reference/formulas).
+Formulas declared in the project file `state` are available on every page. The pure ones that read no project data are also available inside every component of the project (see [Project formulas](/docs/framework/concepts/props-and-scope#project-formulas)). A catalog of ready-made composite formulas ships with Studio's palette. See the [formula catalog](/docs/framework/reference/formulas).
 
 ### Calling a formula from a template
 

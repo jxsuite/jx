@@ -279,6 +279,45 @@ describe("resolveCanvasDocument", () => {
     expect(srcState?.count).toEqual({ default: 3, type: "number" });
   });
 
+  test("a component definition is drawn with the project's pure formulas under its own state (spec.md §13.4)", async () => {
+    const double = {
+      $expression: { operator: "*", target: { $ref: "$args/n" }, value: 2 },
+      parameters: ["n"],
+    };
+    const own = {
+      $expression: { operator: "*", target: { $ref: "$args/n" }, value: 3 },
+      parameters: ["n"],
+    };
+    resetStudioState({
+      isSiteProject: true,
+      projectConfig: { state: { brand: "Acme", double, triple: double } },
+    });
+    const tab = resetWorkspaceWithTab(
+      { children: [], state: { title: "Hello", triple: own }, tagName: "x-card" },
+      { documentPath: "components/x-card.json" },
+    );
+    const result = await resolveCanvasDocument(tab.doc.document, tab);
+
+    // What every component the frame instantiates inherits: the formulas, never the data.
+    expect(Object.keys(result.projectFormulas ?? {})).toEqual(["double", "triple"]);
+    // The definition itself: the formulas under its own entries, which win; no project data.
+    expect(Object.keys(result.renderDoc.state ?? {})).toEqual(["double", "triple", "title"]);
+    expect(result.renderDoc.state?.triple).toEqual(own);
+    // The tab's source document is what gets saved, and gained nothing.
+    expect(Object.keys(tab.doc.document.state ?? {})).toEqual(["title", "triple"]);
+  });
+
+  test("a project without formulas leaves a component definition's state alone", async () => {
+    resetStudioState({ isSiteProject: true, projectConfig: { state: { brand: "Acme" } } });
+    const tab = resetWorkspaceWithTab(
+      { children: [], state: { title: "Hello" }, tagName: "x-card" },
+      { documentPath: "components/x-card.json" },
+    );
+    const result = await resolveCanvasDocument(tab.doc.document, tab);
+    expect(result.projectFormulas).toEqual({});
+    expect(Object.keys(result.renderDoc.state ?? {})).toEqual(["title"]);
+  });
+
   test("test props never touch a page document (previewParams territory)", async () => {
     resetStudioState({ isSiteProject: true, projectConfig: {} });
     const tab = resetWorkspaceWithTab(

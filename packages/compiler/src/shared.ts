@@ -30,7 +30,14 @@ import {
   splitSelectorList,
 } from "@jxsuite/runtime";
 import { spliceNestingSelector } from "@jxsuite/runtime/css";
-import { compileOperandSource, evaluateExpression, isMutating } from "@jxsuite/runtime/expression";
+import {
+  compileOperandSource,
+  evaluateExpression,
+  formulaScopeReads,
+  inheritableFormulas,
+  isMutating,
+  isPureNamedFormula,
+} from "@jxsuite/runtime/expression";
 import { runStatements } from "@jxsuite/runtime/statements";
 import { buildSiteStyleCSS } from "@jxsuite/site/site-style";
 import {
@@ -63,10 +70,10 @@ import type { JxScope } from "@jxsuite/runtime/types";
 import type {
   CemParameter,
   JsonValue,
+  JxDocument,
   JxDocumentValue,
   JxElement,
-  JxExpressionNode,
-  JxExpressionOperand,
+  JxExpressionDef,
   JxMappedArray,
   JxMutableNode,
   JxPrototypeDef,
@@ -438,41 +445,62 @@ export function referencesStateKey(haystack: string, key: string): boolean {
   );
 }
 
-/** Spec §19.2 shape detection: an operand object carrying `operator` is a nested node. */
-function isNodeOperand(operand: JxExpressionOperand | undefined): operand is JxExpressionNode {
-  return isNonNullObject(operand) && !Array.isArray(operand) && "operator" in operand;
-}
-
-/** Whether an operand, or any node nested in it, carries a mutating operator. */
-function operandMutates(operand: JxExpressionOperand | undefined): boolean {
-  if (Array.isArray(operand)) {
-    return operand.some((item) => operandMutates(item));
-  }
-  if (!isNodeOperand(operand)) {
-    return false;
-  }
-  return (
-    isMutating(operand.operator) ||
-    [operand.target, operand.value, operand.initial, operand.default].some((part) =>
-      operandMutates(part),
-    ) ||
-    Object.values(operand.cases ?? {}).some((part) => operandMutates(part))
-  );
-}
+/* The predicate lives beside the expression engine, where the runtime reads it too: a component
+   inherits the same formulas in the interpreter as in a build (spec.md §13.4). */
+export { isPureNamedFormula } from "@jxsuite/runtime/expression";
 
 /**
- * Whether a state entry is a pure named formula (spec.md §19.4c): an `$expression` with
- * `parameters` whose body mutates nothing.
+ * A component document as a project compiles it (spec.md §13.4): the project's closed pure named
+ * formulas the component reads, under its own `state`.
  *
- * Such an entry is a function, not reactive state. It holds no value, nothing can write it, and
- * reading it subscribes to nothing, so the entry by itself gives a page nothing to do in the
- * browser: only a read of it that is left for the client does (compiler.md §3).
+ * Inheritance is from the PROJECT, never from the page an instance stands on, so a definition is
+ * the same document on every page and its one emitted module serves them all. Only what the
+ * component reads is merged, so a component that calls no project formula is byte-for-byte what it
+ * was, and each formula it does call is written once, into that component's own module:
  *
- * @param {JxDocumentValue | JxStateDefinition | undefined} def
- * @returns {boolean}
+ * - A formula is read when the document names it ({@link referencesStateKey}), or when another merged
+ *   formula's body calls it.
+ * - An entry the component declares is never replaced. That includes one a merged formula calls: the
+ *   call resolves in the component's scope, so it reaches the component's entry.
+ * - While the component declares a `$src` Function every inheritable formula is merged, because that
+ *   module's reads cannot be seen (the rule compiler.md §3 states for a page).
+ *
+ * @param {T} doc - The component definition
+ * @param {Record<string, JxStateDefinition> | null | undefined} projectState - `project.json`
+ *   `state`
+ * @returns {T} `doc` itself when it inherits nothing
  */
-export function isPureNamedFormula(def: JxDocumentValue | JxStateDefinition | undefined): boolean {
-  return isNamedFormulaDef(def) && !operandMutates(def.$expression);
+export function inheritProjectFormulas<T extends JxElement | JxDocument>(
+  doc: T,
+  projectState: Record<string, JxStateDefinition> | null | undefined,
+): T {
+  const available = inheritableFormulas(projectState);
+  const own = doc.state ?? {};
+  const names = Object.keys(available).filter((key) => !(key in own));
+  if (names.length === 0) {
+    return doc;
+  }
+  const text = JSON.stringify(doc);
+  const opaque = Object.values(own).some(
+    (entry) => isNonNullObject(entry) && !Array.isArray(entry) && isString(entry.$src),
+  );
+  const taken = new Set(names.filter((key) => opaque || referencesStateKey(text, key)));
+  // What a taken formula calls is taken with it. A Set visits members added while it is walked.
+  for (const key of taken) {
+    /* SAFETY: every member of `available` passed `isPureNamedFormula`, an expression entry. */
+    for (const read of formulaScopeReads(available[key] as JxExpressionDef)) {
+      if (!(read in own)) {
+        taken.add(read);
+      }
+    }
+  }
+  if (taken.size === 0) {
+    return doc;
+  }
+  const inherited = Object.fromEntries(
+    names.filter((k) => taken.has(k)).map((k) => [k, available[k]!]),
+  );
+  return { ...doc, state: { ...inherited, ...own } };
 }
 
 /**

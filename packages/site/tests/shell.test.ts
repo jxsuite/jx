@@ -123,6 +123,29 @@ describe("pageShell", () => {
   });
 });
 
+describe("pageShell — project formulas for components (spec.md §13.4)", () => {
+  const double = {
+    $description: "</script>",
+    $expression: { operator: "*", target: { $ref: "$args/n" }, value: 2 },
+    parameters: ["n"],
+  };
+
+  test("a page with none imports and sets nothing", () => {
+    const html = pageShell(page(), BASIC);
+    expect(html).not.toContain("setProjectFormulas");
+    expect(html).not.toContain("jx-project-formulas");
+  });
+
+  test("they travel in a JSON block of their own and are set before the render", () => {
+    const html = pageShell({ ...page(), formulas: { double } }, BASIC);
+    expect(html).toContain("import { Jx, setProjectFormulas }");
+    const payload = html.split('id="jx-project-formulas">')[1]!.split("</script>")[0]!;
+    expect(payload).not.toContain("<");
+    expect(JSON.parse(payload)).toEqual({ double });
+    expect(html.indexOf("setProjectFormulas(JSON.parse(")).toBeLessThan(html.indexOf("await Jx("));
+  });
+});
+
 describe("problemShell", () => {
   test("names the reason the page could not render", () => {
     expect(problemShell("Layout not found: ./layouts/base.json")).toContain(

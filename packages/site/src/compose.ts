@@ -28,11 +28,18 @@ import { resolveLayout } from "./layout.ts";
 import { mergeHead, withPageDescription } from "./head-merger.ts";
 import type { HeadMergeContext } from "./head-merger.ts";
 import { injectContext } from "./context.ts";
+import { inheritableFormulas } from "@jxsuite/runtime/expression";
 import { qualifyScripts } from "@jxsuite/schema/document-scripts";
 import { isNonNullObject, isString } from "@jxsuite/schema/guards";
 import { localeDirection, localeOfRoute, resolveI18n } from "@jxsuite/schema/locale";
 import { isNativeDocumentPath, parseNativeDocument } from "@jxsuite/schema/jxn";
-import type { JxDocument, JxElement, JxHeadEntry, ProjectConfig } from "@jxsuite/schema/types";
+import type {
+  JxDocument,
+  JxElement,
+  JxHeadEntry,
+  JxStateDefinition,
+  ProjectConfig,
+} from "@jxsuite/schema/types";
 import { PROJECT_FILE_NAMES, parseProjectSource } from "@jxsuite/schema/project-file";
 
 /** Everything the composer settled about a page before a renderer sees it. */
@@ -41,6 +48,12 @@ export interface ComposedPage {
   head: JxHeadEntry[];
   lang: string;
   dir: "ltr" | "rtl";
+  /**
+   * The project's pure named formulas a component inherits (spec.md §13.4), when it has any. The
+   * page has them in its own `state` already; a component's document is fetched as written, so the
+   * shell hands these to the runtime before it renders.
+   */
+  formulas?: Record<string, JxStateDefinition>;
 }
 
 /**
@@ -389,5 +402,10 @@ export async function composePage(
      client module from there. The server module is the other reason: a reader is never sent one. */
   delete merged.$script;
 
-  return { dir: localeDirection(lang), doc: merged, head, lang };
+  const composed: ComposedPage = { dir: localeDirection(lang), doc: merged, head, lang };
+  const formulas = inheritableFormulas(config.state);
+  if (Object.keys(formulas).length > 0) {
+    composed.formulas = formulas;
+  }
+  return composed;
 }

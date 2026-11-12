@@ -1597,6 +1597,15 @@ When a `$props` value is a `$ref` to a signal, the child receives the same react
 
 Signal scope is bounded at the component (custom element) level. Child components receive external state only via explicit `$props`.
 
+**A project's pure named formulas are the one thing a component inherits.** A pure named formula (§19.4c) is a function: it holds no value, nothing can write it, and reading it subscribes to nothing, so it is not signal scope and the boundary above does not apply to it. A component that belongs to a project therefore has the project's formulas in its scope, and `${state.formatDate(state.date)}` inside a component resolves as it does on a page. The rules:
+
+- **Only closed pure formulas.** An entry of `project.json` `state` is inherited when it is an `$expression` with `parameters`, no mutating operator anywhere in its body, and no scope read (`#/state/`, `parent#/`, or a schemeless `$ref`) other than of another inherited formula. A formula that reads project data state is not inherited, and neither is a formula that calls it: data state never crosses, with a formula or without one. Nothing else in project `state` is inherited, and no `$site` or `$page` either (`site-architecture.md` §10.4), so a formula that reads the page's locale formats in the default locale inside a component unless it is passed one.
+- **The component's own names win.** A `state` entry the component declares shadows a project formula of that name, and so does a `$props` value of that name, since props are merged into the same scope (§15.4). An inherited formula's own calls resolve in the component's scope like any other read, so a call to a name the component declares reaches the component's entry. An inherited formula is in the scope and nowhere else: it is not part of the element's property interface (§16.2), so a project formula called `append` or `title` never stands over the host element's own member of that name. Only an instance that is given a prop of that name has it as a property.
+- **Inheritance is from the project, not from the page.** A page's or a layout's own `state` never reaches a component, whichever page the instance stands on, so a definition renders the same everywhere in a project.
+- **Outside a project there is nothing to inherit.** A component compiled or defined on its own is exactly its document. A component published for use in other projects declares the formulas it calls in its own `state` (the packaged ones are copied in, §19.4c), which is also what keeps it correct in a project that lacks them.
+
+The interpreter is told the project's `state` once per realm (`setProjectFormulas`, [embedding.md](./embedding.md) §5.2) and takes the closed pure formulas from it; a site build merges into each component the ones it reads (compiler.md §8.1). The same boundary and the same inheritance apply to an external `$switch` case (§14.1) in the interpreter.
+
 > **Status: Implemented.**
 
 ---
@@ -1660,14 +1669,14 @@ All `state` entries are available to all descendant elements within that compone
 
 ### 15.3 Cross-Component Scope
 
-Signals do not cross component boundaries implicitly. `$props` is required.
+Signals do not cross component boundaries implicitly. `$props` is required. A project's pure named formulas are functions, not signals, and a component inherits them (§13.4).
 
 ### 15.4 Scope Resolution Order
 
 A bare identifier or `#/state/` ref resolves in this order:
 
 1. `$map/` iteration context, where present
-2. The component scope — `state` entries and `$props`, which are **merged into the same scope** (a `$prop` overwrites a same-named `state` entry in place; there is no separate props namespace)
+2. The component scope — `state` entries and `$props`, which are **merged into the same scope** (a `$prop` overwrites a same-named `state` entry in place; there is no separate props namespace). In a project, the project's pure named formulas sit in this scope beneath both (§13.4)
 
 `window` and `document` globals are **not** part of this fallback chain: an explicit-scheme miss yields no value (a bare, schemeless ref is the only form that falls back to `null`). Reach globals with an explicit `window#/` / `document#/` ref (§7.4).
 
@@ -2169,7 +2178,7 @@ The interpreter dispatches these through a helpers table (`BLESSED_HELPERS`); th
 }
 ```
 
-**Semantics and lowering.** Project-global formulas live in `project.json` `state` and reach every page through the standard project-state merge — there is no separate formulas section. `buildScope` lowers a named formula to a scope callable that maps positional arguments onto parameter names; call sites therefore compile to plain positional calls (`state.lineTotal(3, 4)`), identical in the interpreter and every compiled target. `call` chains are bounded by `MAX_CALL_DEPTH` (64) against unbounded recursion; the compiler must additionally reject statically detectable call cycles. Reads inside a formula body are tracked reactively as usual — a computed that calls a formula recomputes when the formula's inputs change.
+**Semantics and lowering.** Project-global formulas live in `project.json` `state` and reach every page through the standard project-state merge — there is no separate formulas section. The pure ones that read no project data also reach every component of the project (§13.4), which no other project `state` does. `buildScope` lowers a named formula to a scope callable that maps positional arguments onto parameter names; call sites therefore compile to plain positional calls (`state.lineTotal(3, 4)`), identical in the interpreter and every compiled target. `call` chains are bounded by `MAX_CALL_DEPTH` (64) against unbounded recursion; the compiler must additionally reject statically detectable call cycles. Reads inside a formula body are tracked reactively as usual — a computed that calls a formula recomputes when the formula's inputs change.
 
 **A formula is callable from a template.** Because a named formula lowers to a scope callable, a template string calls it like any function of state: `${state.lineTotal($map.item.price, 2)}`. A site build resolves such a call where it resolves the template, and the formula's own declaration does not make the page dynamic (compiler.md §3).
 

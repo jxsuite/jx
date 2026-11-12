@@ -1100,6 +1100,9 @@ export function startCanvasIframe(opts: {
         if (msg.allowAutoRequests) {
           renderOpts.allowAutoRequests = true;
         }
+        if (msg.projectFormulas) {
+          renderOpts.projectFormulas = msg.projectFormulas;
+        }
         /* Everything that takes time happens here, against a frame still showing the previous
            render whole: its DOM, its scopes and its rules. The frame used to release all three
            BEFORE this await, so every escalation showed the old page stripped of its styles for as

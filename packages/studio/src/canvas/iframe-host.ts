@@ -33,6 +33,7 @@ import { rectOf } from "../utils/geometry";
 import { notify } from "../services/notify";
 import { effect, effectScope } from "../reactivity";
 import { pathsEqual, projectState, renderOnly } from "../store";
+import { inheritableFormulas } from "@jxsuite/runtime/expression";
 import { activeTab, focusPane, workspace } from "../workspace/workspace";
 import {
   paneOfContainer,
@@ -3414,6 +3415,10 @@ function preparePassRender(
     if (Object.keys(resolved.scripts).length > 0) {
       prepared.scripts = resolved.scripts;
     }
+    if (resolved.projectFormulas && Object.keys(resolved.projectFormulas).length > 0) {
+      // Read off the live project document, so a plain copy is what crosses the realm.
+      prepared.projectFormulas = plainCopy(resolved.projectFormulas);
+    }
     if (editableTags) {
       prepared.editableTags = editableTags;
     }
@@ -3604,6 +3609,11 @@ export function mountStylebookCanvas(
     // SiteStyle too would double-apply it.
     siteStyle: null,
   };
+  // A component specimen draws as an instance, with the formulas a build gives it (spec.md §13.4).
+  const formulas = inheritableFormulas(projectState?.projectConfig?.state);
+  if (Object.keys(formulas).length > 0) {
+    message.projectFormulas = plainCopy(formulas);
+  }
   deliverRender(state, message);
 }
 

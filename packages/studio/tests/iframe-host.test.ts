@@ -891,6 +891,25 @@ describe("mountIframeCanvas", () => {
     closeAllTabs();
   });
 
+  test("the project's formulas cross with the render, for the components it draws (spec.md §13.4)", async () => {
+    const double = {
+      $expression: { operator: "*", target: { $ref: "$args/n" }, value: 2 },
+      parameters: ["n"],
+    };
+    resolved = { ...DEFAULT_RESOLVED, projectFormulas: { double } };
+    const canvasEl = document.createElement("div");
+    await mountIframeCanvas(1, { tagName: "section" }, canvasEl);
+    channels[0]!.deliver({ kind: "ready" });
+    expect(channels[0]!.posts.find(ofKind("render"))!.projectFormulas).toEqual({ double });
+  });
+
+  test("a project with no formulas sends none", async () => {
+    const canvasEl = document.createElement("div");
+    await mountIframeCanvas(1, { tagName: "section" }, canvasEl);
+    channels[0]!.deliver({ kind: "ready" });
+    expect(channels[0]!.posts.find(ofKind("render"))).not.toHaveProperty("projectFormulas");
+  });
+
   test("a render composed of no scripted document carries no `scripts` at all", async () => {
     const canvasEl = document.createElement("div");
     await mountIframeCanvas(1, { tagName: "section" }, canvasEl);

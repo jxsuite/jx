@@ -1554,7 +1554,7 @@ This ensures that each site is a self-contained unit — moving between componen
 
 These require deliberate reference:
 
-1. **Site state** — The one inherited value a page reads by name, and it stops at the component boundary (item 4). A page or layout reaches a project `state` entry two ways. As **`$site.<key>`** it is read-only: `$site` is injected context, which never makes a page dynamic, so this is the path for a site-wide constant. It holds the entry as written, and a name `$site` defines itself (§5.5) is never replaced: an entry called `name` is `state.name`, while `$site.name` stays the project `name`. As **bare `state.<key>`** it is the page's own entry, copied in only when neither the page nor its layout declares the key, so either one shadows it. The copy behaves as the page's own entry of that shape (spec.md §5.3): writable, with a write reaching that page alone. A built page keeps the copy only while something on it still reads `state.<key>` once the build has resolved its templates (compiler.md §8.1), so a site constant costs nothing on a page that reads it through `$site`, only in templates the build resolves, or not at all.
+1. **Site state** — The one inherited value a page reads by name, and it stops at the component boundary (item 4), except for a pure named formula. A page or layout reaches a project `state` entry two ways. As **`$site.<key>`** it is read-only: `$site` is injected context, which never makes a page dynamic, so this is the path for a site-wide constant. It holds the entry as written, and a name `$site` defines itself (§5.5) is never replaced: an entry called `name` is `state.name`, while `$site.name` stays the project `name`. As **bare `state.<key>`** it is the page's own entry, copied in only when neither the page nor its layout declares the key, so either one shadows it. The copy behaves as the page's own entry of that shape (spec.md §5.3): writable, with a write reaching that page alone. A built page keeps the copy only while something on it still reads `state.<key>` once the build has resolved its templates (compiler.md §8.1), so a site constant costs nothing on a page that reads it through `$site`, only in templates the build resolves, or not at all.
 
 2. **Data files** — Static data from `data/` must be explicitly loaded via `$ref`:
 
@@ -1568,7 +1568,7 @@ These require deliberate reference:
 
 3. **Content collections** — Collection data requires explicit `$prototype: "ContentCollection"` or `$prototype: "ContentEntry"` declarations.
 
-4. **Cross-component state** — Components receive external data only through `$props`. No implicit scope leaking.
+4. **Cross-component state** — Components receive external data only through `$props`. No implicit scope leaking. The one thing a component has without being passed it is the project's pure named formulas that read no project data: functions, not data (spec.md §13.4). `$site`, `$page` and every other project `state` entry stay on the page side. The build merges the formulas a component reads into that component (compiler.md §8.1); a page rendered live is served with them beside its document (`pageShell`, `packages/site/src/shell.ts`), and the runtime is given them before it renders.
 
 ### 10.6 Studio Runtime Behavior
 
@@ -1578,6 +1578,7 @@ Studio must fully enforce the site-based paradigm at edit time, not just build t
 - **Media breakpoint tabs** reflect the site's `$media` definitions, not the individual file's — ensuring consistent responsive editing across all project files
 - **Component palette** is scoped to the project (§10.3)
 - **Stylebook mode** applies site-level design tokens when rendering element and component previews
+- **Components inherit the project's pure named formulas** on the canvas as in a build (item 4 of §10.4): every render message carries them to the canvas frame's runtime, a stylebook specimen included, and a component definition opened as the document is drawn with them under its own state
 - **Navigation between files** (components, pages, layouts) preserves the site context — opening a component file does not lose the site's media, styles, or component registry
 
 Individual file `$media`, `$style`, and `$elements` merge on top of site-level definitions (file takes precedence on conflict), matching the cascade behavior at build time.
