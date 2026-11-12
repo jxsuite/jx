@@ -14,7 +14,6 @@ import type {
 } from "../src/canvas/iframe-protocol";
 
 const WIRE_CTX: WireMapperCtx = {
-  arrayPaths: [],
   canvasMode: "design",
   layoutWrapped: false,
   pageContentOffset: null,
@@ -118,7 +117,7 @@ afterEach(() => {
 });
 
 /** The frame's boot announcement, with the capabilities this build names (studio.md §4.5). */
-const READY: IframeToParent = { capabilities: ["bindingDisplay"], kind: "ready" };
+const READY: IframeToParent = { capabilities: ["bindingDisplay", "rows"], kind: "ready" };
 
 describe("startCanvasIframe", () => {
   test("announces ready, renders a posted doc, and acks renderComplete", async () => {
@@ -130,7 +129,7 @@ describe("startCanvasIframe", () => {
     teardown = startCanvasIframe({ channel: pair.iframe, container });
     pair.flush();
     // The frame names what this build understands, so a host can tell an old frame from a broken one.
-    expect(fromIframe).toEqual([{ capabilities: ["bindingDisplay"], kind: "ready" }]);
+    expect(fromIframe).toEqual([{ capabilities: ["bindingDisplay", "rows"], kind: "ready" }]);
 
     pair.parent.post(
       renderMsg(1, { children: [{ children: ["Hi"], tagName: "h1" }], tagName: "div" }),
@@ -2035,7 +2034,6 @@ describe("startCanvasIframe — layout chrome clicks", () => {
   });
 
   const LAYOUT_CTX: WireMapperCtx = {
-    arrayPaths: [],
     canvasMode: "design",
     layoutWrapped: true,
     pageContentOffset: 0,

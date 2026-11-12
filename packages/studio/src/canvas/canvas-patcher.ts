@@ -20,7 +20,8 @@
  */
 
 import { getNodeAtPath } from "@jxsuite/schema/doc-ops";
-import { isString } from "@jxsuite/schema/guards";
+import { isMappedArray, isString } from "@jxsuite/schema/guards";
+import { drawsManyNodes } from "../utils/edit-display";
 import { parentElementPath, projectState } from "../store";
 import { documentBase } from "./canvas-origin";
 import { ownPatch } from "./canvas-scripts";
@@ -171,9 +172,10 @@ export function escalateToFullRender(reason: string, tab: Tab | null = null) {
  * A $switch renders its live case at its own path under "cases", inside a scope the runtime's
  * switch owns and replaces when the discriminant moves, and only the live case has an element at
  * all. A surgical render cannot stand in for that, so edits through "cases" escalate to a full
- * render. (Non- structural edits to a repeater template — text/style/prop on a `…/map` path — DO
- * patch, since the template renders as a single 1:1 instance inside its perimeter; structural edits
- * inside a template escalate via {@link containerVerdict}.)
+ * render. (Edits to a node of a repeater's template — text, a style, an attribute, a prop on a
+ * `…/map` path — DO patch: the frame applies them to every row's instance, each with its own row's
+ * scope (studio.md §4.5). Structural edits inside a template, a replace of a row's root and an edit
+ * of the repeater node itself escalate via {@link containerVerdict} and {@link replaceVerdict}.)
  */
 function pathHasDynamicSegment(path: JxPath) {
   return path.includes("cases");
@@ -191,8 +193,8 @@ function containerVerdict(tab: Tab, parentPath: JxPath, requireArray = true): st
   if (pathHasDynamicSegment(parentPath)) {
     return "structure-on-cases-path";
   }
-  // Structural edits inside a repeater template (a "map" segment) escalate: the edit-mode perimeter
-  // Holds one template instance, so changing the template's child count can't be spliced 1:1.
+  // Structural edits inside a repeater template (a "map" segment) escalate: the splice would have
+  // To be repeated in every row, and a row the list draws later would not have it.
   if (parentPath.includes("map")) {
     return "structure-on-map-path";
   }
@@ -239,6 +241,13 @@ function containerVerdict(tab: Tab, parentPath: JxPath, requireArray = true): st
   if (requireArray && !Array.isArray(parent.children)) {
     return "structure-children-not-array";
   }
+  /* A repeater among the children draws a node per row, and a computed list a node per member, so
+     a child's index in the document is not its index in the DOM. The frame finds where to insert
+     by counting DOM children (`domChildReference` in iframe-patch.ts), and a splice there would
+     land in the wrong place without saying so: any structural edit beside one is drawn whole. */
+  if (Array.isArray(parent.children) && parent.children.some((child) => drawsManyNodes(child))) {
+    return "structure-beside-repeater";
+  }
   return null;
 }
 
@@ -264,11 +273,9 @@ function replaceVerdict(tab: Tab, path: JxPath): string | null {
   if (!parentPath) {
     return "replace-no-parent";
   }
-  // A subtree re-render inside a repeater template can't be re-rendered 1:1 in the edit-mode
-  // Perimeter (mirrors containerVerdict's map rule).
-  if (parentPath.includes("map")) {
-    return "structure-on-map-path";
-  }
+  /* A node of a repeater's template is drawn again in every row, each with its own row's scope,
+     the row's root included: the frame hands the runtime's list the new root (`replaceInstance`
+     in iframe-patch.ts). */
   const parent = getNodeAtPath(tab.doc.document, parentPath);
   if (!parent) {
     return "node-not-found";
@@ -277,7 +284,12 @@ function replaceVerdict(tab: Tab, path: JxPath): string | null {
   if (parent.innerHTML) {
     return "structure-with-innerhtml";
   }
-  return getNodeAtPath(tab.doc.document, path) === undefined ? "node-not-found" : null;
+  const node = getNodeAtPath(tab.doc.document, path);
+  if (node === undefined) {
+    return "node-not-found";
+  }
+  // The repeater itself has no element: its `items`, `filter` and `sort` decide which rows exist.
+  return isMappedArray(node) ? "replace-repeater" : null;
 }
 
 /**

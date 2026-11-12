@@ -5,12 +5,15 @@
  */
 import "./with-dom.js";
 import { beforeAll, describe, expect, test } from "bun:test";
-import { applyStyle, buildScope } from "@jxsuite/runtime";
+import { applyStyle, buildScope, renderNode } from "@jxsuite/runtime";
+import { makeStamper } from "../src/canvas/iframe-render";
+import { prepareForEditMode } from "../src/utils/edit-display";
 import {
   disposeAllSubtrees,
   disposeSubtree,
   renderSubtreeIframe,
 } from "../src/canvas/iframe-subtree";
+import { newRowView } from "../src/canvas/iframe-rows";
 import type { IframeRenderCtx } from "../src/canvas/iframe-render";
 import type { JxMutableNode } from "@jxsuite/schema/types";
 
@@ -20,13 +23,14 @@ beforeAll(async () => {
     defs: await buildScope({}, {}, "http://localhost/"),
     docBase: "http://localhost/",
     mapperCtx: {
-      arrayPaths: new Set(),
       canvasMode: "design",
       layoutWrapped: false,
       pageContentOffset: null,
       pageContentPrefix: null,
     },
+    hooks: {},
     mode: "design",
+    rows: newRowView(),
   };
 });
 
@@ -107,18 +111,40 @@ describe("disposeSubtree / disposeAllSubtrees", () => {
     expect(() => disposeAllSubtrees()).not.toThrow();
   });
 
-  test("a node under a repeater is re-rendered with the sample row the full render used", async () => {
-    const rowCtx: IframeRenderCtx = {
-      ...ctx,
-      defs: await buildScope({ state: { rows: [{ t: "Harbour" }] } }, {}, "http://localhost/"),
-    };
+  test("a node under a repeater is re-rendered with the scope and the row of the instance named", async () => {
+    const defs = await buildScope(
+      { state: { rows: [{ t: "Harbour" }, { t: "Crane" }] } },
+      {},
+      "http://localhost/",
+    );
+    const rowCtx: IframeRenderCtx = { ...ctx, defs, rows: newRowView() };
     const doc = docOf({
       $prototype: "Array",
       items: { $ref: "#/state/rows" },
-      map: { $props: { title: "${item.t}" }, tagName: "x-subtree-row" },
+      map: { children: [{ tagName: "h3", textContent: "${item.t}" }], tagName: "li" },
     });
-    const el = elementOf(renderSubtreeIframe(doc, ["children", 0, "map"], rowCtx));
-    expect(el.title).toBe("Harbour");
+    // The full render: the runtime draws both rows and the stamper keeps each node's row scope.
+    const prepared = prepareForEditMode(structuredClone(doc));
+    const onNodeCreated = makeStamper(rowCtx.mapperCtx, rowCtx.rows);
+    const list = elementOf(renderNode(prepared, defs, { _path: [], onNodeCreated }));
+    const headings = [...list.querySelectorAll("h3")];
+    expect(headings.map((h) => h.textContent)).toEqual(["Harbour", "Crane"]);
+    const second = headings[1]!;
+    const scope = rowCtx.rows.scopes.get(second);
+    if (!scope) {
+      throw new TypeError("the stamper kept no scope for a row's node");
+    }
+    const path = ["children", 0, "map", "children", 0];
+    const again = elementOf(renderSubtreeIframe(doc, path, rowCtx, { rows: [1], scope }));
+    // Its own row's value and its own row's coordinates: an echo of the template's path.
+    expect(again.textContent).toBe("Crane");
+    expect(again.dataset.jxEchoPath).toBe(JSON.stringify(path));
+    expect(again.dataset.jxRow).toBe("[1]");
+    /* With no instance named it is drawn against the page's scope, where there is no row: the
+       defect this replaces, kept visible so the argument above is known to be what decides. */
+    const rowless = elementOf(renderSubtreeIframe(doc, path, rowCtx));
+    expect(rowless.textContent).toBe("");
+    expect(rowless.dataset.jxPath).toBe(JSON.stringify(path));
   });
 
   test("disposal actually stops a live binding effect (runtime-instance scope ownership)", async () => {

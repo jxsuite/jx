@@ -7,13 +7,7 @@
  */
 
 import { projectState, stripEventHandlers } from "../store";
-import {
-  displayTagName,
-  isJsonObject,
-  isMappedArray,
-  isNonNullObject,
-  isString,
-} from "@jxsuite/schema/guards";
+import { displayTagName, isJsonObject, isNonNullObject, isString } from "@jxsuite/schema/guards";
 import { canvasModeOfTab } from "./canvas-surface";
 import { toRaw } from "../reactivity";
 import {
@@ -53,6 +47,8 @@ import { collectionPage, entryLayoutPath, entryLocale } from "../content/collect
 import { isPagePath, pageContextFor } from "./canvas-page-context";
 import { loadExtensions } from "../format/format-host";
 import { bakeRepeaterSources, extensionClassKeys, repeaterSourceKeys } from "./repeater-sources";
+import { repeaterSampleItems } from "../editor/repeater-scope";
+import type { RepeaterSamples } from "../editor/repeater-scope";
 
 import type { AssetContext } from "./asset-refs";
 import type { CanvasScripts, ScriptCollector } from "./canvas-scripts";
@@ -433,6 +429,8 @@ export async function resolveCanvasDocument(
   projectFormulas?: Record<string, JxStateDefinition>;
   /** The state key of the entry drawn live inside its collection's page, or null for none. */
   entryRoot: string | null;
+  /** A sample item per repeater of the document, by the repeater's serialized path. */
+  rowSamples: RepeaterSamples;
   /** The client script of every document this render is composed from, by its specifier. */
   scripts: CanvasScripts;
 }> {
@@ -586,8 +584,8 @@ export async function resolveCanvasDocument(
 
   /* Class-backed state resolved before the render rather than by it (repeater-sources.ts): in every
      mode, an entry naming an enabled extension's class by a bare `$prototype`, as the build
-     resolves it; in Edit and Design, also the collections a repeater reads, whose first item draws
-     the repeater's template. */
+     resolves it; in Edit and Design, also the collections a repeater reads, so its rows are drawn
+     with the first render rather than after a second. */
   const extensions = await loadExtensions();
   const classes = extensionClassPaths(extensions);
   const bakeKeys = extensionClassKeys(renderDoc, classes);
@@ -613,50 +611,6 @@ export async function resolveCanvasDocument(
     if (previewProps && Object.keys(previewProps).length > 0) {
       renderDoc = substitutePreviewProps(renderDoc, previewProps);
     }
-  }
-
-  /* THE CONDITION IS "did `prepareForEditMode` run", not a list of modes, and the two had drifted.
-     `prepareForEditMode` above builds a repeater perimeter for EVERY non-preview mode, and
-     `arrayPaths` is what tells `classifyRenderNode` to collapse that perimeter's template hop back
-     into a `map` segment. Naming two of those modes here meant a git-diff artboard grew the
-     perimeters and then stamped every node under a `$prototype: "Array"` with the RENDER path
-     instead of a document path — an address no document-space caller can resolve, which is exactly
-     what a diff mark is. Stylebook and grid never reach this function with an array document, so
-     the widening is only observable in git-diff. */
-  const arrayPaths = new Set<string>();
-  if (canvasMode !== "preview") {
-    (function findArrayPaths(node: JxMutableNode, path: (string | number)[]) {
-      // Document JSON can hold a null or scalar where a node belongs; it holds no repeater.
-      if (!isNonNullObject(node)) {
-        return;
-      }
-      if (node.$prototype === "Array") {
-        arrayPaths.add(path.join("/"));
-        const mapDef = node.map;
-        if (isNonNullObject(mapDef)) {
-          findArrayPaths(mapDef, [...path, "map"]);
-        }
-        return;
-      }
-      if (Array.isArray(node.children)) {
-        for (const [i, child] of node.children.entries()) {
-          if (isString(child)) {
-            continue;
-          }
-          findArrayPaths(child, [...path, "children", i]);
-        }
-      } else if (isMappedArray(node.children)) {
-        /* SAFETY: the bare mapped-array slot is a repeater node in all but its declared type, and
-           the walk reads only what isMappedArray just established (`$prototype`) and its `map`
-           template, an element definition. */
-        findArrayPaths(node.children as JxMutableNode, [...path, "children"]);
-      }
-      if (node.$switch && node.cases) {
-        for (const [k, v] of Object.entries(node.cases)) {
-          findArrayPaths(v, [...path, "cases", k]);
-        }
-      }
-    })(doc, []);
   }
 
   // Component auto-discovery (content mode, wrapped layout, or a layout opened on its own) —
@@ -727,7 +681,6 @@ export async function resolveCanvasDocument(
     docBase,
     entryRoot: entryPage?.root ?? null,
     mapperCtx: {
-      arrayPaths: [...arrayPaths],
       canvasMode,
       layoutWrapped,
       pageContentOffset,
@@ -735,6 +688,9 @@ export async function resolveCanvasDocument(
     },
     projectFormulas,
     renderDoc,
+    /* One sample item per repeater, for a list with nothing to draw (studio.md §4.5). Deduced here
+       because the item's shape is in the project's content schemas, which the frame never sees. */
+    rowSamples: canvasMode === "preview" ? {} : repeaterSampleItems(doc, projectConfig),
     scripts: scripts.scripts,
     siteStyle: projectState?.projectConfig?.style ?? null,
   };

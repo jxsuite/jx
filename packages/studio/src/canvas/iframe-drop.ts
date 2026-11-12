@@ -16,8 +16,9 @@
  * preview is display-only and never the source of truth (patch-mid-drag safety).
  */
 
-import { parseJxPath, serializeJxPath } from "./path-mapping";
-import { displayTagName, isNonNullObject } from "@jxsuite/schema/guards";
+import { STAMPED_SELECTOR, parseJxPath, serializeJxPath, stampedPathOf } from "./path-mapping";
+import { nearestStampedEl, repeaterRect } from "./iframe-rows";
+import { displayTagName, isNonNullObject, isNumber } from "@jxsuite/schema/guards";
 import { rectOf, elementAtPoint } from "../utils/geometry";
 import { getNodeAtPath, isAncestor, pathsEqual } from "../state";
 import type { DragSrcKind, DropPreview } from "./iframe-protocol";
@@ -121,44 +122,28 @@ function phrasingHostOf(el: HTMLElement, shadowDoc: JxMutableNode): HTMLElement 
   let host: HTMLElement | null = null;
   let current: HTMLElement | null = el;
   while (current) {
-    const path = parseJxPath(current.dataset.jxPath ?? "");
+    const path = parseJxPath(stampedPathOf(current) ?? "[]");
     if (path.length === 0) {
       break;
     }
     if (PHRASING_HOSTS.has(tagOf(getNodeAtPath(shadowDoc, path)))) {
       host = current;
     }
-    current = nearestPathEl(current.parentElement);
+    current = nearestStampedEl(current.parentElement);
   }
   return host;
 }
 
 /**
- * Walk up from an element to the nearest ancestor carrying a `data-jx-path`. Refactored out of the
- * `nearestHit` walk (iframe-interaction.ts) to take an element directly so the hit-test adapter can
- * reuse it. Returns null when no addressable node is found.
- */
-function nearestPathEl(start: Element | null): HTMLElement | null {
-  // Only an `HTMLElement` is ever stamped (`makeStamper` skips every other node), so the walk
-  // Passes over SVG and other foreign elements on its way up.
-  let el = start;
-  while (el) {
-    if (el instanceof HTMLElement && el.dataset.jxPath) {
-      return el;
-    }
-    el = el.parentElement;
-  }
-  return null;
-}
-
-/**
  * Point hit-test in iframe-viewport coords (`x`,`y`): the topmost element, then walk to the nearest
- * `[data-jx-path]` ancestor. CDP-ONLY — happy-dom's `elementFromPoint` returns null (no layout), so
- * this thin adapter is exercised under a real browser, not a unit test.
+ * ancestor drawn for a document node, in the active row of a repeater or an echo row alike: a drop
+ * is aimed at a document node, and every row draws the same ones. CDP-ONLY — happy-dom's
+ * `elementFromPoint` returns null (no layout), so this thin adapter is exercised under a real
+ * browser, not a unit test.
  */
 export function resolveDropTarget(x: number, y: number, doc: Document): HTMLElement | null {
   const hit = elementAtPoint(x, y, doc);
-  return nearestPathEl(hit);
+  return nearestStampedEl(hit);
 }
 
 /**
@@ -186,15 +171,15 @@ export function resolveBlankCanvasDrop(
   src: DragSrcKind,
 ): DropPreview | null {
   const hit = elementAtPoint(x, y, doc);
-  if (!hit || nearestPathEl(hit) || hit.closest("[data-jx-layout-region]")) {
+  if (!hit || nearestStampedEl(hit) || hit.closest("[data-jx-layout-region]")) {
     return null;
   }
   const root = doc.querySelector<HTMLElement>(`[data-jx-path="${serializeJxPath([])}"]`);
   if (root) {
     return computeDropInstruction(root, y, shadowDoc, src);
   }
-  const blocks = [...doc.querySelectorAll<HTMLElement>("[data-jx-path]")].filter(
-    (el) => parseJxPath(el.dataset.jxPath ?? "").length === 2,
+  const blocks = [...doc.querySelectorAll<HTMLElement>(STAMPED_SELECTOR)].filter(
+    (el) => parseJxPath(stampedPathOf(el) ?? "[]").length === 2,
   );
   const [first, ...rest] = blocks;
   if (!first) {
@@ -230,7 +215,7 @@ function nearestBlockEdge(
       best = edge;
     }
   }
-  const targetPath = parseJxPath(best.block.dataset.jxPath ?? "");
+  const targetPath = parseJxPath(stampedPathOf(best.block) ?? "[]");
   if (!canDrop(src, targetPath)) {
     return null;
   }
@@ -259,6 +244,9 @@ function nearestBlockEdge(
  * - Leaf (void tag, or no element children) → relY<0.5 above (edge top) else below (edge bottom).
  * - Container → relY<0.25 above, >0.75 below, else make-child (edge inside). Returns null when the
  *   drop is disallowed (a tree-node onto its own ancestor or itself).
+ * - A repeater row's ROOT: above and below mean beside the REPEATER, in its parent, since a template
+ *   has one root and nothing can be its sibling (studio.md §4.5). The reference is the box of the
+ *   whole list. Inside is still inside the template.
  */
 export function computeDropInstruction(
   targetEl: HTMLElement,
@@ -266,7 +254,7 @@ export function computeDropInstruction(
   shadowDoc: JxMutableNode,
   src: DragSrcKind,
 ): DropPreview | null {
-  const serialized = targetEl.dataset.jxPath;
+  const serialized = stampedPathOf(targetEl);
   if (serialized == null) {
     return null;
   }
@@ -296,7 +284,7 @@ export function computeDropInstruction(
      component or an image nested in a `<p>` is serialised glued to its text. */
   const host = isTextLevelSource(src, shadowDoc) ? null : phrasingHostOf(targetEl, shadowDoc);
   if (host) {
-    const hostPath = parseJxPath(host.dataset.jxPath ?? "");
+    const hostPath = parseJxPath(stampedPathOf(host) ?? "[]");
     if (!canDrop(src, hostPath)) {
       return null;
     }
@@ -321,6 +309,12 @@ export function computeDropInstruction(
   const rect = rectFor(targetEl);
   const relY = rect.height === 0 ? 0 : (cursorY - rect.y) / rect.height;
 
+  if (targetPath.at(-1) === "map" && targetEl.dataset.jxRow !== undefined) {
+    const upper = relY < (isLeaf ? 0.5 : 0.25);
+    const lower = relY > 0.75 || (isLeaf && !upper);
+    return rowRootDrop(targetEl, targetPath, upper ? "top" : lower ? "bottom" : "inside", src);
+  }
+
   if (isLeaf) {
     return relY < 0.5
       ? { edge: "top", instruction: "reorder-above", referenceRect: rect, targetPath }
@@ -333,6 +327,34 @@ export function computeDropInstruction(
     return { edge: "bottom", instruction: "reorder-below", referenceRect: rect, targetPath };
   }
   return { edge: "inside", instruction: "make-child", referenceRect: rect, targetPath };
+}
+
+/**
+ * The drop for a cursor over a repeater row's root, given the band of the row the cursor is in.
+ *
+ * The upper and lower bands place the dragged node before or after the repeater itself, whichever
+ * row was aimed at, and the indicator is drawn on the whole list. A repeater that is the whole of
+ * its parent's `children` has no sibling slot, so there only the middle band answers.
+ */
+function rowRootDrop(
+  rowEl: HTMLElement,
+  rowPath: JxPath,
+  edge: DropPreview["edge"],
+  src: DragSrcKind,
+): DropPreview | null {
+  const repeater = rowPath.slice(0, -1);
+  const rect = rectFor(rowEl);
+  if (edge === "inside") {
+    return { edge, instruction: "make-child", referenceRect: rect, targetPath: rowPath };
+  }
+  // `[…, "children", i]` is a slot among siblings; a bare `[…, "children"]` is the whole list.
+  if (!isNumber(repeater.at(-1)) || !canDrop(src, repeater)) {
+    return null;
+  }
+  const list = repeaterRect(rowEl.parentElement ?? rowEl, repeater, () => true).rect ?? rect;
+  return edge === "top"
+    ? { edge, instruction: "reorder-above", referenceRect: list, targetPath: repeater }
+    : { edge: "bottom", instruction: "reorder-below", referenceRect: list, targetPath: repeater };
 }
 
 /**

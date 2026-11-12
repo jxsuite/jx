@@ -14,6 +14,7 @@ import type { JxDocOp } from "../tabs/patch-ops";
 import type { JxContentResult, SlashCommand } from "../editor/inline-edit";
 import type {
   JsonObject,
+  JsonValue,
   JxExpressionNode,
   JxMutableNode,
   JxStateDefinition,
@@ -37,17 +38,25 @@ export function isCanvasMode(value: unknown): value is CanvasMode {
   return typeof value === "string" && CANVAS_MODES.some((mode) => mode === value);
 }
 
-/**
- * Serializable form of the render path-mapping context. `arrayPaths` is a `Set` in the renderer but
- * crosses the boundary as a string array (Sets aren't structured-clone-friendly across our wire).
- */
+/** The render path-mapping context as it crosses the boundary: `PathMapCtx`, which is plain data. */
 export interface WireMapperCtx {
   canvasMode: string;
   layoutWrapped: boolean;
   pageContentPrefix: (string | number)[] | null;
   pageContentOffset: number | null;
-  arrayPaths: string[];
 }
+
+/** How many rows of a repeater the canvas draws until the author asks for more (studio.md §4.5). */
+export const DEFAULT_ROW_LIMIT = 24;
+
+/** The most rows `canvas.setRepeaterRows` accepts. */
+export const MAX_ROW_LIMIT = 1000;
+
+/**
+ * Each repeater's active row (studio.md §4.5), by the repeater's document path as `JSON.stringify`
+ * writes it. A repeater that is absent is on its first row.
+ */
+export type ActiveRows = Readonly<Record<string, number>>;
 
 /**
  * One live binding, as the frame needs to know it: the chord and the scope that holds it.
@@ -153,6 +162,24 @@ export type ParentToIframe =
        */
       bindingDisplay?: BindingDisplay;
       /**
+       * The tab's active rows, carried on `render` as well as by `setActiveRows` below for
+       * `colorScheme`'s reason: a frame is reused from tab to tab, and one that boots after a row
+       * was chosen must draw the choice. Absent means every repeater is on its first row.
+       */
+      activeRows?: ActiveRows;
+      /**
+       * At most this many rows of a repeater are drawn (`canvas.setRepeaterRows`, studio.md §4.5).
+       * Absent means the frame's own default. A field of the render and no message of its own: the
+       * cap decides which nodes exist, so changing it IS a render.
+       */
+      rowLimit?: number;
+      /**
+       * One sample item per repeater of the document, by the repeater's serialized path: what the
+       * frame draws a single row of the template with when the list has no items. Deduced by the
+       * parent from the project's content schemas, which the frame never sees. Absent for none.
+       */
+      rowSamples?: Readonly<Record<string, JsonValue>>;
+      /**
        * Which nodes to tint on a `git-diff` artboard, in this side's own coordinates.
        *
        * A FIELD ON THE RENDER, not a message of its own, and the reason is ordering. A render ends
@@ -213,6 +240,15 @@ export type ParentToIframe =
    * attribute on the frame's root. Guarded by the `bindingDisplay` capability.
    */
   | { kind: "setBindingDisplay"; display: BindingDisplay }
+  /*
+   * Make these the active rows (`canvas.setActiveRow`, studio.md §4.5): the whole map, never a
+   * difference, so the frame ends in the state the message names however many it missed.
+   *
+   * Render-free and gen-less: an active row is which of two attributes a row's nodes carry their
+   * path in, and the frame renames them in place. A frame with a caret in a row that stops being
+   * the active one ends that session first. Guarded by the `rows` capability.
+   */
+  | { kind: "setActiveRows"; rows: ActiveRows }
   /**
    * Draw the popover at `path` open, and every other one closed. `null` closes them all.
    *
@@ -556,11 +592,12 @@ export const BINDING_DISPLAYS = ["values", "names"] as const satisfies readonly 
  * A thing a frame build may or may not understand, announced on `ready`.
  *
  * - `bindingDisplay`: the `setBindingDisplay` message.
+ * - `rows`: repeaters drawn as real rows, the `setActiveRows` message and the `rowActivated` reply.
  */
-export type FrameCapability = "bindingDisplay";
+export type FrameCapability = "bindingDisplay" | "rows";
 
 /** Every capability this build of the frame announces. */
-export const FRAME_CAPABILITIES: readonly FrameCapability[] = ["bindingDisplay"];
+export const FRAME_CAPABILITIES: readonly FrameCapability[] = ["bindingDisplay", "rows"];
 
 /** Messages the canvas iframe sends back to the editor (parent). */
 export type IframeToParent =
@@ -572,6 +609,14 @@ export type IframeToParent =
    * announced it. Absent means none.
    */
   | { kind: "ready"; capabilities?: readonly FrameCapability[] }
+  /*
+   * A press in an echo row made it the active row of the repeater at `path` (studio.md §4.5). The
+   * frame has already renamed its stamps, so the `hit` that follows names an element that is
+   * addressable; the host records the choice on the tab, which is what carries it to the tab's
+   * other artboards and across a render. One message per repeater whose row changed: a press
+   * inside nested repeaters posts one for each.
+   */
+  | { kind: "rowActivated"; path: (string | number)[]; row: number }
   // Acknowledges a `flushEdits`: every pending commit for this frame has been posted.
   | { kind: "flushComplete"; reqId: number }
   | { kind: "renderComplete"; gen: number }

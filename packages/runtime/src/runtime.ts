@@ -3381,12 +3381,19 @@ function applyStyleInto(
     const scope = effectScope();
     scope.run(() => {
       for (const { name, value } of sources) {
-        effect(() => {
-          const resolved = isRefValue(value)
-            ? resolveRef(value.$ref, state)
-            : evaluateTemplate(value, state);
+        const write = (resolved: JxScopeValue): void => {
           el.style.setProperty(name, canvasStyleValue(String(resolved ?? "")));
-        });
+        };
+        if (isRefValue(value)) {
+          effect(() => write(resolveRef(value.$ref, state)));
+        } else {
+          /* Survives its expression throwing, as every other template binding does (§6.1): the
+             variable is left unwritten, so the declaration that reads it has no value and the
+             cascade answers, and the binding re-runs when what it read changes. Unguarded, one
+             `${state.theme.accent}` read before `theme` arrived, or one `${item.data.tint}` on a
+             row with no `data`, threw out of the render and left the page blank. */
+          bindTemplate(value, () => write(evaluateTemplate(value, state)));
+        }
       }
     });
     entry.stop = () => scope.stop();
@@ -3596,7 +3603,9 @@ function renderMappedArrayInto(
     const scope = effectScope(true);
     const childOpts = options ? { ...options, _path: [...path, "map", index] } : undefined;
     const node = scope.run(() => renderNode(mapDef!, child, childOpts))!;
-    return { key, map, node, scope };
+    const row: MappedRow = { key, map, node, scope };
+    listRows.set(node, row);
+    return row;
   };
 
   const reconcile = (list: readonly JxScopeValue[], keys: readonly MappedRow["key"][]): void => {
@@ -3700,7 +3709,12 @@ function renderMappedArrayInto(
       underInstancePath(reexpand(instancePath), () =>
         insideStampedHost(insideStamped, () => reconcile(list, keys)),
       );
-      options?.onListReconciled?.(path, { count, empty: count === 0, rendered: rows.length });
+      options?.onListReconciled?.(path, {
+        count,
+        empty: count === 0,
+        nodes: rows.map((row) => row.node),
+        rendered: rows.length,
+      });
     } finally {
       resetTracking();
     }
@@ -3748,7 +3762,49 @@ interface MappedRow {
   /** The row's `$map` context; `item` and `index` are written in place when the row is reused. */
   map: JxRowContext;
   node: HTMLElement | Text;
-  scope: EffectScope;
+  /** What stops the row's effects: its own scope, or the disposer a host handed over with a node. */
+  scope: Pick<EffectScope, "stop">;
+}
+
+/** The row each rendered row node stands for, so a host can hand its list another node for it. */
+const listRows = new WeakMap<Node, MappedRow>();
+
+/**
+ * Put `next` where the mapped-list row `current` stands, and make it that row's node from now on.
+ * Answers whether `current` was a row's node; when it was not, nothing is touched.
+ *
+ * An authoring interface, beside {@link updateInstanceProps}: a host that edits a document draws a
+ * changed template again for a row that is already on screen, with the row's own scope (the one
+ * `onNodeCreated` reported for the old node). The list holds each row by its node, moves that node
+ * when the row is reused at another index and removes it when the row goes, so a node swapped in
+ * behind its back would be left standing when the list next redrew and the old one put back. Told
+ * here, the list moves and removes the new node instead. The row keeps its key and its `$map`
+ * record, so nothing is reconciled and no other row is touched.
+ *
+ * The old node's effects are stopped, after it has left the document for the reason `teardown` in
+ * {@link renderMappedArrayInto} gives. `stop` is what ends the new node's effects when the row is
+ * dropped or the list is torn down; the host created them, so only it can say how.
+ *
+ * @param current A node the list drew as a row's root.
+ * @param next The node to stand there instead, rendered by the host.
+ * @param [stop] Called once when the row is removed.
+ */
+export function replaceListRow(
+  current: Node,
+  next: HTMLElement | Text,
+  stop?: () => void,
+): boolean {
+  const row = listRows.get(current);
+  if (!row || row.node !== current) {
+    return false;
+  }
+  row.node.replaceWith(next);
+  row.scope.stop();
+  listRows.delete(current);
+  row.node = next;
+  row.scope = { stop: () => stop?.() };
+  listRows.set(next, row);
+  return true;
 }
 
 /**

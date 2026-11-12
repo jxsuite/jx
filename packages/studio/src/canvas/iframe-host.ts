@@ -60,7 +60,9 @@ import {
   assetVersionsSnapshot,
   localRevisionsSnapshot,
 } from "../files/asset-versions";
+import { DEFAULT_ROW_LIMIT } from "./iframe-protocol";
 import type {
+  ActiveRows,
   ApplyFormatIntent,
   CanvasMode,
   DragSrcKind,
@@ -2390,6 +2392,7 @@ const PREVIEW_BLOCKED: ReadonlySet<IframeToParent["kind"]> = new Set([
   "insertZones",
   "layoutHit",
   "nativeDragEnter",
+  "rowActivated",
 ]);
 
 /** Handle a message the iframe posted back: ready handshake, pointer hit/hover, measured geometry. */
@@ -2502,6 +2505,19 @@ function handleMessage(state: HostState, msg: IframeToParent): void {
         const open = msg.command === "show-modal";
         if (open || targeted(tab.session.ui.openDialog)) {
           void activeRegistry()?.run("canvas.setDialogOpen", { open, path: msg.targetPath });
+        }
+      }
+      return;
+    }
+    case "rowActivated": {
+      /* A press in an echo row (studio.md §4.5). The frame has renamed its own stamps already; the
+         tab keeps the choice, which is what reaches the tab's other artboards (the pane's effect in
+         `studio.ts` posts the map) and the next render. A stylebook host draws no document. */
+      const tab = state.stylebook || !state.tabId ? null : workspace.tabs.get(state.tabId);
+      if (tab && Number.isInteger(msg.row) && msg.row >= 0) {
+        const key = JSON.stringify(msg.path);
+        if (tab.session.ui.activeRows[key] !== msg.row) {
+          tab.session.ui.activeRows = { ...tab.session.ui.activeRows, [key]: msg.row };
         }
       }
       return;
@@ -3522,6 +3538,9 @@ function preparePassRender(
     if (resolved.entryRoot !== null) {
       prepared.entryRoot = resolved.entryRoot;
     }
+    if (Object.keys(resolved.rowSamples).length > 0) {
+      prepared.rowSamples = plainCopy(resolved.rowSamples);
+    }
     if (allowAutoRequests) {
       prepared.allowAutoRequests = true;
     }
@@ -3598,6 +3617,9 @@ export async function mountIframeCanvas(
     colorScheme: schemeWireFor(viewTab),
     // Per tab and at post time like the scheme: whether chips draw their value or their name.
     bindingDisplay: viewTab?.session.ui.bindingDisplay ?? "values",
+    // And each repeater's active row, with the cap on how many rows are drawn (studio.md §4.5).
+    activeRows: plainCopy(viewTab?.session.ui.activeRows ?? {}),
+    rowLimit: viewTab?.session.ui.repeaterRows ?? DEFAULT_ROW_LIMIT,
     gen,
     kind: "render",
     // The language this artboard draws in, per tab and at post time like the scheme.
@@ -3696,7 +3718,6 @@ export function mountStylebookCanvas(
     gen,
     kind: "render",
     mapperCtx: {
-      arrayPaths: [],
       canvasMode: "stylebook",
       layoutWrapped: false,
       pageContentOffset: null,
@@ -3791,6 +3812,35 @@ export function postBindingDisplayToLiveHosts(
       /* A name is not as wide as the value it stands in for, so the page reflows and every box
          drawn over it is where its element WAS. No render or patch follows to re-measure them, so
          they are asked for here; the channel is in order, so the frame measures after the flip. */
+      requestSelection(host, host.selectionPaths);
+      requestPresence(host);
+    }
+  }
+}
+
+/**
+ * Make these the active rows on every ready host that draws repeaters as rows
+ * (`canvas.setActiveRow`, studio.md §4.5). Render-free: the frame renames the attributes its rows
+ * carry their paths in. The selection and presence boxes are measured again behind it, because the
+ * element a selected path names is now in another row. Scoped to one stage when the caller names
+ * one, for the reason {@link postColorSchemeToLiveHosts} gives: the choice is a tab's.
+ *
+ * A frame that did not announce the `rows` capability is skipped: it draws one row, and would drop
+ * the message without a word.
+ *
+ * @docs studio/design/repeaters
+ */
+export function postActiveRowsToLiveHosts(rows: ActiveRows, root?: HTMLElement | null): void {
+  for (const host of liveHosts) {
+    if (!host.iframe.isConnected) {
+      liveHosts.delete(host);
+      continue;
+    }
+    if (root && !root.contains(host.iframe)) {
+      continue;
+    }
+    if (host.ready && host.capabilities.has("rows")) {
+      host.channel.post({ kind: "setActiveRows", rows: plainCopy(rows) });
       requestSelection(host, host.selectionPaths);
       requestPresence(host);
     }

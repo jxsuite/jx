@@ -36,7 +36,6 @@ function renderMsg(gen: number, doc: JxMutableNode, assets: AssetContext | null)
     gen,
     kind: "render",
     mapperCtx: {
-      arrayPaths: [],
       canvasMode: "design",
       layoutWrapped: false,
       pageContentOffset: null,

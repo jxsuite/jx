@@ -5,10 +5,11 @@
  *
  * The runtime fires `onNodeCreated(el, renderPath, def, state)` for every node. The render path is
  * not always the document path: layout-wrapped pages shift page content under a layout prefix, and
- * `prepareForEditMode` renders mapped arrays (`$prototype: Array`) as a `repeater-perimeter` whose
- * single child hop must be collapsed back to a `map` segment. {@link classifyRenderNode} resolves a
- * render path to either a document path or a "layout" marker; {@link serializeJxPath} encodes the
- * result for the `data-jx-path` attribute.
+ * a mapped array (`$prototype: "Array"`) renders one instance of its template per item, at
+ * `[…array, "map", index, …]`, where the document holds the template once, at `[…array, "map", …]`.
+ * {@link classifyRenderNode} resolves a render path to either a document path plus the row it was
+ * drawn in, or a "layout" marker; {@link serializeJxPath} encodes the path for the `data-jx-path`
+ * attribute (studio.md §4.5).
  */
 
 import { isJsonObject, isNonNullObject, isNumber, isString } from "@jxsuite/schema/guards";
@@ -28,8 +29,54 @@ import type { JxPath } from "../state";
  * @returns The attribute selector, without a leading tag or combinator.
  */
 export function jxPathSelector(serialized: string): string {
-  const escaped = serialized.replaceAll("\\", String.raw`\\`).replaceAll("'", String.raw`\'`);
-  return `[data-jx-path='${escaped}']`;
+  return `[data-jx-path='${escapeAttrValue(serialized)}']`;
+}
+
+/** A serialized path as the inside of a single-quoted attribute-value selector. */
+function escapeAttrValue(serialized: string): string {
+  return serialized.replaceAll("\\", String.raw`\\`).replaceAll("'", String.raw`\'`);
+}
+
+/**
+ * The attribute a node carries its document path in when it is drawn in a repeater row that is not
+ * the active one (studio.md §4.5). An **echo row** draws the same document nodes as the active row,
+ * so stamping it with `data-jx-path` would give one path two elements, and every lookup that takes
+ * the first match would act on whichever came first in the document. The runtime de-links a node
+ * carrying either attribute (`carriesCanvasStamp` in `packages/runtime/src/runtime.ts`).
+ */
+export const ECHO_PATH_ATTR = "data-jx-echo-path";
+
+/** The attribute a node drawn inside a repeater carries its row coordinates in, as JSON. */
+export const ROW_ATTR = "data-jx-row";
+
+/** A selector for every element drawn for a document node: the active rows' and the echo rows'. */
+export const STAMPED_SELECTOR = `[data-jx-path],[${ECHO_PATH_ATTR}]`;
+
+/**
+ * A selector for EVERY element drawn for a serialized document path: the one that carries it as
+ * `data-jx-path`, and each echo row's. See {@link jxPathSelector} for the escaping.
+ */
+export function jxInstanceSelector(serialized: string): string {
+  const escaped = escapeAttrValue(serialized);
+  return `[data-jx-path='${escaped}'],[${ECHO_PATH_ATTR}='${escaped}']`;
+}
+
+/**
+ * The serialized document path an element was drawn for, whichever attribute holds it, or undefined
+ * for an element that is no node of the document.
+ */
+export function stampedPathOf(el: HTMLElement): string | undefined {
+  return el.dataset.jxPath ?? el.dataset.jxEchoPath;
+}
+
+/** The row coordinates an element was drawn at, outermost repeater first; empty outside a row. */
+export function rowsOf(el: HTMLElement): number[] {
+  const raw = el.dataset.jxRow;
+  if (raw === undefined) {
+    return [];
+  }
+  // SAFETY: only the stamper and the row restamp write `data-jx-row`, as JSON of a number array.
+  return JSON.parse(raw) as number[];
 }
 
 /** Context the mapper needs, computed once per render by whoever prepared the document. */
@@ -38,7 +85,6 @@ export interface PathMapCtx {
   layoutWrapped: boolean;
   pageContentPrefix: JxPath | null;
   pageContentOffset: number | null;
-  arrayPaths: Set<string>;
 }
 
 /**
@@ -67,7 +113,73 @@ export interface LayoutMarker {
  */
 export type RenderNodeClass =
   | { kind: "layout"; layoutFile: string; layoutPath: JxPath; chrome: boolean }
-  | { kind: "path"; path: JxPath };
+  | { kind: "path"; path: JxPath; rows: number[] };
+
+/** A node's document path, and the row each enclosing repeater drew it in, outermost first. */
+export interface RowAddress {
+  path: JxPath;
+  rows: number[];
+}
+
+/**
+ * A render path with its row indices taken out: the document path, and the index of the row each
+ * enclosing repeater drew this node in, outermost first.
+ *
+ * A row hop is a `"map"` segment followed by a number. The document never holds that shape (a
+ * repeater's `map` is one template, so the segment after it is a key of that template), and the one
+ * other place a segment may be spelled `map` is a `$switch` case of that name, whose body is a node
+ * and so is never followed by a number either; a `cases` key is skipped all the same.
+ */
+export function stripRowIndices(path: JxPath): RowAddress {
+  const out: JxPath = [];
+  const rows: number[] = [];
+  for (let i = 0; i < path.length; i++) {
+    const seg = path[i]!;
+    out.push(seg);
+    const next = path[i + 1];
+    if (seg === "map" && isNumber(next) && path[i - 1] !== "cases") {
+      rows.push(next);
+      i += 1;
+    }
+  }
+  return { path: out, rows };
+}
+
+/**
+ * The document path of every repeater that encloses the node at `path`, outermost first: the prefix
+ * before each `map` segment the document holds as a repeater's template.
+ */
+export function enclosingRepeaterPaths(path: JxPath): JxPath[] {
+  const repeaters: JxPath[] = [];
+  for (let i = 0; i < path.length; i++) {
+    if (path[i] === "map" && path[i - 1] !== "cases") {
+      repeaters.push(path.slice(0, i));
+    }
+  }
+  return repeaters;
+}
+
+/**
+ * The inverse of {@link stripRowIndices}: `path` with `rows` put back after each repeater's `map`
+ * segment, which is the path the runtime renders that row's instance at. Rows beyond the repeaters
+ * the path crosses are ignored, and a repeater with no row named is left without one.
+ */
+export function withRowIndices(path: JxPath, rows: readonly number[]): JxPath {
+  const out: JxPath = [];
+  let depth = 0;
+  for (let i = 0; i < path.length; i++) {
+    const seg = path[i]!;
+    out.push(seg);
+    if (seg === "map" && path[i - 1] !== "cases") {
+      const row = rows[depth];
+      if (row !== undefined) {
+        out.push(row);
+      }
+      depth += 1;
+    }
+  }
+  return out;
+}
 
 /**
  * Whether `path` is the page-content container or one of its ancestors — i.e. whether this node's
@@ -82,8 +194,8 @@ export function wrapsPageContent(path: JxPath, prefix: JxPath | null): boolean {
 }
 
 /**
- * Resolve a runtime render path to a document path (or flag it as layout-originated). Pure — the
- * caller decides whether to record the result in a WeakMap or `data-jx-*` attributes.
+ * Resolve a runtime render path to a document path and its rows (or flag it as layout-originated).
+ * Pure — the caller decides whether to record the result in a WeakMap or `data-jx-*` attributes.
  */
 export function classifyRenderNode(
   path: JxPath,
@@ -109,6 +221,14 @@ export function classifyRenderNode(
     };
   }
 
+  return { kind: "path", ...stripRowIndices(pageDocPath(path, ctx)) };
+}
+
+/**
+ * A render path with the layout prefix taken off, so it is relative to the page document. Row
+ * indices are left in: see {@link stripRowIndices}.
+ */
+export function pageDocPath(path: JxPath, ctx: PathMapCtx): JxPath {
   let mappedPath = path;
 
   // Strip the layout prefix so paths are relative to the original page document.
@@ -125,32 +245,7 @@ export function classifyRenderNode(
     }
   }
 
-  /* Collapse repeater-perimeter template hops: for an array document path P, a render path of
-     `[...P, "children", 0, ...rest]` maps to `[...P, "map", ...rest]`. Loop for nested repeaters.
-
-     `arrayPaths` IS the mode test, and naming modes here as well was a second copy of it that
-     disagreed. Only the caller knows whether `prepareForEditMode` ran, and it says so by filling
-     this set; a non-empty set in a mode this list did not name meant the perimeters existed and the
-     collapse did not, so the stamped path pointed at a node the document has no address for. */
-  if (ctx.arrayPaths.size > 0) {
-    let changed = true;
-    while (changed) {
-      changed = false;
-      for (let i = 1; i < mappedPath.length - 1; i++) {
-        if (
-          mappedPath[i] === "children" &&
-          mappedPath[i + 1] === 0 &&
-          ctx.arrayPaths.has(mappedPath.slice(0, i).join("/"))
-        ) {
-          mappedPath = [...mappedPath.slice(0, i), "map", ...mappedPath.slice(i + 2)];
-          changed = true;
-          break;
-        }
-      }
-    }
-  }
-
-  return { kind: "path", path: mappedPath };
+  return mappedPath;
 }
 
 /** Encode a document path for the `data-jx-path` attribute (preserves string-vs-number segments). */

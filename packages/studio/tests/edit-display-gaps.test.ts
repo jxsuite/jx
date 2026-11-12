@@ -7,14 +7,11 @@ import {
   computeEmptyPlaceholderClass,
   CUSTOM_TAG_LABEL,
   describeTag,
-  editModeStyle,
+  drawsManyNodes,
   EMPTY_PLACEHOLDER_CLASSES,
-  isRowBound,
   isTextRun,
-  liveEditProp,
   prepareForEditMode,
   prepareTextMember,
-  sampleRowAt,
   tagMarkOf,
 } from "../src/utils/edit-display";
 import { makeStamper } from "../src/canvas/iframe-render";
@@ -61,7 +58,6 @@ function draw(node: JxDocumentValue, scope: JxScope = {}): HTMLElement {
   const el = renderNode(prep(node), scope, {
     _path: [],
     onNodeCreated: makeStamper({
-      arrayPaths: new Set(),
       canvasMode: "edit",
       layoutWrapped: false,
       pageContentOffset: null,
@@ -243,7 +239,7 @@ describe("prepareForEditMode bound text", () => {
     expect(tagMarkOf(rootRef)?.label).toBe("Reference");
   });
 
-  test("a row pointer text resolves against the sample row", () => {
+  test("a row pointer text resolves against each row's own item", () => {
     const el = draw(
       {
         children: [
@@ -257,7 +253,7 @@ describe("prepareForEditMode bound text", () => {
       },
       { rows: [{ t: "First" }, { t: "Second" }] },
     );
-    expect(el.querySelector("li")?.textContent).toBe("First");
+    expect([...el.querySelectorAll("li")].map((li) => li.textContent)).toEqual(["First", "Second"]);
   });
 
   test("text beside children stays a property, live, and closes its block", () => {
@@ -353,7 +349,7 @@ describe("prepareForEditMode row-bound values", () => {
     tagName: "section",
   });
 
-  test("text, attributes, src and style resolve against the repeater's first item", () => {
+  test("text, attributes, src and style resolve in every row against that row's item", () => {
     const el = draw(
       repeater({
         attributes: { "data-slug": "${item.slug}", title: { $ref: "$map/item/title" } },
@@ -365,60 +361,92 @@ describe("prepareForEditMode row-bound values", () => {
         style: { color: "${item.color}" },
         tagName: "article",
       }),
-      { rows: [{ color: "red", image: "/a.jpg", kind: "wide", slug: "a", title: "Alpha" }, {}] },
+      {
+        rows: [
+          { color: "red", image: "/a.jpg", kind: "wide", slug: "a", title: "Alpha" },
+          { color: "blue", image: "/b.jpg", kind: "tall", slug: "b", title: "Beta" },
+        ],
+      },
     );
-    const card = el.querySelector("article");
-    expect(card?.dataset.slug).toBe("a");
-    expect(card?.getAttribute("title")).toBe("Alpha");
-    expect(card?.className).toBe("card wide");
-    expect(el.querySelector("h3")?.textContent).toBe("Alpha");
-    const img = el.querySelector("img");
-    expect(img?.getAttribute("alt")).toBe("Alpha");
-    expect(img?.getAttribute("src")).toBe("/a.jpg");
+    const cards = [...el.querySelectorAll("article")];
+    expect(cards.map((card) => card.dataset.slug)).toEqual(["a", "b"]);
+    expect(cards.map((card) => card.getAttribute("title"))).toEqual(["Alpha", "Beta"]);
+    expect(cards.map((card) => card.className)).toEqual(["card wide", "card tall"]);
+    expect([...el.querySelectorAll("h3")].map((h) => h.textContent)).toEqual(["Alpha", "Beta"]);
+    const images = [...el.querySelectorAll("img")];
+    expect(images.map((img) => img.getAttribute("alt"))).toEqual(["Alpha", "Beta"]);
+    expect(images.map((img) => img.getAttribute("src"))).toEqual(["/a.jpg", "/b.jpg"]);
     // A bound src is not a missing one: no placeholder is drawn for it.
-    expect(img?.classList.contains("empty-media-placeholder")).toBe(false);
-    expect(card?.getAttribute("style") ?? "").toContain("red");
+    expect(images.some((img) => img.classList.contains("empty-media-placeholder"))).toBe(false);
+    expect(cards[0]?.getAttribute("style") ?? "").toContain("red");
+    expect(cards[1]?.getAttribute("style") ?? "").toContain("blue");
   });
 
-  test("a row-bound hidden follows the row, and a failing one is removed, not stuck", () => {
+  test("a row-bound hidden follows its own row, and a failing one is removed, not stuck", () => {
     const badge = { attributes: { hidden: HIDDEN }, tagName: "span", textContent: "Premium" };
-    const shown = draw(repeater(badge), { rows: [{ data: { premium: "1" } }] });
-    expect(shown.querySelector("span")?.hasAttribute("hidden")).toBe(false);
-    const hidden = draw(repeater(badge), { rows: [{ data: { premium: "0" } }] });
-    expect(hidden.querySelector("span")?.hasAttribute("hidden")).toBe(true);
-    // No row to read: the binding throws, yields null, and the attribute comes off.
-    const empty = draw(repeater(badge), { rows: [] });
-    expect(empty.querySelector("span")?.hasAttribute("hidden")).toBe(false);
-    const outside = draw(badge);
-    expect(outside.hasAttribute("hidden")).toBe(false);
+    const el = draw(repeater(badge), {
+      rows: [{ data: { premium: "1" } }, { data: { premium: "0" } }, {}],
+    });
+    // Shown, hidden, and a row whose item has no `data` at all: the binding throws, and the
+    // Attribute is left off rather than stuck on.
+    expect([...el.querySelectorAll("span")].map((span) => span.hasAttribute("hidden"))).toEqual([
+      false,
+      true,
+      false,
+    ]);
   });
 
-  test("the same binding written as a property is empty when it fails", () => {
-    const out = prep({ hidden: HIDDEN, tagName: "span", textContent: "Premium" });
-    expect(isRowBound(out.hidden)).toBe(false);
-    expect(out.hidden).toContain("catch");
-    expect(draw({ hidden: HIDDEN, tagName: "span", textContent: "Premium" }).hidden).toBe(false);
+  test("a row binding reaches the runtime as written, wherever it is held", () => {
+    const node: JxMutableNode = {
+      $props: { title: "${item.t}", when: { $ref: "$map/item/date" } },
+      attributes: { "data-a": { $ref: "$map/item/a" }, hidden: HIDDEN },
+      className: "card ${item.kind}",
+      hidden: HIDDEN,
+      innerHTML: "${item.html}",
+      src: "${item.src}",
+      style: { "&:hover": { color: "${item.hover}" }, margin: { $ref: "$map/item/m" } },
+      tagName: "x-card",
+    };
+    const out = prep(node);
+    /* Nothing is wrapped, guarded or resolved against a sample: the runtime draws the template once
+       per item and each of these reads its own row's scope (studio.md §4.5). */
+    for (const key of ["$props", "className", "hidden", "innerHTML", "src", "style"] as const) {
+      expect<JxDocumentValue | undefined>(out[key]).toEqual(node[key]);
+    }
   });
 
-  test("with no sample row a row-bound chip is empty and still names its tag", () => {
+  test("a row-bound attribute is live in a row and off where there is none", () => {
+    const badge = { attributes: { hidden: "${!item?.published}" }, tagName: "span" };
+    // `!item?.published` is true with no item at all: outside a repeater the attribute stays off.
+    expect(draw(badge).hasAttribute("hidden")).toBe(false);
+    const link = { attributes: { "data-href": "/p/${item?.slug}" }, tagName: "a" };
+    expect(draw(link).dataset.href).toBeUndefined();
+    const pointer = { attributes: { title: { $ref: "$map/item/title" } }, tagName: "i" };
+    expect(draw(pointer).hasAttribute("title")).toBe(false);
+    const rows = draw(
+      repeater({ ...pointer, attributes: { ...pointer.attributes, ...link.attributes } }),
+      {
+        rows: [{ slug: "a", title: "Alpha" }],
+      },
+    );
+    expect(rows.querySelector("i")?.dataset.href).toBe("/p/a");
+    expect(rows.querySelector("i")?.getAttribute("title")).toBe("Alpha");
+    // A pointer no template reaches is the runtime's to resolve, as written.
+    const odd = prep({ attributes: { "data-x": { $ref: "$map/~1/x" } }, tagName: "i" });
+    expect(odd.attributes?.["data-x"]).toEqual(expect.any(String));
+  });
+
+  test("a row-bound chip with nothing to read is empty and still names its tag", () => {
+    // Outside any repeater there is no row, and a row whose item lacks the field reads nothing.
     const el = draw({ tagName: "p", textContent: "${item.data.title}" });
     expect(chipsOf(el)).toEqual([["${item.data.title}", "Title", "field", ""]]);
-    const empty = draw(repeater({ tagName: "p", textContent: "${item.data.title}" }), { rows: [] });
-    expect(chipsOf(empty)).toEqual([["${item.data.title}", "Title", "field", ""]]);
-  });
-
-  test("a row pointer attribute resolves against the row, and is left off with none", () => {
-    const node: JxMutableNode = {
-      attributes: { "data-a": { $ref: "$map/item/a" } },
-      "data-b": { $ref: "$map/item/b" },
-      tagName: "div",
-      textContent: "x",
-    };
-    const rowless = prep(node);
-    expect(rowless.attributes).not.toHaveProperty("data-a");
-    expect(isString(rowless["data-b"])).toBe(true);
-    const inRow = prepareForEditMode(node, "state.rows?.[0]");
-    expect(isString(inRow.attributes?.["data-a"])).toBe(true);
+    const sparse = draw(repeater({ tagName: "p", textContent: "${item.data.title}" }), {
+      rows: [{}, { data: { title: "Set" } }],
+    });
+    expect(chipsOf(sparse)).toEqual([
+      ["${item.data.title}", "Title", "field", ""],
+      ["${item.data.title}", "Title", "field", "Set"],
+    ]);
   });
 
   test("a hidden that does not read the row stays live, and a literal one is the author's", () => {
@@ -492,11 +520,10 @@ describe("prepareForEditMode basics", () => {
     expect(form.action).toBe("${state.ep}");
   });
 
-  test("a bound className renders live, and one that reads the row is resolved against it", () => {
+  test("a bound className renders live, whether it reads the page or the row", () => {
     const div = (className: string) => prep({ children: ["x"], className, tagName: "div" });
     expect(div("${state.cls}").className).toBe("${state.cls}");
-    expect(div("${item.cls}").className).toContain("item.cls");
-    expect(isRowBound(div("${item.cls}").className)).toBe(false);
+    expect(div("${item.cls}").className).toBe("${item.cls}");
   });
 
   test("a block with any bound property is named for what it draws", () => {
@@ -541,18 +568,19 @@ describe("prepareForEditMode $props", () => {
       tagName: "x-card",
     });
     /* A component's inputs render live: a header's variant shown as `❪ state.variant ❫` reached the
-       component as that literal text and matched none of its styles. A row pointer outside any
-       repeater has no row to read, so the component keeps its default. */
+       component as that literal text and matched none of its styles. A row pointer is the
+       runtime's to resolve like the rest, against the row the instance is drawn in. */
     expect(out.$props).toEqual({
       href: "${s}",
       label: "${t}",
       link: { $ref: "#/state/url" },
       other: { $ref: "raw.path" },
       plain: 5,
+      row: { $ref: "$map/item/t" },
     });
   });
 
-  test("a component in a repeater is drawn with the repeater's first item", () => {
+  test("a component in a repeater is drawn once per item, each with its own row's props", () => {
     const out = prep({
       children: [
         {
@@ -573,15 +601,14 @@ describe("prepareForEditMode $props", () => {
     });
     const scope: JxScope = { $page: { locale: "fr" }, rows: [{ t: "Harbour" }, { t: "Crane" }] };
     const host = renderNode(out, scope);
-    const row = host instanceof HTMLElement ? host.querySelector("x-row") : null;
-    expect(row).not.toBeNull();
-    expect(propertyOf(row, "title")).toBe("Harbour");
-    expect(propertyOf(row, "locale")).toBe("fr");
-    expect(propertyOf(row, "label")).toBe("Harbour (fr)");
-    expect(propertyOf(row, "count")).toBe("1");
+    const rows = host instanceof HTMLElement ? [...host.querySelectorAll("x-row")] : [];
+    expect(rows.map((row) => propertyOf(row, "title"))).toEqual(["Harbour", "Crane"]);
+    expect(rows.map((row) => propertyOf(row, "locale"))).toEqual(["fr", "fr"]);
+    expect(rows.map((row) => propertyOf(row, "label"))).toEqual(["Harbour (fr)", "Crane (fr)"]);
+    expect(rows.map((row) => propertyOf(row, "count"))).toEqual(["1", "2"]);
   });
 
-  test("an empty or unreadable list gives the instance empty values, not a thrown binding", () => {
+  test("a row whose item lacks what a prop reads leaves the prop unset, not the instance undrawn", () => {
     const out = prep({
       children: [
         {
@@ -589,20 +616,17 @@ describe("prepareForEditMode $props", () => {
           items: { $ref: "#/state/rows" },
           map: { $props: { title: "${item.data.title}" }, tagName: "x-row" },
         },
-        {
-          $prototype: "Array",
-          items: { $ref: "window#/rows" },
-          map: { $props: { title: "${item.data.title}" }, tagName: "x-other" },
-        },
       ],
       tagName: "section",
     });
-    const host = renderNode(out, { rows: [] });
-    const rows = host instanceof HTMLElement ? [...host.querySelectorAll("x-row, x-other")] : [];
-    expect(rows.map((row) => propertyOf(row, "title"))).toEqual(["", ""]);
+    const host = renderNode(out, { rows: [{}, { data: { title: "Set" } }] });
+    const rows = host instanceof HTMLElement ? [...host.querySelectorAll("x-row")] : [];
+    // The first binding throws on a missing `data` and is survived; the second row is unaffected.
+    expect(rows).toHaveLength(2);
+    expect(propertyOf(rows[1] ?? null, "title")).toBe("Set");
   });
 
-  test("a literal list, a template list and a nested list each give a sample row", () => {
+  test("a literal list and a nested list each draw their rows", () => {
     const out = prep({
       children: [
         {
@@ -620,53 +644,13 @@ describe("prepareForEditMode $props", () => {
             tagName: "x-outer",
           },
         },
-        {
-          $prototype: "Array",
-          items: "${state.rows}",
-          map: { $props: { title: "${item.t}" }, tagName: "x-templated" },
-        },
       ],
       tagName: "section",
     });
-    const host = renderNode(out, { rows: [{ t: "templated" }] });
+    const host = renderNode(out, {});
     const at = (sel: string) => (host instanceof HTMLElement ? host.querySelector(sel) : null);
     expect(propertyOf(at("x-outer"), "title")).toBe("literal");
     expect(propertyOf(at("x-inner"), "name")).toBe("inner");
-    expect(propertyOf(at("x-templated"), "title")).toBe("templated");
-  });
-
-  test("sampleRowAt gives a subtree under a repeater the row the full render used", () => {
-    const doc: JxMutableNode = {
-      children: [{ $prototype: "Array", items: { $ref: "#/state/rows" }, map: { tagName: "li" } }],
-      tagName: "ul",
-    };
-    expect(sampleRowAt(doc, ["children", 0, "map"])).toContain('state?.["rows"]');
-    expect(sampleRowAt(doc, ["children", 0])).toBeNull();
-    expect(sampleRowAt(doc, ["children", 5, "map"])).toBeNull();
-    expect(liveEditProp("plain text")).toBe("plain text");
-    // An unterminated `${` is left as written rather than cut short.
-    expect(liveEditProp("a ${b")).toBe("a ${b");
-  });
-
-  test("props that read the repeater row are bindings resolved against it, link and image included", () => {
-    const out = prep({
-      $props: {
-        featuredImage: "${state.x}",
-        heroBg: "${item.bg}",
-        href: "${item.h}",
-        row: { $ref: "$map/item/t" },
-        title: "${item.t}",
-      },
-      tagName: "eer-category",
-    });
-    // One that reads the page's state is live like any other.
-    expect(out.$props?.featuredImage).toBe("${state.x}");
-    // A row pointer with no row to read is dropped: the component keeps its default.
-    expect(out.$props).not.toHaveProperty("row");
-    for (const key of ["heroBg", "href", "title"]) {
-      expect(isRowBound(out.$props?.[key])).toBe(false);
-      expect(out.$props?.[key]).toContain("catch");
-    }
   });
 
   test("a static (non-template) image prop is left untouched", () => {
@@ -705,7 +689,7 @@ describe("prepareForEditMode computed children", () => {
     expect(el.dataset.jxPath).toBe("[]");
   });
 
-  test("inside a repeater it reads the sample row, and draws nothing when that fails", () => {
+  test("inside a repeater it reads each row's item, and draws nothing where that has none", () => {
     const doc = {
       children: [
         {
@@ -716,9 +700,10 @@ describe("prepareForEditMode computed children", () => {
       ],
       tagName: "section",
     };
-    const el = draw(doc, { team: [{ $children: [{ tagName: "b", textContent: "bio" }] }] });
-    expect(el.querySelector("b")?.textContent).toBe("bio");
-    expect(draw(doc, { team: [] }).querySelector("b")).toBeNull();
+    const el = draw(doc, { team: [{ $children: [{ tagName: "b", textContent: "bio" }] }, {}] });
+    expect(
+      [...el.querySelectorAll("div")].map((row) => row.querySelector("b")?.textContent),
+    ).toEqual(["bio", undefined]);
   });
 
   test("a plain string in `children` is not a binding, and is left as it was", () => {
@@ -746,10 +731,10 @@ describe("prepareForEditMode innerHTML", () => {
     expect(el.querySelector("b")?.matches("[data-jx-path]")).toBe(false);
   });
 
-  test("row-bound markup reads the sample row; a pointer passes through; literal markup is open", () => {
+  test("row-bound markup and a pointer pass through and close; literal markup is open", () => {
     const row = prep({ innerHTML: "${item.html}", tagName: "div" });
-    expect(isRowBound(row.innerHTML)).toBe(false);
-    expect(row.innerHTML).toContain("catch");
+    expect(row.innerHTML).toBe("${item.html}");
+    expect(row.attributes).toMatchObject({ contenteditable: "false" });
     const ref = prep({ innerHTML: { $ref: "#/state/html" }, tagName: "div" });
     expect<JxDocumentValue | undefined>(ref.innerHTML).toEqual({ $ref: "#/state/html" });
     expect(ref.attributes).toMatchObject({ contenteditable: "false" });
@@ -767,32 +752,33 @@ describe("prepareForEditMode children", () => {
     expect(tagMarkOf(elementChildren(paragraph)[0])?.source).toBe("${a}");
   });
 
-  test("wraps mapped-array children in a repeater perimeter", () => {
+  test("a whole-children repeater passes through with its template prepared", () => {
     const out = prep({
       children: {
         $prototype: "Array",
-        map: { tagName: "li", textContent: "plain" },
+        items: { $ref: "#/state/rows" },
+        map: { tagName: "li", textContent: "${item.t}" },
       },
       tagName: "ul",
     });
-    expect(out.children).toHaveLength(1);
-    expect(elementChildren(out)[0]!.className).toBe("repeater-perimeter");
-    expect(elementChildren(out)[0]!.tagName).toBe("div");
-    expect(elementChildren(elementChildren(out)[0])[0]!.textContent).toBe("plain");
+    const { children } = out;
+    if (!isNodeObject(children) || !isNodeObject(children.map)) {
+      throw new TypeError("expected the repeater to survive");
+    }
+    expect(children.$prototype).toBe("Array");
+    expect<JxDocumentValue | undefined>(children.items).toEqual({ $ref: "#/state/rows" });
+    // The template is prepared as any node is: its bound text is a chip.
+    expect(tagMarkOf(elementChildren(children.map)[0])?.source).toBe("${item.t}");
+    // A list that draws its rows there is not an empty container.
+    expect(out.className).toBeUndefined();
   });
 
-  test("mapped-array children without a template still emit one (empty) perimeter", () => {
-    // One DOM node per array keeps the 1:1 sibling-index correspondence the patcher relies on.
-    const out = prep({
-      children: { $prototype: "Array" },
-      tagName: "ul",
-    });
-    expect(out.children).toHaveLength(1);
-    expect(elementChildren(out)[0]!.className).toBe("repeater-perimeter");
-    expect(elementChildren(elementChildren(out)[0])).toEqual([]);
+  test("a repeater with no template passes through untouched", () => {
+    const out = prep({ children: { $prototype: "Array" }, tagName: "ul" });
+    expect<JxDocumentValue | undefined>(out.children).toEqual({ $prototype: "Array" });
   });
 
-  test("array pseudo-element among siblings becomes one perimeter in place", () => {
+  test("a repeater among siblings stays one member at its index", () => {
     const out = prep({
       children: [
         { tagName: "li", textContent: "header" },
@@ -802,10 +788,22 @@ describe("prepareForEditMode children", () => {
       tagName: "ul",
     });
     expect(out.children).toHaveLength(3);
-    expect(elementChildren(out)[0]!.textContent).toBe("header");
-    expect(elementChildren(out)[1]!.className).toBe("repeater-perimeter");
-    expect(elementChildren(elementChildren(out)[1])[0]!.textContent).toBe("row");
-    expect(elementChildren(out)[2]!.textContent).toBe("footer");
+    const [header, repeater, footer] = elementChildren(out);
+    expect(header!.textContent).toBe("header");
+    expect(repeater!.$prototype).toBe("Array");
+    expect(repeater!.tagName).toBeUndefined();
+    expect(footer!.textContent).toBe("footer");
+  });
+
+  test("drawsManyNodes names the members a child index cannot count past", () => {
+    expect(drawsManyNodes({ $prototype: "Array", map: { tagName: "li" } })).toBe(true);
+    // A whole `${…}` may splice an array in as nodes; inside a longer string it is text.
+    expect(drawsManyNodes("${state.items}")).toBe(true);
+    expect(drawsManyNodes("${a ? '}' : b}")).toBe(true);
+    expect(drawsManyNodes("Hello ${state.name}")).toBe(false);
+    expect(drawsManyNodes("${a}${b}")).toBe(false);
+    expect(drawsManyNodes("plain")).toBe(false);
+    expect(drawsManyNodes({ tagName: "p" })).toBe(false);
   });
 
   test("single object children recurse", () => {
@@ -883,7 +881,7 @@ describe("prepareForEditMode media elements", () => {
     expect(cover.src).toEqual({ $ref: "#/state/cover" });
     expect(cover.className).toBeUndefined();
     const row = prep({ src: "${item.src}", tagName: "img" });
-    expect(row.src).toContain("item.src");
+    expect(row.src).toBe("${item.src}");
     expect(row.className).toBeUndefined();
   });
 
@@ -904,7 +902,7 @@ describe("prepareForEditMode media elements", () => {
     expect(out.className).toBeUndefined();
   });
 
-  test("attributes: bindings render live, and row bindings resolve against the row", () => {
+  test("attributes: bindings render live, a row binding among them", () => {
     const out = prep({
       attributes: {
         alt: { $ref: "#/state/altText" },
@@ -915,14 +913,11 @@ describe("prepareForEditMode media elements", () => {
     });
     expect(out.attributes?.src).toBe("${state.url}");
     expect(out.attributes?.alt).toEqual({ $ref: "#/state/altText" });
-    // No row to read it against: left off, not evaluated to whatever no row makes it.
-    expect(out.attributes).not.toHaveProperty("data-cap");
+    // Guarded for the template row, and otherwise the binding itself.
+    expect(out.attributes?.["data-cap"]).toContain("(item.caption)");
     expect(out.className).toBeUndefined();
-    const row = prepareForEditMode(
-      { attributes: { src: "${item.src}" }, tagName: "img" },
-      "state.rows?.[0]",
-    );
-    expect(row.attributes?.src).toContain("item.src");
+    const row = prep({ attributes: { src: "${item.src}" }, tagName: "img" });
+    expect(row.attributes?.src).toContain("(item.src)");
     expect(row.className).toBeUndefined();
   });
 
@@ -939,9 +934,7 @@ describe("prepareForEditMode media elements", () => {
 });
 
 describe("prepareForEditMode style handling", () => {
-  test("bound declarations are live; one that reads the row is dropped only when there is no row", () => {
-    /* Dropped, not blanked to `""`: `width: ` is a malformed declaration in a rule, and omitting it
-       lets the cascade answer. */
+  test("every declaration is live, at any depth, whether it reads the page or the row", () => {
     const style = {
       "&:hover": { color: "${item.hover}", opacity: "1" },
       color: "red",
@@ -950,31 +943,12 @@ describe("prepareForEditMode style handling", () => {
       width: "${state.w}px",
     };
     const out = prep({ style, tagName: "div", textContent: "x" });
-    expect(out.style).toEqual({ "&:hover": { opacity: "1" }, color: "red", width: "${state.w}px" });
-    const inRow = editModeStyle(style, "state.rows[0]");
-    if (!isNodeObject(inRow)) {
-      throw new TypeError("expected a style object");
-    }
-    expect(Object.keys(inRow).toSorted()).toEqual([
-      "&:hover",
-      "color",
-      "height",
-      "margin",
-      "width",
-    ]);
-    expect(inRow.height).toContain("state.rows[0]");
-    expect(inRow.margin).toContain("state.rows[0]");
-    // A row pointer no template reaches has nothing to resolve against, row or not.
-    expect(editModeStyle({ gap: { $ref: "$map/~1/x" }, top: { $ref: "#/state/t" } }, "r")).toEqual({
-      gap: expect.stringContaining("catch"),
-      top: { $ref: "#/state/t" },
-    });
+    expect(out.style).toEqual(style);
   });
 
   test("non-object style passes through", () => {
     const out = prep({ style: null, tagName: "div", textContent: "x" });
     expect(out.style).toBeNull();
-    expect(editModeStyle(undefined, null)).toBeUndefined();
   });
 });
 
