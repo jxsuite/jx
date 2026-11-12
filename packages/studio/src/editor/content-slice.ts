@@ -14,8 +14,9 @@
  * @docs studio/editing/writing
  */
 
-import { isString } from "@jxsuite/schema/guards";
-import type { JxMutableNode } from "@jxsuite/schema/types";
+import { isNonNullObject, isString, templateExpressions } from "@jxsuite/schema/guards";
+import { escapeTemplateText, isClosedContent } from "../utils/edit-display";
+import type { JxDocumentValue, JxMutableNode } from "@jxsuite/schema/types";
 
 /** A block's content as a children array — the form both storage shapes normalize to. */
 export type Content = (JxMutableNode | string)[];
@@ -42,13 +43,43 @@ export function contentOf(node: JxMutableNode | undefined | null): Content {
   return isString(node.textContent) && node.textContent.length > 0 ? [node.textContent] : [];
 }
 
+/**
+ * Whether an inline child is ATOMIC: one unit no offset falls inside, with no length of its own.
+ *
+ * True of an element whose content is a value rather than the author's text (`isClosedContent`) and
+ * of a component instance, whose content is another document's. The canvas draws both closed to the
+ * caret and counts each as nothing (`canvas/iframe-position.ts`), because what one shows has no
+ * relation to what it stores: a `{ "$ref" }` text is no characters of content however long its
+ * value is. Counting it here as its stored text would put every later offset out by the difference,
+ * and a cross-block delete would then take text the author never selected.
+ */
+export function isAtomicInline(node: JxMutableNode): boolean {
+  return (isString(node.tagName) && node.tagName.includes("-")) || isClosedContent(node);
+}
+
+/** The content of an inline child that offsets are counted through: none for an atomic one. */
+function innerContent(child: JxMutableNode): Content {
+  return isAtomicInline(child) ? [] : contentOf(child);
+}
+
 /** The rendered text length of a content array. */
 export function contentLength(children: Content): number {
   let n = 0;
   for (const child of children) {
-    n += isString(child) ? child.length : contentLength(contentOf(child));
+    n += isString(child) ? child.length : contentLength(innerContent(child));
   }
   return n;
+}
+
+/**
+ * Whether a string is one whole `${…}` and nothing else. As a member of `children` it is the one
+ * string whose value may be nodes: an array there is spliced in (spec.md §8.4), where the same
+ * expression as a `textContent` is printed. So it is never folded into `textContent` and never
+ * joined with the string beside it.
+ */
+export function isWholeTemplate(text: string): boolean {
+  const [only, ...rest] = templateExpressions(text);
+  return only !== undefined && rest.length === 0 && only.start === 0 && only.end === text.length;
 }
 
 /**
@@ -79,17 +110,20 @@ export function sliceContent(children: Content, start: number, end: number): Con
       pos = childEnd;
       continue;
     }
-    const inner = contentOf(child);
+    const inner = innerContent(child);
     const len = contentLength(inner);
     const childEnd = pos + len;
     if (len === 0) {
-      // A void inline (a `<br>`, an `<img>`) contributes no characters, so it can never satisfy a
-      // Length-based overlap test — it sits AT a position rather than spanning one. Keep it when
-      // The range covers that position, or every slice would silently drop it.
+      // A void inline (a `<br>`, an `<img>`) or an atomic one contributes no characters, so it can
+      // Never satisfy a length-based overlap test — it sits AT a position rather than spanning one.
+      // Keep it when the range covers that position, or every slice would silently drop it.
       if (pos >= start && pos < end) {
         // Copied verbatim: giving a `<br>` an empty `textContent` would be noise in the source.
         out.push({ ...child });
       }
+    } else if (pos >= start && childEnd <= end) {
+      // Kept whole: copied as it is stored, so a slice never re-spells content it did not cut.
+      out.push({ ...child });
     } else if (childEnd > start) {
       const kept = sliceContent(inner, Math.max(0, start - pos), Math.min(end, childEnd) - pos);
       if (kept.length > 0) {
@@ -101,21 +135,45 @@ export function sliceContent(children: Content, start: number, end: number): Con
   return out;
 }
 
-/** A copy of `node` carrying `children`, folded back to `textContent` when it is all plain text. */
+/** A copy of `node` carrying `children`, folded back to `textContent` when it is one string. */
 function withContent(node: JxMutableNode, children: Content): JxMutableNode {
   const { children: _drop, textContent: _dropText, ...rest } = node;
-  if (children.length === 0) {
-    return { ...rest, textContent: "" };
-  }
-  if (children.length === 1 && isString(children[0])) {
-    return { ...rest, textContent: children[0] };
-  }
-  return { ...rest, children };
+  return { ...rest, ...toStored(children) };
 }
 
 /**
- * Merge adjacent plain strings and drop empties, so a spliced result does not carry the seams of
- * how it was built. Mirrors the normalization a contenteditable commit performs.
+ * The one string two adjacent strings are, or null when they must stay two members.
+ *
+ * Two plain strings are their concatenation. Once either holds a `${` the result is a template, the
+ * inside of a template literal, where a backslash is an escape: so the plain one is escaped on the
+ * way in, or `C:\\temp` joined to `${state.x}` would read as a tab. Two strings are NOT joined when
+ * either is one whole `${…}` ({@link isWholeTemplate}), which as a member may be a list of nodes
+ * and joined to anything is that list's string form; or when the join would make or unmake an
+ * expression (a `$` meeting a `{`, an unclosed `${` swallowing the next string's).
+ */
+function joinStrings(a: string, b: string): string | null {
+  const templated = a.includes("${") || b.includes("${");
+  if (!templated) {
+    return (a + b).includes("${") ? null : a + b;
+  }
+  if (isWholeTemplate(a) || isWholeTemplate(b)) {
+    return null;
+  }
+  const head = a.includes("${") ? a : escapeTemplateText(a);
+  const tail = b.includes("${") ? b : escapeTemplateText(b);
+  const joined = head + tail;
+  const sources = (text: string): string[] =>
+    templateExpressions(text).map(({ start, end }) => text.slice(start, end));
+  // The same expressions, each as written, in the same order: else the join changed what one is.
+  return sources(joined).join("\n") === [...sources(head), ...sources(tail)].join("\n")
+    ? joined
+    : null;
+}
+
+/**
+ * Merge adjacent strings where that changes nothing they mean ({@link joinStrings}) and drop
+ * empties, so a spliced result does not carry the seams of how it was built. Strings that cannot be
+ * joined stay side by side as members of their own, each still meaning what it meant.
  */
 export function normalizeContent(children: Content): Content {
   const out: Content = [];
@@ -125,8 +183,9 @@ export function normalizeContent(children: Content): Content {
         continue;
       }
       const prev = out.at(-1);
-      if (isString(prev)) {
-        out[out.length - 1] = prev + child;
+      const joined = isString(prev) ? joinStrings(prev, child) : null;
+      if (joined !== null) {
+        out[out.length - 1] = joined;
         continue;
       }
     }
@@ -156,14 +215,72 @@ export function spliceAcross(
   ]);
 }
 
-/** `{ children }` when the content carries markup, else the folded `{ textContent }` form. */
+/**
+ * `{ children }` when the content carries markup, else the folded `{ textContent }` form.
+ *
+ * One string is folded unless it is one whole `${…}` ({@link isWholeTemplate}): as a member that
+ * may be a list of nodes, and as a `textContent` it never is.
+ */
 export function toStored(children: Content): StoredContent {
   const normalized = normalizeContent(children);
-  if (normalized.length === 0) {
+  const [only] = normalized;
+  if (only === undefined) {
     return { textContent: "" };
   }
-  if (normalized.length === 1 && isString(normalized[0])) {
-    return { textContent: normalized[0] };
+  if (normalized.length === 1 && isString(only) && !isWholeTemplate(only)) {
+    return { textContent: only };
   }
   return { children: normalized };
+}
+
+/**
+ * Anything that holds a block's content: a stored node, or what a commit carries. A commit's
+ * `textContent` may be null where it carries `children` instead.
+ */
+export interface StoredContentLike {
+  children?: JxMutableNode["children"];
+  textContent?: JxMutableNode["textContent"] | null;
+}
+
+/**
+ * A block's content in one canonical form, so two spellings of the same content compare equal and
+ * two that differ in meaning never do: adjacent plain strings joined, and content that is one
+ * string folded into `textContent` unless that string is one whole `${…}`, at every depth
+ * (`editor/content-slice.ts`). An element's empty `textContent` is no content, so a `<br>` the
+ * canvas serialized with one is the `<br>` the document holds without.
+ */
+function canonicalContent(content: StoredContentLike): StoredContent {
+  const children = Array.isArray(content.children) ? content.children : [];
+  if (!Array.isArray(content.children) && isString(content.textContent)) {
+    // Stored as text already: one string, kept as it is whatever it holds.
+    return { textContent: content.textContent };
+  }
+  return toStored(
+    children.map((child) => {
+      if (isString(child) || !isNonNullObject(child)) {
+        return child;
+      }
+      if (!Array.isArray(child.children) && !isString(child.textContent)) {
+        return child;
+      }
+      const { children: _children, textContent: _text, ...rest } = child;
+      const canonical: JxMutableNode = rest;
+      const inner = canonicalContent(child);
+      return inner.textContent === "" ? canonical : Object.assign(canonical, inner);
+    }),
+  );
+}
+
+/** `value` as JSON with every object's keys in one order, so key order is not a difference. */
+export function stableJson(value: StoredContent | Content): string {
+  return JSON.stringify(value, (_key, member: JxDocumentValue) =>
+    isNonNullObject(member) && !Array.isArray(member)
+      ? Object.fromEntries(Object.entries(member).toSorted(([a], [b]) => (a < b ? -1 : 1)))
+      : member,
+  );
+}
+
+/** Whether `committed` says what `node` already holds, however either spells it. */
+export function sameContent(node: StoredContentLike, committed: StoredContentLike): boolean {
+  return stableJson(canonicalContent(node)) === stableJson(canonicalContent(committed));
 }

@@ -12,6 +12,19 @@
  * is agnostic to inline markup: `<p>a<strong>bc</strong>d</p>` has length 4, and offset 3 is
  * between "c" and "d" no matter how the bold run is nested (or whether a commit re-nested it).
  *
+ * **A chip counts as the expression it stands for.** Bound text is drawn as its live value inside a
+ * chip (studio.md §4.5), and the value's length says nothing about the document: `${state.name}`
+ * drawn as "Ada" is thirteen characters of stored text. So a chip is ONE unit as long as its
+ * `data-jx-tag`, no position lies inside it, and an offset counted here is the same offset into the
+ * block's stored content, which is what lets a cross-block cut slice that content exactly
+ * (`editor/content-slice.ts`).
+ *
+ * **An element closed to the caret counts as nothing.** A component instance, or an inline element
+ * whose content is a value (a `{ "$ref" }` text, bound `innerHTML`), shows text that has no
+ * relation to what its node stores, so it is one unit of length zero here and in the stored content
+ * alike (`isAtomicInline` there). Counted as the text it shows, or as its chip's expression, it put
+ * every later offset in its block out by the difference.
+ *
  * Everything here is pure DOM traversal with NO layout reads, so it is fully exercisable under
  * happy-dom — unlike the caret-from-point and line-geometry paths, which are Chromium-only.
  *
@@ -19,6 +32,7 @@
  */
 
 import { jxPathSelector, parseJxPath, serializeJxPath } from "./path-mapping";
+import { TAG_ATTR, TAG_REF_ATTR } from "../utils/edit-display";
 import type { JxPath } from "../state";
 
 /** A caret/selection endpoint in document coordinates: a block path + a character offset into it. */
@@ -95,32 +109,143 @@ export function elementForPath(container: HTMLElement, path: JxPath): HTMLElemen
   return el instanceof HTMLElement ? el : null;
 }
 
-/** The block's rendered text length — the maximum valid offset within it. */
+/** Whether `node` is a chip: the element that stands for one binding (studio.md §4.5). */
+export function isChip(node: Node | null): node is Element {
+  return node !== null && node.nodeType === node.ELEMENT_NODE && "hasAttribute" in node
+    ? /* SAFETY: an ELEMENT_NODE with `hasAttribute` is an Element, in whichever realm it lives. */
+      (node as Element).hasAttribute(TAG_ATTR)
+    : false;
+}
+
+/** The outermost chip that is `node` or holds it, looking no further up than `block`. */
+export function chipAround(block: Node, node: Node): Element | null {
+  let found: Element | null = null;
+  for (let cur: Node | null = node; cur && cur !== block; cur = cur.parentNode) {
+    if (isChip(cur)) {
+      found = cur;
+    }
+  }
+  return found;
+}
+
+/**
+ * Whether `node` is one unit no caret position lies inside: a chip, or an element closed to the
+ * caret (a component instance, an inline whose content is drawn from data).
+ */
+export function isAtom(node: Node | null): node is Element {
+  if (node === null || node.nodeType !== node.ELEMENT_NODE || !("hasAttribute" in node)) {
+    return false;
+  }
+  // SAFETY: an ELEMENT_NODE with `hasAttribute` is an Element, in whichever realm it lives.
+  const el = node as Element;
+  return el.hasAttribute(TAG_ATTR) || el.getAttribute("contenteditable") === "false";
+}
+
+/** The outermost {@link isAtom} that is `node` or holds it, looking no further up than `block`. */
+export function atomAround(block: Node, node: Node): Element | null {
+  let found: Element | null = null;
+  for (let cur: Node | null = node; cur && cur !== block; cur = cur.parentNode) {
+    if (isAtom(cur)) {
+      found = cur;
+    }
+  }
+  return found;
+}
+
+/**
+ * How many characters of the document `node` stands for: a chip is its expression, whole, and an
+ * element closed to the caret, or a `{ "$ref" }` chip, is none.
+ */
+function unitLength(node: Node): number {
+  if (node.nodeType === node.TEXT_NODE) {
+    // SAFETY: a TEXT_NODE is a Text, whose `length` is its data's.
+    return (node as Text).length;
+  }
+  if (isChip(node)) {
+    return node.hasAttribute(TAG_REF_ATTR) ? 0 : (node.getAttribute(TAG_ATTR)?.length ?? 0);
+  }
+  if (isAtom(node)) {
+    return 0;
+  }
+  let total = 0;
+  for (const child of node.childNodes) {
+    total += unitLength(child);
+  }
+  return total;
+}
+
+/** The index of `node` among its parent's child nodes. */
+function indexInParent(node: Node): number {
+  let index = 0;
+  for (let prev = node.previousSibling; prev; prev = prev.previousSibling) {
+    index += 1;
+  }
+  return index;
+}
+
+/** The block's text length in document characters — the maximum valid offset within it. */
 export function blockTextLength(block: HTMLElement): number {
-  return block.textContent.length;
+  let total = 0;
+  for (const child of block.childNodes) {
+    total += unitLength(child);
+  }
+  return total;
 }
 
 /**
  * The character offset of a DOM position within `block`.
  *
- * Measured with a Range rather than a hand-rolled TreeWalker so that element-anchored carets (the
- * caret sitting "at child index N" rather than inside a text node — what the browser produces next
- * to a `<br>` or an atomic island) resolve by the same rule as text-anchored ones. Returns null
- * when the position is not inside the block.
+ * Element-anchored carets (the caret sitting "at child index N" rather than inside a text node,
+ * what the browser produces next to a `<br>`, a chip or an atomic island) resolve by the same rule
+ * as text-anchored ones. A position INSIDE a chip, or inside an element closed to the caret, is not
+ * a position: it reads as that unit's start when it is at its very beginning and as its end
+ * otherwise. Returns null when the position is not inside the block, or lies past the end of its
+ * node (a stale position against a re-rendered node).
  */
 export function offsetOf(block: HTMLElement, node: Node, offset: number): number | null {
   if (!block.contains(node)) {
     return null;
   }
-  const range = block.ownerDocument.createRange();
-  range.setStart(block, 0);
-  try {
-    range.setEnd(node, offset);
-  } catch {
-    // An offset past the node's length (a stale position against a re-rendered node).
+  const limit =
+    node.nodeType === node.TEXT_NODE
+      ? // SAFETY: a TEXT_NODE is a Text.
+        (node as Text).length
+      : node.childNodes.length;
+  if (offset < 0 || offset > limit) {
     return null;
   }
-  return range.toString().length;
+  let at: Node = node;
+  let count = 0;
+  const atom = atomAround(block, node);
+  if (atom) {
+    // The whole unit when the position is past its start; nothing of it at its start.
+    const atStart = offset === 0 && startsSubtree(atom, node);
+    count = atStart ? 0 : unitLength(atom);
+    at = atom;
+  } else if (node.nodeType === node.TEXT_NODE) {
+    count = offset;
+  } else {
+    for (let i = 0; i < offset; i++) {
+      count += unitLength(node.childNodes[i]!);
+    }
+  }
+  // Everything before the position, level by level, up to the block.
+  for (let cur: Node = at; cur !== block; cur = cur.parentNode!) {
+    for (let prev = cur.previousSibling; prev; prev = prev.previousSibling) {
+      count += unitLength(prev);
+    }
+  }
+  return count;
+}
+
+/** Whether `node` is `root` or the first node at every level down from it. */
+function startsSubtree(root: Node, node: Node): boolean {
+  for (let cur: Node = node; cur !== root; cur = cur.parentNode!) {
+    if (cur.previousSibling) {
+      return false;
+    }
+  }
+  return true;
 }
 
 /**
@@ -131,27 +256,73 @@ export function offsetOf(block: HTMLElement, node: Node, offset: number): number
  * offset and resolve to the earlier (end-of-previous-line) DOM position. That is the same ambiguity
  * every offset-based editor carries at a line break, and it is invisible for the paths that use
  * this (caret restore after a patch, and block-boundary edits, which clamp to 0 / length anyway).
+ *
+ * A chip is stepped over whole: an offset that falls inside one resolves to the position just after
+ * it, and one at a chip's edge to the neighbouring text when there is some, else to the chip's own
+ * place among its parent's children.
  */
 export function domPositionAt(block: HTMLElement, offset: number): DomPosition {
   const target = Math.max(0, Math.min(offset, blockTextLength(block)));
-  const walker = block.ownerDocument.createTreeWalker(block, NodeFilter.SHOW_TEXT);
   let seen = 0;
-  let last: Text | null = null;
-  // SAFETY: the walker was created with NodeFilter.SHOW_TEXT, so every node it yields is a Text.
-  let current = walker.nextNode() as Text | null;
-  while (current) {
-    const len = current.length;
-    if (seen + len >= target) {
-      return { node: current, offset: target - seen };
+  /** `found` is the answer; `last` is the end of the last unit walked, the answer if none is found. */
+  const at: PositionSearch = { found: null, last: null };
+  const visit = (node: Node): boolean => {
+    if (node.nodeType === node.TEXT_NODE) {
+      // SAFETY: a TEXT_NODE is a Text.
+      const text = node as Text;
+      if (seen + text.length >= target) {
+        // Clamped: a target inside the chip just before this text is this text's start.
+        at.found = { node: text, offset: Math.max(0, target - seen) };
+        return true;
+      }
+      seen += text.length;
+      at.last = { node: text, offset: text.length };
+      return false;
     }
-    seen += len;
-    last = current;
-    // SAFETY: the same SHOW_TEXT walker as above, so the next node is a Text or the walk's end.
-    current = walker.nextNode() as Text | null;
-  }
-  // No text node reaches the target: either the block has no text at all (caret goes to the element
+    if (isAtom(node)) {
+      const parent = node.parentNode ?? block;
+      const index = indexInParent(node);
+      const length = unitLength(node);
+      if (target <= seen) {
+        // Before the chip, with no text ahead of it to hold the caret.
+        at.found = { node: parent, offset: index };
+        return true;
+      }
+      seen += length;
+      at.last = { node: parent, offset: index + 1 };
+      if (seen >= target) {
+        // Inside or at the end of the chip: just after it, unless text follows (found next).
+        at.found = at.last;
+        return afterChipIsFinal(node);
+      }
+      return false;
+    }
+    for (const child of node.childNodes) {
+      if (visit(child)) {
+        return true;
+      }
+    }
+    return false;
+  };
+  visit(block);
+  // No unit reaches the target: either the block has no text at all (caret goes to the element
   // Itself) or the walk ended early on a whitespace-collapsed tail (caret goes to the last text end).
-  return last ? { node: last, offset: last.length } : { node: block, offset: 0 };
+  return at.found ?? at.last ?? { node: block, offset: 0 };
+}
+
+/** What {@link domPositionAt}'s walk has so far: the answer, and the fallback if there is none. */
+interface PositionSearch {
+  found: DomPosition | null;
+  last: DomPosition | null;
+}
+
+/**
+ * Whether the position just after `chip` is where a caret there belongs: true unless a text node
+ * follows it directly, in which case that node's start is the same offset and the better anchor (a
+ * caret in text is one every engine draws).
+ */
+function afterChipIsFinal(chip: Element): boolean {
+  return chip.nextSibling?.nodeType !== chip.TEXT_NODE;
 }
 
 /**

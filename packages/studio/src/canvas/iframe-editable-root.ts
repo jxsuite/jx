@@ -27,9 +27,19 @@
 
 import { classifyBeforeInput } from "./editable-actions";
 import {
+  caretBeside,
+  chipBeside,
+  chipSources,
+  removeChip,
+  removedSources,
+  snapRangeOutOfChips,
+} from "./iframe-chips";
+import type { Side } from "./iframe-chips";
+import {
   activeBlockAt,
   blockTextLength,
   isAtBlockStart,
+  isChip,
   samePath,
   toDocPos,
   toDomPosition,
@@ -83,7 +93,19 @@ export interface EditableRootDeps {
   onCommitTick?: () => void;
   /** Idle milliseconds before {@link onCommitTick}. Defaults to {@link COMMIT_IDLE_MS}. */
   commitDelayMs?: number;
+  /**
+   * The author's input removed these chips from the active block (studio.md §4.5): each is the
+   * expression the chip stood for. The bridge reports them with the block's next commit, which is
+   * what lets that commit drop the binding rather than be refused for losing it.
+   */
+  onTagsRemoved?: (sources: string[]) => void;
 }
+
+/** The inputs that delete one position backward or forward from a collapsed caret. */
+const DELETE_ONE = new Map<string, Side>([
+  ["deleteContentBackward", -1],
+  ["deleteContentForward", 1],
+]);
 
 /**
  * How long typing must pause before the active block is committed.
@@ -299,12 +321,79 @@ export function startEditableRoot(
    * inside a block IS the edit. Click, arrow, Home, a restored caret after a patch — every one of
    * them arrives here the same way.
    */
+  /**
+   * The outermost chip that is `node` or holds it, when the block it stands in can take the caret.
+   * A chip in a block that is closed to the caret is that block's business, not the caret's.
+   */
+  const editableChipAround = (node: Node | null): Element | null => {
+    let chip: Element | null = null;
+    for (let cur = node; cur && cur !== container; cur = cur.parentNode) {
+      if (isChip(cur)) {
+        chip = cur;
+      }
+    }
+    return chip && activeBlockAt(chip.parentNode, deps.isEditableBlock) ? chip : null;
+  };
+
+  /**
+   * Move a selection end that stands INSIDE a chip to the chip's edge. Returns whether it moved.
+   *
+   * A chip is closed to the caret, but a press on one still lands the selection in its text: the
+   * engine puts it there and then draws no caret, takes no typing, and steps nowhere on an arrow
+   * key, so on a block that is one chip and nothing else (a heading bound to a title) a click did
+   * nothing at all. The edge nearer the press is where the author meant, and a selection that
+   * reaches into a chip covers it whole.
+   */
+  const snapOutOfChips = (sel: Selection): boolean => {
+    if (sel.rangeCount === 0) {
+      return false;
+    }
+    const chip = editableChipAround(sel.anchorNode) ?? editableChipAround(sel.focusNode);
+    const block = chip ? activeBlockAt(chip.parentNode, deps.isEditableBlock) : null;
+    if (!block) {
+      return false;
+    }
+    /* Backward when the anchor comes after the focus: a range from one to the other collapses,
+       because a range's end cannot precede its start. */
+    let backward = false;
+    if (!sel.isCollapsed && sel.anchorNode && sel.focusNode) {
+      const order = doc.createRange();
+      order.setStart(sel.anchorNode, sel.anchorOffset);
+      order.setEnd(sel.focusNode, sel.focusOffset);
+      backward = order.collapsed;
+    }
+    const range = sel.getRangeAt(0).cloneRange();
+    if (!snapRangeOutOfChips(block.el, range)) {
+      return false;
+    }
+    if (backward) {
+      sel.setBaseAndExtent(
+        range.endContainer,
+        range.endOffset,
+        range.startContainer,
+        range.startOffset,
+      );
+    } else {
+      sel.setBaseAndExtent(
+        range.startContainer,
+        range.startOffset,
+        range.endContainer,
+        range.endOffset,
+      );
+    }
+    return true;
+  };
+
   const syncActiveBlock = () => {
     if (!editingAllowed()) {
       deactivate();
       return;
     }
     const sel = doc.getSelection();
+    if (sel) {
+      // Read on below from where the selection now is: the move's own event finds nothing to do.
+      snapOutOfChips(sel);
+    }
     const focus = sel?.focusNode ?? null;
     if (!focus) {
       // An ABSENT selection is transient, not intent: a re-render, a `removeAllRanges()`, or the
@@ -330,7 +419,11 @@ export function startEditableRoot(
       return;
     }
     const key = serializeJxPath(block.path);
-    if (key === activeKey) {
+    /* The same ELEMENT, not only the same path. A patch that redraws the block (an undo, a
+       co-author's edit, a refused commit's redraw) puts a new element at the path, and a host
+       still holding the old one would go on committing the detached element's content: the text
+       the patch had just replaced, written back on the next keystroke. */
+    if (key === activeKey && block.el === activeEl) {
       deps.onSelectionChange?.();
       return;
     }
@@ -385,10 +478,92 @@ export function startEditableRoot(
     return from && to && endBlock ? { endEl: endBlock.el, from, to } : null;
   };
 
+  /**
+   * The chips the active block held when the input now in flight began, or null between inputs.
+   * Compared with what is left when the `input` lands: a chip is closed to the caret, so the only
+   * way one leaves through an input is the author deleting, cutting or typing over it.
+   */
+  let chipsBefore: string[] | null = null;
+
+  /** The collapsed caret inside the active page block, or null. */
+  const caretInActiveBlock = (): { block: HTMLElement; node: Node; offset: number } | null => {
+    const sel = doc.getSelection();
+    if (!activeEl || activeKey === null || !sel || !sel.isCollapsed || !sel.focusNode) {
+      return null;
+    }
+    return activeEl.contains(sel.focusNode)
+      ? { block: activeEl, node: sel.focusNode, offset: sel.focusOffset }
+      : null;
+  };
+
+  /**
+   * Backspace or Delete with a chip immediately beside the caret takes the chip, whole, and nothing
+   * else. Done here rather than left to the engine so that it is the same in every engine and at a
+   * block's edge, and so the removal is reported at the moment it is known to be the author's.
+   * Returns whether the input was handled.
+   */
+  const deleteChipBeside = (e: InputEvent): boolean => {
+    const side = DELETE_ONE.get(e.inputType);
+    const caret = side === undefined ? null : caretInActiveBlock();
+    const chip =
+      side === undefined || !caret ? null : chipBeside(caret.block, caret.node, caret.offset, side);
+    if (!chip) {
+      return false;
+    }
+    e.preventDefault();
+    deps.onTagsRemoved?.([removeChip(chip)]);
+    // The edit landed without the engine, so the `input` it would have fired is fired for it.
+    container.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: e.inputType }));
+    return true;
+  };
+
+  /**
+   * Left and Right step over a chip beside the caret as one unit. A chip is closed to the caret, so
+   * there is no position inside it to stop at, and what an engine does at one that ends its block
+   * is not something to leave to the engine.
+   */
+  const onKeyDown = (e: KeyboardEvent) => {
+    if (
+      (e.key !== "ArrowLeft" && e.key !== "ArrowRight") ||
+      e.shiftKey ||
+      e.altKey ||
+      e.ctrlKey ||
+      e.metaKey ||
+      !editingAllowed()
+    ) {
+      return;
+    }
+    const caret = caretInActiveBlock();
+    if (!caret) {
+      return;
+    }
+    const rtl = doc.defaultView?.getComputedStyle(caret.block).direction === "rtl";
+    const side: Side = (e.key === "ArrowLeft") === rtl ? 1 : -1;
+    const chip = chipBeside(caret.block, caret.node, caret.offset, side);
+    if (!chip) {
+      return;
+    }
+    e.preventDefault();
+    const across = caretBeside(chip, side);
+    doc.getSelection()?.collapse(across.node, across.offset);
+  };
+
   const onBeforeInput = (e: InputEvent) => {
     if (!editingAllowed()) {
       return;
     }
+    chipsBefore = null;
+    if (deleteChipBeside(e)) {
+      return;
+    }
+    classifyAndApply(e);
+    // An input the chokepoint took over changes no DOM here, so it has nothing to compare.
+    if (!e.defaultPrevented && activeEl && activeKey !== null) {
+      chipsBefore = chipSources(activeEl);
+    }
+  };
+
+  const classifyAndApply = (e: InputEvent) => {
     const resolved = affectedRange(e);
     const action = classifyBeforeInput({
       atBlockEnd: resolved ? resolved.to.offset >= blockTextLength(resolved.endEl) : false,
@@ -501,6 +676,12 @@ export function startEditableRoot(
       }
       el = el.parentElement;
     }
+    /* A chip in a block the caret can enter is not uneditable content to back out of: the press
+       is aimed at that block, and the selection it leaves inside the chip is moved to the chip's
+       edge when it lands (`snapOutOfChips`). */
+    if (editableChipAround(target)) {
+      return;
+    }
     if (target?.closest("[contenteditable]")?.getAttribute("contenteditable") === "false") {
       doc.getSelection()?.removeAllRanges();
     }
@@ -547,11 +728,21 @@ export function startEditableRoot(
    * counts what actually landed — including the native single-block edits the chokepoint waved
    * through, and the DOM changes a structural handler made on our behalf.
    */
-  const onInput = () => scheduleCommitTick();
+  const onInput = () => {
+    if (chipsBefore && activeEl) {
+      const removed = removedSources(chipsBefore, chipSources(activeEl));
+      if (removed.length > 0) {
+        deps.onTagsRemoved?.(removed);
+      }
+    }
+    chipsBefore = null;
+    scheduleCommitTick();
+  };
 
   doc.addEventListener("selectionchange", syncActiveBlock);
   container.addEventListener("beforeinput", onBeforeInput);
   container.addEventListener("input", onInput);
+  container.addEventListener("keydown", onKeyDown);
   container.addEventListener("compositionstart", onCompositionStart);
   container.addEventListener("compositionend", onCompositionEnd);
   container.addEventListener("dragstart", onDragStart);
@@ -594,6 +785,7 @@ export function startEditableRoot(
       doc.removeEventListener("selectionchange", syncActiveBlock);
       container.removeEventListener("beforeinput", onBeforeInput);
       container.removeEventListener("input", onInput);
+      container.removeEventListener("keydown", onKeyDown);
       container.removeEventListener("compositionstart", onCompositionStart);
       container.removeEventListener("compositionend", onCompositionEnd);
       container.removeEventListener("dragstart", onDragStart);

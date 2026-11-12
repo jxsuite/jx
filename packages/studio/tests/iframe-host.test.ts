@@ -212,6 +212,7 @@ const {
   mountStylebookCanvas,
   panToStylebookTag,
   postApplyFormat,
+  postBindingDisplayToLiveHosts,
   postColorSchemeToLiveHosts,
   postLocaleToLiveHosts,
   postRedefineElementToLiveHosts,
@@ -504,6 +505,19 @@ describe("mountIframeCanvas", () => {
     expect(channels[0]!.posts[1]).toMatchObject({ colorScheme: "dark", kind: "render" });
   });
 
+  test("the render message carries the tab's binding display, so a frame booted later draws it", async () => {
+    resetWorkspaceWithTab();
+    const canvasEl = document.createElement("div");
+    document.body.append(canvasEl);
+    await mountIframeCanvas(1, { tagName: "div" }, canvasEl);
+    channels[0]!.deliver({ kind: "ready" });
+    expect(channels[0]!.posts[0]).toMatchObject({ bindingDisplay: "values", kind: "render" });
+
+    activeTab.value!.session.ui.bindingDisplay = "names";
+    await mountIframeCanvas(2, { tagName: "div" }, canvasEl);
+    expect(channels[0]!.posts[1]).toMatchObject({ bindingDisplay: "names", kind: "render" });
+  });
+
   // A frame that boots after the pane's locale was posted must still draw the file's language.
   test("the render message carries the language the tab is drawn in", async () => {
     resetWorkspaceWithTab();
@@ -642,6 +656,40 @@ describe("mountIframeCanvas", () => {
 
     postColorSchemeToLiveHosts(null);
     expect(channels[0]!.posts.at(-1)).toEqual({ kind: "setColorScheme", scheme: null });
+  });
+
+  test("postBindingDisplayToLiveHosts posts only to a ready frame that announced the capability", async () => {
+    const canvasEl = document.createElement("div");
+    document.body.append(canvasEl);
+    await mountIframeCanvas(1, { tagName: "div" }, canvasEl);
+    const [channel] = channels;
+
+    postBindingDisplayToLiveHosts("names");
+    expect(channel!.posts).toHaveLength(0);
+
+    // An older frame build: ready, but it never heard of the message and would drop it silently.
+    channel!.deliver({ kind: "ready" });
+    const before = channel!.posts.length;
+    postBindingDisplayToLiveHosts("names");
+    expect(channel!.posts).toHaveLength(before);
+
+    // The frame rebooted as a build that names the capability.
+    channel!.deliver({ capabilities: ["bindingDisplay"], kind: "ready" });
+    postBindingDisplayToLiveHosts("names");
+    expect(channel!.posts.at(-1)).toEqual({ display: "names", kind: "setBindingDisplay" });
+    postBindingDisplayToLiveHosts("values");
+    expect(channel!.posts.at(-1)).toEqual({ display: "values", kind: "setBindingDisplay" });
+
+    // Scoped to one stage when the caller names one, and a stage that is gone is forgotten.
+    const elsewhere = document.createElement("div");
+    const count = channel!.posts.length;
+    postBindingDisplayToLiveHosts("names", elsewhere);
+    expect(channel!.posts).toHaveLength(count);
+    postBindingDisplayToLiveHosts("names", canvasEl);
+    expect(channel!.posts).toHaveLength(count + 1);
+    canvasEl.remove();
+    postBindingDisplayToLiveHosts("values");
+    expect(channel!.posts).toHaveLength(count + 1);
   });
 
   /*
@@ -2163,8 +2211,9 @@ describe("iframe canvas inline-edit bridge", () => {
 
         // A merge joins what is stored, so there is nothing to refuse and the binding is kept.
         ch.deliver({ fromPath: ["children", 1], intoPath: ["children", 0], kind: "editMerge" });
+        // The whole-template member stays a member: joined to "Tail" an array there is printed.
         expect(tab.doc.document.children).toEqual([
-          { tagName: "p", textContent: "Hello ${state.name}Tail" },
+          { children: ["Hello ", "${state.name}", "Tail"], tagName: "p" },
         ]);
       } finally {
         surface.panels.length = 0;

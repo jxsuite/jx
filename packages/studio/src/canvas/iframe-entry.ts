@@ -15,6 +15,7 @@ import {
   applyPreviewLocale,
   captureLocaleBaseline,
   applySiteStyle,
+  applyBindingDisplay,
   installCanvasImageRetry,
   isRetryableImage,
   prepareResolvedDocument,
@@ -33,11 +34,13 @@ import { startIframeInlineEdit } from "./iframe-inline-edit";
 import { startIframeSlashBridge } from "./iframe-slash";
 import { NO_TABLE, startKeyForwarding } from "./iframe-keys";
 import type { ForwardTable } from "./iframe-keys";
-import { applyIframePatch } from "./iframe-patch";
+import { applyIframePatch, textOpRedraws } from "./iframe-patch";
 import { disposeAllSubtrees } from "./iframe-subtree";
 import { evaluateLiveExprs } from "./iframe-eval";
 import { serializeDataScope } from "./serialize-scope";
 import {
+  abandonEditing,
+  activeBlockHolds,
   getActivePath,
   isEditableBlock,
   isEditing,
@@ -69,6 +72,7 @@ import { scriptAdopter } from "./iframe-scripts";
 import type { AssetContext } from "./asset-resolve";
 import { KIT_LOADERS } from "@jxsuite/ui/loaders";
 import type { CanvasEnvelope, IframeChannel } from "./iframe-channel";
+import { FRAME_CAPABILITIES } from "./iframe-protocol";
 import type {
   CanvasMode,
   DragOverMsg,
@@ -271,7 +275,10 @@ const IN_PLACE_KEYS = new Set(["style", "textContent"]);
  * the active edit path. Structural ops affect the PARENT's children (any sibling churn under an
  * ancestor can reflow/replace the edited element's position), so their parent path is compared.
  */
-export function patchDisturbsActiveEdit(forwardOps: JxDocOp[]): boolean {
+export function patchDisturbsActiveEdit(
+  forwardOps: JxDocOp[],
+  redraws: (op: JxDocOp) => boolean = () => false,
+): boolean {
   const activePath = getActivePath();
   if (!activePath) {
     return false;
@@ -279,7 +286,11 @@ export function patchDisturbsActiveEdit(forwardOps: JxDocOp[]): boolean {
   for (const op of forwardOps) {
     let affected: JxPath;
     if (op.op === "set-key") {
-      if (IN_PLACE_KEYS.has(op.key) || op.key.startsWith("on")) {
+      /* A text op is in place only on a node whose text is literal. On a bound one the patcher
+         draws the node again (`textOpRedraws`), which detaches the element like any other
+         re-render: an undo that put a binding back left the caret's block pointing at the element
+         it replaced, and the next keystroke committed that element's stale text. */
+      if ((IN_PLACE_KEYS.has(op.key) && !redraws(op)) || op.key.startsWith("on")) {
         continue;
       }
       affected = op.path;
@@ -869,10 +880,21 @@ export function startCanvasIframe(opts: {
           : msg.forwardOps.filter(
               (op) => !(op.op === "set-key" && echoed.has(serializeJxPath(op.path))),
             );
-      const disturbs = isEditing() && patchDisturbsActiveEdit(foreignOps);
+      const disturbs =
+        isEditing() && patchDisturbsActiveEdit(foreignOps, (op) => textOpRedraws(op, container));
       const caret = disturbs ? captureDocSelection(container, isEditableBlock) : null;
       if (disturbs) {
-        stopEditing();
+        /* The block is about to be drawn again. What it holds that the document has not seen is
+           committed on the way out; a block that holds nothing new is only released. The
+           difference is an undo: its patch rewrites this very block, and committing what the
+           block still shows would write the undone text straight back over it. The shadow
+           document is the measure, read before this patch is folded into it. */
+        const editing = getActivePath();
+        if (editing && activeBlockHolds(getNodeAtPath(shadowDoc, editing))) {
+          abandonEditing();
+        } else {
+          stopEditing();
+        }
       }
       try {
         applyIframePatch(
@@ -1000,6 +1022,11 @@ export function startCanvasIframe(opts: {
       applyPreviewColorScheme(container.ownerDocument, msg.scheme);
       return;
     }
+    if (msg.kind === "setBindingDisplay") {
+      // The same kind of flip: every chip is already in the DOM with its name beside its value.
+      applyBindingDisplay(container.ownerDocument, msg.display);
+      return;
+    }
     if (msg.kind === "setPopoverOpen") {
       /* Refused in preview HERE as well as in the host. Preview renders popovers natively and the
          canvas attribute does not exist there, so a stray message would silently do nothing —
@@ -1060,6 +1087,7 @@ export function startCanvasIframe(opts: {
       return;
     }
     applyPreviewColorScheme(container.ownerDocument, msg.colorScheme ?? null);
+    applyBindingDisplay(container.ownerDocument, msg.bindingDisplay ?? null);
     applyPreviewLocale(container.ownerDocument, msg.locale ?? null, localeBaseline);
     // A render replaces the DOM under a live edit session — COMMIT it first (never discard). The
     // Resulting editCommit/editEnd post synchronously here, so on the FIFO channel they precede
@@ -1179,7 +1207,7 @@ export function startCanvasIframe(opts: {
     })();
   });
 
-  channel.post({ kind: "ready" });
+  channel.post({ capabilities: FRAME_CAPABILITIES, kind: "ready" });
   return () => {
     off();
     // Leave the root as it booted, so a frame started after this one captures the same baseline.

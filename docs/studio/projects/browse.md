@@ -87,7 +87,7 @@ The template page is one page drawn once for every entry, so Studio draws it wit
 
 Pick another entry from the list, which names each by its title, or step through them with the arrows. The page is redrawn with that entry, and the choice is the same one the **resolving with** popover on the pane's context bar holds, so the two always agree.
 
-Every element that shows a field of the entry is outlined, with a badge naming the field: **title**, **date · tag**, **body**. Those words belong to the entry rather than the page, so you cannot type into them on the canvas; to change which field an element shows, select it and change its binding in the Inspector, and to change the words themselves, open the entry. A collection with no entries yet says so in the bar, and its page shows each binding instead, such as `❪ state.entry.data.title ❫`.
+Every element that shows a field of the entry is named for it: hover the element, or put your caret in it, and it shows a dotted outline with a label such as **Title** or **Date · Tag**, and **Computed list** for the entry's body. The words themselves belong to the entry rather than the page, so they are drawn as tags you cannot type into; to change which field an element shows, select it and change its binding in the Inspector, and to change the words themselves, open the entry. A collection with no entries yet says so in the bar, and each tag on its page shows its name instead of a value.
 
 ## Four views
 

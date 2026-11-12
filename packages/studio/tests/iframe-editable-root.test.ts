@@ -775,3 +775,250 @@ describe("caret capture and restore", () => {
     expect(rec.deactivated).toBe(0);
   });
 });
+
+// ─── Chips are atomic (studio.md §4.5) ───────────────────────────────────────────────────────
+
+describe("a chip is atomic to the arrow keys, Backspace and Delete", () => {
+  /** `By ` + a chip + ` on ` + a chip that ends the block. */
+  const BOUND =
+    `<p data-jx-path='["children",0]'>By <data data-jx-tag="\${a}" contenteditable="false">Ada</data>` +
+    ` on <data data-jx-tag="\${d}" contenteditable="false">March</data></p>` +
+    `<p data-jx-path='["children",1]'>Second</p>`;
+
+  /** Press `key` in the container; whether the host claimed it. */
+  function press(container: HTMLElement, key: string, init: KeyboardEventInit = {}): boolean {
+    const event = new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key, ...init });
+    container.dispatchEvent(event);
+    return event.defaultPrevented;
+  }
+
+  /** Where the caret is: its node's own text, or its tag, and the offset. */
+  function caret(): [string, number] {
+    const sel = window.getSelection();
+    const node = sel?.anchorNode ?? null;
+    const name = node instanceof Element ? node.tagName.toLowerCase() : (node?.nodeValue ?? "");
+    return [name, sel?.anchorOffset ?? -1];
+  }
+
+  test("Right at the text before a chip lands in the text after it; Left comes back", () => {
+    const { container } = mount(BOUND);
+    const p = nth(container, "p");
+    caretAt(p.firstChild!, 3);
+    expect(press(container, "ArrowRight")).toBe(true);
+    expect(caret()).toEqual([" on ", 0]);
+    expect(press(container, "ArrowLeft")).toBe(true);
+    expect(caret()).toEqual(["By ", 3]);
+  });
+
+  test("at a chip that ends its block the caret stands at the chip's own place", () => {
+    const { container } = mount(BOUND);
+    const p = nth(container, "p");
+    caretAt(p.childNodes[2]!, 4);
+    expect(press(container, "ArrowRight")).toBe(true);
+    expect(caret()).toEqual(["p", 4]);
+    expect(press(container, "ArrowLeft")).toBe(true);
+    expect(caret()).toEqual([" on ", 4]);
+  });
+
+  test("an arrow with no chip beside the caret, or with a modifier, is the browser's", () => {
+    const { container } = mount(BOUND);
+    const p = nth(container, "p");
+    caretAt(p.firstChild!, 1);
+    expect(press(container, "ArrowRight")).toBe(false);
+    caretAt(p.firstChild!, 3);
+    expect(press(container, "ArrowRight", { shiftKey: true })).toBe(false);
+    expect(press(container, "ArrowRight", { altKey: true })).toBe(false);
+    expect(press(container, "ArrowDown")).toBe(false);
+    expect(press(container, "a")).toBe(false);
+    // A selection is not a caret, and neither is a caret outside any block.
+    selectAcross(p.firstChild!, 1, p.firstChild!, 3);
+    expect(press(container, "ArrowRight")).toBe(false);
+    window.getSelection()?.removeAllRanges();
+    expect(press(container, "ArrowRight")).toBe(false);
+  });
+
+  test("in a right-to-left block Left is forward", () => {
+    const { container } = mount(BOUND);
+    const p = nth(container, "p");
+    p.style.direction = "rtl";
+    caretAt(p.firstChild!, 3);
+    expect(press(container, "ArrowRight")).toBe(false);
+    expect(press(container, "ArrowLeft")).toBe(true);
+    expect(caret()).toEqual([" on ", 0]);
+  });
+
+  test("the arrows are inert outside design/edit modes", () => {
+    const { container } = mount(BOUND, { getMode: () => "preview" });
+    caretAt(nth(container, "p").firstChild!, 3);
+    expect(press(container, "ArrowRight")).toBe(false);
+  });
+
+  test("Backspace after a chip takes the chip whole and reports it", () => {
+    const removed: string[][] = [];
+    const inputs: string[] = [];
+    const { container } = mount(BOUND, { onTagsRemoved: (sources) => removed.push(sources) });
+    container.addEventListener("input", (e) =>
+      inputs.push(e instanceof InputEvent ? e.inputType : ""),
+    );
+    const p = nth(container, "p");
+    caretAt(p.childNodes[2]!, 0);
+    expect(beforeInput(p, "deleteContentBackward")).toBe(true);
+    expect(p.textContent).toBe("By  on March");
+    expect(removed).toEqual([["${a}"]]);
+    // The edit landed without the engine, so the input it would have fired is fired for it.
+    expect(inputs).toEqual(["deleteContentBackward"]);
+    expect(caret()).toEqual(["p", 1]);
+  });
+
+  test("Delete before a chip takes it too, and it is not a merge at the block's end", () => {
+    const removed: string[][] = [];
+    const merges: DocPos[] = [];
+    const { container } = mount(BOUND, {
+      onMergeForward: (at) => {
+        merges.push(at);
+        return true;
+      },
+      onTagsRemoved: (sources) => removed.push(sources),
+    });
+    const p = nth(container, "p");
+    caretAt(p.childNodes[2]!, 4);
+    expect(beforeInput(p, "deleteContentForward")).toBe(true);
+    expect(p.textContent).toBe("By Ada on ");
+    expect(removed).toEqual([["${d}"]]);
+    expect(merges).toEqual([]);
+  });
+
+  test("a deletion with text beside the caret is the browser's, and reports nothing", () => {
+    const removed: string[][] = [];
+    const { container } = mount(BOUND, { onTagsRemoved: (sources) => removed.push(sources) });
+    const p = nth(container, "p");
+    caretAt(p.firstChild!, 2);
+    expect(beforeInput(p, "deleteContentBackward")).toBe(false);
+    container.dispatchEvent(new InputEvent("input", { bubbles: true }));
+    expect(removed).toEqual([]);
+  });
+
+  test("a chip an input removed is reported when the input lands: a cut, or typing over it", () => {
+    const removed: string[][] = [];
+    const { container } = mount(BOUND, { onTagsRemoved: (sources) => removed.push(sources) });
+    const p = nth(container, "p");
+    caretAt(p.firstChild!, 0);
+    selectAcross(p.firstChild!, 0, p.childNodes[2]!, 2);
+    // The engine applies a single-block cut itself; what it took is seen when its input lands.
+    expect(beforeInput(p, "deleteByCut")).toBe(false);
+    p.querySelector("data")?.remove();
+    container.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "deleteByCut" }));
+    expect(removed).toEqual([["${a}"]]);
+    // An input with no beforeinput ahead of it has nothing to compare against.
+    p.querySelector("data")?.remove();
+    container.dispatchEvent(new InputEvent("input", { bubbles: true }));
+    expect(removed).toHaveLength(1);
+  });
+
+  test("an input the chokepoint takes over compares nothing", () => {
+    const removed: string[][] = [];
+    const { container } = mount(BOUND, {
+      onSplit: () => true,
+      onTagsRemoved: (sources) => removed.push(sources),
+    });
+    const p = nth(container, "p");
+    caretAt(p.firstChild!, 1);
+    expect(beforeInput(p, "insertParagraph")).toBe(true);
+    p.querySelector("data")?.remove();
+    container.dispatchEvent(new InputEvent("input", { bubbles: true }));
+    expect(removed).toEqual([]);
+  });
+});
+
+// ─── A selection never rests inside a chip, and a redrawn block is a new block ───────────────
+
+describe("a press on a chip puts the caret at the chip's edge", () => {
+  /** A heading that is one chip and nothing else, then a block closed to the caret holding one. */
+  const HEADING =
+    `<h2 data-jx-path='["children",0]'><data data-jx-tag="\${t}" contenteditable="false">Title</data></h2>` +
+    `<p data-jx-path='["children",1]'>Second</p>` +
+    `<section data-jx-path='["children",2]' contenteditable="false">` +
+    `<data data-jx-tag="\${c}" contenteditable="false">Closed</data></section>`;
+
+  /** The selection as `[anchor, anchorOffset, focus, focusOffset]`, nodes named by tag or text. */
+  function selection(): (string | number)[] {
+    const sel = window.getSelection();
+    const name = (node: Node | null): string =>
+      node instanceof Element ? node.tagName.toLowerCase() : (node?.nodeValue ?? "");
+    return [
+      name(sel?.anchorNode ?? null),
+      sel?.anchorOffset ?? -1,
+      name(sel?.focusNode ?? null),
+      sel?.focusOffset ?? -1,
+    ];
+  }
+
+  test("a caret the engine left in the chip's text moves to the nearer edge and opens the block", () => {
+    const { container, rec } = mount(HEADING);
+    const h2 = nth(container, "h2");
+    const text = nth(container, "data").firstChild!;
+    // The first half of the text: before the chip.
+    caretAt(text, 1);
+    expect(selection()).toEqual(["h2", 0, "h2", 0]);
+    expect(rec.activated).toEqual([{ path: ["children", 0], tag: "h2" }]);
+    // The second half: after it. Same block, so nothing is re-activated.
+    caretAt(text, 4);
+    expect(selection()).toEqual(["h2", 1, "h2", 1]);
+    expect(rec.activated).toHaveLength(1);
+    expect(h2.contains(window.getSelection()?.focusNode ?? null)).toBe(true);
+  });
+
+  test("a selection that reaches into a chip covers it whole, in the direction it was made", () => {
+    const { container } = mount(HEADING);
+    const text = nth(container, "data").firstChild!;
+    selectAcross(text, 1, text, 3);
+    expect(selection()).toEqual(["h2", 0, "h2", 1]);
+    selectAcross(text, 3, text, 1);
+    expect(selection()).toEqual(["h2", 1, "h2", 0]);
+    // From the next block back into the chip: the focus goes to the chip's start.
+    const second = nth(container, "p").firstChild!;
+    selectAcross(second, 2, text, 3);
+    expect(selection()).toEqual(["Second", 2, "h2", 0]);
+  });
+
+  test("the press itself does not drop the selection, as one on closed content does", () => {
+    const { container } = mount(HEADING);
+    caretAt(nth(container, "p").firstChild!, 1);
+    nth(container, "h2 data").dispatchEvent(new MouseEvent("pointerdown", { bubbles: true }));
+    expect(window.getSelection()?.rangeCount).toBe(1);
+    // A chip in a block that is closed to the caret is that block's: the selection is dropped.
+    nth(container, "section data").dispatchEvent(new MouseEvent("pointerdown", { bubbles: true }));
+    expect(window.getSelection()?.rangeCount).toBe(0);
+  });
+
+  test("a caret inside a chip of a closed block is left where it is", () => {
+    const { container, rec } = mount(HEADING);
+    const text = nth(container, "section data").firstChild!;
+    caretAt(text, 2);
+    expect(selection()).toEqual(["Closed", 2, "Closed", 2]);
+    expect(rec.activated).toEqual([]);
+  });
+});
+
+describe("a block redrawn under the caret is a new block", () => {
+  test("the same path on a new element is activated again, the old one released", () => {
+    const { container, rec } = mount(`<p data-jx-path='["children",0]'>First</p>`);
+    const old = nth(container, "p");
+    caretInto(old, 2);
+    expect(rec.activated).toHaveLength(1);
+    // A patch redraws the block: a new element at the same path (an undo over bound text).
+    const next = document.createElement("p");
+    next.dataset.jxPath = '["children",0]';
+    next.textContent = "First";
+    old.replaceWith(next);
+    caretInto(next, 2);
+    expect(rec.deactivated).toBe(1);
+    expect(rec.activated).toEqual([
+      { path: ["children", 0], tag: "p" },
+      { path: ["children", 0], tag: "p" },
+    ]);
+    // And a move within the new element is only a selection change.
+    caretInto(next, 3);
+    expect(rec.activated).toHaveLength(2);
+  });
+});

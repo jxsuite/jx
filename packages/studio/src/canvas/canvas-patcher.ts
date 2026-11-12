@@ -9,8 +9,9 @@
  * canvas.
  *
  * Patching is only attempted in design/edit canvas modes, where the canvas renders through
- * prepareForEditMode: runtime reactive bindings are inert there, so the patcher is the only writer
- * to the patched DOM.
+ * prepareForEditMode. Bindings are live there (studio.md §4.5), so the frame's patcher writes a
+ * property directly only where no binding can: one writer per property, stated in full at the top
+ * of `iframe-patch.ts`.
  *
  * Every question here is asked of ONE PANE — the one showing the edited tab (`canvas-surface.ts`).
  * The mode, the panel list, the readiness test and the render an escalation schedules are all
@@ -167,11 +168,12 @@ export function escalateToFullRender(reason: string, tab: Tab | null = null) {
 // ─── Classification ──────────────────────────────────────────────────────────
 
 /**
- * $switch cases render as a substituted first-case placeholder in edit mode, so their element paths
- * don't correspond to document paths — edits through "cases" escalate to a full render. (Non-
- * structural edits to a repeater template — text/style/prop on a `…/map` path — DO patch, since the
- * template renders as a single 1:1 instance inside its perimeter; structural edits inside a
- * template escalate via {@link containerVerdict}.)
+ * A $switch renders its live case at its own path under "cases", inside a scope the runtime's
+ * switch owns and replaces when the discriminant moves, and only the live case has an element at
+ * all. A surgical render cannot stand in for that, so edits through "cases" escalate to a full
+ * render. (Non- structural edits to a repeater template — text/style/prop on a `…/map` path — DO
+ * patch, since the template renders as a single 1:1 instance inside its perimeter; structural edits
+ * inside a template escalate via {@link containerVerdict}.)
  */
 function pathHasDynamicSegment(path: JxPath) {
   return path.includes("cases");

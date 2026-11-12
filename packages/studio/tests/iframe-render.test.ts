@@ -8,11 +8,14 @@ import {
 import {
   applyCanvasDialogOpen,
   applyCanvasPopoverOpen,
+  applyBindingDisplay,
   applyPreviewColorScheme,
   applyPreviewLocale,
   captureLocaleBaseline,
   applySiteStyle,
+  CANVAS_OVERLAY_CSS,
   CANVAS_OVERLAY_STYLE_ID,
+  EDIT_PLACEHOLDER_CSS,
   EDIT_PLACEHOLDER_STYLE_ID,
   injectHead,
   installCanvasImageRetry,
@@ -720,22 +723,84 @@ describe("makeStamper", () => {
     expect(sibling.dataset.jxPath).toBe('["children",4]');
   });
 
-  test("computed children with no entry mark, and a mark with authored children, stamp as usual", () => {
+  test("computed children are never the page's own nodes; a bound block's authored ones are", () => {
     const stamp = makeStamper({ ...ctx, canvasMode: "edit" });
     const computed = document.createElement("div");
     stamp(computed, ["children", 0], { children: "${state.list}", tagName: "div" });
     const marked = document.createElement("div");
     stamp(marked, ["children", 1], {
-      attributes: { "data-jx-bound-field": "title" },
+      attributes: { "data-jx-bound-field": "Title" },
+      children: [{ tagName: "span" }],
       tagName: "div",
-      textContent: "${state.entry.data.title}",
     });
     const inside = document.createElement("span");
     stamp(inside, ["children", 0, "children", 0], { tagName: "span" });
     const insideMarked = document.createElement("span");
     stamp(insideMarked, ["children", 1, "children", 0], { tagName: "span" });
-    expect(inside.dataset.jxPath).toBe('["children",0,"children",0]');
+    expect(computed.dataset.jxPath).toBe('["children",0]');
+    expect(inside.dataset.jxPath).toBeUndefined();
     expect(insideMarked.dataset.jxPath).toBe('["children",1,"children",0]');
+  });
+
+  test("a chip carries its expression, name and kind, and no path; nor does what it holds", () => {
+    const stamp = makeStamper({ ...ctx, canvasMode: "edit" });
+    const chip = document.createElement("data");
+    stamp(chip, ["children", 0, "children", 1], {
+      $__tag: { kind: "field", label: "Post date", source: "${$map.item.data.date}" },
+      attributes: { contenteditable: "false" },
+      children: ["${$map.item.data.date}"],
+      tagName: "data",
+    });
+    expect(chip.dataset.jxTag).toBe("${$map.item.data.date}");
+    expect(chip.dataset.jxTagLabel).toBe("Post date");
+    expect(chip.dataset.jxTagKind).toBe("field");
+    expect(chip.dataset.jxPath).toBeUndefined();
+    // A node the binding's array value was spliced as: `[…, index of the string, place in it]`.
+    const spliced = document.createElement("li");
+    stamp(spliced, ["children", 0, "children", 1, "children", 0, 2], { tagName: "li" });
+    expect(spliced.dataset.jxPath).toBeUndefined();
+  });
+
+  test("the element a templated string member is drawn as is marked, and has no path", () => {
+    const stamp = makeStamper({ ...ctx, canvasMode: "edit" });
+    const run = document.createElement("data");
+    stamp(run, ["children", 2], { $__text: true, children: ["a "], tagName: "data" });
+    expect(run.dataset.jxText).toBe("");
+    expect(run.dataset.jxPath).toBeUndefined();
+  });
+
+  test("a $switch case that is another document is unstamped and closed; an inline one is not", () => {
+    const stamp = makeStamper({ ...ctx, canvasMode: "edit" });
+    const host = document.createElement("div");
+    stamp(host, ["children", 0], {
+      $switch: { $ref: "#/state/page" },
+      cases: { about: { $ref: "./about.json" }, home: { tagName: "section" } },
+      tagName: "div",
+    });
+    const remote = document.createElement("article");
+    stamp(remote, ["children", 0, "cases", "about"], { tagName: "article" });
+    const remoteChild = document.createElement("p");
+    stamp(remoteChild, ["children", 0, "cases", "about", "children", 0], { tagName: "p" });
+    const inline = document.createElement("section");
+    stamp(inline, ["children", 0, "cases", "home"], { tagName: "section" });
+    expect(host.dataset.jxPath).toBe('["children",0]');
+    expect(remote.dataset.jxPath).toBeUndefined();
+    expect(remote.getAttribute("contenteditable")).toBe("false");
+    expect(remoteChild.dataset.jxPath).toBeUndefined();
+    expect(remoteChild.getAttribute("contenteditable")).toBeNull();
+    expect(inline.dataset.jxPath).toBe('["children",0,"cases","home"]');
+
+    // Outside an editable mode nothing is an editing host, so nothing is closed.
+    const diff = makeStamper({ ...ctx, canvasMode: "git-diff" });
+    stamp(host, ["children", 0], { tagName: "div" });
+    diff(document.createElement("div"), [], {
+      $switch: { $ref: "#/state/page" },
+      cases: { about: { $ref: "./about.json" } },
+      tagName: "div",
+    });
+    const diffRemote = document.createElement("article");
+    diff(diffRemote, ["cases", "about"], { tagName: "article" });
+    expect(diffRemote.getAttribute("contenteditable")).toBeNull();
   });
 
   test("stamps data-jx-path on ordinary nodes", () => {
@@ -882,6 +947,48 @@ describe("applyPreviewLocale", () => {
   });
 });
 
+describe("applyBindingDisplay", () => {
+  test("names is one attribute on the root; values, or nothing, takes it off", () => {
+    const root = document.documentElement;
+    applyBindingDisplay(document, "names");
+    expect(root.dataset.jxBindingDisplay).toBe("names");
+    applyBindingDisplay(document, "names");
+    expect(root.dataset.jxBindingDisplay).toBe("names");
+    applyBindingDisplay(document, "values");
+    expect(root.dataset.jxBindingDisplay).toBeUndefined();
+    applyBindingDisplay(document, "names");
+    applyBindingDisplay(document, null);
+    expect(root.dataset.jxBindingDisplay).toBeUndefined();
+  });
+
+  test("the edit sheet draws a chip by its name in that state, and never at rest", () => {
+    /** Every selector of a sheet that mentions `needle`, in order. */
+    const selectorsWith = (css: string, needle: string): string[] =>
+      css
+        .split("}")
+        .map((rule) => (rule.split("{")[0] ?? "").trim())
+        .filter((selector) => selector.includes(needle));
+    const HELD =
+      "[data-jx-bound-field]:is(:hover:not(:has([data-jx-bound-field]:hover)), [data-jx-active-block])";
+    // No selector is a bare chip or a bare bound block: each names the state that draws it.
+    expect(selectorsWith(EDIT_PLACEHOLDER_CSS, "data-jx-tag")).toEqual([
+      "data[data-jx-tag]:empty::before",
+      "[data-jx-active-block] data[data-jx-tag]:not(:has(> *))",
+      "[data-jx-active-block] data[data-jx-tag]:not(:has(> *))::before",
+      ':root[data-jx-binding-display="names"] data[data-jx-tag]:not(:has(> *))',
+      ':root[data-jx-binding-display="names"] data[data-jx-tag]:not(:has(> *))::before',
+    ]);
+    expect(selectorsWith(EDIT_PLACEHOLDER_CSS, "data-jx-bound-field")).toEqual([
+      HELD,
+      `${HELD}::before`,
+    ]);
+    // A chip that holds nodes takes no box, in every mode the document is prepared for.
+    expect(selectorsWith(CANVAS_OVERLAY_CSS, "data-jx-tag")).toEqual([
+      "data[data-jx-tag]:has(> *)",
+    ]);
+  });
+});
+
 describe("applyPreviewColorScheme", () => {
   afterEach(() => {
     delete document.documentElement.dataset.colorScheme;
@@ -1025,6 +1132,38 @@ describe("installCanvasImageRetry", () => {
   function fireError(img: HTMLImageElement): void {
     img.dispatchEvent(new Event("error"));
   }
+
+  test("an image that settles broken is marked for the placeholder; a load takes the mark off", () => {
+    withCapturedTimers((runPending) => {
+      const root = document.createElement("div");
+      const missing = document.createElement("img");
+      missing.setAttribute("src", "/gone.jpg");
+      const empty = document.createElement("img");
+      empty.setAttribute("src", "");
+      root.append(missing, empty);
+      const stop = installCanvasImageRetry(root, 1);
+
+      // An empty source is not a request a retry could fix: it is a placeholder at once.
+      fireError(empty);
+      expect(empty.classList.contains("empty-media-placeholder")).toBe(true);
+      // A real source is retried first, and marked only when the retries are spent.
+      fireError(missing);
+      expect(missing.classList.contains("empty-media-placeholder")).toBe(false);
+      runPending();
+      fireError(missing);
+      expect(missing.classList.contains("empty-media-placeholder")).toBe(true);
+      // The binding resolved to a picture that loads: it is a picture again.
+      missing.dispatchEvent(new Event("load"));
+      expect(missing.classList.contains("empty-media-placeholder")).toBe(false);
+      // A load from anything but an image is not the mark's business.
+      root.dispatchEvent(new Event("load"));
+
+      stop();
+      fireError(empty);
+      missing.dispatchEvent(new Event("error"));
+      expect(missing.classList.contains("empty-media-placeholder")).toBe(false);
+    });
+  });
 
   test("re-fires a failed image's request after the backoff", () => {
     withCapturedTimers((runPending) => {

@@ -7,6 +7,7 @@ spec:
 code:
   - packages/studio/src/canvas/iframe-editable-root.ts
   - packages/studio/src/canvas/iframe-position.ts
+  - packages/studio/src/canvas/iframe-chips.ts
   - packages/studio/src/canvas/editable-actions.ts
   - packages/studio/src/editor/content-slice.ts
   - packages/studio/src/editor/inline-edit.ts
@@ -78,7 +79,15 @@ Put the cursor inside an existing link and open the same popover to see its addr
 
 ## Insert data
 
-The **Insert data** button beside the format group opens a searchable list of the data available on your page. Pick an entry and Studio drops a live placeholder into your sentence, and it shows the real value when the page renders. Inside a repeating list you also get the current item's fields and its position. Where that data comes from is covered in **[Logic](/docs/studio/logic)**.
+The **Insert data** button beside the format group opens a searchable list of the data available on your page. Pick an entry and Studio drops a live placeholder into your sentence. It appears as its text for a moment, then is drawn as a tag showing the real value. Inside a repeating list you also get the current item's fields and its position. Where that data comes from is covered in **[Logic](/docs/studio/logic)**.
+
+## Text drawn from data
+
+A placeholder in your text is a **tag**. The canvas shows its real value, and while your caret is in the block each tag is drawn as a tinted token with its name, such as **Author**. You type before, between and after tags as in any other text, and the tags stay where they are. Click a tag and the caret lands at the nearer edge of it. Text you type beside a tag is saved as you typed it, a backslash or a backtick included.
+
+A tag is one unit. :kbd[←] and :kbd[→] step over it, and :kbd[Backspace] or :kbd[Delete] beside it removes the whole tag, as does cutting or typing over a selection that covers it. Deleting a tag is the only way typing removes a binding: Studio saves the binding a tag stands for, never the value it showed, and if an edit would lose a binding you did not delete, Studio leaves the text as it was and tells you.
+
+Some bound content cannot be typed into at all, because none of its words are the page's: a list of nodes drawn from data, markup drawn from data, and text whose whole value is a reference. Select the element and change what it shows in the Inspector.
 
 ## Pasting
 

@@ -141,7 +141,9 @@ export function toggleInlineFormat(tag: string, editableRoot: HTMLElement | null
 function findIntersectingElements(tag: string, range: Range, root: HTMLElement) {
   const matches: Element[] = [];
   // Every descendant element, in document order: the same set a SHOW_ELEMENT tree walk visits.
-  for (const el of root.querySelectorAll("*")) {
+  // Never one inside a chip: what a chip holds is the runtime's, drawn from data, not the author's
+  // Formatting, and unwrapping a `<strong>` there took apart a computed list's own markup.
+  for (const el of normalizable(root)) {
     if (el.tagName.toLowerCase() === tag && range.intersectsNode(el)) {
       matches.push(el);
     }
@@ -297,6 +299,73 @@ function trimTrailingWhitespace(frag: DocumentFragment) {
 
 // ─── Normalization ─────────────────────────────────────────────────────────────
 
+/** The attribute a chip carries its expression in (`utils/edit-display.ts`). */
+const CHIP_SELECTOR = "[data-jx-tag]";
+
+/**
+ * Every element under `root` that inline normalization may touch: all of them except a CHIP and
+ * whatever a chip holds (studio.md §4.5, §8.2.7).
+ *
+ * A chip stands for one binding and is not formatting. Two adjacent ones are two bindings, so they
+ * are never merged; one alone inside a wrapper is not redundant nesting; one whose value is empty
+ * is not an empty inline to remove. What a chip holds is the runtime's, drawn from data and
+ * rewritten whenever the data changes, so none of it is normalized either.
+ */
+function normalizable(root: HTMLElement): Element[] {
+  return [...root.querySelectorAll("*")].filter((el) => el.closest(CHIP_SELECTOR) === null);
+}
+
+/**
+ * `Node.normalize()` for everything outside a chip: adjacent text nodes are joined and empty ones
+ * removed.
+ *
+ * Not the native method, because it reaches inside chips too, and the runtime keeps one Text node
+ * there as the anchor its binding writes to. That node is empty whenever the value is (or is an
+ * array, drawn as nodes before it), so the native call removed it and the chip never updated
+ * again.
+ */
+function normalizeText(node: Node): void {
+  let child = node.firstChild;
+  while (child) {
+    const next: ChildNode | null = child.nextSibling;
+    if (isTextNode(child)) {
+      if (child.data === "") {
+        child.remove();
+      } else if (next && isTextNode(next)) {
+        absorbText(child, next);
+        // Stay on `child`: the node after the one just absorbed may be text too.
+        continue;
+      }
+    } else if (isElementNode(child) && !child.matches(CHIP_SELECTOR)) {
+      normalizeText(child);
+    }
+    child = next;
+  }
+}
+
+/**
+ * Join `next` onto the end of `into` and remove it, moving a selection endpoint that was in `next`
+ * to the same character in `into`, which is what the native `normalize()` does for a live range.
+ */
+function absorbText(into: Text, next: Text): void {
+  const selection = into.ownerDocument.getSelection();
+  const anchor = selection?.anchorNode ?? null;
+  const focus = selection?.focusNode ?? null;
+  const anchorOffset = selection?.anchorOffset ?? 0;
+  const focusOffset = selection?.focusOffset ?? 0;
+  const joinAt = into.length;
+  into.data += next.data;
+  next.remove();
+  if (selection && anchor && focus && (anchor === next || focus === next)) {
+    selection.setBaseAndExtent(
+      anchor === next ? into : anchor,
+      anchor === next ? joinAt + anchorOffset : anchorOffset,
+      focus === next ? into : focus,
+      focus === next ? joinAt + focusOffset : focusOffset,
+    );
+  }
+}
+
 /**
  * Normalize the inline content of an editable root. Merges adjacent same-tag siblings, collapses
  * redundant nesting, removes empty inline elements, and lifts edge whitespace. Runs to
@@ -315,7 +384,7 @@ export function normalizeInlineContent(root: HTMLElement | null) {
     iterations += 1;
 
     // 1. Merge adjacent text nodes
-    root.normalize();
+    normalizeText(root);
 
     // 2. Merge adjacent same-tag siblings
     if (mergeAdjacentSiblings(root)) {
@@ -356,7 +425,7 @@ function mergeAdjacentSiblings(root: HTMLElement) {
   const toMerge: [Element, Element][] = [];
 
   // Collect pairs first to avoid mutation during walk
-  for (const el of root.querySelectorAll("*")) {
+  for (const el of normalizable(root)) {
     const next = el.nextSibling;
     if (
       next &&
@@ -393,7 +462,7 @@ function collapseRedundantNesting(root: HTMLElement) {
   let changed = false;
   const toCollapse: Element[] = [];
 
-  for (const el of root.querySelectorAll("*")) {
+  for (const el of normalizable(root)) {
     if (!FORMAT_TAGS.has(el.tagName.toLowerCase())) {
       continue;
     }
@@ -436,7 +505,7 @@ function removeEmptyInlines(root: HTMLElement) {
   let changed = false;
   const toRemove: Element[] = [];
 
-  for (const el of root.querySelectorAll("*")) {
+  for (const el of normalizable(root)) {
     if (!FORMAT_TAGS.has(el.tagName.toLowerCase())) {
       continue;
     }
@@ -463,7 +532,7 @@ function liftEdgeWhitespace(root: HTMLElement) {
   let changed = false;
   const ops: EdgeWhitespaceLift[] = [];
 
-  for (const el of root.querySelectorAll("*")) {
+  for (const el of normalizable(root)) {
     if (!FORMAT_TAGS.has(el.tagName.toLowerCase())) {
       continue;
     }
@@ -517,7 +586,7 @@ function unwrapBareSpans(root: HTMLElement) {
   let changed = false;
   const toUnwrap: Element[] = [];
 
-  for (const el of root.querySelectorAll("*")) {
+  for (const el of normalizable(root)) {
     if (el.tagName.toLowerCase() !== "span") {
       continue;
     }

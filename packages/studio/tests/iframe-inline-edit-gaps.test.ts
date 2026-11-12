@@ -7,8 +7,8 @@ import "./with-dom.js";
 import { afterEach, describe, expect, test } from "bun:test";
 import { fakeChannelPair } from "../src/canvas/iframe-channel";
 import { startIframeInlineEdit } from "../src/canvas/iframe-inline-edit";
-import { isEditing, stopEditing } from "../src/editor/inline-edit";
-import { beforeInput, caretInto, selectAcross } from "./harness";
+import { commitActiveBlock, isEditing, stopEditing } from "../src/editor/inline-edit";
+import { beforeInput, caretAt, caretInto, selectAcross } from "./harness";
 import type { IframeToParent, ParentToIframe } from "../src/canvas/iframe-protocol";
 
 let teardown: (() => void) | undefined;
@@ -353,5 +353,122 @@ describe("enterEdit mode gate", () => {
     pair.flush();
     expect(isEditing()).toBe(false);
     expect(fromIframe.some((m) => m.kind === "editStart")).toBe(false);
+  });
+});
+
+// ─── Bound text: chips survive an edit, and a deleted one is reported (studio.md §4.5) ────────
+
+describe("a block whose bindings are chips is edited in place", () => {
+  /** `By ` + a chip showing "Ada" + ` on ` + a chip that ends the block. */
+  function boundBlock(container: HTMLElement, index = 0): HTMLParagraphElement {
+    const p = document.createElement("p");
+    p.dataset.jxPath = JSON.stringify(["children", index]);
+    p.innerHTML =
+      'By <data data-jx-tag="${a}" contenteditable="false">Ada</data> on ' +
+      '<data data-jx-tag="${d}" contenteditable="false">March</data>';
+    container.append(p);
+    return p;
+  }
+
+  test("the caret entering shows the resolved value, never the expression", () => {
+    const { container, pair } = boot();
+    const p = boundBlock(container);
+    clickInto(p);
+    pair.flush();
+    expect(isEditing()).toBe(true);
+    expect(p.textContent).toBe("By Ada on March");
+  });
+
+  test("a visit commits the template, so nothing is lost and nothing is refused", () => {
+    const { container, fromIframe, pair } = boot();
+    const p = boundBlock(container);
+    clickInto(p);
+    stopEditing();
+    pair.flush();
+    const [commit] = ofKind(fromIframe, "editCommit");
+    expect(commit).toMatchObject({ children: null, textContent: "By ${a} on ${d}" });
+    expect(commit).not.toHaveProperty("removedTags");
+  });
+
+  test("typing around a chip commits the new text with the chip still in it", () => {
+    const { container, fromIframe, pair } = boot();
+    const p = boundBlock(container);
+    clickInto(p);
+    p.firstChild!.nodeValue = "Written by ";
+    commitActiveBlock();
+    pair.flush();
+    expect(ofKind(fromIframe, "editCommit").at(-1)).toMatchObject({
+      inPlace: true,
+      textContent: "Written by ${a} on ${d}",
+    });
+  });
+
+  test("Backspace over a chip is reported with the next commit, once", () => {
+    const { container, fromIframe, pair } = boot();
+    const p = boundBlock(container);
+    clickInto(p);
+    caretAt(p.childNodes[2]!, 0);
+    expect(beforeInput(p, "deleteContentBackward")).toBe(true);
+    commitActiveBlock();
+    pair.flush();
+    expect(ofKind(fromIframe, "editCommit").at(-1)).toMatchObject({
+      removedTags: ["${a}"],
+      textContent: "By  on ${d}",
+    });
+    // The document has dropped the binding by now: the next commit has nothing left to excuse.
+    commitActiveBlock();
+    pair.flush();
+    expect(ofKind(fromIframe, "editCommit").at(-1)).not.toHaveProperty("removedTags");
+  });
+
+  test("a deletion belongs to the block it happened in", () => {
+    const { container, fromIframe, pair } = boot();
+    const first = boundBlock(container, 0);
+    const second = boundBlock(container, 1);
+    clickInto(first);
+    caretAt(first.childNodes[2]!, 0);
+    beforeInput(first, "deleteContentBackward");
+    // Leaving commits the first block, with its deletion; the second starts with none.
+    clickInto(second);
+    stopEditing();
+    pair.flush();
+    const commits = ofKind(fromIframe, "editCommit");
+    expect(commits.map((commit) => commit.removedTags)).toEqual([["${a}"], undefined]);
+  });
+
+  test("a split after a deletion carries it, and a chip is whole in one half", () => {
+    const { container, fromIframe, pair } = boot();
+    const p = boundBlock(container);
+    clickInto(p);
+    caretAt(p.childNodes[2]!, 0);
+    beforeInput(p, "deleteContentBackward");
+    caretAt(p.childNodes[1]!, 2);
+    expect(beforeInput(p, "insertParagraph")).toBe(true);
+    pair.flush();
+    const [split] = ofKind(fromIframe, "editSplit");
+    expect(split).toMatchObject({
+      after: { textContent: "n ${d}" },
+      before: { textContent: "By  o" },
+      removedTags: ["${a}"],
+    });
+  });
+
+  test("a range across blocks names the chips it covers in its two ends", () => {
+    const { container, fromIframe, pair } = boot();
+    const first = boundBlock(container, 0);
+    const second = boundBlock(container, 1);
+    clickInto(first);
+    // From before the first block's first chip to just past the second block's first chip.
+    selectAcross(first.firstChild!, 3, second.childNodes[2]!, 0);
+    expect(beforeInput(first, "deleteContentBackward")).toBe(true);
+    pair.flush();
+    expect(ofKind(fromIframe, "editRangeReplace")[0]).toEqual({
+      between: [],
+      from: { offset: 3, path: ["children", 0] },
+      kind: "editRangeReplace",
+      removedTags: ["${a}", "${d}", "${a}"],
+      text: "",
+      to: { offset: 7, path: ["children", 1] },
+    });
   });
 });

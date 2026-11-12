@@ -1,10 +1,9 @@
-/** Entry-bound text in edit mode (studio.md §4.1): src/utils/edit-display.ts. */
+/** Entry-bound text in edit mode (studio.md §4.5): src/utils/edit-display.ts. */
 import "./harness";
 import { describe, expect, test } from "bun:test";
 import {
   BOUND_FIELD_ATTR,
   entryBoundFields,
-  entryFieldsOfNode,
   entryRootsOf,
   prepareForEditMode,
 } from "../src/utils/edit-display";
@@ -82,91 +81,69 @@ describe("which state an entry is", () => {
 });
 
 describe("entry-bound text on the canvas", () => {
-  test("renders the entry's value, badged with its field and closed to the caret", () => {
+  test("renders the entry's value in a chip, named for its field, and stays open to the caret", () => {
     const out = prepareForEditMode(
       page([{ tagName: "h1", textContent: "${state.entry.data.title}" }]),
     );
-    const h1 = firstChild(out);
-    expect(h1.attributes).toEqual({ [BOUND_FIELD_ATTR]: "title", contenteditable: "false" });
-    const host = rendered(out, { data: { title: "Designing for Slowness" } });
-    expect(host.querySelector("h1")?.textContent).toBe("Designing for Slowness");
+    const heading = firstChild(out);
+    expect(heading.textContent).toBeUndefined();
+    expect(heading.attributes).toEqual({ [BOUND_FIELD_ATTR]: "Title" });
+    const host = rendered(out, { data: { title: "Harbour light" } });
+    expect(host.querySelector("h1")?.textContent).toBe("Harbour light");
+    expect(host.querySelector("h1 > data")?.getAttribute("contenteditable")).toBe("false");
   });
 
-  test("keeps the author's attributes and joins several fields", () => {
+  test("keeps the author's attributes and names several fields", () => {
     const out = prepareForEditMode(
       page([
         {
-          attributes: { class: "meta" },
+          attributes: { id: "byline" },
           tagName: "p",
           textContent: "${state.entry.data.date} · ${state.entry.data.tag}",
         },
       ]),
     );
     expect(firstChild(out).attributes).toEqual({
-      [BOUND_FIELD_ATTR]: "date · tag",
-      class: "meta",
-      contenteditable: "false",
+      [BOUND_FIELD_ATTR]: "Date \u00B7 Tag",
+      id: "byline",
     });
-    const host = rendered(out, { data: { date: "May 3", tag: "Essays" } });
-    expect(host.querySelector("p")?.textContent).toBe("May 3 · Essays");
+    const host = rendered(out, { data: { date: "2026-03-01", tag: "notes" } });
+    expect(host.querySelector("p")?.textContent).toBe("2026-03-01 · notes");
   });
 
-  test("reads as its binding while there is no entry to read it from", () => {
+  test("draws nothing but its chip while there is no entry to read it from", () => {
     const out = prepareForEditMode(
       page([{ tagName: "h1", textContent: "${state.entry.data.title}" }]),
     );
-    expect(rendered(out).querySelector("h1")?.textContent).toBe("❪ state.entry.data.title ❫");
-    expect(rendered(out, { data: {} }).querySelector("h1")?.textContent).toBe(
-      "❪ state.entry.data.title ❫",
-    );
+    const heading = rendered(out, null).querySelector("h1");
+    expect(heading?.textContent).toBe("");
+    expect(heading?.querySelectorAll("data")).toHaveLength(1);
   });
 
-  test("a $ref to an entry field is drawn the same way", () => {
+  test("a $ref to an entry field is one chip, and closes its block", () => {
     const out = prepareForEditMode(
       page([{ tagName: "h1", textContent: { $ref: "#/state/entry/data/title" } }]),
     );
     expect(firstChild(out).attributes).toEqual({
-      [BOUND_FIELD_ATTR]: "title",
+      [BOUND_FIELD_ATTR]: "Title",
       contenteditable: "false",
     });
-    expect(rendered(out, { data: { title: "Tools" } }).querySelector("h1")?.textContent).toBe(
-      "Tools",
-    );
+    const host = rendered(out, { data: { title: "Harbour light" } });
+    expect(host.querySelector("h1")?.textContent).toBe("Harbour light");
   });
 
-  test("text that reads anything else stays its binding", () => {
-    const out = prepareForEditMode(
-      page([
-        { tagName: "h2", textContent: "${state.heading}" },
-        { tagName: "h3", textContent: { $ref: "#/state/heading" } },
-        { tagName: "h4", textContent: { $ref: "window#/title" } },
-      ]),
-    );
-    const children = [0, 1, 2].map((index) => childAt(out, index));
-    expect(children.map((c) => c.textContent)).toEqual([
-      "❪ state.heading ❫",
-      "{heading}",
-      "{window#/title}",
-    ]);
-    expect(children.every((c) => c.attributes === undefined)).toBe(true);
-  });
-
-  test("an entry's body is drawn as its nodes, badged, rather than as a label", () => {
+  test("an entry's body is drawn as its nodes, named a computed list and closed to the caret", () => {
     const out = prepareForEditMode(
       page([{ children: "${state.entry.$children ?? []}", tagName: "div" }]),
     );
-    const div = firstChild(out);
-    expect(div.children).toBe("${state.entry.$children ?? []}");
-    expect(div.textContent).toBeUndefined();
-    expect(div.attributes).toEqual({ [BOUND_FIELD_ATTR]: "body", contenteditable: "false" });
-  });
-
-  test("computed children that read anything else keep their label", () => {
-    const out = prepareForEditMode(page([{ children: "${state.heading}", tagName: "div" }]));
-    const div = firstChild(out);
-    expect(div.children).toBeUndefined();
-    expect(div.textContent).toBe("❪ state.heading ❫");
-    expect(div.attributes).toEqual({ contenteditable: "false" });
+    const body = firstChild(out);
+    expect(body.children).toBe("${state.entry.$children ?? []}");
+    expect(body.attributes).toEqual({
+      [BOUND_FIELD_ATTR]: "Computed list",
+      contenteditable: "false",
+    });
+    const host = rendered(out, { $children: [{ tagName: "p", textContent: "First." }] });
+    expect(host.querySelector("div > p")?.textContent).toBe("First.");
   });
 
   test("a second walk (a page merged into its layout) leaves a prepared node as it is", () => {
@@ -176,30 +153,6 @@ describe("entry-bound text on the canvas", () => {
         { children: "${state.entry.$children ?? []}", tagName: "div" },
       ]),
     );
-    const twice = prepareForEditMode(once);
-    expect(twice).toEqual(once);
-    // Even when the second walk cannot see the page's state, the mark carries the binding.
-    const [h1, body] = [childAt(once, 0), childAt(once, 1)];
-    expect(prepareForEditMode(h1, null, new Set())).toEqual(h1);
-    expect(prepareForEditMode(body, null, new Set())).toEqual(body);
-  });
-
-  test("a subtree walked on its own is given the document's roots", () => {
-    const node: JxMutableNode = { tagName: "h1", textContent: "${state.entry.data.title}" };
-    expect(prepareForEditMode(node).textContent).toBe("❪ state.entry.data.title ❫");
-    expect(prepareForEditMode(node, null, ROOTS).attributes).toEqual({
-      [BOUND_FIELD_ATTR]: "title",
-      contenteditable: "false",
-    });
-  });
-
-  test("entryFieldsOfNode answers for text, children and anything else", () => {
-    expect(entryFieldsOfNode({ textContent: "${state.entry.data.title}" }, ROOTS)).toEqual([
-      "title",
-    ]);
-    expect(entryFieldsOfNode({ children: "${state.entry.$children}" }, ROOTS)).toEqual(["body"]);
-    expect(entryFieldsOfNode({ textContent: "Plain" }, ROOTS)).toBeNull();
-    expect(entryFieldsOfNode("text", ROOTS)).toBeNull();
-    expect(entryFieldsOfNode(undefined, ROOTS)).toBeNull();
+    expect(prepareForEditMode(once)).toEqual(once);
   });
 });

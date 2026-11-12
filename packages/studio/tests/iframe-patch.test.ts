@@ -213,25 +213,56 @@ describe("applyIframePatch — set-text", () => {
     expect(getNodeAtPath(shadow, ["children", 1])?.textContent).toBe("updated");
   });
 
-  test("renders a template string as a literal expression", () => {
+  test("one writer per property: text that becomes bound is re-rendered, never text-written", () => {
     const { container, shadow } = mount(BASE);
+    const before = elAt(container, ["children", 1]);
     applyIframePatch(
       shadow,
       [{ key: "textContent", op: "set-key", path: ["children", 1], value: "Hi ${state.name}" }],
       container,
+      CTX,
     );
-    expect(elAt(container, ["children", 1]).textContent).toBe("Hi ❪ state.name ❫");
+    const after = elAt(container, ["children", 1]);
+    // A new element, drawn by the transform the full render uses: a run and a chip.
+    expect(after).not.toBe(before);
+    expect(after.firstChild?.nodeValue).toBe("Hi ");
+    const chip = after.querySelector("data");
+    expect(chip?.dataset.jxTag).toBe("${state.name}");
+    expect(chip?.getAttribute("contenteditable")).toBe("false");
+    // The value is the runtime's, as the page would print it; the expression itself is never drawn.
+    expect(after.textContent).toBe("Hi undefined");
   });
 
-  test("an expression holding braces of its own is patched as one unit, like the full render", () => {
+  test("an expression holding braces of its own is one chip, like the full render", () => {
     const { container, shadow } = mount(BASE);
     const value = 'On ${f(state.d, {"a":1})}';
     applyIframePatch(
       shadow,
       [{ key: "textContent", op: "set-key", path: ["children", 1], value }],
       container,
+      CTX,
     );
-    expect(elAt(container, ["children", 1]).textContent).toBe('On ❪ f(state.d, {"a":1}) ❫');
+    const chips = elAt(container, ["children", 1]).querySelectorAll("data");
+    expect([...chips].map((chip) => chip.dataset.jxTag)).toEqual(['${f(state.d, {"a":1})}']);
+  });
+
+  test("bound text that becomes literal is re-rendered too, which takes its chips off", () => {
+    const { container, shadow } = mount(BASE);
+    const path = ["children", 1];
+    const set = (value: string) =>
+      applyIframePatch(
+        shadow,
+        [{ key: "textContent", op: "set-key", path, value }],
+        container,
+        CTX,
+      );
+    set("Hi ${state.name}");
+    expect(Object.hasOwn(elAt(container, path).dataset, "jxBoundField")).toBe(true);
+    set("Hi there");
+    const el = elAt(container, path);
+    expect(el.querySelector("data")).toBeNull();
+    expect(Object.hasOwn(el.dataset, "jxBoundField")).toBe(false);
+    expect(el.textContent).toBe("Hi there");
   });
 
   test("renders a null/undefined text value as empty string", () => {
@@ -254,7 +285,7 @@ describe("applyIframePatch — set-text", () => {
     expect(elAt(container, ["children", 1]).textContent).toBe("42");
   });
 
-  test("renders a $ref binding as a display label", () => {
+  test("a $ref text is re-rendered as one chip, and its block is closed to the caret", () => {
     const { container, shadow } = mount(BASE);
     applyIframePatch(
       shadow,
@@ -267,8 +298,12 @@ describe("applyIframePatch — set-text", () => {
         },
       ],
       container,
+      CTX,
     );
-    expect(elAt(container, ["children", 1]).textContent).toBe("{title}");
+    const el = elAt(container, ["children", 1]);
+    expect(el.querySelector("data")?.dataset.jxTagKind).toBe("ref");
+    expect(el.getAttribute("contenteditable")).toBe("false");
+    expect(el.textContent).not.toContain("title");
   });
 
   test("toggles the empty-text placeholder class when text is cleared and restored", () => {
@@ -725,7 +760,7 @@ describe("applyIframePatch — echoed ops", () => {
   });
 });
 
-describe("applyIframePatch — text an entry draws", () => {
+describe("applyIframePatch — bound text is drawn again", () => {
   /** A collection's page: a ContentEntry in state, and two text children. */
   const ENTRY_PAGE: JxMutableNode = {
     children: [
@@ -736,7 +771,7 @@ describe("applyIframePatch — text an entry draws", () => {
     tagName: "article",
   };
 
-  test("text set to an entry field is drawn again, live and badged", () => {
+  test("text set to an entry field is drawn again, as a named chip", () => {
     const { container, shadow } = mount(ENTRY_PAGE);
     applyIframePatch(
       shadow,
@@ -752,13 +787,14 @@ describe("applyIframePatch — text an entry draws", () => {
       CTX,
     );
     const h1 = elAt(container, ["children", 0]);
-    expect(h1.dataset.jxBoundField).toBe("title");
-    expect(h1.getAttribute("contenteditable")).toBe("false");
-    // No entry resolves in this scope, so the field reads as its binding.
-    expect(h1.textContent).toBe("❪ state.entry.data.title ❫");
+    expect(h1.dataset.jxBoundField).toBe("Title");
+    expect(h1.hasAttribute("contenteditable")).toBe(false);
+    // No entry resolves in this scope, so the chip is empty; it still names its field.
+    expect(h1.textContent).toBe("");
+    expect(h1.querySelector("data")?.dataset.jxTagLabel).toBe("Title");
   });
 
-  test("text that stops drawing from the entry loses its badge", () => {
+  test("text that stops being bound loses its mark", () => {
     const { container, shadow } = mount(ENTRY_PAGE);
     elAt(container, ["children", 1]).dataset.jxBoundField = "excerpt";
     applyIframePatch(

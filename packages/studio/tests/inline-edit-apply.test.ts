@@ -12,7 +12,7 @@ import {
   applyInlineInsert,
   applyInlinePropCommit,
   applyInlineSplit,
-  dropsMemberBinding,
+  dropsBinding,
   isEmptyContent,
 } from "../src/editor/inline-edit-apply";
 import { undo } from "../src/tabs/transact";
@@ -416,9 +416,9 @@ describe("applyInlineInsert", () => {
 // ─── A commit never stores a binding's value in the binding's place ───────────────
 
 describe("the binding guard", () => {
-  /* A `${…}` that is a MEMBER of a children array is drawn resolved on the canvas, so the frame
-     commits its value ("Hello Ada"); a `textContent` template is drawn as its binding and comes
-     back as its source. Only the first can be lost without the author asking. */
+  /* A `${…}` is drawn resolved on the canvas, inside a chip that serializes as the expression. A
+     write that comes back without it either lost it (refused) or names it in `removedTags`, which
+     is the author deleting the chip (studio.md §4.5, the third guard). */
   const NAME = "${state.name}";
   const boundDoc = () => ({
     children: [
@@ -468,14 +468,24 @@ describe("the binding guard", () => {
       expect(refused).not.toHaveBeenCalled();
     });
 
-    test("allows the binding to move into an element's own text or into textContent", () => {
-      applyInlineCommit(tab, AT, ["Hi ", { tagName: "em", textContent: NAME }], null, {
-        onRefused: refused,
+    test("allows the binding to move into an element, where it is still a member", () => {
+      // Emphasis over the chip: the canvas writes it as the element's one member, not its text.
+      const moved = ["Hi ", { children: [NAME], tagName: "em" }];
+      applyInlineCommit(tab, AT, moved, null, { onRefused: refused });
+      expect(kids()[0]!.children).toEqual(moved);
+      expect(refused).not.toHaveBeenCalled();
+    });
+
+    test("allows a textContent binding to move anywhere in the block's text", () => {
+      tab = resetWorkspaceWithTab({
+        children: [{ tagName: "p", textContent: `Hi ${NAME}` }],
+        tagName: "div",
       });
-      expect(kids()[0]!.children).toEqual(["Hi ", { tagName: "em", textContent: NAME }]);
-      // …where it is no longer a member string, so the guard has nothing left to hold.
-      applyInlineCommit(tab, AT, null, `Hi ${NAME}`, { onRefused: refused });
-      expect(kids()[0]!.textContent).toBe(`Hi ${NAME}`);
+      const moved = ["Hi ", { tagName: "em", textContent: NAME }];
+      applyInlineCommit(tab, AT, moved, null, { onRefused: refused });
+      expect(kids()[0]!.children).toEqual(moved);
+      applyInlineCommit(tab, AT, null, `${NAME} says hi`, { onRefused: refused });
+      expect(kids()[0]!.textContent).toBe(`${NAME} says hi`);
       expect(refused).not.toHaveBeenCalled();
     });
 
@@ -514,24 +524,110 @@ describe("the binding guard", () => {
       expect(kids()[0]!.children).toHaveLength(2);
     });
 
-    test("allows a textContent template to be replaced: deleting it is an edit", () => {
+    test("guard 3: a commit that drops a templated textContent is refused", () => {
       tab = resetWorkspaceWithTab({
         children: [{ tagName: "p", textContent: `Hello ${NAME}` }],
         tagName: "div",
       });
-      applyInlineCommit(tab, AT, null, "Hello there", { onRefused: refused });
+      applyInlineCommit(tab, AT, null, "Hello Ada", { onRefused: refused });
+      expect(kids()[0]!.textContent).toBe(`Hello ${NAME}`);
+      expect(refused.mock.calls).toEqual([[AT]]);
+    });
+
+    test("guard 3: the same commit goes through when the session reported the chip deleted", () => {
+      tab = resetWorkspaceWithTab({
+        children: [{ tagName: "p", textContent: `Hello ${NAME}` }],
+        tagName: "div",
+      });
+      applyInlineCommit(tab, AT, null, "Hello there", {
+        onRefused: refused,
+        removedTags: [NAME, "${never.held}"],
+      });
       expect(kids()[0]!.textContent).toBe("Hello there");
       expect(refused).not.toHaveBeenCalled();
     });
 
-    test("allows a nested element's textContent template to go, for the same reason", () => {
+    test("a reported deletion excuses one copy, not every copy", () => {
       tab = resetWorkspaceWithTab({
-        children: [{ children: ["By ", { tagName: "em", textContent: NAME }], tagName: "p" }],
+        children: [{ tagName: "p", textContent: `${NAME} and ${NAME}` }],
         tagName: "div",
       });
-      applyInlineCommit(tab, AT, null, "By nobody", { onRefused: refused });
-      expect(kids()[0]!.textContent).toBe("By nobody");
+      applyInlineCommit(tab, AT, null, "nobody", { onRefused: refused, removedTags: [NAME] });
+      expect(refused).toHaveBeenCalledTimes(1);
+      applyInlineCommit(tab, AT, null, `${NAME} only`, { onRefused: refused, removedTags: [NAME] });
+      expect(kids()[0]!.textContent).toBe(`${NAME} only`);
+      expect(refused).toHaveBeenCalledTimes(1);
+    });
+
+    test("a binding in a nested element's text or attribute is held as well", () => {
+      const link = { attributes: { href: "${state.url}" }, tagName: "a", textContent: NAME };
+      tab = resetWorkspaceWithTab({
+        children: [{ children: ["By ", link], tagName: "p" }],
+        tagName: "div",
+      });
+      // The canvas rebuilt the link from the DOM: the text's chip came back, the href did not.
+      const rebuilt = { attributes: { href: "/ada" }, tagName: "a", textContent: NAME };
+      applyInlineCommit(tab, AT, ["By ", rebuilt], null, { onRefused: refused });
+      expect(refused).toHaveBeenCalledTimes(1);
+      applyInlineCommit(tab, AT, ["Written by ", link], null, { onRefused: refused });
+      expect(refused).toHaveBeenCalledTimes(1);
+      expect(kids()[0]!.children).toEqual(["Written by ", link]);
+    });
+
+    test("a commit that only re-spells what the block holds writes nothing", () => {
+      // The canvas hands the block back member for member.
+      applyInlineCommit(tab, AT, ["Hello ", NAME], null, { onRefused: refused });
+      untouched();
+      tab = resetWorkspaceWithTab({
+        children: [
+          {
+            children: [
+              "By ",
+              "the ",
+              { attributes: { href: "/a" }, children: ["Dr"], tagName: "a" },
+              { tagName: "br" },
+            ],
+            tagName: "p",
+          },
+        ],
+        tagName: "div",
+      });
+      // A plain copy: the document is reactive, and a reactive proxy cannot be structured-cloned.
+      const before = JSON.stringify(tab.doc.document);
+      /* Three spellings of the same content: two plain strings as one, an element's one plain
+         string as its `textContent` with its keys in another order, and a `<br>` the canvas
+         serialized with an empty `textContent`. A caret that only visited must not dirty the tab. */
+      applyInlineCommit(
+        tab,
+        AT,
+        [
+          "By the ",
+          { tagName: "a", textContent: "Dr", attributes: { href: "/a" } },
+          { tagName: "br", textContent: "" },
+        ],
+        null,
+        { onRefused: refused },
+      );
+      expect(JSON.stringify(tab.doc.document)).toBe(before);
+      expect(tab.doc.dirty).toBeFalsy();
       expect(refused).not.toHaveBeenCalled();
+    });
+
+    test("guard 3: a whole-template member joined to its neighbour is not a re-spelling", () => {
+      /* `["Hello ", "${state.name}"]` and `"Hello ${state.name}"` hold the same binding and do not
+         mean the same: the member's value may be nodes, spliced in, and the joined string prints
+         it. Every `${…}` survives the join, so only counting the member itself catches it. */
+      applyInlineCommit(tab, AT, null, `Hello ${NAME}`, { onRefused: refused });
+      untouched();
+      expect(refused.mock.calls).toEqual([[AT]]);
+      // The other way is the author's to do: a `textContent` binding moved beside an element.
+      tab = resetWorkspaceWithTab({
+        children: [{ tagName: "p", textContent: NAME }],
+        tagName: "div",
+      });
+      applyInlineCommit(tab, AT, [NAME, { tagName: "br" }], null, { onRefused: refused });
+      expect(kids()[0]!.children).toEqual([NAME, { tagName: "br" }]);
+      expect(refused).toHaveBeenCalledTimes(1);
     });
 
     test("allows any commit to a node with no template", () => {
@@ -570,6 +666,20 @@ describe("the binding guard", () => {
       expect(refused.mock.calls).toEqual([[AT]]);
     });
 
+    test("allows a split that lost a chip the session reported deleted", () => {
+      const path = applyInlineSplit(
+        tab,
+        AT,
+        { textContent: "Hello " },
+        { textContent: "there" },
+        refused,
+        [NAME],
+      );
+      expect(path).toEqual(["children", 1]);
+      expect(kids()[0]!.textContent).toBe("Hello ");
+      expect(refused).not.toHaveBeenCalled();
+    });
+
     test("allows a split that keeps the binding in either half", () => {
       const path = applyInlineSplit(
         tab,
@@ -601,6 +711,13 @@ describe("the binding guard", () => {
       expect(path).toEqual(AT);
       untouched();
       expect(refused).toHaveBeenCalledTimes(1);
+    });
+
+    test("allows the swap once the session reported the chip deleted", () => {
+      const path = applyInlineInsert(tab, AT, h2, { textContent: "" }, refused, [NAME]);
+      expect(path).toEqual(AT);
+      expect(kids()[0]!.tagName).toBe("h2");
+      expect(refused).not.toHaveBeenCalled();
     });
 
     test("allows an insert after a block that still carries the binding", () => {
@@ -642,11 +759,10 @@ describe("the binding guard", () => {
       expect(refused.mock.calls).toEqual([[["children", 1]]]);
     });
 
-    test("refuses a head that holds a binding even when the cut lies past it", () => {
-      /* "Alexander is here and more" on the canvas, cut after "Alexander is" (12). In the stored
-         `${a} is here and more` that offset is after " here": the binding would survive and five
-         characters the author selected would stay. */
-      const doc = () => ({
+    test("a cut past a binding keeps it: an offset counts a chip as its expression", () => {
+      /* `${a} is here and more`, cut after `${a} is` (7). The canvas counts the chip as the four
+         characters it stands for, so the offset is the stored one and the cut is exact. */
+      tab = resetWorkspaceWithTab({
         children: [
           { children: ["${a}", " is here and more", { tagName: "br" }], tagName: "p" },
           { tagName: "p", textContent: "Tail" },
@@ -654,22 +770,61 @@ describe("the binding guard", () => {
         state: { a: "Alexander" },
         tagName: "div",
       });
-      tab = resetWorkspaceWithTab(doc());
       const caret = applyRangeReplace(
         tab,
-        { offset: 12, path: AT },
+        { offset: 7, path: AT },
         { offset: 2, path: ["children", 1] },
         [],
         "",
         refused,
       );
-      expect(caret).toBeNull();
-      expect(tab.doc.document).toEqual(doc());
+      expect(caret).toEqual({ offset: 7, path: AT });
+      // The whole-template member stays a member of its own: joined, an array there is printed.
+      expect(kids()[0]!.children).toEqual(["${a}", " isil"]);
+      expect(refused).not.toHaveBeenCalled();
+    });
+
+    test("guard 3: a range that takes a binding is refused unless it reported the chip", () => {
+      const cut = (removedTags?: string[]) =>
+        applyRangeReplace(
+          tab,
+          { offset: 2, path: AT },
+          { offset: 2, path: ["children", 1] },
+          [],
+          "",
+          refused,
+          removedTags,
+        );
+      expect(cut()).toBeNull();
+      untouched();
       expect(refused.mock.calls).toEqual([[AT]]);
+      expect(cut([NAME])).toEqual({ offset: 2, path: AT });
+      expect(kids()[0]!.textContent).toBe("Heil");
+    });
+
+    test("an offset inside a binding in nested markup is a cut through it too", () => {
+      tab = resetWorkspaceWithTab({
+        children: [
+          { children: ["By ", { tagName: "em", textContent: NAME }, "."], tagName: "p" },
+          { tagName: "p", textContent: "Tail" },
+        ],
+        tagName: "div",
+      });
+      const caret = applyRangeReplace(
+        tab,
+        { offset: 5, path: AT },
+        { offset: 1, path: ["children", 1] },
+        [],
+        "",
+        refused,
+        [NAME],
+      );
+      expect(caret).toBeNull();
+      expect(refused).toHaveBeenCalledTimes(1);
     });
 
     test("the head's own text does not stand in for a binding the tail lost", () => {
-      // The head's `textContent` spells the same binding; the tail's member is still cut through.
+      // Both ends spell the same binding; the range takes the tail's whole chip and reports nothing.
       const doc = () => ({
         children: [
           { tagName: "p", textContent: `By ${NAME}` },
@@ -682,7 +837,7 @@ describe("the binding guard", () => {
       const caret = applyRangeReplace(
         tab,
         { offset: `By ${NAME}`.length, path: AT },
-        { offset: 8, path: ["children", 1] },
+        { offset: `Hello ${NAME}`.length, path: ["children", 1] },
         [],
         "",
         refused,
@@ -704,53 +859,112 @@ describe("the binding guard", () => {
       // Order is the caller's; here the tail is the bound block, kept from offset 0.
       expect(caret).toEqual({ offset: 2, path: ["children", 1] });
       expect(kids()).toHaveLength(1);
-      expect(kids()[0]!.textContent).toBe(`TaHello ${NAME}`);
+      expect(kids()[0]!.children).toEqual(["TaHello ", NAME]);
       expect(refused).not.toHaveBeenCalled();
     });
   });
 
   describe("applyBlockMerge", () => {
-    test("joins stored content, so the binding survives without a refusal", () => {
-      const seam = applyBlockMerge(tab, ["children", 1], AT);
+    test("guard 3: a merge joins stored content, so the binding survives without a refusal", () => {
+      const seam = applyBlockMerge(tab, ["children", 1], AT, refused);
       expect(seam?.path).toEqual(AT);
       expect(kids()).toHaveLength(1);
-      expect(kids()[0]!.textContent).toBe(`Hello ${NAME}Tail`);
+      // Each string is still the string it was: the member is not joined to the text after it.
+      expect(kids()[0]!.children).toEqual(["Hello ", NAME, "Tail"]);
+      expect(refused).not.toHaveBeenCalled();
+    });
+
+    test("the seam is the stored length, which is the offset the canvas counts to", () => {
+      const seam = applyBlockMerge(tab, AT, ["children", 1]);
+      expect(seam).toEqual({ offset: 4, path: ["children", 1] });
+      const back = applyBlockMerge(resetWorkspaceWithTab(boundDoc()), ["children", 1], AT);
+      expect(back?.offset).toBe(`Hello ${NAME}`.length);
+    });
+
+    test("a join that would swallow a binding into another expression keeps both strings", () => {
+      // Apart, the second block holds `${b}`; as one string, the first block's open quote would
+      // Make it text. So they are not made one string: each stays a member of its own.
+      tab = resetWorkspaceWithTab({
+        children: [
+          { tagName: "p", textContent: "${'" },
+          { tagName: "p", textContent: "${b}'}" },
+        ],
+        tagName: "div",
+      });
+      expect(applyBlockMerge(tab, ["children", 1], AT, refused)).toEqual({ offset: 3, path: AT });
+      expect(kids()).toEqual([{ children: ["${'", "${b}'}"], tagName: "p" }]);
+      expect(refused).not.toHaveBeenCalled();
+    });
+
+    test("guard 3: a block that draws its content from data is not merged into", () => {
+      /* None of these has content a join can read, so the join would have written the other
+         block's text over what each draws. */
+      const drawn: JxMutableNode[] = [
+        { children: "${state.spans}", tagName: "div" },
+        { tagName: "h2", textContent: { $ref: "#/state/name" } },
+        { innerHTML: "${state.html}", tagName: "div" },
+        { innerText: { $ref: "#/state/name" }, tagName: "p" },
+        { children: [{ tagName: "b", textContent: "x" }], tagName: "p", textContent: NAME },
+      ];
+      for (const block of drawn) {
+        const doc = () => ({
+          children: [structuredClone(block), { tagName: "p", textContent: "tail" }],
+          tagName: "div",
+        });
+        tab = resetWorkspaceWithTab(doc());
+        refused.mockClear();
+        expect(applyBlockMerge(tab, ["children", 1], AT, refused)).toBeNull();
+        expect(tab.doc.document).toEqual(doc());
+        expect(refused.mock.calls).toEqual([[AT]]);
+        // A range replace that ends in one, or starts in one, is refused the same way.
+        expect(
+          applyRangeReplace(
+            tab,
+            { offset: 0, path: AT },
+            { offset: 2, path: ["children", 1] },
+            [],
+            "",
+            refused,
+          ),
+        ).toBeNull();
+        expect(tab.doc.document).toEqual(doc());
+      }
     });
   });
 
-  describe("dropsMemberBinding", () => {
+  describe("dropsBinding", () => {
     const node = { children: ["a ", NAME], tagName: "p" };
 
-    test("a node with no children array, or none at all, holds nothing", () => {
-      expect(dropsMemberBinding(undefined, [{ textContent: "x" }])).toBe(false);
-      expect(dropsMemberBinding(null, [])).toBe(false);
-      expect(dropsMemberBinding({ tagName: "p", textContent: NAME }, [{ textContent: "x" }])).toBe(
-        false,
-      );
-      expect(dropsMemberBinding({ children: NAME, tagName: "ul" }, [{ textContent: "x" }])).toBe(
+    test("no node, or a node with no binding, holds nothing", () => {
+      expect(dropsBinding(undefined, [{ textContent: "x" }])).toBe(false);
+      expect(dropsBinding(null, [])).toBe(false);
+      expect(dropsBinding({ tagName: "p", textContent: "plain" }, [{ textContent: "x" }])).toBe(
         false,
       );
     });
 
+    test("a templated textContent and computed children are held like a member is", () => {
+      expect(dropsBinding({ tagName: "p", textContent: NAME }, [{ textContent: "x" }])).toBe(true);
+      expect(dropsBinding({ children: NAME, tagName: "ul" }, [{ textContent: "x" }])).toBe(true);
+      expect(dropsBinding({ tagName: "p", textContent: NAME }, [{ children: [NAME] }])).toBe(false);
+    });
+
     test("no committed piece at all drops everything held", () => {
-      expect(dropsMemberBinding(node, [])).toBe(true);
-      expect(dropsMemberBinding(node, [undefined])).toBe(true);
+      expect(dropsBinding(node, [])).toBe(true);
+      expect(dropsBinding(node, [undefined])).toBe(true);
+      expect(dropsBinding(node, [], [NAME])).toBe(false);
     });
 
     test("an expression with braces of its own is matched whole", () => {
       const lambda = '${f(state.x, {"a":1})}';
       const held = { children: ["On ", lambda], tagName: "p" };
-      expect(dropsMemberBinding(held, [{ children: ["At ", lambda] }])).toBe(false);
-      expect(dropsMemberBinding(held, [{ children: ["At ", '${f(state.x, {"a":2})}'] }])).toBe(
-        true,
-      );
+      expect(dropsBinding(held, [{ children: ["At ", lambda] }])).toBe(false);
+      expect(dropsBinding(held, [{ children: ["At ", '${f(state.x, {"a":2})}'] }])).toBe(true);
     });
 
     test("a nested element with neither text nor children carries nothing", () => {
-      expect(dropsMemberBinding(node, [{ children: [{ tagName: "br" }] }])).toBe(true);
-      expect(dropsMemberBinding(node, [{ children: [{ children: [NAME], tagName: "em" }] }])).toBe(
-        false,
-      );
+      expect(dropsBinding(node, [{ children: [{ tagName: "br" }] }])).toBe(true);
+      expect(dropsBinding(node, [{ children: [{ children: [NAME], tagName: "em" }] }])).toBe(false);
     });
   });
 });

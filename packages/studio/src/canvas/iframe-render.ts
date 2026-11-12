@@ -42,8 +42,8 @@ import { elementForPath } from "./iframe-position";
 import type { AssetContext } from "./asset-resolve";
 import { SITE_STYLE_ID, buildSiteStyleCSS } from "@jxsuite/site/site-style";
 import type { CanvasMode, WireDiffMarks, WireLocale } from "./iframe-protocol";
-import { isNonNullObject, isString, isTemplateString } from "@jxsuite/schema/guards";
-import { BOUND_FIELD_ATTR } from "../utils/edit-display";
+import { isNonNullObject, isRef, isString, isTemplateString } from "@jxsuite/schema/guards";
+import { isTextRun, tagMarkOf } from "../utils/edit-display";
 import type { JxDocument, JxElement, JxStateDefinition, JxStyle } from "@jxsuite/schema/types";
 import type { PathMapCtx } from "./path-mapping";
 
@@ -123,6 +123,13 @@ export async function registerElements(doc: JxDocument, docBase: string): Promis
 export const EDIT_PLACEHOLDER_STYLE_ID = "jx-canvas-edit-css";
 
 /**
+ * An `<img>` that names no source at all. It fires no `error`, so no listener ever marks it: the
+ * edit stylesheet finds it by this selector and draws the image placeholder (studio.md §4.5).
+ */
+export const MISSING_IMAGE_SELECTOR =
+  'img:not([src]):not([srcset]):not(picture > img),img[src=""]:not([srcset]):not(picture > img)';
+
+/**
  * The design/edit-mode canvas CSS, ported from the parent editor stylesheet (index.html) with
  * iframe-safe fallbacks — the parent theme variables (--fg-dim/--radius/--accent) don't exist in
  * the iframe document. The placeholder CLASSES are stamped by prepareForEditMode (parent-side
@@ -146,13 +153,20 @@ export const EDIT_PLACEHOLDER_STYLE_ID = "jx-canvas-edit-css";
  * `:not([data-jx-active-block])` keeps the slash hint winning on an empty block that HAS the caret:
  * both rules match the same element, and the emptiness test broke the specificity tie that used to
  * decide it by source order.
+ *
+ * The image placeholder is drawn for the class `installCanvasImageRetry` puts on an image that
+ * settled broken, AND for an image with no source at all, by selector: an `<img>` with no `src`
+ * attribute fires no `error`, so nothing would ever mark it, and it measures nothing. That is what
+ * a row-bound `src` leaves when its repeater has no row to read (studio.md §4.5). An image inside a
+ * `<picture>` takes its source from the `<source>` beside it and is left alone.
  */
 /*
  * NOTE: this is a template literal, so a BACKTICK anywhere inside — including in a CSS comment —
  * ends the string and produces a syntax error several lines later. Quote property names bare.
  */
 export const EDIT_PLACEHOLDER_CSS = `
-.empty-media-placeholder {
+.empty-media-placeholder,
+${MISSING_IMAGE_SELECTOR} {
   display: inline-block;
   min-width: 120px;
   min-height: 80px;
@@ -225,6 +239,7 @@ export const EDIT_PLACEHOLDER_CSS = `
 }
 [data-jx-layout-region]::before {
   content: "LAYOUT \\00B7 " attr(data-jx-layout-file);
+  white-space: nowrap;
   position: absolute;
   top: 0;
   left: 0;
@@ -249,19 +264,55 @@ export const EDIT_PLACEHOLDER_CSS = `
 [data-jx-entry-field] {
   cursor: text;
 }
-:where([data-jx-bound-field]) {
-  position: relative;
+data[data-jx-tag]:empty::before {
+  content: attr(data-jx-tag-label);
+  opacity: 0.45;
+  font-style: italic;
 }
-[data-jx-bound-field] {
-  outline: 1.5px dashed color-mix(in srgb, var(--jx-canvas-binding, #7c3aed) 70%, transparent);
+[data-jx-active-block] data[data-jx-tag]:not(:has(> *)) {
+  border-radius: 0.25em;
+  background: color-mix(in srgb, var(--jx-canvas-binding, #7c3aed) 14%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--jx-canvas-binding, #7c3aed) 45%, transparent);
+  cursor: default;
+}
+[data-jx-active-block] data[data-jx-tag]:not(:has(> *))::before {
+  content: attr(data-jx-tag-label);
+  margin-inline: 0.3em 0.4em;
+  color: var(--jx-canvas-binding, #7c3aed);
+  font: 600 0.62em/1 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  font-style: normal;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  vertical-align: 0.15em;
+  opacity: 1;
+}
+:root[data-jx-binding-display="names"] data[data-jx-tag]:not(:has(> *)) {
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--jx-canvas-binding, #7c3aed) 14%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--jx-canvas-binding, #7c3aed) 45%, transparent);
+  font-size: 0;
+}
+:root[data-jx-binding-display="names"] data[data-jx-tag]:not(:has(> *))::before {
+  content: attr(data-jx-tag-label);
+  margin-inline: 0;
+  padding: 0 5px;
+  color: var(--jx-canvas-binding, #7c3aed);
+  font: 500 12px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  font-style: normal;
+  letter-spacing: normal;
+  text-transform: none;
+  vertical-align: baseline;
+  opacity: 1;
+}
+[data-jx-bound-field]:is(:hover:not(:has([data-jx-bound-field]:hover)), [data-jx-active-block]) {
+  outline: 1.5px dotted color-mix(in srgb, var(--jx-canvas-binding, #7c3aed) 70%, transparent);
   outline-offset: 3px;
 }
-[data-jx-bound-field]::after {
+[data-jx-bound-field]:is(:hover:not(:has([data-jx-bound-field]:hover)), [data-jx-active-block])::before {
   content: attr(data-jx-bound-field);
   position: absolute;
-  right: -4px;
-  bottom: calc(100% + 4px);
   z-index: 2;
+  transform: translateY(calc(-100% - 5px));
   padding: 1px 6px;
   border-radius: 4px;
   background: var(--jx-canvas-binding, #7c3aed);
@@ -274,6 +325,50 @@ export const EDIT_PLACEHOLDER_CSS = `
   pointer-events: none;
 }
 `;
+
+/**
+ * The rules above for bound content, explained here rather than inside the template literal,
+ * because a comment inside the string ships in iframe-entry.js (studio.md §4.5).
+ *
+ * A chip (`data[data-jx-tag]`) has NO rule at rest: it is an inline element with the text around
+ * it, so the page reads as the page. Three states draw it:
+ *
+ * - One holding ELEMENTS is a computed list, and takes no box of its own (`display: contents`), so a
+ *   flex or grid parent lays the list's nodes out as its own children. That one rule is in
+ *   `CANVAS_OVERLAY_CSS`, because chips are drawn in every mode the document is prepared for
+ *   (Project Styles and a diff side included), not only where it is edited.
+ * - One that resolved to nothing draws its name, dimmed, so a binding with no value yet (no sample
+ *   row, an empty field) still says what goes there instead of collapsing to nothing.
+ * - While the caret is in its block (`[data-jx-active-block]`) it is a named token: tinted, with its
+ *   name before its value. No padding and no border, so only the name's own width moves text.
+ *
+ * `data-jx-binding-display="names"` on the root is `canvas.setBindingDisplay`: every text chip
+ * draws its name INSTEAD of its value. The value is hidden by a zero font size, so the name is set
+ * in a fixed chrome size rather than the block's own.
+ *
+ * A bound block's dotted outline and label are drawn while it is hovered or holds the caret, and at
+ * no other time. Only the innermost hovered one draws, or every bound ancestor would light up with
+ * it. The label is absolutely positioned with NO inset and no positioned host: it sits at its
+ * static position (the start of the block's content) and is lifted above it, so the block's own
+ * `position` is left alone. Making every bound element `position: relative` would re-anchor the
+ * author's absolutely positioned descendants.
+ */
+
+/**
+ * Draw every text chip as its value or as its name (`canvas.setBindingDisplay`, studio.md §6.9).
+ *
+ * One attribute on the root, which survives a render and a patch (they replace the container's
+ * children only), so the parent may post the same value as often as it likes.
+ *
+ * @docs studio/interface/canvas
+ */
+export function applyBindingDisplay(doc: Document, display: "values" | "names" | null): void {
+  if (display === "names") {
+    doc.documentElement.dataset.jxBindingDisplay = "names";
+  } else {
+    delete doc.documentElement.dataset.jxBindingDisplay;
+  }
+}
 
 /**
  * Keep the design/edit canvas stylesheet in sync with the render mode: present (idempotently) for
@@ -389,6 +484,9 @@ dialog[data-jx-dialog-open] {
   flex: none !important;
   outline: 1px dashed color-mix(in srgb, #808080 55%, transparent);
   outline-offset: 2px;
+}
+data[data-jx-tag]:has(> *) {
+  display: contents;
 }
 dialog[data-jx-dialog-open]::before {
   content: "DIALOG \\00B7  SHOWN IN PLACE";
@@ -986,27 +1084,71 @@ export function makeStamper(ctx: PathMapCtx) {
     );
 
   /*
-   * Paths of the elements whose children an entry draws (`prepareForEditMode` marks them with
-   * `BOUND_FIELD_ATTR`). The runtime renders those children with paths under the element's, as if
-   * they were the document's own, but the document holds a binding there, not nodes: a stamped
-   * paragraph of a post's body was a caret target whose every keystroke addressed a node that does
-   * not exist. Left unstamped, a click inside one selects the element that draws them.
+   * Paths of the elements whose children are DRAWN FROM DATA: computed children (spec.md §8.4) and
+   * a chip, whose content is a binding's live value (an array there is spliced as nodes). The
+   * runtime renders those children with paths under the element's, as if they were the document's
+   * own, but the document holds a binding there, not nodes: a stamped paragraph of a post's body
+   * was a caret target whose every keystroke addressed a node that does not exist. Left unstamped,
+   * a click inside one selects the element that draws them.
    */
   const drawn: (string | number)[][] = [];
   const insideDrawn = (path: (string | number)[]): boolean =>
     drawn.some((root) => path.length > root.length && root.every((seg, i) => path[i] === seg));
 
+  /*
+   * Paths of the `$switch` cases that are another document (`{ "$ref" }`). The runtime fetches and
+   * renders one at `[…, "cases", key]`, but nothing under that path is in THIS document, so its
+   * root and everything below go unstamped and the root is closed to the caret.
+   */
+  const external: (string | number)[][] = [];
+  const externalRoot = (path: (string | number)[]): (string | number)[] | undefined =>
+    external.find((root) => path.length >= root.length && root.every((seg, i) => path[i] === seg));
+
   return (created: Node, path: (string | number)[], def: JxElement | string) => {
     if (!(created instanceof HTMLElement)) {
+      return;
+    }
+    /* A chip is not a node of the document (§4.5): it carries the expression it stands for, its
+       name and its kind, and no path. The values come from the definition rather than from its
+       `attributes`, where the runtime would resolve the `${…}` it is meant to carry verbatim. */
+    const tag = tagMarkOf(def);
+    if (tag) {
+      created.dataset.jxTag = tag.source;
+      created.dataset.jxTagLabel = tag.label;
+      created.dataset.jxTagKind = tag.kind;
+      // Where the chip stands in the document is part of what it stands for: see TAG_MEMBER_ATTR.
+      if (tag.member) {
+        created.dataset.jxTagMember = "";
+      }
+      if (tag.ref !== undefined) {
+        created.dataset.jxTagRef = tag.ref;
+      }
+      drawn.push(path);
+      return;
+    }
+    // The one element a templated string member is drawn as: its runs and chips, and no path.
+    if (isTextRun(def)) {
+      created.dataset.jxText = "";
       return;
     }
     if (insideDrawn(path)) {
       return;
     }
+    const outside = externalRoot(path);
+    if (outside) {
+      if (outside.length === path.length && isEditableMode(ctx.canvasMode)) {
+        created.contentEditable = "false";
+      }
+      return;
+    }
     if (isNonNullObject(def) && isTemplateString(def.children)) {
-      const { attributes } = def;
-      if (isNonNullObject(attributes) && isString(attributes[BOUND_FIELD_ATTR])) {
-        drawn.push(path);
+      drawn.push(path);
+    }
+    if (isNonNullObject(def) && def.$switch && isNonNullObject(def.cases)) {
+      for (const [key, body] of Object.entries(def.cases)) {
+        if (isRef(body)) {
+          external.push([...path, "cases", key]);
+        }
       }
     }
     // The OPENED document's root can itself be a component definition (`tagName: "eer-cta"`). If
@@ -1096,6 +1238,11 @@ export function makeStamper(ctx: PathMapCtx) {
  * per-image so a genuinely missing file settles broken. Intentional data: placeholders never error,
  * so they're untouched. Returns a teardown that removes the listener. <img> error events don't
  * bubble, so listen in CAPTURE.
+ *
+ * An image that settles broken (no retry left, or a source no retry could fix) is marked
+ * `empty-media-placeholder`, which the edit stylesheet draws as the image placeholder: a `src` that
+ * is merely BOUND resolves and draws the picture, and only a missing or failed one is a placeholder
+ * (studio.md §4.5). A later load takes the mark off.
  */
 /**
  * Whether a failed `<img>` is one a retry could ever fix.
@@ -1111,6 +1258,9 @@ export function isRetryableImage(img: HTMLImageElement): boolean {
   return raw !== "" && !raw.startsWith("data:");
 }
 
+/** The class the edit stylesheet draws as the image placeholder (`EDIT_PLACEHOLDER_CSS`). */
+const FAILED_MEDIA_CLASS = "empty-media-placeholder";
+
 export function installCanvasImageRetry(root: HTMLElement, maxAttempts = 3): () => void {
   const attempts = new WeakMap<HTMLImageElement, number>();
   const onError = (event: Event): void => {
@@ -1120,11 +1270,13 @@ export function installCanvasImageRetry(root: HTMLElement, maxAttempts = 3): () 
     }
     // An empty or data: source is not a request a retry could fix.
     if (!isRetryableImage(img)) {
+      img.classList.add(FAILED_MEDIA_CLASS);
       return;
     }
     const attempt = (attempts.get(img) ?? 0) + 1;
     if (attempt > maxAttempts) {
       // Bounded: a genuinely missing file settles broken instead of retrying forever.
+      img.classList.add(FAILED_MEDIA_CLASS);
       return;
     }
     attempts.set(img, attempt);
@@ -1135,8 +1287,17 @@ export function installCanvasImageRetry(root: HTMLElement, maxAttempts = 3): () 
       img.src = s;
     }, 150 * attempt);
   };
+  const onLoad = (event: Event): void => {
+    if (event.target instanceof HTMLImageElement) {
+      event.target.classList.remove(FAILED_MEDIA_CLASS);
+    }
+  };
   root.addEventListener("error", onError, true);
-  return () => root.removeEventListener("error", onError, true);
+  root.addEventListener("load", onLoad, true);
+  return () => {
+    root.removeEventListener("error", onError, true);
+    root.removeEventListener("load", onLoad, true);
+  };
 }
 
 /** What a full render is given: the resolved document and everything that decides how it draws. */
@@ -1225,8 +1386,8 @@ export async function prepareResolvedDocument(
   setCanvasDelinkCommands(opts.mode !== "preview");
   // Stamp `data-jx-bound-prop` on component-internal invertible text bindings in design/edit only —
   // The inline prop-edit affordance. Set every render so a preview/stylebook render in the same
-  // Iframe clears it (page-level templates are inert in design/edit via prepareForEditMode, so only
-  // Component internals get stamped).
+  // Iframe clears it. A page's own bound text is drawn as chips (`prepareForEditMode`), whose
+  // Content is a child and never `textContent`, so only component internals get stamped.
   setStampPropBindings(opts.mode === "design" || opts.mode === "edit");
   injectHead(opts.doc, assets);
   // Seed the runtime's root $media before buildScope so a COMPONENT with its own `@--name` blocks

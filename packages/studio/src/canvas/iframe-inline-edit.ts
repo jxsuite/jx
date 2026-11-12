@@ -35,9 +35,9 @@ import {
 } from "../editor/inline-edit";
 import { startEditableRoot } from "./iframe-editable-root";
 import { adjacentBlock, blocksInOrder } from "./iframe-position";
+import { chipSourcesBetween } from "./iframe-chips";
 import { isTagActiveInSelection, toggleInlineFormat } from "../editor/inline-format";
 import { applyLink, insertTemplateToken, linkStateForSelection } from "../editor/inline-link";
-import { restoreTemplateExpressions } from "../utils/edit-display";
 import { RESERVED_KEYS, camelToKebab } from "@jxsuite/runtime";
 import { rectOfRange } from "../utils/geometry";
 import { getNodeAtPath } from "../state";
@@ -57,6 +57,12 @@ import type { JxMutableNode } from "@jxsuite/schema/types";
 
 /** The commit a block session posts when its text reaches the document. */
 type EditCommitMsg = Extract<IframeToParent, { kind: "editCommit" }>;
+
+/** A write of one block's content taken from the canvas: a commit, a split or a slash insert. */
+type BlockWriteMsg = Extract<IframeToParent, { kind: "editCommit" | "editSplit" | "editInsert" }>;
+
+/** The collapse of a selection that spans blocks. */
+type EditRangeReplaceMsg = Extract<IframeToParent, { kind: "editRangeReplace" }>;
 
 /** The commit a prop-bound session posts for its instance's `$props` value. */
 type EditCommitPropMsg = Extract<IframeToParent, { kind: "editCommitProp" }>;
@@ -329,20 +335,44 @@ export function startIframeInlineEdit(
   /** Whether this typing burst's first keystroke has been announced (`editInput`). */
   let inputAnnounced = false;
 
+  /**
+   * The chips the author has deleted from the active block since its content last reached the
+   * document, each as the expression it stood for (studio.md §4.5). Reported with the next write of
+   * that block and then forgotten: the document no longer holds the binding once the write lands,
+   * so there is nothing left to excuse.
+   */
+  let removedTags: string[] = [];
+
+  /** Hand over what has been deleted since the last write, leaving none. */
+  const takeRemovedTags = (): string[] => {
+    const taken = removedTags;
+    removedTags = [];
+    return taken;
+  };
+
+  /** `message` with the deletions since the last write, when there are any. */
+  const withRemoved = <T extends BlockWriteMsg>(message: T): T => {
+    const removed = takeRemovedTags();
+    if (removed.length > 0) {
+      message.removedTags = removed;
+    }
+    return message;
+  };
+
   const enterEditAt = (el: HTMLElement, path: JxPath) => {
-    // Show raw `${expr}` syntax for editing (the render displays it as ❪ expr ❫).
-    restoreTemplateExpressions(el);
+    // A new block starts with nothing deleted: a deletion belongs to the block it happened in.
+    removedTags = [];
     channel.post({ kind: "editStart", path });
     startEditing(el, path, {
-      // `inPlace` rides along only when set: a release commit is the common case and the flag is
-      // Optional, so omitting it keeps the message shape unchanged for every non-tick commit.
+      // `inPlace` and `removedTags` ride along only when set: both are optional, so omitting them
+      // Keeps the message shape unchanged for the common commit.
       onCommit: (p, children, textContent, inPlace) => {
         inputAnnounced = false;
         const commit: EditCommitMsg = { children, kind: "editCommit", path: p, textContent };
         if (inPlace) {
           commit.inPlace = true;
         }
-        channel.post(commit);
+        channel.post(withRemoved(commit));
       },
       onEnd: () => {
         clearHighlight();
@@ -350,8 +380,12 @@ export function startIframeInlineEdit(
         channel.post({ kind: "editEnd" });
       },
       onInsert: (p, cmd, commitData) =>
-        channel.post({ cmd, commitData, kind: "editInsert", path: p }),
-      onSplit: (p, before, after) => channel.post({ after, before, kind: "editSplit", path: p }),
+        channel.post(withRemoved({ cmd, commitData, kind: "editInsert", path: p })),
+      onSplit: (p, before, after, removed) => {
+        // The chips the split's selection covered are the author's deletion, like any other.
+        removedTags.push(...removed);
+        channel.post(withRemoved({ after, before, kind: "editSplit", path: p }));
+      },
     });
     // Post an initial (collapsed-caret) snapshot so the toolbar shows on entry.
     cacheRange();
@@ -578,7 +612,21 @@ export function startIframeInlineEdit(
     // Commit pending text in the active block first, or the collapse would splice the block's last
     // COMMITTED content and silently drop whatever was typed since.
     root.flush();
-    channel.post({ between, from, kind: "editRangeReplace", text, to });
+    /* The chips the selection covers in its two end blocks are the ones the author is deleting:
+       everything from the start offset on in the first, everything before the end offset in the
+       last. Read from the DOM, where the selection is, and after the flush above, which may have
+       normalized it. */
+    const first = blocks[start];
+    const last = blocks[end];
+    const removed = [
+      ...(first ? chipSourcesBetween(first, from.offset) : []),
+      ...(last ? chipSourcesBetween(last, 0, to.offset) : []),
+    ];
+    const replace: EditRangeReplaceMsg = { between, from, kind: "editRangeReplace", text, to };
+    if (removed.length > 0) {
+      replace.removedTags = removed;
+    }
+    channel.post(replace);
     return true;
   };
 
@@ -616,6 +664,9 @@ export function startIframeInlineEdit(
     onPropActivate: activateProp,
     onSelectionChange: () => onSelectionChange(),
     onSplit: () => splitActiveBlock(),
+    onTagsRemoved: (sources) => {
+      removedTags.push(...sources);
+    },
   });
 
   /* The slash gesture, at the EDITING HOST.
