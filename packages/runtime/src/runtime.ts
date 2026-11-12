@@ -70,6 +70,7 @@ import {
   isString,
   isTagExpression,
   isTemplateString,
+  templateExpressions,
 } from "@jxsuite/schema/guards";
 import type { TagNameSlot } from "@jxsuite/schema/guards";
 import {
@@ -1369,11 +1370,15 @@ function rowContext(state: JxScope): JxRowContext | undefined {
  * Whether a template is ONE expression end to end — `"${a.b}"` rather than `"a ${b}"` or
  * `"${a}${b}"`.
  *
- * Depth-counted rather than pattern-matched. A greedy `/^\$\{(.+)\}$/` also matched `"${a} /
- * ${b}"`, spliced the interior into `return (a} / ${b)`, and the SyntaxError became a silent null:
- * the node rendered empty and a `$head` entry shipped its own template text. A brace scan is exact
- * where a tightened regex is not — `"${`${a}-x`}"` is still one expression, and must keep its raw
- * value.
+ * Scanned rather than pattern-matched. A greedy `/^\$\{(.+)\}$/` also matched `"${a} / ${b}"`,
+ * spliced the interior into `return (a} / ${b)`, and the SyntaxError became a silent null: the node
+ * rendered empty and a `$head` entry shipped its own template text. A scan is exact where a
+ * tightened regex is not — `"${`${a}-x`}"` is still one expression, and must keep its raw value.
+ *
+ * The scan is `templateExpressions`, the one every reader of a template shares, so a `}` inside a
+ * string does not end the expression: a brace count read `"${a ? '}' : b}"` as text around an
+ * expression, and its value arrived as a string where the same expression without the quoted brace
+ * kept its type.
  *
  * Lives here rather than in the compiler because both renderers must draw the line in the same
  * place. It is what decides whether a value keeps its own type, and a value that is a boolean in
@@ -1387,19 +1392,8 @@ export function isSingleExpression(str: string): boolean {
   if (!str.startsWith("${") || !str.endsWith("}")) {
     return false;
   }
-  let depth = 0;
-  for (let i = 1; i < str.length; i += 1) {
-    const c = str[i];
-    if (c === "{") {
-      depth += 1;
-    } else if (c === "}") {
-      depth -= 1;
-      if (depth === 0) {
-        return i === str.length - 1;
-      }
-    }
-  }
-  return false;
+  const [only, ...more] = templateExpressions(str);
+  return only !== undefined && more.length === 0 && only.start === 0 && only.end === str.length;
 }
 
 /**

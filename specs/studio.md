@@ -169,7 +169,7 @@ When navigating between components, pages, and layouts within a project, the sit
 
 The canvas renders the current document using `@jxsuite/runtime`. It shows exactly what the component looks like at runtime — no simulation or approximation. When a site context is active (§3.6), the canvas applies the site's global styles, CSS custom properties, and media breakpoints so that every file is rendered in its true site context.
 
-**Bindings render live in every mode, except the author's own text.** Edit and Design resolve a `${…}` template or a `{ "$ref" }` against the document's real state, so a style, a class, an attribute, a media `src` and a component's `$props` show what the page will (`prepareForEditMode` in `packages/studio/src/utils/edit-display.ts`). Two kinds of value are shown as their binding instead: a bound `textContent`, which reads `❪ expr ❫` so that editing it in place edits the template rather than replacing it with today's value, and anything outside a component's `$props` that reads the repeater row (`item`, `index`, `$map`), because the perimeter draws one row; there a link target is inert, an image-like key is a gray placeholder and a media `src` a transparent pixel. A `$switch` expression also shows as text, since its `cases` are replaced by the first case. Showing every binding as text, as the canvas used to, fed that text to components as values: a header's `variant` arrived as the literal `❪ state.headerVariant ❫` and matched none of its styles.
+**Bindings render live in every mode, except the author's own text.** Edit and Design resolve a `${…}` template or a `{ "$ref" }` against the document's real state, so a style, a class, an attribute, a media `src` and a component's `$props` show what the page will (`prepareForEditMode` in `packages/studio/src/utils/edit-display.ts`). Two kinds of value are shown as their binding instead: a bound `textContent`, which reads `❪ expr ❫` so that editing it in place edits the template rather than replacing it with today's value, and anything outside a component's `$props` that reads the repeater row (`item`, `index`, `$map`), because the perimeter draws one row; there a link target is inert, an image-like key is a gray placeholder and a media `src` a transparent pixel. A row-bound `hidden`, `inert` or `disabled` is left off instead, as an attribute or as a property: a boolean attribute is on when it is present, whatever it says, so the binding's text hid the element the author came to edit or closed it to the pointer that selects it. A `$switch` expression also shows as text, since its `cases` are replaced by the first case. Showing every binding as text, as the canvas used to, fed that text to components as values: a header's `variant` arrived as the literal `❪ state.headerVariant ❫` and matched none of its styles. §4.5 specifies the canvas that draws these values resolved instead; until it ships, this paragraph and the two after it are what Edit and Design draw.
 
 **Text a content entry draws is not the author's own, so it renders live.** On a document that declares a `ContentEntry` state entry (a collection's page, §22.4), a `textContent` whose every `${…}` is a member path of that entry (`${state.entry.data.title}`, `${state.entry.data.date} · ${state.entry.data.tag}`, or the `{ "$ref": "#/state/entry/data/title" }` form), and computed children that read one (`"${state.entry.$children ?? []}"`), are drawn with the entry the page's route parameters name rather than as `❪ expr ❫`: a collection's page reads as one of its posts, not as a column of labels. Such an element is closed to the caret, because its words are the entry's and editing them in place would replace the binding with one entry's value, and it carries the fields it shows (`data-jx-bound-field`, `title`, `date · tag`, `body` for the entry's body), which Edit and Design draw as a dashed outline with a badge naming them. While no entry resolves (none chosen, an empty collection) each expression reads as its binding instead, so the page still says what goes where. Text that reads anything besides the entry (`${state.entry.data.title} ${state.heading}`, a method call on a field) keeps the rule above and shows its binding. The children an entry draws are not the page's nodes, so they carry no document path: a click among a post's paragraphs selects the element that draws them, and no caret can land in them (`entryRootsOf`, `entryBoundFields` and `prepareForEditMode` in `utils/edit-display.ts`; `makeStamper` in `canvas/iframe-render.ts`). A text edit that makes a node entry-bound, or stops it being one, redraws that node rather than writing its text, so the badge comes and goes with the binding (`canvas/iframe-patch.ts`).
 
@@ -226,7 +226,7 @@ Preview also renders on its own surface rather than the pan/zoom artboard. Edita
 
 **The frame must actually be allowed to scroll**, which is a property of the canvas DOCUMENT and not only of the frame. `canvas.html` clips `html, body` because every editable mode needs it — the frame is content-height there and the parent is what pans — so preview lifts the clip and sizes the query container to the real viewport (`syncPreviewShell`). Without that, a pane-height frame around a clipped document showed the first screenful of every page and offered no way down: the frame was a viewport and the document refused to be longer than it.
 
-**Preview is a TOGGLE over an edit/design base, and the surface says so.** It has always been stored that way — a per-tab flag composed with `ui.canvasMode`, which is why `canvasModeOfPane` folds the two into one effective mode for the renderer. The View control nevertheless drew all three as one radio, so while previewing it could not report which mode was underneath or which one leaving would return to. It is a two-value radio (`Edit │ Design`) with a pressed toggle beside it; the base stays marked throughout. Arriving at a base still clears the flag, so "Design" means Design from any state.
+**Preview is a TOGGLE over an edit/design base, and the surface says so.** It has always been stored that way — a per-tab flag composed with `ui.canvasMode`, which is why `canvasModeOfPane` folds the two into one effective mode for the renderer. The View control nevertheless drew all three as one radio, so while previewing it could not report which mode was underneath or which one leaving would return to. It is a two-value radio (`Edit │ Design`) with a pressed toggle beside it; the base stays marked throughout. Arriving at a base still clears the flag, so "Design" means Design from any state. §4.5 specifies the editing canvas and the browser hand-off that between them cover what the toggle is for; this section describes the toggle as it ships.
 
 **Preview honours the chosen breakpoint**, at the width Edit gives its column and Design gives that artboard, so the same page at `md` is the same page whichever base the toggle is over. It ignored the size switcher entirely and filled the pane at every size — the same defect as the Edit column's, and the same rule decides it: a control that changes the rendering context has to change the rendering, or it is a control over a label. With no breakpoint chosen it fills the pane.
 
@@ -332,6 +332,42 @@ The bar has ONE shape. The formatting group is present whenever the selected blo
 - **Two doors back, because one is not enough.** A selection change reopens it, which is what makes a click on an Outline row — chrome, and therefore a hide — still show the bar for the row it selected. Clicking the already-selected element changes no selection, so the canvas's own pointerdown is the second door.
 
 Formatting applies to a range, so the buttons are disabled for a collapsed caret and for a block selected without a caret at all (from the layers panel, or by a structural edit moving the selection). Component instances and prop-bound blocks have no group: a component tag declares no inline actions, and prop-bound text is a single plain string.
+
+### 4.5 Live data on the editing canvas
+
+> **Status: Pending.** The canvas this section describes does not ship. Edit and Design draw a bound `textContent` as `❪ expr ❫`, one row per repeater with its row-bound values replaced by stand-ins, and a `$switch` as its first case (§4.1, `prepareForEditMode` in `packages/studio/src/utils/edit-display.ts`); remote data is fetched in Preview alone (§4.1), and Open in Browser serves a page and nothing else (§10.1). Of the three guards below, the only part that ships is §8.2.7's refusal, which covers a binding held by a string member of `children` and nothing else.
+
+**Edit and Design show the data, not the binding.** Every binding the page will resolve is resolved on the editing canvas, against the document's real scope, by the runtime that will render the built page. The transform that prepares a document for an editable view stays the one place the parent changes what the frame is given: it still strips event handlers, and the runtime still de-links, de-popovers and de-commands stamped nodes (§4.2.2, §4.2.3). It no longer replaces a value with a label, a placeholder or a sample. A row-bound attribute, a media `src`, an `innerHTML` and a style value are each the value the row gives them. An image placeholder is drawn only for a `src` that is missing or failed to load, never for one that is merely bound. A binding that fails to evaluate yields no value, so a boolean attribute bound to it (`hidden`) is removed rather than left standing.
+
+**Bound text is drawn as segments.** A templated `textContent` renders as its literal runs and one **chip** per `${…}`; a `{ "$ref" }` text is a single chip. A chip is an element closed to the caret that carries the expression it stands for, verbatim, and whose content is that expression's live value. A templated string member of a `children` array renders as exactly one node, so a sibling's index on the canvas is its index in the document. A chip is not a node of the document: it carries no document path, and a click on one selects the block that holds it.
+
+**At rest the page reads as the page.** A chip that nobody is editing is indistinguishable from the text around it: no glyph, no outline, no badge. While the caret is in a block, each chip in it is drawn as a named token (§6.9) and is atomic: the arrow keys step over it, and Backspace, Delete and cut take it whole. A block with any bound property shows a dotted outline and a label on hover and on selection, and at no other time; there is no always-on mark for bound content.
+
+**A repeater draws its rows.** Every item of the list renders through the template, each node with its own row scope. The document path of a node in a row is the template's path (`[…, "map", …]`), the same for every row; which row it is drawn in is a separate coordinate and never part of the path. Exactly one row of each repeater, the **active row** (the first until another is chosen), is addressable: its nodes carry the document path. Every other row is an **echo row**, which carries the same path under an echo marker and is closed to the caret. So a lookup by document path finds one element however many rows are drawn, which is the assumption selection, patching, the caret and drop all make. A press in an echo row ends any caret session, makes that row the active one, and is then an ordinary press: any row can be edited, one at a time. The active row is per-tab view state keyed by the repeater's path, survives a render, writes nothing to the document, and is set by `canvas.setActiveRow`.
+
+**An edit in a row is an edit to the template.** A patch to a path under a repeater is applied to every row that draws it, each re-rendered with its own row scope, never the page's. An echo row is de-linked and de-popovered as a stamped node is (§4.2.2), and a moved or remapped row keeps its marker. The repeater has no element of its own, so its box, for the selection outline and for measuring, is the union of its rows' boxes. A structural edit whose parent holds a repeater or a computed list escalates to a full render (§4.1), because a document child index and a DOM child index are different numbers there and a surgical insert would land in the wrong place without saying so. A drop or an insert aimed at a row's root targets the repeater's own slot in its parent.
+
+**An empty list still shows its template.** When a repeater's list is empty, or cannot be resolved, the canvas draws one row from a sample item derived from the item's declared shape (§6.8), marked "No items: showing the template", so the template stays selectable and editable. At most 24 rows of a repeater are drawn until the author asks for more; `canvas.setRepeaterRows` sets the number for the tab.
+
+**A commit can never write a resolved value.** Showing a value where the author types is only safe if the value cannot come back as source. Three independent guards hold that, and each is sufficient alone:
+
+1.  **Resolved values exist only inside elements closed to the caret.** Nothing the author can type into contains a value the runtime computed.
+2.  **Serialization writes a chip as the expression it carries, never as its text.** Chips are exempt from every inline normalization (§8.2.7): they are not merged with a neighbour, collapsed into a parent, or dropped for being empty.
+3.  **A commit that would drop a binding the stored value held is refused**, unless the editing session reported that the author deleted that chip. This applies to a text commit, a range replace and a block merge alike.
+
+The round trip is the test of all three: for any template, and for scope values that differ from the template's own text, serializing what the canvas rendered yields the template byte for byte.
+
+**A `$switch` draws its live case.** The `cases` reach the frame as written, and the case the expression selects renders at its own path under `cases`, so it is selected and edited where it is stored. `canvas.setSwitchCase` shows another case for the tab without changing the document or the expression.
+
+**A computed list is closed to the caret.** Computed children (spec.md §8.4), and a string child that resolves to an array, render live as the build renders them. Their nodes are not the document's, so they carry no document path; the list is marked "Computed list", a click in it selects the element that hosts it, and no caret can land in it.
+
+**Remote data is fetched once.** The first render of a document after it is opened runs its automatic `GET` `Request` entries and its `timing: "server"` functions once. Each result is cached for the session, keyed by the entry's definition, and substituted on every later render, so a full render never repeats a request and an edit to an entry's definition is what invalidates its result. The Data panel's Refresh (§5.6) is the verb that fetches again. A request that is not a `GET` never fires on the canvas, and its entry reads "Runs on the live page". A host that cannot resolve a class through its backend draws template rows and says so once, rather than once per repeater. When this ships it replaces §4.1's rule that live data belongs to Preview.
+
+**A state value can be set for the session.** `canvas.setStateValue` takes `{ key, value }` and overrides that state entry's value on the canvas; a `null` value removes the override. The Data panel offers the same control on a row. An override is per-tab view state: it writes nothing to the document, takes no undo entry and is not replicated. It is how a component's states are exercised without leaving the editing canvas.
+
+**Open in Browser runs pages, components and layouts.** `view.openInBrowser` (§10.1) accepts a component or a layout as well as a page: the backend renders the document alone, on a route of its own, with the tab's test props. Between the editing canvas, which shows resolved data, and the browser, which runs handlers, navigation and server functions for real, nothing is left that only the Preview toggle (§4.2) can show; §4.2 describes that toggle for as long as it ships.
+
+**Every control here is a setter.** `canvas.setActiveRow`, `canvas.setRepeaterRows`, `canvas.setSwitchCase`, `canvas.setStateValue`, and §6.9's `canvas.setTagPopover` and `canvas.setBindingDisplay`, each name the state they end in (§13.5), so each can be scripted and repeated. The messages the frame needs for them are announced in a capability list on the frame's `ready` message: the frame bundle ships prebuilt, a message kind the other side does not know is dropped without a word, and a host must be able to tell an old frame from a broken one.
 
 ---
 
@@ -874,6 +910,59 @@ A field holding an object is offered with its members, because a component can t
 
 **A nested repeater's Items offers the lists on the outer item**, and only those: the position takes a list, so the index or a text field would render nothing. **A formula operand offers the same fields** as a **List item** group, on the Inspector's rungs, in event handlers and statements, and in the formula workspace. A `$ref` to a field no schema declares is still legal and still reads back, as the select's stand-in row.
 
+### 6.9 Dynamic tags
+
+> **Status: Pending.** Only the splitter ships: `templateExpressions` in `packages/schema/src/guards.ts` finds each `${…}` of a template with quotes and braces read as JavaScript reads them, and the runtime, the canvas transform and the inline formatter all read templates through it. A `${…}` in text is edited as raw template text on the **Mixed text** rung (§6.6) and drawn on the canvas as `❪ expr ❫` (§4.1); Insert data writes the template's characters into the text; no tag grammar, tag popover, Bound pill or packaged format formula exists.
+
+A **dynamic tag** is one `${…}` of a template, or one `{ "$ref" }`, presented as a named, structured thing instead of as code. It is the unit §4.5 draws as a chip.
+
+**Templates stay JavaScript.** A template expression is JavaScript and is evaluated as JavaScript (spec.md §5.3); nothing here adds a template language or narrows what an author may write. A tag is a **recognised subset** of that JavaScript, the shapes Studio can show as fields and print back exactly:
+
+```text
+tag   := "!"{0,2} pipe ( ( "??" | "||" ) literal )?
+pipe  := "state." ident "(" pipe ( "," json )* ")" | path
+path  := root ( "." ident | "?." ident | "[" json "]" )*
+```
+
+A `path` reads a value: a state entry, a member of one, or the repeater's `item` and `index`. A `pipe` passes that value through a named formula of the document's state, with any further arguments written as JSON. The optional tail is a fallback literal after `??` or `||`, and the optional head is one or two `!`. The `||` and `!` forms are in the grammar because converted and hand-written sites use them for "show this or nothing" as often as they use `??`.
+
+**Reading never normalizes.** Parsing an expression into a tag and printing an unedited tag back yields the expression the author wrote, byte for byte: its spacing, its quote style, and its choice of `??` or `||` are the author's. A tag is reprinted only for the part an edit changed. A reader that tidied on the way in would make opening a popover a change to the document.
+
+**Everything else is a Custom expression.** An expression outside the grammar (a ternary, arithmetic, a method call on a value, a regular expression, anything the splitter cannot close) is a tag of kind **Custom expression**: it is drawn with its live value like any other, its popover offers the raw expression and nothing structured, and it is stored untouched. Raw code never draws on the canvas. Splitting a template into its `${…}` parts is quote-aware and brace-aware, so an object literal or a string containing `}` inside an expression does not end it.
+
+**A tag has a kind and a name.** The kinds are field (a path), format (a pipe), ref (a `{ "$ref" }`) and custom. A tag's name is what a person would call it: the field's title from its schema where one is declared ("Post date"), otherwise the path's last member made readable. The same name is used by the chip, the pills and the popover, so an author meets one name for a value (§6.8).
+
+**The tag popover edits one tag.** It is opened on a chip while the caret is in its block, and by `canvas.setTagPopover`, which names the tag to show or `null` to close; exactly one is open per tab, as view state. Its fields, top to bottom:
+
+| Field        | Holds                                                                                                         |
+| ------------ | ------------------------------------------------------------------------------------------------------------- |
+| **Source**   | The value read, chosen from the **From data…** picker (§6.8) with the value-source ladder's vocabulary (§6.6) |
+| **Format**   | The formula applied, as presets each drawn with the real value, and the formula's own parameters as fields    |
+| **Fallback** | The literal used when the value is empty                                                                      |
+| **Now**      | What the tag resolves to on the active row at this moment, or the error it throws                             |
+| **Advanced** | The raw expression, editable; an edit that leaves the grammar turns the tag into a Custom expression          |
+
+A formula's parameter fields are derived from the types its definition declares, never from a list kept in Studio, which is §6.6's second rule applied to formulas. The popover is a surface document built from the UI kit, like every other surface.
+
+**Bound pills name what is bound, on the block that binds it.** The block action bar (§4.4) carries one **Bound** pill per bound property of the selected block, naming the property and the tag ("Image: Featured image"). A pill opens that property's tag. It is how a binding that draws no text, such as an image's `src` or a link's target, is found from the canvas.
+
+**Insert adds a tag, not characters.** The format group's insert control places a tag at the caret as a chip, chosen from the same picker; it does not type a template's characters into the text. The Inspector's **Mixed text** rung (§6.6) shows the same strip of literal runs and chips, with the same resolved values, so the two surfaces edit one representation.
+
+**The canvas can show names instead of values.** `canvas.setBindingDisplay` takes `values` or `names`. `values`, the default, is §4.5's canvas. `names` draws every chip as its tag's name at rest, for reading a template's structure and for documentation. It is per-tab view state and changes nothing that is stored.
+
+**Format formulas are packaged.** `@jxsuite/formulas` ships the formulas the presets write, so a tag's format is an ordinary named formula an author could have written by hand:
+
+| Formula        | Gives                                                                                 |
+| -------------- | ------------------------------------------------------------------------------------- |
+| `formatDate`   | A date formatted in the page's locale; an empty input gives an empty string, no throw |
+| `formatNumber` | A number formatted in the page's locale                                               |
+| `relativeTime` | A date as a distance from now ("3 days ago")                                          |
+| `notEmpty`     | Whether a value has content, for `hidden` and conditions                              |
+| `orBlank`      | The value, or an empty string when it is missing                                      |
+| `escapeHtml`   | A string made safe to place in `innerHTML`                                            |
+
+A pure named formula in a page's state does not by itself make the page dynamic (compiler.md §3): a page whose only use of state is a date tag still builds static.
+
 ## 7. Project Styles
 
 ### 7.1 Overview
@@ -1052,6 +1141,8 @@ The match is by name against that one prop, so an unrelated `class` or `classNam
 
 1. **Adjacent text merge**: Adjacent bare strings are always joined. `["hello ", "world", { "tagName": "em", ... }]` → `["hello world", { "tagName": "em", ... }]`
 2. **All-text fold**: If all children are bare strings (no element siblings), they collapse into a single `textContent` property on the parent — the simpler representation.
+
+**A commit never replaces a template with its value.** A string member of a `children` array that holds a `${…}` template is drawn resolved, at any depth of inline markup, so the text the canvas hands back for it is the value and not the template. A write that takes its content from the canvas (a text commit, a block split, a slash insert), or that cuts stored content at offsets the canvas counted over the resolved value (a range replace), is refused when what it would store carries fewer copies of such a binding than the block's stored `children` hold. The document is untouched, the block is drawn again from it so the canvas does not go on showing text that was not saved, and the author is told that the text is drawn from a binding. A write that still carries every one of them is an edit of the text around them and goes through, and a block a range removes whole is a deletion the author asked for (`dropsMemberBinding` in `packages/studio/src/editor/inline-edit-apply.ts`; `onCommitRefused` in `packages/studio/src/canvas/iframe-host.ts`). A templated `textContent` needs no such refusal: it is drawn as its binding (§4.1), so what a commit reads back is the template.
 
 ### 8.3 Format File Loading
 
