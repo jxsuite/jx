@@ -40,7 +40,11 @@ import {
   getNestedStyle,
   isEventBinding,
   isNonNullObject,
+  isRef,
+  isTemplateString,
 } from "@jxsuite/schema/guards";
+import { PAYLOAD_ATTRIBUTE, payloadOf, propSources, shorthandCarries } from "../utils/prop-source";
+import type { PropSource } from "../utils/prop-source";
 
 const HISTORY_LIMIT = 100;
 
@@ -1646,6 +1650,129 @@ export function mutateUpdateProp(tab: Tab, path: JxPath, propName: string, value
   }
   recordDocOp(setKeyPair(path, "$props", propsBefore, cloneValue(node.$props)));
   recordPatch({ op: "replace", path });
+}
+
+/**
+ * Write a component instance's prop where the instance delivers it (studio.md §8.2.6).
+ *
+ * `$props` is one route of five (`utils/prop-source.ts` lists them), and writing it while the value
+ * lives in another leaves two sources for one rendered value. So the value goes back where it won:
+ * a `props.*` attribute keeps a literal string, a reflected attribute keeps a literal scalar, a
+ * top-level key keeps anything, and a `data-jx-props` payload keeps plain JSON. A value the route
+ * cannot carry (a binding, a number or a boolean in the `props.*` shorthand; an object or a binding
+ * in an attribute, which the runtime reads once at connection; a binding in the payload) MOVES to
+ * `$props`. A prop nothing on the instance supplies is written to `$props`, as it always was.
+ *
+ * Every write leaves the prop ONE source: the other places that also name it, which the winner was
+ * shadowing, are removed in the same transaction, and clearing (`undefined`) removes all of them,
+ * so a shadowed value never resurfaces when the winner goes. On a route other than `$props` an
+ * empty string is a value, kept where it is: a field emptied on the way to new text must not drop
+ * the prop out of the attribute it lives in. On `$props` it clears, as `mutateUpdateProp` always
+ * has.
+ *
+ * Call it inside `transactDoc`; the sources are read at write time, so a write follows an edit made
+ * since the panel last rendered.
+ */
+export function mutateUpdateInstanceProp(
+  tab: Tab,
+  path: JxPath,
+  prop: string,
+  value?: JsonValue,
+): void {
+  const node = requireNodeAt(tab.doc.document, path);
+  const [winner, ...shadowed] = propSources(node, prop);
+  const clearing = value === undefined || value === null;
+  const inPlace =
+    !clearing &&
+    winner !== undefined &&
+    winner.route !== "$props" &&
+    routeCarries(winner, prop, value);
+  for (const source of inPlace ? shadowed : [winner, ...shadowed]) {
+    if (source && source.route !== "$props") {
+      writePropSource(tab, path, node, source);
+    }
+  }
+  if (inPlace) {
+    writePropSource(tab, path, node, winner, value);
+    return;
+  }
+  /* SAFETY: `mutateUpdateProp` reads an absent value as a deletion, exactly as the callers that pass
+     it a cleared control's `undefined` already rely on. */
+  mutateUpdateProp(tab, path, prop, value as JsonValue);
+}
+
+/** Whether `source`'s route can hold `value` without changing what it means. */
+function routeCarries(source: PropSource, prop: string, value: JsonValue): boolean {
+  switch (source.route) {
+    case "props-attribute": {
+      return shorthandCarries(prop, value);
+    }
+    case "attribute": {
+      // Read off the element once, at connection: a binding here would freeze at its first value.
+      return !isNonNullObject(value) && !isTemplateString(value);
+    }
+    case "payload": {
+      // The payload is parsed, never evaluated: a binding written into it would render as its text.
+      return !isRef(value) && !isTemplateString(value);
+    }
+    default: {
+      return true;
+    }
+  }
+}
+
+/**
+ * Set (or, with `undefined`, remove) the value at one non-`$props` source. Unlike the general
+ * attribute and property writers, an empty string is written rather than read as a deletion.
+ */
+function writePropSource(
+  tab: Tab,
+  path: JxPath,
+  node: JxMutableNode,
+  source: PropSource,
+  value?: JsonValue,
+): void {
+  switch (source.route) {
+    case "property": {
+      const before = cloneValue(node[source.key]);
+      if (value === undefined) {
+        delete node[source.key];
+      } else {
+        node[source.key] = value;
+      }
+      recordDocOp(setKeyPair(path, source.key, before, cloneValue(node[source.key])));
+      recordPatch({ key: source.key, op: "set-prop", path });
+      return;
+    }
+    case "payload": {
+      const payload = { ...payloadOf(node) };
+      if (value === undefined) {
+        delete payload[source.key];
+      } else {
+        payload[source.key] = value;
+      }
+      const next = Object.keys(payload).length > 0 ? JSON.stringify(payload) : undefined;
+      mutateUpdateAttribute(tab, path, PAYLOAD_ATTRIBUTE, next);
+      return;
+    }
+    default: {
+      const before = cloneValue(node.attributes);
+      node.attributes ??= {};
+      const attrs = node.attributes;
+      if (value === undefined) {
+        delete attrs[source.key];
+      } else {
+        /* SAFETY: `routeCarries` admitted only a string for the shorthand and a literal scalar for a
+           reflected attribute, which is what an attribute value is. */
+        attrs[source.key] = value as JxAttributeValue;
+      }
+      if (Object.keys(attrs).length === 0) {
+        delete node.attributes;
+      }
+      recordDocOp(setKeyPair(path, "attributes", before, cloneValue(node.attributes)));
+      recordPatch({ attr: source.key, op: "set-attr", path });
+    }
+  }
 }
 
 /**

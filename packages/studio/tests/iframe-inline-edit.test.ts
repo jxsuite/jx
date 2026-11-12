@@ -5,7 +5,7 @@
  */
 import "./with-dom.js";
 import { afterEach, describe, expect, test } from "bun:test";
-import { deliveredOutsideProps, startIframeInlineEdit } from "../src/canvas/iframe-inline-edit";
+import { startIframeInlineEdit } from "../src/canvas/iframe-inline-edit";
 import { startIframeSlashBridge } from "../src/canvas/iframe-slash";
 import {
   commitActiveBlock,
@@ -15,6 +15,7 @@ import {
   stopEditing,
 } from "../src/editor/inline-edit";
 import { caretInto } from "./harness";
+import { stubAriaLabel } from "./aria-reflection";
 import type { SlashCommand } from "../src/editor/inline-edit";
 import { serializeJxPath } from "../src/canvas/path-mapping";
 import type { IframeChannel } from "../src/canvas/iframe-channel";
@@ -1099,6 +1100,7 @@ describe("prop-bound inline editing", () => {
        an ARIA-style reflection carries `aria-label` for the `ariaLabel` property. (happy-dom
        implements no ARIA reflection, so the runtime half of the kebab case is a browser fact, not
        one this suite can reproduce — the studio half is what is asserted here.) */
+    const restore = stubAriaLabel();
     for (const [attr, prop] of [
       ["TITLE", "title"],
       ["aria-label", "ariaLabel"],
@@ -1117,6 +1119,24 @@ describe("prop-bound inline editing", () => {
       stop();
       document.body.innerHTML = "";
     }
+    restore();
+  });
+
+  test("an attribute named like a prop that is no DOM property does not block it", () => {
+    /* The runtime's merge asks `key in this`, and `heading` is not on an element: the attribute
+       writes no property, so `$props` is what the instance draws and editing it is visible. */
+    const { channel, posts } = fakeChannel();
+    const { container, h3, shadowDoc } = propBoundContainer(
+      undefined,
+      { HEADING: "x", heading: "x" },
+      undefined,
+      "heading",
+    );
+    const stop = boot(channel, container, { getShadowDoc: () => shadowDoc });
+
+    clickInto(h3);
+    expect(posts).toContainEqual({ kind: "editStart", path: ["children", 1], prop: "heading" });
+    stop();
   });
 
   test("an unrelated attribute does not block an ordinary prop", () => {
@@ -1460,66 +1480,5 @@ describe("entry-field inline editing", () => {
     clickInto(h1);
     expect(posts.filter((m) => m.kind === "editStart")).toEqual([]);
     stop();
-  });
-});
-
-// ─── deliveredOutsideProps ───────────────────────────────────────────────────
-
-describe("deliveredOutsideProps", () => {
-  test("a node that is absent, or carries only $props, delivers nothing by another route", () => {
-    expect(deliveredOutsideProps(undefined, "label")).toBe(false);
-    expect(deliveredOutsideProps({ $props: { label: "x" }, tagName: "x-card" }, "label")).toBe(
-      false,
-    );
-    expect(deliveredOutsideProps({ attributes: {}, tagName: "x-card" }, "label")).toBe(false);
-  });
-
-  test("a props.* attribute delivers exactly the prop it names", () => {
-    const node: JxMutableNode = { attributes: { "props.label": "x" }, tagName: "x-card" };
-    expect(deliveredOutsideProps(node, "label")).toBe(true);
-    expect(deliveredOutsideProps(node, "note")).toBe(false);
-  });
-
-  test("a same-named attribute delivers the prop, whatever its case", () => {
-    expect(deliveredOutsideProps({ attributes: { label: "x" }, tagName: "x-card" }, "label")).toBe(
-      true,
-    );
-    expect(deliveredOutsideProps({ attributes: { LABEL: "x" }, tagName: "x-card" }, "label")).toBe(
-      true,
-    );
-    expect(
-      deliveredOutsideProps({ attributes: { cardlabel: "x" }, tagName: "x-card" }, "cardLabel"),
-    ).toBe(true);
-  });
-
-  test("the kebab attribute of a camelCase prop delivers it", () => {
-    const node: JxMutableNode = { attributes: { "card-label": "x" }, tagName: "x-card" };
-    expect(deliveredOutsideProps(node, "cardLabel")).toBe(true);
-    expect(deliveredOutsideProps(node, "card")).toBe(false);
-  });
-
-  test("a data-jx-props payload delivers the props it names and no others", () => {
-    const node: JxMutableNode = {
-      attributes: { "data-jx-props": JSON.stringify({ label: "x" }) },
-      tagName: "x-card",
-    };
-    expect(deliveredOutsideProps(node, "label")).toBe(true);
-    expect(deliveredOutsideProps(node, "note")).toBe(false);
-  });
-
-  test("a payload that does not parse to an object delivers nothing", () => {
-    for (const payload of ["{label", '"label"', "null"]) {
-      const node: JxMutableNode = { attributes: { "data-jx-props": payload }, tagName: "x-card" };
-      expect(deliveredOutsideProps(node, "label")).toBe(false);
-    }
-  });
-
-  test("a top-level key delivers the prop, but a reserved or $-prefixed key does not", () => {
-    const node: JxMutableNode = { $id: "card", label: "Top", name: "n", tagName: "x-card" };
-    expect(deliveredOutsideProps(node, "label")).toBe(true);
-    expect(deliveredOutsideProps(node, "note")).toBe(false);
-    expect(deliveredOutsideProps(node, "name")).toBe(false);
-    expect(deliveredOutsideProps(node, "tagName")).toBe(false);
-    expect(deliveredOutsideProps(node, "$id")).toBe(false);
   });
 });

@@ -56,7 +56,7 @@ import type { JsonValue } from "../types";
 import {
   mutateUpdateAttribute,
   mutateUpdateDef,
-  mutateUpdateProp,
+  mutateUpdateInstanceProp,
   mutateUpdateProperty,
   transactDoc,
 } from "../tabs/transact";
@@ -105,6 +105,13 @@ import { openMenu } from "../surfaces/menu";
 import type { MenuHandle } from "../surfaces/menu";
 import { attrLabel, camelToLabel, inferInputType, isMediaFormat } from "../utils/studio-utils";
 import { parseCemType, propChoices } from "../utils/prop-choices";
+import {
+  attributeNamesProp,
+  describePropSource,
+  propSource,
+  shorthandDelivers,
+} from "../utils/prop-source";
+import type { PropSource } from "../utils/prop-source";
 import { classifyHref, composeHref } from "../utils/link-target";
 import type { LinkKind } from "../utils/link-target";
 import { clickAnythingTo, openPageAction, staleSelectionMessage } from "./empty-state";
@@ -346,13 +353,20 @@ function componentPropProvenance(
     openDefinition?: (() => void) | undefined;
     /** Editing the component itself, where there is no instance and therefore no donor. */
     isDefinition?: boolean;
+    /** Where the instance delivers the value, when it is somewhere other than `$props` (§8.2.6). */
+    source?: PropSource | null;
   },
 ): FieldProvenance {
   if (hasVal && slotMode(rawValue) !== "literal") {
     return boundProvenance(rawValue, `Bound — ${prop.name}`);
   }
   if (hasVal) {
-    return { onClick: actions.onClear, state: "set", title: `Clear ${prop.name}` };
+    const from = actions.source;
+    const title =
+      from && from.route !== "$props"
+        ? `Set by ${describePropSource(from)} — click to clear ${prop.name}`
+        : `Clear ${prop.name}`;
+    return { onClick: actions.onClear, state: "set", title };
   }
   /* INHERITED is a statement about somewhere ELSE, so it cannot be true here. In the definition an
      unset field means this component ships no default for that setting — which is `default`, the
@@ -1319,13 +1333,28 @@ function sectionsFor(node: JxMutableNode, path: JxPath): ContentSectionView[] {
   }
 
   const knownAttrNames = new Set(applicableAttrs.keys());
+  /* An attribute that delivers a declared prop is that prop's, and Component Settings shows it there
+     (§8.2.6): a `props.*` key in either spelling a reader takes, or, for a prop that is a DOM
+     property such as `title`, its name in any case. An npm component reads its attributes by exact
+     name and has no shorthand, so its props are its attributes. A `props.*` key that names no
+     declared prop, and an attribute that only shares a prop's name (`ribbon`, which reaches no DOM
+     property), stay in Custom, so nothing on the node is hidden. */
+  let deliversProp = (_attr: string): boolean => false;
   if (isCustomInstance) {
     const comp = componentRegistry.find((c) => c.tagName === node.tagName);
-    for (const p of comp?.props ?? []) {
-      knownAttrNames.add(p.name);
+    const props = comp?.props ?? [];
+    if (comp?.source === "npm") {
+      for (const p of props) {
+        knownAttrNames.add(p.name);
+      }
+    } else if (comp) {
+      deliversProp = (attr) =>
+        props.some((p) => shorthandDelivers(attr, p.name) || attributeNamesProp(attr, p.name));
     }
   }
-  const customAttrs = Object.entries(attrs).filter(([k]) => !knownAttrNames.has(k));
+  const customAttrs = Object.entries(attrs).filter(
+    ([k]) => !knownAttrNames.has(k) && !deliversProp(k),
+  );
 
   const autoOpen = new Set<string>();
   for (const attr of Object.keys(attrs)) {
@@ -1660,6 +1689,14 @@ function componentPropRows(
   /* In the definition the "value" of a setting is its DECLARED DEFAULT — the state entry's
      `default` — not a per-instance override, so the row reads and writes there instead. */
   const stateEntries = tab.doc.document.state ?? {};
+  /* On an instance a prop is read where the instance actually delivers it, which is not always
+     `$props` (§8.2.6): the `props.*` shorthand, a reflected attribute, a top-level key or a
+     `data-jx-props` payload each render while `$props` holds nothing. */
+  const sources = new Map<string, PropSource | null>(
+    definitionOfThis || isNpm
+      ? []
+      : comp.props.map((prop) => [prop.name, propSource(node, prop.name)]),
+  );
   const currentVals: Readonly<Record<string, JxDocumentValue | undefined>> = definitionOfThis
     ? Object.fromEntries(
         comp.props.map((prop) => {
@@ -1669,7 +1706,7 @@ function componentPropRows(
       )
     : isNpm
       ? node.attributes || {}
-      : node.$props || {};
+      : Object.fromEntries(comp.props.map((prop) => [prop.name, sources.get(prop.name)?.value]));
   const updateFn = definitionOfThis
     ? (name: string, v?: JsonValue) =>
         transactDoc(activeTab.value, (t) => mutateUpdateDef(t, name, { default: v }))
@@ -1686,7 +1723,7 @@ function componentPropRows(
             ),
           )
       : (name: string, v?: JsonValue) =>
-          transactDoc(activeTab.value, (t) => mutateUpdateProp(t, path, name, v));
+          transactDoc(activeTab.value, (t) => mutateUpdateInstanceProp(t, path, name, v));
 
   const defs = tab.doc.document.state || {};
   const signalNames = bindableSignalNames(tab.doc.document);
@@ -1753,8 +1790,20 @@ function componentPropRows(
       plan.debounceMs = 0;
     } else if (parsed.kind === "boolean") {
       row.kind = "checkbox";
-      row.checked = Boolean(staticVal);
-      plan.commitChecked = (checked) => onChange(checked || undefined);
+      if (isNpm) {
+        /* An npm component's flag is a boolean ATTRIBUTE: present is on, whatever it holds, so
+           `dense="false"` is on, and off is the attribute's absence. */
+        row.checked = Boolean(staticVal);
+        plan.commitChecked = (checked) => onChange(checked || undefined);
+      } else {
+        /* A Jx prop is a value. "false" is off: it is what `String(false)` reads as, and it is how
+           the `props.*` shorthand, which carries strings only, spells a false flag. */
+        row.checked = staticVal !== "" && staticVal !== "false";
+        /* Unchecking clears the value, unless the component defaults it on: then clearing would
+           turn it straight back on, so off is written as `false`. */
+        plan.commitChecked = (checked) =>
+          onChange(checked ? true : prop.default === true ? false : undefined);
+      }
     } else if (parsed.kind === "number") {
       row.kind = "number";
       row.value = getFieldValue(propDraft, staticVal);
@@ -1791,6 +1840,7 @@ function componentPropRows(
         isDefinition: definitionOfThis,
         onClear: () => updateFn(prop.name),
         openDefinition,
+        source: sources.get(prop.name) ?? null,
       }),
     );
     rows.push(withPlan(row, plan));
