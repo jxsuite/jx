@@ -26,7 +26,15 @@ export const JXN_LANGUAGE_CONFIGURATION: languages.LanguageConfiguration = {
   comments: { blockComment: ["/*", "*/"], lineComment: "//" },
 };
 
-/** The tokenizer. */
+/**
+ * The tokenizer.
+ *
+ * A raw string's state is named for the hashes that opened it (`raw.##`), and it ends at a quote
+ * followed by that many. The count is compared and not the delimiter, because a state cannot be
+ * named for the closing delimiter by writing the opening one into its name: `#"` is not `"#`
+ * backwards to Monarch, and a state that never matched its own end left the rest of the file a
+ * string, where Monaco offers no completion as one types.
+ */
 export const JXN_MONARCH: languages.IMonarchLanguage = {
   defaultToken: "",
   // Monarch otherwise starts in the first state listed, and these are sorted.
@@ -49,16 +57,16 @@ export const JXN_MONARCH: languages.IMonarchLanguage = {
       [/./u, "string"],
     ],
     raw: [
-      [/"#+/u, { cases: { "$0==$S2": { next: "@pop", token: "string" }, "@default": "string" } }],
+      [/"(#+)/u, { cases: { "$1==$S2": { next: "@pop", token: "string" }, "@default": "string" } }],
       [/[^"]+/u, "string"],
       [/"/u, "string"],
     ],
     rawLines: [
       [
-        /"""#+/u,
+        /"""(#+)/u,
         {
           cases: {
-            "$0==$S2": { next: "@pop", nextEmbedded: "@pop", token: "string.quote" },
+            "$1==$S2": { next: "@pop", nextEmbedded: "@pop", token: "string.quote" },
             "@default": "",
           },
         },
@@ -72,9 +80,8 @@ export const JXN_MONARCH: languages.IMonarchLanguage = {
       [/\/-/u, "comment"],
       [/\((?:array|export|fn|object|on|ref|server)\)/u, "type"],
       [/\([^)\s]*\)/u, "invalid"],
-      [/#"""/u, { next: '@rawLines."""#', nextEmbedded: "typescript", token: "string.quote" }],
-      [/##+"""/u, { next: '@rawLines."""$0', nextEmbedded: "typescript", token: "string.quote" }],
-      [/#+"/u, { next: '@raw."$0', token: "string" }],
+      [/(#+)"""/u, { next: "@rawLines.$1", nextEmbedded: "typescript", token: "string.quote" }],
+      [/(#+)"/u, { next: "@raw.$1", token: "string" }],
       [/"""/u, "string", "@quotedLines"],
       [/"/u, "string", "@quoted"],
       [/#(?:true|false|null|inf|-inf|nan)\b/u, "keyword"],
