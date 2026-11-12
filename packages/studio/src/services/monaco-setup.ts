@@ -45,12 +45,14 @@ import "monaco-editor/languages/definitions/javascript/register";
 import "monaco-editor/languages/definitions/typescript/register";
 
 import { flattenSchema } from "@jxsuite/schema/project-schemas";
+import type { ComposedProjectSchemas } from "@jxsuite/schema/project-schemas";
 import jxSchema from "@jxsuite/schema/schema.json";
 import projectSchema from "@jxsuite/schema/project-schema.json";
 import type { JsonObject } from "@jxsuite/schema/types";
 import type { ProjectSchemasResponse } from "../types";
 import { bundleUrl } from "./bundle-base";
 import { PROJECT_FILE_NAMES } from "@jxsuite/schema/project-file";
+import { registerJxnCompletion } from "./jxn-completion";
 import { registerJxnLanguage } from "./jxn-language";
 
 /* Re-exported for the modules that already imported it from here. New callers should reach for
@@ -167,6 +169,7 @@ const DOCUMENT_ENTRY_SCHEMA_ID = "file:///document.schema.json";
  * went unreported behind that one diagnostic.
  */
 function applyJsonSchemas(documentSchema: JsonObject, projectJsonSchema: JsonObject) {
+  schemasInForce = { document: documentSchema, project: projectJsonSchema };
   jsonDefaults.setDiagnosticsOptions({
     allowComments: false,
     schemas: [
@@ -216,8 +219,17 @@ typescriptDefaults.setCompilerOptions({
 const FALLBACK_DOCUMENT_SCHEMA = flattenSchema(jxSchema);
 const FALLBACK_PROJECT_SCHEMA = flattenSchema(projectSchema);
 
+/* The pair Monaco's JSON service was last given. A `.jxn` file is no JSON, so that service never
+   reads one, and its completion asks for the same pair here (§4.2.1): the two spellings of a
+   document are then completed and validated by one set of rules, whichever project is open. */
+let schemasInForce: ComposedProjectSchemas = {
+  document: FALLBACK_DOCUMENT_SCHEMA,
+  project: FALLBACK_PROJECT_SCHEMA,
+};
+
 // Bundled core schemas register at module init — the offline fallback every platform starts from.
 applyJsonSchemas(FALLBACK_DOCUMENT_SCHEMA, FALLBACK_PROJECT_SCHEMA);
+registerJxnCompletion(monacoApi.languages, () => schemasInForce);
 
 /**
  * Swap Monaco's JSON diagnostics to the ACTIVE project's generated entry documents — the

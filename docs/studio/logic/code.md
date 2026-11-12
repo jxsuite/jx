@@ -9,6 +9,7 @@ code:
   - packages/server/src/code-format.ts
   - packages/studio/src/services/type-check.ts
   - packages/studio/src/services/source-type-check.ts
+  - packages/studio/src/services/jxn-completion.ts
   - packages/studio/src/settings/project-sections.ts
 ---
 
@@ -72,6 +73,18 @@ The **Code** entry in the context bar's **Editor** control shows the open file i
 :::doc-note
 You never have to generate those files yourself: Studio refreshes them whenever they are missing or out of date, so a project you have never run `jx schema` on still validates, and turning an extension on or off updates the rules without a restart. In the browser at [studio.jxsuite.com](https://studio.jxsuite.com) the rules are composed for you on the server and nothing is written to your repository at all.
 :::
+
+### Completion in a `.jxn` file
+
+A `.jxn` file is completed from the same two schemas, so you are offered what the JSON spelling of the file would be allowed to hold. Suggestions open as you type a name, on :kbd[Ctrl+Space], and when you type a character that starts something: `.`, `$`, `(`, `=`, `"` or `/`.
+
+- **Where a node begins**, you are offered the tag names and the members of the element you are in, such as `state`, `style`, `.hidden` and `$props`. At the top of the file you are offered the document's own, such as `$layout` and `$head`. A member that is already written is not offered again.
+- **On an element's line**, you are offered its members with their `=`, such as `.hidden=` and `onclick=`. Accepting one opens the list of its values.
+- **At a value**, you are offered what the schema lists for it: `ltr`, `rtl` and `auto` for `.dir`, `#true` and `#false` for a boolean. Where the value is a pointer (a handler, a `$array` row, anything after `(ref)`), you are offered the entries of the file's own `state`, and for a handler only its functions.
+- **Inside `style`**, you are offered CSS property names, and inside any other block the members its schema declares.
+- **After `(`**, you are offered the annotations that fit there.
+
+Each suggestion carries the schema's description. Nothing is suggested inside a comment, inside what a `/-` comments out, or inside code (a function body or a script), where TypeScript is what you are writing. Where the schema names nothing the list is empty, because the words already in the file are not offered. A suggestion is advice from the schema: a custom element's tag, an attribute or a state entry it does not list is as valid as before. The project file is completed the same way when it is a `project.jxn`.
 
 ### Type errors in a `.jxn` file
 
