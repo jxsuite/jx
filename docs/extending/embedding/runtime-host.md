@@ -192,16 +192,17 @@ A host that draws a document so people can edit it, rather than use it, can ask 
 | `onNodeMoved`      | Called when a keyed repeater row is reused at a new index, with the row's root node and its new path.       |
 | `rowLimit`         | The most rows any one repeater draws. Items past it are not rendered at all.                                |
 | `emptyRow`         | Called for a repeater with no items. Return a sample item to draw one row from it, or `undefined` for none. |
-| `onListReconciled` | Called each time a repeater settles, with its path and `{ count, rendered, empty }`.                        |
+| `onListReconciled` | Called each time a repeater settles, with its path and `{ count, rendered, empty, nodes }`.                 |
 
 ```ts
 const handle = await mount(doc, target, {
   rowLimit: 20,
   emptyRow: (arrayDef, path) => ({ data: { title: "Sample title" } }),
-  onListReconciled: (path, { count, rendered, empty }) => {
+  onListReconciled: (path, { count, rendered, empty, nodes }) => {
     // count: the items the list resolved to, after filter and sort
     // rendered: the rows on the page, the sample row included
     // empty: true when the list resolved to no items
+    // nodes: the root node of each row on the page, in order
   },
 });
 ```
@@ -211,6 +212,19 @@ const handle = await mount(doc, target, {
 `rowLimit` reaches nested repeaters too, and each one is capped for itself. It applies after `emptyRow`, so a limit of `0` draws no rows at all. The sample row from `emptyRow` is replaced by real rows as soon as the list has any, and returns when the list empties again.
 
 Elements that a template adds are reported to `onNodeCreated` at the template's own position followed by their index in the array it resolved to: `[…, "children", 2, 0]` for the first node of a templated string at `children[2]`. That path names no node in the document, because the document holds a string there.
+
+To draw one row again from a changed template, render the new root yourself with the scope `onNodeCreated` reported for the old one, then hand it to the list with `replaceListRow`:
+
+```ts
+import { replaceListRow, runScoped, renderNode } from "@jxsuite/runtime";
+
+const { result: next, stop } = runScoped(() => renderNode(template, rowScope));
+if (!replaceListRow(current, next, stop)) {
+  // `current` is not a row's root. Replace it in the DOM yourself.
+}
+```
+
+The list holds each row by its root node. It moves that node when a keyed row is reused at another index and removes it when the item goes. A root you swap in without telling the list is left behind at the next redraw, and the old one comes back. After `replaceListRow` the list holds `next` for the row. The row keeps its key, its item and its index, and no other row is touched. The effects of the old node are stopped, and `stop` is called once when the row is removed.
 
 To read the value a template would have without rendering it, call `evaluateTemplateValue(template, scope)`:
 

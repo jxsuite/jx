@@ -7,7 +7,7 @@ import { GlobalRegistrator } from "@happy-dom/global-registrator";
 
 import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { reactive } from "@vue/reactivity";
-import { mount, renderNode } from "../src/runtime";
+import { mount, renderNode, replaceListRow, runScoped } from "../src/runtime";
 import type { JxDocument, JxElement, JxMappedArray, JxPath } from "@jxsuite/schema/types";
 import type { JxListReconciliation, JxScopeValue } from "../src/types";
 
@@ -63,15 +63,23 @@ afterEach(() => {
 
 const items = () => [...host.querySelectorAll("li")].map((li) => li.textContent);
 
+/** The counts of a reconciliation: everything but its row nodes, which are compared by identity. */
+type Counts = Omit<JxListReconciliation, "nodes">;
+
 /** A recorder for `onListReconciled`, and what it was last told. */
 function recorder() {
-  const calls: [JxPath, JxListReconciliation][] = [];
+  const calls: [JxPath, Counts][] = [];
+  const nodes: (readonly (HTMLElement | Text)[])[] = [];
   return {
     calls,
     hook: (path: JxPath, result: JxListReconciliation) => {
-      calls.push([[...path], { ...result }]);
+      const { nodes: rows, ...counts } = result;
+      calls.push([[...path], counts]);
+      nodes.push(rows);
     },
     last: () => calls.at(-1),
+    /** The row nodes of the last reconciliation. */
+    rows: () => nodes.at(-1) ?? [],
   };
 }
 
@@ -274,10 +282,99 @@ describe("onListReconciled", () => {
     ]);
   });
 
+  test("names the root node of every row that stands, in order, each time", async () => {
+    const rows = reactive([row("a"), row("b"), row("c")]);
+    const seen = recorder();
+    await mount(listDoc(), host, { onListReconciled: seen.hook, rowLimit: 2, scope: { rows } });
+    const drawn = () => [...host.querySelectorAll("li")];
+    expect(seen.rows()).toHaveLength(2);
+    expect(seen.rows()[0]).toBe(drawn()[0]!);
+    expect(seen.rows()[1]).toBe(drawn()[1]!);
+    const [a, b] = drawn();
+    // Reordered: the same two nodes, named in the order they now stand in.
+    rows.splice(0, 2, row("b"), row("a"));
+    await tick();
+    expect(seen.rows()[0]).toBe(b!);
+    expect(seen.rows()[1]).toBe(a!);
+    // The sample row is a row too, and an empty list with none names nothing.
+    rows.length = 0;
+    await tick();
+    expect(seen.rows()).toHaveLength(0);
+  });
+
   test("with no hooks a list renders exactly as it always has", async () => {
     await mount(listDoc(), host, { scope: { rows: reactive([row("a"), row("b")]) } });
     expect(host.innerHTML).toBe(
       "<ul><caption></caption><li>0:A</li><li>1:B</li><!--jx-array--></ul>",
     );
+  });
+});
+
+describe("replaceListRow", () => {
+  /** Draw a replacement for `li` as a host would: the same template, changed, in a scope of its own. */
+  const redraw = (text: string) =>
+    runScoped(() => renderNode({ className: "new", tagName: "li", textContent: text }, {}));
+
+  test("the list holds the new node for the row: it moves with the row and goes with it", async () => {
+    const rows = reactive([row("a"), row("b"), row("c")]);
+    const seen = recorder();
+    await mount(listDoc(), host, { onListReconciled: seen.hook, scope: { rows } });
+    const [, b] = [...host.querySelectorAll("li")];
+    const { result: next, stop } = redraw("B2");
+    const stopped = mock(stop);
+    expect(replaceListRow(b!, next, stopped)).toBe(true);
+    expect(items()).toEqual(["0:A", "B2", "2:C"]);
+    expect(b!.isConnected).toBe(false);
+    // Nothing was reconciled: the row kept its key, so the list has nothing to say.
+    expect(seen.calls).toHaveLength(1);
+
+    // The row is reused at another index: the node the list moves is the one it was handed.
+    rows.reverse();
+    await tick();
+    expect(items()).toEqual(["0:C", "B2", "2:A"]);
+    expect(seen.rows()[1]).toBe(next);
+    rows.splice(0, 1);
+    await tick();
+    expect(items()).toEqual(["B2", "1:A"]);
+    expect(stopped).not.toHaveBeenCalled();
+
+    // The row goes: its node leaves, and the host's disposer is called for it, once.
+    rows.splice(0, 1);
+    await tick();
+    expect(items()).toEqual(["0:A"]);
+    expect(next.isConnected).toBe(false);
+    expect(stopped).toHaveBeenCalledTimes(1);
+  });
+
+  test("the old node's bindings are stopped, and it is a row no more", async () => {
+    const rows = reactive([row("a"), row("b")]);
+    await mount(listDoc(), host, { scope: { rows } });
+    const [a] = [...host.querySelectorAll("li")];
+    const { result: next } = redraw("A2");
+    expect(replaceListRow(a!, next)).toBe(true);
+    // The item changes under the row: the detached node no longer follows it.
+    rows[0]!.title = "CHANGED";
+    await tick();
+    expect(a!.textContent).toBe("0:A");
+    // Handed over once: the old node names no row now, and neither does a node the list never drew.
+    expect(replaceListRow(a!, redraw("A3").result)).toBe(false);
+    expect(replaceListRow(document.createElement("li"), redraw("X").result)).toBe(false);
+    expect(items()).toEqual(["A2", "1:B"]);
+    // With no disposer the row still goes cleanly.
+    rows.splice(0, 1);
+    await tick();
+    expect(items()).toEqual(["0:B"]);
+  });
+
+  test("a replaced row can be replaced again", async () => {
+    const rows = reactive([row("a")]);
+    await mount(listDoc(), host, { scope: { rows } });
+    const first = redraw("one");
+    const firstStop = mock(first.stop);
+    expect(replaceListRow(host.querySelector("li")!, first.result, firstStop)).toBe(true);
+    const second = redraw("two");
+    expect(replaceListRow(first.result, second.result, second.stop)).toBe(true);
+    expect(firstStop).toHaveBeenCalledTimes(1);
+    expect(items()).toEqual(["two"]);
   });
 });

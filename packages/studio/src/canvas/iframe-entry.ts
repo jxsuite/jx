@@ -22,7 +22,22 @@ import {
   isEditableMode,
 } from "./iframe-render";
 import { measureHits, startInteraction } from "./iframe-interaction";
-import { parseJxPath, serializeJxPath } from "./path-mapping";
+import {
+  STAMPED_SELECTOR,
+  enclosingRepeaterPaths,
+  parseJxPath,
+  serializeJxPath,
+  stampedPathOf,
+} from "./path-mapping";
+import {
+  activeRowsRecord,
+  adoptActiveRows,
+  nearestStampedEl,
+  newRowView,
+  normalizeRowLimit,
+  promoteRowAt,
+  syncRows,
+} from "./iframe-rows";
 import {
   AUTO_SCROLL_STEP,
   computeDropInstruction,
@@ -35,7 +50,7 @@ import { startIframeInlineEdit } from "./iframe-inline-edit";
 import { startIframeSlashBridge } from "./iframe-slash";
 import { NO_TABLE, startKeyForwarding } from "./iframe-keys";
 import type { ForwardTable } from "./iframe-keys";
-import { applyIframePatch, textOpRedraws } from "./iframe-patch";
+import { applyIframePatch, redrawStaleRows, textOpRedraws } from "./iframe-patch";
 import { stampKept } from "../editor/kept-node";
 import { disposeAllSubtrees } from "./iframe-subtree";
 import { evaluateLiveExprs } from "./iframe-eval";
@@ -198,7 +213,7 @@ export function fileDropHitFor(
   targetEl: HTMLElement,
   shadowDoc: JxMutableNode | null,
 ): FileDropHit | null {
-  const serialized = targetEl.dataset.jxPath;
+  const serialized = stampedPathOf(targetEl);
   if (serialized == null) {
     return null;
   }
@@ -223,7 +238,7 @@ export function layoutHitFor(target: EventTarget | null): LayoutHit | null {
   if (!(target instanceof Element)) {
     return null;
   }
-  if (target.closest("[data-jx-path]")) {
+  if (target.closest(STAMPED_SELECTOR)) {
     return null;
   }
   const el = target.closest("[data-jx-layout-region]");
@@ -388,6 +403,90 @@ export function startCanvasIframe(opts: {
       stopEditing();
     }
   };
+  /**
+   * The frame's repeater rows (studio.md §4.5): which row of each repeater is active, the row cap
+   * and the sample items, as the host last named them. Outlives a render, which is what keeps the
+   * active row where the author put it across one; each render keeps its own drawn state beside it
+   * (`IframeRenderCtx.rows`), sharing this one's map of active rows.
+   */
+  const rowView = newRowView();
+  /** The editing host's `forget`, handed over by the inline-edit bridge once it has one. */
+  let forgetEditHost: (() => void) | null = null;
+  /**
+   * Block paths whose commit was posted by a row that is no longer the active one, and whose echo
+   * is therefore still on its way.
+   *
+   * An echoed op describes DOM the caret already produced, so the patcher leaves the addressable
+   * element alone. Once another row has been made active, the element at that path is a DIFFERENT
+   * row's, which never held the edit: skipped as an echo it would go on showing the old template,
+   * and the next commit from it would write that over the edit just made. The next echo of such a
+   * path is applied as any other patch is. Cleared by a full render, which draws everything anew.
+   */
+  const strandedEchoes = new Set<string>();
+
+  /**
+   * End the caret session because its row is about to stop being the active one. The block's
+   * element stays in the document, as an echo row's, so the editing host is told to forget it too.
+   */
+  const endEditForRows = (): void => {
+    const editing = getActivePath();
+    if (editing) {
+      const holdsNothingNew =
+        shadowDoc !== null && activeBlockHolds(getNodeAtPath(shadowDoc, editing));
+      releaseActiveEdit();
+      if (!holdsNothingNew && enclosingRepeaterPaths(editing).length > 0) {
+        strandedEchoes.add(serializeJxPath(editing));
+      }
+    }
+    forgetEditHost?.();
+  };
+
+  /**
+   * What follows a change of active row, or a list redrawing itself: everything that is found by
+   * `data-jx-path` and kept on the element it finds. The open popover and dialog are drawn on the
+   * element their path names, which is now another row's, and the new active row's inline elements
+   * need what their nodes hold stamped on them before a commit can rebuild their block.
+   */
+  const settleRows = (): void => {
+    /* First, because it draws: a row a list added from a template a patch has since changed is
+       drawn again from the document, and everything below is found on what that leaves. */
+    if (shadowDoc && renderCtx) {
+      redrawStaleRows(shadowDoc, container, renderCtx);
+    }
+    applyCanvasPopoverOpen(container, popoverOpen);
+    applyCanvasDialogOpen(container, dialogOpen);
+    if (shadowDoc && isEditableMode(currentMode)) {
+      stampKept(container, shadowDoc, isEditableBlock);
+    }
+    armIdleWatch();
+  };
+
+  /**
+   * A press in an echo row makes it the active row (studio.md §4.5): the caret session ends, the
+   * two rows' stamps are renamed, and the host is told, once per repeater whose row changed. Runs
+   * on `pointerdown`, ahead of the editing host's own listener and of the click, so the caret and
+   * the `hit` both find the pressed element under its path. Only where the canvas is edited.
+   */
+  const promotePressedRow = (target: EventTarget | null, extending = false): void => {
+    if (!renderCtx || !isEditableMode(currentMode) || !(target instanceof Element)) {
+      return;
+    }
+    /* A Shift press with a caret in a block extends that selection, and a selection never
+       reaches into another row (`keepSelectionOutOfEchoRows`). Promoting the pressed row would
+       end the session and leave the highlight in one row and the selected block in another. */
+    if (extending && isEditing()) {
+      return;
+    }
+    if (nearestStampedEl(target)?.dataset.jxEchoPath === undefined) {
+      return;
+    }
+    endEditForRows();
+    const changed = promoteRowAt(target, container, renderCtx.rows) ?? [];
+    settleRows();
+    for (const { path, row } of changed) {
+      channel.post({ kind: "rowActivated", path, row });
+    }
+  };
   let renderedGen = -1;
   // The mode of the LIVE render — gates the interactive surfaces (inline editing, insert zones,
   // Grab-drags) that only design/edit modes own. Adopted alongside shadowDoc.
@@ -510,6 +609,7 @@ export function startCanvasIframe(opts: {
     getGen: () => renderedGen,
     getMode: () => currentMode,
     getShadowDoc: () => shadowDoc,
+    onPress: promotePressedRow,
   });
   // Report clicks that land on LAYOUT chrome. The interaction wiring above only knows about
   // `[data-jx-path]` nodes, and layout chrome has none — so this is the listener that makes "My
@@ -544,6 +644,9 @@ export function startCanvasIframe(opts: {
   const stopInlineEdit = startIframeInlineEdit(channel, container, {
     getMode: () => currentMode,
     getShadowDoc: () => shadowDoc,
+    onRoot: (forget) => {
+      forgetEditHost = forget;
+    },
   });
   // Bridge the engine's slash menu to the parent's own menu (show/nav/select over the channel).
   const stopSlashBridge = startIframeSlashBridge(channel, container.ownerDocument);
@@ -859,7 +962,13 @@ export function startCanvasIframe(opts: {
       // The wrong scope); the parent additionally gen-gates the reply against its own state.
       const results =
         msg.gen === renderedGen && renderCtx && shadowDoc
-          ? evaluateLiveExprs(msg.exprs, renderCtx.defs, shadowDoc, msg.contextPath)
+          ? evaluateLiveExprs(
+              msg.exprs,
+              renderCtx.defs,
+              shadowDoc,
+              msg.contextPath,
+              renderCtx.rows.active,
+            )
           : [];
       channel.post({ gen: msg.gen, kind: "evalResult", reqId: msg.reqId, results });
       return;
@@ -896,7 +1005,12 @@ export function startCanvasIframe(opts: {
       // `set-key children` at the active path, `children` is not an in-place key, so the check
       // Would tear the block down on the caret's own idle tick — committing again on the way out
       // And re-entering the commit→patch cycle. The caret would vanish every time you paused.
-      const echoed = new Set((msg.echoPaths ?? []).map((p) => serializeJxPath(p)));
+      /* Less the echoes a row change stranded: the element at such a path is another row's now,
+         and has to be drawn like every other row (see `strandedEchoes`). */
+      const echoPaths = (msg.echoPaths ?? []).filter(
+        (p) => !strandedEchoes.delete(serializeJxPath(p)),
+      );
+      const echoed = new Set(echoPaths.map((p) => serializeJxPath(p)));
       const foreignOps =
         echoed.size === 0
           ? msg.forwardOps
@@ -920,7 +1034,7 @@ export function startCanvasIframe(opts: {
           msg.forwardOps,
           container,
           renderCtx,
-          msg.echoPaths,
+          echoPaths,
           msg.redrawPaths,
         );
         /* An `attributes` op routes through `replaceSubtree`, which rebuilds the element and takes
@@ -1045,6 +1159,29 @@ export function startCanvasIframe(opts: {
       applyBindingDisplay(container.ownerDocument, msg.display);
       return;
     }
+    if (msg.kind === "setActiveRows") {
+      /* `canvas.setActiveRow`, or this frame's own promotion coming back from the host: the whole
+         map, so saying it twice changes nothing. A caret in a row that is about to stop being the
+         active one is ended first, as a press in another row ends it. */
+      const held = activeRowsRecord(rowView);
+      const named = Object.entries(msg.rows);
+      if (
+        named.length === Object.keys(held).length &&
+        named.every(([key, row]) => held[key] === row)
+      ) {
+        return;
+      }
+      if (isEditing()) {
+        endEditForRows();
+      }
+      adoptActiveRows(rowView, msg.rows);
+      if (renderCtx) {
+        syncRows(container, renderCtx.rows);
+        settleRows();
+        postContentHeight();
+      }
+      return;
+    }
     if (msg.kind === "setPopoverOpen") {
       /* Refused in preview HERE as well as in the host. Preview renders popovers natively and the
          canvas attribute does not exist there, so a stray message would silently do nothing —
@@ -1138,7 +1275,6 @@ export function startCanvasIframe(opts: {
           doc: msg.doc as JxDocument,
           docBase: msg.docBase,
           mapperCtx: {
-            arrayPaths: new Set(mapperCtx.arrayPaths),
             canvasMode: mapperCtx.canvasMode,
             layoutWrapped: mapperCtx.layoutWrapped,
             pageContentOffset: mapperCtx.pageContentOffset,
@@ -1156,6 +1292,8 @@ export function startCanvasIframe(opts: {
         if (msg.projectFormulas) {
           renderOpts.projectFormulas = msg.projectFormulas;
         }
+        renderOpts.rows = rowView;
+        renderOpts.onRowsChanged = settleRows;
         /* Everything that takes time happens here, against a frame still showing the previous
            render whole: its DOM, its scopes and its rules. The frame used to release all three
            BEFORE this await, so every escalation showed the old page stripped of its styles for as
@@ -1185,6 +1323,13 @@ export function startCanvasIframe(opts: {
         handle?.dispose();
         handle = null;
         resetDocumentStyles(container.ownerDocument);
+        /* The rows this render is drawn with, adopted in the same step as the tree they describe:
+           taken at receipt, they would have renamed nothing on the picture still standing while
+           telling the next patch that they had. */
+        adoptActiveRows(rowView, msg.activeRows);
+        rowView.limit = normalizeRowLimit(msg.rowLimit);
+        rowView.samples = msg.rowSamples ?? {};
+        strandedEchoes.clear();
         handle = commit();
         // In the same step, so the older style the commit just wrote is never painted.
         reapplyNewerSiteStyle();

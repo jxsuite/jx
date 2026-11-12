@@ -24,7 +24,6 @@ function draw(node: JxDocumentValue, scope: JxScope): HTMLElement {
   const el = renderNode(prepared, scope, {
     _path: [],
     onNodeCreated: makeStamper({
-      arrayPaths: new Set(),
       canvasMode: "edit",
       layoutWrapped: false,
       pageContentOffset: null,

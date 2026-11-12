@@ -18,7 +18,8 @@
  */
 
 import { isNumber } from "@jxsuite/schema/guards";
-import { parseJxPath } from "./path-mapping";
+import { parseJxPath, stampedPathOf } from "./path-mapping";
+import { instancesOf } from "./iframe-rows";
 import { rectOf } from "../utils/geometry";
 import { childIndex, parentElementPath } from "../state";
 import type { InsertZone, SerializableRect } from "./iframe-protocol";
@@ -70,6 +71,11 @@ function isRowLayout(parent: HTMLElement): boolean {
  *   {@link EDGE_THRESHOLD} of the leading edge → a sibling-before zone (`index = childIndex`); of
  *   the trailing edge → a sibling-after zone (`index = childIndex + 1`); mid-element → null.
  *
+ * A repeater row's ROOT is retargeted to the repeater's own slot in its parent (studio.md §4.5). A
+ * template has one root, so "a sibling of this row" names nothing; what the edge of a list offers
+ * is a place before or after the whole list. So only the leading edge of the first row drawn and
+ * the trailing edge of the last have a zone, which inserts beside the repeater.
+ *
  * Returns null for the root/degenerate cases (no addressable parent to insert a sibling into) and
  * when the cursor is not near an edge.
  */
@@ -79,15 +85,20 @@ export function computeInsertZones(
   shadowDoc: JxMutableNode,
 ): InsertZone[] | null {
   void shadowDoc;
-  const serialized = targetEl.dataset.jxPath;
+  // An echo row's node is the same document node as the active row's, and is aimed at alike.
+  const serialized = stampedPathOf(targetEl);
   if (serialized == null) {
     return null;
   }
-  const targetPath = parseJxPath(serialized);
+  const stamped = parseJxPath(serialized);
+  const isRowRoot = stamped.at(-1) === "map" && targetEl.dataset.jxRow !== undefined;
+  // A row's root stands for its repeater, whose path is the row root's without the `map`.
+  const targetPath = isRowRoot ? stamped.slice(0, -1) : stamped;
 
   // Empty container: one centered "+" that inserts as the container's first child.
   if (targetEl.classList.contains(EMPTY_CONTAINER_CLASS)) {
-    return [{ edge: "center", index: 0, insertParentPath: targetPath, rect: rectFor(targetEl) }];
+    // Into the element itself: for a row's root that is the template, not the repeater's slot.
+    return [{ edge: "center", index: 0, insertParentPath: stamped, rect: rectFor(targetEl) }];
   }
 
   // A sibling insert needs an addressable parent element path; the root (path.length < 2) has none.
@@ -104,23 +115,29 @@ export function computeInsertZones(
     return null;
   }
 
+  // Which of a row root's two edges is an edge of the LIST: the first row's leading, the last's
+  // Trailing. Any other element has both.
+  const rows = isRowRoot ? instancesOf(parent, stamped) : [];
+  const leading = !isRowRoot || rows[0] === targetEl;
+  const trailing = !isRowRoot || rows.at(-1) === targetEl;
+
   const rect = rectFor(targetEl);
   if (isRowLayout(parent)) {
     const relX = cursor.x - rect.x;
-    if (relX < EDGE_THRESHOLD) {
+    if (leading && relX < EDGE_THRESHOLD) {
       return [edgeZone("left", parentPath, childIdx, leadingEdgeRect(rect, true))];
     }
-    if (rect.width - relX < EDGE_THRESHOLD) {
+    if (trailing && rect.width - relX < EDGE_THRESHOLD) {
       return [edgeZone("right", parentPath, childIdx + 1, trailingEdgeRect(rect, true))];
     }
     return null;
   }
 
   const relY = cursor.y - rect.y;
-  if (relY < EDGE_THRESHOLD) {
+  if (leading && relY < EDGE_THRESHOLD) {
     return [edgeZone("top", parentPath, childIdx, leadingEdgeRect(rect, false))];
   }
-  if (rect.height - relY < EDGE_THRESHOLD) {
+  if (trailing && rect.height - relY < EDGE_THRESHOLD) {
     return [edgeZone("bottom", parentPath, childIdx + 1, trailingEdgeRect(rect, false))];
   }
   return null;

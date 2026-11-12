@@ -14,6 +14,7 @@ import {
   resetDocumentStyles,
 } from "@jxsuite/runtime";
 import { applyIframePatch } from "../src/canvas/iframe-patch";
+import { newRowView } from "../src/canvas/iframe-rows";
 import { renderSubtreeIframe } from "../src/canvas/iframe-subtree";
 import { parseJxPath, serializeJxPath } from "../src/canvas/path-mapping";
 import { childList, getNodeAtPath } from "../src/state";
@@ -30,13 +31,14 @@ beforeAll(async () => {
     defs: await buildScope({}, {}, "http://localhost/"),
     docBase: "http://localhost/",
     mapperCtx: {
-      arrayPaths: new Set(),
       canvasMode: "design",
       layoutWrapped: false,
       pageContentOffset: null,
       pageContentPrefix: null,
     },
+    hooks: {},
     mode: "design",
+    rows: newRowView(),
   };
 });
 
@@ -137,7 +139,7 @@ describe("applyIframePatch — set-style", () => {
     });
   });
 
-  test("a bound style value is live; one that reads the repeater row is dropped", () => {
+  test("a bound style value is live, one that reads a repeater row included", () => {
     const { container, shadow } = mount(BASE);
     const op: JxDocOp = {
       key: "style",
@@ -148,9 +150,9 @@ describe("applyIframePatch — set-style", () => {
     applyIframePatch(shadow, [op], container);
 
     const el = elAt(container, ["children", 0]);
-    // The binding reads its variable, which the element sets from the scope; the row one is gone.
+    // Each binding reads a variable the element sets from its scope: the row's, inside a row.
     expect(cssFor(el)).toBe(
-      `[data-jx="${el.dataset.jx}"] { color: var(--jx-s0); font-size: 12px }`,
+      `[data-jx="${el.dataset.jx}"] { color: var(--jx-s0); font-size: 12px; width: var(--jx-s1) }`,
     );
   });
 

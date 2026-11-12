@@ -34,7 +34,16 @@ import {
 } from "@jxsuite/runtime";
 import { resolveAssetRef } from "./asset-resolve";
 import { fillPreviewImages } from "./preview-placeholder";
-import { classifyRenderNode, jxPathSelector, serializeJxPath } from "./path-mapping";
+import { ROW_ATTR, classifyRenderNode, jxPathSelector, serializeJxPath } from "./path-mapping";
+import {
+  ROWS_MORE_ATTR,
+  TEMPLATE_ROW_ATTR,
+  isActiveRow,
+  newDrawnState,
+  newRowView,
+  rowHooks,
+  syncRows,
+} from "./iframe-rows";
 /* No cycle: `iframe-position.ts` imports only `path-mapping` and a type. It already owns the
    stamped-attribute lookup, escaping included, so a second query built here would be a second
    answer to "which element is this path". */
@@ -46,6 +55,8 @@ import { isNonNullObject, isRef, isString, isTemplateString } from "@jxsuite/sch
 import { isTextRun, tagMarkOf } from "../utils/edit-display";
 import type { JxDocument, JxElement, JxStateDefinition, JxStyle } from "@jxsuite/schema/types";
 import type { PathMapCtx } from "./path-mapping";
+import type { RowHooks, RowView } from "./iframe-rows";
+import type { JxScope } from "@jxsuite/runtime/types";
 
 /**
  * Read a `.jxn` `$ref`, which the editing server answers as its text.
@@ -69,6 +80,10 @@ export interface IframeRenderCtx {
   docBase: string;
   mapperCtx: PathMapCtx;
   mode: CanvasMode;
+  /** The render's repeater rows: the active row of each, and each drawn node's own scope. */
+  rows: RowView;
+  /** The list hooks the render was drawn with, for a subtree drawn again that holds a repeater. */
+  hooks: RowHooks;
 }
 
 export interface RenderHandle {
@@ -324,6 +339,41 @@ data[data-jx-tag]:empty::before {
   white-space: nowrap;
   pointer-events: none;
 }
+[${TEMPLATE_ROW_ATTR}] {
+  outline: 1.5px dashed color-mix(in srgb, var(--jx-canvas-binding, #7c3aed) 55%, transparent);
+  outline-offset: 2px;
+}
+[${TEMPLATE_ROW_ATTR}]::before {
+  content: "No items: showing the template";
+  position: absolute;
+  z-index: 2;
+  transform: translateY(calc(-100% - 4px));
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--jx-canvas-binding, #7c3aed);
+  color: #fff;
+  font: 500 11px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  font-style: normal;
+  letter-spacing: normal;
+  text-transform: none;
+  white-space: nowrap;
+  pointer-events: none;
+}
+[${ROWS_MORE_ATTR}]:hover::after {
+  content: attr(${ROWS_MORE_ATTR});
+  position: absolute;
+  z-index: 2;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: color-mix(in srgb, #808080 85%, transparent);
+  color: #fff;
+  font: 500 11px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  font-style: normal;
+  letter-spacing: normal;
+  text-transform: none;
+  white-space: nowrap;
+  pointer-events: none;
+}
 `;
 
 /**
@@ -352,6 +402,11 @@ data[data-jx-tag]:empty::before {
  * static position (the start of the block's content) and is lifted above it, so the block's own
  * `position` is left alone. Making every bound element `position: relative` would re-anchor the
  * author's absolutely positioned descendants.
+ *
+ * A repeater with no items draws one row of its template (`data-jx-template-row`), marked at all
+ * times, because that row is no item of the list and must not pass for one. The last row of a list
+ * the row cap cut short says how many are drawn of how many while it is hovered. Both labels are
+ * positioned the way the bound block's is. An echo row has no rule: it reads as the page.
  */
 
 /**
@@ -1070,8 +1125,14 @@ export function injectHead(doc: JxDocument, assets: AssetContext | null = null):
  * Build the `onNodeCreated` hook that stamps `data-jx-path` (page content) or `data-jx-layout-path`
  *
  * - `data-jx-layout-file` (layout-originated nodes) on rendered nodes.
+ *
+ * A node inside a repeater is drawn once per row, and only the active row's carries `data-jx-path`:
+ * every other row's carries the same path as `data-jx-echo-path` (studio.md §4.5,
+ * `iframe-rows.ts`). Each stamped node's scope is kept in `view`, so a patch can draw the node
+ * again with the row it was drawn in. A caller with no rows to keep passes no view and gets one of
+ * its own.
  */
-export function makeStamper(ctx: PathMapCtx) {
+export function makeStamper(ctx: PathMapCtx, view: RowView = newRowView()) {
   /*
    * Paths of the component instances frozen below. Nodes arrive parent-first and `onNodeCreated`
    * fires straight after `createElement`, BEFORE the node is attached — so there is no ancestor to
@@ -1104,7 +1165,7 @@ export function makeStamper(ctx: PathMapCtx) {
   const externalRoot = (path: (string | number)[]): (string | number)[] | undefined =>
     external.find((root) => path.length >= root.length && root.every((seg, i) => path[i] === seg));
 
-  return (created: Node, path: (string | number)[], def: JxElement | string) => {
+  return (created: Node, path: (string | number)[], def: JxElement | string, scope?: JxScope) => {
     if (!(created instanceof HTMLElement)) {
       return;
     }
@@ -1202,7 +1263,26 @@ export function makeStamper(ctx: PathMapCtx) {
       }
       return;
     }
-    created.dataset.jxPath = serializeJxPath(classified.path);
+    if (scope) {
+      view.scopes.set(created, scope);
+    }
+    /* Exactly one row of a repeater is addressable. Stamped here, at creation, because the runtime
+       reads the stamp as it applies the node's attributes (a popover, a dialog and a command are
+       de-linked on a stamped node, of either kind); `syncRows` settles the rest once the rows
+       that exist are known. */
+    const serialized = serializeJxPath(classified.path);
+    if (classified.rows.length > 0) {
+      created.setAttribute(ROW_ATTR, JSON.stringify(classified.rows));
+    }
+    if (isActiveRow(view, classified.path, classified.rows)) {
+      created.dataset.jxPath = serialized;
+    } else {
+      created.dataset.jxEchoPath = serialized;
+    }
+    /* A node the runtime draws on its own (a `$switch` that flipped, a case that loaded, a row a
+       list added) is created outside any draw, with the path its list or switch was made with and
+       nothing to settle it. Asked for here; a draw settles what it creates itself. */
+    view.settleSoon?.();
     /*
      * SLOTTED PAGE CONTENT IS NOT COMPONENT INTERNALS.
      *
@@ -1323,6 +1403,14 @@ export interface RenderDocumentOptions {
   popoverOpen?: string | null;
   /** The dialog to draw open after this render, serialized; the twin of `popoverOpen`. */
   dialogOpen?: string | null;
+  /**
+   * The frame's repeater rows (`iframe-rows.ts`): which row of each repeater is active, the row cap
+   * and the sample items. Absent for a caller with none to keep, which draws every repeater on its
+   * first row.
+   */
+  rows?: RowView;
+  /** Called after a repeater redrew itself once this render is in the document. */
+  onRowsChanged?: () => void;
 }
 
 /**
@@ -1433,14 +1521,60 @@ function commitResolvedDocument(
   syncPreviewShell(opts.container.ownerDocument, opts.mode);
   syncStylebookCss(opts.container.ownerDocument, opts.mode);
   syncDiffCss(opts.container.ownerDocument, Boolean(opts.diffMarks?.length));
-  const onNodeCreated = makeStamper(opts.mapperCtx);
+  /* This render's rows. What was drawn is the render's own (the lists standing on a sample, the
+     ones cut short, each node's scope); what was chosen (the active rows, the cap, the samples) is
+     the frame's, and arrives in `opts.rows`. */
+  const rows: RowView = {
+    ...(opts.rows ?? newRowView()),
+    ...newDrawnState(),
+    editing: opts.mode !== "preview",
+  };
+  const onNodeCreated = makeStamper(opts.mapperCtx, rows);
+  /* A list redraws itself whenever its items change, long after this function has returned, so the
+     stamps are settled again each time. Not during the first draw: the tree is not in the
+     container yet, and the one pass below settles it whole. */
+  let live = false;
+  /** Whether something was created since the stamps were last settled. */
+  let unsettled = false;
+  let queued = false;
+  const settle = (): void => {
+    unsettled = false;
+    syncRows(opts.container, rows);
+    opts.onRowsChanged?.();
+  };
+  const hooks = rowHooks(rows, opts.mapperCtx, () => {
+    if (live) {
+      settle();
+    }
+  });
+  /* Anything else the runtime draws later has no hook: a `$switch` flips, an external case loads.
+     The stamper asks as it stamps, and one microtask settles whatever that turn created, unless
+     the list that created it has settled it already. */
+  rows.settleSoon = () => {
+    if (!live || rows.drawing > 0) {
+      return;
+    }
+    unsettled = true;
+    if (queued) {
+      return;
+    }
+    queued = true;
+    queueMicrotask(() => {
+      queued = false;
+      if (live && unsettled) {
+        settle();
+      }
+    });
+  };
   // The scope MUST be the runtime's (runScoped): renderNode creates its binding effects with the
   // Runtime's copy of @vue/reactivity, and scope collection is per module instance — a studio
   // EffectScope here collects nothing and dispose() would leak every effect of this render.
   const { result: el, stop } = runScoped(() =>
-    renderNode(opts.doc, $defs, { _path: [], onNodeCreated }),
+    renderNode(opts.doc, $defs, { ...hooks, _path: [], onNodeCreated }),
   );
   opts.container.replaceChildren(el);
+  syncRows(opts.container, rows);
+  live = true;
   applyCanvasPopoverOpen(opts.container, opts.popoverOpen ?? null);
   applyCanvasDialogOpen(opts.container, opts.dialogOpen ?? null);
   // Claim (or release) the editing host AFTER the tree lands, so the browser computes editability
@@ -1454,8 +1588,17 @@ function commitResolvedDocument(
      something its author should see. */
   const stopPlaceholders = opts.mode === "stylebook" ? fillPreviewImages(opts.container) : null;
   return {
-    ctx: { defs: $defs, docBase: opts.docBase, mapperCtx: opts.mapperCtx, mode: opts.mode },
+    ctx: {
+      defs: $defs,
+      docBase: opts.docBase,
+      hooks,
+      mapperCtx: opts.mapperCtx,
+      mode: opts.mode,
+      rows,
+    },
     dispose: () => {
+      // A list torn down with the render reports nothing worth settling.
+      live = false;
       stopPlaceholders?.();
       stop();
     },

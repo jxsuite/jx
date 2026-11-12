@@ -44,6 +44,7 @@ import {
   toDocPos,
   toDomPosition,
 } from "./iframe-position";
+import { keepSelectionOutOfEchoRows } from "./iframe-rows";
 import { serializeJxPath } from "./path-mapping";
 import { isFunction } from "@jxsuite/schema/guards";
 import type { DocPos, DocRange, EditablePredicate } from "./iframe-position";
@@ -365,6 +366,9 @@ export function startEditableRoot(
     if (sel) {
       // Read on below from where the selection now is: the move's own event finds nothing to do.
       snapOutOfChips(sel);
+      /* A selection dragged or Shift-pressed into another row of a repeater ends at this row's
+         edge (studio.md §4.5): the other rows are the same template, closed to the caret. */
+      keepSelectionOutOfEchoRows(sel, container);
     }
     const focus = sel?.focusNode ?? null;
     if (!focus) {
@@ -494,7 +498,54 @@ export function startEditableRoot(
    * there is no position inside it to stop at, and what an engine does at one that ends its block
    * is not something to leave to the engine.
    */
+  /**
+   * Home and End in a block that holds a chip stay in the block.
+   *
+   * A chip is closed to the caret, and an engine asked for the end of a line that ENDS in one steps
+   * past it into whatever follows: the next block, and inside a repeater that is the next row, an
+   * echo row closed to the caret, where the caret is dead and typing goes nowhere. The move is
+   * still the engine's own (`Selection.modify`, which is what the key runs), so a line in the
+   * middle of a long block ends where the engine says; only a caret that left the block is put
+   * back, at the block's own edge, where an engine draws it beside a chip. Returns whether the key
+   * was handled.
+   */
+  const lineBoundaryInBlock = (e: KeyboardEvent): boolean => {
+    const sel = doc.getSelection();
+    const block = activeEl;
+    if (
+      (e.key !== "End" && e.key !== "Home") ||
+      e.altKey ||
+      e.ctrlKey ||
+      e.metaKey ||
+      !block ||
+      activeKey === null ||
+      !sel?.focusNode ||
+      !block.contains(sel.focusNode) ||
+      !isFunction(sel.modify) ||
+      !block.querySelector("[data-jx-tag]")
+    ) {
+      return false;
+    }
+    const toEnd = e.key === "End";
+    e.preventDefault();
+    sel.modify(e.shiftKey ? "extend" : "move", toEnd ? "forward" : "backward", "lineboundary");
+    // Read again: the move has just changed it.
+    const { anchorNode, focusNode: landed } = doc.getSelection() ?? sel;
+    if (landed && !block.contains(landed)) {
+      const offset = toEnd ? block.childNodes.length : 0;
+      if (e.shiftKey && anchorNode) {
+        sel.setBaseAndExtent(anchorNode, sel.anchorOffset, block, offset);
+      } else {
+        sel.collapse(block, offset);
+      }
+    }
+    return true;
+  };
+
   const onKeyDown = (e: KeyboardEvent) => {
+    if (editingAllowed() && lineBoundaryInBlock(e)) {
+      return;
+    }
     if (
       (e.key !== "ArrowLeft" && e.key !== "ArrowRight") ||
       e.shiftKey ||
@@ -652,6 +703,12 @@ export function startEditableRoot(
        is aimed at that block, and the selection it leaves inside the chip is moved to the chip's
        edge when it lands (`snapOutOfChips`). */
     if (editableChipAround(target)) {
+      return;
+    }
+    /* A Shift press extends the selection the caret holds, into closed content too: an echo row
+       of a repeater, where `syncActiveBlock` ends it at the row's edge. Dropped here, the press
+       would leave no selection to extend and the block being edited without its caret. */
+    if (e.shiftKey && activeEl) {
       return;
     }
     if (target?.closest("[contenteditable]")?.getAttribute("contenteditable") === "false") {

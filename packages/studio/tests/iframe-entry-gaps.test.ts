@@ -23,7 +23,6 @@ function renderMsg(
     gen,
     kind: "render",
     mapperCtx: {
-      arrayPaths: [],
       canvasMode: "design",
       layoutWrapped: false,
       pageContentOffset: null,

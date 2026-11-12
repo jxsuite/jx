@@ -55,13 +55,13 @@ void mock.module("../src/canvas/canvas-live-render", () => ({
     Promise.resolve({
       docBase: "http://localhost:3000/doc.json",
       mapperCtx: {
-        arrayPaths: [],
         canvasMode: "design",
         layoutWrapped: false,
         pageContentOffset: null,
         pageContentPrefix: null,
       },
       renderDoc: { children: ["hi"], tagName: "div" },
+      rowSamples: {},
       scripts: {},
       siteStyle: null,
     }),

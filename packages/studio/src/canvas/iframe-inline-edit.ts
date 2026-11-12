@@ -211,7 +211,18 @@ function toSerializableRect(rect: DOMRect): SerializableRect {
 export function startIframeInlineEdit(
   channel: IframeChannel<IframeToParent, ParentToIframe>,
   container: HTMLElement,
-  opts?: { getMode?: () => string; getShadowDoc?: () => JxMutableNode | null },
+  opts?: {
+    getMode?: () => string;
+    getShadowDoc?: () => JxMutableNode | null;
+    /**
+     * Handed the editing host's `forget` once it exists: drop the active block without telling the
+     * engine. For a caller that ends the engine's session itself while the block's ELEMENT stays in
+     * the document, which is what making another repeater row the active one does (studio.md §4.5):
+     * the host would otherwise go on holding that element, and a caret returning to it would be
+     * read as the session continuing, with no session behind it.
+     */
+    onRoot?: (forget: () => void) => void;
+  },
 ): () => void {
   const doc = container.ownerDocument;
 
@@ -721,6 +732,7 @@ export function startIframeInlineEdit(
       removedTags.push(...sources);
     },
   });
+  opts?.onRoot?.(root.forget);
 
   /* The slash gesture, at the EDITING HOST.
      `editor/inline-edit.ts` recognised "/" in a `keydown` listener it attached to the BLOCK, and

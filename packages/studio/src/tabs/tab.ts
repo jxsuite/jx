@@ -7,6 +7,7 @@ import type { BareRepeaters } from "./bare-repeaters";
 import type { JxPath } from "../state";
 import type { FormulaEditDef, FunctionEditDef, InlineEditDef, JsonValue } from "../types";
 import { editorKindForMode } from "../commands/context";
+import { DEFAULT_ROW_LIMIT } from "../canvas/iframe-protocol";
 import type { EditorKind } from "../commands/context";
 import type { JsonObject, JxMutableNode } from "@jxsuite/schema/types";
 import type { JxDocOp, JxFmOp } from "./patch-ops";
@@ -108,6 +109,17 @@ export interface TabUi {
    * is not kept between sessions.
    */
   bindingDisplay: "values" | "names";
+  /**
+   * Each repeater's active row on the canvas, by the repeater's document path as `JSON.stringify`
+   * writes it (`canvas.setActiveRow`, studio.md §4.5). A repeater draws every row, and the active
+   * one is the row whose nodes a selection, a caret and a patch address. View state: it writes
+   * nothing to the document and is not kept between sessions. A path that moves under an edit (a
+   * block inserted above its repeater) no longer names it, and the repeater is back on its first
+   * row.
+   */
+  activeRows: Record<string, number>;
+  /** How many rows of a repeater the canvas draws at most (`canvas.setRepeaterRows`, §4.5). */
+  repeaterRows: number;
   /**
    * The locale this pane renders AS — the artboard's `lang` and `dir` (site-architecture.md §13.4),
    * never which file is open.
@@ -343,7 +355,9 @@ function createDefaultUi(canvasMode: string, preview = false): TabUi {
     inspectorSections: {},
     pendingInlineEdit: null,
     preview,
+    activeRows: {},
     bindingDisplay: "values" as const,
+    repeaterRows: DEFAULT_ROW_LIMIT,
     previewColorScheme: "auto" as const,
     previewLocale: null,
     previewParams: {},

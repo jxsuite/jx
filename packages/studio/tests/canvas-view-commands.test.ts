@@ -226,6 +226,9 @@ describe("the records themselves", () => {
       "canvas.setColorScheme",
       // What a text chip draws: its binding's value, or its name (§6.9).
       "canvas.setBindingDisplay",
+      // A repeater's rows (§4.5): which one is addressable, and how many are drawn.
+      "canvas.setActiveRow",
+      "canvas.setRepeaterRows",
       // The language axis. Its id keeps the `i18n.` namespace and its definition site is here,
       // Because the three rendering-context closures a per-pane verb needs — the tab, the pane
       // Argument and the repaint — are local to this module. `insert.data` is the precedent.
@@ -340,6 +343,94 @@ describe("canvas.setBindingDisplay", () => {
   test("refuses a display that is not one of the two", () => {
     expect(() => registry.run("canvas.setBindingDisplay", { display: "labels" })).toThrow();
     expect(activeTab.value?.session.ui.bindingDisplay).toBe("values");
+  });
+});
+
+describe("canvas.setActiveRow", () => {
+  const LIST = ["children", 0];
+  const KEY = JSON.stringify(LIST);
+
+  /** Give the open document a repeater as its first child. */
+  function withRepeater(): void {
+    activeTab.value!.doc.document.children = [
+      { $prototype: "Array", items: ["a", "b", "c"], map: { tagName: "li" } },
+      { tagName: "p" },
+    ];
+  }
+
+  test("sets the repeater's row on the tab, and saying it twice changes nothing", () => {
+    withRepeater();
+    const tab = activeTab.value!;
+    expect(tab.session.ui.activeRows).toEqual({});
+    void registry.run("canvas.setActiveRow", { path: LIST, row: 2 });
+    expect(tab.session.ui.activeRows).toEqual({ [KEY]: 2 });
+    // The same state by the same name: no new record, so nothing downstream is told again.
+    const held = tab.session.ui.activeRows;
+    void registry.run("canvas.setActiveRow", { path: LIST, row: 2 });
+    expect(tab.session.ui.activeRows).toBe(held);
+    void registry.run("canvas.setActiveRow", { path: LIST, row: 0 });
+    expect(tab.session.ui.activeRows).toEqual({ [KEY]: 0 });
+    // The frame renames attributes: the pane is not rendered again, and the document is untouched.
+    expect(renderedPanes).toEqual([]);
+    expect(tab.doc.dirty).toBeFalsy();
+  });
+
+  test("a second repeater's row is added to the map, and the first's is kept", () => {
+    activeTab.value!.doc.document.children = [
+      { $prototype: "Array", items: ["a", "b", "c"], map: { tagName: "li" } },
+      { $prototype: "Array", items: ["a", "b", "c"], map: { tagName: "li" } },
+    ];
+    const tab = activeTab.value!;
+    void registry.run("canvas.setActiveRow", { path: ["children", 0], row: 2 });
+    void registry.run("canvas.setActiveRow", { path: ["children", 1], row: 1 });
+    expect(tab.session.ui.activeRows).toEqual({ '["children",0]': 2, '["children",1]': 1 });
+  });
+
+  test("refuses a path that names no repeater, and a row that is no index", () => {
+    withRepeater();
+    const tab = activeTab.value!;
+    expect(() => registry.run("canvas.setActiveRow", { path: ["children", 1], row: 0 })).toThrow(
+      /names no repeater/u,
+    );
+    expect(() => registry.run("canvas.setActiveRow", { path: ["children", 9], row: 0 })).toThrow(
+      /names no repeater/u,
+    );
+    expect(() => registry.run("canvas.setActiveRow", { path: LIST, row: -1 })).toThrow();
+    expect(() => registry.run("canvas.setActiveRow", { path: LIST, row: 1.5 })).toThrow();
+    expect(() => registry.run("canvas.setActiveRow", { path: LIST })).toThrow();
+    expect(tab.session.ui.activeRows).toEqual({});
+  });
+
+  test("names the pane whose tab it means", () => {
+    withRepeater();
+    const tab = activeTab.value!;
+    splitRight();
+    focusPane(PRIMARY_PANE);
+    void registry.run("canvas.setActiveRow", { pane: SECONDARY_PANE, path: LIST, row: 1 });
+    expect(tab.session.ui.activeRows).toEqual({ [KEY]: 1 });
+    expect(workspace.activePaneId).toBe(PRIMARY_PANE);
+  });
+});
+
+describe("canvas.setRepeaterRows", () => {
+  test("sets the cap and repaints the pane, once: the cap decides which nodes exist", () => {
+    const tab = activeTab.value!;
+    expect(tab.session.ui.repeaterRows).toBe(24);
+    void registry.run("canvas.setRepeaterRows", { rows: 60 });
+    expect(tab.session.ui.repeaterRows).toBe(60);
+    expect(renderedPanes).toEqual([PRIMARY_PANE]);
+    // Saying it again is not a second render.
+    void registry.run("canvas.setRepeaterRows", { rows: 60 });
+    expect(renderedPanes).toEqual([PRIMARY_PANE]);
+  });
+
+  test("refuses a cap that is not a whole number of rows in range", () => {
+    const run = (rows: number | string) => () => registry.run("canvas.setRepeaterRows", { rows });
+    for (const rows of [0, -4, 2.5, 1001, "many"]) {
+      expect(run(rows)).toThrow();
+    }
+    expect(activeTab.value?.session.ui.repeaterRows).toBe(24);
+    expect(renderedPanes).toEqual([]);
   });
 });
 
