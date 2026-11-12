@@ -37,7 +37,7 @@ const deps = {
 let ctx: CommandContext;
 let registry: CommandRegistry;
 
-function openDoc(modes: string[] = ["edit", "design", "preview", "source"]) {
+function openDoc(modes: string[] = ["edit", "design", "source"]) {
   closeAllTabs();
   return openTab({
     capabilities: { modes },
@@ -86,9 +86,8 @@ describe("the projection", () => {
     expect(report(facts(ctx, "design"))).toBe(
       "The active document is in design mode; the document tools address its element tree.",
     );
-    // Preview composes over a canvas base, so the tree is still the canvas's.
-    expect(report(facts(ctx, "preview"))).toBe(
-      "The active document is in preview mode; the document tools address its element tree.",
+    expect(report(facts(ctx, "edit"))).toBe(
+      "The active document is in edit mode; the document tools address its element tree.",
     );
     const code = makeContext({ ...ctx, editor: { kind: "code" } });
     expect(report(facts(code, "source"))).toBe(
@@ -108,7 +107,6 @@ describe("through the bridge", () => {
       summary: "The active document is in edit mode; the document tools address its element tree.",
     });
     expect(modesSet).toEqual(["edit"]);
-    expect(tab.session.ui.preview).toBe(false);
   });
 
   test("a mode the document does not declare is refused with the record's own sentence", async () => {

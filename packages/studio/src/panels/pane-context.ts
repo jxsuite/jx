@@ -11,17 +11,15 @@
  *
  * - **Editor kind** — `Canvas ⌄`, offering only the kinds this document declares. A document with one
  *   kind renders the name as text rather than as a dropdown that cannot go anywhere.
- * - **Canvas view** — `Edit │ Design` as a radio ({@link canvasBaseViewsFor}) with a **Preview**
- *   toggle beside it ({@link previewStateOf}), and none at all in a pane that may not host the
- *   Canvas. The two are drawn apart because they are two axes: preview is a flag over an edit or
- *   design base, so the radio marks the base throughout and the toggle says whether it is on.
+ * - **Canvas view** — `Edit │ Design` as a radio ({@link canvasViewsFor}), and none at all for a
+ *   document with no Canvas view.
  * - **Rendering context** — `md ⌄ Light ⌄`, folding the size breakpoint, the colour scheme, the
  *   feature queries and the layout show/hide switch into one popover. Per §6.2 ("The breakpoint and
  *   scheme axes") this control **only selects**; its footer is "Manage contexts…", which routes to
  *   the definition site — Project Settings › Contexts (`settings/contexts-section.ts`), the one
  *   place a breakpoint, a colour scheme or a feature query is defined.
  * - **Resolving with** — the document DATA a render resolves against: a page's route params, a
- *   component's test props. Its own popover beside the context one, headed "resolving with", with
+ *   component's test values. Its own popover beside the context one, headed "resolving with", with
  *   the fields in a vertical stack. A SECOND popover rather than a fourth group in the first,
  *   because these are values you type and everything in the rendering-context popover is something
  *   you pick — and because a row of text fields is what made the 28px band unreadable.
@@ -69,13 +67,8 @@ import { backTargetOf, goBack } from "../workspace/workspace-back";
 import type { WorkspaceId } from "../workspace/workspace-ids";
 import { paneRegion } from "../ui/regions";
 import { isString } from "@jxsuite/schema/guards";
-import {
-  CANVAS_VIEWS,
-  canvasBaseViewOf,
-  canvasBaseViewsFor,
-  previewStateOf,
-  setCanvasView,
-} from "../canvas/canvas-utils";
+import { CANVAS_VIEWS, canvasViewOf, canvasViewsFor, setCanvasView } from "../canvas/canvas-utils";
+import { isPlainStateEntry } from "../canvas/state-values";
 import { editorKindOf, editorKindsOf, modeForEditorKind } from "../tabs/tab";
 import { collabState } from "../collab/collab-state";
 import { activeRegistry } from "../commands/active-registry";
@@ -182,11 +175,10 @@ let _ctx: PaneContextCtx | null = null;
 
 let _scope: EffectScope | null = null;
 
-/** Human names for the three Canvas views. */
+/** Human names for the two Canvas views. */
 const CANVAS_VIEW_LABELS: Readonly<Record<CanvasView, string>> = {
   design: "Design",
   edit: "Edit",
-  preview: "Preview",
 };
 
 /** The bound-data segment's values, labels and tooltips (`canvas.setBindingDisplay`, §6.9). */
@@ -315,12 +307,11 @@ export function mount(host: HTMLElement, ctx: PaneContextCtx) {
         void tab.session.ui.activeMedia;
         void tab.session.ui.canvasMode;
         void tab.session.ui.featureToggles;
-        void tab.session.ui.preview;
         void tab.session.ui.previewColorScheme;
         void tab.session.ui.bindingDisplay;
         void tab.session.ui.previewLocale;
         void tab.session.ui.previewParams;
-        void tab.session.ui.previewProps;
+        void tab.session.ui.stateValues;
         void tab.session.ui.showLayout;
         // The read-only banner (`collab.md` §4) is part of this chrome, so its two facts are
         // Tracked here too: a peer downgrading you mid-session must make the sentence appear, not
@@ -816,26 +807,12 @@ function editorAxis(tab: Tab): Partial<PaneContextView> {
 function viewAxis(tab: Tab): Partial<PaneContextView> {
   // Every pane draws a live Canvas, so this is no longer narrowed by WHERE the tab is — only by
   // What the document declares. A document with no Canvas view still draws no view group.
-  const views = canvasBaseViewsFor(tab);
+  const views = canvasViewsFor(tab);
   if (views.length === 0) {
     return {};
   }
-  const current = canvasBaseViewOf(tab);
-  const preview = previewStateOf(tab);
-  /*
-   * TWO CONTROLS, because they are two axes.
-   *
-   * `Edit │ Design │ Preview` was one three-way radio, and it lied about the state it was showing:
-   * preview is stored as a flag OVER an edit/design base, so while it was on the radio could not
-   * say which mode you were previewing — or which one Escape would return you to. Now the radio
-   * marks the base the whole time and the toggle sits beside it, pressed.
-   */
+  const current = canvasViewOf(tab);
   return {
-    previewHint: preview.on
-      ? `Stop previewing — back to ${CANVAS_VIEW_LABELS[current ?? "edit"]}`
-      : "Preview: the page as it ships, with editing off",
-    previewOn: preview.on,
-    previewState: preview.available ? "shown" : "hidden",
     views: views.map((value) => ({
       checked: value === current ? "true" : "false",
       hint: `Show this document in ${CANVAS_VIEW_LABELS[value]}`,
@@ -935,7 +912,7 @@ function contextAxis(tab: Tab, paneId: string, ctx: PaneContextCtx): Partial<Pan
      open in order to learn whether it was worth opening. */
   const resolvingSet = page
     ? Object.values(ui.previewParams).filter((v) => v !== "").length
-    : Object.keys(ui.previewProps ?? {}).length;
+    : props.filter((row) => row.name in ui.stateValues).length;
   const hasResolving = page ? params.length > 0 : props.length > 0;
 
   const display = ui.bindingDisplay;
@@ -948,7 +925,7 @@ function contextAxis(tab: Tab, paneId: string, ctx: PaneContextCtx): Partial<Pan
       label,
       value,
     })) satisfies PaneContextChoice[],
-    // Chips are drawn where the document is edited; a diff side or Preview has no names to show.
+    // Chips are drawn where the document is edited; a diff side has no names to show.
     bindingState: editable ? "shown" : "hidden",
     contextSummary,
     featureState: plainQueries.length > 0 ? "shown" : "hidden",
@@ -1090,7 +1067,6 @@ function actionsFor(paneId: string, ctx: PaneContextCtx): PaneContextActions {
       if (!mode) {
         return;
       }
-      tab.session.ui.preview = false;
       ctx.setCanvasMode(tab, mode);
     },
     chooseView: (value) => {
@@ -1135,10 +1111,12 @@ function actionsFor(paneId: string, ctx: PaneContextCtx): PaneContextActions {
       runContextCommand(paneId, "canvas.setRouteParam", { name, value });
     },
     setProp: (name, raw) => {
-      // The command owns the write; this control owns only the parse, because "what a typed string
-      // Means" is a fact about a text field and not about the value.
-      runContextCommand(paneId, "canvas.setTestProp", {
-        name,
+      /* A test value is a state value set for the canvas on a prop (`canvas.setStateValue`), the
+         one store the Data panel's field writes too. The command owns the write; this control owns
+         only the parse, because "what a typed string means" is a fact about a text field and not
+         about the value. */
+      runContextCommand(paneId, "canvas.setStateValue", {
+        key: name,
         value: raw === "" ? null : parsePropValue(raw),
       });
     },
@@ -1161,15 +1139,6 @@ function actionsFor(paneId: string, ctx: PaneContextCtx): PaneContextActions {
       runContextCommand(paneId, "canvas.setLayoutVisible", {
         visible: tabNow()?.session.ui.showLayout === false,
       });
-    },
-    togglePreview: () => {
-      const tab = tabNow();
-      if (!tab) {
-        return;
-      }
-      const preview = previewStateOf(tab);
-      const current = canvasBaseViewOf(tab);
-      setCanvasView(tab, preview.on ? (current ?? "edit") : "preview", ctx.setCanvasMode);
     },
   };
 }
@@ -1342,11 +1311,12 @@ function paramRows(tab: Tab): PaneContextView["params"] {
   }));
 }
 
-// ─── Component test-prop fields ──────────────────────────────────────────────
+// ─── Component test-value fields ─────────────────────────────────────────────
 // The previewParams mirror for component docs: one small field per prop entry (the doc's
 // Plain-data state entries), committed on change so typing never re-projects the bar mid-edit. A
 // Value parses as JSON when it can (numbers, booleans, arrays) and falls back to the raw string;
-// Clearing a field removes the override so the prop returns to its authored default.
+// Clearing a field removes the value set for the canvas so the prop returns to its authored
+// Default. The value is the tab's `stateValues` entry, the one the Data panel shows set.
 
 /**
  * @param {string} raw
@@ -1371,14 +1341,18 @@ function propRows(tab: Tab, paneId: string): PaneContextView["props"] {
   if (!isComponentDoc(doc)) {
     return [];
   }
-  const { previewProps } = tab.session.ui;
+  const { stateValues } = tab.session.ui;
+  const state = doc.state ?? {};
   const display = (v: JsonValue | undefined) =>
     v === undefined ? "" : isString(v) ? v : JSON.stringify(v);
-  return componentPropEntries(doc).map(({ name }) => ({
-    key: name,
-    label: `Test value for ${name}`,
-    name,
-    region: paneRegion(paneId, `prop:${name}`),
-    value: display(previewProps?.[name]),
-  }));
+  // Only a plain entry takes a value set for the canvas (`canvas.setStateValue` refuses the rest).
+  return componentPropEntries(doc)
+    .filter(({ name }) => isPlainStateEntry(state[name]))
+    .map(({ name }) => ({
+      key: name,
+      label: `Test value for ${name}`,
+      name,
+      region: paneRegion(paneId, `prop:${name}`),
+      value: display(stateValues[name]),
+    }));
 }

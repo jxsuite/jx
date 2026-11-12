@@ -51,7 +51,7 @@ export interface BeforeInputContext {
   data: string;
   /**
    * The caret is in a PROP-BOUND nested host — text inside a component instance that is an
-   * invertible prop binding (studio.md §8.2.5), not a block of the page document.
+   * invertible prop binding (studio.md §8.2.6), not a block of the page document.
    *
    * Such a host has no `data-jx-path` of its own, so `from`/`to` are always null for it. Without
    * this flag the null-position rule below rejected every keystroke: the caret appeared, and

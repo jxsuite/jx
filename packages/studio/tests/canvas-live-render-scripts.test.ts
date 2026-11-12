@@ -94,14 +94,14 @@ describe("a page drawn inside its layout", () => {
     });
   });
 
-  test("Preview draws the same two modules", async () => {
+  test("Design draws the same two modules", async () => {
     siteWith({ "layouts/base.json": JSON.stringify(LAYOUT) });
     const tab = resetWorkspaceWithTab(page(), { documentPath: "pages/home.json" });
-    tab.session.ui.canvasMode = "preview";
+    tab.session.ui.canvasMode = "design";
 
     const result = await resolveCanvasDocument(tab.doc.document, tab);
 
-    expect(result.mapperCtx.canvasMode).toBe("preview");
+    expect(result.mapperCtx.canvasMode).toBe("design");
     expect(result.renderDoc.$script).toBeUndefined();
     expect(result.scripts).toEqual({
       [clientOf("layouts/base.json")]: LAYOUT_SCRIPT,

@@ -1346,9 +1346,9 @@ export function createProjectSession(
   }
 
   /**
-   * Hand a URL to the OS (Studio's Preview link clicks). Wrapped in the RPC's params/response shape
-   * rather than re-exporting a bare `(url) => boolean`, so the hub can register it straight into
-   * its handler map.
+   * Hand a URL to the OS (Studio's Open in Browser and Publish links). Wrapped in the RPC's
+   * params/response shape rather than re-exporting a bare `(url) => boolean`, so the hub can
+   * register it straight into its handler map.
    */
   async function openExternalUrl(params: { url: string }): Promise<{ ok: boolean }> {
     return { ok: openExternal(params.url) };

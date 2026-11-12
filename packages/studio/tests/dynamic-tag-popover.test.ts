@@ -79,7 +79,6 @@ let flushes = 0;
 let anchor: { left: number; top: number; width: number; height: number } | null = null;
 
 void mock.module("../src/canvas/iframe-host.js", () => ({
-  adoptCanvasPreviewMode: () => {},
   canvasIdleBlockers: () => [],
   canvasPointAt: () => Promise.resolve(null),
   commitActiveEditSession: () => {},

@@ -151,9 +151,9 @@ export const MISSING_IMAGE_SELECTOR =
  * The design/edit-mode canvas CSS, ported from the parent editor stylesheet (index.html) with
  * iframe-safe fallbacks — the parent theme variables (--fg-dim/--radius/--accent) don't exist in
  * the iframe document. The placeholder CLASSES are stamped by prepareForEditMode (parent-side
- * resolution + surgical subtree renders), so preview mode never matches these rules — but the sheet
- * is still removed there (belt and braces). The `[data-jx-active-block]` hint marks the caret's
- * empty paragraph (e.g. right after an Enter split) and advertises the slash menu.
+ * resolution + surgical subtree renders), so the stylebook never matches these rules — but the
+ * sheet is still removed there (belt and braces). The `[data-jx-active-block]` hint marks the
+ * caret's empty paragraph (e.g. right after an Enter split) and advertises the slash menu.
  *
  * `.empty-text-placeholder` is gated on emptiness IN THE DOM because a CLASS cannot tell the truth
  * about a block the author is typing in. The class is stamped from the document, and the first
@@ -449,8 +449,8 @@ export function applyBindingDisplay(doc: Document, display: "values" | "names" |
 
 /**
  * Keep the design/edit canvas stylesheet in sync with the render mode: present (idempotently) for
- * design/edit, removed otherwise (preview must look live; stylebook specimens must not show "Click
- * here to add text..." placeholders).
+ * design/edit, removed otherwise (stylebook specimens must not show "Click here to add text..."
+ * placeholders, and a git-diff side is read, not written).
  */
 export function syncEditModeCss(doc: Document, mode: CanvasMode): void {
   const existing = doc.head.querySelector(`#${EDIT_PLACEHOLDER_STYLE_ID}`);
@@ -474,15 +474,15 @@ export const CANVAS_OVERLAY_STYLE_ID = "jx-canvas-overlay-css";
  * The rules that stand in for the UA behaviour a de-linked overlay has just lost.
  *
  * **This sheet's predicate IS the predicate of `setCanvasDelinkPopovers` /
- * `setCanvasDelinkCommands` — every mode but Preview — and that is the invariant to keep.** An
- * attribute renamed without its substitute rule is an overlay that can never be drawn: `popover`
- * renamed to `data-jx-popover` with no replacement hide rule lays every CLOSED panel out as
- * ordinary in-flow content and inflates the artboard, and a dialog stamped `data-jx-dialog-open`
- * stays hidden behind the UA `dialog:not([open])` for good. These rules used to ship inside
- * `EDIT_PLACEHOLDER_CSS`, which is installed for design/edit alone, so Stylebook and a git-diff
- * side de-linked without them. A read-only artboard must draw an overlay exactly as the design
- * canvas does — a git-diff pair is read side by side, and the artboard-growth argument below is
- * about a content-sized frame, not about editing.
+ * `setCanvasDelinkCommands` — every mode — and that is the invariant to keep.** An attribute
+ * renamed without its substitute rule is an overlay that can never be drawn: `popover` renamed to
+ * `data-jx-popover` with no replacement hide rule lays every CLOSED panel out as ordinary in-flow
+ * content and inflates the artboard, and a dialog stamped `data-jx-dialog-open` stays hidden behind
+ * the UA `dialog:not([open])` for good. These rules used to ship inside `EDIT_PLACEHOLDER_CSS`,
+ * which is installed for design/edit alone, so Stylebook and a git-diff side de-linked without
+ * them. A read-only artboard must draw an overlay exactly as the design canvas does — a git-diff
+ * pair is read side by side, and the artboard-growth argument below is about a content-sized frame,
+ * not about editing.
  */
 /*
  * NOTE: this is a template literal, so a BACKTICK anywhere inside — including in a CSS comment —
@@ -530,8 +530,8 @@ export const CANVAS_OVERLAY_CSS = `
    drawer pinned with inset: 0 lands halfway down a long page and a short component frame clips it.
    This is a presentation override for a canvas affordance, the same kind as the layout-region
    dimming in EDIT_PLACEHOLDER_CSS, and it is NOT the same move as forcing display: that would hide
-   a real defect in the document (base-display), while this hides nothing — Preview renders the
-   panel natively, top layer and all. */
+   a real defect in the document (base-display), while this hides nothing — the page in a browser
+   renders the panel natively, top layer and all (§10.1). */
 [data-jx-popover][data-jx-popover-open] {
   position: relative !important;
   inset: auto !important;
@@ -582,16 +582,11 @@ dialog[data-jx-dialog-open]::before {
 `;
 
 /**
- * Keep the overlay stylesheet in sync with the render mode: present (idempotently) wherever the
- * render de-links its overlays, removed for preview — which keeps the real `popover`/`open`
- * attributes, so the real UA rules and the real top layer apply there.
+ * Install the overlay stylesheet (idempotently): every render de-links its overlays, so every
+ * render needs the rules that stand in for them.
  */
-export function syncCanvasOverlayCss(doc: Document, mode: CanvasMode): void {
+export function syncCanvasOverlayCss(doc: Document): void {
   const existing = doc.head.querySelector(`#${CANVAS_OVERLAY_STYLE_ID}`);
-  if (mode === "preview") {
-    existing?.remove();
-    return;
-  }
   if (existing) {
     return;
   }
@@ -735,32 +730,16 @@ export function applyDiffMarks(container: HTMLElement, marks: WireDiffMarks | nu
 }
 
 /**
- * Flag the canvas document as a preview shell, so `canvas.html`'s preview rules apply.
- *
- * The document's default box is built for EDITING: `html, body { overflow: hidden }`, because the
- * host grows the iframe to its content height there and the parent canvas is what pans. Preview
- * inverts that — the frame stays at the pane's height and the document scrolls itself — and until
- * this existed nothing turned the clipping off, so preview showed the first screenful of every page
- * and no more. An attribute rather than an injected stylesheet: the rules it switches live beside
- * the ones they override, which is where a reader looks for them.
- *
- * Called on every render because one iframe is reused across modes.
- */
-export function syncPreviewShell(doc: Document, mode: CanvasMode): void {
-  doc.documentElement.toggleAttribute("data-jx-preview", mode === "preview");
-}
-
-/**
- * Whether a canvas mode gets a live caret. Design and edit are the interactive modes; preview must
- * look and behave like the shipped page, and stylebook specimens are not documents.
+ * Whether a canvas mode gets a live caret. Design and edit are the interactive modes; stylebook
+ * specimens are not documents, and a git-diff side is read, not written.
  */
 export function isEditableMode(mode: CanvasMode | string): boolean {
   return mode === "design" || mode === "edit";
 }
 
 /**
- * Make the render container the document's single editing host (or take that back for preview /
- * stylebook renders).
+ * Make the render container the document's single editing host (or take that back for stylebook and
+ * git-diff renders).
  *
  * Putting `contenteditable` on the CONTAINER rather than on one block at a time is what buys the
  * fluid caret: click-to-caret, line-aware Up/Down across blocks, Home/End, IME, and cross-block
@@ -1082,8 +1061,8 @@ export function applyCanvasPopoverOpen(root: ParentNode, path: string | null): v
  *
  * The forced `position` block is the popover's, by the same move: the UA's absolute positioning
  * and modal top layer are gone with the renamed attributes, so the open dialog lays out in normal
- * flow at its document position and the artboard grows to fit it. Preview renders it modally,
- * backdrop and all.
+ * flow at its document position and the artboard grows to fit it. The page in a browser renders it
+ * modally, backdrop and all.
  */
 export function applyCanvasDialogOpen(root: ParentNode, path: string | null): void {
   for (const el of root.querySelectorAll<HTMLElement>("[data-jx-dialog-open]")) {
@@ -1424,7 +1403,7 @@ export interface RenderDocumentOptions {
    * Who answers this render's remote lookups (studio.md §4.5): the frame's own handler over the
    * tab's kept answers, under which an automatic `GET` request and a `timing: "server"` call each
    * run once. Absent or null outside an editable view, and for a host that sent no remote data:
-   * neither then runs anywhere but in Preview.
+   * neither then runs on the canvas at all.
    */
   remoteLookup?: RemoteLookupHandler | null;
   /** The project's pure named formulas a component inherits (spec.md §13.4); absent for none. */
@@ -1450,9 +1429,9 @@ export interface RenderDocumentOptions {
  * touching neither the container, nor the rules the picture already in it is drawn with, nor the
  * canvas's own head-level sheets (the site style and the mode sheets). Resolves to the synchronous
  * half, which draws the tree into `container` in place of its current children and returns a handle
- * whose `dispose()` stops the reactive scope. `mode` and `remoteLookup` decide whether server
- * functions and automatic requests run (as the page runs them in `preview`; once each, through the
- * handler, in an editable view that has one; not at all otherwise).
+ * whose `dispose()` stops the reactive scope. `remoteLookup` decides whether server functions and
+ * automatic requests run (once each, through the handler, in an editable view that has one; not at
+ * all otherwise).
  *
  * It does set the runtime's module-level render flags and append the document's `$head` before it
  * awaits, because registering components and building the scope read them, and nothing undoes
@@ -1481,12 +1460,12 @@ export async function prepareResolvedDocument(
      render, so a lookup the runtime were simply allowed to start would be started by every
      escalating authoring action (a Data panel edit, Enter inside component-wrapped content). An
      editable view therefore answers each one itself (`iframe-remote.ts`): the first ask runs, and
-     every later one is handed what it answered. Preview runs them as the page does. With no
-     handler and no Preview nothing runs, which is every other mode and a host that sent none.
-     Set every render, to null too: the handler is realm-wide, like the two switches. */
-  const remoteLookup = opts.mode === "preview" ? null : (opts.remoteLookup ?? null);
+     every later one is handed what it answered. With no handler nothing runs, which is every
+     other mode and a host that sent none. Set every render, to null too: the handler is
+     realm-wide, like the two switches. */
+  const remoteLookup = opts.remoteLookup ?? null;
   setRemoteLookupHandler(remoteLookup);
-  const runsRemote = opts.mode === "preview" || remoteLookup !== null;
+  const runsRemote = remoteLookup !== null;
   setSkipServerFunctions(!runsRemote);
   setDocumentParser(parseDocumentText);
   setSkipAutoRequests(!runsRemote);
@@ -1495,24 +1474,23 @@ export async function prepareResolvedDocument(
   // Them from the iframe height, letting the host size the iframe to its content without `100vh`
   // Sections feeding back into an ever-growing height. Set every render (the iframe always wants it).
   setCanvasViewportTranspose(true);
-  // De-link `<a href>` in design/edit so clicks select the anchor instead of navigating the iframe;
-  // Preview keeps real links live (mirrors the server-function gate above). So does Project Styles:
-  // An `<a>` without `href` is not a link, so `:link`, `:any-link` and the UA's link colour could
-  // Never match its specimen, and a project could not see the link styles it was setting there.
-  // Its clicks are refused in the frame instead (`iframe-interaction.ts`).
-  setCanvasDelinkAnchors(opts.mode !== "preview" && opts.mode !== "stylebook");
-  /* De-popover in the same modes and for the same reason: an OPEN popover is in the top layer,
-     whose containing block is the viewport — a fiction here, since the frame is sized to its own
-     content — and which contributes to no ancestor's scrollable overflow, so the artboard could
-     never grow to fit one. Preview keeps the real top layer, backdrop and all. */
-  setCanvasDelinkPopovers(opts.mode !== "preview");
+  // De-link `<a href>` so clicks select the anchor instead of navigating the iframe. Not in Project
+  // Styles: an `<a>` without `href` is not a link, so `:link`, `:any-link` and the UA's link colour
+  // Could never match its specimen, and a project could not see the link styles it was setting
+  // There. Its clicks are refused in the frame instead (`iframe-interaction.ts`).
+  setCanvasDelinkAnchors(opts.mode !== "stylebook");
+  /* De-popover in every mode: an OPEN popover is in the top layer, whose containing block is the
+     viewport — a fiction here, since the frame is sized to its own content — and which contributes
+     to no ancestor's scrollable overflow, so the artboard could never grow to fit one. A page opened
+     in a browser keeps the real top layer, backdrop and all (§10.1). */
+  setCanvasDelinkPopovers(true);
   /* And de-link invoker commands, `inert` and a dialog's `open` with them: a `show-modal` invoker
      would put its dialog in the top layer and make the rest of the page inert, which is the
      popover problem plus an unclickable document. The frame reports the click instead. */
-  setCanvasDelinkCommands(opts.mode !== "preview");
+  setCanvasDelinkCommands(true);
   // Stamp `data-jx-bound-prop` on component-internal invertible text bindings in design/edit only —
-  // The inline prop-edit affordance. Set every render so a preview/stylebook render in the same
-  // Iframe clears it. A page's own bound text is drawn as chips (`prepareForEditMode`), whose
+  // The inline prop-edit affordance. Set every render so a stylebook render in the same Iframe
+  // Clears it. A page's own bound text is drawn as chips (`prepareForEditMode`), whose
   // Content is a child and never `textContent`, so only component internals get stamped.
   setStampPropBindings(opts.mode === "design" || opts.mode === "edit");
   injectHead(opts.doc, assets);
@@ -1555,18 +1533,13 @@ function commitResolvedDocument(
   // Not the narrower design/edit one: a Stylebook specimen and a git-diff side rename their
   // Overlays too, and without this sheet a closed panel would lay out in flow and an open dialog
   // Could never be shown.
-  syncCanvasOverlayCss(opts.container.ownerDocument, opts.mode);
-  syncPreviewShell(opts.container.ownerDocument, opts.mode);
+  syncCanvasOverlayCss(opts.container.ownerDocument);
   syncStylebookCss(opts.container.ownerDocument, opts.mode);
   syncDiffCss(opts.container.ownerDocument, Boolean(opts.diffMarks?.length));
   /* This render's rows. What was drawn is the render's own (the lists standing on a sample, the
      ones cut short, each node's scope); what was chosen (the active rows, the cap, the samples) is
      the frame's, and arrives in `opts.rows`. */
-  const rows: RowView = {
-    ...(opts.rows ?? newRowView()),
-    ...newDrawnState(),
-    editing: opts.mode !== "preview",
-  };
+  const rows: RowView = { ...(opts.rows ?? newRowView()), ...newDrawnState() };
   const onNodeCreated = makeStamper(opts.mapperCtx, rows);
   /* A list redraws itself whenever its items change, long after this function has returned, so the
      stamps are settled again each time. Not during the first draw: the tree is not in the

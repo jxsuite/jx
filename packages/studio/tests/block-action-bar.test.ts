@@ -334,7 +334,7 @@ describe("block action bar", () => {
   test("renders nothing outside design/edit modes, without selection, or without an anchor", async () => {
     setup({ children: [{ tagName: "p", textContent: "A" }], tagName: "div" }, ["children", 0]);
 
-    canvasMode = "preview";
+    canvasMode = "git-diff";
     await render();
     expect(bar()).toBeNull();
 
@@ -1259,10 +1259,10 @@ describe("scroll tracking", () => {
     expect(barY()).toBe(`${250 - 38}px`);
   });
 
-  test("scrolls are ignored in preview mode / without a selection / from unrelated targets", async () => {
+  test("scrolls are ignored outside design/edit modes / without a selection / from unrelated targets", async () => {
     const before = at();
 
-    canvasMode = "preview";
+    canvasMode = "git-diff";
     host.anchor = { height: 20, left: 1, top: 999, width: 100 };
     scrollDoc();
     await raf();

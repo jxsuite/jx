@@ -61,9 +61,9 @@ export const FRAME_KEY_SCOPES = ["caret", "canvas", "global"] as const;
  *
  * `pane.backToHome` holds bare Escape in the global scope, and it applies only to a view opened
  * beside a strip-less workspace's home (a media viewer, a comparison, `project.json` as Code), none
- * of which is a canvas frame. Projected into the table, it made every frame cancel Escape in
- * Preview and mid-sentence too, where nothing else claims it, so an author's own `<dialog>` or
- * popover in the rendered page could no longer be dismissed with it.
+ * of which is a canvas frame. Projected into the table, it made every frame cancel Escape
+ * mid-sentence too, where nothing else claims it, so an author's own `<dialog>` or popover in the
+ * rendered page could no longer be dismissed with it.
  */
 export const HOST_ONLY_COMMANDS: ReadonlySet<string> = new Set(["pane.backToHome"]);
 
@@ -71,8 +71,6 @@ export const HOST_ONLY_COMMANDS: ReadonlySet<string> = new Set(["pane.backToHome
 const CARET_STACK = ["caret", "global"] as const;
 /** The stack with a selection but no caret: structural verbs are live. */
 const CANVAS_STACK = ["canvas", "global"] as const;
-/** Preview draws no overlays and posts no hits, so element-level chords have nothing to aim at. */
-const GLOBAL_STACK = ["global"] as const;
 
 /** The synced table, plus the platform the chords were computed for. */
 export interface ForwardTable {
@@ -99,11 +97,8 @@ function isPageTextEntry(el: EventTarget | null): boolean {
  * other editors entirely. Keeping the two in step is what makes the forwarding decision and the
  * dispatch decision the same decision.
  */
-export function frameScopeStack(sessionLive: boolean, mode: string): readonly KeyScope[] {
-  if (sessionLive) {
-    return CARET_STACK;
-  }
-  return mode === "preview" ? GLOBAL_STACK : CANVAS_STACK;
+export function frameScopeStack(sessionLive: boolean): readonly KeyScope[] {
+  return sessionLive ? CARET_STACK : CANVAS_STACK;
 }
 
 /**
@@ -116,7 +111,6 @@ export function shouldForwardKey(
   e: KeyboardEvent,
   table: ForwardTable = NO_TABLE,
   sessionLive = false,
-  mode = "design",
 ): boolean {
   if (isPageTextEntry(e.target)) {
     return false;
@@ -125,7 +119,7 @@ export function shouldForwardKey(
   if (!chord) {
     return false;
   }
-  const stack = frameScopeStack(sessionLive, mode);
+  const stack = frameScopeStack(sessionLive);
   return table.chords.some((entry) => entry.chord === chord && stack.includes(entry.scope));
 }
 
@@ -145,19 +139,17 @@ export function serializeKey(e: KeyboardEvent): SerializedKey {
  * Listen for the parent's chords on the iframe document, prevent their default, and forward them.
  * Returns a teardown function.
  *
- * All three accessors are read PER KEYSTROKE, never captured: the table is replaced whenever the
- * author rebinds a key, the session comes and goes under the same listener, and the mode changes
- * without one.
+ * Both accessors are read PER KEYSTROKE, never captured: the table is replaced whenever the author
+ * rebinds a key, and the session comes and goes under the same listener.
  */
 export function startKeyForwarding(
   channel: IframeChannel<IframeToParent, ParentToIframe>,
   doc: Document = document,
   isSessionLive: () => boolean = () => false,
   getTable: () => ForwardTable = () => NO_TABLE,
-  getMode: () => string = () => "design",
 ): () => void {
   const onKey = (e: KeyboardEvent) => {
-    if (!shouldForwardKey(e, getTable(), isSessionLive(), getMode())) {
+    if (!shouldForwardKey(e, getTable(), isSessionLive())) {
       return;
     }
     e.preventDefault();
