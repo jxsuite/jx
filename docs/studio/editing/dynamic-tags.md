@@ -80,6 +80,8 @@ A value set to **Mixed text** in the Inspector is drawn as the canvas draws it: 
 
 To see which parts of a page are bound, open the **Context** popover on the pane's context bar (the sliders button) and set **Bound data** to **Names**. Every tag on the canvas is drawn as its name instead of its value. Set it back to **Values** when you are done. This changes nothing in your document.
 
+![A repeating list of blog posts on the canvas with each tag drawn as its name: Title, Description and Date](../../images/binding-names.png)
+
 ## Step through a repeating list
 
 Select anything inside a repeating list and the block action bar shows a row stepper: **Row 3 of 24** with an arrow on each side. The arrows move to the previous or next row and scroll it into view, which is the quickest way to check a format or a fallback against other items. Click the row count to choose how many rows the canvas draws. A block that is a `$switch`, or one of its cases, shows a case picker that names the case the page selects, such as **Case: closed (live)**. See **[Rows on the canvas](/docs/studio/design/repeaters#rows-on-the-canvas)**.
