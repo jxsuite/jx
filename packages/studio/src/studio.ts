@@ -88,6 +88,7 @@ import {
   postLocaleToLiveHosts,
   setCanvasContextMenuHandler,
   setCanvasPointerDownHandler,
+  setCanvasTagClickHandler,
   setCanvasSlashHandler,
   setEntryFieldWriter,
   setIframePatchEscalation,
@@ -235,11 +236,14 @@ import {
   formatCommands,
   initBlockActionBar,
   isEditChromeTarget,
+  returnFocusToCanvas,
   registerSelectionCommands,
   releaseBlockActionBar,
   renderBlockActionBar,
   suppressBlockActionBar,
 } from "./panels/block-action-bar";
+import { handleTagClick, initDynamicTag } from "./panels/dynamic-tag";
+import { closeTagPopover } from "./panels/tag-popover-door";
 import { initCssData } from "./panels/style-utils";
 import { initQuickSearch } from "./panels/quick-search";
 import { hydrateAccountStatus } from "./account-status";
@@ -617,7 +621,16 @@ setToolbarRefresh(renderBlockActionBar);
 // The other half of that seam: a pointerdown inside a canvas frame ends the bar's suppression (the
 // Canvas is in play again). It is the only signal that can, because clicking the SAME
 // Already-selected element changes nothing the render path can compare.
-setCanvasPointerDownHandler(releaseBlockActionBar);
+setCanvasPointerDownHandler(() => {
+  releaseBlockActionBar();
+  /* A press in the canvas is a press outside the tag popover, which the platform's own light
+     dismiss cannot see across the frame. A press on a chip opens its own popover with the click
+     that follows (studio.md §6.9). */
+  closeTagPopover();
+});
+// A chip pressed in a block the author had already chosen opens that chip's popover.
+setCanvasTagClickHandler(handleTagClick);
+initDynamicTag(returnFocusToCanvas);
 // The cross-origin insertion "+" click runs the parent-realm slash-menu → mutateInsertNode flow.
 setInsertZoneClickHandler(runInsertZoneAction);
 // Files dragged from the OS onto a canvas: upload, then replace an image's source or insert.
@@ -861,6 +874,8 @@ function installPaneRenderEffects(paneId: string): void {
       void tab.session.ui.repeaterRows;
       // A state value set for the canvas is in the scope the render builds (`canvas.setStateValue`).
       void tab.session.ui.stateValues;
+      // So is the case of a `$switch` chosen for it (`canvas.setSwitchCase`).
+      void tab.session.ui.switchCases;
       void tab.session.ui.showLayout;
     }
     // Project-level render inputs: the stylebook catalogue's filters are shell state, so a change

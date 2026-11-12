@@ -76,6 +76,9 @@ const host: HostMock = {
 };
 
 void mock.module("../src/canvas/iframe-host", () => ({
+  requestTemplateEval: () => Promise.resolve(null),
+  revealCanvasPath: () => Promise.resolve(null),
+  flushCanvasEdits: () => Promise.resolve(),
   getEditBarAnchorRect: () => host.anchor,
   getEditSnapshot: () => ({
     editing: host.editing,
@@ -950,18 +953,22 @@ describe("block action bar", () => {
     expect(part("insert-data")).not.toBeNull();
   });
 
-  test("Insert data button appears while editing and opens a merge-tag menu", async () => {
+  test("the Insert button appears while editing and opens the list of sources", async () => {
     await setupEditingWithState({ count: 5, title: "Hello" });
     const btn = part("insert-data")!;
-    expect(control(btn)!.getAttribute("aria-label")).toBe("Insert data");
-    // The region a shot addresses to photograph the open merge-tag list.
+    expect(control(btn)!.getAttribute("aria-label")).toBe("Insert dynamic tag");
+    // The region a shot addresses to photograph the open list.
     expect(btn.dataset.jxRegion).toBe("overlay.menu:block-action-bar/insertData");
 
     press(btn);
     expect(isSlashMenuOpen()).toBe(true);
-    // Two top-level state names → two merge tags (no live scope → no nested walk).
+    // Two top-level state names → two sources (no live scope → no nested walk), each under the
+    // Name a person calls it, with what a template reads beside it.
     const shown = await slashRows();
-    expect(shown.length).toBe(2);
+    expect(shown.map((el) => el.querySelector('[part="label"]')!.textContent!.trim())).toEqual([
+      "Count",
+      "Title",
+    ]);
   });
 
   test("selecting a merge tag posts an insertData intent", async () => {
@@ -1004,11 +1011,14 @@ describe("block action bar", () => {
     press(part("insert-data"));
     expect(isSlashMenuOpen()).toBe(true);
     const slashed = await slashRows();
-    // A row is a `jx-option` now, so its words are the kit's `[part="label"]`.
+    // A row is a `jx-option` now, so its words are the kit's `[part="label"]`: the field's name,
+    // The row's own two words, and the page's data after them.
     const labels = slashed.map((el) => el.querySelector('[part="label"]')!.textContent!.trim());
-    expect(labels).toContain("item");
-    expect(labels).toContain("index");
-    expect(labels).toContain("item.data.title");
+    expect(labels.slice(0, 5)).toEqual(["Id", "Body", "Title", "Whole item", "Row number"]);
+    // The pick is still what a template reads, and it is placed as a chip by the frame.
+    slashed[2]!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    await flush();
+    expect(host.posted).toEqual([{ command: "insertData", token: "item.data.title" }]);
 
     resetStudioState(); // Reset projectConfig so it does not leak into later tests.
   });

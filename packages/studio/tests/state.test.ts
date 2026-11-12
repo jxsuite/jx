@@ -348,6 +348,18 @@ describe("nodeLabel", () => {
     expect(nodeLabel({ tagName: "p", textContent: "Hello world" })).toBe("p — Hello world");
   });
 
+  test("a bound text is named by what it draws from, not by its expression", () => {
+    expect(nodeLabel({ tagName: "p", textContent: "Written by ${state.entry.data.author}" })).toBe(
+      "p — Written by {Author}",
+    );
+    expect(nodeLabel({ tagName: "time", textContent: "${$map.item.data.date}" })).toBe(
+      "time — {Date}",
+    );
+    expect(nodeLabel({ tagName: "li", textContent: "${(d) => d}" })).toBe(
+      "li — {Custom expression}",
+    );
+  });
+
   test("truncates long text to 24 chars", () => {
     const label = nodeLabel({
       tagName: "p",

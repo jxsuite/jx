@@ -1,0 +1,246 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StudioTagStrip",
+  "$description": "A bound value as the Inspector shows it (studio.md §6.6, §6.9): the literal runs of a template and one chip per tag, each chip drawn with its name and the value it resolves to on the canvas, where the row used to print the template's characters. It is the canvas's own picture of bound text, on the other surface that edits it: a chip is pressed to open the tag popover, which is where a tag is changed. The characters are still one press away, in the text field `raw` swaps in, because a literal run is typed and a template is, underneath, a string. `panels/tag-strip.ts` decides every word here; the document draws runs and reports presses.",
+  "tagName": "div",
+  "attributes": {
+    "part": "root",
+    "role": "none"
+  },
+  "style": {
+    "display": "flex",
+    "flexDirection": "column",
+    "gap": "var(--jx-space-1)",
+    "minWidth": "0",
+    "& [part=\"view-slot\"]": {
+      "display": "contents"
+    },
+    "& [part=\"strip\"]": {
+      "display": "flex",
+      "flexWrap": "wrap",
+      "alignItems": "center",
+      "gap": "2px var(--jx-space-1)",
+      "minHeight": "24px",
+      "padding": "2px var(--jx-space-2)",
+      "border": "1px solid var(--jx-border)",
+      "borderRadius": "var(--jx-radius-sm)",
+      "background": "var(--jx-bg-input)",
+      "fontSize": "var(--jx-text-xs)",
+      "minWidth": "0"
+    },
+    "& [part=\"run-slot\"]": {
+      "display": "contents"
+    },
+    "& [part=\"run\"]": {
+      "whiteSpace": "pre-wrap",
+      "overflowWrap": "anywhere"
+    },
+    "& [part=\"chip\"]": {
+      "display": "inline-flex",
+      "minWidth": "0",
+      "maxWidth": "100%"
+    },
+    "& [part=\"chip\"] > [part=\"control\"]": {
+      "minHeight": "0",
+      "maxWidth": "100%",
+      "padding": "0 var(--jx-space-2)",
+      "border": "1px solid color-mix(in srgb, var(--jx-tag) 45%, transparent)",
+      "borderRadius": "999px",
+      "background": "color-mix(in srgb, var(--jx-tag) 14%, transparent)",
+      "color": "var(--jx-fg)",
+      "fontSize": "var(--jx-text-xs)",
+      "display": "flex",
+      "gap": "var(--jx-space-1)",
+      "overflow": "hidden"
+    },
+    "& [part=\"chip-name\"]": {
+      "fontWeight": "600",
+      "whiteSpace": "nowrap"
+    },
+    "& [part=\"chip-value\"]": {
+      "color": "var(--jx-fg-dim)",
+      "overflow": "hidden",
+      "textOverflow": "ellipsis",
+      "whiteSpace": "nowrap",
+      "minWidth": "0"
+    },
+    "& [part=\"chip-value\"]:empty": {
+      "display": "none"
+    },
+    "& [part=\"foot\"]": {
+      "display": "flex",
+      "justifyContent": "flex-end"
+    }
+  },
+  "children": [
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "view-slot",
+        "role": "none"
+      },
+      "$switch": {
+        "$ref": "#/state/view"
+      },
+      "cases": {
+        "strip": {
+          "tagName": "div",
+          "attributes": {
+            "part": "strip",
+            "role": "group",
+            "aria-label": "${state.label}"
+          },
+          "children": [
+            {
+              "$prototype": "Array",
+              "items": {
+                "$ref": "#/state/runs"
+              },
+              "key": {
+                "$ref": "$map/item/key"
+              },
+              "map": {
+                "tagName": "span",
+                "attributes": {
+                  "part": "run-slot",
+                  "role": "none"
+                },
+                "$switch": {
+                  "$ref": "$map/item/kind"
+                },
+                "cases": {
+                  "text": {
+                    "tagName": "span",
+                    "attributes": {
+                      "part": "run"
+                    },
+                    "textContent": "${$map.item.text}"
+                  },
+                  "chip": {
+                    "tagName": "jx-action-button",
+                    "attributes": {
+                      "part": "chip",
+                      "data-tag": "${$map.item.key}",
+                      "data-kind": "${$map.item.tagKind}"
+                    },
+                    "$props": {
+                      "size": "sm",
+                      "quiet": true,
+                      "label": {
+                        "$ref": "$map/item/name"
+                      },
+                      "hint": {
+                        "$ref": "$map/item/name"
+                      },
+                      "haspopup": "dialog"
+                    },
+                    "onclick": {
+                      "$ref": "#/state/openChip"
+                    },
+                    "children": [
+                      {
+                        "tagName": "span",
+                        "attributes": {
+                          "part": "chip-name"
+                        },
+                        "textContent": "${$map.item.text}"
+                      },
+                      {
+                        "tagName": "span",
+                        "attributes": {
+                          "part": "chip-value"
+                        },
+                        "textContent": "${$map.item.value}"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "raw": {
+          "tagName": "jx-textfield",
+          "attributes": {
+            "part": "raw"
+          },
+          "$props": {
+            "size": "sm",
+            "mono": true,
+            "multiline": true,
+            "grows": true,
+            "rows": "1",
+            "label": {
+              "$ref": "#/state/label"
+            },
+            "value": {
+              "$ref": "#/state/template"
+            }
+          },
+          "onchange": {
+            "$prototype": "Function",
+            "body": [
+              {
+                "operator": "call",
+                "target": {
+                  "$ref": "#/state/commitRaw"
+                },
+                "value": [
+                  {
+                    "$ref": "event#/target/value"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "tagName": "div",
+      "attributes": {
+        "part": "foot",
+        "role": "none"
+      },
+      "children": [
+        {
+          "tagName": "jx-action-button",
+          "attributes": {
+            "part": "raw-toggle"
+          },
+          "$props": {
+            "size": "sm",
+            "quiet": true,
+            "label": {
+              "$ref": "#/state/toggleLabel"
+            },
+            "hint": {
+              "$ref": "#/state/toggleLabel"
+            },
+            "disabled": {
+              "$ref": "#/state/toggleDisabled"
+            }
+          },
+          "onclick": {
+            "$prototype": "Function",
+            "body": [
+              {
+                "operator": "call",
+                "target": {
+                  "$ref": "#/state/toggleRaw"
+                },
+                "value": []
+              }
+            ]
+          },
+          "children": [
+            {
+              "tagName": "span",
+              "textContent": "${state.toggleLabel}"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

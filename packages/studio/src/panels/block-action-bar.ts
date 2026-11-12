@@ -34,7 +34,14 @@
  * @docs studio/interface/canvas
  */
 
-import { displayTagName, isMappedArray, isNonNullObject, isNumber } from "@jxsuite/schema/guards";
+import {
+  displayTagName,
+  isMappedArray,
+  isNonNullObject,
+  isNumber,
+  isRef,
+  isString,
+} from "@jxsuite/schema/guards";
 import { focusItem } from "@jxsuite/ui/behaviors/action-group";
 import { draggable } from "@atlaskit/pragmatic-drag-and-drop/element/adapter";
 import { disableNativeDragPreview } from "@atlaskit/pragmatic-drag-and-drop/element/disable-native-drag-preview";
@@ -61,19 +68,29 @@ import {
 } from "../tabs/transact";
 import { view } from "../view";
 import { getInlineActions, isInlineElement } from "../editor/inline-edit";
-import { buildMergeTags, buildRepeaterTagsFromFields } from "../editor/merge-tags";
-import { findEnclosingRepeater, resolveRepeaterItemFields } from "../editor/repeater-scope";
+import { boundTagsOf, pillLabel } from "../editor/dynamic-tags";
+import { tagTitlesAt } from "../editor/repeater-scope";
+import { sourceGroups } from "../editor/tag-sources";
+import { MAX_ROW_LIMIT } from "../canvas/iframe-protocol";
+import { switchCaseNames } from "../canvas/switch-cases";
+import { openTagPopover, TAG_POPOVER_GAP } from "./tag-popover-door";
 import { projectState } from "../state";
 import { componentRegistry } from "../files/components";
 import { convertToComponent } from "../editor/convert-to-component";
-import { getEditBarAnchorRect, getEditSnapshot, postApplyFormat } from "../canvas/iframe-host";
+import {
+  getEditBarAnchorRect,
+  getEditSnapshot,
+  postApplyFormat,
+  requestTemplateEval,
+  revealCanvasPath,
+} from "../canvas/iframe-host";
 import { getLayerSlot, isModalOpen } from "../ui/layers";
 import { showSlashMenu } from "../editor/slash-menu";
 import { getConvertTargets } from "../editor/convert-targets";
 import { rectOf } from "../utils/geometry";
 import { outlineCommands } from "./outline-expansion";
 import { createCommandRegistry } from "../commands/registry";
-import { runReported } from "../commands/run-reported";
+import { runActiveReported, runReported } from "../commands/run-reported";
 import { editorKindForMode, makeContext } from "../commands/context";
 import { defaultCommands, noopCommandDeps } from "../commands/defaults";
 import { emptyBlockBarView, mountBlockActionBar } from "../surfaces/block-action-bar";
@@ -82,11 +99,17 @@ import { openMenu } from "../surfaces/menu";
 import type { AnyCommand, CommandRegistry } from "../commands/registry";
 import type { CommandContext } from "../commands/context";
 import type { CommandDeps } from "../commands/defaults";
-import type { ApplyFormatIntent } from "../canvas/iframe-protocol";
+import type { ApplyFormatIntent, RowCount } from "../canvas/iframe-protocol";
+import type { ScopeRecord } from "../editor/merge-tags";
 import type { JxPath } from "../state";
 import type { JxMutableNode } from "@jxsuite/schema/types";
 import type { SlashCommand } from "../editor/convert-targets.js";
-import type { BlockBarSurface, BlockBarTool, BlockBarView } from "../surfaces/block-action-bar";
+import type {
+  BlockBarPill,
+  BlockBarSurface,
+  BlockBarTool,
+  BlockBarView,
+} from "../surfaces/block-action-bar";
 import type { MenuHandle, MenuRowProjection } from "../surfaces/menu";
 
 /**
@@ -957,7 +980,10 @@ function ensureSurface(): BlockBarSurface {
       returnFocusToCanvas();
     },
     onDragHandle: attachDragHandle,
+    openCaseMenu,
     openMergeTags: openMergeTagMenu,
+    openPill,
+    openRowsMenu,
     openOverflow: (anchor) => {
       const registry = selectionCommandRegistry();
       showCommandOverflow(
@@ -972,6 +998,7 @@ function ensureSurface(): BlockBarSurface {
     },
     run: (id) => runCommand(selectionCommandRegistry(), id),
     selectParent: () => runCommand(selectionCommandRegistry(), "selection.selectParent"),
+    stepRow,
   });
   return _surface;
 }
@@ -1089,7 +1116,7 @@ export function showCommandOverflow(
 // ─── Keyboard ────────────────────────────────────────────────────────────────
 
 /** Put the keyboard back where it came from — the canvas iframe, else its wrapper. */
-function returnFocusToCanvas(): void {
+export function returnFocusToCanvas(): void {
   // The FOCUSED pane's stage: the keyboard came from there and is going back there. Resolving it
   // From the active tab answered with whichever pane displays that document first.
   const stage = stageOf(activeCanvasSurface());
@@ -1179,36 +1206,347 @@ function openConvertMenu(anchor: HTMLElement): void {
 }
 
 /**
- * Open the merge-tag menu — a searchable list of `${…}` template tokens for the data available in
- * the current state. Reuses the shared slash-menu surface (filter + keyboard nav + dismiss).
- * Selecting a token posts an `insertData` intent the iframe applies at its caret.
+ * Open the Insert list: every value a tag here can read, under the name a person calls it
+ * (studio.md §6.9). Reuses the shared slash-menu surface (filter, keyboard, dismiss). A pick posts
+ * an `insertData` intent, and the frame puts a chip at its caret: a tag, not the characters of
+ * one.
+ *
+ * The rows are the tag popover's own Source rows (`sourceGroups`), so a value has one name on both
+ * surfaces: inside a repeater the row's fields first, by their schema titles, then the page's
+ * data.
  *
  * @param {HTMLElement} anchor
  */
 function openMergeTagMenu(anchor: HTMLElement): void {
   const tab = activeTab.value;
-  const state = tab?.doc.document.state ?? {};
-  // The live resolved scope lives inside the iframe realm and is not threaded out, so the parent
-  // Offers only top-level `state.*` tokens (buildMergeTags tolerates the null scopes).
-  const tags = buildMergeTags(state, null, null);
-
-  // When the caret sits inside a repeater, offer its local scope (item/index + item fields). There is
-  // No live `$map` in edit mode — the perimeter renders one glyph template — so fields resolve
-  // Parent-side from schema, keyed off the selected element's doc path (which carries a `map` segment).
-  const selPath = getEditSnapshot().snapshot?.path ?? primarySelection(tab?.session.selection);
-  if (tab && selPath && findEnclosingRepeater(tab.doc.document, selPath)) {
-    const tokens = resolveRepeaterItemFields(
-      tab.doc.document,
-      selPath,
-      projectState?.projectConfig,
-    );
-    tags.push(...buildRepeaterTagsFromFields(tokens));
+  const path = getEditSnapshot().snapshot?.path ?? primarySelection(tab?.session.selection);
+  if (!tab || !path) {
+    return;
   }
-
+  const groups = sourceGroups(
+    tab.doc.document,
+    path,
+    projectState?.projectConfig ?? null,
+    /* SAFETY: the scope snapshot is the frame's resolved state as JSON, which a scope record is. */
+    tab.session.canvas.scope as ScopeRecord | null,
+  );
   showSlashMenu(anchor, "", {
-    commands: tags.map((t) => ({ description: t.hint, label: t.label, tag: t.token })),
+    commands: groups.flatMap((group) =>
+      group.rows.map((row) => ({
+        description: row.hint ?? "",
+        group: group.label,
+        label: row.label,
+        tag: row.value,
+      })),
+    ),
     onSelect: (cmd) => postApplyFormat({ command: "insertData", token: cmd.tag }),
     showFilter: true,
+  });
+}
+
+/**
+ * Whether Insert dynamic tag can act on a block, and the words that say why when it cannot. A block
+ * whose text is one `{ "$ref" }` holds the value as a whole: there is no text to put a chip in, and
+ * the control said nothing when it was pressed.
+ */
+function insertView(node: JxMutableNode): Pick<BlockBarView, "insertDisabled" | "insertHint"> {
+  const whole = isRef(node.textContent) || isRef(node.children);
+  return whole
+    ? {
+        insertDisabled: true,
+        insertHint: "This block's text is one bound value. Change its tag, or clear it to mix text",
+      }
+    : { insertDisabled: false, insertHint: "Insert dynamic tag" };
+}
+
+// ─── Bound pills, rows and cases ─────────────────────────────────────────────
+
+/** The most Bound pills the bar draws; a block bound in more places says the rest in its last pill. */
+const MAX_PILLS = 4;
+
+/** What a pill's key holds: the tag's property and its place among that property's expressions. */
+function pillKey(slot: readonly (string | number)[], index: number): string {
+  return JSON.stringify([slot, index]);
+}
+
+/** One pill per bound property of `node` (studio.md §6.9), named for the property and the value. */
+function pillsOf(tab: ActiveTab, path: JxPath, node: JxMutableNode): BlockBarPill[] {
+  const titles = tagTitlesAt(tab.doc.document, path, projectState?.projectConfig ?? null);
+  return boundTagsOf(node, titles)
+    .slice(0, MAX_PILLS)
+    .map((tag) => {
+      const label = pillLabel(tag);
+      return {
+        hint: `Edit binding: ${label}`,
+        key: pillKey(tag.slot, tag.index),
+        label,
+        property: tag.property,
+      };
+    });
+}
+
+/** Open the tag a pill names, under the pill, and give the pill the focus back when it closes. */
+function openPill(key: string, anchor: HTMLElement): void {
+  const path = primarySelection(activeTab.value?.session.selection);
+  if (!path) {
+    return;
+  }
+  let slot: (string | number)[];
+  let index: number;
+  try {
+    // SAFETY: a pill's key is `pillKey`'s own output.
+    [slot, index] = JSON.parse(key) as [(string | number)[], number];
+  } catch {
+    return;
+  }
+  const box = rectOf(anchor);
+  openTagPopover(
+    { index, path, slot },
+    { at: { x: box.left, y: box.bottom + TAG_POPOVER_GAP }, returnFocus: anchor },
+  );
+}
+
+/** The repeater a selection is, or the nearest one it stands in; null outside any. */
+function repeaterPathOf(doc: JxMutableNode, path: JxPath): JxPath | null {
+  if (isMappedArray(getNodeAtPath(doc, path))) {
+    return path;
+  }
+  for (let at = path.lastIndexOf("map"); at > 0; at = path.lastIndexOf("map", at - 1)) {
+    const candidate = path.slice(0, at);
+    if (isMappedArray(getNodeAtPath(doc, candidate))) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
+/** What the frame last said about one repeater's rows, and what was true when it was asked. */
+interface RowCountEntry {
+  stamp: string;
+  /** The scope snapshot the canvas had posted then: a new one is a new render. */
+  scope: object | null;
+  count: RowCount | null;
+}
+
+/** The row counts of each tab's repeaters, by the repeater's serialized path. */
+const _rowCounts = new WeakMap<ActiveTab, Map<string, RowCountEntry>>();
+
+/** How long after a change the frame is asked again, once its render has had time to land. */
+const ROW_RECOUNT_MS = 450;
+
+/**
+ * How many rows the canvas draws of the repeater at `path`, as the frame last answered, asking
+ * again whenever what decides the answer has moved: the cap, the active row, a new render.
+ */
+function rowCountFor(tab: ActiveTab, path: JxPath): RowCount | null {
+  const key = JSON.stringify(path);
+  let held = _rowCounts.get(tab);
+  if (!held) {
+    held = new Map();
+    _rowCounts.set(tab, held);
+  }
+  const entries = held;
+  const stamp = JSON.stringify([
+    tab.session.ui.repeaterRows,
+    tab.session.ui.activeRows[key] ?? 0,
+    tab.session.canvas.status,
+  ]);
+  const { scope } = tab.session.canvas;
+  const entry = entries.get(key);
+  if (entry?.stamp !== stamp || entry.scope !== scope) {
+    entries.set(key, { count: entry?.count ?? null, scope, stamp });
+    const ask = (): void => {
+      void requestTemplateEval(tab.id, { path: null, repeater: path, templates: [] }).then(
+        (reply) => {
+          const current = entries.get(key);
+          if (!reply || current?.stamp !== stamp) {
+            return;
+          }
+          if (JSON.stringify(current.count) !== JSON.stringify(reply.rows)) {
+            entries.set(key, { ...current, count: reply.rows });
+            renderBlockActionBar();
+          }
+        },
+      );
+    };
+    ask();
+    // The change that moved the stamp is as a rule followed by a render: ask what it drew.
+    setTimeout(ask, ROW_RECOUNT_MS);
+  }
+  return entries.get(key)?.count ?? null;
+}
+
+/** The row stepper's part of the projection, hidden outside a repeater. */
+function rowsView(
+  tab: ActiveTab,
+  selection: JxPath,
+): Pick<
+  BlockBarView,
+  "rowState" | "rowLabel" | "rowsHint" | "rowPrevDisabled" | "rowNextDisabled"
+> {
+  const path = repeaterPathOf(tab.doc.document, selection);
+  if (!path) {
+    return {
+      rowLabel: "",
+      rowNextDisabled: true,
+      rowPrevDisabled: true,
+      rowState: "hidden",
+      rowsHint: "",
+    };
+  }
+  const count = rowCountFor(tab, path);
+  const chosen = tab.session.ui.activeRows[JSON.stringify(path)] ?? 0;
+  // The tab's choice, held to the rows the frame says it draws (a list that shrank clamps it).
+  const active = count && count.drawn > 0 ? Math.min(chosen, count.drawn - 1) : chosen;
+  const rowLabel = !count
+    ? `Row ${active + 1}`
+    : count.drawn === 0
+      ? "No rows"
+      : `Row ${active + 1} of ${count.drawn}`;
+  const cap = tab.session.ui.repeaterRows;
+  return {
+    rowLabel,
+    rowNextDisabled: count ? active >= count.drawn - 1 : false,
+    rowPrevDisabled: active <= 0,
+    rowState: "shown",
+    rowsHint:
+      count && count.total > count.drawn
+        ? `${rowLabel}: ${count.drawn} of ${count.total} rows drawn. Change how many`
+        : `${rowLabel}: up to ${cap} rows drawn. Change how many`,
+  };
+}
+
+/** Make the row before or after the active one the active row (`canvas.setActiveRow`). */
+function stepRow(delta: number): void {
+  const tab = activeTab.value;
+  const selection = primarySelection(tab?.session.selection);
+  const path = tab && selection ? repeaterPathOf(tab.doc.document, selection) : null;
+  if (!tab || !selection || !path) {
+    return;
+  }
+  const count = rowCountFor(tab, path);
+  /* From the row the tab has chosen, clamped to the rows there are: the frame's own count says
+     which row it shows, but it is asked for and so can be one step behind a quick second press. */
+  const last = (count?.drawn ?? Infinity) - 1;
+  const chosen = Math.min(tab.session.ui.activeRows[JSON.stringify(path)] ?? 0, Math.max(last, 0));
+  const row = Math.max(0, Math.min(chosen + delta, last));
+  /* The selection is the same path in another row, which as a rule is somewhere else on the page:
+     it is brought on screen, or the bar the author is stepping with would leave with its anchor. */
+  void runActiveReported("canvas.setActiveRow", { path: [...path], row }, "Block action bar").then(
+    // A repeater has no element of its own: its box is the union of its rows, which reveals all.
+    () => revealCanvasPath(selection),
+  );
+}
+
+/** The row caps the list offers. The last is the most the command takes. */
+const ROW_CAPS = [6, 12, 24, 48, 100, MAX_ROW_LIMIT];
+
+/** Open the list of how many rows of a repeater to draw (`canvas.setRepeaterRows`). */
+function openRowsMenu(anchor: HTMLElement): void {
+  const cap = activeTab.value?.session.ui.repeaterRows;
+  showSlashMenu(anchor, "", {
+    commands: ROW_CAPS.map((rows) => ({
+      description: rows === cap ? "Drawn now" : "",
+      label: `Draw up to ${rows} rows`,
+      tag: String(rows),
+    })),
+    onSelect: (cmd) => {
+      void runActiveReported(
+        "canvas.setRepeaterRows",
+        { rows: Number(cmd.tag) },
+        "Block action bar",
+      );
+    },
+  });
+}
+
+/** What the case list's first row is stored as: the case the switch itself selects. */
+const LIVE_CASE = "";
+
+/**
+ * The `$switch` whose case picker a selection belongs to: the selected node when it is one, else
+ * the switch the selected node is a case of. A case is what the canvas draws and what an author
+ * clicks, so the picker is on it too.
+ */
+function enclosingSwitch(doc: JxMutableNode, selection: JxPath): JxPath | null {
+  if (switchCaseNames(getNodeAtPath(doc, selection)).length > 0) {
+    return selection;
+  }
+  const at = selection.lastIndexOf("cases");
+  if (at < 1 || selection.length !== at + 2) {
+    return null;
+  }
+  const path = selection.slice(0, at);
+  return switchCaseNames(getNodeAtPath(doc, path)).length > 0 ? path : null;
+}
+
+/** The case a switch selects now, when its discriminant is a state value the scope holds. */
+function liveCaseOf(node: JxMutableNode, scope: ScopeRecord | null): string | null {
+  const ref = node.$switch;
+  if (!isRef(ref) || !ref.$ref.startsWith("#/state/") || scope === null) {
+    return null;
+  }
+  const held = scope[ref.$ref.slice("#/state/".length)];
+  const name = isString(held) ? held : null;
+  return name !== null && switchCaseNames(node).includes(name) ? name : null;
+}
+
+/** The case picker's part of the projection, hidden on anything but a `$switch` or one of its cases. */
+function caseView(
+  tab: ActiveTab,
+  selection: JxPath,
+): Pick<BlockBarView, "caseState" | "caseLabel" | "caseHint"> {
+  const path = enclosingSwitch(tab.doc.document, selection);
+  const node = path ? getNodeAtPath(tab.doc.document, path) : null;
+  if (!path || !node) {
+    return { caseHint: "", caseLabel: "", caseState: "hidden" };
+  }
+  const chosen = tab.session.ui.switchCases[JSON.stringify(path)];
+  /* SAFETY: the scope snapshot is the frame's resolved state as JSON, which a scope record is. */
+  const live = liveCaseOf(node, tab.session.canvas.scope as ScopeRecord | null);
+  const caseLabel =
+    chosen !== undefined
+      ? `Case: ${chosen}`
+      : live !== null
+        ? `Case: ${live} (live)`
+        : "Case: live";
+  return {
+    caseHint: `${caseLabel}. Choose the case the canvas draws`,
+    caseLabel,
+    caseState: "shown",
+  };
+}
+
+/** Open the list of a `$switch`'s cases (`canvas.setSwitchCase`). */
+function openCaseMenu(anchor: HTMLElement): void {
+  const tab = activeTab.value;
+  const selected = primarySelection(tab?.session.selection);
+  const selection = tab && selected ? enclosingSwitch(tab.doc.document, selected) : null;
+  const node = tab && selection ? getNodeAtPath(tab.doc.document, selection) : null;
+  if (!tab || !selection || !node) {
+    return;
+  }
+  const chosen = tab.session.ui.switchCases[JSON.stringify(selection)];
+  showSlashMenu(anchor, "", {
+    commands: [
+      {
+        description: chosen === undefined ? "Drawn now" : "What the page selects",
+        label: "Live case",
+        tag: LIVE_CASE,
+      },
+      ...switchCaseNames(node).map((name) => ({
+        description: name === chosen ? "Drawn now" : "",
+        label: name,
+        tag: name,
+      })),
+    ],
+    onSelect: (cmd) => {
+      void runActiveReported(
+        "canvas.setSwitchCase",
+        { case: cmd.tag === LIVE_CASE ? null : cmd.tag, path: [...selection] },
+        "Block action bar",
+      );
+    },
   });
 }
 
@@ -1361,6 +1699,8 @@ export function isEditChromeTarget(target: EventTarget | null): boolean {
     view.blockActionBarEl,
     _overflowHandle?.host ?? null,
     getLayerSlot("popover", "slash-menu"),
+    // The tag popover edits a binding of the block the bar is on (studio.md §6.9).
+    getLayerSlot("popover", "dynamic-tag"),
   ];
   return roots.some((root) => root != null && root.contains(target));
 }
@@ -1455,18 +1795,24 @@ function projectBar(): BlockBarView | null {
   // Missing one (studio-ui-guidelines.md §8.6: ONE shape).
   const canDrag = structuralTarget(selection) !== null;
 
+  const pills = pillsOf(tab, selection, node);
   return {
+    ...rowsView(tab, selection),
+    ...caseView(tab, selection),
     barX: pos.left,
     barY: pos.top,
     canDrag,
     dragHint: canDrag ? "Drag to reorder" : "Drag to reorder — the document root cannot move",
     formats,
     hasOverflow: placed.length > BLOCKBAR_MAX_ITEMS,
+    hasPills: pills.length > 0,
+    ...insertView(node),
     offscreen: false,
     overflowOpen: _overflowHandle !== null,
     parentDisabled: !parentPath,
     parentHint: parentChord ? `${parentLabel} (${parentChord})` : parentLabel,
     parentLabel,
+    pills,
     showFormat,
     tagDisabled: convertTargets.length === 0,
     tagHint: convertTargets.length > 0 ? "Change element type" : tagLabel,

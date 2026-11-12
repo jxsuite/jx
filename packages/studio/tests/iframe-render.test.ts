@@ -981,10 +981,9 @@ describe("applyBindingDisplay", () => {
       'data[data-jx-tag][data-jx-status="failed"]',
       "data[data-jx-tag][data-jx-status]:empty::before",
     ]);
-    expect(selectorsWith(EDIT_PLACEHOLDER_CSS, "data-jx-bound-field")).toEqual([
-      HELD,
-      `${HELD}::before`,
-    ]);
+    /* The outline alone: the label is the host's (the hover box's label, the Bound pills), so no
+       rule here draws a pseudo-element on a bound block, where it took the place of the author's. */
+    expect(selectorsWith(EDIT_PLACEHOLDER_CSS, "data-jx-bound-field")).toEqual([HELD]);
     // A chip that holds nodes takes no box, in every mode the document is prepared for.
     expect(selectorsWith(CANVAS_OVERLAY_CSS, "data-jx-tag")).toEqual([
       "data[data-jx-tag]:has(> *)",

@@ -118,7 +118,7 @@ afterEach(() => {
 
 /** The frame's boot announcement, with the capabilities this build names (studio.md §4.5). */
 const READY: IframeToParent = {
-  capabilities: ["bindingDisplay", "rows", "bindingStatus"],
+  capabilities: ["bindingDisplay", "rows", "bindingStatus", "tags"],
   kind: "ready",
 };
 

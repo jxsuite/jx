@@ -53,6 +53,9 @@ void mock.module("@atlaskit/pragmatic-drag-and-drop/element/disable-native-drag-
 const host: EditHostStub = { anchor: null, editing: false, posted: [] };
 
 void mock.module("../src/canvas/iframe-host", () => ({
+  requestTemplateEval: () => Promise.resolve(null),
+  revealCanvasPath: () => Promise.resolve(null),
+  flushCanvasEdits: () => Promise.resolve(),
   getEditBarAnchorRect: () => host.anchor,
   getEditSnapshot: () => ({ editing: host.editing, editingProp: null, snapshot: null }),
   postApplyFormat: (intent: ApplyFormatIntent) => host.posted.push(intent),

@@ -59,7 +59,7 @@ Beside the label of every bindable row sits a **value source** chip naming, in p
 
 - **Fixed value**: a value you type here, the same every time.
 - **From data…**: the current value of a signal, picked from a list.
-- **Mixed text**: text with `${…}` placeholders that fill in from signals.
+- **Mixed text**: your words with placeholders that fill in from your data. The row shows each placeholder as a tag with its name and current value. Click one to change what it reads, its format or its fallback, or click **Edit as text** to type around them. See **[Dynamic tags](/docs/studio/editing/dynamic-tags)**.
 - **Formula**: computed from other values, built up operator by operator.
 
 Those four names are the same everywhere a value can be produced from something else: the Content tab, the [Style tab](/docs/studio/design/style-inspector), the [Logic tab](/docs/studio/logic/events) and the operands inside a formula all say them the same way. Which of them a given row offers follows what the document format accepts in that position: an attribute, a component setting or the text content take **Fixed value**, **From data…** or **Mixed text**. A row with only one possible source shows its name and nothing to click.

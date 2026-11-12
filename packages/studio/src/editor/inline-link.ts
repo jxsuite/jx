@@ -1,6 +1,6 @@
 /// <reference lib="dom" />
 /**
- * Inline link + template-token application for contenteditable editing.
+ * Inline link application for contenteditable editing.
  *
  * Realm-agnostic: every DOM access uses ambient `window`/`document`, so bundled into the canvas
  * iframe these operate on the iframe realm where the edited DOM (and its Selection) live. The
@@ -127,10 +127,4 @@ export function applyLink(root: HTMLElement, href: string | null): string[] {
   }
   normalizeInlineContent(root);
   return replaced;
-}
-
-/** Insert a `${token}` template expression at the caret inside `root`, through the editing engine. */
-export function insertTemplateToken(root: HTMLElement, token: string): void {
-  root.focus();
-  execEditingCommand("insertText", `\${${token}}`);
 }

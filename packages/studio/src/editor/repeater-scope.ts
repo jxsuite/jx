@@ -83,6 +83,8 @@ export interface RepeaterField {
   isArray: boolean;
   /** Whether the field holds child nodes, which only an element's computed children can draw. */
   holdsNodes: boolean;
+  /** The title the field's schema declares, when it declares one: what a person calls the field. */
+  title?: string;
 }
 
 /** The one `$`-prefixed member an item offers: the Jx tree a parsed body came out as. */
@@ -341,13 +343,20 @@ export function repeaterItemFields(
       const memberPath = [...at, key];
       const resolved = followPointers(member, ctx);
       if (resolved?.[ENTRY_DATA] !== true) {
-        fields.push({
+        const field: RepeaterField = {
           holdsNodes,
           isArray: resolved?.type === "array" || isJsonObject(resolved?.items),
           path: memberPath,
           pointer: `$map/item/${memberPath.map((m) => escapeToken(m)).join("/")}`,
           token: fieldToken(memberPath),
-        });
+        };
+        // The member's own title, then the one the schema it points at declares.
+        const declared = isJsonObject(member) && isString(member.title) ? member.title : null;
+        const title = declared ?? (isString(resolved?.title) ? resolved.title : null);
+        if (title !== null && title.trim() !== "") {
+          field.title = title.trim();
+        }
+        fields.push(field);
       }
       const type = isString(resolved?.[ENTRY_TYPE]) ? resolved[ENTRY_TYPE] : null;
       if (memberPath.length < DEPTH_CAP && !(type !== null && passed.includes(type))) {
@@ -359,17 +368,69 @@ export function repeaterItemFields(
 }
 
 /**
- * The local scope tokens for text edited inside a repeater: `item` and `index`, then the fields of
- * the item in scope (see {@link repeaterItemFields}).
- *
- * @returns Token strings, e.g. `["item", "index", "item.id", "item.body", "item.data.title"]`.
+ * The titles the document's repeaters give their items' fields, by the field as a template reads it
+ * (`item.data.date`), for naming tags (studio.md §6.9). A field two repeaters title differently
+ * keeps neither title, since the key cannot say which repeater a tag stands in.
  */
-export function resolveRepeaterItemFields(
+export function tagTitlesOf(
+  doc: JxMutableNode,
+  config: ProjectConfig | null | undefined,
+): Readonly<Record<string, string>> {
+  const titles = new Map<string, string>();
+  const refused = new Set<string>();
+  const visit = (value: JxDocumentValue | undefined, path: JxPath): void => {
+    if (Array.isArray(value)) {
+      for (const [index, member] of value.entries()) {
+        visit(member, [...path, index]);
+      }
+      return;
+    }
+    if (!isJsonObject(value)) {
+      return;
+    }
+    if (isMappedArray(value)) {
+      for (const field of repeaterItemFields(doc, [...path, "map"], config)) {
+        if (field.title === undefined || refused.has(field.token)) {
+          continue;
+        }
+        const held = titles.get(field.token);
+        if (held !== undefined && held !== field.title) {
+          titles.delete(field.token);
+          refused.add(field.token);
+        } else {
+          titles.set(field.token, field.title);
+        }
+      }
+    }
+    for (const [key, member] of Object.entries(value)) {
+      if (key !== "state" && key !== "$media" && key !== "$elements") {
+        /* SAFETY: a member of a document object is a document value. */
+        visit(member as JxDocumentValue, [...path, key]);
+      }
+    }
+  };
+  visit(doc, []);
+  return Object.fromEntries(titles);
+}
+
+/**
+ * The titles the fields of the item in scope at `path` are given by their schemas, by the field as
+ * a template reads it: what a tag standing at `path` is named by (studio.md §6.9). Empty outside a
+ * repeater. Unlike {@link tagTitlesOf} it answers for one place, so two repeaters that title a field
+ * differently are each right where they stand.
+ */
+export function tagTitlesAt(
   doc: JxMutableNode,
   path: JxPath | null | undefined,
-  projectConfig: ProjectConfig | null | undefined,
-): string[] {
-  return ["item", "index", ...repeaterItemFields(doc, path, projectConfig).map((f) => f.token)];
+  config: ProjectConfig | null | undefined,
+): Readonly<Record<string, string>> {
+  const titles = new Map<string, string>();
+  for (const field of repeaterItemFields(doc, path, config)) {
+    if (field.title !== undefined) {
+      titles.set(field.token, field.title);
+    }
+  }
+  return Object.fromEntries(titles);
 }
 
 /**

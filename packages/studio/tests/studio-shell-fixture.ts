@@ -182,6 +182,7 @@ export async function bootStudio(opts: {
     registerSelectionCommands: mock(() => {}),
     releaseBlockActionBar: mock(() => {}),
     renderBlockActionBar: mock(() => {}),
+    returnFocusToCanvas: mock(() => {}),
     runCommand: mock(() => {}),
     selectionCommandRegistry: () => ({
       disabledReason: () => {},

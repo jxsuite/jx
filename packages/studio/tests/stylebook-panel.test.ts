@@ -37,6 +37,9 @@ const mounts: MountCall[] = [];
 const pans: string[] = [];
 
 void mock.module("../src/canvas/iframe-host", () => ({
+  requestTemplateEval: () => Promise.resolve(null),
+  revealCanvasPath: () => Promise.resolve(null),
+  flushCanvasEdits: () => Promise.resolve(),
   mountStylebookCanvas: (
     gen: number,
     generated: MountCall["generated"],

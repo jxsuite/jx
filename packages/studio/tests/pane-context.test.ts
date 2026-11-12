@@ -250,6 +250,7 @@ function installRegistry(ran: string[]) {
       setResolvingOpen: paneContext.setResolvingOpen,
     }).filter((c) =>
       [
+        "canvas.setBindingDisplay",
         "canvas.setBreakpoint",
         "canvas.setColorScheme",
         "canvas.setLayoutVisible",
@@ -897,6 +898,38 @@ describe("rendering context", () => {
     expect(summary()).toBe("1 query");
   });
 
+  test("Bound data offers values or names, and writes the tab's binding display", async () => {
+    const tab = openTestTab();
+    await mountBar();
+    const choices = segments("bindings");
+    expect(choices.map((s) => nameOf(s))).toEqual(["Values", "Names"]);
+    expect(part("bindings")!.getAttribute("role")).toBe("radiogroup");
+    expect(choices.map((s) => control(s).getAttribute("aria-checked"))).toEqual(["true", "false"]);
+    pointer(choices[1]!, "click");
+    await flush(4);
+    expect(tab.session.ui.bindingDisplay).toBe("names");
+    expect(segments("bindings").map((s) => control(s).getAttribute("aria-checked"))).toEqual([
+      "false",
+      "true",
+    ]);
+    // Names is a rendering context an author can forget is on, so the trigger says so at rest.
+    expect(summary()).toBe("Names");
+    pointer(segments("bindings")[0]!, "click");
+    await flush(4);
+    expect(tab.session.ui.bindingDisplay).toBe("values");
+    expect(summary()).toBe("");
+  });
+
+  test("Bound data is offered where the canvas is edited, and not over a diff", async () => {
+    const tab = openTestTab();
+    tab.session.ui.canvasMode = "git-diff";
+    await mountBar();
+    expect(part("bindings")).toBeNull();
+    tab.session.ui.canvasMode = "design";
+    await flush(4);
+    expect(part("bindings")).not.toBeNull();
+  });
+
   test("no size group without a breakpoint, and no scheme group without a scheme query", async () => {
     openTestTab();
     await mountBar();
@@ -971,7 +1004,8 @@ describe("rendering context", () => {
   test("groups a document declares nothing for are absent", async () => {
     openTestTab();
     await mountBar();
-    expect(partAll("ctx-group-label").map((el) => el.textContent.trim())).toEqual([]);
+    // Bound data is the canvas's own choice, offered wherever a document is edited (§6.9).
+    expect(partAll("ctx-group-label").map((el) => el.textContent.trim())).toEqual(["Bound data"]);
   });
 
   // ─── The language segment ───────────────────────────────────────────────────

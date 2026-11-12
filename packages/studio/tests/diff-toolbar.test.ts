@@ -37,6 +37,8 @@ let measureThrows = false;
 const revealed: [Identified, ReadonlyPath][] = [];
 
 void mock.module("../src/canvas/iframe-host.js", () => ({
+  requestTemplateEval: () => Promise.resolve(null),
+  flushCanvasEdits: () => Promise.resolve(),
   hostForCanvas: () => hostResult,
   measureInCanvas: (canvas: Identified, path: ReadonlyPath) => {
     if (measureThrows) {

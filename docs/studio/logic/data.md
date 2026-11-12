@@ -115,6 +115,8 @@ While you edit, the canvas draws your real data. A **Fetch from a URL** source t
 - **A failure is kept too.** A source that failed stays failed until you ask again. Its row reads **Failed**, and its editor ends with the reason.
 - **Nothing waits.** The page is drawn straight away and fills in when the answer arrives. A request with no answer after 30 seconds is given up as failed.
 
+Everything listed in this panel that holds a value is also what a [dynamic tag](/docs/studio/editing/dynamic-tags) can read: a tag's **Source** and the **Insert dynamic tag** list offer the same entries, with the values inside them, by name.
+
 On the canvas, text bound to a source with no value never shows its expression. It shows the binding's name and one of the same three states, quietly underlined: **Loading**, **Could not load** or **Runs on the live page**. A binding whose own expression fails, such as reading a field of a value that is `null`, says **Has an error** instead, with the error when you rest the pointer on it. Nothing failed to load there: the expression needs fixing.
 
 ## Refresh

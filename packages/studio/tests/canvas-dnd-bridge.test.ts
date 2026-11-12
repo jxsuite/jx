@@ -93,6 +93,9 @@ function cursorOf(msg: ParentToIframe | undefined) {
 }
 
 void mock.module("../src/canvas/iframe-host", () => ({
+  requestTemplateEval: () => Promise.resolve(null),
+  revealCanvasPath: () => Promise.resolve(null),
+  flushCanvasEdits: () => Promise.resolve(),
   adoptDragSession: (host: FakeHost, src: DragSrcKind, srcData: JsonObject, seq: number) => {
     dragSeq = seq;
     calls.push({ fn: "adopt", host, seq, src, srcData });

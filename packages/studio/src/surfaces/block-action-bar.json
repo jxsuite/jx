@@ -109,6 +109,28 @@
     },
     "& [part=\"link-field\"]": {
       "width": "200px"
+    },
+    "& [part=\"pills-slot\"], & [part=\"rows-slot\"], & [part=\"case-slot\"], & [part=\"pills\"], & [part=\"rows\"], & [part=\"case\"]": {
+      "display": "contents"
+    },
+    "& [part=\"pill\"] > [part=\"control\"]": {
+      "$description": "A Bound pill (studio.md §6.9): one per bound property of the selected block, naming the property and the value it reads. Drawn in the binding colour the canvas outlines a bound block with, so the pill and the outline read as one thing; it is the block's bound label, drawn here on the host's own surface and no longer as a pseudo-element of the block.",
+      "minHeight": "0",
+      "maxWidth": "200px",
+      "padding": "0 var(--jx-space-2)",
+      "border": "1px solid color-mix(in srgb, var(--jx-tag) 45%, transparent)",
+      "borderRadius": "999px",
+      "background": "color-mix(in srgb, var(--jx-tag) 14%, transparent)",
+      "color": "var(--jx-fg)",
+      "fontSize": "var(--jx-text-xs)",
+      "display": "block",
+      "overflow": "hidden",
+      "textOverflow": "ellipsis"
+    },
+    "& [part=\"pill-text\"]": {
+      "overflow": "hidden",
+      "textOverflow": "ellipsis",
+      "display": "block"
     }
   },
   "$switch": {
@@ -475,14 +497,257 @@
                       "$props": {
                         "size": "sm",
                         "quiet": true,
-                        "icon": "database",
-                        "label": "Insert data",
-                        "hint": "Insert data",
+                        "icon": "brackets-curly",
+                        "label": "Insert dynamic tag",
+                        "hint": {
+                          "$ref": "#/state/insertHint"
+                        },
+                        "disabled": {
+                          "$ref": "#/state/insertDisabled"
+                        },
                         "haspopup": "menu"
                       },
                       "onclick": {
                         "$ref": "#/state/openMergeTags"
                       }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "tagName": "span",
+              "attributes": {
+                "part": "pills-slot",
+                "role": "none"
+              },
+              "$switch": {
+                "$ref": "#/state/hasPills"
+              },
+              "cases": {
+                "true": {
+                  "tagName": "span",
+                  "attributes": {
+                    "part": "pills",
+                    "role": "none"
+                  },
+                  "children": [
+                    {
+                      "tagName": "jx-divider",
+                      "$props": {
+                        "orientation": "vertical"
+                      }
+                    },
+                    {
+                      "$prototype": "Array",
+                      "items": {
+                        "$ref": "#/state/pills"
+                      },
+                      "key": {
+                        "$ref": "$map/item/key"
+                      },
+                      "map": {
+                        "tagName": "jx-action-button",
+                        "attributes": {
+                          "part": "pill",
+                          "data-tag": "${$map.item.key}",
+                          "data-property": "${$map.item.property}"
+                        },
+                        "$props": {
+                          "size": "sm",
+                          "quiet": true,
+                          "label": {
+                            "$ref": "$map/item/label"
+                          },
+                          "hint": {
+                            "$ref": "$map/item/hint"
+                          },
+                          "haspopup": "dialog"
+                        },
+                        "onclick": {
+                          "$ref": "#/state/openPill"
+                        },
+                        "children": [
+                          {
+                            "tagName": "span",
+                            "attributes": {
+                              "part": "pill-text"
+                            },
+                            "textContent": "${$map.item.label}"
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "tagName": "span",
+              "attributes": {
+                "part": "rows-slot",
+                "role": "none"
+              },
+              "$switch": {
+                "$ref": "#/state/rowState"
+              },
+              "cases": {
+                "shown": {
+                  "tagName": "span",
+                  "attributes": {
+                    "part": "rows",
+                    "role": "none"
+                  },
+                  "children": [
+                    {
+                      "tagName": "jx-divider",
+                      "$props": {
+                        "orientation": "vertical"
+                      }
+                    },
+                    {
+                      "tagName": "jx-action-button",
+                      "attributes": {
+                        "part": "row-prev"
+                      },
+                      "$props": {
+                        "size": "sm",
+                        "quiet": true,
+                        "icon": "caret-left",
+                        "label": "Previous row",
+                        "hint": "Previous row",
+                        "disabled": {
+                          "$ref": "#/state/rowPrevDisabled"
+                        }
+                      },
+                      "onclick": {
+                        "$prototype": "Function",
+                        "body": [
+                          {
+                            "stopPropagation": true
+                          },
+                          {
+                            "operator": "call",
+                            "target": {
+                              "$ref": "#/state/stepRow"
+                            },
+                            "value": [-1]
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "tagName": "jx-action-button",
+                      "attributes": {
+                        "part": "row-count"
+                      },
+                      "$props": {
+                        "size": "sm",
+                        "quiet": true,
+                        "label": {
+                          "$ref": "#/state/rowsHint"
+                        },
+                        "hint": "",
+                        "haspopup": "menu"
+                      },
+                      "onclick": {
+                        "$ref": "#/state/openRowsMenu"
+                      },
+                      "children": [
+                        {
+                          "tagName": "span",
+                          "attributes": {
+                            "part": "cmd-label"
+                          },
+                          "textContent": "${state.rowLabel}"
+                        }
+                      ]
+                    },
+                    {
+                      "tagName": "jx-action-button",
+                      "attributes": {
+                        "part": "row-next"
+                      },
+                      "$props": {
+                        "size": "sm",
+                        "quiet": true,
+                        "icon": "caret-right",
+                        "label": "Next row",
+                        "hint": "Next row",
+                        "disabled": {
+                          "$ref": "#/state/rowNextDisabled"
+                        }
+                      },
+                      "onclick": {
+                        "$prototype": "Function",
+                        "body": [
+                          {
+                            "stopPropagation": true
+                          },
+                          {
+                            "operator": "call",
+                            "target": {
+                              "$ref": "#/state/stepRow"
+                            },
+                            "value": [1]
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "tagName": "span",
+              "attributes": {
+                "part": "case-slot",
+                "role": "none"
+              },
+              "$switch": {
+                "$ref": "#/state/caseState"
+              },
+              "cases": {
+                "shown": {
+                  "tagName": "span",
+                  "attributes": {
+                    "part": "case",
+                    "role": "none"
+                  },
+                  "children": [
+                    {
+                      "tagName": "jx-divider",
+                      "$props": {
+                        "orientation": "vertical"
+                      }
+                    },
+                    {
+                      "tagName": "jx-action-button",
+                      "attributes": {
+                        "part": "case-pick"
+                      },
+                      "$props": {
+                        "size": "sm",
+                        "quiet": true,
+                        "icon": "git-branch",
+                        "label": {
+                          "$ref": "#/state/caseHint"
+                        },
+                        "hint": "",
+                        "haspopup": "menu"
+                      },
+                      "onclick": {
+                        "$ref": "#/state/openCaseMenu"
+                      },
+                      "children": [
+                        {
+                          "tagName": "span",
+                          "attributes": {
+                            "part": "cmd-label"
+                          },
+                          "textContent": "${state.caseLabel}"
+                        }
+                      ]
                     }
                   ]
                 }

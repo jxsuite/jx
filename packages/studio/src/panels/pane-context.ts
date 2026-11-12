@@ -189,6 +189,12 @@ const CANVAS_VIEW_LABELS: Readonly<Record<CanvasView, string>> = {
   preview: "Preview",
 };
 
+/** The bound-data segment's values, labels and tooltips (`canvas.setBindingDisplay`, §6.9). */
+const BINDING_DISPLAY_CHOICES = [
+  ["values", "Values", "Draw each binding as the value it resolves to"],
+  ["names", "Names", "Draw each binding as its name, to read the template"],
+] as const;
+
 /** The colour-scheme segment's values, labels and tooltips. */
 const SCHEMES = [
   ["auto", "Auto", "Follow the OS color scheme"],
@@ -311,6 +317,7 @@ export function mount(host: HTMLElement, ctx: PaneContextCtx) {
         void tab.session.ui.featureToggles;
         void tab.session.ui.preview;
         void tab.session.ui.previewColorScheme;
+        void tab.session.ui.bindingDisplay;
         void tab.session.ui.previewLocale;
         void tab.session.ui.previewParams;
         void tab.session.ui.previewProps;
@@ -915,6 +922,7 @@ function contextAxis(tab: Tab, paneId: string, ctx: PaneContextCtx): Partial<Pan
   const contextSummary = [
     locale?.overridden ? localeLabel(locale.effective) : null,
     featuresOn > 0 ? `${featuresOn} ${featuresOn === 1 ? "query" : "queries"}` : null,
+    ui.bindingDisplay === "names" ? "Names" : null,
     hasLayout && ui.showLayout === false ? "No layout" : null,
   ]
     .filter((part) => part !== null)
@@ -930,7 +938,18 @@ function contextAxis(tab: Tab, paneId: string, ctx: PaneContextCtx): Partial<Pan
     : Object.keys(ui.previewProps ?? {}).length;
   const hasResolving = page ? params.length > 0 : props.length > 0;
 
+  const display = ui.bindingDisplay;
+  const editable = ui.canvasMode === "edit" || ui.canvasMode === "design";
   return {
+    bindings: BINDING_DISPLAY_CHOICES.map(([value, label, hint]) => ({
+      checked: display === value ? "true" : "false",
+      hint,
+      key: value,
+      label,
+      value,
+    })) satisfies PaneContextChoice[],
+    // Chips are drawn where the document is edited; a diff side or Preview has no names to show.
+    bindingState: editable ? "shown" : "hidden",
     contextSummary,
     featureState: plainQueries.length > 0 ? "shown" : "hidden",
     features: plainQueries.map(({ name, query }) => ({
@@ -1122,6 +1141,9 @@ function actionsFor(paneId: string, ctx: PaneContextCtx): PaneContextActions {
         name,
         value: raw === "" ? null : parsePropValue(raw),
       });
+    },
+    setBindingDisplay: (display) => {
+      runContextCommand(paneId, "canvas.setBindingDisplay", { display });
     },
     setScheme: (scheme) => {
       runContextCommand(paneId, "canvas.setColorScheme", { scheme });

@@ -19,6 +19,9 @@ let evalCalls: { tabId: string | null; exprs: unknown; contextPath: unknown }[] 
 let evalAnswer: EvalExprResult[] | null = null;
 
 void mock.module("../src/canvas/iframe-host", () => ({
+  requestTemplateEval: () => Promise.resolve(null),
+  revealCanvasPath: () => Promise.resolve(null),
+  flushCanvasEdits: () => Promise.resolve(),
   requestCanvasEval: (
     tabId: string | null,
     exprs: { id: string; node: unknown }[],

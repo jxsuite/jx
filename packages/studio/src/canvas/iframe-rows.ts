@@ -85,6 +85,8 @@ export interface RowView {
   samples: Readonly<Record<string, JsonValue>>;
   /** Whether rows are closed, capped and sampled: false for a render nobody edits (Preview). */
   editing: boolean;
+  /** The titles a tag is named by, for a node drawn again after the render (studio.md §6.9). */
+  titles: Readonly<Record<string, string>>;
   /** The scope the runtime rendered each stamped element with: a row's own inside a repeater. */
   scopes: WeakMap<HTMLElement, JxScope>;
   /**
@@ -113,6 +115,7 @@ export function newRowView(init: Partial<Pick<RowView, "limit" | "samples" | "ed
     ...newDrawnState(),
     limit: init.limit ?? DEFAULT_ROW_LIMIT,
     samples: init.samples ?? {},
+    titles: {},
   };
   return view;
 }

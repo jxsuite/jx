@@ -100,6 +100,8 @@ import type { AssetContext } from "./asset-resolve";
 import { KIT_LOADERS } from "@jxsuite/ui/loaders";
 import type { CanvasEnvelope, IframeChannel } from "./iframe-channel";
 import { FRAME_CAPABILITIES } from "./iframe-protocol";
+import { elementForPath } from "./iframe-position";
+import { chipBlockActive, evaluateTemplates, rowCountOf, tagClickAt } from "./iframe-tags";
 import type {
   CanvasMode,
   DragOverMsg,
@@ -684,11 +686,23 @@ export function startCanvasIframe(opts: {
   // Overlays — the cross-origin bridge means the parent never reads our DOM directly. The shadow-doc
   // Accessor feeds the insertion "+" zone computation hung off the same pointermove (the parent
   // Draws the clickable "+" and runs the slash-menu → mutateInsertNode flow on click).
+  /* Whether the chip under the last press stood in a block that already held the caret, read
+     before the press moves the caret there (studio.md §6.9). */
+  let pressedChipActive = false;
   const stopInteraction = startInteraction(channel, container.ownerDocument, {
     getGen: () => renderedGen,
     getMode: () => currentMode,
     getShadowDoc: () => shadowDoc,
-    onPress: promotePressedRow,
+    onClick: (target) => {
+      const click = isEditableMode(currentMode) ? tagClickAt(target, pressedChipActive) : null;
+      if (click) {
+        channel.post({ kind: "tagClick", ...click });
+      }
+    },
+    onPress: (target, extending) => {
+      pressedChipActive = chipBlockActive(target);
+      promotePressedRow(target, extending);
+    },
   });
   // Report clicks that land on LAYOUT chrome. The interaction wiring above only knows about
   // `[data-jx-path]` nodes, and layout chrome has none — so this is the listener that makes "My
@@ -723,6 +737,7 @@ export function startCanvasIframe(opts: {
   const stopInlineEdit = startIframeInlineEdit(channel, container, {
     getMode: () => currentMode,
     getShadowDoc: () => shadowDoc,
+    getTagTitles: () => rowView.titles,
     onRoot: (forget) => {
       forgetEditHost = forget;
     },
@@ -1050,6 +1065,32 @@ export function startCanvasIframe(opts: {
             )
           : [];
       channel.post({ gen: msg.gen, kind: "evalResult", reqId: msg.reqId, results });
+      return;
+    }
+    if (msg.kind === "evalTemplate") {
+      /* The tag popover's values (studio.md §6.9): evaluated in the scope the node at `path` was
+         drawn with, a row's own on its active row, and only against the render the request names. */
+      const ctx = msg.gen === renderedGen ? renderCtx : null;
+      let scope = ctx?.defs;
+      const asked = ctx ? (msg.path ?? []) : [];
+      for (let depth = asked.length; depth > 0; depth -= 1) {
+        const el = elementForPath(container, asked.slice(0, depth));
+        const drawn = el ? ctx?.rows.scopes.get(el) : undefined;
+        if (drawn) {
+          scope = drawn;
+          break;
+        }
+      }
+      const reply: Extract<IframeToParent, { kind: "templateResult" }> = {
+        gen: msg.gen,
+        kind: "templateResult",
+        reqId: msg.reqId,
+        results: scope ? evaluateTemplates(msg.templates, scope, msg.formulas) : [],
+      };
+      if (msg.repeater) {
+        reply.rows = ctx ? rowCountOf(container, msg.repeater) : null;
+      }
+      channel.post(reply);
       return;
     }
     if (msg.kind === "patch") {
@@ -1419,6 +1460,7 @@ export function startCanvasIframe(opts: {
         adoptActiveRows(rowView, msg.activeRows);
         rowView.limit = normalizeRowLimit(msg.rowLimit);
         rowView.samples = msg.rowSamples ?? {};
+        rowView.titles = msg.tagTitles ?? {};
         strandedEchoes.clear();
         handle = commit();
         // In the same step, so the older style the commit just wrote is never painted.

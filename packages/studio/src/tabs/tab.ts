@@ -130,6 +130,18 @@ export interface TabUi {
    */
   stateValues: Record<string, JsonValue>;
   /**
+   * The case of a `$switch` the canvas draws in place of the one its discriminant selects, by the
+   * switch's document path as `JSON.stringify` writes it (`canvas.setSwitchCase`, studio.md §4.5).
+   * View state, exactly like {@link stateValues}: nothing is written to the document.
+   */
+  switchCases: Record<string, string>;
+  /**
+   * The tag whose popover is open (`canvas.setTagPopover`, studio.md §6.9), or null for none: the
+   * node, the property that holds the tag and its place in that property's string. At most one per
+   * tab. View state: opening and closing a popover writes nothing.
+   */
+  tagPopover: { path: JxPath; slot: (string | number)[]; index: number } | null;
+  /**
    * The locale this pane renders AS — the artboard's `lang` and `dir` (site-architecture.md §13.4),
    * never which file is open.
    *
@@ -377,6 +389,8 @@ function createDefaultUi(canvasMode: string, preview = false): TabUi {
     bindingDisplay: "values" as const,
     repeaterRows: DEFAULT_ROW_LIMIT,
     stateValues: {},
+    switchCases: {},
+    tagPopover: null,
     previewColorScheme: "auto" as const,
     previewLocale: null,
     previewParams: {},

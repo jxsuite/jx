@@ -21,7 +21,7 @@ import {
   stubRect,
   topDialog,
 } from "./harness";
-import { beforeAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import { beforeAll, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { mountShellTree } from "../src/shell/tree";
 import { notifyModule } from "./notify-mock";
 import type { CommandContext } from "../src/commands/context";
@@ -1364,6 +1364,29 @@ describe("deliberate divergences", () => {
     expect(tab.session.selection).toEqual([[]]);
     pressDoc("Escape");
     expect(tab.session.selection).toEqual([]);
+  });
+
+  test("Escape with a popover up is the platform's to answer: it closes the popover and moves nothing", () => {
+    const tab = activeTab.value!;
+    tab.session.selection = [["children", 1, "children", 0]];
+    const open = document.createElement("div");
+    open.setAttribute("popover", "manual");
+    document.body.append(open);
+    // The test DOM has no `:popover-open`: a popover is "up" when the document is asked for one.
+    const asked = spyOn(document, "querySelector").mockImplementation((selector: string) =>
+      selector === ":popover-open" ? open : (document.querySelectorAll(selector)[0] ?? null),
+    );
+    try {
+      const e = pressDoc("Escape");
+      expect(e.defaultPrevented).toBe(false);
+      expect(tab.session.selection).toEqual([["children", 1, "children", 0]]);
+    } finally {
+      asked.mockRestore();
+      open.remove();
+    }
+    // With none up, the same key still walks the ladder.
+    pressDoc("Escape");
+    expect(tab.session.selection).toEqual([["children", 1]]);
   });
 
   test("Escape with nothing selected is not swallowed", () => {

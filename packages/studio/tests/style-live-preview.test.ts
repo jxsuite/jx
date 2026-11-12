@@ -14,6 +14,9 @@ const siteCalls: number[] = [];
 const stylebookCalls: JxStyle[] = [];
 
 void mock.module("../src/canvas/iframe-host", () => ({
+  requestTemplateEval: () => Promise.resolve(null),
+  revealCanvasPath: () => Promise.resolve(null),
+  flushCanvasEdits: () => Promise.resolve(),
   postSiteStyleToLiveHosts: () => {
     siteCalls.push(stylebookCalls.length);
   },

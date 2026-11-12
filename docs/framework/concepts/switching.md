@@ -80,6 +80,8 @@ Select the node and open the **[Logic tab](/docs/studio/logic/events)** (:kbd[�
 - **Expression** is what the node switches on. Its value-source chip offers **From data…** (a signal) and **Mixed text**; there is no fixed-value rung, because a literal `$switch` does not render.
 - **Cases** is one row per key. Edit a row's text to rename that case, click **→** to select what it renders, click the dot on its label to remove it, and **+ Add case** appends another.
 
+On the canvas, Studio draws the case the node's value selects. To work on another one, select the node and use the **Case** button on the [block action bar](/docs/studio/interface/canvas): it draws the case you pick without changing your document, and **Live case** hands the choice back to the page.
+
 The section is drawn for a node that already carries a `$switch`, so the node itself is added in the [Code editor](/docs/studio/logic/code). The [Outline](/docs/studio/design/layers) lists the cases as child rows of the node, and each case is selectable there.
 
 On the canvas, **Edit** and **Design** draw the case the selector picks right now, and you select and edit it where it is stored. A case kept in another file is drawn too, but it belongs to that file, so you can select the switch and not type into the case. Switch the canvas to **Preview** to watch the selector change as the page runs.

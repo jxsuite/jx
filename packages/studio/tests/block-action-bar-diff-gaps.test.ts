@@ -62,6 +62,9 @@ void mock.module("@atlaskit/pragmatic-drag-and-drop/element/adapter", () => ({
 }));
 
 void mock.module("../src/canvas/iframe-host", () => ({
+  requestTemplateEval: () => Promise.resolve(null),
+  revealCanvasPath: () => Promise.resolve(null),
+  flushCanvasEdits: () => Promise.resolve(),
   getEditBarAnchorRect: () => ({ height: 20, left: 30, top: 200, width: 100 }),
   getEditSnapshot: () => ({ editing: false, editingProp: null, snapshot: null }),
   postApplyFormat: () => {},

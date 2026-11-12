@@ -1209,7 +1209,12 @@ export function mutateUpdateProperty(tab: Tab, path: JxPath, key: string, value?
  * @param {string} prop
  * @param {string | undefined} value
  */
-export function mutateUpdateStyle(tab: Tab, path: JxPath, prop: string, value: string | undefined) {
+export function mutateUpdateStyle(
+  tab: Tab,
+  path: JxPath,
+  prop: string,
+  value: string | { $ref: string } | undefined,
+) {
   const node = requireNodeAt(tab.doc.document, path);
   const styleBefore = cloneValue(node.style);
   if (!node.style) {

@@ -82,6 +82,8 @@ import type {
   SerializedKey,
   SyncedChord,
   WireLocale,
+  RowCount,
+  TemplateResult,
 } from "./iframe-protocol";
 import { getEffectiveRenderLocale } from "../site-context";
 import type { JxDocOp } from "../tabs/patch-ops";
@@ -89,7 +91,12 @@ import type { IframeChannel } from "./iframe-channel";
 import type { OverlayLayer, OverlayPlacement } from "./iframe-overlay";
 import type { SlashCommand } from "../editor/inline-edit";
 import type { Tab } from "../tabs/tab";
-import type { JxExpressionNode, JxMutableNode, JxStyle } from "@jxsuite/schema/types";
+import type {
+  JxExpressionNode,
+  JxMutableNode,
+  JxStateDefinition,
+  JxStyle,
+} from "@jxsuite/schema/types";
 import { bundleUrl } from "../services/bundle-base";
 
 /**
@@ -164,6 +171,8 @@ export interface HostState {
    * prebuilt and can be older than this host, and an unknown message kind is dropped silently.
    */
   capabilities: ReadonlySet<FrameCapability>;
+  /** The tab's primary selection, serialized, as it stood before the last `hit` replaced it. */
+  selectionBeforeHit: string | null;
   pending: ParentToIframe | null;
   /**
    * The tab whose remote data the queued {@link pending} render is to carry, or null for a render
@@ -1221,6 +1230,100 @@ export interface CanvasContextMenuHandler {
 }
 
 let canvasContextMenuHandler: CanvasContextMenuHandler | null = null;
+
+/** A chip pressed on the canvas, as the host hands it on (studio.md §6.9). */
+export interface CanvasTagClick {
+  /** The tab whose document the chip's block is in. */
+  tab: Tab;
+  path: JxPath;
+  source: string;
+  ref: string | null;
+  occurrence: number;
+  /** The chip's box in PARENT-viewport pixels: where its popover opens. */
+  rect: OverlayPlacement;
+  /** Whether the block was the author's already: it held the caret, or was the selection. */
+  chosen: boolean;
+}
+
+let canvasTagClickHandler: ((click: CanvasTagClick) => void) | null = null;
+
+/** Register what a press on a chip does. Injected, like the context menu, by the bootstrap. */
+export function setCanvasTagClickHandler(handler: ((click: CanvasTagClick) => void) | null): void {
+  canvasTagClickHandler = handler;
+}
+
+/** What the frame answered an `evalTemplate` with. */
+export interface TemplateEvalReply {
+  results: TemplateResult[];
+  /** The row count of the repeater asked about, or null when none was, or none is drawn. */
+  rows: RowCount | null;
+}
+
+let templateReqId = 0;
+const pendingTemplateEvals = new Map<number, (reply: TemplateEvalReply | null) => void>();
+
+/**
+ * Ask the frame drawing `tabId` what each template resolves to in the scope of the node at `path`
+ * (studio.md §6.9), and, with `repeater`, how many rows of that repeater it draws. Resolves null
+ * when no frame of the tab can answer (none is up, or its build predates the `tags` capability),
+ * when none answers in time, and when the answer is about a render since replaced.
+ */
+export function requestTemplateEval(
+  tabId: string | null,
+  request: {
+    path: JxPath | null;
+    templates: { id: string; template: string }[];
+    formulas?: Readonly<Record<string, JxStateDefinition>>;
+    repeater?: JxPath;
+  },
+  timeoutMs: number = EVAL_TIMEOUT_MS,
+): Promise<TemplateEvalReply | null> {
+  let target: HostState | null = null;
+  // The frame that holds the caret is the one the author is looking at; else the first of the tab.
+  const preferred = activeEditHost;
+  for (const host of preferred ? [preferred, ...liveHosts] : liveHosts) {
+    if (
+      host.iframe.isConnected &&
+      host.ready &&
+      !host.stylebook &&
+      tabId !== null &&
+      host.tabId === tabId &&
+      host.capabilities.has("tags")
+    ) {
+      target = host;
+      break;
+    }
+  }
+  if (!target) {
+    return Promise.resolve(null);
+  }
+  templateReqId += 1;
+  const reqId = templateReqId;
+  const message: Extract<ParentToIframe, { kind: "evalTemplate" }> = {
+    gen: target.lastRenderedGen,
+    kind: "evalTemplate",
+    path: request.path ? [...request.path] : null,
+    reqId,
+    templates: request.templates.map(({ id, template }) => ({ id, template })),
+  };
+  if (request.formulas && Object.keys(request.formulas).length > 0) {
+    message.formulas = plainCopy(request.formulas);
+  }
+  if (request.repeater) {
+    message.repeater = [...request.repeater];
+  }
+  target.channel.post(message);
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      pendingTemplateEvals.delete(reqId);
+      resolve(null);
+    }, timeoutMs);
+    pendingTemplateEvals.set(reqId, (reply) => {
+      clearTimeout(timer);
+      resolve(reply);
+    });
+  });
+}
 
 /** Register the parent-realm context-menu surface the canvas iframe drives. */
 export function setCanvasContextMenuHandler(handler: CanvasContextMenuHandler): void {
@@ -2282,6 +2385,7 @@ function ensureHost(canvasEl: HTMLElement): HostState {
     presenceReqId: -1,
     preview: false,
     capabilities: new Set<FrameCapability>(),
+    selectionBeforeHit: null,
     ready: false,
     selectionPath: null,
     selectionPaths: [],
@@ -2441,6 +2545,7 @@ const PREVIEW_BLOCKED: ReadonlySet<IframeToParent["kind"]> = new Set([
   "layoutHit",
   "nativeDragEnter",
   "rowActivated",
+  "tagClick",
 ]);
 
 /** Handle a message the iframe posted back: ready handshake, pointer hit/hover, measured geometry. */
@@ -2571,8 +2676,47 @@ function handleMessage(state: HostState, msg: IframeToParent): void {
       }
       return;
     }
+    case "tagClick": {
+      /* A press on a chip (studio.md §6.9), after the `hit` the same click posted. The block is
+         the author's already when the frame says it held the caret, or when it was the selection
+         before that `hit` replaced it. */
+      const tab = state.stylebook ? null : hostTab(state);
+      if (tab) {
+        const { rect: frame, scale } = hostDragGeometry(state);
+        canvasTagClickHandler?.({
+          chosen: msg.active || state.selectionBeforeHit === JSON.stringify(msg.path),
+          occurrence: msg.occurrence,
+          path: msg.path,
+          rect: {
+            height: msg.rect.height * scale,
+            left: msg.rect.x * scale + frame.left,
+            top: msg.rect.y * scale + frame.top,
+            width: msg.rect.width * scale,
+          },
+          ref: msg.ref,
+          source: msg.source,
+          tab,
+        });
+      }
+      return;
+    }
+    case "templateResult": {
+      const resolve = pendingTemplateEvals.get(msg.reqId);
+      if (resolve) {
+        pendingTemplateEvals.delete(msg.reqId);
+        resolve(
+          msg.gen === state.lastRenderedGen
+            ? { results: msg.results, rows: msg.rows ?? null }
+            : null,
+        );
+      }
+      return;
+    }
     case "hit": {
       closeInsertMenu(state);
+      state.selectionBeforeHit = JSON.stringify(
+        primarySelection(hostTab(state)?.session.selection) ?? null,
+      );
       /* A click in a canvas is a click in a PANE, and the parent realm never saw it. See
          `focusHostPane`; it goes first so everything below writes into the pane the person is now
          in rather than starting a selection the Inspector will not show. `paneFocus` has usually
@@ -3433,7 +3577,7 @@ function drawHover(state: HostState, hit: NodeHit | null): void {
     state.overlay.setHover(null);
     return;
   }
-  state.overlay.setHover(canvasRectToParent(hit.rect));
+  state.overlay.setHover(canvasRectToParent(hit.rect), hit.bound);
 }
 
 /**
@@ -3607,6 +3751,9 @@ function preparePassRender(
     }
     if (Object.keys(resolved.rowSamples).length > 0) {
       prepared.rowSamples = plainCopy(resolved.rowSamples);
+    }
+    if (Object.keys(resolved.tagTitles).length > 0) {
+      prepared.tagTitles = resolved.tagTitles;
     }
     /* A host with no backend to resolve a class through (the cloud) draws each list that reads a
        collection as its template row. Said once for the tab, not once per list or per render

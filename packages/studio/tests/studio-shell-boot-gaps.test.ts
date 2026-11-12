@@ -133,6 +133,7 @@ void mock.module("../src/panels/block-action-bar.ts", () => ({
   registerSelectionCommands: mock(() => {}),
   releaseBlockActionBar: mock(() => {}),
   renderBlockActionBar: mock(() => {}),
+  returnFocusToCanvas: mock(() => {}),
   runCommand: mock(() => {}),
   selectionCommandRegistry: () => ({
     disabledReason: () => {},

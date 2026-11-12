@@ -16,7 +16,7 @@ import { isNumber, isString } from "@jxsuite/schema/guards";
 import { getNodeAtPath } from "../state";
 import { makeStamper } from "./iframe-render";
 import { withRowIndices } from "./path-mapping";
-import { prepareForEditMode, prepareTextMember } from "../utils/edit-display";
+import { prepareForEditMode, prepareTextMember, withTagTitles } from "../utils/edit-display";
 import { stripEventHandlers } from "../utils/strip-events";
 import type { IframeRenderCtx } from "./iframe-render";
 import type { JxPath } from "../state";
@@ -68,8 +68,8 @@ export function renderSubtreeIframe(
   // A string member is prepared too: a templated one is a chip or a text run, never a bare
   // Resolved value.
   const def = isString(node)
-    ? prepareTextMember(node)
-    : prepareForEditMode(stripEventHandlers(node));
+    ? withTagTitles(ctx.rows.titles, () => prepareTextMember(node))
+    : prepareForEditMode(stripEventHandlers(node), ctx.rows.titles);
   /* A draw: what it creates is settled by the patch that asked for it, and a row one of its lists
      draws is drawn from the document as it now is (`RowView.drawing`). */
   ctx.rows.drawing += 1;

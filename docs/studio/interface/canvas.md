@@ -9,6 +9,7 @@ spec:
   - studio.md#6.7
   - studio-ui-guidelines.md#8.1
 code:
+  - packages/studio/src/canvas/switch-cases.ts
   - packages/site/src/site-style.ts
   - packages/studio/src/panels/zoom-control.ts
   - packages/studio/src/surfaces/statusbar.ts
@@ -94,9 +95,12 @@ A small floating toolbar appears above the selected element. It stays on the ele
 - Drag the **⠿ drag handle** to move the element somewhere else on the page.
 - **Move up** and **Move down** arrows swap the element with its neighbors.
 - For a component instance, **Edit Component** opens the component itself; for anything else, **Convert to Component** turns the selection into a reusable component.
-- While you're editing text, formatting buttons (bold, italic, and friends) and an **Insert data** button join the bar. See [Edit mode](/docs/studio/editing).
+- While you're editing text, formatting buttons (bold, italic, and friends) and an **Insert dynamic tag** button join the bar. See [Edit mode](/docs/studio/editing).
+- When the element draws anything from data, one **Bound pill** per bound property follows: **Text: Title**, **Image: Featured image**, **Link: Permalink**. Click a pill to change what that property reads. See **[Dynamic tags](/docs/studio/editing/dynamic-tags)**.
+- Inside a repeating list, a **row stepper** (**Row 3 of 24**, with an arrow each side) moves to another row, and its count sets how many rows are drawn.
+- On an element that switches between cases, a **Case** button chooses which case the canvas draws. Your page still decides for itself when it runs; this only changes what you are looking at, so you can work on a case you could otherwise not reach.
 
-The bar steps aside when you leave the canvas. Click into the Inspector, a panel or the pane's context bar and it disappears, so it is never sitting over the control you were reaching for. **Your selection stays exactly as it was**, which is what the Inspector is editing. It comes back the moment the canvas is in play again: click the element on the canvas, or select anything from the Outline, and the bar is there for it. Panning or zooming the canvas leaves it alone, and so do the bar's own pieces: its `⋮` menu, the link popover and the slash menu. In Edit, the bar also hides while its element is scrolled out of view, including up under the writing banner over a collection entry, and returns when the element scrolls back. While only the top of the element has gone out of view, the bar drops below the element rather than standing above the page.
+The bar steps aside when you leave the canvas. Click into the Inspector, a panel or the pane's context bar and it disappears, so it is never sitting over the control you were reaching for. **Your selection stays exactly as it was**, which is what the Inspector is editing. It comes back the moment the canvas is in play again: click the element on the canvas, or select anything from the Outline, and the bar is there for it. Panning or zooming the canvas leaves it alone, and so do the bar's own pieces: its `⋮` menu, the link popover, a tag's popover and the slash menu. In Edit, the bar also hides while its element is scrolled out of view, including up under the writing banner over a collection entry, and returns when the element scrolls back. While only the top of the element has gone out of view, the bar drops below the element rather than standing above the page.
 
 :::doc-tip
 The bar keeps one shape. An action that cannot apply to the current selection, like moving the first child up or deleting the document root, is shown grayed with a tooltip saying what it needs, rather than disappearing. Buttons never move under your cursor.
@@ -146,7 +150,7 @@ The canvas stylesheet and the one `jx build` writes are produced by the same bui
 
 The page on the canvas also knows where it is. `$page` and `$site` are filled in the way a build fills them: the page's URL, its title, its language and writing direction from the folder it sits in, and your site's name and languages. A collection entry gets the URL and language of the page that publishes it. So `${$page.locale}` formats a date in the page's own language on the canvas too, in every view.
 
-In Edit and Design, everything your page draws from data shows the data: text, images, attributes and styles resolve to the values the page will have, not to the expressions that produce them. Bound text is made of [tags](/docs/studio/interface/modes), which read as plain text until your caret enters their block and are saved as the binding they stand for. A [repeater](/docs/studio/design/repeaters#rows-on-the-canvas) draws every item of its list, so each exhibition card shows its own exhibition's title, dates and gallery, whether the card is a component or plain elements. Click any card to work in it: the edit applies to the template, and every card redraws. The list's data is loaded before the page draws. An image shows a placeholder only when it names no source or its source fails to load.
+In Edit and Design, everything your page draws from data shows the data: text, images, attributes and styles resolve to the values the page will have, not to the expressions that produce them. Bound text is made of [tags](/docs/studio/interface/modes), which read as plain text until your caret enters their block and are saved as the binding they stand for. A [repeater](/docs/studio/design/repeaters#rows-on-the-canvas) draws every item of its list, so each exhibition card shows its own exhibition's title, dates and gallery, whether the card is a component or plain elements. Click any card to work in it: the edit applies to the template, and every card redraws. The list's data is loaded before the page draws. An image shows a placeholder only when it names no source or its source fails to load. Point at anything bound and its hover box names what it reads; select it and the block action bar lists each binding as a pill you can click.
 
 Data a layout reads from a content type, such as a sidebar's navigation, is loaded the same way, and a package script a component names with `npm:` is loaded from your project's installed packages.
 

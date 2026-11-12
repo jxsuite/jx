@@ -376,7 +376,7 @@ describe("labels", () => {
     ["$map.item", "Item"],
     ["$map", "Item"],
     ["item", "Item"],
-    ["index", "Index"],
+    ["index", "Row number"],
     ["state", "State"],
     ["state['data'][0]", "State"],
     ["state['$']", "State"],
