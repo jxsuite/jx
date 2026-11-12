@@ -42,7 +42,7 @@ import { adjacentBlock, blocksInOrder, offsetOf } from "./iframe-position";
 import { chipSourcesBetween } from "./iframe-chips";
 import { isTagActiveInSelection, toggleInlineFormat } from "../editor/inline-format";
 import { applyLink, insertTemplateToken, linkStateForSelection } from "../editor/inline-link";
-import { RESERVED_KEYS, camelToKebab } from "@jxsuite/runtime";
+import { deliveredOutsideProps } from "../utils/prop-source";
 import { rectOfRange } from "../utils/geometry";
 import { getNodeAtPath } from "../state";
 import { parseJxPath, serializeJxPath } from "./path-mapping";
@@ -55,7 +55,7 @@ import type {
   SerializableRect,
 } from "./iframe-protocol";
 import type { DocPos } from "./iframe-position";
-import { isNonNullObject, isString } from "@jxsuite/schema/guards";
+import { isString } from "@jxsuite/schema/guards";
 import type { JxPath } from "../state";
 import type { JxMutableNode } from "@jxsuite/schema/types";
 
@@ -117,77 +117,6 @@ function ownerInstanceOf(el: HTMLElement): HTMLElement | null {
     cur = cur.parentElement;
   }
   return null;
-}
-
-/**
- * Whether the instance node delivers `prop` by some route OTHER than `$props` — in which case
- * "absent from `$props`" does not mean "unset", and a `$props` write would add a SECOND source for
- * one rendered value.
- *
- * The routes are the property bridge's own, in the order `connectedCallback` reads them
- * (`compiler.md` §4.4) — a `data-jx-props` payload, literal `props.*` attributes, then JS
- * properties set before connection — plus the one that reaches that third source without going
- * through `$props`. Each was reproduced against the real runtime:
- *
- * 1. `attributes: { "data-jx-props": "{…}" }` — the compiler's pre-rendered payload, parsed into state
- *    before anything else. Studio edits source documents rather than build output, so this is the
- *    rare one; it is here because the bridge reads it.
- * 2. The JSON shorthand `attributes: { "props.text": "…" }`. `connectedCallback` collects `props.*`
- *    attributes into state, so the marker renders that text while `$props` is empty. This repo's
- *    own site carries 95 of them.
- * 3. A prop whose name collides with a REFLECTED HTMLElement property — `title`, `role`, `id`, `lang`,
- *    `dir`, `slot`, `hidden`. `setAttribute("title", …)` writes the JS property as a side effect,
- *    and the merge `key in this && this[key] !== undefined` picks it up. 41 shipped starter
- *    components declare `title` or `role` as state. Matched the way `instanceSupplies` matches:
- *    attribute names are case-insensitive, and an ARIA-style reflection carries a kebab attribute
- *    for a camelCase property (`ariaLabel` → `aria-label`).
- * 4. A TOP-LEVEL key on the instance node — `{ "tagName": "x-card", "heading": "Local" }`. This is the
- *    property-first interface written straight onto the node: `applyProperties` sets every
- *    non-reserved key as a JS property, which is exactly what the merge then reads back off `this`.
- *    Reserved keys (`name`, `items`, `children`, …) are skipped there and so are skipped here —
- *    refusing on one would block a prop that the key never delivered.
- *
- * Editing any of them writes `$props[prop]` and leaves the other value standing. For case 3 the
- * attribute WINS (applyAttributes runs after the $props assignment) so the edit is simply
- * invisible; for the rest `$props` wins and the stale value waits — clearing the prop later
- * resurrects it. Refusing keeps the properties panel, which edits the real source, as the one way
- * in.
- */
-export function deliveredOutsideProps(node: JxMutableNode | undefined, prop: string): boolean {
-  if (!node) {
-    return false;
-  }
-  const attrs = node.attributes;
-  if (attrs) {
-    if (attrs[`props.${prop}`] !== undefined) {
-      return true;
-    }
-    const reflected = new Set([prop.toLowerCase(), camelToKebab(prop).toLowerCase()]);
-    for (const name of Object.keys(attrs)) {
-      if (attrs[name] !== undefined && reflected.has(name.toLowerCase())) {
-        return true;
-      }
-    }
-    const payload = attrs["data-jx-props"];
-    if (isString(payload) && payloadNames(payload, prop)) {
-      return true;
-    }
-  }
-  // `$`-prefixed keys are scope bindings, never DOM properties — `applyProperties` skips them too.
-  if (RESERVED_KEYS.has(prop) || prop.startsWith("$")) {
-    return false;
-  }
-  return node[prop] !== undefined;
-}
-
-/** Whether a `data-jx-props` JSON payload carries `prop`. Unparseable payloads deliver nothing. */
-function payloadNames(payload: string, prop: string): boolean {
-  try {
-    const parsed: unknown = JSON.parse(payload);
-    return isNonNullObject(parsed) && prop in parsed;
-  } catch {
-    return false;
-  }
 }
 
 /** Locate the rendered element for a document path via its stamped `data-jx-path`. */
