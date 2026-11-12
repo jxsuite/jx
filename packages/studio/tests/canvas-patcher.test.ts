@@ -193,11 +193,11 @@ describe("classifyOps", () => {
   });
 
   test("rejects outside design/edit modes", () => {
-    canvasMode = "preview";
-    tab.session.ui.canvasMode = "preview";
+    canvasMode = "git-diff";
+    tab.session.ui.canvasMode = "git-diff";
     const verdict = classifyOps(tab, [{ op: "set-style", path: ["children", 0] }]);
     expect(verdict.patchable).toBe(false);
-    expect(verdict.reason).toBe("mode-preview");
+    expect(verdict.reason).toBe("mode-git-diff");
   });
 
   test("rejects when a panel is not ready", () => {

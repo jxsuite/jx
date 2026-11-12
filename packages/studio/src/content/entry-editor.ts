@@ -470,7 +470,6 @@ export async function openEntryEditor(path: string): Promise<Tab | null> {
       }
     }
     tab.session.ui.canvasMode = ENTRY_MODE;
-    tab.session.ui.preview = false;
     activateTab(id);
     return tab;
   }

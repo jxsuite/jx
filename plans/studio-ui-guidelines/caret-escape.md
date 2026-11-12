@@ -57,7 +57,7 @@ studio-ui-guidelines.md §8.3 → Implemented. With a document caret live, Escap
 3. `packages/studio/src/canvas/iframe-protocol.ts`: add `| { kind: "caretDismissed"; path: (string | number)[] }` to `IframeToParent`, beside `editEnd`, commented "The author dismissed the document caret with Escape. Posted after the release commit and `editEnd`; the host makes the block the selection."
 4. `packages/studio/src/canvas/iframe-host.ts`
    - `handleMessage` gains `case "caretDismissed"`. It returns for a stylebook host, where specimen paths are not document paths (the `hit` branch's reason). Otherwise `const tab = hostTab(state)` (no tab is a no-op), and when `!tab.session.selection.some((p) => pathsEqual(p, msg.path))`, it writes `tab.session.selection = [[...msg.path]]`. The selection watcher (`ensureSelectionWatch`) re-measures and redraws the box, and the block bar falls back to `lastSelectionRect` now that `activeEditHost` is null.
-   - Add `"caretDismissed"` to `PREVIEW_BLOCKED`, since the canvas bundle can be older than the host.
+   - Ignore `caretDismissed` from a stylebook host, as `tagClick` is ignored (`PREVIEW_BLOCKED` is gone with Preview, studio.md §4.2).
 5. `packages/studio/src/canvas/iframe-keys.ts`, comment only: add a bullet to the module docblock saying that Escape is `canvas`-scoped alone (`selection.selectParent`), so with a caret live it is neither forwarded nor prevented and the editing host dismisses the caret (`studio-ui-guidelines.md` §8.3), while with no caret it forwards and climbs to the parent. This stops a later change from "fixing" it by adding a caret-scoped binding.
 6. `packages/studio/src/editor/inline-edit.ts` is unchanged. Its line-473 comment becomes true.
 
@@ -71,7 +71,7 @@ Run `bun test --isolate --coverage` from `packages/studio`.
   - "Escape releases the block through onDeactivate, clears the selection and reports its path": after `caretInto` a `<p>` and a keydown on the container, `rec.deactivated` is 1, `onDismiss` received the `<p>`'s path, `getSelection().rangeCount` is 0, the container is not `document.activeElement`, and the event is `defaultPrevented`.
   - "a caret placed back in the same block after Escape re-activates it": `rec.activated` has two entries for the same path.
   - "a pending idle tick is cancelled, not fired after the release": type, press Escape, wait past `commitDelayMs`, and `onCommitTick` has not run.
-  - `test.each` "Escape is not a dismissal when %s": no active block; the mode has moved to `preview` since activation (a mutable `getMode`); `shift` held; the event is already `defaultPrevented`. For each, `onDeactivate` and `onDismiss` are not called.
+  - `test.each` "Escape is not a dismissal when %s": no active block; the mode has moved to `stylebook` since activation (a mutable `getMode`); `shift` held; the event is already `defaultPrevented`. For each, `onDeactivate` and `onDismiss` are not called.
   - "Escape in an adopted prop host is left to the engine": after the marker pointerdown and caret, nothing is deactivated or dismissed.
 - `tests/editable-root-composition.test.ts`: "Escape during a composition belongs to the input method". After `compositionstart`, and separately for a keydown with `isComposing: true`, the block stays active and `onDismiss` is not called.
 - `tests/iframe-inline-edit.test.ts`, new `describe("Escape at the editing host")`:
@@ -82,7 +82,7 @@ Run `bun test --isolate --coverage` from `packages/studio`.
 - `tests/iframe-host.test.ts`, `describe("iframe canvas interaction")`:
   - "caretDismissed makes the caret's block the selection when it had moved elsewhere": after a `hit` on `["children", 0]` and `caretDismissed` for `["children", 1]`, `session.selection` is `[["children", 1]]`.
   - "caretDismissed keeps a selection that already holds the block": two accumulated hits, then `caretDismissed` for one of them, and the selection is unchanged.
-  - In `describe("preview renders")`: "caretDismissed selects nothing".
+  - Beside "a stylebook host reports no chip": "a stylebook host's caretDismissed selects nothing".
   - In `describe("stylebook host capability")`: "caretDismissed leaves a stylebook host's document selection alone". After `mountStylebookReady()`, `caretDismissed` for `SPECIMEN_PATH` leaves `session.selection` at `[]` (specimen paths are not document paths).
 - `tests/iframe-keys.test.ts`, `describe("the frame's table is the app's keymap")`: "Escape is the editing host's under a caret and structure's without one". Against the live table, `shouldForwardKey` for Escape is false with a session in `edit` and true without one in `design`, and no `caret`-scope entry has the chord `escape`.
 

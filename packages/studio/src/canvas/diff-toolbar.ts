@@ -296,8 +296,8 @@ const stepperArgs = argsSchema({ pane: paneProperty }, []);
  *
  * **`keyScope` is `global`, not `canvas`**, and that is not a preference. `keyScopeStack` switches
  * on `ctx.editor.kind`, and `diff` falls through to the default arm — its own docstring says so:
- * "Preview and the non-editing surfaces (the diff view, the media library, the stylebook) get the
- * bare `global` stack." A chord declared in the canvas scope would never fire here.
+ * "The non-editing surfaces (the diff view, the media library, the stylebook) get the bare `global`
+ * stack." A chord declared in the canvas scope would never fire here.
  *
  * `f7` / `shift+f7` are VSCode's own next/previous-difference chords and are free in this keymap
  * (`f6` / `shift+f6` are region cycling).

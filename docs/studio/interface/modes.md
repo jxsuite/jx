@@ -19,9 +19,9 @@ code:
 
 # Editors and views
 
-Two controls on the [context bar](/docs/studio/interface/tabs) decide how the open file is presented, and they answer different questions. **Editor** is _which editor_: **Canvas**, **Grid**, **Code**, **Entry**, **Media**, **Image**, **Home**, or one of the Styles workspace's **Elements** and **Variables**. It lists only the editors this file supports, so there is nothing in it to be disabled. **Diff** is never one of the choices: it is the editor a comparison opens in, and it shows as the bar's Editor only while you are looking at one. **View** is _which view of the canvas_: **Edit** or **Design**, with **Preview** as a toggle beside them. It appears only while the Canvas editor is open. A view is a lens rather than a different app, showing the same file underneath in the way that suits the job. Every open file remembers both as you switch between tabs.
+Two controls on the [context bar](/docs/studio/interface/tabs) decide how the open file is presented, and they answer different questions. **Editor** is _which editor_: **Canvas**, **Grid**, **Code**, **Entry**, **Media**, **Image**, **Home**, or one of the Styles workspace's **Elements** and **Variables**. It lists only the editors this file supports, so there is nothing in it to be disabled. **Diff** is never one of the choices: it is the editor a comparison opens in, and it shows as the bar's Editor only while you are looking at one. **View** is _which view of the canvas_: **Edit** or **Design**. It appears only while the Canvas editor is open. A view is a lens rather than a different app, showing the same file underneath in the way that suits the job. Every open file remembers both as you switch between tabs.
 
-Those nine names come from one list in Studio, which is why the pane's context bar and the status bar can never print different words for the same editor.
+Those names come from one list in Studio, which is why the pane's context bar and the status bar can never print different words for the same editor.
 
 ## Edit
 
@@ -91,15 +91,15 @@ Your project's configuration, the project file, opens as a document in the Style
 
 Every file opens in its natural editor and view, and the two controls offer only what that file supports:
 
-| File                                   | Opens in          | Editor also offers      | View also offers        |
-| -------------------------------------- | ----------------- | ----------------------- | ----------------------- |
-| Markdown pages and content (`.md`)     | **Canvas** · Edit | **Code**                | **Design**, **Preview** |
-| Components and pages (`.json`, `.jxn`) | **Canvas** · Edit | **Code**, **Elements**  | **Design**, **Preview** |
-| Spreadsheets (`.csv`)                  | **Grid**          | **Code**                | —                       |
-| Images, video, audio, fonts, PDFs      | **Media**         | —                       | —                       |
-| PNG, JPEG and WebP images              | **Media**         | **Image**               | —                       |
-| Vector images (`.svg`)                 | **Media**         | **Code**                | —                       |
-| The project file (`project.jxn`)       | **Elements**      | **Variables**, **Code** | —                       |
+| File                                   | Opens in          | Editor also offers      | View also offers |
+| -------------------------------------- | ----------------- | ----------------------- | ---------------- |
+| Markdown pages and content (`.md`)     | **Canvas** · Edit | **Code**                | **Design**       |
+| Components and pages (`.json`, `.jxn`) | **Canvas** · Edit | **Code**, **Elements**  | **Design**       |
+| Spreadsheets (`.csv`)                  | **Grid**          | **Code**                | —                |
+| Images, video, audio, fonts, PDFs      | **Media**         | —                       | —                |
+| PNG, JPEG and WebP images              | **Media**         | **Image**               | —                |
+| Vector images (`.svg`)                 | **Media**         | **Code**                | —                |
+| The project file (`project.jxn`)       | **Elements**      | **Variables**, **Code** | —                |
 
 Any file with uncommitted changes can also be compared, including files that have no other editor at all, but not from the Editor control: you pick the change in the Publish workspace's [Review changes](/docs/studio/publish/source-control), which shows its comparison beside the list. Opening a file with no editor from the Files tree still says Studio has no editor for it; the comparison asks the narrower question of what changed, and answers it.
 
@@ -109,29 +109,23 @@ A JSON entry of a content collection also has an **Entry** editor. **Open Entry*
 
 Installed format extensions can add their own file types with their own lists, so this table can grow with your project.
 
-## Preview
+## What the canvas resolves with
 
-**Preview** is a **toggle** beside the View control, not a third view. It applies to Edit and to Design alike: the base stays selected while you preview, so the bar always says which mode you are previewing and which one switching Preview off returns you to. Turn it on and the canvas shows the page with its real data resolved: dynamic text filled in, repeated lists expanded, exactly what a visitor gets.
+Edit and Design both draw the page with its real data: dynamic text filled in, repeated lists drawn row by row, images and styles from their bindings. What that data is comes from the two controls on the context bar. The **Context** controls hold what the page renders _in_: its breakpoint and color scheme as segments on the bar, and, behind the sliders button, feature queries and a **Show layout elements** switch for pages that use a layout. The **resolving with** popover holds what it renders _from_, one field per line:
 
-What it resolves _with_ comes from the two controls beside it. The **Context** controls hold what the page renders _in_: its breakpoint and color scheme as segments on the bar, and, behind the sliders button, feature queries and a **Show layout elements** switch for pages that use a layout. The **resolving with** popover holds what it renders _from_, one field per line:
-
-- For pages with dynamic addresses (a product page, a blog post), a picker per URL parameter so you choose which real record to preview.
+- For pages with dynamic addresses (a product page, a blog post), a picker per URL parameter so you choose which real record the canvas draws.
 - For components, a field per component option so you can try test values.
 
-Its button says how many you have set, so you can tell at a glance whether the canvas is showing defaults.
+Its button says how many you have set, so you can tell at a glance whether the canvas is showing defaults. A component's test value is the same value the **[Data panel](/docs/studio/logic/data)** shows set on that entry, so setting it in either place sets it in both.
 
-**Preview does not edit.** While it is on, clicking the page selects nothing, no outlines are drawn, the insertion **+** and the canvas menu give way to your browser's own, nothing can be dropped in, and the keys that change the document do nothing. Anything you had selected is still selected when you switch Preview back off. Save, Undo and Redo keep working throughout.
+## Open in Browser
 
-**Preview scrolls like a real page.** Instead of the open surface you pan around in Design, Preview puts one page-sized frame in the pane and lets it scroll itself, so sticky headers stick, elements that animate as they come into view actually do, and anything that reacts to scrolling behaves the way it will for a visitor. There is no zoom control in Preview for the same reason: it is showing you the page at its real size.
+The canvas is for composing, so it does not run the page: clicking a link selects it, buttons run nothing, and a popover or a dialog is shown in place rather than over the page. To see the page behave, use **Open in Browser** (:kbd[⌘⇧O]), which opens it in your own browser with your unsaved edits included. Navigation between pages, your own JavaScript, server-side data and anything that depends on a real URL all behave there exactly as they will once the site is built. Keep the tab open: each later **Open in Browser** points the same tab at the page you are on.
 
-**And at the size you picked.** Preview is as wide as the breakpoint chosen in the **Context** size segments, the same width Edit gives its column and Design gives that artboard, so the same page at `md` is the same page whichever view the toggle is over. With no breakpoint chosen it fills the pane.
+A component or a layout opens the same way, on a page of its own: a component with the test values you set, and a layout around placeholder content. Full guide: **[Components](/docs/studio/design/components)**.
 
-Switch **Preview** off to go back to editing, in whichever view you were in.
-
-**Clicking a link in Preview opens that page in a new browser tab**, rather than replacing the canvas. Links within the same page, the ones that jump to a heading, still scroll where you would expect.
-
-:::doc-tip
-That new tab is the best way to check a project properly: it is your real browser loading the real page, so navigation between pages, your own JavaScript, server-side data, and anything that depends on a real URL all behave exactly as they will once the site is built. The canvas is for composing; the browser tab is for confirming.
+:::doc-note
+Studio once had a **Preview** toggle beside **Edit** and **Design**. It is gone, because both views now draw the page's real data and the browser tab is where a page runs. A project last left in Preview opens in the view it was over.
 :::
 
 ## Next

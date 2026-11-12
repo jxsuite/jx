@@ -182,28 +182,20 @@ describe("panelHostingCanvas", () => {
 });
 
 describe("the canvas mode of a pane", () => {
-  test("composes the preview toggle onto the base mode, per tab", () => {
+  test("is the tab's own mode, and design for no tab", () => {
     const tab = openTab({ document: { children: [], tagName: "div" }, id: "surface-mode" });
     tab.session.ui.canvasMode = "design";
     expect(canvasModeOfTab(tab)).toBe("design");
-
-    tab.session.ui.preview = true;
-    expect(canvasModeOfTab(tab)).toBe("preview");
-
-    // Preview composes onto edit/design only — a Code view stays a Code view.
     tab.session.ui.canvasMode = "source";
     expect(canvasModeOfTab(tab)).toBe("source");
-
     tab.session.ui.canvasMode = "edit";
-    expect(canvasModeOfTab(tab)).toBe("preview");
+    expect(canvasModeOfTab(tab)).toBe("edit");
+    expect(canvasModeOfTab(null)).toBe("design");
   });
 
-  /* THE PREVIEW TOGGLE COMPOSES ONTO A LENS'S OWN MODE, and it has to: `session.ui.preview` is per
-     TAB and a lens shares the source pane's tab, so a lens that ignored it would draw the design
-     board beside a page the author had just put into Preview — two panes on one document
-     disagreeing about whether it is a preview. Only the two artboard modes compose; a Code or Diff
-     lens has no preview to be, which is why the pair is named rather than defaulted. */
-  test("a lens composes the shared tab's preview toggle onto the mode it draws in", () => {
+  /* A LENS DRAWS IN A MODE OF ITS OWN, never written onto the tab it shares with the source pane:
+     writing it there would flip the document the author is editing. */
+  test("a lens draws in the mode it names, whatever the shared tab is in", () => {
     const tab = openTab({ document: { children: [], tagName: "div" }, id: "surface-mode-lens" });
     workspace.panes.push({ activeTabId: null, derived: null, id: SECONDARY_PANE, tabOrder: [] });
     const derived: PaneDerivation = {
@@ -218,12 +210,9 @@ describe("the canvas mode of a pane", () => {
       zoom: 1,
     };
     workspace.panes[1]!.derived = derived;
+    tab.session.ui.canvasMode = "edit";
     expect(canvasModeOfPane(SECONDARY_PANE)).toBe("design");
 
-    tab.session.ui.preview = true;
-    expect(canvasModeOfPane(SECONDARY_PANE)).toBe("preview");
-
-    // A Code lens has no preview to be — the mode it names wins outright.
     Object.assign(derived, { mode: "source", preset: "code" });
     expect(canvasModeOfPane(SECONDARY_PANE)).toBe("source");
   });

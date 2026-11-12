@@ -7,7 +7,7 @@ description: "Give a Jx site a blog in Studio: define a posts content type, crea
 
 In this tutorial you give your site a blog the structured way: a `posts` content type with a field schema, three entries created from it, a round of bulk editing in Grid mode, and a Blog page that lists every post from live data. Add a fourth post next month and the page updates itself.
 
-![The Blog page in Preview, listing three post cards with titles, dates, and descriptions](../images/blog-finished.png)
+![The Blog page on the canvas, listing three post cards with titles, dates, and descriptions](../images/blog-finished.png)
 
 **About 20 minutes.** Before you start:
 
@@ -149,19 +149,19 @@ Inside the template, each post's data is in scope:
 
 Each text now holds a placeholder that fills itself from the current post. (A collection entry's schema fields live under `item.data`; `item` and `index` are there too.)
 
-## 13. Preview and save
+## 13. Check and save
 
-Click **Preview**, the toggle beside the **View** control on the context bar.
+The canvas already draws the list: the card you designed is repeated once per post. Switch the **View** control to **Edit** to read the page as one column.
 
-![Preview on, the single card expanded into three post cards with real titles, dates, and descriptions](../images/blog-preview.png)
+![The page in Edit, the single card drawn as three post cards with real titles, dates, and descriptions](../images/blog-preview.png)
 
-You should see the single card expand into three, newest first, each filled in from its own post. Switch the **View** control back to **Design**, then save your open documents with :kbd[⌘S] / :kbd[Ctrl+S]. When you're ready, publish the lot from the **Publish** workspace's **Review changes** (:kbd[⌘5]). See **[Source control](/docs/studio/publish/source-control)**.
+You should see three cards, newest first, each filled in from its own post. Click into any of them to edit the card they share. Switch the **View** control back to **Design**, then save your open documents with :kbd[⌘S] / :kbd[Ctrl+S]. When you're ready, publish the lot from the **Publish** workspace's **Review changes** (:kbd[⌘5]). See **[Source control](/docs/studio/publish/source-control)**.
 
 ![The publish card in Review changes: the destination, the summary and the publish button](../images/git-commit.png)
 
 ## Give each post its own page
 
-The listing links nowhere yet, and that's deliberate: one page per post is the job of a _dynamic page_, a single page file with a parameter in its name (like `[slug]`) that the build expands into one page per entry of the collection. That wiring lives in the page's own format rather than a Studio panel today; **[Routing](/docs/framework/site/routing)** shows the exact file, and **[Content collections](/docs/framework/site/content-collections)** covers looking up "the entry this URL names". Once a dynamic page exists, Studio meets you halfway: opening it puts a picker per URL parameter in the context bar's **resolving with** popover, so the canvas previews a real post instead of a placeholder.
+The listing links nowhere yet, and that's deliberate: one page per post is the job of a _dynamic page_, a single page file with a parameter in its name (like `[slug]`) that the build expands into one page per entry of the collection. That wiring lives in the page's own format rather than a Studio panel today; **[Routing](/docs/framework/site/routing)** shows the exact file, and **[Content collections](/docs/framework/site/content-collections)** covers looking up "the entry this URL names". Once a dynamic page exists, Studio meets you halfway: opening it puts a picker per URL parameter in the context bar's **resolving with** popover, so the canvas draws a real post instead of a placeholder.
 
 ## What you built
 

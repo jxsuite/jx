@@ -21,12 +21,12 @@ import type {
   JxStyle,
 } from "@jxsuite/schema/types";
 
-export const CANVAS_MODES = ["preview", "design", "edit", "stylebook", "git-diff"] as const;
+export const CANVAS_MODES = ["design", "edit", "stylebook", "git-diff"] as const;
 
 /**
- * How the iframe renders the document: live `preview`, instrumented `design`/`edit`, the
- * `stylebook` specimen catalog (hit/hover/measure only — no inline editing, DnD, or insert zones),
- * or a `git-diff` comparison artboard (a read-only render carrying {@link WireDiffMarks}).
+ * How the iframe renders the document: instrumented `design`/`edit`, the `stylebook` specimen
+ * catalog (hit/hover/measure only — no inline editing, DnD, or insert zones), or a `git-diff`
+ * comparison artboard (a read-only render carrying {@link WireDiffMarks}).
  *
  * `git-diff` was reaching the frame long before it was listed here: `preparePassRender` casts the
  * resolved mode with `as CanvasMode`, so the one mode this union did not admit crossed the wire
@@ -185,7 +185,7 @@ export type ParentToIframe =
        * that fetches what the session lacks. Present only for an editable view, and filled in when
        * the render is posted, so a render queued for a frame still booting says what is true once
        * the frame is up. Absent, the frame starts no automatic `Request` and no `timing: "server"`
-       * call outside Preview, as it never did; a frame that predates the field ignores it.
+       * call, as it never did; a frame that predates the field ignores it.
        */
       remote?: RemoteWire;
       /**
@@ -272,9 +272,6 @@ export type ParentToIframe =
    * render (`setCanvasDelinkPopovers`), so open-ness is ONE attribute on ONE element and the whole
    * document's layout follows from flipping it. Opening a popover must not cost a full render —
    * §4.1 calls that expensive, and it would rebuild every binding effect under the author's caret.
-   *
-   * Refused in preview, in BOTH realms: preview is native, and a canvas-only attribute has no
-   * business in a view whose whole job is fidelity (§4.2).
    *
    * A frame built before this message existed ignores it and draws every popover closed, which is
    * the compatibility story `dist/iframe-entry.js` shipping prebuilt requires.
@@ -1013,14 +1010,9 @@ export type IframeToParent =
   // Observe for itself because a pointer event inside a cross-origin iframe is delivered in the
   // Frame's own realm and never surfaces above it.
   //
-  // `hit` used to be the whole seam, and it has two holes. It is not posted in PREVIEW at all — a
-  // Click there is a click on the page, never a selection — so a pane showing Preview could not be
-  // Focused by clicking the thing it is showing; and in edit/design it is only posted when the
-  // Click lands ON a `[data-jx-path]` node, so clicking an artboard's empty margin focused nothing
-  // Either. Both left the keyboard in the other pane while the person was plainly in this one.
-  //
-  // Deliberately NOT in the host's preview block-list: focusing a pane is not an edit, and it is
-  // The one thing preview must still report.
+  // `hit` used to be the whole seam, and it has a hole: it is only posted when the click lands ON a
+  // `[data-jx-path]` node, so clicking an artboard's empty margin focused nothing, which left the
+  // Keyboard in the other pane while the person was plainly in this one.
   /**
    * A `popovertarget` invoker was clicked, and it names a popover the studio can address.
    *
@@ -1044,13 +1036,6 @@ export type IframeToParent =
    */
   | { kind: "commandTargetClick"; targetPath: (string | number)[]; command: string }
   | { kind: "paneFocus" }
-  // ─── Preview navigation ─────────────────────────────────────────────────────
-  // A link was clicked in PREVIEW mode. Preview keeps anchors live (design/edit de-link them onto
-  // `data-jx-href`), so the click would navigate the canvas iframe away and destroy the render —
-  // Taking the editing session with it. The iframe reports the intent instead and the parent opens the
-  // Real page in a real browser tab, which is also the only place project JS, routing and server data
-  // Behave exactly as they will in production.
-  | { kind: "previewNavigate"; href: string }
   // ─── Cross-frame DnD (Phase 4c spike) ──────────────────────────────────────
   // Flow 3 (grab-anywhere): the iframe detected a drag begin on an element body (pointerdown past a
   // Movement threshold on a `[data-jx-path]`, NOT during an inline-edit). The parent starts a

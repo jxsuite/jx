@@ -1387,7 +1387,7 @@ describe("per-preset refusals are run-time, one sentence each", () => {
     );
 
     // A page declares both, and none of the five is refused for this reason.
-    page.capabilities.modes = ["edit", "design", "preview", "source"];
+    page.capabilities.modes = ["edit", "design", "source"];
     expect(presetRefusal("breakpoint", PRIMARY_PANE, null)).toBeNull();
     expect(presetRefusal("component", PRIMARY_PANE, null)).toBeNull();
   });
@@ -1517,7 +1517,7 @@ describe("pane.derive and pane.pin", () => {
      the breakpoint lens is FOR, so dropping it draws Base under a chip naming a size. */
   test("each preset builds the canvas mode its pane will draw in", async () => {
     const page = twoPanes();
-    page.capabilities.modes = ["design", "edit", "preview", "source"];
+    page.capabilities.modes = ["design", "edit", "source"];
     gitStatusFor("pages/index.json");
     const reg = registry();
     const modeAfter = async (preset: string, args: CommandArgValues = {}) => {
@@ -1536,7 +1536,7 @@ describe("pane.derive and pane.pin", () => {
   test("a breakpoint lens keeps the size it was asked for; every other preset keeps none", async () => {
     const page = twoPanes();
     page.doc.document.$media = { tablet: "(min-width: 768px)" };
-    page.capabilities.modes = ["design", "edit", "preview", "source"];
+    page.capabilities.modes = ["design", "edit", "source"];
     const reg = registry();
     await reg.run("pane.derive", { media: "tablet", preset: "breakpoint" });
     const lens = derivationOfPane(SECONDARY_PANE);
@@ -1602,7 +1602,7 @@ describe("pane.derive and pane.pin", () => {
      so the assertion is on `kind` rather than on anything the preset happens to draw. */
   test("BOTH companion presets build companions — component is not a lens", async () => {
     const page = twoPanes();
-    page.capabilities.modes = ["design", "edit", "preview", "source"];
+    page.capabilities.modes = ["design", "edit", "source"];
     componentRegistry.push({ path: "components/card.json", tagName: "my-card" });
     page.session.selection = [["children", 0, "children", 0]];
     const reg = registry();

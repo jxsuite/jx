@@ -261,11 +261,11 @@ describe("probe.state", () => {
   test("returns the full CommandContext, not four ad-hoc fields", () => {
     const { deps, ctx } = makeFixture();
     ctx.project.open = true;
-    ctx.canvas.view = "preview";
+    ctx.canvas.view = "edit";
     const state = createAutomationApi(deps).probe.state();
     expect(state).toBe(ctx);
     expect(state.project.open).toBe(true);
-    expect(state.canvas.view).toBe("preview");
+    expect(state.canvas.view).toBe("edit");
     expect(Object.keys(state).toSorted()).toEqual([
       "ai",
       "canvas",

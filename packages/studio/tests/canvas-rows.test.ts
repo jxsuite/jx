@@ -183,7 +183,7 @@ async function frameWith(
       gen += 1;
       const raw = structuredClone(next);
       frame.shadow = raw;
-      const drawn = mode === "preview" ? raw : prepareForEditMode(stripEventHandlers(raw));
+      const drawn = prepareForEditMode(stripEventHandlers(raw));
       await send({
         colorScheme: null,
         doc: structuredClone(drawn),
@@ -755,11 +755,6 @@ describe("a list with nothing to draw still shows its template", () => {
     expect(frame.container.querySelector("[data-jx-template-row]")).toBeNull();
     expect(instances(frame.container, ROW)).toHaveLength(3);
   });
-
-  test("Preview draws the page as it ships: no template row for an empty list", async () => {
-    const frame = await frameWith(pageOf([]), {}, "preview");
-    expect(instances(frame.container, ROW)).toEqual([]);
-  });
 });
 
 describe("the row cap", () => {
@@ -789,13 +784,6 @@ describe("the row cap", () => {
     // A cap that is not a whole number of rows is the default, never zero rows.
     await frame.render(pageOf(MANY), { rowLimit: 0 });
     expect(instances(frame.container, ROW)).toHaveLength(24);
-  });
-
-  test("Preview draws every row", async () => {
-    const frame = await frameWith(pageOf(MANY), { rowLimit: 5 }, "preview");
-    expect(instances(frame.container, ROW)).toHaveLength(30);
-    // And closes none of them: an echo row is only the editing canvas's business.
-    expect(frame.container.querySelector("[data-jx-echo-closed]")).toBeNull();
   });
 });
 
@@ -973,17 +961,6 @@ describe("what a change of active row carries with it", () => {
     await nextFrame();
     await frame.settle();
     expect(frame.of("hover").map((m) => m.hit?.rect.y)).toEqual([0, 100]);
-  });
-
-  test("Preview promotes nothing: a press there is a press on the page", async () => {
-    const frame = await frameWith(pageOf(EPISODES), {}, "preview");
-    const before = instances(frame.container, ROW).map((el) => el.dataset.jxPath !== undefined);
-    press(instances(frame.container, HEADING)[2]!);
-    await frame.settle();
-    expect(frame.of("rowActivated")).toEqual([]);
-    expect(instances(frame.container, ROW).map((el) => el.dataset.jxPath !== undefined)).toEqual(
-      before,
-    );
   });
 });
 

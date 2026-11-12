@@ -85,12 +85,6 @@ type IframeMount = (
 // The stylebook fast path posts style updates to live stylebook hosts; tests control the count.
 let styleUpdateImpl: (style: JxStyle) => number = () => 0;
 /**
- * Every synchronous preview-mode declaration the renderer made, in order. The renderer must tell
- * the host what kind of render is coming BEFORE it awaits the resolved document (see
- * adoptCanvasPreviewMode) — these records are how a test sees that call happened, and with what.
- */
-const previewAdoptions: { canvas: HTMLElement; preview: boolean }[] = [];
-/**
  * The default DOM double: each child of the document becomes its own tag (a `span` when it names
  * none) carrying its literal text, under one wrapper. A text child has no tag and no text of its
  * own here, so it stamps an empty `span`.
@@ -324,8 +318,6 @@ void mock.module("../src/canvas/canvas-live-render.js", () => ({
 void mock.module("../src/canvas/iframe-host.js", () => ({
   requestTemplateEval: () => Promise.resolve(null),
   flushCanvasEdits: () => Promise.resolve(),
-  adoptCanvasPreviewMode: (canvas: HTMLElement, preview: boolean) =>
-    previewAdoptions.push({ canvas, preview }),
   commitActiveEditSession: () => {},
   /* Three exports this file never calls, stubbed because a PARTIAL mock of a module the graph
      reaches is a load error rather than a missing stub at call time. canvas-render now draws the
@@ -2242,7 +2234,7 @@ describe("iframe render pipeline", () => {
   });
 });
 
-// ─── Design / preview mode ────────────────────────────────────────────────────
+// ─── Design mode ──────────────────────────────────────────────────────────────
 
 describe("design mode", () => {
   test("renders a single full-width panel without media", async () => {
@@ -2430,58 +2422,6 @@ describe("fit on entering Design", () => {
     } finally {
       renderStylebookMode.mockImplementation(() => Promise.resolve());
     }
-  });
-});
-
-// ─── Preview: a real, scrolling frame ─────────────────────────────────────────
-
-describe("preview mode", () => {
-  test("renders one full-bleed stage with no panzoom transform", async () => {
-    openSyncedTab();
-    setMode("preview");
-    renderCanvas();
-    await flush();
-
-    expect(stageEl().querySelector('[part="preview-stage"]')).not.toBeNull();
-    expect(stageEl().querySelector('[part="panzoom"]')).toBeNull();
-    expect(surfaceForPane("primary").panzoomWrap).toBeNull();
-    expect(canvasPanels.length).toBe(1);
-    const panel = panelAt(0);
-    expect(panel.element.dataset.fullWidth).toBe("");
-    expect(panel.canvas.querySelector("p")?.textContent).toBe("Hello");
-  });
-
-  test("entering and leaving preview is a real mode transition", async () => {
-    // The toggle is the real one: the render composes the pane's effective mode itself now
-    // (`canvasModeOfPane`), so flipping `ui.preview` is the whole gesture.
-    const tab = openSyncedTab();
-    renderCanvas();
-    await flush();
-    expect(stageEl().querySelector('[part="panzoom"]')).not.toBeNull();
-
-    // The effective mode flips while the BASE mode stays "design" — the preview toggle.
-    tab.session.ui.preview = true;
-    renderCanvas();
-    await flush();
-    expect(stageEl().querySelector('[part="preview-stage"]')).not.toBeNull();
-    expect(stageEl().querySelector('[part="panzoom"]')).toBeNull();
-
-    tab.session.ui.preview = false;
-    renderCanvas();
-    await flush();
-    expect(stageEl().querySelector('[part="preview-stage"]')).toBeNull();
-    expect(stageEl().querySelector('[part="panzoom"]')).not.toBeNull();
-  });
-
-  test("preview over a base of edit still gets the stage, not the edit column", async () => {
-    const tab = openSyncedTab();
-    setMode("edit");
-    tab.session.ui.preview = true;
-    renderCanvas();
-    await flush();
-    expect(stageEl().querySelector('[part="preview-stage"]')).not.toBeNull();
-    expect(stageEl().querySelector('[part="edit-canvas"]')).toBeNull();
-    tab.session.ui.preview = false;
   });
 });
 
@@ -2790,9 +2730,9 @@ describe("what leads Edit's frame", () => {
     expect(stageEl().style.flexDirection).toBe("");
   });
 
-  test("Preview, Source and Grid draw no band over an entry — they are not writing views", async () => {
+  test("Source and Grid draw no band over an entry — they are not writing views", async () => {
     openEntryTab();
-    for (const mode of ["preview", "source", "grid"]) {
+    for (const mode of ["source", "grid"]) {
       setMode(mode);
       renderCanvas();
       await flush();

@@ -401,14 +401,6 @@ describe("writing an entry inside its collection's page", () => {
     expect(meta.textContent).toBeUndefined();
   });
 
-  test("Preview composes the same page with the live entry, and marks nothing to type in", async () => {
-    const { result } = await resolved(postPage(), "preview");
-    const h1 = renderNodeAt(result.renderDoc, ["children", 1, "children", 0, "children", 0]);
-    expect(h1.textContent).toBe("${state.entry.data.title}");
-    expect(h1.attributes).toBeUndefined();
-    expect(result.renderDoc.state?.entry).toMatchObject({ data: { title: "Spring planting" } });
-  });
-
   test("a page with no layout is itself the frame the entry is written in", async () => {
     const { result } = await resolved(postPage({ $layout: false }));
     expect(renderNodeAt(result.renderDoc, ["children", 0]).tagName).toBe("header");

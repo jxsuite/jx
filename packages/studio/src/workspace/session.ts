@@ -15,14 +15,16 @@
  * failing the whole session — files move, and losing the other eight tabs because one was renamed
  * would be worse than the problem this solves.
  *
- * **Only what the author chose.** Per tab it records the canvas mode, the preview flag, the zooms
- * and the rendering context — the settings a person deliberately put a document into. Selection,
- * hover, clipboard, undo history and the live canvas scope are all derived or transient, and
- * restoring a selection into a document that has since changed on disk would point at a node that
- * may not exist.
+ * **Only what the author chose.** Per tab it records the canvas mode, the zooms and the rendering
+ * context — the settings a person deliberately put a document into. Selection, hover, clipboard,
+ * undo history and the live canvas scope are all derived or transient, and restoring a selection
+ * into a document that has since changed on disk would point at a node that may not exist.
  *
  * **Untrusted input.** Everything read back is `localStorage`, which is hand-editable and survives
- * across versions. Every field is validated on the way in and a bad record restores nothing.
+ * across versions. Every field is validated on the way in and a bad record restores nothing. A
+ * record written while Studio had a Preview toggle carries a `preview` flag beside its mode; it is
+ * not read, so such a document opens in the Edit or Design view it was previewing over, and a mode
+ * the document no longer declares is dropped like any other.
  */
 
 import { PRIMARY_PANE, SECONDARY_PANE, activateTab, focusPane, workspace } from "./workspace";
@@ -50,7 +52,6 @@ export interface PersistedPane {
 /** What a document was showing when the project was last closed. */
 export interface PersistedTabUi {
   canvasMode?: string;
-  preview?: boolean;
   zoom?: number;
   editZoom?: number;
   activeMedia?: string | null;
@@ -84,7 +85,6 @@ function uiOf(tab: Tab): PersistedTabUi {
     activeMedia: ui.activeMedia,
     canvasMode: ui.canvasMode,
     editZoom: ui.editZoom,
-    preview: ui.preview,
     previewColorScheme: ui.previewColorScheme,
     previewLocale: ui.previewLocale,
     showLayout: ui.showLayout,
@@ -138,9 +138,6 @@ function readTabUi(value: JsonValue | undefined): PersistedTabUi {
   const out: PersistedTabUi = {};
   if (isString(value.canvasMode)) {
     out.canvasMode = value.canvasMode;
-  }
-  if (isBoolean(value.preview)) {
-    out.preview = value.preview;
   }
   if (isNumber(value.zoom) && Number.isFinite(value.zoom)) {
     out.zoom = value.zoom;
@@ -284,9 +281,6 @@ export async function restoreSession(
     const { ui } = tab.session;
     if (stored.canvasMode && tab.capabilities.modes.includes(stored.canvasMode)) {
       ui.canvasMode = stored.canvasMode;
-    }
-    if (stored.preview !== undefined) {
-      ui.preview = stored.preview;
     }
     if (stored.zoom !== undefined) {
       ui.zoom = stored.zoom;

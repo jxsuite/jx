@@ -65,7 +65,9 @@ import type { PresenceProjection } from "../collab/presence-chips";
 import type { MenuHandle, MenuRowProjection } from "./menu";
 import type { SurfaceHandle } from "../ui/surface";
 import type { Tab } from "../tabs/tab";
-import type { SiteBuildResult, SitePreviewResult, StudioPlatform } from "../types";
+import { componentPropEntries } from "../component-props";
+import { isPlainStateEntry } from "../canvas/state-values";
+import type { JsonValue, SiteBuildResult, SitePreviewResult, StudioPlatform } from "../types";
 import type { CommandRegistry } from "../commands/registry";
 import type { EffectScope } from "@vue/reactivity";
 
@@ -279,6 +281,11 @@ export type BrowserTarget =
 /**
  * The harness target for a component or a layout, with a component's test values in its address.
  *
+ * A component's test values are the state values set for the canvas on its props
+ * (`canvas.setStateValue`): the values the canvas draws it with are the values it runs with. A
+ * value set on an entry that is not a prop stays on the canvas, since the harness hands an instance
+ * its props and nothing else.
+ *
  * The address is `@jxsuite/protocol`'s to spell, because a backend reads what this writes. Values
  * too large for an address are left out and reported, and the component opens with its defaults,
  * which is still the component running.
@@ -286,9 +293,29 @@ export type BrowserTarget =
 function harnessTarget(tab: Tab, documentPath: string, kind: "component" | "layout") {
   const { dropped, path } = harnessAddress(
     documentPath,
-    kind === "component" ? tab.session.ui.previewProps : null,
+    kind === "component" ? componentTestValues(tab) : null,
   );
   return { harness: { documentPath, dropped, kind }, path };
+}
+
+/**
+ * The state values set for the canvas on a component's props, or null when none is set. Only a prop
+ * that is still a plain entry carries one, the rule the canvas draws by (`withStateValues`) and the
+ * popover lists by: a value left on a prop since turned into a request or a server entry is drawn
+ * by neither, so the harness does not run with it either.
+ */
+function componentTestValues(tab: Tab): Record<string, JsonValue> | null {
+  const set = tab.session.ui.stateValues;
+  const entries = tab.doc.document.state ?? {};
+  const props = Object.fromEntries(
+    componentPropEntries(tab.doc.document).flatMap(({ name }) => {
+      const value = set[name];
+      return value === undefined || !isPlainStateEntry(entries[name])
+        ? []
+        : [[name, value] as const];
+    }),
+  );
+  return Object.keys(props).length > 0 ? props : null;
 }
 
 /**

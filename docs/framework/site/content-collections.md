@@ -148,11 +148,11 @@ An entry that fails `where`, and a file that matches `exclude`, are gone for eve
 
 An entry is held when **any** rule matches, and the first match names why. `when` has the same grammar as `where`, and `label` is the words Studio and the build report show. A type with no `hold` holds nothing.
 
-| Where it runs                         | Held entries                                                                                       |
-| ------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| `jx build`                            | Left out when the type loads, so pages, `$paths`, queries, search, feeds and the sitemap all agree |
-| `jx build --include-held`             | Kept, for a preview deploy                                                                         |
-| `jx dev`, Studio's canvas and Preview | Kept                                                                                               |
+| Where it runs                | Held entries                                                                                       |
+| ---------------------------- | -------------------------------------------------------------------------------------------------- |
+| `jx build`                   | Left out when the type loads, so pages, `$paths`, queries, search, feeds and the sitemap all agree |
+| `jx build --include-held`    | Kept, for a preview deploy                                                                         |
+| `jx dev` and Studio's canvas | Kept                                                                                               |
 
 Leaving entries out is the default, so a build script that forgets a flag cannot publish one. Only a clean build is clean of them, though: `jx dev` builds held entries into the same `dist/`, and `jx build --no-clean` does not delete a page already there. A reference to a held entry stays its id, with a warning, so a published page never carries a held entry's fields. The build log says what it held and why:
 

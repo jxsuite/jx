@@ -4,9 +4,9 @@
  * A built page reads `${$page.locale}`, `${$page.url}` and `${$site.name}` from the state the build
  * injects (site-architecture.md §10, §13.4). The canvas injected none of it, so every one of those
  * bindings was undefined there: a component handed `$page.locale` as its locale threw a
- * `RangeError` and was not rendered, and Preview of a multilingual page drew no list at all. The
- * injection is `@jxsuite/site/context`'s, the one the build calls, because a host that improvised
- * its own subset would differ from the build in whichever field it forgot.
+ * `RangeError` and was not rendered, and a multilingual page drew no list at all. The injection is
+ * `@jxsuite/site/context`'s, the one the build calls, because a host that improvised its own subset
+ * would differ from the build in whichever field it forgot.
  *
  * The route is the document's own: a page's URL pattern from its file, with the route parameters
  * chosen for the preview; an entry's URL from its collection's template page in the entry's own

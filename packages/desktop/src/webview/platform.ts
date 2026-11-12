@@ -341,15 +341,13 @@ export function createDesktopPlatform() {
   }
 
   /*
-   * Preview link clicks go to the user's REAL browser, not this app window.
+   * A page Studio opens outside itself goes to the user's REAL browser, not this app window.
    *
-   * Following a link in Preview exists to see the page behave like the deployed thing — routing,
-   * history, devtools. A Chromium `--app` window has no address bar and no tab strip, so it is not
-   * that, and navigating THIS one would replace the editor. The Bun side hands the URL to the OS
-   * (`openExternal`); on failure the studio's own `window.open` default still applies.
-   *
-   * `View: Open in Browser` reuses the same seam, which is why it belongs here: without it the
-   * built page opened in a second frameless app window.
+   * `View: Open in Browser` and the Publish workspace's links exist to see the page behave like
+   * the deployed thing — routing, history, devtools. A Chromium `--app` window has no address bar
+   * and no tab strip, so it is not that, and navigating THIS one would replace the editor. The Bun
+   * side hands the URL to the OS (`openExternal`); on failure the studio's own `window.open`
+   * default still applies. Without it the page opened in a second frameless app window.
    */
   setPreviewNavigateHandler((url: string) => {
     const fallback = () => {

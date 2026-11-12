@@ -46,7 +46,7 @@ Beyond the common set, the menu offers the states the platform actually gives th
 
 Anything the element already has styles for stays in the menu whatever it is, so a selector you wrote by hand never disappears.
 
-**Picking `:popover-open` opens the popover on the canvas.** You can hover an element to see its `:hover` styles, but a closed popover is not on screen to be put into that state by hand, so choosing the state shows it. It is the one element state the canvas simulates; the rest are editing targets only. `::backdrop` is editable here and shown in **Preview**, where the popover renders the way a visitor sees it.
+**Picking `:popover-open` opens the popover on the canvas.** You can hover an element to see its `:hover` styles, but a closed popover is not on screen to be put into that state by hand, so choosing the state shows it. It is the one element state the canvas simulates; the rest are editing targets only. `::backdrop` is editable here and shown in **Open in Browser**, where the popover renders the way a visitor sees it.
 
 ## Add your own selector
 

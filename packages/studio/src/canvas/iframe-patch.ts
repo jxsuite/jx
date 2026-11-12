@@ -224,7 +224,7 @@ function restampKept(
   container: HTMLElement,
   ctx: IframeRenderCtx | undefined,
 ): void {
-  // Only where text is edited in place: a preview draws the page, and carries no stamps at all.
+  // Only where text is edited in place: a stylebook or a diff side carries no text to commit.
   if (!ctx || !isEditableMode(ctx.mode)) {
     return;
   }

@@ -159,7 +159,7 @@ export function startIframeInlineEdit(
 ): () => void {
   const doc = container.ownerDocument;
 
-  // Inline editing exists only in design/edit renders — a stylebook (or preview) render must not
+  // Inline editing exists only in design/edit renders — a stylebook (or git-diff) render must not
   // Start a contenteditable session on its nodes. An absent getMode is permissive (tests).
   const editingAllowed = () => {
     const mode = opts?.getMode?.();

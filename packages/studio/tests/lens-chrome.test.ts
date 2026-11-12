@@ -105,7 +105,7 @@ function lensGrid(): Tab {
     { children: [{ tagName: "p", textContent: "Hi" }], tagName: "div", title: "Home" },
     { documentPath: "pages/index.json", id: "pages/index.json" },
   );
-  page.capabilities.modes = ["edit", "design", "preview", "source"];
+  page.capabilities.modes = ["edit", "design", "source"];
   openTab({ document: { tagName: "div" }, documentPath: "scratch.json", id: "scratch.json" });
   expect(splitRight()?.id).toBe(SECONDARY_PANE);
   focusPane(PRIMARY_PANE);
@@ -136,7 +136,7 @@ function twoPaneGrid(): Tab {
     { children: [{ tagName: "p", textContent: "Hi" }], tagName: "div", title: "Home" },
     { documentPath: "pages/index.json", id: "pages/index.json" },
   );
-  page.capabilities.modes = ["edit", "design", "preview", "source"];
+  page.capabilities.modes = ["edit", "design", "source"];
   openTab({ document: { tagName: "div" }, documentPath: "scratch.json", id: "scratch.json" });
   expect(splitRight()?.id).toBe(SECONDARY_PANE);
   focusPane(PRIMARY_PANE);
@@ -404,7 +404,7 @@ describe("the preset menu's rows", () => {
     }
 
     // …and a document that declares Design gets them live, so the row is not simply always dead.
-    page.capabilities.modes = ["edit", "design", "preview", "source"];
+    page.capabilities.modes = ["edit", "design", "source"];
     expect(
       paneContext
         .presetRows(PRIMARY_PANE)
@@ -808,7 +808,7 @@ describe("the tab strip in a derived pane", () => {
       { children: [{ tagName: "p" }], tagName: "div" },
       { documentPath: "pages/index.json", id: "pages/index.json" },
     );
-    page.capabilities.modes = ["edit", "design", "preview", "source"];
+    page.capabilities.modes = ["edit", "design", "source"];
     page.doc.document.$layout = "layouts/base.json";
     openTab({
       document: { tagName: "div" },

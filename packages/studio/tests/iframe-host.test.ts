@@ -195,7 +195,6 @@ void mock.module("../src/canvas/canvas-live-render", () => ({
 }));
 
 const {
-  adoptCanvasPreviewMode,
   adoptDragSession,
   beginDragSession,
   canvasIdleBlockers,
@@ -274,50 +273,6 @@ describe("mountIframeCanvas", () => {
     channels[0]!.deliver({ kind: "ready" });
     expect(channels[0]!.posts).toHaveLength(1);
     expect(channels[0]!.posts[0]).toMatchObject({ gen: 1, kind: "render", mode: "design" });
-  });
-
-  test("a preview link opens externally instead of navigating the canvas", async () => {
-    const { setPreviewNavigateHandler } = await import("../src/canvas/preview-navigate");
-    resetWorkspaceWithTab();
-    const canvasEl = document.createElement("div");
-    document.body.append(canvasEl);
-    await mountIframeCanvas(1, { tagName: "div" }, canvasEl);
-    channels[0]!.deliver({ kind: "ready" });
-
-    const opened: string[] = [];
-    setPreviewNavigateHandler((url) => opened.push(url));
-    try {
-      channels[0]!.deliver({ href: "/about", kind: "previewNavigate" });
-      // Resolved against the CANVAS's origin (the project's own), not the editor shell's deep path.
-      expect(opened).toHaveLength(1);
-      expect(opened[0]).toContain("/about");
-      expect(opened[0]!.startsWith("http")).toBe(true);
-    } finally {
-      setPreviewNavigateHandler(null);
-    }
-  });
-
-  test("a javascript: preview href is refused, not opened", async () => {
-    const { setPreviewNavigateHandler } = await import("../src/canvas/preview-navigate");
-    resetWorkspaceWithTab();
-    const canvasEl = document.createElement("div");
-    document.body.append(canvasEl);
-    await mountIframeCanvas(1, { tagName: "div" }, canvasEl);
-    channels[0]!.deliver({ kind: "ready" });
-    const opened: string[] = [];
-    setPreviewNavigateHandler((url) => opened.push(url));
-    try {
-      // The shell is the opener, so a javascript:/data: URL would execute in the EDITOR's origin.
-      // oxlint-disable-next-line no-script-url -- asserting this scheme is REFUSED is the point
-      channels[0]!.deliver({ href: "javascript:alert(1)", kind: "previewNavigate" });
-      channels[0]!.deliver({ href: "data:text/html,<b>x</b>", kind: "previewNavigate" });
-      expect(opened).toHaveLength(0);
-      // Ordinary web and contact schemes still go through.
-      channels[0]!.deliver({ href: "mailto:hi@example.com", kind: "previewNavigate" });
-      expect(opened).toEqual(["mailto:hi@example.com"]);
-    } finally {
-      setPreviewNavigateHandler(null);
-    }
   });
 
   test("an editable render carries the tab's remote session, and Refresh starts another", async () => {
@@ -1393,23 +1348,39 @@ describe("iframe canvas interaction", () => {
     expect(render).not.toHaveProperty("tagTitles");
   });
 
-  test("a Preview host and a stylebook host report no chip", async () => {
-    resetWorkspaceWithTab();
+  test("a stylebook host reports no chip and takes no row, even while it still names a tab", async () => {
+    const tab = resetWorkspaceWithTab();
+    // A host that drew the tab's document, so it carries the tab's identity…
     const canvasEl = await mountReady();
+    const ch = channels[0]!;
+    ch.deliver({ capabilities: ["rows"], kind: "ready" });
     const clicks: CanvasTagClick[] = [];
     setCanvasTagClickHandler((click) => clicks.push(click));
+    const tagClick: Extract<IframeToParent, { kind: "tagClick" }> = {
+      active: true,
+      kind: "tagClick",
+      occurrence: 0,
+      path: ["children", 0],
+      rect: { height: 1, width: 1, x: 0, y: 0 },
+      ref: null,
+      source: "${state.x}",
+    };
     try {
-      adoptCanvasPreviewMode(canvasEl, true);
-      channels[0]!.deliver({
-        active: true,
-        kind: "tagClick",
-        occurrence: 0,
-        path: ["children", 0],
-        rect: { height: 1, width: 1, x: 0, y: 0 },
-        ref: null,
-        source: "${state.x}",
-      });
+      ch.deliver(tagClick);
+      expect(clicks).toHaveLength(1);
+      clicks.length = 0;
+      // …is handed the stylebook. Until that render completes it still names the tab, so only the
+      // Stylebook gate keeps a specimen's chip or row from reaching the tab's document.
+      mountStylebookCanvas(
+        2,
+        { doc: { tagName: "div" }, pathToTag: new Map(), tagToCardPath: new Map() },
+        canvasEl,
+        null,
+      );
+      ch.deliver(tagClick);
+      ch.deliver({ kind: "rowActivated", path: ["children", 0], row: 2 });
       expect(clicks).toEqual([]);
+      expect(tab.session.ui.activeRows).toEqual({});
     } finally {
       setCanvasTagClickHandler(null);
     }
@@ -1644,16 +1615,6 @@ describe("iframe canvas interaction", () => {
     });
   });
 
-  test("a Preview host takes no row from its frame", async () => {
-    const tab = resetWorkspaceWithTab();
-    const canvasEl = await mountReady();
-    const ch = channels[0]!;
-    ch.deliver({ capabilities: ["rows"], kind: "ready" });
-    adoptCanvasPreviewMode(canvasEl, true);
-    ch.deliver({ kind: "rowActivated", path: ["children", 0], row: 2 });
-    expect(tab.session.ui.activeRows).toEqual({});
-  });
-
   test("postActiveRowsToLiveHosts skips a frame that draws one row, another stage, and a stage that is gone", async () => {
     resetWorkspaceWithTab();
     const canvasEl = await mountReady();
@@ -1820,10 +1781,10 @@ describe("iframe canvas dataScope bridge", () => {
 });
 
 describe("which renders carry the tab's remote data", () => {
-  test("Edit and Design do, and Preview and a diff side do not", async () => {
+  test("Edit and Design do, and a diff side does not", async () => {
     resetWorkspaceWithTab();
     const sent: Record<string, boolean> = {};
-    for (const mode of ["edit", "design", "preview", "git-diff"] as const) {
+    for (const mode of ["edit", "design", "git-diff"] as const) {
       resolved = {
         ...structuredClone(DEFAULT_RESOLVED),
         mapperCtx: { ...DEFAULT_RESOLVED.mapperCtx, canvasMode: mode },
@@ -1838,19 +1799,19 @@ describe("which renders carry the tab's remote data", () => {
       sent[mode] = render.remote !== undefined;
     }
     resolved = structuredClone(DEFAULT_RESOLVED);
-    expect(sent).toEqual({ design: true, edit: true, "git-diff": false, preview: false });
+    expect(sent).toEqual({ design: true, edit: true, "git-diff": false });
   });
 
   test("a view that runs nothing cannot be the frame that fetches", async () => {
     resetWorkspaceWithTab();
-    // A Preview host of the tab is drawn first, and must not be named: it would be asked nothing.
+    // A diff side of the tab is drawn first, and must not be named: it would be asked nothing.
     resolved = {
       ...structuredClone(DEFAULT_RESOLVED),
-      mapperCtx: { ...DEFAULT_RESOLVED.mapperCtx, canvasMode: "preview" },
+      mapperCtx: { ...DEFAULT_RESOLVED.mapperCtx, canvasMode: "git-diff" },
     };
-    const previewEl = document.createElement("div");
-    document.body.append(previewEl);
-    await mountIframeCanvas(1, { tagName: "div" }, previewEl);
+    const diffEl = document.createElement("div");
+    document.body.append(diffEl);
+    await mountIframeCanvas(1, { tagName: "div" }, diffEl);
     channels.at(-1)!.deliver({ capabilities: ["bindingStatus"], kind: "ready" });
     resolved = structuredClone(DEFAULT_RESOLVED);
     const editEl = document.createElement("div");
@@ -1871,7 +1832,7 @@ describe("which renders carry the tab's remote data", () => {
     // The same host draws the tab as a view that runs nothing, so it is asked for no lookup.
     resolved = {
       ...structuredClone(DEFAULT_RESOLVED),
-      mapperCtx: { ...DEFAULT_RESOLVED.mapperCtx, canvasMode: "preview" },
+      mapperCtx: { ...DEFAULT_RESOLVED.mapperCtx, canvasMode: "git-diff" },
     };
     await mountIframeCanvas(2, { tagName: "div" }, first);
     resolved = structuredClone(DEFAULT_RESOLVED);
@@ -2479,21 +2440,6 @@ describe("iframe canvas inline-edit bridge", () => {
     expect(docChildren()[1]!.tagName).toBe("h2");
     channels[0]!.deliver({ gen: 1, kind: "patchComplete" });
     expect(channels[0]!.posts).toContainEqual({ kind: "enterEdit", path: ["children", 1] });
-  });
-
-  test("a preview-mode mount clears a pending re-entry", async () => {
-    const canvasEl = await mountReady();
-    channels[0]!.deliver({
-      after: { textContent: "lo" },
-      before: { textContent: "Hi" },
-      kind: "editSplit",
-      path: ["children", 0],
-    });
-    resolved.mapperCtx.canvasMode = "preview";
-    await mountIframeCanvas(2, {}, canvasEl, null, activeTab.value?.id ?? null);
-    channels[0]!.posts.length = 0;
-    channels[0]!.deliver({ gen: 2, kind: "renderComplete" });
-    expect(channels[0]!.posts.some((p) => p.kind === "enterEdit")).toBe(false);
   });
 
   test("editCommit routes to the ORIGINATING tab when it races a tab switch (the bleed)", async () => {
@@ -4692,30 +4638,16 @@ describe("hit routing across panes", () => {
   });
 
   /*
-   * The other half of the same seam. `hit` is not posted in PREVIEW at all (a click there is a
-   * click on the page), and in edit/design it is only posted when the click lands ON a
-   * `[data-jx-path]` node — so a Preview pane could not be focused by clicking what it is showing,
-   * and an artboard's empty margin focused nothing either. `paneFocus` carries nothing but "a
-   * pointer went down in this frame", which is why it is safe to send from preview.
+   * The other half of the same seam. `hit` is only posted when the click lands ON a
+   * `[data-jx-path]` node, so an artboard's empty margin focused nothing. `paneFocus` carries
+   * nothing but "a pointer went down in this frame".
    */
-  test("`paneFocus` focuses the pane, and is not refused by a preview host", async () => {
-    const { canvasEl, tabA } = await mountSplitBackgroundHost();
-    // Re-mount this host in PREVIEW: every message in `PREVIEW_BLOCKED` is dropped from it —
-    // `hit` and `contextMenu` among them — and this one must survive that gate.
-    resolved.mapperCtx.canvasMode = "preview";
-    await mountIframeCanvas(2, {}, canvasEl, null, "tab-side-pane");
+  test("`paneFocus` focuses the pane, with no hit beside it", async () => {
+    const { tabA } = await mountSplitBackgroundHost();
     activateTab(tabA.id);
     expect(workspace.activePaneId).toBe(PRIMARY_PANE);
 
-    // A click on a node would be a `hit`, and preview refuses it — so this is the ONLY signal.
-    channels[0]!.deliver({
-      hit: { path: ["children", 0], rect: { height: 1, width: 1, x: 0, y: 0 } },
-      kind: "hit",
-    });
-    expect(workspace.activePaneId).toBe(PRIMARY_PANE);
-
     channels[0]!.deliver({ kind: "paneFocus" });
-    console.log(`[iframe-host] paneFocus from a PREVIEW host → focus=${workspace.activePaneId}`);
     expect(workspace.activePaneId).toBe(SECONDARY_PANE);
   });
 });
@@ -5440,223 +5372,22 @@ describe("isCaretActive", () => {
   });
 });
 
-// ─── Preview is truthful ────────────────────────────────────────────────────────
-// Preview must behave like the shipped page: nothing selectable, nothing outlined, nothing
-// Droppable, and a frame that scrolls its own document instead of being grown to its content.
+// ─── The frame box follows the measurement ──────────────────────────────────────
 
-describe("preview renders", () => {
-  beforeEach(() => {
-    resetWorkspaceWithTab();
-    resolved.mapperCtx = { ...resolved.mapperCtx, canvasMode: "preview" };
-  });
-
-  /** Mount a ready host whose render mode is preview. */
-  async function mountPreview(): Promise<HTMLElement> {
-    return mountReady();
-  }
-
-  test("the overlay layer is suppressed, and restored by the next editable render", async () => {
-    const canvasEl = await mountPreview();
-    const overlay = partOf(canvasEl, ".jx-canvas-iframe-overlay");
-    expect(overlay.style.display).toBe("none");
-
-    resolved.mapperCtx = { ...resolved.mapperCtx, canvasMode: "design" };
-    await mountIframeCanvas(2, {}, canvasEl, null, activeTab.value?.id ?? null);
-    expect(overlay.style.display).toBe("");
-  });
-
-  test("a hit selects nothing", async () => {
-    const canvasEl = await mountPreview();
-    channels[0]!.deliver({
-      hit: { path: ["children", 0], rect: { height: 20, width: 100, x: 10, y: 5 } },
-      kind: "hit",
-    });
-    expect(activeTab.value?.session.selection).toEqual([]);
-    const sel = partOf(canvasEl, ".overlay-selection");
-    expect(sel.style.display).toBe("none");
-  });
-
-  test("hover draws no box", async () => {
-    const canvasEl = await mountPreview();
-    channels[0]!.deliver({
-      hit: { path: ["children", 1], rect: { height: 8, width: 40, x: 2, y: 3 } },
-      kind: "hover",
-    });
-    expect(partOf(canvasEl, ".overlay-hover").style.display).toBe("none");
-  });
-
-  test("no insertion +", async () => {
-    const canvasEl = await mountPreview();
-    channels[0]!.deliver({
-      kind: "insertZones",
-      zones: [
-        {
-          edge: "top",
-          index: 0,
-          insertParentPath: [],
-          rect: { height: 0, width: 100, x: 0, y: 0 },
-        },
-      ],
-    });
-    expect(partOf(canvasEl, ".insertion-helper").style.display).toBe("none");
-  });
-
-  test("the Jx context menu never opens", async () => {
-    let shown = 0;
-    setCanvasContextMenuHandler({
-      dismiss: () => {},
-      show: () => {
-        shown += 1;
-      },
-    });
-    await mountPreview();
-    channels[0]!.deliver({ kind: "contextMenu", path: ["children", 0], x: 5, y: 6 });
-    expect(shown).toBe(0);
-  });
-
-  test("an inline-edit session cannot start, so no caret is reported", async () => {
-    await mountPreview();
-    channels[0]!.deliver({ kind: "editStart", path: ["children", 0] });
-    expect(isCaretActive()).toBe(false);
-  });
-
-  test("a file drop is refused", async () => {
-    let calls = 0;
-    setFileDropHandler(async () => {
-      calls += 1;
-    });
-    await mountPreview();
-    channels[0]!.deliver({ files: [], hit: null, kind: "fileDrop", preview: null });
-    expect(calls).toBe(0);
-  });
-
-  test("the frame stays a real viewport instead of growing to its content", async () => {
-    const canvasEl = await mountPreview();
-    const iframe = canvasEl.querySelector("iframe")!;
-    channels[0]!.deliver({ fragment: false, height: 4000, kind: "contentHeight" });
-    expect(iframe.style.height).toBe("100%");
-    expect(iframe.style.minHeight).toBe("0px");
-  });
-});
-
-// ─── The preview flag and the frame box are ONE state transition ────────────────
-// Frame sizing has two inputs on two different clocks: the render mode (synchronous, decided by the
-// Renderer) and the content measurement (asynchronous, posted by the iframe — and DEDUPED by it, so
-// An unchanged measurement produces no message at all). Before this was derived rather than
-// Incremental, an entering-preview render whose measurement had already landed stayed content-sized
-// Forever: there was no second message to correct it. The camera caught it; a user switching into
-// Preview loses the same race.
-
-describe("preview frame sizing is derived, not incremental", () => {
+describe("frame sizing is derived from the measurement", () => {
   beforeEach(() => {
     resetWorkspaceWithTab();
   });
 
-  test("entering preview re-sizes the frame from the retained measurement, with no new message", async () => {
-    // Design render: the iframe measures its content and the frame grows to it.
+  test("a page grows to its content and keeps the floor; a fragment drops it", async () => {
     const canvasEl = await mountReady();
     const iframe = canvasEl.querySelector("iframe")!;
     channels[0]!.deliver({ fragment: false, height: 1234, kind: "contentHeight" });
-    expect(iframe.style.height).toBe("1234px");
-
-    // Switch the SAME host to preview. The iframe posts nothing: its measurement is unchanged, and
-    // It only posts on a change. The frame must still become a real viewport.
-    resolved.mapperCtx = { ...resolved.mapperCtx, canvasMode: "preview" };
-    await mountIframeCanvas(2, {}, canvasEl, null, activeTab.value?.id ?? null);
-    expect(iframe.style.height).toBe("100%");
-    expect(iframe.style.minHeight).toBe("0px");
-  });
-
-  test("leaving preview restores the content-sized frame from the retained measurement", async () => {
-    const canvasEl = await mountReady();
-    const iframe = canvasEl.querySelector("iframe")!;
-    channels[0]!.deliver({ fragment: false, height: 1234, kind: "contentHeight" });
-
-    resolved.mapperCtx = { ...resolved.mapperCtx, canvasMode: "preview" };
-    await mountIframeCanvas(2, {}, canvasEl, null, activeTab.value?.id ?? null);
-    expect(iframe.style.height).toBe("100%");
-
-    resolved.mapperCtx = { ...resolved.mapperCtx, canvasMode: "design" };
-    await mountIframeCanvas(3, {}, canvasEl, null, activeTab.value?.id ?? null);
     expect(iframe.style.height).toBe("1234px");
     expect(iframe.style.minHeight).toBe("480px");
-  });
-
-  test("a measurement that lands mid-resolve is re-answered under the mode that actually renders", async () => {
-    const canvasEl = await mountReady();
-    const iframe = canvasEl.querySelector("iframe")!;
-
-    // Hold the next mount's document resolution open — this is the window in which the host does
-    // Not yet know the incoming mode.
-    let release: (() => void) | null = null;
-    const gate = new Promise<void>((r) => {
-      release = r;
-    });
-    const previewResolved = {
-      ...resolved,
-      mapperCtx: { ...resolved.mapperCtx, canvasMode: "preview" },
-    };
-    void mock.module("../src/canvas/canvas-live-render", () => ({
-      resolveCanvasDocument: async () => {
-        await gate;
-        return previewResolved;
-      },
-    }));
-
-    const mounting = mountIframeCanvas(4, {}, canvasEl, null, activeTab.value?.id ?? null);
-    // Mid-resolve the iframe measures and posts. The host has not adopted the preview flag yet.
-    channels[0]!.deliver({ fragment: false, height: 4000, kind: "contentHeight" });
-    release!();
-    await mounting;
-
-    expect(iframe.style.height).toBe("100%");
-    expect(iframe.style.minHeight).toBe("0px");
-
-    // Restore the shared stub for the rest of the file.
-    void mock.module("../src/canvas/canvas-live-render", () => ({
-      resolveCanvasDocument: () => {
-        resolveCalls += 1;
-        return Promise.resolve(resolved);
-      },
-    }));
-  });
-
-  test("adoptCanvasPreviewMode sizes the frame synchronously, before any mount awaits", async () => {
-    const canvasEl = await mountReady();
-    const iframe = canvasEl.querySelector("iframe")!;
-    channels[0]!.deliver({ fragment: false, height: 1234, kind: "contentHeight" });
-    expect(iframe.style.height).toBe("1234px");
-
-    // No await between the declaration and the assertion: this is the whole point of the seam.
-    adoptCanvasPreviewMode(canvasEl, true);
-    expect(iframe.style.height).toBe("100%");
-    expect(iframe.style.minHeight).toBe("0px");
-
-    adoptCanvasPreviewMode(canvasEl, false);
-    expect(iframe.style.height).toBe("1234px");
-  });
-
-  test("a fragment measurement keeps its dropped floor across a preview round trip", async () => {
-    const canvasEl = await mountReady();
-    const iframe = canvasEl.querySelector("iframe")!;
     channels[0]!.deliver({ fragment: true, height: 300, kind: "contentHeight" });
-    expect(iframe.style.minHeight).toBe("0px");
-
-    adoptCanvasPreviewMode(canvasEl, true);
-    adoptCanvasPreviewMode(canvasEl, false);
     expect(iframe.style.height).toBe("300px");
     expect(iframe.style.minHeight).toBe("0px");
-  });
-
-  test("before any measurement, leaving preview leaves the cssText defaults alone", async () => {
-    const canvasEl = await mountReady();
-    const iframe = canvasEl.querySelector("iframe")!;
-    adoptCanvasPreviewMode(canvasEl, true);
-    expect(iframe.style.minHeight).toBe("0px");
-    adoptCanvasPreviewMode(canvasEl, false);
-    // Nothing measured, so there is nothing to restore — the frame keeps whatever preview left it
-    // At rather than inventing a height.
-    expect(iframe.style.height).toBe("100%");
   });
 });
 

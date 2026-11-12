@@ -23,7 +23,7 @@ Three-column layout:
 | Column | Content                                                 |
 | ------ | ------------------------------------------------------- |
 | Left   | Activity bar + panel (layers, files, content, settings) |
-| Center | Canvas (live preview) + toolbar                         |
+| Center | Canvas (live data) + toolbar                            |
 | Right  | Inspector (properties, style, state, code)              |
 
 ### Data flow
@@ -73,7 +73,7 @@ createStudio(document.getElementById("root"));
 ## Design principles
 
 1. **JSON is the source of truth.** Studio reads and writes `.json` files directly.
-2. **Canvas is the runtime.** Preview renders via `@jxsuite/runtime`, pixel-identical to production.
+2. **Canvas is the runtime.** The editing canvas renders via `@jxsuite/runtime` with the page's data resolved, and **Open in Browser** runs the page itself.
 3. **Zero lock-in.** Studio edits produce standard Jx files that any editor can open.
 4. **Self-hosting.** Studio is itself a Jx application.
 
