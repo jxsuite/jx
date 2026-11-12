@@ -3,8 +3,8 @@ import { spawn } from "node:child_process";
 /**
  * Open a URL in the user's default browser.
  *
- * Studio's Preview mode routes link clicks through here (see `setPreviewNavigateHandler`), and so
- * do `View: Open in Browser` and the GitHub sign-in redirect: each of the three exists to leave the
+ * Studio routes `View: Open in Browser` and the Publish workspace's links through here (see
+ * `setPreviewNavigateHandler`), and so does the GitHub sign-in redirect: each exists to leave the
  * editor's window, and a frameless app window with no address bar, history or devtools is not the
  * browser any of them means.
  *

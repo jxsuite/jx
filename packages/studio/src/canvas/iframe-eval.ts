@@ -119,7 +119,7 @@ export function bindRepeaterContext(
         const wanted = activeRows.get(JSON.stringify(contextPath.slice(0, depth))) ?? 0;
         const index = Math.min(wanted, items.length - 1);
         // Items resolved from the shadow doc (a literal array) must not be mutable through the
-        // Preview scope — clone; scope-resolved items are already clone data, so this is free.
+        // Evaluation scope — clone; scope-resolved items are already clone data, so this is free.
         const item = cloneOrNull(items[index]);
         /* SAFETY: `Object.create(bound)` is an empty object whose prototype is the scope built so far,
            so it is a scope that reads every outer key through and owns only the three set below. */

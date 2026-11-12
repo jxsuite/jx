@@ -1029,14 +1029,14 @@ describe("an inline element keeps what its node holds besides content", () => {
       ctx,
     );
     expect(f.el(0).querySelector("span")?.hasAttribute(KEEP_ATTR)).toBe(false);
-    // A preview carries no stamps: nothing is edited in place there.
+    // A diff side is read, not written: nothing is edited in place there.
     const g = await setup([{ children: ["See ", span], tagName: "p" }]);
     g.el(0).querySelector("span")?.removeAttribute(KEEP_ATTR);
     applyIframePatch(
       structuredClone(g.doc),
       [{ key: "style", op: "set-key", path: slot, value: { color: "blue" } }],
       g.container,
-      { ...ctx, defs: g.scope, mode: "preview" },
+      { ...ctx, defs: g.scope, mode: "git-diff" },
     );
     expect(g.el(0).querySelector("span")?.hasAttribute(KEEP_ATTR)).toBe(false);
   });

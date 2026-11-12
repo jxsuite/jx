@@ -10,7 +10,7 @@
  *
  * A dialog shown in place is the canvas's affordance and nothing more: `session.ui.openDialog` is
  * per-tab view state, takes no undo entry, does not replicate, and is not restored with a session.
- * Preview renders the dialog natively, modal, backdrop and all.
+ * The page in a browser renders the dialog natively, modal, backdrop and all (§10.1).
  *
  * @docs studio/interface/canvas
  */

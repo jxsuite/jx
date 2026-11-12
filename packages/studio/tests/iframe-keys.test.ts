@@ -123,15 +123,9 @@ describe("the three deleted lists, derived instead of listed", () => {
     expect(shouldForwardKey(key({ ctrlKey: true, key: "s" }), t, true)).toBe(true);
   });
 
-  test("preview drops the canvas scope — no overlays, nothing to aim at", () => {
-    expect(shouldForwardKey(key({ ctrlKey: true, key: "c" }), t, false, "preview")).toBe(false);
-    expect(shouldForwardKey(key({ ctrlKey: true, key: "s" }), t, false, "preview")).toBe(true);
-  });
-
   test("frameScopeStack is the host's ladder, minus the branches a frame cannot be in", () => {
-    expect(frameScopeStack(true, "edit")).toEqual(["caret", "global"]);
-    expect(frameScopeStack(false, "design")).toEqual(["canvas", "global"]);
-    expect(frameScopeStack(false, "preview")).toEqual(["global"]);
+    expect(frameScopeStack(true)).toEqual(["caret", "global"]);
+    expect(frameScopeStack(false)).toEqual(["canvas", "global"]);
   });
 });
 
@@ -259,12 +253,8 @@ describe("the frame's table is the app's keymap", () => {
        list-based filter cannot satisfy this by construction; a resolver satisfies it by being the
        same question. */
     for (const entry of chords) {
-      for (const [sessionLive, mode] of [
-        [true, "edit"],
-        [false, "design"],
-        [false, "preview"],
-      ] as const) {
-        const stack = frameScopeStack(sessionLive, mode);
+      for (const sessionLive of [true, false]) {
+        const stack = frameScopeStack(sessionLive);
         // A host-only command claims its chord for the host's own surfaces, never for a frame.
         const holder = registry.keymap.resolveChord(entry.chord, stack);
         const claimed = holder !== undefined && !HOST_ONLY_COMMANDS.has(holder.commandId);
@@ -273,23 +263,22 @@ describe("the frame's table is the app's keymap", () => {
           continue;
         }
         expect(
-          shouldForwardKey(event, live, sessionLive, mode),
-          `${entry.chord} (${entry.scope}) with sessionLive=${sessionLive} mode=${mode}`,
+          shouldForwardKey(event, live, sessionLive),
+          `${entry.chord} (${entry.scope}) with sessionLive=${sessionLive}`,
         ).toBe(claimed);
       }
     }
   });
 
-  test("Escape stays with the page in Preview and mid-sentence, and selects the parent in Design", () => {
+  test("Escape stays with the page mid-sentence, and selects the parent without a caret", () => {
     /* `pane.backToHome` holds bare Escape globally, for the views beside a strip-less home, none of
        which is a canvas frame. Projected into the table it would have the frame cancel Escape
        everywhere, so a rendered page's own <dialog> or popover could not be dismissed with it. */
     const escape = () => key({ key: "Escape" });
     expect(registry.keymap.resolveChord("escape", ["global"])?.commandId).toBe("pane.backToHome");
-    expect(shouldForwardKey(escape(), live, false, "preview")).toBe(false);
-    expect(shouldForwardKey(escape(), live, true, "edit")).toBe(false);
-    // Design still forwards it, to `selection.selectParent` in the canvas scope.
-    expect(shouldForwardKey(escape(), live, false, "design")).toBe(true);
+    expect(shouldForwardKey(escape(), live, true)).toBe(false);
+    // Without a caret it forwards, to `selection.selectParent` in the canvas scope.
+    expect(shouldForwardKey(escape(), live, false)).toBe(true);
     const everything = chordsInScopes(registry.keymap, FRAME_KEY_SCOPES);
     expect(everything).toContainEqual({ chord: "escape", scope: "global" });
     expect(chords).not.toContainEqual({ chord: "escape", scope: "global" });

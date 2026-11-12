@@ -31,7 +31,7 @@ const MARKDOWN_CLASS = {
   },
   $implementation: "./markdown.js",
   $prototype: "Class",
-  $studio: { elements: { block: ["p", "h1"] }, modes: ["edit", "preview"] },
+  $studio: { elements: { block: ["p", "h1"] }, modes: ["edit", "design"] },
   format: {
     documentKinds: ["page", "component", "content"],
     exportTarget: true,
@@ -228,7 +228,7 @@ describe("FormatRegistry lookups", () => {
     const md = reg.byName("Markdown")!;
     expect(md.exportTarget).toBe(true);
     expect(md.mediaType).toBe("text/markdown");
-    expect(md.studio?.modes).toEqual(["edit", "preview"]);
+    expect(md.studio?.modes).toEqual(["edit", "design"]);
     const csv = reg.byName("Csv")!;
     expect(csv.remote).toBe(true);
     expect(csv.studio).toBeNull();

@@ -135,8 +135,8 @@ ${boot ? `${boot}\n` : ""}    ${scriptTag(url(STUDIO_ENTRY))}
  * The canvas iframe document.
  *
  * Its `<style>` block is hand-authored and stays that way — it establishes the fixed-size query
- * container the runtime transposes viewport units against, and the preview-mode overrides, both of
- * which have to apply before the iframe's first render. Only the entry url is generated.
+ * container the runtime transposes viewport units against, which has to apply before the iframe's
+ * first render. Only the entry url is generated.
  *
  * The reference it replaces is a dynamic `import()` inside a template literal with a cache-buster,
  * which is precisely the shape jx-platform's `(?:src|href)="\./…"` residual-ref guard could not

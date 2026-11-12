@@ -127,7 +127,7 @@ export function holdFields(def: HoldBearer | null | undefined): string[] {
 export function holdMeaning(label: string | null): string {
   return label === null
     ? "No hold rule matches this entry, so a production build publishes it."
-    : `Held: ${label}. A production build leaves it out; jx dev, Preview and preview builds keep it.`;
+    : `Held: ${label}. A production build leaves it out; jx dev, the canvas and preview builds keep it.`;
 }
 
 // ─── The perspective ─────────────────────────────────────────────────────────

@@ -1,6 +1,7 @@
 /**
- * The argument guards on the rendering-context verbs — `canvas.setBreakpoint`, `canvas.setTestProp`
- * and `canvas.setRouteParam` — plus the pane resolution all of them share.
+ * The argument guards on the rendering-context verbs — `canvas.setBreakpoint`,
+ * `canvas.setStateValue` (a component's test values) and `canvas.setRouteParam` — plus the pane
+ * resolution all of them share.
  *
  * Each of these refusals exists because the alternative is a canvas that RENDERS a state nobody
  * declared: a breakpoint the document has no media query for, a test value no prop reads, a route
@@ -89,11 +90,11 @@ describe("the pane a rendering-context verb addresses", () => {
   });
 
   test("the refusal names the verb that was run, not the family", () => {
-    expect(() => registry.run("canvas.setTestProp", { name: "count", pane: "tertiary" })).toThrow(
-      'command "canvas.setTestProp" argument "pane": "tertiary" has no open document',
-    );
-    // And the refusal came from the PANE, before the prop was ever checked against the document.
-    expect(activeTab.value?.session.ui.previewProps).toBeNull();
+    expect(() =>
+      registry.run("canvas.setStateValue", { key: "count", pane: "tertiary", value: 1 }),
+    ).toThrow('command "canvas.setStateValue" argument "pane": "tertiary" has no open document');
+    // And the refusal came from the PANE, before the key was ever checked against the document.
+    expect(activeTab.value?.session.ui.stateValues).toEqual({});
   });
 
   test("a named pane that IS showing one resolves to that pane's tab, not the focused one", () => {
@@ -165,8 +166,8 @@ describe("canvas.setBreakpoint", () => {
   });
 });
 
-describe("canvas.setTestProp", () => {
-  /** A component document declaring one prop. */
+describe("a component's test value, through canvas.setStateValue", () => {
+  /** A component document declaring two props. */
   const withState = () =>
     openDoc({
       document: { ...structuredClone(PARAGRAPH_DOC), state: { count: 0, label: "Hi" } },
@@ -175,29 +176,29 @@ describe("canvas.setTestProp", () => {
 
   test("refuses a prop the component does not declare, listing the ones it does", () => {
     withState();
-    expect(() => registry.run("canvas.setTestProp", { name: "total", value: 3 })).toThrow(
-      'command "canvas.setTestProp" argument "name": "total" is not a prop this component ' +
-        "declares — it declares: count, label",
+    expect(() => registry.run("canvas.setStateValue", { key: "total", value: 3 })).toThrow(
+      'command "canvas.setStateValue" argument "key": "total" is not a plain state value of ' +
+        "this document. Its plain values: count, label",
     );
-    // No value was seeded for a name nothing reads.
-    expect(activeTab.value?.session.ui.previewProps).toBeNull();
+    // No value was set for a name nothing reads.
+    expect(activeTab.value?.session.ui.stateValues).toEqual({});
     expect(renderedPanes).toEqual([]);
   });
 
-  test('a component with no state says "nothing", rather than an empty list', () => {
+  test('a component with no state says "none", rather than an empty list', () => {
     openDoc({ documentPath: "components/plain.json" });
-    expect(() => registry.run("canvas.setTestProp", { name: "count", value: 1 })).toThrow(
-      'command "canvas.setTestProp" argument "name": "count" is not a prop this component ' +
-        "declares — it declares: nothing",
+    expect(() => registry.run("canvas.setStateValue", { key: "count", value: 1 })).toThrow(
+      'command "canvas.setStateValue" argument "key": "count" is not a plain state value of ' +
+        "this document. Its plain values: none",
     );
   });
 
-  test("a declared prop is seeded, and null clears it again", () => {
+  test("a declared prop is set, and null clears it again", () => {
     withState();
-    void registry.run("canvas.setTestProp", { name: "count", value: 7 });
-    expect(activeTab.value?.session.ui.previewProps).toEqual({ count: 7 });
-    void registry.run("canvas.setTestProp", { name: "count", value: null });
-    expect(activeTab.value?.session.ui.previewProps).toBeNull();
+    void registry.run("canvas.setStateValue", { key: "count", value: 7 });
+    expect(activeTab.value?.session.ui.stateValues).toEqual({ count: 7 });
+    void registry.run("canvas.setStateValue", { key: "count", value: null });
+    expect(activeTab.value?.session.ui.stateValues).toEqual({});
     expect(renderedPanes).toEqual([PRIMARY_PANE, PRIMARY_PANE]);
   });
 });

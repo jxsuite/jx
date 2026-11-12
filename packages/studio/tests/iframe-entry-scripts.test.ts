@@ -40,12 +40,12 @@ function renderMsg(gen: number, doc: JxMutableNode, scripts?: Record<string, str
     gen,
     kind: "render",
     mapperCtx: {
-      canvasMode: "preview",
+      canvasMode: "design",
       layoutWrapped: false,
       pageContentOffset: null,
       pageContentPrefix: null,
     },
-    mode: "preview",
+    mode: "design",
     shadowDoc: doc,
     siteStyle: null,
   };

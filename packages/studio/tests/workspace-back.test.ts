@@ -139,13 +139,11 @@ describe("going back", () => {
   });
 
   test("Code switches the tab to the home view and closes nothing", async () => {
-    const config = openStubTab("project.json", { mode: "source" });
-    config.session.ui.preview = true;
+    openStubTab("project.json", { mode: "source" });
     shell.workspace = "styles";
     shell.stylebook.view = "stylebook";
     expect(await goBack("primary", deps)).toBe(true);
     expect(switched).toEqual([{ mode: "stylebook", tab: "project.json" }]);
-    expect(config.session.ui.preview).toBe(false);
     expect(closed).toEqual([]);
   });
 

@@ -205,7 +205,7 @@ describe("content-mode component discovery with irregular children", () => {
  * the content type's mount before the doc crossed into the iframe. That walk is gone, because a
  * walk can only ever see literal values — `applyAttributes` resolves a `{"$ref": …}` or `"${…}"`
  * src inside a reactive effect, so at walk time a bound image src is not a string at all, and a
- * collection listing of bound card images broke all at once in preview.
+ * collection listing of bound card images broke all at once on the canvas.
  *
  * So the parent's job is now to hand over the CONTEXT, and the resolution happens at render time
  * (`resolveAssetRef` in `canvas/asset-refs`, installed on the runtime by `iframe-render`). These
@@ -220,7 +220,7 @@ describe("content-entry asset context", () => {
     tagName: "div",
   });
 
-  async function resolveFor(documentPath: string, mode?: "preview") {
+  async function resolveFor(documentPath: string, mode?: "design") {
     resetStudioState({ isSiteProject: true, projectConfig: { content: POSTS } });
     const tab = resetWorkspaceWithTab(entryDoc(), { documentPath });
     if (mode) {
@@ -257,8 +257,8 @@ describe("content-entry asset context", () => {
     expect(result.assets).toBeNull();
   });
 
-  test("preview mode carries the same context — a preview is what the built page will look like", async () => {
-    const { result } = await resolveFor("content/posts/hello.md", "preview");
+  test("Design carries the same context: every canvas view resolves media as the built page does", async () => {
+    const { result } = await resolveFor("content/posts/hello.md", "design");
     expect(result.assets).toMatchObject({ documentDir: "content/posts", space: "site" });
   });
 });

@@ -76,8 +76,8 @@ export type EditorKind =
   | "home"
   | "none";
 
-/** The Canvas view axis — one control, three values (§4.2). */
-export type CanvasView = "edit" | "design" | "preview";
+/** The Canvas view axis: an Edit │ Design radio (§4.2). */
+export type CanvasView = "edit" | "design";
 
 /*
  * ─── Modes → the two axes ────────────────────────────────────────────────────
@@ -95,7 +95,11 @@ export type CanvasView = "edit" | "design" | "preview";
  * the transaction log, and saved it.
  */
 
-/** The `canvasMode` strings, mapped onto the editor each one actually names. */
+/**
+ * The `canvasMode` strings, mapped onto the editor each one actually names.
+ *
+ * This map is studio.md §4.2's table, row for row; a new mode adds a row there.
+ */
 const EDITOR_KIND_BY_MODE = new Map<string, EditorKind>([
   ["design", "canvas"],
   ["edit", "canvas"],
@@ -119,7 +123,6 @@ const EDITOR_KIND_BY_MODE = new Map<string, EditorKind>([
   /* The Image editor — `media/image-editor.ts`'s IMAGE_MODE, the media viewer's editing sibling
      (§9.5). A recipe over one image: nothing to paste into, so not the Canvas key scope. */
   ["image", "image"],
-  ["preview", "canvas"],
   ["source", "code"],
   ["stylebook", "config"],
   /* The Variables view (`style/variables-view.ts`): a form over `project.json`'s custom
@@ -160,11 +163,10 @@ export function editorKindForMode(mode: string): EditorKind {
   return EDITOR_KIND_BY_MODE.get(mode) ?? "canvas";
 }
 
-/** Only the three canvas modes carry a view. */
+/** Only the two canvas modes carry a view. */
 const CANVAS_VIEW_BY_MODE = new Map<string, CanvasView>([
   ["design", "design"],
   ["edit", "edit"],
-  ["preview", "preview"],
 ]);
 
 /**
@@ -419,11 +421,11 @@ const GLOBAL_STACK: readonly KeyScope[] = ["global"];
  * - The caret guard → the `caret` stack, which drops `canvas` so ⌘C/⌘X/⌘V/Delete stay off a sentence
  *   being typed while ⌘S still saves.
  *
- * Preview and the non-editing surfaces (the diff view, the media library, the stylebook) get the
- * bare `global` stack. Preview draws no overlays and posts no hits, so a selection carried in from
- * Design is invisible: every element-level chord there — destructive or not — acts on something the
- * author cannot see. That is one rule where `shortcuts.ts` had two ad-hoc refusal sets which
- * disagreed with each other (⌘X was refused, ⌘C was not).
+ * The non-editing surfaces (the diff view, the media library, the stylebook) get the bare `global`
+ * stack: a selection carried in from the canvas is not drawn there, so every element-level chord —
+ * destructive or not — would act on something the author cannot see. That is one rule where
+ * `shortcuts.ts` had two ad-hoc refusal sets which disagreed with each other (⌘X was refused, ⌘C
+ * was not).
  */
 export function keyScopeStack(ctx: CommandContext): readonly KeyScope[] {
   if (ctx.modal.open) {
@@ -443,7 +445,7 @@ export function keyScopeStack(ctx: CommandContext): readonly KeyScope[] {
       return CODE_STACK;
     }
     case "canvas": {
-      return ctx.canvas.view === "preview" ? GLOBAL_STACK : CANVAS_STACK;
+      return CANVAS_STACK;
     }
     default: {
       return GLOBAL_STACK;

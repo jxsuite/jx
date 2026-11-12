@@ -205,7 +205,6 @@ describe("openEntryEditor", () => {
     expect(tab).toBe(before);
     expect(tab?.session.ui.canvasMode).toBe(ENTRY_MODE);
     expect(tab?.capabilities.modes[0]).toBe(ENTRY_MODE);
-    expect(tab?.session.ui.preview).toBe(false);
   });
 
   test("answers null when the file never became a tab", async () => {

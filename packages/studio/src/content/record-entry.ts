@@ -195,7 +195,6 @@ export async function openRecordEntry(path: string, row: number): Promise<Tab | 
     tab.capabilities.modes.unshift(ENTRY_MODE);
   }
   tab.session.ui.canvasMode = ENTRY_MODE;
-  tab.session.ui.preview = false;
   activateTab(tab.id);
   return tab;
 }

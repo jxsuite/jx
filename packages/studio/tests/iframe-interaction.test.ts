@@ -421,7 +421,7 @@ describe("contextmenu forwarding", () => {
   });
 });
 
-describe("preview link interception", () => {
+describe("a link click on the canvas", () => {
   let stop: (() => void) | undefined;
   afterEach(() => {
     stop?.();
@@ -439,24 +439,6 @@ describe("preview link interception", () => {
     return { a, inner };
   }
 
-  test("a preview click reports the href instead of navigating", () => {
-    const { channel, posts } = fakeChannel();
-    const { inner } = stampedAnchor("/about");
-    stop = startInteraction(channel, document, {
-      getMode: () => "preview",
-      getShadowDoc: () => null,
-    });
-
-    const event = new MouseEvent("click", { bubbles: true, cancelable: true });
-    inner.dispatchEvent(event);
-
-    // Prevented, so the canvas iframe is not navigated away (which would destroy the render).
-    expect(event.defaultPrevented).toBe(true);
-    expect(posts).toContainEqual({ href: "/about", kind: "previewNavigate" });
-    // And it is NOT also treated as an element selection.
-    expect(posts.some((p) => p.kind === "hit")).toBe(false);
-  });
-
   test("design mode still selects — the runtime de-links anchors there", () => {
     const { channel, posts } = fakeChannel();
     const { inner } = stampedAnchor("/about");
@@ -469,7 +451,6 @@ describe("preview link interception", () => {
     inner.dispatchEvent(event);
 
     expect(event.defaultPrevented).toBe(false);
-    expect(posts.some((p) => p.kind === "previewNavigate")).toBe(false);
     expect(posts.some((p) => p.kind === "hit")).toBe(true);
   });
 
@@ -485,90 +466,7 @@ describe("preview link interception", () => {
     inner.dispatchEvent(event);
 
     expect(event.defaultPrevented).toBe(true);
-    expect(posts.some((p) => p.kind === "previewNavigate")).toBe(false);
     expect(posts.some((p) => p.kind === "hit")).toBe(true);
-  });
-
-  test("an in-page fragment is left to the browser", () => {
-    const { channel, posts } = fakeChannel();
-    const { inner } = stampedAnchor("#section-2");
-    stop = startInteraction(channel, document, {
-      getMode: () => "preview",
-      getShadowDoc: () => null,
-    });
-
-    const event = new MouseEvent("click", { bubbles: true, cancelable: true });
-    inner.dispatchEvent(event);
-
-    // Scrolling within the previewed page is exactly what preview is for.
-    expect(event.defaultPrevented).toBe(false);
-    expect(posts.some((p) => p.kind === "previewNavigate")).toBe(false);
-  });
-});
-
-// ─── Preview reports nothing pointable ──────────────────────────────────────────
-// Preview is the shipped page: there is no selection, no hover box, no insertion "+" and no Jx
-// Element menu, so the frame withholds all four. (The host refuses the same messages independently
-// — the canvas bundle ships prebuilt, so neither side relies on the other's build being current.)
-
-describe("preview suppresses the editing affordances", () => {
-  let stop: (() => void) | undefined;
-  afterEach(() => {
-    stop?.();
-    stop = undefined;
-  });
-
-  function startPreview() {
-    const { channel, posts } = fakeChannel();
-    stop = startInteraction(channel, document, {
-      getMode: () => "preview",
-      getShadowDoc: (): JxMutableNode => ({ children: [{ tagName: "p" }], tagName: "div" }),
-    });
-    return posts;
-  }
-
-  test("a click on a plain element posts no hit", () => {
-    const { inner } = stampedTree('["children",0]', { height: 20, width: 100, x: 0, y: 0 });
-    const posts = startPreview();
-    inner.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
-    expect(posts).toHaveLength(0);
-  });
-
-  test("a pointermove posts neither hover nor insertion zones", async () => {
-    const { inner } = stampedTree('["children",0]', { height: 20, width: 100, x: 0, y: 0 });
-    const posts = startPreview();
-    await movePointer(inner, { clientX: 5, clientY: 1 });
-    expect(posts).toHaveLength(0);
-  });
-
-  test("leaving the canvas posts nothing either", async () => {
-    const { inner } = stampedTree('["children",0]', { height: 20, width: 100, x: 0, y: 0 });
-    const posts = startPreview();
-    await movePointer(inner, { clientX: 5, clientY: 1 });
-    document.dispatchEvent(new MouseEvent("pointerleave", { bubbles: false }));
-    expect(posts).toHaveLength(0);
-  });
-
-  test("right-click keeps the browser's own menu", () => {
-    const { inner } = stampedTree('["children",0]', { height: 20, width: 100, x: 0, y: 0 });
-    const posts = startPreview();
-    const event = new MouseEvent("contextmenu", { bubbles: true, cancelable: true });
-    inner.dispatchEvent(event);
-    expect(event.defaultPrevented).toBe(false);
-    expect(posts.some((p) => p.kind === "contextMenu")).toBe(false);
-  });
-
-  /*
-   * …but the pane still gets the keyboard. The pane grid moves focus on a `pointerdown` anywhere in
-   * a cell, and it cannot see this one: a pointer event inside a cross-origin iframe is delivered
-   * in the frame's own realm. `hit` was the only re-post, and preview posts none — so a Preview
-   * pane could not be focused by clicking the very thing it exists to show.
-   */
-  test("a pointerdown still reports pane focus — and nothing else", () => {
-    const { inner } = stampedTree('["children",0]', { height: 20, width: 100, x: 0, y: 0 });
-    const posts = startPreview();
-    inner.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true }));
-    expect(posts).toEqual([{ kind: "paneFocus" }]);
   });
 });
 

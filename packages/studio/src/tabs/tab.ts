@@ -52,17 +52,10 @@ export interface TabUi {
    */
   elementTab: string;
   canvasMode: string;
-  /** Preview toggle — composes with an edit/design canvasMode; the effective mode becomes "preview". */
-  preview: boolean;
   /** Show elements inherited from the page's layout (pages with an effective layout only). */
   showLayout: boolean;
   /** Chosen literal values for dynamic route params (e.g. { sku: "mini-trencher" }). */
   previewParams: Record<string, string>;
-  /**
-   * Chosen test values for a component doc's props (state entries), seeded into the canvas render
-   * so a non-instantiated component previews with real data (M6) — the previewParams mirror.
-   */
-  previewProps: Record<string, JsonValue> | null;
   zoom: number;
   /**
    * Edit-mode content zoom — browser-page-zoom semantics (content reflows at the zoomed effective
@@ -124,9 +117,11 @@ export interface TabUi {
   /**
    * State values set for the canvas, by state key (`canvas.setStateValue`, studio.md §4.5): the
    * value the canvas draws the entry with in place of the document's own. How a component's other
-   * states are looked at without a handler running. View state: it writes nothing to the document,
-   * takes no undo entry and is not kept between sessions. A key the document no longer declares as
-   * a plain value stays here naming nothing, and is not applied.
+   * states are looked at without a handler running, and what a component's test values are: a
+   * component's props are its plain entries, and Open in Browser carries the values set for them to
+   * the harness (§10.1). View state: it writes nothing to the document, takes no undo entry and is
+   * not kept between sessions. A key the document no longer declares as a plain value stays here
+   * naming nothing, and is not applied.
    */
   stateValues: Record<string, JsonValue>;
   /**
@@ -368,10 +363,9 @@ export interface Tab {
 
 /**
  * @param {string} canvasMode — initial canvas mode (the tab's first allowed mode)
- * @param {boolean} preview — initial preview-toggle state
  * @returns {TabUi}
  */
-function createDefaultUi(canvasMode: string, preview = false): TabUi {
+function createDefaultUi(canvasMode: string): TabUi {
   return {
     activeMedia: null,
     activeSelector: null,
@@ -384,7 +378,6 @@ function createDefaultUi(canvasMode: string, preview = false): TabUi {
     featureToggles: {},
     inspectorSections: {},
     pendingInlineEdit: null,
-    preview,
     activeRows: {},
     bindingDisplay: "values" as const,
     repeaterRows: DEFAULT_ROW_LIMIT,
@@ -394,7 +387,6 @@ function createDefaultUi(canvasMode: string, preview = false): TabUi {
     previewColorScheme: "auto" as const,
     previewLocale: null,
     previewParams: {},
-    previewProps: null,
     rightTab: "page",
     elementTab: "properties",
     showLayout: true,
@@ -416,7 +408,14 @@ function createDefaultUi(canvasMode: string, preview = false): TabUi {
  * by name, neither the Editor axis (`panels/pane-context.ts` leaves it out) nor `canvas.setMode`
  * (`SELECTABLE_CANVAS_MODES`), because a comparison is entered by choosing what to compare.
  */
-const ALL_MODES = ["edit", "design", "preview", "source", "stylebook", "git-diff"];
+const ALL_MODES = ["edit", "design", "source", "stylebook", "git-diff"];
+
+/**
+ * A mode Studio no longer has. `preview` was a toggle over Edit and Design, removed when the
+ * editing canvas came to draw resolved data (studio.md §4.2, §4.5); a format class that still
+ * declares it keeps loading, with the mode left out rather than the format refused.
+ */
+const RETIRED_MODES: ReadonlySet<string> = new Set(["preview"]);
 
 /**
  * Create a new tab with reactive doc/session/history trees, owned by an effectScope.
@@ -492,13 +491,15 @@ export function createTab({
   // (and its first history checkpoint) are stored.
   const bareRepeaters = normalizeDocument(document);
 
-  const resolvedModes = capabilities?.modes ?? inferModes(documentPath, sourceFormat);
+  const resolvedModes = (capabilities?.modes ?? inferModes(documentPath, sourceFormat)).filter(
+    (mode) => !RETIRED_MODES.has(mode),
+  );
   // A tab opens in its first allowed mode — never one the toolbar would disable.
   // Formats author mode order so the default comes first (edit, stylebook, etc.).
-  // "preview" is a per-tab toggle rather than a base mode: a preview-first format opens
-  // In its first non-preview mode with the toggle already on.
-  const initialCanvasMode = canvasMode ?? resolvedModes.find((m) => m !== "preview") ?? "edit";
-  const initialPreview = resolvedModes[0] === "preview";
+  const initialCanvasMode =
+    canvasMode !== undefined && !RETIRED_MODES.has(canvasMode)
+      ? canvasMode
+      : (resolvedModes[0] ?? "edit");
 
   const doc: Tab["doc"] = {
     bareRepeaters,
@@ -530,7 +531,7 @@ export function createTab({
     hover: null,
     openedFrom,
     selection: [],
-    ui: createDefaultUi(initialCanvasMode, initialPreview),
+    ui: createDefaultUi(initialCanvasMode),
   };
 
   /* SAFETY: `reactive()` returns a deep proxy carrying its target's own members, and none of these
@@ -557,8 +558,8 @@ export function createTab({
 }
 
 /**
- * Allowed modes for a document. "preview" in a format's mode list means the preview toggle is
- * Available for the tab (it is not a base canvas mode the toolbar switches to).
+ * Allowed modes for a document: a format's own list, or the native `.json` one. A retired mode a
+ * format still declares is filtered out by the caller ({@link RETIRED_MODES}).
  *
  * @param {string | null | undefined} documentPath
  * @param {string | null} sourceFormat
@@ -573,7 +574,7 @@ function inferModes(documentPath: string | null | undefined, sourceFormat: strin
   }
   const format = formatByName(sourceFormat) ?? formatForPath(documentPath);
   if (format) {
-    return format.studio?.modes ?? ["edit", "design", "preview", "source"];
+    return format.studio?.modes ?? ["edit", "design", "source"];
   }
   return ALL_MODES;
 }
@@ -604,8 +605,7 @@ function inferDocumentMode(documentPath: string | null | undefined, sourceFormat
 // Scope; the pane model and the command context now read the same table.
 
 /**
- * The editor kind a tab is currently showing. Reads the BASE mode: the preview toggle is a value on
- * the Canvas view axis, not a different editor.
+ * The editor kind a tab is currently showing.
  *
  * @param {Tab} tab
  * @returns {EditorKind}
@@ -619,17 +619,12 @@ export function editorKindOf(tab: Tab): EditorKind {
  * dropdown's entries, so it can never contain a permanently dead one
  * (docs/studio/interface/tabs.md, "The pane context bar").
  *
- * `preview` contributes nothing: it is a Canvas VIEW, and the kind it would add is already there.
- *
  * @param {Tab} tab
  * @returns {EditorKind[]}
  */
 export function editorKindsOf(tab: Tab): EditorKind[] {
   const kinds: EditorKind[] = [];
   for (const mode of tab.capabilities.modes) {
-    if (mode === "preview") {
-      continue;
-    }
     const kind = editorKindForMode(mode);
     if (!kinds.includes(kind)) {
       kinds.push(kind);
@@ -649,9 +644,7 @@ export function editorKindsOf(tab: Tab): EditorKind[] {
  * @returns {string | undefined}
  */
 export function modeForEditorKind(tab: Tab, kind: EditorKind): string | undefined {
-  return tab.capabilities.modes.find(
-    (mode) => mode !== "preview" && editorKindForMode(mode) === kind,
-  );
+  return tab.capabilities.modes.find((mode) => editorKindForMode(mode) === kind);
 }
 
 // ─── There is no sub-document stack ───────────────────────────────────────────

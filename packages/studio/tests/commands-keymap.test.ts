@@ -331,7 +331,6 @@ describe("which scopes can be live at once", () => {
     keyScopeStack(makeContext({ editor: { kind: "grid" } })),
     keyScopeStack(makeContext({ editor: { kind: "code" } })),
     keyScopeStack(makeContext({ editor: { kind: "canvas" } })),
-    keyScopeStack(makeContext({ editor: { kind: "canvas" }, canvas: { view: "preview" } })),
     keyScopeStack(makeContext()),
   ];
 

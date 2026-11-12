@@ -233,25 +233,11 @@ const MUTANTS: Mutant[] = [
     test: "tests/canvas-patcher.test.ts",
   },
   {
-    edits: [{ find: `    const base = derived.mode;`, replace: `    const base = "design";` }],
+    edits: [{ find: `    return derived.mode;`, replace: `    return "design";` }],
     file: "src/canvas/canvas-surface.ts",
     id: "canvas-surface.ts · canvasModeOfPane lens mode",
     means: "a Code lens draws the design board instead of the editor",
     test: "tests/canvas-render.test.ts",
-  },
-  {
-    edits: [
-      {
-        find: `    return ui?.preview && (base === "edit" || base === "design") ? "preview" : base;`,
-        replace: `    return base;`,
-      },
-    ],
-    file: "src/canvas/canvas-surface.ts",
-    id: "canvas-surface.ts · the preview toggle composes onto a lens's mode",
-    means:
-      "the author puts the page into Preview and the lens beside it keeps drawing artboards — " +
-      "two panes on one document disagreeing about whether it is a preview",
-    test: "tests/canvas-surface.test.ts",
   },
   {
     edits: [

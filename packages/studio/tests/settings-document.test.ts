@@ -730,15 +730,14 @@ describe("the configuration tab", () => {
     expect(workspace.tabs.get("project.json")).toBeUndefined();
     const tab = showSettingsDocument("source")!;
     expect(tab.session.ui.canvasMode).toBe("source");
-    expect(tab.session.ui.preview).toBe(false);
     expect(tab.capabilities.modes).toEqual(["stylebook", "tokens", "source"]);
   });
 
   test("an already-open project.json tab gains a missing editor in declared order", () => {
     const tab = showSettingsDocument()!;
-    tab.capabilities.modes = ["preview"];
+    tab.capabilities.modes = ["git-diff"];
     showSettingsDocument();
-    expect(tab.capabilities.modes).toEqual(["stylebook", "tokens", "source", "preview"]);
+    expect(tab.capabilities.modes).toEqual(["stylebook", "tokens", "source", "git-diff"]);
   });
 
   test("the Variables view is the tokens editor of the same tab", () => {

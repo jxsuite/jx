@@ -99,7 +99,7 @@ Each suite runs as `bun test --isolate --coverage` from its workspace directory.
     - "says nothing about a head in the rendered shape".
 - **`packages/studio`**
   - `tests/canvas-live-render.test.ts`, in `describe("resolveCanvasDocument")`. Use `resetStudioState({ isSiteProject: true, projectConfig: {} })` and `installMockPlatform` serving a copy of the file's `LAYOUT` with a `title` added:
-    - "a page's title never reaches the render root, and the tab's document keeps it": `pages/home.json` with no layout, in design and in preview mode.
+    - "a page's title never reaches the render root, and the tab's document keeps it": `pages/home.json` with no layout, in design and in edit mode.
     - "with the layout shown or hidden, the root carries no title": the wrapped page, and the same page with `showLayout = false`.
     - "a layout opened on its own renders without its title": `documentPath: "layouts/base.json"`.
     - "a component's title stays its tooltip": `components/x-card.json` keeps `renderDoc.title`.

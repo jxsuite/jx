@@ -480,14 +480,14 @@ describe("coerceArgs — the pass registry.run makes before run", () => {
     expect(() => coerceArgs("canvas.setEditWidth", schema, { width: "wide" })).toThrow(
       'command "canvas.setEditWidth" argument "width": expected number or null, got "wide"',
     );
-    // `canvas.setTestProp`'s ladder: any JSON value, and the refusal is only for what JSON is not.
+    // `canvas.setStateValue`'s ladder: any JSON value, and the refusal is only for what JSON is not.
     const ladder = argsSchema({
       value: { description: "d", type: ["string", "number", "boolean", "array", "object", "null"] },
     });
-    expect(coerceArgs("canvas.setTestProp", ladder, { value: { a: [1] } })).toEqual({
+    expect(coerceArgs("canvas.setStateValue", ladder, { value: { a: [1] } })).toEqual({
       value: { a: [1] },
     });
-    expect(() => coerceArgs("canvas.setTestProp", ladder, { value: Number.NaN })).toThrow(
+    expect(() => coerceArgs("canvas.setStateValue", ladder, { value: Number.NaN })).toThrow(
       "expected string, number, boolean, array, object or null",
     );
   });

@@ -71,7 +71,7 @@
     ]
   },
   "a document on the canvas": {
-    "listing": "6f9e92b8f95d3bf5ebde8191db8e0bf0a5ec437207ccbae07097567147bb030f",
+    "listing": "6f5c72bdd1fa21ffdc868f15a72340312c5d85d4ff432707db8cdb8edd131a2c",
     "offered": [
       "ask_user",
       "read_document",
@@ -107,7 +107,7 @@
     ]
   },
   "a document in Code view": {
-    "listing": "54566ba3f13938b73dd9058f1e070eaae83aa16ace9c84ae68da9e88fa3a1c31",
+    "listing": "ef5b3f5f22078c4707e9d86ff50769fd856bb141a8aa6c9e76e7567720dd3de2",
     "offered": [
       "ask_user",
       "read_document",
@@ -141,7 +141,7 @@
     ]
   },
   "a single file with no project": {
-    "listing": "688e32797f62492f4b3b93fe0200f65e2037e51fc3d4ef760a88a53cdb70a9da",
+    "listing": "f157d5ce33ab030696b25ae6fa6a89f503c71b6f565da4201856a8a18310983b",
     "offered": [
       "ask_user",
       "read_document",
@@ -172,7 +172,7 @@
     ]
   },
   "a document on the canvas with no extension catalogue": {
-    "listing": "54b4355345809d357988d77f3c337a84cfbaa8eb503740804fce569f13f25faa",
+    "listing": "4f1046fc9936856449c4b849a9bd9f2dbe4af72cdcd7abaa43dd3745b0fcd40c",
     "offered": [
       "ask_user",
       "read_document",

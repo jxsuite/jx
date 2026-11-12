@@ -80,7 +80,7 @@ describe("classifyFields", () => {
     expect(classifyFields(entryTab(), [{ field: "title" }]).reason).toBe("no-panels");
     panels.push(panel(false));
     expect(classifyFields(entryTab(), [{ field: "title" }]).reason).toBe("panels-not-ready");
-    expect(classifyFields(entryTab("preview"), [{ field: "title" }]).reason).toBe("mode-preview");
+    expect(classifyFields(entryTab("source"), [{ field: "title" }]).reason).toBe("mode-source");
   });
 });
 

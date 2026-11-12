@@ -84,7 +84,7 @@ On the canvas, Studio draws the case the node's value selects. To work on anothe
 
 The section is drawn for a node that already carries a `$switch`, so the node itself is added in the [Code editor](/docs/studio/logic/code). The [Outline](/docs/studio/design/layers) lists the cases as child rows of the node, and each case is selectable there.
 
-On the canvas, **Edit** and **Design** draw the case the selector picks right now, and you select and edit it where it is stored. A case kept in another file is drawn too, but it belongs to that file, so you can select the switch and not type into the case. Switch the canvas to **Preview** to watch the selector change as the page runs.
+On the canvas, **Edit** and **Design** draw the case the selector picks right now, and you select and edit it where it is stored. A case kept in another file is drawn too, but it belongs to that file, so you can select the switch and not type into the case. Use **Open in Browser** to watch the selector change as the page runs, or pick a case for the canvas to draw from the block action bar.
 
 ## Rules
 

@@ -345,9 +345,9 @@ describe("the DOCUMENT field", () => {
   test("states no view and no save word — the context bar and the tab strip own those", async () => {
     const tab = resetWorkspaceWithTab();
     tab.doc.dirty = true;
-    ctx = makeContext({ canvas: { view: "preview" }, editor: { kind: "canvas" } });
+    ctx = makeContext({ canvas: { view: "design" }, editor: { kind: "canvas" } });
     await render();
-    for (const word of ["Preview", "Unsaved changes", "Saved", "Read-only"]) {
+    for (const word of ["Design", "Unsaved changes", "Saved", "Read-only"]) {
       expect(barHost().textContent).not.toContain(word);
     }
   });

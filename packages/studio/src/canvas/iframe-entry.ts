@@ -729,7 +729,6 @@ export function startCanvasIframe(opts: {
     container.ownerDocument,
     isEditing,
     () => forwardTable,
-    () => currentMode,
   );
   // Run inline editing (contenteditable) here, posting committed/split/insert results to the parent.
   // The shadow-doc accessor gates prop-bound sessions on the RAW instance prop value (template/$ref
@@ -904,26 +903,7 @@ export function startCanvasIframe(opts: {
   // The iframe is sized to its content (never scrolls itself), so wheel events over it are meant for
   // The parent canvas: ctrl/cmd+wheel = zoom, plain = pan. A cross-origin OOPIF doesn't bubble wheel to
   // The parent, so forward the deltas + modifiers + cursor; the host redispatches to its wheel handler.
-  //
-  // PREVIEW is the exception, and it is not a small one. There the host keeps the iframe at the
-  // Preview stage's own height and the document scrolls FOR REAL, which is the whole point of the
-  // View — sticky headers, scroll-driven animation and IntersectionObserver reveals only fire when
-  // Something actually scrolls. Swallowing the wheel here (this handler used to preventDefault
-  // Unconditionally) made the one view whose job is fidelity the one view you could not scroll.
   const onWheel = (e: WheelEvent) => {
-    if (currentMode === "preview") {
-      /* The document scrolls for real, so the plain wheel is ITS wheel and this handler takes no
-         part in it. Ctrl/⌘ — and the trackpad pinch that arrives as exactly this event — is not
-         that gesture: the browser reads it as page zoom, and the page it would scale is the whole
-         Studio window rather than the previewed document, which is neither what the author asked
-         for nor recoverable from inside the frame. The host cannot block it on this frame's behalf
-         (a cross-origin OOPIF's wheel never reaches it, and preview is the one mode that forwards
-         nothing), so the block belongs here. */
-      if (e.ctrlKey || e.metaKey) {
-        e.preventDefault();
-      }
-      return;
-    }
     e.preventDefault();
     channel.post({
       ctrlKey: e.ctrlKey,
@@ -1305,13 +1285,6 @@ export function startCanvasIframe(opts: {
       return;
     }
     if (msg.kind === "setPopoverOpen") {
-      /* Refused in preview HERE as well as in the host. Preview renders popovers natively and the
-         canvas attribute does not exist there, so a stray message would silently do nothing —
-         better to refuse it in both realms, which is the discipline §4.2 states for every editing
-         affordance: neither side may assume the other's build is current. */
-      if (currentMode === "preview") {
-        return;
-      }
       popoverOpen = msg.path === null ? null : serializeJxPath(msg.path);
       applyCanvasPopoverOpen(container, popoverOpen);
       applyCanvasDialogOpen(container, dialogOpen);
@@ -1321,10 +1294,6 @@ export function startCanvasIframe(opts: {
       return;
     }
     if (msg.kind === "setDialogOpen") {
-      // The dialog twin, refused in preview for the reason given above.
-      if (currentMode === "preview") {
-        return;
-      }
       dialogOpen = msg.path === null ? null : serializeJxPath(msg.path);
       applyCanvasDialogOpen(container, dialogOpen);
       postContentHeight();

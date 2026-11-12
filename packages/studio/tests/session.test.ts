@@ -178,6 +178,16 @@ describe("readSession — every field is untrusted input", () => {
     expect(parsed?.ui["a.md"]).toEqual({ canvasMode: "source" });
   });
 
+  test("a record written while Studio had Preview reads as the view it was previewing over", () => {
+    // No migration: the `preview` flag is not a field any more, so it is not read, and the mode
+    // Stored beside it (Edit or Design) is what the document opens in.
+    const parsed = readSession({
+      panes: [{ activeFile: null, files: ["a.md"], id: PRIMARY_PANE }],
+      ui: { "a.md": { canvasMode: "edit", preview: true } },
+    });
+    expect(parsed?.ui["a.md"]).toEqual({ canvasMode: "edit" });
+  });
+
   test("a stored locale is kept only if it is a well-formed tag — and `null` is a value", () => {
     const read = (previewLocale: JsonValue) =>
       readSession({
@@ -291,14 +301,13 @@ describe("restoreSession", () => {
 
   test("every stored view setting is restored, one field at a time", async () => {
     // Each field is its own `!== undefined` branch, because a stored `false` or `0` is a CHOICE and
-    // A truthiness check would silently drop "preview off" and "no breakpoint".
+    // A truthiness check would silently drop "no layout" and "no breakpoint".
     await restoreSession(
       session({
         ui: {
           "pages/a.md": {
             activeMedia: "md",
             editZoom: 1.25,
-            preview: false,
             previewColorScheme: "dark",
             previewLocale: "ar",
             showLayout: false,
@@ -314,7 +323,6 @@ describe("restoreSession", () => {
     expect({
       activeMedia: ui.activeMedia,
       editZoom: ui.editZoom,
-      preview: ui.preview,
       previewColorScheme: ui.previewColorScheme,
       previewLocale: ui.previewLocale,
       showLayout: ui.showLayout,
@@ -322,7 +330,6 @@ describe("restoreSession", () => {
     }).toEqual({
       activeMedia: "md",
       editZoom: 1.25,
-      preview: false,
       previewColorScheme: "dark",
       previewLocale: "ar",
       showLayout: false,
@@ -340,6 +347,17 @@ describe("restoreSession", () => {
     });
     const tab = [...workspace.tabs.values()].find((t) => t.documentPath === "pages/a.md")!;
     expect(tab.session.ui.canvasMode).not.toBe("chart");
+  });
+
+  test("a stored mode of preview opens in Edit", async () => {
+    // Preview is gone (studio.md §4.2); a hand-edited or very old record naming it as the mode
+    // Itself is dropped like any mode the document does not declare, and the tab stays in Edit.
+    await restoreSession(session({ ui: { "pages/a.md": { canvasMode: "preview" } } }), {
+      ensureSecondPane: () => {},
+      openFile: opener(),
+    });
+    const tab = [...workspace.tabs.values()].find((t) => t.documentPath === "pages/a.md")!;
+    expect(tab.session.ui.canvasMode).toBe("edit");
   });
 
   test("a file that has moved since is skipped, and the rest still open", async () => {

@@ -62,15 +62,15 @@ export interface CanvasStageView {
    */
   layout?: "plain" | "review";
   /**
-   * Which frame shape. `boards` covers Preview, the pan/zoom surface and Edit; `notice` is Review
-   * changes' centre when its change has no comparison to draw, and is drawn only in `review`.
+   * Which frame shape. `boards` covers the pan/zoom surface and Edit; `notice` is Review changes'
+   * centre when its change has no comparison to draw, and is drawn only in `review`.
    */
   frame: "boards" | "source" | "code" | "notice";
   /** The `boards` frame's outer box. Meaningless for the two Monaco frames. */
-  framePart: "preview-stage" | "panzoom" | "edit-canvas";
+  framePart: "panzoom" | "edit-canvas";
   /** The `boards` frame's inner box: a pass-through, or Edit's column. */
   innerPart: "boards" | "edit-column";
-  /** `--preview-w` or `--boards-inset`, as one inline declaration list; "" for neither. */
+  /** `--boards-inset`, as one inline declaration list, or "" for none. */
   frameVars: string;
   /** Whether Edit's column hugs its content — a component definition rather than a page. */
   hug: boolean;

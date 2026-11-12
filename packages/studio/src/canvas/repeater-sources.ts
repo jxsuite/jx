@@ -6,7 +6,7 @@
  * (`ContentCollection`) the canvas runtime resolves through the dev proxy AFTER its first render,
  * so the instance connected with an empty row: a component that formats a date or a locale threw,
  * was reported as not rendered, and drew itself only when the data arrived. Resolving the entry
- * here, the way `page-params.ts` bakes a param-bound entry for Preview, puts the row in the state
+ * here, the way `page-params.ts` bakes a param-bound entry for a route, puts the row in the state
  * the canvas builds its scope from, so the first render is a render of the data.
  *
  * The same resolution serves every mode for an entry that names an enabled extension's class by a

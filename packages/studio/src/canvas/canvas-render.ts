@@ -1,7 +1,7 @@
 /// <reference lib="dom" />
 /**
  * Canvas render — extracted from studio.js (Phase 4o). Multi-mode canvas rendering orchestrator:
- * dispatches to source/edit/design/preview rendering paths.
+ * dispatches to source/edit/design rendering paths.
  */
 
 import { render, nothing } from "lit-html";
@@ -130,7 +130,6 @@ import { clearEditWidth, resolveEditColumnWidth } from "./edit-width";
 import { mountEditWidthHandle } from "./edit-width-drag";
 import { getEffectiveMedia, getEffectiveStyle } from "../site-context";
 import {
-  adoptCanvasPreviewMode,
   commitActiveEditSession,
   getEditSnapshot,
   mountIframeCanvas,
@@ -1159,10 +1158,8 @@ function renderCanvasImpl(surface: CanvasSurface) {
     mode: tab.doc.mode,
     ui: tab.session.ui,
   };
-  // The EFFECTIVE mode drives the host surface (panel structure, panzoom vs centered column vs the
-  // Preview stage). Preview is its own surface — a real, viewport-sized iframe that scrolls its own
-  // Document — so flipping the toggle IS a mode transition and rebuilds the surface, rather than
-  // Re-rendering the previous mode's panels in place.
+  // The pane's mode drives the host surface (panel structure, panzoom vs centered column), so a
+  // Change of mode rebuilds the surface rather than re-rendering the previous mode's panels in place.
   const canvasMode = canvasModeOfPane(surface.paneId);
 
   /* Edit draws the page and nothing above it (§4.2): a document's settings — title, URL, layout,
@@ -1446,68 +1443,6 @@ function renderCanvasImpl(surface: CanvasSurface) {
       if (modeChanged) {
         fitOnCanvasEntry(surface);
       }
-    });
-    return;
-  }
-
-  /* Preview — the fidelity surface. One stage, one iframe, sized to the pane and scrolling its own
-     document, with no panzoom-wrap: the pan transform is precisely what stopped `position:sticky`,
-     scroll-driven animation and IntersectionObserver reveals from ever firing in the one mode whose
-     job is to show the page as it ships. The host keeps the iframe at its CSS height for the same
-     reason (see the `contentHeight` case in iframe-host.ts), and gates every editing affordance —
-     hits, hover, the insertion "+", the Jx context menu and drops — off this render. */
-  if (canvasMode === "preview") {
-    if (modeChanged) {
-      canvasWrap.style.padding = "0";
-      canvasWrap.style.display = "block";
-      canvasWrap.style.overflow = "hidden";
-    }
-    /*
-     * PREVIEW IS AS WIDE AS THE CHOSEN BREAKPOINT, for the reason Edit is (see that branch).
-     *
-     * It filled the pane at every size: `--sm` selected, 640px in Edit, 924px here. The size
-     * switcher is one per-pane setting and preview is the mode whose entire job is showing the page
-     * as it will be seen — a control that changes the rendering context has to change the
-     * rendering. Same expression as Edit's column, so the same page at `md` is the same page
-     * whichever of the two the toggle is over.
-     *
-     * That equality now holds at the BREAKPOINT, not at the pixel, and deliberately. Edit's column
-     * can be dragged to any width between two declared ones (`edit-width.ts`); Preview does not read
-     * that override, because Preview is the fidelity view and a fidelity view of "somewhere between
-     * md and lg" is a width no visitor will ever have. Toggling Preview is a mode change, which is
-     * also what discards the dragged width — so the two surfaces agree again the moment either one
-     * is entered, rather than disagreeing silently.
-     *
-     * The HEIGHT is untouched: the frame stays the pane's height and the document scrolls itself,
-     * which is what makes sticky, scroll-driven animation and IntersectionObserver fire here.
-     */
-    const { baseWidth: previewBase, sizeBreakpoints: previewBreakpoints } = parseMediaEntries(
-      getEffectiveMedia(S.document.$media),
-    );
-    const previewMedia = activeMediaOfPane(surface.paneId);
-    const previewWidth =
-      previewBreakpoints.find((bp) => bp.name === previewMedia)?.width ?? previewBase;
-    const entry = canvasPanelEntry(null, null, true);
-    canvasPanels.push(entry.panel);
-    const { featureToggles: previewToggles } = S.ui;
-    void drawStage(
-      surface,
-      {
-        frame: "boards",
-        framePart: "preview-stage",
-        frameVars: `--preview-w:${previewWidth}px`,
-        handles: "hidden",
-        hug: false,
-        innerPart: "boards",
-        lead: "none",
-        panels: [entry.item],
-      },
-      [entry],
-    ).then((stage) => {
-      if (!stage) {
-        return;
-      }
-      renderCanvasIntoPanel(surface, entry.panel, previewToggles);
     });
     return;
   }
@@ -1927,7 +1862,7 @@ function renderCanvasImpl(surface: CanvasSurface) {
     return;
   }
 
-  // Design mode (also hosts preview-toggle renders) — set up panzoom surface
+  // Design mode — set up panzoom surface
   if (modeChanged) {
     canvasWrap.style.padding = "0";
     canvasWrap.style.overflow = "hidden";
@@ -2086,11 +2021,11 @@ function renderCanvasImpl(surface: CanvasSurface) {
 /**
  * Render a document into a single canvas panel via the iframe canvas: the document renders inside a
  * same-runtime iframe served from the real origin (the iframe holds the render context, stamps
- * `data-jx-path`/`data-jx-layout`, and draws its own overlays). Git-diff/preview overrides render
- * but stay un-patchable (`ready` only flips for the real tab document).
+ * `data-jx-path`/`data-jx-layout`, and draws its own overlays). Git-diff overrides render but stay
+ * un-patchable (`ready` only flips for the real tab document).
  *
  * @param {CanvasSurface} surface - The pane's stage this panel belongs to. The document rendered
- *   and the preview flag both come from THAT pane, never from "the active tab".
+ *   and its mode both come from THAT pane, never from "the active tab".
  * @param {CanvasPanel} panel
  * @param {Record<string, boolean>} _featureToggles - Accepted for call-site symmetry (the iframe
  *   render needs no structural-preview fallback); unused.
@@ -2125,12 +2060,6 @@ function renderCanvasIntoPanel(
   canvasPerf.panelRenders += 1;
   panel.ready = false;
 
-  // The host's frame box depends on whether this is a preview render, and mountIframeCanvas only
-  // Learns that after it has awaited the resolved document — one await during which the iframe can
-  // Post a contentHeight that the OUTGOING mode would answer. Declare it here, before the await,
-  // Where it is already known: this is the mode whose surface was just built.
-  adoptCanvasPreviewMode(canvas, canvasModeOfPane(surface.paneId) === "preview");
-
   // Overrides (git-diff docs) mount with a null tab identity: their iframes must never route doc
   // Mutations anywhere. The real doc carries its tab id so edit/drop messages route to THAT tab.
   void timeSpanAsync(SPAN_MOUNT_CANVAS, () =>
@@ -2158,7 +2087,7 @@ function renderCanvasIntoPanel(
   )
     .then(() => {
       if (gen === surface.renderGeneration) {
-        // Mark the panel patchable once the real document is mounted (not a diff/preview override)
+        // Mark the panel patchable once the real document is mounted (not a diff override)
         // So classifyOps admits surgical patches; the iframe holds the render context, so this
         // Panel needs no parent-side render scope.
         panel.ready = !docOverride;

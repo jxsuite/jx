@@ -10,7 +10,6 @@
 import { postMessageChannel } from "./iframe-channel";
 import { canvasBaseOrigin, documentBase } from "./canvas-origin";
 import { ownShadow } from "./canvas-scripts";
-import { getPreviewNavigateHandler } from "./preview-navigate";
 import { resolveCanvasDocument } from "./canvas-live-render";
 import {
   recordRemoteResult,
@@ -226,24 +225,6 @@ export interface HostState {
   /** Serialized peer path → presence box meta for the in-flight presence measure. */
   presenceMeta: Map<string, { color: string; label: string }>;
   /**
-   * Whether this host's iframe currently renders a PREVIEW. Preview is the fidelity view, so the
-   * host refuses every editing message from it ({@link PREVIEW_BLOCKED}), suppresses the overlay
-   * layer, and leaves the iframe at its CSS height so the frame scrolls its own document.
-   *
-   * Never assign this directly — go through {@link setHostPreview}, which applies the frame sizing
-   * the flag implies in the SAME state transition. See {@link applyFrameSizing}.
-   */
-  preview: boolean;
-  /**
-   * The last content height this host's iframe measured and posted, or null before the first
-   * measurement. Retained (rather than consumed and dropped) because frame sizing is a function of
-   * `preview` too, and the iframe DEDUPES `contentHeight` on an unchanged measurement — so leaving
-   * preview cannot rely on a fresh message arriving to restore the content-sized frame.
-   */
-  contentHeight: number | null;
-  /** Whether the last measured content was a component-definition fragment (drops the 480px floor). */
-  contentFragment: boolean;
-  /**
    * The popover this host is drawing open, as posted. Kept so `mountIframeCanvas` can seed it onto
    * the `render` message — a render replaces the DOM, so a re-mount would otherwise lose it.
    */
@@ -414,38 +395,6 @@ export function sawIframeDragOver(seq: number): boolean {
 
 /** Monotonic eval request id (shared across hosts; stale replies carry an older/unknown id). */
 let evalReqId = 0;
-
-/**
- * Open a preview link's target for real.
- *
- * Resolved against the CANVAS's origin, not the editor's: the canvas iframe is served from the
- * project's own origin so relative `src`/`href` resolve the way they will in production, and the
- * editor shell may sit on a different origin entirely (a deep `/edit/:owner/:repo` path in the
- * cloud). Resolving against `location` would send a root-relative `/about` to the wrong host.
- */
-function openPreviewHref(href: string, state: HostState): void {
-  let resolved: URL;
-  try {
-    resolved = new URL(href, state.iframe.src || canvasBaseOrigin());
-  } catch {
-    return; // Unparseable even against a base — nothing sensible to open.
-  }
-  /*
-   * Scheme allowlist. A page can carry any href, and handing `javascript:` or `data:` to
-   * `window.open` would execute it — in the EDITOR's origin, since the shell is the opener. Web pages
-   * and the contact affordances real sites use are all that Preview needs to follow.
-   */
-  if (!["http:", "https:", "mailto:", "tel:"].includes(resolved.protocol)) {
-    return;
-  }
-  const url = resolved.href;
-  const override = getPreviewNavigateHandler();
-  if (override) {
-    override(url);
-    return;
-  }
-  window.open(url, "_blank", "noopener,noreferrer");
-}
 
 /** Pending eval resolvers keyed by reqId; a timeout or stale reply resolves null. */
 const pendingEvals = new Map<number, (results: EvalExprResult[] | null) => void>();
@@ -977,66 +926,22 @@ function syncEditZoomViewportHeight(state: HostState): void {
 }
 
 /**
- * Write the iframe's box from the host's CURRENT state — the render mode and the last content
- * measurement — and nothing else. Frame sizing is derived, never incremental, because the two
- * inputs arrive on different clocks: `preview` flips synchronously inside a mount, the measurement
- * arrives asynchronously over the channel, and the iframe DEDUPES a repeated measurement (so "the
- * next `contentHeight` will fix it" is false). Deriving both branches from one function called at
- * every transition of either input is what makes the two impossible to disagree.
- *
- * Preview keeps the iframe a REAL VIEWPORT: it stays at the CSS height the preview stage gives it
- * and scrolls its own document, so `position:sticky`, scroll-driven animation and
- * IntersectionObserver reveals fire exactly as they will in production. Growing the frame to its
- * content height — what every editing mode needs, so the parent overlay can reach every node — is
- * what stopped all three from ever firing in the one view whose job is fidelity.
+ * Write the iframe's box from a content measurement the frame posted. Until the first one, the
+ * cssText defaults (height:100%; min-height:480px) stand.
  *
  * The cssText's 480px `min-height` is a pre-measurement floor so an empty/short PAGE stays a usable
  * canvas; a component DEFINITION (fragment) instead hugs its content, so drop the floor for it once
  * measured (else a short component leaves dead space below — pages keep the floor and stay tall via
  * `#jx-canvas-root`).
- */
-function applyFrameSizing(state: HostState): void {
-  if (state.preview) {
-    state.iframe.style.height = "100%";
-    state.iframe.style.minHeight = "0px";
-    return;
-  }
-  if (state.contentHeight === null) {
-    // Nothing measured yet — the cssText defaults (height:100%; min-height:480px) stand.
-    return;
-  }
-  state.iframe.style.height = `${state.contentHeight}px`;
-  state.iframe.style.minHeight = state.contentFragment ? "0px" : "480px";
-  syncEditZoomViewportHeight(state);
-}
-
-/**
- * Adopt a render mode's preview-ness as ONE state transition: the flag, the overlay suppression,
- * the dropped pending edit and the frame box all move together. Mounts must call this rather than
- * assigning `state.preview` — a mount resolves its document asynchronously, so between the mode
- * changing and the flag landing the host would otherwise answer a `contentHeight` with the previous
- * mode's sizing rule and never get a second chance to correct it.
- */
-function setHostPreview(state: HostState, preview: boolean): void {
-  state.preview = preview;
-  state.overlay.setSuppressed(preview);
-  if (preview) {
-    state.pendingEnterEdit = null;
-  }
-  applyFrameSizing(state);
-}
-
-/**
- * Declare, SYNCHRONOUSLY, which kind of render `canvasEl`'s host is about to receive.
  *
- * {@link mountIframeCanvas} resolves its document asynchronously, so the mode it will post is not
- * known to the host until an await has passed. The renderer knows it before the await — it is the
- * mode it just built the surface for — so it says so here, and the host's frame box moves with the
- * flag rather than trailing it. Without this the `contentHeight` the iframe posts during the
- * resolve is answered under the OUTGOING mode's sizing rule.
+ * @param state The host whose iframe is sized.
+ * @param height The measured content height, in CSS pixels.
+ * @param fragment Whether the measured content is a component-definition fragment.
  */
-export function adoptCanvasPreviewMode(canvasEl: HTMLElement, preview: boolean): void {
-  setHostPreview(ensureHost(canvasEl), preview);
+function applyFrameSizing(state: HostState, height: number, fragment: boolean): void {
+  state.iframe.style.height = `${height}px`;
+  state.iframe.style.minHeight = fragment ? "0px" : "480px";
+  syncEditZoomViewportHeight(state);
 }
 
 /** Post a parent→iframe drag message to `host`'s channel (the coordinator builds it purely). */
@@ -1445,9 +1350,7 @@ export function setIframePatchEscalation(fn: (paneId: string) => void): void {
  * Tell every frame showing `tab` which popover to draw open.
  *
  * Fans out by `tabId` for the same reason `postPatchToHosts` does: two panes can show the same
- * document, and both must agree about which panel is open — it is the same element in both. A
- * PREVIEW host is skipped, and the frame refuses the message as well, because preview renders
- * popovers natively and the canvas attribute does not exist there.
+ * document, and both must agree about which panel is open — it is the same element in both.
  *
  * Also recorded on the host, so a re-mount can seed it onto the `render` message. A render replaces
  * the DOM and would otherwise close the panel the author was editing.
@@ -1461,7 +1364,7 @@ export function postPopoverOpen(tab: { id: string }, path: JxPath | null): void 
       liveHosts.delete(host);
       continue;
     }
-    if (host.ready && host.tabId === tab.id && !host.preview) {
+    if (host.ready && host.tabId === tab.id) {
       host.popoverOpen = path;
       host.channel.post({ kind: "setPopoverOpen", path: plainCopy(path) });
     }
@@ -1478,7 +1381,7 @@ export function postDialogOpen(tab: { id: string }, path: JxPath | null): void {
       liveHosts.delete(host);
       continue;
     }
-    if (host.ready && host.tabId === tab.id && !host.preview) {
+    if (host.ready && host.tabId === tab.id) {
       host.dialogOpen = path;
       host.channel.post({ kind: "setDialogOpen", path: plainCopy(path) });
     }
@@ -2351,8 +2254,6 @@ function ensureHost(canvasEl: HTMLElement): HostState {
     canvasEl,
     canvasUrl,
     channel,
-    contentFragment: false,
-    contentHeight: null,
     hiddenPaths: new Set<string>(),
     popoverOpen: null,
     dialogOpen: null,
@@ -2383,7 +2284,6 @@ function ensureHost(canvasEl: HTMLElement): HostState {
     pendingTabIds: new Map(),
     presenceMeta: new Map(),
     presenceReqId: -1,
-    preview: false,
     capabilities: new Set<FrameCapability>(),
     selectionBeforeHit: null,
     ready: false,
@@ -2514,45 +2414,8 @@ function closeInsertMenu(state: HostState): void {
   scheduleInsertHide(state);
 }
 
-/**
- * Messages a PREVIEW render is not allowed to act on. Preview must behave like the shipped page:
- * clicking selects nothing, nothing is outlined, there is no insertion "+", the browser's own
- * context menu stands, nothing can be dropped into it, and no text can be typed into it.
- *
- * The frame withholds most of these itself ({@link file://./iframe-interaction.ts}'s mode gate),
- * but the canvas bundle ships prebuilt in `dist/`, so the host refuses them independently rather
- * than trusting the frame's build to be current. Cleanup messages (`dragEnd`, `fileDragLeave`) are
- * deliberately NOT blocked — they only tear affordances down.
- */
-const PREVIEW_BLOCKED: ReadonlySet<IframeToParent["kind"]> = new Set([
-  "contextMenu",
-  "dragOver",
-  "dropResult",
-  "editCommit",
-  "editCommitField",
-  "editCommitProp",
-  "editInput",
-  "editInsert",
-  "editMerge",
-  "editRangeReplace",
-  "editSplit",
-  "editStart",
-  "fileDragOver",
-  "fileDrop",
-  "hit",
-  "hover",
-  "insertZones",
-  "layoutHit",
-  "nativeDragEnter",
-  "rowActivated",
-  "tagClick",
-]);
-
 /** Handle a message the iframe posted back: ready handshake, pointer hit/hover, measured geometry. */
 function handleMessage(state: HostState, msg: IframeToParent): void {
-  if (state.preview && PREVIEW_BLOCKED.has(msg.kind)) {
-    return;
-  }
   switch (msg.kind) {
     case "ready": {
       state.ready = true;
@@ -2582,12 +2445,11 @@ function handleMessage(state: HostState, msg: IframeToParent): void {
     case "paneFocus": {
       // A press in the frame is invisible to the parent's light dismissal of the "+" menu.
       closeInsertMenu(state);
-      /* The frame says only that a pointer went down in it. Every mode posts this, including
-         preview — see the message's own docstring for the two holes in `hit` that it closes. */
+      /* The frame says only that a pointer went down in it. Every mode posts this — see the
+         message's own docstring for the two holes in `hit` that it closes. */
       focusHostPane(state);
       // …and "a pointer went down in a canvas" is exactly what un-hides the block action bar: the
-      // Author is back on the surface it belongs to. Harmless in preview, where the bar draws
-      // Nothing anyway.
+      // Author is back on the surface it belongs to.
       canvasPointerDownHandler?.();
       return;
     }
@@ -2598,9 +2460,9 @@ function handleMessage(state: HostState, msg: IframeToParent): void {
 
          `show`/`hide`/`toggle` collapse to a state because the record is a setter: the frame knows
          which panel is open only through the host, so `toggle` is resolved HERE, where the model
-         is, and never inside the frame. Refused in preview by the host's own gate below. */
+         is, and never inside the frame. */
       const tab = hostTab(state);
-      if (!tab || state.preview) {
+      if (!tab) {
         return;
       }
       const targeted =
@@ -2624,7 +2486,7 @@ function handleMessage(state: HostState, msg: IframeToParent): void {
          the overlay they name when it is the open one, and a custom command is the document's own
          business. */
       const tab = hostTab(state);
-      if (!tab || state.preview) {
+      if (!tab) {
         return;
       }
       const targeted = (open: JxPath | null) =>
@@ -3036,11 +2898,7 @@ function handleMessage(state: HostState, msg: IframeToParent): void {
       return;
     }
     case "contentHeight": {
-      // The measurement is STATE, not an instruction: record it, then re-derive the frame box from
-      // (preview flag, last measurement) so the two can never disagree. See applyFrameSizing.
-      state.contentHeight = msg.height;
-      state.contentFragment = msg.fragment;
-      applyFrameSizing(state);
+      applyFrameSizing(state, msg.height, msg.fragment);
       return;
     }
     case "dragOver": {
@@ -3398,10 +3256,6 @@ function handleMessage(state: HostState, msg: IframeToParent): void {
       canvasSlashHandler?.dismiss();
       return;
     }
-    case "previewNavigate": {
-      openPreviewHref(msg.href, state);
-      return;
-    }
     case "contextMenu": {
       closeInsertMenu(state);
       if (state.stylebook) {
@@ -3583,8 +3437,7 @@ function drawHover(state: HostState, hit: NodeHit | null): void {
 /**
  * The part of a `render` message that is a fact about the DOCUMENT rather than about a host: the
  * resolved and wire-serialized document, its base, the path-mapper context, the mode and the site
- * style. Everything a host contributes — its width, its preview flag, its tab-id bookkeeping —
- * stays outside.
+ * style. Everything a host contributes — its width, its tab-id bookkeeping — stays outside.
  */
 type PreparedRender = Omit<
   Extract<ParentToIframe, { kind: "render" }>,
@@ -3860,12 +3713,6 @@ export async function mountIframeCanvas(
   }
   state.popoverOpen = message.popoverOpen ?? null;
   state.dialogOpen = message.dialogOpen ?? null;
-  // Preview is the fidelity view: no editing messages are honoured from it, no overlay is painted
-  // Over it, and the frame stays viewport-sized so it scrolls for real. A mode switch to preview
-  // Mid-split must likewise not start an edit session in the preview render. The flag and the frame
-  // Box move together (setHostPreview) — this assignment sits AFTER an await, so any contentHeight
-  // That landed while the document resolved was answered under the previous mode's rule.
-  setHostPreview(state, message.mode === "preview");
   deliverRender(state, message, remoteTab);
 }
 
@@ -3918,7 +3765,6 @@ export function mountStylebookCanvas(
   const state = ensureHost(canvasEl);
   state.pendingTabIds.set(gen, null);
   state.stylebook = { pathToTag: generated.pathToTag, tagToCardPath: generated.tagToCardPath };
-  setHostPreview(state, false);
   state.pendingEnterEdit = null;
   state.iframe.style.width = widthPx ? `${widthPx}px` : "100%";
   // Two independent plain clones: the iframe renders `doc` and folds styleUpdates into `shadowDoc`

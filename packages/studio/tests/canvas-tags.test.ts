@@ -116,8 +116,7 @@ async function frameWith(
   };
   pair.flush();
   const raw = structuredClone(doc);
-  const drawn =
-    mode === "preview" ? raw : prepareForEditMode(stripEventHandlers(raw), extra.tagTitles ?? null);
+  const drawn = prepareForEditMode(stripEventHandlers(raw), extra.tagTitles ?? null);
   await send({
     colorScheme: null,
     doc: structuredClone(drawn),
@@ -374,17 +373,11 @@ describe("tagClick", () => {
     });
   });
 
-  test("a click off a chip posts none, and Preview posts none at all", async () => {
+  test("a click off a chip posts none", async () => {
     const frame = await frameWith(page());
     press(addressable(frame.container, POST));
     await frame.settle();
     expect(frame.of("tagClick")).toEqual([]);
-
-    const preview = await frameWith(page(), {}, "preview");
-    const text = preview.container.querySelector("h3");
-    press(text!);
-    await preview.settle();
-    expect(preview.of("tagClick")).toEqual([]);
   });
 
   test("a press in an echo row makes the row active, and its chip is then that block's", async () => {

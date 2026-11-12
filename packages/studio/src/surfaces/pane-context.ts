@@ -4,10 +4,10 @@
  * status bar's (`surfaces/statusbar.ts`), not this bar's.
  *
  * `panels/pane-context.ts` is the flow: which editor kinds a document declares, which canvas views
- * it has, whether preview is a flag over one of them, what a lens may never write, what a route
- * param's candidate values are, and what a typed test prop parses as. This is the surface it draws
- * into — the reactive scope the document reads, the words it discriminates on, and the two popovers
- * whose open state a command has to be able to write.
+ * it has, what a lens may never write, what a route param's candidate values are, and what a typed
+ * test value parses as. This is the surface it draws into — the reactive scope the document reads,
+ * the words it discriminates on, and the two popovers whose open state a command has to be able to
+ * write.
  *
  * **The mount is per pane and the handle is the caller's**, which is the whole reason this module
  * exports a factory rather than an `attach`/`render` pair: this bar states one pane's editor kind,
@@ -121,9 +121,6 @@ export interface PaneContextView {
    * rendered under: a workspace home draws its own surface, not the document at a breakpoint.
    */
   contextState: "shown" | "hidden";
-  previewState: "shown" | "hidden";
-  previewOn: boolean;
-  previewHint: string;
 
   /**
    * What the More rendering context trigger reads beside its glyph: only what its popover holds and
@@ -164,7 +161,6 @@ export interface PaneContextActions {
   goBack: () => void;
   chooseEditor: (kind: string) => void;
   chooseView: (view: string) => void;
-  togglePreview: () => void;
   setBreakpoint: (media: string) => void;
   setScheme: (scheme: string) => void;
   setBindingDisplay: (display: string) => void;
@@ -241,9 +237,6 @@ function project(scope: PaneContextScope, view: PaneContextView): void {
   scope.viewState = view.viewState;
   scope.contextState = view.contextState;
   scope.views = view.views;
-  scope.previewState = view.previewState;
-  scope.previewOn = view.previewOn;
-  scope.previewHint = view.previewHint;
   scope.contextSummary = view.contextSummary;
   scope.resolvingState = view.resolvingState;
   scope.resolvingLabel = view.resolvingLabel;
@@ -293,9 +286,6 @@ export function emptyPaneContextView(): PaneContextView {
     localeState: "hidden",
     params: [],
     presetState: "hidden",
-    previewHint: "",
-    previewOn: false,
-    previewState: "hidden",
     props: [],
     resolvingKind: "params",
     resolvingLabel: "Defaults",

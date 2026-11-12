@@ -130,7 +130,7 @@ function bootFrame(mode: CanvasMode = "edit"): Frame {
     render: (doc, remote = {}) => {
       gen += 1;
       const raw = structuredClone(doc);
-      const drawn = mode === "preview" ? raw : prepareForEditMode(stripEventHandlers(raw));
+      const drawn = prepareForEditMode(stripEventHandlers(raw));
       const msg: RenderMsg = {
         colorScheme: null,
         doc: structuredClone(drawn),
@@ -371,22 +371,13 @@ describe("a GET request on the editing canvas", () => {
     expect(frame.of("remoteSettled").map((m) => m.session)).toEqual(["tab:0"]);
   });
 
-  test("a render with no remote data starts nothing, as a frame never did outside Preview", async () => {
+  test("a render with no remote data starts nothing", async () => {
     stubFetch(() => POSTS);
     const frame = bootFrame();
     await frame.render(page(), null);
     expect(calls).toHaveLength(0);
     expect(frame.of("bindingStatus")).toHaveLength(0);
     expect(frame.container.querySelector("[data-jx-status]")).toBeNull();
-  });
-
-  test("Preview runs the request as the page does, on every render, with no status drawn", async () => {
-    stubFetch(() => POSTS);
-    const frame = bootFrame("preview");
-    await frame.render(page());
-    await frame.render(page());
-    expect(calls).toHaveLength(2);
-    expect(frame.of("bindingStatus")).toHaveLength(0);
   });
 });
 

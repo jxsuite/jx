@@ -932,18 +932,10 @@ function animatePanBy(surface: CanvasSurface, offsetY: number) {
 
 // ─── Commands ─────────────────────────────────────────────────────────────────
 
-/**
- * Every canvas mode a pane can render, in the order the mode switcher lists them.
- *
- * `"preview"` is in the set even though it is not a base mode: `getCanvasMode()` composes the
- * per-tab `ui.preview` flag with an `edit`/`design` base and presents "preview" to every downstream
- * gate, and `tab.capabilities.modes` lists it exactly the same way. A caller naming a mode is
- * naming the mode it will observe, so the enum is the observable set, not the storage set.
- */
+/** Every canvas mode a pane can render, in the order the mode switcher lists them. */
 export const CANVAS_MODES = [
   "edit",
   "design",
-  "preview",
   "source",
   "stylebook",
   "tokens",
@@ -964,47 +956,25 @@ export type CanvasMode = (typeof CANVAS_MODES)[number];
  */
 export const SELECTABLE_CANVAS_MODES = CANVAS_MODES.filter((mode) => mode !== "git-diff");
 
-/** The base modes the preview flag composes with — the two the Canvas view axis shows it beside. */
-const PREVIEWABLE_BASE_MODES = new Set(["edit", "design"]);
-
-/** Whether a base mode is one the preview flag composes with: a member of PREVIEWABLE_BASE_MODES. */
-function isPreviewableBase(mode: string): mode is "edit" | "design" {
-  return PREVIEWABLE_BASE_MODES.has(mode);
-}
-
 // ─── The Canvas view (§4.2) ──────────────────────────────────────────────────
-// `Edit │ Design` is a radio and `Preview` is a TOGGLE beside it, because that is what the storage
-// Has always been: `preview` is not a base mode, it is a flag that composes with one.
-//
-// This was argued the other way, and the argument is worth keeping because it is half right. One
-// Three-value control, it said, because a switcher showing "Design" selected while the pane was
-// Previewing reports a state the app is not in. But the app IS in Design — with preview composed
-// Over it — and a three-value radio could only ever show one of the two facts. It picked the
-// Composed one and hid the base, so while previewing nothing said what you were previewing or what
-// Leaving would return you to. A pressed toggle beside a marked radio shows both, which is the
-// State, and neither half is silent.
+// `Edit │ Design` is a radio. The two views differ in stage, not in document: both draw the page
+// With its data resolved and both carry the live caret (§4.5, §8.2).
 
-/**
- * Every value of the Canvas view axis. `preview` composes with the other two rather than replacing
- * them.
- */
-export const CANVAS_VIEWS = ["edit", "design", "preview"] as const;
+/** Every value of the Canvas view axis. */
+export const CANVAS_VIEWS = ["edit", "design"] as const;
 
 export type CanvasView = (typeof CANVAS_VIEWS)[number];
 
-/** A tab's view state, as the axis reads it — its base mode and whether preview composes over it. */
-interface ViewableTab {
-  capabilities: { modes: string[] };
-  session: { ui: { canvasMode: string; preview?: boolean } };
+/** Whether a mode is one of the Canvas views. */
+function isCanvasView(mode: string): mode is CanvasView {
+  return mode === "edit" || mode === "design";
 }
 
-/*
- * `canvasViewOf` lived here: it collapsed the base and the preview flag into ONE effective view, so
- * a three-value radio could mark exactly one of Edit/Design/Preview. Splitting that radio into a
- * two-value base plus a preview toggle took its last caller — the two halves are read separately
- * now, by `canvasBaseViewOf` and `previewStateOf` below. `canvasModeOfPane` still composes the two
- * for the RENDERER, which does want one answer.
- */
+/** A tab's view state, as the axis reads it — its mode and the modes it declares. */
+interface ViewableTab {
+  capabilities: { modes: string[] };
+  session: { ui: { canvasMode: string } };
+}
 
 /**
  * The views this document supports, in axis order — the control's entries.
@@ -1017,70 +987,27 @@ export function canvasViewsFor(tab: ViewableTab): CanvasView[] {
   return CANVAS_VIEWS.filter((value) => tab.capabilities.modes.includes(value));
 }
 
-/**
- * The BASE views a document supports — the radio's entries. Preview is not among them.
- *
- * Preview was the third value of a three-way radio, which made it read as a mode you leave Design
- * to enter: while previewing, the control could not tell you which mode you would come back to. It
- * has always been stored as a per-tab flag over an edit/design base, so the radio was describing
- * the storage inaccurately. Split so the two axes are drawn as what they are.
- */
-export function canvasBaseViewsFor(tab: ViewableTab): CanvasView[] {
-  return canvasViewsFor(tab).filter((value) => value !== "preview");
-}
-
-/** The base view the tab returns to — what the radio marks while preview is on. */
-export function canvasBaseViewOf(tab: ViewableTab): CanvasView | null {
-  const base = tab.session.ui.canvasMode;
-  return isPreviewableBase(base) ? base : null;
-}
-
-/** A tab's Preview toggle: whether it is offered, and whether it is pressed. */
-export interface PreviewState {
-  available: boolean;
-  on: boolean;
+/** The view the tab is in — what the radio marks — or null outside the Canvas editor. */
+export function canvasViewOf(tab: ViewableTab): CanvasView | null {
+  const mode = tab.session.ui.canvasMode;
+  return isCanvasView(mode) ? mode : null;
 }
 
 /**
- * Whether this document can be previewed at all, and whether it is being.
- *
- * `available` is a fact about the DOCUMENT (its declared modes) and about the base it is currently
- * in — `source` composes with no preview, so the toggle is not offered there.
- */
-export function previewStateOf(tab: ViewableTab): PreviewState {
-  return {
-    available:
-      tab.capabilities.modes.includes("preview") &&
-      PREVIEWABLE_BASE_MODES.has(tab.session.ui.canvasMode),
-    on: tab.session.ui.preview === true,
-  };
-}
-
-/**
- * Move a pane onto one of the three views. The one writer the segmented control routes through.
- *
- * Idempotent in both directions, which is what `canvas.togglePreview` could not be: arriving at
- * Edit or Design clears the preview flag, so "Design" means Design from any starting state.
+ * Move a pane onto one of the views. The one writer the segmented control routes through, and
+ * idempotent: arriving at the view a tab is already in writes nothing.
  *
  * @param tab The pane's tab.
  * @param value The view to land on.
- * @param setCanvasMode Writes the BASE mode of the tab it is GIVEN — `studio.ts`'s own, injected
- *   because this module does not own the canvas render loop. It took only a mode, which is how the
- *   side pane's `Edit │ Design │ Preview` control cleared its own tab's preview flag and then moved
- *   the FOCUSED pane's tab to `design`.
+ * @param setCanvasMode Writes the mode of the tab it is GIVEN — `studio.ts`'s own, injected because
+ *   this module does not own the canvas render loop. It took only a mode once, which is how the
+ *   side pane's control moved the FOCUSED pane's tab instead of its own.
  */
 export function setCanvasView<T extends ViewableTab>(
   tab: T,
   value: CanvasView,
   setCanvasMode: (tab: T, mode: string) => void,
 ): void {
-  if (value === "preview") {
-    if (PREVIEWABLE_BASE_MODES.has(tab.session.ui.canvasMode)) {
-      tab.session.ui.preview = true;
-    }
-    return;
-  }
-  tab.session.ui.preview = false;
   if (tab.session.ui.canvasMode !== value) {
     setCanvasMode(tab, value);
   }
@@ -1089,9 +1016,9 @@ export function setCanvasView<T extends ViewableTab>(
 /** What the canvas view verbs need that this module does not own. */
 
 export interface CanvasCommandDeps {
-  /** The effective mode, `ui.preview` already composed in — `studio.ts`'s `getCanvasMode`. */
+  /** The focused pane's mode — `studio.ts`'s `getCanvasMode`. */
   getCanvasMode: () => string;
-  /** Write the BASE mode (`ui.canvasMode`) of the tab it is given — `studio.ts`'s `setCanvasMode`. */
+  /** Write the mode (`ui.canvasMode`) of the tab it is given — `studio.ts`'s `setCanvasMode`. */
   setCanvasMode: (tab: Tab | null, mode: string) => void;
   /** Open or close a pane's resolving-with popover — `pane-context.ts`'s `setResolvingOpen`. */
   setResolvingOpen: (paneId: string, open: boolean) => void;
@@ -1133,16 +1060,13 @@ const COLOR_SCHEMES = ["auto", "light", "dark"] as const;
 /**
  * The canvas view verbs — `setMode`, `setZoom`, `setEditZoom`.
  *
- * **These are the setters that retire `canvas.togglePreview`** (the idempotence rule, §13.5). A
- * toggle cannot say which state it ends in, so six screenshots taken through it photographed
- * whichever way the default happened to point that week; `canvas.setMode { mode: "preview" }` means
- * the same thing twice in a row and from any starting state.
+ * Setters, never toggles (the idempotence rule, §13.5): a toggle cannot say which state it ends in,
+ * so a screenshot taken through one photographs whichever way the default happened to point;
+ * `canvas.setMode { mode: "design" }` means the same thing twice in a row and from any start.
  *
- * Three refusals, each a wrong picture that used to be accepted silently:
+ * Two refusals, each a wrong picture that used to be accepted silently:
  *
  * - A mode the open document cannot render (`tab.capabilities.modes`) — a `.csv` has no `design`.
- * - `"preview"` over a base mode it does not compose with — `ui.preview` is ignored in `source`, so
- *   setting it there would report a state the app is not in.
  * - A zoom outside the supported range, which the interactive controls clamp and a caller may not.
  *
  * @param {CanvasCommandDeps} deps
@@ -1230,7 +1154,7 @@ export function canvasViewCommands(deps: CanvasCommandDeps): AnyCommand[] {
       aiTool: {
         description:
           "Switch the active document's editor mode. edit and design put its element tree on " +
-          "the canvas, where the document tools work; preview renders it as a visitor sees it; " +
+          "the canvas with its data resolved, where the document tools work; " +
           "source shows the JSON; stylebook, tokens and grid open other editors. Use it to " +
           "return a document to edit or design when the tree tools are refused.",
         name: "set_canvas_mode",
@@ -1261,20 +1185,6 @@ export function canvasViewCommands(deps: CanvasCommandDeps): AnyCommand[] {
            Code, Diff, Config, Entry, Grid and Library only, so a Canvas mode was refused by
            NAME with a sentence telling you to unsplit first. Both panes draw a live Canvas now
            (`panels/pane-grid.ts`), so the document's own declared modes are the whole answer. */
-        if (mode === "preview") {
-          const base = tab.session.ui.canvasMode;
-          if (!PREVIEWABLE_BASE_MODES.has(base)) {
-            throw new RangeError(
-              `command "canvas.setMode" argument "mode": "preview" composes with the edit and ` +
-                `design base modes; this pane is in "${base}"`,
-            );
-          }
-          tab.session.ui.preview = true;
-          return;
-        }
-        // Idempotent in both directions: leaving preview is part of arriving anywhere else, so a
-        // Shot that says "design" gets design whether or not the previous step turned preview on.
-        tab.session.ui.preview = false;
         // The tab `requireTab()` already resolved, not "whatever is focused when the write lands".
         deps.setCanvasMode(tab, mode);
       },
@@ -2025,64 +1935,12 @@ export function canvasViewCommands(deps: CanvasCommandDeps): AnyCommand[] {
     /*
      * ── The values a render resolves WITH ─────────────────────────────────────────────────────
      *
-     * The two controls in that popover wrote `session.ui` through `updateUi` directly, while every
-     * control in the rendering-context popover beside them runs a command — and `runContextCommand`
-     * says why in as many words: "the popover WAS the capability, and the palette, the assistant and
-     * `__jxAutomation` had no name for it." Moving these behind a click without naming them would
-     * have reintroduced that, one layer deeper: a value you can now only reach by opening a popover
-     * and typing.
-     *
-     * The screenshot budget agrees. `counter-test-prop` typed into `pane.primary/prop:count`; with
-     * a verb it spends a `cmd` instead, so `inputSteps` falls 14 → 13 and the region leaves the
-     * manifest, dropping `nonDerivedRegions` 11 → 10. Both budgets may only ratchet down, and this
-     * ratchets both.
+     * The controls in that popover run commands, as every control in the rendering-context popover
+     * beside them does — `runContextCommand` says why in as many words: "the popover WAS the
+     * capability, and the palette, the assistant and `__jxAutomation` had no name for it." A
+     * component's test values are its plain state values, so its fields run
+     * `canvas.setStateValue` below; a page's route parameters run `canvas.setRouteParam`.
      */
-    {
-      args: {
-        additionalProperties: false,
-        properties: {
-          ...paneArg,
-          name: stringProperty("The prop's name, as the component's state declares it."),
-          value: {
-            description:
-              "The test value — any JSON. Null clears it and the prop returns to its default.",
-            type: ["string", "number", "boolean", "array", "object", "null"],
-          },
-        },
-        required: ["name"],
-        type: "object",
-      },
-      category: "View",
-      id: "canvas.setTestProp",
-      level: "document",
-      menus: ["palette"],
-      group: "3_canvas",
-      requires: "an open component document",
-      when: documentOpen,
-      run: (_commandCtx, args: CommandArgValues) => {
-        const tab = contextTab("canvas.setTestProp", args);
-        const name = stringArg("canvas.setTestProp", args, "name");
-        // REFUSES a prop the component does not declare, rather than seeding a value nothing reads
-        // — the rule `data.expandRow` and `canvas.setBreakpoint` both apply to their own names.
-        const declared = Object.keys(tab.doc.document.state ?? {});
-        if (!declared.includes(name)) {
-          throw new RangeError(
-            `command "canvas.setTestProp" argument "name": "${name}" is not a prop this component ` +
-              `declares — it declares: ${declared.length > 0 ? declared.join(", ") : "nothing"}`,
-          );
-        }
-        const { value } = args;
-        const next = { ...tab.session.ui.previewProps };
-        if (value === null || value === undefined) {
-          delete next[name];
-        } else {
-          next[name] = value;
-        }
-        tab.session.ui.previewProps = Object.keys(next).length > 0 ? next : null;
-        repaint(args);
-      },
-      title: "Set Test Value",
-    },
     /*
      * A state value set for the canvas (studio.md §4.5).
      *
@@ -2092,8 +1950,9 @@ export function canvasViewCommands(deps: CanvasCommandDeps): AnyCommand[] {
      * tab's, written nowhere in the document, so it dirties nothing and takes no undo entry. It
      * decides what the scope holds, so like the row cap it is a render.
      *
-     * `canvas.setTestProp` above is the same idea for a component's props, and predates this one;
-     * a value set here is applied after a test value and wins.
+     * It is also what a component's test values are: a component's props are its plain entries,
+     * the resolving-with popover's fields set them through this command, and Open in Browser
+     * carries the ones set for props to the harness (§10.1).
      */
     {
       args: {
@@ -2132,9 +1991,9 @@ export function canvasViewCommands(deps: CanvasCommandDeps): AnyCommand[] {
           }
           return;
         }
-        /* REFUSES a key that is not a plain value, the rule `canvas.setTestProp` applies to a prop:
-           a computed entry, a function and a data source have their value decided elsewhere, and
-           a value set for one would sit in the tab's state changing nothing. */
+        /* REFUSES a key that is not a plain value: a computed entry, a function and a data source
+           have their value decided elsewhere, and a value set for one would sit in the tab's state
+           changing nothing. */
         const state = tab.doc.document.state ?? {};
         if (!isPlainStateEntry(state[key])) {
           const plain = Object.keys(state).filter((name) => isPlainStateEntry(state[name]));

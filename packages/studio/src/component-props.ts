@@ -1,22 +1,16 @@
 /**
- * Component test props (M6) — the previewParams mirror for component docs. A non-instantiated
- * component definition renders on the canvas with its state defaults; "test values" let the author
- * pick per-prop values that the canvas render seeds into the definition's state, so templates,
- * dataScope snapshots, and live/snapshot expression previews all see real data.
+ * Component props — the previewParams mirror for component docs. A non-instantiated component
+ * definition renders on the canvas with its state defaults; "test values" let the author pick
+ * per-prop values, which are state values set for the canvas (`canvas.setStateValue`,
+ * `canvas/state-values.ts`), so templates, dataScope snapshots and live expression previews all see
+ * real data, and Open in Browser carries them to the harness.
  *
  * Pure and DOM-free: {@link componentPropEntries} derives the editable prop rows from the doc's
- * state (the same plain-data entries the CEM export publishes as fields), and
- * {@link substitutePreviewProps} rebuilds a render doc with chosen values seeded — never mutating
- * the source document (the substitutePreviewParams contract).
+ * state (the same plain-data entries the CEM export publishes as fields).
  */
 
 import type { JsonValue } from "./types";
-import type {
-  JsonPrimitive,
-  JxMutableNode,
-  JxStateDefinition,
-  JxStateObject,
-} from "@jxsuite/schema/types";
+import type { JsonPrimitive, JxMutableNode, JxStateDefinition } from "@jxsuite/schema/types";
 import { isNonNullObject, isPrivateStateKey, isString } from "@jxsuite/schema/guards";
 
 /** One editable prop row: the state key and its current default value (undefined = none). */
@@ -83,39 +77,4 @@ export function componentPropEntries(doc: JxMutableNode | null | undefined): Com
     out.push({ name, value });
   }
   return out;
-}
-
-/**
- * Rebuild `renderDoc` with the chosen test-prop values seeded into its state: a literal entry is
- * replaced by the value; a signal/typed entry keeps its metadata and gets the value as `default`
- * (exactly what buildScope reads). Pure — returns a shallow rebuild; the render doc shares node
- * references with the tab's source document, so in-place mutation would corrupt the edited doc.
- */
-export function substitutePreviewProps(
-  renderDoc: JxMutableNode,
-  props: Record<string, JsonValue>,
-): JxMutableNode {
-  const state = { ...renderDoc.state };
-  let seeded = false;
-  for (const [name, value] of Object.entries(props)) {
-    const current = state[name];
-    const kind = propKind(current);
-    if (!kind) {
-      continue; // Unknown/behavioral entries are never overridden by a stale test value.
-    }
-    /* SAFETY: `propKind` answers "signal" only for an object that carries `default` or `type` and
-       none of the behavioral keys (`$expression`, `$compute`, `$prototype`, `$handler`) — the
-       expanded-signal / typed-def shape `JxStateObject` describes. A literal is replaced by the
-       JSON test value itself, which is a Shape-1 naked entry; `JxStateDefinition` spells that
-       shape as `JxStateObject`, whose typed keys neither a `JsonObject` nor a spread copy can prove
-       statically (the spread drops the index signature its typed keys are checked against). */
-    state[name] = (
-      kind === "signal" ? { ...(current as JxStateObject), default: value } : value
-    ) as JxStateDefinition;
-    seeded = true;
-  }
-  if (!seeded) {
-    return renderDoc;
-  }
-  return { ...renderDoc, state };
 }

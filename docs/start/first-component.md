@@ -7,7 +7,7 @@ description: "Build a live counter card in Studio's Design workspace, click by c
 
 In this tutorial you build a `counter-card` component: a button and a line of text that counts the clicks, live. Small as it is, it walks the whole loop every interactive piece of a Jx site is made from, without writing any code: elements on the canvas, a state value, a binding, and an event. All of it happens in the **Design** workspace, where pages, templates and components are built.
 
-![The finished counter card on the canvas with Preview on, showing a count of 3](../images/counter-finished.png)
+![The finished counter card on the canvas, showing its count](../images/counter-finished.png)
 
 **About 15 minutes.** Before you start:
 
@@ -87,17 +87,17 @@ The chip now reads **Mixed text**: this value is produced from something else, a
 
 A chip strip above the editor summarizes the formula as a `count` chip followed by a `+=` chip. The `+=` chip's badge reads `undefined`, because an assignment changes a value rather than producing one. The three ways an event can respond (**From data…**, **Formula**, **Inline function**) are covered in **[Events](/docs/studio/logic/events)**.
 
-## 8. Try it in Preview
+## 8. Try it
 
-Click **Preview**, the toggle beside the **View** control on the context bar. **Design** stays marked, because it is the view you return to when you click **Preview** again. The paragraph now shows `0`, the resolved value. Click **Add one** a few times.
+The paragraph already shows `0`, the resolved value: the canvas draws every binding with the value it has. The canvas does not run handlers, though, so clicking **Add one** there selects the button. To click it for real, choose **Open in Browser** from the Command Bar, or press :kbd[⌘⇧O]: the component opens on a page of its own in your browser. Click **Add one** a few times.
 
-![The canvas with Preview on, the paragraph showing the climbed count](../images/counter-preview.png)
+![The counter card on the canvas in Edit, the paragraph showing its resolved count](../images/counter-preview.png)
 
 You should see the number climb with every click. That's the whole reactive loop: the event writes to `count`, and everything bound to `count` updates by itself.
 
 ## 9. Watch the value resolve
 
-The **Data** panel also shows what each entry is worth _right now_. If it isn't still open, click **Data** in the **Document** group of the Navigator rail, then click the `count` row to open it: **Resolved to** holds the current number. Stay in Preview, click **Add one**, and watch it change; **Refresh** re-renders the canvas and reads the values again.
+The **Data** panel also shows what each entry is worth _right now_. If it isn't still open, click **Data** in the **Document** group of the Navigator rail, then click the `count` row to open it: **Resolved to** holds the current number. Its **On canvas** field draws the canvas with another value without changing the file: type `5` and the paragraph shows 5, then clear the field to return to the file's own value. **Refresh** re-renders the canvas and reads the values again.
 
 ![The Data panel with the count entry showing its live value](../images/counter-data-explorer.png)
 
@@ -114,7 +114,7 @@ Because `count` is a plain state value on a component, it's also one of the comp
 
 ![The resolving-with popover holding a test value, the canvas rendering with it](../images/counter-test-prop.png)
 
-Test values are a preview lens only, and are never saved into the component. Props and test values are covered in **[Working with components](/docs/studio/design/components)**.
+Test values are never saved into the component. A test value is the value set on the canvas for that prop, so the **Data** panel's `count` row shows it set too, and **Open in Browser** runs the component with it. Props and test values are covered in **[Working with components](/docs/studio/design/components)**.
 
 ## 11. Save your work
 
@@ -129,7 +129,7 @@ A working, reusable component, and every piece of the interactive toolkit in one
 - A **state entry** (`count`) is the component's memory, and automatically its prop.
 - A **template binding** (`${state.count}`) is text that follows the value wherever it goes.
 - An **event formula** (`count += 1`, assembled from an operator and two operands) is behavior without a line of code.
-- **Preview**, the **Data** panel's resolved values, and **test values** are three ways to watch it run.
+- **Open in Browser**, the **Data** panel's resolved values, and **test values** are three ways to watch it run.
 
 :::doc-note
 Everything landed in one plain file, `components/counter-card.json`: the entry in its `state` object, the paragraph's text as a `${}` template, and the button's `onclick` as an `$expression`. The formats are documented in **[State](/docs/framework/concepts/state)** and **[Reactivity](/docs/framework/concepts/reactivity)**.

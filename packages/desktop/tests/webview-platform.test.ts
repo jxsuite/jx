@@ -235,7 +235,7 @@ Object.defineProperty(globalThis, "window", {
 });
 
 const { createDesktopPlatform } = await import("../src/webview/platform");
-const { getPreviewNavigateHandler } = await import("@jxsuite/studio/preview-navigate");
+const { openUrlExternally } = await import("@jxsuite/studio/preview-navigate");
 
 // ─── Tests ─────────────────────────────────────────────────────────────────
 
@@ -1046,12 +1046,13 @@ describe("chromium desktop platform", () => {
     }
   });
 
-  // ─── Preview links ─────────────────────────────────────────────────────
+  // ─── Pages opened outside Studio ───────────────────────────────────────
 
-  test("preview links are handed to the OS, not to this frameless app window", async () => {
-    const handler = getPreviewNavigateHandler();
-    expect(handler).toBeInstanceOf(Function);
-    handler!("https://example.com/blog/");
+  test("a page Studio opens outside itself is handed to the OS, not to this frameless app window", async () => {
+    const before = windowOpen.mock.calls.length;
+    openUrlExternally("https://example.com/blog/");
+    // The registered handler took it: the studio's own window.open default did not run.
+    expect(windowOpen.mock.calls.length).toBe(before);
     await until(() => methodLog.some((entry) => entry.method === "openExternal"));
     expect(methodLog.findLast((entry) => entry.method === "openExternal")).toEqual({
       method: "openExternal",
@@ -1062,7 +1063,7 @@ describe("chromium desktop platform", () => {
   test("a backend that cannot reach the OS falls back to a new browser tab", async () => {
     forcedErrors.set("openExternal", "no desktop portal");
     const before = windowOpen.mock.calls.length;
-    getPreviewNavigateHandler()!("https://example.com/fallback/");
+    openUrlExternally("https://example.com/fallback/");
     await until(() => windowOpen.mock.calls.length > before);
     expect(windowOpen.mock.calls.at(-1)?.[0]).toBe("https://example.com/fallback/");
   });
@@ -1074,7 +1075,7 @@ describe("chromium desktop platform", () => {
     responses.set("openExternal", { ok: false });
     const before = windowOpen.mock.calls.length;
     try {
-      getPreviewNavigateHandler()!("https://example.com/refused/");
+      openUrlExternally("https://example.com/refused/");
       await until(() => windowOpen.mock.calls.length > before);
       expect(windowOpen.mock.calls.at(-1)?.[0]).toBe("https://example.com/refused/");
     } finally {

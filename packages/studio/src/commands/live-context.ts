@@ -67,7 +67,7 @@ export function isTextEntryFocused(doc: Document = document): boolean {
 
 /** The facts this module cannot reach without an import cycle or a DOM/platform singleton. */
 export interface LiveContextSources {
-  /** `studio.ts`'s `getCanvasMode()` — the per-tab preview toggle already composed in. */
+  /** `studio.ts`'s `getCanvasMode()`: the focused pane's mode. */
   canvasMode: () => string;
   /** `canvas/iframe-host.ts`'s bridge-derived caret flag (§10). */
   isCaretActive: () => boolean;

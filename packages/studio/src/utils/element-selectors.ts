@@ -25,10 +25,10 @@ const FIELD_TAGS = new Set(["input", "select", "textarea"]);
  * The states an element can be in beyond the common set.
  *
  * `::backdrop` is offered on a popover even though the canvas does not RENDER it (there is no
- * backdrop pseudo-element outside the top layer, and Preview is where it appears). Offering it is
- * still right: it is a real part of the shipped page, and the alternative — no way to author it
- * except by typing it into the custom-selector dialog — is worse than a state you check in
- * Preview.
+ * backdrop pseudo-element outside the top layer, which the canvas keeps a popover out of; the page
+ * Open in Browser runs is where it appears). Offering it is still right: it is a real part of the
+ * shipped page, and the alternative — no way to author it except by typing it into the
+ * custom-selector dialog — is worse than a state you check in the browser.
  */
 function extraSelectorsFor(node: JxMutableNode): string[] {
   const tag = displayTagName(node.tagName).toLowerCase();

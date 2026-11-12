@@ -22,7 +22,7 @@
       "open": {
         "project": "packages/starters/sites/real-estate",
         "file": "pages/index.md",
-        "view": "preview",
+        "view": "edit",
         "viewport": {
           "width": 1920,
           "height": 1200
@@ -69,7 +69,7 @@
       "open": {
         "project": "packages/starters/sites/real-estate",
         "file": "pages/index.md",
-        "view": "preview"
+        "view": "edit"
       },
       "steps": [
         {
@@ -202,7 +202,7 @@
       "open": {
         "project": "packages/starters/sites/real-estate",
         "file": "pages/index.md",
-        "view": "preview"
+        "view": "edit"
       },
       "steps": [
         {
@@ -400,7 +400,7 @@
       "open": {
         "project": "packages/starters/sites/real-estate",
         "file": "pages/index.md",
-        "view": "preview"
+        "view": "edit"
       },
       "steps": [
         {
@@ -424,7 +424,7 @@
       "open": {
         "project": "packages/starters/sites/real-estate",
         "file": "pages/index.md",
-        "view": "preview"
+        "view": "edit"
       },
       "steps": [
         {
@@ -452,7 +452,7 @@
       "open": {
         "project": "packages/starters/sites/real-estate",
         "file": "pages/index.md",
-        "view": "preview"
+        "view": "edit"
       },
       "steps": [
         {
@@ -1361,7 +1361,7 @@
         },
         {
           "args": {
-            "mode": "preview"
+            "mode": "edit"
           },
           "cmd": "canvas.setMode"
         }
@@ -1399,7 +1399,7 @@
         },
         {
           "args": {
-            "mode": "preview"
+            "mode": "edit"
           },
           "cmd": "canvas.setMode"
         }
@@ -1425,7 +1425,7 @@
       "steps": [
         {
           "args": {
-            "mode": "preview"
+            "mode": "edit"
           },
           "cmd": "canvas.setMode"
         },
@@ -1477,16 +1477,16 @@
         },
         {
           "args": {
-            "mode": "preview"
+            "mode": "edit"
           },
           "cmd": "canvas.setMode"
         },
         {
           "args": {
-            "name": "count",
+            "key": "count",
             "value": 100
           },
-          "cmd": "canvas.setTestProp"
+          "cmd": "canvas.setStateValue"
         },
         {
           "cmd": "canvas.setResolvingOpen"
@@ -1504,7 +1504,7 @@
       "open": {
         "project": "scripts/screenshots/fixtures/first-collection-start",
         "file": "pages/index.md",
-        "view": "preview",
+        "view": "edit",
         "viewport": {
           "width": 1920,
           "height": 720
@@ -1543,7 +1543,7 @@
       "open": {
         "project": "scripts/screenshots/fixtures/first-collection",
         "file": "pages/index.md",
-        "view": "preview",
+        "view": "edit",
         "viewport": {
           "width": 1920,
           "height": 720
@@ -1582,7 +1582,7 @@
       "open": {
         "project": "scripts/screenshots/fixtures/first-collection",
         "file": "pages/index.md",
-        "view": "preview"
+        "view": "edit"
       },
       "steps": [
         {
@@ -1780,7 +1780,7 @@
         },
         {
           "args": {
-            "mode": "preview"
+            "mode": "edit"
           },
           "cmd": "canvas.setMode"
         }
@@ -1818,7 +1818,7 @@
         },
         {
           "args": {
-            "mode": "preview"
+            "mode": "edit"
           },
           "cmd": "canvas.setMode"
         }
@@ -1835,7 +1835,7 @@
       "open": {
         "project": "packages/starters/sites/blog",
         "file": "pages/index.md",
-        "view": "preview"
+        "view": "edit"
       },
       "steps": [
         {
@@ -2059,7 +2059,7 @@
       "open": {
         "project": "scripts/screenshots/fixtures/data",
         "file": "pages/index.md",
-        "view": "preview",
+        "view": "edit",
         "viewport": {
           "width": 1920,
           "height": 900
@@ -2102,7 +2102,7 @@
       "open": {
         "project": "scripts/screenshots/fixtures/data",
         "file": "pages/index.md",
-        "view": "preview",
+        "view": "edit",
         "viewport": {
           "width": 1920,
           "height": 720
@@ -2141,7 +2141,7 @@
       "open": {
         "project": "scripts/screenshots/fixtures/data",
         "file": "pages/index.md",
-        "view": "preview"
+        "view": "edit"
       },
       "steps": [
         {
@@ -2214,7 +2214,7 @@
       "open": {
         "project": "scripts/screenshots/fixtures/data",
         "file": "pages/index.md",
-        "view": "preview"
+        "view": "edit"
       },
       "steps": [
         {
@@ -2310,7 +2310,7 @@
       "open": {
         "project": "packages/starters/sites/restaurant",
         "file": "pages/index.md",
-        "view": "preview"
+        "view": "edit"
       },
       "steps": [
         {
@@ -2342,7 +2342,7 @@
       "open": {
         "project": "packages/starters/sites/restaurant",
         "file": "pages/index.md",
-        "view": "preview"
+        "view": "edit"
       },
       "steps": [
         {

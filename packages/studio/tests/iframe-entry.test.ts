@@ -849,7 +849,7 @@ describe("startCanvasIframe — patch", () => {
     for (const [mode, kept] of [
       ["edit", '{"attributes":{"class":"hl"}}'],
       ["design", '{"attributes":{"class":"hl"}}'],
-      ["preview", null],
+      ["git-diff", null],
     ] as const) {
       teardown?.();
       document.body.innerHTML = "";
@@ -1577,47 +1577,6 @@ describe("startCanvasIframe — content-height auto-sizing + wheel forwarding", 
     expect(evt.defaultPrevented).toBe(true);
   });
 
-  test("PREVIEW leaves the wheel alone so the frame scrolls for real", async () => {
-    const pair = fakeChannelPair<ParentToIframe, IframeToParent>();
-    const acks: IframeToParent[] = [];
-    pair.parent.onMessage((m) => acks.push(m));
-    const container = document.createElement("div");
-    document.body.append(container);
-    teardown = startCanvasIframe({ channel: pair.iframe, container });
-    pair.parent.post({
-      ...renderMsg(1, freshH1(), freshH1()),
-      mapperCtx: { ...WIRE_CTX, canvasMode: "preview" },
-      mode: "preview",
-    });
-    pair.flush();
-    await flush();
-    pair.flush();
-    acks.length = 0;
-
-    const evt = new WheelEvent("wheel", { bubbles: true, cancelable: true, deltaY: 7 });
-    container.ownerDocument.dispatchEvent(evt);
-    pair.flush();
-
-    // Neither swallowed nor forwarded: preview is a real viewport and the document scrolls itself.
-    expect(acks.some((m) => m.kind === "forwardWheel")).toBe(false);
-    expect(evt.defaultPrevented).toBe(false);
-
-    /* Ctrl/⌘ is the exception to the exception. It is page zoom to the browser (a trackpad pinch
-       arrives as this event), and the page it would scale is the whole Studio window — so the
-       frame blocks it, still without forwarding: there is nothing on the host to zoom either. */
-    const zoomEvt = new WheelEvent("wheel", {
-      bubbles: true,
-      cancelable: true,
-      ctrlKey: true,
-      deltaY: -7,
-    });
-    Object.defineProperty(zoomEvt, "ctrlKey", { value: true });
-    container.ownerDocument.dispatchEvent(zoomEvt);
-    pair.flush();
-    expect(zoomEvt.defaultPrevented).toBe(true);
-    expect(acks.some((m) => m.kind === "forwardWheel")).toBe(false);
-  });
-
   test("teardown removes the wheel listener: a later wheel dispatch posts nothing", async () => {
     const { acks, container, pair } = await bootRendered(1);
     teardown!();
@@ -2043,7 +2002,7 @@ describe("startCanvasIframe — layout chrome clicks", () => {
     pageContentPrefix: ["children", 1, "children"],
   };
 
-  async function bootWrapped(mode: "design" | "preview" = "design") {
+  async function bootWrapped(mode: CanvasMode = "design") {
     const pair = fakeChannelPair<ParentToIframe, IframeToParent>();
     const acks: IframeToParent[] = [];
     pair.parent.onMessage((m) => acks.push(m));
@@ -2102,11 +2061,16 @@ describe("startCanvasIframe — layout chrome clicks", () => {
     expect(hit?.hit.path).toEqual(["children", 0]);
   });
 
-  test("preview reports nothing: it is the shipped page, not a document to point at", async () => {
-    const { acks, container, pair } = await bootWrapped("preview");
-    container.querySelector("h1")!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    pair.flush();
-    expect(acks.some((m) => m.kind === "layoutHit")).toBe(false);
+  test("a frame that is not editing (a diff, the stylebook) reports no layout chrome click", async () => {
+    for (const mode of ["git-diff", "stylebook"] as const) {
+      const { acks, container, pair } = await bootWrapped(mode);
+      container.querySelector("h1")!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      pair.flush();
+      expect(acks.some((m) => m.kind === "layoutHit")).toBe(false);
+      teardown!();
+      teardown = undefined;
+      container.remove();
+    }
   });
 
   test("teardown removes the layout click listener", async () => {
@@ -2159,15 +2123,6 @@ describe("startCanvasIframe — setPopoverOpen", () => {
     expect(panel()!.dataset.jxPopoverOpen).toBeUndefined();
   });
 
-  test("preview refuses it in the FRAME as well as in the host", async () => {
-    // Both realms enforce every editing gate (§4.2): the canvas bundle ships prebuilt, so neither
-    // Side may assume the other's build is current.
-    const pair = await mounted("preview");
-    pair.parent.post({ kind: "setPopoverOpen", path: ["children", 0] });
-    pair.flush();
-    expect(document.querySelector("[data-jx-popover-open]")).toBeNull();
-  });
-
   test("a render restores the open panel, because a render replaces the DOM", async () => {
     const pair = await mounted();
     pair.parent.post(renderMsg(2, POPOVER_DOC, POPOVER_DOC, { popoverOpen: ["children", 0] }));
@@ -2218,13 +2173,6 @@ describe("startCanvasIframe — setDialogOpen", () => {
     pair.parent.post({ kind: "setDialogOpen", path: null });
     pair.flush();
     expect(dialogEl()!.dataset["jxDialogOpen"]).toBeUndefined();
-  });
-
-  test("preview refuses it in the FRAME as well as in the host", async () => {
-    const pair = await mounted("preview");
-    pair.parent.post({ kind: "setDialogOpen", path: ["children", 0] });
-    pair.flush();
-    expect(document.querySelector("[data-jx-dialog-open]")).toBeNull();
   });
 
   test("a render restores the open dialog, because a render replaces the DOM", async () => {

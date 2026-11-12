@@ -222,7 +222,6 @@ export function showSettingsDocument(mode: string = shell.stylebook.view): Tab |
       }
     }
     existing.session.ui.canvasMode = mode;
-    existing.session.ui.preview = false;
     return revealTab(existing);
   }
   const tab = openTab({
@@ -234,11 +233,10 @@ export function showSettingsDocument(mode: string = shell.stylebook.view): Tab |
     sourceFormat: formatForPath(projectConfigPath())?.name ?? null,
   });
   /* The mode is written here rather than left to the capability list, because `createTab` seeds
-     `session.ui.canvasMode` from the first non-preview mode, and a door over the same document has
+     `session.ui.canvasMode` from the first mode it declares, and a door over the same document has
      to SAY which editor it is: "Edit as code" from a cold workspace must open the source, not
      Project Styles. */
   tab.session.ui.canvasMode = mode;
-  tab.session.ui.preview = false;
   /* The tab was opened over the configuration OBJECT: the platform parsed it, so there is no text
      here to read a layout from, and `doc.layout` is null. A ⌘S on it would then write the
      formatter's layout for fresh output while a settings commit on the same document wrote the

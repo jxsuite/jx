@@ -19,7 +19,7 @@ void mock.module("../src/files/files.js", () => ({
       return;
     }
     openTab({
-      capabilities: { modes: ["edit", "design", "preview", "source"] },
+      capabilities: { modes: ["edit", "design", "source"] },
       document: { children: [], tagName: "div" },
       documentPath: path,
       id: path,
@@ -60,14 +60,12 @@ describe("openEntry", () => {
     expect(activeTab.value?.id).toBe("content/posts/hello.md");
   });
 
-  test("a tab showing the entry's form is switched back to writing, and out of Preview", async () => {
+  test("a tab showing the entry's form is switched back to writing", async () => {
     await openEntry("content/posts/hello.md");
     const tab = workspace.tabs.get("content/posts/hello.md")!;
     tab.session.ui.canvasMode = "entry";
-    tab.session.ui.preview = true;
     await openEntry("content/posts/hello.md");
     expect(tab.session.ui.canvasMode).toBe("edit");
-    expect(tab.session.ui.preview).toBe(false);
   });
 
   test("a tab already writing on the canvas keeps its view", async () => {

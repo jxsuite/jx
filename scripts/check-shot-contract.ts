@@ -136,8 +136,9 @@ export { CONTRACT_VERSION, DEFAULT_MANIFEST } from "./screenshots/lib/contract.t
  *
  *   **14 → 13 when "resolving with" became a popover.** `counter-test-prop` typed into
  *   `pane.primary/prop:count`, which a popover puts behind a gesture — so the value got a record
- *   (`canvas.setTestProp`) and the shot names it. The change that could have cost a step paid one
- *   back, because the fields moving out of reach is exactly what forced the capability to be named.
+ *   (`canvas.setTestProp`, folded since into `canvas.setStateValue`) and the shot names it. The
+ *   change that could have cost a step paid one back, because the fields moving out of reach is
+ *   exactly what forced the capability to be named.
  *
  *   **19 → 14 when Project Settings became a document** (studio.md §17.1), the ratchet moving the way
  *   it is meant to: `settings.selectEntry` was the five of them, and it did not become a record of
@@ -168,7 +169,8 @@ export { CONTRACT_VERSION, DEFAULT_MANIFEST } from "./screenshots/lib/contract.t
  *   settings entry rows…). Contract 0 counted 17 CSS selectors here.
  *
  *   **11 → 10 when "resolving with" became a popover**, and `pane.primary/prop:count` is the one that
- *   left: a test value is set by `canvas.setTestProp` now, so no shot addresses the field.
+ *   left: a test value is set by a command now (`canvas.setStateValue`), so no shot addresses the
+ *   field.
  *
  *   **12 → 11 with the second pane**, and the media-picker's browse button is the one that left. It
  *   was hand-stamped `inspector/field:<prop>/browse`, and the stamp was a claim about location the
@@ -227,10 +229,10 @@ const BUDGET_KEYS = Object.keys(CONTRACT_BUDGET) as BudgetKey[];
 /**
  * The toggle ids the manifest still names, and how many steps name each. **Empty, and staying so.**
  *
- * The idempotence rule (studio.md §13.5) requires zero: `canvas.togglePreview` cannot say which
- * state it ends in, so six screenshots taken through it photographed whichever way the default
- * happened to point that week. The manifest conversion replaced all ten steps with the state each
- * was reaching for — `canvas.setMode {mode: "preview"}` ×6, `inspector.setSection {section:
+ * The idempotence rule (studio.md §13.5) requires zero: a toggle cannot say which state it ends in,
+ * so six screenshots taken through one photographed whichever way the default happened to point
+ * that week. The manifest conversion replaced all ten steps with the state each was reaching for —
+ * six `canvas.setMode` steps (`edit` now that Preview is gone), `inspector.setSection {section:
  * "__element", open: true}` ×3, and the one `view.toggleActivity {tab: "layers"}` in
  * `block-action-bar-shot`, which was not switching panel at all: it was COLLAPSING the dock, and
  * now says `view.setNavigator {open: false}`.
@@ -460,7 +462,7 @@ function show(value: JsonValue): string {
 
 function typeMatches(expected: string | readonly string[], value: JsonValue): boolean {
   /* JSON Schema's `type` may be a UNION, and two shipped commands declare one — `canvas.setBreakpoint`'s
-     `media` is `["string", "null"]` and `canvas.setTestProp`'s `value` is the whole JSON ladder. This
+     `media` is `["string", "null"]` and `canvas.setStateValue`'s `value` is the whole JSON ladder. This
      compared an array to a string, so any union type failed every value; no shot named one of those
      commands, so the check was wrong in a way nothing could observe. Reading the union is not a
      loosening — an arg still has to match one of the types the app declares. */

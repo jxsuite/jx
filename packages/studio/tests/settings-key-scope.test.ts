@@ -98,11 +98,9 @@ globalThis.requestAnimationFrame = (cb: FrameRequestCallback) => {
   return 0;
 };
 
-/** The effective canvas mode, exactly as `studio.ts`'s `getCanvasMode` composes it. */
+/** The canvas mode, exactly as `studio.ts`'s `getCanvasMode` reads it. */
 function canvasMode(): string {
-  const ui = activeTab.value?.session.ui;
-  const base = ui?.canvasMode ?? "design";
-  return ui?.preview && (base === "edit" || base === "design") ? "preview" : base;
+  return activeTab.value?.session.ui.canvasMode ?? "design";
 }
 
 let registry: CommandRegistry;
@@ -293,7 +291,6 @@ describe("mode → editor kind", () => {
   test.each<[string, EditorKind, CanvasView]>([
     ["edit", "canvas", "edit"],
     ["design", "canvas", "design"],
-    ["preview", "canvas", "preview"],
     ["source", "code", "design"],
     ["grid", "grid", "design"],
     ["stylebook", "config", "design"],

@@ -126,7 +126,6 @@ export async function goBack(paneId: string, deps: WorkspaceBackDeps): Promise<b
     return false;
   }
   if (target.kind === "view") {
-    tab.session.ui.preview = false;
     deps.setCanvasMode(tab, target.mode);
     return true;
   }

@@ -159,7 +159,7 @@ Test values are a preview aid. They live with your editing session, not in the c
 - A Request that reads **Failed** has the reason in its editor: usually a wrong URL, or a server that did not answer. Fix the URL and it fetches again, or click **Refresh** to retry the same one.
 - A Request that reads **Not run** is not broken. Its method is not `GET`, so the canvas does not send it.
 - A computed value that shows the wrong result: open the entries it depends on and read what they actually resolved to; most "formula bugs" are surprising input data.
-- Want to see what an event leads to? Set the entry it writes with the **On canvas** field and look at the canvas, or trigger the event for real with **Preview** on and watch the entry's row change.
+- Want to see what an event leads to? Set the entry it writes with the **On canvas** field and look at the canvas, or trigger the event for real in the tab **Open in Browser** gives you.
 
 ## Next
 

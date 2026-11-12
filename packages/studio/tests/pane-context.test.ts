@@ -6,8 +6,7 @@
  *
  * - **Three labelled axes, not five unlabelled controls.** Every axis renders under its own name, and
  *   the tests assert the names, because the label is the whole point of the restructure.
- * - **Preview is a flag over a base, not a third radio value.** The radio marks the base throughout
- *   and a separate `aria-pressed` toggle says whether preview is on.
+ * - **The view is a two-value radio.** Edit and Design; there is no Preview to toggle beside it.
  * - **The rendering context only selects.** Its popover ends in "Manage contexts…", which runs
  *   `settings.open` — the definition site — rather than defining anything itself.
  * - **Zoom is not here.** It left the band for a pod and the pod for the status bar's ZOOM field.
@@ -106,7 +105,6 @@ function ctxInMode(mode: string, overrides: Partial<Ctx> = {}): Ctx {
   const tab = tabOfPane(PRIMARY_PANE);
   if (tab) {
     tab.session.ui.canvasMode = mode;
-    tab.session.ui.preview = false;
   }
   return makeCtx(overrides);
 }
@@ -123,7 +121,7 @@ function openTestTab(media?: Record<string, string>): Tab {
     documentPath: "/project/index.json",
     id: "pane-context-tab",
   });
-  tab.capabilities.modes = ["edit", "design", "preview", "source"];
+  tab.capabilities.modes = ["edit", "design", "source"];
   return tab;
 }
 
@@ -256,7 +254,7 @@ function installRegistry(ran: string[]) {
         "canvas.setLayoutVisible",
         "canvas.setResolvingOpen",
         "canvas.setRouteParam",
-        "canvas.setTestProp",
+        "canvas.setStateValue",
         // Axis 3's fourth segment. Its id is in the `i18n.` namespace and its definition site is
         // `canvas-utils.ts`, for the reason that record's comment gives.
         "i18n.switchLocale",
@@ -531,7 +529,7 @@ describe("editor kind", () => {
     expect(strip.getAttribute("role")).toBe("radiogroup");
     expect(strip.getAttribute("aria-label")).toBe("Editor");
     const segs = segments("editor-kind");
-    // Edit/design/preview all name the Canvas; source names Code. No dead entry for grid or diff.
+    // Edit and design both name the Canvas; source names Code. No dead entry for grid or diff.
     expect(segs.map((s) => nameOf(s))).toEqual(["Canvas", "Code"]);
     expect(segs.map((s) => control(s).getAttribute("aria-checked"))).toEqual(["true", "false"]);
   });
@@ -545,7 +543,7 @@ describe("editor kind", () => {
 
   test("a document with one kind prints its name instead of an immovable group", async () => {
     const tab = openTestTab();
-    tab.capabilities.modes = ["edit", "design", "preview"];
+    tab.capabilities.modes = ["edit", "design"];
     await mountBar();
     expect(part("editor-kind")).toBeNull();
     expect(part("static")?.textContent.trim()).toBe("Canvas");
@@ -553,7 +551,7 @@ describe("editor kind", () => {
 
   test("never offers Diff, even over a document that declares the mode", async () => {
     const tab = openTestTab();
-    tab.capabilities.modes = ["edit", "design", "preview", "source", "git-diff"];
+    tab.capabilities.modes = ["edit", "design", "source", "git-diff"];
     await mountBar();
     expect(segments("editor-kind").map((s) => nameOf(s))).toEqual(["Canvas", "Code"]);
   });
@@ -561,23 +559,21 @@ describe("editor kind", () => {
   test("a tab IN a comparison names it and offers nothing else", async () => {
     // Diff is entered from Publish and left by Back; the axis is not a second way out.
     const tab = openTestTab();
-    tab.capabilities.modes = ["edit", "design", "preview", "source", "git-diff"];
+    tab.capabilities.modes = ["edit", "design", "source", "git-diff"];
     tab.session.ui.canvasMode = "git-diff";
     await mountBar(ctxInMode("git-diff"));
     expect(part("editor-kind")).toBeNull();
     expect(part("static")?.textContent.trim()).toBe("Diff");
   });
 
-  test("choosing a kind lands on that kind's first mode and clears preview", async () => {
+  test("choosing a kind lands on that kind's first mode", async () => {
     const tab = openTestTab();
-    tab.session.ui.preview = true;
     const ctx = makeCtx();
     await mountBar(ctx);
 
     pointer(btn("Code"), "click");
     await flush(4);
     expect(ctx.setCanvasMode).toHaveBeenCalledWith(tab, "source");
-    expect(tab.session.ui.preview).toBe(false);
   });
 
   test("a kind this document no longer supports is refused rather than half-applied", async () => {
@@ -589,7 +585,7 @@ describe("editor kind", () => {
        refusal has to hold for it, because `modeForEditorKind` answering nothing is the only thing
        standing between it and a half-applied mode. */
     const code = btn("Code");
-    tab.capabilities.modes = ["edit", "design", "preview"];
+    tab.capabilities.modes = ["edit", "design"];
     pointer(code, "click");
     await flush(4);
     expect(ctx.setCanvasMode).not.toHaveBeenCalled();
@@ -720,15 +716,10 @@ describe("back to the workspace home", () => {
 // ─── Axis 2 · Canvas view ─────────────────────────────────────────────────────
 
 describe("canvas view", () => {
-  test("is a two-value radiogroup plus a SEPARATE preview toggle", async () => {
-    /*
-     * This asserted the opposite — three values in one radio group, and "nothing in the axis is a
-     * toggle: a value cannot silently compose with another value". But preview does compose, and
-     * always did: it is stored as `ui.preview` over an edit/design base, `PREVIEWABLE_BASE_MODES`
-     * names which bases it composes with, and `canvasModeOfPane` folds the two together. The radio
-     * was describing its own storage inaccurately, and the cost was legible: while previewing, it
-     * could not say which mode you were previewing or which one you would come back to.
-     */
+  test("is a two-value radiogroup, and nothing beside it is a Preview toggle", async () => {
+    /* Preview was a toggle beside this radio, a flag over an edit/design base. It is gone: both
+       views draw the page with its data resolved (studio.md §4.5), and a real browser is where a
+       page's handlers and links run (studio.md §10.1). */
     openTestTab();
     await mountBar();
 
@@ -740,84 +731,14 @@ describe("canvas view", () => {
     expect(segs.map((s) => control(s).getAttribute("role"))).toEqual(["radio", "radio"]);
     expect(segs.map((s) => control(s).getAttribute("aria-checked"))).toEqual(["true", "false"]);
 
-    const toggle = part("preview-toggle")!;
-    expect(nameOf(toggle)).toBe("Preview");
-    // A toggle, not a third radio: it announces `aria-pressed` and carries no `aria-checked`.
-    expect(control(toggle).getAttribute("aria-pressed")).toBe("false");
-    expect(control(toggle).getAttribute("aria-checked")).toBeNull();
+    expect(part("preview-toggle")).toBeNull();
+    expect(labels().some((name) => /preview/i.test(name))).toBe(false);
   });
 
-  test("the switch is segmented and the preview toggle is a framed button of its own", async () => {
-    /* The View switch is a compact group, which draws its members' frame whatever their quiet
-       says, and the toggle stands outside it. A quiet toggle rested as a bare word beside a framed
-       switch, which is how every Spectrum-era action button beside a group did NOT look, so it
-       says `quiet: false` and rests framed. */
+  test("the switch is segmented", async () => {
     openTestTab();
     await mountBar();
     expect(part("views")!.dataset["compact"]).toBe("");
-    expect(part("preview-toggle")!.dataset["quiet"]).toBeUndefined();
-  });
-
-  test("previewing leaves the BASE marked — the state the radio could not express", async () => {
-    const tab = openTestTab();
-    tab.session.ui.canvasMode = "design";
-    tab.session.ui.preview = true;
-    await mountBar();
-
-    expect(segments("views").map((s) => control(s).getAttribute("aria-checked"))).toEqual([
-      "false",
-      "true",
-    ]);
-    const toggle = part("preview-toggle")!;
-    expect(control(toggle).getAttribute("aria-pressed")).toBe("true");
-    // And it says where "off" goes, rather than leaving the author to guess — in the tip an
-    // Enabled kit button renders for its hint, not a title (ui.md §5.1).
-    expect(hintOf(toggle)).toContain("Design");
-  });
-
-  test("the toggle sets the flag and clears it, over either base", async () => {
-    const tab = openTestTab();
-    const ctx = makeCtx();
-    await mountBar(ctx);
-
-    pointer(part("preview-toggle")!, "click");
-    await flush(4);
-    expect(tab.session.ui.preview).toBe(true);
-    expect(tab.session.ui.canvasMode).toBe("edit"); // The base is untouched.
-
-    pointer(part("preview-toggle")!, "click");
-    await flush(4);
-    expect(tab.session.ui.preview).toBe(false);
-
-    pointer(btn("Design"), "click");
-    await flush(4);
-    pointer(part("preview-toggle")!, "click");
-    await flush(4);
-    expect(tab.session.ui.preview).toBe(true);
-    expect(ctx.setCanvasMode).toHaveBeenCalledWith(tab, "design");
-  });
-
-  test("Design clears the flag on the way past", async () => {
-    const tab = openTestTab();
-    const ctx = makeCtx();
-    await mountBar(ctx);
-
-    pointer(part("preview-toggle")!, "click");
-    await flush(4);
-    expect(tab.session.ui.preview).toBe(true);
-
-    pointer(btn("Design"), "click");
-    await flush(4);
-    expect(tab.session.ui.preview).toBe(false);
-    expect(ctx.setCanvasMode).toHaveBeenCalledWith(tab, "design");
-  });
-
-  test("no toggle for a document that does not declare preview", async () => {
-    const tab = openTestTab();
-    tab.capabilities.modes = ["edit", "design"];
-    await mountBar();
-    expect(part("preview-toggle")).toBeNull();
-    expect(segments("views").map((s) => nameOf(s))).toEqual(["Edit", "Design"]);
   });
 
   test("offers only the views the document declares", async () => {
@@ -825,8 +746,20 @@ describe("canvas view", () => {
     tab.capabilities.modes = ["edit", "source"];
     await mountBar();
     expect(segments("views").map((s) => nameOf(s))).toEqual(["Edit"]);
-    // `source` is in the list but composes with no preview, so the toggle is not offered either.
-    expect(part("preview-toggle")).toBeNull();
+  });
+
+  test("choosing a view writes the tab's mode, and choosing the current one writes nothing", async () => {
+    const tab = openTestTab();
+    const ctx = makeCtx();
+    await mountBar(ctx);
+    pointer(btn("Design"), "click");
+    await flush(4);
+    expect(ctx.setCanvasMode).toHaveBeenCalledTimes(1);
+    expect(ctx.setCanvasMode).toHaveBeenCalledWith(tab, "design");
+    tab.session.ui.canvasMode = "design";
+    pointer(btn("Design"), "click");
+    await flush(4);
+    expect(ctx.setCanvasMode).toHaveBeenCalledTimes(1);
   });
 
   test("is absent entirely when the editor is not the Canvas", async () => {
@@ -1026,7 +959,7 @@ describe("rendering context", () => {
         id: "locale-tab",
       },
     );
-    tab.capabilities.modes = ["edit", "design", "preview", "source"];
+    tab.capabilities.modes = ["edit", "design", "source"];
     return tab;
   }
 
@@ -1386,7 +1319,7 @@ describe("resolving with", () => {
     expect(part("resolving-trigger")).toBeNull();
   });
 
-  test("a component renders one test-prop field per prop, keeping its region id", async () => {
+  test("a component renders one test-value field per prop, writing its state value", async () => {
     const tab = resetWorkspaceWithTab(
       {
         children: [{ tagName: "h3", textContent: "${state.title}" }],
@@ -1410,26 +1343,42 @@ describe("resolving with", () => {
 
     choose(inputOf(fields[1]!), "Test drive");
     await flush(4);
-    expect(tab.session.ui.previewProps).toEqual({ title: "Test drive" });
+    // A test value IS the state value set for the canvas: one store, which the Data panel shows.
+    expect(tab.session.ui.stateValues).toEqual({ title: "Test drive" });
 
     choose(inputOf(fields[0]!), "7");
     await flush(4);
-    expect(tab.session.ui.previewProps).toEqual({ count: 7, title: "Test drive" });
+    expect(tab.session.ui.stateValues).toEqual({ count: 7, title: "Test drive" });
+    // The trigger counts the props that hold one.
+    expect(part("resolving-trigger")?.textContent).toContain("2 set");
   });
 
-  test("clearing the last prop field resets previewProps to null", async () => {
+  test("clearing the last prop field clears its state value", async () => {
     const tab = resetWorkspaceWithTab(
       { children: [], state: { title: "Hello" }, tagName: "x-card" },
       { documentPath: "components/x-card.json", id: "comp-clear" },
     );
-    tab.session.ui.previewProps = { title: "Test drive" };
+    tab.session.ui.stateValues = { title: "Test drive" };
     await mountBar();
 
     const field = part("prop")!.querySelector<HTMLInputElement>("input")!;
     expect(field.value).toBe("Test drive");
     choose(field, "");
     await flush(4);
-    expect(tab.session.ui.previewProps).toBeNull();
+    expect(tab.session.ui.stateValues).toEqual({});
+  });
+
+  test("an entry that fetches its value offers no test value", async () => {
+    resetWorkspaceWithTab(
+      {
+        children: [],
+        state: { feed: { $src: "./feed.js", default: [] }, title: "Hello" },
+        tagName: "x-card",
+      },
+      { documentPath: "components/x-card.json", id: "comp-src" },
+    );
+    await mountBar();
+    expect(partAll("prop").map((f) => f.dataset.propName)).toEqual(["title"]);
   });
 
   test("no prop fields for a component whose state holds no plain data", async () => {
@@ -1451,7 +1400,7 @@ describe("resolving with", () => {
 describe("zoom", () => {
   test("is drawn by no mode of the bar: no pod, no stepper, no percentage, no Fit", async () => {
     const tab = openTestTab();
-    for (const mode of ["edit", "design", "stylebook", "git-diff", "preview", "source"]) {
+    for (const mode of ["edit", "design", "stylebook", "git-diff", "source"]) {
       tab.session.ui.canvasMode = mode;
       paneContext.unmount();
       await mountBar(ctxInMode(mode));
@@ -1519,7 +1468,7 @@ describe("two bars, two panes", () => {
   async function twoBars(ctx: Ctx): Promise<[Tab, Tab]> {
     const home = openTestTab(SCHEME_MEDIA);
     const away = openTab({
-      capabilities: { modes: ["edit", "design", "preview", "source"] },
+      capabilities: { modes: ["edit", "design", "source"] },
       // `$media` on BOTH: `canvas.setBreakpoint` reads the document it is addressing, which for the
       // Side bar is the side pane's — and that is exactly the fact this describe block exists for.
       document: {

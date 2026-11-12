@@ -45,9 +45,7 @@ Key drag details:
 
 - **It stops at the pane.** The column can't be dragged wider than the space it has to render in. To work at a width wider than your window, pick that size from the Size group instead. The page is laid out at that width and shown as wide as it fits.
 - **The width isn't remembered; the size is.** Dragging is for looking. Switch modes and the column goes back to the breakpoint's own width. Reopening the project later starts there too, at whichever breakpoint you last dragged into.
-- **Preview stays on the breakpoint.** Preview is the fidelity view, so it renders at the declared width rather than at a width in between.
-
-**Preview follows it too**, at that same width, so switching Preview on doesn't jump you back to a full-width page. With no breakpoint chosen, Preview fills the pane.
+- **Open in Browser shows real widths.** To see the page at exactly the width a visitor's screen has, resize the browser tab **Open in Browser** gives you.
 
 ## How the cascade works
 

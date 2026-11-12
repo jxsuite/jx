@@ -9,7 +9,6 @@
 import { projectState, stripEventHandlers } from "../store";
 import { displayTagName, isJsonObject, isNonNullObject, isString } from "@jxsuite/schema/guards";
 import { canvasModeOfTab } from "./canvas-surface";
-import { toRaw } from "../reactivity";
 import {
   distributePageIntoLayout,
   getEffectiveElements,
@@ -39,7 +38,7 @@ import {
   resolveParamBoundState,
   substitutePreviewParams,
 } from "../page-params";
-import { isComponentDoc, substitutePreviewProps } from "../component-props";
+import { isComponentDoc } from "../component-props";
 import { assetContextFor, hostAssetDeclarations } from "./asset-refs";
 import { collectionForFile } from "../content/collection-match";
 import { writesEntryOnCanvas } from "../content/content-collections";
@@ -349,7 +348,7 @@ function entryRootOf(template: string, roots: ReadonlySet<string>): string | nul
  * @param entry - The entry's document as this render draws it (prepared, in Edit and Design)
  * @param path - The entry's file, project-relative
  * @param editable - Whether the render can be edited, so the page's whole-field text is marked as
- *   the entry's fields to type in place (Edit and Design; never Preview)
+ *   the entry's fields to type in place (Edit and Design)
  * @param scripts - Where the page's client script is gathered
  */
 export async function entryInPage(
@@ -393,21 +392,15 @@ export async function entryInPage(
  * `tabOfPane(surface.paneId)` and threads that tab's id through `mountIframeCanvas` →
  * `preparePassRender`. Six values came from the wrong tab whenever the pane being drawn was not the
  * focused one: `documentPath` (hence `docBase` and the `isPage` test), `showLayout`,
- * `previewParams`, `previewProps`, and the composed `canvasMode`.
+ * `previewParams`, the values set for the canvas, and `canvasMode`.
  *
- * The mode is the one with teeth. `mountIframeCanvas` ends with `setHostPreview(state, message.mode
- * === "preview")`, so a side pane in Edit whose neighbour was in Preview got a PREVIEW frame — no
- * overlay, no editing messages honoured — and a pane being previewed beside an editing one got an
- * editable frame for a document nobody was editing. `canvasModeOfTab(tab)` is the same composition
- * every other gate reads, applied to the tab that is actually being drawn.
- *
- * **`modeOverride` is the last of those six, and `canvasModeOfTab` is not enough for it.** A LENS
- * draws the source pane's document in a mode of its own, and that mode is deliberately never
- * written onto the tab — so `tabOfPane` hops to the source tab and reports ITS mode. A Diff lens
- * beside a page in Design therefore resolved both of its artboards in `design`: editable frame,
- * placeholders on, anchors de-linked, and `classifyRenderNode` collapsing repeater hops that the
- * primary pane's `git-diff` render leaves alone. Two entry points to one comparison disagreed about
- * both editability and the coordinate space of every stamped path.
+ * **`modeOverride` is the last of those, and `canvasModeOfTab` is not enough for it.** A LENS draws
+ * the source pane's document in a mode of its own, and that mode is deliberately never written onto
+ * the tab — so `tabOfPane` hops to the source tab and reports ITS mode. A Diff lens beside a page
+ * in Design therefore resolved both of its artboards in `design`: editable frame, placeholders on,
+ * anchors de-linked, and `classifyRenderNode` collapsing repeater hops that the primary pane's
+ * `git-diff` render leaves alone. Two entry points to one comparison disagreed about both
+ * editability and the coordinate space of every stamped path.
  *
  * `canvasModeOfPane(paneId)` is the answer, and it degrades to `canvasModeOfTab` for every pane
  * that is not a lens — so the one production caller passes it unconditionally, the way it already
@@ -450,27 +443,20 @@ export async function resolveCanvasDocument(
   const canvasMode = modeOverride ?? canvasModeOfTab(tab);
   const fileBase = documentBase(projectState?.projectRoot);
   /* Each document is addressed BEFORE it is merged with another (canvas-scripts.ts), and after it
-     is copied: the copy below is a structured clone in Preview, which a qualified copy still
-     holding the tab's reactive nodes could not be given to. */
+     is copied by the edit transform below. */
   const scripts = scriptCollector(fileBase);
   const unsaved = tab?.doc.dirty === true;
   /* What each row field is called, read off the project's schemas once for the render: every walk
      below names its chips by it, and so does the frame for a node it draws again. */
-  const tagTitles =
-    canvasMode === "preview" ? {} : tagTitlesOf(doc, projectState?.projectConfig ?? null);
+  const tagTitles = tagTitlesOf(doc, projectState?.projectConfig ?? null);
 
   /* A `$switch` case chosen for the canvas (`canvas.setSwitchCase`, studio.md §4.5) is in the
-     document the editable views prepare, at the switch's own path; the value it reads joins the
-     state at the end, with the values set for the canvas. Preview draws the page as it ships. */
-  const switched =
-    tab && canvasMode !== "preview"
-      ? withSwitchCases(doc, tab.session.ui.switchCases)
-      : { doc, state: {} };
+     document the views prepare, at the switch's own path; the value it reads joins the state at
+     the end, with the values set for the canvas. */
+  const switched = tab ? withSwitchCases(doc, tab.session.ui.switchCases) : { doc, state: {} };
 
   let renderDoc = scripts.own(
-    canvasMode === "preview"
-      ? structuredClone(toRaw(doc))
-      : prepareForEditMode(stripEventHandlers(switched.doc), tagTitles),
+    prepareForEditMode(stripEventHandlers(switched.doc), tagTitles),
     S.documentPath,
     unsaved,
   );
@@ -493,17 +479,9 @@ export async function resolveCanvasDocument(
       : getEffectiveLayoutPath(pageLayout(doc, tab));
     /* An entry goes into its collection's page first, and the page into the layout: the order the
        build composes them in (studio.md §22.5). */
-    let pageForSlots =
-      canvasMode === "preview"
-        ? scripts.own(structuredClone(toRaw(doc)), S.documentPath, unsaved)
-        : renderDoc;
+    let pageForSlots = renderDoc;
     if (isEntry && S.documentPath) {
-      entryPage = await entryInPage(
-        pageForSlots,
-        S.documentPath,
-        canvasMode !== "preview",
-        scripts,
-      );
+      entryPage = await entryInPage(pageForSlots, S.documentPath, true, scripts);
       pageForSlots = entryPage?.doc ?? pageForSlots;
     }
     const layoutDoc = layoutPath
@@ -512,10 +490,7 @@ export async function resolveCanvasDocument(
     if (!layoutDoc && entryPage) {
       // A page with no layout: the page alone is the frame the entry is written in.
       const pageDoc = entryPage.doc;
-      renderDoc =
-        canvasMode === "preview"
-          ? pageDoc
-          : prepareForEditMode(stripEventHandlers(pageDoc), tagTitles);
+      renderDoc = prepareForEditMode(stripEventHandlers(pageDoc), tagTitles);
       layoutWrapped = true;
       const pageContent = findPageContentPrefix(pageDoc);
       pageContentPrefix = pageContent?.prefix ?? null;
@@ -523,10 +498,7 @@ export async function resolveCanvasDocument(
     }
     if (layoutDoc) {
       const merged = distributePageIntoLayout(layoutDoc, pageForSlots);
-      renderDoc =
-        canvasMode === "preview"
-          ? merged
-          : prepareForEditMode(stripEventHandlers(merged), tagTitles);
+      renderDoc = prepareForEditMode(stripEventHandlers(merged), tagTitles);
       layoutWrapped = true;
       if (S.documentPath) {
         /* SAFETY: a document's `$elements` entries are tag-name strings, `{ $ref }` imports or
@@ -543,8 +515,8 @@ export async function resolveCanvasDocument(
   }
 
   /* `$site` / `$page`, and the project's own state, exactly as the build injects them — a layout
-     that binds `${state.$page.url}` (a header marking its current link) threw on the canvas, and in
-     Preview, where templates are live, that one TypeError blanked the whole page. Onto COPIES of
+     that binds `${state.$page.url}` (a header marking its current link) threw on the canvas, and
+     where templates are live that one TypeError blanked the whole page. Onto COPIES of
      `state` and `imports`: the edit-mode render doc shares both with the tab's source document,
      which must not gain injected keys it would then save. */
   const projectConfig = projectState?.projectConfig;
@@ -568,15 +540,14 @@ export async function resolveCanvasDocument(
    * It replaces a walk over the render document that used to sit further down this function. A walk
    * can only ever see LITERAL values: `applyAttributes` resolves a `{"$ref": …}` or `"${…}"` src
    * inside a reactive effect, so at walk time a bound image src is not a string at all. That is why
-   * a collection listing of thirty bound card images broke all at once in preview and nowhere else
-   * — design and edit swap every bound src for a transparent pixel, so they never reached the
-   * network to fail.
+   * a collection listing of thirty bound card images broke all at once wherever bound images were
+   * drawn live, as every view now draws them (§4.5).
    */
   const assets = assetContextFor(S.documentPath, hostAssetDeclarations());
 
   // Substitute chosen dynamic route params ({$ref: "#/$params/x"} → literal), inject state.$page,
   // And bake the substituted class-prototype state entries via the backend resolver — in every
-  // Mode, so ContentEntry state is real data for preview templates AND the design/edit data
+  // Mode, so ContentEntry state is real data for the canvas's templates AND the data
   // Explorer. Pure rebuild: renderDoc shares node references with the tab's source document
   // (posted as shadowDoc), whose $refs must survive for editing/serialization.
   if (isPage && tab) {
@@ -588,8 +559,8 @@ export async function resolveCanvasDocument(
     }
   }
 
-  // `$site` and `$page`, as the build injects them (canvas-page-context.ts), in every mode: Preview
-  // Draws the page as it ships, and edit mode evaluates a component's bound props live. For a page
+  // `$site` and `$page`, as the build injects them (canvas-page-context.ts), in every mode: the
+  // Canvas resolves every binding live, a component's bound props included (§4.5). For a page
   // This refines the pair injected above with the chosen route params and the project's i18n, and
   // It is the only injection a collection entry gets.
   if ((isPage || isEntry) && S.documentPath) {
@@ -610,16 +581,14 @@ export async function resolveCanvasDocument(
     }
   }
 
-  /* Class-backed state resolved before the render rather than by it (repeater-sources.ts): in every
-     mode, an entry naming an enabled extension's class by a bare `$prototype`, as the build
-     resolves it; in Edit and Design, also the collections a repeater reads, so its rows are drawn
-     with the first render rather than after a second. */
+  /* Class-backed state resolved before the render rather than by it (repeater-sources.ts), in every
+     mode: an entry naming an enabled extension's class by a bare `$prototype`, as the build
+     resolves it, and the collections a repeater reads, so its rows are drawn with the first render
+     rather than after a second. */
   const extensions = await loadExtensions();
   const classes = extensionClassPaths(extensions);
   const bakeKeys = extensionClassKeys(renderDoc, classes);
-  if (canvasMode !== "preview") {
-    bakeKeys.push(...repeaterSourceKeys(doc));
-  }
+  bakeKeys.push(...repeaterSourceKeys(doc));
   const sourceKeys = [...new Set(bakeKeys)];
   renderDoc = await bakeRepeaterSources(renderDoc, sourceKeys, docBase, classes);
   const unresolvedSources = getPlatform().resolveClass === undefined ? sourceKeys : [];
@@ -630,17 +599,6 @@ export async function resolveCanvasDocument(
   const projectFormulas = inheritableFormulas(projectState?.projectConfig?.state);
   if (!isPage && isComponentDoc(renderDoc) && Object.keys(projectFormulas).length > 0) {
     renderDoc = { ...renderDoc, state: { ...projectFormulas, ...renderDoc.state } };
-  }
-
-  // Component definition docs (non-page): seed chosen test-prop values into the render doc's state
-  // So a non-instantiated component previews with real data — templates, dataScope snapshots, and
-  // Live/snapshot expression previews all see the values (M6, the previewParams mirror). Pure
-  // Rebuild for the same reason as substitutePreviewParams above.
-  if (!isPage && tab && isComponentDoc(renderDoc)) {
-    const { previewProps } = tab.session.ui;
-    if (previewProps && Object.keys(previewProps).length > 0) {
-      renderDoc = substitutePreviewProps(renderDoc, previewProps);
-    }
   }
 
   // Component auto-discovery (content mode, wrapped layout, or a layout opened on its own) —
@@ -707,9 +665,9 @@ export async function resolveCanvasDocument(
   }
 
   /* A state value set for the canvas (`canvas.setStateValue`, studio.md §4.5), last, so nothing
-     above (a test prop, an injected context) is drawn over the author's choice. Editable views
-     only: Preview draws the page as it ships. */
-  if (tab && canvasMode !== "preview") {
+     above (an injected context) is drawn over the author's choice. A component's test values are
+     these too. */
+  if (tab) {
     renderDoc = withStateValues(renderDoc, doc.state, tab.session.ui.stateValues);
   }
   if (Object.keys(switched.state).length > 0) {
@@ -730,7 +688,7 @@ export async function resolveCanvasDocument(
     renderDoc,
     /* One sample item per repeater, for a list with nothing to draw (studio.md §4.5). Deduced here
        because the item's shape is in the project's content schemas, which the frame never sees. */
-    rowSamples: canvasMode === "preview" ? {} : repeaterSampleItems(doc, projectConfig),
+    rowSamples: repeaterSampleItems(doc, projectConfig),
     scripts: scripts.scripts,
     siteStyle: projectState?.projectConfig?.style ?? null,
     tagTitles,

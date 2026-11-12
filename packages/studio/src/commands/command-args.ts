@@ -506,7 +506,7 @@ function listTypes(types: readonly string[]): string {
  *
  * `null` is admitted only when listed, which is the whole difference from a reader that treats it
  * as "absent": `canvas.setEditWidth { width: null }` MEANS "back to the breakpoint's width", and
- * `canvas.setTestProp { value: null }` means "clear it". Nothing is coerced between types.
+ * `canvas.setStateValue { value: null }` means "clear it". Nothing is coerced between types.
  */
 export function typedArg(
   commandId: string,

@@ -243,7 +243,7 @@ async function loadProjectContext(projectRoot: string): Promise<ProjectContext |
   if (!entry) {
     return null;
   }
-  // This host draws the canvas and Preview, so entries a project holds back stay visible to authors.
+  // This host draws the canvas, so entries a project holds back stay visible to authors.
   entry.context ??= loadProjectSections(projectRoot, entry.config, entry.registry, {
     includeHeld: true,
     lazy: true,

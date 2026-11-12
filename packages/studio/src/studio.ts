@@ -377,10 +377,10 @@ const derivationDeps: DerivationDeps = {
 // These mutable variables are local to studio.js for now. As sections are extracted
 // Into their own modules, they will migrate to ctx in store.js.
 
-// The FOCUSED pane's effective canvas mode. The composition itself (the per-tab preview toggle over
-// An edit/design base) lives in `canvas/canvas-surface.ts`, beside the panes, because the answer is
-// A property of a pane's tab and every other pane has its own — this is just the focused one, which
-// Is what a panel drawn once for the whole shell means by "the canvas mode".
+// The FOCUSED pane's canvas mode. The pane rule (a lens draws in a mode of its own) lives in
+// `canvas/canvas-surface.ts`, beside the panes, because the answer is a property of a pane and
+// Every other pane has its own — this is just the focused one, which is what a panel drawn once
+// For the whole shell means by "the canvas mode".
 //
 // It is a READ, and it is injected only into surfaces the shell draws once: the toolbar, the
 // Inspector, the block bar, the overlays, the live-render context and the canvas view commands.
@@ -867,9 +867,7 @@ function installPaneRenderEffects(paneId: string): void {
       void tab.session.ui.editingFormula;
       void tab.session.ui.editingFunction;
       void tab.session.ui.featureToggles;
-      void tab.session.ui.preview;
       void tab.session.ui.previewParams;
-      void tab.session.ui.previewProps;
       // The row cap decides which nodes exist, so a new one is a render (`canvas.setRepeaterRows`).
       void tab.session.ui.repeaterRows;
       // A state value set for the canvas is in the scope the render builds (`canvas.setStateValue`).

@@ -57,7 +57,7 @@ function open(id: string, opts: Partial<Parameters<typeof openTab>[0]> = {}) {
 /** A tab whose only modes are Canvas ones — the case the second pane used to refuse. */
 function openCanvasOnly(id: string) {
   return openTab({
-    capabilities: { modes: ["edit", "design", "preview"] },
+    capabilities: { modes: ["edit", "design"] },
     document: { tagName: "div" },
     documentPath: `${id}.md`,
     id,
@@ -116,7 +116,7 @@ describe("editor kinds", () => {
   });
 
   test("the kind list is deduplicated and never contains a dead entry", () => {
-    const tab = open("a", { capabilities: { modes: ["edit", "design", "preview", "source"] } });
+    const tab = open("a", { capabilities: { modes: ["edit", "design", "source"] } });
     expect(editorKindsOf(tab)).toEqual(["canvas", "code"]);
     expect(modeForEditorKind(tab, "code")).toBe("source");
     expect(modeForEditorKind(tab, "diff")).toBeUndefined();

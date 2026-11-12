@@ -89,7 +89,7 @@ function openTestTab(): Tab {
     { children: [{ tagName: "p", textContent: "Hi" }], tagName: "div" },
     { documentPath: "/project/index.json", id: "zoom-tab" },
   );
-  tab.capabilities.modes = ["edit", "design", "preview", "source", "stylebook", "git-diff"];
+  tab.capabilities.modes = ["edit", "design", "source", "stylebook", "git-diff"];
   return tab;
 }
 
@@ -207,11 +207,6 @@ describe("the zoom field's presence", () => {
     expect(fit()).not.toBeNull();
 
     tab.session.ui.canvasMode = "source";
-    await flush(6);
-    expect(zoomField()).toBeNull();
-
-    tab.session.ui.canvasMode = "design";
-    tab.session.ui.preview = true;
     await flush(6);
     expect(zoomField()).toBeNull();
   });
@@ -419,7 +414,7 @@ describe("the field follows the focused pane", () => {
     primary.session.ui.canvasMode = "design";
     primary.session.ui.zoom = 2;
     const side = openTab({
-      capabilities: { modes: ["edit", "design", "preview", "source"] },
+      capabilities: { modes: ["edit", "design", "source"] },
       document: { children: [{ tagName: "p", textContent: "Away" }], tagName: "div" },
       documentPath: "/project/away.json",
       id: "zoom-away",

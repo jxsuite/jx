@@ -166,8 +166,6 @@ function isInvokerAction(value: string): value is InvokerAction {
  * That is what makes this safe to post unconditionally: a trigger whose target is a component's own
  * internal popover resolves to no addressable node, and nothing is posted.
  *
- * Called only after `onClick`'s preview branch has returned, so no mode gate is needed here.
- *
  * @param target The click's `e.target`.
  * @param channel The frame's channel.
  */
@@ -245,9 +243,7 @@ export interface InteractionDeps {
   getShadowDoc: () => JxMutableNode | null;
   /**
    * The live render's canvas mode. Editing affordances are suppressed per mode: insertion "+" zones
-   * are meaningless for stylebook renders (specimens aren't insert targets), and preview reports
-   * nothing at all beyond link intent — no hit, no hover, no zones, no Jx context menu — because a
-   * preview is the shipped page, not a document you can point at. Absent = permissive.
+   * are meaningless for stylebook renders (specimens aren't insert targets). Absent = permissive.
    */
   getMode?: () => string;
   /**
@@ -293,25 +289,13 @@ export function startInteraction(
   let lastGen = deps?.getGen?.() ?? 0;
 
   /**
-   * Whether this render is a preview. Preview is the fidelity view: it has no selection, no hover
-   * box, no insertion "+" and no Jx element menu, so the frame reports none of them. (The host
-   * refuses the same messages independently — the iframe bundle ships prebuilt, so neither side may
-   * rely on the other's build being current.)
-   */
-  const isPreview = () => deps?.getMode?.() === "preview";
-
-  /**
    * Report that the person is now working in this frame's pane — every mode, every button, every
    * target.
    *
-   * `pointerdown` rather than `click`, and unconditional rather than mode-gated, because both of
-   * `hit`'s holes are holes in what a CLICK means here. In preview there is no `hit` by design (a
-   * click in preview is a click on the page), and in edit/design `hit` is posted only when the
-   * click lands on a `[data-jx-path]` node — so an artboard's empty margin, a right-click, and
-   * every single interaction with a Preview pane all left the keyboard in the other pane.
-   *
-   * It carries nothing, which is what makes it safe to send from preview: the parent moves pane
-   * focus and does not touch the document, so the page underneath is still just a page.
+   * `pointerdown` rather than `click`, and unconditional rather than mode-gated, because `hit` is
+   * posted only when the click lands on a `[data-jx-path]` node — so an artboard's empty margin and
+   * a right-click both left the keyboard in the other pane. It carries nothing: the parent moves
+   * pane focus and does not touch the document.
    */
   const onPointerDown = (e: Event) => {
     channel.post({ kind: "paneFocus" });
@@ -319,30 +303,10 @@ export function startInteraction(
   };
 
   const onClick = (e: MouseEvent) => {
-    /*
-     * Preview keeps anchors live, so a click would navigate this iframe and destroy the render (and
-     * the editing session with it). Report the intent so the parent can open the real page in a real
-     * browser tab — where routing, project JS and server data behave as they will in production —
-     * rather than replacing the canvas with a half-loaded page.
-     *
-     * Design/edit never reach this: the runtime de-links anchors onto `data-jx-href` there, so there
-     * is no navigation to intercept and a click means "select this element". Project Styles keeps
-     * its specimens' links live and refuses the navigation just below.
-     */
-    if (isPreview()) {
-      if (e.target instanceof Element) {
-        const anchor = e.target.closest("a[href]");
-        const href = anchor?.getAttribute("href");
-        if (href && !href.startsWith("#")) {
-          e.preventDefault();
-          channel.post({ href, kind: "previewNavigate" });
-        }
-      }
-      // No hit post: a click in preview is a click on the page, never a selection.
-      return;
-    }
-    // Project Styles keeps its link specimen live (`iframe-render.ts`), so a click on it must
-    // Select it rather than follow it.
+    /* The runtime de-links anchors onto `data-jx-href` in a document's views, so there is no
+       navigation to intercept and a click means "select this element". Project Styles keeps its
+       link specimen live (`iframe-render.ts`), so a click on it must select it rather than follow
+       it. */
     if (deps?.getMode?.() === "stylebook" && e.target instanceof Element && e.target.closest("a")) {
       e.preventDefault();
     }
@@ -375,9 +339,6 @@ export function startInteraction(
    * the key was ever compared — a forced layout per mouse move, thrown away almost every time.
    */
   const reportHover = (el: HTMLElement | null) => {
-    if (isPreview()) {
-      return;
-    }
     /* An echo row hovers as its own element, under the path it echoes: the box is drawn where the
        pointer is, and the press that follows makes that row the addressable one. The row is part
        of the key, since the same path in the next row is another element to measure. */
@@ -411,7 +372,7 @@ export function startInteraction(
 
   /** Resolve + post the insertion "+" zones for an iframe-viewport cursor, deduped by key. */
   const reportInsertZones = (target: EventTarget | null, cursor: { x: number; y: number }) => {
-    if (!deps || deps.getMode?.() === "stylebook" || isPreview()) {
+    if (!deps || deps.getMode?.() === "stylebook") {
       return;
     }
     syncZoneGen();
@@ -466,18 +427,13 @@ export function startInteraction(
       return;
     }
     reportHover(null);
-    if (deps && !isPreview() && lastZonesKey !== "none") {
+    if (deps && lastZonesKey !== "none") {
       lastZonesKey = "none";
       channel.post({ kind: "insertZones", zones: null });
     }
   };
 
   const onContextMenu = (e: MouseEvent) => {
-    // Preview keeps the NATIVE menu: the Jx element menu's verbs (duplicate, delete, paste, wrap)
-    // Are document edits, and preview does not edit. Copy Link Address does what it says instead.
-    if (isPreview()) {
-      return;
-    }
     // Inside the ACTIVE editable keep the NATIVE menu (spellcheck / paste) — the session owns it.
     const active = isEditing() ? getActiveElement() : null;
     if (active && e.target instanceof Node && active.contains(e.target)) {

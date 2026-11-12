@@ -57,11 +57,11 @@ Each prop row also says where its value came from, in the same four-state chip t
 
 By default an instance renders exactly what the component defines. A **slot** is a deliberate opening. Add a `slot` element inside the component definition, and whatever an instance holds as children flows into that opening. Give slots names to offer several openings (a card with an icon slot and a body slot). In [Outline](/docs/studio/design/layers), slots show a **▣** badge; hover it for the slot's name. Layouts distribute page content the same way.
 
-## Preview with test props
+## Try test values
 
-A component file open on its own renders with its defaults, but defaults are often empty. Open the context bar's **resolving with** popover and you get one field per prop, stacked; type a value to see the component render with it, live on the canvas at every breakpoint. Numbers, `true`/`false`, and lists in JSON form are understood as such; anything else counts as text. Each field is also a command, so you can set one by name without reaching for the popover: press :kbd[⌘K] and type `>Set Test Value`.
+A component file open on its own renders with its defaults, but defaults are often empty. Open the context bar's **resolving with** popover and you get one field per prop, stacked; type a value to see the component render with it, live on the canvas at every breakpoint. Numbers, `true`/`false`, and lists in JSON form are understood as such; anything else counts as text. Each field sets the same value the **Data** panel's **On canvas** field sets for that prop, so the two always agree, and both run one command, `canvas.setStateValue`, so a script or the assistant can set a value by name.
 
-Test values are a preview lens only: they're never saved into the component, and clearing a field returns the prop to its default. They pair with the **Preview** toggle described in **[Modes and preview](/docs/studio/interface/modes)**.
+Test values are never saved into the component, and clearing a field returns the prop to its default. **Open in Browser** runs the component on a page of its own with the test values you set, where its handlers run for real; see **[Editors and views](/docs/studio/interface/modes#open-in-browser)**.
 
 A component's other states work the same way. A menu that opens on a click is only ever drawn closed on the editing canvas, because nothing you click there runs. Open the **Data** panel, expand the value that holds the state, and set it in the **On canvas** field to draw the component that way. It is not saved either. See **[Set a value for the canvas](/docs/studio/logic/data#set-a-value-for-the-canvas)**.
 
