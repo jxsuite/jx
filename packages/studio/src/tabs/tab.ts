@@ -103,6 +103,12 @@ export interface TabUi {
    */
   previewColorScheme: "auto" | "light" | "dark";
   /**
+   * Whether the canvas draws each text chip as the binding's live value or as its name
+   * (`canvas.setBindingDisplay`, studio.md §6.9). View state: it writes nothing to the document and
+   * is not kept between sessions.
+   */
+  bindingDisplay: "values" | "names";
+  /**
    * The locale this pane renders AS — the artboard's `lang` and `dir` (site-architecture.md §13.4),
    * never which file is open.
    *
@@ -337,6 +343,7 @@ function createDefaultUi(canvasMode: string, preview = false): TabUi {
     inspectorSections: {},
     pendingInlineEdit: null,
     preview,
+    bindingDisplay: "values" as const,
     previewColorScheme: "auto" as const,
     previewLocale: null,
     previewParams: {},

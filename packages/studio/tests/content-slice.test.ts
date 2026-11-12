@@ -8,8 +8,11 @@ import {
   contentLength,
   contentOf,
   normalizeContent,
+  piecesOf,
+  Printed,
   sliceContent,
   spliceAcross,
+  storePieces,
   toStored,
 } from "../src/editor/content-slice";
 import type { Content } from "../src/editor/content-slice";
@@ -147,5 +150,68 @@ describe("toStored", () => {
     expect(toStored(["a", { tagName: "em", textContent: "b" }])).toEqual({
       children: ["a", { tagName: "em", textContent: "b" }],
     });
+  });
+});
+
+describe("a whole ${…} that is printed is not taken for a member on the way", () => {
+  const LIST = "${state.list}";
+
+  test("piecesOf marks a textContent that is one whole template, and nothing else", () => {
+    expect(piecesOf({ tagName: "p", textContent: LIST })).toEqual([new Printed(LIST)]);
+    expect(piecesOf({ tagName: "p", textContent: `x ${LIST}` })).toEqual([`x ${LIST}`]);
+    expect(piecesOf({ children: [LIST], tagName: "p" })).toEqual([LIST]);
+    expect(piecesOf({ tagName: "p", textContent: "" })).toEqual([]);
+    expect(piecesOf({ tagName: "p" })).toEqual([]);
+    expect(piecesOf(null)).toEqual([]);
+    expect(contentLength([new Printed(LIST), "ab"])).toBe(LIST.length + 2);
+  });
+
+  test("storePieces folds it into textContent alone, joins it to text, and has no form for it beside a member", () => {
+    expect(storePieces([new Printed(LIST)])).toEqual({ textContent: LIST });
+    expect(storePieces([new Printed(LIST), "Tail"])).toEqual({ textContent: `${LIST}Tail` });
+    expect(storePieces(["Head ", new Printed(LIST), new Printed(LIST)])).toEqual({
+      textContent: `Head ${LIST}${LIST}`,
+    });
+    // The same string as a member stays one, alone or beside text.
+    expect(storePieces([LIST])).toEqual({ children: [LIST] });
+    expect(storePieces([LIST, "Tail"])).toEqual({ children: [LIST, "Tail"] });
+    // Beside an element or a member there is nothing to join it to: no stored form says "printed".
+    expect(storePieces([new Printed(LIST), { tagName: "br" }])).toBeNull();
+    expect(storePieces([LIST, new Printed(LIST)])).toBeNull();
+    expect(storePieces([])).toEqual({ textContent: "" });
+  });
+
+  test("a cut marks what it leaves of a longer template, and unescapes what is no template", () => {
+    expect(sliceContent([`Tags${LIST}`], 4, 99)).toEqual([new Printed(LIST)]);
+    expect(sliceContent([`Tags${LIST}!`], 4, 99)).toEqual([`${LIST}!`]);
+    expect(sliceContent([String.raw`C:\\temp ${"${state.x}"}`], 0, 9)).toEqual([
+      String.raw`C:\temp `,
+    ]);
+    // A string that was never a template is cut as it is, backslashes and all.
+    expect(sliceContent([String.raw`C:\\temp x`], 0, 9)).toEqual([String.raw`C:\\temp `]);
+    // Kept whole, a piece is the piece it was: a member stays a member, a mark stays a mark.
+    expect(sliceContent([LIST, new Printed(LIST)], 0, 99)).toEqual([LIST, new Printed(LIST)]);
+  });
+
+  test("an inline cut down to a printed template beside its own markup cannot be stored", () => {
+    const strong = { children: [`x${LIST}`, { tagName: "br" }], tagName: "strong" };
+    expect(sliceContent([strong], 1, 99)).toBeNull();
+    // At any depth: the inline around it cannot be stored either.
+    expect(sliceContent([{ children: [strong], tagName: "em" }], 1, 99)).toBeNull();
+    expect(spliceAcross(["Head"], 2, [strong], 1)).toBeNull();
+    expect(spliceAcross([strong], 1, ["Tail"], 2)).toEqual([
+      { tagName: "strong", textContent: "x" },
+      "il",
+    ]);
+    // Cut down to the template alone, the inline holds it as its text: printed, as it was.
+    const em = { tagName: "em", textContent: `x${LIST}` };
+    expect(sliceContent([em], 1, 99)).toEqual([{ tagName: "em", textContent: LIST }]);
+  });
+
+  test("a splice keeps a <br> that ends the last block", () => {
+    expect(spliceAcross(["Head"], 2, ["Tail", { tagName: "br" }], 1)).toEqual([
+      "Heail",
+      { tagName: "br" },
+    ]);
   });
 });

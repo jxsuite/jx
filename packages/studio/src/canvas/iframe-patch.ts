@@ -6,29 +6,47 @@
  * forward (value-carrying) half; the iframe folds them into its non-reactive shadow doc and mutates
  * the DOM it owns.
  *
- * It applies the full op set the legacy patcher does: in-place `set-key` writes (`style`/
- * `textContent`, and inert event bindings); structural relocation (`remove-child`/`move-child`) as
- * pure DOM moves with `data-jx-path` remapping; and subtree re-renders (`insert-child`/`set-child`,
- * and any other `set-key` that changes rendered output) via {@link renderSubtreeIframe}. Any op it
- * can't apply throws, which the caller reports as `patchError` so the parent escalates to a full
- * render.
+ * **One writer per property.** Edit and Design resolve bindings live (studio.md §4.5), so the
+ * runtime's effects write to the same DOM this patcher does, and two writers to one property is a
+ * race the later one wins: a text write over a bound node would be undone by the binding's next
+ * run, or would stand over a value that has since changed. So the patcher writes a property
+ * directly only where no binding can:
+ *
+ * - `textContent` is written in place only on a node whose text is LITERAL, before and after the op.
+ *   A node with any bound property is re-rendered instead, through the transform the full render
+ *   uses, which is also what puts a chip back when text gains or loses a `${…}`.
+ * - `style` is re-emitted whole through the runtime's own `reapplyStyle`, with the same edit-mode
+ *   transform (and the same sample row inside a repeater), so a bound declaration stays the
+ *   runtime's binding rather than becoming a value written here.
+ * - Every other key that changes rendered output re-renders the node's subtree via
+ *   {@link renderSubtreeIframe}: `attributes`, `$props`, `cases`, `children`, `tagName`, a
+ *   property. `insert-child` and `set-child` render the new subtree the same way.
+ * - Structural relocation (`remove-child`, `move-child`) is a pure DOM move with `data-jx-path`
+ *   remapping, which touches no property a binding writes.
+ * - A structural op under a parent whose own text is bound is not applied at all: it throws, and the
+ *   document is drawn again ({@link refuseBesideBoundText}).
+ * - An event binding is stripped from an editing render, so its op changes nothing.
+ *
+ * Any op it cannot apply throws, which the caller reports as `patchError` so the parent escalates
+ * to a full render.
  */
 
 import { reapplyStyle, updateInstanceProps } from "@jxsuite/runtime";
-import { isJsonObject, isNonNullObject, isNumber, isString } from "@jxsuite/schema/guards";
+import { isJsonObject, isNumber, isRef, isTemplateString } from "@jxsuite/schema/guards";
 import { getNodeAtPath } from "@jxsuite/schema/doc-ops";
 import { applyDocOpToDoc } from "../tabs/doc-op-apply";
 import { parseJxPath, serializeJxPath } from "./path-mapping";
 import { disposeSubtree, renderSubtreeIframe } from "./iframe-subtree";
 import { deliveredOutsideProps } from "./iframe-inline-edit";
+import { isEditableMode } from "./iframe-render";
+import { isEditableBlock } from "../editor/inline-edit";
+import { stampKept } from "../editor/kept-node";
 import {
-  computeEmptyPlaceholderClass,
-  EMPTY_PLACEHOLDER_CLASSES,
-  isRowBound,
-  templateToEditDisplay,
   BOUND_FIELD_ATTR,
-  entryFieldsOfNode,
-  entryRootsOf,
+  computeEmptyPlaceholderClass,
+  editModeStyle,
+  EMPTY_PLACEHOLDER_CLASSES,
+  sampleRowAt,
 } from "../utils/edit-display";
 import type { IframeRenderCtx } from "./iframe-render";
 import type { JxDocOp } from "../tabs/patch-ops";
@@ -66,6 +84,7 @@ export function applyIframePatch(
   if (!echoPaths?.length) {
     for (const op of forwardOps) {
       applyOpToDom(shadowDoc, op, container, ctx, propsBefore);
+      restampKept(shadowDoc, op, container, ctx);
     }
     return;
   }
@@ -81,6 +100,34 @@ export function applyIframePatch(
       continue;
     }
     applyOpToDom(shadowDoc, op, container, ctx, propsBefore);
+    restampKept(shadowDoc, op, container, ctx);
+  }
+}
+
+/**
+ * Stamp again what the elements `op` drew or changed carry from their document nodes
+ * (`editor/kept-node.ts`): a node drawn again has lost its stamp with its element, and a key set in
+ * place (a style, an event handler, which changes nothing on the canvas at all) left the element
+ * carrying the value from before. A commit of the block around it would have written that back. A
+ * removal or a move changes no node, so there is nothing to stamp.
+ */
+function restampKept(
+  doc: JxMutableNode,
+  op: JxDocOp,
+  container: HTMLElement,
+  ctx: IframeRenderCtx | undefined,
+): void {
+  // Only where text is edited in place: a preview draws the page, and carries no stamps at all.
+  if (!ctx || !isEditableMode(ctx.mode)) {
+    return;
+  }
+  if (op.op !== "set-key" && op.op !== "insert-child" && op.op !== "set-child") {
+    return;
+  }
+  const path = op.op === "set-key" ? op.path : [...op.parentPath, "children", op.index];
+  const el = findElement(container, path);
+  if (el) {
+    stampKept(el, doc, isEditableBlock);
   }
 }
 
@@ -135,10 +182,10 @@ function applyOpToDom(
         patchStyle(doc, op.path, container, ctx);
         return;
       }
-      /* Text an entry draws is rendered live and badged (§4.1), which a text write cannot do, and
-         neither can it take the badge off text that stopped drawing from the entry: either way the
-         node is drawn again, as the full render would draw it. */
-      if (op.key === "textContent" && drawsEntryText(doc, op.path, container)) {
+      /* One writer per property: bound text is the runtime's to write, as chips (§4.5), which a
+         text write cannot draw, and neither can it take the chips off text that stopped being
+         bound. Either way the node is drawn again, as the full render would draw it. */
+      if (op.key === "textContent" && isBoundNode(doc, op.path, container)) {
         replaceSubtree(doc, op.path, container, requireCtx(ctx));
         return;
       }
@@ -183,6 +230,24 @@ function applyOpToDom(
 
 // ─── Structural ops needing a subtree render (Phase 3b-2) ───────────────────────
 
+/**
+ * Refuse a structural op under a parent whose own text is BOUND, so the caller draws the whole
+ * document again.
+ *
+ * Two things about such a parent cannot be known from here. Whether its text put a node in the DOM
+ * ahead of its children depends on the binding's value right now (an empty one writes none), so a
+ * child's place cannot be counted. And whether the parent is drawn as text runs and chips or as a
+ * closed block with its text a property depends on whether it has children at all, which this op
+ * may be changing. A child spliced in by index landed one place out with nothing reported, the
+ * stamped paths agreeing with the document while the order on screen did not.
+ */
+function refuseBesideBoundText(parentNode: JxMutableNode | undefined): void {
+  const text = parentNode?.textContent;
+  if (isTemplateString(text) || isRef(text)) {
+    throw new Error("iframe-patch-structure-beside-bound-text");
+  }
+}
+
 /** Render the inserted node and splice it into the parent's DOM, shifting later siblings up. */
 function insertChild(
   doc: JxMutableNode,
@@ -193,6 +258,7 @@ function insertChild(
 ): void {
   const parentEl = requireElement(container, parentPath);
   const parentNode = getNodeAtPath(doc, parentPath);
+  refuseBesideBoundText(parentNode);
   const newEl = renderSubtreeIframe(doc, [...parentPath, "children", index], ctx);
   // Remap existing siblings BEFORE attaching the new subtree so it isn't itself remapped.
   remapChildPaths(container, parentPath, index, 1);
@@ -258,6 +324,7 @@ function removeChild(
   index: number,
   container: HTMLElement,
 ): void {
+  refuseBesideBoundText(getNodeAtPath(doc, parentPath));
   const el = requireElement(container, [...parentPath, "children", index]);
   const parentEl = el.parentElement;
   disposeSubtree(el);
@@ -282,6 +349,8 @@ function moveChild(
   toIndex: number,
   container: HTMLElement,
 ): void {
+  refuseBesideBoundText(getNodeAtPath(doc, fromParentPath));
+  refuseBesideBoundText(getNodeAtPath(doc, toParentPath));
   const fromPath = [...fromParentPath, "children", fromIndex];
   const el = requireElement(container, fromPath);
   const fromParentEl = el.parentElement;
@@ -414,19 +483,30 @@ function patchStyle(
   /* SAFETY: buildScope writes `$media` only from the document's own `$media` map or the runtime's
    * root media map, both Record<string, string>, and the host scope may not supply the key. */
   const mediaQueries = (ctx?.defs["$media"] as Record<string, string> | undefined) ?? {};
-  reapplyStyle(el, editModeStyle(node?.style), mediaQueries, ctx?.defs ?? {});
+  /* SAFETY: the edit-mode transform of a style object is a style object: it rebuilds the same
+   * keys with the same kinds of value, and answers undefined only for an absent style. */
+  const style = editModeStyle(node?.style, sampleRowAt(doc, path)) as JxStyle | undefined;
+  reapplyStyle(el, style, mediaQueries, ctx?.defs ?? {});
 }
 
-/** Write the node's display text, syncing the empty-placeholder class like the full render. */
+/**
+ * Write a LITERAL node's text, syncing the empty-placeholder class like the full render. Never
+ * reached for a bound node ({@link isBoundNode}): its text is the runtime's to write.
+ */
 function patchText(doc: JxMutableNode, path: (string | number)[], container: HTMLElement): void {
   const el = requireElement(container, path);
   const node = getNodeAtPath(doc, path);
-  el.textContent = textDisplayValue(node);
+  const text = node?.textContent;
+  el.textContent = text == null ? "" : String(text);
   syncPlaceholderClass(el, node);
 }
 
-/** Whether a node's text is, or was until this op, drawn from a content entry. */
-function drawsEntryText(
+/**
+ * Whether the node at `path` is bound: its text is a template or a `{ "$ref" }` after this op, or
+ * the element the canvas drew for it carries the bound-block mark, which is how text that WAS bound
+ * until this op is known.
+ */
+function isBoundNode(
   doc: JxMutableNode,
   path: (string | number)[],
   container: HTMLElement,
@@ -434,7 +514,25 @@ function drawsEntryText(
   if (findElement(container, path)?.hasAttribute(BOUND_FIELD_ATTR)) {
     return true;
   }
-  return entryFieldsOfNode(getNodeAtPath(doc, path), entryRootsOf(doc)) !== null;
+  const text = getNodeAtPath(doc, path)?.textContent;
+  return isTemplateString(text) || isRef(text);
+}
+
+/**
+ * Whether a `textContent` op REPLACES the element at its path rather than writing its text: true of
+ * a node that is bound before or after the op ({@link isBoundNode}), asked before the op is
+ * applied. The frame must know, because an element about to be replaced cannot go on being the
+ * block the caret is editing (`canvas/iframe-entry.ts`).
+ */
+export function textOpRedraws(op: JxDocOp, container: HTMLElement): boolean {
+  if (op.op !== "set-key" || op.key !== "textContent") {
+    return false;
+  }
+  return (
+    isTemplateString(op.value) ||
+    isRef(op.value) ||
+    findElement(container, op.path)?.hasAttribute(BOUND_FIELD_ATTR) === true
+  );
 }
 
 /** Locate the rendered element for a document path via its stamped `data-jx-path` attribute. */
@@ -452,45 +550,4 @@ function findElement(container: HTMLElement, path: (string | number)[]): HTMLEle
   const esc = serialized.replaceAll("\\", String.raw`\\`).replaceAll("'", String.raw`\'`);
   const el = container.querySelector(`[data-jx-path='${esc}']`);
   return el instanceof HTMLElement ? el : null;
-}
-
-/**
- * Edit-mode style transform — mirrors prepareForEditMode: bindings are live and resolve against the
- * render's scope, except a declaration that reads the repeater row, which the perimeter cannot
- * supply and so is omitted.
- */
-function editModeStyle(style: JxStyle | undefined): JxStyle | undefined {
-  if (!style || !isNonNullObject(style)) {
-    return undefined;
-  }
-  const out: JxStyle = {};
-  for (const [k, v] of Object.entries(style)) {
-    /* OMITTED, not blanked: `color: ` is a malformed declaration in a rule, and an absent one lets
-       the cascade answer, which is what blanking always meant. */
-    if (isRowBound(v)) {
-      continue;
-    }
-    out[k] = v;
-  }
-  return out;
-}
-
-/**
- * Display text for a node's textContent in design/edit mode — mirrors prepareForEditMode's
- * template-string and $ref display rules (and the legacy patcher's textDisplayValue).
- */
-function textDisplayValue(node: JxMutableNode | undefined): string {
-  const v = node?.textContent;
-  if (v == null) {
-    return "";
-  }
-  if (isString(v)) {
-    return v.includes("${") ? templateToEditDisplay(v) : v;
-  }
-  if (isNonNullObject(v) && v.$ref) {
-    const ref = String(v.$ref);
-    const label = ref.startsWith("#/state/") ? ref.slice(8) : ref;
-    return `{${label}}`;
-  }
-  return String(v);
 }

@@ -32,7 +32,7 @@
 import { isJsonObject, isString } from "@jxsuite/schema/guards";
 import { reactive } from "../reactivity";
 import { mountSurface, registerSurface } from "../ui/surface";
-import { placeholderBrokenImages } from "../utils/edit-display";
+import { placeholderBrokenImages } from "../canvas/preview-placeholder";
 import libraryDoc from "./library-pane.json";
 import type { JxElement } from "@jxsuite/schema/types";
 import type { JxScope } from "@jxsuite/runtime/types";

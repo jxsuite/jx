@@ -147,6 +147,12 @@ export type ParentToIframe =
       // Iframe root, null clears it (auto — follow the OS).
       colorScheme: "light" | "dark" | null;
       /**
+       * Whether text chips draw their value or their name, carried on `render` as well as by the
+       * setter below for `colorScheme`'s reason: a frame that boots, or reboots, after the choice
+       * was made must draw the choice. Absent means values.
+       */
+      bindingDisplay?: BindingDisplay;
+      /**
        * Which nodes to tint on a `git-diff` artboard, in this side's own coordinates.
        *
        * A FIELD ON THE RENDER, not a message of its own, and the reason is ordering. A render ends
@@ -200,6 +206,13 @@ export type ParentToIframe =
   // Flip the forced color-scheme preview on the iframe root without re-rendering — a document-level
   // Idempotent attribute write, deliberately gen-less (like endEdit).
   | { kind: "setColorScheme"; scheme: "light" | "dark" | null }
+  /*
+   * Draw every text chip as its value or as its name (`canvas.setBindingDisplay`, studio.md §6.9).
+   *
+   * Render-free and gen-less, like `setColorScheme` above, because it changes no content: one
+   * attribute on the frame's root. Guarded by the `bindingDisplay` capability.
+   */
+  | { kind: "setBindingDisplay"; display: BindingDisplay }
   /**
    * Draw the popover at `path` open, and every other one closed. `null` closes them all.
    *
@@ -533,9 +546,32 @@ export interface SerializedKey {
   altKey: boolean;
 }
 
+/** What a text chip draws: the binding's live value, or its name (studio.md §6.9). */
+export type BindingDisplay = "values" | "names";
+
+/** The two {@link BindingDisplay} values, `canvas.setBindingDisplay`'s enum. */
+export const BINDING_DISPLAYS = ["values", "names"] as const satisfies readonly BindingDisplay[];
+
+/**
+ * A thing a frame build may or may not understand, announced on `ready`.
+ *
+ * - `bindingDisplay`: the `setBindingDisplay` message.
+ */
+export type FrameCapability = "bindingDisplay";
+
+/** Every capability this build of the frame announces. */
+export const FRAME_CAPABILITIES: readonly FrameCapability[] = ["bindingDisplay"];
+
 /** Messages the canvas iframe sends back to the editor (parent). */
 export type IframeToParent =
-  | { kind: "ready" }
+  /*
+   * The frame has booted. `capabilities` names what THIS build of the frame understands beyond the
+   * protocol it shipped with (studio.md §4.5): the frame bundle is prebuilt, a message kind the
+   * other side does not know is dropped without a word, and a host must be able to tell an old
+   * frame from a broken one. A host posts a message a capability guards only to a frame that
+   * announced it. Absent means none.
+   */
+  | { kind: "ready"; capabilities?: readonly FrameCapability[] }
   // Acknowledges a `flushEdits`: every pending commit for this frame has been posted.
   | { kind: "flushComplete"; reqId: number }
   | { kind: "renderComplete"; gen: number }
@@ -642,6 +678,12 @@ export type IframeToParent =
        * the subtree under a live caret.
        */
       inPlace?: boolean;
+      /**
+       * The chips the author deleted from the block since its content last reached the document,
+       * each as the expression it stood for (studio.md §4.5). A write may drop a binding only when
+       * it is named here; absent means none were deleted.
+       */
+      removedTags?: string[];
     }
   // Join two blocks. `fromPath`'s content is appended to `intoPath`'s and `fromPath` is removed —
   // Backspace at a block start and Delete at a block end are the same operation from either side.
@@ -657,6 +699,11 @@ export type IframeToParent =
       to: { path: (string | number)[]; offset: number };
       between: (string | number)[][];
       text: string;
+      /**
+       * The chips the selection covers in its two end blocks, each as the expression it stood for:
+       * the bindings this collapse is allowed to drop. See `editCommit.removedTags`.
+       */
+      removedTags?: string[];
     }
   // Committed prop-bound text: persist `value` into `$props[prop]` of the instance at `path`.
   | {
@@ -677,6 +724,8 @@ export type IframeToParent =
       path: (string | number)[];
       before: JxContentResult;
       after: JxContentResult;
+      /** See `editCommit.removedTags`. */
+      removedTags?: string[];
     }
   // Slash-insert: swap the tag in place when empty, else commit + insert a new element after.
   | {
@@ -684,6 +733,8 @@ export type IframeToParent =
       path: (string | number)[];
       cmd: SlashCommand;
       commitData: JxContentResult | undefined;
+      /** See `editCommit.removedTags`. */
+      removedTags?: string[];
     }
   // A serializable selection snapshot for the parent format toolbar (4b-2). The iframe owns the
   // Selection; the parent renders pressed-state/position from this and never reads the iframe DOM.

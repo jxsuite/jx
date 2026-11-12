@@ -10,6 +10,7 @@ import {
   PREVIEW_IMAGE_PLACEHOLDER,
   fillPreviewImages,
   hasNoImageSource,
+  placeholderBrokenImages,
 } from "../src/canvas/preview-placeholder";
 
 /** Let the MutationObserver deliver its records. */
@@ -131,5 +132,42 @@ describe("fillPreviewImages", () => {
     expect(scheme).toBe("data:image/svg+xml");
     const svg = new DOMParser().parseFromString(decodeURIComponent(body ?? ""), "image/svg+xml");
     expect(svg.documentElement.getAttribute("viewBox")).toBe("0 0 320 180");
+  });
+});
+
+describe("placeholderBrokenImages", () => {
+  test("a nested image that fails to load becomes the placeholder, until the signal aborts", () => {
+    const host = document.createElement("div");
+    const card = document.createElement("section");
+    const broken = img({ src: "/missing.jpg", srcset: "/missing-2x.jpg 2x" });
+    card.append(broken);
+    host.append(card);
+    const listening = new AbortController();
+    placeholderBrokenImages(host, listening.signal);
+
+    // `error` does not bubble; the capture listener on the host still sees it.
+    broken.dispatchEvent(new Event("error"));
+    expect(broken.getAttribute("src")).toBe(PREVIEW_IMAGE_PLACEHOLDER);
+    expect(broken.hasAttribute("srcset")).toBe(false);
+    expect(broken.hasAttribute(PLACEHOLDER_ATTR)).toBe(true);
+    // The placeholder itself failing (it cannot) would not loop.
+    broken.dispatchEvent(new Event("error"));
+    expect(broken.getAttribute("src")).toBe(PREVIEW_IMAGE_PLACEHOLDER);
+
+    const later = img({ src: "/also-missing.jpg" });
+    host.append(later);
+    listening.abort();
+    later.dispatchEvent(new Event("error"));
+    expect(later.getAttribute("src")).toBe("/also-missing.jpg");
+  });
+
+  test("errors from anything but an image are ignored", () => {
+    const host = document.createElement("div");
+    const video = document.createElement("video");
+    video.setAttribute("src", "/missing.mp4");
+    host.append(video);
+    placeholderBrokenImages(host, new AbortController().signal);
+    video.dispatchEvent(new Event("error"));
+    expect(video.getAttribute("src")).toBe("/missing.mp4");
   });
 });

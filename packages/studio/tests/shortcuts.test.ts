@@ -41,9 +41,18 @@ void mock.module("../src/panels/quick-search.js", () => ({ openQuickSearch }));
 /* The Edit zoom's anchor is the frame's to measure, and this fixture has no frame. Everything else
    in the module is the real one. */
 let anchorUnderPointer: PointerAnchor | null = null;
+/* Whether a caret is live on the canvas, and what a flush of it does before it resolves: this
+   fixture has no frame to hold one, and a history step waits on exactly that pair. */
+let caretOnCanvas = false;
+let onCanvasFlush: (tabId: string | null) => void = () => {};
 const realIframeHost = await import("../src/canvas/iframe-host");
 void mock.module("../src/canvas/iframe-host.js", () => ({
   ...realIframeHost,
+  flushCanvasEdits: (tabId: string | null) => {
+    onCanvasFlush(tabId);
+    return Promise.resolve();
+  },
+  isCaretActive: () => caretOnCanvas,
   pointerAnchor: () => anchorUnderPointer,
 }));
 
@@ -121,6 +130,8 @@ const {
   registerStudioCommands,
 } = await import("../src/editor/shortcuts");
 const { createCommandRegistry } = await import("../src/commands/registry");
+const { canRedo, mutateUpdateProperty, transactDoc } = await import("../src/tabs/transact");
+const { getNodeAtPath } = await import("@jxsuite/schema/doc-ops");
 const { createLiveContext } = await import("../src/commands/live-context");
 const store = await import("../src/store");
 const { activeCanvasSurface } = await import("../src/canvas/canvas-surface");
@@ -878,6 +889,45 @@ describe("the old dispatch — twelve modifier chords", () => {
     // Real browsers report key "Z" (uppercase) while Shift is held.
     pressDoc("Z", { ctrlKey: true, shiftKey: true });
     expect(childCount()).toBe(4);
+  });
+
+  test("⌘Z with a caret on the canvas undoes what the caret had typed, not the step before it", async () => {
+    const tab = activeTab.value!;
+    tab.session.selection = [["children", 0]];
+    pressDoc("d", { ctrlKey: true });
+    expect(childCount()).toBe(4);
+    /* Typing the idle tick has not committed yet: it reaches the document when the canvas is
+       flushed, as its own history step. */
+    caretOnCanvas = true;
+    const flushed: (string | null)[] = [];
+    onCanvasFlush = (tabId) => {
+      flushed.push(tabId);
+      transactDoc(tab, (t) => {
+        mutateUpdateProperty(t, ["children", 0], "textContent", "typed");
+      });
+    };
+    try {
+      pressDoc("z", { ctrlKey: true });
+      // Nothing is undone until the canvas has answered.
+      expect(childCount()).toBe(4);
+      await flush();
+      expect(flushed).toEqual([tab.id]);
+      // The typing is the step that was taken back; the duplicate before it still stands.
+      expect(childCount()).toBe(4);
+      expect(getNodeAtPath(tab.doc.document, ["children", 0])?.textContent).not.toBe("typed");
+      expect(canRedo(tab)).toBe(true);
+      // Redo waits on the canvas the same way.
+      onCanvasFlush = (tabId) => {
+        flushed.push(tabId);
+      };
+      pressDoc("Z", { ctrlKey: true, shiftKey: true });
+      await flush();
+      expect(flushed).toEqual([tab.id, tab.id]);
+      expect(getNodeAtPath(tab.doc.document, ["children", 0])?.textContent).toBe("typed");
+    } finally {
+      caretOnCanvas = false;
+      onCanvasFlush = () => {};
+    }
   });
 
   test('⌘D duplicates the selection (`case "d"`)', () => {

@@ -1,8 +1,9 @@
 /// <reference lib="dom" />
 /**
- * Edit-mode display transforms — extracted from studio.js (Phase 4i). Pure stateless functions that
- * convert document trees for visual editing (template expressions, $map, $switch, empty
- * placeholders).
+ * Edit-mode display transforms: pure, stateless functions that prepare a document tree for the
+ * editing canvas (studio.md §4.5). A binding is never replaced by a label: the runtime resolves it
+ * against the document's real scope, and bound text is drawn as literal runs plus one chip per
+ * `${…}`, an element closed to the caret that carries the expression it stands for.
  *
  * @docs studio/interface/modes
  */
@@ -18,104 +19,38 @@ import {
   isTemplateString,
   templateExpressions,
 } from "@jxsuite/schema/guards";
+import {
+  dynamicTagKind,
+  dynamicTagLabel,
+  humanizeIdentifier,
+  parseDynamicTag,
+  templateSegments,
+} from "@jxsuite/schema/dynamic-tag";
 import type { TemplateExpression } from "@jxsuite/schema/guards";
 import { isDocumentContainer } from "./strip-events";
 import type { RebuiltNode } from "./strip-events";
 
 const mediaTags = new Set(["img", "video", "source", "iframe", "audio"]);
-/** A 1×1 transparent GIF: what an unresolvable `src` binding shows in edit mode. */
-export const TRANSPARENT_PX =
-  "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
-// A neutral, visible gray placeholder for image-like bindings in edit mode (e.g. a component `image`
-// Prop bound to ${...}). The component renders <img src={prop}> internally, so a transparent pixel
-// Would collapse to nothing — a gray SVG box reads as an intentional placeholder instead.
-export const PLACEHOLDER_IMG =
-  "data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='32'%20height='32'%3E%3Crect%20width='32'%20height='32'%20fill='%23d0d0d0'/%3E%3C/svg%3E";
 
-/**
- * Swap every image under `host` that fails to load for {@link PLACEHOLDER_IMG}, until `signal`
- * aborts.
- *
- * For previews drawn in the PARENT realm, where nothing ran {@link prepareForEditMode}: a library
- * card's file, a component whose image prop is a `${}` binding with nothing to bind it, a document
- * whose `src` is empty. The browser drew each as its broken-image glyph. `error` does not bubble,
- * so the listener captures — which also covers images a preview renders after it is mounted. An
- * empty `src` fires `error` too, so it needs no separate test; an image already showing the
- * placeholder is left alone, so a placeholder that cannot load (it always can) does not loop.
- *
- * @param {Element} host
- * @param {AbortSignal} signal
- */
-export function placeholderBrokenImages(host: Element, signal: AbortSignal): void {
-  host.addEventListener(
-    "error",
-    (event) => {
-      const { target } = event;
-      if (target instanceof HTMLImageElement && target.getAttribute("src") !== PLACEHOLDER_IMG) {
-        target.setAttribute("src", PLACEHOLDER_IMG);
-        target.removeAttribute("srcset");
-        target.dataset.placeholder = "";
-      }
-    },
-    { capture: true, signal },
-  );
-}
-
-// Prop/attribute names that feed an <img>/background, so a ${...} binding would otherwise render a
-// Broken image in edit mode. Matched by exact name or common camelCase suffix (featuredImage, heroBg).
-const IMAGE_KEY_RE =
-  /(src|poster|image|bg|background|icon|logo|photo|avatar|thumbnail|cover|banner)$/i;
-function isImageUrlKey(key: string): boolean {
-  return IMAGE_KEY_RE.test(key);
-}
-
-/** A template that reads the repeater row (`item`, `index`, `$map`), which edit mode cannot supply. */
+/** A template that reads the repeater row (`item`, `index`, `$map`). */
 const ROW_BINDING_RE = /(?<![\w$.])(?:item|index|\$map)\b/u;
 
-/** Whether a value is a template or `$ref` that reads the repeater row. */
+/**
+ * The comment a row binding carries once {@link liveRowTemplate} has given it its sample row.
+ *
+ * A page drawn inside a layout is prepared twice, once alone and once as the merge, and the second
+ * walk reaches the first one's output with no row in hand. The mark is what tells it the binding
+ * already holds the row it reads: without it the wrapped expression still spells `item`, and a
+ * second wrap (or, for a style, the omission a rowless row binding gets) would undo the first.
+ */
+const ROW_RESOLVED = "/*jx-row*/";
+
+/** Whether a value is a template or `$ref` that reads the repeater row and has not been given one. */
 export function isRowBound(value: JxDocumentValue | undefined): boolean {
   if (isString(value)) {
-    return value.includes("${") && ROW_BINDING_RE.test(value);
+    return value.includes("${") && !value.includes(ROW_RESOLVED) && ROW_BINDING_RE.test(value);
   }
   return isNodeObject(value) && isString(value.$ref) && /^(?:#\/)?\$map\//u.test(value.$ref);
-}
-
-/**
- * The boolean attributes a row-bound value is OMITTED for in edit mode, by attribute and by
- * property name (they are spelled alike).
- *
- * A boolean attribute is on when it is present, whatever it says, so the binding text every other
- * row-bound attribute shows (`❪ !item.premium ❫`) turned each of these on: a row-bound `hidden` hid
- * the element the author came to edit, and `inert` or `disabled` left it drawn but closed to the
- * pointer that selects it. The perimeter has no row to ask, and absent is the state in which the
- * element can be seen and reached. Kept to the ones that take an element out of view or out of
- * reach; `open`, `checked` and their kind only change what a reachable element shows.
- */
-const ROW_BOUND_OMITTED: ReadonlySet<string> = new Set(["hidden", "inert", "disabled"]);
-
-/** Whether edit mode leaves out the row-bound `value` of `key` ({@link ROW_BOUND_OMITTED}). */
-function omitsRowBound(key: string, value: JxDocumentValue | undefined): boolean {
-  return ROW_BOUND_OMITTED.has(key) && isRowBound(value);
-}
-
-/**
- * What a row-bound value shows in the perimeter: link targets are inert, image-like keys the
- * placeholder image, anything else its readable binding text.
- *
- * @param {string} key
- * @param {JxDocumentValue | undefined} value
- */
-function rowBoundDisplay(key: string, value: JxDocumentValue | undefined): string {
-  if (key === "href" || key === "action") {
-    return "";
-  }
-  if (isImageUrlKey(key)) {
-    return PLACEHOLDER_IMG;
-  }
-  if (isString(value)) {
-    return templateToEditDisplay(value);
-  }
-  return isNodeObject(value) && isString(value.$ref) ? refDisplayLabel(value.$ref) : "";
 }
 
 const textTags = new Set([
@@ -173,6 +108,12 @@ const containerTags = new Set([
   "table",
 ]);
 
+/**
+ * The property that draws an element's content as rendered text. A key of the document, read by
+ * name: a Jx node is not a DOM node, and this is the one place the name is spelled.
+ */
+export const INNER_TEXT = "innerText";
+
 /** All placeholder classes prepareForEditMode may add to an empty element. */
 export const EMPTY_PLACEHOLDER_CLASSES = [
   "empty-text-placeholder",
@@ -211,7 +152,13 @@ function fixesItsOwnSize(node: JxMutableNode): boolean {
  * @param {JxMutableNode} node
  */
 export function computeEmptyPlaceholderClass(node: JxMutableNode): string | null {
-  if (!node.tagName || node.textContent || node.innerHTML) {
+  if (!node.tagName || node.textContent || node.innerHTML || node[INNER_TEXT]) {
+    return null;
+  }
+  /* A `$switch` draws one of its `cases` as its content: it is not empty, whichever case is live,
+     and the container placeholder's dashed box and "Drag elements here" over that case would say
+     otherwise. */
+  if (node.$switch) {
     return null;
   }
   // Layout-originated nodes ($__layout, set by markLayoutNodes) are read-only in page context;
@@ -238,93 +185,37 @@ export function computeEmptyPlaceholderClass(node: JxMutableNode): string | null
   return null;
 }
 
-/**
- * Convert a template string to a displayable expression for edit mode. Replaces each `${expr}` with
- * `❪ expr ❫` so the runtime renders it as literal text.
- *
- * Each expression is ONE unit however many braces it holds: `${f(x, { a: 1 })}` and a formatting
- * lambda with a body are located by the shared template scanner, where a `[^}]+` pattern stopped at
- * the first `}` and left the rest of the expression on the canvas as text.
- * {@link restoreTemplateExpressions} is the inverse.
- *
- * @param {string} str
- */
-export function templateToEditDisplay(str: string) {
-  let out = "";
-  let last = 0;
-  for (const { start, end, expr } of templateExpressions(str)) {
-    out += `${str.slice(last, start)}\u276A ${expr} \u276B`;
-    last = end;
-  }
-  return out + str.slice(last);
-}
-
-/**
- * The binding a node's computed children show in edit mode. An `?? []` fallback is plumbing, so it
- * reads as the field it guards: `❪ item.$children ❫`.
- *
- * @param {string} template
- */
-function computedChildrenDisplay(template: string): string {
-  return templateToEditDisplay(template.replaceAll(/\s*\?\?\s*\[\s*\]\s*(?=\})/gu, ""));
-}
-
-/**
- * Reverse templateToEditDisplay: walk all text nodes in `el` and replace ❪ expr ❫ back to ${expr}
- * so the user edits raw template syntax.
- *
- * Exactly the one space the display put on each side is taken off, and an expression may span
- * lines, so `restore(display(t))` is `t` for any template whose expressions hold no `❫`. Trimming
- * every space rewrote `${ a }` to `${a}` on a caret visit that typed nothing, and a pattern that
- * could not cross a newline left a multi-line expression as its display text, which the commit then
- * stored.
- *
- * @param {HTMLElement} el
- */
-export function restoreTemplateExpressions(el: HTMLElement) {
-  const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
-  while (walker.nextNode()) {
-    // SAFETY: the walker was created with NodeFilter.SHOW_TEXT, so every node it stops on is Text.
-    const node = walker.currentNode as Text;
-    if (node.data.includes("\u276A")) {
-      node.data = node.data.replaceAll(/\u276A ?(.*?) ?\u276B/gsu, "${$1}");
-    }
-  }
-}
+// ─── The sample row ──────────────────────────────────────────────────────────
 
 /**
  * Build the edit-mode visual for a mapped array: a `<div class="repeater-perimeter">` wrapping a
  * single prepared instance of the map template. Always one element (an empty perimeter when the
  * template is missing) so the array keeps a 1:1 DOM node at its sibling index. The perimeter is an
- * edit-only device — it is never compiled or rendered in preview.
+ * edit-only device: it is never compiled or rendered in preview.
  *
  * @param {JxMutableNode} arrayObj
  * @returns {JxMutableNode}
  */
-function arrayToPerimeter(arrayObj: JxMutableNode, row: SampleRow): JxMutableNode {
+function arrayToPerimeter(arrayObj: JxMutableNode, row: SampleRow, foreign = false): JxMutableNode {
   const template = arrayObj.map;
   return {
     children: isNonNullObject(template)
-      ? [prepareNode(template, sampleRowOf(arrayObj.items, row))]
+      ? [prepareNode(template, sampleRowOf(arrayObj.items, row), foreign)]
       : [],
     className: "repeater-perimeter",
     tagName: "div",
   };
 }
 
-// ─── Live component props ────────────────────────────────────────────────────
-
 /**
  * The row a repeater's template is drawn with in edit mode, as a JavaScript expression the runtime
  * evaluates in the template's own scope, or null outside a repeater or where the repeater's items
  * cannot be read.
  *
- * It is the repeater's FIRST item. A perimeter draws one instance of the template, and a component
- * inside it used to be handed each bound prop's display text (`❪ item.data.date ❫`) as its value.
- * Text survives that; a component that formats the prop does not: `Intl/formatDate` and a locale
- * tag reject it with a `RangeError` (spec.md §16.4), and the instance was not rendered at all. The
- * first item is real data of exactly the shape the template was written for, and it is the row
- * Preview draws first.
+ * It is the repeater's FIRST item. A perimeter draws one instance of the template, and everything
+ * in it that reads the row (text, an attribute, a `src`, a style value, a component's prop) is
+ * resolved against that item: real data of exactly the shape the template was written for, and the
+ * row Preview draws first.
  */
 export type SampleRow = string | null;
 
@@ -379,43 +270,66 @@ function isWholeTemplate(template: string, part: TemplateExpression): boolean {
 }
 
 /**
- * A bound component prop as edit mode passes it: the binding itself, evaluated LIVE by the runtime
- * (against the page's own state and `$page`, and inside a repeater against its sample row) and
- * guarded, so a binding with nothing to read yet (a collection still loading, an empty one) reads
- * as the empty string, a component prop's usual default, rather than throwing out of the binding's
- * effect.
- *
- * Display text is what edit mode shows for a binding the PAGE draws, because the author edits that
- * text in place. A component's prop is not drawn by the page: the component decides what it means,
- * and a date, a locale, a count or a colour cannot be a label.
+ * One row-reading expression as the canvas evaluates it: inside the sample `row`, and guarded, so a
+ * binding with nothing to read (a list still loading, an empty one, no row at all) yields
+ * `fallback` instead of throwing out of its effect. `fallback` is JavaScript source.
  */
-export function liveEditProp(template: string, row: SampleRow = null): string {
+function guardedRowExpr(expr: string, row: SampleRow, fallback: string): string {
+  return `\${${guardedRowBody(expr, row, fallback)}}`;
+}
+
+/** The expression inside {@link guardedRowExpr}'s `${…}`. */
+function guardedRowBody(expr: string, row: SampleRow, fallback: string): string {
+  return `${ROW_RESOLVED}(() => { try { return ${inRow(expr, row)}; } catch { return ${fallback}; } })()`;
+}
+
+/**
+ * A template whose expressions read the repeater row, as the canvas resolves it: each expression
+ * evaluated LIVE against the sample row and guarded ({@link guardedRowExpr}).
+ *
+ * A template that is one whole `${…}` keeps its value's type, so `whole` is what a failure yields
+ * there: `null` for an attribute, which removes it (a `hidden` bound to a row that is not there is
+ * taken off, not left standing), and `[]` for computed children. Inside a longer string a failure
+ * is the empty string.
+ */
+function liveRowTemplate(template: string, row: SampleRow, whole = '""'): string {
   const parts = templateExpressions(template);
   if (parts.length === 0) {
     return template;
   }
+  if (parts.length === 1 && isWholeTemplate(template, parts[0]!)) {
+    return guardedRowExpr(parts[0]!.expr, row, whole);
+  }
   let out = "";
   let last = 0;
   for (const { start, end, expr } of parts) {
-    out += template.slice(last, start);
-    out += `\${(() => { try { return ${inRow(expr, row)}; } catch { return ""; } })()}`;
+    out += template.slice(last, start) + guardedRowExpr(expr, row, '""');
     last = end;
   }
   return out + template.slice(last);
 }
 
 /**
- * A `$ref`-bound component prop in edit mode: a scope pointer resolves live as it is, and a row
- * pointer (`$map/item/…`) is read from the sample row, or dropped where there is none so the
- * component keeps its own default.
+ * A bound component prop as edit mode passes it: the binding itself, evaluated LIVE by the runtime
+ * (against the page's own state and `$page`, and inside a repeater against its sample row) and
+ * guarded, so a binding with nothing to read yet (a collection still loading, an empty one) reads
+ * as the empty string, a component prop's usual default, rather than throwing out of the binding's
+ * effect.
+ *
+ * A component's prop is not drawn by the page: the component decides what it means, and a date, a
+ * locale, a count or a colour cannot be a label.
  */
-function liveEditRefProp(ref: string, row: SampleRow): JxDocumentValue | undefined {
-  const pointer = ref.startsWith("#/") ? ref.slice(2) : ref;
-  if (pointer !== "$map" && !pointer.startsWith("$map/")) {
-    return { $ref: ref };
-  }
+export function liveEditProp(template: string, row: SampleRow = null): string {
+  return liveRowTemplate(template, row);
+}
+
+/**
+ * A row pointer (`$map/item/…`) as the canvas resolves it: read from the sample row and guarded, or
+ * undefined for a pointer no template can reach, which the caller then leaves out.
+ */
+function liveRowRef(ref: string, row: SampleRow, whole: string): string | undefined {
   const accessor = refAccessor(ref);
-  return row === null || accessor === null ? undefined : liveEditProp(`\${${accessor}}`, row);
+  return accessor === null ? undefined : guardedRowExpr(accessor, row, whole);
 }
 
 /**
@@ -445,17 +359,8 @@ export function sampleRowAt(doc: JxDocumentValue, path: readonly (string | numbe
 // ─── Entry-bound text ────────────────────────────────────────────────────────
 
 /**
- * The attribute edit mode stamps on an element whose text or children it draws from a content
- * entry: the fields it shows, joined ` · `. The canvas's edit stylesheet draws it as a badge over
- * the element (`iframe-render.ts`), and the element is closed to the caret, because the words are
- * the entry's and not the page's.
- */
-export const BOUND_FIELD_ATTR = "data-jx-bound-field";
-
-/**
- * The state entries whose fields edit mode draws live: every `ContentEntry` a document declares
- * (studio.md §4.1). A collection's page names the entry it is drawing through one, so its text is
- * the entry previewed rather than a row of `❪ state.entry.data.title ❫` labels.
+ * The state entries that are content entries: every `ContentEntry` a document declares. A
+ * collection's page names the entry it is drawing through one (studio.md §22.5).
  */
 export function entryRootsOf(doc: JxDocumentValue | undefined): ReadonlySet<string> {
   const roots = new Set<string>();
@@ -494,7 +399,7 @@ function entryFieldOf(expr: string, roots: ReadonlySet<string>): string | null {
 
 /**
  * The fields a template draws from an entry, in order, or null when it draws nothing from one or
- * when any of its expressions reads something else (that text stays its binding, §4.1).
+ * when any of its expressions reads something else.
  */
 export function entryBoundFields(template: string, roots: ReadonlySet<string>): string[] | null {
   if (roots.size === 0) {
@@ -517,341 +422,877 @@ export function entryBoundFields(template: string, roots: ReadonlySet<string>): 
   return fields;
 }
 
+// ─── Chips ───────────────────────────────────────────────────────────────────
+
+/** What a chip stands for: a path, a formula over one, any other expression, or a `{ "$ref" }`. */
+export type TagKind = "field" | "format" | "custom" | "ref";
+
+/** The name of an expression outside the tag grammar (studio.md §6.9). Raw code is never drawn. */
+export const CUSTOM_TAG_LABEL = "Custom expression";
+
+/** The name of a literal run that only reads right once the template has evaluated its escapes. */
+const ESCAPED_TEXT_LABEL = "Escaped text";
+
+/** The name of computed children and of a string child that resolves to nodes (studio.md §4.5). */
+export const COMPUTED_LIST_LABEL = "Computed list";
+
 /**
- * An entry-bound text template as edit mode renders it: each expression evaluated live, and read as
- * its binding label (`❪ state.entry.data.title ❫`) when there is no entry to read it from yet, so a
- * page with no entry chosen still says what goes where.
+ * The key a chip's definition carries what it stands for under: `{ source, label, kind }`.
+ *
+ * Not an attribute, because the runtime resolves a `${…}` in an attribute's value and the source IS
+ * one. A `$`-prefixed key is a scope local to the runtime, which stores it and reads nothing in it,
+ * so it crosses to the frame untouched; the frame's stamper writes it onto the element as
+ * `data-jx-tag`, `data-jx-tag-label` and `data-jx-tag-kind` (`makeStamper` in
+ * `canvas/iframe-render.ts`).
  */
-function liveEntryText(template: string): string {
+export const TAG_MARK = "$__tag";
+
+/** The key that marks the one element a templated string member of `children` is drawn as. */
+export const TEXT_MARK = "$__text";
+
+/** The attribute a chip carries its expression in, verbatim. Serialization reads this, never text. */
+export const TAG_ATTR = "data-jx-tag";
+
+/** The attribute a chip carries its human name in. */
+export const TAG_LABEL_ATTR = "data-jx-tag-label";
+
+/** The attribute a chip carries its {@link TagKind} in. */
+export const TAG_KIND_ATTR = "data-jx-tag-kind";
+
+/**
+ * The attribute on a chip that is one whole string member of a `children` array, and so is never
+ * joined with the text beside it.
+ *
+ * A member that is one whole `${…}` is the only string whose VALUE may be nodes: an array there is
+ * spliced in as elements (spec.md §8.4), where the same expression inside a longer string, or as a
+ * `textContent`, is interpolated into text. Joining `"Intro: "` and `"${state.spans}"` into one
+ * string therefore turns a list of elements into `[object Object]`, and the reverse turns `a,b`
+ * into two text nodes. So where a chip stands in the document is part of what it stands for, and
+ * the serializer keeps it (`editor/inline-edit.ts`).
+ */
+export const TAG_MEMBER_ATTR = "data-jx-tag-member";
+
+/**
+ * The attribute a `{ "$ref" }` chip carries its pointer in, verbatim. A reference is not a string,
+ * so it is written back as the object it was (`editor/inline-edit.ts`), never as `data-jx-tag`.
+ */
+export const TAG_REF_ATTR = "data-jx-tag-ref";
+
+/**
+ * What a `{ "$ref" }` text is counted as wherever bindings are counted: by the frame when it
+ * reports a deleted chip, and by the commit guard that asks whether a write lost a binding
+ * (`editor/inline-edit-apply.ts`). JSON, so it can never be mistaken for a `${…}`.
+ */
+export function refBindingKey(pointer: string): string {
+  return JSON.stringify({ $ref: pointer });
+}
+
+/** What separates a binding's place from its spelling in a key. No document string holds it. */
+const SLOT_SEPARATOR = "\u0000";
+
+/**
+ * What every binding in `value` is counted as, where `value` is a property of an element other than
+ * its text and `slot` is the key path it sits at (`attributes/href`, `innerHTML`, `style/color`):
+ * one key for each `${…}` and each `{ "$ref" }`, at any depth.
+ *
+ * The slot is part of the key because a binding is not only its spelling. A link's `href` bound to
+ * `${state.url}` and the same expression typed into the paragraph's text are two different things,
+ * and counted alike the second stood in for the first. Shared by the commit guard that counts them
+ * (`editor/inline-edit-apply.ts`) and by the frame, which reports one the author replaced (a URL
+ * set in the link popover, `editor/inline-link.ts`).
+ */
+export function slotBindingKeys(value: JxDocumentValue | undefined, slot: string): string[] {
+  if (isString(value)) {
+    return templateExpressions(value).map(
+      ({ start, end }) => slot + SLOT_SEPARATOR + value.slice(start, end),
+    );
+  }
+  if (isRef(value)) {
+    return [slot + SLOT_SEPARATOR + refBindingKey(value.$ref)];
+  }
+  if (isDocumentContainer(value)) {
+    // An array's members or an object's values: `Object.entries` reads either.
+    return Object.entries(value).flatMap(([key, member]) =>
+      slotBindingKeys(member, `${slot}/${key}`),
+    );
+  }
+  return [];
+}
+
+/** The attribute on the element that holds one templated string member's runs and chips. */
+export const TEXT_ATTR = "data-jx-text";
+
+/** The selector for a chip. */
+export const TAG_SELECTOR = `data[${TAG_ATTR}]`;
+
+/** What a chip definition carries for the stamper. */
+export interface TagMark {
+  source: string;
+  label: string;
+  kind: TagKind;
+  /** The chip is one whole string member of `children` ({@link TAG_MEMBER_ATTR}). */
+  member?: boolean;
+  /** The pointer of a `{ "$ref" }` chip ({@link TAG_REF_ATTR}). */
+  ref?: string;
+}
+
+/** The {@link TagMark} of a prepared chip definition, or null for any other node. */
+export function tagMarkOf(def: JxDocumentValue | undefined): TagMark | null {
+  const mark = isNodeObject(def) ? def[TAG_MARK] : undefined;
+  if (!isNodeObject(mark) || !isString(mark.source) || !isString(mark.label)) {
+    return null;
+  }
+  const { kind } = mark;
+  const out: TagMark = {
+    kind: kind === "field" || kind === "format" || kind === "ref" ? kind : "custom",
+    label: mark.label,
+    source: mark.source,
+  };
+  if (mark.member === true) {
+    out.member = true;
+  }
+  if (isString(mark.ref)) {
+    out.ref = mark.ref;
+  }
+  return out;
+}
+
+/** Whether a prepared definition is the element one templated string member is drawn as. */
+export function isTextRun(def: JxDocumentValue | undefined): boolean {
+  return isNodeObject(def) && def[TEXT_MARK] === true;
+}
+
+/**
+ * A chip: a `<data>` element closed to the caret that stands for `source` and whose content is
+ * `content`, a live template the runtime resolves (or plain text).
+ *
+ * `<data>` and not `<span>`: `span` is a formatting tag to the inline normalizer
+ * (`editor/inline-format.ts`), which merges two adjacent ones into one and unwraps a bare one. The
+ * content is a `children` member, never `textContent`, so a whole-`${…}` value that is an array is
+ * spliced as nodes the way the build splices it (spec.md §8.4), and the runtime never takes the
+ * text for a component prop binding.
+ */
+function chipDef(mark: TagMark, content: string): JxMutableNode {
+  return {
+    [TAG_MARK]: { ...mark },
+    attributes: { contenteditable: "false" },
+    children: [content],
+    tagName: "data",
+  };
+}
+
+/** The human name and kind of one `${…}` expression. */
+export function describeTag(expr: string): { label: string; kind: TagKind } {
+  const tag = parseDynamicTag(expr);
+  return tag === null
+    ? { kind: "custom", label: CUSTOM_TAG_LABEL }
+    : { kind: dynamicTagKind(tag), label: dynamicTagLabel(tag) };
+}
+
+/**
+ * Whether a literal run must be evaluated to read as the page will read it. A template string is
+ * the inside of a JavaScript template literal, so a backslash in it is an escape (`\n`, `\${`), and
+ * a `${` no expression closes fails the whole template. Such a run is drawn by the runtime inside a
+ * chip of its own, so what the author types into is always text that is stored as it is seen.
+ */
+export function needsEvaluation(text: string): boolean {
+  return text.includes("\\") || text.includes("`") || text.includes("${");
+}
+
+/** {@link escapeTemplateText} for text that holds no `${`. */
+function escapeLiteral(text: string): string {
+  return text.replaceAll("\\", String.raw`\\`).replaceAll("`", "\\`");
+}
+
+/**
+ * Text the author typed, as it is written INSIDE a template string so that it reads back as typed:
+ * a template string is the inside of a JavaScript template literal, where a backslash starts an
+ * escape and a backtick ends the literal (and with it the whole template, which then draws
+ * nothing).
+ *
+ * A `${` is left as it is, and so is everything from one that nothing closes to the end of the
+ * text. Writing `${…}` has always been how a binding is typed by hand, and it is what Insert data
+ * writes; an open one is a binding still being typed, and escaping under the author's hands what
+ * they have typed of it so far would mean it could never be finished.
+ */
+export function escapeTemplateText(text: string): string {
   let out = "";
   let last = 0;
-  for (const { start, end, expr } of templateExpressions(template)) {
-    const label = jsLiteral(templateToEditDisplay(`\${${expr}}`));
-    out += template.slice(last, start);
-    out += `\${(() => { try { return (${expr}) ?? ${label}; } catch { return ${label}; } })()}`;
+  for (const { start, end } of templateExpressions(text)) {
+    out += escapeLiteral(text.slice(last, start)) + text.slice(start, end);
     last = end;
   }
-  return out + template.slice(last);
+  const rest = text.slice(last);
+  const open = rest.indexOf("${");
+  return open === -1
+    ? out + escapeLiteral(rest)
+    : out + escapeLiteral(rest.slice(0, open)) + rest.slice(open);
 }
 
-/** A `$ref` text binding as the template it means, or null for a pointer a template cannot reach. */
-function refTemplate(ref: string): string | null {
-  const pointer = ref.startsWith("#/") ? ref.slice(2) : ref;
-  const segments = pointer.split("/");
-  return segments[0] === "state" && segments.every((seg) => /^[\w$]+$/u.test(seg))
-    ? `\${${segments.join(".")}}`
-    : null;
+/** What a one-character escape of a template literal stands for (ECMA-262 SingleEscapeCharacter). */
+const SINGLE_ESCAPES = new Map([
+  ["0", "\0"],
+  ["b", "\b"],
+  ["f", "\f"],
+  ["n", "\n"],
+  ["r", "\r"],
+  ["t", "\t"],
+  ["v", "\v"],
+]);
+
+/** A run of hexadecimal digits, whole. */
+const HEX_RE = /^[\da-f]+$/iu;
+
+/** The character a hexadecimal code point spells, or null when it spells none. */
+function codePointOf(hex: string): string | null {
+  if (!HEX_RE.test(hex)) {
+    return null;
+  }
+  const point = Number.parseInt(hex, 16);
+  return point > 0x10_ff_ff ? null : String.fromCodePoint(point);
 }
 
 /**
- * The entry fields a node's text or computed children draw, with the value edit mode renders for
- * them, or null when they draw something else.
- */
-function entryBinding(
-  node: JxMutableNode,
-  roots: ReadonlySet<string>,
-): { key: "textContent" | "children"; value: string; fields: string[] } | null {
-  const { textContent, children } = node;
-  const text = isString(textContent)
-    ? textContent
-    : isRef(textContent)
-      ? refTemplate(textContent.$ref)
-      : null;
-  if (text !== null && text.includes("${")) {
-    const fields = entryBoundFields(text, roots);
-    return fields ? { fields, key: "textContent", value: liveEntryText(text) } : null;
-  }
-  if (isTemplateString(children)) {
-    const fields = entryBoundFields(children, roots);
-    return fields ? { fields, key: "children", value: children } : null;
-  }
-  return null;
-}
-
-/** The entry fields a node's text or computed children draw, or null (see {@link entryRootsOf}). */
-export function entryFieldsOfNode(
-  node: JxDocumentValue | undefined,
-  roots: ReadonlySet<string>,
-): string[] | null {
-  return isNodeObject(node) ? (entryBinding(node, roots)?.fields ?? null) : null;
-}
-
-/** Whether a prepared node already carries its entry binding: the walk runs twice over a layout. */
-function hasEntryBinding(node: JxMutableNode): boolean {
-  const { attributes } = node;
-  return isDocumentContainer(attributes) && !Array.isArray(attributes)
-    ? isString(attributes[BOUND_FIELD_ATTR])
-    : false;
-}
-
-/**
- * The text a `$ref` binding shows in edit mode: its pointer, with the `#/state/` prefix dropped.
+ * A literal run of a template string as the text it shows: the inverse of
+ * {@link escapeTemplateText} for text that holds no expression, read as a JavaScript template
+ * literal reads it.
  *
- * @param {string} ref
+ * A run is written this way once the string it stood in is no longer a template (its last `${…}`
+ * was deleted, or the run was cut out of it): a string with no `${` is literal text, so `C:\\temp`
+ * left as it was spelled would show both backslashes. Returns null for a run no template literal
+ * could hold (a bare backtick, an escape that is not one), which a page cannot draw either.
  */
-function refDisplayLabel(ref: string): string {
-  const label = ref.startsWith("#/state/") ? ref.slice(8) : ref;
-  return `{${label}}`;
+export function unescapeTemplateText(text: string): string | null {
+  let out = "";
+  for (let i = 0; i < text.length; i++) {
+    const char = text.charAt(i);
+    if (char === "`") {
+      return null;
+    }
+    if (char !== "\\") {
+      out += char;
+      continue;
+    }
+    i += 1;
+    const next = text.charAt(i);
+    if (next === "") {
+      return null;
+    }
+    if (next === "x" || (next === "u" && text.charAt(i + 1) !== "{")) {
+      const length = next === "x" ? 2 : 4;
+      const hex = text.slice(i + 1, i + 1 + length);
+      const spelled = hex.length === length ? codePointOf(hex) : null;
+      if (spelled === null) {
+        return null;
+      }
+      out += spelled;
+      i += length;
+    } else if (next === "u") {
+      const close = text.indexOf("}", i);
+      const spelled = close === -1 ? null : codePointOf(text.slice(i + 2, close));
+      if (spelled === null) {
+        return null;
+      }
+      out += spelled;
+      i = close;
+    } else if (next === "0" && /\d/u.test(text.charAt(i + 1))) {
+      // A legacy octal escape, which a template literal refuses.
+      return null;
+    } else if (/[1-9]/u.test(next)) {
+      return null;
+    } else if (next === "\r" || next === "\n") {
+      // A line continuation: the backslash and the line break are no text at all.
+      if (next === "\r" && text.charAt(i + 1) === "\n") {
+        i += 1;
+      }
+    } else {
+      out += SINGLE_ESCAPES.get(next) ?? next;
+    }
+  }
+  return out;
 }
 
 /**
- * Prepare a document for edit-mode rendering. Replaces template strings with readable literal text,
- * $prototype:Array with placeholders, and $ref bindings with display labels. Preserves state so the
- * runtime can still initialise scope. Arrays are prepared member by member, and primitives and a
- * cleared (`undefined`) key return unchanged, so the walker can recurse through any document
- * value.
+ * An expression as chip content that is INTERPOLATED, the way the page interpolates it inside a
+ * longer string or a `textContent`: whatever it yields becomes text by a template literal's own
+ * conversion, so an array reads `a,b` and is never spliced in as nodes. The nested literal is what
+ * makes the chip's one whole `${…}` yield a string.
+ */
+function interpolated(expr: string): string {
+  return `\${\`\${${expr}}\`}`;
+}
+
+/**
+ * A template as the canvas draws it: each literal run as a string, each `${…}` as a chip.
+ *
+ * A chip's content is the expression itself, resolved by the runtime against the real scope. One
+ * that reads the repeater row is resolved against the sample `row` and guarded, so with no row to
+ * read it is empty, and an empty chip is drawn as its name (`EDIT_PLACEHOLDER_CSS`).
+ */
+function templateRuns(
+  template: string,
+  row: SampleRow,
+  member = false,
+): (JxMutableNode | string)[] {
+  const runs: (JxMutableNode | string)[] = [];
+  for (const segment of templateSegments(template)) {
+    if (segment.type === "literal") {
+      runs.push(
+        needsEvaluation(segment.text)
+          ? chipDef(
+              withMember(
+                { kind: "custom", label: ESCAPED_TEXT_LABEL, source: segment.text },
+                member,
+              ),
+              `\${\`${segment.text}\`}`,
+            )
+          : segment.text,
+      );
+      continue;
+    }
+    const mark: TagMark =
+      segment.type === "tag"
+        ? {
+            kind: dynamicTagKind(segment.tag),
+            label: dynamicTagLabel(segment.tag),
+            source: segment.source,
+          }
+        : { kind: "custom", label: CUSTOM_TAG_LABEL, source: segment.source };
+    const rowBound = isRowBound(segment.source);
+    /* A whole member keeps its value's type, so an array is spliced as the page splices it; every
+       other chip is text, as the string it came from is. */
+    const content = member
+      ? rowBound
+        ? guardedRowExpr(segment.expr, row, '""')
+        : segment.source
+      : interpolated(rowBound ? guardedRowBody(segment.expr, row, '""') : segment.expr);
+    runs.push(chipDef(withMember(mark, member), content));
+  }
+  return runs;
+}
+
+/** `mark`, flagged as a whole string member of `children` when it is one. */
+function withMember(mark: TagMark, member: boolean): TagMark {
+  return member ? { ...mark, member: true } : mark;
+}
+
+/**
+ * A string member of a `children` array as the canvas draws it (studio.md §4.5).
+ *
+ * Plain text is itself, unless it must be kept `apart` from the string after it (below). A string
+ * that is one whole `${…}` is one chip, marked as a member ({@link TAG_MEMBER_ATTR}): its value
+ * keeps its type, so an array is spliced in as nodes. Any other templated string is ONE element
+ * holding its runs and chips, because a member is one node at its index: the surgical patcher finds
+ * a sibling's place by counting DOM children, and a member drawn as three nodes would move every
+ * later sibling two places along.
+ */
+export function prepareTextMember(
+  text: string,
+  row: SampleRow = null,
+  apart = false,
+): JxMutableNode | string {
+  if (!text.includes("${")) {
+    /* `apart`: this plain string ends in a `$` and the plain string after it starts with a `{`
+       ({@link opensExpression}). As two text nodes side by side they are one run of text to the
+       editing host, which joins them, and joined they are an expression nobody wrote. So this one
+       is drawn as a chip, a member of its own that is written back exactly as it is spelled. */
+    return apart
+      ? chipDef({ kind: "custom", label: ESCAPED_TEXT_LABEL, member: true, source: text }, text)
+      : text;
+  }
+  if (templateSegments(text).length === 1) {
+    // One whole `${…}`, or one literal run that only reads right evaluated: one chip, a member.
+    const [only] = templateRuns(text, row, true);
+    if (only !== undefined) {
+      return only;
+    }
+  }
+  return { [TEXT_MARK]: true, children: templateRuns(text, row), tagName: "data" };
+}
+
+/**
+ * Whether two adjacent members of `children` are plain strings whose join would open an expression:
+ * a `$` meeting a `{`. Stored content keeps such a pair apart (`editor/content-slice.ts`), and the
+ * canvas must too ({@link prepareTextMember}).
+ */
+function opensExpression(
+  member: JxDocumentValue | undefined,
+  next: JxDocumentValue | undefined,
+): boolean {
+  return (
+    isString(member) &&
+    isString(next) &&
+    // `member` is plain by the time this is asked of it (`prepareTextMember`).
+    !next.includes("${") &&
+    member.endsWith("$") &&
+    next.startsWith("{")
+  );
+}
+
+/** The last segment of a pointer, as words: the name of what a `{ "$ref" }` reads. */
+function refLabel(ref: string): string {
+  const last = ref.split("/").at(-1) ?? "";
+  const label = humanizeIdentifier(last.replaceAll("~1", "/").replaceAll("~0", "~"));
+  return label === "" ? "Reference" : label;
+}
+
+/**
+ * A `{ "$ref" }` text as one chip of kind `ref`. A pointer a template can reach is read as that
+ * template; any other (`window#/…`) keeps the pointer, which the runtime resolves as it always
+ * did.
+ */
+function refChip(ref: string, row: SampleRow): JxMutableNode {
+  const accessor = refAccessor(ref);
+  const mark: TagMark = {
+    kind: "ref",
+    label: refLabel(ref),
+    ref,
+    source: accessor === null ? ref : `\${${accessor}}`,
+  };
+  if (accessor === null) {
+    return {
+      [TAG_MARK]: { ...mark },
+      attributes: { contenteditable: "false" },
+      tagName: "data",
+      textContent: { $ref: ref },
+    };
+  }
+  /* The page assigns a reference's value to `textContent`, which reads null and undefined as no
+     text and anything else by its string form (an array as `a,b`). The chip does the same, so its
+     one whole `${…}` always yields a string and nothing is spliced. */
+  const value = isRowBound({ $ref: ref }) ? guardedRowBody(accessor, row, '""') : accessor;
+  return chipDef(mark, `\${((v) => (v == null ? "" : String(v)))(${value})}`);
+}
+
+// ─── The bound-block mark ────────────────────────────────────────────────────
+
+/**
+ * The attribute edit mode stamps on an element with any bound property: the names of what it draws
+ * from data, joined ` · `. The canvas's edit stylesheet draws it as a dotted outline and a label
+ * while the element is hovered or holds the caret, and at no other time (`iframe-render.ts`).
+ */
+export const BOUND_FIELD_ATTR = "data-jx-bound-field";
+
+/**
+ * The attribute that marks a collection page's text as one field of the entry being written, which
+ * the author types in place (studio.md §22.5). Its text stays the field's live value, not a chip:
+ * what is typed there is written to the entry, never to the page.
+ */
+export const ENTRY_FIELD_ATTR = "data-jx-entry-field";
+
+/** At most this many names are spelled out in a bound block's label; the rest are counted. */
+const MAX_BOUND_NAMES = 3;
+
+/** Add the name of every binding `value` holds to `into`, in order, once each. */
+function collectBindingNames(value: JxDocumentValue | undefined, into: string[]): void {
+  const add = (name: string): void => {
+    if (!into.includes(name)) {
+      into.push(name);
+    }
+  };
+  if (isString(value)) {
+    for (const { expr } of templateExpressions(value)) {
+      add(describeTag(expr).label);
+    }
+  } else if (isRef(value)) {
+    add(refLabel(value.$ref));
+  }
+}
+
+/**
+ * The names of everything a node's OWN properties draw from data: its text, its computed children,
+ * its string children, its `innerHTML`, its attributes, its top-level style values, a component's
+ * props, and any other bound property (`src`, `className`). Descendants name their own.
+ */
+function boundNamesOf(node: JxMutableNode): string[] {
+  const names: string[] = [];
+  for (const [key, value] of Object.entries(node)) {
+    if (key === "state" || key === "$media" || key === "$elements" || key === "$switch") {
+      continue;
+    }
+    if (key === "children") {
+      if (isTemplateString(value)) {
+        names.push(COMPUTED_LIST_LABEL);
+      } else if (Array.isArray(value)) {
+        for (const child of value) {
+          collectBindingNames(isString(child) ? child : undefined, names);
+        }
+      }
+    } else if (key === "attributes" || key === "style" || key === "$props") {
+      if (isDocumentContainer(value) && !Array.isArray(value)) {
+        for (const member of Object.values(value)) {
+          collectBindingNames(member, names);
+        }
+      }
+    } else {
+      collectBindingNames(value, names);
+    }
+  }
+  return names;
+}
+
+/** A bound block's label: its first few names, and a count of the rest. */
+function boundLabel(names: readonly string[]): string {
+  const shown = names.slice(0, MAX_BOUND_NAMES).join(" · ");
+  return names.length > MAX_BOUND_NAMES ? `${shown} +${names.length - MAX_BOUND_NAMES}` : shown;
+}
+
+// ─── The walk ────────────────────────────────────────────────────────────────
+
+/**
+ * Prepare a document for edit-mode rendering (studio.md §4.5). Every binding stays a binding the
+ * runtime resolves: bound text becomes literal runs and chips, a value that reads the repeater row
+ * is resolved against the repeater's sample row, and a `$prototype: "Array"` becomes its perimeter.
+ * State is preserved so the runtime can still initialise scope. Arrays are prepared member by
+ * member, and primitives and a cleared (`undefined`) key return unchanged, so the walker can
+ * recurse through any document value.
+ *
+ * Preparing a prepared tree changes nothing: a page drawn inside a layout is walked once alone and
+ * once as the merge.
  *
  * @param {JxMutableNode} node
  * @returns {JxMutableNode}
  */
-export function prepareForEditMode(
-  node: JxMutableNode,
-  row?: SampleRow,
-  entryRoots?: ReadonlySet<string>,
-): JxMutableNode;
-export function prepareForEditMode(
-  node: JxDocumentValue,
-  row?: SampleRow,
-  entryRoots?: ReadonlySet<string>,
-): JxDocumentValue;
+export function prepareForEditMode(node: JxMutableNode, row?: SampleRow): JxMutableNode;
+export function prepareForEditMode(node: JxDocumentValue, row?: SampleRow): JxDocumentValue;
 export function prepareForEditMode(
   node: JxDocumentValue | undefined,
   row?: SampleRow,
-  entryRoots?: ReadonlySet<string>,
 ): JxDocumentValue | undefined;
 export function prepareForEditMode(
   node: JxDocumentValue | undefined,
   row: SampleRow = null,
-  entryRoots: ReadonlySet<string> = entryRootsOf(node),
 ): JxDocumentValue | undefined {
-  /* Held for the walk rather than threaded through every recursive call: the walk is synchronous,
-     and the outer value is restored so a nested call cannot leak its roots into its caller's. */
-  const outer = _entryRoots;
-  _entryRoots = entryRoots;
-  try {
-    return prepareNode(node, row);
-  } finally {
-    _entryRoots = outer;
-  }
+  return prepareNode(node, row);
 }
 
-/** The entry roots of the walk in progress ({@link entryRootsOf}). */
-let _entryRoots: ReadonlySet<string> = new Set();
+/** Merge `extra` into a node's `attributes`, keeping what is there. */
+function withAttributes(out: RebuiltNode, extra: Readonly<Record<string, string>>): void {
+  const { attributes } = out;
+  out.attributes =
+    isDocumentContainer(attributes) && !Array.isArray(attributes)
+      ? { ...attributes, ...extra }
+      : { ...extra };
+}
+
+/** Whether a node's `attributes` hold `name` as a string. */
+function hasAttribute(node: Readonly<RebuiltNode>, name: string): boolean {
+  const { attributes } = node;
+  if (!isDocumentContainer(attributes) || Array.isArray(attributes)) {
+    return false;
+  }
+  const held: Readonly<RebuiltNode> = attributes;
+  return isString(held[name]);
+}
+
+/**
+ * A row-bound attribute as the canvas resolves it: against the sample `row`, and `null`, which
+ * takes the attribute off, whenever there is no row to read or reading it fails.
+ *
+ * No row is not the same as a row whose field is empty, and an expression cannot tell them apart:
+ * `${!item?.published}` is `true` with no item at all, so a template row drawn for an empty list
+ * came out `hidden` with nothing on the canvas to click. An attribute that reads the row is
+ * therefore not evaluated without one. A longer string is evaluated as the one template literal it
+ * is, so it too is all there or not there, never `/posts/undefined`.
+ */
+function liveRowAttribute(template: string, row: Exclude<SampleRow, null>): string {
+  const parts = templateExpressions(template);
+  const [only] = parts;
+  const value =
+    only !== undefined && parts.length === 1 && isWholeTemplate(template, only)
+      ? `(${only.expr})`
+      : `\`${template}\``;
+  return `\${${ROW_RESOLVED}((r) => { if (r == null) { return null; } try { return ((item, index, $map) => ${value})(r, 0, { index: 0, item: r }); } catch { return null; } })(${row})}`;
+}
+
+/** A node's `attributes` as the canvas draws them: a row-bound one resolved against the row. */
+function prepareAttributes(attributes: Readonly<RebuiltNode>, row: SampleRow): RebuiltNode {
+  const processed: RebuiltNode = {};
+  for (const [name, value] of Object.entries(attributes)) {
+    if (!isRowBound(value)) {
+      processed[name] = value;
+    } else if (row === null) {
+      // No row to read: the attribute is left off (see `liveRowAttribute`).
+    } else if (isString(value)) {
+      processed[name] = liveRowAttribute(value, row);
+    } else if (isRef(value)) {
+      const live = liveRowRef(value.$ref, row, "null");
+      if (live !== undefined) {
+        processed[name] = live;
+      }
+    }
+  }
+  return processed;
+}
+
+/**
+ * A `style` object as the canvas draws it: every declaration live. One that reads the repeater row
+ * is resolved against the sample row, at any depth of nested selector or media block; with no row
+ * to read it is OMITTED, not blanked, so the cascade answers as it would for an absent one.
+ */
+function prepareStyle(style: Readonly<RebuiltNode>, row: SampleRow): RebuiltNode {
+  const out: RebuiltNode = {};
+  for (const [key, value] of Object.entries(style)) {
+    if (isDocumentContainer(value) && !Array.isArray(value) && !isRef(value)) {
+      out[key] = prepareStyle(value, row);
+    } else if (!isRowBound(value)) {
+      out[key] = value;
+    } else if (row !== null && isString(value)) {
+      out[key] = liveRowTemplate(value, row);
+    } else if (row !== null && isRef(value)) {
+      const live = liveRowRef(value.$ref, row, '""');
+      if (live !== undefined) {
+        out[key] = live;
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * The edit-mode form of a node's `style` for `row`, shared with the surgical patcher so a patched
+ * style is the style the full render drew (`canvas/iframe-patch.ts`).
+ */
+export function editModeStyle(
+  style: JxDocumentValue | undefined,
+  row: SampleRow,
+): JxDocumentValue | undefined {
+  return isDocumentContainer(style) && !Array.isArray(style) ? prepareStyle(style, row) : style;
+}
+
+/**
+ * Elements whose content is read as TEXT and nothing else: the parser, and so the browser, takes no
+ * element inside them. A chip there is a child the element ignores, so a templated `<style>` lost
+ * the value it was written around and a `<textarea>` its whole content.
+ */
+const RAW_TEXT_TAGS = new Set(["style", "script", "title", "textarea"]);
+
+/** The elements that open a foreign namespace, where an HTML `<data>` chip is not drawn at all. */
+const FOREIGN_ROOT_TAGS = new Set(["svg", "math"]);
+
+/** Whether a value is a binding: a template or a `{ "$ref" }`. */
+function isBound(value: JxDocumentValue | undefined): boolean {
+  return isTemplateString(value) || isRef(value);
+}
+
+/** Whether a node holds children: a non-empty array, or anything else that is not absent. */
+function holdsChildren(children: JxDocumentValue | undefined): boolean {
+  return Array.isArray(children) ? children.length > 0 : children != null;
+}
+
+/**
+ * Whether what a node draws is a VALUE rather than the author's text, read from the document: its
+ * children are computed, its `innerHTML` or `innerText` is bound, its text is a `{ "$ref" }`, or
+ * its text is a template that shares the node with children. The canvas closes such a node to the
+ * caret (studio.md §4.5), and nothing that slices or joins stored content may reach inside one,
+ * because no offset counted on the canvas means anything in there (`editor/content-slice.ts`).
+ */
+export function isClosedContent(node: JxMutableNode): boolean {
+  const { children, textContent } = node;
+  if (isTemplateString(children) || isBound(node.innerHTML) || isBound(node[INNER_TEXT])) {
+    return true;
+  }
+  return isRef(textContent) || (isTemplateString(textContent) && holdsChildren(children));
+}
 
 /** {@link prepareForEditMode} for one value, inside the sample `row` of its enclosing repeater. */
-function prepareNode(node: JxMutableNode, row: SampleRow): JxMutableNode;
-function prepareNode(node: JxDocumentValue, row: SampleRow): JxDocumentValue;
+function prepareNode(node: JxMutableNode, row: SampleRow, foreign?: boolean): JxMutableNode;
+function prepareNode(node: JxDocumentValue, row: SampleRow, foreign?: boolean): JxDocumentValue;
 function prepareNode(
   node: JxDocumentValue | undefined,
   row: SampleRow,
+  foreign?: boolean,
 ): JxDocumentValue | undefined;
 function prepareNode(
   node: JxDocumentValue | undefined,
   row: SampleRow,
+  inForeign = false,
 ): JxDocumentValue | undefined {
   if (Array.isArray(node)) {
     // Arrays of nodes round-trip element-wise; the array itself is not a node.
-    return node.map((n) => prepareNode(n, row));
+    return node.map((n) => prepareNode(n, row, inForeign));
   }
   if (!isNodeObject(node)) {
+    return node;
+  }
+  // A chip, or the element a templated string is drawn as: prepared already, by an earlier walk.
+  if (tagMarkOf(node) !== null || isTextRun(node)) {
     return node;
   }
 
   // A mapped-array node itself → its edit-mode perimeter (e.g. when the patcher re-renders an
   // Array node directly). Members inside a children array funnel here via the children branch.
   if (node.$prototype === "Array") {
-    return arrayToPerimeter(node, row);
+    return arrayToPerimeter(node, row, inForeign);
   }
 
   const obj = node;
 
   const out: RebuiltNode = {};
-  let needsMediaPlaceholder = false;
-  /* Text or computed children drawn from a content entry render live (§4.1). A node already
-     carrying the mark was prepared once: a page inside a layout is walked again as the merge. */
-  const entryBound = hasEntryBinding(obj);
-  const entry = entryBound ? null : entryBinding(obj, _entryRoots);
   const isMediaElement = isString(obj.tagName) && mediaTags.has(obj.tagName);
-
-  // Check if this media element lacks a resolvable src (top-level or in attributes)
-  if (isMediaElement) {
-    const attrs = obj.attributes;
-    const topSrc = obj.src;
-    const attrSrc = attrs?.src;
-    const topPoster = obj.poster;
-    const attrPoster = attrs?.poster;
-    const hasSrc = (topSrc && topSrc !== "") || (attrSrc && attrSrc !== "");
-    const hasPoster = (topPoster && topPoster !== "") || (attrPoster && attrPoster !== "");
-    if (!hasSrc && !hasPoster) {
-      needsMediaPlaceholder = true;
-    }
-  }
+  /* An entry's field the author types in place keeps its text as the field's live value: the
+     nested host there commits to the entry, and a chip inside it would be typed around. */
+  const isEntryField = hasAttribute(obj, ENTRY_FIELD_ATTR);
+  /* Text and children are two properties the runtime writes in turn, the text first. A node that
+     holds both keeps its text a property, so no child moves to another index, and is closed to the
+     caret instead, which is what keeps its resolved value out of anything typed into. */
+  const hasChildren = holdsChildren(obj.children);
+  /** Whether what this node draws is a value, so the caret must not enter it. */
+  let closed = false;
+  /** Whether an earlier walk prepared this node: it carries the mark that walk left. */
+  const prepared = hasAttribute(obj, BOUND_FIELD_ATTR);
+  const tag = isString(obj.tagName) ? obj.tagName.toLowerCase() : "";
+  /* SVG and MathML content is in another namespace, where the `<data>` a chip is drawn as is an
+     unknown element the engine does not render: a chart label bound to data vanished. An
+     `<foreignObject>` is HTML again. */
+  const foreign = tag === "foreignobject" ? false : inForeign || FOREIGN_ROOT_TAGS.has(tag);
+  /* Where no chip can be drawn, bound text stays the runtime's own text (a property, a string
+     child), resolved as the page resolves it, and the node is closed to the caret instead. */
+  const noChips = foreign || RAW_TEXT_TAGS.has(tag);
+  /* Bound text with no children beside it is drawn as runs and chips, which ARE the node's
+     children on the canvas: an empty `children` the document also holds must not replace them,
+     whichever of the two keys comes first. */
+  const textAsRuns =
+    !hasChildren &&
+    !noChips &&
+    (isRef(obj.textContent) || (isTemplateString(obj.textContent) && !isEntryField));
 
   for (const [k, v] of Object.entries(obj)) {
     if (k === "state" || k === "$media" || k === "$elements") {
       out[k] = v; // Preserve as-is for runtime resolution
     } else if (k === "$props" && isDocumentContainer(v)) {
       /* A component's inputs render LIVE. They are its configuration, not text the author edits in
-         place (a template-valued prop is refused by inline prop editing), and showing their binding
-         text instead fed it to the component as a value: a header's `variant` became the literal
-         `❪ state.headerVariant ❫` and matched none of its styles. A prop that reads the repeater
-         row is drawn with the repeater's sample row (see liveEditProp), guarded, so a date or a
-         locale the component formats is real data rather than a label; a row-bound link target is
-         inert and a row-bound image-like key the placeholder image. */
+         place (a template-valued prop is refused by inline prop editing). A prop that reads the
+         repeater row is drawn with the repeater's sample row (see liveEditProp), guarded, so a
+         date or a locale the component formats is real data rather than a label. */
       const propsOut: RebuiltNode = {};
       for (const [pk, pv] of Object.entries(v)) {
         if (!isRowBound(pv)) {
           propsOut[pk] = pv;
         } else if (isString(pv)) {
-          propsOut[pk] =
-            isImageUrlKey(pk) || pk === "href" || pk === "action"
-              ? rowBoundDisplay(pk, pv)
-              : liveEditProp(pv, row);
+          propsOut[pk] = liveEditProp(pv, row);
         } else if (isRef(pv)) {
-          const live = liveEditRefProp(pv.$ref, row);
+          // A row pointer with no row to read is dropped, so the component keeps its own default.
+          const live = row === null ? undefined : liveRowRef(pv.$ref, row, '""');
           if (live !== undefined) {
             propsOut[pk] = live;
           }
-        } else {
-          propsOut[pk] = pv;
         }
       }
       out[k] = propsOut;
     } else if (k === "children") {
-      if (Array.isArray(v)) {
-        // Each member recurses; array pseudo-elements become a single repeater-perimeter element
-        // (via the top-level array case) so they stay a 1:1 DOM node among their siblings.
-        out.children = v.map((c) => prepareNode(c, row));
-      } else if (isNodeObject(v) && v.$prototype === "Array") {
-        // Legacy whole-children repeater → a single perimeter as the sole child.
-        out.children = [prepareNode(v, row)];
-      } else if (!isTemplateString(v)) {
-        out.children = prepareNode(v, row);
-      } else if (entryBound || entry?.key === "children") {
-        out.children = v;
+      if (textAsRuns) {
+        continue;
       }
-    } else if (k === "cases" && obj.$switch && isDocumentContainer(v)) {
-      // Replace $switch cases with a placeholder showing the first case or a label
-      const [firstEntry] = Object.entries(v);
-      if (firstEntry) {
-        const [, firstCase] = firstEntry;
-        out.children =
-          isDocumentContainer(firstCase) && !(isNodeObject(firstCase) && firstCase.$ref)
-            ? [prepareNode(firstCase, row)]
-            : [
-                {
-                  style: {
-                    background: "color-mix(in srgb, var(--danger) 8%, transparent)",
-                    border: "1px dashed color-mix(in srgb, var(--danger) 40%, transparent)",
-                    borderRadius: "4px",
-                    color: "var(--danger)",
-                    fontFamily: "'JetBrains Mono', 'SF Mono', 'Fira Code', monospace",
-                    fontSize: "11px",
-                    fontStyle: "italic",
-                    padding: "6px 10px",
-                  },
-                  tagName: "div",
-                  textContent: `[$switch: ${Object.keys(v).join(" | ")}]`,
-                },
-              ];
-      }
-    } else if (k === "attributes" && isMediaElement && isDocumentContainer(v)) {
-      // A media element's src/poster: live, unless it reads the repeater row or names nothing.
-      const processed: RebuiltNode = {};
-      for (const [ak, av] of Object.entries(v)) {
-        if ((ak === "src" || ak === "poster") && (av === "" || av == null || isRowBound(av))) {
-          needsMediaPlaceholder = true;
-          processed[ak] = TRANSPARENT_PX;
-        } else if (!omitsRowBound(ak, av)) {
-          processed[ak] = isRowBound(av) ? rowBoundDisplay(ak, av) : av;
-        }
-      }
-      out.attributes = processed;
-    } else if (k === "attributes" && isDocumentContainer(v)) {
-      // A row-bound attribute shows its binding, except a boolean one, which is left out.
-      const processed: RebuiltNode = {};
-      for (const [ak, av] of Object.entries(v)) {
-        if (!omitsRowBound(ak, av)) {
-          processed[ak] = isRowBound(av) ? rowBoundDisplay(ak, av) : av;
-        }
-      }
-      out.attributes = processed;
-    } else if (k === "style") {
-      /* Live, like every binding but text: state IS live on the canvas. Only a declaration that
-         reads the repeater row is omitted — the perimeter has no row — and omitted rather than
-         blanked, because `color: ` is a malformed declaration in a rule where the cascade answers
-         an absent one. Mirrored by iframe-patch's editModeStyle. */
-      if (isDocumentContainer(v)) {
-        const s: RebuiltNode = {};
-        for (const [sk, sv] of Object.entries(v)) {
-          if (!isRowBound(sv)) {
-            s[sk] = sv;
+      if (Array.isArray(v) && noChips) {
+        /* No chip here: a templated string stays the string child the runtime resolves, at its
+           index, and the node is closed so its value is never taken for the author's text. */
+        const members: JxDocumentValue[] = [];
+        for (const c of v) {
+          if (isString(c)) {
+            closed ||= c.includes("${");
+            members.push(isRowBound(c) ? liveRowTemplate(c, row) : c);
+          } else {
+            members.push(prepareNode(c, row, foreign));
           }
         }
-        out.style = s;
+        out.children = members;
+      } else if (Array.isArray(v)) {
+        // Each member is one node at its index: an element, a perimeter, a chip, or a text run.
+        out.children = v.map((c, index) =>
+          isString(c)
+            ? prepareTextMember(c, row, opensExpression(c, v[index + 1]))
+            : prepareNode(c, row, foreign),
+        );
+      } else if (isNodeObject(v) && v.$prototype === "Array") {
+        // Legacy whole-children repeater → a single perimeter as the sole child.
+        out.children = [prepareNode(v, row, foreign)];
+      } else if (isTemplateString(v)) {
+        /* Computed children (spec.md §8.4) render live, as the build renders them. The nodes are
+           not the document's, so the element is closed to the caret and the frame leaves them
+           unstamped. A failure draws no children rather than throwing out of the effect. */
+        out.children = isRowBound(v) ? liveRowTemplate(v, row, "[]") : v;
+        closed = true;
       } else {
-        out.style = v;
+        out.children = prepareNode(v, row, foreign);
       }
-    } else if (k === "$switch" && isString(v) && v.includes("${")) {
-      /* Not a render input any more: `cases` is replaced by the first case above, so a live
-         expression would hand the runtime a switch with nothing to choose from. */
-      out[k] = templateToEditDisplay(v);
-    } else if (k === "textContent" && entry?.key === "textContent") {
-      out[k] = entry.value;
-    } else if (k === "textContent" && entryBound) {
+    } else if (k === "cases" && obj.$switch && isDocumentContainer(v) && !Array.isArray(v)) {
+      /* Every case reaches the runtime, which renders the one `$switch` selects at its own path
+         under `cases`. An external case (`{ "$ref" }`) is fetched by the frame as it is. */
+      const cases: RebuiltNode = {};
+      for (const [name, body] of Object.entries(v)) {
+        cases[name] = isRef(body) ? body : prepareNode(body, row, foreign);
+      }
+      out.cases = cases;
+    } else if (k === "$switch") {
+      // The discriminant is the runtime's to resolve; it selects among the cases above.
       out[k] = v;
+    } else if (k === "attributes" && isDocumentContainer(v) && !Array.isArray(v)) {
+      out.attributes = prepareAttributes(v, row);
+    } else if (k === "style") {
+      out.style = editModeStyle(v, row);
+    } else if ((k === "innerHTML" || k === INNER_TEXT) && isBound(v)) {
+      // Content drawn from data: live, and closed to the caret, since none of it is a document node.
+      out[k] = isString(v) && isRowBound(v) ? liveRowTemplate(v, row) : v;
+      closed = true;
     } else if (k === "textContent" && isString(v) && v.includes("${")) {
-      // The author's text: shown as its binding, so editing it in place edits the template.
-      out[k] = templateToEditDisplay(v);
-    } else if (k === "textContent" && isNodeObject(v) && v.$ref) {
-      out[k] = refDisplayLabel(v.$ref);
-    } else if (isMediaElement && (k === "src" || k === "poster")) {
-      if (v === "" || v == null || isRowBound(v)) {
-        needsMediaPlaceholder = true;
-        out[k] = TRANSPARENT_PX;
-      } else {
+      if (isEntryField) {
         out[k] = v;
+      } else if (hasChildren || noChips) {
+        /* Parenthesised so a bare `${state.key}` here is not taken for a component's prop binding
+           (the runtime marks those for inline prop editing); the value is the same. */
+        out[k] = prepared ? v : isRowBound(v) ? liveRowTemplate(v, row) : parenthesised(v);
+        closed = true;
+      } else {
+        out.children = templateRuns(v, row);
       }
+    } else if (k === "textContent" && isRef(v)) {
+      if (hasChildren || noChips) {
+        out[k] = isRowBound(v) ? (liveRowRef(v.$ref, row, '""') ?? "") : v;
+      } else {
+        out.children = [refChip(v.$ref, row)];
+      }
+      closed = true;
     } else if (isRowBound(v)) {
-      // The same boolean, written as a property (`hidden: "${!item.premium}"`), is left out too.
-      if (!omitsRowBound(k, v)) {
-        out[k] = rowBoundDisplay(k, v);
+      // Any other property that reads the row: resolved against it, empty when there is none.
+      const live = isString(v)
+        ? liveRowTemplate(v, row)
+        : isRef(v)
+          ? liveRowRef(v.$ref, row, '""')
+          : v;
+      if (live !== undefined) {
+        out[k] = live;
       }
     } else if (isString(v) || (isNodeObject(v) && v.$ref)) {
       // Any other bound or literal property renders as the page will.
       out[k] = v;
     } else {
-      out[k] = prepareNode(v, row);
+      out[k] = prepareNode(v, row, foreign);
     }
   }
 
-  /* Computed children (spec.md §8.4) are shown as their binding, like text is, but they are not
-     text: the words here are a label of what the page draws, and a caret placed in them would
-     commit that label as the element's `textContent`. So the label is closed to the caret. */
-  if (isTemplateString(obj.children) && !entryBound && entry?.key !== "children") {
-    out.textContent = computedChildrenDisplay(obj.children);
-    const { attributes } = out;
-    out.attributes = isDocumentContainer(attributes)
-      ? { ...attributes, contenteditable: "false" }
-      : { contenteditable: "false" };
+  if (closed) {
+    withAttributes(out, { contenteditable: "false" });
   }
 
-  /* An entry's words are not the page's: closed to the caret, and badged with the fields they
-     show, so the author can see what each element draws from the entry (studio.md §4.1). */
-  if (entry) {
-    const { attributes } = out;
-    const mark = { [BOUND_FIELD_ATTR]: entry.fields.join(" \u00B7 "), contenteditable: "false" };
-    out.attributes = isDocumentContainer(attributes) ? { ...attributes, ...mark } : mark;
+  /* Named once, by the walk that saw the document's own values: a second walk would name the
+     wrapped expressions the first one left. */
+  if (!prepared) {
+    const names = boundNamesOf(obj);
+    if (names.length > 0) {
+      withAttributes(out, { [BOUND_FIELD_ATTR]: boundLabel(names) });
+    }
   }
 
   // Mark empty elements with placeholder classes for design-mode visibility
   const placeholderClass = computeEmptyPlaceholderClass(out);
-  if (placeholderClass) {
+  const ownClasses = isString(out.className) ? out.className.split(" ") : [];
+  if (placeholderClass && !ownClasses.includes(placeholderClass)) {
     out.className = out.className ? `${out.className} ${placeholderClass}` : placeholderClass;
   }
 
-  // Media elements with missing/dynamic src get a placeholder class
-  if (needsMediaPlaceholder) {
+  // A media element that names no source at all is drawn as a placeholder; a bound one resolves.
+  if (isMediaElement && namesNoSource(obj)) {
     const cls = isString(out.className) ? out.className : "";
     if (!cls.includes("empty-media-placeholder")) {
       out.className = cls ? `${cls} empty-media-placeholder` : "empty-media-placeholder";
@@ -859,4 +1300,27 @@ function prepareNode(
   }
 
   return out;
+}
+
+/** A template with each expression in parentheses: the same value, spelled as no bare path. */
+function parenthesised(template: string): string {
+  let out = "";
+  let last = 0;
+  for (const { start, end, expr } of templateExpressions(template)) {
+    out += `${template.slice(last, start)}\${(${expr})}`;
+    last = end;
+  }
+  return out + template.slice(last);
+}
+
+/** Whether a media element names neither a `src` nor a `poster`, as a property or an attribute. */
+function namesNoSource(node: JxMutableNode): boolean {
+  const { attributes } = node;
+  const named = (value: JxDocumentValue | undefined): boolean => value != null && value !== "";
+  return !(
+    named(node.src) ||
+    named(node.poster) ||
+    named(attributes?.src) ||
+    named(attributes?.poster)
+  );
 }

@@ -33,7 +33,12 @@ import { collectUsedTags } from "@jxsuite/schema/component-meta";
 import { inheritableFormulas } from "@jxsuite/runtime/expression";
 import { injectContext } from "@jxsuite/site/context";
 import { documentUrlPattern } from "@jxsuite/site/routes";
-import { entryBoundFields, entryRootsOf, prepareForEditMode } from "../utils/edit-display";
+import {
+  ENTRY_FIELD_ATTR,
+  entryBoundFields,
+  entryRootsOf,
+  prepareForEditMode,
+} from "../utils/edit-display";
 import { liveEntryState } from "./live-entry";
 import {
   paramBoundStateKeys,
@@ -293,9 +298,6 @@ function entryBodyOf(
   }
   return null;
 }
-
-/** The attribute that marks a page's text as one entry field the author can type in place. */
-export const ENTRY_FIELD_ATTR = "data-jx-entry-field";
 
 /** Text that is one whole field of `root`: `${state.entry.data.title}`, and nothing around it. */
 function wholeFieldOf(text: string, root: string): string | null {

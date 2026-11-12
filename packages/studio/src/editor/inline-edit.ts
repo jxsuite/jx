@@ -7,10 +7,27 @@
  * text formatting, Enter for new paragraphs, and slash commands for inserting elements.
  */
 
-import { displayTagName, isNonNullObject, isString } from "@jxsuite/schema/guards";
+import {
+  displayTagName,
+  isNonNullObject,
+  isString,
+  templateExpressions,
+} from "@jxsuite/schema/guards";
 import { normalizeInlineContent } from "./inline-format";
 import { execEditingCommand } from "./inline-link";
+import { isWholeTemplate, sameContent } from "./content-slice";
+import { keptNodeOf } from "./kept-node";
 import { ELEMENT_DEFS, isEditableTag } from "./editable-tags";
+import { chipSourcesBetween, snapRangeOutOfChips } from "../canvas/iframe-chips";
+import { offsetOf } from "../canvas/iframe-position";
+import {
+  escapeTemplateText,
+  TAG_ATTR,
+  TAG_MEMBER_ATTR,
+  TAG_REF_ATTR,
+  TEXT_ATTR,
+  unescapeTemplateText,
+} from "../utils/edit-display";
 import type { EditableVerdicts } from "./editable-tags";
 import type { JxPath } from "../state";
 import type { JsonPrimitive, JxMutableNode } from "@jxsuite/schema/types";
@@ -187,7 +204,12 @@ let commitFn:
  *   | null}
  */
 let splitFn:
-  | ((path: JxPath, beforeChildren: JxContentResult, afterChildren: JxContentResult) => void)
+  | ((
+      path: JxPath,
+      beforeChildren: JxContentResult,
+      afterChildren: JxContentResult,
+      removedTags: string[],
+    ) => void)
   | null = null; // Function(path, beforeChildren, afterChildren) to split paragraph
 /**
  * @type {((path: JxPath, elementDef: SlashCommand, commitData?: JxContentResult) => void)
@@ -234,11 +256,30 @@ export function setEditableVerdicts(verdicts: EditableVerdicts): void {
  * {@link file://./editable-tags.ts}.
  */
 export function isEditableBlock(el: HTMLElement) {
-  /* Closed explicitly, whatever its tag. Edit mode closes the label it draws for computed children
-     (`prepareForEditMode`), because activating that label commits its words as the element's
-     `textContent` when the caret leaves, and the binding is gone without a key being pressed. */
+  /* Closed explicitly, whatever its tag. Edit mode closes every element whose content is a value
+     rather than the author's text (`prepareForEditMode`: computed children, bound `innerHTML`, a
+     `{ "$ref" }` text), because a caret there would commit the value as the element's content when
+     it leaves, and the binding is gone without a key being pressed. */
   return (
     el.getAttribute("contenteditable") !== "false" && isEditableTag(el.tagName, editableVerdicts)
+  );
+}
+
+/**
+ * Whether `el` is INLINE CONTENT of the block around it rather than a block of its own: its parent
+ * can hold a caret and accepts its tag inline (a link or a `<span>` in a paragraph).
+ *
+ * Such an element is stamped and can hold a caret, so the caret's "block" may be one, and it is in
+ * the canvas's list of blocks. But document order among BLOCKS skips it: the block before a
+ * paragraph is the paragraph before it, not the link that paragraph ends with, and a selection that
+ * ends in the next paragraph has no block "between" its ends when the first one holds a link.
+ */
+export function isInlineOfBlock(el: HTMLElement): boolean {
+  const parent = el.parentElement;
+  return (
+    parent !== null &&
+    isEditableTag(parent.tagName, editableVerdicts) &&
+    isInlineInContext(el.tagName.toLowerCase(), parent.tagName.toLowerCase())
   );
 }
 
@@ -295,10 +336,12 @@ export function startEditing(
       textContent: string | null,
       inPlace: boolean,
     ) => void;
+    /** `removedTags` is what each chip the split's selection covered stood for (`chipKey`). */
     onSplit: (
       path: JxPath,
       beforeChildren: JxContentResult,
       afterChildren: JxContentResult,
+      removedTags: string[],
     ) => void;
     onInsert: (path: JxPath, elementDef: SlashCommand, commitData?: JxContentResult) => void;
     onEnd: () => void;
@@ -403,6 +446,31 @@ export function stopEditing(silent = false) {
  */
 export function commitActiveBlock(): void {
   commitChanges(true);
+}
+
+/**
+ * Whether the active block shows exactly what `node` holds: nothing has been typed into it that the
+ * document has not been given. False for a plain session, whose content is a prop's value and not a
+ * block's, and when nothing is active.
+ */
+export function activeBlockHolds(node: JxMutableNode | null | undefined): boolean {
+  if (!activeEl || _plainMode || !node) {
+    return false;
+  }
+  normalizeInlineContent(activeEl);
+  return sameContent(node, serializeContent(activeEl));
+}
+
+/**
+ * End the session WITHOUT committing, firing `onEnd`: for a block the document is about to redraw
+ * whose content the document already holds ({@link activeBlockHolds}).
+ *
+ * Committing on the way out is right when the block holds typing the document has not seen, and
+ * wrong when it does not: the patch that is about to land may be an undo of this very block, and a
+ * commit of what the block still shows would write the undone text straight back.
+ */
+export function abandonEditing(): void {
+  releaseWithoutCommit();
 }
 
 /**
@@ -538,7 +606,19 @@ export function splitActiveBlock(): boolean {
     return false;
   }
 
-  const range = sel.getRangeAt(0);
+  // A copy: the ends are moved below, and the live selection is the author's to keep.
+  const range = sel.getRangeAt(0).cloneRange();
+
+  /* A chip is one unit, so a selection end inside one is moved to its edge: a split with the caret
+     in a chip's text otherwise cut the chip in two and left its binding in both halves. And the
+     chips a selection covers go with the selection the split drops, which is the author's deletion,
+     so they are reported as one: unreported, the split was refused for losing a binding the author
+     had selected and replaced. */
+  snapRangeOutOfChips(activeEl, range);
+  const from = offsetOf(activeEl, range.startContainer, range.startOffset);
+  const to = offsetOf(activeEl, range.endContainer, range.endOffset);
+  const removed =
+    range.collapsed || from === null || to === null ? [] : chipSourcesBetween(activeEl, from, to);
 
   const beforeRange = document.createRange();
   beforeRange.setStart(activeEl, 0);
@@ -555,7 +635,7 @@ export function splitActiveBlock(): boolean {
   const split = splitFn;
 
   releaseWithoutCommit();
-  split(path, beforeChildren, afterChildren);
+  split(path, beforeChildren, afterChildren, removed);
   return true;
 }
 
@@ -631,71 +711,258 @@ function commitChanges(inPlace: boolean) {
     return;
   }
 
+  /* A block that is no longer in the document is not the block the document holds: a patch
+     replaced it (an undo, a co-author's edit, a refused commit's redraw), and what it shows is
+     what the document held BEFORE that. Writing it would silently put the undone text back. */
+  if (!activeEl.isConnected) {
+    return;
+  }
+
   normalizeInlineContent(activeEl);
-  const result = elementToJx(activeEl);
-  commitFn(activePath, result.children ?? null, result.textContent ?? null, inPlace);
+  const state: SerializeState = { respelled: false };
+  const result = nodesToContent(activeEl, state);
+  // Text stored differently from how it is shown is drawn again from the document: not in place.
+  commitFn(
+    activePath,
+    result.children ?? null,
+    result.textContent ?? null,
+    inPlace && !state.respelled,
+  );
+}
+
+// ─── Pieces: what a block's content is made of, read off the canvas ─────────
+
+/**
+ * One thing an element's content holds, as the serializer reads it (studio.md §4.5, §8.2.7).
+ *
+ * - `plain` is the author's text: a text node, stored as it is seen.
+ * - `template` is one `${…}` of a templated string: a chip's expression, written verbatim.
+ * - `literal` is a literal run of a templated string that is only right once evaluated (it holds an
+ *   escape), drawn as a chip. It is written verbatim while the string it stands in is still a
+ *   template, and as the text it shows once it is not ({@link joinRun}).
+ * - `member` is one whole string member of `children`: a chip marked as one, or the element a
+ *   templated member is drawn as. It is never joined with what stands beside it.
+ * - `node` is an element.
+ *
+ * The distinction is what keeps a commit from changing what a string MEANS while leaving every
+ * binding in it. A string with no `${` is literal text; one with a `${` is the inside of a template
+ * literal, where a backslash is an escape; and one that is a single whole `${…}` and a member of
+ * `children` is the only string whose value may be nodes (spec.md §8.4). So text joined into a
+ * template is escaped, text beside a member stays a member of its own, and a member is never folded
+ * into a `textContent`.
+ */
+type Piece =
+  | { kind: "plain" | "template" | "literal" | "member"; text: string }
+  | { kind: "node"; node: JxMutableNode };
+
+/** A {@link TextPiece} that is joined with the pieces beside it: every sort but a member. */
+type RunPiece = TextPiece & { kind: "plain" | "template" | "literal" };
+
+/** Whether a piece is one a run is made of. */
+function isRunPiece(piece: Piece): piece is RunPiece {
+  return piece.kind === "plain" || piece.kind === "template" || piece.kind === "literal";
+}
+
+/** A {@link Piece} that is text of one sort or another. */
+type TextPiece = Exclude<Piece, { kind: "node" }>;
+
+/** What one serialization learned besides the content. */
+interface SerializeState {
+  /**
+   * Whether the canvas no longer shows the block as the document now holds it: a backslash or a
+   * backtick the author typed into a templated string, stored escaped, or a whole `${…}` typed (or
+   * inserted) as text, which is a binding and is drawn as a chip. The block is then drawn again
+   * from the document rather than left as typed, which keeps an offset counted on the canvas an
+   * offset into the stored text and keeps an expression from standing on the canvas as text.
+   */
+  respelled: boolean;
+}
+
+/** Whether `node` is a chip: the element that stands for one binding. */
+function isChipNode(node: Node): node is Element & HTMLOrSVGElement {
+  return isDatasetElementNode(node) && node.hasAttribute(TAG_ATTR);
 }
 
 /**
- * Normalize a node's children array: merge adjacent text nodes and fold all-text children into
- * textContent. Returns `{ textContent }` or `{ children }`.
- *
- * @param {{ children?: (JxMutableNode | string)[] }} node
- * @returns {JxContentResult}
+ * The piece of a string a chip stands for: one `${…}`, or a literal run drawn as a chip because it
+ * holds an escape (`templateRuns` in `utils/edit-display.ts`).
  */
-export function normalizeChildren(node: { children?: (JxMutableNode | string)[] }) {
-  if (!Array.isArray(node.children) || node.children.length === 0) {
-    return { textContent: "" };
-  }
+function chipRunPiece(chip: Element): RunPiece {
+  const text = chip.getAttribute(TAG_ATTR) ?? "";
+  return { kind: isWholeTemplate(text) ? "template" : "literal", text };
+}
 
-  // Step 1: Merge adjacent text nodes
-  const merged: (JxMutableNode | string)[] = [];
-  for (const child of node.children) {
-    const last = merged.at(-1);
-    if (isString(child) && isString(last)) {
-      merged[merged.length - 1] = last + child;
+/** The text piece a chip stands for: a whole member, or part of a string ({@link chipRunPiece}). */
+function chipPiece(chip: Element): TextPiece {
+  return chip.hasAttribute(TAG_MEMBER_ATTR)
+    ? { kind: "member", text: chip.getAttribute(TAG_ATTR) ?? "" }
+    : chipRunPiece(chip);
+}
+
+/**
+ * A run that holds no `${…}` as the plain text it is, or null when it is a template all the same:
+ * the author's own text holds a `${`, or a literal run cannot be read as text.
+ *
+ * A literal run was spelled for the inside of a template literal. With the last expression gone
+ * from its string (the chip deleted, the run split off or wrapped on its own) the string is literal
+ * text, so the run is written as what it shows: `C:\\temp` left as it was spelled would put a
+ * second backslash on the page.
+ */
+function plainRun(run: readonly RunPiece[]): string | null {
+  let out = "";
+  for (const piece of run) {
+    if (piece.kind === "template") {
+      return null;
+    }
+    const text = piece.kind === "literal" ? unescapeTemplateText(piece.text) : piece.text;
+    if (text === null) {
+      return null;
+    }
+    out += text;
+  }
+  return out.includes("${") ? null : out;
+}
+
+/**
+ * Join a run of pieces into the one string they are.
+ *
+ * The string is a template when the run holds an expression, and also when the author's own text
+ * holds a `${`: any string with one is read as a template, whoever wrote it. In a template the
+ * author's text is escaped so that it reads back as it was typed ({@link escapeTemplateText}), and
+ * a literal run stays as it is spelled. With no expression the string is plain text, and a literal
+ * run is the text it shows ({@link plainRun}).
+ */
+function joinRun(run: readonly RunPiece[], state: SerializeState): string {
+  const plain = plainRun(run);
+  if (plain !== null) {
+    // A chip the canvas still draws is text in the document now: drawn again, not left in place.
+    state.respelled ||= run.some((piece) => piece.kind === "literal");
+    return plain;
+  }
+  let out = "";
+  for (const [index, piece] of run.entries()) {
+    if (piece.kind === "plain") {
+      // A `$` that would open an expression with the `{` the next piece starts with is escaped too.
+      const opens = piece.text.endsWith("$") && run[index + 1]?.text.startsWith("{") === true;
+      const escaped = escapeTemplateText(opens ? piece.text.slice(0, -1) : piece.text);
+      // A whole `${…}` in the author's own text is a binding now, and is drawn as a chip.
+      state.respelled ||=
+        opens || escaped !== piece.text || templateExpressions(piece.text).length > 0;
+      out += opens ? `${escaped}\\$` : escaped;
     } else {
-      merged.push(child);
+      out += piece.text;
     }
   }
+  return out;
+}
 
-  // Step 2: If all children are text, fold into textContent
-  if (merged.every((c) => isString(c))) {
-    return { textContent: merged.join("") };
+/** Read `node` onto the end of `out` as pieces. */
+function collectPieces(node: Node, out: Piece[], state: SerializeState): void {
+  if (node.nodeType === Node.TEXT_NODE) {
+    const text = node.textContent ?? "";
+    if (text !== "") {
+      out.push({ kind: "plain", text });
+    }
+    return;
   }
-
-  return { children: merged };
+  if (!isDatasetElementNode(node)) {
+    return;
+  }
+  /* A CHIP FIRST, before anything reads text (studio.md §4.5). A chip shows a binding's resolved
+     value and carries the expression it stands for; the expression is what the document holds, so
+     it is what is written, verbatim, whatever the chip's content is. This is the second of the
+     three guards that keep a commit from storing a value where a template was. */
+  if (node.hasAttribute(TAG_ATTR)) {
+    out.push(chipPiece(node));
+    return;
+  }
+  if (node.hasAttribute(TEXT_ATTR)) {
+    /* The element one templated string member is drawn as. It is not a node of the document: while
+       it holds only text and chips it is that one member; once the author has put an element in it
+       (bold over part of it) there is no one string left, and what it holds is written in its
+       place. */
+    const inner: Piece[] = [];
+    for (const child of node.childNodes) {
+      collectPieces(child, inner, state);
+    }
+    const run = inner.filter((piece) => isRunPiece(piece));
+    if (run.length === inner.length) {
+      const text = joinRun(run, state);
+      if (text !== "") {
+        // Still a template: one member. With no `${` left in it, text like any other.
+        out.push({ kind: text.includes("${") ? "member" : "plain", text });
+      }
+    } else {
+      out.push(...inner);
+    }
+    return;
+  }
+  out.push({ kind: "node", node: domNodeToJx(node, state) });
 }
 
 /**
- * Convert a contenteditable element's content to Jx children/textContent. Returns { textContent }
- * for plain text or { children } for rich content.
+ * The stored content a list of pieces stands for: `{ textContent }` when it is one string that is
+ * not a member, `{ children }` otherwise.
+ *
+ * Adjacent plain and template pieces are one string. A member is a string of its own whatever
+ * stands beside it, and is never folded into `textContent`: `children: ["${state.list}"]` splices
+ * an array in as nodes, and `textContent: "${state.list}"` prints it.
+ */
+function piecesToContent(pieces: readonly Piece[], state: SerializeState): JxContentResult {
+  const children: (JxMutableNode | string)[] = [];
+  let run: RunPiece[] = [];
+  let members = 0;
+  const flush = (): void => {
+    const text = joinRun(run, state);
+    run = [];
+    if (text !== "") {
+      children.push(text);
+    }
+  };
+  for (const piece of pieces) {
+    if (isRunPiece(piece)) {
+      run.push(piece);
+      continue;
+    }
+    flush();
+    if (piece.kind === "node") {
+      children.push(piece.node);
+    } else {
+      members += 1;
+      children.push(piece.text);
+    }
+  }
+  flush();
+  const [only] = children;
+  if (only === undefined) {
+    return { textContent: "" };
+  }
+  if (children.length === 1 && isString(only) && members === 0) {
+    return { textContent: only };
+  }
+  return { children };
+}
+
+/** The content of `parent`'s child nodes. */
+function nodesToContent(parent: ParentNode, state: SerializeState): JxContentResult {
+  const pieces: Piece[] = [];
+  for (const child of parent.childNodes) {
+    collectPieces(child, pieces, state);
+  }
+  return piecesToContent(pieces, state);
+}
+
+/**
+ * Serialize the content of `el` as an edit session would commit it: the `{ textContent }` or `{
+ * children }` a block holding that DOM stands for. Exported for the round-trip guarantee (studio.md
+ * §4.5): what the canvas rendered for a block serializes back to what the block holds, string for
+ * string and member for member.
  *
  * @param {HTMLElement} el
  * @returns {JxContentResult}
  */
-function elementToJx(el: HTMLElement): JxContentResult {
-  const nodes = el.childNodes;
-
-  // If just a single text node, use textContent
-  if (nodes.length === 0) {
-    return { textContent: "" };
-  }
-  if (nodes.length === 1 && nodes[0]!.nodeType === Node.TEXT_NODE) {
-    return { textContent: nodes[0]!.textContent };
-  }
-
-  // Mixed content → children array
-  const children: (JxMutableNode | string)[] = [];
-  for (const child of nodes) {
-    const jsx = domNodeToJx(child);
-    if (jsx !== null) {
-      children.push(jsx);
-    }
-  }
-
-  // Normalize: merge adjacent text nodes + fold all-text to textContent
-  return normalizeChildren({ children });
+export function serializeContent(el: HTMLElement): JxContentResult {
+  return nodesToContent(el, { respelled: false });
 }
 
 /**
@@ -716,67 +983,98 @@ const BROWSER_TAG_CONVENTIONS = new Map([
 ]);
 
 /**
- * Convert a DOM node to a Jx element definition.
- *
- * @param {Node} node
- * @returns {JxMutableNode | string | null}
+ * Everything under `node` as the text it stands for, in pieces: a text node's own, and for a chip
+ * the expression it carries, never the value it shows. Elements are read through.
  */
-function domNodeToJx(node: Node) {
+function flattenText(node: Node, out: RunPiece[]): void {
   if (node.nodeType === Node.TEXT_NODE) {
-    const text = node.textContent;
-    if (!text) {
-      return null;
+    out.push({ kind: "plain", text: node.textContent ?? "" });
+    return;
+  }
+  if (isChipNode(node)) {
+    out.push(chipRunPiece(node));
+    return;
+  }
+  for (const child of node.childNodes) {
+    flattenText(child, out);
+  }
+}
+
+/** Whether `el` holds an element that is neither a chip nor the element one member is drawn as. */
+function holdsMarkup(el: Element): boolean {
+  for (const child of el.children) {
+    if (!child.hasAttribute(TAG_ATTR) && !child.hasAttribute(TEXT_ATTR)) {
+      return true;
     }
-    return text; // Bare string — text node child
   }
+  return false;
+}
 
-  if (!isDatasetElementNode(node)) {
-    return null;
-  }
-
-  const el = node;
+/**
+ * Convert a DOM element to a Jx element definition.
+ *
+ * @param {Element & HTMLOrSVGElement} el
+ * @returns {JxMutableNode}
+ */
+function domNodeToJx(el: Element & HTMLOrSVGElement, state: SerializeState): JxMutableNode {
   const tag = el.tagName.toLowerCase();
-  const result: JxMutableNode = { tagName: tag };
-
-  const conventional = BROWSER_TAG_CONVENTIONS.get(tag);
-  if (conventional) {
-    result.tagName = conventional;
+  /* What the element's document node holds that the canvas cannot be read back for
+     (`editor/kept-node.ts`): written back verbatim, so a bound `href` goes back as its binding and
+     a `class` is still there. An element closed to the caret carries its whole node, and is that
+     node: nothing in it is the author's to have edited. */
+  const kept = keptNodeOf(el);
+  if (kept && el.getAttribute("contenteditable") === "false" && isString(kept.tagName)) {
+    return kept;
   }
+  const result: JxMutableNode = { ...kept, tagName: BROWSER_TAG_CONVENTIONS.get(tag) ?? tag };
 
-  // Attributes
-  // A canvas anchor is DE-LINKED in design/edit: the runtime stamps its URL as `data-jx-href` so a
-  // Click selects the anchor instead of navigating the iframe (see setCanvasDelinkAnchors). Reading
-  // Only `href` here would serialize every edited link as `[text]()` — silently destroying the URL
-  // Of any paragraph that happens to contain one.
-  const href = el.dataset.jxHref ?? el.getAttribute("href");
-  if (tag === "a" && href != null) {
-    result.attributes = { href };
+  if (tag === "a") {
+    // A canvas anchor is DE-LINKED in design/edit: the runtime stamps its URL as `data-jx-href` so a
+    // Click selects the anchor instead of navigating the iframe (see setCanvasDelinkAnchors). Reading
+    // Only `href` here would serialize every edited link as `[text]()` — silently destroying the URL
+    // Of any paragraph that happens to contain one. Read only for an attribute the document node
+    // Does not hold: a link the author just made, or one whose URL they just set (`applyLink`).
+    const attributes = { ...kept?.attributes };
+    const href = el.dataset.jxHref ?? el.getAttribute("href");
+    if (!("href" in attributes) && href != null) {
+      attributes.href = href;
+    }
     // `title` is an HTMLElement property: an HTML `<a>` reflects the attribute, an SVG `<a>` has none.
-    if ("title" in el && isString(el.title) && el.title) {
-      result.attributes.title = el.title;
+    if (!("title" in attributes) && "title" in el && isString(el.title) && el.title) {
+      attributes.title = el.title;
+    }
+    if (Object.keys(attributes).length > 0) {
+      result.attributes = attributes;
     }
   }
-  if (tag === "code") {
-    result.textContent = el.textContent;
+  const { childNodes } = el;
+  const [only] = childNodes;
+  if (childNodes.length === 1 && only && isChipNode(only) && only.hasAttribute(TAG_REF_ATTR)) {
+    /* A `{ "$ref" }` text: one chip and nothing else. A reference is an object, not a string, so
+       it goes back as the object it was; its chip's `data-jx-tag` is a name for it, not a
+       spelling. Read before anything flattens the element, a `<code>` included. */
+    result.textContent = { $ref: only.getAttribute(TAG_REF_ATTR) ?? "" };
+    return result;
+  }
+  if (tag === "code" && holdsMarkup(el)) {
+    /* Markup inside `<code>` is flattened to text, with a chip inside it written as its
+       expression, not its value. One that holds only text and chips is read like any other
+       element, so a whole-template member in it is still a member. */
+    const run: RunPiece[] = [];
+    flattenText(el, run);
+    result.textContent = joinRun(run, state);
     return result;
   }
 
-  // Recurse children
-  const { childNodes } = el;
-  if (childNodes.length === 0) {
-    result.textContent = "";
-  } else if (childNodes.length === 1 && childNodes[0]!.nodeType === Node.TEXT_NODE) {
-    result.textContent = childNodes[0]!.textContent;
-  } else {
-    result.children = [];
-    for (const child of childNodes) {
-      const jsx = domNodeToJx(child);
-      if (jsx) {
-        result.children.push(/** @type {JxMutableNode} */ jsx);
-      }
-    }
+  /* Folded like a block's own content: an inline whose content is all one string (a run and a
+     chip, say) is stored as one `textContent`, which is the form it was drawn from. */
+  const content = nodesToContent(el, state);
+  if (content.children) {
+    result.children = content.children;
+  } else if (el.childNodes.length > 0 || kept === null) {
+    result.textContent = content.textContent ?? "";
   }
-
+  // An element that carries its node's own keys and holds nothing (an `<img>`) has no text at all.
   return result;
 }
 
@@ -786,35 +1084,24 @@ function domNodeToJx(node: Node) {
  * @param {DocumentFragment} frag
  * @returns {JxContentResult}
  */
-function fragmentToJx(frag: DocumentFragment) {
-  const nodes = frag.childNodes;
-  if (nodes.length === 0) {
-    return { textContent: "" };
+function fragmentToJx(frag: DocumentFragment): JxContentResult {
+  const state: SerializeState = { respelled: false };
+  const pieces: Piece[] = [];
+  for (const child of frag.childNodes) {
+    collectPieces(child, pieces, state);
   }
-  if (nodes.length === 1 && nodes[0]!.nodeType === Node.TEXT_NODE) {
-    return { textContent: nodes[0]!.textContent };
-  }
-
-  const children: (JxMutableNode | string)[] = [];
-  for (const child of nodes) {
-    const jsx = domNodeToJx(child);
-    if (jsx) {
-      children.push(jsx);
-    }
-  }
-
-  const [only] = children;
+  const [only] = pieces;
   if (
-    children.length === 1 &&
-    only !== undefined &&
-    !isString(only) &&
-    only.tagName === "span" &&
-    isString(only.textContent)
+    pieces.length === 1 &&
+    only?.kind === "node" &&
+    only.node.tagName === "span" &&
+    isString(only.node.textContent)
   ) {
-    return { textContent: only.textContent };
+    return { textContent: only.node.textContent };
   }
-
-  return children.length > 0 ? { children } : { textContent: "" };
+  /* Folded as a commit folds it: a half that is all one string (a run and a chip, two text nodes
+     the browser left side by side) is one `textContent`, the form it was drawn from. */
+  return piecesToContent(pieces, state);
 }
 
 // ─── Rich text helpers ─────────────────────────────────────────────────────
@@ -986,7 +1273,7 @@ function handleSlashSelect(cmd: SlashCommand) {
   // Compute commit data inline instead of calling commitChanges() — avoids a separate
   // Update() call that would race with the insertFn update() (two concurrent async renders).
   normalizeInlineContent(activeEl);
-  const commitResult = elementToJx(activeEl);
+  const commitResult = serializeContent(activeEl);
 
   const path = [...activePath];
   const insert = insertFn;
