@@ -1,6 +1,6 @@
 import "./with-dom.js";
 import { afterEach, describe, expect, test } from "bun:test";
-import { documentStyleText, resetDocumentStyles } from "@jxsuite/runtime";
+import { defineElement, documentStyleText, resetDocumentStyles } from "@jxsuite/runtime";
 import { fakeChannelPair } from "../src/canvas/iframe-channel";
 import type { CanvasEnvelope } from "../src/canvas/iframe-channel";
 import { flush } from "./harness";
@@ -779,6 +779,113 @@ describe("startCanvasIframe — patch", () => {
     expect(container.querySelector("h1")).toBeNull();
     expect(container.querySelector("h2")?.textContent).toBe("Hi");
     expect(acks).toContainEqual({ gen: 1, kind: "patchComplete" });
+  });
+
+  describe("a `$props` edit on a component instance (§4.1)", () => {
+    const INSTANCE_PATH = ["children", 0];
+    let cardCount = 0;
+
+    /** Let the instance's async connectedCallback finish. */
+    const settle = () =>
+      new Promise((resolve) => {
+        setTimeout(resolve, 40);
+      });
+
+    /** A page holding one instance of `tagName` labelled "First", with one slotted paragraph. */
+    const cardPage = (tagName: string): JxMutableNode => ({
+      children: [
+        {
+          $props: { label: "First" },
+          children: [{ tagName: "p", textContent: "slotted" }],
+          tagName,
+        },
+      ],
+      tagName: "div",
+    });
+
+    /** The element the frame stamped with the instance's path; throws rather than handing back null. */
+    function cardIn(container: HTMLElement): HTMLElement {
+      const found = container.querySelector<HTMLElement>(
+        `[data-jx-path='${JSON.stringify(INSTANCE_PATH)}']`,
+      );
+      if (!found) {
+        throw new Error("expected the component instance in the rendered canvas");
+      }
+      return found;
+    }
+
+    /**
+     * Define a component drawing its `label` prop in an `h3`, under a tag no other test registered,
+     * and land a render of a page holding one instance of it. The container is CONNECTED, unlike
+     * `bootRendered`'s: a custom element runs its definition only once it is in a document.
+     */
+    async function bootCard(): Promise<Awaited<ReturnType<typeof bootRendered>>> {
+      cardCount += 1;
+      const tagName = `entry-patch-card-${cardCount}`;
+      await defineElement({
+        children: [{ tagName: "h3", textContent: "${state.label}" }, { tagName: "slot" }],
+        state: { label: "Default" },
+        tagName,
+      });
+      const pair = fakeChannelPair<ParentToIframe, IframeToParent>();
+      const acks: IframeToParent[] = [];
+      pair.parent.onMessage((m) => acks.push(m));
+      const container = document.createElement("div");
+      document.body.append(container);
+      teardown = startCanvasIframe({ channel: pair.iframe, container });
+      pair.parent.post(renderMsg(1, cardPage(tagName), cardPage(tagName)));
+      pair.flush();
+      await flush();
+      await settle();
+      pair.flush();
+      acks.length = 0;
+      return { acks, container, pair };
+    }
+
+    test("with no redrawPaths, the patch is written into the live instance", async () => {
+      const { acks, container, pair } = await bootCard();
+      const host = cardIn(container);
+      expect(host.querySelector("h3")?.textContent).toBe("First");
+
+      pair.parent.post({
+        forwardOps: [
+          { key: "$props", op: "set-key", path: INSTANCE_PATH, value: { label: "Second" } },
+        ],
+        gen: 1,
+        kind: "patch",
+      });
+      pair.flush();
+      await settle();
+      pair.flush();
+
+      expect(cardIn(container)).toBe(host);
+      expect(host.querySelector("h3")?.textContent).toBe("Second");
+      expect(acks).toContainEqual({ gen: 1, kind: "patchComplete" });
+    });
+
+    test("redrawPaths naming the instance reaches the patcher, which draws it again", async () => {
+      const { acks, container, pair } = await bootCard();
+      const host = cardIn(container);
+      expect(host.querySelector("h3")?.textContent).toBe("First");
+
+      pair.parent.post({
+        forwardOps: [
+          { key: "$props", op: "set-key", path: INSTANCE_PATH, value: { label: "Second" } },
+        ],
+        gen: 1,
+        kind: "patch",
+        redrawPaths: [INSTANCE_PATH],
+      });
+      pair.flush();
+      await settle();
+      pair.flush();
+
+      const redrawn = cardIn(container);
+      expect(redrawn).not.toBe(host);
+      expect(host.isConnected).toBe(false);
+      expect(redrawn.querySelector("h3")?.textContent).toBe("Second");
+      expect(acks).toContainEqual({ gen: 1, kind: "patchComplete" });
+    });
   });
 });
 

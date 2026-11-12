@@ -143,7 +143,7 @@ function ownerInstanceOf(el: HTMLElement): HTMLElement | null {
  * resurrects it. Refusing keeps the properties panel, which edits the real source, as the one way
  * in.
  */
-function deliveredOutsideProps(node: JxMutableNode | undefined, prop: string): boolean {
+export function deliveredOutsideProps(node: JxMutableNode | undefined, prop: string): boolean {
   if (!node) {
     return false;
   }
@@ -686,7 +686,7 @@ export function startIframeInlineEdit(
     if (msg.prop !== undefined) {
       /*
        * A prop host cannot be re-entered by placing a caret: the marker has no path, and the
-       * `$props` patch that prompted this REPLACED the instance element, so the node the old
+       * release that prompted this REPLACED the instance element, so the node the old
        * session held is detached. Find the marker again inside the fresh instance and open it.
        */
       const instance = elementForPath(container, msg.path);
