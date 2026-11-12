@@ -875,7 +875,14 @@ export function startCanvasIframe(opts: {
         stopEditing();
       }
       try {
-        applyIframePatch(shadowDoc, msg.forwardOps, container, renderCtx, msg.echoPaths);
+        applyIframePatch(
+          shadowDoc,
+          msg.forwardOps,
+          container,
+          renderCtx,
+          msg.echoPaths,
+          msg.redrawPaths,
+        );
         /* An `attributes` op routes through `replaceSubtree`, which rebuilds the element and takes
            `data-jx-popover-open` with it — so a style edit on the open panel would close it under
            the author's hands. Idempotent, so paying for it on every patch is a no-op. */
