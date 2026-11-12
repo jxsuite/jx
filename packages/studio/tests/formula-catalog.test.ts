@@ -164,7 +164,7 @@ describe("namedFormulaEntries", () => {
   test("derives label, parameters, and description from the def", () => {
     const [entry] = namedFormulaEntries(STATE);
     expect(entry!.label).toBe("lineTotal");
-    // Description falls back to $title when no description field is present
+    // Description falls back to $title when the def carries no $description
     expect(entry!.description).toBe("Line total");
     expect(entry!.parameters).toEqual([
       { description: "Unit price", name: "price", type: "number" },
@@ -172,17 +172,36 @@ describe("namedFormulaEntries", () => {
     ]);
   });
 
-  test("description field wins over $title; bare-string parameters are accepted", () => {
+  test("$description wins over $title; bare-string parameters are accepted", () => {
     const entries = namedFormulaEntries({
       greet: {
         $expression: { operator: "+", target: "Hello ", value: { $ref: "$args/name" } },
         $title: "ignored",
-        description: "Greets a person.",
+        $description: "Greets a person.",
         parameters: ["name", ""],
       },
     });
     expect(entries[0]!.description).toBe("Greets a person.");
     expect(entries[0]!.parameters).toEqual([{ name: "name" }]);
+  });
+
+  test("a hand-written `description` is read behind $description, and ahead of $title", () => {
+    const $expression = { operator: "!", target: { $ref: "$args/x" } };
+    const entries = namedFormulaEntries({
+      both: {
+        $description: "Schema key.",
+        $expression,
+        description: "Borrowed key.",
+        parameters: ["x"],
+      },
+      borrowed: { $expression, $title: "ignored", description: "Borrowed key.", parameters: ["x"] },
+      neither: { $description: "", $expression, parameters: ["x"] },
+    });
+    expect(entries.map((e) => e.description)).toEqual([
+      "Schema key.",
+      "Borrowed key.",
+      'Named formula "neither" from document state.',
+    ]);
   });
 
   test("a parameter's type normalizes from a bare string or a JSON-Schema-shaped `.type`", () => {
@@ -199,8 +218,42 @@ describe("namedFormulaEntries", () => {
     });
     expect(entries[0]!.parameters).toEqual([
       { name: "x", type: "number" },
-      { name: "y", type: "string" },
+      { name: "y", schema: { type: "string" }, type: "string" },
     ]);
+  });
+
+  test("a packaged formula copied into the document keeps its description", () => {
+    // The copy is what `formulaEntries()` writes, and it carries `$description`.
+    const { formatDate } = formulaEntries();
+    const [entry] = namedFormulaEntries({ formatDate: formatDate! });
+    expect(entry!.description).toBe(catalog.find((f) => f.name === "formatDate")!.description);
+  });
+
+  test("a parameter's JSON Schema is kept beside its display text, for a field to be built from", () => {
+    const entry = packagedFormulaEntries().find((e) => e.name === "formatDate");
+    const [value, options] = entry!.parameters;
+    expect(value).toMatchObject({ name: "value", type: "string | number | null" });
+    expect(value!.optional).toBeUndefined();
+    expect(options).toMatchObject({
+      name: "options",
+      optional: true,
+      schema: {
+        properties: { dateStyle: { enum: ["full", "long", "medium", "short"] } },
+        type: "object",
+      },
+      type: "Intl.DateTimeFormatOptions",
+    });
+    // The display text is not a schema keyword, so it is not carried into the schema.
+    expect(options!.schema).not.toHaveProperty("text");
+    const [unit] = packagedFormulaEntries()
+      .filter((e) => e.name === "relativeTime")
+      .flatMap((e) => e.parameters.slice(1));
+    expect(unit).toMatchObject({ default: "day", schema: { type: "string" } });
+    // A type that is display text alone has no schema.
+    const [clampValue] = packagedFormulaEntries()
+      .filter((e) => e.name === "clamp")
+      .flatMap((e) => e.parameters);
+    expect(clampValue!.schema).toBeUndefined();
   });
 
   test("invalid parameter entries (malformed document JSON) are dropped, not thrown on", () => {

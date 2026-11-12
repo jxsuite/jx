@@ -677,6 +677,54 @@ describe("setCanvasDelinkPopovers", () => {
     plainHost.remove();
   });
 
+  test("an ECHO row's node is de-linked like the active row's", () => {
+    // A mapped row that is not the one being edited carries `data-jx-echo-path` in place of
+    // `data-jx-path`. It draws the same document nodes, so it must not keep a live popover, dialog
+    // Or command the active row has had renamed.
+    setCanvasDelinkPopovers(true);
+    setCanvasDelinkCommands(true);
+    try {
+      const echo = (def: JxElement) =>
+        renderNode(def, reactive({}), {
+          _path: [],
+          onNodeCreated: (n) => {
+            if (n instanceof HTMLElement) {
+              n.dataset.jxEchoPath = '["children",0,"map",1]';
+            }
+          },
+        });
+      const panel = echo({ attributes: { popover: "auto" }, tagName: "nav" });
+      expect(panel.getAttribute("popover")).toBeNull();
+      expect(panel.dataset.jxPopover).toBe("auto");
+      const trigger = echo({ attributes: { commandfor: "x" }, tagName: "button" });
+      expect(trigger.hasAttribute("commandfor")).toBe(false);
+      expect(trigger.dataset.jxCommandfor).toBe("x");
+    } finally {
+      setCanvasDelinkCommands(false);
+    }
+  });
+
+  test("an echo-stamped instance de-links its own internals too", async () => {
+    setCanvasDelinkPopovers(true);
+    const { defineElement } = await import("../src/runtime");
+    await defineElement({
+      children: [{ attributes: { part: "panel", popover: "auto" }, tagName: "div" }],
+      tagName: "cv-echo-panel",
+    });
+    const echoHost = document.createElement("cv-echo-panel");
+    echoHost.dataset.jxEchoPath = '["children",0,"map",1]';
+    const plainHost = document.createElement("cv-echo-panel");
+    document.body.append(echoHost, plainHost);
+    await new Promise((r) => {
+      setTimeout(r, 0);
+    });
+    expect(partOf(echoHost, "panel").hasAttribute("popover")).toBe(false);
+    expect(partOf(echoHost, "panel").dataset.jxPopover).toBe("auto");
+    expect(partOf(plainHost, "panel").getAttribute("popover")).toBe("auto");
+    echoHost.remove();
+    plainHost.remove();
+  });
+
   test(":popover-open transposes to the attribute selector, at the same specificity", () => {
     setCanvasDelinkPopovers(true);
     const el = stamped();

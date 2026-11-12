@@ -12,7 +12,13 @@
 import type { AssetContext } from "./asset-resolve";
 import type { JxDocOp } from "../tabs/patch-ops";
 import type { JxContentResult, SlashCommand } from "../editor/inline-edit";
-import type { JsonObject, JxExpressionNode, JxMutableNode, JxStyle } from "@jxsuite/schema/types";
+import type {
+  JsonObject,
+  JxExpressionNode,
+  JxMutableNode,
+  JxStateDefinition,
+  JxStyle,
+} from "@jxsuite/schema/types";
 
 export const CANVAS_MODES = ["preview", "design", "edit", "stylebook", "git-diff"] as const;
 
@@ -125,6 +131,12 @@ export type ParentToIframe =
       assets?: AssetContext | null;
       mapperCtx: WireMapperCtx;
       siteStyle: JxStyle | null;
+      /**
+       * The project's pure named formulas, which every component drawn in the frame inherits
+       * (spec.md §13.4). Absent when the project declares none, or there is no project: a component
+       * is then its own document, and the frame clears what an earlier render set.
+       */
+      projectFormulas?: Record<string, JxStateDefinition>;
       /**
        * The state key of the entry this render draws live inside its collection's page (studio.md
        * §22.5), or absent when it draws none. An `entryState` message replaces that key's value in

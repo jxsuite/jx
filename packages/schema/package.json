@@ -37,6 +37,7 @@
     "./project-file/node": "./src/project-file-node.ts",
     "./doc-ops": "./src/doc-ops.ts",
     "./document-scripts": "./src/document-scripts.ts",
+    "./dynamic-tag": "./src/dynamic-tag.ts",
     "./json-layout": "./src/json-layout.ts",
     "./defs": "./defs/index.ts",
     "./schema.json": "./schema.json",

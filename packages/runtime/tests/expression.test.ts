@@ -204,6 +204,32 @@ describe("evaluateExpression — $ref resolution", () => {
     ).toBe("hello!");
   });
 
+  test("window#/ reads the global object where no window exists, as in a site build", () => {
+    const saved = Object.getOwnPropertyDescriptor(globalThis, "window");
+    Object.defineProperty(globalThis, "window", { configurable: true, value: undefined });
+    try {
+      const call = (name: string, ...args: JxExpressionOperand[]) =>
+        evaluateExpression(
+          { operator: "call", target: ref(`window#/${name}`), value: args },
+          {},
+          null,
+        );
+      expect(call("Array/isArray", [1])).toBe(true);
+      expect(call("Math/max", 2, 7)).toBe(7);
+      expect(
+        evaluateExpression(
+          { operator: "+", target: ref("window#/Number/MAX_SAFE_INTEGER"), value: 0 },
+          {},
+          null,
+        ),
+      ).toBe(Number.MAX_SAFE_INTEGER);
+    } finally {
+      if (saved) {
+        Object.defineProperty(globalThis, "window", saved);
+      }
+    }
+  });
+
   test("window#/ and document#/ refs resolve against globals", () => {
     Object.assign(globalThis.window, { __exprTest: { n: 4 } });
     globalThis.document.title = "expr-title";
