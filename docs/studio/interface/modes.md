@@ -4,6 +4,7 @@ description: "The Editor and View controls in Jx Studio: what each editor and ea
 spec:
   - studio.md#4.1
   - studio.md#4.2
+  - studio.md#4.5
 code:
   - packages/studio/src/utils/edit-display.ts
   - packages/studio/src/surfaces/commandbar.json
@@ -29,7 +30,7 @@ Edit is for writing. The canvas becomes the page itself: click any text and type
 ![Jx Studio editing markdown content inline with a WYSIWYG editor](../../images/mode-edit.png)
 
 :::doc-note
-**Bound values show their real data in Edit and Design.** A style, a class, an image or a component setting that is bound to state renders with the value the page will have. Two things show their binding instead, written like `❪ state.title ❫`: bound text, so that editing it changes the binding rather than overwriting it, and anything inside a repeater that reads the current item, since the canvas draws the repeater's template once with no item to read. A `hidden`, `inert` or `disabled` that reads the current item is left off instead, so the element stays visible and selectable. An element drawing a list of child nodes, such as `❪ item.$children ❫` for [an item's body](/docs/studio/design/repeaters#show-an-items-body), shows its binding too. That label can be selected but not typed into, and **Preview** draws the nodes themselves. On a [collection's page](/docs/studio/projects/browse#design-a-collections-page), text and child nodes drawn from the entry being previewed show the entry itself, outlined and badged with the field's name, and are not typed into either.
+**Bound values show their real data in Edit and Design.** A style, a class, an attribute, an image, markup or a component setting that is bound to state renders with the value the page will have, and so does bound text. A binding is drawn as its value, not as an expression. Each binding in a piece of text is a **tag**: at rest it reads as plain text, and while your caret is in the block it becomes a named token (**Title**, **Author**, or **Custom expression** for code Studio cannot name), tinted, with its name ahead of its value. A tag is one unit: the arrow keys step over it, and :kbd[Backspace], :kbd[Delete] or a cut take it whole. You type in the text around a tag, and what is saved is the binding, never the value it happened to show. A tag with no value yet shows its name, dimmed. Inside a repeater, the canvas draws the template once, with the list's first item, so text, attributes, images and styles that read the current item show that item's values. An element drawing a list of child nodes, such as [an item's body](/docs/studio/design/repeaters#show-an-items-body), draws the nodes themselves; they belong to the data, so you can select the element but not type into them. A block with anything bound shows a dotted outline while you hover it or your caret is in it, with the names of what it draws above it (an image shows the outline alone). Click a tag and the caret goes to the nearer edge of it, so you can type before or after a heading that is one tag and nothing else.
 :::
 
 ## Design

@@ -8,6 +8,7 @@
  */
 
 import { templateExpressions } from "@jxsuite/schema/guards";
+import { KEEP_ATTR } from "./kept-node";
 
 /** Tags considered inline formatting wrappers */
 const FORMAT_TAGS = new Set([
@@ -141,7 +142,9 @@ export function toggleInlineFormat(tag: string, editableRoot: HTMLElement | null
 function findIntersectingElements(tag: string, range: Range, root: HTMLElement) {
   const matches: Element[] = [];
   // Every descendant element, in document order: the same set a SHOW_ELEMENT tree walk visits.
-  for (const el of root.querySelectorAll("*")) {
+  // Never one inside a chip: what a chip holds is the runtime's, drawn from data, not the author's
+  // Formatting, and unwrapping a `<strong>` there took apart a computed list's own markup.
+  for (const el of normalizable(root)) {
     if (el.tagName.toLowerCase() === tag && range.intersectsNode(el)) {
       matches.push(el);
     }
@@ -297,6 +300,104 @@ function trimTrailingWhitespace(frag: DocumentFragment) {
 
 // ─── Normalization ─────────────────────────────────────────────────────────────
 
+/** The attribute a chip carries its expression in (`utils/edit-display.ts`). */
+const CHIP_SELECTOR = "[data-jx-tag]";
+
+/**
+ * Every element under `root` that inline normalization may touch: all of them except a CHIP and
+ * whatever a chip holds (studio.md §4.5, §8.2.7).
+ *
+ * A chip stands for one binding and is not formatting. Two adjacent ones are two bindings, so they
+ * are never merged; one alone inside a wrapper is not redundant nesting; one whose value is empty
+ * is not an empty inline to remove. What a chip holds is the runtime's, drawn from data and
+ * rewritten whenever the data changes, so none of it is normalized either.
+ */
+function normalizable(root: HTMLElement): Element[] {
+  return [...root.querySelectorAll("*")].filter((el) => el.closest(CHIP_SELECTOR) === null);
+}
+
+/**
+ * Whether `node` is an element closed to the caret: an inline whose content is a value (a `{ "$ref"
+ * }` text, bound `innerHTML`) or a component instance (`utils/edit-display.ts`, `makeStamper`).
+ *
+ * It has a tag a formatting wrapper may share, and it is not formatting: it is one node of the
+ * document, drawn from data. Merged into the `<em>` beside it, or collapsed into the `<em>` around
+ * it, it stopped being the one chip and nothing else the serializer reads back as a reference, and
+ * every commit of its block was refused from then on.
+ */
+function isClosed(node: Node | null): boolean {
+  return node !== null && isElementNode(node) && node.getAttribute("contenteditable") === "false";
+}
+
+/**
+ * `Node.normalize()` for everything outside a chip: adjacent text nodes are joined and empty ones
+ * removed.
+ *
+ * Not the native method, because it reaches inside chips too, and the runtime keeps one Text node
+ * there as the anchor its binding writes to. That node is empty whenever the value is (or is an
+ * array, drawn as nodes before it), so the native call removed it and the chip never updated
+ * again.
+ */
+function normalizeText(node: Node): void {
+  let child = node.firstChild;
+  while (child) {
+    const next: ChildNode | null = child.nextSibling;
+    if (isTextNode(child)) {
+      if (child.data === "") {
+        child.remove();
+      } else if (next && isTextNode(next)) {
+        absorbText(child, next);
+        // Stay on `child`: the node after the one just absorbed may be text too.
+        continue;
+      }
+    } else if (isElementNode(child) && !child.matches(CHIP_SELECTOR)) {
+      normalizeText(child);
+    }
+    child = next;
+  }
+}
+
+/**
+ * Join `next` onto the end of `into` and remove it, moving a selection endpoint that was in `next`
+ * to the same character in `into`, which is what the native `normalize()` does for a live range.
+ */
+function absorbText(into: Text, next: Text): void {
+  const selection = into.ownerDocument.getSelection();
+  const anchor = selection?.anchorNode ?? null;
+  const focus = selection?.focusNode ?? null;
+  const anchorOffset = selection?.anchorOffset ?? 0;
+  const focusOffset = selection?.focusOffset ?? 0;
+  const joinAt = into.length;
+  const parent = next.parentNode;
+  let index = 0;
+  for (let prev = next.previousSibling; prev; prev = prev.previousSibling) {
+    index += 1;
+  }
+  /** Where an end that stood at (`node`, `offset`) before the join stands after it. */
+  const moved = (node: Node, offset: number): [Node, number] => {
+    if (node === next) {
+      return [into, joinAt + offset];
+    }
+    // An end counted among the parent's children, past the node that is gone, is one child back.
+    return node === parent && offset > index ? [node, offset - 1] : [node, offset];
+  };
+  into.data += next.data;
+  next.remove();
+  if (!selection || !anchor || !focus) {
+    return;
+  }
+  const [anchorNode, anchorAt] = moved(anchor, anchorOffset);
+  const [focusNode, focusAt] = moved(focus, focusOffset);
+  if (
+    anchorNode !== anchor ||
+    anchorAt !== anchorOffset ||
+    focusNode !== focus ||
+    focusAt !== focusOffset
+  ) {
+    selection.setBaseAndExtent(anchorNode, anchorAt, focusNode, focusAt);
+  }
+}
+
 /**
  * Normalize the inline content of an editable root. Merges adjacent same-tag siblings, collapses
  * redundant nesting, removes empty inline elements, and lifts edge whitespace. Runs to
@@ -315,7 +416,7 @@ export function normalizeInlineContent(root: HTMLElement | null) {
     iterations += 1;
 
     // 1. Merge adjacent text nodes
-    root.normalize();
+    normalizeText(root);
 
     // 2. Merge adjacent same-tag siblings
     if (mergeAdjacentSiblings(root)) {
@@ -356,13 +457,15 @@ function mergeAdjacentSiblings(root: HTMLElement) {
   const toMerge: [Element, Element][] = [];
 
   // Collect pairs first to avoid mutation during walk
-  for (const el of root.querySelectorAll("*")) {
+  for (const el of normalizable(root)) {
     const next = el.nextSibling;
     if (
       next &&
       isElementNode(next) &&
       next.tagName === el.tagName &&
       FORMAT_TAGS.has(el.tagName.toLowerCase()) &&
+      !isClosed(el) &&
+      !isClosed(next) &&
       attributesMatch(el, next)
     ) {
       toMerge.push([el, next]);
@@ -393,7 +496,7 @@ function collapseRedundantNesting(root: HTMLElement) {
   let changed = false;
   const toCollapse: Element[] = [];
 
-  for (const el of root.querySelectorAll("*")) {
+  for (const el of normalizable(root)) {
     if (!FORMAT_TAGS.has(el.tagName.toLowerCase())) {
       continue;
     }
@@ -403,7 +506,9 @@ function collapseRedundantNesting(root: HTMLElement) {
       el.childNodes.length === 1 &&
       only !== null &&
       isElementNode(only) &&
-      only.tagName === el.tagName
+      only.tagName === el.tagName &&
+      !isClosed(el) &&
+      !isClosed(only)
     ) {
       toCollapse.push(el);
     }
@@ -411,10 +516,11 @@ function collapseRedundantNesting(root: HTMLElement) {
 
   for (const el of toCollapse) {
     const inner = el.firstChild;
-    if (inner === null) {
-      /* Three or more nested identical wrappers: collapsing the outer pair moved this wrapper's only
-         child out, leaving it empty. That has always failed here, and is kept rather than changed. */
-      throw new TypeError("collapseRedundantNesting: an earlier collapse emptied this wrapper");
+    if (inner === null || !isElementNode(inner) || inner.tagName !== el.tagName) {
+      /* Three or more nested identical wrappers: collapsing the outer pair took this wrapper out of
+         the tree. Its content is already where it belongs, and the pass after this one collapses
+         whatever nesting is left. This used to throw out of the commit. */
+      continue;
     }
     // Replace outer with inner's children
     while (inner.firstChild) {
@@ -436,7 +542,7 @@ function removeEmptyInlines(root: HTMLElement) {
   let changed = false;
   const toRemove: Element[] = [];
 
-  for (const el of root.querySelectorAll("*")) {
+  for (const el of normalizable(root)) {
     if (!FORMAT_TAGS.has(el.tagName.toLowerCase())) {
       continue;
     }
@@ -463,7 +569,7 @@ function liftEdgeWhitespace(root: HTMLElement) {
   let changed = false;
   const ops: EdgeWhitespaceLift[] = [];
 
-  for (const el of root.querySelectorAll("*")) {
+  for (const el of normalizable(root)) {
     if (!FORMAT_TAGS.has(el.tagName.toLowerCase())) {
       continue;
     }
@@ -517,7 +623,7 @@ function unwrapBareSpans(root: HTMLElement) {
   let changed = false;
   const toUnwrap: Element[] = [];
 
-  for (const el of root.querySelectorAll("*")) {
+  for (const el of normalizable(root)) {
     if (el.tagName.toLowerCase() !== "span") {
       continue;
     }
@@ -539,14 +645,21 @@ function unwrapBareSpans(root: HTMLElement) {
 }
 
 /**
- * Check if two elements have matching attributes (for merge eligibility). For simple formatting
- * tags, attributes don't matter. For <a>, href must match.
+ * Check if two elements have matching attributes (for merge eligibility). What they carry from
+ * their document nodes must match; beyond that a simple formatting tag's attributes don't matter,
+ * and for <a>, href must match.
  *
  * @param {Element} a
  * @param {Element} b
  * @returns {boolean}
  */
 function attributesMatch(a: Element, b: Element) {
+  /* What each carries from its document node (`editor/kept-node.ts`): a highlighted `<span>` and the
+     plain `<span>` beside it are two different things, and merged they were one with the first
+     one's class. */
+  if (a.getAttribute(KEEP_ATTR) !== b.getAttribute(KEEP_ATTR)) {
+    return false;
+  }
   const tag = a.tagName.toLowerCase();
   if (tag === "a") {
     return a.getAttribute("href") === b.getAttribute("href");

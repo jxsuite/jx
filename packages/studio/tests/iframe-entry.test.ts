@@ -117,6 +117,9 @@ afterEach(() => {
   document.body.innerHTML = "";
 });
 
+/** The frame's boot announcement, with the capabilities this build names (studio.md §4.5). */
+const READY: IframeToParent = { capabilities: ["bindingDisplay"], kind: "ready" };
+
 describe("startCanvasIframe", () => {
   test("announces ready, renders a posted doc, and acks renderComplete", async () => {
     const pair = fakeChannelPair<ParentToIframe, IframeToParent>();
@@ -126,7 +129,8 @@ describe("startCanvasIframe", () => {
 
     teardown = startCanvasIframe({ channel: pair.iframe, container });
     pair.flush();
-    expect(fromIframe).toEqual([{ kind: "ready" }]);
+    // The frame names what this build understands, so a host can tell an old frame from a broken one.
+    expect(fromIframe).toEqual([{ capabilities: ["bindingDisplay"], kind: "ready" }]);
 
     pair.parent.post(
       renderMsg(1, { children: [{ children: ["Hi"], tagName: "h1" }], tagName: "div" }),
@@ -157,6 +161,34 @@ describe("startCanvasIframe", () => {
     pair.parent.post({ kind: "setColorScheme", scheme: null });
     pair.flush();
     expect(document.documentElement.dataset.colorScheme).toBeUndefined();
+  });
+
+  test("setBindingDisplay flips the root attribute without a render, and a render carries it", async () => {
+    const pair = fakeChannelPair<ParentToIframe, IframeToParent>();
+    const fromIframe: IframeToParent[] = [];
+    pair.parent.onMessage((m) => fromIframe.push(m));
+    const container = document.createElement("div");
+    document.body.append(container);
+    teardown = startCanvasIframe({ channel: pair.iframe, container });
+    pair.flush();
+    const root = document.documentElement;
+
+    pair.parent.post({ display: "names", kind: "setBindingDisplay" });
+    pair.flush();
+    expect(root.dataset.jxBindingDisplay).toBe("names");
+    expect(fromIframe.map((m) => m.kind)).toEqual(["ready"]);
+
+    pair.parent.post({ display: "values", kind: "setBindingDisplay" });
+    pair.flush();
+    expect(root.dataset.jxBindingDisplay).toBeUndefined();
+
+    // A render names the choice too, and one that names none draws values.
+    pair.parent.post(renderMsg(1, { tagName: "div" }, undefined, { bindingDisplay: "names" }));
+    pair.flush();
+    expect(root.dataset.jxBindingDisplay).toBe("names");
+    pair.parent.post(renderMsg(2, { tagName: "div" }));
+    pair.flush();
+    expect(root.dataset.jxBindingDisplay).toBeUndefined();
   });
 
   /*
@@ -474,7 +506,7 @@ describe("startCanvasIframe", () => {
       removeEventListener: () => {},
     };
     teardown = bootCanvasIframe(win);
-    expect(posted).toEqual([{ "jx:canvas": "tok", payload: { kind: "ready" } }]);
+    expect(posted).toEqual([{ "jx:canvas": "tok", payload: READY }]);
   });
 
   test("bootCanvasIframe warns and falls back to '*' when parentOrigin is absent", () => {
@@ -498,7 +530,7 @@ describe("startCanvasIframe", () => {
       console.warn = origWarn;
     }
     // Still announces ready (the channel works token-gated), and logged the loosened origin check.
-    expect(posted).toEqual([{ "jx:canvas": "tok", payload: { kind: "ready" } }]);
+    expect(posted).toEqual([{ "jx:canvas": "tok", payload: READY }]);
     expect(warnings).toHaveLength(1);
     expect(String(warnings[0]![0])).toContain("no parentOrigin");
   });
@@ -652,6 +684,184 @@ describe("startCanvasIframe — patch", () => {
     expect(acks.some((m) => m.kind === "patchComplete")).toBe(true);
     // Nothing forced a commit out of the block via a spurious teardown.
     expect(acks.some((m) => m.kind === "editEnd")).toBe(false);
+  });
+
+  describe("a patch that redraws the caret's own bound block (studio.md §4.5)", () => {
+    const BOUND = "${state.title}";
+    const boundDoc = (): JxMutableNode => ({
+      children: [{ tagName: "h1", textContent: BOUND }],
+      state: { title: "Spring" },
+      tagName: "div",
+    });
+
+    /** A frame showing {@link boundDoc}, the caret after the heading's chip, and "Q" typed there. */
+    async function typedAfterChip() {
+      const pair = fakeChannelPair<ParentToIframe, IframeToParent>();
+      const acks: IframeToParent[] = [];
+      pair.parent.onMessage((m) => acks.push(m));
+      const container = document.createElement("div");
+      document.body.append(container);
+      teardown = startCanvasIframe({ channel: pair.iframe, container });
+      // The host posts the document prepared for editing, and the raw one as the shadow.
+      const { prepareForEditMode } = await import("../src/utils/edit-display");
+      const prepared = prepareForEditMode(boundDoc());
+      pair.parent.post(renderMsg(3, prepared, boundDoc()));
+      pair.flush();
+      await flush();
+      pair.flush();
+      const { caretAt } = await import("./harness");
+      const h1 = rendered(container, "h1");
+      caretAt(h1, 1);
+      h1.append("Q");
+      pair.flush();
+      return { acks, container, h1, pair };
+    }
+
+    const undo: Extract<ParentToIframe, { kind: "patch" }> = {
+      forwardOps: [{ key: "textContent", op: "set-key", path: ["children", 0], value: BOUND }],
+      gen: 3,
+      kind: "patch",
+    };
+
+    test("an undo is not answered by committing what the block still shows", async () => {
+      const { acks, container, h1, pair } = await typedAfterChip();
+      // The idle tick committed the typing, and its echo told the frame the document holds it.
+      pair.parent.post({
+        echoPaths: [["children", 0]],
+        forwardOps: [
+          { key: "textContent", op: "set-key", path: ["children", 0], value: `${BOUND}Q` },
+        ],
+        gen: 3,
+        kind: "patch",
+      });
+      pair.flush();
+      pair.flush();
+      acks.length = 0;
+
+      pair.parent.post(undo);
+      pair.flush();
+      pair.flush();
+      // The heading was drawn again from the document: a new element, the chip alone.
+      const next = rendered(container, "h1");
+      expect(next).not.toBe(h1);
+      expect(next.textContent).toBe("Spring");
+      expect(acks.some((m) => m.kind === "patchComplete")).toBe(true);
+      // And nothing wrote `…Q` back: the session was released, not committed.
+      expect(acks.filter((m) => m.kind === "editCommit")).toEqual([]);
+      expect(acks.some((m) => m.kind === "editEnd")).toBe(true);
+    });
+
+    test("typing the document has not seen is committed before the block is redrawn", async () => {
+      const { acks, pair } = await typedAfterChip();
+      acks.length = 0;
+      // No echo this time: the frame's document still holds the bare binding.
+      pair.parent.post(undo);
+      pair.flush();
+      pair.flush();
+      const commits = acks.filter((m) => m.kind === "editCommit");
+      expect(commits).toHaveLength(1);
+      expect(commits[0]).toMatchObject({ path: ["children", 0], textContent: `${BOUND}Q` });
+    });
+  });
+
+  describe("a whole render under a live session", () => {
+    const twoDoc = (): JxMutableNode => ({
+      children: [
+        { tagName: "p", textContent: "Removed block" },
+        { tagName: "p", textContent: "Second plain" },
+      ],
+      tagName: "div",
+    });
+    /** After a merge took the first block away: the second now sits at the first one's index. */
+    const mergedDoc = (): JxMutableNode => ({
+      children: [{ tagName: "p", textContent: "Second plain" }],
+      tagName: "div",
+    });
+
+    /** A frame showing {@link twoDoc} with the caret in its first paragraph. */
+    async function caretInFirst() {
+      const pair = fakeChannelPair<ParentToIframe, IframeToParent>();
+      const acks: IframeToParent[] = [];
+      pair.parent.onMessage((m) => acks.push(m));
+      const container = document.createElement("div");
+      document.body.append(container);
+      teardown = startCanvasIframe({ channel: pair.iframe, container });
+      pair.parent.post(renderMsg(3, twoDoc()));
+      pair.flush();
+      await flush();
+      pair.flush();
+      const { caretInto } = await import("./harness");
+      const first = rendered(container, "p");
+      caretInto(first, 3);
+      pair.flush();
+      expect(acks.some((m) => m.kind === "editStart")).toBe(true);
+      acks.length = 0;
+      return { acks, container, first, pair };
+    }
+
+    test("a block that holds nothing new is released, never committed at a path that has moved", async () => {
+      const { acks, pair } = await caretInFirst();
+      // The document changed under the session and the canvas is drawn whole: what the block
+      // Shows is what the OLD document held at its path, which is another block's place now.
+      pair.parent.post(renderMsg(4, mergedDoc()));
+      pair.flush();
+      await flush();
+      pair.flush();
+      expect(acks.filter((m) => m.kind === "editCommit")).toEqual([]);
+      expect(acks.some((m) => m.kind === "editEnd")).toBe(true);
+      expect(acks.some((m) => m.kind === "renderComplete")).toBe(true);
+    });
+
+    test("typing the document has not seen is still committed first", async () => {
+      const { acks, first, pair } = await caretInFirst();
+      first.append(" typed");
+      pair.parent.post(renderMsg(4, twoDoc()));
+      pair.flush();
+      await flush();
+      pair.flush();
+      expect(acks.filter((m) => m.kind === "editCommit")).toEqual([
+        {
+          children: null,
+          kind: "editCommit",
+          path: ["children", 0],
+          textContent: "Removed block typed",
+        },
+      ]);
+    });
+  });
+
+  test("a render in an editing mode stamps what each inline element holds besides content", async () => {
+    const doc = (): JxMutableNode => ({
+      children: [
+        {
+          children: [
+            "See ",
+            { attributes: { class: "hl" }, tagName: "span", textContent: "here" },
+            { tagName: "em", textContent: "plain" },
+          ],
+          tagName: "p",
+        },
+      ],
+      tagName: "div",
+    });
+    for (const [mode, kept] of [
+      ["edit", '{"attributes":{"class":"hl"}}'],
+      ["design", '{"attributes":{"class":"hl"}}'],
+      ["preview", null],
+    ] as const) {
+      teardown?.();
+      document.body.innerHTML = "";
+      const pair = fakeChannelPair<ParentToIframe, IframeToParent>();
+      const container = document.createElement("div");
+      document.body.append(container);
+      teardown = startCanvasIframe({ channel: pair.iframe, container });
+      pair.parent.post(renderMsg(3, doc(), doc(), { mode }));
+      pair.flush();
+      await flush();
+      pair.flush();
+      expect(rendered(container, "span").dataset.jxKeep ?? null).toBe(kept);
+      expect(rendered(container, "em").dataset.jxKeep).toBeUndefined();
+    }
   });
 
   test("an echoed op updates the shadow doc even though its DOM is skipped", async () => {
@@ -1424,8 +1634,12 @@ describe("startCanvasIframe — content-height auto-sizing + wheel forwarding", 
 // ─── Render/patch vs live edit session (tab-identity lifecycle guards) ─────────
 
 describe("render/patch vs live edit session", () => {
+  /* A second node, so a patch "on another node" has one to land on: with one child it failed. */
   const P_DOC = () => ({
-    children: [{ children: ["Hi"], tagName: "p" }],
+    children: [
+      { children: ["Hi"], tagName: "p" },
+      { tagName: "h2", textContent: "Other" },
+    ],
     tagName: "div",
   });
 
@@ -1506,10 +1720,15 @@ describe("render/patch vs live edit session", () => {
       kind: "patch",
     });
     pair.flush();
+    pair.flush();
+    expect(acks.map((m) => m.kind)).toEqual(["patchComplete"]);
     const { isEditing } = await import("../src/editor/inline-edit");
     expect(isEditing()).toBe(true);
 
-    // A children re-render on the edited node itself — commit-and-end BEFORE the patch applies.
+    // A children re-render on the edited node itself, which holds typing the document has not
+    // Seen — commit-and-end BEFORE the patch applies.
+    const { getActiveElement } = await import("../src/editor/inline-edit");
+    getActiveElement()?.append(" typed");
     pair.parent.post({
       forwardOps: [{ key: "children", op: "set-key", path: ["children", 0], value: ["swapped"] }],
       gen: 1,
@@ -1519,6 +1738,23 @@ describe("render/patch vs live edit session", () => {
     expect(isEditing()).toBe(false);
     pair.flush(); // Deliver the commit the guard posted during the patch handling.
     expect(acks.some((m) => m.kind === "editCommit")).toBe(true);
+  });
+
+  test("a block the document already holds is released without a commit when it is redrawn", async () => {
+    const { acks, pair } = await bootEditable();
+    acks.length = 0;
+    pair.parent.post({
+      forwardOps: [{ key: "children", op: "set-key", path: ["children", 0], value: ["swapped"] }],
+      gen: 1,
+      kind: "patch",
+    });
+    pair.flush();
+    const { isEditing } = await import("../src/editor/inline-edit");
+    expect(isEditing()).toBe(false);
+    pair.flush();
+    // Nothing was typed, so there is nothing to write; the session simply ended.
+    expect(acks.some((m) => m.kind === "editCommit")).toBe(false);
+    expect(acks.some((m) => m.kind === "editEnd")).toBe(true);
   });
 });
 

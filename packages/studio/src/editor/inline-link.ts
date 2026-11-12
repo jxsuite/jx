@@ -13,6 +13,7 @@
  */
 
 import { normalizeInlineContent } from "./inline-format";
+import { forgetKeptAttribute, keptBindingKeys } from "./kept-node";
 
 /**
  * The one uncoverable call, isolated so the surrounding branch logic stays unit-testable, and the
@@ -90,13 +91,30 @@ function anchorInSelection(root: HTMLElement): HTMLAnchorElement | SVGAElement |
  * Apply (or remove) a link on the current selection within `root`. With an existing `<a>` in the
  * selection: rewrite its `href`, or unwrap it when `href` is null/empty. Otherwise create a link
  * via `execCommand("createLink")`. Always normalizes the inline content afterwards.
+ *
+ * Returns what each binding this replaced or removed is counted as (`keptBindingKeys`): a bound
+ * `href` the author typed a URL over, or everything a link held when it is unwrapped. The session
+ * reports them with its next commit, which may then drop them; unreported, the commit is refused
+ * for losing a binding, and a bound link's URL could never be changed from the canvas.
  */
-export function applyLink(root: HTMLElement, href: string | null): void {
+export function applyLink(root: HTMLElement, href: string | null): string[] {
   const existing = anchorInSelection(root);
+  let replaced: string[] = [];
   if (existing) {
     if (href) {
-      existing.setAttribute("href", href);
+      /* The URL is the canvas's to say from here on: the element stops carrying the one its
+         document node held, and a de-linked anchor holds its URL where the serializer reads it.
+         Set as `href` alone, the new URL was written beside a `data-jx-href` that still held the
+         old one, and the old one is what the commit stored. */
+      replaced = keptBindingKeys(existing, "href");
+      forgetKeptAttribute(existing, "href");
+      if (existing.dataset.jxHref === undefined) {
+        existing.setAttribute("href", href);
+      } else {
+        existing.dataset.jxHref = href;
+      }
     } else {
+      replaced = keptBindingKeys(existing);
       // Unwrap: replace the anchor with its children, preserving the text.
       const frag = document.createDocumentFragment();
       while (existing.firstChild) {
@@ -108,6 +126,7 @@ export function applyLink(root: HTMLElement, href: string | null): void {
     execEditingCommand("createLink", href);
   }
   normalizeInlineContent(root);
+  return replaced;
 }
 
 /** Insert a `${token}` template expression at the caret inside `root`, through the editing engine. */

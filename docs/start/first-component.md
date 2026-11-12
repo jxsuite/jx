@@ -74,7 +74,7 @@ Now point the paragraph at the value instead of typing fixed text:
 
 ![The Text Content row set to Mixed text, holding ${state.count}](../images/counter-text-binding.png)
 
-The chip now reads **Mixed text**: this value is produced from something else, and the paragraph will always show the current count. On the canvas it shows the binding itself, `❪ state.count ❫`, until you preview it. The same four words name a value's source everywhere in Studio (**Fixed value**, **From data…**, **Mixed text**, **Formula**), and each field offers only the ones it can legally hold, which is why Text Content shows three of them. The dynamic ones are explained in **[Formulas and expressions](/docs/studio/logic/formulas)**.
+The chip now reads **Mixed text**: this value is produced from something else, and the paragraph will always show the current count. On the canvas it shows the count itself, and when you put your caret in the paragraph the number becomes a tag named **Count**. The same four words name a value's source everywhere in Studio (**Fixed value**, **From data…**, **Mixed text**, **Formula**), and each field offers only the ones it can legally hold, which is why Text Content shows three of them. The dynamic ones are explained in **[Formulas and expressions](/docs/studio/logic/formulas)**.
 
 ## 7. Make the button count
 

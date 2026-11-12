@@ -15,7 +15,7 @@ import { releaseElementStyles, renderNode, runScoped } from "@jxsuite/runtime";
 import { isNumber, isString } from "@jxsuite/schema/guards";
 import { getNodeAtPath } from "../state";
 import { makeStamper } from "./iframe-render";
-import { entryRootsOf, prepareForEditMode, sampleRowAt } from "../utils/edit-display";
+import { prepareForEditMode, prepareTextMember, sampleRowAt } from "../utils/edit-display";
 import { stripEventHandlers } from "../utils/strip-events";
 import type { IframeRenderCtx } from "./iframe-render";
 import type { JxPath } from "../state";
@@ -47,14 +47,12 @@ export function renderSubtreeIframe(
   if (node === undefined) {
     throw new Error(`iframe-patch-node-not-found:${docPath.join("/")}`);
   }
-  // Inside a repeater, the template is drawn with the sample row the full render used.
+  // Inside a repeater, the template is drawn with the sample row the full render used. A string
+  // Member is prepared too: a templated one is a chip or a text run, never a bare resolved value.
+  const row = sampleRowAt(shadowDoc, docPath);
   const def = isString(node)
-    ? node
-    : prepareForEditMode(
-        stripEventHandlers(node),
-        sampleRowAt(shadowDoc, docPath),
-        entryRootsOf(shadowDoc),
-      );
+    ? prepareTextMember(node, row)
+    : prepareForEditMode(stripEventHandlers(node), row);
   const { result: rendered, stop } = runScoped(() =>
     renderNode(def, ctx.defs, {
       _path: docPathToRenderPath(docPath, ctx),

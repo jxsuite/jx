@@ -20,11 +20,15 @@
  */
 
 import {
+  abandonEditing,
+  activeBlockHolds,
   commitActiveBlock,
   getActiveElement,
+  getActivePath,
   handleSlashTrigger,
   isEditableBlock,
   isEditing,
+  isInlineOfBlock,
   isPlainSession,
   isSlashActive,
   openSlashMenu,
@@ -34,10 +38,10 @@ import {
   stopEditing,
 } from "../editor/inline-edit";
 import { startEditableRoot } from "./iframe-editable-root";
-import { adjacentBlock, blocksInOrder } from "./iframe-position";
+import { adjacentBlock, blocksInOrder, offsetOf } from "./iframe-position";
+import { chipSourcesBetween } from "./iframe-chips";
 import { isTagActiveInSelection, toggleInlineFormat } from "../editor/inline-format";
 import { applyLink, insertTemplateToken, linkStateForSelection } from "../editor/inline-link";
-import { restoreTemplateExpressions } from "../utils/edit-display";
 import { RESERVED_KEYS, camelToKebab } from "@jxsuite/runtime";
 import { rectOfRange } from "../utils/geometry";
 import { getNodeAtPath } from "../state";
@@ -57,6 +61,12 @@ import type { JxMutableNode } from "@jxsuite/schema/types";
 
 /** The commit a block session posts when its text reaches the document. */
 type EditCommitMsg = Extract<IframeToParent, { kind: "editCommit" }>;
+
+/** A write of one block's content taken from the canvas: a commit, a split or a slash insert. */
+type BlockWriteMsg = Extract<IframeToParent, { kind: "editCommit" | "editSplit" | "editInsert" }>;
+
+/** The collapse of a selection that spans blocks. */
+type EditRangeReplaceMsg = Extract<IframeToParent, { kind: "editRangeReplace" }>;
 
 /** The commit a prop-bound session posts for its instance's `$props` value. */
 type EditCommitPropMsg = Extract<IframeToParent, { kind: "editCommitProp" }>;
@@ -329,17 +339,49 @@ export function startIframeInlineEdit(
   /** Whether this typing burst's first keystroke has been announced (`editInput`). */
   let inputAnnounced = false;
 
+  /**
+   * The chips the author has deleted from the active block since its content last reached the
+   * document, each as the expression it stood for (studio.md §4.5). Reported with the next write of
+   * that block and then forgotten: the document no longer holds the binding once the write lands,
+   * so there is nothing left to excuse.
+   */
+  let removedTags: string[] = [];
+
+  /** Hand over what has been deleted since the last write, leaving none. */
+  const takeRemovedTags = (): string[] => {
+    const taken = removedTags;
+    removedTags = [];
+    return taken;
+  };
+
+  /** `message` with the deletions since the last write, when there are any. */
+  const withRemoved = <T extends BlockWriteMsg>(message: T): T => {
+    const removed = takeRemovedTags();
+    if (removed.length > 0) {
+      message.removedTags = removed;
+    }
+    return message;
+  };
+
   const enterEditAt = (el: HTMLElement, path: JxPath) => {
-    // Show raw `${expr}` syntax for editing (the render displays it as ❪ expr ❫).
-    restoreTemplateExpressions(el);
+    // A new block starts with nothing deleted: a deletion belongs to the block it happened in.
+    removedTags = [];
     channel.post({ kind: "editStart", path });
     startEditing(el, path, {
-      // `inPlace` rides along only when set: a release commit is the common case and the flag is
-      // Optional, so omitting it keeps the message shape unchanged for every non-tick commit.
+      // `inPlace` and `removedTags` ride along only when set: both are optional, so omitting them
+      // Keeps the message shape unchanged for the common commit.
       onCommit: (p, children, textContent, inPlace) => {
         inputAnnounced = false;
-        const commit: EditCommitMsg = { children, kind: "editCommit", path: p, textContent };
-        if (inPlace) {
+        const commit = withRemoved<EditCommitMsg>({
+          children,
+          kind: "editCommit",
+          path: p,
+          textContent,
+        });
+        /* A commit that deletes a chip is not left in place: the block is drawn again from the
+           document, so what the canvas says of its bindings (the names in its bound-block label)
+           is what the document now holds, not what it held before the chip went. */
+        if (inPlace && commit.removedTags === undefined) {
           commit.inPlace = true;
         }
         channel.post(commit);
@@ -350,8 +392,12 @@ export function startIframeInlineEdit(
         channel.post({ kind: "editEnd" });
       },
       onInsert: (p, cmd, commitData) =>
-        channel.post({ cmd, commitData, kind: "editInsert", path: p }),
-      onSplit: (p, before, after) => channel.post({ after, before, kind: "editSplit", path: p }),
+        channel.post(withRemoved({ cmd, commitData, kind: "editInsert", path: p })),
+      onSplit: (p, before, after, removed) => {
+        // The chips the split's selection covered are the author's deletion, like any other.
+        removedTags.push(...removed);
+        channel.post(withRemoved({ after, before, kind: "editSplit", path: p }));
+      },
     });
     // Post an initial (collapsed-caret) snapshot so the toolbar shows on entry.
     cacheRange();
@@ -478,7 +524,8 @@ export function startIframeInlineEdit(
     }
 
     if (intent.command === "link") {
-      applyLink(el, intent.href);
+      // A binding the link held that the author just replaced is their deletion, like a chip's.
+      removedTags.push(...applyLink(el, intent.href));
     } else if (intent.command === "insertData") {
       insertTemplateToken(el, intent.token);
     } else {
@@ -535,6 +582,39 @@ export function startIframeInlineEdit(
   };
 
   /**
+   * The canvas's blocks of TEXT, in document order: every block the caret can reach that is not
+   * inline content of another (`isInlineOfBlock`). A link in a paragraph can hold a caret, and so
+   * is a block to the caret; to a merge or a cross-block delete it is part of its paragraph. Listed
+   * as a block of its own it was the "block before" the next paragraph, and the block "between" a
+   * selection's two ends, so a Backspace joined the next paragraph into the link and a cross-block
+   * delete removed a link that stood before the selection.
+   */
+  const isTextBlock = (el: HTMLElement): boolean => isEditableBlock(el) && !isInlineOfBlock(el);
+  const textBlocks = (): HTMLElement[] => blocksInOrder(container, isTextBlock);
+
+  /**
+   * A position inside inline content of a block (a caret in a link) as the same position in that
+   * block, or the position itself when it is in a text block already. Null when it resolves to no
+   * block.
+   */
+  const liftToTextBlock = (pos: DocPos): DocPos | null => {
+    let el = elementForPath(container, pos.path);
+    let { offset } = pos;
+    while (el && isInlineOfBlock(el)) {
+      const outer: HTMLElement | null =
+        el.parentElement?.closest<HTMLElement>("[data-jx-path]") ?? null;
+      const base = outer ? offsetOf(outer, el, 0) : null;
+      if (!outer || base === null) {
+        return null;
+      }
+      offset += base;
+      el = outer;
+    }
+    const raw = el?.dataset.jxPath;
+    return raw === undefined ? null : { offset, path: parseJxPath(raw) };
+  };
+
+  /**
    * Post a join between the block at `path` and its document-order neighbour.
    *
    * `direction` is which way the caret was deleting: backward joins this block onto the previous
@@ -543,7 +623,9 @@ export function startIframeInlineEdit(
    * the chokepoint then suppresses the keystroke rather than doing nothing visible.
    */
   const postMerge = (path: JxPath, direction: -1 | 1): boolean => {
-    const neighbour = adjacentBlock(container, path, direction, isEditableBlock);
+    /* Among TEXT blocks: the block before a paragraph is never the link the paragraph before it
+       ends with, and a caret inside a link is at no block's edge, so it joins nothing. */
+    const neighbour = adjacentBlock(container, path, direction, isTextBlock);
     if (!neighbour) {
       return false;
     }
@@ -562,8 +644,13 @@ export function startIframeInlineEdit(
    * is where document order is already correct — a range can span list items, table cells, and
    * nested containers, none of which is a flat index walk.
    */
-  const postRangeReplace = (from: DocPos, to: DocPos, text: string): boolean => {
-    const blocks = blocksInOrder(container, isEditableBlock);
+  const postRangeReplace = (start0: DocPos, end0: DocPos, text: string): boolean => {
+    const blocks = textBlocks();
+    const from = liftToTextBlock(start0);
+    const to = liftToTextBlock(end0);
+    if (!from || !to) {
+      return false;
+    }
     const fromKey = serializeJxPath(from.path);
     const toKey = serializeJxPath(to.path);
     const start = blocks.findIndex((el) => el.dataset.jxPath === fromKey);
@@ -578,7 +665,21 @@ export function startIframeInlineEdit(
     // Commit pending text in the active block first, or the collapse would splice the block's last
     // COMMITTED content and silently drop whatever was typed since.
     root.flush();
-    channel.post({ between, from, kind: "editRangeReplace", text, to });
+    /* The chips the selection covers in its two end blocks are the ones the author is deleting:
+       everything from the start offset on in the first, everything before the end offset in the
+       last. Read from the DOM, where the selection is, and after the flush above, which may have
+       normalized it. */
+    const first = blocks[start];
+    const last = blocks[end];
+    const removed = [
+      ...(first ? chipSourcesBetween(first, from.offset) : []),
+      ...(last ? chipSourcesBetween(last, 0, to.offset) : []),
+    ];
+    const replace: EditRangeReplaceMsg = { between, from, kind: "editRangeReplace", text, to };
+    if (removed.length > 0) {
+      replace.removedTags = removed;
+    }
+    channel.post(replace);
     return true;
   };
 
@@ -616,6 +717,9 @@ export function startIframeInlineEdit(
     onPropActivate: activateProp,
     onSelectionChange: () => onSelectionChange(),
     onSplit: () => splitActiveBlock(),
+    onTagsRemoved: (sources) => {
+      removedTags.push(...sources);
+    },
   });
 
   /* The slash gesture, at the EDITING HOST.
@@ -673,7 +777,18 @@ export function startIframeInlineEdit(
       // The parent detected intent leaving the edit surface in ITS realm (tab switch, chrome click
       // Outside the edit toolbars) — commit and end, a no-op when no session is live.
       if (isEditing()) {
-        stopEditing();
+        /* A block that holds nothing the document has not been given is only released. The parent
+           also ends the session ahead of a whole render it is about to post, and by then the
+           document may have moved under the session's path: a merge that removed this very block
+           left the NEXT block at its path, and the commit of what this one still showed was
+           written over that block. What was typed and not yet committed is still committed. */
+        const shadow = opts?.getShadowDoc?.();
+        const path = getActivePath();
+        if (shadow && path && activeBlockHolds(getNodeAtPath(shadow, path))) {
+          abandonEditing();
+        } else {
+          stopEditing();
+        }
       }
       return;
     }

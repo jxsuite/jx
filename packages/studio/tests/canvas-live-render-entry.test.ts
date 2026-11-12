@@ -380,7 +380,7 @@ describe("writing an entry inside its collection's page", () => {
     });
   });
 
-  test("the page's entry is the entry being written, and its text is drawn live and badged", async () => {
+  test("the page's entry is the entry being written, and its text is drawn live and named", async () => {
     const { result } = await resolved();
     expect(result.renderDoc.state?.entry).toEqual({
       $children: [],
@@ -390,13 +390,16 @@ describe("writing an entry inside its collection's page", () => {
     });
     const h1 = renderNodeAt(result.renderDoc, ["children", 1, "children", 0, "children", 0]);
     expect(h1.attributes).toMatchObject({
-      "data-jx-bound-field": "title",
+      "data-jx-bound-field": "Title",
       "data-jx-entry-field": "title",
     });
-    // Two fields on one line have no single field to write back to: badged, not typed in place.
+    // A field typed in place keeps its text the field's live value: no chip to type around.
+    expect(h1.textContent).toBe("${state.entry.data.title}");
+    // Two fields on one line have no single field to write back to: named, not typed in place.
     const meta = renderNodeAt(result.renderDoc, ["children", 1, "children", 0, "children", 1]);
-    expect(meta.attributes).toMatchObject({ "data-jx-bound-field": "date \u00B7 tag" });
+    expect(meta.attributes).toMatchObject({ "data-jx-bound-field": "Date \u00B7 Tag" });
     expect(meta.attributes?.["data-jx-entry-field"]).toBeUndefined();
+    expect(meta.textContent).toBeUndefined();
   });
 
   test("Preview composes the same page with the live entry, and marks nothing to type in", async () => {

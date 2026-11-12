@@ -118,3 +118,35 @@ export function fillPreviewImages(root: Element): () => void {
   });
   return () => observer.disconnect();
 }
+
+/**
+ * Swap every image under `host` that fails to load for {@link PREVIEW_IMAGE_PLACEHOLDER}, until
+ * `signal` aborts.
+ *
+ * For previews drawn in the PARENT realm that show a FILE rather than a component: a library card
+ * whose image will not load, a document whose `src` is empty. The browser drew each as its
+ * broken-image glyph. `error` does not bubble, so the listener captures, which also covers images a
+ * preview renders after it is mounted. An empty `src` fires `error` too, so it needs no separate
+ * test; an image already showing the placeholder is left alone, so a placeholder that cannot load
+ * (it always can) does not loop.
+ *
+ * @param {Element} host
+ * @param {AbortSignal} signal
+ */
+export function placeholderBrokenImages(host: Element, signal: AbortSignal): void {
+  host.addEventListener(
+    "error",
+    (event) => {
+      const { target } = event;
+      if (
+        target instanceof HTMLImageElement &&
+        target.getAttribute("src") !== PREVIEW_IMAGE_PLACEHOLDER
+      ) {
+        target.setAttribute("src", PREVIEW_IMAGE_PLACEHOLDER);
+        target.removeAttribute("srcset");
+        target.setAttribute(PLACEHOLDER_ATTR, "");
+      }
+    },
+    { capture: true, signal },
+  );
+}

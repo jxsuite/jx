@@ -339,3 +339,96 @@ describe("document-order block navigation", () => {
     expect(adjacentBlock(c, ["children", 7], -1, EDITABLE)).toBeNull();
   });
 });
+
+// ─── Chips: one unit, as long as the expression it stands for ──────────────────────────────────
+
+describe("a chip counts as its expression", () => {
+  /**
+   * `By ` + a chip for `${state.name}` showing "Ada" + ` on ` + a chip for `${d}` showing a long
+   * date.
+   */
+  const BOUND =
+    `<p data-jx-path='["children",0]'>By <data data-jx-tag="\${state.name}" contenteditable="false">Ada</data>` +
+    ` on <data data-jx-tag="\${d}" contenteditable="false">the first of March</data></p>`;
+  const NAME = "${state.name}".length;
+
+  test("the block is as long as its stored text, not as what it shows", () => {
+    const p = one(mount(BOUND), "p");
+    expect(p.textContent).toBe("By Ada on the first of March");
+    expect(blockTextLength(p)).toBe("By ${state.name} on ${d}".length);
+  });
+
+  test("an offset counts each chip before it whole", () => {
+    const p = one(mount(BOUND), "p");
+    const [lead, first, middle, second] = p.childNodes;
+    expect(offsetOf(p, lead!, 3)).toBe(3);
+    expect(offsetOf(p, middle!, 0)).toBe(3 + NAME);
+    expect(offsetOf(p, middle!, 4)).toBe(3 + NAME + 4);
+    // Element-anchored: before and after each chip.
+    expect(offsetOf(p, p, 1)).toBe(3);
+    expect(offsetOf(p, p, 2)).toBe(3 + NAME);
+    expect(offsetOf(p, p, 4)).toBe(blockTextLength(p));
+    // A position inside a chip is its start at its very beginning, else its end.
+    expect(offsetOf(p, first!.firstChild!, 0)).toBe(3);
+    expect(offsetOf(p, first!.firstChild!, 2)).toBe(3 + NAME);
+    expect(offsetOf(p, first!, 1)).toBe(3 + NAME);
+    expect(offsetOf(p, second!, 0)).toBe(3 + NAME + 4);
+  });
+
+  test("a stale offset past the end of its node is no position", () => {
+    const p = one(mount(BOUND), "p");
+    expect(offsetOf(p, p.firstChild!, 99)).toBeNull();
+    expect(offsetOf(p, p, 9)).toBeNull();
+    expect(offsetOf(p, p, -1)).toBeNull();
+  });
+
+  test("a position inside nested markup inside a chip is still the chip's", () => {
+    const p = one(
+      mount(
+        `<p data-jx-path='[]'>a<data data-jx-tag="\${list}" contenteditable="false"><b>one</b><b>two</b></data></p>`,
+      ),
+      "p",
+    );
+    const [one_, two] = p.querySelectorAll("b");
+    expect(offsetOf(p, one_!.firstChild!, 0)).toBe(1);
+    expect(offsetOf(p, two!.firstChild!, 0)).toBe(1 + "${list}".length);
+  });
+
+  test("an offset resolves to text beside a chip, never into it", () => {
+    const p = one(mount(BOUND), "p");
+    const [lead, , middle] = p.childNodes;
+    // The end of the text before the chip, and the start of the text after it.
+    expect(described(domPositionAt(p, 3))).toEqual({ node: describeNode(lead!), offset: 3 });
+    expect(described(domPositionAt(p, 3 + NAME))).toEqual({
+      node: describeNode(middle!),
+      offset: 0,
+    });
+    // Inside the chip is just after it.
+    expect(described(domPositionAt(p, 5))).toEqual({ node: describeNode(middle!), offset: 0 });
+    // The block's end is after its last chip, which no text follows.
+    const end = domPositionAt(p, blockTextLength(p));
+    expect(end.node).toBe(p);
+    expect(end.offset).toBe(4);
+  });
+
+  test("a chip that starts or fills its block gives element positions", () => {
+    const p = one(
+      mount(`<p data-jx-path='[]'><data data-jx-tag="\${a}" contenteditable="false">A</data></p>`),
+      "p",
+    );
+    const start = domPositionAt(p, 0);
+    expect([start.node === p, start.offset]).toEqual([true, 0]);
+    const end = domPositionAt(p, 4);
+    expect([end.node === p, end.offset]).toEqual([true, 1]);
+    const inside = domPositionAt(p, 2);
+    expect([inside.node === p, inside.offset]).toEqual([true, 1]);
+  });
+
+  test("offsets and positions invert each other across chips", () => {
+    const p = one(mount(BOUND), "p");
+    for (const offset of [0, 1, 3, 3 + NAME, 3 + NAME + 2, 3 + NAME + 4, blockTextLength(p)]) {
+      const position = domPositionAt(p, offset);
+      expect(offsetOf(p, position.node, position.offset)).toBe(offset);
+    }
+  });
+});

@@ -42,6 +42,7 @@ import type { CanvasStageHandle, CanvasStagePanelItem } from "../surfaces/canvas
 import type { AnyCommand, CommandRegistry } from "../commands/registry";
 import type { CommandArgValues } from "../commands/command-args";
 import { isNumber, isString } from "@jxsuite/schema/guards";
+import { BINDING_DISPLAYS } from "./iframe-protocol";
 import type { Tab } from "../tabs/tab";
 
 /*
@@ -1501,6 +1502,43 @@ export function canvasViewCommands(deps: CanvasCommandDeps): AnyCommand[] {
         repaint(args);
       },
       title: "Set Color Scheme",
+    },
+    /*
+     * What a text chip DRAWS: the binding's live value, or its name (studio.md §6.9).
+     *
+     * A setter that names the state it ends in (§13.5), so it can be scripted and repeated: the
+     * tab's view state is the whole effect, and the stage that draws that tab posts it to its frame
+     * (`postBindingDisplayToLiveHosts`), which flips one attribute. Nothing is rendered again and
+     * nothing in the document changes.
+     */
+    {
+      args: argsSchema(
+        {
+          ...paneArg,
+          display: enumProperty(
+            BINDING_DISPLAYS,
+            "Whether bound text shows each binding's value or its name.",
+          ),
+        },
+        ["display"],
+      ),
+      category: "View",
+      id: "canvas.setBindingDisplay",
+      level: "document",
+      menus: ["palette"],
+      group: "3_canvas",
+      requires: "an open document",
+      when: documentOpen,
+      run: (_commandCtx, args) => {
+        const tab = contextTab("canvas.setBindingDisplay", args);
+        tab.session.ui.bindingDisplay = enumArg(
+          "canvas.setBindingDisplay",
+          args,
+          "display",
+          BINDING_DISPLAYS,
+        );
+      },
+      title: "Set Binding Display",
     },
     /*
      * The language a pane RENDERS AS — and only that.

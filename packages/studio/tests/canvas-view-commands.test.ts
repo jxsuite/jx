@@ -224,6 +224,8 @@ describe("the records themselves", () => {
       // The `⌘⌥↑`/`⌘⌥⇧S` cycles §6.2 names need `next`/`prev` records of their own.
       "canvas.setBreakpoint",
       "canvas.setColorScheme",
+      // What a text chip draws: its binding's value, or its name (§6.9).
+      "canvas.setBindingDisplay",
       // The language axis. Its id keeps the `i18n.` namespace and its definition site is here,
       // Because the three rendering-context closures a per-pane verb needs — the tab, the pane
       // Argument and the repaint — are local to this module. `insert.data` is the precedent.
@@ -308,6 +310,36 @@ describe("the rendering-context verbs repaint the pane they WROTE", () => {
     void registry.run("canvas.setColorScheme", { pane: SECONDARY_PANE, scheme: "light" });
     void registry.run("canvas.setLayoutVisible", { pane: SECONDARY_PANE, visible: false });
     expect(renderedPanes).toEqual([SECONDARY_PANE, SECONDARY_PANE, SECONDARY_PANE]);
+  });
+});
+
+describe("canvas.setBindingDisplay", () => {
+  test("sets the tab's display, and saying it twice changes nothing: a setter, not a toggle", () => {
+    const tab = activeTab.value!;
+    expect(tab.session.ui.bindingDisplay).toBe("values");
+    void registry.run("canvas.setBindingDisplay", { display: "names" });
+    expect(tab.session.ui.bindingDisplay).toBe("names");
+    void registry.run("canvas.setBindingDisplay", { display: "names" });
+    expect(tab.session.ui.bindingDisplay).toBe("names");
+    void registry.run("canvas.setBindingDisplay", { display: "values" });
+    expect(tab.session.ui.bindingDisplay).toBe("values");
+    // One attribute in the frame, posted by the stage that draws the tab: nothing is repainted.
+    expect(renderedPanes).toEqual([]);
+  });
+
+  test("names the pane whose tab it means", () => {
+    // The document moves to the side pane and the keyboard stays in the primary.
+    const tab = activeTab.value!;
+    splitRight();
+    focusPane(PRIMARY_PANE);
+    void registry.run("canvas.setBindingDisplay", { display: "names", pane: SECONDARY_PANE });
+    expect(tab.session.ui.bindingDisplay).toBe("names");
+    expect(workspace.activePaneId).toBe(PRIMARY_PANE);
+  });
+
+  test("refuses a display that is not one of the two", () => {
+    expect(() => registry.run("canvas.setBindingDisplay", { display: "labels" })).toThrow();
+    expect(activeTab.value?.session.ui.bindingDisplay).toBe("values");
   });
 });
 

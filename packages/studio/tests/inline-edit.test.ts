@@ -11,7 +11,6 @@ import {
   isEditing,
   isInlineElement,
   isInlineInContext,
-  normalizeChildren,
   openSlashMenu,
   setSlashController,
   startEditing,
@@ -306,59 +305,6 @@ describe("Editing lifecycle", () => {
     expect(el.dataset.jxActiveBlock).toBeUndefined();
 
     el2.remove();
-  });
-});
-
-// ─── normalizeChildren ────────────────────────────────────────────────────────
-
-describe("normalizeChildren", () => {
-  test("returns empty textContent for empty children", () => {
-    expect(normalizeChildren({ children: [] })).toEqual({ textContent: "" });
-  });
-
-  test("returns empty textContent for no children property", () => {
-    expect(normalizeChildren({})).toEqual({ textContent: "" });
-  });
-
-  test("folds all-text children into textContent", () => {
-    expect(normalizeChildren({ children: ["hello", " ", "world"] })).toEqual({
-      textContent: "hello world",
-    });
-  });
-
-  test("merges adjacent text nodes then folds", () => {
-    expect(normalizeChildren({ children: ["a", "b", "c"] })).toEqual({
-      textContent: "abc",
-    });
-  });
-
-  test("preserves mixed content as children array", () => {
-    const result = normalizeChildren({
-      children: ["text ", { tagName: "em", textContent: "bold" }, " more"],
-    });
-    expect(result).toEqual({
-      children: ["text ", { tagName: "em", textContent: "bold" }, " more"],
-    });
-  });
-
-  test("merges adjacent strings in mixed content", () => {
-    const result = normalizeChildren({
-      children: ["a", "b", { tagName: "em", textContent: "x" }, "c", "d"],
-    });
-    expect(result).toEqual({ children: ["ab", { tagName: "em", textContent: "x" }, "cd"] });
-  });
-
-  test("single text child becomes textContent", () => {
-    expect(normalizeChildren({ children: ["hello"] })).toEqual({
-      textContent: "hello",
-    });
-  });
-
-  test("single element child stays as children", () => {
-    const result = normalizeChildren({
-      children: [{ tagName: "strong", textContent: "bold" }],
-    });
-    expect(result).toEqual({ children: [{ tagName: "strong", textContent: "bold" }] });
   });
 });
 

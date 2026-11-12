@@ -83,6 +83,7 @@ import {
   allowAutoRequestsOnNextRender,
   getEditSnapshot,
   isCaretActive,
+  postBindingDisplayToLiveHosts,
   postColorSchemeToLiveHosts,
   postLocaleToLiveHosts,
   setCanvasContextMenuHandler,
@@ -869,6 +870,13 @@ function installPaneRenderEffects(paneId: string): void {
     // Both documents from one pane's control.
     postColorSchemeToLiveHosts(
       scheme === "light" || scheme === "dark" ? scheme : null,
+      surfaceForPane(paneId).wrap,
+    );
+  });
+  effect(() => {
+    // `canvas.setBindingDisplay`: per tab, so scoped to this pane's stage like the scheme above.
+    postBindingDisplayToLiveHosts(
+      tabOfPane(paneId)?.session.ui.bindingDisplay ?? "values",
       surfaceForPane(paneId).wrap,
     );
   });

@@ -114,6 +114,41 @@ describe("geometry funnel helpers", () => {
     range.getBoundingClientRect = () => fake;
     expect(rectOfRange(range)).toBe(fake);
   });
+
+  test("a caret between an element's children takes the edge of the child it stands beside", () => {
+    // Beside a chip that starts or ends its block the engine has no box for the caret (§4.5).
+    const block = document.createElement("h3");
+    const chip = document.createElement("data");
+    chip.getBoundingClientRect = () => new DOMRect(40, 10, 120, 30);
+    block.append(chip);
+    document.body.append(block);
+    const caret = document.createRange();
+    caret.setStart(block, 1);
+    const after = rectOfRange(caret);
+    expect([after.x, after.y, after.width, after.height]).toEqual([160, 10, 0, 30]);
+    caret.setStart(block, 0);
+    caret.collapse(true);
+    const before = rectOfRange(caret);
+    expect([before.x, before.y, before.width, before.height]).toEqual([40, 10, 0, 30]);
+    // A caret the engine DID give a box is that box: the neighbour's edge is only a fallback.
+    const own = new DOMRect(7, 8, 0, 20);
+    caret.getBoundingClientRect = () => own;
+    expect(rectOfRange(caret)).toBe(own);
+    Reflect.deleteProperty(caret, "getBoundingClientRect");
+    // In an element with no element beside the caret, or in text, there is nothing to borrow.
+    block.replaceChildren("text");
+    caret.setStart(block, 1);
+    caret.collapse(true);
+    expect(rectOfRange(caret).width).toBe(0);
+    caret.setStart(block.firstChild!, 1);
+    expect(rectOfRange(caret).x).toBe(0);
+    // A selection is never given a caret's rect.
+    block.replaceChildren(chip);
+    caret.setStart(block, 0);
+    caret.setEnd(block, 1);
+    expect(rectOfRange(caret).height).toBe(0);
+    block.remove();
+  });
 });
 
 describe("geometry funnel invariant (regression guard)", () => {
@@ -151,6 +186,8 @@ describe("geometry funnel invariant (regression guard)", () => {
       "canvas/iframe-render.ts",
       "canvas/iframe-interaction.ts",
       "canvas/iframe-inline-edit.ts",
+      // The editing host reads its block's writing direction to step the caret over a chip.
+      "canvas/iframe-editable-root.ts",
       "canvas/iframe-subtree.ts",
       "canvas/iframe-patch.ts",
       "canvas/iframe-keys.ts",

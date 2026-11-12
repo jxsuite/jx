@@ -68,7 +68,26 @@ export function rectOf(el: Element): DOMRect {
  * `range.getBoundingClientRect()` directly.
  */
 export function rectOfRange(r: Range): DOMRect {
-  return r.getBoundingClientRect();
+  const rect = r.getBoundingClientRect();
+  const empty = rect.width === 0 && rect.height === 0 && rect.x === 0 && rect.y === 0;
+  if (!empty || !r.collapsed || r.startContainer.nodeType !== r.startContainer.ELEMENT_NODE) {
+    return rect;
+  }
+  /* A caret that stands BETWEEN an element's children rather than in text (beside a chip that
+     starts or ends its block, studio.md §4.5) has no boxes of its own, so the engine answers with
+     an empty rect at the origin, and anything placed by the caret would be placed there. The caret
+     is drawn at the edge of the child it stands beside, so that edge is its rect. */
+  const before = r.startContainer.childNodes[r.startOffset - 1];
+  const after = r.startContainer.childNodes[r.startOffset];
+  if (before instanceof Element) {
+    const box = before.getBoundingClientRect();
+    return new DOMRect(box.right, box.top, 0, box.height);
+  }
+  if (after instanceof Element) {
+    const box = after.getBoundingClientRect();
+    return new DOMRect(box.left, box.top, 0, box.height);
+  }
+  return rect;
 }
 
 /** Topmost element at a viewport point, in `root` (defaults to the global document). */
