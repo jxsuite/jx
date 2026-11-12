@@ -293,8 +293,152 @@ export function maskCode(body: string): string {
 const masked = new Map<string, string>();
 const MASKED_LIMIT = 2048;
 
-/** The scan {@link maskCode} caches. */
-function scanCode(body: string): string {
+/**
+ * One `${…}` of a template string: `start` is the offset of its `$`, `end` is one past its closing
+ * `}`, and `expr` is the expression between the braces, exactly as written.
+ */
+export interface TemplateExpression {
+  readonly start: number;
+  readonly end: number;
+  readonly expr: string;
+}
+
+/**
+ * Each top-level `${…}` of a template string (`spec.md` §8.4), in order.
+ *
+ * A template string is the inside of a JavaScript template literal, and its expressions are code,
+ * so where one ends is a question about code: a `}` inside a string, a comment, an object literal
+ * or a nested template literal does not close it. This is the {@link maskCode} scan started inside
+ * a template, so every reader of a template agrees with the engine that evaluates it. A pattern
+ * such as `[^}]+` cuts `${f(x, { a: 1 })}` at the object's brace, and a brace count alone ends `${a
+ * ? "}" : ""}` inside the string.
+ *
+ * Two things this scan does that {@link maskCode} does not, because an expression is short and the
+ * cost of misreading one is a binding shown or stored wrong:
+ *
+ * - A regular expression literal is recognised where an operand may start, so a quote or a brace
+ *   inside `/"/g` is not read as code.
+ * - An expression the scan cannot close (an unterminated string) is closed by brace depth instead,
+ *   and one with no closing brace at all is not reported: its `${` is literal text, and the scan
+ *   goes on after it, so a complete expression later in the string is still found.
+ *
+ * The result is shared and must not be changed.
+ *
+ * @param template The template string, without the backticks of a literal.
+ */
+export function templateExpressions(template: string): readonly TemplateExpression[] {
+  if (!template.includes("${")) {
+    return NO_EXPRESSIONS;
+  }
+  const known = scanned.get(template);
+  if (known !== undefined) {
+    return known;
+  }
+  const found: TemplateExpression[] = [];
+  let from = 0;
+  while (from < template.length) {
+    const spans: number[] = [];
+    scanCode(template.slice(from), spans);
+    let unclosed = -1;
+    for (let i = 0; i < spans.length; i += 2) {
+      const start = from + (spans[i] ?? 0);
+      const end = spans[i + 1] ?? -1;
+      if (end === -1) {
+        unclosed = start;
+        break;
+      }
+      found.push(expressionAt(template, start, from + end));
+    }
+    if (unclosed === -1) {
+      break;
+    }
+    // The scan lost its place (a quote it could not pair): brace depth closes this one expression.
+    const end = closeByBraceDepth(template, unclosed);
+    if (end === -1) {
+      // Never closed, so this `${` is text; a complete expression may still follow it.
+      from = unclosed + 2;
+    } else {
+      found.push(expressionAt(template, unclosed, end));
+      from = end;
+    }
+  }
+  if (scanned.size >= MASKED_LIMIT) {
+    scanned.clear();
+  }
+  scanned.set(template, found);
+  return found;
+}
+
+const NO_EXPRESSIONS: readonly TemplateExpression[] = [];
+
+/** Templates already scanned: a renderer asks about the same template on every evaluation. */
+const scanned = new Map<string, readonly TemplateExpression[]>();
+
+function expressionAt(template: string, start: number, end: number): TemplateExpression {
+  return { end, expr: template.slice(start + 2, end - 1), start };
+}
+
+/** One past the `}` that balances the `${` at `start` by brace depth alone, or -1 for none. */
+function closeByBraceDepth(template: string, start: number): number {
+  let depth = 0;
+  for (let at = start + 1; at < template.length; at += 1) {
+    const char = template.charAt(at);
+    if (char === "{") {
+      depth += 1;
+    } else if (char === "}") {
+      depth -= 1;
+      if (depth === 0) {
+        return at + 1;
+      }
+    }
+  }
+  return -1;
+}
+
+/** The characters after which a `/` starts a regular expression literal, not a division. */
+const BEFORE_OPERAND = new Set("(,=:[!&|?{;+-*%<>~^");
+
+/**
+ * Whether `before`, the operator character read at `at`, is the second half of `++` or `--`. A `/`
+ * after one of those divides (`a++ / 2`): read as a regular expression it ran to the next `/` on
+ * the line, which in `"${a++ / 2} and ${b / 3}"` is in the NEXT expression, and the two were
+ * reported as one.
+ */
+function endsUpdateOperator(body: string, before: string, at: number): boolean {
+  return (before === "+" || before === "-") && body.charAt(at - 1) === before;
+}
+
+/**
+ * One past the end of the regular expression literal opening at `at`, or -1 when the `/` there is
+ * not one: it does not close on its line. A `/` inside a character class does not close it.
+ */
+function regexLiteralEnd(body: string, at: number): number {
+  let inClass = false;
+  for (let i = at + 1; i < body.length; i += 1) {
+    const char = body.charAt(i);
+    if (char === "\n") {
+      return -1;
+    }
+    if (char === "\\") {
+      i += 1;
+    } else if (char === "[") {
+      inClass = true;
+    } else if (char === "]") {
+      inClass = false;
+    } else if (char === "/" && !inClass) {
+      return i + 1;
+    }
+  }
+  return -1;
+}
+
+/**
+ * The scan {@link maskCode} caches. With `spans` it reads `body` as a template string instead of
+ * code (it starts inside the template), recognises regular expression literals, and records each
+ * top-level substitution for {@link templateExpressions} as a pair of offsets: its `$`, then one
+ * past its `}`, which is -1 while it is still open.
+ */
+function scanCode(body: string, spans?: number[]): string {
   /* UTF-16 units, as `at` counts them. Code points (`[...body]`) made an astral character in a
      string one element for two offsets, so the result came back short and every offset after it,
      which is what a caller splices the body at, was off by one. */
@@ -306,7 +450,11 @@ function scanCode(body: string): string {
   };
   /** The brace depth of each template substitution still open, innermost last. */
   const substitutions: number[] = [];
-  let inTemplate = false;
+  let inTemplate = spans !== undefined;
+  /** The last character of code read that is not white space: what a `/` follows. */
+  let before = "";
+  /** Where `before` was read, when it is an operator or part of a name; stale otherwise. */
+  let beforeAt = -1;
   let at = 0;
   while (at < body.length) {
     const char = body.charAt(at);
@@ -315,12 +463,18 @@ function scanCode(body: string): string {
         blank(at);
         blank(at + 1);
         at += 2;
-      } else if (char === "`") {
+      } else if (char === "`" && !(spans && substitutions.length === 0)) {
+        // A template STRING has no closing backtick: one in its own text is text.
         inTemplate = false;
+        before = char;
         at += 1;
       } else if (char === "$" && body.charAt(at + 1) === "{") {
+        if (substitutions.length === 0) {
+          spans?.push(at, -1);
+        }
         substitutions.push(0);
         inTemplate = false;
+        before = "{";
         at += 2;
       } else {
         blank(at);
@@ -347,10 +501,24 @@ function scanCode(body: string): string {
         blank(at);
         at += 1;
       }
+      before = char;
       at += 1;
     } else if (char === "`") {
       inTemplate = true;
       at += 1;
+    } else if (
+      spans &&
+      char === "/" &&
+      BEFORE_OPERAND.has(before) &&
+      !endsUpdateOperator(body, before, beforeAt) &&
+      regexLiteralEnd(body, at) > 0
+    ) {
+      const stop = regexLiteralEnd(body, at);
+      for (at += 1; at < stop - 1; at += 1) {
+        blank(at);
+      }
+      before = "/";
+      at = stop;
     } else {
       const open = substitutions.length - 1;
       if (open >= 0 && char === "{") {
@@ -359,9 +527,16 @@ function scanCode(body: string): string {
         if (substitutions[open] === 0) {
           substitutions.pop();
           inTemplate = true;
+          if (spans && substitutions.length === 0) {
+            spans[spans.length - 1] = at + 1;
+          }
         } else {
           substitutions[open] = (substitutions[open] ?? 1) - 1;
         }
+      }
+      if (char.trim() !== "") {
+        before = char;
+        beforeAt = at;
       }
       at += 1;
     }

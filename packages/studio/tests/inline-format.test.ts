@@ -2,55 +2,10 @@ import "./with-dom.js";
 import { describe, expect, test } from "bun:test";
 import {
   expandRangeToTemplateExpressions,
-  findTemplateExpressions,
   isTagActiveInSelection,
   normalizeInlineContent,
   toggleInlineFormat,
 } from "../src/editor/inline-format";
-
-describe("findTemplateExpressions", () => {
-  test("no expressions", () => {
-    expect(findTemplateExpressions("hello world")).toEqual([]);
-  });
-
-  test("single expression", () => {
-    expect(findTemplateExpressions("hello ${name} world")).toEqual([{ end: 13, start: 6 }]);
-  });
-
-  test("expression at start", () => {
-    expect(findTemplateExpressions("${x} rest")).toEqual([{ end: 4, start: 0 }]);
-  });
-
-  test("expression at end", () => {
-    expect(findTemplateExpressions("rest ${x}")).toEqual([{ end: 9, start: 5 }]);
-  });
-
-  test("multiple expressions", () => {
-    expect(findTemplateExpressions("a ${b} c ${d} e")).toEqual([
-      { end: 6, start: 2 },
-      { end: 13, start: 9 },
-    ]);
-  });
-
-  test("nested braces", () => {
-    expect(findTemplateExpressions("${obj.map(x => {x})}")).toEqual([{ end: 20, start: 0 }]);
-  });
-
-  test("adjacent expressions", () => {
-    expect(findTemplateExpressions("${a}${b}")).toEqual([
-      { end: 4, start: 0 },
-      { end: 8, start: 4 },
-    ]);
-  });
-
-  test("dollar without brace is not an expression", () => {
-    expect(findTemplateExpressions("$100 and ${x}")).toEqual([{ end: 13, start: 9 }]);
-  });
-
-  test("unclosed expression is ignored", () => {
-    expect(findTemplateExpressions("${unclosed")).toEqual([]);
-  });
-});
 
 // ─── expandRangeToTemplateExpressions ─────────────────────────────────────────
 
@@ -100,6 +55,24 @@ describe("expandRangeToTemplateExpressions", () => {
     expandRangeToTemplateExpressions(range);
     expect(range.startOffset).toBe(0);
     expect(range.endOffset).toBe(5);
+
+    container.remove();
+  });
+
+  test("an expression holding a brace inside a string is still one unit", () => {
+    const text = 'a ${x ? "}" : {}.y} b';
+    const textNode = document.createTextNode(text);
+    const container = document.createElement("div");
+    container.append(textNode);
+    document.body.append(container);
+
+    const range = document.createRange();
+    // Just past the `}` inside the string, where a brace count ended the expression.
+    range.setStart(textNode, 0);
+    range.setEnd(textNode, text.indexOf('"}"') + 2);
+
+    expandRangeToTemplateExpressions(range);
+    expect(range.endOffset).toBe(text.length - 2);
 
     container.remove();
   });

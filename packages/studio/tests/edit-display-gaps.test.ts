@@ -154,6 +154,147 @@ describe("template display round-trip", () => {
   });
 });
 
+describe("template display: one unit per expression", () => {
+  /** What the canvas shows for `template`, put back as the caret entering the block puts it. */
+  function roundTrip(template: string): string {
+    const el = document.createElement("p");
+    el.textContent = templateToEditDisplay(template);
+    restoreTemplateExpressions(el);
+    return el.textContent;
+  }
+
+  /* The post date of the converted Anabaptist Perspectives site (`pages/dev-episodes.json`), as its
+     converter wrote it: two object literals, nested lambdas and a ternary in one expression. */
+  const DATE_LAMBDA =
+    "${($map.item.data.date) ? ((d) => ((p) => '' + ['January','February','March','April','May','June','July','August','September','October','November','December'][p.month - 1] + ' ' + p.day + ', ' + String(p.year).padStart(4, '0'))(Object.assign(Object.fromEntries(new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',year:'numeric',month:'numeric',day:'numeric'}).formatToParts(d).map(q => [q.type, q.type === 'weekday' ? q.value : +q.value])))))(new Date($map.item.data.date)) : ''}";
+
+  test("an object literal inside an expression stays inside its brackets", () => {
+    // `[^}]+` stopped at the object's brace and left `)}` on the canvas as text.
+    expect(templateToEditDisplay('${f(x, {"a":1})}')).toBe('❪ f(x, {"a":1}) ❫');
+    expect(templateToEditDisplay('On ${f(x, {"a":1})} by ${who}')).toBe(
+      'On ❪ f(x, {"a":1}) ❫ by ❪ who ❫',
+    );
+  });
+
+  test("the converted site's date lambda is one unit", () => {
+    const shown = templateToEditDisplay(DATE_LAMBDA);
+    expect(shown).toBe(`❪ ${DATE_LAMBDA.slice(2, -1)} ❫`);
+    expect(shown.match(/❪/gu)).toHaveLength(1);
+    expect(shown).not.toContain("${");
+  });
+
+  test("a brace in a string and a nested template literal do not end the expression", () => {
+    expect(templateToEditDisplay("${a ? '}' : '{'}!")).toBe("❪ a ? '}' : '{' ❫!");
+    expect(templateToEditDisplay("${`${a}-x`}")).toBe("❪ `${a}-x` ❫");
+  });
+
+  test("an expression that never closes stays the text it is", () => {
+    expect(templateToEditDisplay("${a} and ${b")).toBe("❪ a ❫ and ${b");
+  });
+
+  test("restore(display(t)) is t", () => {
+    const templates = [
+      "Hello ${name}!",
+      "${a}${b}",
+      '${f(x, {"a":1})}',
+      'On ${f(x, {"a":1})} by ${who}',
+      "${a ? '}' : '{'}!",
+      "${`${a}-x`} and ${{ b: { c: 1 } }.b.c}",
+      "${ spaced } and ${  twice  }",
+      "${rows.map((r) => {\n  return r.title;\n})}",
+      DATE_LAMBDA,
+      `Posted ${DATE_LAMBDA} by \${state.author}`,
+    ];
+    for (const template of templates) {
+      expect(roundTrip(template)).toBe(template);
+    }
+  });
+
+  test("the rendered text node round-trips as well: what the runtime draws is what is restored", () => {
+    const template = 'On ${f(x, {"a":1})}';
+    const el = renderNode(prep({ tagName: "p", textContent: template }), {});
+    if (!(el instanceof HTMLElement)) {
+      throw new TypeError("expected an element");
+    }
+    expect(el.textContent).toBe('On ❪ f(x, {"a":1}) ❫');
+    restoreTemplateExpressions(el);
+    expect(el.textContent).toBe(template);
+  });
+
+  test("brackets typed without the display's spaces are restored too", () => {
+    const el = document.createElement("p");
+    el.textContent = "❪a❫ ❪ b❫";
+    restoreTemplateExpressions(el);
+    expect(el.textContent).toBe("${a} ${b}");
+  });
+});
+
+// ─── Row-bound boolean attributes ─────────────────────────────────────────────
+
+describe("prepareForEditMode row-bound boolean attributes", () => {
+  /* The converted site's premium badge: hidden unless the row says otherwise. Shown as its binding
+     text the attribute was PRESENT, so the element was hidden on the canvas for every row. */
+  const HIDDEN =
+    "${!(((v) => !!v && v != '0' && !(Array.isArray(v) && !v.length))($map.item.data.premium))}";
+
+  test("a row-bound hidden attribute is left out, so the element is drawn", () => {
+    const out = prep({
+      attributes: { hidden: HIDDEN, title: "${item.t}" },
+      tagName: "span",
+      textContent: "Premium",
+    });
+    expect(out.attributes).toEqual({ title: "❪ item.t ❫" });
+
+    const el = renderNode(out, {});
+    expect(el instanceof HTMLElement && el.hasAttribute("hidden")).toBe(false);
+  });
+
+  test("the same binding written as a property is left out too", () => {
+    const out = prep({ hidden: HIDDEN, tagName: "span", textContent: "Premium" });
+    expect("hidden" in out).toBe(false);
+    expect(out.textContent).toBe("Premium");
+  });
+
+  test("inert and disabled are left out for the same reason; other booleans show their binding", () => {
+    const out = prep({
+      attributes: {
+        disabled: "${item.off}",
+        inert: { $ref: "#/$map/item/off" },
+        open: "${item.open}",
+      },
+      disabled: "${index > 2}",
+      tagName: "button",
+      textContent: "Go",
+    });
+    expect(out.attributes).toEqual({ open: "❪ item.open ❫" });
+    expect("disabled" in out).toBe(false);
+  });
+
+  test("a media element's row-bound hidden is left out beside its placeholder src", () => {
+    const out = prep({
+      attributes: { hidden: "${!item.img}", src: "${item.img}" },
+      tagName: "img",
+    });
+    expect(out.attributes).toEqual({ src: TRANSPARENT_PX });
+  });
+
+  test("a hidden that does not read the row stays live", () => {
+    const out = prep({
+      attributes: { hidden: "${state.closed}" },
+      hidden: "${state.closed}",
+      tagName: "div",
+      textContent: "x",
+    });
+    expect(out.attributes).toEqual({ hidden: "${state.closed}" });
+    expect(out.hidden).toBe("${state.closed}");
+  });
+
+  test("a literal hidden is the author's and stays", () => {
+    const out = prep({ attributes: { hidden: "" }, tagName: "div", textContent: "x" });
+    expect(out.attributes).toEqual({ hidden: "" });
+  });
+});
+
 // ─── prepareForEditMode ───────────────────────────────────────────────────────
 
 describe("prepareForEditMode basics", () => {

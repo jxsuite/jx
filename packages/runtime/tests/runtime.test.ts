@@ -172,6 +172,22 @@ describe("isSingleExpression", () => {
     // A malformed/hand-edited document can carry this; it must fail closed, not throw.
     expect(isSingleExpression("${`${a}")).toBe(false);
   });
+  test("a brace inside a string or an object literal does not end the expression", () => {
+    // A brace count closed these at the quoted `}`, so the value arrived as a string.
+    expect(isSingleExpression("${state.open ? '}' : '{'}")).toBe(true);
+    expect(isSingleExpression('${f(state.x, {"a":1})}')).toBe(true);
+    expect(isSingleExpression("${`${state.a}-x`}")).toBe(true);
+  });
+  test("a quoted brace between two expressions does not join them", () => {
+    expect(isSingleExpression("${state.a} '}' ${state.b}")).toBe(false);
+  });
+  test("a `${` that never closes before a complete expression is not one expression", () => {
+    // The scanner reports only the inner one; it does not start the string, so it is not the whole.
+    expect(isSingleExpression("${ ${state.a}")).toBe(false);
+  });
+  test("a division after `++` does not join two expressions", () => {
+    expect(isSingleExpression("${state.n++ / 2} and ${state.b / 3}")).toBe(false);
+  });
 });
 
 // ─── RESERVED_KEYS ────────────────────────────────────────────────────────────

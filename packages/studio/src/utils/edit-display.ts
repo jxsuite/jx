@@ -16,7 +16,9 @@ import {
   isRef,
   isString,
   isTemplateString,
+  templateExpressions,
 } from "@jxsuite/schema/guards";
+import type { TemplateExpression } from "@jxsuite/schema/guards";
 import { isDocumentContainer } from "./strip-events";
 import type { RebuiltNode } from "./strip-events";
 
@@ -76,6 +78,24 @@ export function isRowBound(value: JxDocumentValue | undefined): boolean {
     return value.includes("${") && ROW_BINDING_RE.test(value);
   }
   return isNodeObject(value) && isString(value.$ref) && /^(?:#\/)?\$map\//u.test(value.$ref);
+}
+
+/**
+ * The boolean attributes a row-bound value is OMITTED for in edit mode, by attribute and by
+ * property name (they are spelled alike).
+ *
+ * A boolean attribute is on when it is present, whatever it says, so the binding text every other
+ * row-bound attribute shows (`❪ !item.premium ❫`) turned each of these on: a row-bound `hidden` hid
+ * the element the author came to edit, and `inert` or `disabled` left it drawn but closed to the
+ * pointer that selects it. The perimeter has no row to ask, and absent is the state in which the
+ * element can be seen and reached. Kept to the ones that take an element out of view or out of
+ * reach; `open`, `checked` and their kind only change what a reachable element shows.
+ */
+const ROW_BOUND_OMITTED: ReadonlySet<string> = new Set(["hidden", "inert", "disabled"]);
+
+/** Whether edit mode leaves out the row-bound `value` of `key` ({@link ROW_BOUND_OMITTED}). */
+function omitsRowBound(key: string, value: JxDocumentValue | undefined): boolean {
+  return ROW_BOUND_OMITTED.has(key) && isRowBound(value);
 }
 
 /**
@@ -219,13 +239,24 @@ export function computeEmptyPlaceholderClass(node: JxMutableNode): string | null
 }
 
 /**
- * Convert a template string to a displayable expression for edit mode. Replaces ${expr} with ❮ expr
- * ❯ so the runtime renders it as literal text.
+ * Convert a template string to a displayable expression for edit mode. Replaces each `${expr}` with
+ * `❪ expr ❫` so the runtime renders it as literal text.
+ *
+ * Each expression is ONE unit however many braces it holds: `${f(x, { a: 1 })}` and a formatting
+ * lambda with a body are located by the shared template scanner, where a `[^}]+` pattern stopped at
+ * the first `}` and left the rest of the expression on the canvas as text.
+ * {@link restoreTemplateExpressions} is the inverse.
  *
  * @param {string} str
  */
 export function templateToEditDisplay(str: string) {
-  return str.replaceAll(/\$\{([^}]+)\}/g, "\u276A $1 \u276B");
+  let out = "";
+  let last = 0;
+  for (const { start, end, expr } of templateExpressions(str)) {
+    out += `${str.slice(last, start)}\u276A ${expr} \u276B`;
+    last = end;
+  }
+  return out + str.slice(last);
 }
 
 /**
@@ -242,6 +273,12 @@ function computedChildrenDisplay(template: string): string {
  * Reverse templateToEditDisplay: walk all text nodes in `el` and replace ❪ expr ❫ back to ${expr}
  * so the user edits raw template syntax.
  *
+ * Exactly the one space the display put on each side is taken off, and an expression may span
+ * lines, so `restore(display(t))` is `t` for any template whose expressions hold no `❫`. Trimming
+ * every space rewrote `${ a }` to `${a}` on a caret visit that typed nothing, and a pattern that
+ * could not cross a newline left a multi-line expression as its display text, which the commit then
+ * stored.
+ *
  * @param {HTMLElement} el
  */
 export function restoreTemplateExpressions(el: HTMLElement) {
@@ -250,7 +287,7 @@ export function restoreTemplateExpressions(el: HTMLElement) {
     // SAFETY: the walker was created with NodeFilter.SHOW_TEXT, so every node it stops on is Text.
     const node = walker.currentNode as Text;
     if (node.data.includes("\u276A")) {
-      node.data = node.data.replaceAll(/\u276A\s*(.*?)\s*\u276B/g, "${$1}");
+      node.data = node.data.replaceAll(/\u276A ?(.*?) ?\u276B/gsu, "${$1}");
     }
   }
 }
@@ -336,46 +373,9 @@ function sampleRowOf(items: JxDocumentValue | undefined, row: SampleRow): Sample
   return null;
 }
 
-/** One `${…}` of a template: where it starts and ends in the string, and its expression. */
-interface TemplatePart {
-  start: number;
-  end: number;
-  expr: string;
-}
-
 /** Whether `part` is the whole of `template`: one expression end to end, so it keeps its type. */
-function isWholeTemplate(template: string, part: TemplatePart): boolean {
-  return part.start === 0 && part.end === template.length - 1;
-}
-
-/**
- * Each `${…}` of a template, located by brace depth rather than by pattern: an expression may hold
- * an object literal or a nested template, which a `[^}]+` pattern cuts short.
- */
-function templateExpressions(str: string): TemplatePart[] {
-  const found: TemplatePart[] = [];
-  let at = str.indexOf("${");
-  while (at !== -1) {
-    let depth = 0;
-    let end = -1;
-    for (let i = at + 1; i < str.length; i += 1) {
-      if (str[i] === "{") {
-        depth += 1;
-      } else if (str[i] === "}") {
-        depth -= 1;
-        if (depth === 0) {
-          end = i;
-          break;
-        }
-      }
-    }
-    if (end === -1) {
-      break;
-    }
-    found.push({ end, expr: str.slice(at + 2, end), start: at });
-    at = str.indexOf("${", end + 1);
-  }
-  return found;
+function isWholeTemplate(template: string, part: TemplateExpression): boolean {
+  return part.start === 0 && part.end === template.length;
 }
 
 /**
@@ -399,7 +399,7 @@ export function liveEditProp(template: string, row: SampleRow = null): string {
   for (const { start, end, expr } of parts) {
     out += template.slice(last, start);
     out += `\${(() => { try { return ${inRow(expr, row)}; } catch { return ""; } })()}`;
-    last = end + 1;
+    last = end;
   }
   return out + template.slice(last);
 }
@@ -529,7 +529,7 @@ function liveEntryText(template: string): string {
     const label = jsLiteral(templateToEditDisplay(`\${${expr}}`));
     out += template.slice(last, start);
     out += `\${(() => { try { return (${expr}) ?? ${label}; } catch { return ${label}; } })()}`;
-    last = end + 1;
+    last = end;
   }
   return out + template.slice(last);
 }
@@ -762,15 +762,18 @@ function prepareNode(
         if ((ak === "src" || ak === "poster") && (av === "" || av == null || isRowBound(av))) {
           needsMediaPlaceholder = true;
           processed[ak] = TRANSPARENT_PX;
-        } else {
+        } else if (!omitsRowBound(ak, av)) {
           processed[ak] = isRowBound(av) ? rowBoundDisplay(ak, av) : av;
         }
       }
       out.attributes = processed;
     } else if (k === "attributes" && isDocumentContainer(v)) {
+      // A row-bound attribute shows its binding, except a boolean one, which is left out.
       const processed: RebuiltNode = {};
       for (const [ak, av] of Object.entries(v)) {
-        processed[ak] = isRowBound(av) ? rowBoundDisplay(ak, av) : av;
+        if (!omitsRowBound(ak, av)) {
+          processed[ak] = isRowBound(av) ? rowBoundDisplay(ak, av) : av;
+        }
       }
       out.attributes = processed;
     } else if (k === "style") {
@@ -810,7 +813,10 @@ function prepareNode(
         out[k] = v;
       }
     } else if (isRowBound(v)) {
-      out[k] = rowBoundDisplay(k, v);
+      // The same boolean, written as a property (`hidden: "${!item.premium}"`), is left out too.
+      if (!omitsRowBound(k, v)) {
+        out[k] = rowBoundDisplay(k, v);
+      }
     } else if (isString(v) || (isNodeObject(v) && v.$ref)) {
       // Any other bound or literal property renders as the page will.
       out[k] = v;

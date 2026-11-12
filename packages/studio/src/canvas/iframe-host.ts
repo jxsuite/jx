@@ -1586,6 +1586,90 @@ function reconcileInstance(state: HostState, path: JxPath): void {
   );
 }
 
+/**
+ * The host and block (serialized path) whose refused commit is being drawn again, until the frame
+ * answers that patch.
+ *
+ * The redraw replaces the block the caret may still be in, and the frame closes that session on the
+ * way, which commits once more: the same content, refused for the same reason. Answering that one
+ * with a second redraw would close the session the first one's caret restore opens, and the two
+ * would chase each other for as long as the caret stayed. So a refusal that arrives while the
+ * redraw is in flight is already answered.
+ *
+ * `awaiting` is how many answers the frame still owes before the redraw's own: a frame answers its
+ * patches in the order they were posted, and an older patch may be outstanding when the redraw is.
+ * Clearing this on the FIRST answer let that older patch's answer clear it while the redraw was
+ * still on its way, so the commit the redraw then caused was answered with a second redraw, whose
+ * commit was answered with a third: the same chase, started by one unrelated patch in flight.
+ */
+let refusedRedraw: { host: HostState; path: string; awaiting: number } | null = null;
+
+/**
+ * Whether a refused commit at `path` still has to be answered ({@link refusedRedraw}).
+ *
+ * Exported for its own test, like {@link needsReleaseReconcile}: the posting side needs a resolvable
+ * stage, and this is the condition that keeps the redraw from looping.
+ */
+export function needsRefusalRedraw<Host>(
+  pending: { host: Host; path: string } | null,
+  host: Host,
+  path: string,
+): boolean {
+  return !(pending?.host === host && pending.path === path);
+}
+
+/**
+ * A commit from `state`'s canvas was refused because it would have stored a binding's current value
+ * in the binding's place (`editor/inline-edit-apply.ts`). The document is untouched, so the block
+ * is drawn again from it, WITHOUT transacting, exactly as {@link reconcileInstance} re-sends a
+ * dropped render: the canvas must not go on showing text that was not saved. The author is told
+ * once per refusal; the key folds a run of them into one toast.
+ */
+function onCommitRefused(state: HostState, path: JxPath): void {
+  const at = serializeJxPath(path);
+  const tab = hostTab(state);
+  const node = tab ? getNodeAtPath(tab.doc.document, path) : undefined;
+  if (!tab || !node || !needsRefusalRedraw(refusedRedraw, state, at)) {
+    return;
+  }
+  notify.info(
+    "This text is drawn from a binding, so it was left as it is. Typing over it on the canvas would replace the binding with its current value.",
+    { key: "canvas.binding-kept", source: "Canvas" },
+  );
+  /* An idle-tick commit is applied with its echo suppressed, because the canvas already shows what
+     it wrote. This one wrote nothing, so the redraw must reach the canvas that asked. */
+  const echo = echoOrigin;
+  echoOrigin = null;
+  try {
+    const before = state.pendingPatches;
+    postPatchToHosts(
+      [{ key: "children", op: "set-key", path, value: cloneValue(node.children) }],
+      tab.id,
+    );
+    // Held only when THIS canvas was posted to: another pane's answer never arrives here.
+    refusedRedraw =
+      state.pendingPatches > before
+        ? { awaiting: state.pendingPatches, host: state, path: at }
+        : null;
+  } finally {
+    echoOrigin = echo;
+  }
+}
+
+/**
+ * The frame answered a patch. A refused commit's redraw has landed once every patch posted up to
+ * and including it has been answered ({@link refusedRedraw}).
+ */
+function settleRefusedRedraw(state: HostState): void {
+  if (refusedRedraw?.host !== state) {
+    return;
+  }
+  refusedRedraw.awaiting -= 1;
+  if (refusedRedraw.awaiting <= 0) {
+    refusedRedraw = null;
+  }
+}
+
 function hostTab(state: HostState): Tab | null {
   return state.tabId ? (workspace.tabs.get(state.tabId) ?? null) : null;
 }
@@ -2593,6 +2677,7 @@ function handleMessage(state: HostState, msg: IframeToParent): void {
     case "patchComplete": {
       // A patch never re-targets the host (tabId untouched) — only the DOM/geometry changed.
       state.pendingPatches = Math.max(0, state.pendingPatches - 1);
+      settleRefusedRedraw(state);
       onDomUpdated(state, msg.gen);
       return;
     }
@@ -2751,6 +2836,7 @@ function handleMessage(state: HostState, msg: IframeToParent): void {
       // The patch is no longer outstanding either way; a counter that only went up would wedge
       // Every later idle() behind a message the host already handled.
       state.pendingPatches = Math.max(0, state.pendingPatches - 1);
+      settleRefusedRedraw(state);
       /* An UNRESOLVABLE stage escalates nothing, and that is now a complete answer rather than a
          hole. It used to be half of finding 9: `postPatchToHosts` posted a fabricated gen `0` to a
          host whose stage it could not name, the frame answered `patch-behind-render`, and this
@@ -2846,7 +2932,9 @@ function handleMessage(state: HostState, msg: IframeToParent): void {
       // Route to the tab this host's iframe renders — NOT activeTab, which may have changed while
       // The message was in flight (the cross-document bleed).
       const apply = () =>
-        applyInlineCommit(hostTab(state), msg.path, msg.children, msg.textContent);
+        applyInlineCommit(hostTab(state), msg.path, msg.children, msg.textContent, {
+          onRefused: (path) => onCommitRefused(state, path),
+        });
       // An in-place commit (the idle tick) leaves the caret in the block, so the echoed patch must
       // Not re-render it. A commit on release renders normally — the caret has already left.
       if (msg.inPlace) {
@@ -2916,7 +3004,14 @@ function handleMessage(state: HostState, msg: IframeToParent): void {
       return;
     }
     case "editRangeReplace": {
-      const caret = applyRangeReplace(hostTab(state), msg.from, msg.to, msg.between, msg.text);
+      const caret = applyRangeReplace(
+        hostTab(state),
+        msg.from,
+        msg.to,
+        msg.between,
+        msg.text,
+        (path) => onCommitRefused(state, path),
+      );
       if (caret) {
         deferEnterEdit(state, caret.path, caret.offset);
       }
@@ -2925,11 +3020,21 @@ function handleMessage(state: HostState, msg: IframeToParent): void {
     case "editSplit": {
       // The mutation lands now (surgical patch or escalated render); re-entry on the new paragraph
       // Is deferred until this host acks the DOM that contains it (see deferEnterEdit).
-      deferEnterEdit(state, applyInlineSplit(hostTab(state), msg.path, msg.before, msg.after));
+      deferEnterEdit(
+        state,
+        applyInlineSplit(hostTab(state), msg.path, msg.before, msg.after, (path) =>
+          onCommitRefused(state, path),
+        ),
+      );
       return;
     }
     case "editInsert": {
-      deferEnterEdit(state, applyInlineInsert(hostTab(state), msg.path, msg.cmd, msg.commitData));
+      deferEnterEdit(
+        state,
+        applyInlineInsert(hostTab(state), msg.path, msg.cmd, msg.commitData, (path) =>
+          onCommitRefused(state, path),
+        ),
+      );
       return;
     }
     case "slashShow": {

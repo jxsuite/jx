@@ -216,6 +216,17 @@ describe("applyIframePatch — set-text", () => {
     expect(elAt(container, ["children", 1]).textContent).toBe("Hi ❪ state.name ❫");
   });
 
+  test("an expression holding braces of its own is patched as one unit, like the full render", () => {
+    const { container, shadow } = mount(BASE);
+    const value = 'On ${f(state.d, {"a":1})}';
+    applyIframePatch(
+      shadow,
+      [{ key: "textContent", op: "set-key", path: ["children", 1], value }],
+      container,
+    );
+    expect(elAt(container, ["children", 1]).textContent).toBe('On ❪ f(state.d, {"a":1}) ❫');
+  });
+
   test("renders a null/undefined text value as empty string", () => {
     const { container, shadow } = mount(BASE);
     applyIframePatch(
@@ -287,6 +298,34 @@ describe("applyIframePatch — event bindings and escalation", () => {
     ).not.toThrow();
     // The handler is folded into the shadow doc but never touches the DOM.
     expect(getNodeAtPath(shadow, ["children", 0])?.onclick).toBe("doThing()");
+  });
+
+  test("a row-bound hidden set by a patch is left out, like the full render leaves it out", () => {
+    // An `attributes` write redraws the node through the edit-mode transform, so it cannot be hidden.
+    const { container, shadow } = mount(BASE);
+    applyIframePatch(
+      shadow,
+      [
+        {
+          key: "attributes",
+          op: "set-key",
+          path: ["children", 0],
+          value: { hidden: "${!item.premium}", inert: "${item.off}", title: "t" },
+        },
+      ],
+      container,
+      CTX,
+    );
+    const el = elAt(container, ["children", 0]);
+    expect(el.hasAttribute("hidden")).toBe(false);
+    expect(el.hasAttribute("inert")).toBe(false);
+    expect(el.getAttribute("title")).toBe("t");
+    // The document keeps the binding: only the picture leaves it out.
+    expect(getNodeAtPath(shadow, ["children", 0])?.attributes).toEqual({
+      hidden: "${!item.premium}",
+      inert: "${item.off}",
+      title: "t",
+    });
   });
 
   test("throws when a subtree-render op arrives without a render context (caller escalates)", () => {
