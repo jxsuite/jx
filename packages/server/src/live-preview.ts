@@ -23,9 +23,10 @@
  *
  * What is served here that a published site would not have is confined to one namespace,
  * `/__jx_live__/`, dispatched ahead of everything: the runtime bundle, the reload client, the site
- * stylesheet, and the reload stream. Not `/_jx/` — that is the extension-mount namespace, which a
- * previewed page still needs — and not `/__studio__/`, because a preview origin must not look like
- * the editor's.
+ * stylesheet, the reload stream, and the harness that runs one component or layout on its own
+ * (`preview-harness.ts`). Not `/_jx/` — that is the extension-mount namespace, which a previewed
+ * page still needs — and not `/__studio__/`, because a preview origin must not look like the
+ * editor's.
  *
  * **The overlay is why this shows the canvas rather than the disk.** Studio publishes the bytes a
  * save WOULD write, per dirty document, and every read here prefers them. They are held in memory
@@ -40,19 +41,23 @@ import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { extname, join, resolve } from "node:path";
 import { serveSite, siteContext, siteHeaders } from "@jxsuite/site/serve";
+import { pageShell, problemShell } from "@jxsuite/site/shell";
+import type { ShellOptions } from "@jxsuite/site/shell";
 import { SERVABLE_ROOTS } from "@jxsuite/site/paths";
 import { buildSiteStyleCSS } from "@jxsuite/site/site-style";
 import type { AssetIO, SiteContext, SiteTree } from "@jxsuite/site/serve";
-import { readProjectConfig } from "@jxsuite/site/compose";
+import { ComposeError, readProjectConfig } from "@jxsuite/site/compose";
 import type { DocumentParser, SiteIO } from "@jxsuite/site/compose";
 import { buildProjectExtensionRegistry } from "@jxsuite/compiler/format-host";
 import { isNonNullObject } from "@jxsuite/schema/guards";
 import { createSseHub } from "./sse.ts";
 import type { SseHub } from "./sse.ts";
 import { LIVE_NAMESPACE, PREVIEW_CLIENT_JS } from "./preview-client.ts";
+import { HARNESS_KEY_PARAM, composeHarness, harnessTarget } from "./preview-harness.ts";
+import { HARNESS_ROUTE } from "@jxsuite/protocol/preview-harness";
 import { handleResolve, handleServerFunction } from "./resolve.ts";
 import { handleJxMounts } from "./jx-mounts.ts";
-import { loopbackGate, originHostGate } from "./net-guard.ts";
+import { hostIsLoopbackOrAbsent, loopbackGate, originHostGate, secretsMatch } from "./net-guard.ts";
 import { problem } from "./problem.ts";
 import { scanFiles } from "./fs-glob.ts";
 import { serve } from "#serve";
@@ -89,6 +94,14 @@ const RELOAD_MAX_WAIT_MS = 1000;
  */
 const ACK_TIMEOUT_MS = 250;
 
+/**
+ * How long an address the opener asked for may be exchanged for its keyed form.
+ *
+ * The caller opens a tab the moment it is told none took the route, but "opens" is the operating
+ * system starting a browser, which on a cold machine is not quick.
+ */
+const HARNESS_GRANT_MS = 120_000;
+
 /** Total bytes of unsaved documents one project may hold before the oldest are dropped. */
 const OVERLAY_MAX_BYTES = 8 * 1024 * 1024;
 
@@ -123,6 +136,21 @@ interface Running extends LivePreview {
   hub: SseHub;
   /** This origin's own resolver credential, distinct from any editing server's. */
   token: string;
+  /**
+   * What a harness address must carry before its test values are applied (`preview-harness.ts`).
+   *
+   * Minted with the origin and never logged or written into a page: the only place it appears is
+   * the address this origin sends its own opener's tab to.
+   */
+  harnessKey: string;
+  /**
+   * The one harness address the opener has asked for and no tab has fetched yet.
+   *
+   * The opener is told an origin and joins the route to it itself, so the first request for an
+   * address it asked for arrives without the key. This is how that request is told from one anybody
+   * else wrote: it is for exactly the address the opener named, once, and soon.
+   */
+  harnessGrant: { address: string; expires: number } | null;
   /** Bumped per retarget, so a late ack cannot answer for the current one. */
   generation: number;
   pendingAck: { gen: number; settle: (acked: boolean) => void } | null;
@@ -305,6 +333,121 @@ function siteStyleCss(context: SiteContext): string {
   return buildSiteStyleCSS(style, media, (value) => value);
 }
 
+/** How this origin shells a page, whichever lane composed it. */
+function shellOptions(entry: Running): ShellOptions {
+  return {
+    base: "/",
+    clientScriptUrl: `${LIVE_NAMESPACE}/client.js`,
+    eraserUrl: `${LIVE_NAMESPACE}/eraser.js`,
+    resolveToken: entry.token,
+    runtimeUrl: `${LIVE_NAMESPACE}/runtime.js`,
+    styleUrl: `${LIVE_NAMESPACE}/site.css`,
+  };
+}
+
+/** A page that says what stopped a harness from rendering, at the status that names whose it is. */
+function harnessProblem(message: string, status: number): Response {
+  return new Response(problemShell(message), {
+    headers: siteHeaders("text/html; charset=utf-8"),
+    status,
+  });
+}
+
+/** A fresh harness key: 256 random bits, spelled so it needs no encoding in a query. */
+function mintHarnessKey(): string {
+  return Array.from(crypto.getRandomValues(new Uint8Array(32)), (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("");
+}
+
+/**
+ * A harness address that carries test values, as asked for and as this origin will answer it.
+ *
+ * Null for anything else: a route, a harness address with no values (which needs no key), an
+ * address on another origin, and text that is no address.
+ */
+function harnessAddresses(entry: Running, route: string): { asked: string; keyed: string } | null {
+  let url: URL;
+  try {
+    url = new URL(route, entry.origin);
+  } catch {
+    return null;
+  }
+  if (
+    url.origin !== entry.origin ||
+    !url.pathname.startsWith(HARNESS_ROUTE) ||
+    !url.searchParams.has("props")
+  ) {
+    return null;
+  }
+  const asked = `${url.pathname}${url.search}`;
+  return { asked, keyed: `${asked}&${HARNESS_KEY_PARAM}=${entry.harnessKey}` };
+}
+
+/**
+ * Whether this request is the opener's own first fetch of an address it asked for.
+ *
+ * Spent by the asking, in time or past it, so it answers one request.
+ */
+function takeHarnessGrant(entry: Running, address: string): boolean {
+  const grant = entry.harnessGrant;
+  if (!grant || grant.address !== address) {
+    return false;
+  }
+  entry.harnessGrant = null;
+  return Date.now() <= grant.expires;
+}
+
+/**
+ * Run one component or layout on its own (`preview-harness.ts`).
+ *
+ * Composed and shelled exactly as a route is, so the reload client is on the page and an edit to
+ * the component reloads it. What differs is only where the document came from.
+ *
+ * Test values are applied only to an address carrying this origin's key. One that carries values
+ * and no key is either the opener's first fetch, which is sent on to the keyed address, or somebody
+ * else's writing, which renders the component with its defaults.
+ *
+ * @param entry The running origin.
+ * @param projectRoot The project it serves.
+ * @param url The request's address. Its path is read as SENT, not decoded: the harness normalizes
+ *   it the way every other read on this origin does, and decoding twice would turn `%252e` into a
+ *   dot.
+ */
+async function serveHarness(entry: Running, projectRoot: string, url: URL): Promise<Response> {
+  const surfacePath = url.pathname.slice(HARNESS_ROUTE.length);
+  const { search } = url;
+  const presented = url.searchParams.get(HARNESS_KEY_PARAM);
+  const keyed = presented !== null && secretsMatch(presented, entry.harnessKey);
+  if (presented === null && takeHarnessGrant(entry, `${url.pathname}${search}`)) {
+    return new Response(null, {
+      headers: {
+        ...siteHeaders("text/plain; charset=utf-8"),
+        Location: `${url.pathname}${search}&${HARNESS_KEY_PARAM}=${entry.harnessKey}`,
+      },
+      status: 302,
+    });
+  }
+  const { context, paths } = await ensureCache(entry, projectRoot);
+  const target = harnessTarget(surfacePath, paths);
+  if (!target) {
+    /* Not the path back: an address is anyone's to write, and this one named nothing here. */
+    return harnessProblem("This address names no component or layout in this project.", 404);
+  }
+  const { io } = makeIO(projectRoot, paths);
+  try {
+    const page = await composeHarness(io, context.config, target, search, keyed);
+    return new Response(pageShell(page, shellOptions(entry)), {
+      headers: siteHeaders("text/html; charset=utf-8"),
+    });
+  } catch (error) {
+    if (error instanceof ComposeError) {
+      return harnessProblem(error.message, 500);
+    }
+    throw error;
+  }
+}
+
 /** Serve one request on a preview origin. */
 async function handle(entry: Running, projectRoot: string, req: Request): Promise<Response> {
   const url = new URL(req.url);
@@ -322,6 +465,18 @@ async function handle(entry: Running, projectRoot: string, req: Request): Promis
    */
   if (pathname.startsWith(`${LIVE_NAMESPACE}/`)) {
     const surface = pathname.slice(LIVE_NAMESPACE.length + 1);
+
+    /* The two places the harness key travels: a retarget's event on the stream, and the redirect
+       and address of the harness itself. A page on a name its owner points at this machine is
+       same-origin with what answers here, so it would read both, and with the key it could send
+       the author's browser to this origin's real address carrying values of its own. Its `Host`
+       is that name, and no reader of this origin has one that is not loopback. */
+    if (
+      (surface === "reload" || pathname.startsWith(HARNESS_ROUTE)) &&
+      !hostIsLoopbackOrAbsent(req)
+    ) {
+      return problem("forbidden", "Forbidden");
+    }
 
     if (surface === "reload") {
       return entry.hub.handleSSE(req);
@@ -385,6 +540,10 @@ async function handle(entry: Running, projectRoot: string, req: Request): Promis
       });
     }
 
+    if (pathname.startsWith(HARNESS_ROUTE) && req.method === "GET") {
+      return serveHarness(entry, projectRoot, url);
+    }
+
     return problem("notFound", "Not found");
   }
 
@@ -425,16 +584,7 @@ async function handle(entry: Running, projectRoot: string, req: Request): Promis
 
   const { context, paths } = await ensureCache(entry, projectRoot);
   const { assets, io } = makeIO(projectRoot, paths);
-  return serveSite(pathname, io, assets, context, {
-    shell: {
-      base: "/",
-      clientScriptUrl: `${LIVE_NAMESPACE}/client.js`,
-      eraserUrl: `${LIVE_NAMESPACE}/eraser.js`,
-      resolveToken: entry.token,
-      runtimeUrl: `${LIVE_NAMESPACE}/runtime.js`,
-      styleUrl: `${LIVE_NAMESPACE}/site.css`,
-    },
-  });
+  return serveSite(pathname, io, assets, context, { shell: shellOptions(entry) });
 }
 
 /**
@@ -468,6 +618,8 @@ async function listen(projectRoot: string): Promise<Running> {
     cache: null,
     errors: [],
     generation: 0,
+    harnessGrant: null,
+    harnessKey: mintHarnessKey(),
     hub: createSseHub(),
     origin: "",
     pendingAck: null,
@@ -625,11 +777,27 @@ function scheduleReload(entry: Running): void {
  * connected did not answer inside {@link ACK_TIMEOUT_MS}. The acknowledgement is what keeps a
  * frozen or back/forward-cached tab — which looks connected and will not act — from swallowing the
  * request silently.
+ *
+ * This is also where a harness address gets its key, because the caller is this origin's opener and
+ * nobody else can reach here. A tab that takes the route is sent the keyed address. When none does,
+ * the caller opens the address it asked for, without a key it never saw, so that one address is
+ * granted one exchange for the keyed form ({@link takeHarnessGrant}).
  */
 export async function navigateLivePreview(projectRoot: string, route: string): Promise<boolean> {
   const entry = running.get(projectRoot);
-  if (!entry || entry.hub.clientCount() === 0) {
+  if (!entry) {
     return false;
+  }
+  const harness = harnessAddresses(entry, route);
+  const grant = () => {
+    entry.harnessGrant = harness && {
+      address: harness.asked,
+      expires: Date.now() + HARNESS_GRANT_MS,
+    };
+    return false;
+  };
+  if (entry.hub.clientCount() === 0) {
+    return grant();
   }
   entry.generation += 1;
   const gen = entry.generation;
@@ -642,12 +810,12 @@ export async function navigateLivePreview(projectRoot: string, route: string): P
       }
     }, ACK_TIMEOUT_MS);
   });
-  entry.hub.broadcastEvent("navigate", { gen, route });
+  entry.hub.broadcastEvent("navigate", { gen, route: harness?.keyed ?? route });
   const result = await acked;
   if (entry.pendingAck?.gen === gen) {
     entry.pendingAck = null;
   }
-  return result;
+  return result || grant();
 }
 
 /** Stop every preview origin (process teardown, and what the tests close their ports with). */

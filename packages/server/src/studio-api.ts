@@ -986,8 +986,9 @@ export async function handleStudioApi(
     }
     let body: { route?: string };
     try {
-      /* SAFETY: `route` is the only member read, and only when truthy; it is relayed verbatim in
-         the preview tab's `navigate` event, so nothing here depends on its runtime type. */
+      /* SAFETY: `route` is the only member read, and only when truthy; it is relayed in the preview
+         tab's `navigate` event (a harness address gaining the origin's key on the way), so nothing
+         here depends on its runtime type. */
       body = (await req.json()) as { route?: string };
     } catch {
       return problem("invalidRequest", "Invalid JSON body");

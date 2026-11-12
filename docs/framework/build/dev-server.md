@@ -13,6 +13,7 @@ code:
   - packages/server/src/watch.ts
   - packages/server/src/sse.ts
   - packages/server/src/live-preview.ts
+  - packages/server/src/preview-harness.ts
   - packages/server/src/watch-policy.ts
   - packages/server/src/resolve.ts
 ---
@@ -130,6 +131,10 @@ The address is separate from this one on purpose, and not because the paths woul
 Your own components render without being listed anywhere. The preview walks the page it composed, finds the tags your `components/` directory defines, and registers those, following each component into the components it uses in turn. You only need `$elements` for what your project does not define, such as a component from an npm package.
 
 Markdown pages preview too, and so does anything else one of your extensions can parse. The preview reads the `extensions` list in your project file and builds the same format registry a build does, so `pages/index.md` renders here the way it will in production. It reads that file the same way it reads the rest of your tree, unsaved bytes first, so adding an extension in Studio takes effect on the next reload rather than after a save. A page whose format nothing installed can parse says so by name instead of rendering blank.
+
+A component or a layout has no route, and the preview gives each an address anyway: `/__jx_live__/harness/` followed by the file's project path, such as `/__jx_live__/harness/components/pricing-card.json`. What answers is a page nobody wrote, composed the way any page is. For a component it uses the component once, with no layout, and for a layout it wraps a labeled placeholder for each slot. Either way it carries your project's `<head>`, styles and site data, so handlers, forms and scripts run for real. Studio's **Open in Browser** opens this address when the open document is a component or a layout.
+
+A component's test values ride in the address, as a `props` query parameter holding a JSON object. That keeps a reload showing the same thing with nothing stored on the server. They are applied only when the address also carries a `key` this preview address minted for itself: the server adds it when Studio asks for the address, so a link someone else wrote opens the component with its defaults and says the values were not applied. An address with no `props` needs no key. The harness and the reload stream answer only to a loopback `Host`, so a page on a domain pointed at your machine can't read the key. Because anyone can type an address, the values are held to plain data: a value containing `${` or a `$`-prefixed key is left out, a query longer than 8192 characters is ignored, and a name the component doesn't declare is dropped. The page names any prop it left out, and any prop that has neither a default nor a value. Only files under `components/` and `layouts/` can be addressed this way.
 
 It reloads the same way this server does, over the same stream, and one save is one reload however many things it changed. Press **Open in Browser** again and you get the same tab, moved to whatever page you're on now.
 

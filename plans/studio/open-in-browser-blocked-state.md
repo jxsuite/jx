@@ -15,6 +15,15 @@ size: S
 
 ## Context
 
+**Read this before the rest: the section moved after this plan was drafted.** §10.1 now accepts a component and a layout as well as a page (`openInBrowserTarget` returns a harness target for a document under `components/` or `layouts/`, and `packages/server/src/preview-harness.ts` answers it), so everything below that treats `components/Card.json` as a blocked document is out of date and must be re-derived before this plan is implemented. What changes, and nothing else does:
+
+- The marker quoted below now reads "the component and layout harness and all eight reasons ship", and says "a document that is not a page, a component or a layout renders enabled" where it said "a non-page".
+- The record's `requires` is "a page, component or layout to preview", not "a page to preview"; that is the sentence the getter falls back to and the generated command reference prints.
+- `BrowserTarget`'s path arm carries an optional `harness` (`documentPath`, `kind`, `dropped`), and `runLivePreview` takes the target rather than its path. Both move to `browser-target.ts` with the rest.
+- The Decisions table's "Document is not under `pages/`" row becomes "Document is no page, component or layout" (`a page, a component or a layout, which <path> is none of`), and its blocked example in the tests and in Acceptance is a data file such as `data/facts.json`, not a component.
+- A new pre-press row follows the backend row: a component or a layout on a backend with `buildSite` and no `previewSite` (`a backend that can run a component on its own`). Today that is a post-press `notify.warn` in `runOpenInBrowser`, and it is knowable before the press, so it belongs to the gate.
+- `docs/studio/interface.md`'s "It is always there." paragraph no longer says "a component isn't a page"; rewrite the paragraph that is there now.
+
 `specs/studio.md` §10.1, line 1183 (the section was unmarked before the census):
 
 > **Status: Partial.** The route-addressed live preview, the dirty-document overlay, the per-project origin with acknowledged reuse, the `buildSite` fallback and all seven reasons ship (`packages/studio/src/surfaces/commandbar.ts`, `preview/preview-overlay.ts`, `packages/server/src/live-preview.ts`). The blocked state does not: `view.openInBrowser` is hidden by `when: ctx.project.isSite`, its enablement asks only for an open document, so a non-page renders enabled and says nothing until pressed, the generic `requires` sentence appearing only with no document open, and a blocked invocation reports through `notify.warn` rather than the status bar, which §16.2 now keeps free of transient messages.
