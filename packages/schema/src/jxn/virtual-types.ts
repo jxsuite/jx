@@ -25,15 +25,21 @@ import {
   eventLines,
   eventType,
   itemType,
+  EXCEPT,
+  heritageOf,
   membersOf,
-  pointerInto,
   readsRow,
   rootSite,
   siteInto,
 } from "./document-scopes";
 import type { Site, StateScope } from "./document-scopes";
-import { parametersOf, propertyName, stateIndex, typeOfEntry } from "./state-types";
+import { definitionParts, definitionsOf, pointerInto, propertyName, written } from "./schema-types";
+import { declaredParameters, stateIndex, typeOfEntry } from "./state-types";
+import type { OutsideState } from "./state-types";
 import type { JsonObject, JsonValue, JxElement } from "../../types";
+
+export { givenByProject, outsideAt } from "./state-types";
+export type { OutsideState, ProjectGives } from "./state-types";
 
 /** Where a body sits in a document. */
 export type VirtualTarget =
@@ -104,7 +110,7 @@ function locate(doc: JsonObject, target: VirtualTarget): Located {
  * Write the `State` a body reads: one interface for each element on the way down that has `state`,
  * each under the one around it, and over them the row of the map the body is drawn in.
  */
-function stateLines(site: Site, index: string): string[] {
+function stateLines(site: Site, index: string, defs: boolean): string[] {
   const chain: StateScope[] = [];
   for (let at: StateScope | null = site.scope; at; at = at.parent) {
     chain.unshift(at);
@@ -113,19 +119,19 @@ function stateLines(site: Site, index: string): string[] {
   // The innermost is `State` itself, unless the row is written over it.
   const nameOf = (scope: StateScope): string =>
     scope === site.scope && !inRow ? "State" : `State$${chain.indexOf(scope)}`;
-  const lines: string[] = [];
+  // The helper is declared only where a scope reads through it: an unused one is a finding.
+  const lines: string[] = chain.some((scope) => membersOf(scope).shadowed.length > 0)
+    ? [EXCEPT]
+    : [];
   for (const scope of chain) {
-    const { inherited, own } = membersOf(scope);
+    const { own, shadowed } = membersOf(scope);
     const around = scope.parent ? nameOf(scope.parent) : null;
-    const closed = around === null || inherited !== null;
-    lines.push(`interface ${nameOf(scope)}${closed ? "" : ` extends ${around}`} {`);
-    for (const key of inherited ?? []) {
-      lines.push(`  ${propertyName(key)}: ${around}[${JSON.stringify(key)}];`);
-    }
+    const heritage = around === null ? "" : ` extends ${heritageOf(around, shadowed)}`;
+    lines.push(`interface ${nameOf(scope)}${heritage} {`);
     for (const { entry, key, role } of own) {
-      lines.push(`  ${propertyName(key)}: ${typeOfEntry(entry, role)};`);
+      lines.push(`  ${propertyName(key)}: ${typeOfEntry(entry, role, defs)};`);
     }
-    lines.push(...(closed ? [`  ${index}`, "}"] : ["}"]));
+    lines.push(...(around === null ? [`  ${index}`, "}"] : ["}"]));
   }
   if (site.row && inRow) {
     lines.push(
@@ -144,27 +150,37 @@ function stateLines(site: Site, index: string): string[] {
  * @param target Which body: a root `state` entry, or an inline handler on an element.
  * @param body The body's text, which need not be the text the document holds yet (an editor's
  *   buffer is checked as typed).
+ * @param outside What the document's project gives it, which makes `State` open. Nothing, when the
+ *   reader knows of no project.
  * @returns The file to check, and where the body sits in it.
  */
 export function generateBodyTypes(
   doc: JxElement,
   target: VirtualTarget,
   body: string,
+  outside: OutsideState = {},
 ): VirtualBody {
   // SAFETY: a document is JSON data; its types name what it holds.
-  const located = locate(doc as JsonObject, target);
-  const params = parametersOf(located.definition);
+  const data = doc as JsonObject;
+  const located = locate(data, target);
+  const defs = definitionsOf(data);
+  const declared = declaredParameters(located.definition, { defs: defs !== null, pointer: "" });
+  const params = declared.map((parameter) => parameter.name);
   /* The event a handler receives is bound to a name only when the entry declares one, though the
      runtime passes it and `window.event` holds it. Not declaring it would call a working handler
      an error, so it is declared wherever it is not a parameter. */
   const event = eventLines(located.event, params);
-  // A handler is called with its state and the event, in that order (`spec.md` §5.3).
-  const signature = params.map(
-    (name, at) => `${name}: ${at === 0 ? "State" : at === 1 ? event.parameter : "any"}`,
-  );
+  /* A handler is called with its state and the event, in that order (`spec.md` §5.3), and a
+     parameter that declares a type is that type, the event's place included (§23.3). */
+  const signature = declared.map((parameter, at) => {
+    const untyped = at === 1 ? event.parameter : "any";
+    const type = parameter.type === null ? untyped : written(parameter.type);
+    return `${parameter.name}: ${at === 0 ? "State" : type}`;
+  });
   const head = [
     "export {};",
-    ...stateLines(located.site, stateIndex(doc)),
+    ...(defs ? [written(definitionParts(defs, false))] : []),
+    ...stateLines(located.site, stateIndex(doc, outside), defs !== null),
     `${event.head}async function body(${["this: any", ...signature].join(", ")}) {`,
     "",
   ].join("\n");

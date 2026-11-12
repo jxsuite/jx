@@ -99,11 +99,19 @@ function markName(reader: Reader, pointer: string, at: Identifier | null): void 
   }
 }
 
-/** Record where a pointer's one value was written. */
+/**
+ * Record where a pointer's one value was written.
+ *
+ * The parser's location for an argument starts at its annotation, so `(ref)"#/state/a"` would be a
+ * token that begins five characters before the string does. What it kept of how the value was
+ * spelled is the token itself, and the token ends where the location does.
+ */
 function markValue(reader: Reader, pointer: string, at: Entry | undefined): void {
   const span = reader.tokens && at ? spanOf(at.value) : null;
   if (span) {
-    reader.tokens?.values.set(pointer, span);
+    const written = at?.value.representation;
+    const start = written === undefined ? span.start : span.end - written.length;
+    reader.tokens?.values.set(pointer, { end: span.end, start });
   }
 }
 
@@ -253,6 +261,7 @@ function readServer(reader: Reader, node: Node, pointer: string): JsonObject {
       const key = nameOf(argument);
       setKey(args, key, valueOf(reader, argument), reader, argument);
       mark(reader, `${pointer}/arguments/${token(key)}`, argument);
+      markValue(reader, `${pointer}/arguments/${token(key)}`, argument);
     }
     entry.arguments = args;
   }
@@ -296,13 +305,32 @@ function readScript(reader: Reader, node: Node, element: JsonObject): void {
   markValue(reader, `/$script/${side}`, positionalEntries(node)[0]);
 }
 
-/** The items of a block made of `-` nodes. */
-function readItems(reader: Reader, kids: readonly Node[], pointer: string): JsonValue[] {
+/** Record where each value of a list written on one line is, under the index it has in the list. */
+function markItems(reader: Reader, pointer: string, node: Node): void {
+  for (const [index, entry] of (reader.tokens ? positionalEntries(node) : []).entries()) {
+    markValue(reader, `${pointer}/${index}`, entry);
+  }
+}
+
+/**
+ * The items of a block made of `-` nodes.
+ *
+ * @param reader The file being read.
+ * @param kids The block.
+ * @param pointer Where the list is.
+ * @param before How many items the list holds ahead of the block, written on the node's own line.
+ */
+function readItems(
+  reader: Reader,
+  kids: readonly Node[],
+  pointer: string,
+  before = 0,
+): JsonValue[] {
   return kids.map((kid, index) => {
     if (kid.getName() !== "-") {
       throw failure(reader, kid, `A list holds only "-" items, and this is "${kid.getName()}"`);
     }
-    return readValue(reader, kid, `${pointer}/${index}`);
+    return readValue(reader, kid, `${pointer}/${before + index}`);
   });
 }
 
@@ -326,13 +354,15 @@ export function readValue(reader: Reader, node: Node, pointer: string): JsonValu
     if (props.length > 0) {
       throw failure(reader, node, "(array) holds items, and these are named");
     }
-    return [...values, ...readItems(reader, kids, pointer)];
+    markItems(reader, pointer, node);
+    return [...values, ...readItems(reader, kids, pointer, values.length)];
   }
   if (tag !== "object") {
     if (values.length > 1) {
       if (props.length > 0 || kids.length > 0) {
         throw failure(reader, node, "A list of values cannot also have names or a block");
       }
+      markItems(reader, pointer, node);
       return values;
     }
     if (values.length === 1) {
@@ -375,6 +405,7 @@ export function readStyle(reader: Reader, node: Node, pointer: string): JsonObje
     const key = nameOf(entry);
     setKey(style, key, valueOf(reader, entry), reader, entry);
     mark(reader, `${pointer}/${token(key)}`, entry);
+    markValue(reader, `${pointer}/${token(key)}`, entry);
   }
   for (const kid of childrenOf(node)) {
     const key = kid.getName();
@@ -405,6 +436,7 @@ export function readStyle(reader: Reader, node: Node, pointer: string): JsonObje
       }
       setKey(style, key, values[0] ?? null, reader, kid);
       mark(reader, child, kid);
+      markValue(reader, child, positionalEntries(kid)[0]);
     } else {
       setKey(style, key, readStyle(reader, kid, child), reader, kid);
     }
@@ -430,7 +462,9 @@ function readArrayRow(reader: Reader, node: Node, pointer: string): JsonObject {
   }
   for (const entry of properties(node)) {
     const key = nameOf(entry);
-    setKey(row, key.startsWith(".") ? key.slice(1) : key, valueOf(reader, entry), reader, entry);
+    const member = key.startsWith(".") ? key.slice(1) : key;
+    setKey(row, member, valueOf(reader, entry), reader, entry);
+    markValue(reader, `${pointer}/${token(member)}`, entry);
   }
   if (childrenOf(node).length > 0) {
     setKey(row, "map", readOnlyElement(reader, node, `${pointer}/map`), reader, node);
@@ -447,6 +481,7 @@ function readChild(reader: Reader, node: Node, pointer: string): JsonValue {
       throw failure(reader, node, `"-" is one piece of text or one (ref)`);
     }
     mark(reader, pointer, node);
+    markValue(reader, pointer, positionalEntries(node)[0]);
     return values[0] ?? null;
   }
   if (name === "$array") {
@@ -503,6 +538,7 @@ function readElement(reader: Reader, node: Node, pointer: string): JsonObject {
     }
     if (text !== undefined) {
       setKey(element, "textContent", text, reader, node);
+      markValue(reader, `${pointer}/textContent`, positionalEntries(node)[1]);
     }
   } else {
     if (name.startsWith("$")) {
@@ -515,6 +551,7 @@ function readElement(reader: Reader, node: Node, pointer: string): JsonObject {
     if (values[0] !== undefined) {
       setKey(element, "textContent", values[0], reader, node);
       mark(reader, `${pointer}/textContent`, node);
+      markValue(reader, `${pointer}/textContent`, positionalEntries(node)[0]);
     }
   }
   readElementEntries(reader, node, element, pointer);
@@ -557,9 +594,11 @@ function readElementEntries(
       const member = key.startsWith(".") ? key.slice(1) : key;
       setKey(element, member, value, reader, entry);
       mark(reader, `${pointer}/${token(member)}`, entry);
+      markValue(reader, `${pointer}/${token(member)}`, entry);
     } else if (key.startsWith("on") && entryTag === "ref") {
       setKey(element, key, value, reader, entry);
       mark(reader, `${pointer}/${token(key)}`, entry);
+      markValue(reader, `${pointer}/${token(key)}`, entry);
     } else if (key.startsWith("on") && EVENT_HANDLER_NAMES.has(key)) {
       throw failure(
         reader,
@@ -569,6 +608,7 @@ function readElementEntries(
     } else {
       setKey(attributesOf(element), key, value, reader, entry);
       mark(reader, `${pointer}/attributes/${token(key)}`, entry);
+      markValue(reader, `${pointer}/attributes/${token(key)}`, entry);
     }
   }
 }

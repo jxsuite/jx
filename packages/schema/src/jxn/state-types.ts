@@ -16,10 +16,11 @@ import {
   isNumber,
   isServerFnDef,
   isString,
-  paramNames,
   hasSchemaKeywords,
 } from "../guards";
-import type { JsonValue, JxElement } from "../../types";
+import { pointerInto, propertyName, schemaParts, written } from "./schema-types";
+import type { JsonObject, JsonValue, JxElement, ProjectConfig } from "../../types";
+import type { SchemaSite, TypePart } from "./schema-types";
 
 /** The most levels of an object's shape written out before it is `any`. */
 const MAX_NESTING = 4;
@@ -27,13 +28,8 @@ const MAX_NESTING = 4;
 /** The most distinct item types an array's type is built from. */
 const MAX_ITEM_TYPES = 6;
 
-/** Whether a key can be written as a bare property name. */
-export const IDENTIFIER = /^[A-Za-z_$][\w$]*$/u;
-
-/** A property name as TypeScript writes it. */
-export function propertyName(key: string): string {
-  return IDENTIFIER.test(key) ? key : JSON.stringify(key);
-}
+/** What a `type` keyword says with nothing beside it, which a value written there says better. */
+const VAGUE = new Set(["any", "any[]", "{ [key: string]: any; }"]);
 
 /** The type a value's shape gives it, widened the way a mutable binding widens. */
 function typeOfValue(value: JsonValue | undefined, depth: number): string {
@@ -62,48 +58,63 @@ function typeOfValue(value: JsonValue | undefined, depth: number): string {
   return "any";
 }
 
-/** The type a JSON Schema `type` keyword names. */
-function typeOfKeyword(type: JsonValue | undefined): string {
-  switch (type) {
-    case "string": {
-      return "string";
-    }
-    case "number":
-    case "integer": {
-      return "number";
-    }
-    case "boolean": {
-      return "boolean";
-    }
-    case "array": {
-      return "any[]";
-    }
-    default: {
-      return "any";
-    }
-  }
+/**
+ * The type a typed entry declares (`spec.md` §5.3): `type` holds its schema, or is the first
+ * keyword of one whose others stand beside it.
+ */
+function declaredParts(entry: JsonObject, site: SchemaSite): TypePart[] {
+  const declared = isJsonObject(entry.type)
+    ? schemaParts(entry.type, { ...site, pointer: pointerInto(site.pointer, "type") })
+    : schemaParts(entry, site);
+  const { default: initial } = entry;
+  // `type: "array"` beside `default: [1, 2]` is a list of numbers, which only the value says.
+  const told = initial !== undefined && initial !== null && VAGUE.has(written(declared));
+  return told ? [typeOfValue(initial, 0)] : declared;
 }
 
-/** The type of one `state` entry, by the shapes of `spec.md` §5. */
-export function typeOfEntry(entry: JsonValue | undefined, role?: "computed" | "callable"): string {
+/**
+ * The type of one `state` entry, by the shapes of `spec.md` §5, in parts.
+ *
+ * @param entry The entry.
+ * @param role What its document uses it as, when it is a function.
+ * @param site Where it is, and whether its document has `$defs`.
+ */
+export function entryParts(
+  entry: JsonValue | undefined,
+  role: "computed" | "callable" | undefined,
+  site: SchemaSite,
+): TypePart[] {
   if (isString(entry)) {
     // A template is a computed value of a type the document does not give.
-    return entry.includes("${") ? "any" : "string";
+    return [entry.includes("${") ? "any" : "string"];
   }
   if (!isJsonObject(entry)) {
-    return typeOfValue(entry, 0);
+    return [typeOfValue(entry, 0)];
   }
   if (isFunctionDef(entry)) {
-    return role === "computed" ? "any" : "(...args: any[]) => any";
+    return [role === "computed" ? "any" : "(...args: any[]) => any"];
   }
   if (isString(entry.$prototype) || isExpressionDef(entry) || isServerFnDef(entry)) {
-    return "any";
+    return ["any"];
   }
-  if ("default" in entry) {
-    const { default: initial } = entry;
-    return initial === null ? typeOfKeyword(entry.type) : typeOfValue(initial, 0);
-  }
-  return hasSchemaKeywords(entry) ? typeOfKeyword(entry.type) : typeOfValue(entry, 0);
+  return "default" in entry || hasSchemaKeywords(entry)
+    ? declaredParts(entry, site)
+    : [typeOfValue(entry, 0)];
+}
+
+/**
+ * The type of one `state` entry, as text.
+ *
+ * @param entry The entry.
+ * @param role What its document uses it as, when it is a function.
+ * @param defs Whether its document has `$defs`.
+ */
+export function typeOfEntry(
+  entry: JsonValue | undefined,
+  role?: "computed" | "callable",
+  defs = false,
+): string {
+  return written(entryParts(entry, role, { defs, pointer: "" }));
 }
 
 /** The `state` object of an element, when it has one. */
@@ -111,41 +122,150 @@ export function stateOf(node: JsonValue | undefined): Record<string, JsonValue> 
   return isJsonObject(node) && isJsonObject(node.state) ? node.state : null;
 }
 
-/** The names a function is called with: `state` first, then the declared names (`spec.md` §5.3). */
-export function parametersOf(definition: JsonValue | undefined): string[] {
-  if (!isJsonObject(definition)) {
-    return ["state"];
+/** One parameter a function's body is called with. */
+export interface DeclaredParameter {
+  /** Where the entry writes it in `parameters`, or -1 where it does not. */
+  at: number;
+  name: string;
+  /** The type the entry declares for it, or null where it declares none. */
+  type: TypePart[] | null;
+}
+
+/**
+ * The type a parameter written as an object declares (`spec.md` §23.3): the TypeScript its `text`
+ * holds, as a Custom Elements Manifest has it, or the schema it is, as a typed entry is one.
+ */
+function parameterType(parameter: JsonObject, site: SchemaSite): TypePart[] | null {
+  const { type } = parameter;
+  if (type === undefined) {
+    return null;
   }
-  const declared = Array.isArray(definition.parameters)
-    ? // SAFETY: `parameters` holds bare names or CEM parameter objects, the form `paramNames` reads.
-      paramNames(definition.parameters as Parameters<typeof paramNames>[0])
-    : (Array.isArray(definition.arguments) ? definition.arguments : []).filter(
-        (name): name is string => isString(name),
+  const text = isJsonObject(type) && isString(type.text) ? type.text : null;
+  if (text?.trim() === "") {
+    // Nothing is no type, and written as one it would be an error on a line nobody wrote.
+    return null;
+  }
+  const pointer = pointerInto(pointerInto(site.pointer, "type"), "text");
+  const declared: TypePart[] =
+    text === null
+      ? declaredParts(parameter, site)
+      : /* In brackets, so that what follows it is not read into a type that ends in a function's,
+           and closed on a line of its own, so that a comment the text ends in takes nothing. */
+        ["(", { kind: "text", name: text, pointer, written: text }, "\n)"];
+  return parameter.optional === true ? [...declared, " | undefined"] : declared;
+}
+
+/**
+ * The parameters a function's body is called with: `state` first, then the declared ones in their
+ * order (`spec.md` §5.3), each with the type it declares.
+ *
+ * @param definition The function's entry.
+ * @param site Where the entry is, and whether its document has `$defs`.
+ */
+export function declaredParameters(
+  definition: JsonValue | undefined,
+  site: SchemaSite,
+): DeclaredParameter[] {
+  const entry = isJsonObject(definition) ? definition : {};
+  const within = pointerInto(site.pointer, "parameters");
+  const listed: DeclaredParameter[] = Array.isArray(entry.parameters)
+    ? entry.parameters.flatMap((parameter, at) => {
+        if (isString(parameter)) {
+          return [{ at, name: parameter, type: null }];
+        }
+        // What is neither a name nor an object holding one is not a parameter the runtime could bind.
+        return isJsonObject(parameter) && isString(parameter.name)
+          ? [
+              {
+                at,
+                name: parameter.name,
+                type: parameterType(parameter, { ...site, pointer: pointerInto(within, at) }),
+              },
+            ]
+          : [];
+      })
+    : (Array.isArray(entry.arguments) ? entry.arguments : []).flatMap((name) =>
+        isString(name) ? [{ at: -1, name, type: null }] : [],
       );
   // A declared `state` is moved to the front, never repeated, as the runtime builds it.
-  return ["state", ...declared.filter((name) => name !== "state")];
+  const state = listed.find((parameter) => parameter.name === "state");
+  return [
+    { at: state?.at ?? -1, name: "state", type: null },
+    ...listed.filter((parameter) => parameter.name !== "state"),
+  ];
 }
 
 /** What a document is given that it does not say, which only its project knows. */
 export interface OutsideState {
+  /**
+   * The components the project keeps (`imports.md` §1.4), which a document uses without declaring
+   * them: the `.jxn` file each one is, by its tag, as a path from the document.
+   */
+  components?: Readonly<Record<string, string>> | undefined;
   /** The project names a default layout, which wraps a document that names none. */
   layout?: boolean | undefined;
   /** The project has `state` of its own, which every page reads (`site-architecture.md` §3.2). */
   state?: boolean | undefined;
+  /**
+   * The document is a layout. A page is merged with its layout before anything runs, the page's
+   * state over the layout's, so a layout reads names only a page declares (`spec.md` §23.3).
+   */
+  wraps?: boolean | undefined;
+}
+
+/** What a project gives the documents in it, which its file alone says. */
+export interface ProjectGives {
+  /** It names a default layout. */
+  layout: boolean;
+  /** It has `state` of its own. */
+  state: boolean;
+}
+
+/**
+ * What a project's file says the project gives its documents.
+ *
+ * @param config The project's configuration, as its file holds it.
+ */
+export function givenByProject(config: ProjectConfig): ProjectGives {
+  return {
+    layout: isString(config.defaults?.layout),
+    state: Object.keys(config.state ?? {}).length > 0,
+  };
+}
+
+/**
+ * What a document is given by where its project keeps it.
+ *
+ * A component is a scope of its own, and nothing of the project's is merged into it. A layout is
+ * what wraps a page: the default one does not wrap it, and the state of each page it wraps reaches
+ * it. Every other document is a page, as far as its state goes.
+ *
+ * @param folder The first folder on the document's path from its project: `layouts` for
+ *   `layouts/base.jxn`.
+ * @param gives What the project gives.
+ */
+export function outsideAt(folder: string | undefined, gives: ProjectGives): OutsideState {
+  if (folder === "components") {
+    return {};
+  }
+  return folder === "layouts"
+    ? { state: gives.state, wraps: true }
+    : { layout: gives.layout, state: gives.state };
 }
 
 /**
  * The index signature that closes `State`.
  *
  * A page with a layout inherits state the page does not name, so its `State` is open, and so is one
- * in a project that has `state` of its own. Otherwise only the `$` members the host adds (`$media`,
- * `$props`) are. `$layout: false` is a page saying it has no layout, the project's default
- * included.
+ * in a project that has `state` of its own, and so is a layout, which is given the state of every
+ * page it wraps. Otherwise only the `$` members the host adds (`$media`, `$props`) are. `$layout:
+ * false` is a page saying it has no layout, the project's default included.
  *
  * @param doc The document.
  * @param outside What its project gives it. Nothing, when the reader knows of no project.
  */
 export function stateIndex(doc: JxElement, outside: OutsideState = {}): string {
   const wrapped = doc.$layout === undefined ? outside.layout === true : doc.$layout !== false;
-  return outside.state === true || wrapped ? "[key: string]: any;" : "[key: `$${string}`]: any;";
+  const given = outside.state === true || outside.wraps === true || wrapped;
+  return given ? "[key: string]: any;" : "[key: `$${string}`]: any;";
 }

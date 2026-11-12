@@ -3,7 +3,7 @@
  * for a string, checked against what the parser read it as, and the token map that finds a string.
  */
 import { describe, expect, test } from "bun:test";
-import { parseJxnWithTokens } from "../src/jxn/index.ts";
+import { parseJxn, parseJxnWithTokens } from "../src/jxn/index.ts";
 import { stringPieces } from "../src/jxn/string-pieces.ts";
 import type { StringPiece } from "../src/jxn/string-pieces.ts";
 
@@ -274,5 +274,111 @@ describe("the token map", () => {
   test("a structured body has parameters and no body token", () => {
     expect(text(tokens.values.get("/state/steps/parameters/0"))).toBe("x");
     expect(tokens.values.has("/state/steps/body")).toBe(false);
+  });
+});
+
+describe("the token of what an element says", () => {
+  const source = [
+    "div {",
+    "  state {",
+    '    label "${state.count}"',
+    '    (server)load id=(ref)"#/state/count"',
+    '    request { $prototype Request; url "/api/${state.count}" }',
+    "    held {",
+    '      $ref "#/state/label"',
+    "    }",
+    "  }",
+    '  p "${state.label}" .title="${state.a}" lang="${state.b}" onclick=(ref)"#/state/go"',
+    '  $element "h1" "${state.c}"',
+    "  ul {",
+    '    - "${state.d}"',
+    '    - (ref)"#/state/e"',
+    '    $array items=(ref)"#/state/list" {',
+    '      li "${item}"',
+    "    }",
+    "  }",
+    '  a color="red" {',
+    '    style width="${state.f}" {',
+    '      color "${state.g}"',
+    '      ":hover" { color "${state.h}" }',
+    "    }",
+    "  }",
+    "}",
+    "",
+  ].join("\n");
+  const { document, tokens } = parseJxnWithTokens(source);
+  const text = (pointer: string): string | null => {
+    const span = tokens.values.get(pointer);
+    return span ? source.slice(span.start, span.end) : null;
+  };
+
+  test("is the string as written, wherever a template or a reference can stand", () => {
+    expect(document).toMatchObject({
+      children: [
+        { attributes: { lang: "${state.b}" }, textContent: "${state.label}", title: "${state.a}" },
+        { tagName: "h1", textContent: "${state.c}" },
+        { children: ["${state.d}", { $ref: "#/state/e" }, { items: { $ref: "#/state/list" } }] },
+        { style: { ":hover": { color: "${state.h}" }, color: "${state.g}" } },
+      ],
+    });
+    expect(text("/state/label")).toBe('"${state.count}"');
+    expect(text("/state/load/arguments/id")).toBe('"#/state/count"');
+    expect(text("/state/request/url")).toBe('"/api/${state.count}"');
+    // A reference written out as a block is the value of its `$ref`.
+    expect(text("/state/held")).toBeNull();
+    expect(text("/state/held/$ref")).toBe('"#/state/label"');
+    expect(text("/children/0/textContent")).toBe('"${state.label}"');
+    expect(text("/children/0/title")).toBe('"${state.a}"');
+    expect(text("/children/0/attributes/lang")).toBe('"${state.b}"');
+    expect(text("/children/0/onclick")).toBe('"#/state/go"');
+    expect(text("/children/1/textContent")).toBe('"${state.c}"');
+    expect(text("/children/2/children/0")).toBe('"${state.d}"');
+    expect(text("/children/2/children/1")).toBe('"#/state/e"');
+    expect(text("/children/2/children/2/items")).toBe('"#/state/list"');
+    expect(text("/children/2/children/2/map/textContent")).toBe('"${item}"');
+    expect(text("/children/3/attributes/color")).toBe('"red"');
+    expect(text("/children/3/style/width")).toBe('"${state.f}"');
+    expect(text("/children/3/style/color")).toBe('"${state.g}"');
+    expect(text("/children/3/style/:hover/color")).toBe('"${state.h}"');
+  });
+});
+
+describe("the token of each item of a list", () => {
+  const source = [
+    '$elements (ref)"./a-b.jxn" "pkg"',
+    "div {",
+    "  state {",
+    "    sizes 1 2",
+    '    (array)mixed "a" { - "b"; - { $ref "#/state/sizes" } }',
+    '    block { - "c"; - (ref)"#/state/sizes" }',
+    "  }",
+    "}",
+    "",
+  ].join("\n");
+  const { document, tokens } = parseJxnWithTokens(source);
+  const text = (pointer: string): string | null => {
+    const span = tokens.values.get(pointer);
+    return span ? source.slice(span.start, span.end) : null;
+  };
+
+  test("is under its index, for one written on the node's own line", () => {
+    expect(document.$elements).toEqual([{ $ref: "./a-b.jxn" }, "pkg"]);
+    expect(text("/$elements/0")).toBe('"./a-b.jxn"');
+    expect(text("/$elements/1")).toBe('"pkg"');
+    expect(text("/state/sizes/0")).toBe("1");
+    expect(text("/state/sizes/1")).toBe("2");
+  });
+
+  test("counts on from the line into the block, where a list is written both ways", () => {
+    expect(document.state).toMatchObject({ mixed: ["a", "b", { $ref: "#/state/sizes" }] });
+    expect(text("/state/mixed/0")).toBe('"a"');
+    expect(text("/state/mixed/1")).toBe('"b"');
+    expect(text("/state/mixed/2/$ref")).toBe('"#/state/sizes"');
+    expect(text("/state/block/0")).toBe('"c"');
+    expect(text("/state/block/1")).toBe('"#/state/sizes"');
+  });
+
+  test("is not recorded by a reader that was asked for no tokens", () => {
+    expect(parseJxn(source)).toEqual(document);
   });
 });

@@ -1,6 +1,6 @@
 # @jxsuite/content-mapper
 
-A TypeScript content mapper for [Jx Notation](https://jxsuite.com/docs/framework/concepts/jxn-files). It lets `tsc` and TypeScript's language server check the code inside a `.jxn` document: its script, and the body of each function. Errors are printed at the line and column where you wrote them, and an editor's hover, completion and rename land on your own text.
+A TypeScript content mapper for [Jx Notation](https://jxsuite.com/docs/framework/concepts/jxn-files). It lets `tsc` and TypeScript's language server check the code inside a `.jxn` document: its script, the body of each function, each `${}` template, each `$ref` into `state` and each prop it gives a component. Errors are printed at the line and column where you wrote them, and an editor's hover, completion and rename land on your own text.
 
 Content mappers arrive in TypeScript 7.1, which is a beta today.
 
@@ -49,8 +49,11 @@ A language server runs a mapper only when the editor tells it the project may ru
 - Every string `body`: a function in `state`, an event handler, at the root or in a nested section.
 - `State`, the type of the document's `state`, which a script names without importing and a `.ts` file can import from the document.
 - The event each handler is given, typed by its binding and its element, and `state.$map`, the row of a repeated element.
+- Every `${}` template an element or a `state` entry holds, checked as the JavaScript the page runs.
+- Every `$ref` into `state` or a row, name by name. One on an `on` member is checked as the handler it binds.
+- Every prop in an instance's `$props`, against the `state` of the `.jxn` component its tag names: one the document lists in `$elements`, or one in the project's `components` folder.
 
-A `.json` document, a `${}` template, `$defs` and a class's methods are not read. The [Type checking](https://jxsuite.com/docs/framework/concepts/type-checking) page has the full account, with the limits of rename.
+A state entry that declares a `type` is checked as that type, and a document's `$defs` are types its entries name: `#/$defs/TodoItem` is `$defs.TodoItem`, in an error and in a module that imports the document. A `.json` document, a `$defs` entry of another file and a class's methods are not read. The [Type checking](https://jxsuite.com/docs/framework/concepts/type-checking) page has the full account, with the limits of rename.
 
 ## As a library
 

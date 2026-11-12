@@ -3,10 +3,10 @@
 re-listing-card {
     state {
         heading ""
-        price "0"
-        beds "0"
-        baths "0"
-        sqft "0"
+        price 0
+        beds 0
+        baths 0
+        sqft 0
         city ""
         status "For Sale"
         image type=string format=image default=""

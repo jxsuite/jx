@@ -21,11 +21,16 @@ import {
   UNRESOLVED_MODULE_CODES,
   bodyOffsetOf,
   generateBodyTypes,
+  givenByProject,
+  outsideAt,
 } from "@jxsuite/schema/virtual-types";
-import type { JxElement } from "@jxsuite/schema/types";
-import type { VirtualBody, VirtualTarget } from "@jxsuite/schema/virtual-types";
+import type { JxElement, ProjectConfig } from "@jxsuite/schema/types";
+import type { OutsideState, VirtualBody, VirtualTarget } from "@jxsuite/schema/virtual-types";
 import type { editor } from "monaco-editor";
-import type { Diagnostic } from "monaco-editor/languages/features/typescript/register";
+import type {
+  Diagnostic,
+  getTypeScriptWorker,
+} from "monaco-editor/languages/features/typescript/register";
 import { loadedMonaco } from "./monaco-lazy";
 import { clearProblems, notify } from "./notify";
 import type { NotifyOptions } from "./notify";
@@ -53,11 +58,48 @@ export interface TypeWorker {
   getSyntacticDiagnostics: (fileName: string) => Promise<Diagnostic[]>;
 }
 
+/** Monaco's hand on its TypeScript worker: name the models, and it answers about them. */
+export type TypeWorkerFor = Awaited<ReturnType<typeof getTypeScriptWorker>>;
+
+/** How long a refusal waits before the worker is asked for again. */
+const WORKER_WAIT_MS = 50;
+
+/** How often a refusal is asked again, which with {@link WORKER_WAIT_MS} is ten seconds. */
+const WORKER_ASKS = 200;
+
+/**
+ * Monaco's TypeScript worker, once Monaco has set it up.
+ *
+ * Monaco sets the worker up when it first meets a model of the language, in a module it loads for
+ * the purpose, and refuses to hand the worker over until that has run. Nothing says when it has:
+ * the load is Monaco's own, and two imports of one module settle in no promised order, so a check
+ * that asks straight after the first such model is made is refused about as often as not. A refusal
+ * is therefore asked again, briefly, until the worker is there.
+ *
+ * @returns The worker's hand.
+ * @throws {unknown} What Monaco last refused with, where it never set the worker up.
+ */
+export async function typeScriptWorker(): Promise<TypeWorkerFor> {
+  const register = await import("monaco-editor/languages/features/typescript/register");
+  for (let asked = 0; ; asked += 1) {
+    try {
+      return await register.getTypeScriptWorker();
+    } catch (error) {
+      if (asked === WORKER_ASKS) {
+        throw error;
+      }
+      await new Promise((resolve) => {
+        setTimeout(resolve, WORKER_WAIT_MS);
+      });
+    }
+  }
+}
+
 /** What a diagnostic says: a sentence, or a chain of explanations. */
 type MessageText = Diagnostic["messageText"];
 
 /** A diagnostic's message, with each chained explanation on a line of its own, indented. */
-function messageOf(text: MessageText, depth = 0): string {
+export function messageOf(text: MessageText, depth = 0): string {
   if (isString(text)) {
     return text;
   }
@@ -104,12 +146,37 @@ export function findingsFor(
   });
 }
 
+/**
+ * What a document is given by the project it is open in (`spec.md` §23.3): the project's own
+ * `state`, a default layout, or, for a layout, the state of each page it wraps. Each makes `State`
+ * open, because a body may read a name the document never declares.
+ *
+ * @param path The document's path from the project's folder.
+ * @param config The project's configuration.
+ * @returns Nothing for a document with no path or no project, which is read as alone.
+ */
+export function outsideOfDocument(
+  path: string | null | undefined,
+  config: ProjectConfig | null | undefined,
+): OutsideState {
+  if (!path || !config) {
+    return {};
+  }
+  const [folder] = path.replace(/^\.\//u, "").split("/");
+  return outsideAt(folder, givenByProject(config));
+}
+
 /** What {@link createTypeCheck} needs to know about the editor it serves. */
 export interface TypeCheckInit {
   /** The buffer the findings are drawn on. */
   editor: editor.IStandaloneCodeEditor;
   /** The document the body is in, read afresh for each check so `State` follows an edit. */
   document: () => JxElement | null;
+  /**
+   * What the document's project gives it, read afresh for each check so `State` follows the
+   * project's settings. A document checked without it is read as alone.
+   */
+  outside?: () => OutsideState;
   /** A name unique to this editor, for the file the worker reads. */
   id: string;
   /**
@@ -227,16 +294,14 @@ export function createTypeCheck(init: TypeCheckInit): TypeCheck {
       }
       generation += 1;
       const mine = generation;
-      const unit = generateBodyTypes(document, init.target, code);
+      const unit = generateBodyTypes(document, init.target, code, init.outside?.());
       const uri = monaco.Uri.parse(`file:///jx-virtual/${init.id}.ts`);
       if (model) {
         model.setValue(unit.text);
       } else {
         model = monaco.editor.createModel(unit.text, "typescript", uri);
       }
-      const { getTypeScriptWorker } =
-        await import("monaco-editor/languages/features/typescript/register");
-      const forModel = await getTypeScriptWorker();
+      const forModel = await typeScriptWorker();
       const worker = await forModel(uri);
       const [syntactic, semantic] = await Promise.all([
         worker.getSyntacticDiagnostics(uri.toString(true)),

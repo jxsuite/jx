@@ -6,7 +6,9 @@ code:
   - packages/studio/src/panels/formula-workspace.ts
   - packages/studio/src/canvas/canvas-render.ts
   - packages/studio/src/services/code-services.ts
+  - packages/server/src/code-format.ts
   - packages/studio/src/services/type-check.ts
+  - packages/studio/src/services/source-type-check.ts
   - packages/studio/src/settings/project-sections.ts
 ---
 
@@ -30,7 +32,7 @@ A function body in **Code** mode (the **Statements**/**Code** toggle) is TypeScr
 
 What you get:
 
-- **Formatting on open**: the body is pretty-printed before you start.
+- **Formatting on open**: the body is pretty-printed before you start, with two spaces. [`jx format`](/docs/framework/build/cli#jx-format) does the same from a terminal, so the two never undo each other.
 - **Live linting**: problems are underlined as you type, with the message on hover.
 - **Type errors**: a body is checked against your page's `state`, so `state.nope = 1` is underlined with `Property 'nope' does not exist on type 'State'`, and each error is also listed in **Problems** under **Type check**. Nothing needs installing: the editor does the checking itself, in the desktop app and in the cloud editor alike.
 - **Completions**: type `state.` to see every entry from the **[Data panel](/docs/studio/logic/data)** (your values, data sources, and functions), and `window.` for the standard library (`Math`, `JSON`, …). Named formulas carry their descriptions into the suggestions.
@@ -39,9 +41,9 @@ What you get:
 
 **Close**, in the editor's header, writes the body back one last time, exactly as you wrote it, types included, and takes the tab off the dock's strip. Until then the editor keeps its place: collapsing the dock or switching to another document and back leaves it exactly as it was. The same tab carries the **[formula workspace](/docs/studio/logic/formula-workspace)** when what you're editing is a structured expression rather than code.
 
-Type checking is as strict as TypeScript is, except that an untyped parameter is allowed, so a body written as plain JavaScript is not flooded with errors. A value your page does not define a type for (a fetched `Request`, a template, a computed function) is treated as any type rather than as an error. A handler knows the event it receives and the element it is on: `event.key` is known in an `onkeydown`, and `event.currentTarget` is the element. `event.target` is that element too when the event cannot have started on a child, and is otherwise what the browser declares, so reading `event.target.value` on an element with children is an error ([Events and rows](/docs/framework/concepts/type-checking#events-and-rows)). A handler on an element inside a section that has its own `state` sees that state and its parents', and one on a repeated element reads its row as `state.$map`, with `item` typed from the list. A page with a layout may use any name, since the layout's state is not known here. Errors in a body you are not editing are not listed until you open it, and a Problem stays listed after you close the editor until you open that body again.
+Type checking is as strict as TypeScript is, except that an untyped parameter is allowed, so a body written as plain JavaScript is not flooded with errors. A value your page does not define a type for (a fetched `Request`, a template, a computed function) is treated as any type rather than as an error. An entry that declares a `type` is checked as that type, and one that names a definition in the page's `$defs` is that definition ([Declared types](/docs/framework/concepts/type-checking#declared-types)). A handler knows the event it receives and the element it is on: `event.key` is known in an `onkeydown`, and `event.currentTarget` is the element. `event.target` is that element too when the event cannot have started on a child, and is otherwise what the browser declares, so reading `event.target.value` on an element with children is an error ([Events and rows](/docs/framework/concepts/type-checking#events-and-rows)). A handler on an element inside a section that has its own `state` sees that state and its parents', and one on a repeated element reads its row as `state.$map`, with `item` typed from the list. A page with a layout may use any name, since the layout's state is not known here. So may a page of a project that has state of its own in its settings, and a layout, which reads the state of whichever page it wraps. Errors in a body you are not editing are not listed until you open it, and a Problem stays listed after you close the editor until you open that body again.
 
-Inside a body, `state` holds your entries (`state.$count += 1` is the code twin of a **Set state** statement), event handlers also receive `event`, and a function's declared parameters are available by name.
+Inside a body, `state` holds your entries (`state.$count += 1` is the code twin of a **Set state** statement), event handlers also receive `event`, and a function's declared parameters are available by name, each with the type it declares if it declares one.
 
 ## A document's script
 
@@ -49,7 +51,7 @@ A function that needs an `import`, or helpers of its own, lives in the document'
 
 The script opens in the same **Logic** tab as a function body and writes back the same way. Three things differ:
 
-- **It is a whole module.** The text has its own `import` and `export` lines, so it is not reformatted on open, and the linting and type checking a body gets do not run on it. From a terminal, `tsc` checks the script of a `.jxn` document ([Type checking](/docs/framework/concepts/type-checking)).
+- **It is a whole module.** The text has its own `import` and `export` lines, so it is not reformatted on open, and the linting and type checking a body gets do not run on it. The script of a `.jxn` document is checked in two other places: the [Code editor](#type-errors-in-a-jxn-file), and `tsc` from a terminal ([Type checking](/docs/framework/concepts/type-checking)).
 - **The canvas runs it as last saved.** A body is drawn as you type. A half-typed module does not load, and loading one on every pause would run its top level again each time, so the canvas keeps running the script the document was last saved with. Save to see your change.
 - **An emptied script is removed.** Delete all of the text and the document no longer carries that script.
 
@@ -70,6 +72,17 @@ The **Code** entry in the context bar's **Editor** control shows the open file i
 :::doc-note
 You never have to generate those files yourself: Studio refreshes them whenever they are missing or out of date, so a project you have never run `jx schema` on still validates, and turning an extension on or off updates the rules without a restart. In the browser at [studio.jxsuite.com](https://studio.jxsuite.com) the rules are composed for you on the server and nothing is written to your repository at all.
 :::
+
+### Type errors in a `.jxn` file
+
+A page or component kept as a `.jxn` file is checked whole here, the way [`tsc` checks it](/docs/framework/concepts/type-checking) from a terminal: its scripts, every function body, every `${}` template, every `$ref` into `state`, and the props it gives a component it defines itself. An error is underlined where you wrote it, with TypeScript's message on hover, and listed in **Problems** under **Type check** with its line and column in the file. The check runs when the file opens and again shortly after you stop typing, and a collaborator's edit counts as typing. As in the function editor, nothing needs installing.
+
+- **A syntax error comes first.** While any code in the file does not parse, only syntax errors are reported, as `tsc` does. A brace left open is marked at the end of the code it is in.
+- **Text that is not Jx Notation gets one mark**, where it stops being valid, and nothing in Problems. The document never takes such text, so there is nothing to list once you fix it or leave.
+- **Only this file is read.** A component kept in another file is not looked up, so the props you give it are not checked and nothing is reported for it. `tsc` reads the whole project.
+- **A `.json` document is not checked here.** Its function bodies are checked in the [function editor](#the-function-editor).
+
+The Problems listed here replace any the function editor listed for the same tab, since the file is the newer reading of every body in it.
 
 ### The project file
 

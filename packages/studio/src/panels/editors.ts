@@ -52,7 +52,7 @@ import {
 import { globalEntries, namedFormulaEntries } from "../ui/formula-catalog";
 import { notify } from "../services/notify";
 import type { NotifyOptions } from "../services/notify";
-import { createTypeCheck } from "../services/type-check";
+import { createTypeCheck, outsideOfDocument } from "../services/type-check";
 import type { TypeCheckInit } from "../services/type-check";
 
 import type { BufferWrites } from "../services/monaco-buffer";
@@ -65,6 +65,7 @@ import type {
   JxDocumentValue,
   JxElement,
 } from "@jxsuite/schema/types";
+import { projectState } from "../state";
 import type { JxPath } from "../state";
 import type { Tab } from "../tabs/tab";
 
@@ -553,6 +554,7 @@ async function mountFunctionEditor(
       document: () => (tabIsLive(tab) ? (tab.doc.document as JxElement) : null),
       editor,
       id: `fn${typeCheckSeq}`,
+      outside: () => outsideOfDocument(tab.documentPath, projectState?.projectConfig),
       wanted: (code) =>
         view.functionEditor === editor &&
         tabIsLive(tab) &&

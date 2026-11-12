@@ -30,6 +30,7 @@ Commands:
   schema [root]    Generate project.schema.json + document.schema.json from project.json#/extensions
   validate [root]  Validate the whole project: project.json, documents, classes, and fragments
   convert <paths…> Move documents and the project file between .json and .jxn, repairing references
+  format [paths…]  Format .jxn files and the code they hold (requires @jxsuite/server and Bun)
   db push [root]   Sync the data section's tables to their connections (additive-only)
 
 Options:
@@ -41,15 +42,21 @@ Options:
   --connection   db push: restrict to one connection name
   --strict       validate: fail on an overlay or accessibility lint error, not only a schema error
   --to <format>  convert: jxn or json
-  --drop-comments convert: convert a .jxn file to .json even though it has comments`);
+  --drop-comments convert: convert a .jxn file to .json even though it has comments
+  --check        format: write nothing, and fail when a file would change`);
     process.exit(0);
   }
 
-  // Its positionals are paths and not a project root, so it does not join the split below.
-  if (command === "convert") {
+  // Their positionals are paths and not a project root, so they do not join the split below.
+  if (command === "convert" || command === "format") {
     try {
-      const { runConvert } = await import("./site/convert-command.ts");
-      runConvert(process.cwd(), args.slice(1));
+      if (command === "convert") {
+        const { runConvert } = await import("./site/convert-command.ts");
+        runConvert(process.cwd(), args.slice(1));
+      } else {
+        const { runFormat } = await import("./site/format-command.ts");
+        runFormat(process.cwd(), args.slice(1));
+      }
     } catch (error) {
       console.error(errorMessage(error));
       process.exit(1);

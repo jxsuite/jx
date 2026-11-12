@@ -3,7 +3,15 @@
  * compiler's protocol takes a document's modules in.
  */
 import { afterAll, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  utimesSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -47,6 +55,7 @@ describe("what a project gives a document", () => {
   test("is its state and its default layout, for a page", () => {
     const root = folder({ "project.jxn": WITH_BOTH });
     expect(outsideOf(join(root, "pages/blog/a.jxn"), remembered())).toEqual({
+      components: {},
       layout: true,
       state: true,
     });
@@ -55,6 +64,7 @@ describe("what a project gives a document", () => {
   test("is neither, for a page of a project that has neither", () => {
     const root = folder({ "project.jxn": WITH_NEITHER });
     expect(outsideOf(join(root, "pages/a.jxn"), remembered())).toEqual({
+      components: {},
       layout: false,
       state: false,
     });
@@ -65,32 +75,44 @@ describe("what a project gives a document", () => {
       "project.json": JSON.stringify({ defaults: { layout: "./layouts/base.json" }, name: "x" }),
     });
     expect(outsideOf(join(root, "pages/a.jxn"), remembered())).toEqual({
+      components: {},
       layout: true,
       state: false,
     });
   });
 
-  test("is its state and no layout, for a layout, which the default one does not wrap", () => {
+  test("is the pages it wraps and no layout, for a layout, which the default one does not wrap", () => {
     const root = folder({ "project.jxn": WITH_BOTH });
     expect(outsideOf(join(root, "layouts/base.jxn"), remembered())).toEqual({
-      layout: false,
+      components: {},
       state: true,
+      wraps: true,
+    });
+    const bare = folder({ "project.jxn": WITH_NEITHER });
+    expect(outsideOf(join(bare, "layouts/nested/base.jxn"), remembered())).toEqual({
+      components: {},
+      state: false,
+      wraps: true,
     });
   });
 
   test("is nothing for a component, which is a scope of its own", () => {
     const root = folder({ "project.jxn": WITH_BOTH });
-    expect(outsideOf(join(root, "components/card.jxn"), remembered())).toEqual({});
+    expect(outsideOf(join(root, "components/card.jxn"), remembered())).toEqual({
+      components: {},
+    });
   });
 
   test("is everything when the project file cannot be read, so its own error is the one told", () => {
     const typo = folder({ "project.jxn": 'project "x"\nstate {\n' });
     expect(outsideOf(join(typo, "pages/a.jxn"), remembered())).toEqual({
+      components: {},
       layout: true,
       state: true,
     });
     const broken = folder({ "project.json": "{" });
     expect(outsideOf(join(broken, "pages/a.jxn"), remembered())).toEqual({
+      components: {},
       layout: true,
       state: true,
     });
@@ -99,12 +121,14 @@ describe("what a project gives a document", () => {
   test("is everything when the folder holds both project files, which nothing chooses between", () => {
     const both = folder({ "project.json": '{"name":"x"}', "project.jxn": WITH_NEITHER });
     expect(outsideOf(join(both, "pages/a.jxn"), remembered())).toEqual({
+      components: {},
       layout: true,
       state: true,
     });
     // The second is another tool's file by the same name, and still leaves two to choose between.
     const shared = folder({ "project.json": '{"targets":{}}', "project.jxn": WITH_NEITHER });
     expect(outsideOf(join(shared, "pages/a.jxn"), remembered())).toEqual({
+      components: {},
       layout: true,
       state: true,
     });
@@ -115,8 +139,51 @@ describe("what a project gives a document", () => {
     const page = join(root, "app/pages/a.jxn");
     const inside = remembered(join(root, "app"));
     expect(outsideOf(page, inside)).toEqual({});
-    expect(outsideOf(page, remembered(root))).toEqual({ layout: true, state: true });
-    expect(outsideOf(page, remembered())).toEqual({ layout: true, state: true });
+    expect(outsideOf(page, remembered(root))).toEqual({
+      components: {},
+      layout: true,
+      state: true,
+    });
+    expect(outsideOf(page, remembered())).toEqual({ components: {}, layout: true, state: true });
+  });
+
+  test("is each component the project keeps, by its tag, as a path from the document", () => {
+    const root = folder({
+      "components/README.md": "",
+      "components/card.jxn": "div\n",
+      "components/nested/in-ner.jxn": "in-ner\n",
+      "components/old-card.json": "{}",
+      "components/x-card.jxn": "x-card\n",
+      "components/y-band.jxn": "y-band\n",
+      "project.jxn": WITH_NEITHER,
+    });
+    // A file with no hyphen names no tag, a `.json` one says no types, and a folder is not read.
+    expect(outsideOf(join(root, "pages/blog/a.jxn"), remembered())).toEqual({
+      components: {
+        "x-card": "../../components/x-card.jxn",
+        "y-band": "../../components/y-band.jxn",
+      },
+      layout: false,
+      state: false,
+    });
+    expect(outsideOf(join(root, "index.jxn"), remembered()).components).toEqual({
+      "x-card": "./components/x-card.jxn",
+      "y-band": "./components/y-band.jxn",
+    });
+    // A component uses the others, and itself, as any document does.
+    expect(outsideOf(join(root, "components/x-card.jxn"), remembered())).toEqual({
+      components: { "x-card": "./x-card.jxn", "y-band": "./y-band.jxn" },
+    });
+  });
+
+  test("is a component added since the last document was read", () => {
+    const root = folder({ "project.jxn": WITH_NEITHER });
+    const page = join(root, "pages/a.jxn");
+    const project = remembered();
+    expect(outsideOf(page, project).components).toEqual({});
+    mkdirSync(join(root, "components"));
+    writeFileSync(join(root, "components/x-card.jxn"), "x-card\n");
+    expect(outsideOf(page, project).components).toEqual({ "x-card": "../components/x-card.jxn" });
   });
 
   test("is read again only when the project file has changed", () => {
@@ -126,16 +193,16 @@ describe("what a project gives a document", () => {
     const saved = new Date("2026-01-01T00:00:00Z");
     utimesSync(file, saved, saved);
     const project = remembered();
-    expect(outsideOf(page, project)).toEqual({ layout: true, state: true });
+    expect(outsideOf(page, project)).toEqual({ components: {}, layout: true, state: true });
 
     // Different text under the same name and time is the file the compile has already read.
     writeFileSync(file, WITH_NEITHER);
     utimesSync(file, saved, saved);
-    expect(outsideOf(page, project)).toEqual({ layout: true, state: true });
+    expect(outsideOf(page, project)).toEqual({ components: {}, layout: true, state: true });
 
     const later = new Date("2026-01-02T00:00:00Z");
     utimesSync(file, later, later);
-    expect(outsideOf(page, project)).toEqual({ layout: false, state: false });
+    expect(outsideOf(page, project)).toEqual({ components: {}, layout: false, state: false });
   });
 });
 
@@ -206,7 +273,7 @@ describe("opening a project", () => {
   test("says what the project beside the tsconfig gives, and watches for either of its files", async () => {
     const root = folder({ "project.jxn": WITH_BOTH });
     const opened = await open(join(root, "tsconfig.json"));
-    expect(opened.configIdentity).toBe('{"layout":true,"state":true}');
+    expect(opened.configIdentity).toBe('{".":{"layout":true,"state":true}}');
     expect(opened.watchedFiles).toEqual([join(root, "project.jxn"), join(root, "project.json")]);
     expect(opened.project.root).toBe(root);
     // What it read to say so is what the first file mapped is answered from.
@@ -225,8 +292,60 @@ describe("opening a project", () => {
   test("says there is none where the folder holds no project, and still watches for one", async () => {
     const root = folder();
     const opened = await open(join(root, "tsconfig.json"));
-    expect(opened.configIdentity).toBe("null");
+    expect(opened.configIdentity).toBe("{}");
     expect(opened.watchedFiles).toEqual([join(root, "project.jxn"), join(root, "project.json")]);
+  });
+
+  test("says what every project under the tsconfig gives, and watches each one's files", async () => {
+    const root = folder({
+      // Neither is a folder a document is read from, so neither is looked in.
+      ".cache/project.jxn": WITH_BOTH,
+      "node_modules/kept/project.jxn": WITH_BOTH,
+      // A folder holding both files is a project nothing can be said of.
+      "both/project.json": "{}",
+      "both/project.jxn": WITH_NEITHER,
+      "sites/a/project.jxn": WITH_BOTH,
+      // A page may have the name, and its folder is watched in case it becomes a project.
+      "sites/b/pages/project.jxn": 'div "a page"\n',
+      "sites/b/project.jxn": WITH_NEITHER,
+    });
+    symlinkSync(join(root, "sites/a"), join(root, "linked"), "dir");
+    const opened = await open(join(root, "tsconfig.json"));
+    const all = { layout: true, state: true };
+    expect(JSON.parse(opened.configIdentity ?? "")).toEqual({
+      both: all,
+      "sites/a": all,
+      "sites/b": { layout: false, state: false },
+    });
+    expect(opened.watchedFiles).toEqual(
+      ["", "both", "sites/a", "sites/b", "sites/b/pages"].flatMap((at) => [
+        join(root, at, "project.jxn"),
+        join(root, at, "project.json"),
+      ]),
+    );
+    expect([...opened.project.facts.keys()]).toEqual([
+      join(root, "sites/a"),
+      join(root, "sites/b"),
+    ]);
+  });
+
+  test("says another thing when a project under the tsconfig gives another", async () => {
+    const root = folder({ "sites/a/project.jxn": WITH_NEITHER });
+    const first = await open(join(root, "tsconfig.json"));
+    writeFileSync(join(root, "sites/a/project.jxn"), WITH_BOTH);
+    const second = await open(join(root, "tsconfig.json"));
+    expect(second.configIdentity).not.toBe(first.configIdentity);
+    expect(second.watchedFiles).toEqual(first.watchedFiles);
+  });
+
+  test("finds no project in a folder that cannot be listed", async () => {
+    const root = folder();
+    const opened = await open(join(root, "gone/tsconfig.json"));
+    expect(opened.configIdentity).toBe("{}");
+    expect(opened.watchedFiles).toEqual([
+      join(root, "gone/project.jxn"),
+      join(root, "gone/project.json"),
+    ]);
   });
 
   test("has no folder to read for files the compiler holds without a tsconfig", async () => {
@@ -259,6 +378,30 @@ describe("mapping a file", () => {
     // A body reads the document's types by the name the file has beside it.
     expect(result.supplemental?.[0]?.text).toContain('from "./a.jxn"');
     expect(result.supplemental?.[0]?.text).toContain("state.count += 1");
+  });
+
+  test("answers a template as JavaScript, and what the document refers to as TypeScript", async () => {
+    const said = [
+      "div {",
+      "  state { count 0 }",
+      '  p "${state.count} left" hidden=(ref)"#/state/count"',
+      "}",
+      "",
+    ].join("\n");
+    const result = await transform("/somewhere/a.jxn", said);
+    expect(result.supplemental?.map((unit) => unit.extension)).toEqual([".js", ".ts"]);
+    const [template, refs] = result.supplemental ?? [];
+    expect(template?.text).toContain("return `${state.count} left`;");
+    expect(joined(template?.mappings, template?.text ?? "", said, "utf-16")).toContainEqual([
+      0,
+      "${state.count} left",
+      "${state.count} left",
+    ]);
+    expect(refs?.text).toContain("void s0.count;");
+    expect(joined(refs?.mappings, refs?.text ?? "", said, "utf-16")).toEqual([
+      [1, "s0.", "#/state/"],
+      [0, "count", "count"],
+    ]);
   });
 
   test("joins each name and each body to where its author wrote it, counted in UTF-16", async () => {

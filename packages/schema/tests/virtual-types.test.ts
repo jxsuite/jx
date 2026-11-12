@@ -9,6 +9,7 @@ import {
   bodyOffsetOf,
   generateBodyTypes,
 } from "../src/jxn/virtual-types.ts";
+import type { VirtualTarget } from "../src/jxn/virtual-types.ts";
 import { BOTH, EVENT_GLOBALS, eventOn } from "./event-types.ts";
 
 /** A document literal; each test decides what it holds. */
@@ -117,8 +118,76 @@ describe("State", () => {
       "c: number;",
       "d: boolean;",
       "e: any[];",
-      "f: any;",
+      "f: { [key: string]: any; };",
     ]);
+  });
+
+  test("reads the schema a typed entry declares, in type or beside it", () => {
+    const doc = asDoc({
+      state: {
+        a: { default: [], type: { items: { type: "string" }, type: "array" } },
+        b: { default: "idle", enum: ["idle", "loading"], type: "string" },
+        c: { default: null, type: ["string", "null"] },
+        d: { properties: { id: { type: "integer" } }, required: ["id"], type: "object" },
+        e: { default: 1, type: { anyOf: [{ type: "number" }, { type: "string" }] } },
+      },
+    });
+    expect(stateOf(generateBodyTypes(doc, { key: "a", kind: "state" }, "").text)).toEqual([
+      "a: string[];",
+      'b: "idle" | "loading";',
+      "c: string | null;",
+      "d: { id: number; };",
+      "e: number | string;",
+    ]);
+  });
+
+  test("reads the value written beside a type that says nothing of what it holds", () => {
+    const doc = asDoc({
+      state: {
+        a: { default: [1, 2], type: "array" },
+        b: { default: { x: 1 }, type: "object" },
+        c: { default: [], type: "array" },
+        d: { default: null, type: "object" },
+        e: { default: "x", format: "image" },
+        f: { default: 1, type: "string" },
+      },
+    });
+    expect(stateOf(generateBodyTypes(doc, { key: "a", kind: "state" }, "").text)).toEqual([
+      "a: number[];",
+      "b: { x: number };",
+      "c: any[];",
+      "d: { [key: string]: any; };",
+      "e: string;",
+      "f: string;",
+    ]);
+  });
+
+  test("names a definition the document holds, which the file declares before State", () => {
+    const doc = asDoc({
+      $defs: {
+        Item: { properties: { id: { type: "integer" } }, required: ["id"], type: "object" },
+      },
+      state: {
+        items: { default: [], type: { items: { $ref: "#/$defs/Item" }, type: "array" } },
+        one: { default: null, type: { $ref: "#/$defs/Item" } },
+      },
+    });
+    const { text } = generateBodyTypes(doc, { key: "items", kind: "state" }, "");
+    expect(declarationsOf(text).slice(0, 3)).toEqual([
+      "namespace $defs {",
+      "  export type Item = { id: number; };",
+      "}",
+    ]);
+    expect(stateOf(text)).toEqual(["items: $defs.Item[];", "one: $defs.Item;"]);
+  });
+
+  test("reads a reference as any in a document that holds no definitions", () => {
+    const doc = asDoc({
+      state: { one: { default: null, type: { $ref: "#/$defs/Item" } } },
+    });
+    const { text } = generateBodyTypes(doc, { key: "one", kind: "state" }, "");
+    expect(text).not.toContain("namespace");
+    expect(stateOf(text)).toEqual(["one: any;"]);
   });
 
   test("types a callable and a computed Function entry differently", () => {
@@ -159,6 +228,16 @@ describe("State", () => {
     );
     expect(signaturesOf(text)).toEqual(["  [key: `$${string}`]: any;"]);
   });
+
+  test("is open where the reader is told the project gives the document state", () => {
+    const doc = asDoc({ state: { a: 1 } });
+    for (const outside of [{ state: true }, { layout: true }, { wraps: true }]) {
+      const { text } = generateBodyTypes(doc, { key: "a", kind: "state" }, "", outside);
+      expect(signaturesOf(text)).toEqual(["  [key: string]: any;"]);
+    }
+    const { text } = generateBodyTypes(doc, { key: "a", kind: "state" }, "", { layout: false });
+    expect(signaturesOf(text)).toEqual(["  [key: `$${string}`]: any;"]);
+  });
 });
 
 describe("the names a function is called with", () => {
@@ -195,6 +274,117 @@ describe("the names a function is called with", () => {
   });
 });
 
+describe("the type a parameter declares", () => {
+  const fn = (...parameters: JsonValue[]): JsonValue => ({
+    $prototype: "Function",
+    body: "",
+    parameters,
+  });
+  /** What the function is called with, as its signature says it. */
+  const called = (doc: JxElement, target?: VirtualTarget): string => {
+    const { text } = generateBodyTypes(doc, target ?? { key: "go", kind: "state" }, "");
+    const opened = "async function body(this: any, ";
+    const start = text.indexOf(opened) + opened.length;
+    return text.slice(start, text.indexOf(") {\n", start));
+  };
+
+  test("is the TypeScript its text holds, written as it stands", () => {
+    const doc = asDoc({
+      state: {
+        go: fn(
+          { name: "price", type: { text: "number" } },
+          { name: "done", type: { text: "() => void" } },
+        ),
+      },
+    });
+    // Each is closed on a line of its own, so a comment the text ends in takes nothing with it.
+    expect(called(doc)).toBe("state: State, price: (number\n), done: (() => void\n)");
+  });
+
+  test("is a schema read as a typed entry's is, by its type or as the parameter itself", () => {
+    const doc = asDoc({
+      $defs: { Task: { properties: { id: { type: "number" } }, type: "object" } },
+      state: {
+        go: fn(
+          "first",
+          { name: "count", type: { type: "integer" } },
+          { enum: ["a", "b"], name: "kind", type: "string" },
+          { name: "task", type: { $ref: "#/$defs/Task" } },
+          { default: [1, 2], name: "list", type: "array" },
+        ),
+      },
+    });
+    expect(called(doc)).toBe(
+      'state: State, first: any, count: number, kind: "a" | "b", task: $defs.Task, list: number[]',
+    );
+  });
+
+  test("may also be undefined where the parameter is optional", () => {
+    const doc = asDoc({
+      state: {
+        go: fn(
+          { name: "a", optional: true, type: { text: "() => void" } },
+          { name: "b", optional: true, type: "string" },
+          { name: "c", optional: true },
+        ),
+      },
+    });
+    expect(called(doc)).toBe(
+      "state: State, a: (() => void\n) | undefined, b: string | undefined, c: any",
+    );
+  });
+
+  test("is any where the parameter declares none, a default alone and blank text included", () => {
+    const doc = asDoc({
+      state: {
+        go: fn(
+          "bare",
+          { default: 1, name: "qty" },
+          { name: "blank", type: { text: "  " } },
+          { name: "odd", type: { text: 1 } },
+        ),
+      },
+    });
+    expect(called(doc)).toBe("state: State, bare: any, qty: any, blank: any, odd: any");
+  });
+
+  test("leaves state as State whatever is written beside it, and wherever it is", () => {
+    const doc = asDoc({
+      state: {
+        go: fn({ name: "n", type: "number" }, { name: "state", type: { text: "string" } }),
+      },
+    });
+    expect(called(doc)).toBe("state: State, n: number");
+  });
+
+  test("stands in the event's place where the first parameter declares one", () => {
+    const doc = asDoc({
+      children: [
+        {
+          onkeydown: fn({ name: "e", type: { text: "KeyboardEvent" } }, "rest"),
+          tagName: "input",
+        },
+        { onkeydown: fn("e", { name: "rest", type: "boolean" }), tagName: "input" },
+      ],
+    });
+    const at = (index: number): VirtualTarget => ({
+      eventKey: "onkeydown",
+      kind: "event",
+      path: ["children", index],
+    });
+    expect(called(doc, at(0))).toBe("state: State, e: (KeyboardEvent\n), rest: any");
+    expect(called(doc, at(1))).toBe("state: State, e: typeof event, rest: boolean");
+  });
+
+  test("is not read from what is neither a name nor an object that holds one", () => {
+    const doc = asDoc({
+      state: { go: fn(1, { type: "number" }, ["a"], { name: "n", type: "number" }) },
+    });
+    expect(called(doc)).toBe("state: State, n: number");
+    expect(generateBodyTypes(doc, { key: "go", kind: "state" }, "").params).toEqual(["state", "n"]);
+  });
+});
+
 describe("an inline handler", () => {
   const doc = asDoc({
     children: [
@@ -223,18 +413,17 @@ describe("an inline handler", () => {
 
   test("sees its ancestors' state, the nearest element winning", () => {
     const unit = generateBodyTypes(doc, target, "state.inner = 1;");
-    // An interface cannot extend one it disagrees with, so what it keeps is listed by reference.
+    // An interface cannot extend one it disagrees with, so it extends that one less the name.
     expect(declarationsOf(unit.text)).toEqual([
+      "type $except<T, K extends PropertyKey> = { [P in keyof T as P extends K ? never : P]: T[P] };",
       "interface State$0 {",
       "  shared: number;",
       "  top: boolean;",
       "  [key: `$${string}`]: any;",
       "}",
-      "interface State {",
-      '  top: State$0["top"];',
+      'interface State extends $except<State$0, "shared"> {',
       "  inner: number;",
       "  shared: string;",
-      "  [key: `$${string}`]: any;",
       "}",
     ]);
     expect(unit.params).toEqual(["state", "e"]);

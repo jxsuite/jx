@@ -3,7 +3,7 @@
  * and that every stretch of one that stands for the author's text says where that text is.
  */
 import { describe, expect, test } from "bun:test";
-import { generateVirtualDocument } from "../src/jxn/virtual-document.ts";
+import { generateVirtualDocument, givenByProject, outsideAt } from "../src/jxn/virtual-document.ts";
 import type { OutsideState, VirtualDocument, VirtualUnit } from "../src/jxn/virtual-document.ts";
 import { BOTH, CURRENT, EVENT_GLOBALS, eventOn } from "./event-types.ts";
 
@@ -21,10 +21,10 @@ function generate(source: string, outside?: OutsideState): VirtualDocument {
 }
 
 /** What each span of a module says: its kind, the module's text, and the file's. */
-function mapped(unit: VirtualUnit, source: string): string[][] {
-  return unit.spans.map((span) => [
+function mapped(unit: VirtualUnit | undefined, source: string): string[][] {
+  return (unit?.spans ?? []).map((span) => [
     span.kind,
-    unit.text.slice(span.virtualStart, span.virtualStart + span.virtualLength),
+    (unit?.text ?? "").slice(span.virtualStart, span.virtualStart + span.virtualLength),
     source.slice(span.originalStart, span.originalStart + span.originalLength),
   ]);
 }
@@ -51,7 +51,7 @@ function expectSound(written: VirtualDocument, source: string): void {
   }
 }
 
-/** The members of the first interface a module declares, one to a line. */
+/** What the first interface a module declares says after its first line, one line to each. */
 function membersOf(text: string): string[] {
   const lines = text.split("\n");
   const start = lines.findIndex((line) => /^\s*(?:export )?interface /u.test(line));
@@ -81,6 +81,17 @@ const CLOSED = "[key: `$${string}`]: any;";
 /** The function of a body that names no parameter. */
 const SIGNED = "export async function body(this: any, state: State) {";
 const OPEN = "[key: string]: any;";
+/** What a document that is no component says it defines, which ends its main module. */
+const DEFINES_NONE = "export interface $elements {}";
+/** What a main module declares first when an entry is an export under its own name. */
+const EXPORTED = [
+  "type $exportedAs<V, R> = R extends 1 ? (V extends (...args: any[]) => infer X ? X : any) : R extends 2 ? (V extends (...args: infer A) => infer X ? (...args: A) => Promise<Awaited<X>> : any) : V;",
+  "type $exported<T, K extends keyof T, R> = { [P in K]: $exportedAs<T[P], R> };",
+  "type $export<T, K extends PropertyKey, R, _At> = $exported<T, Extract<keyof T, K>, R> & { [P in Exclude<K, keyof T>]: any };",
+];
+/** What an interface extends for such an entry: `reads` is 0 as it is, 1 its result, 2 its promise. */
+const exported = (name: string, reads: 0 | 1 | 2): string =>
+  `$export<typeof import("./a.jxn"), "${name}", ${reads}, { at: typeof import("./a.jxn").${name} }>`;
 
 describe("the main module", () => {
   const source = file(
@@ -113,15 +124,17 @@ describe("the main module", () => {
         "  state.count += 1;",
         "  void event;",
         "}",
-        "export interface State {",
+        ...EXPORTED,
+        "export interface State",
+        `  extends ${exported("double", 1)},`,
+        `    ${exported("later", 2)} {`,
         "  count: number;",
         '  "my key": string;',
-        '  double: (typeof import("./a.jxn").double) extends (...args: any[]) => infer R ? R : any;',
         '  hello: typeof import("./a.jxn").greet;',
-        '  later: (typeof import("./a.jxn").later) extends (...args: infer A) => infer R ? (...args: A) => Promise<Awaited<R>> : any;',
         "  go: (...args: any[]) => any;",
         `  ${CLOSED}`,
         "}",
+        DEFINES_NONE,
       ),
     );
     expect(written.problems).toEqual([]);
@@ -142,18 +155,65 @@ describe("the main module", () => {
 
   test("maps a name to its own token, and an export to the token that names it", () => {
     expect(mapped(written.main, source).slice(5)).toEqual([
+      // One word that is both an entry and an export is written once, where it names the export.
+      ["verbatim", "double", "double"],
+      ["verbatim", "later", "later"],
       ["verbatim", "count", "count"],
       // A name TypeScript writes differently stands for its token as a whole.
       ["atom", '"my key"', '"my key"'],
-      // One token is both the entry's name and the export's.
-      ["verbatim", "double", "double"],
-      ["verbatim", "double", "double"],
+      // An entry that says its export apart is two words, each joined to its own.
       ["verbatim", "hello", "hello"],
       ["verbatim", "greet", "greet"],
-      ["verbatim", "later", "later"],
-      ["verbatim", "later", "later"],
       ["verbatim", "go", "go"],
     ]);
+  });
+
+  test("takes from the script an export an entry names by its own name alone", () => {
+    const apart = file(
+      "div {",
+      '  script "export function a() {}; export function b() {}"',
+      "  state {",
+      "    (export)a",
+      "    (export)b $export=b",
+      "    (export)c $export=a",
+      "    (export)d $export=b $lazy=#true",
+      "  }",
+      '  (fn)onclick "state.a(); state.b(); state.d()"',
+      "}",
+    );
+    const made = generate(apart);
+    expect(made.main.text).toBe(
+      file(
+        "export function a() {}; export function b() {}",
+        ...EXPORTED,
+        "export interface State",
+        // A function an event calls is the export as it is.
+        `  extends ${exported("a", 0)} {`,
+        // Said apart, the export is a second word even under the same name, and is renamed alone.
+        '  b: typeof import("./a.jxn").b;',
+        // And one under another name is read as its own entry is: for what it returns, or lazily.
+        '  c: (typeof import("./a.jxn").a) extends (...args: any[]) => infer R ? R : any;',
+        '  d: (typeof import("./a.jxn").b) extends (...args: infer A) => infer R ? (...args: A) => Promise<Awaited<R>> : any;',
+        `  ${CLOSED}`,
+        "}",
+        DEFINES_NONE,
+      ),
+    );
+    expect(mapped(made.main, apart).slice(1)).toEqual([
+      ["verbatim", "a", "a"],
+      ["verbatim", "b", "b"],
+      ["verbatim", "b", "b"],
+      ["verbatim", "c", "c"],
+      ["verbatim", "a", "a"],
+      ["verbatim", "d", "d"],
+      ["verbatim", "b", "b"],
+    ]);
+    expectSound(made, apart);
+  });
+
+  test("declares nothing before State for a document with no such entry", () => {
+    const made = generate(file("div {", '  script "export const a = 1;"', "  state { n 1 }", "}"));
+    expect(made.main.text.includes("$export")).toBe(false);
   });
 
   test("ends a script that has no line ending of its own, and adds none to one that has", () => {
@@ -169,9 +229,11 @@ describe("the main module", () => {
 
   test("is State alone for a document with no script", () => {
     expect(generate(file("div {", "  state { count 0 }", "}")).main.text).toBe(
-      file("export interface State {", "  count: number;", `  ${CLOSED}`, "}"),
+      file("export interface State {", "  count: number;", `  ${CLOSED}`, "}", DEFINES_NONE),
     );
-    expect(generate("").main.text).toBe(file("export interface State {", `  ${CLOSED}`, "}"));
+    expect(generate("").main.text).toBe(
+      file("export interface State {", `  ${CLOSED}`, "}", DEFINES_NONE),
+    );
   });
 
   test("leaves to the entry's own shape an export no token can carry", () => {
@@ -242,6 +304,30 @@ describe("what a document is given from outside", () => {
     );
   });
 
+  test("opens State for a layout, which is given the state of every page it wraps", () => {
+    expect(membersOf(generate(page, { wraps: true }).main.text).at(-1)).toBe(OPEN);
+    // It is wrapped around a page whether or not anything wraps it.
+    const none = file("$layout #false", "div {", "  state { count 0 }", "}");
+    expect(membersOf(generate(none, { wraps: true }).main.text).at(-1)).toBe(OPEN);
+    expect(membersOf(generate(page, { wraps: false }).main.text).at(-1)).toBe(CLOSED);
+  });
+
+  test("is read from the project's file, and from where the project keeps the document", () => {
+    const both = givenByProject({
+      defaults: { layout: "./layouts/base.jxn" },
+      state: { shared: 1 },
+    });
+    expect(both).toEqual({ layout: true, state: true });
+    expect(givenByProject({ defaults: {}, state: {} })).toEqual({ layout: false, state: false });
+    expect(givenByProject({})).toEqual({ layout: false, state: false });
+
+    expect(outsideAt("pages", both)).toEqual({ layout: true, state: true });
+    // A document beside the project file is a page as far as its state goes.
+    expect(outsideAt(undefined, both)).toEqual({ layout: true, state: true });
+    expect(outsideAt("layouts", both)).toEqual({ state: true, wraps: true });
+    expect(outsideAt("components", both)).toEqual({});
+  });
+
   test("lets a document say for itself whether it has a layout", () => {
     const named = file('$layout "./layouts/base.jxn"', "div {", "  state { count 0 }", "}");
     expect(membersOf(generate(named).main.text).at(-1)).toBe(OPEN);
@@ -308,10 +394,7 @@ describe("the server module", () => {
   });
 
   test("leaves its entries out of the main module, which cannot see the functions", () => {
-    expect(membersOf(written.main.text)).toEqual([
-      'count: (typeof import("./a.jxn").count) extends (...args: any[]) => infer R ? R : any;',
-      CLOSED,
-    ]);
+    expect(membersOf(written.main.text)).toEqual([`extends ${exported("count", 1)} {`, CLOSED]);
   });
 
   test("augments JxState when that is what State is called", () => {
@@ -404,6 +487,124 @@ describe("a body module", () => {
     expectSound(written, source);
   });
 
+  describe("a parameter that declares a type", () => {
+    /** A document whose one function is called with these parameters, each a line of a list. */
+    const typed = (defs: string[], ...parameters: string[]): string =>
+      file(
+        ...defs,
+        "div {",
+        "  state {",
+        "    go {",
+        "      $prototype Function",
+        "      parameters {",
+        ...parameters.map((line) => `        ${line}`),
+        "      }",
+        '      body "return 1"',
+        "    }",
+        "  }",
+        "}",
+      );
+    const TASK = ["$defs {", "  Task {", "    type object", "    properties {}", "  }", "}"];
+
+    test("is that type, its name and its text each beside where it was written", () => {
+      const source = typed(
+        [],
+        "- first",
+        "- { name price; type text=number }",
+        '- { name done; optional #true; type text="() => void" }',
+        "- name=qty type=integer",
+        "- name=bare",
+      );
+      const written = generate(source);
+      const [body] = written.supplemental;
+      expect(body?.text.split("\n").slice(0, 5)).toEqual([
+        'import type { State } from "./a.jxn";',
+        "declare const event: any;",
+        // Text is closed on a line of its own, so a comment it ends in takes nothing with it.
+        "export async function body(this: any, state: State, first: any, price: (number",
+        "), done: (() => void",
+        ") | undefined, qty: number, bare: any) {",
+      ]);
+      expect(mapped(body, source)).toEqual([
+        ["verbatim", "first", "first"],
+        ["verbatim", "price", "price"],
+        ["verbatim", "number", "number"],
+        ["verbatim", "done", "done"],
+        ["verbatim", "() => void", "() => void"],
+        ["verbatim", "qty", "qty"],
+        ["verbatim", "bare", "bare"],
+        ["verbatim", "return 1", "return 1"],
+      ]);
+      expectSound(written, source);
+    });
+
+    test("imports the document's definitions where one names them, and joins the name", () => {
+      const source = typed(
+        TASK,
+        '- name=task type=(ref)"#/$defs/Task"',
+        '- { name tasks; type text="$defs.Task[]" }',
+      );
+      const written = generate(source);
+      const [body] = written.supplemental;
+      expect(body?.text.split("\n").slice(0, 4)).toEqual([
+        'import type { State, $defs } from "./a.jxn";',
+        "declare const event: any;",
+        "export async function body(this: any, state: State, task: $defs.Task, tasks: ($defs.Task[]",
+        ")) {",
+      ]);
+      expect(mapped(body, source).slice(0, 4)).toEqual([
+        ["verbatim", "task", "task"],
+        ["verbatim", "Task", "Task"],
+        ["verbatim", "tasks", "tasks"],
+        ["verbatim", "$defs.Task[]", "$defs.Task[]"],
+      ]);
+      expectSound(written, source);
+    });
+
+    test("imports them for either way of naming one alone", () => {
+      const byRef = generate(typed(TASK, '- name=task type=(ref)"#/$defs/Task"'));
+      const byText = generate(typed(TASK, '- { name task; type text="$defs.Task" }'));
+      expect(headOf(byRef.supplemental[0])[0]).toBe('import type { State, $defs } from "./a.jxn";');
+      expect(headOf(byText.supplemental[0])[0]).toBe(
+        'import type { State, $defs } from "./a.jxn";',
+      );
+    });
+
+    test("imports nothing more where no type names one, or the document holds none", () => {
+      const unnamed = generate(typed(TASK, '- { name n; type text="my$defs.Task | a.$defs.b" }'));
+      const none = generate(typed([], '- { name task; type text="$defs.Task" }'));
+      expect(headOf(unnamed.supplemental[0])[0]).toBe('import type { State } from "./a.jxn";');
+      // The name is then an error at the text, which says what the document is missing.
+      expect(headOf(none.supplemental[0])[0]).toBe('import type { State } from "./a.jxn";');
+      expect(none.supplemental[0]?.text).toContain("task: ($defs.Task\n)) {");
+    });
+
+    test("stands in the event's place, in a body nested in a scope of its own too", () => {
+      const source = file(
+        "div {",
+        "  state { count 0 }",
+        "  section {",
+        "    state { inner 1 }",
+        "    input {",
+        "      (on)onkeydown {",
+        "        $prototype Function",
+        "        parameters {",
+        "          - { name e; type text=KeyboardEvent }",
+        "        }",
+        '        body "void e.key"',
+        "      }",
+        "    }",
+        "  }",
+        "}",
+      );
+      const written = generate(source);
+      const [body] = written.supplemental;
+      expect(body?.text).toContain('import type { State$1 as State } from "./a.jxn";');
+      expect(body?.text).toContain("body(this: any, state: State, e: (KeyboardEvent\n)) {");
+      expectSound(written, source);
+    });
+  });
+
   test("maps an escape as one piece, and the text either side of it exactly", () => {
     const source = file(
       "div {",
@@ -492,6 +693,7 @@ describe("a body inside a nested scope", () => {
         "export interface State$2 extends State$1 {",
         "  deep: boolean;",
         "}",
+        DEFINES_NONE,
       ),
     );
     // Every entry is its own token, so a rename from a body reaches the one that declares it.
@@ -526,7 +728,7 @@ describe("a body inside a nested scope", () => {
     expectSound(written, source);
   });
 
-  test("lists the root's members by reference where an element declares one of its names", () => {
+  test("extends the root's less the name where an element declares one of its names", () => {
     const source = file(
       "div {",
       '  script "interface State { a: number }"',
@@ -541,23 +743,63 @@ describe("a body inside a nested scope", () => {
     expect(written.main.text).toBe(
       file(
         "interface State { a: number }",
+        "type $except<T, K extends PropertyKey> = { [P in keyof T as P extends K ? never : P]: T[P] };",
         "export interface JxState {",
         "  count: number;",
         '  "my key": number;',
         "  title: string;",
         `  ${OPEN}`,
         "}",
-        "export interface JxState$1 {",
-        '  "my key": JxState["my key"];',
-        '  title: JxState["title"];',
+        'export interface JxState$1 extends $except<JxState, "count"> {',
         "  count: string;",
         "  extra: number;",
-        `  ${OPEN}`,
         "}",
+        DEFINES_NONE,
       ),
     );
     expect(headOf(written.supplemental[0])[0]).toBe(
       'import type { JxState$1 as State } from "./a.jxn";',
+    );
+    expectSound(written, source);
+  });
+
+  test("extends one that is itself less a name, beside what the script exports to it", () => {
+    const source = file(
+      "div {",
+      '  script "export const twice = (state: State$1) => state.n.length;"',
+      '  script timing=server "export async function user() { return 1; }"',
+      "  state { n 1; top 1 }",
+      "  p {",
+      '    state { n "a"; (export)twice; (server)top }',
+      "    b {",
+      "      state { twice 1; n 2; own 3 }",
+      "    }",
+      "  }",
+      "}",
+    );
+    const written = generate(source);
+    // A name the server gives the element is one it declares, though the server module says what.
+    expect(written.main.text).toBe(
+      file(
+        "export const twice = (state: State$1) => state.n.length;",
+        ...EXPORTED,
+        "type $except<T, K extends PropertyKey> = { [P in keyof T as P extends K ? never : P]: T[P] };",
+        "export interface State {",
+        "  n: number;",
+        "  top: number;",
+        `  ${CLOSED}`,
+        "}",
+        'export interface State$1 extends $except<State, "n" | "top">,',
+        `    ${exported("twice", 1)} {`,
+        "  n: string;",
+        "}",
+        'export interface State$2 extends $except<State$1, "twice" | "n"> {',
+        "  twice: number;",
+        "  n: number;",
+        "  own: number;",
+        "}",
+        DEFINES_NONE,
+      ),
     );
     expectSound(written, source);
   });
@@ -581,17 +823,19 @@ describe("a body inside a nested scope", () => {
     expect(written.main.text).toBe(
       file(
         "export const twice = (state: State$1) => state.n * 2;",
+        ...EXPORTED,
         "export interface State {",
         "  top: number;",
         `  ${CLOSED}`,
         "}",
-        "export interface State$1 extends State {",
+        "export interface State$1 extends State,",
+        `    ${exported("twice", 1)} {`,
         "  n: number;",
-        '  twice: (typeof import("./a.jxn").twice) extends (...args: any[]) => infer R ? R : any;',
         "}",
         "export interface State$2 extends State {",
         "  z: number;",
         "}",
+        DEFINES_NONE,
       ),
     );
     // The root is augmented whatever it holds, and another scope only by what the server gives it.
@@ -650,13 +894,15 @@ describe("a body drawn by a map", () => {
         "export interface State$2 extends State {",
         `  $map: { item: (NonNullable<${tags}> extends readonly (infer I)[] ? I : any); index: number };`,
         "}",
+        DEFINES_NONE,
       ),
     );
     expectSound(written, source);
   });
 
   test("shares one State between the bodies of a row, and reads the nearest map's", () => {
-    expect(written.supplemental.map((unit) => [headOf(unit)[0], insideOf(unit)[1]])).toEqual([
+    const bodies = written.supplemental.slice(0, 4);
+    expect(bodies.map((unit) => [headOf(unit)[0], insideOf(unit)[1]])).toEqual([
       ['import type { State } from "./a.jxn";', "state.todos"],
       ['import type { State$1 as State } from "./a.jxn";', "state.$map.item.title"],
       ['import type { State$1 as State } from "./a.jxn";', "state.$map.index"],
@@ -676,7 +922,7 @@ describe("a body drawn by a map", () => {
       ),
     );
     expect(own.main.text).toBe(
-      file("export interface State {", "  $map: number;", `  ${CLOSED}`, "}"),
+      file("export interface State {", "  $map: number;", `  ${CLOSED}`, "}", DEFINES_NONE),
     );
     expect(headOf(own.supplemental[0])[0]).toBe('import type { State } from "./a.jxn";');
   });
@@ -758,20 +1004,568 @@ describe("the event a body is given", () => {
   });
 });
 
+/** The module of one template: the function it is the value of. */
+const templateOf = (imported: string, value: string): string =>
+  file(
+    "// @ts-check",
+    `/** @import { ${imported} } from "./a.jxn" */`,
+    "/**",
+    " * @param {State} state",
+    ' * @param {State["$map"]} $map',
+    ' * @param {State["$map"] extends { item: infer I } ? I : any} item',
+    ' * @param {State["$map"] extends { index: infer I } ? I : any} index',
+    ' * @param {State["$site"]} $site',
+    ' * @param {State["$page"]} $page',
+    " */",
+    "export function template(state, $map, item, index, $site, $page) {",
+    "void [state, $map, item, index, $site, $page];",
+    `return \`${value}\`;`,
+    "}",
+  );
+
+describe("a template", () => {
+  const source = file(
+    "div {",
+    "  state {",
+    "    count 0",
+    '    label "${state.count} left"',
+    "    todos {",
+    '      - { title "a" }',
+    "    }",
+    "  }",
+    '  p "Said \\"${state.label}\\"" title="${state.count}"',
+    "  ul {",
+    '    $array items=(ref)"#/state/todos" {',
+    '      li #"${item.title}"#',
+    "    }",
+    "  }",
+    "}",
+  );
+  const written = generate(source);
+
+  test("is a module of JavaScript, as the runtime compiles it, after the bodies", () => {
+    expect(written.supplemental.map((unit) => unit.extension)).toEqual([
+      ".js",
+      ".js",
+      ".js",
+      ".js",
+      ".ts",
+    ]);
+    expect(
+      generate(file("div {", '  (fn)onclick "void 0"', '  p "${1}"', "}")).supplemental,
+    ).toEqual([
+      expect.objectContaining({ extension: ".ts" }),
+      expect.objectContaining({ extension: ".js" }),
+    ]);
+  });
+
+  test("is the function it is the value of, given the names the runtime gives one", () => {
+    expect(written.supplemental.slice(0, 4).map((unit) => unit.text)).toEqual([
+      templateOf("State", "${state.count} left"),
+      templateOf("State", 'Said "${state.label}"'),
+      templateOf("State", "${state.count}"),
+      // In a row it reads the row's State, by the name every module calls its own.
+      templateOf("State$1 as State", "${item.title}"),
+    ]);
+  });
+
+  test("is joined to the string it is, its quotes standing for the backticks", () => {
+    expect(mapped(written.supplemental[0], source)).toEqual([
+      ["atom", "`", '"'],
+      ["verbatim", "${state.count} left", "${state.count} left"],
+      ["atom", "`;\n}\n", '"'],
+    ]);
+    // An escape is one stretch, and so is each end of a string written raw.
+    expect(mapped(written.supplemental[1], source)).toEqual([
+      ["atom", "`", '"'],
+      ["verbatim", "Said ", "Said "],
+      ["atom", '"', String.raw`\"`],
+      ["verbatim", "${state.label}", "${state.label}"],
+      ["atom", '"', String.raw`\"`],
+      ["atom", "`;\n}\n", '"'],
+    ]);
+    expect(mapped(written.supplemental[3], source)).toEqual([
+      ["atom", "`", "#"],
+      ["verbatim", "${item.title}", "${item.title}"],
+      ["atom", "`;\n}\n", "#"],
+    ]);
+    expectSound(written, source);
+  });
+
+  test("is not read where a string is data", () => {
+    const data = generate(
+      file(
+        "div {",
+        "  state {",
+        '    list { - "${data}" }',
+        '    (fn)go "return `${1}`"',
+        "  }",
+        "}",
+      ),
+    );
+    expect(data.supplemental.map((unit) => unit.extension)).toEqual([".ts"]);
+  });
+});
+
+describe("a reference", () => {
+  const source = file(
+    "div {",
+    "  state {",
+    "    count 0",
+    '    "my key" { "a/b" 1 }',
+    "    todos {",
+    '      - { title "a" }',
+    "    }",
+    '    (fn)save "void 0"',
+    "  }",
+    '  p (ref)"#/state/count" title=(ref)"#/state/my key/a~1b" hidden=(ref)"#/state/todos/0/title"',
+    String.raw`  button onclick=(ref)"#/state/save" onkeydown=(ref)"#/state/todos/0" lang=(ref)"#/state/sa\u{76}e"`,
+    "  ul {",
+    '    $array items=(ref)"#/state/todos" {',
+    String.raw`      li textContent=(ref)"$map/item/title" title=(ref)"#/$map/index" id=(ref)"\u{24}map/item" {`,
+    '        lang { $ref "#/state/count" }',
+    "      }",
+    "    }",
+    "  }",
+    '  i title=(ref)"window#/name"',
+    "}",
+  );
+  const written = generate(source);
+  const unit = written.supplemental.at(-1);
+  const click = eventOn("button", "click", BOTH);
+
+  test("is its path read off the State of where it stands, in one module for them all", () => {
+    expect(written.supplemental).toHaveLength(2);
+    expect(unit?.extension).toBe(".ts");
+    expect(unit?.text).toBe(
+      file(
+        'import type { State, State$1 } from "./a.jxn";',
+        ...EVENT_GLOBALS,
+        "declare function bound<E>(handler: (state: any, event: E) => unknown): void;",
+        "declare const s0: State;",
+        "declare const s1: State$1;",
+        "void s0.count;",
+        // A name that is no identifier is read by its string, and each step after the first asks.
+        'void s0["my key"]?.["a/b"];',
+        'void s0.todos?.["0"]?.title;',
+        // A handler is given to what a binding calls, and only a function of state itself is one.
+        `bound<${click}>(s0.save);`,
+        'void s0.todos?.["0"];',
+        "void s0.save;",
+        "void s0.todos;",
+        // One written out as a block is the same reference.
+        "void s0.count;",
+        // A row is read off the State that declares it, in either spelling.
+        "void s1.$map?.item?.title;",
+        "void s1.$map?.index;",
+        "void s1.$map?.item;",
+      ),
+    );
+  });
+
+  test("is joined name by name to the string it is written as", () => {
+    const spans = mapped(unit, source);
+    expect(spans.slice(0, 6)).toEqual([
+      ["atom", "s0.", "#/state/"],
+      ["verbatim", "count", "count"],
+      ["atom", "s0", "#/state/"],
+      ["atom", '["my key"]', "my key"],
+      ["atom", "?.", "/"],
+      ["atom", '["a/b"]', "a~1b"],
+    ]);
+    // A name the file spells another way is one stretch, whole.
+    expect(spans).toContainEqual(["atom", "save", String.raw`sa\u{76}e`]);
+    expect(spans.slice(-12)).toEqual([
+      ["atom", "s1.$map", "$map"],
+      ["atom", "?.", "/"],
+      ["verbatim", "item", "item"],
+      ["atom", "?.", "/"],
+      ["verbatim", "title", "title"],
+      ["atom", "s1.", "#/"],
+      ["verbatim", "$map", "$map"],
+      ["atom", "?.", "/"],
+      ["verbatim", "index", "index"],
+      ["atom", "s1.$map", String.raw`\u{24}map`],
+      ["atom", "?.", "/"],
+      ["verbatim", "item", "item"],
+    ]);
+    expectSound(written, source);
+  });
+
+  test("declares nothing for a handler where no reference binds one", () => {
+    const plain = generate(file("div {", "  state { count 0 }", '  p (ref)"#/state/count"', "}"));
+    expect(plain.supplemental.map((each) => each.text)).toEqual([
+      file('import type { State } from "./a.jxn";', "declare const s0: State;", "void s0.count;"),
+    ]);
+  });
+
+  test("is no module where a document refers to nothing in state or a row", () => {
+    const none = generate(
+      file("div {", '  i title=(ref)"window#/name" lang=(ref)"#/$defs/a"', "}"),
+    );
+    expect(none.supplemental).toEqual([]);
+  });
+});
+
+/** What the references module declares before it holds a prop against its component. */
+const PROPS = [
+  "type Props<S> = { [K in keyof S]?: S[K] | null | undefined };",
+  "declare function props<T extends string>(",
+  "  given: T extends keyof Elements ? Props<Elements[T]> : any,",
+  "): void;",
+  "declare const unchecked: any;",
+];
+
+describe("the types a document declares", () => {
+  const source = file(
+    "$defs {",
+    "  TodoItem {",
+    "    type object",
+    "    properties {",
+    "      id type=integer",
+    "      text type=string",
+    '      parent (ref)"#/$defs/TodoItem"',
+    '      "my key" { $ref "#/$defs/Status" }',
+    "    }",
+    "    required id text",
+    "  }",
+    "  Status {",
+    "    type string",
+    "    enum idle loading",
+    "  }",
+    '  "not-a-name" type=string',
+    "}",
+    "todo-list {",
+    "  state {",
+    "    items {",
+    '      type type=array items=(ref)"#/$defs/TodoItem"',
+    "      (array)default",
+    "    }",
+    '    status type=(ref)"#/$defs/Status" default=idle',
+    '    lost type=(ref)"#/$defs/Nope" default=#null',
+    '    odd type=(ref)"#/$defs/not-a-name" default=#null',
+    "    nums type=array {",
+    "      default { - 1; - 2 }",
+    "    }",
+    '    (fn)add "state.items.push({ id: 1, text: 2 })"',
+    "  }",
+    "}",
+  );
+  const written = generate(source);
+
+  /** Each span of the main module: what the module says, and the line and column it was written at. */
+  function placed(): string[] {
+    return written.main.spans.map((span) => {
+      const before = source.slice(0, span.originalStart).split("\n");
+      const text = written.main.text.slice(
+        span.virtualStart,
+        span.virtualStart + span.virtualLength,
+      );
+      return `${text} ${before.length}:${(before.at(-1)?.length ?? 0) + 1}`;
+    });
+  }
+
+  test("are a namespace of its definitions, which its State names", () => {
+    expect(written.main.text).toBe(
+      file(
+        "export interface State {",
+        "  items: $defs.TodoItem[];",
+        "  status: $defs.Status;",
+        "  lost: $defs.Nope;",
+        "  odd: any;",
+        "  nums: number[];",
+        "  add: (...args: any[]) => any;",
+        `  ${CLOSED}`,
+        "}",
+        "export namespace $defs {",
+        '  export type TodoItem = { id: number; text: string; parent?: $defs.TodoItem; "my key"?: $defs.Status; };',
+        '  export type Status = "idle" | "loading";',
+        "}",
+        'export interface $elements { "todo-list": State }',
+      ),
+    );
+    expect(written.problems).toEqual([]);
+    expectSound(written, source);
+  });
+
+  test("say where each name was written: an entry, a definition, a property, and the end of a reference", () => {
+    expect(placed()).toEqual([
+      "items 20:5",
+      "TodoItem 21:43",
+      "status 24:5",
+      "Status 24:31",
+      "lost 25:5",
+      "Nope 25:29",
+      "odd 26:5",
+      "nums 27:5",
+      "add 30:9",
+      "TodoItem 2:3",
+      "id 5:7",
+      "text 6:7",
+      "parent 7:7",
+      "TodoItem 7:28",
+      '"my key" 8:7',
+      "Status 8:32",
+      "Status 12:3",
+    ]);
+    expect(mapped(written.main, source).filter(([kind]) => kind !== "verbatim")).toEqual([
+      ["atom", '"my key"', '"my key"'],
+    ]);
+  });
+
+  test("are not written for a document that holds none, where a reference is any", () => {
+    const { main } = generate(
+      file("div {", '  state { one type=(ref)"#/$defs/Item" default=#null }', "}"),
+    );
+    expect(main.text).toBe(
+      file("export interface State {", "  one: any;", `  ${CLOSED}`, "}", DEFINES_NONE),
+    );
+  });
+
+  test("are an empty namespace where $defs holds nothing, so a reference into it is an error", () => {
+    const { main, problems } = generate(file("$defs", "div {", "  state { n 1 }", "}"));
+    expect(main.text).toBe(
+      file(
+        "export interface State {",
+        "  n: number;",
+        `  ${CLOSED}`,
+        "}",
+        "export namespace $defs {",
+        "}",
+        DEFINES_NONE,
+      ),
+    );
+    expect(problems).toEqual([]);
+  });
+
+  test("join every reference to a definition, however each is written and however often", () => {
+    const other = file(
+      "$defs {",
+      "  A type=string",
+      "  B {",
+      "    anyOf {",
+      '      - (ref)"#/$defs/A"',
+      '      - type="null"',
+      '      - $ref="#/$defs/A"',
+      '      - $ref=#"#/$defs/A"#',
+      "    }",
+      "  }",
+      "}",
+      "div {",
+      "  state { n 1 }",
+      "}",
+    );
+    const { main } = generate(other);
+    expect(main.text).toContain("  export type B = $defs.A | null | $defs.A | $defs.A;\n");
+    const refs = mapped(main, other).filter(([, text]) => text === "A");
+    expect(refs).toEqual([
+      ["verbatim", "A", "A"],
+      ["verbatim", "A", "A"],
+      ["verbatim", "A", "A"],
+      ["verbatim", "A", "A"],
+    ]);
+  });
+
+  test("are what a body in the document reads its state by", () => {
+    const body = written.supplemental.find((unit) => unit.text.includes("state.items.push"));
+    expect(headOf(body)).toContain('import type { State } from "./a.jxn";');
+  });
+});
+
+describe("what a document defines", () => {
+  /** The last line of a document's main module. */
+  const defined = (source: string): string | undefined =>
+    generate(source).main.text.trimEnd().split("\n").at(-1);
+
+  test("is its State under its root's tag, when that is one a component has", () => {
+    expect(defined(file("my-card {", '  state { title "t"; count 0 }', "}"))).toBe(
+      'export interface $elements { "my-card": State }',
+    );
+  });
+
+  test("is JxState where that is what its State is called", () => {
+    const source = file(
+      "my-card {",
+      '  script "export interface State { a: 1 }"',
+      "  state { count 0 }",
+      "}",
+    );
+    expect(defined(source)).toBe('export interface $elements { "my-card": JxState }');
+  });
+
+  test("is nothing for a root the platform names, or one with no tag", () => {
+    expect(defined(file("div {", "  state { count 0 }", "}"))).toBe(DEFINES_NONE);
+    expect(defined(file("state { count 0 }"))).toBe(DEFINES_NONE);
+  });
+});
+
+describe("what a component is given", () => {
+  const source = file(
+    '$elements (ref)"./my-card.jxn" (ref)"./old.json" "pkg" (ref)"/abs/x-y.jxn"',
+    "div {",
+    '  state { heading "x"; total 3; rows { - { name "a" } } }',
+    "  my-card {",
+    '    $props title=(ref)"#/state/heading" count="3" "my key"=#true ratio=1.5 tpl="${state.total}" far=(ref)"window#/x" none=#null {',
+    "      list { - 1 }",
+    '      deep { inner (ref)"#/state/total" }',
+    "    }",
+    "  }",
+    '  other-thing { $props { c { $ref "#/state/rows/0/name" } } }',
+    '  p hidden=(ref)"#/state/total" { $props a=1 }',
+    '  $element "x-${state.heading}" { $props b=2 }',
+    "  ul {",
+    '    $array items=(ref)"#/state/rows" {',
+    '      my-card { $props title=(ref)"$map/item/name" }',
+    "    }",
+    "  }",
+    "}",
+  );
+  const written = generate(source, {
+    components: { "my-card": "./my-card.jxn", "other-thing": "../components/other-thing.jxn" },
+  });
+  const unit = written.supplemental.at(-1);
+
+  test("is held, one prop to a line, against the State of the document its tag names", () => {
+    expect(written.problems).toEqual([]);
+    expect(unit?.extension).toBe(".ts");
+    expect(unit?.text).toBe(
+      file(
+        'import type { State, State$1 } from "./a.jxn";',
+        // Itself, then each `.jxn` file `$elements` names, then each project component a prop names.
+        'import type { $elements as e0 } from "./a.jxn";',
+        'import type { $elements as e1 } from "./my-card.jxn";',
+        'import type { $elements as e2 } from "../components/other-thing.jxn";',
+        "export type Elements = e0 & e1 & e2;",
+        ...PROPS,
+        "declare const s0: State;",
+        "declare const s1: State$1;",
+        // A reference inside a prop's value is read for itself, and so is one that is no prop.
+        "void s0.total;",
+        "void s0.total;",
+        "void s0.rows;",
+        // One that is the prop is the prop's value, and is written the once.
+        'props<"my-card">({ title: s0.heading });',
+        'props<"my-card">({ count: "3" });',
+        'props<"my-card">({ "my key": true });',
+        'props<"my-card">({ ratio: 1.5 });',
+        // A template, a reference out of the document, nothing, a list and an object are not held.
+        'props<"my-card">({ tpl: unchecked });',
+        'props<"my-card">({ far: unchecked });',
+        'props<"my-card">({ none: unchecked });',
+        'props<"my-card">({ list: unchecked });',
+        'props<"my-card">({ deep: unchecked });',
+        'props<"other-thing">({ c: s0.rows?.["0"]?.name });',
+        'props<"my-card">({ title: s1.$map?.item?.name });',
+      ),
+    );
+  });
+
+  test("is joined to its name and its value, and a file to the entry that names it", () => {
+    const spans = mapped(unit, source);
+    expect(spans.slice(0, 1)).toEqual([["atom", '"./my-card.jxn"', '"./my-card.jxn"']]);
+    expect(spans.slice(7, 21)).toEqual([
+      ["verbatim", "title", "title"],
+      ["atom", "s0.", "#/state/"],
+      ["verbatim", "heading", "heading"],
+      ["verbatim", "count", "count"],
+      ["atom", '"3"', '"3"'],
+      ["atom", '"my key"', '"my key"'],
+      ["atom", "true", "#true"],
+      ["verbatim", "ratio", "ratio"],
+      ["atom", "1.5", "1.5"],
+      ["verbatim", "tpl", "tpl"],
+      ["verbatim", "far", "far"],
+      ["verbatim", "none", "none"],
+      ["verbatim", "list", "list"],
+      ["verbatim", "deep", "deep"],
+    ]);
+    expect(spans.slice(-6)).toEqual([
+      ["verbatim", "title", "title"],
+      ["atom", "s1.$map", "$map"],
+      ["atom", "?.", "/"],
+      ["verbatim", "item", "item"],
+      ["atom", "?.", "/"],
+      ["verbatim", "name", "name"],
+    ]);
+    expectSound(written, source);
+  });
+
+  test("leaves alone an element the platform names, and a tag that is made when it runs", () => {
+    expect(unit?.text).not.toContain("a: 1");
+    expect(unit?.text).not.toContain("b: 2");
+  });
+
+  test("takes anything where no document read here defines the tag", () => {
+    const alone = file("div {", "  my-card { $props count=3 }", "}");
+    const made = generate(alone);
+    expect(made.supplemental.map((each) => each.text)).toEqual([
+      file(
+        'import type { $elements as e0 } from "./a.jxn";',
+        "export type Elements = e0;",
+        ...PROPS,
+        'props<"my-card">({ count: 3 });',
+      ),
+    ]);
+    expect(mapped(made.supplemental[0], alone)).toEqual([
+      ["verbatim", "count", "count"],
+      ["atom", "3", "3"],
+    ]);
+    expectSound(made, alone);
+  });
+
+  test("is nothing where an instance is given no props", () => {
+    expect(generate(file("div {", '  my-card "text"', "}")).supplemental).toEqual([]);
+  });
+});
+
+describe("a document that names its components", () => {
+  const source = file(
+    "$elements {",
+    '  - { $ref "./x-y.jxn" }',
+    '  - (ref)"../z-z.jxn"',
+    '  - (ref)"./a.jxn"',
+    '  - "pkg"',
+    "}",
+    "div",
+  );
+  const written = generate(source);
+
+  test("imports each one though it gives them nothing, so a file that is not there is told of", () => {
+    expect(written.supplemental.map((each) => each.text)).toEqual([
+      file(
+        // The document itself is first, and naming it again is the same import.
+        'import type { $elements as e0 } from "./a.jxn";',
+        'import type { $elements as e1 } from "./x-y.jxn";',
+        'import type { $elements as e2 } from "../z-z.jxn";',
+        "export type Elements = e0 & e1 & e2;",
+      ),
+    ]);
+  });
+
+  test("joins each file to the string that names it, in either spelling", () => {
+    expect(mapped(written.supplemental[0], source)).toEqual([
+      ["atom", '"./a.jxn"', '"./a.jxn"'],
+      ["atom", '"./x-y.jxn"', '"./x-y.jxn"'],
+      ["atom", '"../z-z.jxn"', '"../z-z.jxn"'],
+    ]);
+    expectSound(written, source);
+  });
+});
+
 describe("a file that is not a document", () => {
-  test("is an empty module when it is a project file, which holds no code", () => {
+  test("is a module that defines nothing when it is a project file, which holds no code", () => {
     const written = generate(file('project "x"', 'defaults layout="./layouts/base.jxn"'));
     expect(written).toEqual({
-      main: { spans: [], text: "export {};\n" },
+      main: { extension: ".ts", spans: [], text: file(DEFINES_NONE) },
       problems: [],
       supplemental: [],
     });
   });
 
-  test("is an empty module and one problem when it is not Jx Notation", () => {
+  test("is a module that defines nothing, and one problem, when it is not Jx Notation", () => {
     const source = file("div {", "  state { count 0 }", "}", "p");
     const written = generate(source);
-    expect(written.main).toEqual({ spans: [], text: "export {};\n" });
+    expect(written.main).toEqual({ extension: ".ts", spans: [], text: file(DEFINES_NONE) });
     expect(written.supplemental).toEqual([]);
     expect(written.problems).toEqual([
       {

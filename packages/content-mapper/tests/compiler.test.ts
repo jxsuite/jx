@@ -82,6 +82,7 @@ describe("an error in a document's code", () => {
     "    }",
     "    function helper() { return 1; }",
     "    export const wrong: string = helper();",
+    '    export const start = (state: State): State["count"] => state.count;',
     '    """#',
     '  script timing=server #"""',
     "    export async function user(args: { id: number }) {",
@@ -93,12 +94,14 @@ describe("an error in a document's code", () => {
     "    (export)double",
     "    (export)hello $export=greet",
     "    (export)missing",
+    "    (export)start",
     "    (server)user id=1",
     '    (fn)go "helper();"',
     "  }",
     "  button {",
     "    state { local 1 }",
     '    (fn)onclick "state.local += state.double; state.user?.name.toFixed(); state.hello(1)"',
+    '    (fn)onkeyup "state.missing.anything; state.start.toFixed(1, 2)"',
     "  }",
     "}",
   );
@@ -110,6 +113,12 @@ describe("an error in a document's code", () => {
     'export const u: State["user"] = 5;',
   );
   const page = lines("div {", '  (fn)onclick "state.fromProject; state.$media"', "}");
+  const wrapper = lines(
+    "div {",
+    "  state { own 1 }",
+    '  (fn)onclick "state.fromPage; state.own.wrong"',
+    "}",
+  );
   let findings: Finding[] = [];
 
   beforeAll(() => {
@@ -126,6 +135,9 @@ describe("an error in a document's code", () => {
     made.write("src/site/project.jxn", lines('project "x"', "state {", "  fromProject 1", "}"));
     made.write("src/site/pages/index.jxn", page);
     made.write("src/site/components/card.jxn", page);
+    made.write("src/bare/project.jxn", lines('project "x"'));
+    made.write("src/bare/layouts/base.jxn", wrapper);
+    made.write("src/bare/pages/index.jxn", wrapper);
     ({ findings } = made.check("--runExternalCode"));
   }, SLOW);
 
@@ -164,6 +176,9 @@ describe("an error in a document's code", () => {
       `${printed(script, "toFixed")} TS2551`,
       // An export is called as it is declared.
       `${printed(script, "state.hello(1)", "state.".length)} TS2554`,
+      // An entry named for no export is said once, on the entry, and is anything where it is read.
+      // And an export typed by the state that holds it is that type: `start` is a number.
+      `${printed(script, "2)")} TS2554`,
     ]);
   });
 
@@ -191,10 +206,23 @@ describe("an error in a document's code", () => {
     ]);
   });
 
+  test("is not a read of a page's state in a layout, which still holds its own to their types", () => {
+    // The project gives neither state nor a default layout, so its page is alone and exact.
+    expect(about(findings, "bare/pages/index.jxn")).toEqual([
+      `${printed(wrapper, "fromPage")} TS2339`,
+      `${printed(wrapper, "wrong")} TS2339`,
+    ]);
+    expect(about(findings, "bare/layouts/base.jxn")).toEqual([
+      `${printed(wrapper, "wrong")} TS2339`,
+    ]);
+  });
+
   test("is never reported where the author wrote nothing", () => {
     // `noUnusedLocals` and `noUnusedParameters` are on, and would say so of a line the mapper adds.
     expect(findings.map((finding) => finding.code).filter((code) => code === "TS6133")).toEqual([]);
     const named = [
+      "bare/layouts/base.jxn",
+      "bare/pages/index.jxn",
       "plain.jxn",
       "crlf.jxn",
       "raw.jxn",
@@ -227,10 +255,10 @@ describe("what a document says of where a body stands", () => {
     '    (fn)onsubmit "event.preventDefault(); void event.submitter; event.currentTarget.reset(); event.target.reset()"',
     "  }",
     "  ul {",
-    '    state { label "x" }',
+    '    state { label "x"; count "now a string" }',
     '    $array items=(ref)"#/state/todos" {',
     "      li {",
-    '        (fn)onclick "state.$map.item.done = !state.$map.item.done; state.$map.item.gone; state.$map.index.toFixed(); state.label.toFixed()"',
+    '        (fn)onclick "state.$map.item.done = !state.$map.item.done; state.$map.item.gone; state.$map.index.toFixed(); state.label.toFixed(); void state.count.trim(); state.todos.wrong"',
     '        $array items=(ref)"$map/item/tags" {',
     '          b { (fn)onclick "state.$map.item.toUpperCase(); state.$map.item.missing" }',
     "        }",
@@ -247,6 +275,9 @@ describe("what a document says of where a body stands", () => {
     `${printed(source, "gone")} TS2339`,
     // A scope inside the document still reads what it declares: `label` is a string.
     `${printed(source, "toFixed(); state.label.toFixed", "toFixed(); state.label.".length)} TS2551`,
+    /* It declares `count` over the root's, which is a string there and nothing is said of its
+       `trim`. What it does not declare is still what the root holds: `todos` is a list. */
+    `${printed(source, "wrong")} TS2339`,
     // The row of the nearest map, whose list is read off the row around it: a tag is a string.
     `${printed(source, "missing")} TS2339`,
   ];
@@ -283,6 +314,387 @@ describe("what a document says of where a body stands", () => {
     },
     SLOW,
   );
+});
+
+describe("an error outside a document's functions", () => {
+  const templates = lines(
+    "div {",
+    "  state {",
+    "    count 0",
+    '    name "a"',
+    "    todos {",
+    '      - { title "a"; done #false }',
+    "    }",
+    '    label "${state.count.toFixed()} of ${state.nolabel}"',
+    '    request { $prototype Request; url "/api/${state.count.nourl}" }',
+    "  }",
+    '  p "Said \\"${state.name.toFixed()}\\" and ${missing}" title="${state.notitle}"',
+    '  a { attributes { href "${state.nohref}" }; style { color "${state.nocolor}" } }',
+    '  p "${$site.any.thing} ${item} ${index} ${$map.x} ${$page.title}"',
+    "  ul {",
+    '    $array items=(ref)"#/state/todos" {',
+    '      li "${item.title.notext} ${index.noindex} ${$map.item.norow} ${state.$map.item.nostate}"',
+    "    }",
+    "  }",
+    "}",
+  );
+  const refs = lines(
+    "div {",
+    '  script #"""',
+    "    export function key(state: State, event: KeyboardEvent) { void state; void event; }",
+    "    export function any(state: State) { void state; }",
+    '    """#',
+    "  state {",
+    "    count 0",
+    "    user #null",
+    "    todos {",
+    '      - { title "a" }',
+    "    }",
+    "    (export)key",
+    "    (export)any",
+    "  }",
+    '  button "Go" onclick=(ref)"#/state/key" onkeydown=(ref)"#/state/key" onfocus=(ref)"#/state/any"',
+    '  button onclick=(ref)"#/state/count" hidden=(ref)"#/state/gone" title=(ref)"#/state/user/name"',
+    '  input value=(ref)"#/state/todos/0/title" placeholder=(ref)"#/state/todos/0/nope"',
+    "  ul {",
+    '    $array items=(ref)"#/state/todos" {',
+    '      li textContent=(ref)"$map/item/title" hidden=(ref)"$map/item/absent" id=(ref)"#/$map/index/zzz"',
+    "    }",
+    "  }",
+    "}",
+  );
+  const syntax = lines(
+    "div {",
+    "  state { count 0 }",
+    '  p "${(state.count as number)}"',
+    '  p title="${state.count"',
+    "}",
+  );
+  let findings: Finding[] = [];
+
+  beforeAll(() => {
+    const made = project();
+    made.write("src/templates.jxn", templates);
+    made.write("src/refs.jxn", refs);
+    ({ findings } = made.check("--runExternalCode"));
+  }, SLOW);
+
+  test("is at its own column in a template, wherever an element holds one", () => {
+    expect(about(findings, "templates.jxn")).toEqual([
+      // An entry of `state` that is a string, and what configures a `Request`.
+      `${printed(templates, "nolabel")} TS2551`,
+      `${printed(templates, "nourl")} TS2339`,
+      // What an element says, past an escape, and a name nothing declares.
+      `${printed(templates, "toFixed()}\\")} TS2551`,
+      `${printed(templates, "missing")} TS2304`,
+      `${printed(templates, "notitle")} TS2339`,
+      `${printed(templates, "nohref")} TS2339`,
+      `${printed(templates, "nocolor")} TS2339`,
+      // A row is typed in every name it goes by, and outside one those names are any.
+      `${printed(templates, "notext")} TS2339`,
+      `${printed(templates, "noindex")} TS2339`,
+      `${printed(templates, "norow")} TS2339`,
+      `${printed(templates, "nostate")} TS2339`,
+    ]);
+  });
+
+  test("is at the name a reference misses, and at a handler its binding cannot call", () => {
+    expect(about(findings, "refs.jxn")).toEqual([
+      // A click is no key press: the function is not one this binding can call.
+      `${printed(refs, '"#/state/key"', 1)} TS2345`,
+      // What is no function is no handler.
+      `${printed(refs, '"#/state/count"', 1)} TS2345`,
+      `${printed(refs, "gone")} TS2339`,
+      // Through what is null until it loads nothing is said, and through a list it is.
+      `${printed(refs, "nope")} TS2339`,
+      `${printed(refs, "absent")} TS2339`,
+      `${printed(refs, "zzz")} TS2339`,
+    ]);
+  });
+
+  test(
+    "is at its own column where a template is not JavaScript, or does not end",
+    () => {
+      // A mistake of syntax is all a run reports, so these have a project of their own.
+      const made = project();
+      made.write("src/syntax.jxn", syntax);
+      expect(about(made.check("--runExternalCode").findings, "syntax.jxn")).toEqual([
+        // A type is TypeScript, and the runtime compiles a template as JavaScript.
+        `${printed(syntax, "number")} TS8016`,
+        // Reported on the string it is: the quote that should have followed a brace.
+        `${printed(syntax, 'count"', "count".length)} TS1160`,
+      ]);
+    },
+    SLOW,
+  );
+});
+
+describe("what a component is given", () => {
+  const card = lines(
+    "x-card {",
+    "  state {",
+    '    title "t"',
+    "    count 0",
+    "    open #false",
+    "  }",
+    '  h2 "${state.title}"',
+    "}",
+  );
+  const band = lines("y-band {", '  state { tone "chalk" }', "  x-card { $props title=1 }", "}");
+  const page = lines(
+    "div {",
+    '  state { heading "x"; total 3; rows { - { name "a"; n 1 } } }',
+    '  x-card { $props title=(ref)"#/state/heading" count=(ref)"#/state/total" open=#true }',
+    '  x-card { $props title=(ref)"#/state/total" count="3" titel="x" label="${state.total}" }',
+    "  y-band { $props tone=1 nope=#null }",
+    "  z-none { $props anything=1 }",
+    "  ul {",
+    '    $array items=(ref)"#/state/rows" {',
+    '      x-card { $props title=(ref)"$map/item/n" count=(ref)"$map/item/n" }',
+    "    }",
+    "  }",
+    "}",
+  );
+  const lost = lines(
+    "$elements {",
+    '  - (ref)"../components/gone-card.jxn"',
+    '  - (ref)"../components/x-card.jxn"',
+    "}",
+    "div {",
+    "  x-card { $props title=1 }",
+    "}",
+  );
+  const widget = lines("my-card {", '  state { title "t" }', "}");
+  const uses = lines(
+    '(array)$elements (ref)"./my-card.jxn"',
+    "div {",
+    '  my-card { $props title="a" nope=1 }',
+    "}",
+  );
+  const loose = lines("div {", "  my-card { $props nope=1 }", "}");
+  let findings: Finding[] = [];
+
+  beforeAll(() => {
+    const made = project();
+    made.write("src/site/project.jxn", lines('project "x"', "state {", "  fromProject 1", "}"));
+    made.write("src/site/components/x-card.jxn", card);
+    made.write("src/site/components/y-band.jxn", band);
+    made.write("src/site/pages/index.jxn", page);
+    made.write("src/site/pages/lost.jxn", lost);
+    made.write("src/widgets/my-card.jxn", widget);
+    made.write("src/widgets/uses.jxn", uses);
+    made.write("src/widgets/loose.jxn", loose);
+    ({ findings } = made.check("--runExternalCode"));
+  }, SLOW);
+
+  test("is held against the State of a component its project keeps, at the prop's name", () => {
+    expect(about(findings, "site/pages/index.jxn")).toEqual([
+      // What a reference reads is not what the component holds there, and neither is a string.
+      `${printed(page, 'title=(ref)"#/state/total"')} TS2322`,
+      `${printed(page, 'count="3"')} TS2322`,
+      // A name the component does not have, with the one it is nearest to, and one it has not.
+      `${printed(page, "titel")} TS2561`,
+      `${printed(page, "label")} TS2353`,
+      // Each prop is told of by itself, so one mistake does not hide the next, whatever it is given.
+      `${printed(page, "tone=1")} TS2322`,
+      `${printed(page, "nope")} TS2353`,
+      // A row is typed where a prop reads it.
+      `${printed(page, 'title=(ref)"$map')} TS2322`,
+    ]);
+  });
+
+  test("is held the same in a component, which uses the others", () => {
+    expect(about(findings, "site/components/y-band.jxn")).toEqual([
+      `${printed(band, "title=1")} TS2322`,
+    ]);
+    expect(about(findings, "site/components/x-card.jxn")).toEqual([]);
+  });
+
+  test("is one error at the entry naming a file that is not there, until it is", () => {
+    expect(about(findings, "site/pages/lost.jxn")).toEqual([
+      `${printed(lost, '"../components/gone-card.jxn"')} TS2307`,
+    ]);
+  });
+
+  test("is held against a file `$elements` names, and is anything for a tag nothing names", () => {
+    expect(about(findings, "widgets/uses.jxn")).toEqual([`${printed(uses, "nope")} TS2353`]);
+    expect(about(findings, "widgets/loose.jxn")).toEqual([]);
+    expect(about(findings, "widgets/my-card.jxn")).toEqual([]);
+  });
+
+  test("is never reported where the author wrote nothing", () => {
+    expect(findings.map((finding) => finding.code).filter((code) => code === "TS6133")).toEqual([]);
+    const named = [
+      "site/pages/index.jxn",
+      "site/components/y-band.jxn",
+      "site/pages/lost.jxn",
+      "widgets/uses.jxn",
+    ];
+    expect(findings.length).toBe(named.flatMap((name) => about(findings, name)).length);
+  });
+});
+
+describe("the types a document declares", () => {
+  const list = lines(
+    "$defs {",
+    "  TodoItem {",
+    "    type object",
+    "    properties {",
+    "      id type=integer",
+    "      text type=string",
+    "      done type=boolean",
+    "    }",
+    "    required id text",
+    "  }",
+    "  Status {",
+    "    type string",
+    "    enum idle loading",
+    "  }",
+    "}",
+    "todo-list {",
+    "  state {",
+    "    items {",
+    '      type type=array items=(ref)"#/$defs/TodoItem"',
+    "      (array)default",
+    "    }",
+    '    status type=(ref)"#/$defs/Status" default=idle',
+    '    lost type=(ref)"#/$defs/Nope" default=#null',
+    '    (fn)add "state.items.push({ id: 1, text: 2 })"',
+    String.raw`    (fn)flip "state.status = \"done\"; state.items[0].done.valueOf()"`,
+    String.raw`    (fn)fine "state.status = \"loading\"; state.items.push({ id: 1, text: \"a\" })"`,
+    "  }",
+    '  p "${state.items[0].txt}"',
+    "  ul {",
+    '    $array items=(ref)"#/state/items" {',
+    '      li { (fn)onclick "state.$map.item.text.toFixed(); state.$map.item.absent" }',
+    "    }",
+    "  }",
+    "}",
+  );
+  const page = lines(
+    "div {",
+    '  todo-list { $props status="nope" }',
+    '  todo-list { $props status="idle" }',
+    "}",
+  );
+  const uses = lines(
+    'import type { $defs } from "./site/components/todo-list.jxn";',
+    'export const item: $defs.TodoItem = { id: "x", text: "a" };',
+    'export const state: $defs.Status = "loading";',
+  );
+  const typed = lines(
+    "$defs {",
+    "  Task {",
+    "    type object",
+    "    properties {",
+    "      id type=integer",
+    "      name type=string",
+    "    }",
+    "    required id name",
+    "  }",
+    "}",
+    "div {",
+    "  state {",
+    "    count 0",
+    "    add {",
+    "      $prototype Function",
+    "      parameters {",
+    "        - { name price; type text=number }",
+    "        - state",
+    '        - name=task type=(ref)"#/$defs/Task"',
+    '        - { name done; optional #true; type text="() => void" }',
+    '        - { name tasks; type text="$defs.Task[]" }',
+    "        - { name lost; type text=Missing }",
+    '        - name=gone type=(ref)"#/$defs/Gone"',
+    "        - name=qty type=integer optional=#true",
+    '        - { name noted; type text="string // what it is for" }',
+    "        - bare",
+    "      }",
+    '      body """',
+    "        state.count = price + task.id;",
+    "        price.trim(); task.id.length; done();",
+    "        tasks[0].absent; qty.toFixed(); noted.missing;",
+    "        bare.anything; void lost; void gone;",
+    '        """',
+    "    }",
+    "  }",
+    "  input {",
+    "    (on)onkeydown {",
+    "      $prototype Function",
+    "      parameters {",
+    "        - { name pressed; type text=KeyboardEvent }",
+    "      }",
+    '      body "pressed.key.toPrecision(); pressed.unknown"',
+    "    }",
+    "  }",
+    "}",
+  );
+  let findings: Finding[] = [];
+
+  beforeAll(() => {
+    const made = project();
+    made.write("src/typed.jxn", typed);
+    made.write("src/site/project.jxn", lines('project "x"'));
+    made.write("src/site/components/todo-list.jxn", list);
+    made.write("src/site/pages/index.jxn", page);
+    made.write("src/uses.ts", uses);
+    ({ findings } = made.check("--runExternalCode"));
+  }, SLOW);
+
+  test("are what its code is held to, at the name a reference ends in where that is no definition", () => {
+    expect(about(findings, "site/components/todo-list.jxn")).toEqual([
+      // A reference to a definition the document does not hold, at the name and not the string.
+      `${printed(list, "Nope")} TS2694`,
+      // A property of a definition is the type its schema says.
+      `${printed(list, "text: 2")} TS2322`,
+      // An enumeration is its values and no other.
+      `${printed(list, "state.status")} TS2322`,
+      // A property that is not required may be missing.
+      `${printed(list, "state.items[0].done")} TS2532`,
+      // A row of a list of a definition is that definition.
+      `${printed(list, "toFixed")} TS2551`,
+      `${printed(list, "absent")} TS2339`,
+      // A template reads the same State.
+      `${printed(list, "txt")} TS2551`,
+    ]);
+  });
+
+  test("name each definition in what the compiler says, as the document does", () => {
+    const said = findings.map((finding) => finding.message).join("\n");
+    expect(said).toContain("'Status'");
+    expect(said).toContain("'TodoItem'");
+    expect(said).toContain("has no exported member 'Nope'");
+  });
+
+  test("are what a component's props are held to in a document that uses it", () => {
+    expect(about(findings, "site/pages/index.jxn")).toEqual([
+      `${printed(page, 'status="nope"')} TS2322`,
+    ]);
+  });
+
+  test("are what a parameter is inside its body where it declares one, as text or as a schema", () => {
+    expect(about(findings, "typed.jxn")).toEqual([
+      // Text that names no type is an error where it is written, and so is a reference.
+      `${printed(typed, "Missing")} TS2304`,
+      `${printed(typed, "Gone")} TS2694`,
+      // Text is the type it says, and a schema the type it describes.
+      `${printed(typed, "trim")} TS2339`,
+      `${printed(typed, "length")} TS2339`,
+      // An optional parameter may be missing, whichever way its type is written.
+      `${printed(typed, "done()")} TS2722`,
+      `${printed(typed, "absent")} TS2339`,
+      `${printed(typed, "qty.toFixed")} TS18048`,
+      // Text that ends in a comment is still the type before it, and takes nothing after it.
+      `${printed(typed, "missing")} TS2339`,
+      // The first parameter after `state` is the type it declares and not the event's.
+      `${printed(typed, "toPrecision")} TS2339`,
+      `${printed(typed, "unknown")} TS2339`,
+    ]);
+  });
+
+  test("are what a module that imports the document can name", () => {
+    expect(about(findings, "uses.ts")).toEqual([`${printed(uses, 'id: "x"')} TS2322`]);
+  });
 });
 
 describe("a file that is not Jx Notation", () => {
