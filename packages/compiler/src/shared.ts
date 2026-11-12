@@ -65,6 +65,8 @@ import type {
   JsonValue,
   JxDocumentValue,
   JxElement,
+  JxExpressionNode,
+  JxExpressionOperand,
   JxMappedArray,
   JxMutableNode,
   JxPrototypeDef,
@@ -395,6 +397,96 @@ export function isClassJsonSrc(src?: unknown): src is string {
   return typeof src === "string" && src.endsWith(".class.json");
 }
 
+/** White space between tokens of a body, as JSON serializes it: itself, or an escaped line end. */
+const BODY_SPACE = String.raw`(?:\s|\\[nrt])*`;
+
+/**
+ * `state` handed on whole in a body: assigned or destructured (`const { fmt } = state;`) or spread
+ * (`{ ...state }`). Whatever takes it can read any entry by a name the scan below never sees, so
+ * such a fragment counts as reading every key. What must follow it (punctuation, a line end, the
+ * end of the body) keeps prose out (`a = state of mind`), and `state.x` and `state[…]` are member
+ * reads, judged by name.
+ */
+const STATE_HANDED_ON = new RegExp(
+  String.raw`(?:=|\.\.\.)${BODY_SPACE}state[ \t]*(?:[;,)}\]"]|\\[nr])`,
+);
+
+/**
+ * Whether a serialized document fragment still reads a given state key: as a `${state.key}`
+ * template, a `state.key` or `state?.key` inside a handler or computed body, a literal-keyed
+ * `state["key"]`, or a `#/state/key` $ref. A fragment that hands `state` on whole
+ * ({@link STATE_HANDED_ON}) reads every key.
+ *
+ * What it cannot see is a key that is computed (`state[name]`), and a read made by code outside the
+ * document (a `$src` module), which callers account for themselves.
+ *
+ * @param {string} haystack - JSON-serialized document fragment
+ * @param {string} key
+ * @returns {boolean}
+ */
+export function referencesStateKey(haystack: string, key: string): boolean {
+  const escaped = key.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
+  /* The name must end where the key does. `(?![\w$])` and not `\b`: a key may end in `$`, after
+     which `\b` sees no boundary before `(` and a read of `state.fmt$(…)` went unseen. */
+  const member = String.raw`\bstate${BODY_SPACE}\??\.${BODY_SPACE}${escaped}(?![\w$])`;
+  /* A quote inside a body is `\"` once the document is serialized; `'` and a backtick are bare. */
+  const quote = "(?:\\\\\"|['`])";
+  const bracket = String.raw`\bstate${BODY_SPACE}(?:\?\.)?\[${BODY_SPACE}${quote}${escaped}${quote}`;
+  const pointer = String.raw`#/state/${escaped}(?=["/])`;
+  return (
+    new RegExp(`${member}|${bracket}|${pointer}`).test(haystack) || STATE_HANDED_ON.test(haystack)
+  );
+}
+
+/** Spec §19.2 shape detection: an operand object carrying `operator` is a nested node. */
+function isNodeOperand(operand: JxExpressionOperand | undefined): operand is JxExpressionNode {
+  return isNonNullObject(operand) && !Array.isArray(operand) && "operator" in operand;
+}
+
+/** Whether an operand, or any node nested in it, carries a mutating operator. */
+function operandMutates(operand: JxExpressionOperand | undefined): boolean {
+  if (Array.isArray(operand)) {
+    return operand.some((item) => operandMutates(item));
+  }
+  if (!isNodeOperand(operand)) {
+    return false;
+  }
+  return (
+    isMutating(operand.operator) ||
+    [operand.target, operand.value, operand.initial, operand.default].some((part) =>
+      operandMutates(part),
+    ) ||
+    Object.values(operand.cases ?? {}).some((part) => operandMutates(part))
+  );
+}
+
+/**
+ * Whether a state entry is a pure named formula (spec.md §19.4c): an `$expression` with
+ * `parameters` whose body mutates nothing.
+ *
+ * Such an entry is a function, not reactive state. It holds no value, nothing can write it, and
+ * reading it subscribes to nothing, so the entry by itself gives a page nothing to do in the
+ * browser: only a read of it that is left for the client does (compiler.md §3).
+ *
+ * @param {JxDocumentValue | JxStateDefinition | undefined} def
+ * @returns {boolean}
+ */
+export function isPureNamedFormula(def: JxDocumentValue | JxStateDefinition | undefined): boolean {
+  return isNamedFormulaDef(def) && !operandMutates(def.$expression);
+}
+
+/**
+ * A node as the text a read of its pure named formulas is looked for in: the whole node, without
+ * the formulas themselves. One formula calling another is not a read that reaches the browser
+ * unless something else reads the caller, and the caller is then found on its own.
+ */
+function withoutPureFormulas(def: JxElement | JxMutableNode): string {
+  const state = Object.fromEntries(
+    Object.entries(def.state ?? {}).filter(([, entry]) => !isPureNamedFormula(entry)),
+  );
+  return JSON.stringify({ ...def, state });
+}
+
 /**
  * Determine whether a node (or any of its descendants) requires client-side JavaScript.
  *
@@ -407,6 +499,8 @@ export function isDynamic(def: JxElement | JxMutableNode | string) {
   }
 
   if (def.state) {
+    /** Built on the first formula met, since most nodes with state declare none. */
+    let readers: string | undefined;
     for (const [k, d] of Object.entries(def.state)) {
       // Skip injected context (read-only, not reactive)
       if (k === "$site" || k === "$page") {
@@ -417,6 +511,16 @@ export function isDynamic(def: JxElement | JxMutableNode | string) {
       }
       // Skip timing: "compiler" entries — resolved at build time, baked into static HTML
       if (d.timing === "compiler") {
+        continue;
+      }
+      /* A pure named formula is a function, not state: it makes the node dynamic only when
+         something on the node still reads it (compiler.md §3). A page whose every call was
+         resolved at build time keeps no reader, so the declaration alone ships nothing. */
+      if (isPureNamedFormula(d)) {
+        readers ??= withoutPureFormulas(def);
+        if (referencesStateKey(readers, k)) {
+          return true;
+        }
         continue;
       }
       if (d.$prototype) {
@@ -596,6 +700,19 @@ function runtimeOnlyKeysOf(scope: JxScope): Set<string> | undefined {
   /* SAFETY: `RUNTIME_ONLY_KEYS` is module-private and `buildInitialScope` is the only writer, which
      always stores a `Set<string>` under it; a scope built anywhere else answers undefined. */
   return (scope as { [RUNTIME_ONLY_KEYS]?: Set<string> })[RUNTIME_ONLY_KEYS];
+}
+
+/**
+ * Whether prerender holds a state entry to be runtime-only: its real value exists only after
+ * hydration, or some handler in the document writes it (see `buildInitialScope`). A scope built
+ * anywhere else has no marks and answers false.
+ *
+ * @param {JxScope} scope - The build-time scope, or a row scope whose prototype chain reaches it
+ * @param {string} key - A top-level state key
+ * @returns {boolean}
+ */
+export function isRuntimeOnlyStateKey(scope: JxScope, key: string): boolean {
+  return runtimeOnlyKeysOf(scope)?.has(key) ?? false;
 }
 
 /**

@@ -680,7 +680,7 @@ Resolution is **scheme dispatch**, not a cascading fallback: the leading token s
 - `event#/` — handler event context (handler position only)
 - `#/state/` — the current component's scope (which already includes `$props`, merged in place — see §15.4)
 - `parent#/` — resolves against the same merged scope as a bare state read
-- `window#/` / `document#/` — the corresponding global object
+- `window#/` / `document#/` — the corresponding global object. Where no `window` exists (a site build prerenders in such a process), `window#/` reads the global object itself, so a standard-library callee (`window#/Array/isArray`) resolves at build as it does in a page
 
 > **Status: Implemented.** Scheme dispatch follows the rules above: `resolveRef` (`packages/runtime/src/runtime.ts`) handles `$map/`, `#/state/`, `parent#/`, `window#/` and `document#/`, and `resolveExprRef` (`packages/runtime/src/expression.ts`) handles `$reduce/`, `$args/` and `event#/`. External-file refs resolve where §7.2 says they do, in `$switch` cases and `$elements` entries (§14, §16), in the interpreter; a compiled target does not render an external `$switch` case (§14.1). A bare `{ "$ref": "./x.json" }` child is not a resolution position, and is removed (§13.1).
 
@@ -779,6 +779,8 @@ Template strings in text node children are reactive:
 ```json
 { "children": ["Welcome, ${state.name}!"] }
 ```
+
+A string member that is one whole `${…}` and resolves to an array stands for the nodes the array holds, which are spliced in where the string stood, every member of the array and in every tier: the site build's template pass replaces the string with them, and the interpreter draws them in its place and replaces only that range when the value changes. A value that is not an array leaves the member a text node.
 
 When all children are bare strings with no element siblings, prefer the simpler `textContent` representation instead.
 
@@ -1195,6 +1197,17 @@ Each row's bindings live in an effect scope of their own, stopped when the row i
 The first render of a list is synchronous; every later reconciliation is coalesced into one microtask. An array mutated in place — `reverse()`, `sort()`, an index write — notifies once per element it touches, and a reconciliation run between two of those writes would see an array that is half of each state, tearing down a row that is only transiently absent. A row's own bindings stay synchronous.
 
 > **Status: Implemented.** Runtime `renderMappedArrayInto()` reconciles by key in one forward pass, moving only the rows that are out of place.
+
+### 10.5 Empty Lists at Build Time
+
+A mapped array whose `items` is empty renders nothing: no rows, no wrapper, and no placeholder. What a build leaves behind for it depends on whether the array can still change.
+
+- **The build resolved the source.** A state entry resolved through its class at build time (`timing: "compiler"`, or a class-backed entry with no `timing`, such as a content collection), the slice of a paged route, the `$site` and `$page` context, a `$map/` pointer inside a row the build expanded, and a literal `items` array are all finished when the build ends. An empty one is removed from the page together with its binding, so a page whose only list is empty builds as static as the same page with rows.
+- **The source is client state.** A state entry the document authors, `{ "default": [] }` or a bare `[]`, is a starting value. So is a build-resolved entry that a handler in the document writes, and a `Request` or any other entry whose value exists only after hydration has no build-time value at all. The array keeps its binding and the client renders the rows when they arrive.
+
+The rule is about the source, not the count: a list over client state that happens to start empty must never be mistaken for a finished one, because removing it leaves a list that can never populate.
+
+> **Status: Implemented.** `expandMappedArrayStatic` and `buildResolvedStateKeys` in `packages/compiler/src/site/site-build.ts` (`compiler.md` §8.1). The interpreter renders an empty list as nothing and keeps it reactive in every case, since it resolves nothing ahead of time.
 
 ---
 
@@ -2157,6 +2170,23 @@ The interpreter dispatches these through a helpers table (`BLESSED_HELPERS`); th
 ```
 
 **Semantics and lowering.** Project-global formulas live in `project.json` `state` and reach every page through the standard project-state merge — there is no separate formulas section. `buildScope` lowers a named formula to a scope callable that maps positional arguments onto parameter names; call sites therefore compile to plain positional calls (`state.lineTotal(3, 4)`), identical in the interpreter and every compiled target. `call` chains are bounded by `MAX_CALL_DEPTH` (64) against unbounded recursion; the compiler must additionally reject statically detectable call cycles. Reads inside a formula body are tracked reactively as usual — a computed that calls a formula recomputes when the formula's inputs change.
+
+**A formula is callable from a template.** Because a named formula lowers to a scope callable, a template string calls it like any function of state: `${state.lineTotal($map.item.price, 2)}`. A site build resolves such a call where it resolves the template, and the formula's own declaration does not make the page dynamic (compiler.md §3).
+
+**A parameter's type may carry a JSON Schema.** A CEM parameter's `type` is display text (`{ "text": "number" }`), a JSON Schema, or both in one object: `{ "text": "Intl.DateTimeFormatOptions", "type": "object", "properties": { "dateStyle": { "enum": ["full", "long", "medium", "short"] } } }`. The text is what a reader is shown; the schema keywords are what a tool derives an input for the argument from. Neither changes how the formula evaluates.
+
+**Packaged formulas.** `@jxsuite/formulas` ships named formulas as data: each is a pure body over blessed operators, §19.4d methods and blessed globals, verified when the package is generated, and is copied into a document's or a project's `state` to be used, so a document never depends on the package. Beside the arithmetic and text ones (`clamp`, `sum`, `truncate`, …) it carries the ones a template needs to print a stored value:
+
+| Formula                        | Gives                                                                                                                                               |
+| ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `formatDate(value, options)`   | `Intl/formatDate` with no locale named, so the page's locale applies; `""` for a `null`, `undefined` or `""` value instead of a thrown `RangeError` |
+| `formatNumber(value, options)` | `Intl/formatNumber` on the same terms                                                                                                               |
+| `relativeTime(value, unit)`    | `Intl/formatRelativeTime` on the same terms: a signed count of units (`-3`, `"day"`) as "3 days ago". `unit` defaults to `"day"`                    |
+| `notEmpty(value)`              | `false` for `null`, `undefined`, `""`, `"0"`, `0`, `false`, `NaN` and an empty array, `true` otherwise                                              |
+| `orBlank(value)`               | `""` for `null`, `undefined`, `"0"`, `0` and `false`, the value itself otherwise                                                                    |
+| `escapeHtml(text)`             | The text with `&`, `<`, `>`, `"` and `'` written as character references; `""` for a missing value                                                  |
+
+`relativeTime` takes a count because a formula is pure: the distance from now is not a function of its arguments, so a caller computes it and passes it in.
 
 ### 19.4d Pure Standard-Library Method Operators
 

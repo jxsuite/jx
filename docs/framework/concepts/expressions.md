@@ -3,6 +3,9 @@ title: "Expressions"
 description: "Declarative $expression trees in Jx: the blessed operator set, aggregates, conditionals, named formulas, and where expressions may appear."
 spec:
   - spec.md#19
+  - spec.md#19.4c # named formulas, call, calling one from a template, the packaged formulas
+code:
+  - packages/schema/src/dynamic-tag.ts
 ---
 
 # Expressions
@@ -189,6 +192,72 @@ A callee may also be a pure standard-library global through `window#/`, gated by
 ```
 
 Formulas declared in the project file `state` are available on every page. A catalog of ready-made composite formulas ships with Studio's palette. See the [formula catalog](/docs/framework/reference/formulas).
+
+### Calling a formula from a template
+
+A named formula is an ordinary function of state, so a template string calls it directly, with any further arguments written as literals:
+
+```json
+{
+  "tagName": "time",
+  "textContent": "${state.formatDate($map.item.data.date, {\"dateStyle\":\"long\"})}"
+}
+```
+
+`formatDate` here is one of the catalog's formulas, copied into the page's `state`. It formats in the page's own language, and it returns an empty string for a missing date where `Intl/formatDate` alone would throw. `formatNumber`, `relativeTime`, `notEmpty`, `orBlank` and `escapeHtml` are its companions for printing a stored value.
+
+Declaring a formula costs a page nothing. A pure named formula is a function, not state, so `jx build` resolves each call where it resolves the template and then drops the formula. A page whose only state is a formula still builds as plain HTML (see [How compilation works](/docs/framework/build#static-detection)). The formula ships to the browser only when something left for the browser still calls it.
+
+### A parameter's type can describe its input
+
+A parameter's `type` is display text (`{ "text": "number" }`), a JSON Schema, or both in one object. The text is what a reader sees; the schema is what a tool builds an input from. This is how `formatDate` declares its options:
+
+```json
+{
+  "name": "options",
+  "optional": true,
+  "type": {
+    "text": "Intl.DateTimeFormatOptions",
+    "type": "object",
+    "properties": {
+      "dateStyle": { "enum": ["full", "long", "medium", "short"] },
+      "timeStyle": { "enum": ["full", "long", "medium", "short"] }
+    }
+  }
+}
+```
+
+Neither half changes how the formula evaluates.
+
+## Structured tags
+
+A `${…}` in a template string is JavaScript, and it stays JavaScript. Most bindings are far simpler than that, though: a value read from a path, perhaps passed through a formula, perhaps with a fallback. `@jxsuite/schema/dynamic-tag` reads exactly that subset, so a tool can show a binding as fields and write it back unchanged:
+
+```text
+tag     := "!"{0,2} pipe ( ("??" | "||") literal )?
+pipe    := "state." ident "(" pipe ( "," literal )* ")" | path
+path    := root ( "." ident | "?." ident | "[" key "]" | "?.[" key "]" )*
+root    := "state" | "item" | "index" | "$map" | "$page" | "$site"
+key     := string | number
+literal := a JSON value | a single-quoted string
+```
+
+| Expression                                                    | Read as                                    |
+| ------------------------------------------------------------- | ------------------------------------------ |
+| `$map.item.data.title ?? ''`                                  | The row's title, or nothing                |
+| `state.entry.data.seo?.image?.alt ?? ''`                      | A path with optional steps and a fallback  |
+| `state.formatDate($map.item.data.date, {"dateStyle":"long"})` | A path through a formula, with an argument |
+| `!state.entry.data.premium`                                   | A path, negated                            |
+| `state.price * 1.2`                                           | Not a tag: arithmetic                      |
+| `state.a ? state.b : ''`                                      | Not a tag: a ternary                       |
+
+The functions are `parseDynamicTag(expr)`, which takes the text inside one `${…}` and returns the tag or `null`; `printDynamicTag(tag)`; `dynamicTagLabel(tag)`, a readable name from the last meaningful path segment (`featuredImage` is "Featured image"); and `templateSegments(template)`, which splits a whole template string into literal text, tags and custom expressions.
+
+Three rules make it safe to build an editor on:
+
+- **Nothing is guessed.** An expression outside the grammar is `null`, never a near match. Show it as custom code and keep it as written.
+- **A literal keeps its text.** `''` stays `''` and an options object keeps its spacing, because a literal is printed from the text it was read from.
+- **White space is tolerated in four places and written one way.** The reader accepts it around the tag, around the fallback operator, around the commas between arguments and inside the parentheses. The printer writes none around the tag or inside the parentheses, one space on each side of the operator, and a comma and a space between arguments. So print a tag only when you changed it: `templateSegments` hands back each tag's verbatim source for the ones you did not.
 
 ## Reading the event
 

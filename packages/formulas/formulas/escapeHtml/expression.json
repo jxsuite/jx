@@ -1,0 +1,31 @@
+{
+  "operator": "replaceAll",
+  "target": {
+    "operator": "replaceAll",
+    "target": {
+      "operator": "replaceAll",
+      "target": {
+        "operator": "replaceAll",
+        "target": {
+          "operator": "replaceAll",
+          "target": {
+            "operator": "+",
+            "target": "",
+            "value": {
+              "operator": "??",
+              "target": {
+                "$ref": "$args/text"
+              },
+              "value": ""
+            }
+          },
+          "value": ["&", "&amp;"]
+        },
+        "value": ["<", "&lt;"]
+      },
+      "value": [">", "&gt;"]
+    },
+    "value": ["\"", "&quot;"]
+  },
+  "value": ["'", "&#39;"]
+}

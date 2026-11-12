@@ -187,6 +187,51 @@ export const catalog: FormulaCatalogEntry[] = [
     ],
   },
   {
+    description:
+      "Text made safe to place in markup or an attribute value: &, <, >, \" and ' become character references; a missing value gives an empty string.",
+    expression: {
+      operator: "replaceAll",
+      target: {
+        operator: "replaceAll",
+        target: {
+          operator: "replaceAll",
+          target: {
+            operator: "replaceAll",
+            target: {
+              operator: "replaceAll",
+              target: {
+                operator: "+",
+                target: "",
+                value: {
+                  operator: "??",
+                  target: {
+                    $ref: "$args/text",
+                  },
+                  value: "",
+                },
+              },
+              value: ["&", "&amp;"],
+            },
+            value: ["<", "&lt;"],
+          },
+          value: [">", "&gt;"],
+        },
+        value: ['"', "&quot;"],
+      },
+      value: ["'", "&#39;"],
+    },
+    name: "escapeHtml",
+    parameters: [
+      {
+        name: "text",
+        type: {
+          text: "string | null",
+          type: ["string", "null"],
+        },
+      },
+    ],
+  },
+  {
     description: "The first element of an array (index 0), or null when empty.",
     expression: {
       operator: "??",
@@ -201,6 +246,187 @@ export const catalog: FormulaCatalogEntry[] = [
         name: "values",
         type: {
           text: "unknown[]",
+        },
+      },
+    ],
+  },
+  {
+    description:
+      "Format a date or timestamp in the page's locale (Intl.DateTimeFormat, UTC unless options name a timeZone); an empty string for a missing or empty value instead of a thrown RangeError.",
+    expression: {
+      operator: "?:",
+      target: {
+        operator: "===",
+        target: {
+          operator: "??",
+          target: {
+            $ref: "$args/value",
+          },
+          value: "",
+        },
+        value: "",
+      },
+      value: "",
+      initial: {
+        operator: "call",
+        target: {
+          $ref: "window#/Intl/formatDate",
+        },
+        value: [
+          {
+            $ref: "$args/value",
+          },
+          null,
+          {
+            $ref: "$args/options",
+          },
+        ],
+      },
+    },
+    name: "formatDate",
+    parameters: [
+      {
+        name: "value",
+        type: {
+          text: "string | number | null",
+          type: ["string", "number", "null"],
+        },
+        description: "An ISO 8601 date string or a timestamp in milliseconds.",
+      },
+      {
+        name: "options",
+        optional: true,
+        description: "How to write it: a preset pair (dateStyle, timeStyle) or individual fields.",
+        type: {
+          text: "Intl.DateTimeFormatOptions",
+          type: "object",
+          properties: {
+            dateStyle: {
+              enum: ["full", "long", "medium", "short"],
+            },
+            timeStyle: {
+              enum: ["full", "long", "medium", "short"],
+            },
+            weekday: {
+              enum: ["long", "short", "narrow"],
+            },
+            era: {
+              enum: ["long", "short", "narrow"],
+            },
+            year: {
+              enum: ["numeric", "2-digit"],
+            },
+            month: {
+              enum: ["numeric", "2-digit", "long", "short", "narrow"],
+            },
+            day: {
+              enum: ["numeric", "2-digit"],
+            },
+            hour: {
+              enum: ["numeric", "2-digit"],
+            },
+            minute: {
+              enum: ["numeric", "2-digit"],
+            },
+            second: {
+              enum: ["numeric", "2-digit"],
+            },
+            hour12: {
+              type: "boolean",
+            },
+            timeZoneName: {
+              enum: ["short", "long"],
+            },
+            timeZone: {
+              type: "string",
+            },
+          },
+        },
+      },
+    ],
+  },
+  {
+    description:
+      "Format a number in the page's locale (Intl.NumberFormat): grouping, decimals, currency, percent, units; an empty string for a missing or empty value.",
+    expression: {
+      operator: "?:",
+      target: {
+        operator: "===",
+        target: {
+          operator: "??",
+          target: {
+            $ref: "$args/value",
+          },
+          value: "",
+        },
+        value: "",
+      },
+      value: "",
+      initial: {
+        operator: "call",
+        target: {
+          $ref: "window#/Intl/formatNumber",
+        },
+        value: [
+          {
+            $ref: "$args/value",
+          },
+          null,
+          {
+            $ref: "$args/options",
+          },
+        ],
+      },
+    },
+    name: "formatNumber",
+    parameters: [
+      {
+        name: "value",
+        type: {
+          text: "number | string | null",
+          type: ["number", "string", "null"],
+        },
+      },
+      {
+        name: "options",
+        optional: true,
+        description: "How to write it: style, currency, digits, notation.",
+        type: {
+          text: "Intl.NumberFormatOptions",
+          type: "object",
+          properties: {
+            style: {
+              enum: ["decimal", "currency", "percent", "unit"],
+            },
+            currency: {
+              type: "string",
+            },
+            currencyDisplay: {
+              enum: ["symbol", "narrowSymbol", "code", "name"],
+            },
+            unit: {
+              type: "string",
+            },
+            unitDisplay: {
+              enum: ["long", "short", "narrow"],
+            },
+            notation: {
+              enum: ["standard", "compact", "scientific", "engineering"],
+            },
+            minimumFractionDigits: {
+              type: "integer",
+              minimum: 0,
+              maximum: 100,
+            },
+            maximumFractionDigits: {
+              type: "integer",
+              minimum: 0,
+              maximum: 100,
+            },
+            useGrouping: {
+              type: "boolean",
+            },
+          },
         },
       },
     ],
@@ -358,6 +584,116 @@ export const catalog: FormulaCatalogEntry[] = [
     ],
   },
   {
+    description:
+      'True when a value has content: false for a missing value, "", "0", 0, false, NaN and an empty array (the test PHP\'s empty() makes), true for anything else.',
+    expression: {
+      operator: "&&",
+      target: {
+        operator: "&&",
+        target: {
+          operator: "!",
+          target: {
+            operator: "!",
+            target: {
+              $ref: "$args/value",
+            },
+          },
+        },
+        value: {
+          operator: "!==",
+          target: {
+            $ref: "$args/value",
+          },
+          value: "0",
+        },
+      },
+      value: {
+        operator: "!",
+        target: {
+          operator: "&&",
+          target: {
+            operator: "call",
+            target: {
+              $ref: "window#/Array/isArray",
+            },
+            value: [
+              {
+                $ref: "$args/value",
+              },
+            ],
+          },
+          value: {
+            operator: "===",
+            target: {
+              $ref: "$args/value/length",
+            },
+            value: 0,
+          },
+        },
+      },
+    },
+    name: "notEmpty",
+    parameters: [
+      {
+        name: "value",
+        type: {
+          text: "unknown",
+        },
+      },
+    ],
+  },
+  {
+    description:
+      'The value as given, or an empty string when it is missing, "0", 0 or false (what a PHP template prints for a field it reads as unset).',
+    expression: {
+      operator: "?:",
+      target: {
+        operator: "||",
+        target: {
+          operator: "||",
+          target: {
+            operator: "===",
+            target: {
+              $ref: "$args/value",
+            },
+            value: "0",
+          },
+          value: {
+            operator: "===",
+            target: {
+              $ref: "$args/value",
+            },
+            value: 0,
+          },
+        },
+        value: {
+          operator: "===",
+          target: {
+            $ref: "$args/value",
+          },
+          value: false,
+        },
+      },
+      value: "",
+      initial: {
+        operator: "??",
+        target: {
+          $ref: "$args/value",
+        },
+        value: "",
+      },
+    },
+    name: "orBlank",
+    parameters: [
+      {
+        name: "value",
+        type: {
+          text: "unknown",
+        },
+      },
+    ],
+  },
+  {
     description: "part / whole as a percentage (0 when the whole is 0 or missing).",
     expression: {
       operator: "?:",
@@ -391,6 +727,60 @@ export const catalog: FormulaCatalogEntry[] = [
         name: "whole",
         type: {
           text: "number",
+        },
+      },
+    ],
+  },
+  {
+    description:
+      'A signed count of units as a relative time in the page\'s locale (Intl.RelativeTimeFormat): -3 and "day" give "3 days ago"; an empty string for a missing or empty value.',
+    expression: {
+      operator: "?:",
+      target: {
+        operator: "===",
+        target: {
+          operator: "??",
+          target: {
+            $ref: "$args/value",
+          },
+          value: "",
+        },
+        value: "",
+      },
+      value: "",
+      initial: {
+        operator: "call",
+        target: {
+          $ref: "window#/Intl/formatRelativeTime",
+        },
+        value: [
+          {
+            $ref: "$args/value",
+          },
+          {
+            $ref: "$args/unit",
+          },
+          null,
+        ],
+      },
+    },
+    name: "relativeTime",
+    parameters: [
+      {
+        name: "value",
+        type: {
+          text: "number | null",
+          type: ["number", "null"],
+        },
+        description: "How many units away: negative for the past, positive for the future.",
+      },
+      {
+        name: "unit",
+        default: "day",
+        type: {
+          text: "Intl.RelativeTimeFormatUnit",
+          type: "string",
+          enum: ["year", "quarter", "month", "week", "day", "hour", "minute", "second"],
         },
       },
     ],

@@ -1,0 +1,23 @@
+{
+  "name": "relativeTime",
+  "description": "A signed count of units as a relative time in the page's locale (Intl.RelativeTimeFormat): -3 and \"day\" give \"3 days ago\"; an empty string for a missing or empty value.",
+  "parameters": [
+    {
+      "name": "value",
+      "type": {
+        "text": "number | null",
+        "type": ["number", "null"]
+      },
+      "description": "How many units away: negative for the past, positive for the future."
+    },
+    {
+      "name": "unit",
+      "default": "day",
+      "type": {
+        "text": "Intl.RelativeTimeFormatUnit",
+        "type": "string",
+        "enum": ["year", "quarter", "month", "week", "day", "hour", "minute", "second"]
+      }
+    }
+  ]
+}
