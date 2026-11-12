@@ -81,7 +81,7 @@ describe("stripEventHandlers", () => {
     expect(stripEventHandlers(42)).toBe(42);
   });
 
-  test("drops server-timed state but preserves state, style, attributes, $media", () => {
+  test("keeps state whole, a server-timed entry included, with style, attributes and $media", () => {
     const node = {
       $media: { "--md": "(min-width: 768px)" },
       attributes: { "data-x": "1" },
@@ -92,7 +92,9 @@ describe("stripEventHandlers", () => {
     expect(stripEventHandlers(node)).toEqual({
       $media: { "--md": "(min-width: 768px)" },
       attributes: { "data-x": "1" },
-      state: { count: 0 }, // Server-timed entry dropped.
+      /* The entry stays: it was dropped here once, and every binding that read it then read a name
+         the scope did not have. Whether it runs is the renderer's to decide (studio.md §4.5). */
+      state: { count: 0, fetchUser: { timing: "server" } },
       style: { color: "red" },
       tagName: "div",
     });

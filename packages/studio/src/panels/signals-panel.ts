@@ -76,6 +76,16 @@ import type {
 import { fetchPluginSchema, pluginSchemaCache } from "../services/code-services";
 import { getExtensions, loadExtensions } from "../format/format-host";
 import { optionalStringArg, stringProperty } from "../commands/command-args";
+import { runActiveReported } from "../commands/run-reported";
+import {
+  documentStateValue,
+  isPlainStateEntry,
+  parseStateValue,
+  stateValueControl,
+  stateValueText,
+} from "../canvas/state-values";
+import { FAILED_NOTE, NOT_RUN_NOTE, PENDING_NOTE } from "../canvas/iframe-protocol";
+import type { EntryStatus } from "../canvas/iframe-protocol";
 import type { AnyCommand, CommandRegistry } from "../commands/registry";
 import { isMediaFormat } from "../utils/studio-utils";
 import type {
@@ -1446,7 +1456,13 @@ function editorFields(S: SignalsPanelState, name: string, def: SignalDef): Signa
     case "state": {
       // A server function has no `$prototype`, so it is read as state: its way to the document's
       // Server script hangs here.
-      return [head, ...stateFields(S, name, def), ...scriptFields(name, def)];
+      const raw = S.document.state?.[name];
+      return [
+        head,
+        ...stateFields(S, name, def),
+        ...(isPlainStateEntry(raw) ? [canvasValueField(name, raw, S.ui?.stateValues[name])] : []),
+        ...scriptFields(name, def),
+      ];
     }
     case "computed": {
       return [head, ...computedFields(name, def)];
@@ -1565,7 +1581,47 @@ function summary(
   def: SignalDef,
   live: JsonValue | undefined,
   resolved: boolean,
+  standing: Standing = {},
 ): Pick<SignalRowView, "summary" | "summaryTitle" | "summaryTone"> {
+  /* A value set for the canvas comes first: it is what the canvas is drawing, and a row that went
+     on showing the document's own value would be describing a page nobody is looking at. */
+  if (standing.set !== undefined) {
+    const text = stateValueText(standing.set);
+    return {
+      // An empty text is a value too, and `= ` alone reads as a row that failed to draw one.
+      summary: `= ${text === "" ? '""' : text}`,
+      /* The value again, whole: the slot beside a name holds about ten characters, so anything
+         longer is drawn cut off and this is where it is read. */
+      summaryTitle: `Set for the canvas: ${text === "" ? "an empty text" : text}. The document is unchanged.`,
+      summaryTone: "override",
+    };
+  }
+  /* Then what the canvas could not get (studio.md §4.5): a request or a server function with no
+     answer says which of the three reasons it is, instead of a `null` that reads as a value. In a
+     word or two, because that is what the slot holds: "Could not load" and "Runs on the live page"
+     were both drawn cut off in it. The phrase is the tooltip's and the editor's last line. */
+  const { status } = standing;
+  if (status?.status === "failed") {
+    return {
+      summary: ROW_FAILED,
+      summaryTitle: status.error ?? FAILED_NOTE,
+      summaryTone: "failed",
+    };
+  }
+  if (status?.status === "not-run") {
+    return {
+      summary: ROW_NOT_RUN,
+      summaryTitle: "The canvas does not run this entry. It runs on the live page.",
+      summaryTone: "not-run",
+    };
+  }
+  if (status?.status === "pending") {
+    return {
+      summary: PENDING_NOTE,
+      summaryTitle: "The canvas is waiting for this entry's answer",
+      summaryTone: "pending",
+    };
+  }
   const holdsNoValue =
     defCategory(def) === "function" ||
     (def.$expression != null && isActionExpression(def.$expression));
@@ -1578,6 +1634,105 @@ function summary(
     summaryTitle: "What this resolved to on the canvas",
     summaryTone: unwrapSignal(live) === null ? "pending" : "value",
   };
+}
+
+/** A failed entry's row summary: {@link FAILED_NOTE} in a word. */
+const ROW_FAILED = "Failed";
+
+/** A not-run entry's row summary: {@link NOT_RUN_NOTE} in two. */
+const ROW_NOT_RUN = "Not run";
+
+/** What the canvas says about one entry beyond its value. */
+interface Standing {
+  /** Where a remote entry stands, as the frame last reported it. */
+  status?: EntryStatus | undefined;
+  /** The value set for the canvas, when one is. */
+  set?: JsonValue | undefined;
+}
+
+/**
+ * The control that sets a plain entry's value for the canvas (`canvas.setStateValue`, studio.md
+ * §4.5): a picker for a boolean or an entry with declared options, a text field for anything else.
+ * Empty is "the document's own value", which is also what clearing means, so the field needs no
+ * second control to undo itself; the row carries a button for that all the same, since the row is
+ * what is on screen when the editor is closed.
+ *
+ * A value that IS the document's own clears too, whichever option or text says it. Kept, it would
+ * mark the row as set while the canvas drew exactly what the document says, and the mark exists to
+ * say the two differ.
+ */
+function canvasValueField(
+  name: string,
+  def: JxStateDefinition | undefined,
+  set: JsonValue | undefined,
+): SignalFieldView {
+  const control = stateValueControl(def);
+  const value = set === undefined ? "" : stateValueText(set);
+  const own = documentStateValue(def);
+  const write = (text: string): void => {
+    const parsed = text === "" ? null : parseStateValue(text, def);
+    const same = own !== undefined && JSON.stringify(parsed) === JSON.stringify(own);
+    void runActiveReported(
+      "canvas.setStateValue",
+      { key: name, value: same ? null : parsed },
+      "Data",
+    );
+  };
+  const placeholder = `The document's: ${control.documentText || "nothing"}`;
+  if (control.choices) {
+    return field(
+      {
+        key: "canvasValue",
+        kind: "select",
+        label: "On canvas",
+        options: [
+          { label: placeholder, value: "" },
+          ...control.choices.map((choice) => ({ label: choice, value: choice })),
+        ],
+        prop: "canvasValue",
+        signal: name,
+        value,
+      },
+      { live: "none", value, write },
+    );
+  }
+  return textField(name, "canvasValue", "On canvas", value, write, {
+    placeholder,
+    prop: "canvasValue",
+  });
+}
+
+/**
+ * Why the canvas has no answer for an entry, as the last line of its editor: the reason a failed
+ * one failed, and the whole phrase for one the canvas does not run, whose row has room for two
+ * words of it.
+ */
+function failureFields(name: string, status: EntryStatus | undefined): SignalFieldView[] {
+  if (status?.status === "not-run") {
+    return [
+      field({
+        key: "canvasNotRun",
+        kind: "note",
+        label: "On canvas",
+        prop: "canvasNotRun",
+        signal: name,
+        value: `${NOT_RUN_NOTE}. The canvas does not run this entry.`,
+      }),
+    ];
+  }
+  if (status?.status !== "failed") {
+    return [];
+  }
+  return [
+    field({
+      key: "canvasFailure",
+      kind: "note",
+      label: "On canvas",
+      prop: "canvasFailure",
+      signal: name,
+      value: `${FAILED_NOTE}: ${status.error ?? "no reason was given"}. Refresh asks again.`,
+    }),
+  ];
 }
 
 /** The five categories, in the order the panel lists them. */
@@ -1669,6 +1824,7 @@ export function signalsView(S: SignalsPanelState, ctx: SignalsPanelCtx): Signals
     const rows: SignalRowView[] = items.map(([name, def]) => {
       const expanded = isDataRowExpanded(name);
       const live = scope[name];
+      const set = isPlainStateEntry(defs[name]) ? S.ui?.stateValues[name] : undefined;
       if (expanded) {
         islands.set(`${name}/tree`, (host) => {
           paintDataTree(host, unwrapSignal(live), name, repaint);
@@ -1678,13 +1834,23 @@ export function signalsView(S: SignalsPanelState, ctx: SignalsPanelCtx): Signals
         badge: defBadgeLabel(def),
         category: defCategory(def),
         categoryLabel: label,
+        clearLabel: `Use the document's value of ${name}`,
         deleteLabel: `Delete ${name}`,
         expanded,
-        fields: expanded ? editorFields(S, name, def) : [],
+        fields: expanded
+          ? [
+              ...editorFields(S, name, def),
+              ...failureFields(name, S.canvas?.bindings?.entries[name]),
+            ]
+          : [],
         key: name,
         liveLabel: "Resolved to",
         name,
-        ...summary(name, def, live, liveScope !== null),
+        overridden: set !== undefined,
+        ...summary(name, def, live, liveScope !== null, {
+          set,
+          status: S.canvas?.bindings?.entries[name],
+        }),
       };
     });
     categories.push({ key, label: `${label} (${items.length})`, open: !collapsed.has(key), rows });
@@ -1824,6 +1990,9 @@ const ACTIONS: SignalsActions = {
   checkCell: (signal, fieldKey, row, cell, checked) =>
     planFor(signal, fieldKey)?.cellCheck?.(row, cell, checked),
   checkField: (signal, fieldKey, checked) => planFor(signal, fieldKey)?.check?.(checked),
+  clearValue: (name) => {
+    void runActiveReported("canvas.setStateValue", { key: name, value: null }, "Data");
+  },
   commitField: (signal, fieldKey, value) => commitNow(signal, fieldKey, value),
   dropChip: (signal, fieldKey, chip) => planFor(signal, fieldKey)?.dropChip?.(chip),
   dropRow: (signal, fieldKey, row) => planFor(signal, fieldKey)?.dropRow?.(row),

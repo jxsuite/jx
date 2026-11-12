@@ -112,6 +112,25 @@
       "opacity": "1",
       "animation": "jx-signals-pulse 1.5s ease-in-out infinite"
     },
+    "& span[part=\"summary\"][data-tone=\"override\"]": {
+      "$description": "A value SET FOR THE CANVAS, in the accent and at full strength: it is the one summary that is neither the document's definition nor what the page resolved it to, and the reader must not take it for either. It does not shrink below its slot: `= false` drawn as `= fa\u2026` says a value is set and hides which, and the row has the name's slack to give (next rule). A value longer than the slot is cut at the slot's width and read whole in the tooltip.",
+      "flexShrink": "0",
+      "color": "var(--accent)",
+      "fontWeight": "600"
+    },
+    "& [part=\"entry\"][data-overridden] [part=\"name\"]": {
+      "$description": "A row with a set value carries two things the others do not, the value and the button that clears it, in a Navigator no wider. The name gives up the room: it elides sooner here, and only here.",
+      "minWidth": "4em"
+    },
+    "& span[part=\"summary\"][data-tone=\"failed\"]": {
+      "$description": "A request or a server function that failed on the canvas. The reason is the summary's tooltip and the first line under the entry's editor.",
+      "color": "var(--danger)"
+    },
+    "& span[part=\"summary\"][data-tone=\"not-run\"]": {
+      "$description": "Something the canvas does not run at all (a request that is not a GET, a server function on a host with no backend). Dim and italic like an absence, because it is one. Two words (`Not run`), because the slot holds two: the phrase is the tooltip's and the editor's.",
+      "fontStyle": "italic",
+      "opacity": "0.7"
+    },
     "& [part=\"delete\"]": {
       "flexShrink": "0",
       "visibility": "hidden",
@@ -119,6 +138,10 @@
     },
     "& [part=\"entry\"]:hover [part=\"delete\"], & [part=\"entry\"]:focus-within [part=\"delete\"]": {
       "visibility": "visible"
+    },
+    "& [part=\"clear-value\"]": {
+      "flexShrink": "0",
+      "color": "var(--accent)"
     },
     "& [part=\"editor\"]": {
       "display": "flex",
@@ -438,7 +461,8 @@
                         "part": "entry",
                         "data-signal": "${$map.item.key}",
                         "data-category": "${$map.item.category}",
-                        "data-expanded": "${$map.item.expanded ? '' : null}"
+                        "data-expanded": "${$map.item.expanded ? '' : null}",
+                        "data-overridden": "${$map.item.overridden ? '' : null}"
                       },
                       "children": [
                         {
@@ -491,6 +515,56 @@
                                 ]
                               }
                             ]
+                          }
+                        },
+                        {
+                          "$description": "A value set for the canvas is a fact about what the author is LOOKING AT, not about the document, so the row that carries one says so at rest and holds the way back: the summary reads the set value in the accent, and this button puts the document's own value back. Drawn only for a row that has one, by a `$switch`, so a list of forty entries does not carry forty hidden buttons; and never hidden behind hover like the delete beside it, because a canvas drawn with a value nobody remembers setting is the thing this control exists to prevent.",
+                          "tagName": "span",
+                          "attributes": {
+                            "part": "clear-slot",
+                            "role": "none"
+                          },
+                          "style": {
+                            "display": "contents"
+                          },
+                          "$switch": {
+                            "$ref": "$map/item/overridden"
+                          },
+                          "cases": {
+                            "true": {
+                              "tagName": "jx-action-button",
+                              "attributes": {
+                                "part": "clear-value",
+                                "data-signal": "${$map.item.key}"
+                              },
+                              "$props": {
+                                "size": "sm",
+                                "quiet": true,
+                                "icon": "arrow-u-up-left",
+                                "label": {
+                                  "$ref": "$map/item/clearLabel"
+                                },
+                                "hint": {
+                                  "$ref": "$map/item/clearLabel"
+                                }
+                              },
+                              "onclick": {
+                                "$prototype": "Function",
+                                "body": [
+                                  {
+                                    "operator": "call",
+                                    "target": {
+                                      "$ref": "#/state/clearValue"
+                                    },
+                                    "value": [
+                                      {
+                                        "$ref": "$map/item/key"
+                                      }
+                                    ]
+                                  }
+                                ]
+                              }
+                            }
                           }
                         },
                         {

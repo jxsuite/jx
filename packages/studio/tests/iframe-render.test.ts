@@ -976,6 +976,10 @@ describe("applyBindingDisplay", () => {
       "[data-jx-active-block] data[data-jx-tag]:not(:has(> *))::before",
       ':root[data-jx-binding-display="names"] data[data-jx-tag]:not(:has(> *))',
       ':root[data-jx-binding-display="names"] data[data-jx-tag]:not(:has(> *))::before',
+      // And the unresolved states (studio.md §4.5), each named by the attribute that carries it.
+      "data[data-jx-tag][data-jx-status]",
+      'data[data-jx-tag][data-jx-status="failed"]',
+      "data[data-jx-tag][data-jx-status]:empty::before",
     ]);
     expect(selectorsWith(EDIT_PLACEHOLDER_CSS, "data-jx-bound-field")).toEqual([
       HELD,

@@ -16,7 +16,10 @@ import { beforeAll, describe, expect, test } from "bun:test";
 import { bootStudio } from "./studio-shell-fixture";
 import { activeTab, workspace } from "../src/workspace/workspace";
 import { getPlatform } from "../src/platform";
+import { bakeRepeaterSources } from "../src/canvas/repeater-sources";
+import { remoteSession } from "../src/canvas/remote-data";
 import { shell } from "../src/shell";
+import { renderOnly } from "../src/store";
 import { isJsonObject } from "@jxsuite/schema/guards";
 import { workspaceHomeTabId } from "../src/workspace/workspace-ids";
 import { projectConfigPath, isProjectConfigPath } from "../src/tabs/tab";
@@ -201,6 +204,51 @@ describe("the Data panel the commands drive", () => {
     refresh?.click();
     await flush();
     expect(shell.leftTab).toBe("data");
+  });
+
+  test("Refresh starts a new remote session, says it is refreshing, and asks the backend for the lists again", async () => {
+    const tab = activeTab.value!;
+    tab.doc.document.state = { count: { default: 0, type: "number" } };
+    // No frame answers in this fixture, so a Refresh an earlier test pressed is still out.
+    tab.session.canvas.refreshing = false;
+    await api().run("view.setActivity", { tab: "data" });
+    renderOnly("leftPanel");
+    await flush();
+    // A collection a list reads, resolved once and kept until something says the content changed.
+    const platform = getPlatform();
+    const { resolveClass } = platform;
+    let asked = 0;
+    platform.resolveClass = () => {
+      asked += 1;
+      return Promise.resolve([{ id: "first" }]);
+    };
+    const page = {
+      state: { shows: { $prototype: "ContentCollection", $src: "@x/C.class.json" } },
+      tagName: "main",
+    };
+    try {
+      await bakeRepeaterSources(page, ["shows"]);
+      await bakeRepeaterSources(page, ["shows"]);
+      expect(asked).toBe(1);
+      const before = remoteSession(tab);
+      // The document is clean: a Refresh is a verb of its own, whatever the tab's edits.
+      expect(tab.doc.dirty).toBe(false);
+      document.querySelector<HTMLElement>('#left-panel [part="refresh"] [part="control"]')?.click();
+      // Said before the render the click starts, and ended by the frame's report, never a timer.
+      expect(tab.session.canvas.refreshing).toBe(true);
+      // Every answer the tab held is forgotten: the next render's frame fetches again.
+      expect(remoteSession(tab)).not.toBe(before);
+      await bakeRepeaterSources(page, ["shows"]);
+      expect(asked).toBe(2);
+    } finally {
+      if (resolveClass) {
+        platform.resolveClass = resolveClass;
+      } else {
+        delete platform.resolveClass;
+      }
+      tab.session.canvas.refreshing = false;
+      await flush();
+    }
   });
 });
 

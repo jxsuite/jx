@@ -1,19 +1,19 @@
 /**
  * Strip `on*` event-handler bindings from a Jx document tree (returns a shallow-rebuilt copy). Used
- * to neutralize handlers before edit/design rendering so the canvas never wires live behavior, and
- * to drop `timing: "server"` state entries the canvas can't run.
+ * to neutralize handlers before edit/design rendering so the canvas never wires live behavior.
+ *
+ * State passes through whole, `timing: "server"` entries included. They were dropped here once,
+ * which left every binding that read one reading a name the scope did not have; whether one runs is
+ * the renderer's to decide (the runtime's skip switch, or the canvas frame's once-only answer to
+ * each lookup, studio.md §4.5), and either way the entry is there, holding `null` until it has an
+ * answer.
  *
  * Lives in its own dependency-light module (it pulls only the pure `@jxsuite/schema/guards`
  * predicate) so the slim canvas-iframe subtree renderer can import it without dragging in the
  * editor's reactive `store.ts`; `store.ts` re-exports it for the legacy in-realm patcher.
  */
 
-import {
-  isEventBinding,
-  isJsonObject,
-  isNodeObject,
-  isNonNullObject,
-} from "@jxsuite/schema/guards";
+import { isEventBinding, isNodeObject, isNonNullObject } from "@jxsuite/schema/guards";
 import type { JxDocumentValue, JxMutableNode } from "@jxsuite/schema/types";
 
 /**
@@ -36,9 +36,9 @@ export function isDocumentContainer(
 }
 
 /**
- * Strip all `on*` event-handler properties (and server-timed state) from a document tree. Arrays
- * are stripped member by member, and primitives and a cleared (`undefined`) key return unchanged,
- * so the walk can recurse through any document value.
+ * Strip all `on*` event-handler properties from a document tree. Arrays are stripped member by
+ * member, and primitives and a cleared (`undefined`) key return unchanged, so the walk can recurse
+ * through any document value.
  */
 export function stripEventHandlers(node: JxMutableNode): JxMutableNode;
 export function stripEventHandlers(node: JxDocumentValue): JxDocumentValue;
@@ -64,15 +64,6 @@ export function stripEventHandlers(node: JxDocumentValue | undefined): JxDocumen
         cases[ck] = stripEventHandlers(cv);
       }
       out.cases = cases;
-    } else if (k === "state" && isDocumentContainer(v)) {
-      const state: RebuiltNode = {};
-      for (const [sk, sv] of Object.entries(v)) {
-        if (isJsonObject(sv) && sv.timing === "server") {
-          continue;
-        }
-        state[sk] = sv;
-      }
-      out.state = state;
     } else {
       out[k] = v;
     }

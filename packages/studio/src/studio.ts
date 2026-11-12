@@ -80,7 +80,6 @@ import { consumePatchedDocument, initCanvasPatcher } from "./canvas/canvas-patch
 import {
   setKeymapSource,
   commitActiveEditSession,
-  allowAutoRequestsOnNextRender,
   getEditSnapshot,
   isCaretActive,
   postActiveRowsToLiveHosts,
@@ -152,6 +151,7 @@ import { invalidateCollectionPages, resetCollectionPages } from "./content/colle
 import { invalidatePageSummaries } from "./content/page-summaries";
 import { invalidateEntrySummaries, noteSavedEntry } from "./content/entry-summaries";
 import { invalidateRepeaterSources } from "./canvas/repeater-sources";
+import { refreshRemoteData } from "./canvas/remote-data";
 import { commitEntryTextField, entryFields } from "./content/entry-fields";
 import { contentCacheDrops } from "./content/content-collections";
 import { resetWritingBanners } from "./content/writing-banner";
@@ -859,6 +859,8 @@ function installPaneRenderEffects(paneId: string): void {
       void tab.session.ui.previewProps;
       // The row cap decides which nodes exist, so a new one is a render (`canvas.setRepeaterRows`).
       void tab.session.ui.repeaterRows;
+      // A state value set for the canvas is in the scope the render builds (`canvas.setStateValue`).
+      void tab.session.ui.stateValues;
       void tab.session.ui.showLayout;
     }
     // Project-level render inputs: the stylebook catalogue's filters are shell state, so a change
@@ -976,24 +978,25 @@ leftPanelMod.mount({
   registerElementsDnD,
   registerLayersDnD,
   renderCanvas: () => renderCanvas(),
-  // The Data panel's Refresh: a canvas re-render that ALSO lets automatic `Request` state entries
-  // Fetch. Edit/design suppress them (a full render re-resolves every entry, so authoring would
-  // Refetch constantly); re-firing them on demand is what that button is for.
+  /* The Data panel's Refresh (studio.md §5.6). The canvas runs each of a document's requests and
+     server functions once and keeps the answer for as long as the tab is open, so fetching again
+     is a verb: forget what the tab holds, and draw it. */
   refreshData: () => {
-    // ONE read of the focus, shared by the arm and the render. The Data panel is a Navigator
-    // Surface, so its subject genuinely is the focused pane — but `allowAutoRequestsOnNextRender()`
-    // And `renderCanvas()` each used to resolve that for themselves, and two resolutions of the
-    // Same fact are two facts: arming a pane and then rendering a different one is a Refresh that
-    // Refreshes nothing.
+    /* ONE read of the focus, shared by the tab and the render. The Data panel is a Navigator
+       surface, so its subject genuinely is the focused pane, and two resolutions of the same
+       fact are two facts: forgetting one tab's answers and then drawing another is a Refresh
+       that refreshes nothing. */
     const paneId = workspace.activePaneId;
-    allowAutoRequestsOnNextRender(paneId);
-    // Say so BEFORE the render, and let the iframe's `dataScope` reply be what stops saying it.
-    // The button used to fire and repaint 200ms later on a timer, which reported "done" over the
-    // Old values for anything slower than that — a Refresh that visibly did nothing.
     const tab = activeTab.value;
     if (tab) {
+      refreshRemoteData(tab);
+      /* Say so BEFORE the render, and let the frame's report be what stops saying it. The button
+         used to fire and repaint 200ms later on a timer, which reported "done" over the old
+         values for anything slower than that: a Refresh that visibly did nothing. */
       tab.session.canvas.refreshing = true;
     }
+    // The collections a repeater reads are resolved by the backend, and are asked for again too.
+    invalidateRepeaterSources();
     renderCanvas(paneId);
   },
   mountSignalsPanel,
