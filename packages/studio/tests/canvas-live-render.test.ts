@@ -456,6 +456,96 @@ describe("resolveCanvasDocument", () => {
     expect(preview.renderDoc.state?.nav).toEqual({ id: "nav" });
   });
 
+  test("a host with no backend names the collections it cannot resolve, and nothing otherwise", async () => {
+    resetStudioState({ isSiteProject: true, projectConfig: {} });
+    invalidateRepeaterSources();
+    const page: JxMutableNode = {
+      children: [
+        { $prototype: "Array", items: { $ref: "#/state/rows" }, map: { tagName: "li" } },
+        { $prototype: "Array", items: { $ref: "#/state/more" }, map: { tagName: "li" } },
+        { children: "${state.rows.map((row) => row.t)}", tagName: "ul" },
+      ],
+      state: {
+        more: { $prototype: "ContentCollection", $src: "@x/C.class.json", contentType: "more" },
+        rows: { $prototype: "ContentCollection", $src: "@x/C.class.json", contentType: "rows" },
+      },
+      tagName: "main",
+    };
+    // The cloud: no `resolveClass`. Both collections are named once each, however many lists read them.
+    installMockPlatform();
+    const cloud = await resolve(page, { canvasMode: "edit", documentPath: "pages/index.json" });
+    expect(cloud.unresolvedSources.toSorted()).toEqual(["more", "rows"]);
+    // The entries reach the frame as written, so each list draws its template row.
+    expect(cloud.renderDoc.state?.rows).toEqual(page.state?.rows);
+
+    installMockPlatform({ resolveClass: () => Promise.resolve([{ t: "first" }]) });
+    const local = await resolve(page, { canvasMode: "edit", documentPath: "pages/index.json" });
+    expect(local.unresolvedSources).toEqual([]);
+    // The list a computed child reads is resolved before the render, like a repeater's.
+    expect(local.renderDoc.state?.rows).toEqual([{ t: "first" }]);
+    const plain = await resolve({ tagName: "div" }, { canvasMode: "edit" });
+    expect(plain.unresolvedSources).toEqual([]);
+  });
+
+  test("a state value set for the canvas is drawn in place of the document's, which is untouched", async () => {
+    const component: JxMutableNode = {
+      children: [{ $switch: { $ref: "#/state/view" }, cases: {}, tagName: "div" }],
+      state: {
+        count: 1,
+        view: { default: "closed", enum: ["closed", "open"], type: "string" },
+      },
+      tagName: "x-menu",
+    };
+    const tab = resetWorkspaceWithTab(component, { documentPath: "components/x-menu.json" });
+    tab.session.ui.canvasMode = "edit";
+    tab.session.ui.stateValues = { count: 9, gone: true, view: "open" };
+    const before = JSON.stringify(tab.doc.document);
+    const edit = await resolveCanvasDocument(tab.doc.document, tab);
+    expect(edit.renderDoc.state?.view).toEqual({
+      default: "open",
+      enum: ["closed", "open"],
+      type: "string",
+    });
+    expect(edit.renderDoc.state?.count).toEqual({ default: 9 });
+    // A value whose entry the document does not declare is applied to nothing.
+    expect(edit.renderDoc.state).not.toHaveProperty("gone");
+    // Not written: the document holds what it held, and is still clean.
+    expect(JSON.stringify(tab.doc.document)).toBe(before);
+    expect(tab.doc.dirty).toBe(false);
+
+    // Cleared, the next render is the document's own again.
+    tab.session.ui.stateValues = {};
+    const cleared = await resolveCanvasDocument(tab.doc.document, tab);
+    expect(cleared.renderDoc.state?.view).toEqual(component.state?.view);
+
+    // Preview draws the page as it ships.
+    tab.session.ui.stateValues = { view: "open" };
+    const preview = await resolveCanvasDocument(tab.doc.document, tab, "preview");
+    expect(preview.renderDoc.state?.view).toEqual(component.state?.view);
+  });
+
+  test("a state value set for the canvas wins over a component's test value for the same entry", async () => {
+    const tab = resetWorkspaceWithTab(
+      {
+        children: [{ tagName: "h3", textContent: "${state.title}" }],
+        state: { count: { default: 3, type: "number" }, other: "kept", title: "Hello" },
+        tagName: "x-card",
+      },
+      { documentPath: "components/x-card.json" },
+    );
+    tab.session.ui.canvasMode = "edit";
+    // Both stores hold a value for `count` and `title`; only the test values hold one for `other`.
+    tab.session.ui.previewProps = { count: 7, other: "Test drive", title: "Test drive" };
+    tab.session.ui.stateValues = { count: 9, title: "On canvas" };
+    const resolved = await resolveCanvasDocument(tab.doc.document, tab);
+    const { state } = resolved.renderDoc;
+    // Applied last, so the author's own choice on the canvas is what is drawn (studio.md §4.5).
+    expect(state?.count).toEqual({ default: 9, type: "number" });
+    expect(state?.title).toEqual({ default: "On canvas" });
+    // An entry with no set value still takes its test value.
+    expect(state?.other).toBe("Test drive");
+  });
+
   test("registers the components a component uses, transitively", async () => {
     /* A card renders a panel, which renders an icon: none of the three declares `$elements`, and
        only the card appears in the page. Its panel used to stay an empty, unregistered tag. */

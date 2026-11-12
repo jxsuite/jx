@@ -29,6 +29,7 @@ import type {
   InsertZone,
   IframeToParent,
   ParentToIframe,
+  RemoteResult,
 } from "../src/canvas/iframe-protocol";
 import type { JxDocOp } from "../src/tabs/patch-ops";
 import type { IframeChannel, postMessageChannel } from "../src/canvas/iframe-channel";
@@ -38,6 +39,7 @@ import type { CanvasPanel } from "../src/types";
 import type { Tab } from "../src/tabs/tab";
 import { primarySelection } from "../src/tabs/selection";
 import { setPatchConsumer } from "../src/tabs/patch-ops";
+import { refreshRemoteData, remoteSession } from "../src/canvas/remote-data";
 import { mutateUpdateProp, transactDoc } from "../src/tabs/transact";
 import { registerCanvasSurface } from "../src/canvas/surface-registry";
 
@@ -180,6 +182,7 @@ const DEFAULT_RESOLVED: ResolvedFixture = {
   rowSamples: {},
   scripts: {},
   siteStyle: null,
+  unresolvedSources: [],
 };
 let resolved: ResolvedFixture = structuredClone(DEFAULT_RESOLVED);
 let resolveCalls = 0;
@@ -193,7 +196,6 @@ void mock.module("../src/canvas/canvas-live-render", () => ({
 const {
   adoptCanvasPreviewMode,
   adoptDragSession,
-  allowAutoRequestsOnNextRender,
   beginDragSession,
   canvasIdleBlockers,
   clearDropIndicator,
@@ -315,27 +317,41 @@ describe("mountIframeCanvas", () => {
     }
   });
 
-  test("Data-panel Refresh arms allowAutoRequests for exactly one render", async () => {
-    resetWorkspaceWithTab();
+  test("an editable render carries the tab's remote session, and Refresh starts another", async () => {
+    const tab = resetWorkspaceWithTab();
     const canvasEl = document.createElement("div");
     document.body.append(canvasEl);
 
-    // Unarmed: edit/design renders omit the flag, so the runtime keeps auto-requests suppressed.
     await mountIframeCanvas(1, { tagName: "div" }, canvasEl);
-    channels[0]!.deliver({ kind: "ready" });
+    channels[0]!.deliver({ capabilities: ["bindingStatus"], kind: "ready" });
     const first = channels[0]!.posts.find(ofKind("render"))!;
-    expect(first.allowAutoRequests).toBeUndefined();
+    // The one host of the tab is the one that fetches, and the session starts with no answers.
+    expect(first.remote).toEqual({
+      fetch: true,
+      results: {},
+      server: false,
+      session: remoteSession(tab),
+    });
 
-    // Armed by Refresh: the NEXT render of THAT pane carries it.
-    allowAutoRequestsOnNextRender(PRIMARY_PANE);
+    // An answer the frame reports is kept, and every later render of the tab carries it.
+    const answer: RemoteResult = { ok: true, value: [1, 2] };
+    channels[0]!.deliver({
+      key: "request {}",
+      kind: "remoteSettled",
+      result: answer,
+      session: first.remote!.session,
+    });
     await mountIframeCanvas(2, { tagName: "div" }, canvasEl);
-    const renders = postsOfKind(channels[0]!, "render");
-    expect(renders.at(-1)!.allowAutoRequests).toBe(true);
+    const second = postsOfKind(channels[0]!, "render").at(-1)!;
+    expect(second.remote!.session).toBe(first.remote!.session);
+    expect(second.remote!.results).toEqual({ "request {}": answer });
 
-    // One-shot: a later render (e.g. an escalation) must not inherit it.
+    // Refresh is the verb that fetches again: a new session, holding nothing.
+    refreshRemoteData(tab);
     await mountIframeCanvas(3, { tagName: "div" }, canvasEl);
-    const after = postsOfKind(channels[0]!, "render");
-    expect(after.at(-1)!.allowAutoRequests).toBeUndefined();
+    const third = postsOfKind(channels[0]!, "render").at(-1)!;
+    expect(third.remote!.session).not.toBe(first.remote!.session);
+    expect(third.remote!.results).toEqual({});
   });
 
   /*
@@ -413,65 +429,120 @@ describe("mountIframeCanvas", () => {
       expect(resolveCalls).toBe(2);
     });
 
-    test("Refresh's allowAutoRequests reaches every artboard of the pass, then nothing", async () => {
+    test("one artboard of a pass fetches the tab's remote data, and the others wait", async () => {
       resetWorkspaceWithTab();
-      // Armed once, "the next render" means the whole pass. Consuming the flag per host meant
-      // Whichever artboard mounted first swallowed it and the rest kept auto-requests suppressed —
-      // The Data activity's Refresh refreshed one artboard out of N.
-      allowAutoRequestsOnNextRender(PRIMARY_PANE);
+      /* Every artboard draws the same document, so each fetching for itself is one request per
+         breakpoint. The first host asked is the one that fetches; the rest are told to wait for
+         the answer the host passes on. */
       await mountPass(11, { tagName: "div" });
-      for (const channel of channels) {
-        expect(channel.posts.at(-1)).toMatchObject({ allowAutoRequests: true, kind: "render" });
-      }
+      const fetching = channels.map((channel) => channel.posts.findLast(ofKind("render"))!.remote);
+      expect(fetching.map((remote) => remote?.fetch)).toEqual([true, false, false]);
+      expect(new Set(fetching.map((remote) => remote?.session)).size).toBe(1);
 
-      // Still one-shot: the pass after it carries nothing.
-      channels.length = 0;
-      await mountPass(12, { tagName: "div" });
-      for (const channel of channels) {
-        expect(channel.posts.findLast(ofKind("render"))!.allowAutoRequests).toBeUndefined();
+      // And it stays the same artboard on the next pass, so nothing is fetched twice.
+      for (const [i, el] of [...document.body.children].entries()) {
+        if (el instanceof HTMLElement && i < 3) {
+          await mountIframeCanvas(12, { tagName: "div" }, el, 360 + i * 360, null);
+        }
       }
+      expect(
+        channels.map((channel) => channel.posts.findLast(ofKind("render"))!.remote?.fetch),
+      ).toEqual([true, false, false]);
     });
 
-    /*
-     * The arm is one PANE's, not one pass's and not the app's.
-     *
-     * Per-host was wrong because one Refresh mounts N artboards and the first swallowed the flag.
-     * Per-pass was wrong one pane further out: two panes are two passes, both scheduled through rAF
-     * and both awaiting inside their mount loop, so whichever reached `preparePassRender` first
-     * took an arm the other pane's Refresh had set — the Data activity's Refresh refreshed a pane
-     * nobody had pressed it in, and left its own suppressed.
-     */
-    test("Refresh arms ONE pane — the other pane's pass cannot claim it", async () => {
+    test("an answer one artboard reports is passed on to the others, and only to them", async () => {
       resetWorkspaceWithTab();
-      const wrap = document.createElement("div");
-      document.body.append(wrap);
-      const sideSurface = surfaceForPane(SECONDARY_PANE);
-      // Put back whatever the side surface held, so no later test inherits this stage.
-      const previousWrap = sideSurface.wrap;
-      sideSurface.wrap = wrap;
-      const sideEl = document.createElement("div");
-      wrap.append(sideEl);
-      const primaryEl = document.createElement("div");
-      document.body.append(primaryEl);
+      await mountPass(13, { tagName: "div" });
+      for (const channel of channels) {
+        channel.deliver({ capabilities: ["bindingStatus"], kind: "ready" });
+      }
+      const { session } = channels[0]!.posts.findLast(ofKind("render"))!.remote!;
+      const result: RemoteResult = { ok: true, value: "answered" };
+      channels[0]!.deliver({ key: "request k", kind: "remoteSettled", result, session });
+      expect(postsOfKind(channels[0]!, "remoteResults")).toHaveLength(0);
+      for (const waiting of channels.slice(1)) {
+        expect(postsOfKind(waiting, "remoteResults")).toEqual([
+          { kind: "remoteResults", results: { "request k": result }, session },
+        ]);
+      }
+      // A second answer to the same lookup, and one for a session that is over, go nowhere.
+      channels[1]!.deliver({ key: "request k", kind: "remoteSettled", result, session });
+      channels[0]!.deliver({ key: "request z", kind: "remoteSettled", result, session: "gone:0" });
+      expect(postsOfKind(channels[0]!, "remoteResults")).toHaveLength(0);
+      expect(postsOfKind(channels[2]!, "remoteResults")).toHaveLength(1);
+    });
 
-      allowAutoRequestsOnNextRender(SECONDARY_PANE);
-      // The FOCUSED pane renders first and must not consume the side pane's arm.
-      await mountIframeCanvas(21, { tagName: "div" }, primaryEl, null, null);
-      const chPrimary = channels.at(-1)!;
-      chPrimary.deliver({ kind: "ready" });
-      await mountIframeCanvas(22, { tagName: "aside" }, sideEl, null, null);
-      const chSide = channels.at(-1)!;
-      chSide.deliver({ kind: "ready" });
-      const primaryPost = chPrimary.posts.findLast(ofKind("render"))!;
-      const sidePost = chSide.posts.findLast(ofKind("render"))!;
+    test("an artboard that finishes booting after an answer arrived is sent it with its render", async () => {
+      resetWorkspaceWithTab();
+      // Three artboards mounted while every frame is still loading: each render is queued.
+      for (let i = 0; i < 3; i++) {
+        const el = document.createElement("div");
+        document.body.append(el);
+        await mountIframeCanvas(14, { tagName: "div" }, el, 360 + i * 360, null);
+      }
+      channels[0]!.deliver({ capabilities: ["bindingStatus"], kind: "ready" });
+      const first = channels[0]!.posts.findLast(ofKind("render"))!.remote!;
+      expect(first.fetch).toBe(true);
+      // The first frame's lookup answers before its siblings have booted.
+      const result: RemoteResult = { ok: true, value: "answered" };
+      channels[0]!.deliver({
+        key: "request k",
+        kind: "remoteSettled",
+        result,
+        session: first.session,
+      });
+      channels[2]!.deliver({ capabilities: ["bindingStatus"], kind: "ready" });
+      // A frame that is not the fetcher waits with no timeout, so the answer has to be in its render.
+      expect(channels[2]!.posts.findLast(ofKind("render"))!.remote).toEqual({
+        fetch: false,
+        results: { "request k": result },
+        server: false,
+        session: first.session,
+      });
+    });
 
-      console.log(
-        `[iframe-host] Refresh armed ${SECONDARY_PANE}: primary=${String(primaryPost.allowAutoRequests)} ` +
-          `side=${String(sidePost.allowAutoRequests)}`,
-      );
-      expect(primaryPost.allowAutoRequests).toBeUndefined();
-      expect(sidePost.allowAutoRequests).toBe(true);
-      sideSurface.wrap = previousWrap;
+    test("the artboard that fetches is the first whose frame is up, not the first mounted", async () => {
+      resetWorkspaceWithTab();
+      for (let i = 0; i < 3; i++) {
+        const el = document.createElement("div");
+        document.body.append(el);
+        await mountIframeCanvas(15, { tagName: "div" }, el, 360 + i * 360, null);
+      }
+      // A frame still loading can fetch nothing, so naming it would leave the others waiting on it.
+      channels[1]!.deliver({ capabilities: ["bindingStatus"], kind: "ready" });
+      channels[0]!.deliver({ capabilities: ["bindingStatus"], kind: "ready" });
+      expect(
+        channels
+          .slice(0, 2)
+          .map((channel) => channel.posts.findLast(ofKind("render"))!.remote?.fetch),
+      ).toEqual([false, true]);
+    });
+
+    test("the fetcher's role passes on when its artboard is removed", async () => {
+      resetWorkspaceWithTab();
+      const els = await mountPass(16, { tagName: "div" });
+      expect(
+        channels.map((channel) => channel.posts.findLast(ofKind("render"))!.remote?.fetch),
+      ).toEqual([true, false, false]);
+      // The breakpoint whose artboard fetched is deleted; the two that are left are drawn again.
+      els[0]!.remove();
+      await mountIframeCanvas(17, { tagName: "div" }, els[1]!, 720, null);
+      await mountIframeCanvas(17, { tagName: "div" }, els[2]!, 1080, null);
+      expect(
+        channels.slice(1).map((channel) => channel.posts.findLast(ofKind("render"))!.remote?.fetch),
+      ).toEqual([true, false]);
+    });
+
+    test("a frame that did not announce the capability is passed no answer", async () => {
+      resetWorkspaceWithTab();
+      await mountPass(18, { tagName: "div" });
+      // The pass said `ready` with no capability list, as a frame bundle that predates it does.
+      channels[1]!.deliver({ capabilities: ["bindingStatus"], kind: "ready" });
+      const { session } = channels[0]!.posts.findLast(ofKind("render"))!.remote!;
+      const result: RemoteResult = { ok: true, value: 1 };
+      channels[0]!.deliver({ key: "request k", kind: "remoteSettled", result, session });
+      expect(postsOfKind(channels[1]!, "remoteResults")).toHaveLength(1);
+      expect(postsOfKind(channels[2]!, "remoteResults")).toHaveLength(0);
     });
 
     test("a colour-scheme flip between artboards is not baked into the shared payload", async () => {
@@ -1478,6 +1549,179 @@ describe("iframe canvas dataScope bridge", () => {
 
     expect(activeTab.value!.session.canvas.scope).toBeNull();
     expect(leftRenders).toBe(0);
+  });
+});
+
+describe("which renders carry the tab's remote data", () => {
+  test("Edit and Design do, and Preview and a diff side do not", async () => {
+    resetWorkspaceWithTab();
+    const sent: Record<string, boolean> = {};
+    for (const mode of ["edit", "design", "preview", "git-diff"] as const) {
+      resolved = {
+        ...structuredClone(DEFAULT_RESOLVED),
+        mapperCtx: { ...DEFAULT_RESOLVED.mapperCtx, canvasMode: mode },
+      };
+      const canvasEl = document.createElement("div");
+      document.body.append(canvasEl);
+      await mountIframeCanvas(1, { tagName: "div" }, canvasEl);
+      const channel = channels.at(-1)!;
+      channel.deliver({ capabilities: ["bindingStatus"], kind: "ready" });
+      const render = channel.posts.findLast(ofKind("render"))!;
+      expect(render.mode).toBe(mode);
+      sent[mode] = render.remote !== undefined;
+    }
+    resolved = structuredClone(DEFAULT_RESOLVED);
+    expect(sent).toEqual({ design: true, edit: true, "git-diff": false, preview: false });
+  });
+
+  test("a view that runs nothing cannot be the frame that fetches", async () => {
+    resetWorkspaceWithTab();
+    // A Preview host of the tab is drawn first, and must not be named: it would be asked nothing.
+    resolved = {
+      ...structuredClone(DEFAULT_RESOLVED),
+      mapperCtx: { ...DEFAULT_RESOLVED.mapperCtx, canvasMode: "preview" },
+    };
+    const previewEl = document.createElement("div");
+    document.body.append(previewEl);
+    await mountIframeCanvas(1, { tagName: "div" }, previewEl);
+    channels.at(-1)!.deliver({ capabilities: ["bindingStatus"], kind: "ready" });
+    resolved = structuredClone(DEFAULT_RESOLVED);
+    const editEl = document.createElement("div");
+    document.body.append(editEl);
+    await mountIframeCanvas(2, { tagName: "div" }, editEl);
+    channels.at(-1)!.deliver({ capabilities: ["bindingStatus"], kind: "ready" });
+    expect(channels.at(-1)!.posts.findLast(ofKind("render"))!.remote?.fetch).toBe(true);
+  });
+
+  test("a fetcher whose view stops running lookups hands the role on", async () => {
+    resetWorkspaceWithTab();
+    const first = document.createElement("div");
+    const second = document.createElement("div");
+    document.body.append(first, second);
+    await mountIframeCanvas(1, { tagName: "div" }, first);
+    channels[0]!.deliver({ capabilities: ["bindingStatus"], kind: "ready" });
+    expect(channels[0]!.posts.findLast(ofKind("render"))!.remote?.fetch).toBe(true);
+    // The same host draws the tab as a view that runs nothing, so it is asked for no lookup.
+    resolved = {
+      ...structuredClone(DEFAULT_RESOLVED),
+      mapperCtx: { ...DEFAULT_RESOLVED.mapperCtx, canvasMode: "preview" },
+    };
+    await mountIframeCanvas(2, { tagName: "div" }, first);
+    resolved = structuredClone(DEFAULT_RESOLVED);
+    await mountIframeCanvas(3, { tagName: "div" }, second);
+    channels[1]!.deliver({ capabilities: ["bindingStatus"], kind: "ready" });
+    expect(channels[1]!.posts.findLast(ofKind("render"))!.remote?.fetch).toBe(true);
+  });
+
+  test("a frame that goes on to draw another tab stops being the first tab's fetcher", async () => {
+    const { openTab } = await import("../src/workspace/workspace");
+    resetWorkspaceWithTab();
+    const tabA = openTab({ document: { tagName: "div" }, documentPath: "/p/a.json", id: "a.json" });
+    const tabB = openTab({ document: { tagName: "div" }, documentPath: "/p/b.json", id: "b.json" });
+    const left = document.createElement("div");
+    const right = document.createElement("div");
+    document.body.append(left, right);
+    await mountIframeCanvas(1, { tagName: "div" }, left, null, "a.json", tabA);
+    channels[0]!.deliver({ capabilities: ["bindingStatus"], kind: "ready" });
+    expect(channels[0]!.posts.findLast(ofKind("render"))!.remote).toMatchObject({
+      fetch: true,
+      session: "a.json:0",
+    });
+    // The tab moves to the other pane: its old pane's frame draws another tab from here on.
+    await mountIframeCanvas(2, { tagName: "div" }, left, null, "b.json", tabB);
+    await mountIframeCanvas(3, { tagName: "div" }, right, null, "a.json", tabA);
+    channels[1]!.deliver({ capabilities: ["bindingStatus"], kind: "ready" });
+    // The only frame drawing the tab is the one that fetches for it, or nothing new ever loads.
+    expect(channels[1]!.posts.findLast(ofKind("render"))!.remote).toMatchObject({
+      fetch: true,
+      session: "a.json:0",
+    });
+    expect(channels[0]!.posts.findLast(ofKind("render"))!.remote).toMatchObject({
+      fetch: true,
+      session: "b.json:0",
+    });
+  });
+});
+
+describe("iframe canvas bindingStatus bridge", () => {
+  beforeEach(() => {
+    resetWorkspaceWithTab();
+  });
+
+  test("the frame's report is filed on the tab it rendered, and the left panel is drawn again", async () => {
+    let leftRenders = 0;
+    registerRenderer("leftPanel", () => {
+      leftRenders += 1;
+    });
+    await mountReady();
+    leftRenders = 0;
+    const report = {
+      bindings: [
+        { path: ["children", 0], source: "${state.posts.length}", status: "pending" as const },
+      ],
+      entries: { posts: { status: "pending" as const } },
+    };
+    channels[0]!.deliver({ gen: 1, kind: "bindingStatus", ...report });
+    expect(activeTab.value!.session.canvas.bindings).toEqual(report);
+    expect(leftRenders).toBe(1);
+
+    // A report from a superseded render describes a picture that is gone.
+    channels[0]!.deliver({ bindings: [], entries: {}, gen: 7, kind: "bindingStatus" });
+    expect(activeTab.value!.session.canvas.bindings).toEqual(report);
+    expect(leftRenders).toBe(1);
+  });
+
+  test("a Refresh stays out until no entry is loading, not until the first scope arrives", async () => {
+    await mountReady();
+    const { canvas } = activeTab.value!.session;
+    canvas.refreshing = true;
+    channels[0]!.deliver({
+      bindings: [],
+      entries: { posts: { status: "pending" } },
+      gen: 1,
+      kind: "bindingStatus",
+    });
+    // The scope the frame posts right after a render still holds `null` for the entry.
+    channels[0]!.deliver({ gen: 1, kind: "dataScope", scope: { posts: null } });
+    expect(canvas.refreshing).toBe(true);
+    channels[0]!.deliver({
+      bindings: [],
+      entries: { posts: { error: "Not Found", status: "failed" } },
+      gen: 1,
+      kind: "bindingStatus",
+    });
+    // A failure is an answer: the Refresh is over.
+    expect(canvas.refreshing).toBe(false);
+
+    // With nothing loading, the scope alone ends it, as it always did.
+    canvas.refreshing = true;
+    channels[0]!.deliver({ gen: 1, kind: "dataScope", scope: { posts: [] } });
+    expect(canvas.refreshing).toBe(false);
+  });
+});
+
+describe("a host that cannot resolve the project's collections", () => {
+  test("says so once for the tab, however many lists and renders there are", async () => {
+    const { toasts } = await import("../src/services/notify");
+    toasts.length = 0;
+    resetWorkspaceWithTab();
+    // Three collections, as `resolveCanvasDocument` reports them on a host with no backend.
+    resolved = { ...structuredClone(DEFAULT_RESOLVED), unresolvedSources: ["a", "b", "c"] };
+    const canvasEl = document.createElement("div");
+    document.body.append(canvasEl);
+    await mountIframeCanvas(1, { tagName: "div" }, canvasEl);
+    await mountIframeCanvas(2, { tagName: "div" }, canvasEl);
+    await mountIframeCanvas(3, { tagName: "main" }, canvasEl);
+    const said = toasts.filter((toast) => toast.key === "canvas.sources-unresolved");
+    expect(said).toHaveLength(1);
+    expect(said[0]!.message).toBe("This host cannot read the project's collections.");
+
+    // A host that resolves them all says nothing.
+    toasts.length = 0;
+    resetWorkspaceWithTab(undefined, { id: "other-tab" });
+    resolved = structuredClone(DEFAULT_RESOLVED);
+    await mountIframeCanvas(4, { tagName: "div" }, canvasEl);
+    expect(toasts).toHaveLength(0);
   });
 });
 

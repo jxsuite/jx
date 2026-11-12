@@ -172,8 +172,16 @@ export interface SignalRowView {
   /** The one summary slot: the definition hint, or what the canvas resolved the entry to. */
   summary: string;
   summaryTitle: string;
-  /** `hint`, `value` or `pending` — only the last is dimmed, and only it pulses on a refresh. */
+  /**
+   * `hint`, `value` or `pending` (dimmed, and pulsing on a refresh); `override` for a value set for
+   * the canvas; `failed` and `not-run` for a request or a server function the canvas has no answer
+   * from (studio.md §4.5).
+   */
   summaryTone: string;
+  /** Whether the canvas draws this entry with a value set for it (`canvas.setStateValue`). */
+  overridden: boolean;
+  /** What the button that puts the document's own value back is called. */
+  clearLabel: string;
   deleteLabel: string;
   liveLabel: string;
   fields: SignalFieldView[];
@@ -208,6 +216,8 @@ export interface SignalsActions {
   toggleCategory: (key: string, open: boolean) => void;
   toggleRow: (name: string) => void;
   dropSignal: (name: string) => void;
+  /** Stop drawing the canvas with a value set for this entry; the document's own is drawn again. */
+  clearValue: (name: string) => void;
   refresh: () => void;
   /**
    * Add an entry of the picked kind.
@@ -332,6 +342,21 @@ export function mountSignalsSurface(
       scope.addValue = type;
       actions.addSignal(type);
       scope.addValue = "";
+    },
+    /* The button that clears a set value is drawn only on a row that has one, so pressing it
+       removes the element that holds focus, and focus removed with its element falls to the page:
+       a keyboard user was put back at the top of the application. So focus goes to the row's own
+       button first, while there is still somewhere to move it from. Only when the button holds it:
+       a press that left focus elsewhere has nothing to keep. */
+    clearValue: (name: string) => {
+      const row = [...container.querySelectorAll<HTMLElement>('[part="entry"]')].find(
+        (entry) => entry.dataset.signal === name,
+      );
+      const held = row?.querySelector('[part="clear-value"]');
+      if (held?.contains(container.ownerDocument.activeElement)) {
+        row?.querySelector<HTMLElement>('[part="disclosure"]')?.focus();
+      }
+      actions.clearValue(name);
     },
   });
   project(scope, view);

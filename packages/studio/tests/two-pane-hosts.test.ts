@@ -107,6 +107,7 @@ void mock.module("../src/canvas/canvas-live-render", () => ({
       rowSamples: {},
       scripts: {},
       siteStyle: null,
+      unresolvedSources: [],
     });
   },
 }));

@@ -8,6 +8,7 @@ import type { JxPath } from "../state";
 import type { FormulaEditDef, FunctionEditDef, InlineEditDef, JsonValue } from "../types";
 import { editorKindForMode } from "../commands/context";
 import { DEFAULT_ROW_LIMIT } from "../canvas/iframe-protocol";
+import type { BindingStatus, EntryStatus } from "../canvas/iframe-protocol";
 import type { EditorKind } from "../commands/context";
 import type { JsonObject, JxMutableNode } from "@jxsuite/schema/types";
 import type { JxDocOp, JxFmOp } from "./patch-ops";
@@ -120,6 +121,14 @@ export interface TabUi {
   activeRows: Record<string, number>;
   /** How many rows of a repeater the canvas draws at most (`canvas.setRepeaterRows`, §4.5). */
   repeaterRows: number;
+  /**
+   * State values set for the canvas, by state key (`canvas.setStateValue`, studio.md §4.5): the
+   * value the canvas draws the entry with in place of the document's own. How a component's other
+   * states are looked at without a handler running. View state: it writes nothing to the document,
+   * takes no undo entry and is not kept between sessions. A key the document no longer declares as
+   * a plain value stays here naming nothing, and is not applied.
+   */
+  stateValues: Record<string, JsonValue>;
   /**
    * The locale this pane renders AS — the artboard's `lang` and `dir` (site-architecture.md §13.4),
    * never which file is open.
@@ -319,6 +328,15 @@ export interface Tab {
        * arrives and let the arrival be the repaint.
        */
       refreshing: boolean;
+      /**
+       * Where each remote state entry and each binding stands on the canvas, as the frame last
+       * reported it (`bindingStatus`, studio.md §4.5), or null before a frame has. The Data panel
+       * reads an entry's row off `entries`: still loading, failed and why, or not run here.
+       */
+      bindings: {
+        entries: Readonly<Record<string, EntryStatus>>;
+        bindings: readonly BindingStatus[];
+      } | null;
       // A serializable snapshot of the iframe's resolved `$defs` (data-source values), posted over
       // The bridge as a `dataScope` message and read by the data-explorer panel. Plain data now —
       // The old live `EffectScope` (with `.stop()`) moved into the iframe realm with buildScope.
@@ -358,6 +376,7 @@ function createDefaultUi(canvasMode: string, preview = false): TabUi {
     activeRows: {},
     bindingDisplay: "values" as const,
     repeaterRows: DEFAULT_ROW_LIMIT,
+    stateValues: {},
     previewColorScheme: "auto" as const,
     previewLocale: null,
     previewParams: {},
@@ -485,6 +504,7 @@ export function createTab({
   };
   const session: Tab["session"] = {
     canvas: {
+      bindings: null,
       refreshing: false,
       error: null,
       livePreviews: null,

@@ -20,7 +20,13 @@
  * @docs studio/interface/canvas
  */
 
-import { isJsonObject, isNodeObject, isRef, isString } from "@jxsuite/schema/guards";
+import {
+  isJsonObject,
+  isNodeObject,
+  isRef,
+  isString,
+  templateExpressions,
+} from "@jxsuite/schema/guards";
 import { getPlatform } from "../platform";
 import type {
   JsonObject,
@@ -108,17 +114,48 @@ export function extensionClassKeys(doc: JxMutableNode, classes: ClassPaths): str
     .map(([key]) => key);
 }
 
+/** Every state key a template reads by name: `state.key`, `state?.key`, `state["key"]`. */
+const STATE_READ =
+  /(?<![\w$])(?<!(?<!\.\.)\.)state\s*(?:\??\.\s*([A-Za-z_$][\w$]*)|\??\.?\[\s*["']([^"']+)["']\s*\])/g;
+
+/** The state keys the expressions of one template string read. Its literal runs name nothing. */
+function templateStateKeys(text: string): string[] {
+  return templateExpressions(text).flatMap(({ start, end }) =>
+    [...text.slice(start, end).matchAll(STATE_READ)].flatMap((match) => match[1] ?? match[2] ?? []),
+  );
+}
+
 /**
- * The state keys `doc`'s repeaters read their items from, among them only the class-backed entries
+ * The state keys `doc`'s lists read their items from, among them only the class-backed entries
  * {@link bakeRepeaterSources} can resolve.
+ *
+ * A list is a repeater, whose `items` points at its collection, or computed children (spec.md
+ * §8.4): a `children` that is one template, or a string member of a `children` array, which draws
+ * the nodes its expression answers with. A converted site writes most of its lists the second way
+ * (`"${state.posts.map(…)}"`), and left to the runtime each drew nothing on the first render and
+ * its nodes on a second, after the collection had come back through the dev proxy.
  */
 export function repeaterSourceKeys(doc: JxMutableNode): string[] {
   const keys = new Set<string>();
+  const read = (text: string): void => {
+    for (const key of templateStateKeys(text)) {
+      keys.add(key);
+    }
+  };
   const walk = (value: JxDocumentValue | undefined): void => {
     if (Array.isArray(value)) {
       for (const member of value) {
-        walk(member);
+        // A string member of `children` is computed children when it holds an expression.
+        if (isString(member)) {
+          read(member);
+        } else {
+          walk(member);
+        }
       }
+      return;
+    }
+    if (isString(value)) {
+      read(value);
       return;
     }
     if (!isNodeObject(value)) {

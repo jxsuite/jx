@@ -248,6 +248,8 @@ describe("the records themselves", () => {
       // The values themselves are verbs too. They wrote `session.ui` inline while every control in
       // The popover beside them ran a command — the defect `runContextCommand`'s docstring names.
       "canvas.setTestProp",
+      // A state value drawn in place of the document's own (§4.5): the general form of a test value.
+      "canvas.setStateValue",
       "canvas.setRouteParam",
       "selection.set",
       "selection.setPaths",
@@ -431,6 +433,87 @@ describe("canvas.setRepeaterRows", () => {
     }
     expect(activeTab.value?.session.ui.repeaterRows).toBe(24);
     expect(renderedPanes).toEqual([]);
+  });
+});
+
+describe("canvas.setStateValue", () => {
+  /** A document with one entry of every kind the command has to tell apart. */
+  function withState(): Tab {
+    closeAllTabs();
+    return openTab({
+      document: {
+        state: {
+          double: "${state.count * 2}",
+          load: { $prototype: "Request", url: "/api" },
+          menu: { default: false, type: "boolean" },
+          count: 1,
+          total: { $export: "sum", $src: "./sum.js", timing: "server" },
+        },
+        tagName: "div",
+      },
+      documentPath: "/project/components/menu.json",
+      id: "state-tab",
+    });
+  }
+
+  test("sets a value for the canvas and repaints the pane, once, without touching the document", () => {
+    const tab = withState();
+    const before = JSON.stringify(tab.doc.document);
+    void registry.run("canvas.setStateValue", { key: "menu", value: true });
+    expect(tab.session.ui.stateValues).toEqual({ menu: true });
+    expect(renderedPanes).toEqual([PRIMARY_PANE]);
+    // Saying it again is not a second render: the verb names the state it ends in.
+    void registry.run("canvas.setStateValue", { key: "menu", value: true });
+    expect(renderedPanes).toEqual([PRIMARY_PANE]);
+    // View state only: the document is as it was, clean, with nothing to undo.
+    expect(JSON.stringify(tab.doc.document)).toBe(before);
+    expect(tab.doc.dirty).toBe(false);
+    expect(tab.history.index).toBe(0);
+  });
+
+  test("takes any JSON, and null clears the one key", () => {
+    const tab = withState();
+    void registry.run("canvas.setStateValue", { key: "count", value: { nested: [1, 2] } });
+    void registry.run("canvas.setStateValue", { key: "menu", value: true });
+    expect(tab.session.ui.stateValues).toEqual({ count: { nested: [1, 2] }, menu: true });
+    renderedPanes.length = 0;
+    void registry.run("canvas.setStateValue", { key: "count", value: null });
+    expect(tab.session.ui.stateValues).toEqual({ menu: true });
+    expect(renderedPanes).toEqual([PRIMARY_PANE]);
+    // Clearing what is not set renders nothing.
+    void registry.run("canvas.setStateValue", { key: "count", value: null });
+    expect(renderedPanes).toEqual([PRIMARY_PANE]);
+  });
+
+  test("refuses a key that is not a plain value, naming the ones that are", () => {
+    const tab = withState();
+    const setting = (key: string) => () => registry.run("canvas.setStateValue", { key, value: 1 });
+    for (const key of ["double", "load", "total", "missing"]) {
+      expect(setting(key)).toThrow(
+        `command "canvas.setStateValue" argument "key": "${key}" is not a plain state value of ` +
+          "this document. Its plain values: menu, count",
+      );
+    }
+    expect(tab.session.ui.stateValues).toEqual({});
+    expect(renderedPanes).toEqual([]);
+  });
+
+  test("clears a value whose entry is gone, where setting one would be refused", () => {
+    const tab = withState();
+    tab.session.ui.stateValues = { gone: 1 };
+    void registry.run("canvas.setStateValue", { key: "gone", value: null });
+    expect(tab.session.ui.stateValues).toEqual({});
+  });
+
+  test("needs both arguments, and names the pane whose tab it means", () => {
+    const tab = withState();
+    expect(() => registry.run("canvas.setStateValue", { key: "menu" })).toThrow();
+    expect(() => registry.run("canvas.setStateValue", { value: true })).toThrow();
+    splitRight();
+    focusPane(PRIMARY_PANE);
+    void registry.run("canvas.setStateValue", { key: "menu", pane: SECONDARY_PANE, value: true });
+    expect(tab.session.ui.stateValues).toEqual({ menu: true });
+    expect(renderedPanes).toEqual([SECONDARY_PANE]);
   });
 });
 

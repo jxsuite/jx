@@ -56,6 +56,15 @@ import { disposeAllSubtrees } from "./iframe-subtree";
 import { evaluateLiveExprs } from "./iframe-eval";
 import { serializeDataScope } from "./serialize-scope";
 import {
+  adoptRemote,
+  adoptRemoteResults,
+  answerLookup,
+  entryStatuses,
+  inheritedStatuses,
+  newRemoteStore,
+  stampStatuses,
+} from "./iframe-remote";
+import {
   abandonEditing,
   activeBlockHolds,
   getActivePath,
@@ -72,6 +81,7 @@ import type { JxPath } from "../state";
 // @vue/reactivity, and dep tracking is per module instance — an effect from the studio's own copy
 // Would never re-run when a dev-proxy data source settles.
 import {
+  evaluateTemplateValue,
   observeScope,
   preloadModule,
   reapplyStyle,
@@ -458,6 +468,8 @@ export function startCanvasIframe(opts: {
     if (shadowDoc && isEditableMode(currentMode)) {
       stampKept(container, shadowDoc, isEditableBlock);
     }
+    // The rows a list just drew carry no status yet.
+    statusSoon();
     armIdleWatch();
   };
 
@@ -488,6 +500,73 @@ export function startCanvasIframe(opts: {
     }
   };
   let renderedGen = -1;
+  /**
+   * This frame's view of its tab's remote data (studio.md §4.5). An answer this frame's own lookup
+   * produced goes to the host, which is who keeps it for every later render and every other frame
+   * of the tab.
+   */
+  const remote = newRemoteStore(
+    (key, result, session) => {
+      channel.post({ key, kind: "remoteSettled", result, session });
+    },
+    () => {
+      statusSoon();
+    },
+  );
+  /** Whether the live render was given remote data, and so reports where its bindings stand. */
+  let reportsStatus = false;
+  /** The `state` of the document the live render was built from: which entries are remote. */
+  let renderedState: JxDocument["state"];
+  /** The last report posted, as text: an unchanged one is not posted again. */
+  let lastStatus = "";
+  let statusTimer: ReturnType<typeof setTimeout> | null = null;
+  /**
+   * Mark every binding with where it stands and tell the host (studio.md §4.5). The marks are
+   * attributes on nodes a render, a patch and a list redrawing itself each replace, so this runs
+   * after all three, and after every answer.
+   */
+  const reportStatus = (): void => {
+    if (!handle || !renderCtx || !shadowDoc || !reportsStatus || !isEditableMode(currentMode)) {
+      return;
+    }
+    const raw = shadowDoc;
+    const { defs, rows } = renderCtx;
+    const entries = entryStatuses(remote, defs, renderedState);
+    const bindings = stampStatuses(container, {
+      failureOf: (chip, source) => {
+        // A chip in a row was drawn with the row's scope; any other with the document's.
+        const scope = (chip instanceof HTMLElement ? rows.scopes.get(chip) : undefined) ?? defs;
+        try {
+          // Evaluated for whether it throws: what it answers is already on the canvas, or is not.
+          void evaluateTemplateValue(source, scope);
+          return null;
+        } catch (error) {
+          return failureText(error);
+        }
+      },
+      nodeAt: (path) => getNodeAtPath(raw, path),
+      unresolved: inheritedStatuses(entries, renderedState),
+    });
+    const text = JSON.stringify([entries, bindings]);
+    if (text !== lastStatus) {
+      lastStatus = text;
+      channel.post({ bindings, entries, gen: renderedGen, kind: "bindingStatus" });
+    }
+  };
+  /**
+   * {@link reportStatus}, once this turn's work is done. A task and not a microtask: an answer is
+   * written to its entry a microtask after it settles, and a list that reads it redraws a microtask
+   * after that.
+   */
+  function statusSoon(): void {
+    if (statusTimer !== null || !reportsStatus) {
+      return;
+    }
+    statusTimer = setTimeout(() => {
+      statusTimer = null;
+      reportStatus();
+    }, 0);
+  }
   // The mode of the LIVE render — gates the interactive surfaces (inline editing, insert zones,
   // Grab-drags) that only design/edit modes own. Adopted alongside shadowDoc.
   let currentMode: CanvasMode = "design";
@@ -1049,6 +1128,8 @@ export function startCanvasIframe(opts: {
           restoreDocSelection(container, caret);
         }
         channel.post({ gen, kind: "patchComplete" });
+        // A node the patch drew again lost the status it carried.
+        statusSoon();
         armIdleWatch();
       } catch (error) {
         channel.post({ gen, kind: "patchError", message: failureText(error) });
@@ -1229,6 +1310,11 @@ export function startCanvasIframe(opts: {
       );
       return;
     }
+    if (msg.kind === "remoteResults") {
+      // Answers another frame of the tab fetched; the entries waiting on them are written now.
+      adoptRemoteResults(remote, msg.session, msg.results);
+      return;
+    }
     if (msg.kind === "siteStyleUpdate") {
       // Live design-token edit: swap the site-style sheet in place, no re-render.
       applySiteStyle(msg.siteStyle, msg.media);
@@ -1286,8 +1372,12 @@ export function startCanvasIframe(opts: {
           dialogOpen: msg.dialogOpen ? serializeJxPath(msg.dialogOpen) : null,
           siteStyle: msg.siteStyle,
         };
-        if (msg.allowAutoRequests) {
-          renderOpts.allowAutoRequests = true;
+        /* Remote data, for an editable view the host sent some for (studio.md §4.5). Adopted
+           before the scope is built, since building it is what asks. */
+        const answers = isEditableMode(msg.mode) ? (msg.remote ?? null) : null;
+        if (answers) {
+          adoptRemote(remote, answers);
+          renderOpts.remoteLookup = (lookup, run) => answerLookup(remote, lookup, run);
         }
         if (msg.projectFormulas) {
           renderOpts.projectFormulas = msg.projectFormulas;
@@ -1352,7 +1442,13 @@ export function startCanvasIframe(opts: {
         renderedGen = gen;
         currentMode = msg.mode;
         entryRoot = msg.entryRoot ?? null;
+        reportsStatus = answers !== null;
+        renderedState = renderOpts.doc.state;
         channel.post({ gen, kind: "renderComplete" });
+        /* Where each binding stands, ahead of the scope below: the host reads "is anything still
+           loading" off this when the scope arrives. A new render always reports, even unchanged. */
+        lastStatus = "";
+        reportStatus();
         armIdleWatch();
         // Thread a serializable snapshot of the resolved $defs to the parent so the data-explorer
         // Panel shows live data (the iframe, not the parent, now resolves the scope). Inside a
@@ -1401,6 +1497,9 @@ export function startCanvasIframe(opts: {
     container.ownerDocument.removeEventListener("dragover", onNativeDragOver, true);
     container.ownerDocument.removeEventListener("drop", onNativeDrop, true);
     stopDataScopeWatch?.();
+    if (statusTimer !== null) {
+      clearTimeout(statusTimer);
+    }
     handle?.dispose();
   };
 }

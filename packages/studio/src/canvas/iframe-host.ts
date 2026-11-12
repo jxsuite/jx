@@ -12,6 +12,12 @@ import { canvasBaseOrigin, documentBase } from "./canvas-origin";
 import { ownShadow } from "./canvas-scripts";
 import { getPreviewNavigateHandler } from "./preview-navigate";
 import { resolveCanvasDocument } from "./canvas-live-render";
+import {
+  recordRemoteResult,
+  remoteSessionTabId,
+  remoteWireFor,
+  takeSourcesNotice,
+} from "./remote-data";
 import { liveEntryState } from "./live-entry";
 import { canvasPerf, recordEscalation, SPAN_PREPARE_RENDER, timeSpanAsync } from "./canvas-perf";
 import {
@@ -36,12 +42,7 @@ import { effect, effectScope } from "../reactivity";
 import { pathsEqual, projectState, renderOnly } from "../store";
 import { inheritableFormulas } from "@jxsuite/runtime/expression";
 import { activeTab, focusPane, workspace } from "../workspace/workspace";
-import {
-  paneOfContainer,
-  panelHostingCanvas,
-  stageContaining,
-  tabOfContainer,
-} from "./canvas-surface";
+import { panelHostingCanvas, stageContaining, tabOfContainer } from "./canvas-surface";
 import { cloneSelection, primarySelection, toggleSelected } from "../tabs/selection";
 import { activeRegistry } from "../commands/active-registry";
 import { getNodeAtPath } from "../state";
@@ -164,6 +165,18 @@ export interface HostState {
    */
   capabilities: ReadonlySet<FrameCapability>;
   pending: ParentToIframe | null;
+  /**
+   * The tab whose remote data the queued {@link pending} render is to carry, or null for a render
+   * that carries none. Kept beside the render and not in it, because what the render says about the
+   * tab's answers is decided when it is POSTED ({@link postRender}), not when it is queued.
+   */
+  pendingRemoteTab: Tab | null;
+  /**
+   * The id of the tab whose remote data this host's frame was last sent (studio.md §4.5), or null
+   * when its last render carried none. A frame is reused from tab to tab, so "is this host still
+   * the tab's fetcher" is this, not whether the frame is on screen.
+   */
+  remoteTabId: string | null;
   /**
    * The asset-version snapshot this frame last received (`assetVersions`), or null when it has
    * received none since it last said `ready`. Compared by identity — the snapshot is memoized and
@@ -394,26 +407,6 @@ export function sawIframeDragOver(seq: number): boolean {
 let evalReqId = 0;
 
 /**
- * The panes whose NEXT page render may let automatic `$prototype: "Request"` entries fetch, even in
- * edit/design mode.
- *
- * Those fetches are suppressed outside preview because a full render re-resolves every state entry,
- * so an escalating authoring action would issue a request per render. But the Data activity's
- * Refresh exists to re-fire them on demand — its documented purpose — so it arms a pane and that
- * pane's next render consumes it. Deliberately one-shot: a subsequent escalation must not inherit
- * it.
- *
- * **A `boolean`, then a per-PASS boolean, now a set of panes** — the same fact narrowing each time
- * something else turned out to be able to claim it. Per-host was wrong because one Refresh mounts N
- * artboards and the first swallowed the arm. Per-pass was wrong for the same reason one pane
- * further out: two panes are two passes, both scheduled through rAF and both awaiting inside their
- * mount loop, so whichever reached `preparePassRender` first took an arm the OTHER pane's Refresh
- * had set — the button refreshed the pane nobody had pressed it in, and left its own pane
- * suppressed.
- */
-const _autoRequestPanes = new Set<string>();
-
-/**
  * Open a preview link's target for real.
  *
  * Resolved against the CANVAS's origin, not the editor's: the canvas iframe is served from the
@@ -443,21 +436,6 @@ function openPreviewHref(href: string, state: HostState): void {
     return;
   }
   window.open(url, "_blank", "noopener,noreferrer");
-}
-
-/**
- * Arm one pane's next page render to allow automatic request fetches (Data activity Refresh).
- *
- * @param {string} paneId The pane the Refresh was pressed for — read ONCE by the caller, so the arm
- *   and the `renderCanvas` that follows it cannot end up naming different panes.
- */
-export function allowAutoRequestsOnNextRender(paneId: string): void {
-  _autoRequestPanes.add(paneId);
-}
-
-/** Take `paneId`'s arm, if it has one. */
-function consumeAllowAutoRequests(paneId: string): boolean {
-  return _autoRequestPanes.delete(paneId);
 }
 
 /** Pending eval resolvers keyed by reqId; a timeout or stale reply resolves null. */
@@ -1740,6 +1718,74 @@ function hostTab(state: HostState): Tab | null {
 }
 
 /**
+ * Whether `host` can still fetch for the tab `tabId`: it is one of this module's hosts, its frame
+ * is in the document, and the last render it was sent was that tab's, with remote data. A frame on
+ * screen drawing ANOTHER tab is no fetcher of this one: it is asked nothing about it, so leaving it
+ * the role (a tab moved to the other pane) left every new lookup of the tab waiting.
+ */
+function fetchesFor(host: WeakKey, tabId: string): boolean {
+  /* SAFETY: `liveHosts` holds HostState alone, and `Set.has` compares by identity, so asking it
+     about any other object answers false; the cast only names the type the set is declared with. */
+  const state = host as HostState;
+  return liveHosts.has(state) && state.iframe.isConnected && state.remoteTabId === tabId;
+}
+
+/**
+ * Post a render to a frame that is up, saying what the tab's remote data is NOW (studio.md §4.5):
+ * every answer its session holds, and whether this is the frame that fetches the rest.
+ *
+ * At post time and per host, for two reasons. Which host fetches is decided among the hosts whose
+ * frames are there to do it, and a frame still booting is not. And a render queued for a booting
+ * frame would otherwise carry the answers held when it was queued: one that arrived meanwhile was
+ * passed on to the frames that were up, never reached this one, and a frame that is not the fetcher
+ * waits for it with no timeout.
+ *
+ * A frame that predates the field ignores it and starts nothing, as it never did.
+ */
+function postRender(state: HostState, message: ParentToIframe, remoteTab: Tab | null): void {
+  if (message.kind === "render") {
+    // Before the election: this host is one of those drawing the tab.
+    state.remoteTabId = remoteTab?.id ?? null;
+    if (remoteTab) {
+      const { id } = remoteTab;
+      message.remote = remoteWireFor(remoteTab, state, (host) => fetchesFor(host, id));
+    }
+  }
+  state.channel.post(message);
+}
+
+/**
+ * A frame's lookup answered (studio.md §4.5). Kept in the tab's session, which every later render
+ * of the tab carries, and passed on to the tab's other frames, which were told to wait for it.
+ *
+ * The tab is read off the session's name, not off the host: a fast answer arrives before the render
+ * that asked for it is acknowledged, while the host still names the tab it drew before.
+ */
+function onRemoteSettled(
+  state: HostState,
+  msg: Extract<IframeToParent, { kind: "remoteSettled" }>,
+): void {
+  const tab = workspace.tabs.get(remoteSessionTabId(msg.session));
+  if (!tab || !recordRemoteResult(tab, msg.session, msg.key, msg.result)) {
+    return;
+  }
+  for (const host of liveHosts) {
+    if (host !== state && host.ready && host.capabilities.has("bindingStatus")) {
+      host.channel.post({
+        kind: "remoteResults",
+        results: { [msg.key]: msg.result },
+        session: msg.session,
+      });
+    }
+  }
+}
+
+/** Whether a report says some entry of the document is still waiting for its answer. */
+function anyPending(report: Tab["session"]["canvas"]["bindings"]): boolean {
+  return Object.values(report?.entries ?? {}).some((entry) => entry.status === "pending");
+}
+
+/**
  * The tab a drag TARGET is showing — the one public reader on the opaque {@link HostState} handle.
  *
  * `panels/canvas-dnd-bridge.ts` binds a session to the host under the cursor and then had nothing
@@ -2223,6 +2269,8 @@ function ensureHost(canvasEl: HTMLElement): HostState {
     overlay,
     panReqId: -1,
     pending: null,
+    pendingRemoteTab: null,
+    remoteTabId: null,
     postedVersions: null,
     postedRevisions: null,
     idle: null,
@@ -2418,8 +2466,9 @@ function handleMessage(state: HostState, msg: IframeToParent): void {
       state.postedRevisions = null;
       syncAssetVersions(state);
       if (state.pending) {
-        state.channel.post(state.pending);
+        postRender(state, state.pending, state.pendingRemoteTab);
         state.pending = null;
+        state.pendingRemoteTab = null;
       }
       // Re-measure the current selection now that the iframe can answer.
       requestSelection(state, state.selectionPaths);
@@ -2809,9 +2858,35 @@ function handleMessage(state: HostState, msg: IframeToParent): void {
       const scoped = hostTab(state);
       if (scoped) {
         scoped.session.canvas.scope = msg.scope;
-        // The answer a pending Refresh was waiting for. Clearing it HERE rather than on a timer is
-        // The whole point: a fetch that takes two seconds keeps saying so for two seconds.
-        scoped.session.canvas.refreshing = false;
+        /* The answer a pending Refresh was waiting for, unless the frame has said an entry is
+           still out: then the report that says none is (`bindingStatus`) is what ends it. Ending
+           it HERE rather than on a timer is the whole point: a fetch that takes two seconds
+           keeps saying so for two seconds. */
+        if (!anyPending(scoped.session.canvas.bindings)) {
+          scoped.session.canvas.refreshing = false;
+        }
+      }
+      renderOnly("leftPanel");
+      return;
+    }
+    case "remoteSettled": {
+      onRemoteSettled(state, msg);
+      return;
+    }
+    case "bindingStatus": {
+      // Where each entry and binding stands (studio.md §4.5). Gen-gated like the scope above.
+      if (msg.gen !== state.lastRenderedGen) {
+        return;
+      }
+      const reported = hostTab(state);
+      if (reported) {
+        reported.session.canvas.bindings = {
+          bindings: plainCopy(msg.bindings),
+          entries: plainCopy(msg.entries),
+        };
+        if (!anyPending(reported.session.canvas.bindings)) {
+          reported.session.canvas.refreshing = false;
+        }
       }
       renderOnly("leftPanel");
       return;
@@ -3465,7 +3540,6 @@ function preparePassRender(
   doc: JxMutableNode,
   tabId: string | null,
   viewTab: Tab | null,
-  paneId: string,
   modeOverride: string | null = null,
 ): Promise<PreparedRender> {
   const byDoc = preparedDocsFor(gen);
@@ -3479,13 +3553,6 @@ function preparePassRender(
   ) {
     return cached.payload;
   }
-  // One-shot per PANE's pass, not per host and not globally. `allowAutoRequestsOnNextRender` arms
-  // "the next render of pane X": consuming it inside the per-host mount meant whichever artboard
-  // Mounted first swallowed it and the rest re-rendered with automatic `Request` entries still
-  // Suppressed, and consuming a GLOBAL here meant whichever PANE's pass got here first did the
-  // Same to the other one. `gen` comes from one monotonic counter shared by every surface, so a
-  // Pass belongs to exactly one pane and this consume is that pane's.
-  const allowAutoRequests = consumeAllowAutoRequests(paneId);
   const payload = timeSpanAsync(SPAN_PREPARE_RENDER, async (): Promise<PreparedRender> => {
     canvasPerf.renderPreparations += 1;
     const resolved = await resolveCanvasDocument(doc, viewTab, modeOverride);
@@ -3541,8 +3608,17 @@ function preparePassRender(
     if (Object.keys(resolved.rowSamples).length > 0) {
       prepared.rowSamples = plainCopy(resolved.rowSamples);
     }
-    if (allowAutoRequests) {
-      prepared.allowAutoRequests = true;
+    /* A host with no backend to resolve a class through (the cloud) draws each list that reads a
+       collection as its template row. Said once for the tab, not once per list or per render
+       (studio.md §4.5). */
+    if (resolved.unresolvedSources.length > 0 && viewTab && takeSourcesNotice(viewTab)) {
+      notify.info("This host cannot read the project's collections.", {
+        detail:
+          "Lists that draw a collection show their template row here. " +
+          "They fill with the collection's entries on the built site.",
+        key: "canvas.sources-unresolved",
+        source: "Canvas",
+      });
     }
     return prepared;
   });
@@ -3601,14 +3677,7 @@ export async function mountIframeCanvas(
   // Own `latestGen`), so the parent must NOT gate on `view.renderGeneration`: during boot many
   // Renders fire and the generation is usually stale by the time resolution finishes, which would
   // Otherwise drop every post.
-  const prepared = await preparePassRender(
-    gen,
-    doc,
-    tabId,
-    viewTab,
-    paneOfContainer(canvasEl),
-    modeOverride,
-  );
+  const prepared = await preparePassRender(gen, doc, tabId, viewTab, modeOverride);
   const message: RenderMsg = {
     ...prepared,
     // Per-TAB, and read at POST time so a scheme flip that raced the shared resolution is not
@@ -3629,6 +3698,10 @@ export async function mountIframeCanvas(
     popoverOpen: plainCopy(viewTab?.session.ui.openPopover ?? null),
     dialogOpen: plainCopy(viewTab?.session.ui.openDialog ?? null),
   };
+  /* Only an editable view runs a document's remote lookups (studio.md §4.5), so only its render
+     carries the tab's remote data. What it says is filled in when the render is posted
+     ({@link postRender}), which for a frame still booting is later than this. */
+  const remoteTab = message.mode === "edit" || message.mode === "design" ? viewTab : null;
   /* Diff marks are per-ARTBOARD, and post-time for a sharper version of the colour scheme's
      reason. `preparePassRender` memoizes on the document and hands the SAME payload object to every
      host in the pass, and a git-diff pass has two hosts holding two documents — but marks are a
@@ -3646,7 +3719,7 @@ export async function mountIframeCanvas(
   // Box move together (setHostPreview) — this assignment sits AFTER an await, so any contentHeight
   // That landed while the document resolved was answered under the previous mode's rule.
   setHostPreview(state, message.mode === "preview");
-  deliverRender(state, message);
+  deliverRender(state, message, remoteTab);
 }
 
 /**
@@ -3654,11 +3727,11 @@ export async function mountIframeCanvas(
  * until it says `ready`. Counted either way: the message is this pass's work for this host whether
  * or not the frame has finished loading.
  */
-function deliverRender(state: HostState, message: RenderMsg): void {
+function deliverRender(state: HostState, message: RenderMsg, remoteTab: Tab | null = null): void {
   canvasPerf.hostRenderPosts += 1;
   if (state.ready) {
     syncAssetVersions(state);
-    state.channel.post(message);
+    postRender(state, message, remoteTab);
     return;
   }
   /* The queue holds ONE render, and it must be the NEWEST, not the last to arrive. A page render
@@ -3675,6 +3748,7 @@ function deliverRender(state: HostState, message: RenderMsg): void {
     return;
   }
   state.pending = message;
+  state.pendingRemoteTab = remoteTab;
 }
 
 /**

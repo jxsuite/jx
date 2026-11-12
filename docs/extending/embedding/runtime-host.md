@@ -182,6 +182,24 @@ One setting is page-wide because the custom element registry is: `setProjectForm
 
 A template binding that throws, such as `${state.posts.length}` before the posts load, renders nothing and fills in once its data arrives. To check whether a document renders at all, await `lookupsSettled()` after `buildScope` so templates read real data (put your own time limit on it, because a lookup can hang), then install `setTemplateErrorHandler((error, source) => …)` around the render to receive every such error, and pass `null` afterwards. Without a handler, a failing template logs one console warning, held until any class lookup, `timing: "server"` call or `Request` in flight has settled, so a template that only read its data too early logs nothing. A handler is not held: it hears those early reads too.
 
+To decide lookup by lookup instead of all or nothing, install `setRemoteLookupHandler(handler)`. The runtime asks it each time an automatic `Request` or a `timing: "server"` call would start, and tells it the lookup's `kind`, the state `key`, the `scope` it belongs to and its `request` (a request's `method`, `url`, `headers` and `body`, or a server function's `$src`, `$export` and `arguments`, with every binding resolved). The handler also receives `run`, which starts the lookup and returns its promise. Return `{ value }` to answer at once with nothing fetched, a promise (for example `run()`) to stand for the lookup, or `null` to start nothing and leave the entry as it is. A host that redraws one document many times uses it to fetch once and reuse the answer:
+
+```ts
+const answers = new Map<string, JsonValue>();
+setRemoteLookupHandler((lookup, run) => {
+  if (lookup.kind === "request" && lookup.request.method !== "GET") {
+    return null;
+  }
+  const key = JSON.stringify(lookup.request);
+  if (answers.has(key)) {
+    return { value: answers.get(key)! };
+  }
+  return run().then((value) => (answers.set(key, value), value));
+});
+```
+
+The handler is page-wide, like the two skip settings it refines, and is not asked about an entry they suppress or about a `manual` request. Pass `null` to remove it. A lookup started through `run` is yours: it carries no abort signal, so it finishes even when the binding that asked for it is gone, and you can keep its answer. To give up a promise you returned without reporting a failure, reject it with an error named `AbortError`: the entry is left as it is and nothing is logged.
+
 ## Hooks for an editor
 
 A host that draws a document so people can edit it, rather than use it, can ask a few more things of a mount. Each is off unless you name it, and a mount without them renders exactly as before.

@@ -150,6 +150,10 @@ In Edit and Design, everything your page draws from data shows the data: text, i
 
 Data a layout reads from a content type, such as a sidebar's navigation, is loaded the same way, and a package script a component names with `npm:` is loaded from your project's installed packages.
 
+Data a page fetches is drawn too. A `GET` request and a server function each run once when you open the page, and the answer is reused for every redraw until you click **Refresh** in the **[Data panel](/docs/studio/logic/data#fetched-once)**. A request that would change something on a server, meaning any method but `GET`, is never sent from the canvas.
+
+Where a binding has no value, the canvas says why and never shows the expression. The binding's name is drawn with one of three states, quietly underlined: **Loading** while its data is on the way, **Could not load** when the request failed (rest the pointer on it for the reason), and **Runs on the live page** for data the canvas does not fetch. A binding whose own expression fails says **Has an error**, which is a mistake in the expression and not in the data. A bound image is outlined the same way, and a list waiting for its data says so on its template row.
+
 :::doc-note
 Two things a built page has are still missing on the canvas: state declared at the project level, and the list of a page's translations (`$page.alternates`), so a language switcher built from it stays empty here.
 :::

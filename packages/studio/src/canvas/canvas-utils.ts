@@ -46,6 +46,7 @@ import type { CommandArgValues } from "../commands/command-args";
 import { isMappedArray, isNumber, isString } from "@jxsuite/schema/guards";
 import { getNodeAtPath } from "@jxsuite/schema/doc-ops";
 import { BINDING_DISPLAYS, MAX_ROW_LIMIT } from "./iframe-protocol";
+import { isPlainStateEntry } from "./state-values";
 import type { Tab } from "../tabs/tab";
 
 /*
@@ -1941,6 +1942,73 @@ export function canvasViewCommands(deps: CanvasCommandDeps): AnyCommand[] {
         repaint(args);
       },
       title: "Set Test Value",
+    },
+    /*
+     * A state value set for the canvas (studio.md §4.5).
+     *
+     * The editing canvas runs no handler, so a state the page only reaches through one (a menu
+     * that is open, a tab that is chosen, a form that has failed) is never drawn there. This sets
+     * the value the canvas draws an entry with, in place of the document's own. View state: the
+     * tab's, written nowhere in the document, so it dirties nothing and takes no undo entry. It
+     * decides what the scope holds, so like the row cap it is a render.
+     *
+     * `canvas.setTestProp` above is the same idea for a component's props, and predates this one;
+     * a value set here is applied after a test value and wins.
+     */
+    {
+      args: {
+        additionalProperties: false,
+        properties: {
+          ...paneArg,
+          key: stringProperty("The state entry's name, as the document's state declares it."),
+          value: {
+            description:
+              "The value the canvas draws the entry with: any JSON. Null clears it, and the " +
+              "entry is drawn with the document's own value again.",
+            type: ["string", "number", "boolean", "array", "object", "null"],
+          },
+        },
+        required: ["key", "value"],
+        type: "object",
+      },
+      category: "View",
+      id: "canvas.setStateValue",
+      level: "document",
+      menus: ["palette"],
+      group: "3_canvas",
+      requires: "an open document with a plain state value",
+      when: documentOpen,
+      run: (_commandCtx, args: CommandArgValues) => {
+        const tab = contextTab("canvas.setStateValue", args);
+        const key = stringArg("canvas.setStateValue", args, "key");
+        const { value } = args;
+        const current = tab.session.ui.stateValues;
+        if (value === null || value === undefined) {
+          // Clearing is never refused: a value left behind by an entry since deleted must go too.
+          if (key in current) {
+            const { [key]: _cleared, ...rest } = current;
+            tab.session.ui.stateValues = rest;
+            repaint(args);
+          }
+          return;
+        }
+        /* REFUSES a key that is not a plain value, the rule `canvas.setTestProp` applies to a prop:
+           a computed entry, a function and a data source have their value decided elsewhere, and
+           a value set for one would sit in the tab's state changing nothing. */
+        const state = tab.doc.document.state ?? {};
+        if (!isPlainStateEntry(state[key])) {
+          const plain = Object.keys(state).filter((name) => isPlainStateEntry(state[name]));
+          throw new RangeError(
+            `command "canvas.setStateValue" argument "key": "${key}" is not a plain state value of ` +
+              `this document. Its plain values: ${plain.length > 0 ? plain.join(", ") : "none"}`,
+          );
+        }
+        if (JSON.stringify(current[key]) !== JSON.stringify(value)) {
+          tab.session.ui.stateValues = { ...current, [key]: value };
+          repaint(args);
+        }
+      },
+      title: "Set State Value on Canvas",
     },
     {
       args: {

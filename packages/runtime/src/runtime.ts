@@ -99,6 +99,7 @@ import {
 import { readCookie, serializeCookie } from "./cookie.ts";
 import type {
   CemParameter,
+  JsonObject,
   JsonValue,
   JxAttributeValue,
   JxClassCtorDef,
@@ -527,6 +528,64 @@ const _autoRequestConfig = { skip: false };
  */
 export function setSkipAutoRequests(v: boolean) {
   _autoRequestConfig.skip = v;
+}
+
+/**
+ * One remote lookup the runtime is about to start: an automatic `Request` fetch, or a call of a
+ * `timing: "server"` function (embedding.md §5.2).
+ */
+export interface RemoteLookup {
+  kind: "request" | "server";
+  /** The state key the entry is declared under. */
+  key: string;
+  /** The scope the entry belongs to: a document's, or a component instance's. */
+  scope: JxScope;
+  /**
+   * What the lookup asks for, with every binding in it resolved. A request: `method`, `url`, and
+   * `headers` and `body` where the entry declares them. A server function: `$src`, `$export`,
+   * `arguments`, and `$base` where the document has one. Two lookups that ask for the same thing
+   * hold equal values here, which is what a host keys a cache on.
+   */
+  request: JsonObject;
+}
+
+/**
+ * A host's answer to a {@link RemoteLookup}. `{ value }` is written to the entry at once and nothing
+ * is in flight; a promise stands for the lookup (its answer is written when it settles, and a
+ * rejection is the entry's failure, as the lookup's own would be); `null` starts nothing, and the
+ * entry keeps the value it has.
+ */
+export type RemoteLookupAnswer = { value: JsonValue } | Promise<JsonValue> | null;
+
+/**
+ * What a host installs with {@link setRemoteLookupHandler}. `run` starts the lookup itself and
+ * answers with its promise; a handler that never calls it has kept the lookup from happening.
+ */
+export type RemoteLookupHandler = (
+  lookup: RemoteLookup,
+  run: () => Promise<JsonValue>,
+) => RemoteLookupAnswer;
+
+let _remoteLookupHandler: RemoteLookupHandler | null = null;
+
+/**
+ * Put `handler` between the runtime and every remote lookup it starts, or take it away with `null`
+ * (embedding.md §5.2).
+ *
+ * The two skip switches above are all or nothing, and a host that draws a document over and over
+ * (Studio's canvas renders on every structural edit) needs a third answer: run this lookup once and
+ * hand every later render what it answered. The handler is asked each time a lookup would start,
+ * after the skip switches have had their say, and decides per lookup: let it run, answer it from
+ * what it holds, or leave it alone.
+ *
+ * A lookup started through `run` is the handler's. It is not aborted when the binding that asked
+ * for it is torn down, because the handler may be keeping the answer for the next one that asks;
+ * the runtime only declines to write an answer that arrives for a binding no longer there.
+ *
+ * @param {RemoteLookupHandler | null} handler
+ */
+export function setRemoteLookupHandler(handler: RemoteLookupHandler | null): void {
+  _remoteLookupHandler = handler;
 }
 
 // ─── Dev-proxy auth token (Studio cross-origin canvas) ────────────────────────
@@ -4043,22 +4102,59 @@ export async function resolvePrototype(
             }
           });
 
+          /** The fetch itself. With a signal it dies with this binding; without, it is a host's. */
+          const request = (signal?: AbortSignal): Promise<JsonValue> =>
+            fetch(url, {
+              method: def.method ?? "GET",
+              ...(signal && { signal }),
+              ...(def.headers && { headers: def.headers }),
+              ...(def.body && {
+                body: isNonNullObject(def.body) ? JSON.stringify(def.body) : def.body,
+              }),
+            }).then((r): Promise<JsonValue> => (r.ok ? r.json() : Promise.reject(r.statusText)));
+
           const doFetch = () => {
+            const handler = _remoteLookupHandler;
+            let lookup: Promise<JsonValue>;
+            if (handler) {
+              const answer = handler(
+                {
+                  key,
+                  kind: "request",
+                  request: {
+                    method: def.method ?? "GET",
+                    url,
+                    ...(def.headers && { headers: def.headers }),
+                    ...(def.body !== undefined && { body: def.body }),
+                  },
+                  scope: state,
+                },
+                () => request(),
+              );
+              if (answer === null) {
+                return;
+              }
+              if (!(answer instanceof Promise)) {
+                s.value = answer.value;
+                return;
+              }
+              lookup = answer;
+            } else {
+              lookup = request(controller.signal);
+            }
             holdTemplateErrorsFor(
-              fetch(url, {
-                method: def.method ?? "GET",
-                signal: controller.signal,
-                ...(def.headers && { headers: def.headers }),
-                ...(def.body && {
-                  body: isNonNullObject(def.body) ? JSON.stringify(def.body) : def.body,
-                }),
-              })
-                .then((r): Promise<JsonValue> => (r.ok ? r.json() : Promise.reject(r.statusText)))
+              lookup
                 .then((d) => {
-                  s.value = d;
+                  // An answer a host kept may arrive for a binding that is gone: not written.
+                  if (!controller.signal.aborted) {
+                    s.value = d;
+                  }
                 })
                 .catch((error) => {
-                  if (!(error instanceof Error && error.name === "AbortError")) {
+                  if (
+                    !controller.signal.aborted &&
+                    !(error instanceof Error && error.name === "AbortError")
+                  ) {
                     s.value = { error: String(error) };
                   }
                 }),
@@ -4654,6 +4750,7 @@ function latestServerCall(
   s: Ref<JxScopeValue>,
   invoke: ServerCall,
   label: string,
+  describe: (args: JxScope) => RemoteLookup,
 ): (args: JxScope) => void {
   let seq = 0;
   return (args: JxScope) => {
@@ -4661,21 +4758,59 @@ function latestServerCall(
     const n = seq;
     /* The executor runs before the constructor returns, so the call still starts synchronously,
        and a throw inside it rejects this promise instead of escaping to the caller. */
-    holdTemplateErrorsFor(
+    const run = (): Promise<JsonValue> =>
       new Promise<JsonValue>((settle) => {
         settle(invoke(args));
-      })
+      });
+    const answer = _remoteLookupHandler ? _remoteLookupHandler(describe(args), run) : run();
+    if (answer === null) {
+      return;
+    }
+    if (!(answer instanceof Promise)) {
+      s.value = answer.value;
+      return;
+    }
+    holdTemplateErrorsFor(
+      answer
         .then((result) => {
           if (n === seq) {
             s.value = result;
           }
         })
         .catch((error) => {
-          if (n === seq) {
+          /* An abort is not a failure: it is how a host that stood for the lookup says nobody is
+             waiting for it any more (a wait it ended), as it is for a request (embedding.md §5.2). */
+          if (n === seq && !(error instanceof Error && error.name === "AbortError")) {
             console.error(label, error);
           }
         }),
     );
+  };
+}
+
+/**
+ * What one call of a `timing: "server"` entry asks for, as a host's {@link RemoteLookupHandler} is
+ * told it.
+ */
+function serverLookup(
+  def: JxServerFnDef,
+  state: JxScope,
+  key: string,
+  args: JxScope,
+  base?: string,
+): RemoteLookup {
+  return {
+    key,
+    kind: "server",
+    /* SAFETY: the arguments cross the proxy as JSON, so a server function's are JSON by contract;
+       a value that is not is the call's own failure when it is serialized, as it always was. */
+    request: {
+      $export: def.$export,
+      $src: def.$src,
+      arguments: args,
+      ...(base !== undefined && { $base: base }),
+    } as JsonObject,
+    scope: state,
   };
 }
 
@@ -4742,7 +4877,9 @@ async function resolveServerFunction(
   // Always wrap in ref for reactivity
   const s: Ref<JxScopeValue> = ref(null);
   if (hasReactiveArg) {
-    const call = latestServerCall(s, fn, "Jx server function:");
+    const call = latestServerCall(s, fn, "Jx server function:", (args) =>
+      serverLookup(def, state, key, args, base),
+    );
     effect(() => {
       const args = resolveArgs();
       onEffectCleanup(() => {});
@@ -4806,7 +4943,9 @@ async function resolveServerFunctionViaProxy(
 
   // Always wrap in ref for reactivity
   const s: Ref<JxScopeValue> = ref(null);
-  const call = latestServerCall(s, doResolve, "Jx server proxy:");
+  const call = latestServerCall(s, doResolve, "Jx server proxy:", (args) =>
+    serverLookup(def, state, key, args, base),
+  );
   if (hasReactiveArg) {
     effect(() => {
       const args = resolveArgs();

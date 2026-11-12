@@ -611,6 +611,8 @@ describe("the value editor", () => {
       "Options",
       "Default",
       "Description",
+      // The value the canvas draws the entry with (`canvas.setStateValue`): every plain value has one.
+      "canvasValue",
     ]);
   });
 });
