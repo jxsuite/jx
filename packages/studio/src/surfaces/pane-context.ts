@@ -150,6 +150,9 @@ export interface PaneContextView {
   features: PaneContextToggle[];
   layoutState: "shown" | "hidden";
   layoutOn: boolean;
+  /** Whether bound text reads as values or as names (§6.9): drawn where the canvas is edited. */
+  bindingState: "shown" | "hidden";
+  bindings: PaneContextChoice[];
 
   exportState: "shown" | "hidden";
 }
@@ -164,6 +167,7 @@ export interface PaneContextActions {
   togglePreview: () => void;
   setBreakpoint: (media: string) => void;
   setScheme: (scheme: string) => void;
+  setBindingDisplay: (display: string) => void;
   setLocale: (locale: string) => void;
   toggleFeature: (name: string) => void;
   toggleLayout: () => void;
@@ -257,6 +261,8 @@ function project(scope: PaneContextScope, view: PaneContextView): void {
   scope.features = view.features;
   scope.layoutState = view.layoutState;
   scope.layoutOn = view.layoutOn;
+  scope.bindingState = view.bindingState;
+  scope.bindings = view.bindings;
   scope.exportState = view.exportState;
 }
 
@@ -267,6 +273,8 @@ export function emptyPaneContextView(): PaneContextView {
     backLabel: "",
     backState: "hidden",
     bannerState: "hidden",
+    bindings: [],
+    bindingState: "hidden",
     barMode: "full",
     contextRegion: "",
     contextState: "shown",

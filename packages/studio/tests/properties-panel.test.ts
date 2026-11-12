@@ -179,6 +179,34 @@ function control(root: Element, prop: string, part = "widget"): NativeControl {
   return asControl(el ?? null, `in [part="${part}"] of row "${prop}"`);
 }
 
+/**
+ * The characters of a template row: press the strip's "Edit as text" and answer the field it swaps
+ * in. A template is drawn as runs and chips (studio.md §6.9), so the characters are one press
+ * away.
+ */
+async function rawTemplate(root: Element, prop: string): Promise<NativeControl> {
+  await flush(6);
+  const strip = row(root, prop);
+  if (strip.querySelector('[part="raw"]') === null) {
+    const toggle = strip.querySelector('[part="raw-toggle"] [part="control"]');
+    if (!(toggle instanceof HTMLElement)) {
+      throw new TypeError(`row "${prop}" draws no tag strip`);
+    }
+    toggle.click();
+    await flush(6);
+  }
+  const field = strip.querySelector('[part="raw"]');
+  return asControl(
+    field?.querySelector('[part="input"]') ?? field?.querySelector('[part="control"]') ?? null,
+    `in the raw template field of row "${prop}"`,
+  );
+}
+
+/** The chips a template row draws, by name. */
+function stripChips(root: Element, prop: string): string[] {
+  return [...row(root, prop).querySelectorAll('[part="chip-name"]')].map((el) => el.textContent);
+}
+
 /** Type into a control the way a reader does: it reports, and the event bubbles. */
 function type(el: Element, value: string): void {
   asControl(el, "to type into").value = value;
@@ -1167,7 +1195,7 @@ describe("an item's child nodes", () => {
     const c = await renderPanel();
     await chooseValueSource(c, "textContent", "template");
     await renderPanel();
-    commit(control(c, "textContent"), "${item.$children}");
+    commit(await rawTemplate(c, "textContent"), "${item.$children}");
     await renderPanel();
     expect(template().children).toBe("${item.$children}");
     expect(template().textContent).toBeUndefined();
@@ -1179,7 +1207,7 @@ describe("an item's child nodes", () => {
     const c = await renderPanel();
     await chooseValueSource(c, "textContent", "template");
     await renderPanel();
-    commit(control(c, "textContent"), "${item.id}");
+    commit(await rawTemplate(c, "textContent"), "${item.id}");
     await renderPanel();
     expect(template().textContent).toBe("${item.id}");
     expect(template().children).toBeUndefined();
@@ -1225,8 +1253,9 @@ describe("an item's child nodes", () => {
       entryPage();
       const c = await renderPanel();
       expect(sourceLabel(c, "textContent")).toBe("Mixed text");
-      expect(control(c, "textContent").value).toBe("${state.entry.$children}");
-      commit(control(c, "textContent"), "${state.other.$children}");
+      const field = await rawTemplate(c, "textContent");
+      expect(field.value).toBe("${state.entry.$children}");
+      commit(field, "${state.other.$children}");
       await renderPanel();
       expect(firstChild().children).toBe("${state.other.$children}");
       expect(firstChild().textContent).toBeUndefined();
@@ -1235,7 +1264,7 @@ describe("an item's child nodes", () => {
     test("typing plain text replaces it", async () => {
       entryPage();
       const c = await renderPanel();
-      commit(control(c, "textContent"), "Words");
+      commit(await rawTemplate(c, "textContent"), "Words");
       await renderPanel();
       expect(firstChild().children).toBeUndefined();
       expect(firstChild().textContent).toBe("Words");
@@ -1531,10 +1560,71 @@ describe("attribute dynamic slots", () => {
     openDoc(linkDoc("${state.url}/feed"), ["children", 0]);
     const c = await renderPanel();
     expect(sourceLabel(c, "href")).toBe("Mixed text");
-    const tf = control(c, "href");
+    // Runs and chips by default: the literal text, and the tag by its name, never as `${…}`.
+    await flush(6);
+    expect(stripChips(c, "href")).toEqual(["Url"]);
+    expect(row(c, "href").querySelector('[part="strip"]')?.textContent).not.toContain("${");
+    const tf = await rawTemplate(c, "href");
     expect(tf.value).toBe("${state.url}/feed");
     commit(tf, "${state.alt}/feed");
     expect(firstChild().attributes!.href).toBe("${state.alt}/feed");
+  });
+
+  test("a chip in each kind of row opens the tag at that row's own place", async () => {
+    const ran: RanCommand[] = [];
+    setActiveRegistry(recordingRegistry(ran));
+    registerCard();
+    const press = async (c: Element, prop: string): Promise<void> => {
+      const pill = row(c, prop).querySelector<HTMLElement>('[part="chip"] [part="control"]');
+      if (!pill) {
+        throw new TypeError(`no chip in row "${prop}"`);
+      }
+      pill.click();
+      await flush(4);
+    };
+    const tagArg = (): CommandArgValues | undefined => ran.at(-1)?.args;
+    try {
+      openDoc({ children: [{ tagName: "p", textContent: "${state.msg}!" }], tagName: "div" }, [
+        "children",
+        0,
+      ]);
+      let c = await renderPanel();
+      await flush(6);
+      await press(c, "textContent");
+      expect(ran.at(-1)?.id).toBe("canvas.setTagPopover");
+      expect(tagArg()).toEqual({ tag: { index: 0, path: ["children", 0], slot: ["textContent"] } });
+
+      // Computed children are one whole template in `children`, and the row says "Content".
+      openDoc({ children: [{ children: "${state.items}", tagName: "ul" }], tagName: "div" }, [
+        "children",
+        0,
+      ]);
+      c = await renderPanel();
+      await flush(6);
+      await press(c, "textContent");
+      expect(
+        row(c, "textContent").querySelector('[part="strip"]')?.getAttribute("aria-label"),
+      ).toBe("Content");
+      expect(tagArg()).toEqual({ tag: { index: 0, path: ["children", 0], slot: ["children"] } });
+
+      // A component's prop is a member of `$props`, and an attribute of `attributes`.
+      openDoc(cardDoc({ title: "Hi ${state.username}" }), ["children", 0]);
+      c = await renderPanel();
+      await flush(6);
+      await press(c, "title");
+      expect(tagArg()).toEqual({
+        tag: { index: 0, path: ["children", 0], slot: ["$props", "title"] },
+      });
+      openDoc(linkDoc("${state.url}/feed"), ["children", 0]);
+      c = await renderPanel();
+      await flush(6);
+      await press(c, "href");
+      expect(tagArg()).toEqual({
+        tag: { index: 0, path: ["children", 0], slot: ["attributes", "href"] },
+      });
+    } finally {
+      setActiveRegistry(null);
+    }
   });
 
   test("boolean attribute rows carry the mode chip and bind via ref", async () => {
@@ -1568,13 +1658,16 @@ describe("attribute dynamic slots", () => {
     await chooseValueSource(c, "textContent", "ref");
     expect(firstChild().textContent).toEqual({ $ref: "#/state/msg" });
 
-    // Template-valued text content renders the raw ${} field
+    // Template-valued text content renders its runs and chips, and the characters one press away.
     openDoc({ children: [{ tagName: "p", textContent: "${state.msg}!" }], tagName: "div" }, [
       "children",
       0,
     ]);
     await renderPanel();
-    expect(control(c, "textContent").value).toBe("${state.msg}!");
+    await flush(6);
+    expect(stripChips(c, "textContent")).toEqual(["Msg"]);
+    const raw = await rawTemplate(c, "textContent");
+    expect(raw.value).toBe("${state.msg}!");
   });
 });
 
@@ -1698,11 +1791,14 @@ describe("link-target control", () => {
     expect(c.querySelector('[data-prop="href"]')).not.toBeNull();
   });
 
-  test("a template-string href (${…}) falls back to the raw widget", async () => {
+  test("a template-string href (${…}) is drawn as its tag, not as the link control", async () => {
     openDoc(anchorDoc({ href: "${item.url}" }), ["children", 0]);
     const c = await renderPanel();
     expect(linkField(c)).toBeNull();
-    expect(c.querySelector('[data-prop="href"] jx-textfield')).not.toBeNull();
+    await flush(6);
+    expect(stripChips(c, "href")).toEqual(["Url"]);
+    const raw = await rawTemplate(c, "href");
+    expect(raw.value).toBe("${item.url}");
   });
 
   test("the target attribute is a real enum picker with all four keywords", async () => {
@@ -2003,11 +2099,14 @@ describe("popovertarget control", () => {
     expect(picker.value).toBe("in-a-component");
   });
 
-  test("a bound value falls through to the raw widget so it stays an expression", async () => {
+  test("a bound value is drawn as its tag so it stays an expression", async () => {
     openDoc(popoverDoc({ popovertarget: "${state.which}" }), ["children", 0]);
     const c = await renderPanel();
     expect(row(c, "popovertarget").querySelector("jx-select")).toBeNull();
-    expect(row(c, "popovertarget").querySelector("jx-textfield")).not.toBeNull();
+    await flush(6);
+    expect(stripChips(c, "popovertarget")).toEqual(["Which"]);
+    const raw = await rawTemplate(c, "popovertarget");
+    expect(raw.value).toBe("${state.which}");
   });
 
   test("a non-invoker element is never offered the attribute at all", async () => {

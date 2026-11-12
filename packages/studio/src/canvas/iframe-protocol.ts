@@ -173,6 +173,13 @@ export type ParentToIframe =
        */
       rowSamples?: Readonly<Record<string, JsonValue>>;
       /**
+       * The titles the project's schemas give the fields of a repeater's item, by the field as a
+       * template reads it (`item.data.date`): what a chip is named where a schema names it
+       * (studio.md §6.9). Carried so a node the frame draws again after a patch is named as the
+       * render named it. A frame that predates the field names every chip by its path.
+       */
+      tagTitles?: Readonly<Record<string, string>>;
+      /**
        * The document's remote data for this render (studio.md §4.5): which session of the tab's
        * cache it is drawn from, every answer that session holds, and whether THIS frame is the one
        * that fetches what the session lacks. Present only for an editable view, and filled in when
@@ -455,6 +462,24 @@ export type ParentToIframe =
   // Begin a drag session in the iframe: `src` is the realm-agnostic source kind, `dragSeq` is the
   // Per-session id (parent drops any reply with a different seq), `gen` is the render the session
   // Started against (parent drops dragOver/dropResult whose gen != the iframe's last-rendered gen).
+  /**
+   * Evaluate templates against the scope of the node at `path`: a row's own inside a repeater, on
+   * its active row (studio.md §6.9). It is what the tag popover draws its "Now" line and each
+   * format preset with, so the value an author picks by is the value the canvas will draw.
+   * `formulas` are named formulas the document does not hold yet, defined for this evaluation alone
+   * when the scope has none of that name, so a preset can be drawn before it is chosen. `repeater`
+   * asks, besides, how many rows of that repeater are drawn. Answered by `templateResult`. Guarded
+   * by the `tags` capability.
+   */
+  | {
+      kind: "evalTemplate";
+      reqId: number;
+      gen: number;
+      path: (string | number)[] | null;
+      templates: { id: string; template: string }[];
+      formulas?: Readonly<Record<string, JxStateDefinition>>;
+      repeater?: (string | number)[];
+    }
   | { kind: "dragStart"; src: DragSrcKind; dragSeq: number; gen: number }
   // The pointer moved over the canvas. `cursor` is already converted to IFRAME-VIEWPORT coords.
   | { kind: "dragMove"; cursor: { x: number; y: number }; dragSeq: number }
@@ -547,6 +572,33 @@ export interface LayoutHit {
 export interface NodeHit {
   path: (string | number)[];
   rect: SerializableRect;
+  /**
+   * The names of what the node draws from data, as the transform wrote them on it (studio.md §4.5),
+   * on a `hover` only: the host draws them as the hover box's label, so the label is no part of the
+   * page and displaces nothing of the author's.
+   */
+  bound?: string;
+}
+
+/** What one template evaluated to on the canvas (`templateResult`). */
+export interface TemplateResult {
+  id: string;
+  /** The value as text: what a chip holding it would draw. Empty for nothing and for a failure. */
+  text: string;
+  /** What the value is, for choosing which formats suit it. */
+  type: "string" | "number" | "boolean" | "array" | "object" | "empty";
+  /** What the expression threw, when it threw. */
+  error?: string;
+}
+
+/** How many rows of one repeater the canvas draws (`templateResult.rows`). */
+export interface RowCount {
+  /** The rows drawn; 0 when the list is empty and the one row drawn is its template. */
+  drawn: number;
+  /** The items the list holds, which is more than `drawn` when the row cap cut it short. */
+  total: number;
+  /** The active row, as the frame clamps it to the rows it has. */
+  active: number;
 }
 
 /**
@@ -669,14 +721,17 @@ export interface BindingStatus extends EntryStatus {
  * - `rows`: repeaters drawn as real rows, the `setActiveRows` message and the `rowActivated` reply.
  * - `bindingStatus`: remote data fetched once (the render's `remote` field, the `remoteResults`
  *   message and the `remoteSettled` reply) and the `bindingStatus` report.
+ * - `tags`: the `tagClick` report, the `evalTemplate` request and its `templateResult` reply, and a
+ *   chip placed at the caret by the `insertData` intent (studio.md §6.9).
  */
-export type FrameCapability = "bindingDisplay" | "rows" | "bindingStatus";
+export type FrameCapability = "bindingDisplay" | "rows" | "bindingStatus" | "tags";
 
 /** Every capability this build of the frame announces. */
 export const FRAME_CAPABILITIES: readonly FrameCapability[] = [
   "bindingDisplay",
   "rows",
   "bindingStatus",
+  "tags",
 ];
 
 /** Messages the canvas iframe sends back to the editor (parent). */
@@ -697,6 +752,32 @@ export type IframeToParent =
    * inside nested repeaters posts one for each.
    */
   | { kind: "rowActivated"; path: (string | number)[]; row: number }
+  /**
+   * A chip was clicked (studio.md §6.9). `path` is the block that holds it; `source` is what the
+   * chip stands for (its `data-jx-tag`), `ref` the pointer of a `{ "$ref" }` chip, and `occurrence`
+   * how many chips of the same source precede it in the block, which is how the host finds the tag
+   * in the document without reading the frame. `rect` is the chip's box, where the popover opens.
+   * `active` says the block already held the caret or the selection's outline when it was pressed:
+   * the first press on a block selects it, and a press on a chip of a block already chosen opens
+   * the chip.
+   */
+  | {
+      kind: "tagClick";
+      path: (string | number)[];
+      source: string;
+      ref: string | null;
+      occurrence: number;
+      rect: SerializableRect;
+      active: boolean;
+    }
+  /** The reply to `evalTemplate`, in request order. `rows` answers its `repeater`, when it had one. */
+  | {
+      kind: "templateResult";
+      reqId: number;
+      gen: number;
+      results: TemplateResult[];
+      rows?: RowCount | null;
+    }
   /*
    * A lookup this frame ran has answered (studio.md §4.5). The host keeps the answer in the tab's
    * session, which is what every later render and every other frame of the tab is given, so the

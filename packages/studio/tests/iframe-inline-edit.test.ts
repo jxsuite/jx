@@ -661,7 +661,7 @@ describe("selection snapshot + applyFormat", () => {
     stop();
   });
 
-  test("insertData intent inserts a token via the execCommand insertText stub", () => {
+  test("insertData intent places a chip at the caret, not the characters of a template", () => {
     const { channel, deliver } = fakeChannel();
     const { container, el } = editableContainer();
     const stop = boot(channel, container);
@@ -672,8 +672,16 @@ describe("selection snapshot + applyFormat", () => {
 
     const calls: ExecCommandArgs[] = [];
     const unstub = stubExecCommand(calls);
+    const before = el.textContent;
     deliver({ intent: { command: "insertData", token: "state.title" }, kind: "applyFormat" });
-    expect(calls).toEqual([["insertText", false, "${state.title}"]]);
+    // Nothing is typed: the editing engine is not asked to insert text.
+    expect(calls).toEqual([]);
+    expect(el.textContent).toBe(before);
+    const chip = el.querySelector<HTMLElement>("data[data-jx-tag]");
+    expect(chip?.dataset.jxTag).toBe("${state.title}");
+    expect(chip?.dataset.jxTagLabel).toBe("Title");
+    expect(chip?.getAttribute("contenteditable")).toBe("false");
+    expect(el.lastChild).toBe(chip);
     unstub();
     stop();
   });

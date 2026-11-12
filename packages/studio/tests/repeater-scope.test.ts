@@ -3,7 +3,8 @@
  *
  * Pure module (no DOM/lit), so no harness is needed. findEnclosingRepeater walks a doc by the
  * selected element's real-doc path (which carries a `map` segment inside a repeater);
- * resolveRepeaterItemFields turns the repeater's `items` binding into `item`/`index`/field tokens.
+ * repeaterItemFields turns the repeater's `items` binding into the item's fields, read here as the
+ * tokens a template spells them with, after the two row words every repeater offers.
  */
 import { describe, expect, test } from "bun:test";
 import { isMappedArray } from "@jxsuite/schema/guards";
@@ -13,7 +14,8 @@ import {
   findEnclosingRepeater,
   mapRefLabel,
   repeaterItemFields,
-  resolveRepeaterItemFields,
+  tagTitlesAt,
+  tagTitlesOf,
 } from "../src/editor/repeater-scope";
 
 import type { JxPath } from "../src/state";
@@ -26,6 +28,15 @@ import type {
   JxStateDefinition,
   ProjectConfig,
 } from "@jxsuite/schema/types";
+
+/** The row words and every field token a template inside the repeater at `path` can read. */
+function resolveRepeaterItemFields(
+  doc: JxMutableNode,
+  path: JxPath | null | undefined,
+  config: ProjectConfig | null | undefined,
+): string[] {
+  return ["item", "index", ...repeaterItemFields(doc, path, config).map((field) => field.token)];
+}
 
 /**
  * A minimal repeater node bound to `items`. It is typed as both a document node (so it can sit in a
@@ -234,6 +245,107 @@ describe("repeaterItemFields", () => {
       pointer: "$map/item/data/role",
       token: "item.data.role",
     });
+  });
+
+  test("a field carries the title its schema declares, and none where it declares none", () => {
+    const doc = docWith("#/state/team", { team: { contentType: "team" } });
+    const config: ProjectConfig = {
+      $defs: { Person: { title: "Team member", type: "object" } },
+      content: {
+        team: {
+          schema: {
+            properties: {
+              bio: { title: "   ", type: "string" },
+              joined: { title: "Start date", type: "string" },
+              lead: { $ref: "#/$defs/Person" },
+              role: { type: "string" },
+            },
+          },
+        },
+      },
+    };
+    const titles = Object.fromEntries(
+      repeaterItemFields(doc, inside, config).map((field) => [field.token, field.title]),
+    );
+    expect(titles["item.data.joined"]).toBe("Start date");
+    // The title a pointed-at definition declares.
+    expect(titles["item.data.lead"]).toBe("Team member");
+    expect(titles["item.data.role"]).toBeUndefined();
+    // A blank title names nothing.
+    expect(titles["item.data.bio"]).toBeUndefined();
+    expect(tagTitlesAt(doc, inside, config)["item.data.joined"]).toBe("Start date");
+    expect(tagTitlesAt(doc, ["children", 0], config)).toEqual({});
+  });
+
+  test("a document's titles are every repeater's, less a field two of them title differently", () => {
+    const person = (title: string): ProjectConfig["content"] => ({
+      a: {
+        schema: {
+          properties: {
+            name: { title, type: "string" },
+            when: { title: "Date A", type: "string" },
+          },
+        },
+      },
+      b: {
+        schema: {
+          properties: {
+            name: { title: "Name", type: "string" },
+            when: { title: "Date B", type: "string" },
+          },
+        },
+      },
+    });
+    const doc: JxMutableNode = {
+      children: [
+        repeater({ $ref: "#/state/as" }),
+        { children: [repeater({ $ref: "#/state/bs" })], tagName: "div" },
+      ],
+      state: { as: { contentType: "a" }, bs: { contentType: "b" } },
+      tagName: "div",
+    };
+    // Both call the field "Name": one title. They disagree about `when`: neither is kept.
+    expect(tagTitlesOf(doc, { content: person("Name") })).toEqual({ "item.data.name": "Name" });
+    expect(tagTitlesOf(doc, null)).toEqual({});
+    expect(
+      tagTitlesOf({ tagName: "div", textContent: "No repeater" }, { content: person("x") }),
+    ).toEqual({});
+  });
+
+  test("a title is trimmed, and a field titled differently once stays untitled for a third repeater that agrees with the first", () => {
+    const named = (title: string) => ({
+      schema: { properties: { name: { title, type: "string" } } },
+    });
+    const config: ProjectConfig = {
+      content: { a: named("  Name  "), b: named("Label"), c: named("Name") },
+    };
+    const [first, second, third] = [
+      repeater({ $ref: "#/state/as" }),
+      repeater({ $ref: "#/state/bs" }),
+      repeater({ $ref: "#/state/cs" }),
+    ];
+    const state = {
+      as: { contentType: "a" },
+      bs: { contentType: "b" },
+      cs: { contentType: "c" },
+    };
+    const all: JxMutableNode = { children: [first, second, third], state, tagName: "div" };
+    expect(tagTitlesOf(all, config)).toEqual({});
+    const two: JxMutableNode = { children: [first, third], state, tagName: "div" };
+    expect(tagTitlesOf(two, config)).toEqual({ "item.data.name": "Name" });
+  });
+
+  test("a repeater written in the document's state, media or elements is not one the page draws", () => {
+    const config: ProjectConfig = {
+      content: { a: { schema: { properties: { name: { title: "Name", type: "string" } } } } },
+    };
+    const inState = repeater({ $ref: "#/state/as" });
+    // A hand-edited document holds a repeater wherever it likes; read as JSON, it is what is on disk.
+    const held = JSON.stringify(inState);
+    const doc: JxMutableNode = JSON.parse(
+      `{"$elements":[${held}],"$media":{"wide":${held}},"children":[],"state":{"as":{"contentType":"a"},"held":${held}},"tagName":"div"}`,
+    );
+    expect(tagTitlesOf(doc, config)).toEqual({});
   });
 
   test("a member name is escaped in the pointer and bracketed in the token", () => {

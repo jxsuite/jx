@@ -66,6 +66,8 @@ void mock.module("../src/canvas/canvas-live-render.js", () => ({
 }));
 
 void mock.module("../src/canvas/iframe-host.js", () => ({
+  requestTemplateEval: () => Promise.resolve(null),
+  flushCanvasEdits: () => Promise.resolve(),
   adoptCanvasPreviewMode: () => {},
   commitActiveEditSession: () => {},
   /* Stubbed although this file never calls them: a PARTIAL mock of a module the graph reaches is a

@@ -43,7 +43,9 @@ import {
 import type { CanvasStageHandle, CanvasStagePanelItem } from "../surfaces/canvas-stage";
 import type { AnyCommand, CommandRegistry } from "../commands/registry";
 import type { CommandArgValues } from "../commands/command-args";
-import { isMappedArray, isNumber, isString } from "@jxsuite/schema/guards";
+import { isJsonObject, isMappedArray, isNumber, isString } from "@jxsuite/schema/guards";
+import { boundTagsOf, sameSlot, tagAt } from "../editor/dynamic-tags";
+import { switchCaseNames } from "./switch-cases";
 import { getNodeAtPath } from "@jxsuite/schema/doc-ops";
 import { BINDING_DISPLAYS, MAX_ROW_LIMIT } from "./iframe-protocol";
 import { isPlainStateEntry } from "./state-values";
@@ -1644,6 +1646,144 @@ export function canvasViewCommands(deps: CanvasCommandDeps): AnyCommand[] {
       title: "Set Repeater Rows",
     },
     /*
+     * Which case of a `$switch` the canvas draws (studio.md §4.5).
+     *
+     * The canvas draws the case the discriminant selects and runs no handler that would change it,
+     * so every other case of a tabs component or a state machine is out of reach there. This names
+     * the case to draw instead. View state, like a state value set for the canvas: the tab's,
+     * written nowhere in the document, and a render, since the case decides which nodes exist.
+     */
+    {
+      args: {
+        additionalProperties: false,
+        properties: {
+          ...paneArg,
+          case: {
+            description:
+              "The name of the case to draw, as the switch's cases declare it. Null draws the " +
+              "case the switch itself selects again.",
+            type: ["string", "null"],
+          },
+          path: pathProperty("Document path of the node that holds the $switch."),
+        },
+        required: ["path", "case"],
+        type: "object",
+      },
+      category: "View",
+      id: "canvas.setSwitchCase",
+      level: "document",
+      menus: ["palette"],
+      group: "3_canvas",
+      requires: "an open document with a $switch",
+      when: documentOpen,
+      run: (_commandCtx, args: CommandArgValues) => {
+        const tab = contextTab("canvas.setSwitchCase", args);
+        /* SAFETY: `registry.run` coerces args against this record's schema before `run`, and the
+           schema declares `path` an array of strings and numbers, which is what a JxPath is. */
+        const path = args["path"] as JxPath;
+        const key = JSON.stringify(path);
+        const current = tab.session.ui.switchCases;
+        const name = args["case"];
+        if (name === null || name === undefined) {
+          // Clearing is never refused: a choice left behind by a switch since deleted must go too.
+          if (key in current) {
+            const { [key]: _cleared, ...rest } = current;
+            tab.session.ui.switchCases = rest;
+            repaint(args);
+          }
+          return;
+        }
+        const names = switchCaseNames(getNodeAtPath(tab.doc.document, path));
+        if (names.length === 0) {
+          throw new RangeError(
+            'command "canvas.setSwitchCase" argument "path": names no $switch in this document',
+          );
+        }
+        if (!isString(name) || !names.includes(name)) {
+          throw new RangeError(
+            `command "canvas.setSwitchCase" argument "case": "${String(name)}" is not a case of ` +
+              `this switch. Its cases: ${names.join(", ")}`,
+          );
+        }
+        if (current[key] !== name) {
+          tab.session.ui.switchCases = { ...current, [key]: name };
+          repaint(args);
+        }
+      },
+      title: "Set Switch Case on Canvas",
+    },
+    /*
+     * Which tag's popover is open (studio.md §6.9).
+     *
+     * A chip on the canvas, a Bound pill and a chip in the Inspector each open the popover of one
+     * tag, and each does it by running this: the tag is named by where it is stored (the node, the
+     * property, and its place among that property's expressions), so a script and a documentation
+     * screenshot open exactly what a click opens. `null` closes it. View state: one per tab, and
+     * opening or closing one writes nothing to the document.
+     */
+    {
+      args: {
+        additionalProperties: false,
+        properties: {
+          ...paneArg,
+          tag: {
+            description:
+              "The tag to open: { path, slot, index }. `path` is the node's document path, `slot` " +
+              'the key path of the property that holds the tag (["textContent"], ["children", 2], ' +
+              '["attributes", "href"], ["src"], ["style", "color"], ["$props", "title"]), and ' +
+              "`index` its place among that property's expressions, from 0 (default 0). Null " +
+              "closes the popover.",
+            type: ["object", "null"],
+          },
+        },
+        required: ["tag"],
+        type: "object",
+      },
+      category: "View",
+      id: "canvas.setTagPopover",
+      level: "document",
+      menus: ["palette"],
+      group: "3_canvas",
+      requires: "an open document with a bound property",
+      when: documentOpen,
+      run: (_commandCtx, args: CommandArgValues) => {
+        const tab = contextTab("canvas.setTagPopover", args);
+        const { tag } = args;
+        if (tag === null || tag === undefined) {
+          if (tab.session.ui.tagPopover !== null) {
+            tab.session.ui.tagPopover = null;
+          }
+          return;
+        }
+        const address = tagAddressArg(tag);
+        if (address === null) {
+          throw new RangeError(
+            'command "canvas.setTagPopover" argument "tag": expected { path, slot, index } or null',
+          );
+        }
+        const node = getNodeAtPath(tab.doc.document, address.path);
+        if (tagAt(node, address.slot, address.index) === null) {
+          const held = boundTagsOf(node).map(
+            (bound) => `${JSON.stringify(bound.slot)}#${bound.index}`,
+          );
+          throw new RangeError(
+            'command "canvas.setTagPopover" argument "tag": the node holds no tag there. ' +
+              `Its tags: ${held.length > 0 ? held.join(", ") : "none"}`,
+          );
+        }
+        const open = tab.session.ui.tagPopover;
+        if (
+          open === null ||
+          open.index !== address.index ||
+          JSON.stringify(open.path) !== JSON.stringify(address.path) ||
+          !sameSlot(open.slot, address.slot)
+        ) {
+          tab.session.ui.tagPopover = address;
+        }
+      },
+      title: "Set Tag Popover",
+    },
+    /*
      * The language a pane RENDERS AS — and only that.
      *
      * Jx has no message catalogue: a translation is a different file in a different directory
@@ -2047,6 +2187,22 @@ export function canvasViewCommands(deps: CanvasCommandDeps): AnyCommand[] {
       title: "Set Route Parameter",
     },
   ];
+}
+
+/** A `{ path, slot, index }` argument as a tag address, or null when it is not one. */
+function tagAddressArg(
+  value: CommandArgValues[string],
+): { path: JxPath; slot: (string | number)[]; index: number } | null {
+  if (!isJsonObject(value)) {
+    return null;
+  }
+  const { index = 0, path, slot } = value;
+  const isKeyPath = (keys: typeof path): keys is (string | number)[] =>
+    Array.isArray(keys) && keys.every((key) => isString(key) || isNumber(key));
+  if (!isKeyPath(path) || !isKeyPath(slot) || !isNumber(index) || !Number.isInteger(index)) {
+    return null;
+  }
+  return { index, path: [...path], slot: [...slot] };
 }
 
 /**

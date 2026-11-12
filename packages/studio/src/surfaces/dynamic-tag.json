@@ -1,0 +1,742 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StudioDynamicTag",
+  "$description": "The tag popover (studio.md §6.9): the editing surface of ONE dynamic tag, a `${…}` of a template or a `{ \"$ref\" }`, as fields instead of as code. Top to bottom it is the table of that section: Source (what is read), Format (how it is written, as presets each drawn with the value the canvas is drawing), the format's own parameters, Fallback, a Now line, and Advanced holding the expression itself. Nothing here reads the document, parses an expression or decides what an edit writes: `panels/dynamic-tag.ts` projects the tag into this scope, and every control hands back the value it was given a name for. A tag outside the recognised grammar has no fields to show, so `structured` is false, the fields are not drawn and Advanced is open, named Custom expression. The panel is the kit's `jx-popover`, an auto popover: light dismiss, Escape and returning focus are the platform's, and the flow learns of a close from the panel's own `toggle`. It is placed by measured coordinates (`x`, `y`), because what it opens from is a chip in another realm or a pill in another surface.",
+  "tagName": "div",
+  "attributes": {
+    "part": "root",
+    "role": "none"
+  },
+  "style": {
+    "display": "contents",
+    "& [part=\"panel\"]": {
+      "padding": "var(--jx-space-3)"
+    },
+    "& [part=\"body\"]": {
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "var(--jx-space-3)",
+      "width": "min(304px, calc(100vw - 32px))",
+      "maxHeight": "min(600px, calc(100vh - 40px))",
+      "overflowY": "auto",
+      "fontSize": "var(--jx-text-xs)"
+    },
+    "& [part=\"head\"]": {
+      "display": "flex",
+      "alignItems": "baseline",
+      "gap": "var(--jx-space-2)",
+      "minWidth": "0"
+    },
+    "& [part=\"title\"]": {
+      "fontWeight": "600",
+      "fontSize": "var(--jx-text-md)",
+      "overflow": "hidden",
+      "textOverflow": "ellipsis",
+      "whiteSpace": "nowrap",
+      "minWidth": "0"
+    },
+    "& [part=\"kind\"]": {
+      "color": "var(--jx-fg-dim)",
+      "whiteSpace": "nowrap",
+      "marginInlineStart": "auto"
+    },
+    "& [part=\"fields\"]": {
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "var(--jx-space-3)"
+    },
+    "& [part=\"fields-slot\"], & [part=\"fallback-slot\"], & [part=\"param-slot\"]": {
+      "display": "contents"
+    },
+    "& [part=\"format-row\"], & [part=\"params\"]": {
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "var(--jx-space-1)"
+    },
+    "& [part=\"params\"]:empty": {
+      "display": "none"
+    },
+    "& [part=\"row-label\"]": {
+      "color": "var(--jx-fg-dim)"
+    },
+    "& [part=\"formats\"]": {
+      "$description": "The presets scroll inside the row, never the panel: a field with twenty ways to be written must not push Fallback and Now out of the window.",
+      "display": "flex",
+      "flexDirection": "column",
+      "alignItems": "stretch",
+      "gap": "1px",
+      "maxHeight": "168px",
+      "overflowY": "auto",
+      "border": "1px solid var(--jx-border)",
+      "borderRadius": "var(--jx-radius-sm)",
+      "padding": "2px"
+    },
+    "& [part=\"format\"] > [part=\"control\"]": {
+      "width": "100%",
+      "justifyContent": "space-between",
+      "gap": "var(--jx-space-3)",
+      "textAlign": "start"
+    },
+    "& [part=\"format-sample\"]": {
+      "overflow": "hidden",
+      "textOverflow": "ellipsis",
+      "whiteSpace": "nowrap",
+      "minWidth": "0"
+    },
+    "& [part=\"format-label\"]": {
+      "color": "var(--jx-fg-dim)",
+      "whiteSpace": "nowrap",
+      "flexShrink": "0"
+    },
+    "& [part=\"fallback-row\"] [part=\"fallback-text\"]": {
+      "marginBlockStart": "var(--jx-space-1)"
+    },
+    "& [part=\"now\"]": {
+      "display": "flex",
+      "gap": "var(--jx-space-2)",
+      "alignItems": "baseline",
+      "padding": "var(--jx-space-2)",
+      "borderRadius": "var(--jx-radius-sm)",
+      "background": "var(--jx-bg-input)",
+      "minWidth": "0"
+    },
+    "& [part=\"now-label\"]": {
+      "color": "var(--jx-fg-dim)",
+      "flexShrink": "0"
+    },
+    "& [part=\"now-value\"]": {
+      "overflow": "hidden",
+      "textOverflow": "ellipsis",
+      "whiteSpace": "nowrap",
+      "minWidth": "0"
+    },
+    "& [part=\"now\"][data-state=\"empty\"] [part=\"now-value\"], & [part=\"now\"][data-state=\"pending\"] [part=\"now-value\"]": {
+      "color": "var(--jx-fg-dim)",
+      "fontStyle": "italic"
+    },
+    "& [part=\"now\"][data-state=\"failed\"] [part=\"now-value\"]": {
+      "color": "var(--jx-danger)",
+      "whiteSpace": "normal"
+    },
+    "& [part=\"advanced-foot\"]": {
+      "display": "flex",
+      "alignItems": "center",
+      "gap": "var(--jx-space-2)",
+      "marginBlockStart": "var(--jx-space-2)"
+    },
+    "& [part=\"advanced-note\"]": {
+      "color": "var(--jx-fg-dim)",
+      "flex": "1",
+      "minWidth": "0"
+    }
+  },
+  "children": [
+    {
+      "tagName": "jx-popover",
+      "attributes": {
+        "part": "panel"
+      },
+      "$props": {
+        "label": "Dynamic tag",
+        "x": {
+          "$ref": "#/state/x"
+        },
+        "y": {
+          "$ref": "#/state/y"
+        }
+      },
+      "ontoggle": {
+        "$ref": "#/state/toggled"
+      },
+      "children": [
+        {
+          "tagName": "div",
+          "attributes": {
+            "part": "body",
+            "role": "none"
+          },
+          "children": [
+            {
+              "tagName": "div",
+              "attributes": {
+                "part": "head"
+              },
+              "children": [
+                {
+                  "tagName": "span",
+                  "attributes": {
+                    "part": "title"
+                  },
+                  "textContent": "${state.title}"
+                },
+                {
+                  "tagName": "span",
+                  "attributes": {
+                    "part": "kind"
+                  },
+                  "textContent": "${state.property}"
+                }
+              ]
+            },
+            {
+              "tagName": "div",
+              "attributes": {
+                "part": "fields-slot",
+                "role": "none"
+              },
+              "$switch": {
+                "$ref": "#/state/structured"
+              },
+              "cases": {
+                "true": {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "fields",
+                    "role": "none"
+                  },
+                  "children": [
+                    {
+                      "tagName": "jx-field",
+                      "attributes": {
+                        "part": "source-row"
+                      },
+                      "$props": {
+                        "span": true,
+                        "label": "Source"
+                      },
+                      "children": [
+                        {
+                          "tagName": "jx-select",
+                          "attributes": {
+                            "part": "source"
+                          },
+                          "$props": {
+                            "size": "sm",
+                            "label": "Source",
+                            "groups": {
+                              "$ref": "#/state/sourceGroups"
+                            },
+                            "value": {
+                              "$ref": "#/state/source"
+                            }
+                          },
+                          "onchange": {
+                            "$prototype": "Function",
+                            "body": [
+                              {
+                                "operator": "call",
+                                "target": {
+                                  "$ref": "#/state/setSource"
+                                },
+                                "value": [
+                                  {
+                                    "$ref": "event#/target/value"
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "format-row",
+                        "role": "none"
+                      },
+                      "children": [
+                        {
+                          "tagName": "span",
+                          "attributes": {
+                            "part": "row-label",
+                            "id": "jx-tag-format-label"
+                          },
+                          "textContent": "Format"
+                        },
+                        {
+                          "tagName": "jx-action-group",
+                          "attributes": {
+                            "part": "formats"
+                          },
+                          "$props": {
+                            "selects": "single",
+                            "orientation": "vertical",
+                            "label": "Format"
+                          },
+                          "children": [
+                            {
+                              "$prototype": "Array",
+                              "items": {
+                                "$ref": "#/state/formats"
+                              },
+                              "key": {
+                                "$ref": "$map/item/id"
+                              },
+                              "map": {
+                                "tagName": "jx-action-button",
+                                "attributes": {
+                                  "part": "format",
+                                  "data-value": "${$map.item.id}"
+                                },
+                                "$props": {
+                                  "size": "sm",
+                                  "checked": {
+                                    "$ref": "$map/item/checked"
+                                  },
+                                  "label": {
+                                    "$ref": "$map/item/name"
+                                  },
+                                  "hint": {
+                                    "$ref": "$map/item/label"
+                                  }
+                                },
+                                "onclick": {
+                                  "$prototype": "Function",
+                                  "body": [
+                                    {
+                                      "operator": "call",
+                                      "target": {
+                                        "$ref": "#/state/setFormat"
+                                      },
+                                      "value": [
+                                        {
+                                          "$ref": "$map/item/id"
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                },
+                                "children": [
+                                  {
+                                    "tagName": "span",
+                                    "attributes": {
+                                      "part": "format-sample"
+                                    },
+                                    "textContent": "${$map.item.sample}"
+                                  },
+                                  {
+                                    "tagName": "span",
+                                    "attributes": {
+                                      "part": "format-label"
+                                    },
+                                    "textContent": "${$map.item.label}"
+                                  }
+                                ]
+                              }
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "tagName": "div",
+                      "attributes": {
+                        "part": "params",
+                        "role": "none"
+                      },
+                      "children": [
+                        {
+                          "$prototype": "Array",
+                          "items": {
+                            "$ref": "#/state/params"
+                          },
+                          "key": {
+                            "$ref": "$map/item/key"
+                          },
+                          "map": {
+                            "tagName": "jx-field",
+                            "attributes": {
+                              "part": "param-row",
+                              "data-key": "${$map.item.key}"
+                            },
+                            "$props": {
+                              "span": true,
+                              "label": {
+                                "$ref": "$map/item/label"
+                              }
+                            },
+                            "children": [
+                              {
+                                "tagName": "span",
+                                "attributes": {
+                                  "part": "param-slot",
+                                  "role": "none"
+                                },
+                                "$switch": {
+                                  "$ref": "$map/item/kind"
+                                },
+                                "cases": {
+                                  "select": {
+                                    "tagName": "jx-select",
+                                    "attributes": {
+                                      "part": "param"
+                                    },
+                                    "$props": {
+                                      "size": "sm",
+                                      "label": {
+                                        "$ref": "$map/item/label"
+                                      },
+                                      "options": {
+                                        "$ref": "$map/item/options"
+                                      },
+                                      "value": {
+                                        "$ref": "$map/item/value"
+                                      }
+                                    },
+                                    "onchange": {
+                                      "$prototype": "Function",
+                                      "body": [
+                                        {
+                                          "operator": "call",
+                                          "target": {
+                                            "$ref": "#/state/setParam"
+                                          },
+                                          "value": [
+                                            {
+                                              "$ref": "$map/item/key"
+                                            },
+                                            {
+                                              "$ref": "event#/target/value"
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    }
+                                  },
+                                  "text": {
+                                    "tagName": "jx-textfield",
+                                    "attributes": {
+                                      "part": "param"
+                                    },
+                                    "$props": {
+                                      "size": "sm",
+                                      "label": {
+                                        "$ref": "$map/item/label"
+                                      },
+                                      "value": {
+                                        "$ref": "$map/item/value"
+                                      }
+                                    },
+                                    "onchange": {
+                                      "$prototype": "Function",
+                                      "body": [
+                                        {
+                                          "operator": "call",
+                                          "target": {
+                                            "$ref": "#/state/setParam"
+                                          },
+                                          "value": [
+                                            {
+                                              "$ref": "$map/item/key"
+                                            },
+                                            {
+                                              "$ref": "event#/target/value"
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    }
+                                  }
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "tagName": "jx-field",
+                      "attributes": {
+                        "part": "show-row"
+                      },
+                      "$props": {
+                        "span": true,
+                        "label": "Show"
+                      },
+                      "children": [
+                        {
+                          "tagName": "jx-select",
+                          "attributes": {
+                            "part": "show"
+                          },
+                          "$props": {
+                            "size": "sm",
+                            "label": "Show",
+                            "options": {
+                              "$ref": "#/state/showOptions"
+                            },
+                            "value": {
+                              "$ref": "#/state/show"
+                            }
+                          },
+                          "onchange": {
+                            "$prototype": "Function",
+                            "body": [
+                              {
+                                "operator": "call",
+                                "target": {
+                                  "$ref": "#/state/setShow"
+                                },
+                                "value": [
+                                  {
+                                    "$ref": "event#/target/value"
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "tagName": "jx-field",
+                      "attributes": {
+                        "part": "fallback-row"
+                      },
+                      "$props": {
+                        "span": true,
+                        "label": "Fallback"
+                      },
+                      "children": [
+                        {
+                          "tagName": "jx-select",
+                          "attributes": {
+                            "part": "fallback-when"
+                          },
+                          "$props": {
+                            "size": "sm",
+                            "label": "When to use the fallback",
+                            "options": {
+                              "$ref": "#/state/fallbackOptions"
+                            },
+                            "value": {
+                              "$ref": "#/state/fallbackWhen"
+                            }
+                          },
+                          "onchange": {
+                            "$prototype": "Function",
+                            "body": [
+                              {
+                                "operator": "call",
+                                "target": {
+                                  "$ref": "#/state/setFallbackWhen"
+                                },
+                                "value": [
+                                  {
+                                    "$ref": "event#/target/value"
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        },
+                        {
+                          "tagName": "span",
+                          "attributes": {
+                            "part": "fallback-slot",
+                            "role": "none"
+                          },
+                          "$switch": {
+                            "$ref": "#/state/hasFallback"
+                          },
+                          "cases": {
+                            "true": {
+                              "tagName": "jx-textfield",
+                              "attributes": {
+                                "part": "fallback-text"
+                              },
+                              "$props": {
+                                "size": "sm",
+                                "label": "Fallback text",
+                                "placeholder": "Shown instead",
+                                "value": {
+                                  "$ref": "#/state/fallback"
+                                }
+                              },
+                              "onchange": {
+                                "$prototype": "Function",
+                                "body": [
+                                  {
+                                    "operator": "call",
+                                    "target": {
+                                      "$ref": "#/state/setFallbackText"
+                                    },
+                                    "value": [
+                                      {
+                                        "$ref": "event#/target/value"
+                                      }
+                                    ]
+                                  }
+                                ]
+                              }
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "tagName": "div",
+              "attributes": {
+                "part": "now",
+                "data-state": "${state.nowState}",
+                "aria-live": "polite"
+              },
+              "children": [
+                {
+                  "tagName": "span",
+                  "attributes": {
+                    "part": "now-label"
+                  },
+                  "textContent": "Now:"
+                },
+                {
+                  "tagName": "span",
+                  "attributes": {
+                    "part": "now-value",
+                    "title": "${state.nowTitle}"
+                  },
+                  "textContent": "${state.nowText}"
+                }
+              ]
+            },
+            {
+              "tagName": "jx-accordion-item",
+              "attributes": {
+                "part": "advanced"
+              },
+              "$props": {
+                "label": {
+                  "$ref": "#/state/advancedLabel"
+                },
+                "open": {
+                  "$ref": "#/state/advancedOpen"
+                }
+              },
+              "children": [
+                {
+                  "tagName": "jx-textfield",
+                  "attributes": {
+                    "part": "expression"
+                  },
+                  "$props": {
+                    "size": "sm",
+                    "mono": true,
+                    "multiline": true,
+                    "grows": true,
+                    "rows": "2",
+                    "label": {
+                      "$ref": "#/state/advancedLabel"
+                    },
+                    "value": {
+                      "$ref": "#/state/draft"
+                    },
+                    "invalid": {
+                      "$ref": "#/state/draftInvalid"
+                    }
+                  },
+                  "oninput": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "operator": "call",
+                        "target": {
+                          "$ref": "#/state/editDraft"
+                        },
+                        "value": [
+                          {
+                            "$ref": "event#/target/value"
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  "onkeydown": {
+                    "$prototype": "Function",
+                    "body": [
+                      {
+                        "$switch": {
+                          "$ref": "event#/key"
+                        },
+                        "cases": {
+                          "Enter": [
+                            {
+                              "operator": "call",
+                              "target": {
+                                "$ref": "#/state/applyDraftOnChord"
+                              },
+                              "value": [
+                                {
+                                  "$ref": "event#/ctrlKey"
+                                },
+                                {
+                                  "$ref": "event#/metaKey"
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "advanced-foot",
+                    "role": "none"
+                  },
+                  "children": [
+                    {
+                      "tagName": "span",
+                      "attributes": {
+                        "part": "advanced-note"
+                      },
+                      "textContent": "${state.draftNote}"
+                    },
+                    {
+                      "tagName": "jx-button",
+                      "attributes": {
+                        "part": "apply"
+                      },
+                      "$props": {
+                        "size": "sm",
+                        "variant": "accent",
+                        "disabled": {
+                          "$ref": "#/state/draftClean"
+                        },
+                        "label": "Apply expression"
+                      },
+                      "onclick": {
+                        "$prototype": "Function",
+                        "body": [
+                          {
+                            "operator": "call",
+                            "target": {
+                              "$ref": "#/state/applyDraft"
+                            },
+                            "value": []
+                          }
+                        ]
+                      },
+                      "children": [
+                        {
+                          "tagName": "span",
+                          "textContent": "Apply"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

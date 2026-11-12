@@ -533,6 +533,7 @@ Fixed-position toolbar that follows the selected element:
 
 - Shows element tag name, drag handle, and context actions
 - ONE shape: the bar does not rearrange itself when the author starts typing. Controls that cannot act are disabled, not removed — a toolbar whose buttons move under the cursor is worse than one with a greyed button
+- **A fact about the selection is drawn only where it is true.** The Bound pills, the row stepper and the case picker (`studio.md` §4.4) are not verbs that can or cannot act: each names something the selected block has, and a pill for a property that is not bound would name nothing. They are absent rather than disabled, and they stand after every verb, so nothing before them moves when they come and go
 - **It steps aside when the author leaves the canvas.** A pointerdown in parent chrome outside the canvas hides the bar; a selection change or a pointerdown back in the canvas brings it back. The bar is `position: fixed` and clamped into the window, so a bar that outlived the author's attention sat over the pane context bar, the Inspector and the docks — chrome the author was reaching for. Hiding it never clears the SELECTION: the Inspector's whole job is editing what is selected
 - Z-index: 100
 - Shadow: standard elevation shadow

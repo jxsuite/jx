@@ -109,6 +109,8 @@ import { classifyHref, composeHref } from "../utils/link-target";
 import type { LinkKind } from "../utils/link-target";
 import { clickAnythingTo, openPageAction, staleSelectionMessage } from "./empty-state";
 import { mountMediaPicker, unmountMediaPicker } from "../ui/media-picker";
+import { unmountTagStrip } from "../surfaces/tag-strip";
+import { paintTagStrip, resetTagStrips } from "./tag-strip";
 import { colorTokens, resolvedColor } from "../ui/color-selector";
 import {
   childrenTemplate,
@@ -753,8 +755,10 @@ export function bindContentHost(
   plans.clear();
   for (const host of controlHosts.values()) {
     unmountMediaPicker(host);
+    unmountTagStrip(host);
   }
   controlHosts.clear();
+  resetTagStrips();
   for (const key of draftKeys) {
     clearDraft(key);
   }
@@ -832,6 +836,7 @@ function paintControls(): void {
       /* A media picker in that box is a MOUNTED document, and the surface registry holds its host:
          dropping our handle on it would leave the mount alive with nothing left to draw. */
       unmountMediaPicker(host);
+      unmountTagStrip(host);
     }
   }
 }
@@ -1049,6 +1054,11 @@ interface LadderOpts {
   seedFor?: ((mode: SlotMode) => JsonValue | undefined) | undefined;
   /** The operators this position's grammar admits, when it admits fewer than all of them. */
   operators?: readonly string[] | undefined;
+  /**
+   * Where the value is stored on its node, and what it is called. A position that says so draws a
+   * bound value as runs and chips (studio.md §6.9) instead of as a template's characters.
+   */
+  tag?: { path: JxPath; slot: (string | number)[]; label: string } | undefined;
 }
 
 /**
@@ -1094,6 +1104,29 @@ function applyLadder(row: ContentRowView, plan: RowPlan, opts: LadderOpts): void
        will not match against `JsonObject`'s index signature. */
     value: cloneValue(opts.value as JsonValue | undefined),
   };
+  const { tag } = opts;
+  if (tag && mode === "template" && isString(opts.value)) {
+    /* A template, and the position says where it is stored: it is drawn as the canvas draws it,
+       literal runs and one chip per tag, each chip opening the tag popover (studio.md §6.9). The
+       characters stay one press away inside the strip. The From data… rung keeps its picker, which
+       already names what it reads and never showed an expression. */
+    row.kind = "control";
+    plan.commit = undefined;
+    plan.draft = undefined;
+    plan.debounceMs = 0;
+    plan.control = (host) => {
+      unmountMediaPicker(host);
+      paintTagStrip(host, {
+        fieldKey: opts.fieldKey,
+        label: tag.label,
+        onChange: opts.onChange,
+        path: tag.path,
+        slot: tag.slot,
+        value: opts.value,
+      });
+    };
+    return;
+  }
   if (mode === "ref") {
     row.kind = "select";
     row.value = isRef(opts.value) ? opts.value.$ref : "";
@@ -1134,7 +1167,9 @@ function applyLadder(row: ContentRowView, plan: RowPlan, opts: LadderOpts): void
     if (opts.operators) {
       editorOpts.operators = opts.operators;
     }
-    plan.control = (host) =>
+    plan.control = (host) => {
+      // The box may hold the strip of the rung this row just left.
+      unmountTagStrip(host);
       mountExpressionEditor(
         host,
         node,
@@ -1142,6 +1177,7 @@ function applyLadder(row: ContentRowView, plan: RowPlan, opts: LadderOpts): void
         (next) => opts.onChange({ $expression: next } as JsonValue),
         editorOpts,
       );
+    };
   }
 }
 
@@ -1465,6 +1501,12 @@ function contentRow(
     fieldKey: `prop|${path.join("/")}|textContent`,
     onChange: write,
     stateDefs: bindableSignals,
+    // Computed children are one whole template in `children`; any other text is `textContent`.
+    tag: {
+      label: computed === null ? "Text Content" : "Content",
+      path,
+      slot: [computed === null ? "textContent" : "children"],
+    },
     value,
   });
   if (computed !== null) {
@@ -1736,6 +1778,7 @@ function componentPropRows(
         : undefined,
       onChange,
       stateDefs: signalNames,
+      tag: { label: prop.name, path, slot: ["$props", prop.name] },
       value: rawValue,
     });
     applyChip(
@@ -1906,6 +1949,7 @@ function attributeRow(
     fieldKey: `attr|${path.join("/")}|${attr}`,
     onChange: commitAttr,
     stateDefs: ctx.bindableSignals,
+    tag: { label: attr, path, slot: ["attributes", attr] },
     value,
   });
   applyChip(row, plan, attr, chip());

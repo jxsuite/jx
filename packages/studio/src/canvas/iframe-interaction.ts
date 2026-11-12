@@ -16,6 +16,7 @@ import {
 import { nearestStampedEl, repeaterRect } from "./iframe-rows";
 import { isFunction } from "@jxsuite/schema/guards";
 import { isDisplayContents, rectOf } from "../utils/geometry";
+import { BOUND_FIELD_ATTR } from "../utils/edit-display";
 import { computeInsertZones, insertZonesKey } from "./iframe-insert";
 import { getActiveElement, isEditing } from "../editor/inline-edit";
 import type { IframeChannel } from "./iframe-channel";
@@ -264,6 +265,11 @@ export interface InteractionDeps {
    * press was made with Shift held, which extends a selection rather than starting one.
    */
   onPress?: (target: EventTarget | null, extending: boolean) => void;
+  /**
+   * Called on a click in an editable view, after the `hit` it posted (or did not): the press is
+   * over and the selection has been reported, so anything said now is about the thing clicked.
+   */
+  onClick?: (target: EventTarget | null) => void;
 }
 
 /**
@@ -357,6 +363,7 @@ export function startInteraction(
        reveal is a no-op on an overlay that is already open, and the close lands. */
     postPopoverInvoke(e.target, channel);
     postCommandInvoke(e.target, channel);
+    deps?.onClick?.(e.target);
   };
 
   /**
@@ -380,7 +387,13 @@ export function startInteraction(
       return;
     }
     lastHoverKey = key;
-    channel.post({ hit: el && path !== null ? measureHit(el, path) : null, kind: "hover" });
+    const hit = el && path !== null ? measureHit(el, path) : null;
+    // What the block draws from data is the hover box's label, drawn by the host (studio.md §4.5).
+    const bound = el?.getAttribute(BOUND_FIELD_ATTR);
+    if (hit && bound) {
+      hit.bound = bound;
+    }
+    channel.post({ hit, kind: "hover" });
   };
 
   /**

@@ -105,6 +105,7 @@ void mock.module("../src/canvas/canvas-live-render", () => ({
       },
       renderDoc: { children: ["hi"], tagName: "div" },
       rowSamples: {},
+      tagTitles: {},
       scripts: {},
       siteStyle: null,
       unresolvedSources: [],
