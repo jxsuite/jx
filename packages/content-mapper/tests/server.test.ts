@@ -104,7 +104,7 @@ describe("the mapper's process", () => {
       projectHandle: "p1",
     });
     // What the mapper remembers for the project stays in the mapper.
-    expect(opened.result).toEqual({ configIdentity: "" });
+    expect(opened.result).toEqual({ configIdentity: "inferred" });
 
     const mapped = await asked.ask("transform", {
       content: SOURCE,

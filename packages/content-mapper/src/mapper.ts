@@ -200,6 +200,13 @@ function mappedOutput(unit: VirtualUnit, source: string, encoding: PositionEncod
 }
 
 /**
+ * What is said of a file no `tsconfig` reads, which an editor opens on its own: nothing a project
+ * gives is known before the file is. It is not the empty string, because the language server reads
+ * that as no answer and then refuses every file the mapper is given.
+ */
+const INFERRED_IDENTITY = "inferred";
+
+/**
  * The mapper, as `ts-content-mapper` runs one.
  *
  * @returns A definition holding no state of its own: what it remembers is kept per project, which
@@ -212,7 +219,7 @@ export function createMapper(): ContentMapperDefinition<JsonObject, MapperProjec
       const root = params.configFileName === "" ? null : dirname(params.configFileName);
       const project: MapperProject = { facts: new Map(), root };
       if (root === null) {
-        return { configIdentity: "", project };
+        return { configIdentity: INFERRED_IDENTITY, project };
       }
       const folders = projectFoldersUnder(root);
       /* The compiler reads every file again when this changes, so it says only what would change

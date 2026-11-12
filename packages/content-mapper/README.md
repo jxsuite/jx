@@ -43,6 +43,8 @@ The flag is not given to one mapper. It lets `tsc` start every content mapper th
 
 A language server runs a mapper only when the editor tells it the project may run external code. Until then a `.jxn` file gets no errors and no hover.
 
+A language server looks for `tsconfig.json`, so it reads `tsconfig.jxn.json` only where the editor names that file. In VS Code that is the TypeScript extension's `js/ts.customConfigFileName` setting.
+
 ## What is checked
 
 - A document's client script and server script.

@@ -10,6 +10,7 @@ code:
   - packages/schema/src/jxn/schema-types.ts
   - packages/content-mapper/src/mapper.ts
   - packages/content-mapper/src/server.ts
+  - packages/vscode/src/content-mapper.ts
 ---
 
 # Type checking
@@ -449,7 +450,7 @@ A component whose own `State` allows unknown names ([What `State` says](#what-st
 
 ## In an editor
 
-TypeScript 7.1's language server reads the same `tsconfig.jxn.json`, and through the mapper it answers for a `.jxn` file what it answers for a `.ts` file:
+TypeScript 7.1's language server runs the same mapper, and through it answers for a `.jxn` file what it answers for a `.ts` file:
 
 - **Errors** at the same positions `tsc` prints.
 - **Hover** on `state.count` in a body or a template, or on `count` in `"#/state/count"`, shows `(property) State.count: number`. Hover on an event parameter shows the event and the element, such as `KeyboardEvent & { readonly currentTarget: HTMLButtonElement; ... }`.
@@ -457,11 +458,44 @@ TypeScript 7.1's language server reads the same `tsconfig.jxn.json`, and through
 - **Go to definition** from `state.count` in a body, or from `count` in a `$ref`, goes to the entry. An entry written `(export)increment` is the script's function under the same name, so from `state.increment` it goes to the function. Where an entry names its export apart, as `(export)hello $export=greet`, it offers the entry and the function. From a prop's name it goes to the component's entry, in the component's file. From the name at the end of `"#/$defs/TodoItem"` it goes to the definition.
 - **Rename** of an entry rewrites the entry, the script, every body and template that reads it and every `$ref` that names it, in the document's `state` or a nested section's. It can start from any of them. A section that declares an entry under a name the document also uses has an entry of its own, so renaming one leaves the other and everything that reads it. An entry written `(export)increment` and the function it exports are one name, so renaming the function, the entry or `state.increment` rewrites all three. Renaming a script's function rewrites the `$export` that names it. Renaming a component's entry also rewrites the prop in every `.jxn` document that sets it, and renaming the prop renames the entry. Renaming a definition rewrites every `$ref` to it in the document, and renaming a property in a definition rewrites the bodies and templates that read it.
 
-The language server also notices a project file changing. Give a project `state` of its own, or a default layout, and its open pages are checked again without a restart. This reaches every project in the folder `tsconfig.jxn.json` is in or in a folder under it, apart from `node_modules` and folders whose names begin with a dot. It relies on the editor reporting file changes to the language server, which editors do when a server asks.
+### Which `tsconfig` an editor reads
+
+A language server looks for a project under the name `tsconfig.json`. It does not read `tsconfig.jxn.json` until the editor tells it that name. In VS Code that is the TypeScript extension's `js/ts.customConfigFileName` setting, which names a file to look for before `tsconfig.json`:
+
+```json
+{ "js/ts.customConfigFileName": "tsconfig.jxn.json" }
+```
+
+A `.jxn` file then reaches the language server in one of two ways:
+
+- **A `tsconfig` the server found names the mapper and includes the file.** The server starts the copy of the mapper your project installed, as `tsc` does, and checks the file with that `tsconfig`'s options.
+- **No `tsconfig` the server found includes the file.** The server has no mapper for it unless the editor supplies one. The [VS Code extension](#in-vs-code) supplies its own, so a `.jxn` file is checked there with nothing installed in the project.
+
+Under a `tsconfig` that names the mapper, the language server also notices a project file changing. Give a project `state` of its own, or a default layout, and its open pages are checked again without a restart. This reaches every project in the folder that `tsconfig` is in or in a folder under it, apart from `node_modules` and folders whose names begin with a dot. It relies on the editor reporting file changes to the language server, which editors do when a server asks. A file checked with a mapper the editor supplied is held against its project file again at its next edit.
 
 The language server runs a mapper only when the editor tells it the project may run external code, which is the editor's form of `--runExternalCode`. Until it does, a `.jxn` file gets no errors, no hover and no completion, and nothing says why.
 
-There is no Jx editor extension yet. Your editor has to be told by hand that a `.jxn` file goes to the TypeScript language server.
+### In VS Code
+
+VS Code sends a file to the TypeScript language server only when an extension says the file is TypeScript's to read. The Jx Suite extension says so for `.jxn`. It also highlights the file and completes it from your project's schemas ([Jx Notation](/docs/framework/concepts/jxn-files#in-vs-code)).
+
+:::doc-note
+The extension is not published yet. It is built and run from a checkout of the repository: see [The VS Code extension](/docs/extending/contributing/monorepo#the-vs-code-extension).
+:::
+
+Type checking needs three things beside it:
+
+- **The TypeScript 7 extension** (`TypeScriptTeam.native-preview`), with its language server enabled (**TypeScript: Enable TypeScript 7 Language Server**). The Jx Suite extension starts it when you open a `.jxn` file, which VS Code alone does only for a JavaScript or TypeScript file.
+- **TypeScript 7.1.** The TypeScript 7 extension carries TypeScript 7.0 today, which has no content mappers. Install `typescript@7.1.0-beta` in your project and choose it with **TypeScript: Select TypeScript Version...**, or set `js/ts.tsdk.path` in your user settings to the full path of your project's `node_modules/typescript/lib`.
+- **A trusted workspace.** The TypeScript extension does not run in a workspace you have not trusted, so nothing is checked there.
+
+The mapper the extension supplies is started with VS Code's own runtime, so it needs no Node on your machine. It finds a file's project by looking upward for the nearest project file.
+
+Where the TypeScript extension is missing, or is a version from before content mappers, a `.jxn` file is still highlighted and completed. The **Jx Suite** output channel says why it is not type checked.
+
+### In another editor
+
+There is no Jx extension for any other editor. Your editor has to be told by hand that a `.jxn` file goes to the TypeScript language server, and the server needs a `tsconfig` it finds to name the mapper.
 
 ## Limits
 
@@ -473,7 +507,7 @@ There is no Jx editor extension yet. Your editor has to be told by hand that a `
 - **`$defs` are read from the document that uses them.** A `$ref` to a definition in another file is any type, and so is a definition whose name is not an identifier, such as `todo-item`.
 - **Renaming a property does not rewrite `required`.** The list holds the old name, so the property becomes optional and the next check usually says so.
 - **Props are checked only in `$props`, and only against a `.jxn` component.** A property or an attribute written on the instance itself is not held against the component. A prop named for a private entry, such as `#cache`, is not reported here, though the page refuses to set it.
-- **A project file added in a folder that had none is seen when a document is next read.** The one exception is the folder `tsconfig.jxn.json` is in, which is watched whether it holds a project file or not. Elsewhere, restart the language server to have every page checked against the new file.
+- **A project file added in a folder that had none is seen when a document is next read.** The one exception is the folder of the `tsconfig` that names the mapper, which is watched whether it holds a project file or not. Elsewhere, restart the language server to have every page checked against the new file.
 - **A new component is seen when a document is next read.** Add a file to `components` while your editor is open, and a page that already uses the tag is checked against it after the page's next edit.
 - **A handler reached through a longer path is not checked as one.** `onclick=(ref)"#/state/actions/save"` has its path checked, and not whether `save` is a function.
 - **Renaming a `(server)name` entry is whole only from the entry.** The one word stands for two names, the state entry and the server function. Started on the entry, a rename rewrites the function, the entry and every place that reads it. Started on the function it leaves `state.name` in bodies, and started in a body it leaves the function. Either way the next check reports what was left behind. A client entry written `(export)name` renames from anywhere.

@@ -1,0 +1,8 @@
+**
+!dist/extension.cjs
+!dist/mapper.mjs
+!syntaxes/**
+!language-configuration.json
+!package.json
+!README.md
+!LICENSE

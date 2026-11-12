@@ -26,6 +26,13 @@ import { descriptionOf, itemsOf, leavesOf, memberOf, namesOf, valuesOf } from ".
 import type { RootedSchema } from "./schema-walk.ts";
 import { scalar, writeName } from "./serialize.ts";
 
+/**
+ * The characters that begin a member, an annotation or a value, at which an editor asks without
+ * being told to. An editor asks at a word by itself, and none of these is part of one. A space is
+ * left out on purpose: Enter accepts an offer, so a list a space opened would eat the next line.
+ */
+export const JXN_TRIGGER_CHARACTERS: readonly string[] = [".", "$", "(", "=", '"', "/"];
+
 /** What an offer is, for an editor to draw it by. */
 export type JxnCompletionKind = "annotation" | "element" | "member" | "value";
 

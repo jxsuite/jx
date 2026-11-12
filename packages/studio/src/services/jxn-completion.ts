@@ -11,17 +11,14 @@
  *
  * @docs studio/logic/code
  */
-import { completeJxn } from "@jxsuite/schema/jxn-completion";
+import { completeJxn, JXN_TRIGGER_CHARACTERS } from "@jxsuite/schema/jxn-completion";
 import type { JxnCompletionKind } from "@jxsuite/schema/jxn-completion";
 import type { ComposedProjectSchemas } from "@jxsuite/schema/project-schemas";
 import type { IPosition, languages } from "monaco-editor/editor";
 import { JXN_LANGUAGE_ID } from "./jxn-language";
 
-/**
- * The characters that begin a member, an annotation or a value. Monaco asks at a word by itself,
- * and none of these is part of one.
- */
-export const JXN_TRIGGER_CHARACTERS = [".", "$", "(", "=", '"', "/"];
+/** The characters Monaco asks at, which are the reader's to say and the same in every editor. */
+export { JXN_TRIGGER_CHARACTERS } from "@jxsuite/schema/jxn-completion";
 
 /** The members of `monaco.languages.CompletionItemKind` an offer is drawn with. */
 export type JxnCompletionKinds = Pick<
@@ -115,7 +112,7 @@ export function jxnCompletionProvider(
 ): languages.CompletionItemProvider {
   return {
     provideCompletionItems: (model, position) => jxnSuggestions(kinds, schemas(), model, position),
-    triggerCharacters: JXN_TRIGGER_CHARACTERS,
+    triggerCharacters: [...JXN_TRIGGER_CHARACTERS],
   };
 }
 

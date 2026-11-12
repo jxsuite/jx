@@ -7,10 +7,11 @@
  * @docs framework/concepts/jxn-files
  */
 
+import { JXN_LANGUAGE_ID } from "@jxsuite/schema/jxn";
 import type { languages } from "monaco-editor/editor";
 
-/** The language id, as `monacoLangForPath` answers it. */
-export const JXN_LANGUAGE_ID = "jxn";
+/** The language id, as `monacoLangForPath` answers it, which is the one every editor uses. */
+export { JXN_LANGUAGE_ID } from "@jxsuite/schema/jxn";
 
 /** Comments and brackets, which is what typing and folding need to know. */
 export const JXN_LANGUAGE_CONFIGURATION: languages.LanguageConfiguration = {

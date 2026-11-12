@@ -12,6 +12,7 @@ code:
   - packages/test-support/src/preload.ts
   - packages/test-support/src/dom-equality.ts
   - packages/test-support/src/bun-pin.ts
+  - packages/vscode/src/extension.ts
 ---
 
 # Working in the monorepo
@@ -21,6 +22,7 @@ The Jx monorepo ([github.com/jxsuite/jx](https://github.com/jxsuite/jx)) is a Bu
 ## Layout
 
 - `packages/` holds the `@jxsuite/*` core packages: runtime, compiler, schema, server, studio, desktop, protocol, formulas, collab, ai, markup, import, starters, create.
+- `packages/vscode` is the VS Code extension for `.jxn` files ([The VS Code extension](#the-vs-code-extension)). It is private, so it is not an npm package and no release versions it.
 - `extensions/` holds the extension packages built on the public hooks: parser (Markdown/CSV formats and content), connector (databases), auth, search, feed.
 - `specs/`: the numbered specifications. These are the living source of truth: consult and update them **before** implementing a feature.
 - `plans/`: transient implementation plans, one per open item in a draft spec. A plan claims the spec sections it closes, names the plans it requires, and is deleted in the pull request that lands it. `plans/README.md` is the contract; `bun run plans:status` prints what is ready to work on, and `bun run plans:check` gates the lot in CI.
@@ -35,6 +37,19 @@ The Jx monorepo ([github.com/jxsuite/jx](https://github.com/jxsuite/jx)) is a Bu
 - `bun run typecheck`, `bun run lint`, `bun run format`: tsgo, oxlint (all categories at error), oxfmt.
 - `bun run typecheck:jxn`: `tsc` over the scripts and function bodies of the repository's `.jxn` documents, through `@jxsuite/content-mapper` ([Type checking](/docs/framework/concepts/type-checking)). It has a `tsconfig.jxn.json` of its own because it needs `--runExternalCode`.
 - `bun run lint` also runs the [ai-deslop](https://github.com/maharshi365/deslop) rules, which reject unchecked type assertions, `unknown` parameters and returns, runtime `typeof` branching outside type guards, and duplicate constants and types. `bun run lint:typecheck` is the type-aware pass (deprecated APIs, unnecessary conditions, floating promises, unsafe `any` flow). Both run at error in CI, and neither is turned off for tests or scripts; `.oxlintrc.json` explains each choice.
+
+## The VS Code extension
+
+`packages/vscode` gives VS Code the `.jxn` language: a TextMate grammar, completion from a project's schemas, and the registration that sends a `.jxn` file to TypeScript's language server ([Type checking](/docs/framework/concepts/type-checking#in-vs-code)). It is not published to the Marketplace, so run it from your checkout:
+
+```bash
+bun run --cwd packages/vscode build
+code --extensionDevelopmentPath="$PWD/packages/vscode" path/to/a/project
+```
+
+The build writes two files, which are the only code the packed extension holds: `dist/extension.cjs`, the extension itself, and `dist/mapper.mjs`, a bundle of `@jxsuite/content-mapper` for a `.jxn` file no `tsconfig` reads. Neither is committed.
+
+Completion asks the reader Studio's Code view asks (`completeJxn` in `@jxsuite/schema`), so a change to what is offered is made there once and tested there. The `vscode` module exists only inside the editor, so each test hands `mock.module("vscode", …)` the fake in `tests/_fake-vscode.ts` before it imports the module under test. The grammar is tested by tokenizing with `vscode-textmate`, the library VS Code itself uses.
 
 ## Testing policy
 

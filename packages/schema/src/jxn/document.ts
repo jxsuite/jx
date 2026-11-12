@@ -11,6 +11,12 @@ import { parseJxDocument } from "../parse.ts";
 import { parseJxn } from "./parse.ts";
 
 /**
+ * The language id an editor knows Jx Notation by. It is the same in each, so that a setting or a
+ * theme written against one reads in another.
+ */
+export const JXN_LANGUAGE_ID = "jxn";
+
+/**
  * Whether a path names a `.jxn` file.
  *
  * @param path A file path, in either separator.
