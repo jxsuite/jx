@@ -288,10 +288,10 @@ export function defaultCommands(deps: CommandDeps): AnyCommand[] {
       group: "2_output",
       when: (ctx) => ctx.project.isSite,
       enablement: documentOpen,
-      /* "A page to preview", not "a built page to open". Nothing is built on the way here any
-         more: the working tree is rendered at its real route, so what this waits for is a document
-         with a route rather than an output file. */
-      requires: "a page to preview",
+      /* "To preview", not "a built page to open". Nothing is built on the way here any more: the
+         working tree is rendered at a page's real route, and a component or a layout is run on its
+         own (§4.5), so what this waits for is a document rather than an output file. */
+      requires: "a page, component or layout to preview",
       run: () => deps.openInBrowser(),
     },
     {

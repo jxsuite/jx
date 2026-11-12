@@ -126,7 +126,12 @@ function connect() {
     try {
       window.focus();
     } catch {}
-    if (message.route === location.pathname) {
+    /* "Already there" is the whole address, not its path. A harness address carries a component's
+       test values in its query, so a retarget that changed or cleared them names this tab's path
+       and a different page: reloading would re-request the values the author just replaced. Both
+       sides are read through the URL parser, which spells a query one way however it was sent. */
+    const target = new URL(message.route, location.href);
+    if (target.pathname === location.pathname && target.search === location.search) {
       reload();
     } else {
       saveScroll();

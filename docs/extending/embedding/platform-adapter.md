@@ -10,6 +10,7 @@ code:
   - packages/studio/src/types.ts
   - packages/studio/src/platforms/devserver.ts
   - packages/protocol/src/git-scope.ts
+  - packages/protocol/src/preview-harness.ts
   - packages/studio/src/utils/base64.ts
   - packages/studio/src/files/asset-versions.ts
   - packages/desktop/src/webview/platform.ts
@@ -103,6 +104,8 @@ Studio always checks for presence before calling an optional member, so an omitt
 
 :::doc-tip
 **`previewSite` is what **Open in Browser** reaches first, and it does not build.** The contract is "serve the working tree as a site at real routes on an origin of your own, and name it in `url`". Compose each page from the project's files as it is asked for and let `@jxsuite/runtime` assemble it in the reader's browser. That is what makes it appear at once and show the author what they are looking at rather than what they last saved.
+
+**A backend that declares `previewSite` also answers the harness address.** With a component or a layout open, the route Studio hands over is `/__jx_live__/harness/` followed by the document's project path, with a component's test values in a `props` query parameter holding JSON (`harnessAddress` in `@jxsuite/protocol` builds it, and `HARNESS_ROUTE` is the prefix to match). `@jxsuite/server` answers it by composing a page that uses the component once, or wraps placeholder content in the layout. A backend of your own must answer it too, or that address is a 404 in the author's browser. Studio sends the address without a credential, so guarding the values is the backend's job: `@jxsuite/server` applies `props` only to an address carrying a key it mints and appends itself, and a backend of your own should refuse values it did not hand out the address for, because a component that binds a prop into `innerHTML` runs whatever the value says. A backend with only `buildSite` is never sent one: Studio reports that a component can't be run on its own there.
 
 **Honour `reused`.** Answer `true` when a client already holding this project's preview took the route you were given, and Studio opens nothing. A caller that opens a tab anyway leaves the author with two tabs on one project, which is the thing retargeting exists to prevent. Answer it only once a client has actually acknowledged: a frozen or back/forward-cached tab looks connected and will not act, and reporting `true` for one of those is a button that silently does nothing.
 

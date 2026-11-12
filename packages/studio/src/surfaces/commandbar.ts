@@ -41,6 +41,7 @@ import { stylebookTarget } from "../style/stylebook-target";
 import { shell } from "../shell";
 import { openQuickSearch } from "../panels/quick-search";
 import { getPlatform, hasPlatform } from "../platform";
+import { harnessAddress } from "@jxsuite/protocol/preview-harness";
 import { openUrlExternally } from "../canvas/preview-navigate";
 import { armPreviewOverlay, flushPreviewOverlay } from "../preview/preview-overlay";
 import { documentUrlPattern, dynamicRouteParams } from "../page-params";
@@ -262,7 +263,33 @@ export function commandTooltip(registry: CommandRegistry, id: string): string {
  * A path rather than a URL because the origin is not this command's to know: the built site is
  * served by the backend, on a port of its own, and the build call is what names it.
  */
-export type BrowserTarget = { path: string } | { reason: string };
+export type BrowserTarget =
+  | {
+      path: string;
+      /**
+       * Present when the address is a harness rather than a route: a component or a layout run on
+       * its own (§4.5). Only a backend that previews the working tree can answer one, and what the
+       * author is told names the document, because the address carries test values nobody wants
+       * read back to them.
+       */
+      harness?: { documentPath: string; kind: "component" | "layout"; dropped: boolean };
+    }
+  | { reason: string };
+
+/**
+ * The harness target for a component or a layout, with a component's test values in its address.
+ *
+ * The address is `@jxsuite/protocol`'s to spell, because a backend reads what this writes. Values
+ * too large for an address are left out and reported, and the component opens with its defaults,
+ * which is still the component running.
+ */
+function harnessTarget(tab: Tab, documentPath: string, kind: "component" | "layout") {
+  const { dropped, path } = harnessAddress(
+    documentPath,
+    kind === "component" ? tab.session.ui.previewProps : null,
+  );
+  return { harness: { documentPath, dropped, kind }, path };
+}
 
 /**
  * Resolve the active document to the ROUTE its built page will be published at.
@@ -271,19 +298,34 @@ export type BrowserTarget = { path: string } | { reason: string };
  * setting, so it is the URL every link inside the built site already points at — which is exactly
  * why the reader can then browse from it.
  *
- * Everything that is not a page resolves to a REASON rather than to nothing: a disabled control the
- * user can hover is discoverable, an absent one is not.
+ * A component or a layout resolves to its HARNESS address instead, which a backend that previews
+ * the working tree answers by running the document alone. Everything else resolves to a REASON
+ * rather than to nothing: a disabled control the user can hover is discoverable, an absent one is
+ * not.
+ *
+ * @docs studio/design/components
  */
 export function openInBrowserTarget(tab: Tab | null): BrowserTarget {
   const documentPath = tab?.documentPath?.replace(/^\.\//, "");
-  if (!documentPath) {
+  if (!tab || !documentPath) {
     return { reason: "Open a page to view it in a browser." };
   }
   if (!projectState?.isSiteProject) {
     return { reason: "This project does not build a site." };
   }
+  /* A component and a layout have no route, and each has an address all the same: the backend
+     runs it alone, a component with this tab's test values and a layout around placeholder
+     content. It is how a component's real handlers are run (§4.5). */
+  if (documentPath.startsWith("components/")) {
+    return harnessTarget(tab, documentPath, "component");
+  }
+  if (documentPath.startsWith("layouts/")) {
+    return harnessTarget(tab, documentPath, "layout");
+  }
   if (!documentPath.startsWith("pages/")) {
-    return { reason: `Only pages have a route — ${documentPath} is not under pages/.` };
+    return {
+      reason: `Only pages, components and layouts open in a browser — ${documentPath} is none of them.`,
+    };
   }
   let route = documentUrlPattern(documentPath);
   if (route.includes("*")) {
@@ -291,7 +333,7 @@ export function openInBrowserTarget(tab: Tab | null): BrowserTarget {
   }
   const params = dynamicRouteParams(documentPath);
   if (params.length > 0) {
-    const chosen: Record<string, string> = tab?.session.ui.previewParams ?? {};
+    const chosen: Record<string, string> = tab.session.ui.previewParams;
     const missing = params.filter((name) => !chosen[name]);
     if (missing.length > 0) {
       const names = missing.map((name) => `:${name}`).join(", ");
@@ -336,7 +378,16 @@ export async function runOpenInBrowser() {
      cannot do one. The two answer different questions: "what does this page look like at its real
      URL?" wants the tree as it stands, and "does my site build?" is `Build Site`. */
   if (platform.previewSite) {
-    await runLivePreview(platform.previewSite, target.path);
+    await runLivePreview(platform.previewSite, target);
+    return;
+  }
+  if (target.harness) {
+    /* A build has pages and nothing else: a component is compiled into the pages that use it and
+       a layout into the pages it wraps, so there is no built address to open for either. */
+    notify.warn(
+      `This backend cannot run a ${target.harness.kind} on its own — open a page that uses it.`,
+      { key: OPEN_IN_BROWSER, source: "Preview" },
+    );
     return;
   }
   await runBuiltPreview(platform.buildSite!, target.path);
@@ -350,8 +401,12 @@ export async function runOpenInBrowser() {
  */
 async function runLivePreview(
   previewSite: NonNullable<StudioPlatform["previewSite"]>,
-  path: string,
+  target: Extract<BrowserTarget, { path: string }>,
 ) {
+  const { harness, path } = target;
+  /* What the author is told they are looking at. A harness address carries its test values, so it
+     is named by its document instead of read back. */
+  const shown = harness ? harness.documentPath : path;
   armPreviewOverlay();
   await flushPreviewOverlay();
   notify.info("Opening a live preview…", { key: OPEN_IN_BROWSER, source: "Preview" });
@@ -381,10 +436,13 @@ async function runLivePreview(
      where to look. A reader who CLOSED their tab is not stuck here: the stream closes with it, so
      `reused` comes back false and a fresh tab opens without anyone having to ask. */
   if (result.reused) {
-    notify.info(`Updated your preview tab — switch to your browser to see ${path}`, {
+    notify.info(`Updated your preview tab — switch to your browser to see ${shown}`, {
       key: OPEN_IN_BROWSER,
       source: "Preview",
     });
+    if (harness?.dropped) {
+      notifyTestValuesDropped();
+    }
     return;
   }
 
@@ -393,6 +451,18 @@ async function runLivePreview(
       key: OPEN_IN_BROWSER,
       source: "Preview",
     });
+  } else if (harness?.dropped) {
+    notifyTestValuesDropped();
+  } else if (harness) {
+    /* "With its test values" only when the address carries some: a component opened with none is
+       running on its defaults, and saying otherwise sends the author looking for values. */
+    const how = path.includes("?props=") ? "on its own, with its test values" : "on its own";
+    notify.success(
+      harness.kind === "component"
+        ? `Opened ${shown} ${how} — its handlers run for real.`
+        : `Opened ${shown} on its own, around placeholder content.`,
+      { key: OPEN_IN_BROWSER, source: "Preview" },
+    );
   } else {
     notify.success(
       `Opened a live preview of ${result.routes} page(s) — rendered from your working tree, not a build.`,
@@ -400,6 +470,14 @@ async function runLivePreview(
     );
   }
   openUrlExternally(`${result.url}${path}`);
+}
+
+/** Say that a component opened with its defaults because its test values would not fit. */
+function notifyTestValuesDropped() {
+  notify.warn(
+    "The test values are too large to carry to the browser, so the component opened with its defaults.",
+    { key: OPEN_IN_BROWSER, source: "Preview" },
+  );
 }
 
 /**
