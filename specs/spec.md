@@ -1687,6 +1687,20 @@ Custom elements use JavaScript properties as their primary data interface. `$pro
 
 A prop the definition declares under the name of an `HTMLElement` property (`title`, `lang`) gets no forwarding accessor, so `el.title = v` writes the element's own property. A parent's `$props` binding addresses the definition's prop rather than the element's, and so in the interpreter it writes the instance's state as well once the instance has connected: a list row whose data arrives after it connected draws its title.
 
+`updateInstanceProps(el, before, after)` is the same interface for a host that edits a document, such as the Studio canvas: given the `$props` block a connected instance was drawn with and the block it should show now, it writes the props that changed and answers `true`, and the instance's bindings redraw what reads them. It is deliberately narrow. It answers `true` only where the instance then shows what a fresh render of the same node would, and `false` everywhere else, where the host renders the instance again:
+
+- The element is not a connected instance, or nothing changed.
+- A changed prop is not a scalar on both sides (a string that is not a template, a number or a boolean; it may be absent before), or the value the instance holds for it now is not one (an object default, a function). A `$ref` or a template is an effect of the render that made the instance. An object, an array or `null` is refused because too much reads one once: a list redraws its rows in a later microtask, and a binding that reads a member survives `null` by keeping its last drawing (§6.1).
+- A changed prop is named for an `HTMLElement` property, other than a declared `title`, `lang`, `id`, `slot` or `role` given a string, which the platform reflects and reads back as written.
+- A changed prop overrides a state entry produced elsewhere: a `$prototype` other than `Function`, a `$src`, a `timing`.
+- A removed prop has no scalar declared default, or its observed attribute (§16.5) is on the host.
+- The definition, or one it draws, declares an `onMount` (§16.4), or an instance already drawn has one: it ran once with the values it had.
+- The instance, or one its definition has drawn, connected with a definition that has since been replaced ([embedding.md](./embedding.md) §7): it still draws the old one.
+- The definition, or one it draws, reads something once at render: a tag expression (§19.6); a `$`-local or an `id` bound to a `$ref`; a `<slot>` a write would redraw or re-address (under a `$switch` case or a `$map` template, or with a bound `name`, bound fallback text or a `$switch` of its own), since slots are distributed once (§8.5); children or `innerHTML` drawn from a binding; a component handed a bound value by a route it reads only when it connects (`textContent`, slot content that is bound text, a mapped array or a child with a bound `slot`, a `props.*` attribute, an attribute for a prop it declares and does not observe, a platform-named prop or property); a state entry produced elsewhere; or a definition that can draw itself, whose levels are admitted against the props each connected with (§16.9).
+- A write throws, a template binding throws on the new value and is survived, or a write reaches a mapped list (§10), which redraws in a later microtask where nothing can answer for what it draws. These three are known only after the props are written; the host's render replaces the instance.
+
+State the instance changed itself (a counter its own handler moved) is not put back: the write changes the props that changed and leaves the rest of the scope as it stands.
+
 ### 16.3 Dependency Registration (`$elements`)
 
 ```json

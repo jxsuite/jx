@@ -1872,7 +1872,7 @@ describe("iframe canvas inline-edit bridge", () => {
       expect(needsReleaseReconcile(false, AT, AT)).toBe(true);
     });
 
-    test("a release that DID transact is not reconciled — its own patch already ran", () => {
+    test("a release that DID transact is not reconciled — its own patch is the redraw", () => {
       expect(needsReleaseReconcile(true, AT, AT)).toBe(false);
     });
 
@@ -1922,9 +1922,226 @@ describe("iframe canvas inline-edit bridge", () => {
     }
   });
 
+  describe("the end of a prop session draws the instance again", () => {
+    /* An ordinary `$props` patch reaches the instance as an in-place prop write (§4.1), and a write
+       of the value the instance already holds draws nothing, so the marker would go on showing
+       what was typed into it. A release therefore names the instance in its patch's `redrawPaths`:
+       on the release's OWN patch when it transacts, and on the no-diff `set-key $props` that
+       reconciles a suppressed in-place commit when it does not. */
+    const PATH = ["children", 0];
+    const commit = { kind: "editCommitProp" as const, path: PATH, prop: "title" };
+    // Any later patch for the same tab, posted the way the document patcher posts one.
+    const LATER: JxDocOp[] = [{ key: "textContent", op: "set-key", path: PATH, value: "hi" }];
+
+    /**
+     * Run `run` against a staged x-card instance.
+     *
+     * `patcher` installs the real document patcher, the only thing that turns a transaction into a
+     * patch: without it a transacting release has no patch consumer and posts nothing of its own.
+     */
+    async function withStage(
+      run: (tab: ReturnType<typeof resetWorkspaceWithTab>) => void,
+      patcher = false,
+    ): Promise<void> {
+      const tab = resetWorkspaceWithTab({
+        children: [{ $props: { tags: ["a", "b"], title: "Local" }, tagName: "x-card" }],
+        tagName: "div",
+      });
+      const canvasEl = await mountReady();
+      const surface = surfaceForPane(PRIMARY_PANE);
+      surface.panels.push(stagePanel({ canvas: canvasEl, ready: true }));
+      if (patcher) {
+        const { initCanvasPatcher } = await import("../src/canvas/canvas-patcher");
+        initCanvasPatcher({ renderOverlays: () => {}, scheduleCanvasRender: () => {} });
+        resetCanvasPerf();
+      }
+      try {
+        channels[0]!.posts.length = 0;
+        run(tab);
+      } finally {
+        setPatchConsumer(null);
+        surface.panels.length = 0;
+      }
+    }
+
+    test("a release that transacts posts ONE patch, its own, naming the instance to redraw", async () => {
+      await withStage((tab) => {
+        const path = [...PATH];
+        channels[0]!.deliver({ ...commit, path, value: "Regional" });
+
+        const live = elementChildren(tab.doc.document)[0]!.$props;
+        expect(live?.title).toBe("Regional");
+        expect(isReactive(live)).toBe(true);
+
+        // The transaction's patch is the redraw: no reconcile follows it.
+        const patches = postsOfKind(channels[0]!, "patch");
+        expect(patches).toHaveLength(1);
+        const [patch] = patches;
+        expect(() => structuredClone(patch)).not.toThrow();
+        expect(patch!.forwardOps).toHaveLength(1);
+        const [op] = patch!.forwardOps;
+        expect(op).toMatchObject({
+          key: "$props",
+          op: "set-key",
+          path: PATH,
+          value: { tags: ["a", "b"], title: "Regional" },
+        });
+        expect(op?.op === "set-key" && isReactive(op.value)).toBe(false);
+
+        expect(patch!.redrawPaths).toEqual([PATH]);
+        expect(isReactive(patch!.redrawPaths)).toBe(false);
+        expect(isReactive(patch!.redrawPaths?.[0])).toBe(false);
+        // Its own copy: the frame's message is not what crosses back.
+        expect(patch!.redrawPaths?.[0]).not.toBe(path);
+        // The release is not an echo: every host draws it, the originating one included.
+        expect(patch).not.toHaveProperty("echoPaths");
+        expect(canvasPerf.escalations).toBe(0);
+      }, true);
+    });
+
+    test("a release that transacts with no patch consumer posts no patch at all", async () => {
+      /* The redraw rides the transaction's patch, and here nothing turns the transaction into one.
+         Nothing was suppressed either, so there is no reconcile to stand in for it. */
+      await withStage((tab) => {
+        channels[0]!.deliver({ ...commit, value: "Regional" });
+
+        expect(elementChildren(tab.doc.document)[0]!.$props?.title).toBe("Regional");
+        expect(postsOfKind(channels[0]!, "patch")).toEqual([]);
+      });
+    });
+
+    test("a release that transacts nothing after a suppressed commit reconciles, naming the instance to redraw", async () => {
+      await withStage(() => {
+        const path = [...PATH];
+        channels[0]!.deliver({ ...commit, inPlace: true, value: "Regional" });
+        expect(postsOfKind(channels[0]!, "patch")).toEqual([]);
+        channels[0]!.deliver({ ...commit, path, value: "Regional" });
+
+        const patches = postsOfKind(channels[0]!, "patch");
+        expect(patches).toHaveLength(1);
+        const [reconcile] = patches;
+        expect(() => structuredClone(reconcile)).not.toThrow();
+        expect(reconcile!.forwardOps).toEqual([
+          {
+            key: "$props",
+            op: "set-key",
+            path: PATH,
+            value: { tags: ["a", "b"], title: "Regional" },
+          },
+        ]);
+        expect(reconcile!.redrawPaths).toEqual([PATH]);
+        expect(reconcile!.redrawPaths?.[0]).not.toBe(path);
+        expect(reconcile).not.toHaveProperty("echoPaths");
+      });
+    });
+
+    test("an ordinary $props edit posts a patch that names nothing to redraw", async () => {
+      // The Inspector's edit: the instance takes the write in place (§4.1).
+      await withStage((tab) => {
+        transactDoc(tab, (t) => {
+          mutateUpdateProp(t, PATH, "title", "Regional");
+        });
+
+        const patches = postsOfKind(channels[0]!, "patch");
+        expect(patches).toHaveLength(1);
+        expect(patches[0]!.forwardOps[0]).toMatchObject({
+          key: "$props",
+          op: "set-key",
+          value: { tags: ["a", "b"], title: "Regional" },
+        });
+        expect(patches[0]).not.toHaveProperty("redrawPaths");
+        expect(patches[0]).not.toHaveProperty("echoPaths");
+      }, true);
+    });
+
+    test("an in-place commit posts its patch as an echo of the instance, naming nothing to redraw", async () => {
+      // The idle tick: the caret is still in the marker, so the frame folds the op and draws nothing.
+      await withStage((tab) => {
+        channels[0]!.deliver({ ...commit, inPlace: true, value: "Regional" });
+
+        expect(elementChildren(tab.doc.document)[0]!.$props?.title).toBe("Regional");
+        const patches = postsOfKind(channels[0]!, "patch");
+        expect(patches).toHaveLength(1);
+        const [patch] = patches;
+        expect(() => structuredClone(patch)).not.toThrow();
+        expect(patch!.forwardOps[0]).toMatchObject({
+          key: "$props",
+          op: "set-key",
+          path: PATH,
+          value: { tags: ["a", "b"], title: "Regional" },
+        });
+        expect(patch!.echoPaths).toEqual([PATH]);
+        expect(patch).not.toHaveProperty("redrawPaths");
+
+        // The suppression does not outlive the commit's handler.
+        channels[0]!.posts.length = 0;
+        expect(postPatchToHosts(LATER, tab.id)).toBe(1);
+        expect(postsOfKind(channels[0]!, "patch")[0]).not.toHaveProperty("echoPaths");
+      }, true);
+    });
+
+    test("a patch posted after a transacting release names nothing to redraw", async () => {
+      // The redraw belongs to the release's own transaction and does not outlive its handler.
+      await withStage((tab) => {
+        channels[0]!.deliver({ ...commit, value: "Regional" });
+        expect(postsOfKind(channels[0]!, "patch")[0]!.redrawPaths).toEqual([PATH]);
+        channels[0]!.posts.length = 0;
+
+        transactDoc(tab, (t) => {
+          mutateUpdateProp(t, PATH, "title", "National");
+        });
+        expect(postPatchToHosts(LATER, tab.id)).toBe(1);
+
+        const later = postsOfKind(channels[0]!, "patch");
+        expect(later).toHaveLength(2);
+        for (const patch of later) {
+          expect(patch).not.toHaveProperty("redrawPaths");
+        }
+      }, true);
+    });
+
+    test("a patch posted after a reconciling release names nothing to redraw", async () => {
+      await withStage((tab) => {
+        channels[0]!.deliver({ ...commit, inPlace: true, value: "Regional" });
+        channels[0]!.deliver({ ...commit, value: "Regional" });
+        expect(postsOfKind(channels[0]!, "patch")[0]!.redrawPaths).toEqual([PATH]);
+        channels[0]!.posts.length = 0;
+
+        expect(postPatchToHosts(LATER, tab.id)).toBe(1);
+        const [later] = postsOfKind(channels[0]!, "patch");
+        expect(later).toBeDefined();
+        expect(later).not.toHaveProperty("redrawPaths");
+      });
+    });
+
+    test("a release that transacts nothing, with no suppressed commit behind it, posts none", async () => {
+      // Click into a slot and leave: nothing was typed, so there is nothing to make good.
+      await withStage((tab) => {
+        channels[0]!.deliver({ ...commit, value: "Local" });
+
+        expect(elementChildren(tab.doc.document)[0]!.$props?.title).toBe("Local");
+        expect(postsOfKind(channels[0]!, "patch")).toEqual([]);
+      });
+    });
+
+    test("a suppressed commit is forgotten once its release has run", async () => {
+      // The pending path is cleared by the release, so a later no-op release reconciles nothing.
+      await withStage(() => {
+        channels[0]!.deliver({ ...commit, inPlace: true, value: "Regional" });
+        channels[0]!.deliver({ ...commit, value: "Regional" });
+        expect(postsOfKind(channels[0]!, "patch")).toHaveLength(1);
+
+        channels[0]!.posts.length = 0;
+        channels[0]!.deliver({ ...commit, value: "Regional" });
+        expect(postsOfKind(channels[0]!, "patch")).toEqual([]);
+      });
+    });
+  });
+
   describe("clicking from one prop slot to another in the same instance", () => {
-    /* The first slot's release commit transacts, which rebuilds the WHOLE instance
-       (`set-key $props` → replaceSubtree). The frame has already adopted a marker inside the
+    /* The first slot's release rebuilds the WHOLE instance: its own patch names the instance in
+       `redrawPaths` when it transacts, and the reconcile does when it follows a suppressed in-place
+       commit (either way a `replaceSubtree`). The frame has already adopted a marker inside the
        subtree about to be replaced, so the session it just opened is dead on arrival — the click
        did nothing and the user had to click again. The host defers a re-entry so it survives. */
     async function twoSlots(secondPath: (string | number)[], value = "Regional") {
@@ -1947,6 +2164,27 @@ describe("iframe canvas inline-edit bridge", () => {
       expect(enter).toMatchObject({ path: ["children", 0], prop: "subtitle" });
     });
 
+    test("the second session is re-entered after a release that only reconciled", async () => {
+      /* The idle tick committed in place and the release posted the same string: nothing
+         transacts, but the reconcile rebuilds the instance all the same. */
+      resetWorkspaceWithTab({
+        children: [{ $props: { subtitle: "S", title: "Local" }, tagName: "x-card" }],
+        tagName: "div",
+      });
+      await mountReady();
+      const ch = channels[0]!;
+      const first = { kind: "editCommitProp" as const, path: ["children", 0], prop: "title" };
+      ch.deliver({ ...first, inPlace: true, value: "Regional" });
+      ch.deliver({ ...first, value: "Regional" });
+      ch.posts.length = 0;
+      ch.deliver({ kind: "editStart", path: ["children", 0], prop: "subtitle" });
+      ch.deliver({ gen: 99, kind: "renderComplete" });
+      expect(ch.posts.find(ofKind("enterEdit"))).toMatchObject({
+        path: ["children", 0],
+        prop: "subtitle",
+      });
+    });
+
     test("a slot in a DIFFERENT instance is left alone — that rebuild does not touch it", async () => {
       // Deferring there would re-enter a session the patch never disturbed, stealing the caret.
       const ch = await twoSlots(["children", 1]);
@@ -1954,11 +2192,111 @@ describe("iframe canvas inline-edit bridge", () => {
       expect(ch.posts.find(ofKind("enterEdit"))).toBeUndefined();
     });
 
-    test("a release that did NOT transact defers nothing — there is no rebuild to survive", async () => {
-      // Unchanged text commits nothing (see #182), so the instance is never replaced.
+    test("a release that neither transacted nor reconciled defers nothing — there is no rebuild to survive", async () => {
+      // Unchanged text commits nothing (see #182) and nothing was suppressed, so the instance is
+      // Never replaced.
       const ch = await twoSlots(["children", 0], "Local");
       ch.deliver({ gen: 99, kind: "renderComplete" });
       expect(ch.posts.find(ofKind("enterEdit"))).toBeUndefined();
+    });
+
+    describe("once a frame has drawn the rebuild, it is over", () => {
+      /* The `editStart` of a back-to-back click arrives BEFORE the rebuild's ack, so an ack that
+         finds the flag still standing proves nobody clicked into the instance. Left standing, it
+         matched the next visit to that instance however much later, and the re-entry it deferred
+         restarted a session the author was typing in. */
+      const first = { kind: "editCommitProp" as const, path: ["children", 0], prop: "title" };
+
+      async function mountCard() {
+        resetWorkspaceWithTab({
+          children: [{ $props: { subtitle: "S", title: "Local" }, tagName: "x-card" }],
+          tagName: "div",
+        });
+        await mountReady();
+        return channels[0]!;
+      }
+
+      test("a reconciling release acked on its own does not re-enter a later visit", async () => {
+        const ch = await mountCard();
+        ch.deliver({ ...first, inPlace: true, value: "Regional" });
+        ch.deliver({ ...first, value: "Regional" });
+        // The reconcile's own ack, with no `editStart` between the release and it.
+        ch.deliver({ gen: 99, kind: "patchComplete" });
+        ch.posts.length = 0;
+
+        // Much later the author clicks into another slot of the same instance and pauses.
+        ch.deliver({ kind: "editStart", path: ["children", 0], prop: "subtitle" });
+        ch.deliver({ gen: 100, kind: "patchComplete" });
+
+        expect(ch.posts.find(ofKind("enterEdit"))).toBeUndefined();
+        expect(getEditSnapshot()).toMatchObject({ editing: true, editingProp: "subtitle" });
+        ch.deliver({ kind: "editEnd" });
+      });
+
+      test("a transacting release acked on its own does not re-enter a later visit", async () => {
+        const ch = await mountCard();
+        ch.deliver({ ...first, value: "Regional" });
+        // The release transacted, so its own patch is what rebuilds the instance: this is its ack.
+        expect(elementChildren(activeTab.value!.doc.document)[0]!.$props?.title).toBe("Regional");
+        ch.deliver({ gen: 99, kind: "patchComplete" });
+        ch.posts.length = 0;
+
+        ch.deliver({ kind: "editStart", path: ["children", 0], prop: "subtitle" });
+        ch.deliver({ gen: 100, kind: "patchComplete" });
+
+        expect(ch.posts.find(ofKind("enterEdit"))).toBeUndefined();
+        expect(getEditSnapshot()).toMatchObject({ editing: true, editingProp: "subtitle" });
+        ch.deliver({ kind: "editEnd" });
+      });
+
+      test("a full render's ack ends the rebuild as a patch's does", async () => {
+        const ch = await mountCard();
+        ch.deliver({ ...first, value: "Regional" });
+        ch.deliver({ gen: 99, kind: "renderComplete" });
+        ch.posts.length = 0;
+
+        ch.deliver({ kind: "editStart", path: ["children", 0], prop: "subtitle" });
+        ch.deliver({ gen: 100, kind: "patchComplete" });
+
+        expect(ch.posts.find(ofKind("enterEdit"))).toBeUndefined();
+        ch.deliver({ kind: "editEnd" });
+      });
+
+      test("a second slot clicked BEFORE the ack is still re-entered by it", async () => {
+        const ch = await mountCard();
+        ch.deliver({ ...first, value: "Regional" });
+        ch.posts.length = 0;
+        ch.deliver({ kind: "editStart", path: ["children", 0], prop: "subtitle" });
+        // Nothing is posted until the frame has drawn the rebuild the session has to survive.
+        expect(ch.posts.find(ofKind("enterEdit"))).toBeUndefined();
+
+        ch.deliver({ gen: 99, kind: "patchComplete" });
+
+        const entered = ch.posts.filter(ofKind("enterEdit"));
+        expect(entered).toHaveLength(1);
+        expect(entered[0]).toMatchObject({ path: ["children", 0], prop: "subtitle" });
+
+        // The deferral was spent on that ack: a later one re-enters nothing.
+        ch.posts.length = 0;
+        ch.deliver({ gen: 100, kind: "patchComplete" });
+        expect(ch.posts.find(ofKind("enterEdit"))).toBeUndefined();
+        ch.deliver({ kind: "editEnd" });
+      });
+
+      test("a second slot clicked before the ack of a reconciling release is re-entered by it", async () => {
+        const ch = await mountCard();
+        ch.deliver({ ...first, inPlace: true, value: "Regional" });
+        ch.deliver({ ...first, value: "Regional" });
+        ch.posts.length = 0;
+        ch.deliver({ kind: "editStart", path: ["children", 0], prop: "subtitle" });
+
+        ch.deliver({ gen: 99, kind: "patchComplete" });
+
+        const entered = ch.posts.filter(ofKind("enterEdit"));
+        expect(entered).toHaveLength(1);
+        expect(entered[0]).toMatchObject({ path: ["children", 0], prop: "subtitle" });
+        ch.deliver({ kind: "editEnd" });
+      });
     });
   });
 

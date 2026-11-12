@@ -14,12 +14,13 @@
  * render.
  */
 
-import { reapplyStyle } from "@jxsuite/runtime";
-import { isNonNullObject, isNumber, isString } from "@jxsuite/schema/guards";
+import { reapplyStyle, updateInstanceProps } from "@jxsuite/runtime";
+import { isJsonObject, isNonNullObject, isNumber, isString } from "@jxsuite/schema/guards";
 import { getNodeAtPath } from "@jxsuite/schema/doc-ops";
 import { applyDocOpToDoc } from "../tabs/doc-op-apply";
 import { parseJxPath, serializeJxPath } from "./path-mapping";
 import { disposeSubtree, renderSubtreeIframe } from "./iframe-subtree";
+import { deliveredOutsideProps } from "./iframe-inline-edit";
 import {
   computeEmptyPlaceholderClass,
   EMPTY_PLACEHOLDER_CLASSES,
@@ -45,13 +46,26 @@ export function applyIframePatch(
   container: HTMLElement,
   ctx?: IframeRenderCtx,
   echoPaths?: JxPath[],
+  redrawPaths?: JxPath[],
 ): void {
+  /* What each `$props` op replaces, read before the fold takes it: an instance is updated in place
+     from the difference (see patchProps), and the folded doc holds only the new block. */
+  const propsBefore: PropsBefore = new Map();
+  const redrawn = new Set((redrawPaths ?? []).map((p) => serializeJxPath(p)));
   for (const op of forwardOps) {
+    /* Not for a path the sender asked to have drawn again: with no block to diff against, the op
+       re-renders the instance (see applyOpToDom). */
+    if (op.op === "set-key" && op.key === "$props" && !redrawn.has(serializeJxPath(op.path))) {
+      const node = getNodeAtPath(shadowDoc, op.path);
+      if (node) {
+        propsBefore.set(op, { ...node });
+      }
+    }
     applyDocOpToDoc(shadowDoc, op);
   }
   if (!echoPaths?.length) {
     for (const op of forwardOps) {
-      applyOpToDom(shadowDoc, op, container, ctx);
+      applyOpToDom(shadowDoc, op, container, ctx, propsBefore);
     }
     return;
   }
@@ -66,9 +80,16 @@ export function applyIframePatch(
       syncEchoedPlaceholder(shadowDoc, op.path, container);
       continue;
     }
-    applyOpToDom(shadowDoc, op, container, ctx);
+    applyOpToDom(shadowDoc, op, container, ctx, propsBefore);
   }
 }
+
+/**
+ * The node each `set-key $props` op of a batch found, by op: a copy of its own keys, so the block
+ * the op replaced and everything else the node hands its instance. Read at the op's own moment,
+ * because a later op of the batch may move another node onto that path.
+ */
+type PropsBefore = Map<JxDocOp, JxMutableNode>;
 
 /**
  * Re-derive the empty-placeholder class of an ECHOED node without writing its content.
@@ -106,6 +127,7 @@ function applyOpToDom(
   op: JxDocOp,
   container: HTMLElement,
   ctx: IframeRenderCtx | undefined,
+  propsBefore: PropsBefore,
 ): void {
   switch (op.op) {
     case "set-key": {
@@ -128,8 +150,11 @@ function applyOpToDom(
       if (op.key.startsWith("on")) {
         return;
       }
-      // Any other key (attributes / $props / cases / tagName / a non-event prop) changes rendered
-      // Output, so re-render the node's subtree in place — mirrors the legacy patcher's replace.
+      if (op.key === "$props" && patchProps(op, container, propsBefore.get(op))) {
+        return;
+      }
+      // Any other key (attributes / cases / tagName / a non-event prop), and a `$props` change the
+      // Instance cannot take in place, changes rendered output: re-render the node's subtree.
       replaceSubtree(doc, op.path, container, requireCtx(ctx));
       return;
     }
@@ -186,6 +211,42 @@ function replaceSubtree(
   const newEl = renderSubtreeIframe(doc, docPath, ctx);
   disposeSubtree(oldEl);
   oldEl.replaceWith(newEl);
+}
+
+/**
+ * Write a changed `$props` block into the live component instance, and answer whether it took it.
+ *
+ * An instance is a running thing: its definition's bindings read the props, so writing the ones
+ * that changed redraws exactly what reads them, and its slotted children, nested instances, images
+ * and embedded frames are not rebuilt (§4.1). The runtime refuses whenever that could differ from a
+ * fresh render of the instance, and the caller then re-renders the subtree as it always did. So
+ * does this, in the two cases only the document can see: the sender named the path to be drawn
+ * again (there is no `before`), and the node hands a changed prop over by another route as well (a
+ * `props.*` attribute, a same-named attribute or top-level key, a `data-jx-props` payload), which a
+ * fresh instance would read and which can win over `$props` at connection.
+ *
+ * The new block is the op's own value and not the folded doc's, for the reason `before` is read at
+ * fold time: by now a later op of the batch may have put another node at this path.
+ */
+function patchProps(
+  op: Extract<JxDocOp, { op: "set-key" }>,
+  container: HTMLElement,
+  before: JxMutableNode | undefined,
+): boolean {
+  const el = findElement(container, op.path);
+  const after = op.value;
+  if (!before || !el || (after !== undefined && !isJsonObject(after))) {
+    return false;
+  }
+  const was = before.$props ?? {};
+  const now = after ?? {};
+  const changed = [...new Set([...Object.keys(was), ...Object.keys(now)])].filter(
+    (key) => JSON.stringify(was[key]) !== JSON.stringify(now[key]),
+  );
+  if (changed.some((key) => deliveredOutsideProps(before, key))) {
+    return false;
+  }
+  return updateInstanceProps(el, before.$props, after);
 }
 
 // ─── Structural ops (no subtree render: pure DOM move + data-jx-path remap) ──────

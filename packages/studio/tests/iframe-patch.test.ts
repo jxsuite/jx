@@ -6,13 +6,20 @@
  */
 import "./with-dom.js";
 import { beforeAll, describe, expect, test } from "bun:test";
-import { applyStyle, buildScope, documentStyleText, resetDocumentStyles } from "@jxsuite/runtime";
+import {
+  applyStyle,
+  buildScope,
+  defineElement,
+  documentStyleText,
+  resetDocumentStyles,
+} from "@jxsuite/runtime";
 import { applyIframePatch } from "../src/canvas/iframe-patch";
+import { renderSubtreeIframe } from "../src/canvas/iframe-subtree";
 import { parseJxPath, serializeJxPath } from "../src/canvas/path-mapping";
 import { childList, getNodeAtPath } from "../src/state";
 import { isString } from "@jxsuite/schema/guards";
 import type { IframeRenderCtx } from "../src/canvas/iframe-render";
-import type { JxMutableNode } from "@jxsuite/schema/types";
+import type { JxDocument, JxMutableNode } from "@jxsuite/schema/types";
 import type { JxDocOp } from "../src/tabs/patch-ops";
 
 // A render context for the subtree-render ops (insert / set-child / re-render). The scope is empty
@@ -742,5 +749,702 @@ describe("applyIframePatch — text an entry draws", () => {
         container,
       ),
     ).toThrow("iframe-patch-no-render-ctx");
+  });
+});
+
+// ─── Component instances: a `$props` edit written in place ───────────────────
+
+/** Let the instances' async connectedCallbacks finish. */
+const settle = (ms = 40) =>
+  new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+
+let cardCount = 0;
+
+/**
+ * Define a component that draws its `label` prop in an `h3` above its slot, under a tag no other
+ * test registered (a custom element cannot be defined twice in one realm).
+ */
+async function defineCard(onMount = false): Promise<string> {
+  cardCount += 1;
+  const tagName = `patch-card-${cardCount}`;
+  const state: NonNullable<JxDocument["state"]> = { label: "Default", mounted: false };
+  if (onMount) {
+    state.onMount = {
+      $prototype: "Function",
+      body: [{ operator: "=", target: { $ref: "#/state/mounted" }, value: true }],
+    };
+  }
+  await defineElement({
+    children: [{ tagName: "h3", textContent: "${state.label}" }, { tagName: "slot" }],
+    state,
+    tagName,
+  });
+  return tagName;
+}
+
+/** A page holding one instance of `tagName` with one slotted paragraph. */
+function cardPage(tagName: string, $props?: JxMutableNode["$props"]): JxMutableNode {
+  return { children: [cardNode(tagName, $props)], tagName: "div" };
+}
+
+/** One instance of `tagName` with one slotted paragraph; no `$props` key when none is given. */
+function cardNode(tagName: string, $props: JxMutableNode["$props"]): JxMutableNode {
+  const node: JxMutableNode = { children: [{ tagName: "p", textContent: "slotted" }], tagName };
+  if ($props !== undefined) {
+    node.$props = $props;
+  }
+  return node;
+}
+
+/** A page whose instance is the SECOND child, behind a plain paragraph. */
+function cardBehindLead(tagName: string, $props: JxMutableNode["$props"]): JxMutableNode {
+  return {
+    children: [{ tagName: "p", textContent: "lead" }, cardNode(tagName, $props)],
+    tagName: "div",
+  };
+}
+
+/**
+ * Draw a doc the way a subtree patch does (the edit-mode transform, the runtime renderer and the
+ * `data-jx-path` stamper), connected, with its instances settled.
+ */
+async function mountLive(doc: JxMutableNode, ctx: IframeRenderCtx = CTX): Promise<Mounted> {
+  resetDocumentStyles();
+  const shadow = structuredClone(doc);
+  const container = document.createElement("div");
+  container.append(renderSubtreeIframe(shadow, [], ctx));
+  document.body.append(container);
+  await settle();
+  return { container, shadow };
+}
+
+const CARD = ["children", 0];
+const SLOTTED = ["children", 0, "children", 0];
+const SECOND = ["children", 1];
+
+/** The heading the instance's own definition drew. */
+function headingOf(container: HTMLElement): string | undefined {
+  return elAt(container, CARD).querySelector("h3")?.textContent;
+}
+
+describe("applyIframePatch — $props on a component instance", () => {
+  test("a changed literal is written into the live instance; host and slotted child are kept", async () => {
+    const tag = await defineCard();
+    const { container, shadow } = await mountLive(cardPage(tag, { label: "First" }));
+    const host = elAt(container, CARD);
+    const slotted = elAt(container, SLOTTED);
+    expect(headingOf(container)).toBe("First");
+
+    // No render context: the in-place path needs none, so a rebuild here would throw.
+    applyIframePatch(
+      shadow,
+      [{ key: "$props", op: "set-key", path: CARD, value: { label: "Second" } }],
+      container,
+    );
+    await settle();
+
+    expect(elAt(container, CARD)).toBe(host);
+    expect(elAt(container, SLOTTED)).toBe(slotted);
+    expect(headingOf(container)).toBe("Second");
+    expect(getNodeAtPath(shadow, CARD)?.$props).toEqual({ label: "Second" });
+    container.remove();
+  });
+
+  test("a $props op that changes nothing draws the instance again", async () => {
+    const tag = await defineCard();
+    const { container, shadow } = await mountLive(cardPage(tag, { label: "Same" }));
+    const host = elAt(container, CARD);
+
+    applyIframePatch(
+      shadow,
+      [{ key: "$props", op: "set-key", path: CARD, value: { label: "Same" } }],
+      container,
+      CTX,
+    );
+    await settle();
+
+    expect(elAt(container, CARD)).not.toBe(host);
+    expect(host.isConnected).toBe(false);
+    expect(headingOf(container)).toBe("Same");
+    expect(getNodeAtPath(shadow, CARD)?.$props).toEqual({ label: "Same" });
+    container.remove();
+  });
+
+  test("a no-diff $props op without a render context escalates rather than doing nothing", async () => {
+    const tag = await defineCard();
+    const { container, shadow } = await mountLive(cardPage(tag, { label: "Same" }));
+    expect(() =>
+      applyIframePatch(
+        shadow,
+        [{ key: "$props", op: "set-key", path: CARD, value: { label: "Same" } }],
+        container,
+      ),
+    ).toThrow(/iframe-patch-no-render-ctx/);
+    container.remove();
+  });
+
+  test("a prop changed to a template is not written in place: the instance is rebuilt", async () => {
+    const tag = await defineCard();
+    const { container, shadow } = await mountLive(cardPage(tag, { label: "Literal" }));
+    const host = elAt(container, CARD);
+
+    const value = { label: "${state.title}" };
+    applyIframePatch(shadow, [{ key: "$props", op: "set-key", path: CARD, value }], container, CTX);
+    await settle();
+
+    expect(elAt(container, CARD)).not.toBe(host);
+    expect(host.isConnected).toBe(false);
+    expect(getNodeAtPath(shadow, CARD)?.$props).toEqual(value);
+    container.remove();
+  });
+
+  test("a prop changed to a $ref is not written in place: the instance is rebuilt", async () => {
+    const tag = await defineCard();
+    const ctx: IframeRenderCtx = {
+      ...CTX,
+      defs: await buildScope({ state: { title: "From state" } }, {}, "http://localhost/"),
+    };
+    const page = { ...cardPage(tag, { label: "Literal" }), state: { title: "From state" } };
+    const { container, shadow } = await mountLive(page, ctx);
+    const host = elAt(container, CARD);
+
+    const value = { label: { $ref: "#/state/title" } };
+    applyIframePatch(shadow, [{ key: "$props", op: "set-key", path: CARD, value }], container, ctx);
+    await settle();
+
+    expect(elAt(container, CARD)).not.toBe(host);
+    expect(host.isConnected).toBe(false);
+    expect(getNodeAtPath(shadow, CARD)?.$props).toEqual(value);
+    container.remove();
+  });
+
+  test("a prop that WAS bound is not written in place when it becomes a literal", async () => {
+    const tag = await defineCard();
+    const { container, shadow } = await mountLive(cardPage(tag, { label: "${state.title}" }));
+    const host = elAt(container, CARD);
+
+    applyIframePatch(
+      shadow,
+      [{ key: "$props", op: "set-key", path: CARD, value: { label: "Literal" } }],
+      container,
+      CTX,
+    );
+    await settle();
+
+    expect(elAt(container, CARD)).not.toBe(host);
+    expect(headingOf(container)).toBe("Literal");
+    container.remove();
+  });
+
+  test("an instance whose definition has onMount is rebuilt, so the hook reads the new props", async () => {
+    const tag = await defineCard(true);
+    const { container, shadow } = await mountLive(cardPage(tag, { label: "First" }));
+    const host = elAt(container, CARD);
+
+    applyIframePatch(
+      shadow,
+      [{ key: "$props", op: "set-key", path: CARD, value: { label: "Second" } }],
+      container,
+      CTX,
+    );
+    await settle();
+
+    expect(elAt(container, CARD)).not.toBe(host);
+    expect(host.isConnected).toBe(false);
+    expect(headingOf(container)).toBe("Second");
+    expect(getNodeAtPath(shadow, CARD)?.$props).toEqual({ label: "Second" });
+    container.remove();
+  });
+
+  test("two $props ops in one batch each diff against the block the previous op left", async () => {
+    const tag = await defineCard();
+    const { container, shadow } = await mountLive(cardPage(tag, { label: "First" }));
+    const host = elAt(container, CARD);
+    const slotted = elAt(container, SLOTTED);
+
+    // A run of distinct values lands on the last one, in place (no render context to rebuild with).
+    applyIframePatch(
+      shadow,
+      [
+        { key: "$props", op: "set-key", path: CARD, value: { label: "Second" } },
+        { key: "$props", op: "set-key", path: CARD, value: { label: "Third" } },
+      ],
+      container,
+    );
+    await settle();
+
+    expect(elAt(container, CARD)).toBe(host);
+    expect(elAt(container, SLOTTED)).toBe(slotted);
+    expect(headingOf(container)).toBe("Third");
+    expect(getNodeAtPath(shadow, CARD)?.$props).toEqual({ label: "Third" });
+    container.remove();
+  });
+
+  test("a batch that ends on the block it started from writes each op's own value in place", async () => {
+    const tag = await defineCard();
+    const { container, shadow } = await mountLive(cardPage(tag, { label: "First" }));
+    const host = elAt(container, CARD);
+    const slotted = elAt(container, SLOTTED);
+
+    /* Each op is diffed from the block it replaced to its OWN value, not to the folded doc: both
+       are changes, so both are written and nothing is rebuilt (no render context to rebuild with). */
+    applyIframePatch(
+      shadow,
+      [
+        { key: "$props", op: "set-key", path: CARD, value: { label: "Second" } },
+        { key: "$props", op: "set-key", path: CARD, value: { label: "First" } },
+      ],
+      container,
+    );
+    await settle();
+
+    expect(elAt(container, CARD)).toBe(host);
+    expect(elAt(container, SLOTTED)).toBe(slotted);
+    expect(headingOf(container)).toBe("First");
+    expect(getNodeAtPath(shadow, CARD)?.$props).toEqual({ label: "First" });
+    container.remove();
+  });
+
+  test("a $props op followed by a removal before it writes the instance it named", async () => {
+    const tag = await defineCard();
+    const { container, shadow } = await mountLive(cardBehindLead(tag, { label: "First" }));
+    const host = elAt(container, SECOND);
+
+    // After the fold nothing sits at the path the op named; the op's own value is what counts.
+    applyIframePatch(
+      shadow,
+      [
+        { key: "$props", op: "set-key", path: SECOND, value: { label: "Second" } },
+        { index: 0, op: "remove-child", parentPath: [] },
+      ],
+      container,
+    );
+    await settle();
+
+    expect(elAt(container, CARD)).toBe(host);
+    expect(host.isConnected).toBe(true);
+    expect(host.querySelector("h3")?.textContent).toBe("Second");
+    expect(container.querySelector(`[data-jx-path='${serializeJxPath(SECOND)}']`)).toBeNull();
+    expect(childList(shadow)).toHaveLength(1);
+    expect(getNodeAtPath(shadow, CARD)?.tagName).toBe(tag);
+    expect(getNodeAtPath(shadow, CARD)?.$props).toEqual({ label: "Second" });
+    container.remove();
+  });
+
+  test("a $props op followed by an insertion before it writes the instance it named", async () => {
+    const tag = await defineCard();
+    const { container, shadow } = await mountLive(cardBehindLead(tag, { label: "First" }));
+    const host = elAt(container, SECOND);
+    const lead = elAt(container, CARD);
+
+    // The folded doc holds the lead paragraph at the op's path by the time the DOM is patched.
+    applyIframePatch(
+      shadow,
+      [
+        { key: "$props", op: "set-key", path: SECOND, value: { label: "Second" } },
+        {
+          index: 0,
+          node: { tagName: "b", textContent: "NEW" },
+          op: "insert-child",
+          parentPath: [],
+        },
+      ],
+      container,
+      CTX,
+    );
+    await settle();
+
+    const third = ["children", 2];
+    expect(elAt(container, third)).toBe(host);
+    expect(host.isConnected).toBe(true);
+    expect(host.querySelector("h3")?.textContent).toBe("Second");
+    expect(elAt(container, SECOND)).toBe(lead);
+    expect(lead.textContent).toBe("lead");
+    expect(elAt(container, CARD).textContent).toBe("NEW");
+    expect(getNodeAtPath(shadow, SECOND)?.$props).toBeUndefined();
+    expect(getNodeAtPath(shadow, third)?.tagName).toBe(tag);
+    expect(getNodeAtPath(shadow, third)?.$props).toEqual({ label: "Second" });
+    container.remove();
+  });
+
+  test("a path the sender asked to have drawn again replaces the host, changed block or not", async () => {
+    const tag = await defineCard();
+    const { container, shadow } = await mountLive(cardPage(tag, { label: "First" }));
+    const host = elAt(container, CARD);
+
+    applyIframePatch(
+      shadow,
+      [{ key: "$props", op: "set-key", path: CARD, value: { label: "Second" } }],
+      container,
+      CTX,
+      undefined,
+      [CARD],
+    );
+    await settle();
+
+    expect(elAt(container, CARD)).not.toBe(host);
+    expect(host.isConnected).toBe(false);
+    expect(headingOf(container)).toBe("Second");
+    expect(getNodeAtPath(shadow, CARD)?.$props).toEqual({ label: "Second" });
+    container.remove();
+  });
+
+  test("a redraw path without a render context escalates rather than writing in place", async () => {
+    const tag = await defineCard();
+    const { container, shadow } = await mountLive(cardPage(tag, { label: "First" }));
+    expect(() => {
+      applyIframePatch(
+        shadow,
+        [{ key: "$props", op: "set-key", path: CARD, value: { label: "Second" } }],
+        container,
+        undefined,
+        undefined,
+        [CARD],
+      );
+    }).toThrow(/iframe-patch-no-render-ctx/);
+    container.remove();
+  });
+
+  test("a redraw path that names another node leaves an in-place write alone", async () => {
+    const tag = await defineCard();
+    const { container, shadow } = await mountLive(cardBehindLead(tag, { label: "First" }));
+    const host = elAt(container, SECOND);
+    const lead = elAt(container, CARD);
+
+    // No render context: only the in-place path can succeed.
+    applyIframePatch(
+      shadow,
+      [{ key: "$props", op: "set-key", path: SECOND, value: { label: "Second" } }],
+      container,
+      undefined,
+      undefined,
+      [CARD, SLOTTED],
+    );
+    await settle();
+
+    expect(elAt(container, SECOND)).toBe(host);
+    expect(elAt(container, CARD)).toBe(lead);
+    expect(host.querySelector("h3")?.textContent).toBe("Second");
+    expect(getNodeAtPath(shadow, SECOND)?.$props).toEqual({ label: "Second" });
+    container.remove();
+  });
+
+  test("a node that hands a prop over as a props.* attribute is rebuilt, not written in place", async () => {
+    const tag = await defineCard();
+    const page = cardPage(tag, { label: "First" });
+    nodeOf(childList(page)[0]!).attributes = { "props.label": "From attribute" };
+    const { container, shadow } = await mountLive(page);
+    const host = elAt(container, CARD);
+
+    const op: JxDocOp = { key: "$props", op: "set-key", path: CARD, value: { label: "Second" } };
+    // Without a render context the refusal has nothing to rebuild with, which proves it refused.
+    expect(() => {
+      applyIframePatch(structuredClone(shadow), [op], container);
+    }).toThrow(/iframe-patch-no-render-ctx/);
+    expect(elAt(container, CARD)).toBe(host);
+
+    applyIframePatch(shadow, [op], container, CTX);
+    await settle();
+
+    const rebuilt = elAt(container, CARD);
+    expect(rebuilt).not.toBe(host);
+    expect(host.isConnected).toBe(false);
+    expect(getNodeAtPath(shadow, CARD)?.$props).toEqual({ label: "Second" });
+    // The rebuilt instance shows what a fresh render of the folded node shows.
+    const fresh = await mountLive(shadow);
+    expect(headingOf(container)).toBe(headingOf(fresh.container));
+    fresh.container.remove();
+    container.remove();
+  });
+
+  test("a removed $props block puts the declared default back in place", async () => {
+    const tag = await defineCard();
+    const { container, shadow } = await mountLive(cardPage(tag, { label: "First" }));
+    const host = elAt(container, CARD);
+    const slotted = elAt(container, SLOTTED);
+
+    // No render context: the default is restored by a write, not by a rebuild.
+    applyIframePatch(
+      shadow,
+      [{ key: "$props", op: "set-key", path: CARD, value: undefined }],
+      container,
+    );
+    await settle();
+
+    expect(elAt(container, CARD)).toBe(host);
+    expect(elAt(container, SLOTTED)).toBe(slotted);
+    expect(headingOf(container)).toBe("Default");
+    expect(getNodeAtPath(shadow, CARD)?.$props).toBeUndefined();
+    container.remove();
+  });
+
+  test("a $props block added to an instance drawn without one is written in place", async () => {
+    const tag = await defineCard();
+    const { container, shadow } = await mountLive(cardPage(tag));
+    const host = elAt(container, CARD);
+    expect(headingOf(container)).toBe("Default");
+
+    applyIframePatch(
+      shadow,
+      [{ key: "$props", op: "set-key", path: CARD, value: { label: "Given" } }],
+      container,
+    );
+    await settle();
+
+    expect(elAt(container, CARD)).toBe(host);
+    expect(headingOf(container)).toBe("Given");
+    expect(getNodeAtPath(shadow, CARD)?.$props).toEqual({ label: "Given" });
+    container.remove();
+  });
+
+  test("an echoed $props op is folded and leaves the instance alone", async () => {
+    const tag = await defineCard();
+    const { container, shadow } = await mountLive(cardPage(tag, { label: "First" }));
+    const host = elAt(container, CARD);
+
+    applyIframePatch(
+      shadow,
+      [{ key: "$props", op: "set-key", path: CARD, value: { label: "Typed" } }],
+      container,
+      CTX,
+      [CARD],
+    );
+    await settle();
+
+    expect(getNodeAtPath(shadow, CARD)?.$props).toEqual({ label: "Typed" });
+    // Neither rebuilt nor written: the instance still draws the value it connected with.
+    expect(elAt(container, CARD)).toBe(host);
+    expect(headingOf(container)).toBe("First");
+    container.remove();
+  });
+
+  test("$props on an element that is not a Jx instance re-renders it, as before", () => {
+    const { container, shadow } = mountTree(TREE);
+    const el = elAt(container, ["children", 0]);
+    applyIframePatch(
+      shadow,
+      [{ key: "$props", op: "set-key", path: ["children", 0], value: { title: "x" } }],
+      container,
+      CTX,
+    );
+    expect(elAt(container, ["children", 0])).not.toBe(el);
+    expect(getNodeAtPath(shadow, ["children", 0])?.$props).toEqual({ title: "x" });
+  });
+});
+
+// ─── Component instances: a prop the node hands over by another route ────────
+
+let routedCount = 0;
+
+/**
+ * Define a component that draws every declared prop, in declaration order, as `name=value` segments
+ * of one `h3` above its slot, under a tag no other test registered.
+ */
+async function defineRouted(state: NonNullable<JxDocument["state"]>): Promise<string> {
+  routedCount += 1;
+  const tagName = `patch-routed-${routedCount}`;
+  const textContent = Object.keys(state)
+    .map((key) => `${key}=\${state.${key}}`)
+    .join("|");
+  await defineElement({
+    children: [{ tagName: "h3", textContent }, { tagName: "slot" }],
+    state,
+    tagName,
+  });
+  return tagName;
+}
+
+/** A page holding one instance built from `extra` (attributes, top-level keys) and `$props`. */
+function routedPage(
+  tagName: string,
+  $props: JxMutableNode["$props"],
+  extra: JxMutableNode,
+): JxMutableNode {
+  return { children: [{ ...cardNode(tagName, $props), ...extra }], tagName: "div" };
+}
+
+/** A `set-key $props` op on the page's one instance; with no value, one that removes the block. */
+function propsOp(value?: Extract<JxDocOp, { op: "set-key" }>["value"]): JxDocOp {
+  return { key: "$props", op: "set-key", path: CARD, value };
+}
+
+/**
+ * Assert the op is REFUSED in place and the instance rebuilt, and that the rebuilt instance shows
+ * what a fresh render of the folded document shows.
+ *
+ * The refusal is proved without a render context: the only thing a refusal can do there is ask for
+ * one, and the instance is left as it was.
+ */
+async function expectRebuilt(mounted: Mounted, op: JxDocOp): Promise<void> {
+  const { container, shadow } = mounted;
+  const host = elAt(container, CARD);
+  const drawn = headingOf(container);
+  expect(() => {
+    applyIframePatch(structuredClone(shadow), [op], container);
+  }).toThrow(/iframe-patch-no-render-ctx/);
+  expect(elAt(container, CARD)).toBe(host);
+  expect(headingOf(container)).toBe(drawn);
+
+  applyIframePatch(shadow, [op], container, CTX);
+  await settle();
+
+  expect(elAt(container, CARD)).not.toBe(host);
+  expect(host.isConnected).toBe(false);
+  const patched = headingOf(container);
+  expect(patched).toBeDefined();
+  const fresh = await mountLive(shadow);
+  expect(patched).toBe(headingOf(fresh.container));
+  fresh.container.remove();
+  container.remove();
+}
+
+/**
+ * Assert the op is WRITTEN in place (no render context, so a rebuild would throw), that host and
+ * slotted child survive, and that the instance shows what a fresh render of the folded document
+ * shows.
+ */
+async function expectInPlace(mounted: Mounted, op: JxDocOp, heading: string): Promise<void> {
+  const { container, shadow } = mounted;
+  const host = elAt(container, CARD);
+  const slotted = elAt(container, SLOTTED);
+
+  applyIframePatch(shadow, [op], container);
+  await settle();
+
+  expect(elAt(container, CARD)).toBe(host);
+  expect(elAt(container, SLOTTED)).toBe(slotted);
+  const patched = headingOf(container);
+  expect(patched).toBe(heading);
+  const fresh = await mountLive(shadow);
+  expect(patched).toBe(headingOf(fresh.container));
+  fresh.container.remove();
+  container.remove();
+}
+
+describe("applyIframePatch — $props a node also delivers by another route", () => {
+  test("a top-level key equal to the changed prop rebuilds the instance", async () => {
+    const tag = await defineRouted({ label: "Default" });
+    const mounted = await mountLive(routedPage(tag, { label: "First" }, { label: "Top" }));
+    await expectRebuilt(mounted, propsOp({ label: "Second" }));
+  });
+
+  test("a top-level key naming ANOTHER prop leaves the write in place", async () => {
+    const tag = await defineRouted({ label: "Default", note: "None" });
+    const mounted = await mountLive(routedPage(tag, { label: "First" }, { note: "Top" }));
+    await expectInPlace(mounted, propsOp({ label: "Second" }), "label=Second|note=Top");
+  });
+
+  test("a same-named attribute rebuilds the instance", async () => {
+    const tag = await defineRouted({ label: "Default" });
+    const mounted = await mountLive(
+      routedPage(tag, { label: "First" }, { attributes: { label: "x" } }),
+    );
+    await expectRebuilt(mounted, propsOp({ label: "Second" }));
+  });
+
+  test("the kebab attribute of a camelCase prop rebuilds the instance", async () => {
+    const tag = await defineRouted({ cardLabel: "Default" });
+    const mounted = await mountLive(
+      routedPage(tag, { cardLabel: "First" }, { attributes: { "card-label": "x" } }),
+    );
+    await expectRebuilt(mounted, propsOp({ cardLabel: "Second" }));
+  });
+
+  test("a data-jx-props payload naming the changed prop rebuilds the instance", async () => {
+    const tag = await defineRouted({ label: "Default" });
+    const mounted = await mountLive(
+      routedPage(
+        tag,
+        { label: "First" },
+        { attributes: { "data-jx-props": JSON.stringify({ label: "Payload" }) } },
+      ),
+    );
+    await expectRebuilt(mounted, propsOp({ label: "Second" }));
+  });
+
+  test("a data-jx-props payload naming only OTHER props leaves the write in place", async () => {
+    const tag = await defineRouted({ label: "Default", note: "None" });
+    const mounted = await mountLive(
+      routedPage(
+        tag,
+        { label: "First" },
+        { attributes: { "data-jx-props": JSON.stringify({ note: "Payload" }) } },
+      ),
+    );
+    await expectInPlace(mounted, propsOp({ label: "Second" }), "label=Second|note=Payload");
+  });
+
+  test("an unparseable data-jx-props payload delivers nothing, so the write stays in place", async () => {
+    const tag = await defineRouted({ label: "Default" });
+    const mounted = await mountLive(
+      routedPage(tag, { label: "First" }, { attributes: { "data-jx-props": "{label" } }),
+    );
+    await expectInPlace(mounted, propsOp({ label: "Second" }), "label=Second");
+  });
+
+  test("a props.label attribute rebuilds the instance when label changes", async () => {
+    const tag = await defineRouted({ label: "Default", note: "None" });
+    const mounted = await mountLive(
+      routedPage(
+        tag,
+        { label: "First", note: "A" },
+        { attributes: { "props.label": "From attribute" } },
+      ),
+    );
+    await expectRebuilt(mounted, propsOp({ label: "Second", note: "A" }));
+  });
+
+  test("a props.label attribute leaves an edit to a DIFFERENT prop in place", async () => {
+    const tag = await defineRouted({ label: "Default", note: "None" });
+    const mounted = await mountLive(
+      routedPage(tag, { note: "A" }, { attributes: { "props.label": "From attribute" } }),
+    );
+    await expectInPlace(mounted, propsOp({ note: "B" }), "label=From attribute|note=B");
+  });
+
+  test("a prop REMOVED from the block while another route still delivers it rebuilds the instance", async () => {
+    const tag = await defineRouted({ label: "Default" });
+    const mounted = await mountLive(
+      routedPage(tag, { label: "First" }, { attributes: { "props.label": "From attribute" } }),
+    );
+    await expectRebuilt(mounted, propsOp());
+  });
+});
+
+describe("applyIframePatch — $props the instance cannot take in place", () => {
+  test("an op whose value is an array falls back to a rebuild", async () => {
+    const tag = await defineRouted({ label: "Default" });
+    const mounted = await mountLive(cardPage(tag, { label: "First" }));
+    await expectRebuilt(mounted, propsOp(["label", "Second"]));
+  });
+
+  test("an op whose value is a string falls back to a rebuild", async () => {
+    const tag = await defineRouted({ label: "Default" });
+    const mounted = await mountLive(cardPage(tag, { label: "First" }));
+    await expectRebuilt(mounted, propsOp("Second"));
+  });
+
+  test("a prop changed to an object is rebuilt, and shows what a fresh render shows", async () => {
+    const tag = await defineRouted({ label: "Default", meta: { size: "s" } });
+    const mounted = await mountLive(cardPage(tag, { label: "First", meta: { size: "m" } }));
+    await expectRebuilt(mounted, propsOp({ label: "First", meta: { size: "l" } }));
+  });
+
+  test("a scalar prop changed to an array is rebuilt, and shows what a fresh render shows", async () => {
+    const tag = await defineRouted({ label: "Default" });
+    const mounted = await mountLive(cardPage(tag, { label: "First" }));
+    await expectRebuilt(mounted, propsOp({ label: ["a", "b"] }));
+  });
+
+  test("a $props op for a path this render has no element for escalates", async () => {
+    const tag = await defineRouted({ label: "Default" });
+    const { container, shadow } = await mountLive(cardPage(tag, { label: "First" }));
+    elAt(container, CARD).remove();
+    expect(() => {
+      applyIframePatch(shadow, [propsOp({ label: "Second" })], container, CTX);
+    }).toThrow(/iframe-patch-element-not-found/);
+    container.remove();
   });
 });

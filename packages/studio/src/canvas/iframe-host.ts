@@ -111,6 +111,7 @@ type EnterEditMsg = Extract<ParentToIframe, { kind: "enterEdit" }>;
 
 /** A full-render message, as one host receives it. */
 type RenderMsg = Extract<ParentToIframe, { kind: "render" }>;
+type PatchMsg = Extract<ParentToIframe, { kind: "patch" }>;
 
 /**
  * The source data a drag session retains for its drop, exactly what {@link applyDropInstruction}
@@ -1419,11 +1420,14 @@ export function postPatchToHosts(forwardOps: JxDocOp[], tabId: string | null): n
       const echoPaths = echoOrigin?.host === host ? echoOrigin.paths : undefined;
       // A patch draws nodes too, so it must not resolve media against an older map.
       syncAssetVersions(host);
-      host.channel.post(
-        echoPaths
-          ? { echoPaths, forwardOps, gen, kind: "patch" }
-          : { forwardOps, gen, kind: "patch" },
-      );
+      const patch: PatchMsg = { forwardOps, gen, kind: "patch" };
+      if (echoPaths) {
+        patch.echoPaths = echoPaths;
+      }
+      if (redrawOrigin) {
+        patch.redrawPaths = redrawOrigin;
+      }
+      host.channel.post(patch);
       host.pendingPatches += 1;
       posted += 1;
     }
@@ -1478,6 +1482,25 @@ export function postEntryStateToHosts(tab: Tab): number {
  * `transact.ts` uses for op recording. Never spans an await, so it cannot leak across messages.
  */
 let echoOrigin: { host: HostState; paths: (string | number)[][] } | null = null;
+
+/**
+ * The component instances whose `$props` patch, posted while this is set, must draw the instance
+ * again instead of writing its props in place: the patch's `redrawPaths`, for every host.
+ *
+ * The same begin/end shape as {@link echoOrigin}, set around the transaction of a prop session's
+ * release and around its reconcile, and read by {@link postPatchToHosts} inside them.
+ */
+let redrawOrigin: (string | number)[][] | null = null;
+
+/** Apply `fn` with every `$props` patch it posts for `paths` marked to redraw the instance. */
+function withRedraw<T>(paths: (string | number)[][], fn: () => T): T {
+  redrawOrigin = paths.map((path) => plainCopy(path));
+  try {
+    return fn();
+  } finally {
+    redrawOrigin = null;
+  }
+}
 
 /**
  * Identifies the current visit to a block. Text commits sharing a run fold into ONE history entry —
@@ -1541,10 +1564,12 @@ export function needsReleaseReconcile(
 /**
  * Re-render a component instance from the document, WITHOUT transacting.
  *
- * Used when a release commit legitimately no-ops but the DOM is still showing what the suppressed
- * in-place commits rendered. The op is the same `set-key $props` the patcher would have produced,
- * so it takes the ordinary `replaceSubtree` path — this adds no rendering mechanism, it re-sends
- * the one that was deliberately dropped while the caret needed protecting.
+ * Used when a prop session ends and the DOM is still showing what was typed into it rather than
+ * what the instance draws: a release commit that legitimately no-ops after suppressed in-place
+ * commits. (A release that transacts needs no reconcile: its own patch is the redraw.) The op is a
+ * `set-key $props` carrying the block the document already holds, posted with the instance in the
+ * patch's `redrawPaths` (§4.1), so it takes the ordinary `replaceSubtree` path and adds no
+ * rendering mechanism.
  *
  * @param {HostState} state - The host whose tab owns the document.
  * @param {JxPath} path - The component instance's document path.
@@ -1559,9 +1584,11 @@ function reconcileInstance(state: HostState, path: JxPath): void {
   if (!node) {
     return;
   }
-  postPatchToHosts(
-    [{ key: "$props", op: "set-key", path, value: cloneValue(node.$props) }],
-    tab.id,
+  withRedraw([path], () =>
+    postPatchToHosts(
+      [{ key: "$props", op: "set-key", path, value: cloneValue(node.$props) }],
+      tab.id,
+    ),
   );
 }
 
@@ -2806,16 +2833,23 @@ function handleMessage(state: HostState, msg: IframeToParent): void {
       // A prop-bound plain session committed: persist into the instance's $props (same host-tab
       // Routing as editCommit; the unchanged-value no-op lives in the apply).
       //
-      // A $props change re-renders the WHOLE component instance, which would tear out the nested
-      // Editing host the caret is typing in — so an in-place commit is echo-suppressed exactly as a
-      // Page block's is. The instance re-renders for real on release.
+      // A $props change reaches the instance as a prop write, which rewrites the text of the marker
+      // The caret is typing in (and a rebuild would replace the marker outright) — so an in-place
+      // Commit is echo-suppressed exactly as a page block's is. The instance re-renders for real on
+      // Release.
       const applyProp = () => applyInlinePropCommit(hostTab(state), msg.path, msg.prop, msg.value);
       if (msg.inPlace) {
         withEchoSuppressed(state, [msg.path], applyProp);
         propEchoPending = serializeJxPath(msg.path);
         return;
       }
-      const transacted = applyProp();
+      const releasedAt = serializeJxPath(msg.path);
+      /* The release's own patch draws the instance again rather than writing the prop into it
+         (§4.1). Text typed into a marker is DOM the instance's bindings did not write, and a write
+         of the value the instance already holds draws nothing: typing into a default-valued
+         heading and then emptying it drops the prop, the instance's state is the default it never
+         left, and the heading would stand empty. */
+      const transacted = withRedraw([msg.path], applyProp);
       /*
        * "The instance re-renders for real on release" was only true when the release actually
        * transacted. After an idle tick the release posts the SAME string, the apply no-ops, and no
@@ -2828,18 +2862,20 @@ function handleMessage(state: HostState, msg: IframeToParent): void {
        * stops a commit → patch → disturb → re-commit loop, and keeps undo clean), so the fix is to
        * re-render without transacting.
        */
-      if (needsReleaseReconcile(transacted, propEchoPending, serializeJxPath(msg.path))) {
+      const reconciles = needsReleaseReconcile(transacted, propEchoPending, releasedAt);
+      if (reconciles) {
         reconcileInstance(state, msg.path);
       }
       propEchoPending = null;
       /*
-       * A release that TRANSACTED rebuilds the whole instance — `set-key $props` at the instance
-       * path becomes a `replaceSubtree`. If the user got here by clicking a SECOND prop slot in
-       * that same instance, the frame has already adopted a marker inside the subtree about to be
-       * replaced, so the session it just opened is dead on arrival: the click did nothing and they
-       * had to click again. The next `editStart` tells us whether that is what happened.
+       * Either way the instance is rebuilt: by the release's own patch when it transacted, by the
+       * reconcile when it did not. If the user got here by clicking a SECOND prop slot in that same
+       * instance, the frame has already adopted a marker inside the subtree about to be replaced,
+       * so the session it just opened is dead on arrival: the click did nothing and they had to
+       * click again. The next `editStart` tells us whether that is what happened. (The reconcile
+       * was missing from this condition, so a second slot clicked after an idle commit died.)
        */
-      propRebuildAt = transacted ? serializeJxPath(msg.path) : null;
+      propRebuildAt = transacted || reconciles ? releasedAt : null;
       return;
     }
     case "editMerge": {
@@ -2974,6 +3010,11 @@ function onDomUpdated(state: HostState, gen: number): void {
       reenterEdit(state, path, offset, prop);
     }
   }
+  /* A rebuild nobody clicked into is over once a frame has drawn it. The `editStart` that follows a
+     release in the same gesture arrives BEFORE this ack and has already read the flag; left
+     standing, it matched the next visit to that instance, however much later, and the re-entry it
+     deferred threw the author out of the edit at their first pause. */
+  propRebuildAt = null;
 }
 
 /**

@@ -697,6 +697,28 @@ export function setCanvasDelinkCommands(on: boolean) {
  */
 let _canvasInsideStampedHost = false;
 
+/**
+ * Run a later redraw (a `$switch` case that flips, a `$map` row that arrives) as inside a stamped
+ * host or not, the way its first render was.
+ *
+ * The flag is true only while a stamped instance draws, and a redraw comes from an effect with
+ * nothing on the stack (a list's from a microtask), so without this a case or a row drawn after the
+ * first paint kept its native `popover`, `inert` and `commandfor` inside the canvas.
+ *
+ * @param {boolean} inside - What the flag was when the list or switch was first rendered.
+ * @param {() => T} fn - The redraw.
+ * @returns {T}
+ */
+function insideStampedHost<T>(inside: boolean, fn: () => T): T {
+  const was = _canvasInsideStampedHost;
+  _canvasInsideStampedHost = inside;
+  try {
+    return fn();
+  } finally {
+    _canvasInsideStampedHost = was;
+  }
+}
+
 /** Whether the node being rendered is inside a stamped host, and so part of the edited page. */
 function canvasStamped(el: HTMLElement): boolean {
   return _canvasInsideStampedHost || el.dataset.jxPath !== undefined;
@@ -1307,6 +1329,7 @@ function bindTemplate(source: string, run: () => void, fallback?: () => void): v
       run();
       heldTemplateErrors.delete(run);
     } catch (error) {
+      _templateThrows += 1;
       const thrown = error instanceof Error ? error : new Error(String(error));
       if (_templateErrorHandler) {
         _templateErrorHandler(thrown, source);
@@ -1319,6 +1342,20 @@ function bindTemplate(source: string, run: () => void, fallback?: () => void): v
     }
   });
 }
+
+/**
+ * How many template evaluations have thrown and been survived. {@link updateInstanceProps} reads it
+ * around its writes: a binding that throws keeps what it last drew, which a fresh render of the
+ * same values never drew.
+ */
+let _templateThrows = 0;
+
+/**
+ * How many times a mapped list has been asked to redraw. A list redraws in a later microtask, so
+ * {@link updateInstanceProps} cannot answer for what that draws (a row that throws, for one) and
+ * reads this around its writes instead.
+ */
+let _listRedraws = 0;
 
 /** A compiled template: the scope, the row context, its item and index, and the page context. */
 type TemplateFn<R> = (
@@ -3128,6 +3165,8 @@ function renderMappedArrayInto(
      re-run, and the instance it holds must connect under the chain of the definition that drew
      the list. */
   const instancePath = _instancePath;
+  // And whether it is drawn inside a stamped host, which a later row must be drawn as too.
+  const insideStamped = _canvasInsideStampedHost;
 
   let warned = false;
   const warnOnce = (message: string): void => {
@@ -3247,7 +3286,9 @@ function renderMappedArrayInto(
 
     pauseTracking();
     try {
-      underInstancePath(reexpand(instancePath), () => reconcile(list, keys));
+      underInstancePath(reexpand(instancePath), () =>
+        insideStampedHost(insideStamped, () => reconcile(list, keys)),
+      );
     } finally {
       resetTracking();
     }
@@ -3263,6 +3304,7 @@ function renderMappedArrayInto(
   let stopped = false;
   const runner = effect(update, {
     scheduler: () => {
+      _listRedraws += 1;
       if (queued) {
         return;
       }
@@ -3367,6 +3409,8 @@ function renderSwitch(def: JxElement, state: JxScope, options?: JxRenderOptions)
      around the insertion, so an instance the new case creates connects under the chain of the
      definition that drew the switch rather than under none. See {@link _instancePath}. */
   const instancePath = _instancePath;
+  // And whether it is drawn inside a stamped host, which a later case must be drawn as too.
+  const insideStamped = _canvasInsideStampedHost;
 
   if (options?.onNodeCreated) {
     options.onNodeCreated(container, path, def, state);
@@ -3436,7 +3480,9 @@ function renderSwitch(def: JxElement, state: JxScope, options?: JxRenderOptions)
           }
           container.replaceChildren();
           underInstancePath(reexpand(instancePath), () =>
-            scope.run(() => container.append(renderNode(doc, childScope, childOpts))),
+            insideStampedHost(insideStamped, () =>
+              scope.run(() => container.append(renderNode(doc, childScope, childOpts))),
+            ),
           );
         })
         .catch((error) =>
@@ -3451,7 +3497,9 @@ function renderSwitch(def: JxElement, state: JxScope, options?: JxRenderOptions)
     pauseTracking();
     try {
       underInstancePath(reexpand(instancePath), () =>
-        scope.run(() => container.append(renderNode(caseDef, state, childOpts))),
+        insideStampedHost(insideStamped, () =>
+          scope.run(() => container.append(renderNode(caseDef, state, childOpts))),
+        ),
       );
     } finally {
       resetTracking();
@@ -5024,6 +5072,7 @@ export async function defineElement(source: string | JxDocument, baseUrl?: strin
   const initialDef = source_;
   const initialBase = base;
   const observedAttrs = initialDef.observedAttributes ?? [];
+  _observedAttributes.set(tagName, observedAttrs);
 
   const ElementClass = class extends HTMLElement {
     _jxInitialized = false;
@@ -5059,6 +5108,7 @@ export async function defineElement(source: string | JxDocument, baseUrl?: strin
 
       // The definition as it stands NOW — a redefinition since this class was made is honoured.
       const live = _elementDefs.get(tagName) ?? { base: initialBase, doc: initialDef };
+      _connectedDefs.set(this, live.doc);
       const def = live.doc;
       const defBase = live.base;
 
@@ -5359,6 +5409,392 @@ export async function defineElement(source: string | JxDocument, baseUrl?: strin
 }
 
 /**
+ * Write one `$props` value onto an instance, before or after it connected.
+ *
+ * The same resolution `bindProperty` gives an ordinary element. A `$props: { src }` on a custom
+ * element is an asset reference authored at the USAGE site, so it belongs to the document that
+ * wrote it; a media prop the component forwards into its own `<img>` is resolved separately, inside
+ * the component's render, against the same context.
+ *
+ * @param {HTMLElement} el - The instance.
+ * @param {string} key - The prop's name.
+ * @param {JxScopeValue} resolved - Its value, already resolved from any binding.
+ */
+function writeInstanceProp(el: HTMLElement, key: string, resolved: JxScopeValue): void {
+  const value = isString(resolved) ? canvasAssetValue(el.tagName, key, resolved) : resolved;
+  elementProperties(el)[key] = value;
+  /* A declared prop that shares its name with an `HTMLElement` property (`title`, `lang`) gets
+     no forwarding accessor (§16.2), so the write above lands on the element and never reaches
+     the instance's state. Connection reads it once; a binding that changes AFTER connection
+     (a row whose data arrives later) was lost, and the instance went on drawing the value it
+     connected with. The binding is the parent's `$props`, addressed to the definition's prop,
+     so it writes that prop's state. */
+  const instanceState = instanceStateOf(el);
+  if (instanceState && key in HTMLElement.prototype && Object.hasOwn(toRaw(instanceState), key)) {
+    instanceState[key] = value;
+  }
+}
+
+/**
+ * The attributes each tag observes, as first defined: the list the platform froze, which a
+ * redefinition does not change ({@link redefineElement}).
+ */
+const _observedAttributes = new Map<string, readonly string[]>();
+
+/**
+ * The definition each instance connected with. A redefinition leaves a connected instance drawing
+ * the old one (embedding.md §7), and nothing read from the new one describes it.
+ */
+const _connectedDefs = new WeakMap<HTMLElement, JxDocument>();
+
+/** Whether an instance is still drawn by the definition its tag has now. */
+function drawnByCurrent(el: HTMLElement): boolean {
+  const drawn = _connectedDefs.get(el);
+  return drawn !== undefined && drawn === _elementDefs.get(el.localName)?.doc;
+}
+
+/** The markers of a state entry whose value is produced asynchronously or kept outside the scope. */
+function producedElsewhere(entry: JxDocumentValue | undefined): boolean {
+  if (!isJsonObject(entry)) {
+    return false;
+  }
+  const { $prototype: prototype } = entry;
+  if (prototype !== undefined) {
+    return prototype !== "Function";
+  }
+  return "$src" in entry || "timing" in entry;
+}
+
+/** Whether a `$props` value is a scalar written as it stands: no binding, no object, no `null`. */
+function isScalarProp(value: JxScopeValue | undefined): value is string | number | boolean {
+  return (isString(value) && !isTemplateString(value)) || isNumber(value) || isBoolean(value);
+}
+
+/**
+ * The platform's own properties that reflect a string to an attribute and read it back unchanged,
+ * so a declared prop of that name holds after a write exactly what connection would have read.
+ */
+const VERBATIM_PROPS: ReadonlySet<string> = new Set(["id", "lang", "role", "slot", "title"]);
+
+/** Whether a document value is drawn through a binding (a `$ref` or a `${…}` template). */
+function isBoundProp(value: JxDocumentValue | undefined): boolean {
+  return isRefValue(value) || isTemplateString(value);
+}
+
+/**
+ * Whether a definition, or one it draws, reads something ONCE when it renders, so that a later
+ * write to its state would not reach what it drew, or would undo it:
+ *
+ * - A tag expression. The tag is chosen at creation and is not tracked (§19.6).
+ * - A `$`-local bound to a `$ref`, which is a copy of the value taken at render, on a node or in the
+ *   `$props` of an element that is not a component; and an `id` bound to a `$ref`, written once.
+ * - A `<slot>` a write can redraw (under a `$switch` case or a `$map` template, or with a `$switch`
+ *   of its own) or re-address (a bound `name`), or whose fallback is bound text. Slots are
+ *   distributed once, at connection (§8.5): the redrawn one is empty, and a replaced one is gone.
+ * - A component it draws being handed a value by a route that component reads only when it connects
+ *   ({@link handsOverOnce}): bound `textContent`, slot content that is bound text, a mapped array
+ *   or a child with a bound `slot`, a bound `props.*` attribute, a bound attribute for a prop it
+ *   declares and does not observe (§16.5), or a bound prop or property the platform owns.
+ * - An `onMount` in its state (§16.4), which runs once with the values it had then.
+ * - A definition that can draw itself, whose instances are admitted against the props each connected
+ *   with (§16.9).
+ * - Children or `innerHTML` drawn from a binding: what they draw is not in the document, so nothing
+ *   can be said about it.
+ * - A state entry produced asynchronously or kept outside the scope (a `$prototype` other than
+ *   `Function`, a `$src`, a `timing`): a request, a class or a store answers for the value it was
+ *   built with, and a stored value outlives the write.
+ *
+ * The answer belongs to the definition, not to the instance: it is asked of the document, so a
+ * `$switch` case that is not drawn yet counts. It is not remembered, because it depends on every
+ * definition this one draws and any of them can be redefined (embedding.md §7).
+ *
+ * @param {JxDocument} def
+ * @param {Set<JxDocument>} [drawing] - The definitions this walk is inside.
+ * @returns {boolean}
+ */
+function rendersOnce(def: JxDocument, drawing = new Set<JxDocument>()): boolean {
+  const declared = def.state ?? {};
+  if ("onMount" in declared || Object.values(declared).some((entry) => producedElsewhere(entry))) {
+    return true;
+  }
+  drawing.add(def);
+  const walk = (value: JxDocumentValue | undefined, isRoot: boolean, redrawn: boolean): boolean => {
+    if (Array.isArray(value)) {
+      return value.some((item) => walk(item, false, redrawn));
+    }
+    if (!isNonNullObject(value)) {
+      return false;
+    }
+    /* SAFETY: a definition is a JSON document, so every member of every object in it is a document
+       value; `Object.entries` on the union of node shapes says `any` only because it cannot name
+       one type for them all. */
+    const node = Object.fromEntries(Object.entries(value)) as Record<string, JxDocumentValue>;
+    const { attributes, tagName } = node;
+    if (tagName !== undefined && !isString(tagName)) {
+      return true;
+    }
+    const attrs: Record<string, JxDocumentValue> = isJsonObject(attributes) ? attributes : {};
+    if (
+      tagName === "slot" &&
+      (redrawn ||
+        isBoundProp(attrs.name) ||
+        isBoundProp(node.name) ||
+        isBoundProp(node.textContent) ||
+        node.$switch !== undefined)
+    ) {
+      return true;
+    }
+    if (isBoundProp(node.innerHTML) || (!isRoot && isBoundProp(node.children))) {
+      return true;
+    }
+    const isInstance = !isRoot && isString(tagName) && tagName.includes("-");
+    const inner = isInstance ? _elementDefs.get(tagName)?.doc : undefined;
+    if (isInstance && handsOverOnce(node, attrs, inner)) {
+      return true;
+    }
+    if (inner && (drawing.has(inner) || rendersOnce(inner, drawing))) {
+      return true;
+    }
+    for (const [key, entry] of Object.entries(node)) {
+      // State is the scope a write reaches, not something drawn; the root's `$props` are defaults.
+      if (isRoot && (key === "state" || key === "$props")) {
+        continue;
+      }
+      if (key === "$props") {
+        if (!isInstance && isJsonObject(entry) && Object.values(entry).some((v) => isRefValue(v))) {
+          return true;
+        }
+        continue;
+      }
+      if ((key === "id" || (key.startsWith("$") && !RESERVED_KEYS.has(key))) && isRefValue(entry)) {
+        return true;
+      }
+      // `cases` is a map of nodes by name, not a node: a case may be called `state`.
+      const drawn = key === "cases" && isJsonObject(entry) ? Object.values(entry) : entry;
+      if (walk(drawn, false, redrawn || key === "cases" || key === "map")) {
+        return true;
+      }
+    }
+    return false;
+  };
+  const answer = walk(def, true, false);
+  drawing.delete(def);
+  return answer;
+}
+
+/**
+ * Whether a component a definition draws is handed a bound value by a route it reads only when it
+ * connects ({@link rendersOnce}).
+ *
+ * @param node - The node that draws the component.
+ * @param attrs - That node's `attributes`.
+ * @param inner - The component's definition, when it is registered.
+ * @returns {boolean}
+ */
+function handsOverOnce(
+  node: Record<string, JxDocumentValue>,
+  attrs: Record<string, JxDocumentValue>,
+  inner: JxDocument | undefined,
+): boolean {
+  if (isBoundProp(node.textContent)) {
+    return true;
+  }
+  /* Its slot content is grouped, and tested for being empty, once (§8.5): text that fills in later,
+     a row that arrives later and a child that changes group are not distributed again. */
+  const kids = Array.isArray(node.children) ? node.children : [];
+  if (
+    kids.some(
+      (kid) =>
+        isBoundProp(kid) ||
+        isMappedArray(kid) ||
+        (isJsonObject(kid) &&
+          (isBoundProp(kid.slot) ||
+            (isJsonObject(kid.attributes) && isBoundProp(kid.attributes.slot)))),
+    )
+  ) {
+    return true;
+  }
+  /* A platform-named prop is read back through the platform's accessor at connection, which
+     coerces it; forwarded later, as a prop or as a property of the node, it reaches the
+     component's state as given. */
+  const coerced = (given: Record<string, JxDocumentValue>): boolean =>
+    Object.entries(given).some(
+      ([key, value]) => isBoundProp(value) && key in HTMLElement.prototype && key !== "textContent",
+    );
+  if (coerced(node) || (isJsonObject(node.$props) && coerced(node.$props))) {
+    return true;
+  }
+  const observed = isString(node.tagName) ? (_observedAttributes.get(node.tagName) ?? []) : [];
+  return Object.entries(attrs).some(([name, given]) => {
+    if (!isBoundProp(given)) {
+      return false;
+    }
+    if (name.startsWith("props.")) {
+      return true;
+    }
+    const prop = name.replaceAll(/-([a-z])/g, (_: string, c: string) => c.toUpperCase());
+    // An unregistered component is one whose declarations cannot be read: assume it reads this.
+    return !inner || (prop in (inner.state ?? {}) && !observed.includes(name));
+  });
+}
+
+/**
+ * Whether anything the instance's own definition drew has an `onMount` that already ran: the
+ * instance itself, or an instance inside it that no document node stands between.
+ *
+ * `onMount` runs once (§16.4), and what it read then it does not read again. An instance the
+ * DOCUMENT placed inside this one (slot content, stamped `data-jx-path` by the canvas) takes
+ * nothing from this instance's props, so it does not count.
+ *
+ * @param {HTMLElement} host
+ * @param {JxScope} state
+ * @returns {boolean}
+ */
+function mountedFromProps(host: HTMLElement, state: JxScope): boolean {
+  if (isScopeHook(state.onMount) || !drawnByCurrent(host)) {
+    return true;
+  }
+  for (const inner of host.querySelectorAll<HTMLElement>("*")) {
+    const innerState = instanceStateOf(inner);
+    if (!innerState || (!isScopeHook(innerState.onMount) && drawnByCurrent(inner))) {
+      continue;
+    }
+    let owner: HTMLElement | null = inner;
+    while (owner && owner !== host && owner.dataset.jxPath === undefined) {
+      owner = owner.parentElement;
+    }
+    if (owner === host) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Write a changed `$props` block into an instance that is already connected, in place, and answer
+ * whether that was done. `false` means the caller draws the instance again; nothing was written
+ * unless the refusal is the last case below.
+ *
+ * This is the property-first interface (§16.2) used by an editor: the Studio canvas calls it when
+ * an author edits a prop, so the instance's own bindings redraw what reads that prop and nothing
+ * else in it is rebuilt. It refuses whenever writing the properties could leave the instance
+ * showing something a fresh render of it would not:
+ *
+ * - The element is not a connected Jx instance, or its definition is gone.
+ * - Nothing changed. A block equal to the last one is a request to draw again, not a write.
+ * - A changed prop is not a scalar on both sides: a string, a number or a boolean, as it stands. A
+ *   `$ref` or a template is an effect the render that created the instance owns, and it would go on
+ *   writing the old source. An object, an array or `null` is refused because too much reads one
+ *   once: a list redraws its rows in a later microtask, where a throw can no longer be answered
+ *   for; a binding that reads a member survives `null` by keeping its last drawing; and the
+ *   canvas's inline-edit marker is stamped by the type the value had at render.
+ * - A changed prop overrides a state entry that is produced elsewhere (a store, a request).
+ * - A changed prop is named for a property the platform owns (`hidden`, `tabIndex`, `textContent`):
+ *   connection reads such a value back through the platform's accessor, which coerces it, reflects
+ *   it to an attribute, or for `textContent` makes it slot content, and a later write does none of
+ *   that the same way. The exception is a declared prop the platform reflects verbatim
+ *   ({@link VERBATIM_PROPS}) being given a string, which reads back as written.
+ * - A removed prop has no scalar declared default to go back to, or its attribute is observed and on
+ *   the host, where a fresh instance would read it instead of the default.
+ * - The definition, or one it draws, declares an `onMount`, or an instance already drawn has one: it
+ *   ran once with the old values.
+ * - The instance, or one its definition drew, connected with a definition since replaced
+ *   (embedding.md §7), and still draws the old one.
+ * - The definition, or one it draws, reads something once at render ({@link rendersOnce}): a tag
+ *   expression, a copied `$ref`, a slot a write would redraw, a nested component handed a value it
+ *   reads only at connection, or a definition that can draw itself.
+ * - A write throws, a template binding throws on the new value and is survived (§6.1), or a write
+ *   reaches a mapped list. The first is a render that throws, which the fresh render reports
+ *   (§16.4); the second keeps what it last drew, which a fresh render never drew; the third redraws
+ *   in a later microtask, where nothing can answer for what it draws. All three are known only
+ *   after the fact: the props are written, and the caller's redraw discards them with the
+ *   instance.
+ *
+ * What it does not put back is state the instance changed itself (a counter its own handler moved):
+ * the write changes the props that changed and leaves the rest of the scope as it stands.
+ *
+ * @param {HTMLElement} el - The instance host.
+ * @param {JxElement["$props"]} before - The `$props` block it was drawn with.
+ * @param {JxElement["$props"]} after - The block it should show now.
+ * @returns {boolean}
+ */
+export function updateInstanceProps(
+  el: HTMLElement,
+  before: JxElement["$props"],
+  after: JxElement["$props"],
+): boolean {
+  const state = instanceStateOf(el);
+  const def = _elementDefs.get(el.localName)?.doc;
+  if (!state || !def) {
+    return false;
+  }
+  const defaults = declaredDefaults(def);
+  const declared = def.state ?? {};
+  const observed = _observedAttributes.get(el.localName) ?? [];
+  const writes: (() => void)[] = [];
+  for (const key of new Set([...Object.keys(before ?? {}), ...Object.keys(after ?? {})])) {
+    const was = before?.[key];
+    const now = after?.[key];
+    // A private key was refused when the instance was drawn and is refused now: nothing to write.
+    if (isPrivateStateKey(key) || JSON.stringify(was) === JSON.stringify(now)) {
+      continue;
+    }
+    if (
+      (was !== undefined && !isScalarProp(was)) ||
+      (now !== undefined && !isScalarProp(now)) ||
+      producedElsewhere(declared[key]) ||
+      // What the instance holds now decided things at render too (a marker, a handler).
+      (key in declared && !isScalarProp(toRaw(state)[key])) ||
+      // The element class's own fields, which a property write would overwrite.
+      key === "_state" ||
+      key === "_jxInitialized"
+    ) {
+      return false;
+    }
+    if (
+      key in HTMLElement.prototype &&
+      !(VERBATIM_PROPS.has(key) && key in declared && isString(now))
+    ) {
+      return false;
+    }
+    if (now !== undefined) {
+      writes.push(() => {
+        writeInstanceProp(el, key, now);
+      });
+      continue;
+    }
+    if (!(key in declared)) {
+      // Nothing reads an undeclared prop: a fresh instance simply would not carry it.
+      writes.push(() => {
+        Reflect.deleteProperty(el, key);
+      });
+      continue;
+    }
+    const fallback = defaults.get(key);
+    const attribute = key.replaceAll(/[A-Z]/gu, (c) => `-${c.toLowerCase()}`);
+    if (!isScalarProp(fallback) || (observed.includes(attribute) && el.hasAttribute(attribute))) {
+      return false;
+    }
+    writes.push(() => {
+      state[key] = fallback;
+    });
+  }
+  if (writes.length === 0 || mountedFromProps(el, state) || rendersOnce(def)) {
+    return false;
+  }
+  const thrown = _templateThrows;
+  const redraws = _listRedraws;
+  try {
+    for (const write of writes) {
+      write();
+    }
+  } catch {
+    return false;
+  }
+  return _templateThrows === thrown && _listRedraws === redraws;
+}
+
+/**
  * Render a registered custom element with $props (property-first interface).
  *
  * @param {JxElement} def
@@ -5384,27 +5820,8 @@ function renderCustomElementWithProps(
     if (refusePrivateProp(key, "$props")) {
       continue;
     }
-    /* The same resolution `bindProperty` gives an ordinary element. A `$props: { src }` on a custom
-       element is an asset reference authored at the USAGE site, so it belongs to the document that
-       wrote it — a media prop the component forwards into its own `<img>` is resolved separately,
-       inside the component's render, against the same context. */
     const write = (resolved: JxScopeValue): void => {
-      const value = isString(resolved) ? canvasAssetValue(el.tagName, key, resolved) : resolved;
-      elementProperties(el)[key] = value;
-      /* A declared prop that shares its name with an `HTMLElement` property (`title`, `lang`) gets
-         no forwarding accessor (§16.2), so the write above lands on the element and never reaches
-         the instance's state. Connection reads it once; a binding that changes AFTER connection
-         (a row whose data arrives later) was lost, and the instance went on drawing the value it
-         connected with. The binding is the parent's `$props`, addressed to the definition's prop,
-         so it writes that prop's state. */
-      const instanceState = instanceStateOf(el);
-      if (
-        instanceState &&
-        key in HTMLElement.prototype &&
-        Object.hasOwn(toRaw(instanceState), key)
-      ) {
-        instanceState[key] = value;
-      }
+      writeInstanceProp(el, key, resolved);
     };
     if (isRefValue(val)) {
       const refVal = val;

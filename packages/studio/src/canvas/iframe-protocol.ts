@@ -292,6 +292,13 @@ export type ParentToIframe =
        * render normally.
        */
       echoPaths?: (string | number)[][];
+      /**
+       * Component instances whose `$props` op in this patch must draw the instance again rather
+       * than write the changed props into it (§4.1). Sent at the end of a prop-bound inline edit:
+       * the text typed into a prop marker is DOM the instance's bindings did not write, and a write
+       * of the value the instance already holds would leave it standing.
+       */
+      redrawPaths?: (string | number)[][];
     }
   // Replace the rendered ROOT's style block in place (stylebook live style editing): the iframe
   // Folds it into the shadow doc and re-runs the runtime's reapplyStyle on the root element, which
@@ -316,8 +323,9 @@ export type ParentToIframe =
       /**
        * Re-enter the PROP-BOUND host for this prop of the instance at `path`, rather than placing a
        * caret in a block. A prop host is identified by (instance, prop) — the marker element
-       * carries no path of its own — and it is re-entered rather than caret-placed because a
-       * `$props` patch rebuilds the whole instance, replacing the element the session was on.
+       * carries no path of its own — and it is re-entered rather than caret-placed because the
+       * release of a prop session rebuilds the whole instance, replacing the element the session
+       * was on.
        */
       prop?: string;
     }

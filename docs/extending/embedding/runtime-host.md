@@ -172,6 +172,36 @@ An instance created after the call renders the new definition. One already on th
 
 One thing does not change: `observedAttributes`. The browser fixes that list when a custom element is first defined, so a changed list is reported on the console and only takes effect after a page load.
 
+## Change an instance's props in place
+
+A host that edits a document can write a changed `$props` block into an instance that is already on the page, instead of rendering the instance again:
+
+```ts
+import { updateInstanceProps } from "@jxsuite/runtime";
+
+if (!updateInstanceProps(el, { heading: "Before" }, { heading: "After" })) {
+  // Render the instance again from the document.
+}
+```
+
+Pass the block the instance was drawn with and the block it should show now. When the call answers `true`, the props that changed were written and the component's own bindings redrew what reads them. The element, its slotted children and the components nested in it are the same nodes as before.
+
+The call is deliberately narrow. It answers `false` whenever a write could show something a fresh render would not. Render the instance again in that case. The cases are:
+
+- The element is not a connected component, or the block did not change.
+- A changed prop is not a plain string, number or boolean in both blocks. That rules out objects, arrays, `null`, a `$ref` and a `${…}` template.
+- A changed prop has a name every element has, such as `hidden` or `textContent`. A declared `title`, `lang`, `id`, `slot` or `role` given a string is written.
+- A removed prop has no plain declared default, or its observed attribute is on the element.
+- The component, or one it draws, declares `onMount`. That hook ran once with the old values.
+- The component was redefined after this instance connected. The instance still draws the old definition.
+- The component, or one it draws, reads something only once, when it renders: a tag chosen by an expression, a prop copied into a `$` local or bound to an `id` by `$ref`, a slot inside a `$switch` case or a mapped list, a slot with bound fallback text, or children drawn from a binding.
+- The component, or one it draws, keeps state in a store, a request or an external class.
+- The component passes a bound value to a nested component as text, as slotted content or as an attribute the nested component does not observe.
+- The component can draw itself.
+- A binding throws on the new value, or the change reaches a mapped list. The props are already written by then, and your render replaces the instance.
+
+State the component changed itself, such as a counter its own button moved, is kept.
+
 ## Dispose
 
 Call `handle.dispose()` when the host removes the surface. It removes the root first, then stops every effect the render created and releases the styles the mount adopted, then runs the document's `onUnmount` if it declares one. Removing the root first means the release writes to elements that have already left the page, so the browser does not re-style them on the way out; it also means `onUnmount` sees a detached root, as a component's own `onUnmount` does. Calling it twice is safe. Passing a `signal` does the same when the signal aborts.
