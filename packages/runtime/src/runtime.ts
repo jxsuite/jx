@@ -309,6 +309,16 @@ export async function mount<S extends JxHostScope<S> = JxScope>(
   if (options.onNodeMoved) {
     renderOptions.onNodeMoved = options.onNodeMoved;
   }
+  // The authoring hooks (off unless a host names them): see `JxRenderOptions`.
+  if (options.rowLimit !== undefined) {
+    renderOptions.rowLimit = options.rowLimit;
+  }
+  if (options.emptyRow) {
+    renderOptions.emptyRow = options.emptyRow;
+  }
+  if (options.onListReconciled) {
+    renderOptions.onListReconciled = options.onListReconciled;
+  }
   const { result: root, stop } = runScoped(() => renderNode(doc, scope, renderOptions));
   ctx.root = root;
 
@@ -720,7 +730,18 @@ let _canvasInsideStampedHost = false;
 
 /** Whether the node being rendered is inside a stamped host, and so part of the edited page. */
 function canvasStamped(el: HTMLElement): boolean {
-  return _canvasInsideStampedHost || el.dataset.jxPath !== undefined;
+  return _canvasInsideStampedHost || carriesCanvasStamp(el);
+}
+
+/**
+ * Whether the studio stamped this element as part of the page being edited: with its document path
+ * (`data-jx-path`), or, for a mapped row that is not the one being edited, with the path it echoes
+ * (`data-jx-echo-path`). An echo row draws the same document nodes as the active one, so it is
+ * de-linked like it: left out, every row but one would keep live popovers, dialogs and commands in
+ * an editable canvas.
+ */
+function carriesCanvasStamp(el: HTMLElement): boolean {
+  return el.dataset.jxPath !== undefined || el.dataset.jxEchoPath !== undefined;
 }
 
 /** The attribute name to stamp `key` on `el` under — `href` → `data-jx-href` on de-linked anchors. */
@@ -1430,6 +1451,26 @@ function evaluateValueTemplate(str: string, state: JxScope): JxScopeValue {
     remember(valueTemplates, str, fn);
   }
   return fn(...templateArgs(state));
+}
+
+/**
+ * Evaluate a template against a scope, for editor tooling: the value a binding would write.
+ *
+ * It is the runtime's own reading, so a tool that shows a template's live value cannot disagree
+ * with the render beside it. A template that is one whole `${…}` answers the expression's own value
+ * (an array, a boolean, a record); anything else answers the interpolated string. The expression
+ * sees exactly the names a rendered template does: `state` (the scope), `$map`, `item` and `index`
+ * (the scope's row context, undefined outside a mapped row), and `$site` and `$page` (read off the
+ * scope). Nothing is caught: an expression that throws, or a source that does not compile, throws
+ * here, and reads made during the call are tracked by whatever effect is running.
+ *
+ * @param {string} str - Template source
+ * @param {JxScope} scope - The scope to read, a row's own scope for a template inside a `map`
+ * @returns {JxScopeValue} The expression's value, or the interpolated string
+ * @docs extending/embedding/runtime-host
+ */
+export function evaluateTemplateValue(str: string, scope: JxScope): JxScopeValue {
+  return evaluateValueTemplate(str, scope);
 }
 
 // ─── Step 2b: Function resolution (Shape 4) ─────────────────────────────────
@@ -2239,6 +2280,8 @@ export function renderNode(
       if (isMappedArray(child)) {
         // Array pseudo-element among siblings: expand inline, no wrapper.
         renderMappedArrayInto(el, child, localState, childOpts);
+      } else if (isString(child) && isSingleExpression(child)) {
+        renderTemplatedChild(el, child, localState, childOpts);
       } else {
         el.append(renderNode(child, localState, childOpts));
       }
@@ -2275,7 +2318,6 @@ function renderComputedChildren(
   state: JxScope,
   options: JxRenderOptions,
 ): void {
-  const path = options._path ?? [];
   let live: EffectScope | null = null;
   const retire = (): void => {
     // Detached before it is stopped, for the reason `teardown` in `renderMappedArray` gives.
@@ -2291,24 +2333,136 @@ function renderComputedChildren(
       if (!Array.isArray(nodes)) {
         return;
       }
-      const scope = effectScope(true);
-      live = scope;
-      pauseTracking();
-      try {
-        scope.run(() => {
-          /* SAFETY: a children template that yields an array stands for the child list itself, the
-             same reading the site build's template pass gives it. */
-          for (const [i, child] of (nodes as (JxElement | string)[]).entries()) {
-            el.append(renderNode(child, state, { ...options, _path: [...path, i] }));
-          }
-        });
-      } finally {
-        resetTracking();
-      }
+      live = effectScope(true);
+      drawTemplateNodes(live, nodes, state, options, (node) => {
+        el.append(node);
+      });
     },
     retire,
   );
   onScopeDispose(() => live?.stop(), true);
+}
+
+/**
+ * Render the members of a template's array value, each handed to `place` as it is made.
+ *
+ * The members render in `scope`, a detached scope the caller owns and stops when the value changes,
+ * and with tracking paused for the reason {@link renderSwitch} gives: the bindings inside track for
+ * themselves. A member is rendered as a child definition whatever it is, the reading the site
+ * build's template pass gives it: an object is an element, anything else is text. A member that is
+ * itself a template string is bound as text and never spliced a second time, which is also what the
+ * build does (it steps over what it spliced in).
+ *
+ * Each member renders at `[…options._path, index]`: the template's own position, then the member's
+ * place in the value. That is not a path into the document, which holds a string there; it is what
+ * `onNodeCreated` reports for the member, and it cannot collide with a sibling's path.
+ *
+ * @param {EffectScope} scope - Owns every effect the members create
+ * @param {readonly JxScopeValue[]} nodes - The template's value
+ * @param {JxScope} state
+ * @param {JxRenderOptions | undefined} options - `_path` is the template's own position
+ * @param {(node: HTMLElement | Text) => void} place - Puts a rendered member in the DOM
+ */
+function drawTemplateNodes(
+  scope: EffectScope,
+  nodes: readonly JxScopeValue[],
+  state: JxScope,
+  options: JxRenderOptions | undefined,
+  place: (node: HTMLElement | Text) => void,
+): void {
+  const path = options?._path ?? [];
+  /* Read HERE, tracked, before tracking is paused: the template's own read reaches the array and
+     no further, so an array changed in place (a `push`, an index write, a `length` of zero) would
+     otherwise leave what was drawn standing. The same string as text read every member when it
+     joined them, and a list that stopped following its array would be a regression against that.
+     SAFETY: a template that yields an array stands for the children themselves, the same reading
+     the site build's template pass gives it. */
+  const members = [...(nodes as readonly (JxElement | string)[])];
+  pauseTracking();
+  try {
+    scope.run(() => {
+      for (const [i, child] of members.entries()) {
+        place(renderNode(child, state, options ? { ...options, _path: [...path, i] } : undefined));
+      }
+    });
+  } finally {
+    resetTracking();
+  }
+}
+
+/**
+ * Render a string member of a `children` array that is one whole `${…}` (spec.md §8.4).
+ *
+ * Such a member is text unless its value is an array, and then it stands for the nodes the array
+ * holds: the site build's template pass (`resolveDocTemplates`) splices them in where the string
+ * stood, and this draws the same thing so a document reads alike prerendered and rendered live. The
+ * build's rule is the whole rule: ANY array is spliced, every member of it (an object as an
+ * element, anything else as text, mixed freely, an empty array as nothing), and a value that is not
+ * an array leaves the string a text child. Only a single-expression template can yield an array at
+ * all, so every other string child takes the plain text path in {@link renderNode} untouched.
+ *
+ * One Text node is always appended, exactly as before, and it is the stable anchor. While the value
+ * is text it holds the text. While the value is an array it is empty and the spliced nodes stand
+ * immediately before it, so a change replaces that range and nothing else: siblings on either side
+ * are never touched, and a value that turns from an array into text (or back) needs no second
+ * anchor. The spliced nodes own a detached scope that is stopped when the value changes.
+ *
+ * @param {Element} parent
+ * @param {string} template - A single-expression template
+ * @param {JxScope} state
+ * @param {JxRenderOptions | undefined} options - `_path` is the string's own `children` position
+ */
+function renderTemplatedChild(
+  parent: Element,
+  template: string,
+  state: JxScope,
+  options: JxRenderOptions | undefined,
+): void {
+  const anchor = document.createTextNode(template);
+  parent.append(anchor);
+  let live: EffectScope | null = null;
+  let drawn: (HTMLElement | Text)[] = [];
+  const retire = (): void => {
+    // Detached before it is stopped, for the reason `teardown` in `renderMappedArray` gives.
+    for (const node of drawn) {
+      node.remove();
+    }
+    drawn = [];
+    live?.stop();
+    live = null;
+  };
+  bindTemplate(
+    template,
+    () => {
+      const value = evaluateValueTemplate(template, state);
+      retire();
+      if (!Array.isArray(value)) {
+        anchor.textContent = templateText(value);
+        return;
+      }
+      anchor.textContent = "";
+      live = effectScope(true);
+      drawTemplateNodes(live, value, state, options, (node) => {
+        drawn.push(node);
+        anchor.before(node);
+      });
+    },
+    () => {
+      retire();
+      anchor.textContent = "";
+    },
+  );
+  onScopeDispose(() => live?.stop(), true);
+}
+
+/**
+ * A single expression's value as the text its template interpolates to: a template literal's own
+ * conversion, so a Symbol still throws where `String()` would print it.
+ */
+function templateText(value: JxScopeValue): string {
+  /* SAFETY: not a claim that the value is a string. A template literal converts whatever it is
+     handed, and the cast only names a type the literal accepts without a lint exemption. */
+  return `${value as string}`;
 }
 
 // ─── Template string utilities ────────────────────────────────────────────────
@@ -3333,7 +3487,13 @@ function applyAttributes(el: HTMLElement, attrs: Record<string, JxAttributeValue
  *
  * `options._path` is the array node's own document path (`[…, "children", i]`, or `[…, "children"]`
  * for a legacy whole-children repeater); item instances render at `[…that…, "map", index]`, and a
- * row that moves reports its new path through `options.onNodeMoved`.
+ * row that moves reports its new path through `options.onNodeMoved`: once, for the row's root. The
+ * nodes inside the row are not reported, though each one's path begins with the row's and so
+ * changed with it.
+ *
+ * Three options exist for an editor and do nothing unless a host sets them (`JxRenderOptions`):
+ * `rowLimit` caps the rows drawn, `emptyRow` supplies one row for a list with none, and
+ * `onListReconciled` reports what each reconciliation drew.
  *
  * @param {HTMLElement} parentEl
  * @param {import("@jxsuite/schema/types").JxMappedArray} arrayDef
@@ -3457,10 +3617,27 @@ function renderMappedArrayInto(
         items = [...unsorted].toSorted(compare);
       }
     }
-    const list: readonly JxScopeValue[] = Array.isArray(items) && mapDef ? items : [];
+    let list: readonly JxScopeValue[] = Array.isArray(items) && mapDef ? items : [];
+    const count = list.length;
+
+    /* The authoring hooks (`JxRenderOptions`), both absent unless a host names them. A list with
+       nothing to draw may be given one row to stand for it, and a long one may be cut short. The
+       placeholder is keyed by a value no item can be, so it is never taken for a real row: it is
+       torn down when the list fills and rebuilt when it empties. */
+    const placeholder = count === 0 && mapDef ? options?.emptyRow?.(arrayDef, path) : undefined;
+    if (placeholder !== undefined) {
+      list = [placeholder];
+    }
+    const limit = options?.rowLimit;
+    if (isNumber(limit) && limit >= 0 && list.length > limit) {
+      list = list.slice(0, Math.floor(limit));
+    }
 
     // Keys are read HERE, tracked, so a key that changes reconciles the list.
-    const keys = list.map((item, index) => mappedRowKey(keyPointer, item, index, warnOnce));
+    const keys =
+      placeholder === undefined
+        ? list.map((item, index) => mappedRowKey(keyPointer, item, index, warnOnce))
+        : list.map(() => EMPTY_ROW_KEY);
     const seen = new Set<MappedRow["key"]>();
     for (let i = 0; i < keys.length; i++) {
       if (seen.has(keys[i])) {
@@ -3476,6 +3653,7 @@ function renderMappedArrayInto(
     pauseTracking();
     try {
       underInstancePath(reexpand(instancePath), () => reconcile(list, keys));
+      options?.onListReconciled?.(path, { count, empty: count === 0, rendered: rows.length });
     } finally {
       resetTracking();
     }
@@ -3512,6 +3690,9 @@ function renderMappedArrayInto(
     rows = [];
   }, true);
 }
+
+/** The key of the one row `emptyRow` supplies: an object, so no item's key can equal it. */
+const EMPTY_ROW_KEY: MappedRow["key"] = Object.freeze({ emptyRow: true });
 
 /** A rendered row of a mapped array. */
 interface MappedRow {
@@ -5458,7 +5639,7 @@ export async function defineElement(source: string | JxDocument, baseUrl?: strin
            definition draws inside it is too — and the de-link rules cannot see that from the nodes
            themselves. Restored rather than cleared, because one definition may render another. */
         const wasInside = _canvasInsideStampedHost;
-        _canvasInsideStampedHost ||= this.dataset.jxPath !== undefined;
+        _canvasInsideStampedHost ||= carriesCanvasStamp(this);
         /* And the chain, for the same span: an instance this definition draws connects inside
            `this.append` below and reads it there ({@link underInstancePath}). */
         let failure: Error | null = null;
@@ -5674,6 +5855,8 @@ function renderCustomElementWithProps(
     const childOpts = options && path ? { ...options, _path: [...path, "children", i] } : undefined;
     if (isMappedArray(child)) {
       renderMappedArrayInto(el, child, state, childOpts);
+    } else if (isString(child) && isSingleExpression(child)) {
+      renderTemplatedChild(el, child, state, childOpts);
     } else {
       el.append(renderNode(child, state, childOpts));
     }

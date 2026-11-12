@@ -1,0 +1,13 @@
+{
+  "name": "escapeHtml",
+  "description": "Text made safe to place in markup or an attribute value: &, <, >, \" and ' become character references; a missing value gives an empty string.",
+  "parameters": [
+    {
+      "name": "text",
+      "type": {
+        "text": "string | null",
+        "type": ["string", "null"]
+      }
+    }
+  ]
+}

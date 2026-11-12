@@ -1,0 +1,55 @@
+{
+  "name": "formatNumber",
+  "description": "Format a number in the page's locale (Intl.NumberFormat): grouping, decimals, currency, percent, units; an empty string for a missing or empty value.",
+  "parameters": [
+    {
+      "name": "value",
+      "type": {
+        "text": "number | string | null",
+        "type": ["number", "string", "null"]
+      }
+    },
+    {
+      "name": "options",
+      "optional": true,
+      "description": "How to write it: style, currency, digits, notation.",
+      "type": {
+        "text": "Intl.NumberFormatOptions",
+        "type": "object",
+        "properties": {
+          "style": {
+            "enum": ["decimal", "currency", "percent", "unit"]
+          },
+          "currency": {
+            "type": "string"
+          },
+          "currencyDisplay": {
+            "enum": ["symbol", "narrowSymbol", "code", "name"]
+          },
+          "unit": {
+            "type": "string"
+          },
+          "unitDisplay": {
+            "enum": ["long", "short", "narrow"]
+          },
+          "notation": {
+            "enum": ["standard", "compact", "scientific", "engineering"]
+          },
+          "minimumFractionDigits": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "maximumFractionDigits": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "useGrouping": {
+            "type": "boolean"
+          }
+        }
+      }
+    }
+  ]
+}

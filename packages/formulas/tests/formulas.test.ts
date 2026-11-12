@@ -1,6 +1,7 @@
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import { describe, expect, test } from "bun:test";
 import { compileExpression, evaluateExpression } from "@jxsuite/runtime/expression";
+import { isString } from "@jxsuite/schema/guards";
 import { catalog, formulaEntries } from "../src/index.ts";
 
 import type { JsonObject, JsonValue, JxExpressionOperand } from "@jxsuite/schema/types";
@@ -32,8 +33,8 @@ function expectFormulaResult(name: string, args: FormulaArgument[], expected: Js
 }
 
 describe("catalog integrity", () => {
-  test("15 formulas, each named, described, and parameterized", () => {
-    expect(catalog.length).toBe(15);
+  test("21 formulas, each named, described, and parameterized", () => {
+    expect(catalog.length).toBe(21);
     for (const formula of catalog) {
       expect(formula.name.length).toBeGreaterThan(0);
       expect(formula.description.length).toBeGreaterThan(10);
@@ -43,7 +44,7 @@ describe("catalog integrity", () => {
 
   test("formulaEntries produces named-formula state entries", () => {
     const entries = formulaEntries();
-    expect(Object.keys(entries).length).toBe(15);
+    expect(Object.keys(entries).length).toBe(21);
     expect(entries.clamp!.parameters!.length).toBe(3);
     expect(entries.clamp!.$expression.operator).toBe("call");
   });
@@ -79,6 +80,54 @@ describe("formula behavior (interpreted)", () => {
     ["truncate", ["hello world", 5], "hello…"],
     ["truncate", ["hi", 5], "hi"],
     ["initials", ["ada lovelace"], "AL"],
+    ["formatDate", ["2026-08-16T02:00:00Z", { dateStyle: "long" }], "August 16, 2026"],
+    ["formatDate", ["2026-08-16T02:00:00Z"], "8/16/2026"],
+    ["formatDate", [1_786_845_600_000, { month: "short", year: "numeric" }], "Aug 2026"],
+    ["formatDate", [null, { dateStyle: "long" }], ""],
+    ["formatDate", [undefined], ""],
+    ["formatDate", [""], ""],
+    ["formatNumber", [1234.5], "1,234.5"],
+    ["formatNumber", [0], "0"],
+    ["formatNumber", [0.256, { style: "percent" }], "26%"],
+    ["formatNumber", [12, { currency: "USD", style: "currency" }], "$12.00"],
+    ["formatNumber", [null], ""],
+    ["formatNumber", [""], ""],
+    ["relativeTime", [-3, "day"], "3 days ago"],
+    ["relativeTime", [2], "in 2 days"],
+    ["relativeTime", [0, "hour"], "in 0 hours"],
+    ["relativeTime", [null, "day"], ""],
+    ["notEmpty", [null], false],
+    ["notEmpty", [undefined], false],
+    ["notEmpty", [""], false],
+    ["notEmpty", ["0"], false],
+    ["notEmpty", [0], false],
+    ["notEmpty", [false], false],
+    ["notEmpty", [[]], false],
+    ["notEmpty", ["a"], true],
+    ["notEmpty", ["00"], true],
+    ["notEmpty", [" "], true],
+    ["notEmpty", [1], true],
+    ["notEmpty", [true], true],
+    ["notEmpty", [[0]], true],
+    ["notEmpty", [{}], true],
+    ["orBlank", ["0"], ""],
+    ["orBlank", [0], ""],
+    ["orBlank", [false], ""],
+    ["orBlank", [null], ""],
+    ["orBlank", [undefined], ""],
+    ["orBlank", [""], ""],
+    ["orBlank", ["a"], "a"],
+    ["orBlank", [5], 5],
+    ["orBlank", [["x"]], ["x"]],
+    [
+      "escapeHtml",
+      [`<a href="x">Tom & 'Jerry'</a>`],
+      "&lt;a href=&quot;x&quot;&gt;Tom &amp; &#39;Jerry&#39;&lt;/a&gt;",
+    ],
+    ["escapeHtml", ["&amp;"], "&amp;amp;"],
+    ["escapeHtml", [null], ""],
+    ["escapeHtml", [undefined], ""],
+    ["escapeHtml", [5], "5"],
   ];
 
   for (const [name, args, expected] of cases) {
@@ -88,12 +137,86 @@ describe("formula behavior (interpreted)", () => {
   }
 });
 
+describe("the Intl formulas follow the page", () => {
+  /** Call a formula in a scope that has a page, as a template on that page does. */
+  function onPage(locale: string, name: string, args: JxExpressionOperand[]): JsonValue {
+    /* SAFETY: an Intl formula returns the string its formatter wrote. */
+    return evaluateExpression(
+      { operator: "call", target: { $ref: `#/state/${name}` }, value: args },
+      { ...formulaEntries(), $page: { locale } },
+      null,
+    ) as JsonValue;
+  }
+
+  test("formatDate writes the page's language, with no locale named", () => {
+    expect(onPage("fr", "formatDate", ["2026-08-16T02:00:00Z", { dateStyle: "long" }])).toBe(
+      "16 août 2026",
+    );
+  });
+
+  test("formatDate reads the day in UTC unless the options name a zone", () => {
+    const late = "2026-08-16T02:00:00Z";
+    expect(onPage("en-US", "formatDate", [late, { dateStyle: "short" }])).toBe("8/16/26");
+    expect(
+      onPage("en-US", "formatDate", [late, { dateStyle: "short", timeZone: "America/New_York" }]),
+    ).toBe("8/15/26");
+  });
+
+  test("formatNumber and relativeTime do too", () => {
+    expect(onPage("de", "formatNumber", [1234.5])).toBe("1.234,5");
+    expect(onPage("de", "relativeTime", [-3, "day"])).toBe("vor 3 Tagen");
+  });
+});
+
+describe("parameters a widget can be built from", () => {
+  /** The JSON Schema half of a parameter's declared type, by formula and parameter name. */
+  function declaredType(formula: string, parameter: string): JsonValue {
+    const entry = catalog.find((candidate) => candidate.name === formula);
+    const found = entry?.parameters.find(
+      (candidate) => !isString(candidate) && candidate.name === parameter,
+    );
+    if (found === undefined || isString(found) || found.type === undefined) {
+      throw new Error(`${formula}.${parameter} declares no type`);
+    }
+    /* SAFETY: the catalog is JSON, so a declared type is a JSON value. */
+    return found.type as JsonValue;
+  }
+
+  test("formatDate's options name the styles as enums", () => {
+    expect(declaredType("formatDate", "options")).toMatchObject({
+      properties: {
+        dateStyle: { enum: ["full", "long", "medium", "short"] },
+        timeStyle: { enum: ["full", "long", "medium", "short"] },
+      },
+      text: "Intl.DateTimeFormatOptions",
+      type: "object",
+    });
+  });
+
+  test("formatNumber's options and relativeTime's unit are typed", () => {
+    expect(declaredType("formatNumber", "options")).toMatchObject({
+      properties: { style: { enum: ["decimal", "currency", "percent", "unit"] } },
+      type: "object",
+    });
+    expect(declaredType("relativeTime", "unit")).toMatchObject({
+      enum: ["year", "quarter", "month", "week", "day", "hour", "minute", "second"],
+      type: "string",
+    });
+  });
+});
+
 describe("formula bodies compile — compiled === interpreted", () => {
   const samples = {
     average: { values: [2, 4, 6] },
     capitalize: { text: "ada" },
     clamp: { max: 10, min: 0, value: 15 },
+    escapeHtml: { text: `<b title="x">a & 'b'</b>` },
+    formatDate: { options: { dateStyle: "long" }, value: "2026-08-16T02:00:00Z" },
+    formatNumber: { options: { style: "percent" }, value: 0.256 },
     initials: { name: "ada lovelace" },
+    notEmpty: { value: "0" },
+    orBlank: { value: "0" },
+    relativeTime: { unit: "day", value: -3 },
     sum: { values: [1, 2, 3] },
     truncate: { length: 5, text: "hello world" },
   } satisfies Record<string, JsonObject>;

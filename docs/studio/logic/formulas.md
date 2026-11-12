@@ -59,7 +59,7 @@ You don't have to assemble everything operator by operator. The brackets button 
 
 - Type to filter by name, group, or description; :kbd[↓] and :kbd[↑] move through results and :kbd[Enter] inserts the highlighted entry.
 - **Formulas** lists the named formulas already defined in this file.
-- **Formulas library** lists ready-made formulas that ship with Jx: `average`, `capitalize`, and friends. The full generated list is the **[formula catalog](/docs/framework/reference/formulas)**.
+- **Formulas library** lists ready-made formulas that ship with Jx: `average`, `capitalize`, and friends. The full generated list is the **[formula catalog](/docs/framework/reference/formulas)**. Once you have picked one it moves to **Formulas**, and keeps the description it had in the library.
 - The remaining groups are the operators themselves, plus the blessed standard-library functions (`Math.max`, `JSON.stringify`, …) callable from formulas.
 
 ## Formatting for a language
@@ -84,6 +84,10 @@ Eight of the blessed functions format text the way a language actually does, rat
 
 The page's locale is `$page.locale`, the tag its route implies, which is what `<html lang>` says (see [locales and languages](/docs/framework/site/i18n)). The fallback is `en-US` where there is no page: inside a component, whose state is its own, or in the expression editor's preview.
 :::
+
+The library wraps the three you reach for most as ready-made formulas: `formatDate`, `formatNumber` and `relativeTime`. Each uses the page's language without being told, and each gives an empty string for a missing value where the bare function would stop the page with an error. They are also short enough to call from **Mixed text**: `${state.formatDate(state.post.date, {"dateStyle":"long"})}`. Three more tidy a stored value before it is shown: `notEmpty` (does this have content, for a condition), `orBlank` (the value, or nothing when it is missing or `0`) and `escapeHtml` (text made safe to place in markup).
+
+Using one of these does not make a static page load JavaScript. A formula is a calculation, not a value that changes, so the build works out each result and leaves the formula behind.
 
 Picking an entry replaces the current step with that operation, ready for you to fill in its operands.
 

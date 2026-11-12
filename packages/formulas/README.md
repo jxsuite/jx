@@ -2,6 +2,21 @@
 
 Composite **pure formulas** for Jx, authored as declarative `$expression` JSON (spec §19.4c). Each formula is a named, parameterized computation (`clamp`, `sum`, `average`, `truncate`, `initials`, …) whose body is built exclusively from blessed operators, pure standard-library method operators (§19.4d), and blessed globals. No JavaScript source anywhere: every formula is inspectable data that the visual editor can open, badge with live values, and recompose.
 
+## Formatting formulas
+
+Six formulas exist to print a stored value from a template (`${state.formatDate($map.item.data.date, {"dateStyle":"long"})}`):
+
+| Formula                        | Gives                                                                                                   |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------- |
+| `formatDate(value, options)`   | `Intl/formatDate` in the page's locale; `""` for a `null`, `undefined` or `""` value instead of a throw |
+| `formatNumber(value, options)` | `Intl/formatNumber` on the same terms                                                                   |
+| `relativeTime(value, unit)`    | `Intl/formatRelativeTime` on the same terms: a signed count of units, `unit` defaulting to `"day"`      |
+| `notEmpty(value)`              | `false` for `null`, `undefined`, `""`, `"0"`, `0`, `false`, `NaN` and an empty array (PHP's `empty()`)  |
+| `orBlank(value)`               | `""` for `null`, `undefined`, `"0"`, `0` and `false`; the value itself otherwise                        |
+| `escapeHtml(text)`             | `&`, `<`, `>`, `"` and `'` as character references; `""` for a missing value                            |
+
+The three `Intl` ones pass `null` as the locale, so the runtime fills in `$page.locale`. A parameter whose input needs more than a text box declares a JSON Schema beside its CEM display text (`{ "text": "Intl.DateTimeFormatOptions", "type": "object", "properties": { "dateStyle": { "enum": [...] } } }`), which is what an editor derives a field from. A pure named formula in a page's state does not make the page dynamic: `jx build` resolves each call and drops the formula unless something left for the client still reads it.
+
 ## Consumption model: copy-in, not a project dependency
 
 This package is a **studio/tooling dependency**, deliberately _not_ a runtime or project dependency. Jx documents stay self-contained plain JSON:
