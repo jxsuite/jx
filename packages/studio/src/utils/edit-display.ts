@@ -487,6 +487,38 @@ export function refBindingKey(pointer: string): string {
   return JSON.stringify({ $ref: pointer });
 }
 
+/** What separates a binding's place from its spelling in a key. No document string holds it. */
+const SLOT_SEPARATOR = "\u0000";
+
+/**
+ * What every binding in `value` is counted as, where `value` is a property of an element other than
+ * its text and `slot` is the key path it sits at (`attributes/href`, `innerHTML`, `style/color`):
+ * one key for each `${…}` and each `{ "$ref" }`, at any depth.
+ *
+ * The slot is part of the key because a binding is not only its spelling. A link's `href` bound to
+ * `${state.url}` and the same expression typed into the paragraph's text are two different things,
+ * and counted alike the second stood in for the first. Shared by the commit guard that counts them
+ * (`editor/inline-edit-apply.ts`) and by the frame, which reports one the author replaced (a URL
+ * set in the link popover, `editor/inline-link.ts`).
+ */
+export function slotBindingKeys(value: JxDocumentValue | undefined, slot: string): string[] {
+  if (isString(value)) {
+    return templateExpressions(value).map(
+      ({ start, end }) => slot + SLOT_SEPARATOR + value.slice(start, end),
+    );
+  }
+  if (isRef(value)) {
+    return [slot + SLOT_SEPARATOR + refBindingKey(value.$ref)];
+  }
+  if (isDocumentContainer(value)) {
+    // An array's members or an object's values: `Object.entries` reads either.
+    return Object.entries(value).flatMap(([key, member]) =>
+      slotBindingKeys(member, `${slot}/${key}`),
+    );
+  }
+  return [];
+}
+
 /** The attribute on the element that holds one templated string member's runs and chips. */
 export const TEXT_ATTR = "data-jx-text";
 
@@ -597,6 +629,89 @@ export function escapeTemplateText(text: string): string {
     : out + escapeLiteral(rest.slice(0, open)) + rest.slice(open);
 }
 
+/** What a one-character escape of a template literal stands for (ECMA-262 SingleEscapeCharacter). */
+const SINGLE_ESCAPES = new Map([
+  ["0", "\0"],
+  ["b", "\b"],
+  ["f", "\f"],
+  ["n", "\n"],
+  ["r", "\r"],
+  ["t", "\t"],
+  ["v", "\v"],
+]);
+
+/** A run of hexadecimal digits, whole. */
+const HEX_RE = /^[\da-f]+$/iu;
+
+/** The character a hexadecimal code point spells, or null when it spells none. */
+function codePointOf(hex: string): string | null {
+  if (!HEX_RE.test(hex)) {
+    return null;
+  }
+  const point = Number.parseInt(hex, 16);
+  return point > 0x10_ff_ff ? null : String.fromCodePoint(point);
+}
+
+/**
+ * A literal run of a template string as the text it shows: the inverse of
+ * {@link escapeTemplateText} for text that holds no expression, read as a JavaScript template
+ * literal reads it.
+ *
+ * A run is written this way once the string it stood in is no longer a template (its last `${…}`
+ * was deleted, or the run was cut out of it): a string with no `${` is literal text, so `C:\\temp`
+ * left as it was spelled would show both backslashes. Returns null for a run no template literal
+ * could hold (a bare backtick, an escape that is not one), which a page cannot draw either.
+ */
+export function unescapeTemplateText(text: string): string | null {
+  let out = "";
+  for (let i = 0; i < text.length; i++) {
+    const char = text.charAt(i);
+    if (char === "`") {
+      return null;
+    }
+    if (char !== "\\") {
+      out += char;
+      continue;
+    }
+    i += 1;
+    const next = text.charAt(i);
+    if (next === "") {
+      return null;
+    }
+    if (next === "x" || (next === "u" && text.charAt(i + 1) !== "{")) {
+      const length = next === "x" ? 2 : 4;
+      const hex = text.slice(i + 1, i + 1 + length);
+      const spelled = hex.length === length ? codePointOf(hex) : null;
+      if (spelled === null) {
+        return null;
+      }
+      out += spelled;
+      i += length;
+    } else if (next === "u") {
+      const close = text.indexOf("}", i);
+      const spelled = close === -1 ? null : codePointOf(text.slice(i + 2, close));
+      if (spelled === null) {
+        return null;
+      }
+      out += spelled;
+      i = close;
+    } else if (next === "0" && /\d/u.test(text.charAt(i + 1))) {
+      // A legacy octal escape, which a template literal refuses.
+      return null;
+    } else if (/[1-9]/u.test(next)) {
+      return null;
+    } else if (next === "\r" || next === "\n") {
+      // A line continuation: the backslash and the line break are no text at all.
+      if (next === "\r" && text.charAt(i + 1) === "\n") {
+        i += 1;
+      }
+    } else {
+      out += SINGLE_ESCAPES.get(next) ?? next;
+    }
+  }
+  return out;
+}
+
 /**
  * An expression as chip content that is INTERPOLATED, the way the page interpolates it inside a
  * longer string or a `textContent`: whatever it yields becomes text by a template literal's own
@@ -664,15 +779,26 @@ function withMember(mark: TagMark, member: boolean): TagMark {
 /**
  * A string member of a `children` array as the canvas draws it (studio.md §4.5).
  *
- * Plain text is itself. A string that is one whole `${…}` is one chip, marked as a member
- * ({@link TAG_MEMBER_ATTR}): its value keeps its type, so an array is spliced in as nodes. Any
- * other templated string is ONE element holding its runs and chips, because a member is one node at
- * its index: the surgical patcher finds a sibling's place by counting DOM children, and a member
- * drawn as three nodes would move every later sibling two places along.
+ * Plain text is itself, unless it must be kept `apart` from the string after it (below). A string
+ * that is one whole `${…}` is one chip, marked as a member ({@link TAG_MEMBER_ATTR}): its value
+ * keeps its type, so an array is spliced in as nodes. Any other templated string is ONE element
+ * holding its runs and chips, because a member is one node at its index: the surgical patcher finds
+ * a sibling's place by counting DOM children, and a member drawn as three nodes would move every
+ * later sibling two places along.
  */
-export function prepareTextMember(text: string, row: SampleRow = null): JxMutableNode | string {
+export function prepareTextMember(
+  text: string,
+  row: SampleRow = null,
+  apart = false,
+): JxMutableNode | string {
   if (!text.includes("${")) {
-    return text;
+    /* `apart`: this plain string ends in a `$` and the plain string after it starts with a `{`
+       ({@link opensExpression}). As two text nodes side by side they are one run of text to the
+       editing host, which joins them, and joined they are an expression nobody wrote. So this one
+       is drawn as a chip, a member of its own that is written back exactly as it is spelled. */
+    return apart
+      ? chipDef({ kind: "custom", label: ESCAPED_TEXT_LABEL, member: true, source: text }, text)
+      : text;
   }
   if (templateSegments(text).length === 1) {
     // One whole `${…}`, or one literal run that only reads right evaluated: one chip, a member.
@@ -682,6 +808,25 @@ export function prepareTextMember(text: string, row: SampleRow = null): JxMutabl
     }
   }
   return { [TEXT_MARK]: true, children: templateRuns(text, row), tagName: "data" };
+}
+
+/**
+ * Whether two adjacent members of `children` are plain strings whose join would open an expression:
+ * a `$` meeting a `{`. Stored content keeps such a pair apart (`editor/content-slice.ts`), and the
+ * canvas must too ({@link prepareTextMember}).
+ */
+function opensExpression(
+  member: JxDocumentValue | undefined,
+  next: JxDocumentValue | undefined,
+): boolean {
+  return (
+    isString(member) &&
+    isString(next) &&
+    // `member` is plain by the time this is asked of it (`prepareTextMember`).
+    !next.includes("${") &&
+    member.endsWith("$") &&
+    next.startsWith("{")
+  );
 }
 
 /** The last segment of a pointer, as words: the name of what a `{ "$ref" }` reads. */
@@ -1054,8 +1199,10 @@ function prepareNode(
         out.children = members;
       } else if (Array.isArray(v)) {
         // Each member is one node at its index: an element, a perimeter, a chip, or a text run.
-        out.children = v.map((c) =>
-          isString(c) ? prepareTextMember(c, row) : prepareNode(c, row, foreign),
+        out.children = v.map((c, index) =>
+          isString(c)
+            ? prepareTextMember(c, row, opensExpression(c, v[index + 1]))
+            : prepareNode(c, row, foreign),
         );
       } else if (isNodeObject(v) && v.$prototype === "Array") {
         // Legacy whole-children repeater → a single perimeter as the sole child.

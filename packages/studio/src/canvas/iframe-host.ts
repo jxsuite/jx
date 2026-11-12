@@ -22,6 +22,7 @@ import {
   applyInlineInsert,
   applyInlineSplit,
 } from "../editor/inline-edit-apply";
+import type { RefusalReason } from "../editor/inline-edit-apply";
 import { canvasRectToParent, createOverlayLayer } from "./iframe-overlay";
 import { serializeJxPath } from "./path-mapping";
 import { cloneValue } from "../tabs/doc-op-apply";
@@ -1654,24 +1655,50 @@ export function needsRefusalRedraw<Host>(
   return !(pending?.host === host && pending.path === path);
 }
 
+/** What the author is told when a write is refused, by the reason it was (`RefusalReason`). */
+const REFUSAL_MESSAGES: Readonly<Record<RefusalReason, string>> = {
+  alone:
+    "That edit would have left a binding on its own beside other content, where a list it reads is drawn as elements instead of text, so the text was left as it is. Keep some text next to the binding.",
+  lost: "That edit would have replaced a binding with its current value, so the text was left as it is. To remove a binding, delete its tag.",
+};
+
 /**
  * A commit from `state`'s canvas was refused because it would have stored a binding's current value
- * in the binding's place (`editor/inline-edit-apply.ts`). The document is untouched, so the block
- * is drawn again from it, WITHOUT transacting, exactly as {@link reconcileInstance} re-sends a
- * dropped render: the canvas must not go on showing text that was not saved. The author is told
- * once per refusal; the key folds a run of them into one toast.
+ * in the binding's place, or changed what a binding draws (`editor/inline-edit-apply.ts`). The
+ * document is untouched, so the block is drawn again from it ({@link redrawBlock}): the canvas must
+ * not go on showing text that was not saved. The author is told once per refusal; the key folds a
+ * run of them into one toast.
  */
-function onCommitRefused(state: HostState, path: JxPath): void {
+function onCommitRefused(state: HostState, path: JxPath, reason: RefusalReason): void {
+  if (redrawBlock(state, path)) {
+    notify.info(REFUSAL_MESSAGES[reason], { key: "canvas.binding-kept", source: "Canvas" });
+  }
+}
+
+/**
+ * A commit from `state`'s canvas wrote nothing because it said what the block already holds in
+ * another spelling (`onRespelled` in `editor/inline-edit-apply.ts`). The canvas holds the commit's
+ * spelling, the editing host having joined two text nodes into one, where the document holds two
+ * members; the surgical patcher finds a child's place by counting DOM nodes against stored members,
+ * so the next structural patch would land one place out. Drawn again from the document, with
+ * nothing said: the author did nothing to be told about.
+ */
+function onCommitRespelled(state: HostState, path: JxPath): void {
+  redrawBlock(state, path);
+}
+
+/**
+ * Draw the block at `path` again from the document on `state`'s canvas, WITHOUT transacting,
+ * exactly as {@link reconcileInstance} re-sends a dropped render. Returns whether a redraw was
+ * needed: false when one for this block is already on its way ({@link refusedRedraw}).
+ */
+function redrawBlock(state: HostState, path: JxPath): boolean {
   const at = serializeJxPath(path);
   const tab = hostTab(state);
   const node = tab ? getNodeAtPath(tab.doc.document, path) : undefined;
   if (!tab || !node || !needsRefusalRedraw(refusedRedraw, state, at)) {
-    return;
+    return false;
   }
-  notify.info(
-    "That edit would have replaced a binding with its current value, so the text was left as it is. To remove a binding, delete its tag.",
-    { key: "canvas.binding-kept", source: "Canvas" },
-  );
   /* An idle-tick commit is applied with its echo suppressed, because the canvas already shows what
      it wrote. This one wrote nothing, so the redraw must reach the canvas that asked. */
   const echo = echoOrigin;
@@ -1689,6 +1716,7 @@ function onCommitRefused(state: HostState, path: JxPath): void {
   } finally {
     echoOrigin = echo;
   }
+  return true;
 }
 
 /**
@@ -2970,7 +2998,8 @@ function handleMessage(state: HostState, msg: IframeToParent): void {
       // Route to the tab this host's iframe renders — NOT activeTab, which may have changed while
       // The message was in flight (the cross-document bleed).
       const commitOpts: Parameters<typeof applyInlineCommit>[4] = {
-        onRefused: (path) => onCommitRefused(state, path),
+        onRefused: (path, reason) => onCommitRefused(state, path, reason),
+        onRespelled: (path) => onCommitRespelled(state, path),
       };
       if (msg.removedTags) {
         commitOpts.removedTags = msg.removedTags;
@@ -3048,8 +3077,8 @@ function handleMessage(state: HostState, msg: IframeToParent): void {
     case "editMerge": {
       // Joining two blocks removes one of them, so the caret has to be re-placed — at the SEAM,
       // Where the two blocks met, which is where the author's cursor visually was.
-      const seam = applyBlockMerge(hostTab(state), msg.fromPath, msg.intoPath, (path) =>
-        onCommitRefused(state, path),
+      const seam = applyBlockMerge(hostTab(state), msg.fromPath, msg.intoPath, (path, reason) =>
+        onCommitRefused(state, path, reason),
       );
       if (seam) {
         deferEnterEdit(state, seam.path, seam.offset);
@@ -3063,7 +3092,7 @@ function handleMessage(state: HostState, msg: IframeToParent): void {
         msg.to,
         msg.between,
         msg.text,
-        (path) => onCommitRefused(state, path),
+        (path, reason) => onCommitRefused(state, path, reason),
         msg.removedTags,
       );
       if (caret) {
@@ -3081,7 +3110,7 @@ function handleMessage(state: HostState, msg: IframeToParent): void {
           msg.path,
           msg.before,
           msg.after,
-          (path) => onCommitRefused(state, path),
+          (path, reason) => onCommitRefused(state, path, reason),
           msg.removedTags,
         ),
       );
@@ -3095,7 +3124,7 @@ function handleMessage(state: HostState, msg: IframeToParent): void {
           msg.path,
           msg.cmd,
           msg.commitData,
-          (path) => onCommitRefused(state, path),
+          (path, reason) => onCommitRefused(state, path, reason),
           msg.removedTags,
         ),
       );
@@ -3736,8 +3765,9 @@ export function postColorSchemeToLiveHosts(
 /**
  * Draw every text chip as its value or as its name on every ready host that understands the message
  * (`canvas.setBindingDisplay`, studio.md §6.9). A pure attribute write iframe-side: no render, no
- * patch, no gen. Scoped to one stage when the caller names one, for the reason
- * {@link postColorSchemeToLiveHosts} gives: the choice is a tab's.
+ * patch, no gen. The selection and presence boxes are measured again behind it. Scoped to one stage
+ * when the caller names one, for the reason {@link postColorSchemeToLiveHosts} gives: the choice is
+ * a tab's.
  *
  * A frame that did not announce the `bindingDisplay` capability is skipped: it would drop the
  * message without a word. It draws the choice at its next render, which carries it.
@@ -3758,6 +3788,11 @@ export function postBindingDisplayToLiveHosts(
     }
     if (host.ready && host.capabilities.has("bindingDisplay")) {
       host.channel.post({ display, kind: "setBindingDisplay" });
+      /* A name is not as wide as the value it stands in for, so the page reflows and every box
+         drawn over it is where its element WAS. No render or patch follows to re-measure them, so
+         they are asked for here; the channel is in order, so the frame measures after the flip. */
+      requestSelection(host, host.selectionPaths);
+      requestPresence(host);
     }
   }
 }

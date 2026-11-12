@@ -764,6 +764,106 @@ describe("startCanvasIframe — patch", () => {
     });
   });
 
+  describe("a whole render under a live session", () => {
+    const twoDoc = (): JxMutableNode => ({
+      children: [
+        { tagName: "p", textContent: "Removed block" },
+        { tagName: "p", textContent: "Second plain" },
+      ],
+      tagName: "div",
+    });
+    /** After a merge took the first block away: the second now sits at the first one's index. */
+    const mergedDoc = (): JxMutableNode => ({
+      children: [{ tagName: "p", textContent: "Second plain" }],
+      tagName: "div",
+    });
+
+    /** A frame showing {@link twoDoc} with the caret in its first paragraph. */
+    async function caretInFirst() {
+      const pair = fakeChannelPair<ParentToIframe, IframeToParent>();
+      const acks: IframeToParent[] = [];
+      pair.parent.onMessage((m) => acks.push(m));
+      const container = document.createElement("div");
+      document.body.append(container);
+      teardown = startCanvasIframe({ channel: pair.iframe, container });
+      pair.parent.post(renderMsg(3, twoDoc()));
+      pair.flush();
+      await flush();
+      pair.flush();
+      const { caretInto } = await import("./harness");
+      const first = rendered(container, "p");
+      caretInto(first, 3);
+      pair.flush();
+      expect(acks.some((m) => m.kind === "editStart")).toBe(true);
+      acks.length = 0;
+      return { acks, container, first, pair };
+    }
+
+    test("a block that holds nothing new is released, never committed at a path that has moved", async () => {
+      const { acks, pair } = await caretInFirst();
+      // The document changed under the session and the canvas is drawn whole: what the block
+      // Shows is what the OLD document held at its path, which is another block's place now.
+      pair.parent.post(renderMsg(4, mergedDoc()));
+      pair.flush();
+      await flush();
+      pair.flush();
+      expect(acks.filter((m) => m.kind === "editCommit")).toEqual([]);
+      expect(acks.some((m) => m.kind === "editEnd")).toBe(true);
+      expect(acks.some((m) => m.kind === "renderComplete")).toBe(true);
+    });
+
+    test("typing the document has not seen is still committed first", async () => {
+      const { acks, first, pair } = await caretInFirst();
+      first.append(" typed");
+      pair.parent.post(renderMsg(4, twoDoc()));
+      pair.flush();
+      await flush();
+      pair.flush();
+      expect(acks.filter((m) => m.kind === "editCommit")).toEqual([
+        {
+          children: null,
+          kind: "editCommit",
+          path: ["children", 0],
+          textContent: "Removed block typed",
+        },
+      ]);
+    });
+  });
+
+  test("a render in an editing mode stamps what each inline element holds besides content", async () => {
+    const doc = (): JxMutableNode => ({
+      children: [
+        {
+          children: [
+            "See ",
+            { attributes: { class: "hl" }, tagName: "span", textContent: "here" },
+            { tagName: "em", textContent: "plain" },
+          ],
+          tagName: "p",
+        },
+      ],
+      tagName: "div",
+    });
+    for (const [mode, kept] of [
+      ["edit", '{"attributes":{"class":"hl"}}'],
+      ["design", '{"attributes":{"class":"hl"}}'],
+      ["preview", null],
+    ] as const) {
+      teardown?.();
+      document.body.innerHTML = "";
+      const pair = fakeChannelPair<ParentToIframe, IframeToParent>();
+      const container = document.createElement("div");
+      document.body.append(container);
+      teardown = startCanvasIframe({ channel: pair.iframe, container });
+      pair.parent.post(renderMsg(3, doc(), doc(), { mode }));
+      pair.flush();
+      await flush();
+      pair.flush();
+      expect(rendered(container, "span").dataset.jxKeep ?? null).toBe(kept);
+      expect(rendered(container, "em").dataset.jxKeep).toBeUndefined();
+    }
+  });
+
   test("an echoed op updates the shadow doc even though its DOM is skipped", async () => {
     const { acks, container, pair } = await bootRendered(3);
     const { caretInto } = await import("./harness");
@@ -1534,8 +1634,12 @@ describe("startCanvasIframe — content-height auto-sizing + wheel forwarding", 
 // ─── Render/patch vs live edit session (tab-identity lifecycle guards) ─────────
 
 describe("render/patch vs live edit session", () => {
+  /* A second node, so a patch "on another node" has one to land on: with one child it failed. */
   const P_DOC = () => ({
-    children: [{ children: ["Hi"], tagName: "p" }],
+    children: [
+      { children: ["Hi"], tagName: "p" },
+      { tagName: "h2", textContent: "Other" },
+    ],
     tagName: "div",
   });
 
@@ -1616,6 +1720,8 @@ describe("render/patch vs live edit session", () => {
       kind: "patch",
     });
     pair.flush();
+    pair.flush();
+    expect(acks.map((m) => m.kind)).toEqual(["patchComplete"]);
     const { isEditing } = await import("../src/editor/inline-edit");
     expect(isEditing()).toBe(true);
 

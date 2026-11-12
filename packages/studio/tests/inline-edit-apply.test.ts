@@ -12,11 +12,13 @@ import {
   applyInlineInsert,
   applyInlinePropCommit,
   applyInlineSplit,
+  bindingRefusal,
   dropsBinding,
   isEmptyContent,
 } from "../src/editor/inline-edit-apply";
 import { undo } from "../src/tabs/transact";
 import type { SlashCommand } from "../src/editor/inline-edit";
+import type { CommitRefused } from "../src/editor/inline-edit-apply";
 import type { Tab } from "../src/tabs/tab";
 import type { JxMutableNode } from "@jxsuite/schema/types";
 import { isString } from "@jxsuite/schema/guards";
@@ -429,11 +431,11 @@ describe("the binding guard", () => {
     tagName: "div",
   });
   const AT = ["children", 0];
-  let refused: ReturnType<typeof mock<(path: (string | number)[]) => void>>;
+  let refused: ReturnType<typeof mock<CommitRefused>>;
 
   beforeEach(() => {
     tab = resetWorkspaceWithTab(boundDoc());
-    refused = mock<(path: (string | number)[]) => void>();
+    refused = mock<CommitRefused>();
   });
 
   const untouched = () => {
@@ -445,7 +447,7 @@ describe("the binding guard", () => {
     test("refuses the resolved text the canvas commits for a templated member", () => {
       applyInlineCommit(tab, AT, null, "Hello Ada", { onRefused: refused });
       untouched();
-      expect(refused.mock.calls).toEqual([[AT]]);
+      expect(refused.mock.calls).toEqual([[AT, "lost"]]);
     });
 
     test("refuses rich children that no longer carry the binding", () => {
@@ -531,7 +533,7 @@ describe("the binding guard", () => {
       });
       applyInlineCommit(tab, AT, null, "Hello Ada", { onRefused: refused });
       expect(kids()[0]!.textContent).toBe(`Hello ${NAME}`);
-      expect(refused.mock.calls).toEqual([[AT]]);
+      expect(refused.mock.calls).toEqual([[AT, "lost"]]);
     });
 
     test("guard 3: the same commit goes through when the session reported the chip deleted", () => {
@@ -619,15 +621,23 @@ describe("the binding guard", () => {
          it. Every `${…}` survives the join, so only counting the member itself catches it. */
       applyInlineCommit(tab, AT, null, `Hello ${NAME}`, { onRefused: refused });
       untouched();
-      expect(refused.mock.calls).toEqual([[AT]]);
-      // The other way is the author's to do: a `textContent` binding moved beside an element.
+      expect(refused.mock.calls).toEqual([[AT, "lost"]]);
+      /* Nor the other way: a `textContent` binding left standing as a member beside an element is
+         spliced in as nodes where it was printed. Every `${…}` survives that too. */
       tab = resetWorkspaceWithTab({
         children: [{ tagName: "p", textContent: NAME }],
         tagName: "div",
       });
       applyInlineCommit(tab, AT, [NAME, { tagName: "br" }], null, { onRefused: refused });
-      expect(kids()[0]!.children).toEqual([NAME, { tagName: "br" }]);
-      expect(refused).toHaveBeenCalledTimes(1);
+      expect(kids()[0]).toEqual({ tagName: "p", textContent: NAME });
+      expect(refused.mock.calls).toEqual([
+        [AT, "lost"],
+        [AT, "alone"],
+      ]);
+      // With text of its own beside it the binding is still interpolated, and the write stands.
+      applyInlineCommit(tab, AT, [`${NAME} `, { tagName: "br" }], null, { onRefused: refused });
+      expect(kids()[0]!.children).toEqual([`${NAME} `, { tagName: "br" }]);
+      expect(refused).toHaveBeenCalledTimes(2);
     });
 
     test("allows any commit to a node with no template", () => {
@@ -663,7 +673,7 @@ describe("the binding guard", () => {
       );
       expect(path).toEqual(AT);
       untouched();
-      expect(refused.mock.calls).toEqual([[AT]]);
+      expect(refused.mock.calls).toEqual([[AT, "lost"]]);
     });
 
     test("allows a split that lost a chip the session reported deleted", () => {
@@ -702,7 +712,7 @@ describe("the binding guard", () => {
       const path = applyInlineInsert(tab, AT, h2, { textContent: "Hello Ada" }, refused);
       expect(path).toEqual(AT);
       untouched();
-      expect(refused.mock.calls).toEqual([[AT]]);
+      expect(refused.mock.calls).toEqual([[AT, "lost"]]);
     });
 
     test("refuses the in-place swap of a block whose binding drew as nothing", () => {
@@ -742,7 +752,7 @@ describe("the binding guard", () => {
       );
       expect(caret).toBeNull();
       untouched();
-      expect(refused.mock.calls).toEqual([[AT]]);
+      expect(refused.mock.calls).toEqual([[AT, "lost"]]);
     });
 
     test("refuses when the binding is in the block the range ends in", () => {
@@ -756,7 +766,7 @@ describe("the binding guard", () => {
       );
       expect(caret).toBeNull();
       untouched();
-      expect(refused.mock.calls).toEqual([[["children", 1]]]);
+      expect(refused.mock.calls).toEqual([[["children", 1], "lost"]]);
     });
 
     test("a cut past a binding keeps it: an offset counts a chip as its expression", () => {
@@ -797,7 +807,7 @@ describe("the binding guard", () => {
         );
       expect(cut()).toBeNull();
       untouched();
-      expect(refused.mock.calls).toEqual([[AT]]);
+      expect(refused.mock.calls).toEqual([[AT, "lost"]]);
       expect(cut([NAME])).toEqual({ offset: 2, path: AT });
       expect(kids()[0]!.textContent).toBe("Heil");
     });
@@ -915,7 +925,7 @@ describe("the binding guard", () => {
         refused.mockClear();
         expect(applyBlockMerge(tab, ["children", 1], AT, refused)).toBeNull();
         expect(tab.doc.document).toEqual(doc());
-        expect(refused.mock.calls).toEqual([[AT]]);
+        expect(refused.mock.calls).toEqual([[AT, "lost"]]);
         // A range replace that ends in one, or starts in one, is refused the same way.
         expect(
           applyRangeReplace(
@@ -946,7 +956,13 @@ describe("the binding guard", () => {
     test("a templated textContent and computed children are held like a member is", () => {
       expect(dropsBinding({ tagName: "p", textContent: NAME }, [{ textContent: "x" }])).toBe(true);
       expect(dropsBinding({ children: NAME, tagName: "ul" }, [{ textContent: "x" }])).toBe(true);
-      expect(dropsBinding({ tagName: "p", textContent: NAME }, [{ children: [NAME] }])).toBe(false);
+      // Nothing is lost when a printed binding comes to stand as a member: that is refused as
+      // Its own thing, since what it draws may change with every `${…}` still there.
+      const printed = { tagName: "p", textContent: NAME };
+      expect(dropsBinding(printed, [{ children: [NAME] }])).toBe(false);
+      expect(bindingRefusal(printed, [{ children: [NAME] }])).toBe("alone");
+      expect(bindingRefusal(printed, [{ textContent: NAME }])).toBeNull();
+      expect(bindingRefusal(printed, [{ textContent: "x" }])).toBe("lost");
     });
 
     test("no committed piece at all drops everything held", () => {

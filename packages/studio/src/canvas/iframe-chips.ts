@@ -237,3 +237,91 @@ export function snapRangeOutOfChips(block: Node, range: Range): boolean {
   }
   return true;
 }
+
+/** The index of the child of `ancestor` that is `node` or holds it. */
+function childIndexToward(ancestor: Node, node: Node): number {
+  let child = node;
+  while (child.parentNode && child.parentNode !== ancestor) {
+    child = child.parentNode;
+  }
+  return indexInParent(child);
+}
+
+/**
+ * Whether the boundary point (`a`, `aOffset`) comes strictly before (`b`, `bOffset`) in document
+ * order (DOM "position of a boundary point relative to another"), from the tree alone.
+ */
+export function positionPrecedes(a: Node, aOffset: number, b: Node, bOffset: number): boolean {
+  if (a === b) {
+    return aOffset < bOffset;
+  }
+  if (a.contains(b)) {
+    // `b` is inside the child of `a` at this index: `a`'s point is before it up to that index.
+    return aOffset <= childIndexToward(a, b);
+  }
+  if (b.contains(a)) {
+    return childIndexToward(b, a) < bOffset;
+  }
+  // Neither holds the other: by the order of their branches under the nearest ancestor of both.
+  let ancestor = a.parentNode;
+  while (ancestor && !ancestor.contains(b)) {
+    ancestor = ancestor.parentNode;
+  }
+  return ancestor !== null && childIndexToward(ancestor, a) < childIndexToward(ancestor, b);
+}
+
+/** What {@link snapSelectionOutOfChips} reads of a selection, and the one way it moves it. */
+export type SnappableSelection = Pick<
+  Selection,
+  "anchorNode" | "anchorOffset" | "focusNode" | "focusOffset" | "setBaseAndExtent"
+>;
+
+/**
+ * Move the ends of `sel` out of any chip in `block` they stand inside ({@link
+ * snapRangeOutOfChips}), keeping the direction it was made in: a selection dragged backward into a
+ * chip still has its focus at its start. Returns whether it moved.
+ *
+ * Direction is decided by position, and the range built from the two ends in document order. Asking
+ * the engine instead (a range whose end is set before its start collapses, and `getRangeAt` is in
+ * document order) is right in a browser and wrong under happy-dom, which reports a selection in the
+ * order it was set while its own `selectionchange` runs; there the backward branch never ran in any
+ * test.
+ */
+export function snapSelectionOutOfChips(block: Node, sel: SnappableSelection): boolean {
+  const { anchorNode, focusNode } = sel;
+  if (!anchorNode || !focusNode) {
+    return false;
+  }
+  // A collapsed selection is two equal points, and neither precedes the other.
+  const backward = positionPrecedes(focusNode, sel.focusOffset, anchorNode, sel.anchorOffset);
+  const range = anchorNode.ownerDocument?.createRange();
+  if (!range) {
+    return false;
+  }
+  if (backward) {
+    range.setStart(focusNode, sel.focusOffset);
+    range.setEnd(anchorNode, sel.anchorOffset);
+  } else {
+    range.setStart(anchorNode, sel.anchorOffset);
+    range.setEnd(focusNode, sel.focusOffset);
+  }
+  if (!snapRangeOutOfChips(block, range)) {
+    return false;
+  }
+  if (backward) {
+    sel.setBaseAndExtent(
+      range.endContainer,
+      range.endOffset,
+      range.startContainer,
+      range.startOffset,
+    );
+  } else {
+    sel.setBaseAndExtent(
+      range.startContainer,
+      range.startOffset,
+      range.endContainer,
+      range.endOffset,
+    );
+  }
+  return true;
+}

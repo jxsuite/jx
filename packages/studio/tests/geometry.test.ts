@@ -130,6 +130,11 @@ describe("geometry funnel helpers", () => {
     caret.collapse(true);
     const before = rectOfRange(caret);
     expect([before.x, before.y, before.width, before.height]).toEqual([40, 10, 0, 30]);
+    // A caret the engine DID give a box is that box: the neighbour's edge is only a fallback.
+    const own = new DOMRect(7, 8, 0, 20);
+    caret.getBoundingClientRect = () => own;
+    expect(rectOfRange(caret)).toBe(own);
+    Reflect.deleteProperty(caret, "getBoundingClientRect");
     // In an element with no element beside the caret, or in text, there is nothing to borrow.
     block.replaceChildren("text");
     caret.setStart(block, 1);

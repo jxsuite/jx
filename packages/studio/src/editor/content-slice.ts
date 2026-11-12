@@ -15,7 +15,7 @@
  */
 
 import { isNonNullObject, isString, templateExpressions } from "@jxsuite/schema/guards";
-import { escapeTemplateText, isClosedContent } from "../utils/edit-display";
+import { escapeTemplateText, isClosedContent, unescapeTemplateText } from "../utils/edit-display";
 import type { JxDocumentValue, JxMutableNode } from "@jxsuite/schema/types";
 
 /** A block's content as a children array — the form both storage shapes normalize to. */
@@ -25,6 +25,37 @@ export type Content = (JxMutableNode | string)[];
 export interface StoredContent {
   children?: Content;
   textContent?: string;
+}
+
+/**
+ * One whole `${…}` that is PRINTED wherever it stands: it was a `textContent`, or was cut out of a
+ * longer string.
+ *
+ * As a string member of `children` the same text would be the one string whose value may be nodes
+ * ({@link isWholeTemplate}), so it cannot travel as a bare string through a slice or a join without
+ * changing what it means. Wrapped, it is joined to the text beside it like any other template,
+ * folded back into a `textContent` when it ends up alone, and refused when it would have to stand
+ * as a member ({@link storePieces}).
+ */
+export class Printed {
+  readonly text: string;
+
+  constructor(text: string) {
+    this.text = text;
+  }
+}
+
+/** One member of content in transit: an element, a string, or a {@link Printed} whole template. */
+export type ContentPiece = JxMutableNode | string | Printed;
+
+/** Whether a piece is text of either sort. */
+function isText(piece: ContentPiece | undefined): piece is string | Printed {
+  return isString(piece) || piece instanceof Printed;
+}
+
+/** The text of a text piece. */
+function textOf(piece: string | Printed): string {
+  return isString(piece) ? piece : piece.text;
 }
 
 /**
@@ -44,29 +75,49 @@ export function contentOf(node: JxMutableNode | undefined | null): Content {
 }
 
 /**
- * Whether an inline child is ATOMIC: one unit no offset falls inside, with no length of its own.
+ * {@link contentOf} for content that is about to be cut or joined: a `textContent` that is one whole
+ * `${…}` is marked {@link Printed}, so it is not taken for a member on the way.
+ */
+export function piecesOf(node: JxMutableNode | undefined | null): ContentPiece[] {
+  if (!node || Array.isArray(node.children)) {
+    return contentOf(node);
+  }
+  const { textContent } = node;
+  if (!isString(textContent) || textContent.length === 0) {
+    return [];
+  }
+  return [isWholeTemplate(textContent) ? new Printed(textContent) : textContent];
+}
+
+/**
+ * Whether an inline child is ATOMIC: one unit no offset falls inside, one position long.
  *
  * True of an element whose content is a value rather than the author's text (`isClosedContent`) and
  * of a component instance, whose content is another document's. The canvas draws both closed to the
- * caret and counts each as nothing (`canvas/iframe-position.ts`), because what one shows has no
+ * caret and counts each as ONE (`canvas/iframe-position.ts`), because what one shows has no
  * relation to what it stores: a `{ "$ref" }` text is no characters of content however long its
  * value is. Counting it here as its stored text would put every later offset out by the difference,
- * and a cross-block delete would then take text the author never selected.
+ * and a cross-block delete would then take text the author never selected. Counting it as nothing
+ * made the position before it and the one after it the same offset, and a delete that began after
+ * it took it too.
  */
 export function isAtomicInline(node: JxMutableNode): boolean {
   return (isString(node.tagName) && node.tagName.includes("-")) || isClosedContent(node);
 }
 
-/** The content of an inline child that offsets are counted through: none for an atomic one. */
-function innerContent(child: JxMutableNode): Content {
-  return isAtomicInline(child) ? [] : contentOf(child);
+/** The length of one piece: a string's own, one for an atomic inline, an element's content's. */
+function pieceLength(piece: ContentPiece): number {
+  if (isText(piece)) {
+    return textOf(piece).length;
+  }
+  return isAtomicInline(piece) ? 1 : contentLength(piecesOf(piece));
 }
 
-/** The rendered text length of a content array. */
-export function contentLength(children: Content): number {
+/** The rendered text length of a content array, in the canvas's own units. */
+export function contentLength(children: readonly ContentPiece[]): number {
   let n = 0;
   for (const child of children) {
-    n += isString(child) ? child.length : contentLength(innerContent(child));
+    n += pieceLength(child);
   }
   return n;
 }
@@ -83,40 +134,66 @@ export function isWholeTemplate(text: string): boolean {
 }
 
 /**
- * The sub-content covering characters `[start, end)`, with inline elements preserved.
+ * What is left of the string `whole` when `cut` is the part of it a slice keeps.
+ *
+ * A piece of plain text is itself. A piece of a template that still holds a `${` is still a
+ * template, and {@link Printed} when it is one whole `${…}`: inside the longer string it was
+ * interpolated, and alone it must not become a member. A piece that holds no `${` is no template
+ * any more, so it is the text its escapes spell: `C:\\temp` is stored as the one backslash the page
+ * showed.
+ */
+function cutText(whole: string, cut: string): string | Printed {
+  if (!whole.includes("${")) {
+    return cut;
+  }
+  if (cut.includes("${")) {
+    return isWholeTemplate(cut) ? new Printed(cut) : cut;
+  }
+  return unescapeTemplateText(cut) ?? cut;
+}
+
+/**
+ * The sub-content covering characters `[start, end)`, with inline elements preserved, or null when
+ * an inline element that was cut cannot hold what is left of it ({@link storePieces}).
  *
  * An inline element that straddles a boundary is kept with its content clipped — so cutting a bold
  * run in half leaves a shorter bold run, not plain text. Elements that fall entirely outside the
- * range are dropped; empty results are omitted rather than left as empty tags.
+ * range are dropped; empty results are omitted rather than left as empty tags. An atomic inline is
+ * one position long: kept when the range covers it, never cut. A string cut out of a template is
+ * what {@link cutText} says it is.
  */
-export function sliceContent(children: Content, start: number, end: number): Content {
-  const out: Content = [];
+export function sliceContent(
+  children: readonly ContentPiece[],
+  start: number,
+  end: number,
+): ContentPiece[] | null {
+  const out: ContentPiece[] = [];
   let pos = 0;
   for (const child of children) {
     if (pos >= end) {
       break;
     }
-    if (isString(child)) {
-      const childEnd = pos + child.length;
+    if (isText(child)) {
+      const text = textOf(child);
+      const childEnd = pos + text.length;
       if (childEnd > start) {
-        const text = child.slice(
+        const cut = text.slice(
           Math.max(0, start - pos),
           Math.max(0, Math.min(end, childEnd) - pos),
         );
-        if (text) {
-          out.push(text);
+        if (cut) {
+          out.push(cut === text ? child : cutText(text, cut));
         }
       }
       pos = childEnd;
       continue;
     }
-    const inner = innerContent(child);
-    const len = contentLength(inner);
+    const len = pieceLength(child);
     const childEnd = pos + len;
     if (len === 0) {
-      // A void inline (a `<br>`, an `<img>`) or an atomic one contributes no characters, so it can
-      // Never satisfy a length-based overlap test — it sits AT a position rather than spanning one.
-      // Keep it when the range covers that position, or every slice would silently drop it.
+      // A void inline (a `<br>`, an `<img>`) contributes no characters, so it can never satisfy a
+      // Length-based overlap test — it sits AT a position rather than spanning one. Keep it when
+      // The range covers that position, or every slice would silently drop it.
       if (pos >= start && pos < end) {
         // Copied verbatim: giving a `<br>` an empty `textContent` would be noise in the source.
         out.push({ ...child });
@@ -124,10 +201,20 @@ export function sliceContent(children: Content, start: number, end: number): Con
     } else if (pos >= start && childEnd <= end) {
       // Kept whole: copied as it is stored, so a slice never re-spells content it did not cut.
       out.push({ ...child });
-    } else if (childEnd > start) {
-      const kept = sliceContent(inner, Math.max(0, start - pos), Math.min(end, childEnd) - pos);
+    } else if (childEnd > start && !isAtomicInline(child)) {
+      // To the range's own end, not the element's: one that reaches past it keeps a `<br>` that
+      // Ends the element, which is no characters long and so sits AT the element's end.
+      const kept = sliceContent(piecesOf(child), Math.max(0, start - pos), end - pos);
+      if (kept === null) {
+        return null;
+      }
       if (kept.length > 0) {
-        out.push(withContent(child, kept));
+        const stored = storePieces(kept);
+        if (stored === null) {
+          return null;
+        }
+        const { children: _drop, textContent: _dropText, ...rest } = child;
+        out.push({ ...rest, ...stored });
       }
     }
     pos = childEnd;
@@ -135,32 +222,34 @@ export function sliceContent(children: Content, start: number, end: number): Con
   return out;
 }
 
-/** A copy of `node` carrying `children`, folded back to `textContent` when it is one string. */
-function withContent(node: JxMutableNode, children: Content): JxMutableNode {
-  const { children: _drop, textContent: _dropText, ...rest } = node;
-  return { ...rest, ...toStored(children) };
+/** Content with every {@link Printed} piece as the bare string it holds. */
+function bare(pieces: readonly ContentPiece[]): Content {
+  return pieces.map((piece) => (piece instanceof Printed ? piece.text : piece));
 }
 
 /**
- * The one string two adjacent strings are, or null when they must stay two members.
+ * The one piece two adjacent text pieces are, or null when they must stay two members.
  *
  * Two plain strings are their concatenation. Once either holds a `${` the result is a template, the
  * inside of a template literal, where a backslash is an escape: so the plain one is escaped on the
  * way in, or `C:\\temp` joined to `${state.x}` would read as a tab. Two strings are NOT joined when
- * either is one whole `${…}` ({@link isWholeTemplate}), which as a member may be a list of nodes
- * and joined to anything is that list's string form; or when the join would make or unmake an
- * expression (a `$` meeting a `{`, an unclosed `${` swallowing the next string's).
+ * either is one whole `${…}` standing as a member ({@link isWholeTemplate}), which may be a list of
+ * nodes and joined to anything is that list's string form; or when the join would make or unmake an
+ * expression (a `$` meeting a `{`, an unclosed `${` swallowing the next string's). A
+ * {@link Printed} whole template is text already, and joins like any other template.
  */
-function joinStrings(a: string, b: string): string | null {
-  const templated = a.includes("${") || b.includes("${");
+function joinText(a: string | Printed, b: string | Printed): string | null {
+  const first = textOf(a);
+  const second = textOf(b);
+  const templated = first.includes("${") || second.includes("${");
   if (!templated) {
-    return (a + b).includes("${") ? null : a + b;
+    return (first + second).includes("${") ? null : first + second;
   }
-  if (isWholeTemplate(a) || isWholeTemplate(b)) {
+  if ((isString(a) && isWholeTemplate(a)) || (isString(b) && isWholeTemplate(b))) {
     return null;
   }
-  const head = a.includes("${") ? a : escapeTemplateText(a);
-  const tail = b.includes("${") ? b : escapeTemplateText(b);
+  const head = first.includes("${") ? first : escapeTemplateText(first);
+  const tail = second.includes("${") ? second : escapeTemplateText(second);
   const joined = head + tail;
   const sources = (text: string): string[] =>
     templateExpressions(text).map(({ start, end }) => text.slice(start, end));
@@ -170,21 +259,18 @@ function joinStrings(a: string, b: string): string | null {
     : null;
 }
 
-/**
- * Merge adjacent strings where that changes nothing they mean ({@link joinStrings}) and drop
- * empties, so a spliced result does not carry the seams of how it was built. Strings that cannot be
- * joined stay side by side as members of their own, each still meaning what it meant.
- */
-export function normalizeContent(children: Content): Content {
-  const out: Content = [];
+/** {@link normalizeContent} for pieces: a {@link Printed} one stays marked until it is joined. */
+function normalizePieces(children: readonly ContentPiece[]): ContentPiece[] {
+  const out: ContentPiece[] = [];
   for (const child of children) {
-    if (isString(child)) {
-      if (child.length === 0) {
+    if (isText(child)) {
+      if (textOf(child).length === 0) {
         continue;
       }
       const prev = out.at(-1);
-      const joined = isString(prev) ? joinStrings(prev, child) : null;
+      const joined = isText(prev) ? joinText(prev, child) : null;
       if (joined !== null) {
+        // Two templates joined are never one whole `${…}`, so the result needs no mark.
         out[out.length - 1] = joined;
         continue;
       }
@@ -195,24 +281,58 @@ export function normalizeContent(children: Content): Content {
 }
 
 /**
+ * Merge adjacent strings where that changes nothing they mean ({@link joinText}) and drop empties,
+ * so a spliced result does not carry the seams of how it was built. Strings that cannot be joined
+ * stay side by side as members of their own, each still meaning what it meant.
+ */
+export function normalizeContent(children: Content): Content {
+  return bare(normalizePieces(children));
+}
+
+/**
  * The content a block should hold after `[from, to)` is replaced by `text`, where `head` is the
- * block the range starts in and `tail` the block it ends in.
+ * block the range starts in and `tail` the block it ends in. Null when a cut cannot be stored
+ * ({@link sliceContent}).
  *
  * Collapsing a cross-block range is the same shape as a merge: keep the head's prefix, keep the
- * tail's suffix, and join them — with any typed replacement between.
+ * tail's suffix, and join them — with any typed replacement between. The tail is kept to no end at
+ * all, so a `<br>` that ends it, which is no characters long, is kept too.
  */
 export function spliceAcross(
-  head: Content,
+  head: readonly ContentPiece[],
   from: number,
-  tail: Content,
+  tail: readonly ContentPiece[],
   to: number,
   text = "",
-): Content {
-  return normalizeContent([
-    ...sliceContent(head, 0, from),
-    ...(text ? [text] : []),
-    ...sliceContent(tail, to, contentLength(tail)),
-  ]);
+): ContentPiece[] | null {
+  const keptHead = sliceContent(head, 0, from);
+  const keptTail = sliceContent(tail, to, Number.POSITIVE_INFINITY);
+  return keptHead && keptTail
+    ? normalizePieces([...keptHead, ...(text ? [text] : []), ...keptTail])
+    : null;
+}
+
+/**
+ * Pieces in the form a node stores them, or null when no form says what they mean.
+ *
+ * One string is folded into `textContent` unless it is a whole-template MEMBER, which as a
+ * `textContent` would be printed where it was spliced. A {@link Printed} whole template alone is a
+ * `textContent`; one that could not be joined to what stands beside it (an element, a member) would
+ * have to be stored as a member, where an array it yields is spliced in as nodes instead of
+ * printed. Nothing spells that, so the write that needed it is refused.
+ */
+export function storePieces(pieces: readonly ContentPiece[]): StoredContent | null {
+  const normalized = normalizePieces(pieces);
+  const [only] = normalized;
+  if (only === undefined) {
+    return { textContent: "" };
+  }
+  if (normalized.length === 1 && isText(only) && !(isString(only) && isWholeTemplate(only))) {
+    return { textContent: textOf(only) };
+  }
+  return normalized.some((piece) => piece instanceof Printed)
+    ? null
+    : { children: bare(normalized) };
 }
 
 /**
@@ -222,15 +342,8 @@ export function spliceAcross(
  * may be a list of nodes, and as a `textContent` it never is.
  */
 export function toStored(children: Content): StoredContent {
-  const normalized = normalizeContent(children);
-  const [only] = normalized;
-  if (only === undefined) {
-    return { textContent: "" };
-  }
-  if (normalized.length === 1 && isString(only) && !isWholeTemplate(only)) {
-    return { textContent: only };
-  }
-  return { children: normalized };
+  // No piece of a plain array is marked printed, so there is always a form.
+  return storePieces(children) ?? { children: normalizeContent(children) };
 }
 
 /**

@@ -19,11 +19,13 @@
  * block's stored content, which is what lets a cross-block cut slice that content exactly
  * (`editor/content-slice.ts`).
  *
- * **An element closed to the caret counts as nothing.** A component instance, or an inline element
+ * **An element closed to the caret counts as one.** A component instance, or an inline element
  * whose content is a value (a `{ "$ref" }` text, bound `innerHTML`), shows text that has no
- * relation to what its node stores, so it is one unit of length zero here and in the stored content
- * alike (`isAtomicInline` there). Counted as the text it shows, or as its chip's expression, it put
- * every later offset in its block out by the difference.
+ * relation to what its node stores, so it is one unit ONE position long here and in the stored
+ * content alike (`isAtomicInline` there). Counted as the text it shows, or as its chip's
+ * expression, it put every later offset in its block out by the difference. Counted as nothing, the
+ * position before it and the one after it were the same offset, so a selection that began after it
+ * was read as beginning before it, and deleting that selection deleted the element too.
  *
  * Everything here is pure DOM traversal with NO layout reads, so it is fully exercisable under
  * happy-dom — unlike the caret-from-point and line-geometry paths, which are Chromium-only.
@@ -153,8 +155,9 @@ export function atomAround(block: Node, node: Node): Element | null {
 }
 
 /**
- * How many characters of the document `node` stands for: a chip is its expression, whole, and an
- * element closed to the caret, or a `{ "$ref" }` chip, is none.
+ * How many positions of the document `node` stands for: a chip is its expression, whole, an element
+ * closed to the caret is one, and a `{ "$ref" }` chip is none of its own (the element it is the
+ * text of is closed, and is the unit).
  */
 function unitLength(node: Node): number {
   if (node.nodeType === node.TEXT_NODE) {
@@ -165,7 +168,7 @@ function unitLength(node: Node): number {
     return node.hasAttribute(TAG_REF_ATTR) ? 0 : (node.getAttribute(TAG_ATTR)?.length ?? 0);
   }
   if (isAtom(node)) {
-    return 0;
+    return 1;
   }
   let total = 0;
   for (const child of node.childNodes) {

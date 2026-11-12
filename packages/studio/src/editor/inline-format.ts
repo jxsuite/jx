@@ -8,6 +8,7 @@
  */
 
 import { templateExpressions } from "@jxsuite/schema/guards";
+import { KEEP_ATTR } from "./kept-node";
 
 /** Tags considered inline formatting wrappers */
 const FORMAT_TAGS = new Set([
@@ -316,6 +317,19 @@ function normalizable(root: HTMLElement): Element[] {
 }
 
 /**
+ * Whether `node` is an element closed to the caret: an inline whose content is a value (a `{ "$ref"
+ * }` text, bound `innerHTML`) or a component instance (`utils/edit-display.ts`, `makeStamper`).
+ *
+ * It has a tag a formatting wrapper may share, and it is not formatting: it is one node of the
+ * document, drawn from data. Merged into the `<em>` beside it, or collapsed into the `<em>` around
+ * it, it stopped being the one chip and nothing else the serializer reads back as a reference, and
+ * every commit of its block was refused from then on.
+ */
+function isClosed(node: Node | null): boolean {
+  return node !== null && isElementNode(node) && node.getAttribute("contenteditable") === "false";
+}
+
+/**
  * `Node.normalize()` for everything outside a chip: adjacent text nodes are joined and empty ones
  * removed.
  *
@@ -354,15 +368,33 @@ function absorbText(into: Text, next: Text): void {
   const anchorOffset = selection?.anchorOffset ?? 0;
   const focusOffset = selection?.focusOffset ?? 0;
   const joinAt = into.length;
+  const parent = next.parentNode;
+  let index = 0;
+  for (let prev = next.previousSibling; prev; prev = prev.previousSibling) {
+    index += 1;
+  }
+  /** Where an end that stood at (`node`, `offset`) before the join stands after it. */
+  const moved = (node: Node, offset: number): [Node, number] => {
+    if (node === next) {
+      return [into, joinAt + offset];
+    }
+    // An end counted among the parent's children, past the node that is gone, is one child back.
+    return node === parent && offset > index ? [node, offset - 1] : [node, offset];
+  };
   into.data += next.data;
   next.remove();
-  if (selection && anchor && focus && (anchor === next || focus === next)) {
-    selection.setBaseAndExtent(
-      anchor === next ? into : anchor,
-      anchor === next ? joinAt + anchorOffset : anchorOffset,
-      focus === next ? into : focus,
-      focus === next ? joinAt + focusOffset : focusOffset,
-    );
+  if (!selection || !anchor || !focus) {
+    return;
+  }
+  const [anchorNode, anchorAt] = moved(anchor, anchorOffset);
+  const [focusNode, focusAt] = moved(focus, focusOffset);
+  if (
+    anchorNode !== anchor ||
+    anchorAt !== anchorOffset ||
+    focusNode !== focus ||
+    focusAt !== focusOffset
+  ) {
+    selection.setBaseAndExtent(anchorNode, anchorAt, focusNode, focusAt);
   }
 }
 
@@ -432,6 +464,8 @@ function mergeAdjacentSiblings(root: HTMLElement) {
       isElementNode(next) &&
       next.tagName === el.tagName &&
       FORMAT_TAGS.has(el.tagName.toLowerCase()) &&
+      !isClosed(el) &&
+      !isClosed(next) &&
       attributesMatch(el, next)
     ) {
       toMerge.push([el, next]);
@@ -472,7 +506,9 @@ function collapseRedundantNesting(root: HTMLElement) {
       el.childNodes.length === 1 &&
       only !== null &&
       isElementNode(only) &&
-      only.tagName === el.tagName
+      only.tagName === el.tagName &&
+      !isClosed(el) &&
+      !isClosed(only)
     ) {
       toCollapse.push(el);
     }
@@ -480,10 +516,11 @@ function collapseRedundantNesting(root: HTMLElement) {
 
   for (const el of toCollapse) {
     const inner = el.firstChild;
-    if (inner === null) {
-      /* Three or more nested identical wrappers: collapsing the outer pair moved this wrapper's only
-         child out, leaving it empty. That has always failed here, and is kept rather than changed. */
-      throw new TypeError("collapseRedundantNesting: an earlier collapse emptied this wrapper");
+    if (inner === null || !isElementNode(inner) || inner.tagName !== el.tagName) {
+      /* Three or more nested identical wrappers: collapsing the outer pair took this wrapper out of
+         the tree. Its content is already where it belongs, and the pass after this one collapses
+         whatever nesting is left. This used to throw out of the commit. */
+      continue;
     }
     // Replace outer with inner's children
     while (inner.firstChild) {
@@ -608,14 +645,21 @@ function unwrapBareSpans(root: HTMLElement) {
 }
 
 /**
- * Check if two elements have matching attributes (for merge eligibility). For simple formatting
- * tags, attributes don't matter. For <a>, href must match.
+ * Check if two elements have matching attributes (for merge eligibility). What they carry from
+ * their document nodes must match; beyond that a simple formatting tag's attributes don't matter,
+ * and for <a>, href must match.
  *
  * @param {Element} a
  * @param {Element} b
  * @returns {boolean}
  */
 function attributesMatch(a: Element, b: Element) {
+  /* What each carries from its document node (`editor/kept-node.ts`): a highlighted `<span>` and the
+     plain `<span>` beside it are two different things, and merged they were one with the first
+     one's class. */
+  if (a.getAttribute(KEEP_ATTR) !== b.getAttribute(KEEP_ATTR)) {
+    return false;
+  }
   const tag = a.tagName.toLowerCase();
   if (tag === "a") {
     return a.getAttribute("href") === b.getAttribute("href");

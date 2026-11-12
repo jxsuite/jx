@@ -915,6 +915,20 @@ describe("a chip is atomic to the arrow keys, Backspace and Delete", () => {
     expect(removed).toHaveLength(1);
   });
 
+  test("a beforeinput whose input never landed leaves nothing to compare the next one against", () => {
+    const removed: string[][] = [];
+    const { container } = mount(BOUND, { onTagsRemoved: (sources) => removed.push(sources) });
+    const p = nth(container, "p");
+    // An insertion the engine was left to make, and then did not: no `input` follows it.
+    caretAt(p.firstChild!, 2);
+    expect(beforeInput(p, "insertText", "x")).toBe(false);
+    // Backspace beside the first chip: taken here, reported once, and its own `input` fired.
+    caretAt(p.childNodes[2]!, 0);
+    expect(beforeInput(p, "deleteContentBackward")).toBe(true);
+    // The snapshot from the insertion is gone, so that `input` does not report the chip again.
+    expect(removed).toEqual([["${a}"]]);
+  });
+
   test("an input the chokepoint takes over compares nothing", () => {
     const removed: string[][] = [];
     const { container } = mount(BOUND, {
@@ -979,6 +993,23 @@ describe("a press on a chip puts the caret at the chip's edge", () => {
     const second = nth(container, "p").firstChild!;
     selectAcross(second, 2, text, 3);
     expect(selection()).toEqual(["Second", 2, "h2", 0]);
+  });
+
+  test("only one end in a chip: that end goes to the chip's far edge, and the direction is kept", () => {
+    const { container } = mount(
+      `<p data-jx-path='["children",0]'>ab<data data-jx-tag="\${t}" contenteditable="false">Title</data>cd</p>`,
+    );
+    const p = nth(container, "p");
+    const text = nth(container, "data").firstChild!;
+    // Forward, from the text before into the chip: the focus goes past the chip.
+    selectAcross(p.firstChild!, 1, text, 2);
+    expect(selection()).toEqual(["ab", 1, "p", 2]);
+    // Backward, from the text after into the chip: the focus goes before it, and stays the focus.
+    selectAcross(p.lastChild!, 1, text, 2);
+    expect(selection()).toEqual(["cd", 1, "p", 1]);
+    // The anchor in the chip, the focus in the text before it: backward, anchored past the chip.
+    selectAcross(text, 2, p.firstChild!, 1);
+    expect(selection()).toEqual(["p", 2, "ab", 1]);
   });
 
   test("the press itself does not drop the selection, as one on closed content does", () => {

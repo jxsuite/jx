@@ -7,7 +7,14 @@ import "./with-dom.js";
 import { afterEach, describe, expect, test } from "bun:test";
 import { fakeChannelPair } from "../src/canvas/iframe-channel";
 import { startIframeInlineEdit } from "../src/canvas/iframe-inline-edit";
-import { commitActiveBlock, isEditing, stopEditing } from "../src/editor/inline-edit";
+import {
+  abandonEditing,
+  commitActiveBlock,
+  isEditing,
+  setSlashController,
+  stopEditing,
+} from "../src/editor/inline-edit";
+import type { SlashCommand } from "../src/editor/inline-edit";
 import { beforeInput, caretAt, caretInto, selectAcross } from "./harness";
 import type { IframeToParent, ParentToIframe } from "../src/canvas/iframe-protocol";
 
@@ -46,6 +53,8 @@ afterEach(() => {
   }
   teardown?.();
   teardown = undefined;
+  // Back to the no-op controller every other test here runs under.
+  setSlashController({ dismiss: () => {}, isOpen: () => false, show: () => {} });
   document.body.innerHTML = "";
 });
 
@@ -470,5 +479,281 @@ describe("a block whose bindings are chips is edited in place", () => {
       text: "",
       to: { offset: 7, path: ["children", 1] },
     });
+  });
+});
+
+describe("a deletion reaches the document with the write that makes it", () => {
+  /** `By ` + a chip showing "Ada" + ` on ` + a chip that ends the block. */
+  function boundBlock(container: HTMLElement, index = 0): HTMLParagraphElement {
+    const p = document.createElement("p");
+    p.dataset.jxPath = JSON.stringify(["children", index]);
+    p.innerHTML =
+      'By <data data-jx-tag="${a}" contenteditable="false">Ada</data> on ' +
+      '<data data-jx-tag="${d}" contenteditable="false">March</data>';
+    container.append(p);
+    return p;
+  }
+
+  test("Enter over a selection that covers a chip names the chip in the split", () => {
+    const { container, fromIframe, pair } = boot();
+    const p = boundBlock(container);
+    clickInto(p);
+    // From "B|y " across the first chip into " o|n ".
+    selectAcross(p.firstChild!, 1, p.childNodes[2]!, 2);
+    expect(beforeInput(p, "insertParagraph")).toBe(true);
+    pair.flush();
+    expect(ofKind(fromIframe, "editSplit")).toEqual([
+      {
+        after: { textContent: "n ${d}" },
+        before: { textContent: "B" },
+        kind: "editSplit",
+        path: ["children", 0],
+        removedTags: ["${a}"],
+      },
+    ]);
+  });
+
+  test("a slash insert carries the chips deleted before it", () => {
+    const { container, fromIframe, pair } = boot();
+    const p = boundBlock(container);
+    const picks: ((cmd: SlashCommand) => void)[] = [];
+    setSlashController({
+      dismiss: () => {},
+      isOpen: () => false,
+      show: (_el, _filter, menu) => {
+        picks.push(menu.onSelect);
+      },
+    });
+    clickInto(p);
+    caretAt(p.childNodes[2]!, 0);
+    expect(beforeInput(p, "deleteContentBackward")).toBe(true);
+    pair.parent.post({ kind: "openSlash" });
+    pair.flush();
+    picks.at(-1)?.({ description: "", label: "Heading", tag: "h2" });
+    pair.flush();
+    expect(ofKind(fromIframe, "editInsert")).toEqual([
+      {
+        cmd: { description: "", label: "Heading", tag: "h2" },
+        commitData: { textContent: "By  on ${d}" },
+        kind: "editInsert",
+        path: ["children", 0],
+        removedTags: ["${a}"],
+      },
+    ]);
+  });
+
+  test("a deletion never committed is forgotten when the caret enters another block", () => {
+    const { container, fromIframe, pair } = boot();
+    const first = boundBlock(container, 0);
+    const second = boundBlock(container, 1);
+    clickInto(first);
+    caretAt(first.childNodes[2]!, 0);
+    expect(beforeInput(first, "deleteContentBackward")).toBe(true);
+    // What an undo's redraw does: the block is released with nothing written.
+    abandonEditing();
+    clickInto(second);
+    second.firstChild!.nodeValue = "Written by ";
+    stopEditing();
+    pair.flush();
+    // The second block lost no chip, so its commit excuses none: `${a}` is still in it.
+    expect(ofKind(fromIframe, "editCommit")).toEqual([
+      {
+        children: null,
+        kind: "editCommit",
+        path: ["children", 1],
+        textContent: "Written by ${a} on ${d}",
+      },
+    ]);
+  });
+
+  test("the commit that deletes a chip is not left in place; the one after it is", () => {
+    const { container, fromIframe, pair } = boot();
+    const p = boundBlock(container);
+    clickInto(p);
+    caretAt(p.childNodes[2]!, 0);
+    expect(beforeInput(p, "deleteContentBackward")).toBe(true);
+    commitActiveBlock();
+    p.firstChild!.nodeValue = "Written by  on ";
+    commitActiveBlock();
+    pair.flush();
+    expect(ofKind(fromIframe, "editCommit")).toEqual([
+      {
+        children: null,
+        kind: "editCommit",
+        path: ["children", 0],
+        removedTags: ["${a}"],
+        textContent: "By  on ${d}",
+      },
+      {
+        children: null,
+        inPlace: true,
+        kind: "editCommit",
+        path: ["children", 0],
+        textContent: "Written by  on ${d}",
+      },
+    ]);
+  });
+
+  test("a URL typed over a bound link's is reported like a deleted chip", () => {
+    const { container, fromIframe, pair } = boot();
+    const p = document.createElement("p");
+    p.dataset.jxPath = '["children",0]';
+    // The link carries what its node holds, and no path: the paragraph is the caret's block.
+    p.innerHTML =
+      `See <a data-jx-href="/RESOLVED" ` +
+      `data-jx-keep='{"attributes":{"href":"\${state.url}"}}'>the link</a>`;
+    container.append(p);
+    const anchor = p.querySelector("a")!;
+    clickInto(p);
+    selectAcross(anchor.firstChild!, 0, anchor.firstChild!, 3);
+    document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+    pair.parent.post({ intent: { command: "link", href: "/new" }, kind: "applyFormat" });
+    pair.flush();
+    stopEditing();
+    pair.flush();
+    expect(anchor.dataset.jxHref).toBe("/new");
+    expect(ofKind(fromIframe, "editCommit").at(-1)).toEqual({
+      children: ["See ", { attributes: { href: "/new" }, tagName: "a", textContent: "the link" }],
+      kind: "editCommit",
+      path: ["children", 0],
+      removedTags: ["attributes/href\u0000${state.url}"],
+      textContent: null,
+    });
+  });
+});
+
+describe("an inline link is part of its paragraph, not a block beside it", () => {
+  /** `See <a>docs</a> now` and a paragraph reading "Tail", both stamped. */
+  function linked(container: HTMLElement) {
+    const first = document.createElement("p");
+    first.dataset.jxPath = '["children",0]';
+    first.innerHTML = `See <a data-jx-path='["children",0,"children",1]'>docs</a> now`;
+    const second = document.createElement("p");
+    second.dataset.jxPath = '["children",1]';
+    second.textContent = "Tail";
+    container.append(first, second);
+    return { anchor: first.querySelector("a")!, first, second };
+  }
+
+  test("a selection from after the link into the next paragraph has no block between", () => {
+    const { container, fromIframe, pair } = boot();
+    const { first, second } = linked(container);
+    clickInto(first);
+    selectAcross(first.lastChild!, 2, second.firstChild!, 1);
+    expect(beforeInput(first, "deleteContentBackward")).toBe(true);
+    pair.flush();
+    expect(ofKind(fromIframe, "editRangeReplace")).toEqual([
+      {
+        between: [],
+        from: { offset: 10, path: ["children", 0] },
+        kind: "editRangeReplace",
+        text: "",
+        to: { offset: 1, path: ["children", 1] },
+      },
+    ]);
+  });
+
+  test("a selection that starts inside the link is counted in the link's paragraph", () => {
+    const { container, fromIframe, pair } = boot();
+    const { anchor, second } = linked(container);
+    clickInto(anchor);
+    selectAcross(anchor.firstChild!, 2, second.firstChild!, 1);
+    expect(beforeInput(anchor, "deleteContentBackward")).toBe(true);
+    pair.flush();
+    expect(ofKind(fromIframe, "editRangeReplace")).toEqual([
+      {
+        between: [],
+        from: { offset: 6, path: ["children", 0] },
+        kind: "editRangeReplace",
+        text: "",
+        to: { offset: 1, path: ["children", 1] },
+      },
+    ]);
+  });
+
+  test("Backspace at the start of the next paragraph joins it onto the paragraph, not the link", () => {
+    const { container, fromIframe, pair } = boot();
+    const { second } = linked(container);
+    clickInto(second);
+    caretInto(second, 0);
+    expect(beforeInput(second, "deleteContentBackward")).toBe(true);
+    pair.flush();
+    expect(ofKind(fromIframe, "editMerge")).toEqual([
+      { fromPath: ["children", 1], intoPath: ["children", 0], kind: "editMerge" },
+    ]);
+  });
+
+  test("Backspace at the start of the link's own text joins nothing", () => {
+    const { container, fromIframe, pair } = boot();
+    const { anchor } = linked(container);
+    clickInto(anchor);
+    caretInto(anchor, 0);
+    expect(beforeInput(anchor, "deleteContentBackward")).toBe(true);
+    pair.flush();
+    expect(ofKind(fromIframe, "editMerge")).toEqual([]);
+  });
+});
+
+describe("the parent ending the session", () => {
+  const doc = () => ({
+    children: [
+      { tagName: "p", textContent: "Removed block" },
+      { tagName: "p", textContent: "Second plain" },
+    ],
+    tagName: "div",
+  });
+
+  /** A canvas over {@link doc} with the caret in its first paragraph. */
+  function caretInFirst() {
+    const booted = boot({ getShadowDoc: doc });
+    const first = document.createElement("p");
+    first.dataset.jxPath = '["children",0]';
+    first.textContent = "Removed block";
+    booted.container.append(first);
+    clickInto(first);
+    booted.pair.flush();
+    expect(isEditing()).toBe(true);
+    booted.fromIframe.length = 0;
+    return { ...booted, first };
+  }
+
+  test("a block that holds nothing new is released without a commit", () => {
+    const { fromIframe, pair } = caretInFirst();
+    // Ahead of a whole render: the document may already hold another block at this path.
+    pair.parent.post({ kind: "endEdit" });
+    pair.flush();
+    pair.flush();
+    expect(isEditing()).toBe(false);
+    expect(fromIframe.map((m) => m.kind)).toEqual(["editEnd"]);
+  });
+
+  test("typing the document has not been given is committed on the way out", () => {
+    const { first, fromIframe, pair } = caretInFirst();
+    first.textContent = "Removed block, edited";
+    pair.parent.post({ kind: "endEdit" });
+    pair.flush();
+    pair.flush();
+    expect(ofKind(fromIframe, "editCommit")).toEqual([
+      {
+        children: null,
+        kind: "editCommit",
+        path: ["children", 0],
+        textContent: "Removed block, edited",
+      },
+    ]);
+    expect(fromIframe.at(-1)).toEqual({ kind: "editEnd" });
+  });
+
+  test("with no document to measure against, the session is committed as it always was", () => {
+    const { container, fromIframe, pair } = boot();
+    const p = document.createElement("p");
+    p.dataset.jxPath = '["children",0]';
+    p.textContent = "Text";
+    container.append(p);
+    clickInto(p);
+    pair.parent.post({ kind: "endEdit" });
+    pair.flush();
+    pair.flush();
+    expect(ofKind(fromIframe, "editCommit")).toHaveLength(1);
   });
 });

@@ -1241,6 +1241,21 @@ describe("iframe canvas interaction", () => {
     expect(hover.style.display).toBe("none");
   });
 
+  test("flipping the binding display re-measures the selection: the page reflows under its box", async () => {
+    const tab = resetWorkspaceWithTab();
+    await mountReady();
+    const ch = channels[0]!;
+    ch.deliver({ capabilities: ["bindingDisplay"], kind: "ready" });
+    tab.session.selection = [["children", 2]];
+    await flush();
+    ch.posts.length = 0;
+
+    postBindingDisplayToLiveHosts("names");
+    // The flip first, then the question: the frame answers with where the element is NOW.
+    expect(ch.posts.map((post) => post.kind)).toEqual(["setBindingDisplay", "measure"]);
+    expect(ch.posts[1]).toMatchObject({ kind: "measure", paths: [["children", 2]] });
+  });
+
   test("an external selection change asks the iframe to measure it; geometry redraws", async () => {
     const tab = resetWorkspaceWithTab();
     const canvasEl = await mountReady();
@@ -2218,6 +2233,168 @@ describe("iframe canvas inline-edit bridge", () => {
       } finally {
         surface.panels.length = 0;
         ch.deliver({ gen: 1, kind: "patchComplete" });
+        ch.deliver({ gen: 1, kind: "patchComplete" });
+      }
+    });
+
+    test("a deletion the frame reports is passed on, so each of the four writes may drop the chip", async () => {
+      const two = () => ({
+        children: [
+          { children: ["Hello ", "${state.name}"], tagName: "p" },
+          { tagName: "p", textContent: "Tail" },
+        ],
+        state: { name: "Ada" },
+        tagName: "div",
+      });
+      const removedTags = ["${state.name}"];
+      /** Deliver `message` to a fresh canvas over `two()`; returns the blocks it left. */
+      const after = async (message: IframeToParent) => {
+        channels.length = 0;
+        const tab = resetWorkspaceWithTab(two());
+        const canvasEl = await mountReady();
+        const surface = surfaceForPane(PRIMARY_PANE);
+        surface.panels.push(stagePanel({ canvas: canvasEl, ready: true }));
+        const ch = channels[0]!;
+        try {
+          ch.deliver(message);
+          return tab.doc.document.children;
+        } finally {
+          surface.panels.length = 0;
+          ch.deliver({ gen: 1, kind: "patchComplete" });
+        }
+      };
+      const { toasts } = await import("../src/services/notify");
+      toasts.length = 0;
+      const tail = { tagName: "p", textContent: "Tail" };
+      const commit: Extract<IframeToParent, { kind: "editCommit" }> = {
+        children: null,
+        kind: "editCommit",
+        path: ["children", 0],
+        textContent: "Hello ",
+      };
+      expect(await after({ ...commit, removedTags })).toEqual([
+        { tagName: "p", textContent: "Hello " },
+        tail,
+      ]);
+      const split: Extract<IframeToParent, { kind: "editSplit" }> = {
+        after: { textContent: "" },
+        before: { textContent: "Hello " },
+        kind: "editSplit",
+        path: ["children", 0],
+      };
+      expect(await after({ ...split, removedTags })).toEqual([
+        { tagName: "p", textContent: "Hello " },
+        { tagName: "p", textContent: "" },
+        tail,
+      ]);
+      const insert: Extract<IframeToParent, { kind: "editInsert" }> = {
+        cmd: { description: "", label: "Heading", tag: "h2" },
+        commitData: { textContent: "Hello " },
+        kind: "editInsert",
+        path: ["children", 0],
+      };
+      const inserted = await after({ ...insert, removedTags });
+      expect(Array.isArray(inserted) ? inserted : []).toHaveLength(3);
+      expect(Array.isArray(inserted) ? inserted[0] : null).toEqual({
+        tagName: "p",
+        textContent: "Hello ",
+      });
+      const range: Extract<IframeToParent, { kind: "editRangeReplace" }> = {
+        between: [],
+        from: { offset: 6, path: ["children", 0] },
+        kind: "editRangeReplace",
+        text: "",
+        to: { offset: 1, path: ["children", 1] },
+      };
+      expect(await after({ ...range, removedTags })).toEqual([
+        { tagName: "p", textContent: "Hello ail" },
+      ]);
+      expect(toasts).toHaveLength(0);
+      // Unreported, each of the four is a binding lost that nobody deleted.
+      for (const message of [commit, split, insert, range]) {
+        expect(await after(message)).toEqual(two().children);
+      }
+      expect(toasts.map((toast) => toast.key)).toEqual(["canvas.binding-kept"]);
+    });
+
+    test("a merge that cannot be stored is refused aloud, and says why", async () => {
+      const two = () => ({
+        children: [
+          { tagName: "p", textContent: "${state.name}" },
+          { children: [{ tagName: "strong", textContent: "x" }, " y"], tagName: "p" },
+        ],
+        state: { name: "Ada" },
+        tagName: "div",
+      });
+      const { toasts } = await import("../src/services/notify");
+      toasts.length = 0;
+      const tab = resetWorkspaceWithTab(two());
+      const canvasEl = await mountReady();
+      const surface = surfaceForPane(PRIMARY_PANE);
+      surface.panels.push(stagePanel({ canvas: canvasEl, ready: true }));
+      const ch = channels[0]!;
+      ch.posts.length = 0;
+      try {
+        ch.deliver({ fromPath: ["children", 1], intoPath: ["children", 0], kind: "editMerge" });
+        expect(tab.doc.document).toEqual(two());
+        // The block it would have written is drawn again from the document, by the key that holds it.
+        expect(postsOfKind(ch, "patch").map((patch) => patch.forwardOps)).toEqual([
+          [{ key: "textContent", op: "set-key", path: ["children", 0], value: "${state.name}" }],
+        ]);
+        expect(toasts.map((toast) => toast.message)).toEqual([
+          "That edit would have left a binding on its own beside other content, where a list it reads is drawn as elements instead of text, so the text was left as it is. Keep some text next to the binding.",
+        ]);
+      } finally {
+        surface.panels.length = 0;
+        ch.deliver({ gen: 1, kind: "patchComplete" });
+      }
+    });
+
+    test("a commit that only re-spells the block draws it again and says nothing", async () => {
+      const spelled = () => ({
+        children: [{ children: ["Hello ", "world", { tagName: "br" }], tagName: "p" }],
+        tagName: "div",
+      });
+      const { toasts } = await import("../src/services/notify");
+      toasts.length = 0;
+      const tab = resetWorkspaceWithTab(spelled());
+      const canvasEl = await mountReady();
+      const surface = surfaceForPane(PRIMARY_PANE);
+      surface.panels.push(stagePanel({ canvas: canvasEl, ready: true }));
+      const ch = channels[0]!;
+      ch.posts.length = 0;
+      try {
+        // The canvas joined the two text nodes: the same content, one member short.
+        const joined = ["Hello world", { tagName: "br" }];
+        ch.deliver({
+          children: joined,
+          kind: "editCommit",
+          path: ["children", 0],
+          textContent: null,
+        });
+        expect(tab.doc.document).toEqual(spelled());
+        expect(tab.doc.dirty).toBeFalsy();
+        expect(postsOfKind(ch, "patch").map((patch) => patch.forwardOps)).toEqual([
+          [
+            {
+              key: "children",
+              op: "set-key",
+              path: ["children", 0],
+              value: spelled().children[0]!.children,
+            },
+          ],
+        ]);
+        expect(toasts).toHaveLength(0);
+        // The session the redraw closes commits the same thing once more: already answered.
+        ch.deliver({
+          children: joined,
+          kind: "editCommit",
+          path: ["children", 0],
+          textContent: null,
+        });
+        expect(postsOfKind(ch, "patch")).toHaveLength(1);
+      } finally {
+        surface.panels.length = 0;
         ch.deliver({ gen: 1, kind: "patchComplete" });
       }
     });

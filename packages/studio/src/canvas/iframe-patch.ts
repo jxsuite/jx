@@ -32,19 +32,15 @@
  */
 
 import { reapplyStyle, updateInstanceProps } from "@jxsuite/runtime";
-import {
-  isJsonObject,
-  isNonNullObject,
-  isNumber,
-  isRef,
-  isString,
-  isTemplateString,
-} from "@jxsuite/schema/guards";
+import { isJsonObject, isNumber, isRef, isTemplateString } from "@jxsuite/schema/guards";
 import { getNodeAtPath } from "@jxsuite/schema/doc-ops";
 import { applyDocOpToDoc } from "../tabs/doc-op-apply";
 import { parseJxPath, serializeJxPath } from "./path-mapping";
 import { disposeSubtree, renderSubtreeIframe } from "./iframe-subtree";
 import { deliveredOutsideProps } from "./iframe-inline-edit";
+import { isEditableMode } from "./iframe-render";
+import { isEditableBlock } from "../editor/inline-edit";
+import { stampKept } from "../editor/kept-node";
 import {
   BOUND_FIELD_ATTR,
   computeEmptyPlaceholderClass,
@@ -88,6 +84,7 @@ export function applyIframePatch(
   if (!echoPaths?.length) {
     for (const op of forwardOps) {
       applyOpToDom(shadowDoc, op, container, ctx, propsBefore);
+      restampKept(shadowDoc, op, container, ctx);
     }
     return;
   }
@@ -103,6 +100,34 @@ export function applyIframePatch(
       continue;
     }
     applyOpToDom(shadowDoc, op, container, ctx, propsBefore);
+    restampKept(shadowDoc, op, container, ctx);
+  }
+}
+
+/**
+ * Stamp again what the elements `op` drew or changed carry from their document nodes
+ * (`editor/kept-node.ts`): a node drawn again has lost its stamp with its element, and a key set in
+ * place (a style, an event handler, which changes nothing on the canvas at all) left the element
+ * carrying the value from before. A commit of the block around it would have written that back. A
+ * removal or a move changes no node, so there is nothing to stamp.
+ */
+function restampKept(
+  doc: JxMutableNode,
+  op: JxDocOp,
+  container: HTMLElement,
+  ctx: IframeRenderCtx | undefined,
+): void {
+  // Only where text is edited in place: a preview draws the page, and carries no stamps at all.
+  if (!ctx || !isEditableMode(ctx.mode)) {
+    return;
+  }
+  if (op.op !== "set-key" && op.op !== "insert-child" && op.op !== "set-child") {
+    return;
+  }
+  const path = op.op === "set-key" ? op.path : [...op.parentPath, "children", op.index];
+  const el = findElement(container, path);
+  if (el) {
+    stampKept(el, doc, isEditableBlock);
   }
 }
 

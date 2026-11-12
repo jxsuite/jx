@@ -15,7 +15,8 @@ import {
 } from "@jxsuite/schema/guards";
 import { normalizeInlineContent } from "./inline-format";
 import { execEditingCommand } from "./inline-link";
-import { sameContent } from "./content-slice";
+import { isWholeTemplate, sameContent } from "./content-slice";
+import { keptNodeOf } from "./kept-node";
 import { ELEMENT_DEFS, isEditableTag } from "./editable-tags";
 import { chipSourcesBetween, snapRangeOutOfChips } from "../canvas/iframe-chips";
 import { offsetOf } from "../canvas/iframe-position";
@@ -25,6 +26,7 @@ import {
   TAG_MEMBER_ATTR,
   TAG_REF_ATTR,
   TEXT_ATTR,
+  unescapeTemplateText,
 } from "../utils/edit-display";
 import type { EditableVerdicts } from "./editable-tags";
 import type { JxPath } from "../state";
@@ -260,6 +262,24 @@ export function isEditableBlock(el: HTMLElement) {
      it leaves, and the binding is gone without a key being pressed. */
   return (
     el.getAttribute("contenteditable") !== "false" && isEditableTag(el.tagName, editableVerdicts)
+  );
+}
+
+/**
+ * Whether `el` is INLINE CONTENT of the block around it rather than a block of its own: its parent
+ * can hold a caret and accepts its tag inline (a link or a `<span>` in a paragraph).
+ *
+ * Such an element is stamped and can hold a caret, so the caret's "block" may be one, and it is in
+ * the canvas's list of blocks. But document order among BLOCKS skips it: the block before a
+ * paragraph is the paragraph before it, not the link that paragraph ends with, and a selection that
+ * ends in the next paragraph has no block "between" its ends when the first one holds a link.
+ */
+export function isInlineOfBlock(el: HTMLElement): boolean {
+  const parent = el.parentElement;
+  return (
+    parent !== null &&
+    isEditableTag(parent.tagName, editableVerdicts) &&
+    isInlineInContext(el.tagName.toLowerCase(), parent.tagName.toLowerCase())
   );
 }
 
@@ -716,8 +736,10 @@ function commitChanges(inPlace: boolean) {
  * One thing an element's content holds, as the serializer reads it (studio.md §4.5, §8.2.7).
  *
  * - `plain` is the author's text: a text node, stored as it is seen.
- * - `template` is part of a templated string: a chip's expression, or a literal run that is only
- *   right once evaluated, both written verbatim.
+ * - `template` is one `${…}` of a templated string: a chip's expression, written verbatim.
+ * - `literal` is a literal run of a templated string that is only right once evaluated (it holds an
+ *   escape), drawn as a chip. It is written verbatim while the string it stands in is still a
+ *   template, and as the text it shows once it is not ({@link joinRun}).
  * - `member` is one whole string member of `children`: a chip marked as one, or the element a
  *   templated member is drawn as. It is never joined with what stands beside it.
  * - `node` is an element.
@@ -730,8 +752,16 @@ function commitChanges(inPlace: boolean) {
  * into a `textContent`.
  */
 type Piece =
-  | { kind: "plain" | "template" | "member"; text: string }
+  | { kind: "plain" | "template" | "literal" | "member"; text: string }
   | { kind: "node"; node: JxMutableNode };
+
+/** A {@link TextPiece} that is joined with the pieces beside it: every sort but a member. */
+type RunPiece = TextPiece & { kind: "plain" | "template" | "literal" };
+
+/** Whether a piece is one a run is made of. */
+function isRunPiece(piece: Piece): piece is RunPiece {
+  return piece.kind === "plain" || piece.kind === "template" || piece.kind === "literal";
+}
 
 /** A {@link Piece} that is text of one sort or another. */
 type TextPiece = Exclude<Piece, { kind: "node" }>;
@@ -753,24 +783,60 @@ function isChipNode(node: Node): node is Element & HTMLOrSVGElement {
   return isDatasetElementNode(node) && node.hasAttribute(TAG_ATTR);
 }
 
-/** The text piece a chip stands for: its expression, as a member or as part of a string. */
+/**
+ * The piece of a string a chip stands for: one `${…}`, or a literal run drawn as a chip because it
+ * holds an escape (`templateRuns` in `utils/edit-display.ts`).
+ */
+function chipRunPiece(chip: Element): RunPiece {
+  const text = chip.getAttribute(TAG_ATTR) ?? "";
+  return { kind: isWholeTemplate(text) ? "template" : "literal", text };
+}
+
+/** The text piece a chip stands for: a whole member, or part of a string ({@link chipRunPiece}). */
 function chipPiece(chip: Element): TextPiece {
-  return {
-    kind: chip.hasAttribute(TAG_MEMBER_ATTR) ? "member" : "template",
-    text: chip.getAttribute(TAG_ATTR) ?? "",
-  };
+  return chip.hasAttribute(TAG_MEMBER_ATTR)
+    ? { kind: "member", text: chip.getAttribute(TAG_ATTR) ?? "" }
+    : chipRunPiece(chip);
 }
 
 /**
- * Join a run of plain and template pieces into the one string they are.
+ * A run that holds no `${…}` as the plain text it is, or null when it is a template all the same:
+ * the author's own text holds a `${`, or a literal run cannot be read as text.
  *
- * The string is a template when the run holds a chip, and also when the author's own text holds a
- * `${`: any string with one is read as a template, whoever wrote it. In a template the author's
- * text is escaped so that it reads back as it was typed ({@link escapeTemplateText}).
+ * A literal run was spelled for the inside of a template literal. With the last expression gone
+ * from its string (the chip deleted, the run split off or wrapped on its own) the string is literal
+ * text, so the run is written as what it shows: `C:\\temp` left as it was spelled would put a
+ * second backslash on the page.
  */
-function joinRun(run: readonly TextPiece[], state: SerializeState): string {
-  const plain = run.map((piece) => piece.text).join("");
-  if (!run.some((piece) => piece.kind === "template") && !plain.includes("${")) {
+function plainRun(run: readonly RunPiece[]): string | null {
+  let out = "";
+  for (const piece of run) {
+    if (piece.kind === "template") {
+      return null;
+    }
+    const text = piece.kind === "literal" ? unescapeTemplateText(piece.text) : piece.text;
+    if (text === null) {
+      return null;
+    }
+    out += text;
+  }
+  return out.includes("${") ? null : out;
+}
+
+/**
+ * Join a run of pieces into the one string they are.
+ *
+ * The string is a template when the run holds an expression, and also when the author's own text
+ * holds a `${`: any string with one is read as a template, whoever wrote it. In a template the
+ * author's text is escaped so that it reads back as it was typed ({@link escapeTemplateText}), and
+ * a literal run stays as it is spelled. With no expression the string is plain text, and a literal
+ * run is the text it shows ({@link plainRun}).
+ */
+function joinRun(run: readonly RunPiece[], state: SerializeState): string {
+  const plain = plainRun(run);
+  if (plain !== null) {
+    // A chip the canvas still draws is text in the document now: drawn again, not left in place.
+    state.respelled ||= run.some((piece) => piece.kind === "literal");
     return plain;
   }
   let out = "";
@@ -819,17 +885,12 @@ function collectPieces(node: Node, out: Piece[], state: SerializeState): void {
     for (const child of node.childNodes) {
       collectPieces(child, inner, state);
     }
-    const run: TextPiece[] = [];
-    for (const piece of inner) {
-      if (piece.kind === "plain" || piece.kind === "template") {
-        run.push(piece);
-      }
-    }
+    const run = inner.filter((piece) => isRunPiece(piece));
     if (run.length === inner.length) {
       const text = joinRun(run, state);
       if (text !== "") {
-        const templated = run.some((piece) => piece.kind === "template");
-        out.push({ kind: templated ? "member" : "plain", text });
+        // Still a template: one member. With no `${` left in it, text like any other.
+        out.push({ kind: text.includes("${") ? "member" : "plain", text });
       }
     } else {
       out.push(...inner);
@@ -849,7 +910,7 @@ function collectPieces(node: Node, out: Piece[], state: SerializeState): void {
  */
 function piecesToContent(pieces: readonly Piece[], state: SerializeState): JxContentResult {
   const children: (JxMutableNode | string)[] = [];
-  let run: TextPiece[] = [];
+  let run: RunPiece[] = [];
   let members = 0;
   const flush = (): void => {
     const text = joinRun(run, state);
@@ -859,7 +920,7 @@ function piecesToContent(pieces: readonly Piece[], state: SerializeState): JxCon
     }
   };
   for (const piece of pieces) {
-    if (piece.kind === "plain" || piece.kind === "template") {
+    if (isRunPiece(piece)) {
       run.push(piece);
       continue;
     }
@@ -925,18 +986,28 @@ const BROWSER_TAG_CONVENTIONS = new Map([
  * Everything under `node` as the text it stands for, in pieces: a text node's own, and for a chip
  * the expression it carries, never the value it shows. Elements are read through.
  */
-function flattenText(node: Node, out: TextPiece[]): void {
+function flattenText(node: Node, out: RunPiece[]): void {
   if (node.nodeType === Node.TEXT_NODE) {
     out.push({ kind: "plain", text: node.textContent ?? "" });
     return;
   }
   if (isChipNode(node)) {
-    out.push({ kind: "template", text: node.getAttribute(TAG_ATTR) ?? "" });
+    out.push(chipRunPiece(node));
     return;
   }
   for (const child of node.childNodes) {
     flattenText(child, out);
   }
+}
+
+/** Whether `el` holds an element that is neither a chip nor the element one member is drawn as. */
+function holdsMarkup(el: Element): boolean {
+  for (const child of el.children) {
+    if (!child.hasAttribute(TAG_ATTR) && !child.hasAttribute(TEXT_ATTR)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /**
@@ -947,51 +1018,63 @@ function flattenText(node: Node, out: TextPiece[]): void {
  */
 function domNodeToJx(el: Element & HTMLOrSVGElement, state: SerializeState): JxMutableNode {
   const tag = el.tagName.toLowerCase();
-  const result: JxMutableNode = { tagName: tag };
-
-  const conventional = BROWSER_TAG_CONVENTIONS.get(tag);
-  if (conventional) {
-    result.tagName = conventional;
+  /* What the element's document node holds that the canvas cannot be read back for
+     (`editor/kept-node.ts`): written back verbatim, so a bound `href` goes back as its binding and
+     a `class` is still there. An element closed to the caret carries its whole node, and is that
+     node: nothing in it is the author's to have edited. */
+  const kept = keptNodeOf(el);
+  if (kept && el.getAttribute("contenteditable") === "false" && isString(kept.tagName)) {
+    return kept;
   }
+  const result: JxMutableNode = { ...kept, tagName: BROWSER_TAG_CONVENTIONS.get(tag) ?? tag };
 
-  // Attributes
-  // A canvas anchor is DE-LINKED in design/edit: the runtime stamps its URL as `data-jx-href` so a
-  // Click selects the anchor instead of navigating the iframe (see setCanvasDelinkAnchors). Reading
-  // Only `href` here would serialize every edited link as `[text]()` — silently destroying the URL
-  // Of any paragraph that happens to contain one.
-  const href = el.dataset.jxHref ?? el.getAttribute("href");
-  if (tag === "a" && href != null) {
-    result.attributes = { href };
+  if (tag === "a") {
+    // A canvas anchor is DE-LINKED in design/edit: the runtime stamps its URL as `data-jx-href` so a
+    // Click selects the anchor instead of navigating the iframe (see setCanvasDelinkAnchors). Reading
+    // Only `href` here would serialize every edited link as `[text]()` — silently destroying the URL
+    // Of any paragraph that happens to contain one. Read only for an attribute the document node
+    // Does not hold: a link the author just made, or one whose URL they just set (`applyLink`).
+    const attributes = { ...kept?.attributes };
+    const href = el.dataset.jxHref ?? el.getAttribute("href");
+    if (!("href" in attributes) && href != null) {
+      attributes.href = href;
+    }
     // `title` is an HTMLElement property: an HTML `<a>` reflects the attribute, an SVG `<a>` has none.
-    if ("title" in el && isString(el.title) && el.title) {
-      result.attributes.title = el.title;
+    if (!("title" in attributes) && "title" in el && isString(el.title) && el.title) {
+      attributes.title = el.title;
+    }
+    if (Object.keys(attributes).length > 0) {
+      result.attributes = attributes;
     }
   }
-  if (tag === "code") {
-    // Flattened to text, with a chip inside it written as its expression, not its value.
-    const run: TextPiece[] = [];
-    flattenText(el, run);
-    result.textContent = joinRun(run, state);
-    return result;
-  }
-
   const { childNodes } = el;
   const [only] = childNodes;
   if (childNodes.length === 1 && only && isChipNode(only) && only.hasAttribute(TAG_REF_ATTR)) {
     /* A `{ "$ref" }` text: one chip and nothing else. A reference is an object, not a string, so
        it goes back as the object it was; its chip's `data-jx-tag` is a name for it, not a
-       spelling. */
+       spelling. Read before anything flattens the element, a `<code>` included. */
     result.textContent = { $ref: only.getAttribute(TAG_REF_ATTR) ?? "" };
     return result;
   }
+  if (tag === "code" && holdsMarkup(el)) {
+    /* Markup inside `<code>` is flattened to text, with a chip inside it written as its
+       expression, not its value. One that holds only text and chips is read like any other
+       element, so a whole-template member in it is still a member. */
+    const run: RunPiece[] = [];
+    flattenText(el, run);
+    result.textContent = joinRun(run, state);
+    return result;
+  }
+
   /* Folded like a block's own content: an inline whose content is all one string (a run and a
      chip, say) is stored as one `textContent`, which is the form it was drawn from. */
   const content = nodesToContent(el, state);
   if (content.children) {
     result.children = content.children;
-  } else {
+  } else if (el.childNodes.length > 0 || kept === null) {
     result.textContent = content.textContent ?? "";
   }
+  // An element that carries its node's own keys and holds nothing (an `<img>`) has no text at all.
   return result;
 }
 

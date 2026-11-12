@@ -19,6 +19,7 @@ import {
   installCanvasImageRetry,
   isRetryableImage,
   prepareResolvedDocument,
+  isEditableMode,
 } from "./iframe-render";
 import { measureHits, startInteraction } from "./iframe-interaction";
 import { parseJxPath, serializeJxPath } from "./path-mapping";
@@ -35,6 +36,7 @@ import { startIframeSlashBridge } from "./iframe-slash";
 import { NO_TABLE, startKeyForwarding } from "./iframe-keys";
 import type { ForwardTable } from "./iframe-keys";
 import { applyIframePatch, textOpRedraws } from "./iframe-patch";
+import { stampKept } from "../editor/kept-node";
 import { disposeAllSubtrees } from "./iframe-subtree";
 import { evaluateLiveExprs } from "./iframe-eval";
 import { serializeDataScope } from "./serialize-scope";
@@ -365,6 +367,27 @@ export function startCanvasIframe(opts: {
   // Tracks which generation it (and the DOM) reflect, so patches for an in-flight/superseded render
   // Are handled correctly rather than applied against the wrong tree.
   let shadowDoc: JxMutableNode | null = null;
+
+  /**
+   * End the live edit session because its block is about to be drawn again, by a patch or by a
+   * whole render.
+   *
+   * What the block holds that the document has not seen is committed on the way out; a block that
+   * holds nothing new is only released. The difference is an undo, or any write that moved the
+   * block: the document this session's path was counted in is the one being replaced, and
+   * committing what the block still shows would write it at that path in the NEW document. That is
+   * the undone text put straight back, or, after a merge the canvas had to draw as a whole render,
+   * the removed block's text written over the block that took its index. The shadow document is the
+   * measure, read before the patch or the render is folded into it.
+   */
+  const releaseActiveEdit = (): void => {
+    const editing = getActivePath();
+    if (editing && shadowDoc && activeBlockHolds(getNodeAtPath(shadowDoc, editing))) {
+      abandonEditing();
+    } else {
+      stopEditing();
+    }
+  };
   let renderedGen = -1;
   // The mode of the LIVE render — gates the interactive surfaces (inline editing, insert zones,
   // Grab-drags) that only design/edit modes own. Adopted alongside shadowDoc.
@@ -889,12 +912,7 @@ export function startCanvasIframe(opts: {
            difference is an undo: its patch rewrites this very block, and committing what the
            block still shows would write the undone text straight back over it. The shadow
            document is the measure, read before this patch is folded into it. */
-        const editing = getActivePath();
-        if (editing && activeBlockHolds(getNodeAtPath(shadowDoc, editing))) {
-          abandonEditing();
-        } else {
-          stopEditing();
-        }
+        releaseActiveEdit();
       }
       try {
         applyIframePatch(
@@ -1094,7 +1112,7 @@ export function startCanvasIframe(opts: {
     // This render's renderComplete and the parent routes them by the host's not-yet-flipped tab
     // Identity — a commit racing a tab switch still lands in the document it belonged to.
     if (isEditing()) {
-      stopEditing();
+      releaseActiveEdit();
     }
     latestGen = msg.gen;
     // This render was posted after any update already seen, so its site style is at least as new.
@@ -1153,7 +1171,7 @@ export function startCanvasIframe(opts: {
         }
         // The old DOM stayed live across the await, so a caret may have opened in it since.
         if (isEditing()) {
-          stopEditing();
+          releaseActiveEdit();
         }
         /* Release the previous render and draw the next one in ONE task, so no frame can be
            painted between them: its reactive scopes (the root, and any surgically rendered
@@ -1177,6 +1195,12 @@ export function startCanvasIframe(opts: {
         dialogOpen = msg.dialogOpen ? serializeJxPath(msg.dialogOpen) : null;
         applyCanvasPopoverOpen(container, popoverOpen);
         applyCanvasDialogOpen(container, dialogOpen);
+        /* What each inline element holds besides its content, stamped where a commit of the block
+           around it can read it back (`editor/kept-node.ts`). From the raw document, which still
+           has the event handlers the drawn one was stripped of. */
+        if (isEditableMode(msg.mode)) {
+          stampKept(container, rawDoc, isEditableBlock);
+        }
         // Adopt this generation's shadow doc + render context now that it is the live render.
         shadowDoc = rawDoc;
         renderCtx = handle.ctx;

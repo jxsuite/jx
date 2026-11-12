@@ -81,8 +81,9 @@ import { hasElementSelection, hasSelection, inCanvas, keyScopeStack } from "../c
 import { defaultCommands } from "../commands/defaults";
 import { setActiveRegistry } from "../commands/active-registry";
 import { runReported } from "../commands/run-reported";
-import { pointerAnchor } from "../canvas/iframe-host";
+import { flushCanvasEdits, isCaretActive, pointerAnchor } from "../canvas/iframe-host";
 import type { PointerAnchor } from "../canvas/iframe-host";
+import type { Tab } from "../tabs/tab";
 import type { CommandContext } from "../commands/context";
 import type { CommandArgValues } from "../commands/command-args";
 import type { DockId as CommandDockId } from "../commands/defaults";
@@ -309,18 +310,36 @@ function closeDocument(): void {
   }
 }
 
-function undoDocument(): void {
+/**
+ * Take one history step on the active tab, after the canvas has committed what its caret holds.
+ *
+ * Typed text reaches the document on the idle tick, so a ⌘Z pressed inside that half second found a
+ * history that did not have it yet. The step it took was the one BEFORE the typing; its patch
+ * redrew the caret's block, the session ended by committing what the block still showed, and that
+ * commit put back everything the undo had just removed and cleared redo. Flushed first, the typing
+ * is the step that is undone. With no caret on the canvas there is nothing to flush and the step is
+ * taken at once.
+ */
+function stepHistory(step: (tab: Tab) => void): void {
   const tab = activeTab.value;
-  if (tab) {
-    undo(tab);
+  if (!tab) {
+    return;
   }
+  if (!isCaretActive()) {
+    step(tab);
+    return;
+  }
+  void flushCanvasEdits(tab.id).then(() => {
+    step(tab);
+  });
+}
+
+function undoDocument(): void {
+  stepHistory(undo);
 }
 
 function redoDocument(): void {
-  const tab = activeTab.value;
-  if (tab) {
-    redo(tab);
-  }
+  stepHistory(redo);
 }
 
 // ─── Canvas zoom ──────────────────────────────────────────────────────────────

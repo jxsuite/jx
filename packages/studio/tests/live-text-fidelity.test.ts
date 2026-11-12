@@ -26,6 +26,7 @@ import {
   toStored,
 } from "../src/editor/content-slice";
 import {
+  activeBlockHolds,
   commitActiveBlock,
   isEditableBlock,
   serializeContent,
@@ -231,6 +232,63 @@ describe("a string member that is one whole template stays a member", () => {
     const lone = canvas({ children: ["a ${state.name}", { tagName: "br" }], tagName: "p" }, scope);
     lone.querySelector("[data-jx-tag]")?.remove();
     expect(commitOf(lone).children?.[0]).toBe("a ");
+  });
+
+  test("markup put inside that element splits the member, and everything in it is kept", async () => {
+    const scope = await scopeOf();
+    const el = canvas(
+      { children: ["Hello ${state.name} and bye", { tagName: "br" }], tagName: "p" },
+      scope,
+    );
+    const run = el.querySelector("[data-jx-text]");
+    if (!run) {
+      throw new TypeError("no text run");
+    }
+    // Bold over "Hel": the run now holds an element, so it is no one string any more.
+    const text = textIn(run);
+    const rest = text.splitText(3);
+    const strong = document.createElement("strong");
+    strong.append(text);
+    rest.before(strong);
+    expect(commitOf(el).children?.slice(0, 2)).toEqual([
+      { tagName: "strong", textContent: "Hel" },
+      "lo ${state.name} and bye",
+    ]);
+    expect(commitOf(el).children).toHaveLength(3);
+  });
+
+  test("a run left with no chip is text like the text beside it, joined and folded", async () => {
+    const scope = await scopeOf();
+    const el = canvas({ children: ["a ${state.name}", { tagName: "br" }], tagName: "p" }, scope);
+    el.querySelector("[data-jx-tag]")?.remove();
+    el.querySelector("br")?.remove();
+    el.prepend("Intro ");
+    // A member would have stood apart as `["Intro ", "a "]`: it is plain text, so one string.
+    expect(commitOf(el)).toEqual({ textContent: "Intro a " });
+  });
+
+  test("text typed beside a chip inside <code> with markup is escaped as it is flattened", async () => {
+    const scope = await scopeOf();
+    const el = canvas(
+      { children: [{ tagName: "code", textContent: "v${state.name}" }], tagName: "p" },
+      scope,
+    );
+    const code = el.querySelector("code");
+    if (!code) {
+      throw new TypeError("no <code>");
+    }
+    const typed = document.createElement("u");
+    typed.textContent = String.raw`a\b`;
+    code.prepend(typed);
+    // Flattened to one template: the typed backslash is escaped so it still reads as typed.
+    expect(commitOf(el)).toEqual({
+      children: [{ tagName: "code", textContent: String.raw`a\\bv${"${state.name}"}` }],
+    });
+    // With the chip gone it is no template, and the text is stored as it is seen.
+    code.querySelector("[data-jx-tag]")?.remove();
+    expect(commitOf(el)).toEqual({
+      children: [{ tagName: "code", textContent: String.raw`a\bv` }],
+    });
   });
 });
 
@@ -465,30 +523,52 @@ describe("a { $ref } text in an inline child goes back as the reference it was",
   });
 });
 
-describe("an element closed to the caret is one unit of no length, on the canvas and in storage", () => {
+describe("an element closed to the caret is one unit, one position long, on the canvas and in storage", () => {
   const CLOSED: JxMutableNode = { tagName: "strong", textContent: { $ref: "#/state/name" } };
 
-  test("a cross-block delete ending after one takes only what was selected", async () => {
+  test("a cross-block delete takes one only when the selection reaches past it", async () => {
     const scope = await scopeOf();
     const head: JxMutableNode = { tagName: "p", textContent: "first" };
     const tail: JxMutableNode = { children: [CLOSED, " important text"], tagName: "p" };
-    const tab = tabWith(head, tail);
     const el = canvas(tail, scope, ["children", 1]);
-    // Just after the <strong>: nothing of the block's own text is before it.
-    expect(offsetOf(el, el, 1)).toBe(0);
-    expect(blockTextLength(el)).toBe(" important text".length);
-    const refused = mock();
-    const caret = applyRangeReplace(
-      tab,
-      { offset: 2, path: FIRST },
-      { offset: offsetOf(el, el, 1) ?? -1, path: ["children", 1] },
-      [],
-      "",
-      refused,
-    );
-    expect(caret).toEqual({ offset: 2, path: FIRST });
-    expect(refused).not.toHaveBeenCalled();
-    expect(stored(tab)).toEqual({ children: ["fi", CLOSED, " important text"], tagName: "p" });
+    // Before the <strong> and after it are two offsets, and neither counts what the element shows.
+    expect(offsetOf(el, el, 0)).toBe(0);
+    expect(offsetOf(el, el, 1)).toBe(1);
+    expect(blockTextLength(el)).toBe(1 + " important text".length);
+    /** Delete from "fi|rst" to `offset` of the tail; returns the caret and whether it was refused. */
+    const cut = (offset: number, removed?: string[]) => {
+      const tab = tabWith(head, tail);
+      const refused = mock();
+      const caret = applyRangeReplace(
+        tab,
+        { offset: 2, path: FIRST },
+        { offset, path: ["children", 1] },
+        [],
+        "",
+        refused,
+        removed,
+      );
+      return { caret, refused: refused.mock.calls.length, stored: stored(tab) };
+    };
+    // Ending before it: it is kept, with everything after it.
+    expect(cut(0)).toEqual({
+      caret: { offset: 2, path: FIRST },
+      refused: 0,
+      stored: { children: ["fi", CLOSED, " important text"], tagName: "p" },
+    });
+    // Ending after it, and said to: it goes with the selection, and no more does.
+    expect(cut(1, [refBindingKey("#/state/name")])).toEqual({
+      caret: { offset: 2, path: FIRST },
+      refused: 0,
+      stored: { tagName: "p", textContent: "fi important text" },
+    });
+    // Ending after it with nothing said is a binding lost that nobody deleted.
+    expect(cut(1)).toEqual({ caret: null, refused: 1, stored: head });
+    // And four characters further on takes exactly those four.
+    expect(cut(5, [refBindingKey("#/state/name")]).stored).toEqual({
+      tagName: "p",
+      textContent: "fiortant text",
+    });
   });
 
   test("what is atomic in storage is what the canvas closes", () => {
@@ -521,7 +601,8 @@ describe("an element closed to the caret is one unit of no length, on the canvas
   test("a slice keeps a whole inline as it is stored, and never cuts an atomic one", () => {
     const content = ["ab", { tagName: "em", textContent: "${x}" }, CLOSED, "cd"];
     expect(sliceContent(content, 0, 6)).toEqual(["ab", { tagName: "em", textContent: "${x}" }]);
-    expect(sliceContent(content, 6, 8)).toEqual([CLOSED, "cd"]);
+    expect(sliceContent(content, 6, 9)).toEqual([CLOSED, "cd"]);
+    expect(sliceContent(content, 7, 9)).toEqual(["cd"]);
   });
 });
 
@@ -570,25 +651,42 @@ describe("stored content is joined only where that changes nothing it means", ()
     expect(tab.doc.document.children).toEqual([{ tagName: "h3", textContent: "${state.name}" }]);
   });
 
-  test("a cut may not fall inside an escaped run, nor leave an escape with no template", () => {
-    const block: JxMutableNode = { tagName: "p", textContent: "C:\\\\temp ${state.name} end" };
-    for (const offset of [3, 9]) {
-      const tab = tabWith(block);
-      const refused = mock();
-      expect(
-        applyRangeReplace(
-          tab,
-          { offset, path: FIRST },
-          { offset: 2, path: ["children", 1] },
-          [],
-          "",
-          refused,
-          ["${state.name}"],
-        ),
-      ).toBeNull();
-      expect(stored(tab)).toEqual(block);
-      expect(refused).toHaveBeenCalledTimes(1);
-    }
+  test("a cut may not fall inside an escaped run; one beside it leaves the text the run showed", () => {
+    const block: JxMutableNode = {
+      tagName: "p",
+      textContent: String.raw`C:\\temp ${"${state.name}"} end`,
+    };
+    // Between the two backslashes that spell one: half an escape on each side.
+    const inside = tabWith(block);
+    const refused = mock();
+    expect(
+      applyRangeReplace(
+        inside,
+        { offset: 3, path: FIRST },
+        { offset: 2, path: ["children", 1] },
+        [],
+        "",
+        refused,
+        ["${state.name}"],
+      ),
+    ).toBeNull();
+    expect(stored(inside)).toEqual(block);
+    expect(refused.mock.calls).toEqual([[FIRST, "lost"]]);
+    // After the run: what is kept is no template any more, so it is stored as the text it showed.
+    const beside = tabWith(block);
+    expect(
+      applyRangeReplace(
+        beside,
+        { offset: 9, path: FIRST },
+        { offset: 2, path: ["children", 1] },
+        [],
+        "",
+        refused,
+        ["${state.name}"],
+      ),
+    ).toEqual({ offset: 9, path: FIRST });
+    expect(stored(beside)).toEqual({ tagName: "p", textContent: String.raw`C:\temp il` });
+    expect(refused).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -654,6 +752,9 @@ describe("content the canvas cannot draw as chips is drawn as the page draws it"
     expect(first?.getAttribute("contenteditable")).toBe("false");
     expect(second?.querySelector("data")).toBeNull();
     expect(second?.textContent).toBe("m=ADA!");
+    // Its text is a templated string child, drawn as the page draws it: closed like the first.
+    expect(second?.getAttribute("contenteditable")).toBe("false");
+    expect(second?.querySelector("tspan")?.getAttribute("contenteditable")).toBeNull();
     // HTML again inside <foreignObject>: chips are drawn there.
     expect(foreign?.querySelector("data[data-jx-tag]")).not.toBeNull();
   });
@@ -963,6 +1064,31 @@ describe("a patch that redraws the caret's block", () => {
     expect(commit).not.toHaveBeenCalled();
   });
 
+  test("activeBlockHolds: whether the caret's block shows what the document holds", async () => {
+    const { container } = await frame(DOC);
+    const h3 = container.querySelector("h3")!;
+    const literal = container.querySelector("p")!;
+    const callbacks = {
+      onCommit: () => {},
+      onEnd: () => {},
+      onInsert: () => {},
+      onSplit: () => {},
+    };
+    const heading: JxMutableNode = { tagName: "h3", textContent: BOUND };
+    // With no session there is no block to ask about.
+    expect(activeBlockHolds(heading)).toBe(false);
+    startEditing(h3, ["children", 0], callbacks);
+    expect(activeBlockHolds(heading)).toBe(true);
+    expect(activeBlockHolds(null)).toBe(false);
+    h3.append("Q");
+    expect(activeBlockHolds(heading)).toBe(false);
+    stopEditing(true);
+    // A plain session holds a prop's value, not a block's content: never "what the block holds",
+    // So a patch that disturbs it commits it rather than dropping what was typed.
+    startEditing(literal, ["children", 1], callbacks, { plainText: true });
+    expect(activeBlockHolds({ tagName: "p", textContent: "literal" })).toBe(false);
+  });
+
   test("a structural op under a parent whose own text is bound is not applied in place", async () => {
     const doc: JxMutableNode = {
       children: [
@@ -980,6 +1106,7 @@ describe("a patch that redraws the caret's block", () => {
           tagName: "section",
           textContent: { $ref: "#/state/empty" },
         },
+        { children: [{ tagName: "p", textContent: "L" }], tagName: "section" },
       ],
       tagName: "div",
     };
@@ -1004,6 +1131,21 @@ describe("a patch that redraws the caret's block", () => {
         parentPath: ["children", 1],
       },
       { index: 0, op: "remove-child", parentPath: ["children", 2] },
+      // A move between two parents is refused for either one: out of a bound one, and into one.
+      {
+        fromIndex: 0,
+        fromParentPath: ["children", 0],
+        op: "move-child",
+        toIndex: 0,
+        toParentPath: ["children", 3],
+      },
+      {
+        fromIndex: 0,
+        fromParentPath: ["children", 3],
+        op: "move-child",
+        toIndex: 0,
+        toParentPath: ["children", 1],
+      },
     ];
     for (const op of ops) {
       const { container, ctx, shadow } = await frame(doc);

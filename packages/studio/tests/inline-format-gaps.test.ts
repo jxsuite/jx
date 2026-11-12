@@ -213,3 +213,34 @@ describe("normalizeInlineContent leaves chips alone", () => {
     expect(window.getSelection()?.focusOffset).toBe(12);
   });
 });
+
+describe("normalizeInlineContent leaves an element closed to the caret alone", () => {
+  /** An `<em>` closed to the caret, holding `text`: an inline whose content is drawn from data. */
+  const closed = (text: string): string => `<em contenteditable="false">${text}</em>`;
+
+  test("it is not merged with a same-tag inline beside it, on either side", () => {
+    const after = mount(`<em>x</em>${closed("VALUE")}`);
+    normalizeInlineContent(after);
+    expect(after.innerHTML).toBe(`<em>x</em>${closed("VALUE")}`);
+    const before = mount(`${closed("VALUE")}<em>x</em>`);
+    normalizeInlineContent(before);
+    expect(before.innerHTML).toBe(`${closed("VALUE")}<em>x</em>`);
+    // Two open ones still are.
+    const open = mount("<em>x</em><em>y</em>");
+    normalizeInlineContent(open);
+    expect(open.innerHTML).toBe("<em>xy</em>");
+  });
+
+  test("it is not collapsed into a same-tag wrapper, nor is what it holds collapsed into it", () => {
+    const inner = mount(`<em>${closed("VALUE")}</em>`);
+    normalizeInlineContent(inner);
+    expect(inner.innerHTML).toBe(`<em>${closed("VALUE")}</em>`);
+    const outer = mount(closed("<em>VALUE</em>"));
+    normalizeInlineContent(outer);
+    expect(outer.innerHTML).toBe(closed("<em>VALUE</em>"));
+    // Three open wrappers of one tag collapse to one, and none of it throws.
+    const triple = mount("<em><em><em>x</em></em></em>");
+    expect(() => normalizeInlineContent(triple)).not.toThrow();
+    expect(triple.innerHTML).toBe("<em>x</em>");
+  });
+});

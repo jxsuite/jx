@@ -32,7 +32,7 @@ import {
   chipSources,
   removeChip,
   removedSources,
-  snapRangeOutOfChips,
+  snapSelectionOutOfChips,
 } from "./iframe-chips";
 import type { Side } from "./iframe-chips";
 import {
@@ -353,35 +353,7 @@ export function startEditableRoot(
     if (!block) {
       return false;
     }
-    /* Backward when the anchor comes after the focus: a range from one to the other collapses,
-       because a range's end cannot precede its start. */
-    let backward = false;
-    if (!sel.isCollapsed && sel.anchorNode && sel.focusNode) {
-      const order = doc.createRange();
-      order.setStart(sel.anchorNode, sel.anchorOffset);
-      order.setEnd(sel.focusNode, sel.focusOffset);
-      backward = order.collapsed;
-    }
-    const range = sel.getRangeAt(0).cloneRange();
-    if (!snapRangeOutOfChips(block.el, range)) {
-      return false;
-    }
-    if (backward) {
-      sel.setBaseAndExtent(
-        range.endContainer,
-        range.endOffset,
-        range.startContainer,
-        range.startOffset,
-      );
-    } else {
-      sel.setBaseAndExtent(
-        range.startContainer,
-        range.startOffset,
-        range.endContainer,
-        range.endOffset,
-      );
-    }
-    return true;
+    return snapSelectionOutOfChips(block.el, sel);
   };
 
   const syncActiveBlock = () => {
