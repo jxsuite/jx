@@ -337,7 +337,7 @@ Formatting applies to a range, so the buttons are disabled for a collapsed caret
 
 ### 4.5 Live data on the editing canvas
 
-> **Status: Pending.** The canvas this section describes does not ship. Edit and Design draw a bound `textContent` as `❪ expr ❫`, one row per repeater with its row-bound values replaced by stand-ins, and a `$switch` as its first case (§4.1, `prepareForEditMode` in `packages/studio/src/utils/edit-display.ts`); remote data is fetched in Preview alone (§4.1), and Open in Browser serves a page and nothing else (§10.1). Of the three guards below, the only part that ships is §8.2.7's refusal, which covers a binding held by a string member of `children` and nothing else.
+> **Status: Pending.** The canvas this section describes does not ship. Edit and Design draw a bound `textContent` as `❪ expr ❫`, one row per repeater with its row-bound values replaced by stand-ins, and a `$switch` as its first case (§4.1, `prepareForEditMode` in `packages/studio/src/utils/edit-display.ts`); and remote data is fetched in Preview alone (§4.1). Of the three guards below, the only part that ships is §8.2.7's refusal, which covers a binding held by a string member of `children` and nothing else. Of running things without Preview, Open in Browser for a component and a layout ships (`openInBrowserTarget` in `packages/studio/src/surfaces/commandbar.ts`, `packages/server/src/preview-harness.ts`, §10.1); `canvas.setStateValue` and its Data panel control do not.
 
 **Edit and Design show the data, not the binding.** Every binding the page will resolve is resolved on the editing canvas, against the document's real scope, by the runtime that will render the built page. The transform that prepares a document for an editable view stays the one place the parent changes what the frame is given: it still strips event handlers, and the runtime still de-links, de-popovers and de-commands stamped nodes (§4.2.2, §4.2.3). It no longer replaces a value with a label, a placeholder or a sample. A row-bound attribute, a media `src`, an `innerHTML` and a style value are each the value the row gives them. An image placeholder is drawn only for a `src` that is missing or failed to load, never for one that is merely bound. A binding that fails to evaluate yields no value, so a boolean attribute bound to it (`hidden`) is removed rather than left standing.
 
@@ -367,7 +367,7 @@ The round trip is the test of all three: for any template, and for scope values 
 
 **A state value can be set for the session.** `canvas.setStateValue` takes `{ key, value }` and overrides that state entry's value on the canvas; a `null` value removes the override. The Data panel offers the same control on a row. An override is per-tab view state: it writes nothing to the document, takes no undo entry and is not replicated. It is how a component's states are exercised without leaving the editing canvas.
 
-**Open in Browser runs pages, components and layouts.** `view.openInBrowser` (§10.1) accepts a component or a layout as well as a page: the backend renders the document alone, on a route of its own, with the tab's test props. Between the editing canvas, which shows resolved data, and the browser, which runs handlers, navigation and server functions for real, nothing is left that only the Preview toggle (§4.2) can show; §4.2 describes that toggle for as long as it ships.
+**Open in Browser runs pages, components and layouts.** `view.openInBrowser` (§10.1) accepts a component or a layout as well as a page: the backend renders the document alone, on a route of its own, with the tab's test props. A component is used once on a page nobody wrote, which carries the project's `<head>`, `style`, `$elements` and `$site`/`$page` as a real page would and no layout; a layout wraps one placeholder per slot it declares. A component whose props have neither a default nor a test value still opens, with its declared defaults and a sentence naming the props that are unset. Between the editing canvas, which shows resolved data, and the browser, which runs handlers, navigation and server functions for real, nothing is left that only the Preview toggle (§4.2) can show; §4.2 describes that toggle for as long as it ships.
 
 **Every control here is a setter.** `canvas.setActiveRow`, `canvas.setRepeaterRows`, `canvas.setSwitchCase`, `canvas.setStateValue`, and §6.9's `canvas.setTagPopover` and `canvas.setBindingDisplay`, each name the state they end in (§13.5), so each can be scripted and repeated. The messages the frame needs for them are announced in a capability list on the frame's `ready` message: the frame bundle ships prebuilt, a message kind the other side does not know is dropped without a word, and a host must be able to tell an old frame from a broken one.
 
@@ -1615,7 +1615,7 @@ A source too large to bake is refused before anything is decoded, with the limit
 
 ### 10.1 Open in Browser
 
-> **Status: Partial.** The route-addressed live preview, the dirty-document overlay, the per-project origin with acknowledged reuse, the `buildSite` fallback and all seven reasons ship (`packages/studio/src/surfaces/commandbar.ts`, `preview/preview-overlay.ts`, `packages/server/src/live-preview.ts`). The blocked state does not: `view.openInBrowser` is hidden by `when: ctx.project.isSite`, its enablement asks only for an open document, so a non-page renders enabled and says nothing until pressed, the generic `requires` sentence appearing only with no document open, and a blocked invocation reports through `notify.warn` rather than the status bar, which §16.2 now keeps free of transient messages.
+> **Status: Partial.** The route-addressed live preview, the dirty-document overlay, the per-project origin with acknowledged reuse, the `buildSite` fallback, the component and layout harness and all eight reasons ship (`packages/studio/src/surfaces/commandbar.ts`, `preview/preview-overlay.ts`, `packages/server/src/live-preview.ts`, `packages/server/src/preview-harness.ts`). The blocked state does not: `view.openInBrowser` is hidden by `when: ctx.project.isSite`, its enablement asks only for an open document, so a document that is not a page, a component or a layout renders enabled and says nothing until pressed, the generic `requires` sentence appearing only with no document open, and a blocked invocation reports through `notify.warn` rather than the status bar, which §16.2 now keeps free of transient messages.
 
 Studio closes the loop from "I changed something" to "I looked at the real page": **Open in Browser** (toolbar, beside Save; `Cmd+Shift+O`) hands the active page's route to the user's own browser through the same seam Preview link clicks use (`canvas/preview-navigate.ts`, §4.2), so on desktop it reaches the real browser rather than a webview.
 
@@ -1659,17 +1659,20 @@ That last row is the reason a live preview is not merely a degraded build: it is
 
 **Content, `$src` classes and `timing: "server"` resolve when the backend can reach a resolver, and this is a property of the BACKEND rather than of the mode.** A hosted one cannot run project code at any price, so a content collection renders as an empty list there. A desktop or dev-server backend can, and mounts the resolver on the preview origin behind a credential of its own (specs/server.md §3.4) — without which a preview of a blog is a preview of its chrome.
 
-The action is never hidden: when a page cannot be resolved it renders **disabled with the reason in its tooltip**, one of —
+**A component and a layout have no route, and each opens all the same.** A document under `components/` or `layouts/` resolves to a harness address on the same origin, `/__jx_live__/harness/<project path>` (specs/server.md §3.4), handed to `previewSite` exactly as a route is: the same tab is retargeted, the same overlay carries its unsaved edits and the same stream reloads it. A component is run with the tab's test props (§4.5), which travel in the address as a `props` query parameter holding JSON, so a reload and a retarget render the same thing with no store behind them. Studio writes the address without a key and never holds one: the origin applies test props only to an address carrying a key it mints and adds itself on the way to the tab (specs/server.md §3.4), so a hand-written address renders the component's defaults, and an address copied from the tab works only while that preview origin lives. Values whose encoded form would pass 8192 characters are left out and the report says so; the component then opens with its defaults. A layout takes no props and wraps placeholder content. What the author is told names the document, never the address. This is a live preview's alone: a build has pages and nothing else, so on a backend with only `buildSite` a component or a layout reports that it cannot be run on its own and nothing is built.
 
-| Condition                       | Reason                                                            |
-| ------------------------------- | ----------------------------------------------------------------- |
-| No open document                | Open a page to view it in a browser.                              |
-| Project is not a site           | This project does not build a site.                               |
-| Document is not under `pages/`  | Only pages have a route — `<path>` is not under pages/.           |
-| Catch-all route (`[...rest]`)   | Catch-all routes match many pages — open a generated one instead. |
-| Dynamic route with unset params | Pick a value for `:<param>` to open one of this route's pages.    |
-| Backend cannot preview or build | This backend cannot preview the site.                             |
-| Backend serves no origin        | This backend serves no preview of the site.                       |
+The action is never hidden: when a document cannot be resolved it renders **disabled with the reason in its tooltip**, one of —
+
+| Condition                                   | Reason                                                                           |
+| ------------------------------------------- | -------------------------------------------------------------------------------- |
+| No open document                            | Open a page to view it in a browser.                                             |
+| Project is not a site                       | This project does not build a site.                                              |
+| Document is no page, component or layout    | Only pages, components and layouts open in a browser — `<path>` is none of them. |
+| Catch-all route (`[...rest]`)               | Catch-all routes match many pages — open a generated one instead.                |
+| Dynamic route with unset params             | Pick a value for `:<param>` to open one of this route's pages.                   |
+| Backend cannot preview or build             | This backend cannot preview the site.                                            |
+| Component or layout, backend can only build | This backend cannot run a `<kind>` on its own — open a page that uses it.        |
+| Backend serves no origin                    | This backend serves no preview of the site.                                      |
 
 Invoked by chord while blocked, the reason goes to the status bar instead of opening nothing.
 

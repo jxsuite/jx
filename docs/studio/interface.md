@@ -74,7 +74,9 @@ Nothing is compiled on the way there. Your project's own files are served as a s
 
 Press it again and you get **the same tab**, moved to whatever page you're on now. One project, one preview tab, however many times you press it. Your browser won't come forward on its own when that happens, because a page can't raise a tab you're not looking at, so Studio tells you which page it moved to and you switch over when you're ready. Close the tab and the next press opens a fresh one.
 
-It is always there. When the open file has no route it's disabled and its tooltip says why: a component isn't a page, a `[slug]` route needs a value picked in the pane context bar's **resolving with** popover first, and a project that doesn't build a site has nothing to serve.
+It works on more than pages. With a component or a layout open, it runs that file on its own: a component with the test values you've set, a layout around placeholder content. See [Run a component in your browser](/docs/studio/design/components#run-a-component-in-your-browser).
+
+It is always there. When it can't open the file you're on, it tells you why: a data file is not a page, a component or a layout, a `[slug]` route needs a value picked in the pane context bar's **resolving with** popover first, and a project that doesn't build a site has nothing to serve.
 
 **Build Site** is the other half, and it answers a different question: not "what does this page look like?" but "does my site build?" It's in the Studio menu and the Command Center. It runs the real compiler (bundling, image variants, the sitemap and the rest) and reports what it produced. That's the one to reach for before you publish; Open in Browser is the one for everything else. It builds what you would publish, so [held entries](/docs/framework/site/content-collections#holding-entries-back) are left out, and **Open in Browser** still shows them. It does not clear the output folder first, so a page an earlier build wrote stays until the next `jx build`.
 

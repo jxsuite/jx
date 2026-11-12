@@ -422,7 +422,9 @@ describe("gating", () => {
     expect(registry.isEnabled("view.openInBrowser")).toBe(false);
     /* Nothing is built on the way here any more, so what it waits for is a document with a
        route rather than an output file. */
-    expect(registry.disabledReason("view.openInBrowser")).toBe("a page to preview");
+    expect(registry.disabledReason("view.openInBrowser")).toBe(
+      "a page, component or layout to preview",
+    );
   });
 
   test("Undo is visible but disabled on an open document with no history", () => {

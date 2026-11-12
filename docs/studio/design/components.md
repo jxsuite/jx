@@ -1,6 +1,6 @@
 ---
 title: "Working with components"
-description: "Turn any selection into a reusable component in Jx Studio, wire its props on the Content tab, add slots, and preview it with test values."
+description: "Turn a selection into a reusable component in Jx Studio, wire its props, add slots, preview it with test values, and run it in your browser."
 code:
   - packages/studio/src/editor/convert-to-component.ts
   - packages/studio/src/create/element-name.ts
@@ -12,6 +12,8 @@ code:
   - packages/studio/src/editor/insert-component.ts
   - packages/studio/src/utils/prop-choices.ts
   - packages/studio/src/panels/site-panel.ts
+  - packages/studio/src/surfaces/commandbar.ts
+  - packages/server/src/preview-harness.ts
 ---
 
 # Working with components
@@ -60,6 +62,22 @@ By default an instance renders exactly what the component defines. A **slot** is
 A component file open on its own renders with its defaults, but defaults are often empty. Open the context bar's **resolving with** popover and you get one field per prop, stacked; type a value to see the component render with it, live on the canvas at every breakpoint. Numbers, `true`/`false`, and lists in JSON form are understood as such; anything else counts as text. Each field is also a command, so you can set one by name without reaching for the popover: press :kbd[⌘K] and type `>Set Test Value`.
 
 Test values are a preview lens only: they're never saved into the component, and clearing a field returns the prop to its default. They pair with the **Preview** toggle described in **[Modes and preview](/docs/studio/interface/modes)**.
+
+## Run a component in your browser
+
+The canvas shows you a component. To use one, with its buttons, forms and scripts doing what they will do on a real page, press **Open in Browser** (:kbd[⇧⌘O] on macOS, :kbd[Ctrl+Shift+O] on Windows/Linux) while the component's file is the open document. Your browser opens the component on its own, on a page that holds nothing else. That page still has your site's styles, fonts and `<head>`, and the same site data a real page gets, so the component looks and behaves the way it will once it's placed. It has no layout around it.
+
+Your test values come along. Whatever you set in the **resolving with** popover is what the component opens with, and the page keeps them when it reloads. Keep editing and it reloads as you type, unsaved changes included, in the same tab every time. A changed test value is the one thing that waits for you: press **Open in Browser** again and the same tab takes the new values, or goes back to the defaults if you cleared them.
+
+Test values only apply to a tab that Studio opened. The address in that tab carries a key belonging to this preview session, so you can reload it or copy it into another browser while the preview is running. Once Studio closes, or if someone types an address of their own, the component opens with its defaults and a line above it says the test values were not applied.
+
+A component opens even when some of its props have no value yet. It renders with its defaults, and a line above it names the props that have neither a default nor a test value, so an empty-looking component tells you why. Two things are left out on purpose, and the page says so when it happens: a test value written as an expression (text containing `${`), because a web address carries plain values only, and a set of values too large to fit in an address.
+
+A **layout** opens the same way. Open the layout's file, press **Open in Browser**, and you get the layout wrapped around a labeled placeholder for each slot it has, with its navigation and links working.
+
+:::doc-note
+This needs the desktop app or the dev server, which serve your project live. A component written in a format other than `.json` or `.jxn` can't be opened on its own, and the page that opens says so.
+:::
 
 :::doc-note
 A component is a plain file (`components/pricing-card.jxn`, in [Jx Notation](/docs/framework/concepts/jxn-files)), and converting also records a reference to it in the page's `$elements` list. The format is described in **[Components](/docs/framework/concepts/components)**.

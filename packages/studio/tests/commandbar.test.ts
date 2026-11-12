@@ -877,12 +877,197 @@ describe("openInBrowserTarget", () => {
       reason: "This project does not build a site.",
     });
     openSiteProject();
-    expect(toolbar.openInBrowserTarget(pageTab("components/Card.json"))).toEqual({
-      reason: "Only pages have a route — components/Card.json is not under pages/.",
+    expect(toolbar.openInBrowserTarget(pageTab("data/facts.json"))).toEqual({
+      reason:
+        "Only pages, components and layouts open in a browser — data/facts.json is none of them.",
     });
     expect(toolbar.openInBrowserTarget(pageTab("pages/docs/[...rest].json"))).toEqual({
       reason: "Catch-all routes match many pages — open a generated one instead.",
     });
+  });
+});
+
+describe("openInBrowserTarget — a component or a layout on its own", () => {
+  test("a component resolves to its harness address, with no query when it has no test values", () => {
+    openSiteProject();
+    expect(toolbar.openInBrowserTarget(pageTab("./components/site-card.json"))).toEqual({
+      harness: { documentPath: "components/site-card.json", dropped: false, kind: "component" },
+      path: "/__jx_live__/harness/components/site-card.json",
+    });
+  });
+
+  test("its test values travel in the address, as JSON", () => {
+    openSiteProject();
+    const tab = pageTab("components/site-card.json");
+    tab.session.ui.previewProps = { count: 3, heading: "Hi & <bye>" };
+    const target = toolbar.openInBrowserTarget(tab);
+    if (!("path" in target)) {
+      throw new Error("a component must resolve to an address");
+    }
+    const url = new URL(target.path, SITE_ORIGIN);
+    expect(url.pathname).toBe("/__jx_live__/harness/components/site-card.json");
+    expect(JSON.parse(url.searchParams.get("props")!)).toEqual({
+      count: 3,
+      heading: "Hi & <bye>",
+    });
+  });
+
+  test("an empty set of test values adds no query", () => {
+    openSiteProject();
+    const tab = pageTab("components/site-card.json");
+    tab.session.ui.previewProps = {};
+    expect(toolbar.openInBrowserTarget(tab)).toMatchObject({
+      path: "/__jx_live__/harness/components/site-card.json",
+    });
+  });
+
+  test("a path segment is encoded, so a file name cannot become a query or a fragment", () => {
+    openSiteProject();
+    expect(toolbar.openInBrowserTarget(pageTab("components/ui/a b?#.json"))).toMatchObject({
+      path: "/__jx_live__/harness/components/ui/a%20b%3F%23.json",
+    });
+  });
+
+  test("values too large for an address are left out, and the target says so", () => {
+    openSiteProject();
+    const tab = pageTab("components/site-card.json");
+    tab.session.ui.previewProps = { heading: "x".repeat(9000) };
+    expect(toolbar.openInBrowserTarget(tab)).toEqual({
+      harness: { documentPath: "components/site-card.json", dropped: true, kind: "component" },
+      path: "/__jx_live__/harness/components/site-card.json",
+    });
+  });
+
+  test("a layout resolves to its harness address and never carries test values", () => {
+    openSiteProject();
+    const tab = pageTab("layouts/base.json");
+    tab.session.ui.previewProps = { heading: "ignored" };
+    expect(toolbar.openInBrowserTarget(tab)).toEqual({
+      harness: { documentPath: "layouts/base.json", dropped: false, kind: "layout" },
+      path: "/__jx_live__/harness/layouts/base.json",
+    });
+  });
+});
+
+describe("runOpenInBrowser — a component or a layout on its own", () => {
+  function installPreviewingPlatform(result: Partial<SitePreviewResult> = {}) {
+    const routes: string[] = [];
+    installMockPlatform({
+      canvasUrl: `${SITE_ORIGIN}/__studio__/canvas.html`,
+      clearPreviewOverlay: () => Promise.resolve(),
+      previewSite: async (opts: { route: string }) => {
+        routes.push(opts.route);
+        return {
+          errors: [],
+          files: 0,
+          mode: "live" as const,
+          reused: false,
+          routes: 4,
+          url: SITE_ORIGIN,
+          ...result,
+        };
+      },
+      setPreviewOverlay: () => Promise.resolve(),
+    });
+    return routes;
+  }
+
+  /** Run the action and collect what it handed to the browser. */
+  async function run(): Promise<string[]> {
+    const opened: string[] = [];
+    setPreviewNavigateHandler((url) => opened.push(url));
+    try {
+      await toolbar.runOpenInBrowser();
+    } finally {
+      setPreviewNavigateHandler(null);
+    }
+    return opened;
+  }
+
+  test("a component opens at its harness address, and the report names the file", async () => {
+    openSiteProject();
+    const tab = pageTab("components/site-card.json");
+    tab.session.ui.previewProps = { heading: "Hi" };
+    const routes = installPreviewingPlatform();
+    const opened = await run();
+    const expected = `/__jx_live__/harness/components/site-card.json?props=${encodeURIComponent('{"heading":"Hi"}')}`;
+    expect(routes).toEqual([expected]);
+    expect(opened).toEqual([`${SITE_ORIGIN}${expected}`]);
+    const message = String(notified.mock.calls.at(-1)![0]);
+    expect(message).toContain("components/site-card.json on its own, with its test values");
+    expect(message).toContain("handlers run for real");
+    expect(message).not.toContain("props=");
+  });
+
+  test("a component with no test values is not said to have any", async () => {
+    openSiteProject();
+    pageTab("components/site-card.json");
+    installPreviewingPlatform();
+    await run();
+    const message = String(notified.mock.calls.at(-1)![0]);
+    expect(message).toContain("components/site-card.json on its own — its handlers run for real.");
+    expect(message).not.toContain("test values");
+  });
+
+  test("a layout opens around placeholder content", async () => {
+    openSiteProject();
+    pageTab("layouts/base.json");
+    installPreviewingPlatform();
+    const opened = await run();
+    expect(opened).toEqual([`${SITE_ORIGIN}/__jx_live__/harness/layouts/base.json`]);
+    expect(notified.mock.calls.at(-1)![0]).toContain("placeholder content");
+  });
+
+  test("a reused tab is told the document, not the address", async () => {
+    openSiteProject();
+    const tab = pageTab("components/site-card.json");
+    tab.session.ui.previewProps = { heading: "Hi" };
+    installPreviewingPlatform({ reused: true });
+    const opened = await run();
+    expect(opened).toEqual([]);
+    const message = String(notified.mock.calls.at(-1)![0]);
+    expect(message).toContain("switch to your browser to see components/site-card.json");
+    expect(message).not.toContain("props=");
+  });
+
+  test("test values that would not fit are reported, fresh tab or reused", async () => {
+    openSiteProject();
+    const tab = pageTab("components/site-card.json");
+    tab.session.ui.previewProps = { heading: "x".repeat(9000) };
+    installPreviewingPlatform();
+    const opened = await run();
+    expect(opened).toEqual([`${SITE_ORIGIN}/__jx_live__/harness/components/site-card.json`]);
+    expect(notified.mock.calls.at(-1)![0]).toContain("too large to carry");
+
+    installPreviewingPlatform({ reused: true });
+    expect(await run()).toEqual([]);
+    expect(notified.mock.calls.at(-1)![0]).toContain("too large to carry");
+  });
+
+  test("a backend's own problems are reported ahead of the harness sentence", async () => {
+    openSiteProject();
+    pageTab("components/site-card.json");
+    installPreviewingPlatform({ errors: ["pages/big.json is too large to preview unsaved"] });
+    const opened = await run();
+    expect(opened).toHaveLength(1);
+    expect(notified.mock.calls.at(-1)![0]).toContain("too large to preview unsaved");
+  });
+
+  test("a backend that can only build says a component has no built address", async () => {
+    openSiteProject();
+    pageTab("components/site-card.json");
+    let built = 0;
+    installMockPlatform({
+      buildSite: () => {
+        built += 1;
+        return Promise.resolve({ errors: [], files: 0, routes: 0, url: SITE_ORIGIN });
+      },
+      canvasUrl: `${SITE_ORIGIN}/__studio__/canvas.html`,
+    });
+    const opened = await run();
+    expect(opened).toEqual([]);
+    expect(built).toBe(0);
+    expect(notified.mock.calls.at(-1)![0]).toContain("cannot run a component on its own");
   });
 });
 
