@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.0.33](https://github.com/jxsuite/jx/compare/formulas-v0.0.32...formulas-v0.0.33) (2026-11-12)
+
+
+### Features
+
+* live-canvas foundations (tag model, formulas, runtime splice, static empty lists) ([#640](https://github.com/jxsuite/jx/issues/640)) ([2106c38](https://github.com/jxsuite/jx/commit/2106c380eb2661a7eda1a0f6d6f5b6aa8686b8a7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/schema bumped to 6.0.0
+  * devDependencies
+    * @jxsuite/runtime bumped to 7.0.0
+
 ## [0.0.32](https://github.com/jxsuite/jx/compare/formulas-v0.0.31...formulas-v0.0.32) (2026-11-11)
 
 

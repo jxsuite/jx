@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.8.9](https://github.com/jxsuite/jx/compare/connector-v0.8.8...connector-v0.8.9) (2026-11-12)
+
+
+### Bug Fixes
+
+* **security:** generic 500s, sign-out cache clearing, consistent framing, hashed speculation rules ([#624](https://github.com/jxsuite/jx/issues/624)) ([5e8c2e5](https://github.com/jxsuite/jx/commit/5e8c2e54b4b1ad837b7435e72942c2b7dbc61d49))
+* **server:** the site worker refuses cross-site calls and its answers stay out of caches ([#621](https://github.com/jxsuite/jx/issues/621)) ([7a9d405](https://github.com/jxsuite/jx/commit/7a9d405a24ff2955027f1b6ae835dd7373dbc728))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/schema bumped to 6.0.0
+
 ## [0.8.8](https://github.com/jxsuite/jx/compare/connector-v0.8.7...connector-v0.8.8) (2026-11-11)
 
 

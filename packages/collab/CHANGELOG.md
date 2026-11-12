@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.12.0](https://github.com/jxsuite/jx/compare/collab-v0.11.10...collab-v0.12.0) (2026-11-12)
+
+
+### Features
+
+* **schema,collab,compiler,studio:** a document's script in .jxn, Studio and shared sessions ([#628](https://github.com/jxsuite/jx/issues/628)) ([ddb7734](https://github.com/jxsuite/jx/commit/ddb7734555e3b26d26ef339fab651b5e2768d75f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/schema bumped to 6.0.0
+
 ## [0.11.10](https://github.com/jxsuite/jx/compare/collab-v0.11.9...collab-v0.11.10) (2026-11-11)
 
 
