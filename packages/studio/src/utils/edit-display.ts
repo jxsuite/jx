@@ -27,6 +27,7 @@ import {
   parseDynamicTag,
   templateSegments,
 } from "@jxsuite/schema/dynamic-tag";
+import { plainMarkup } from "./plain-markup";
 import { isDocumentContainer } from "./strip-events";
 import type { RebuiltNode } from "./strip-events";
 
@@ -914,16 +915,61 @@ function holdsChildren(children: JxDocumentValue | undefined): boolean {
   return Array.isArray(children) ? children.length > 0 : children != null;
 }
 
+/** The keys a node draws its content from, as a node or anything that carries content holds them. */
+export interface DrawnContent {
+  children?: JxDocumentValue | undefined;
+  innerHTML?: JxDocumentValue | undefined;
+  innerText?: JxDocumentValue | undefined;
+  textContent?: JxDocumentValue | null | undefined;
+}
+
+/**
+ * The content a node's literal `innerHTML` spells, when a commit can write all of it back as text
+ * and elements (`utils/plain-markup.ts`), or null: the node has no literal `innerHTML`, or holds
+ * markup the canvas cannot be read back for, or holds text or children beside it, which is content
+ * spelled twice and nothing a write could keep in step.
+ */
+export function openMarkup(node: DrawnContent): (JxMutableNode | string)[] | null {
+  const { innerHTML, textContent } = node;
+  if (!isString(innerHTML) || innerHTML === "" || isTemplateString(innerHTML)) {
+    return null;
+  }
+  if (holdsChildren(node.children) || (textContent != null && textContent !== "")) {
+    return null;
+  }
+  return plainMarkup(innerHTML);
+}
+
+/** Whether a literal `innerHTML` or `innerText` draws content no commit can write back. */
+export function holdsOpaqueLiteral(node: DrawnContent): boolean {
+  const { innerHTML } = node;
+  const text = node[INNER_TEXT];
+  if (isString(text) && text !== "" && !isTemplateString(text)) {
+    // Rendered text: its line breaks are drawn as elements the document does not hold.
+    return true;
+  }
+  if (!isString(innerHTML) || innerHTML === "" || isTemplateString(innerHTML)) {
+    return false;
+  }
+  return openMarkup(node) === null;
+}
+
 /**
  * Whether what a node draws is a VALUE rather than the author's text, read from the document: its
  * children are computed, its `innerHTML` or `innerText` is bound, its text is a `{ "$ref" }`, or
- * its text is a template that shares the node with children. The canvas closes such a node to the
- * caret (studio.md §4.5), and nothing that slices or joins stored content may reach inside one,
- * because no offset counted on the canvas means anything in there (`editor/content-slice.ts`).
+ * its text is a template that shares the node with children. A literal `innerHTML` that is more
+ * than text and bare formatting elements, and a literal `innerText`, close their node the same way:
+ * the content is the author's, but the canvas cannot be read back for it ({@link openMarkup}). The
+ * canvas closes such a node to the caret (studio.md §4.5), and nothing that slices or joins stored
+ * content may reach inside one, because no offset counted on the canvas means anything in there
+ * (`editor/content-slice.ts`).
  */
 export function isClosedContent(node: JxMutableNode): boolean {
   const { children, textContent } = node;
   if (isTemplateString(children) || isBound(node.innerHTML) || isBound(node[INNER_TEXT])) {
+    return true;
+  }
+  if (holdsOpaqueLiteral(node)) {
     return true;
   }
   return isRef(textContent) || (isTemplateString(textContent) && holdsChildren(children));
@@ -1047,8 +1093,9 @@ function prepareNode(
     } else if (k === "$switch") {
       // The discriminant is the runtime's to resolve; it selects among the cases above.
       out[k] = v;
-    } else if ((k === "innerHTML" || k === INNER_TEXT) && isBound(v)) {
-      // Content drawn from data: live, and closed to the caret, since none of it is a document node.
+    } else if ((k === "innerHTML" || k === INNER_TEXT) && (isBound(v) || holdsOpaqueLiteral(obj))) {
+      /* Content drawn from data: live, and closed to the caret, since none of it is a document
+         node. Literal markup a commit could not write back whole is closed the same way. */
       out[k] = v;
       closed = true;
     } else if (k === "textContent" && isString(v) && v.includes("${")) {

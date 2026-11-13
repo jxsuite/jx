@@ -55,7 +55,7 @@ In **Edit** mode the page scrolls like a normal browser page instead of panning,
 
 ## Selecting elements
 
-Click any element to select it. Studio outlines it, the Inspector inspects it, and the status bar shows its position in the page structure, a clickable trail of its ancestors.
+Click any element to select it. Studio outlines it, the Inspector inspects it, and the status bar shows its position in the page structure, a clickable trail of its ancestors. Bold, italic and code text are the one exception: a click there selects the block the text belongs to, because formatting is part of the text. See **[Writing and formatting](/docs/studio/editing/writing)**.
 
 That includes the parts of the page that come from its **[layout](/docs/studio/projects/pages-layouts-components)**. The header and footer render dimmed, under a `LAYOUT · layouts/base.json` chip, and clicking one selects it and offers **Open Layout →** in the Inspector. They can't be typed into from here, because they belong to every page that uses that layout; see **[Layout elements](/docs/studio/design/properties#layout-elements)**.
 

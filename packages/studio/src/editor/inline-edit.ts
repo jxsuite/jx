@@ -284,6 +284,22 @@ export function isInlineOfBlock(el: HTMLElement): boolean {
 }
 
 /**
+ * The formatting marks: a way some of a block's text is written, with nothing of their own for an
+ * author to address. A link, an image and a `<span>` are inline too and are not marks: each holds
+ * something the Inspector edits (a URL, a source, a class).
+ */
+const TEXT_MARK_TAGS = new Set(["B", "CODE", "DEL", "EM", "I", "S", "STRONG", "SUB", "SUP", "U"]);
+
+/**
+ * Whether `el` is a formatting mark in a block's text ({@link isInlineOfBlock}). A press or a hover
+ * on one addresses the block: selected on its own, bold text was a box inside its paragraph with a
+ * Delete of its own, where the author meant the paragraph (studio.md §4.4).
+ */
+export function isTextMark(el: HTMLElement): boolean {
+  return TEXT_MARK_TAGS.has(el.tagName) && isInlineOfBlock(el);
+}
+
+/**
  * Check if a node is an inline child. When parentNode is provided, uses context-aware scoping from
  * metadata. Without parent, uses the fallback INLINE_TAGS set.
  *

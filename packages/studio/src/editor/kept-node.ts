@@ -30,8 +30,12 @@ import type { JxMutableNode } from "@jxsuite/schema/types";
 /** The attribute an inline element carries {@link keptJson} in. */
 export const KEEP_ATTR = "data-jx-keep";
 
-/** The keys that are an element's tag and content, which the canvas is read back for. */
-const CONTENT_KEYS = new Set(["tagName", "textContent", "children"]);
+/**
+ * The keys that are an element's tag and content, which the canvas is read back for. `innerHTML` is
+ * one of them wherever the element is open to the caret at all: markup a commit could not write
+ * back closes its element (`isClosedContent`), which then carries its node whole.
+ */
+const CONTENT_KEYS = new Set(["tagName", "textContent", "children", "innerHTML"]);
 
 /** Whether `node` is drawn closed to the caret: a component instance, or content that is a value. */
 function isClosedNode(node: JxMutableNode): boolean {

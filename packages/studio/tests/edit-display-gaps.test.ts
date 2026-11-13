@@ -731,14 +731,18 @@ describe("prepareForEditMode innerHTML", () => {
     expect(el.querySelector("b")?.matches("[data-jx-path]")).toBe(false);
   });
 
-  test("row-bound markup and a pointer pass through and close; literal markup is open", () => {
+  test("row-bound markup and a pointer pass through and close; plain literal markup is open", () => {
     const row = prep({ innerHTML: "${item.html}", tagName: "div" });
     expect(row.innerHTML).toBe("${item.html}");
     expect(row.attributes).toMatchObject({ contenteditable: "false" });
     const ref = prep({ innerHTML: { $ref: "#/state/html" }, tagName: "div" });
     expect<JxDocumentValue | undefined>(ref.innerHTML).toEqual({ $ref: "#/state/html" });
     expect(ref.attributes).toMatchObject({ contenteditable: "false" });
-    expect(prep({ innerHTML: "<i>x</i>", tagName: "div" }).attributes).toBeUndefined();
+    expect(prep({ innerHTML: "<em>x</em>", tagName: "div" }).attributes).toBeUndefined();
+    // Markup a commit could not write back as it stands (it stores `<i>` as `<em>`) is closed.
+    expect(prep({ innerHTML: "<i>x</i>", tagName: "div" }).attributes).toMatchObject({
+      contenteditable: "false",
+    });
   });
 });
 

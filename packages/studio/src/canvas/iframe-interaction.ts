@@ -17,7 +17,7 @@ import { nearestStampedEl, repeaterRect } from "./iframe-rows";
 import { isFunction } from "@jxsuite/schema/guards";
 import { isDisplayContents, rectOf } from "../utils/geometry";
 import { computeInsertZones, insertZonesKey } from "./iframe-insert";
-import { getActiveElement, isEditing } from "../editor/inline-edit";
+import { getActiveElement, isEditing, isTextMark } from "../editor/inline-edit";
 import type { IframeChannel } from "./iframe-channel";
 import type { IframeToParent, NodeHit, ParentToIframe } from "./iframe-protocol";
 import type { JxMutableNode } from "@jxsuite/schema/types";
@@ -38,17 +38,31 @@ function isCanvasLeave(e: Event, doc: Document): boolean {
   return target === doc || target === doc.documentElement || target === doc.body;
 }
 
-/** Walk up from an element to the nearest ancestor carrying a `data-jx-path`; null if none. */
+/**
+ * Walk up from an element to the nearest ancestor carrying a `data-jx-path`; null if none.
+ *
+ * A formatting mark in a block's text is passed over (`isTextMark`): bold text is part of its
+ * paragraph, and the paragraph is what a press on it addresses.
+ */
 function nearestPathEl(start: Element | null): HTMLElement | null {
   let el = start instanceof Element ? start : null;
   while (el) {
     // Only HTML elements are stamped (`makeStamper` skips everything else), so only they can match.
-    if (el instanceof HTMLElement && el.dataset.jxPath) {
+    if (el instanceof HTMLElement && el.dataset.jxPath && !isTextMark(el)) {
       return el;
     }
     el = el.parentElement;
   }
   return null;
+}
+
+/** {@link nearestStampedEl}, passing over a formatting mark as {@link nearestPathEl} does. */
+function nearestAddressedEl(start: Element | null): HTMLElement | null {
+  let el = nearestStampedEl(start);
+  while (el && isTextMark(el)) {
+    el = nearestStampedEl(el.parentElement);
+  }
+  return el;
 }
 
 /** Measure an already-resolved path element. Split out so callers can dedupe BEFORE measuring. */
@@ -435,7 +449,7 @@ export function startInteraction(
     movePending = 0;
     const target = moveTarget;
     moveTarget = null;
-    reportHover(nearestStampedEl(target instanceof Element ? target : null));
+    reportHover(nearestAddressedEl(target instanceof Element ? target : null));
     reportInsertZones(target, { x: moveX, y: moveY });
   };
 
