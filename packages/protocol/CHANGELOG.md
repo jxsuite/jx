@@ -1,5 +1,14 @@
 # Changelog
 
+## [6.4.1](https://github.com/jxsuite/jx/compare/protocol-v6.4.0...protocol-v6.4.1) (2026-11-13)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/schema bumped to 6.0.1
+
 ## [6.4.0](https://github.com/jxsuite/jx/compare/protocol-v6.3.0...protocol-v6.4.0) (2026-11-12)
 
 
