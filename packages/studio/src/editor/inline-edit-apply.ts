@@ -28,7 +28,14 @@ import {
   transactDoc,
 } from "../tabs/transact";
 import { defaultDef } from "../panels/shared";
-import { INNER_TEXT, needsEvaluation, refBindingKey, slotBindingKeys } from "../utils/edit-display";
+import {
+  INNER_TEXT,
+  holdsOpaqueLiteral,
+  needsEvaluation,
+  openMarkup,
+  refBindingKey,
+  slotBindingKeys,
+} from "../utils/edit-display";
 import { componentInstance, mutateImportComponent } from "./insert-component";
 
 import {
@@ -92,8 +99,11 @@ export type CommitRefused = (path: JxPath, reason: RefusalReason) => void;
  *   comes to be stored in its place.
  * - `alone`: it would have left a binding that is printed standing as a string member of its own,
  *   where an array it yields is spliced in as nodes instead (spec.md §8.4).
+ * - `markup`: a block it writes to, or removes, spells its content as a literal `innerHTML` or
+ *   `innerText` the canvas cannot be read back for (`utils/plain-markup.ts`), so there is no stored
+ *   content to join or cut and the write would have replaced markup nobody edited.
  */
-export type RefusalReason = "lost" | "alone";
+export type RefusalReason = "lost" | "alone" | "markup";
 
 /** Told the path of a block whose commit wrote nothing because it only re-spelled the block. */
 export type CommitRespelled = (path: JxPath) => void;
@@ -282,14 +292,20 @@ function carriedBindings(
 
 /**
  * Why writing `committed` over the content of `nodes` must be refused, or null when it may stand:
- * it would lose a binding ({@link dropsBinding}), or leave one that is printed standing as a member
- * of its own ({@link promotesBinding}).
+ * it would lose a binding ({@link dropsBinding}), leave one that is printed standing as a member of
+ * its own ({@link promotesBinding}), or write over literal markup that is not content a commit
+ * carries (`holdsOpaqueLiteral`).
  */
 export function bindingRefusal(
   nodes: HeldContent | readonly HeldContent[],
   committed: readonly (JxContentResult | StoredContent | undefined)[],
   removed: readonly string[] = [],
 ): RefusalReason | null {
+  for (const node of isContentList(nodes) ? nodes : [nodes]) {
+    if (node && holdsOpaqueLiteral(node)) {
+      return "markup";
+    }
+  }
   if (dropsBinding(nodes, committed, removed)) {
     return "lost";
   }
@@ -388,6 +404,20 @@ function contentKeys(content: JxMutableNode | JxContentResult): StoredContent {
   return out;
 }
 
+/**
+ * Remove the `innerHTML` of the block at `path`, in a transaction that writes its content.
+ *
+ * `innerHTML` is content too, and the one spelling no write here produces: content is stored as
+ * `children` or `textContent`. A block left holding both draws its content twice on the canvas and
+ * once, stale, in a build. Only where the key exists, for the reason the counterpart key is only
+ * cleared where it exists ({@link applyInlineCommit}).
+ */
+function dropMarkup(t: Tab, path: JxPath, node: JxMutableNode | undefined | null): void {
+  if (node && "innerHTML" in node) {
+    mutateUpdateProperty(t, path, "innerHTML");
+  }
+}
+
 /** The slot of the block at `path`. */
 function blockSlot(path: JxPath): SpliceCoordinate {
   /* SAFETY: a block with a sibling position has an element path ending in `"children", <index>`, so
@@ -443,7 +473,10 @@ export function applyInlineCommit(
     return;
   }
   if (committed && node && sameContent(node, committed)) {
-    if (stableJson(contentKeys(node)) !== stableJson(contentKeys(committed))) {
+    /* Markup the canvas drew and nobody typed in is no other spelling of the canvas: it IS what the
+       canvas holds, and there is nothing to draw again. */
+    const spelled = openMarkup(node) !== null;
+    if (!spelled && stableJson(contentKeys(node)) !== stableJson(contentKeys(committed))) {
       opts.onRespelled?.(path);
     }
     return;
@@ -461,6 +494,7 @@ export function applyInlineCommit(
         if (node?.textContent != null) {
           mutateUpdateProperty(t, path, "textContent");
         }
+        dropMarkup(t, path, node);
         mutateUpdateProperty(t, path, "children", children);
       },
       { coalesceKey: opts.coalesceKey ?? null },
@@ -475,6 +509,7 @@ export function applyInlineCommit(
         if (node?.children) {
           mutateUpdateProperty(t, path, "children");
         }
+        dropMarkup(t, path, node);
         mutateUpdateProperty(t, path, "textContent", textContent);
       },
       { coalesceKey: opts.coalesceKey ?? null },
@@ -582,11 +617,13 @@ export function applyBlockMerge(
       if (into.textContent != null) {
         mutateUpdateProperty(t, intoPath, "textContent");
       }
+      dropMarkup(t, intoPath, into);
       mutateUpdateProperty(t, intoPath, "children", merged.children);
     } else {
       if (into.children) {
         mutateUpdateProperty(t, intoPath, "children");
       }
+      dropMarkup(t, intoPath, into);
       mutateUpdateProperty(t, intoPath, "textContent", merged.textContent ?? "");
     }
     mutateRemoveNode(t, fromPath);
@@ -644,11 +681,8 @@ export function applyInlineSplit(
     return newPath;
   }
   // Both halves come from the canvas, and a chip is whole in one of them or deleted: else refused.
-  const refusal = bindingRefusal(
-    getNodeAtPath(tab.doc.document, path),
-    [before, after],
-    removedTags,
-  );
+  const node = getNodeAtPath(tab.doc.document, path);
+  const refusal = bindingRefusal(node, [before, after], removedTags);
   if (refusal) {
     onRefused?.(path, refusal);
     return path;
@@ -665,9 +699,11 @@ export function applyInlineSplit(
   transactDoc(tab, (t) => {
     if (before.textContent != null) {
       mutateUpdateProperty(t, path, "children");
+      dropMarkup(t, path, node);
       mutateUpdateProperty(t, path, "textContent", before.textContent);
     } else if (before.children) {
       mutateUpdateProperty(t, path, "textContent");
+      dropMarkup(t, path, node);
       mutateUpdateProperty(t, path, "children", before.children);
     }
     mutateInsertNode(t, parentPath, idx + 1, newNode);
@@ -705,9 +741,11 @@ function insertComponentBlock(
       mutateRemoveNode(t, path);
     } else if (commitData?.children) {
       mutateUpdateProperty(t, path, "textContent");
+      dropMarkup(t, path, getNodeAtPath(t.doc.document, path));
       mutateUpdateProperty(t, path, "children", commitData.children);
     } else if (commitData?.textContent != null) {
       mutateUpdateProperty(t, path, "children");
+      dropMarkup(t, path, getNodeAtPath(t.doc.document, path));
       mutateUpdateProperty(t, path, "textContent", commitData.textContent);
     }
     mutateInsertNode(t, parentPath, at, instance);
@@ -753,6 +791,7 @@ export function applyInlineInsert(
     }
     transactDoc(tab, (t) => {
       mutateUpdateProperty(t, path, "tagName", cmd.tag);
+      dropMarkup(t, path, getNodeAtPath(t.doc.document, path));
       mutateUpdateProperty(t, path, "children");
       const def = defaultDef(cmd.tag);
       if (def.textContent && def.textContent !== "Paragraph text") {
@@ -777,9 +816,11 @@ export function applyInlineInsert(
   transactDoc(tab, (t) => {
     if (commitData?.children) {
       mutateUpdateProperty(t, path, "textContent");
+      dropMarkup(t, path, getNodeAtPath(t.doc.document, path));
       mutateUpdateProperty(t, path, "children", commitData.children);
     } else if (commitData?.textContent != null) {
       mutateUpdateProperty(t, path, "children");
+      dropMarkup(t, path, getNodeAtPath(t.doc.document, path));
       mutateUpdateProperty(t, path, "textContent", commitData.textContent);
     }
     mutateInsertNode(t, parentPath, idx + 1, structuredClone(elementDef));
@@ -875,11 +916,13 @@ export function applyRangeReplace(
       if (head.textContent != null) {
         mutateUpdateProperty(t, from.path, "textContent");
       }
+      dropMarkup(t, from.path, head);
       mutateUpdateProperty(t, from.path, "children", joined.children);
     } else {
       if (head.children) {
         mutateUpdateProperty(t, from.path, "children");
       }
+      dropMarkup(t, from.path, head);
       mutateUpdateProperty(t, from.path, "textContent", joined.textContent ?? "");
     }
     for (const path of removals) {

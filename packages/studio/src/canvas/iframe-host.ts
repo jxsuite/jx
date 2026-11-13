@@ -1646,6 +1646,8 @@ const REFUSAL_MESSAGES: Readonly<Record<RefusalReason, string>> = {
   alone:
     "That edit would have left a binding on its own beside other content, where a list it reads is drawn as elements instead of text, so the text was left as it is. Keep some text next to the binding.",
   lost: "That edit would have replaced a binding with its current value, so the text was left as it is. To remove a binding, delete its tag.",
+  markup:
+    "That text is written as HTML markup the canvas cannot edit in place, so it was left as it is. Edit its innerHTML in the inspector or the Code view.",
 };
 
 /**
