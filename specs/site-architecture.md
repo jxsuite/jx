@@ -2,9 +2,9 @@
 
 ## File-Based Routing, Content Collections, Layouts, and Static Site Generation
 
-**Version:** 0.8.8-draft\
+**Version:** 0.8.14-draft\
 **Status:** Partial\
-**Updated:** 2026-11-11\
+**Updated:** 2026-11-13\
 **License:** MIT
 
 ---
@@ -912,7 +912,7 @@ The layout is selectable per collection and remembered, along with the filter, s
 
 ### 7.3 Markdown WYSIWYG Editing (Implemented)
 
-Markdown files (`.md`) open in **content mode** — a centered column WYSIWYG canvas where headings, paragraphs, lists, and other block elements are directly editable:
+Markdown files (`.md`) open in the **Edit** view (`studio.md` §4.2), a centred-column WYSIWYG canvas where headings, paragraphs, lists, and other block elements are directly editable:
 
 - **Inline rich text:** Click any text block to edit. `Cmd+B` (bold), `Cmd+I` (italic), `Cmd+\`` (code), plus toolbar buttons for `strong`, `em`, `del`, `sub`, `sup`, `u`.
 - **Slash commands:** Type `/` in any block to insert headings, paragraphs, lists, blockquotes, images, tables, code blocks, horizontal rules, etc.
@@ -985,11 +985,11 @@ No web standard defines an entry's publication state for a build to act on. Atom
 
 **An entry is held when any rule matches**, and the first match names why. `when` has the grammar of `where` (§6) and each rule's `label` is the words every surface shows. A type with no `hold` holds nothing, and `draft: true` on such a type is a field like any other.
 
-| Host                                  | Held entries                                                                                                                                                                  |
-| ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `jx build`                            | Left out when the type loads, so every consumer agrees: pages, `$paths`, queries, search, feeds and the sitemap. This is the default, and a host has to ask for anything else |
-| `jx build --include-held`             | Kept, for a preview deploy                                                                                                                                                    |
-| `jx dev`, Studio's canvas and Preview | Kept                                                                                                                                                                          |
+| Host                         | Held entries                                                                                                                                                                  |
+| ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `jx build`                   | Left out when the type loads, so every consumer agrees: pages, `$paths`, queries, search, feeds and the sitemap. This is the default, and a host has to ask for anything else |
+| `jx build --include-held`    | Kept, for a preview deploy                                                                                                                                                    |
+| `jx dev` and Studio's canvas | Kept                                                                                                                                                                          |
 
 A kept entry carries the label as `_meta.hold`, which a page can read to draw a chip. A build reports what it held and why, because an entry that disappears from a site with no message reads as a bug. A held entry's documents are not served from its type's asset mount, and files only it references are not published (§6). A published entry's reference to a held one stays its id, with a warning, as an id that matches no entry does (§6.3), because resolving it would embed the held entry's fields in a published page.
 
@@ -2419,6 +2419,12 @@ This spec builds on existing Jx primitives wherever possible:
 
 ## Changelog
 
+- **0.8.14-draft** (2026-11-13) — §7.3: Markdown files open in the Edit view rather than a content mode; §7.6: held entries are kept by jx dev and Studio's canvas.
+- **0.8.13-draft** (2026-11-13) — §10.4, §10.6: a project's pure named formulas reach components; the live page shell and the Studio canvas hand them to the runtime.
+- **0.8.12-draft** (2026-11-13) — CSP frame-ancestors follows security.frameOptions (DENY is 'none', false omits it) and inline speculation rules are hashed (§14.3.1).
+- **0.8.11-draft** (2026-11-13) — §14.6 the service worker never handles /_jx/* and never caches a response marked no-store or private.
+- **0.8.10-draft** (2026-11-13) — §10.4: site state reaches a page two ways, as read-only $site entries that never replace the names the site context defines and as the page's own shadowable, writable state, which a built page keeps only where it still reads it; §10.4 and §5.5 no longer describe a nested site state object, and §3.1 no longer offers site state to components.
+- **0.8.9-draft** (2026-11-13) — Palette discovery and build compilation are two rules: the palette finds a component anywhere in the project, and a build compiles every component a page, layout or project declares wherever it lives, failing on one it cannot compile.
 - **0.8.8-draft** (2026-11-11) — §2.4: starter documents are .jxn.
 - **0.8.7-draft** (2026-11-11) — §9.2.8: an <img> takes its file's focal point (IPTC Image Region) as its object-position; §16 binds IPTC Photo Metadata.
 - **0.8.6-draft** (2026-11-08) — §2.4: new projects are provisioned with project.jxn, with editor support for KDL highlighting.

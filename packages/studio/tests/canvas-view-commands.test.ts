@@ -2,11 +2,10 @@
  * The canvas pane's verbs — `canvas.setMode` / `setZoom` / `setEditZoom`, `selection.set`, and
  * `insert.data`.
  *
- * `canvas.setMode` is the record that retires `canvas.togglePreview`, the toggle six screenshots
- * went through: a toggle cannot say which state it ends in, so those six photographed whichever way
- * the default pointed. The tests that matter here are therefore the IDEMPOTENCE ones and the three
- * refusals — an unsupported mode, preview over a base mode it does not compose with, and a zoom
- * outside the range the controls silently clamp.
+ * `canvas.setMode` is a setter, never a toggle: a toggle cannot say which state it ends in, so a
+ * screenshot taken through one photographs whichever way the default pointed. The tests that matter
+ * here are therefore the IDEMPOTENCE ones and the refusals — an unsupported mode, Diff by name, and
+ * a zoom outside the range the controls silently clamp.
  */
 import { resetWorkspaceWithTab } from "./harness";
 import { beforeEach, describe, expect, mock, test } from "bun:test";
@@ -23,6 +22,7 @@ import {
   splitRight,
   workspace,
 } from "../src/workspace/workspace";
+import type { CommandArgValues } from "../src/commands/command-args";
 import type { CommandContext } from "../src/commands/context";
 import type { Tab } from "../src/tabs/tab";
 import type { CommandRegistry } from "../src/commands/registry";
@@ -44,7 +44,8 @@ void mock.module("../src/canvas/canvas-live-render.js", () => ({
 const formatIntents: { command: string; token?: string }[] = [];
 let caretPath: (string | number)[] | null = null;
 void mock.module("../src/canvas/iframe-host.js", () => ({
-  adoptCanvasPreviewMode: () => {},
+  requestTemplateEval: () => Promise.resolve(null),
+  flushCanvasEdits: () => Promise.resolve(),
   commitActiveEditSession: () => {},
   /* Three exports this file never calls, stubbed because a PARTIAL mock of a module the graph
      reaches is a load error rather than a missing stub at call time. canvas-render now draws the
@@ -196,7 +197,7 @@ beforeEach(() => {
   registry = createCommandRegistry({ getContext: () => ctx });
   registerCanvasViewCommands(registry, deps);
   registerSelectionSetCommand(registry);
-  openWith(["edit", "design", "preview", "source"]);
+  openWith(["edit", "design", "source"]);
 });
 
 describe("the records themselves", () => {
@@ -229,6 +230,10 @@ describe("the records themselves", () => {
       // A repeater's rows (§4.5): which one is addressable, and how many are drawn.
       "canvas.setActiveRow",
       "canvas.setRepeaterRows",
+      // The case of a `$switch` drawn in place of the one it selects, and the tag whose popover is
+      // Open (§4.5, §6.9): both name the state they end in, so a shot can open either.
+      "canvas.setSwitchCase",
+      "canvas.setTagPopover",
       // The language axis. Its id keeps the `i18n.` namespace and its definition site is here,
       // Because the three rendering-context closures a per-pane verb needs — the tab, the pane
       // Argument and the repaint — are local to this module. `insert.data` is the precedent.
@@ -247,8 +252,7 @@ describe("the records themselves", () => {
       "canvas.setResolvingOpen",
       // The values themselves are verbs too. They wrote `session.ui` inline while every control in
       // The popover beside them ran a command — the defect `runContextCommand`'s docstring names.
-      "canvas.setTestProp",
-      // A state value drawn in place of the document's own (§4.5): the general form of a test value.
+      // A state value drawn in place of the document's own (§4.5) is also a component's test value.
       "canvas.setStateValue",
       "canvas.setRouteParam",
       "selection.set",
@@ -262,10 +266,10 @@ describe("the records themselves", () => {
     expect(ids.some((id) => /\.toggle[A-Z]/.test(id))).toBe(false);
   });
 
-  test("canvas.setMode's enum is the observable mode set, preview included, Diff left out", () => {
+  test("canvas.setMode's enum is the mode set, Diff left out, and there is no Preview", () => {
     const modeEnum = registry.get("canvas.setMode")?.args?.properties?.mode?.enum;
     expect(modeEnum).toEqual(CANVAS_MODES.filter((mode) => mode !== "git-diff"));
-    expect(modeEnum).toContain("preview");
+    expect(modeEnum).not.toContain("preview");
     // Implicit (studio.md §3): the stage draws it, nothing asks for it by name.
     expect(modeEnum).not.toContain("git-diff");
   });
@@ -517,31 +521,171 @@ describe("canvas.setStateValue", () => {
   });
 });
 
+describe("canvas.setSwitchCase", () => {
+  const SWITCH: JxPath = ["children", 0];
+
+  /** A document whose first child is a two-case `$switch`. */
+  function withSwitch(): Tab {
+    closeAllTabs();
+    return openTab({
+      document: {
+        children: [
+          {
+            $switch: { $ref: "#/state/tab" },
+            cases: { one: { tagName: "p" }, two: { tagName: "p" } },
+            tagName: "div",
+          },
+          { tagName: "p", textContent: "Not a switch" },
+        ],
+        state: { tab: "one" },
+        tagName: "main",
+      },
+      documentPath: "/project/components/tabs.json",
+      id: "switch-tab",
+    });
+  }
+
+  test("draws the named case, once, and writes nothing to the document", () => {
+    const tab = withSwitch();
+    const before = JSON.stringify(tab.doc.document);
+    void registry.run("canvas.setSwitchCase", { case: "two", path: SWITCH });
+    expect(tab.session.ui.switchCases).toEqual({ [JSON.stringify(SWITCH)]: "two" });
+    expect(renderedPanes).toEqual([PRIMARY_PANE]);
+    // Saying it again is not a second render.
+    void registry.run("canvas.setSwitchCase", { case: "two", path: SWITCH });
+    expect(renderedPanes).toEqual([PRIMARY_PANE]);
+    expect(JSON.stringify(tab.doc.document)).toBe(before);
+    expect(tab.doc.dirty).toBe(false);
+    expect(tab.history.index).toBe(0);
+  });
+
+  test("null draws the switch's own case again, and clearing nothing renders nothing", () => {
+    const tab = withSwitch();
+    void registry.run("canvas.setSwitchCase", { case: "two", path: SWITCH });
+    renderedPanes.length = 0;
+    void registry.run("canvas.setSwitchCase", { case: null, path: SWITCH });
+    expect(tab.session.ui.switchCases).toEqual({});
+    expect(renderedPanes).toEqual([PRIMARY_PANE]);
+    void registry.run("canvas.setSwitchCase", { case: null, path: SWITCH });
+    expect(renderedPanes).toEqual([PRIMARY_PANE]);
+    // A choice left behind by a switch since deleted can still be cleared.
+    tab.session.ui.switchCases = { [JSON.stringify(["children", 9])]: "x" };
+    void registry.run("canvas.setSwitchCase", { case: null, path: ["children", 9] });
+    expect(tab.session.ui.switchCases).toEqual({});
+  });
+
+  test("refuses a path that is no switch and a case the switch does not have", () => {
+    const tab = withSwitch();
+    expect(() =>
+      registry.run("canvas.setSwitchCase", { case: "one", path: ["children", 1] }),
+    ).toThrow('command "canvas.setSwitchCase" argument "path": names no $switch in this document');
+    expect(() => registry.run("canvas.setSwitchCase", { case: "three", path: SWITCH })).toThrow(
+      'command "canvas.setSwitchCase" argument "case": "three" is not a case of this switch. ' +
+        "Its cases: one, two",
+    );
+    expect(tab.session.ui.switchCases).toEqual({});
+    expect(renderedPanes).toEqual([]);
+  });
+});
+
+describe("canvas.setTagPopover", () => {
+  /** A document with a bound heading and a bound image. */
+  function withTags(): Tab {
+    closeAllTabs();
+    return openTab({
+      document: {
+        children: [
+          { tagName: "h1", textContent: "${state.title} by ${state.author ?? ''}" },
+          { attributes: { src: "${state.cover}" }, tagName: "img" },
+          { tagName: "p", textContent: "Plain" },
+        ],
+        state: { author: "A", cover: "/c.png", title: "T" },
+        tagName: "main",
+      },
+      documentPath: "/project/pages/post.json",
+      id: "tag-tab",
+    });
+  }
+
+  test("opens the tag it names, and null closes it, with the document untouched", () => {
+    const tab = withTags();
+    const before = JSON.stringify(tab.doc.document);
+    const tag = { index: 1, path: ["children", 0], slot: ["textContent"] };
+    void registry.run("canvas.setTagPopover", { tag });
+    expect(tab.session.ui.tagPopover).toEqual(tag);
+    // The same tag again is the same state: the object the tab holds is not replaced.
+    const held = tab.session.ui.tagPopover;
+    void registry.run("canvas.setTagPopover", { tag });
+    expect(tab.session.ui.tagPopover).toBe(held);
+    void registry.run("canvas.setTagPopover", { tag: null });
+    expect(tab.session.ui.tagPopover).toBeNull();
+    void registry.run("canvas.setTagPopover", { tag: null });
+    expect(tab.session.ui.tagPopover).toBeNull();
+    expect(JSON.stringify(tab.doc.document)).toBe(before);
+    expect(tab.doc.dirty).toBe(false);
+    expect(tab.history.index).toBe(0);
+    // Opening and closing a popover is no render.
+    expect(renderedPanes).toEqual([]);
+  });
+
+  test("the index defaults to the first tag, and another tag replaces the open one", () => {
+    const tab = withTags();
+    void registry.run("canvas.setTagPopover", {
+      tag: { path: ["children", 1], slot: ["attributes", "src"] },
+    });
+    expect(tab.session.ui.tagPopover).toEqual({
+      index: 0,
+      path: ["children", 1],
+      slot: ["attributes", "src"],
+    });
+    void registry.run("canvas.setTagPopover", {
+      tag: { index: 0, path: ["children", 0], slot: ["textContent"] },
+    });
+    expect(tab.session.ui.tagPopover?.path).toEqual(["children", 0]);
+  });
+
+  test("refuses a place the node holds no tag, naming the tags it does hold", () => {
+    const tab = withTags();
+    expect(() =>
+      registry.run("canvas.setTagPopover", {
+        tag: { index: 2, path: ["children", 0], slot: ["textContent"] },
+      }),
+    ).toThrow(
+      'command "canvas.setTagPopover" argument "tag": the node holds no tag there. ' +
+        'Its tags: ["textContent"]#0, ["textContent"]#1',
+    );
+    expect(() =>
+      registry.run("canvas.setTagPopover", {
+        tag: { index: 0, path: ["children", 2], slot: ["textContent"] },
+      }),
+    ).toThrow("Its tags: none");
+    expect(tab.session.ui.tagPopover).toBeNull();
+  });
+
+  test("refuses an argument that is not an address", () => {
+    withTags();
+    const opening = (tag: CommandArgValues[string]) => () =>
+      registry.run("canvas.setTagPopover", { tag });
+    const refusal =
+      'command "canvas.setTagPopover" argument "tag": expected { path, slot, index } or null';
+    expect(opening({ path: "children", slot: ["src"] })).toThrow(refusal);
+    expect(opening({ path: [], slot: [{}] })).toThrow(refusal);
+    expect(opening({ index: 1.5, path: [], slot: [] })).toThrow(refusal);
+    expect(opening({ path: [] })).toThrow(refusal);
+    expect(() => registry.run("canvas.setTagPopover", {})).toThrow();
+  });
+});
+
 describe("canvas.setMode", () => {
-  test("sets the base mode and leaves preview off", () => {
+  test("sets the mode of the active tab", () => {
     void registry.run("canvas.setMode", { mode: "edit" });
-    expect(setCanvasMode).toHaveBeenCalledWith(activeTab.value, "edit");
-    expect(activeTab.value?.session.ui.preview).toBe(false);
+    expect(setCanvasMode.mock.calls[0]?.[0]).toBe(activeTab.value);
+    expect(setCanvasMode.mock.calls[0]?.[1]).toBe("edit");
   });
 
-  test('"preview" turns the flag on without changing the base mode', () => {
-    void registry.run("canvas.setMode", { mode: "preview" });
-    expect(activeTab.value?.session.ui.preview).toBe(true);
-    // The tab opened in its first declared mode ("edit"); preview composes with it and leaves it.
-    expect(activeTab.value?.session.ui.canvasMode).toBe("edit");
+  test("refuses the retired preview mode by name", () => {
+    expect(() => registry.run("canvas.setMode", { mode: "preview" })).toThrow();
     expect(setCanvasMode).not.toHaveBeenCalled();
-  });
-
-  test("running preview twice ends in preview — the toggle it replaces did not", () => {
-    void registry.run("canvas.setMode", { mode: "preview" });
-    void registry.run("canvas.setMode", { mode: "preview" });
-    expect(activeTab.value?.session.ui.preview).toBe(true);
-  });
-
-  test("arriving anywhere else turns preview back off", () => {
-    void registry.run("canvas.setMode", { mode: "preview" });
-    void registry.run("canvas.setMode", { mode: "design" });
-    expect(activeTab.value?.session.ui.preview).toBe(false);
   });
 
   test("refuses a mode the open document does not declare", () => {
@@ -549,13 +693,6 @@ describe("canvas.setMode", () => {
     expect(() => registry.run("canvas.setMode", { mode: "design" })).toThrow(
       'command "canvas.setMode" argument "mode": "design" is not a mode this document ' +
         "supports — it declares: grid, source",
-    );
-  });
-
-  test("refuses preview over a base mode it does not compose with", () => {
-    activeTab.value!.session.ui.canvasMode = "source";
-    expect(() => registry.run("canvas.setMode", { mode: "preview" })).toThrow(
-      'composes with the edit and design base modes; this pane is in "source"',
     );
   });
 
@@ -1053,7 +1190,7 @@ describe("the pan-zoom family agrees with itself", () => {
    * same question.
    */
   const PANZOOM = ["design", "stylebook", "git-diff"];
-  const OFF_SURFACE = ["edit", "preview", "source", "grid"];
+  const OFF_SURFACE = ["edit", "source", "grid"];
 
   beforeEach(() => {
     resetWorkspaceWithTab();

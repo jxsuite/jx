@@ -22,6 +22,7 @@ import { isString } from "@jxsuite/schema/guards";
 import type { IframeRenderCtx } from "../src/canvas/iframe-render";
 import type { JxDocument, JxMutableNode } from "@jxsuite/schema/types";
 import type { JxDocOp } from "../src/tabs/patch-ops";
+import { stubAriaLabel } from "./aria-reflection";
 
 // A render context for the subtree-render ops (insert / set-child / re-render). The scope is empty
 // (the test nodes carry no `$ref`/state bindings) and the mapper is the unwrapped page-doc default.
@@ -1413,20 +1414,34 @@ describe("applyIframePatch — $props a node also delivers by another route", ()
     await expectInPlace(mounted, propsOp({ label: "Second" }), "label=Second|note=Top");
   });
 
-  test("a same-named attribute rebuilds the instance", async () => {
+  test("an attribute named like a reflected DOM property rebuilds the instance", async () => {
+    const tag = await defineRouted({ title: "Default" });
+    const mounted = await mountLive(
+      routedPage(tag, { title: "First" }, { attributes: { title: "x" } }),
+    );
+    await expectRebuilt(mounted, propsOp({ title: "Second" }));
+  });
+
+  test("the kebab attribute of a camelCase DOM property rebuilds the instance", async () => {
+    const restore = stubAriaLabel();
+    try {
+      const tag = await defineRouted({ ariaLabel: "Default" });
+      const mounted = await mountLive(
+        routedPage(tag, { ariaLabel: "First" }, { attributes: { "aria-label": "x" } }),
+      );
+      await expectRebuilt(mounted, propsOp({ ariaLabel: "Second" }));
+    } finally {
+      restore();
+    }
+  });
+
+  test("an attribute named like a prop that is no DOM property leaves the write in place", async () => {
+    // The runtime's merge asks `key in this`, so `label="x"` writes no property and delivers nothing.
     const tag = await defineRouted({ label: "Default" });
     const mounted = await mountLive(
       routedPage(tag, { label: "First" }, { attributes: { label: "x" } }),
     );
-    await expectRebuilt(mounted, propsOp({ label: "Second" }));
-  });
-
-  test("the kebab attribute of a camelCase prop rebuilds the instance", async () => {
-    const tag = await defineRouted({ cardLabel: "Default" });
-    const mounted = await mountLive(
-      routedPage(tag, { cardLabel: "First" }, { attributes: { "card-label": "x" } }),
-    );
-    await expectRebuilt(mounted, propsOp({ cardLabel: "Second" }));
+    await expectInPlace(mounted, propsOp({ label: "Second" }), "label=Second");
   });
 
   test("a data-jx-props payload naming the changed prop rebuilds the instance", async () => {

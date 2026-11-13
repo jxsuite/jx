@@ -100,6 +100,8 @@ import type { AssetContext } from "./asset-resolve";
 import { KIT_LOADERS } from "@jxsuite/ui/loaders";
 import type { CanvasEnvelope, IframeChannel } from "./iframe-channel";
 import { FRAME_CAPABILITIES } from "./iframe-protocol";
+import { elementForPath } from "./iframe-position";
+import { chipBlockActive, evaluateTemplates, rowCountOf, tagClickAt } from "./iframe-tags";
 import type {
   CanvasMode,
   DragOverMsg,
@@ -684,11 +686,23 @@ export function startCanvasIframe(opts: {
   // Overlays — the cross-origin bridge means the parent never reads our DOM directly. The shadow-doc
   // Accessor feeds the insertion "+" zone computation hung off the same pointermove (the parent
   // Draws the clickable "+" and runs the slash-menu → mutateInsertNode flow on click).
+  /* Whether the chip under the last press stood in a block that already held the caret, read
+     before the press moves the caret there (studio.md §6.9). */
+  let pressedChipActive = false;
   const stopInteraction = startInteraction(channel, container.ownerDocument, {
     getGen: () => renderedGen,
     getMode: () => currentMode,
     getShadowDoc: () => shadowDoc,
-    onPress: promotePressedRow,
+    onClick: (target) => {
+      const click = isEditableMode(currentMode) ? tagClickAt(target, pressedChipActive) : null;
+      if (click) {
+        channel.post({ kind: "tagClick", ...click });
+      }
+    },
+    onPress: (target, extending) => {
+      pressedChipActive = chipBlockActive(target);
+      promotePressedRow(target, extending);
+    },
   });
   // Report clicks that land on LAYOUT chrome. The interaction wiring above only knows about
   // `[data-jx-path]` nodes, and layout chrome has none — so this is the listener that makes "My
@@ -715,7 +729,6 @@ export function startCanvasIframe(opts: {
     container.ownerDocument,
     isEditing,
     () => forwardTable,
-    () => currentMode,
   );
   // Run inline editing (contenteditable) here, posting committed/split/insert results to the parent.
   // The shadow-doc accessor gates prop-bound sessions on the RAW instance prop value (template/$ref
@@ -723,6 +736,7 @@ export function startCanvasIframe(opts: {
   const stopInlineEdit = startIframeInlineEdit(channel, container, {
     getMode: () => currentMode,
     getShadowDoc: () => shadowDoc,
+    getTagTitles: () => rowView.titles,
     onRoot: (forget) => {
       forgetEditHost = forget;
     },
@@ -889,26 +903,7 @@ export function startCanvasIframe(opts: {
   // The iframe is sized to its content (never scrolls itself), so wheel events over it are meant for
   // The parent canvas: ctrl/cmd+wheel = zoom, plain = pan. A cross-origin OOPIF doesn't bubble wheel to
   // The parent, so forward the deltas + modifiers + cursor; the host redispatches to its wheel handler.
-  //
-  // PREVIEW is the exception, and it is not a small one. There the host keeps the iframe at the
-  // Preview stage's own height and the document scrolls FOR REAL, which is the whole point of the
-  // View — sticky headers, scroll-driven animation and IntersectionObserver reveals only fire when
-  // Something actually scrolls. Swallowing the wheel here (this handler used to preventDefault
-  // Unconditionally) made the one view whose job is fidelity the one view you could not scroll.
   const onWheel = (e: WheelEvent) => {
-    if (currentMode === "preview") {
-      /* The document scrolls for real, so the plain wheel is ITS wheel and this handler takes no
-         part in it. Ctrl/⌘ — and the trackpad pinch that arrives as exactly this event — is not
-         that gesture: the browser reads it as page zoom, and the page it would scale is the whole
-         Studio window rather than the previewed document, which is neither what the author asked
-         for nor recoverable from inside the frame. The host cannot block it on this frame's behalf
-         (a cross-origin OOPIF's wheel never reaches it, and preview is the one mode that forwards
-         nothing), so the block belongs here. */
-      if (e.ctrlKey || e.metaKey) {
-        e.preventDefault();
-      }
-      return;
-    }
     e.preventDefault();
     channel.post({
       ctrlKey: e.ctrlKey,
@@ -1050,6 +1045,32 @@ export function startCanvasIframe(opts: {
             )
           : [];
       channel.post({ gen: msg.gen, kind: "evalResult", reqId: msg.reqId, results });
+      return;
+    }
+    if (msg.kind === "evalTemplate") {
+      /* The tag popover's values (studio.md §6.9): evaluated in the scope the node at `path` was
+         drawn with, a row's own on its active row, and only against the render the request names. */
+      const ctx = msg.gen === renderedGen ? renderCtx : null;
+      let scope = ctx?.defs;
+      const asked = ctx ? (msg.path ?? []) : [];
+      for (let depth = asked.length; depth > 0; depth -= 1) {
+        const el = elementForPath(container, asked.slice(0, depth));
+        const drawn = el ? ctx?.rows.scopes.get(el) : undefined;
+        if (drawn) {
+          scope = drawn;
+          break;
+        }
+      }
+      const reply: Extract<IframeToParent, { kind: "templateResult" }> = {
+        gen: msg.gen,
+        kind: "templateResult",
+        reqId: msg.reqId,
+        results: scope ? evaluateTemplates(msg.templates, scope, msg.formulas) : [],
+      };
+      if (msg.repeater) {
+        reply.rows = ctx ? rowCountOf(container, msg.repeater) : null;
+      }
+      channel.post(reply);
       return;
     }
     if (msg.kind === "patch") {
@@ -1264,13 +1285,6 @@ export function startCanvasIframe(opts: {
       return;
     }
     if (msg.kind === "setPopoverOpen") {
-      /* Refused in preview HERE as well as in the host. Preview renders popovers natively and the
-         canvas attribute does not exist there, so a stray message would silently do nothing —
-         better to refuse it in both realms, which is the discipline §4.2 states for every editing
-         affordance: neither side may assume the other's build is current. */
-      if (currentMode === "preview") {
-        return;
-      }
       popoverOpen = msg.path === null ? null : serializeJxPath(msg.path);
       applyCanvasPopoverOpen(container, popoverOpen);
       applyCanvasDialogOpen(container, dialogOpen);
@@ -1280,10 +1294,6 @@ export function startCanvasIframe(opts: {
       return;
     }
     if (msg.kind === "setDialogOpen") {
-      // The dialog twin, refused in preview for the reason given above.
-      if (currentMode === "preview") {
-        return;
-      }
       dialogOpen = msg.path === null ? null : serializeJxPath(msg.path);
       applyCanvasDialogOpen(container, dialogOpen);
       postContentHeight();
@@ -1419,6 +1429,7 @@ export function startCanvasIframe(opts: {
         adoptActiveRows(rowView, msg.activeRows);
         rowView.limit = normalizeRowLimit(msg.rowLimit);
         rowView.samples = msg.rowSamples ?? {};
+        rowView.titles = msg.tagTitles ?? {};
         strandedEchoes.clear();
         handle = commit();
         // In the same step, so the older style the commit just wrote is never painted.

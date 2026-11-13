@@ -4,6 +4,7 @@ description: "The Inspector's Content tab in Jx Studio: edit an element's tag, a
 code:
   - packages/studio/src/panels/properties-panel.ts
   - packages/studio/src/panels/provenance.ts
+  - packages/studio/src/utils/prop-source.ts
   - packages/studio/src/ui/dynamic-slot.ts
   - packages/studio/src/ui/value-source.ts
 ---
@@ -58,7 +59,7 @@ Beside the label of every bindable row sits a **value source** chip naming, in p
 
 - **Fixed value**: a value you type here, the same every time.
 - **From data…**: the current value of a signal, picked from a list.
-- **Mixed text**: text with `${…}` placeholders that fill in from signals.
+- **Mixed text**: your words with placeholders that fill in from your data. The row shows each placeholder as a tag with its name and current value. Click one to change what it reads, its format or its fallback, or click **Edit as text** to type around them. See **[Dynamic tags](/docs/studio/editing/dynamic-tags)**.
 - **Formula**: computed from other values, built up operator by operator.
 
 Those four names are the same everywhere a value can be produced from something else: the Content tab, the [Style tab](/docs/studio/design/style-inspector), the [Logic tab](/docs/studio/logic/events) and the operands inside a formula all say them the same way. Which of them a given row offers follows what the document format accepts in that position: an attribute, a component setting or the text content take **Fixed value**, **From data…** or **Mixed text**. A row with only one possible source shows its name and nothing to click.
@@ -68,6 +69,12 @@ Studio remembers what you had at each source for the rest of the session, so swi
 ## Component settings
 
 When the selection is a component instance, a **Component Settings** section lists the options the component exposes (see **[Working with components](/docs/studio/design/components)**). Each one gets a control matched to its type: a checkbox for on/off options, a number field, a dropdown for a fixed set of choices (the **Options** the component lists for that setting in its [Data panel](/docs/studio/logic/data)), a media picker for images, a color control for colors, with your project's color tokens in its picker and a swatch that shows a picked token's color. Its value source chip switches the prop between a fixed value, a signal, and mixed text; its provenance chip says whether the value is set on this instance or still the component's own default. **→ Edit definition** opens the component itself, and a **Usage** section beneath counts and lists the other files that place it. A component with no options declared yet says so instead of showing an empty section, and a tag the project's library doesn't know says that instead. When you have the component's **own definition** open instead, the section is titled **Component Defaults** and edits what the component ships: the fallback each setting takes when a page doesn't supply one. Same controls, different question: on an instance you're overriding, in the definition you're deciding what there is to override.
+
+A setting shows the value the instance really has, wherever the file keeps it. Most instances keep their settings in `$props`, but a page written by hand or by an agent often uses the attribute shorthand instead, `"attributes": { "props.tag": "Intro" }`, and Component Settings reads that too. So does an attribute named like a built-in element property (such as `title` or `role`), a setting written straight on the instance (`"tag": "Intro"` beside `tagName`), and a built page's `data-jx-props` payload. When the file holds a setting in more than one of these, the row shows the one the page draws. When the value lives anywhere but `$props`, hovering the provenance dot says where, for example _Set by the props.tag attribute_. An attribute that only shares a setting's name, such as `ribbon`, never reaches the component, so it stays under **Custom** and the setting reads from `$props`.
+
+Editing a setting changes it where it lives. Typing new text into a `props.*` setting keeps it in that attribute, even if you empty the field first: an emptied field holds empty text, and the provenance dot clears the setting and removes the attribute. A value that place can't carry moves the setting into `$props` and removes it from where it was in the same step, so one undo puts both back. The shorthand holds plain text only, so a binding from **From data…** or **Mixed text**, a checked box, or a number picked from a list moves. So does a binding on a setting held in an attribute such as `title`, because the component reads that attribute once, when it first appears, and would never see the data change. After any edit the setting lives in one place, and clearing it removes every copy, so an old value can't come back. A `props.*` attribute that delivers a setting is not listed under **Custom**; one that names no setting the component declares still is, so nothing on the element is hidden.
+
+An on/off setting written as the text `"false"` shows unchecked. Unchecking one that the component turns on by default writes `false` rather than clearing it, since clearing would turn it straight back on. A component from an npm package works the way HTML does instead: an on/off attribute is on whenever it's present, and unchecking removes it.
 
 ## Several elements at once
 

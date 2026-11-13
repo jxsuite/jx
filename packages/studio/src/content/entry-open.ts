@@ -73,7 +73,6 @@ export async function openEntry(path: string): Promise<Tab | null> {
     tab.capabilities.modes.includes(WRITING_MODE)
   ) {
     tab.session.ui.canvasMode = WRITING_MODE;
-    tab.session.ui.preview = false;
   }
   activateTab(tab.id);
   return tab;

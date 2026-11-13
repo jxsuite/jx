@@ -86,7 +86,37 @@ export interface BlockBarView {
   hasOverflow: boolean;
   overflowOpen: boolean;
   showFormat: boolean;
+  /** Whether the Insert dynamic tag control cannot act on this block, and why (its tooltip). */
+  insertDisabled: boolean;
+  insertHint: string;
   formats: BlockBarTool[];
+  /** One Bound pill per bound property of the selection (studio.md §6.9). */
+  pills: BlockBarPill[];
+  hasPills: boolean;
+  /** The row stepper of the repeater the selection is, or stands in (studio.md §4.5). */
+  rowState: "shown" | "hidden";
+  /** "Row 3 of 24". */
+  rowLabel: string;
+  /** The stepper's tooltip: the label, and how many rows the canvas draws. */
+  rowsHint: string;
+  rowPrevDisabled: boolean;
+  rowNextDisabled: boolean;
+  /** The case picker of a selected `$switch`. */
+  caseState: "shown" | "hidden";
+  /** "Case: open". */
+  caseLabel: string;
+  caseHint: string;
+}
+
+/** One Bound pill: a bound property of the selected block, and the tag it opens. */
+export interface BlockBarPill {
+  /** The tag's place in the node, as text: its identity across updates and what a press hands back. */
+  key: string;
+  /** "Image: Featured image". */
+  label: string;
+  hint: string;
+  /** What the tag is bound to, in the tag model's own word: "Image", "Link", "Text". */
+  property: string;
 }
 
 /** What the bar's controls do. Every one of these is a decision, so every one comes from the flow. */
@@ -98,8 +128,16 @@ export interface BlockBarActions {
   openTagMenu: (anchor: HTMLElement) => void;
   /** Open the `⋮` menu under the overflow button. */
   openOverflow: (anchor: HTMLElement) => void;
-  /** Open the merge-tag list under the Insert data button. */
+  /** Open the source list under the Insert dynamic tag button. */
   openMergeTags: (anchor: HTMLElement) => void;
+  /** Open the tag a Bound pill names, under the pill. */
+  openPill: (key: string, anchor: HTMLElement) => void;
+  /** Make the previous (`-1`) or the next (`1`) row of the repeater the active one. */
+  stepRow: (delta: number) => void;
+  /** Open the list of how many rows to draw, under the row count. */
+  openRowsMenu: (anchor: HTMLElement) => void;
+  /** Open the list of a `$switch`'s cases, under the case picker. */
+  openCaseMenu: (anchor: HTMLElement) => void;
   /** Escape: leave the bar for wherever the keyboard came from. */
   leaveBar: () => void;
   /** Apply the URL now in the link field. */
@@ -129,6 +167,10 @@ interface BlockBarScope extends BlockBarView {
   openTagMenu: (scope: JxScope, event: Event) => void;
   openOverflow: (scope: JxScope, event: Event) => void;
   openMergeTags: (scope: JxScope, event: Event) => void;
+  openPill: (scope: JxScope, event: Event) => void;
+  stepRow: (delta: number) => void;
+  openRowsMenu: (scope: JxScope, event: Event) => void;
+  openCaseMenu: (scope: JxScope, event: Event) => void;
   leaveBar: () => void;
   guardFocus: (scope: JxScope, event: Event) => void;
   linkInput: (scope: JxScope, event: Event) => void;
@@ -149,14 +191,26 @@ export function emptyBlockBarView(): BlockBarView {
     barX: 0,
     barY: 0,
     canDrag: false,
+    caseHint: "",
+    caseLabel: "",
+    caseState: "hidden",
     dragHint: "",
     formats: [],
+    hasPills: false,
     hasOverflow: false,
+    insertDisabled: false,
+    insertHint: "Insert dynamic tag",
     offscreen: false,
     overflowOpen: false,
     parentDisabled: true,
     parentHint: "",
     parentLabel: "Select Parent",
+    pills: [],
+    rowLabel: "",
+    rowNextDisabled: true,
+    rowPrevDisabled: true,
+    rowState: "hidden",
+    rowsHint: "",
     showFormat: false,
     tagDisabled: true,
     tagHint: "",
@@ -182,10 +236,15 @@ function partOf(def: JxElement | string): string {
  * same shape `surfaces/schema-form.ts` and `surfaces/properties-panel.ts` use.
  */
 function commandIdOf(state: JxScope | undefined): string {
+  return mapItemString(state, "id");
+}
+
+/** A string member of the mapped row a handler or a node was created for, or `""`. */
+function mapItemString(state: JxScope | undefined, key: string): string {
   const map = state?.["$map"];
   const item = isJsonObject(map) ? map["item"] : undefined;
-  const id = isJsonObject(item) ? item["id"] : undefined;
-  return isString(id) ? id : "";
+  const value = isJsonObject(item) ? item[key] : undefined;
+  return isString(value) ? value : "";
 }
 
 /** The bar's mounted surface, and every handle the flow is allowed to reach back through. */
@@ -243,7 +302,7 @@ export function mountBlockActionBar(host: HTMLElement, actions: BlockBarActions)
       const { target } = event;
       if (
         target instanceof Element &&
-        target.closest('[part="drag-handle"], [part="tag"], [part="link"]')
+        target.closest('[part="drag-handle"], [part="tag"], [part="link"], [part="pill"]')
       ) {
         return;
       }
@@ -266,6 +325,24 @@ export function mountBlockActionBar(host: HTMLElement, actions: BlockBarActions)
       // Dispatch `currentTarget` is the element the listener sits on.
       actions.openMergeTags(event.currentTarget as HTMLElement);
     },
+    openCaseMenu: (_scope: JxScope, event: Event) => {
+      event.stopPropagation();
+      // SAFETY: Only the case picker's `onclick` binds this handler, and during dispatch
+      // `currentTarget` is the element the listener sits on.
+      actions.openCaseMenu(event.currentTarget as HTMLElement);
+    },
+    openPill: (rowScope: JxScope, event: Event) => {
+      event.stopPropagation();
+      // SAFETY: Only a Bound pill's `onclick` binds this handler, and during dispatch
+      // `currentTarget` is the element the listener sits on.
+      actions.openPill(mapItemString(rowScope, "key"), event.currentTarget as HTMLElement);
+    },
+    openRowsMenu: (_scope: JxScope, event: Event) => {
+      event.stopPropagation();
+      // SAFETY: Only the row count's `onclick` binds this handler, and during dispatch
+      // `currentTarget` is the element the listener sits on.
+      actions.openRowsMenu(event.currentTarget as HTMLElement);
+    },
     openOverflow: (_scope: JxScope, event: Event) => {
       event.stopPropagation();
       // SAFETY: Only the overflow `jx-action-button`'s `onclick` binds this handler, and during
@@ -284,6 +361,7 @@ export function mountBlockActionBar(host: HTMLElement, actions: BlockBarActions)
     },
     run: (id: string) => actions.run(id),
     selectParent: () => actions.selectParent(),
+    stepRow: (delta: number) => actions.stepRow(delta),
   });
 
   /* One mount for the life of the window, and no teardown to write. The bar is chrome the app

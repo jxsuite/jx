@@ -47,6 +47,12 @@ export function mount(ctx: OverlaysCtx) {
       void tab.session.hover;
       void tab.doc.mode;
       void tab.session.ui.activeMedia;
+      /* What the bar's own controls say (studio.md §4.5): the active row and the row cap of the
+         repeater the selection stands in, and the case of a `$switch` drawn in place of its own.
+         Each is the tab's state, set by a command the bar is not the only caller of. */
+      void tab.session.ui.activeRows;
+      void tab.session.ui.repeaterRows;
+      void tab.session.ui.switchCases;
       render();
     });
   });

@@ -2,9 +2,9 @@
 
 ## AI Assistant for Jx Studio
 
-**Version:** 0.1.42-draft\
+**Version:** 0.1.43-draft\
 **Status:** Partial\
-**Updated:** 2026-11-06\
+**Updated:** 2026-11-13\
 **License:** MIT
 
 ---
@@ -177,7 +177,7 @@ Every tool that produces a document or `project.json` is gated on JSON-Schema va
 
 **A render check follows the schema gate, and judges a page as the build would draw it.** A schema-valid document that throws when rendered is refused too, and a page that builds must not be refused for what only the build supplies. So the check awaits the data the document's class entries look up, for at most five seconds; draws a dynamic route with the first entry its `$paths` lists; and gives a page or a layout its `$page`, `$site` and project state. It reports only a template that still throws after that. Where it cannot supply what a template reads, because a lookup is still out or a route has no entry to draw, it does not refuse on template throws, since a live binding recovers on its own if the data was all that was missing; a render that throws outright is still refused. One entry is a sample: the build is what checks them all.
 
-**A render check never calls a `timing: "server"` function, and never sends a document's `Request`.** The check runs without the author asking, on every write, against documents the model wrote. Calling the function would run project code with the project's secrets and arguments the model chose, and sending the request would reach a URL the model chose, with a method and body it chose. Nothing distinguishes a read from a write in either. Each entry reads as a placeholder instead: anything may be read from it or called on it and it prints as nothing, so templates over live data evaluate and every other template on the page is still judged. Whether a template reads live data correctly is what Preview answers (`studio.md`, "Live data belongs to preview").
+**A render check never calls a `timing: "server"` function, and never sends a document's `Request`.** The check runs without the author asking, on every write, against documents the model wrote. Calling the function would run project code with the project's secrets and arguments the model chose, and sending the request would reach a URL the model chose, with a method and body it chose. Nothing distinguishes a read from a write in either. Each entry reads as a placeholder instead: anything may be read from it or called on it and it prints as nothing, so templates over live data evaluate and every other template on the page is still judged. Whether a template reads live data correctly is what the editing canvas answers, which runs each such entry once and draws its answer (`studio.md` §4.5, "Remote data is fetched once").
 
 **A lookup that fails is still a refusal, and says so.** A class entry that failed or came back empty leaves a template reading it with nothing to read, which is usually a mistake the model can fix. The refusal names the entry and its source rather than reporting a name missing from `state`, which it is not.
 
@@ -377,6 +377,7 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.1.43-draft** (2026-11-13) — A template over live data is checked by the editing canvas, which runs each such entry once, rather than by Preview.
 - **0.1.42-draft** (2026-11-06) — §3.2 and §3.8: a turn that stops working gets a closing round to reply, the work budget is 30 rounds with a guard against identical rounds, neighbouring read-only calls may run at once, and Studio sheds old tool results to stay inside the window.
 - **0.1.41-draft** (2026-11-06) — §3.1: a render check judges a page as the build would draw it, never calls a server function or sends a Request, and names the entry when a lookup fails.
 - **0.1.40-draft** (2026-11-03) — §2.6 a Claude key reaches Claude through the Anthropic Messages API: the client names its family in X-Api-Provider only where the models route lists it in providers, the gateway projects the version 1 body onto /v1/messages and normalizes its stream into the same frames, and signed thinking is not replayed (§2.2).
@@ -423,4 +424,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_Jx `@jxsuite/ai` Specification v0.1.42-draft — a stub, subject to expansion._
+_Jx `@jxsuite/ai` Specification v0.1.43-draft — a stub, subject to expansion._

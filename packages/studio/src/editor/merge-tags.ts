@@ -9,7 +9,7 @@
  * Pure and DOM-free: callers pass the data in, this returns plain descriptors.
  */
 
-import { isNonNullObject, isString } from "@jxsuite/schema/guards";
+import { isNamedFormulaDef, isNonNullObject, isString } from "@jxsuite/schema/guards";
 import { defCategory } from "../panels/signals-panel";
 import { dataTypeLabel, unwrapSignal } from "../panels/data-explorer";
 import type { JsonPrimitive, JxStateDefinition } from "@jxsuite/schema/types";
@@ -128,6 +128,9 @@ export function buildMergeTags(
     if (category === "function") {
       continue; // Handlers/functions aren't insertable as text values
     }
+    if (isNamedFormulaDef(def)) {
+      continue; // A formula takes a value; it is a format a tag is passed through, not a source
+    }
     const value = scp[name];
     const token = `state.${name}`;
     out.push({ category, hint: previewHint(value), label: token, token });
@@ -155,29 +158,5 @@ export function buildMergeTags(
     }
   }
 
-  return out;
-}
-
-/**
- * Build repeater-scope merge tags from a flat list of pre-resolved tokens (e.g. `item`, `index`,
- * `item.data.title`). Unlike {@link buildMergeTags}'s live-scope branch, these carry no live value —
- * in edit mode the iframe holds no `$map`, so fields are resolved parent-side from schema and the
- * hint is empty. `item` and `index` are guaranteed first; the list is deduped preserving order.
- *
- * @param tokens - Insertion tokens (see `resolveRepeaterItemFields`); typically leads
- *   `item`/`index`.
- * @returns One {@link MergeTag} per unique token, `category: "repeater"`, `label === token`.
- */
-export function buildRepeaterTagsFromFields(tokens: string[]): MergeTag[] {
-  const ordered = ["item", "index", ...tokens];
-  const seen = new Set<string>();
-  const out: MergeTag[] = [];
-  for (const token of ordered) {
-    if (!token || seen.has(token)) {
-      continue;
-    }
-    seen.add(token);
-    out.push({ category: "repeater", hint: "", label: token, token });
-  }
   return out;
 }

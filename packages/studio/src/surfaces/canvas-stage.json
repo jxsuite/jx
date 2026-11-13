@@ -1,13 +1,13 @@
 {
   "$schema": "https://jxsuite.com/schema/v1",
   "$id": "StudioCanvasStage",
-  "$description": "The canvas's own chrome: the artboards, the boxes around them, and the empty hosts the islands attach to. `canvas/canvas-render.ts` keeps every decision — which mode this pane is in, which breakpoints the document declares, how wide Edit's column is, whether a comparison has a visual half — and `canvas/canvas-utils.ts` keeps the geometry; this document owns the markup and the style, and it draws NOTHING it decides for itself.\n\n**Every island stays an island** (studio-ui-guidelines.md §9.4). Monaco gets `[part=\"source-editor\"]` or `[part=\"diff-code-editor\"]`, the artboard's iframe gets `[part=\"panel-canvas\"]`, the writing-mode banner gets `[part=\"writing-banner\"]`, the Compare bar gets `[part=\"diff-toolbar\"]` and the Project Styles bar gets `[part=\"chrome-host\"]` — each drawn empty and announced through `onNodeCreated`, one reconcile step before it is in the page.\n\n**Three of the five frames share one artboard vocabulary**, which is why `framePart` and `innerPart` are bound rather than written: Preview, the pan/zoom surface and Edit's column are all \"a box holding N artboards\", differing only in what the box is and what else stands in it. Writing the artboard three times would be three places for a breakpoint's viewport to drift.\n\n**The stage draws no box of its own.** Its root is `display: contents`, so the frame and whatever leads it are the flex items of the pane's own stage cell — the axis `canvas-render.ts` sets on that cell still reaches them, and no depth was added between the stage and the artboards for the pan maths to have to account for.",
+  "$description": "The canvas's own chrome: the artboards, the boxes around them, and the empty hosts the islands attach to. `canvas/canvas-render.ts` keeps every decision — which mode this pane is in, which breakpoints the document declares, how wide Edit's column is, whether a comparison has a visual half — and `canvas/canvas-utils.ts` keeps the geometry; this document owns the markup and the style, and it draws NOTHING it decides for itself.\n\n**Every island stays an island** (studio-ui-guidelines.md §9.4). Monaco gets `[part=\"source-editor\"]` or `[part=\"diff-code-editor\"]`, the artboard's iframe gets `[part=\"panel-canvas\"]`, the writing-mode banner gets `[part=\"writing-banner\"]`, the Compare bar gets `[part=\"diff-toolbar\"]` and the Project Styles bar gets `[part=\"chrome-host\"]` — each drawn empty and announced through `onNodeCreated`, one reconcile step before it is in the page.\n\n**Two of the four frames share one artboard vocabulary**, which is why `framePart` and `innerPart` are bound rather than written: the pan/zoom surface and Edit's column are both \"a box holding N artboards\", differing only in what the box is and what else stands in it. Writing the artboard twice would be two places for a breakpoint's viewport to drift.\n\n**The stage draws no box of its own.** Its root is `display: contents`, so the frame and whatever leads it are the flex items of the pane's own stage cell — the axis `canvas-render.ts` sets on that cell still reaches them, and no depth was added between the stage and the artboards for the pan maths to have to account for.",
   "tagName": "div",
   "attributes": {
     "part": "stage"
   },
   "style": {
-    "$description": "`styles/canvas.css`'s `.panzoom-wrap`, `.canvas-panel*`, `.source-*`, `.content-edit-*`, `.edit-width-handle`, `.preview-stage` and `.diff-code-*` rules, keyed on `part`, plus the writing-mode banner's host. One selector reaches FOREIGN DOM and says so where it stands: `.is-resizing` is written by `canvas/edit-width-drag.ts` onto the column this document draws — the same shape `grid-panel.json` uses for Tabulator's theme. The width handles are `jx-split` elements, which paint their own hover, drag and focus states; this sheet says only where they stand and how wide they are.",
+    "$description": "`styles/canvas.css`'s `.panzoom-wrap`, `.canvas-panel*`, `.source-*`, `.content-edit-*`, `.edit-width-handle` and `.diff-code-*` rules, keyed on `part`, plus the writing-mode banner's host. One selector reaches FOREIGN DOM and says so where it stands: `.is-resizing` is written by `canvas/edit-width-drag.ts` onto the column this document draws — the same shape `grid-panel.json` uses for Tabulator's theme. The width handles are `jx-split` elements, which paint their own hover, drag and focus states; this sheet says only where they stand and how wide they are.",
     "display": "contents",
     "& [part=\"panzoom\"]": {
       "$description": "The transformed surface. `applyTransform` writes `transform` on it imperatively, so only the origin is declared here. `--boards-inset` is the Project Styles bar's clearance: that bar floats over the stage, so the boards start below it. It is a MARGIN, not padding: padding sits inside the box the transform scales, so at a 25% fit a 40px clearance drew as 10px and the bar covered the first specimen. A margin is outside the transform and stays 40 screen pixels at every zoom, and `applyGeometricFit` subtracts the same length from the height it fits into.",
@@ -162,27 +162,6 @@
       "background": "var(--jx-accent)",
       "opacity": "0.5"
     },
-    "& [part=\"preview-stage\"]": {
-      "$description": "Preview is the fidelity view: one frame, sized to the pane, scrolling its own document so sticky positioning, scroll-driven animation and IntersectionObserver reveals behave as they will in production. That means no pan/zoom surface and no content-height growth — so every box between the stage and the iframe needs a definite height for the frame's `height: 100%` to resolve against, and the artboard chrome is dropped: this is the page, not a specimen of it. Centred, because the stage is as wide as the chosen breakpoint rather than the pane, and a 640px preview pinned to the left edge of a 1400px pane reads as a broken layout rather than a phone.",
-      "display": "flex",
-      "width": "100%",
-      "height": "100%",
-      "margin": "0 auto",
-      "maxWidth": "var(--preview-w, none)"
-    },
-    "& [part=\"preview-stage\"] [part=\"panel\"]": {
-      "flex": "1",
-      "minWidth": "0",
-      "height": "100%"
-    },
-    "& [part=\"preview-stage\"] [part=\"panel-viewport\"]": {
-      "flex": "1",
-      "height": "100%",
-      "border": "none"
-    },
-    "& [part=\"preview-stage\"] [part=\"panel-canvas\"]": {
-      "height": "100%"
-    },
     "& [part=\"entry-preview-host\"]": {
       "$description": "A row across the pane over Edit's column, like the writing banner's; the bar inside centres itself. It never shrinks.",
       "flexShrink": "0"
@@ -330,7 +309,7 @@
               }
             },
             {
-              "$description": "The frame. Three of its five shapes are the same two boxes with different parts — Preview's centred column, the pan/zoom surface and Edit's scrolling column all hold artboards — so they share one case and differ in `framePart` / `innerPart`. Monaco's two shapes are their own cases, because a code editor holds no artboards and an empty `$map` inside its host would leave nodes in a box the editor is about to take over.",
+              "$description": "The frame. Two of its four shapes are the same two boxes with different parts — the pan/zoom surface and Edit's scrolling column both hold artboards — so they share one case and differ in `framePart` / `innerPart`. Monaco's two shapes are their own cases, because a code editor holds no artboards and an empty `$map` inside its host would leave nodes in a box the editor is about to take over.",
               "tagName": "div",
               "attributes": {
                 "part": "frame-slot"
@@ -343,7 +322,7 @@
               },
               "cases": {
                 "boards": {
-                  "$description": "The frame's box. `part` is BOUND — a Preview column, a pan/zoom surface and an Edit canvas are one shape with three names — and `data-slot` is the static one beside it, because a host is announced as it is BUILT, one step before its attributes are settled: the adapter reads the static mark and translates it through the view it just wrote.",
+                  "$description": "The frame's box. `part` is BOUND — a pan/zoom surface and an Edit canvas are one shape with two names — and `data-slot` is the static one beside it, because a host is announced as it is BUILT, one step before its attributes are settled: the adapter reads the static mark and translates it through the view it just wrote.",
                   "tagName": "div",
                   "attributes": {
                     "part": "${state.framePart}",
@@ -352,7 +331,7 @@
                   },
                   "children": [
                     {
-                      "$description": "The two width handles — `jx-split`s, ui.md §5.5 — drawn only where there is a column to size, and drawn BESIDE it rather than inside it, one slot before the inner box and one after. The placement is the track: a `jx-split` measures the first ancestor of its own that generates a box, and inside the column that would have been the column, whose width is the very thing the gesture changes. Out here the track is the canvas, a box the drag does not move, and the doubling that keeps an edge under the pointer falls out of the share arithmetic in `canvas/edit-width-drag.ts` rather than being a special case. In the Preview and pan/zoom frames both slots are empty `display: contents` wrappers and cost the row nothing. The element brings what the div it replaces could not: `role=\"separator\"`, a tab stop, `aria-valuenow`, the arrows and Home/End, and Enter or a double click to return to the breakpoint's declared width. Its share, its bounds and its collapse point are written by `mountEditWidthHandle`, which also runs the snap onto the document's breakpoints from the modifiers the element reports on every `input`, with Alt as the way through.",
+                      "$description": "The two width handles — `jx-split`s, ui.md §5.5 — drawn only where there is a column to size, and drawn BESIDE it rather than inside it, one slot before the inner box and one after. The placement is the track: a `jx-split` measures the first ancestor of its own that generates a box, and inside the column that would have been the column, whose width is the very thing the gesture changes. Out here the track is the canvas, a box the drag does not move, and the doubling that keeps an edge under the pointer falls out of the share arithmetic in `canvas/edit-width-drag.ts` rather than being a special case. In the pan/zoom frame both slots are empty `display: contents` wrappers and cost the row nothing. The element brings what the div it replaces could not: `role=\"separator\"`, a tab stop, `aria-valuenow`, the arrows and Home/End, and Enter or a double click to return to the breakpoint's declared width. Its share, its bounds and its collapse point are written by `mountEditWidthHandle`, which also runs the snap onto the document's breakpoints from the modifiers the element reports on every `input`, with Alt as the way through.",
                       "tagName": "div",
                       "attributes": {
                         "part": "handle-start-slot"
@@ -386,7 +365,7 @@
                         "data-hug": "${state.hug ? '' : null}"
                       },
                       "style": {
-                        "$description": "`boards` is a pass-through: Preview and the pan/zoom surface hold their artboards directly, and only Edit's column is a box of its own. Declaring the pass-through here rather than adding a wrapper to two of the three frames is what lets one subtree serve all three.",
+                        "$description": "`boards` is a pass-through: the pan/zoom surface holds its artboards directly, and only Edit's column is a box of its own. Declaring the pass-through here rather than adding a wrapper to one of the two frames is what lets one subtree serve both.",
                         "&[part=\"boards\"]": {
                           "display": "contents"
                         }
@@ -608,7 +587,7 @@
                       },
                       "cases": {
                         "boards": {
-                          "$description": "The frame's box. `part` is BOUND — a Preview column, a pan/zoom surface and an Edit canvas are one shape with three names — and `data-slot` is the static one beside it, because a host is announced as it is BUILT, one step before its attributes are settled: the adapter reads the static mark and translates it through the view it just wrote.",
+                          "$description": "The frame's box. `part` is BOUND — a pan/zoom surface and an Edit canvas are one shape with two names — and `data-slot` is the static one beside it, because a host is announced as it is BUILT, one step before its attributes are settled: the adapter reads the static mark and translates it through the view it just wrote.",
                           "tagName": "div",
                           "attributes": {
                             "part": "${state.framePart}",
@@ -617,7 +596,7 @@
                           },
                           "children": [
                             {
-                              "$description": "The two width handles — `jx-split`s, ui.md §5.5 — drawn only where there is a column to size, and drawn BESIDE it rather than inside it, one slot before the inner box and one after. The placement is the track: a `jx-split` measures the first ancestor of its own that generates a box, and inside the column that would have been the column, whose width is the very thing the gesture changes. Out here the track is the canvas, a box the drag does not move, and the doubling that keeps an edge under the pointer falls out of the share arithmetic in `canvas/edit-width-drag.ts` rather than being a special case. In the Preview and pan/zoom frames both slots are empty `display: contents` wrappers and cost the row nothing. The element brings what the div it replaces could not: `role=\"separator\"`, a tab stop, `aria-valuenow`, the arrows and Home/End, and Enter or a double click to return to the breakpoint's declared width. Its share, its bounds and its collapse point are written by `mountEditWidthHandle`, which also runs the snap onto the document's breakpoints from the modifiers the element reports on every `input`, with Alt as the way through.",
+                              "$description": "The two width handles — `jx-split`s, ui.md §5.5 — drawn only where there is a column to size, and drawn BESIDE it rather than inside it, one slot before the inner box and one after. The placement is the track: a `jx-split` measures the first ancestor of its own that generates a box, and inside the column that would have been the column, whose width is the very thing the gesture changes. Out here the track is the canvas, a box the drag does not move, and the doubling that keeps an edge under the pointer falls out of the share arithmetic in `canvas/edit-width-drag.ts` rather than being a special case. In the pan/zoom frame both slots are empty `display: contents` wrappers and cost the row nothing. The element brings what the div it replaces could not: `role=\"separator\"`, a tab stop, `aria-valuenow`, the arrows and Home/End, and Enter or a double click to return to the breakpoint's declared width. Its share, its bounds and its collapse point are written by `mountEditWidthHandle`, which also runs the snap onto the document's breakpoints from the modifiers the element reports on every `input`, with Alt as the way through.",
                               "tagName": "div",
                               "attributes": {
                                 "part": "handle-start-slot"
@@ -651,7 +630,7 @@
                                 "data-hug": "${state.hug ? '' : null}"
                               },
                               "style": {
-                                "$description": "`boards` is a pass-through: Preview and the pan/zoom surface hold their artboards directly, and only Edit's column is a box of its own. Declaring the pass-through here rather than adding a wrapper to two of the three frames is what lets one subtree serve all three.",
+                                "$description": "`boards` is a pass-through: the pan/zoom surface holds its artboards directly, and only Edit's column is a box of its own. Declaring the pass-through here rather than adding a wrapper to one of the two frames is what lets one subtree serve both.",
                                 "&[part=\"boards\"]": {
                                   "display": "contents"
                                 }

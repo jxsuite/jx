@@ -143,7 +143,7 @@ describe("activation follows the caret", () => {
   });
 
   test("no caret exists outside design/edit modes", () => {
-    const { container, rec } = mount(TWO_BLOCKS, { getMode: () => "preview" });
+    const { container, rec } = mount(TWO_BLOCKS, { getMode: () => "stylebook" });
     caretInto(nth(container, "p"), 1);
     expect(rec.activated).toHaveLength(0);
   });
@@ -152,7 +152,7 @@ describe("activation follows the caret", () => {
     let mode = "edit";
     const { container, rec } = mount(TWO_BLOCKS, { getMode: () => mode });
     caretInto(nth(container, "p"), 1);
-    mode = "preview";
+    mode = "stylebook";
     document.dispatchEvent(new Event("selectionchange"));
     expect(rec.deactivated).toBe(1);
   });
@@ -193,7 +193,7 @@ describe("pressing on uneditable content", () => {
   });
 
   test("outside the editing modes the press leaves the selection alone", () => {
-    const { container } = mount(WITH_ISLAND, { getMode: () => "preview" });
+    const { container } = mount(WITH_ISLAND, { getMode: () => "stylebook" });
     caretInto(nth(container, "p"), 2);
     nth(container, "span").dispatchEvent(new MouseEvent("pointerdown", { bubbles: true }));
     expect(window.getSelection()?.rangeCount).toBe(1);
@@ -240,7 +240,7 @@ describe("a secondary press", () => {
   });
 
   test("outside the editing modes it is left to the browser", () => {
-    const { container } = mount(WITH_PROP, { getMode: () => "preview" });
+    const { container } = mount(WITH_PROP, { getMode: () => "stylebook" });
     expect(press(nth(container, "p", 1), 2)).toBe(false);
   });
 
@@ -529,7 +529,7 @@ describe("the beforeinput chokepoint", () => {
   });
 
   test("beforeinput is inert outside design/edit modes", () => {
-    const { container } = mount(TWO_BLOCKS, { getMode: () => "preview" });
+    const { container } = mount(TWO_BLOCKS, { getMode: () => "stylebook" });
     const p = nth(container, "p");
     expect(beforeInput(p, "insertParagraph")).toBe(false);
   });
@@ -848,7 +848,7 @@ describe("a chip is atomic to the arrow keys, Backspace and Delete", () => {
   });
 
   test("the arrows are inert outside design/edit modes", () => {
-    const { container } = mount(BOUND, { getMode: () => "preview" });
+    const { container } = mount(BOUND, { getMode: () => "stylebook" });
     caretAt(nth(container, "p").firstChild!, 3);
     expect(press(container, "ArrowRight")).toBe(false);
   });

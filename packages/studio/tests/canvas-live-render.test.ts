@@ -10,6 +10,7 @@
 import { installMockPlatform, resetStudioState, resetWorkspaceWithTab } from "./harness";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { resolveCanvasDocument } from "../src/canvas/canvas-live-render";
+import { getNodeAtPath } from "../src/state";
 import { invalidateLayoutCache } from "../src/site-context";
 import { setExtensions } from "../src/format/format-host";
 import { invalidateRepeaterSources } from "../src/canvas/repeater-sources";
@@ -193,22 +194,6 @@ describe("resolveCanvasDocument", () => {
     expect(children.some((c) => !isString(c) && c.tagName === "header")).toBe(false);
   });
 
-  test("effective preview mode keeps the raw doc (no edit-display tokens)", async () => {
-    const result = await resolve(
-      {
-        children: [{ tagName: "p", textContent: "${state.x}" }],
-        tagName: "div",
-      },
-      { canvasMode: "preview" },
-    );
-    expect(result.mapperCtx.canvasMode).toBe("preview");
-    const p = nodeAt(result.renderDoc.children, 0);
-    // Preview passes the raw template through; design/edit would rewrite it to a display token.
-    expect(p.textContent).toBe("${state.x}");
-    // Preview draws the page as it ships: no sample row stands in for an empty list.
-    expect(result.rowSamples).toEqual({});
-  });
-
   test("substitutes chosen preview params into renderDoc, leaving the source doc intact", async () => {
     resetStudioState({ isSiteProject: true, projectConfig: {} });
     const tab = resetWorkspaceWithTab(
@@ -254,7 +239,7 @@ describe("resolveCanvasDocument", () => {
     expect(result.renderDoc.state?.entry).toHaveProperty("id", "intro");
   });
 
-  test("seeds component test props into renderDoc.state, leaving the source doc intact (M6)", async () => {
+  test("a component's test values are state values set for the canvas, and the source doc is intact", async () => {
     const tab = resetWorkspaceWithTab(
       {
         children: [{ tagName: "h3", textContent: "${state.title}" }],
@@ -267,13 +252,13 @@ describe("resolveCanvasDocument", () => {
       },
       { documentPath: "components/x-card.json" },
     );
-    tab.session.ui.previewProps = { count: 7, greet: "never", title: "Test drive" };
+    tab.session.ui.stateValues = { count: 7, greet: "never", title: "Test drive" };
     const result = await resolveCanvasDocument(tab.doc.document, tab);
 
     const { state } = result.renderDoc;
-    // Literal entries take the value; signal defs seed through `default` (what buildScope reads);
-    // Behavioral entries are never overridden.
-    expect(state?.title).toBe("Test drive");
+    // Every value goes in as the entry's `default` (what buildScope reads); a behavioral entry is
+    // Never overridden.
+    expect(state?.title).toEqual({ default: "Test drive" });
     expect(state?.count).toEqual({ default: 7, type: "number" });
     expect(state?.greet).toEqual({ $prototype: "Function", body: "" });
     // The tab's source document keeps its authored defaults (it is what gets edited and saved).
@@ -319,17 +304,6 @@ describe("resolveCanvasDocument", () => {
     const result = await resolveCanvasDocument(tab.doc.document, tab);
     expect(result.projectFormulas).toEqual({});
     expect(Object.keys(result.renderDoc.state ?? {})).toEqual(["title"]);
-  });
-
-  test("test props never touch a page document (previewParams territory)", async () => {
-    resetStudioState({ isSiteProject: true, projectConfig: {} });
-    const tab = resetWorkspaceWithTab(
-      { children: [], state: { title: "Hello" }, tagName: "div" },
-      { documentPath: "pages/home.json" },
-    );
-    tab.session.ui.previewProps = { title: "nope" };
-    const result = await resolveCanvasDocument(tab.doc.document, tab);
-    expect(result.renderDoc.state?.title).toBe("Hello");
   });
 
   test("auto-discovers project components in content mode and adds them to $elements", async () => {
@@ -385,8 +359,8 @@ describe("resolveCanvasDocument", () => {
         ],
         tagName: "div",
       },
-      // Preview keeps every repeater as written, which is where the walk used to stop.
-      { canvasMode: "preview", documentPath: "layouts/base.json" },
+      // The edit transform keeps every repeater as written, which is where the walk used to stop.
+      { canvasMode: "edit", documentPath: "layouts/base.json" },
     );
     const refs = (result.renderDoc.$elements ?? []).map((e) => (isString(e) ? undefined : e.$ref));
     for (const tag of ["x-row", "x-case", "x-legacy"]) {
@@ -404,7 +378,7 @@ describe("resolveCanvasDocument", () => {
     });
     const result = await resolve(
       { children: [], state: { own: 1 }, tagName: "main", title: "Visit" },
-      { canvasMode: "preview", documentPath: "pages/ar/visit.json" },
+      { canvasMode: "edit", documentPath: "pages/ar/visit.json" },
     );
     expect(result.renderDoc.state?.$page).toMatchObject({
       locale: "ar",
@@ -447,13 +421,11 @@ describe("resolveCanvasDocument", () => {
     expect(edit.renderDoc.imports?.ContentEntry).toBe("/ext/ContentEntry.class.json");
     invalidateRepeaterSources();
     asked.length = 0;
-    const preview = await resolve(page, {
-      canvasMode: "preview",
-      documentPath: "pages/index.json",
-    });
-    // Preview resolves its own lists as the page does; the extension class is resolved first.
-    expect(asked).toEqual(["/ext/ContentEntry.class.json"]);
-    expect(preview.renderDoc.state?.nav).toEqual({ id: "nav" });
+    const design = await resolve(page, { canvasMode: "design", documentPath: "pages/index.json" });
+    // Design bakes the same class: the extension class is resolved first, then the repeater's list.
+    expect(asked).toEqual(["/ext/ContentEntry.class.json", "@x/C.class.json"]);
+    expect(design.renderDoc.state?.nav).toEqual({ id: "nav" });
+    expect(design.renderDoc.state?.rows).toEqual([{ t: "first" }]);
   });
 
   test("a host with no backend names the collections it cannot resolve, and nothing otherwise", async () => {
@@ -517,33 +489,96 @@ describe("resolveCanvasDocument", () => {
     tab.session.ui.stateValues = {};
     const cleared = await resolveCanvasDocument(tab.doc.document, tab);
     expect(cleared.renderDoc.state?.view).toEqual(component.state?.view);
-
-    // Preview draws the page as it ships.
-    tab.session.ui.stateValues = { view: "open" };
-    const preview = await resolveCanvasDocument(tab.doc.document, tab, "preview");
-    expect(preview.renderDoc.state?.view).toEqual(component.state?.view);
   });
 
-  test("a state value set for the canvas wins over a component's test value for the same entry", async () => {
-    const tab = resetWorkspaceWithTab(
-      {
-        children: [{ tagName: "h3", textContent: "${state.title}" }],
-        state: { count: { default: 3, type: "number" }, other: "kept", title: "Hello" },
-        tagName: "x-card",
-      },
-      { documentPath: "components/x-card.json" },
-    );
+  test("a $switch case chosen for the canvas is drawn in place of the live one, and the document is untouched", async () => {
+    const tabs: JxMutableNode = {
+      children: [
+        {
+          $switch: { $ref: "#/state/tab" },
+          cases: { one: { tagName: "p" }, two: { tagName: "p" } },
+          tagName: "section",
+        },
+      ],
+      state: { tab: "one" },
+      tagName: "x-tabs",
+    };
+    const tab = resetWorkspaceWithTab(tabs, { documentPath: "components/x-tabs.json" });
     tab.session.ui.canvasMode = "edit";
-    // Both stores hold a value for `count` and `title`; only the test values hold one for `other`.
-    tab.session.ui.previewProps = { count: 7, other: "Test drive", title: "Test drive" };
-    tab.session.ui.stateValues = { count: 9, title: "On canvas" };
-    const resolved = await resolveCanvasDocument(tab.doc.document, tab);
-    const { state } = resolved.renderDoc;
-    // Applied last, so the author's own choice on the canvas is what is drawn (studio.md §4.5).
-    expect(state?.count).toEqual({ default: 9, type: "number" });
-    expect(state?.title).toEqual({ default: "On canvas" });
-    // An entry with no set value still takes its test value.
-    expect(state?.other).toBe("Test drive");
+    tab.session.ui.switchCases = { '["children",0]': "two" };
+    const before = JSON.stringify(tab.doc.document);
+    const edit = await resolveCanvasDocument(tab.doc.document, tab);
+    const drawn = getNodeAtPath(edit.renderDoc, ["children", 0]);
+    expect(drawn?.$switch).toEqual({ $ref: "#/state/$__case:0" });
+    expect(edit.renderDoc.state?.["$__case:0"]).toEqual({ default: "two" });
+    // The document's own discriminant and state are as they were.
+    expect(edit.renderDoc.state?.tab).toBe("one");
+    expect(JSON.stringify(tab.doc.document)).toBe(before);
+    expect(tab.doc.dirty).toBe(false);
+
+    // Cleared, the switch reads what the page reads.
+    tab.session.ui.switchCases = {};
+    const cleared = await resolveCanvasDocument(tab.doc.document, tab);
+    expect(getNodeAtPath(cleared.renderDoc, ["children", 0])?.$switch).toEqual({
+      $ref: "#/state/tab",
+    });
+    expect(cleared.renderDoc.state).not.toHaveProperty("$__case:0");
+  });
+
+  test("the titles a project's schemas give row fields ride with the render, and name its chips", async () => {
+    resetStudioState({
+      projectConfig: {
+        content: {
+          posts: { schema: { properties: { date: { title: "Post date", type: "string" } } } },
+        },
+      },
+    });
+    const list: JxMutableNode = {
+      children: [
+        {
+          $prototype: "Array",
+          items: { $ref: "#/state/posts" },
+          map: { tagName: "time", textContent: "${item.data.date}" },
+        },
+      ],
+      state: { posts: { $prototype: "ContentCollection", contentType: "posts" } },
+      tagName: "main",
+    };
+    const tab = resetWorkspaceWithTab(list, { documentPath: "components/x-list.json" });
+    tab.session.ui.canvasMode = "edit";
+    const edit = await resolveCanvasDocument(tab.doc.document, tab);
+    expect(edit.tagTitles).toEqual({ "item.data.date": "Post date" });
+    expect(JSON.stringify(edit.renderDoc)).toContain('"label":"Post date"');
+  });
+
+  test("a page drawn inside its layout names its chips by the same titles", async () => {
+    resetStudioState({
+      isSiteProject: true,
+      projectConfig: {
+        content: {
+          posts: { schema: { properties: { date: { title: "Post date", type: "string" } } } },
+        },
+      },
+    });
+    installMockPlatform({}, { "layouts/base.json": JSON.stringify(LAYOUT) });
+    const page: JxMutableNode = {
+      $layout: "./layouts/base.json",
+      children: [
+        {
+          $prototype: "Array",
+          items: { $ref: "#/state/posts" },
+          map: { tagName: "time", textContent: "${item.data.date}" },
+        },
+      ],
+      state: { posts: { $prototype: "ContentCollection", contentType: "posts" } },
+      tagName: "div",
+    };
+    const tab = resetWorkspaceWithTab(page, { documentPath: "pages/home.json" });
+    tab.session.ui.canvasMode = "edit";
+    const result = await resolveCanvasDocument(tab.doc.document, tab);
+    expect(result.mapperCtx.layoutWrapped).toBe(true);
+    expect(result.tagTitles).toEqual({ "item.data.date": "Post date" });
+    expect(JSON.stringify(result.renderDoc)).toContain('"label":"Post date"');
   });
 
   test("registers the components a component uses, transitively", async () => {
@@ -570,7 +605,7 @@ describe("resolveCanvasDocument", () => {
   });
 
   test("injects $site and $page into a page, without touching the source document's state", async () => {
-    // A layout binding `${state.$page.url}` threw on the canvas, and in Preview that blanked it.
+    // A layout binding `${state.$page.url}` threw on the canvas, and blanked the whole page.
     resetStudioState({
       isSiteProject: true,
       projectConfig: { name: "Avunu", state: { tagLabels: { ai: "AI" } }, url: "https://x.test" },
@@ -596,9 +631,8 @@ describe("the resolution belongs to the tab it was given", () => {
    * down to it. So the moment two panes were drawn, the pane that did not have focus was resolved
    * against the pane that did, in six values at once.
    *
-   * The mode is the one with teeth: `mountIframeCanvas` ends with `setHostPreview(state,
-   * message.mode === "preview")`, so an Edit pane beside a Preview pane got a preview FRAME — no
-   * overlay, and no editing message honoured from it.
+   * The mode is the one with teeth: it decides the frame's sheets, its caret and the coordinate
+   * space of every stamped path, so an Edit pane beside a Design pane must be drawn in Edit.
    */
   async function twoTabs() {
     closeAllTabs();
@@ -623,33 +657,31 @@ describe("the resolution belongs to the tab it was given", () => {
   test("docBase, isPage and canvasMode all come from the tab, not from the focus", async () => {
     const { focused, side } = await twoTabs();
     focused.session.ui.canvasMode = "design";
-    focused.session.ui.preview = true;
     side.session.ui.canvasMode = "edit";
-    side.session.ui.previewProps = { title: "Test drive" };
+    side.session.ui.stateValues = { title: "Test drive" };
 
     const result = await resolveCanvasDocument(side.doc.document, side);
 
     console.log(
-      `[canvas-live-render] focus=${activeTab.value?.documentPath} (preview) ` +
+      `[canvas-live-render] focus=${activeTab.value?.documentPath} (design) ` +
         `resolved-for=${side.documentPath} (edit) → docBase=${result.docBase} ` +
         `mode=${result.mapperCtx.canvasMode}`,
     );
     expect(result.docBase).toContain("components/x-card.json");
     expect(result.docBase).not.toContain("pages/index.json");
-    // Edit, not the focused pane's "preview" — this is the value `setHostPreview` reads.
+    // Edit, not the focused pane's "design".
     expect(result.mapperCtx.canvasMode).toBe("edit");
-    // And the component's own test props were seeded, which only happens on the `!isPage` path.
-    expect(result.renderDoc.state?.title).toBe("Test drive");
+    // And the side tab's own test values were applied, not the focused tab's.
+    expect(result.renderDoc.state?.title).toEqual({ default: "Test drive" });
   });
 
-  test("the reverse: the focused pane in Edit does not make a previewed pane editable", async () => {
+  test("the reverse: the focused pane in Edit does not put a Design pane in Edit", async () => {
     const { focused, side } = await twoTabs();
     focused.session.ui.canvasMode = "edit";
     side.session.ui.canvasMode = "design";
-    side.session.ui.preview = true;
 
     const result = await resolveCanvasDocument(side.doc.document, side);
-    expect(result.mapperCtx.canvasMode).toBe("preview");
+    expect(result.mapperCtx.canvasMode).toBe("design");
   });
 
   test("showLayout is the side tab's toggle, not the focused tab's", async () => {

@@ -2402,7 +2402,7 @@ export function renderNode(
 /**
  * Draw a whole-`children` template, the way the site build's template pass expands one (spec.md
  * §8.4). This is what an item's or an entry's parsed body looks like to something that renders the
- * source document rather than the build's output: Studio's Preview, chiefly.
+ * source document rather than the build's output: Studio's editing canvas, chiefly.
  *
  * A result that is not an array draws nothing, because a plain string is not a `children` value.
  * The children are rendered in a detached scope of their own, replaced when the template's value

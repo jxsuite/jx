@@ -1,5 +1,47 @@
 # Changelog
 
+## [9.0.0](https://github.com/jxsuite/jx/compare/server-v8.7.0...server-v9.0.0) (2026-11-12)
+
+
+### ⚠ BREAKING CHANGES
+
+* **studio:** Preview is removed; Edit draws live data and Open in Browser runs the page ([#652](https://github.com/jxsuite/jx/issues/652))
+
+### Features
+
+* **erase,runtime,server,site:** a document's script runs in every interpreting host ([#627](https://github.com/jxsuite/jx/issues/627)) ([cdd349a](https://github.com/jxsuite/jx/commit/cdd349a304f36da6c9abd6a73b55d2449f096248))
+* Open in Browser runs a component or a layout on its own ([#644](https://github.com/jxsuite/jx/issues/644)) ([ea340c5](https://github.com/jxsuite/jx/commit/ea340c5d83e8e847cb9aa7f1c990e94e84fdf9df))
+* **schema,collab,compiler,studio:** a document's script in .jxn, Studio and shared sessions ([#628](https://github.com/jxsuite/jx/issues/628)) ([ddb7734](https://github.com/jxsuite/jx/commit/ddb7734555e3b26d26ef339fab651b5e2768d75f))
+* **server,compiler:** jx format formats the code a .jxn file holds, as Studio does ([#637](https://github.com/jxsuite/jx/issues/637)) ([bc73203](https://github.com/jxsuite/jx/commit/bc732037fa7dad968e62dce7e04c07ecb6c703f2))
+* **studio:** Preview is removed; Edit draws live data and Open in Browser runs the page ([#652](https://github.com/jxsuite/jx/issues/652)) ([9e1beb1](https://github.com/jxsuite/jx/commit/9e1beb146c9e95f7fbc6137fc2e209b262daffc6))
+
+
+### Bug Fixes
+
+* **server:** the site worker refuses cross-site calls and its answers stay out of caches ([#621](https://github.com/jxsuite/jx/issues/621)) ([7a9d405](https://github.com/jxsuite/jx/commit/7a9d405a24ff2955027f1b6ae835dd7373dbc728))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/ai bumped to 0.43.5
+    * @jxsuite/catalog bumped to 0.1.13
+    * @jxsuite/collab bumped to 0.12.0
+    * @jxsuite/compiler bumped to 8.7.0
+    * @jxsuite/create bumped to 1.8.1
+    * @jxsuite/erase bumped to 0.3.0
+    * @jxsuite/import bumped to 0.44.2
+    * @jxsuite/protocol bumped to 6.4.0
+    * @jxsuite/runtime bumped to 7.0.0
+    * @jxsuite/schema bumped to 6.0.0
+    * @jxsuite/site bumped to 2.7.0
+    * @jxsuite/starters bumped to 3.6.0
+  * devDependencies
+    * @jxsuite/auth bumped to 0.8.9
+    * @jxsuite/connector bumped to 0.8.9
+    * @jxsuite/parser bumped to 5.0.0
+
 ## [8.7.0](https://github.com/jxsuite/jx/compare/server-v8.6.0...server-v8.7.0) (2026-11-11)
 
 

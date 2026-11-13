@@ -35,7 +35,8 @@ const { shell, resetProjectShell } = await import("../src/shell");
 // The assistant's toggle reports a TAB selection, so the bar reads it where the Inspector keeps it.
 const { setInspectorTab } = await import("../src/panels/right-panel");
 const { setProjectState } = await import("../src/state");
-const { setPreviewNavigateHandler } = await import("../src/canvas/preview-navigate");
+const { getPreviewNavigateHandler, setPreviewNavigateHandler } =
+  await import("../src/canvas/preview-navigate");
 const { closeAllTabs, openTab } = await import("../src/workspace/workspace");
 const { createCommandRegistry } = await import("../src/commands/registry");
 const { defaultCommands, noopCommandDeps } = await import("../src/commands/defaults");
@@ -50,7 +51,7 @@ type CommandContext = ReturnType<typeof makeContext>;
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
 
-const ALL_MODES = ["edit", "design", "preview", "source", "stylebook"];
+const ALL_MODES = ["edit", "design", "source", "stylebook"];
 
 /** The context the registry's predicates read. Mutated per test, read on every evaluation. */
 let ctx: CommandContext = makeContext();
@@ -827,7 +828,8 @@ function pageTab(documentPath: string): Tab {
   closeAllTabs();
   return openTab({
     capabilities: { modes: ALL_MODES },
-    document: { children: [], tagName: "div" },
+    // Two props, so a component's test values have entries to be set on.
+    document: { children: [], state: { count: 0, heading: "" }, tagName: "div" },
     documentPath,
     id: "page-tab",
   });
@@ -896,10 +898,10 @@ describe("openInBrowserTarget — a component or a layout on its own", () => {
     });
   });
 
-  test("its test values travel in the address, as JSON", () => {
+  test("its test values (the state values set on its props) travel in the address, as JSON", () => {
     openSiteProject();
     const tab = pageTab("components/site-card.json");
-    tab.session.ui.previewProps = { count: 3, heading: "Hi & <bye>" };
+    tab.session.ui.stateValues = { count: 3, heading: "Hi & <bye>" };
     const target = toolbar.openInBrowserTarget(tab);
     if (!("path" in target)) {
       throw new Error("a component must resolve to an address");
@@ -912,13 +914,36 @@ describe("openInBrowserTarget — a component or a layout on its own", () => {
     });
   });
 
-  test("an empty set of test values adds no query", () => {
+  test("an empty set of test values adds no query, and a value set on no prop is left out", () => {
     openSiteProject();
     const tab = pageTab("components/site-card.json");
-    tab.session.ui.previewProps = {};
+    tab.session.ui.stateValues = {};
     expect(toolbar.openInBrowserTarget(tab)).toMatchObject({
       path: "/__jx_live__/harness/components/site-card.json",
     });
+    // A value left behind by an entry since deleted names no prop, so it goes nowhere.
+    tab.session.ui.stateValues = { gone: 1 };
+    expect(toolbar.openInBrowserTarget(tab)).toMatchObject({
+      path: "/__jx_live__/harness/components/site-card.json",
+    });
+  });
+
+  test("a value left on a prop that became a request or a server entry is not sent, as the canvas does not draw it", () => {
+    openSiteProject();
+    const tab = pageTab("components/site-card.json");
+    tab.doc.document.state = {
+      items: { $src: "/api/items.json", default: [] },
+      live: { default: "", timing: "server", type: "string" },
+      plain: { default: "", type: "string" },
+    };
+    // Each was set while its entry was plain; the first two were then turned into something else.
+    tab.session.ui.stateValues = { items: [1], live: "set", plain: "set" };
+    const target = toolbar.openInBrowserTarget(tab);
+    if (!("path" in target)) {
+      throw new Error("a component must resolve to an address");
+    }
+    const url = new URL(target.path, SITE_ORIGIN);
+    expect(JSON.parse(url.searchParams.get("props")!)).toEqual({ plain: "set" });
   });
 
   test("a path segment is encoded, so a file name cannot become a query or a fragment", () => {
@@ -931,7 +956,7 @@ describe("openInBrowserTarget — a component or a layout on its own", () => {
   test("values too large for an address are left out, and the target says so", () => {
     openSiteProject();
     const tab = pageTab("components/site-card.json");
-    tab.session.ui.previewProps = { heading: "x".repeat(9000) };
+    tab.session.ui.stateValues = { heading: "x".repeat(9000) };
     expect(toolbar.openInBrowserTarget(tab)).toEqual({
       harness: { documentPath: "components/site-card.json", dropped: true, kind: "component" },
       path: "/__jx_live__/harness/components/site-card.json",
@@ -941,7 +966,7 @@ describe("openInBrowserTarget — a component or a layout on its own", () => {
   test("a layout resolves to its harness address and never carries test values", () => {
     openSiteProject();
     const tab = pageTab("layouts/base.json");
-    tab.session.ui.previewProps = { heading: "ignored" };
+    tab.session.ui.stateValues = { heading: "ignored" };
     expect(toolbar.openInBrowserTarget(tab)).toEqual({
       harness: { documentPath: "layouts/base.json", dropped: false, kind: "layout" },
       path: "/__jx_live__/harness/layouts/base.json",
@@ -987,7 +1012,7 @@ describe("runOpenInBrowser — a component or a layout on its own", () => {
   test("a component opens at its harness address, and the report names the file", async () => {
     openSiteProject();
     const tab = pageTab("components/site-card.json");
-    tab.session.ui.previewProps = { heading: "Hi" };
+    tab.session.ui.stateValues = { heading: "Hi" };
     const routes = installPreviewingPlatform();
     const opened = await run();
     const expected = `/__jx_live__/harness/components/site-card.json?props=${encodeURIComponent('{"heading":"Hi"}')}`;
@@ -1021,7 +1046,7 @@ describe("runOpenInBrowser — a component or a layout on its own", () => {
   test("a reused tab is told the document, not the address", async () => {
     openSiteProject();
     const tab = pageTab("components/site-card.json");
-    tab.session.ui.previewProps = { heading: "Hi" };
+    tab.session.ui.stateValues = { heading: "Hi" };
     installPreviewingPlatform({ reused: true });
     const opened = await run();
     expect(opened).toEqual([]);
@@ -1033,7 +1058,7 @@ describe("runOpenInBrowser — a component or a layout on its own", () => {
   test("test values that would not fit are reported, fresh tab or reused", async () => {
     openSiteProject();
     const tab = pageTab("components/site-card.json");
-    tab.session.ui.previewProps = { heading: "x".repeat(9000) };
+    tab.session.ui.stateValues = { heading: "x".repeat(9000) };
     installPreviewingPlatform();
     const opened = await run();
     expect(opened).toEqual([`${SITE_ORIGIN}/__jx_live__/harness/components/site-card.json`]);
@@ -1259,11 +1284,17 @@ describe("runOpenInBrowser", () => {
     pageTab("pages/index.md");
     installBuildingPlatform();
     const opened: string[] = [];
-    setPreviewNavigateHandler((url) => opened.push(url));
+    const handler = (url: string) => {
+      opened.push(url);
+    };
+    setPreviewNavigateHandler(handler);
+    // The override an embedder registered is readable back (the package's `./preview-navigate`).
+    expect(getPreviewNavigateHandler()).toBe(handler);
     await toolbar.runOpenInBrowser();
     expect(opened).toEqual([`${SITE_ORIGIN}/`]);
 
     setPreviewNavigateHandler(null);
+    expect(getPreviewNavigateHandler()).toBeNull();
     const calls: Parameters<typeof window.open>[] = [];
     const originalOpen = window.open;
     window.open = (...args: Parameters<typeof window.open>) => {

@@ -453,7 +453,7 @@ const ROOT_LABELS: Readonly<Record<DynamicTagRoot, string>> = {
   $map: "Item",
   $page: "Page",
   $site: "Site",
-  index: "Index",
+  index: "Row number",
   item: "Item",
   state: "State",
 };

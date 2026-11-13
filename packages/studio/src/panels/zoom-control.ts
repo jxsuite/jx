@@ -159,11 +159,10 @@ function hintFor(registry: CommandRegistry | null, id: string, words: string): s
  *
  * The visibility rule is the pod's, carried over whole. Edit shows the content zoom and no Fit (a
  * fit is a statement about an artboard). Design, Stylebook and a comparison's VISUAL half show zoom
- * and Fit. Preview is absent because its frame is a real viewport that scrolls its own document, so
- * there is nothing to zoom; so is a comparison's CODE half, one Monaco diff editor with no panzoom
- * surface under it, where every verb would move nothing but the label; so is Review changes in the
- * Publish workspace, whose boards are fitted to their column on arrival (the wheel still zooms
- * them, studio.md §22.8). Every other mode (Source, Grid, a workspace home) has no stage to zoom.
+ * and Fit. A comparison's CODE half is absent, one Monaco diff editor with no panzoom surface under
+ * it, where every verb would move nothing but the label; so is Review changes in the Publish
+ * workspace, whose boards are fitted to their column on arrival (the wheel still zooms them,
+ * studio.md §22.8). Every other mode (Source, Grid, a workspace home) has no stage to zoom.
  *
  * `diff-view.ts` is not reactive, so the Visual/Code switch repaints this field itself
  * (`canvas/diff-toolbar.ts` through `setDiffChromeRepaint`).

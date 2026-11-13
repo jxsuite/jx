@@ -133,7 +133,8 @@ void mock.module("../src/canvas/canvas-live-render.js", () => ({
 }));
 
 void mock.module("../src/canvas/iframe-host.js", () => ({
-  adoptCanvasPreviewMode: () => {},
+  requestTemplateEval: () => Promise.resolve(null),
+  flushCanvasEdits: () => Promise.resolve(),
   commitActiveEditSession: () => {},
   /* Three exports this file never calls, stubbed because a PARTIAL mock of a module the graph
      reaches is a load error rather than a missing stub at call time. canvas-render now draws the

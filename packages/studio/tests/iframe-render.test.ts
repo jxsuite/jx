@@ -74,15 +74,15 @@ function installedSheet(id: string): string {
 function editModeSheet(): string {
   syncEditModeCss(document, "edit");
   const css = installedSheet(EDIT_PLACEHOLDER_STYLE_ID);
-  syncEditModeCss(document, "preview");
+  syncEditModeCss(document, "stylebook");
   return css;
 }
 
-/** The overlay sheet a de-linking (design) render installs, removed again once read. */
+/** The overlay sheet every render installs, removed again once read. */
 function overlaySheet(): string {
-  syncCanvasOverlayCss(document, "design");
+  syncCanvasOverlayCss(document);
   const css = installedSheet(CANVAS_OVERLAY_STYLE_ID);
-  syncCanvasOverlayCss(document, "preview");
+  document.head.querySelector(`#${CANVAS_OVERLAY_STYLE_ID}`)?.remove();
   return css;
 }
 
@@ -104,7 +104,7 @@ describe("syncEditableRoot accessibility", () => {
     expect(container.getAttribute("aria-label")).toBeTruthy();
     expect(container.getAttribute("contenteditable")).toBe("true");
 
-    syncEditableRoot(container, "preview");
+    syncEditableRoot(container, "stylebook");
     expect(container.getAttribute("role")).toBeNull();
     expect(container.getAttribute("aria-multiline")).toBeNull();
     expect(container.getAttribute("aria-label")).toBeNull();
@@ -187,7 +187,7 @@ describe("renderResolvedDocument", () => {
       },
       docBase: "http://localhost:3000/page.json",
       mapperCtx: ctx,
-      mode: "preview",
+      mode: "design",
     });
     expect(loads).toBe(1);
     expect(firstElementOf(container).textContent).toBe("3");
@@ -212,13 +212,13 @@ describe("renderResolvedDocument", () => {
       doc: { children: ["two"], tagName: "article" },
       docBase: "http://localhost:3000/page.json",
       mapperCtx: ctx,
-      mode: "preview",
+      mode: "design",
     });
     expect(container.querySelector("section")).toBeNull();
     expect(container.querySelector("article")?.textContent).toBe("two");
   });
 
-  test("a handler in preview updates what the document binds", async () => {
+  test("a handler updates what the document binds", async () => {
     // Studio gives every render document a `$head`. The runtime reads a node's `$` key as a local
     // Binding, which puts the whole tree in a child scope, and a write from there used to shadow the
     // State instead of changing it: the counter in the first tutorial never counted.
@@ -242,7 +242,7 @@ describe("renderResolvedDocument", () => {
       doc,
       docBase: "http://localhost:3000/components/counter-card.json",
       mapperCtx: ctx,
-      mode: "preview",
+      mode: "design",
     });
     rendered(container, "button").click();
     expect(rendered(container, "p").textContent).toBe("4");
@@ -265,7 +265,7 @@ describe("renderResolvedDocument", () => {
       doc,
       docBase: "http://localhost:3000/page.json",
       mapperCtx: ctx,
-      mode: "preview",
+      mode: "design",
     });
     const p = rendered(container, "p");
     expect(p.textContent).toBe("one");
@@ -297,7 +297,7 @@ describe("prepareResolvedDocument", () => {
     const old = document.createElement("section");
     container.append(old);
     applySiteStyle({ color: OLD_SITE });
-    syncEditModeCss(document, "preview");
+    syncEditModeCss(document, "stylebook");
     return { container, old, siteCss: installedSheet(SITE_STYLE_ID) };
   }
 
@@ -312,7 +312,7 @@ describe("prepareResolvedDocument", () => {
 
   afterEach(() => {
     applySiteStyle(null);
-    syncEditModeCss(document, "preview");
+    syncEditModeCss(document, "stylebook");
   });
 
   test("touches neither the container nor the head-level sheets until its result is called", async () => {
@@ -434,7 +434,7 @@ describe("component registration ordering (props applied)", () => {
         doc,
         docBase: "http://localhost:3000/page.json",
         mapperCtx: ctx,
-        mode: "preview",
+        mode: "design",
       };
       if (projectFormulas) {
         options.projectFormulas = projectFormulas;
@@ -514,7 +514,7 @@ describe("canvas transpose + anchor de-link flags", () => {
     expect(css).toContain("body { min-height: 100vh }");
   });
 
-  test("renderResolvedDocument de-links <a href> in edit mode but keeps it live in preview", async () => {
+  test("renderResolvedDocument de-links <a href> in edit mode", async () => {
     const anchorDoc: JxDocument = {
       children: [{ attributes: { href: "/x" }, children: ["go"], tagName: "a" }],
       tagName: "div",
@@ -533,20 +533,6 @@ describe("canvas transpose + anchor de-link flags", () => {
     expect(editAnchor.getAttribute("href")).toBeNull();
     expect(editAnchor.dataset.jxHref).toBe("/x");
     editHandle.dispose();
-
-    const previewContainer = document.createElement("div");
-    const previewHandle = await renderResolvedDocument({
-      container: previewContainer,
-      doc: anchorDoc,
-      docBase: "http://localhost:3000/page.json",
-      mapperCtx: ctx,
-      mode: "preview",
-    });
-    const previewAnchor = rendered(previewContainer, "a");
-    // Preview keeps a real, live link (no de-linking).
-    expect(previewAnchor.getAttribute("href")).toBe("/x");
-    expect(previewAnchor.dataset.jxHref).toBeUndefined();
-    previewHandle.dispose();
   });
 
   test("Project Styles keeps its link specimen a real link, so link styles can match it", async () => {
@@ -623,7 +609,7 @@ describe("prop-binding markers (inline prop editing)", () => {
     container.remove();
   });
 
-  test("a preview render leaves component internals unstamped", async () => {
+  test("a git-diff render leaves component internals unstamped", async () => {
     const tag = uniqueTag();
     const container = document.createElement("div");
     document.body.append(container);
@@ -631,8 +617,8 @@ describe("prop-binding markers (inline prop editing)", () => {
       container,
       doc: instanceDoc(tag),
       docBase: "http://localhost:3000/page.json",
-      mapperCtx: ctx,
-      mode: "preview",
+      mapperCtx: { ...ctx, canvasMode: "git-diff" },
+      mode: "git-diff",
     });
     await new Promise((r) => {
       setTimeout(r, 150);
@@ -689,8 +675,8 @@ describe("makeStamper", () => {
     expect(main.getAttribute("contenteditable")).toBeNull();
   });
 
-  test("preview leaves layout chrome editable-agnostic (nothing is an editing host there)", () => {
-    const stamp = makeStamper({ ...ctx, canvasMode: "preview", layoutWrapped: true });
+  test("a git-diff side leaves layout chrome editable-agnostic (nothing is an editing host there)", () => {
+    const stamp = makeStamper({ ...ctx, canvasMode: "git-diff", layoutWrapped: true });
     const el = document.createElement("footer");
     stamp(el, ["children", 2], { $__layout: { file: "layouts/base.json", path: [] } });
     expect(el.dataset.jxLayoutRegion).toBe("");
@@ -981,10 +967,9 @@ describe("applyBindingDisplay", () => {
       'data[data-jx-tag][data-jx-status="failed"]',
       "data[data-jx-tag][data-jx-status]:empty::before",
     ]);
-    expect(selectorsWith(EDIT_PLACEHOLDER_CSS, "data-jx-bound-field")).toEqual([
-      HELD,
-      `${HELD}::before`,
-    ]);
+    /* The outline alone: the label is the host's (the hover box's label, the Bound pills), so no
+       rule here draws a pseudo-element on a bound block, where it took the place of the author's. */
+    expect(selectorsWith(EDIT_PLACEHOLDER_CSS, "data-jx-bound-field")).toEqual([HELD]);
     // A chip that holds nodes takes no box, in every mode the document is prepared for.
     expect(selectorsWith(CANVAS_OVERLAY_CSS, "data-jx-tag")).toEqual([
       "data[data-jx-tag]:has(> *)",
@@ -1393,13 +1378,13 @@ describe("syncEditModeCss", () => {
     expect(placeholder).toContain(":not([data-jx-active-block])");
   });
 
-  test("a preview render removes it", () => {
+  test("a git-diff render removes it", () => {
     syncEditModeCss(document, "design");
     expect(sheet()).toBeTruthy();
-    syncEditModeCss(document, "preview");
+    syncEditModeCss(document, "git-diff");
     expect(sheet()).toBeNull();
     // Removing when absent is a no-op.
-    syncEditModeCss(document, "preview");
+    syncEditModeCss(document, "git-diff");
     expect(sheet()).toBeNull();
   });
 
@@ -1417,7 +1402,7 @@ describe("syncStylebookCss", () => {
   const sheet = () => document.head.querySelector(`#${STYLEBOOK_STYLE_ID}`);
 
   afterEach(() => {
-    syncStylebookCss(document, "preview");
+    syncStylebookCss(document, "edit");
   });
 
   test("injects card/section chrome for stylebook mode, idempotently", () => {
@@ -1530,9 +1515,9 @@ describe("component islands and the document inside them", () => {
   });
 
   test("nothing is re-opened in a non-editable mode", () => {
-    // Preview and stylebook renders have no editing host at all, so an island is never created and
-    // There is nothing to re-open. A stray `true` here would make preview text typable.
-    const stamp = makeStamper({ ...ctx, canvasMode: "preview" });
+    // Stylebook and git-diff renders have no editing host at all, so an island is never created and
+    // There is nothing to re-open. A stray `true` here would make a diff side's text typable.
+    const stamp = makeStamper({ ...ctx, canvasMode: "git-diff" });
     const host = document.createElement("eer-intro");
     stamp(host, ["children", 1], { tagName: "eer-intro" });
     const child = document.createElement("p");
@@ -1812,7 +1797,7 @@ describe("CANVAS_OVERLAY_CSS — the canvas UA substitute", () => {
 
   test("`position` IS forced, because shown-in-place is the editing model", () => {
     // A panel that sets `position: fixed` itself would be laid out against the frame's viewport,
-    // Which in a de-linked mode is the document's full height. Preview still renders it natively.
+    // Which in a de-linked mode is the document's full height. A browser renders it natively.
     const css = overlaySheet();
     expect(css).toContain("position: relative !important");
     // The position rules are the OTHER half and live outside the layer, where an author rule
@@ -1839,33 +1824,32 @@ describe("syncCanvasOverlayCss", () => {
   const sheet = () => document.head.querySelector(`#${CANVAS_OVERLAY_STYLE_ID}`);
 
   afterEach(() => {
-    syncCanvasOverlayCss(document, "preview");
+    sheet()?.remove();
   });
 
-  test("it is installed in exactly the modes that de-link, which is every mode but preview", () => {
+  test("every render of every mode installs it, because every mode de-links", async () => {
     // The invariant this file exists to hold: an attribute renamed without its substitute rule is
     // An overlay that can never be drawn. `setCanvasDelinkPopovers`/`setCanvasDelinkCommands` are
-    // Gated `mode !== "preview"`, so this sheet is too — Stylebook and git-diff included.
+    // Set in every mode, so this sheet is installed in every mode, Stylebook and git-diff included.
     for (const mode of CANVAS_MODES) {
-      syncCanvasOverlayCss(document, "preview");
-      syncCanvasOverlayCss(document, mode);
-      if (mode === "preview") {
-        expect(sheet()).toBeNull();
-      } else {
-        expect(sheet()).toBeTruthy();
-      }
+      sheet()?.remove();
+      const container = document.createElement("div");
+      const handle = await renderResolvedDocument({
+        container,
+        doc: { children: [], tagName: "div" },
+        docBase: "http://localhost:3000/page.json",
+        mapperCtx: { ...ctx, canvasMode: mode },
+        mode,
+      });
+      expect([mode, Boolean(sheet())]).toEqual([mode, true]);
+      handle.dispose();
     }
   });
 
-  test("it is idempotent, and a preview render removes it", () => {
-    syncCanvasOverlayCss(document, "git-diff");
-    syncCanvasOverlayCss(document, "git-diff");
+  test("it is idempotent", () => {
+    syncCanvasOverlayCss(document);
+    syncCanvasOverlayCss(document);
     expect(document.head.querySelectorAll(`#${CANVAS_OVERLAY_STYLE_ID}`)).toHaveLength(1);
-    syncCanvasOverlayCss(document, "preview");
-    expect(sheet()).toBeNull();
-    // Removing when absent is a no-op.
-    syncCanvasOverlayCss(document, "preview");
-    expect(sheet()).toBeNull();
   });
 
   test("a git-diff render renames the overlay attributes AND ships the rules that draw them", async () => {
@@ -1898,23 +1882,6 @@ describe("syncCanvasOverlayCss", () => {
     const css = sheet()!.textContent!;
     expect(css).toContain("[data-jx-popover]:not([data-jx-popover-open])");
     expect(css).toContain("dialog[data-jx-dialog-open]");
-    handle.dispose();
-  });
-
-  test("a preview render leaves the native attributes and installs no substitute", async () => {
-    const container = document.createElement("div");
-    const handle = await renderResolvedDocument({
-      container,
-      doc: {
-        children: [{ attributes: { popover: "auto" }, children: ["panel"], tagName: "nav" }],
-        tagName: "div",
-      },
-      docBase: "http://localhost:3000/page.json",
-      mapperCtx: { ...ctx, canvasMode: "preview" },
-      mode: "preview",
-    });
-    expect(rendered(container, "nav").hasAttribute("popover")).toBe(true);
-    expect(sheet()).toBeNull();
     handle.dispose();
   });
 });

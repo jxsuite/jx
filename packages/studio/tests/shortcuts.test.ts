@@ -21,7 +21,7 @@ import {
   stubRect,
   topDialog,
 } from "./harness";
-import { beforeAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import { beforeAll, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { mountShellTree } from "../src/shell/tree";
 import { notifyModule } from "./notify-mock";
 import type { CommandContext } from "../src/commands/context";
@@ -538,7 +538,7 @@ describe("wheel handler", () => {
      over it was preventDefaulted for a panzoom wrap the mode never mounts — the scrollbar could be
      dragged, and the wheel did nothing. `tokens`, the Styles workspace's Variables view, is the
      same defect a third time: a scrollbar the wheel never moved. */
-  test.each(["grid", "content-home", "entry", "preview", "tokens"])(
+  test.each(["grid", "content-home", "entry", "tokens"])(
     "%s mode lets the surface scroll itself",
     (mode) => {
       canvasMode = mode;
@@ -552,7 +552,7 @@ describe("wheel handler", () => {
      pinch arrives as exactly this event — so a stage with no zoom of its own must block it like the
      rest of the app's chrome, or a pinch over a form scales the whole of Studio. Blocked is not
      panned: neither the stage offsets nor the tab's zoom may move. */
-  test.each(["grid", "content-home", "entry", "preview", "tokens"])(
+  test.each(["grid", "content-home", "entry", "tokens"])(
     "%s mode blocks ctrl+wheel browser zoom without panning or zooming",
     (mode) => {
       canvasMode = mode;
@@ -687,21 +687,6 @@ describe("middle-mouse panning", () => {
     canvasMode = "edit";
     const down = pointer("pointerdown", { button: 1, pointerId: 3 });
     expect(down.defaultPrevented).toBe(false);
-  });
-
-  test("preview scrolls its own frame rather than panning", () => {
-    canvasMode = "preview";
-    const down = pointer("pointerdown", { button: 1, pointerId: 9 });
-    expect(down.defaultPrevented).toBe(false);
-  });
-
-  test("the wheel is left to the preview frame — no pan, no preventDefault", () => {
-    canvasMode = "preview";
-    const e = wheel(wrapEl(), { deltaX: 10, deltaY: 20 });
-    expect(e.defaultPrevented).toBe(false);
-    expect(setPan).not.toHaveBeenCalled();
-    wheel(wrapEl(), { ctrlKey: true, deltaY: -100 });
-    expect(activeTab.value!.session.ui.zoom).toBe(1);
   });
 });
 
@@ -1306,35 +1291,6 @@ describe("the old dispatch — the three blanket guards", () => {
   });
 });
 
-describe("the old dispatch — Preview refuses to edit", () => {
-  beforeEach(() => {
-    canvasMode = "preview";
-  });
-
-  test.each(["d", "x", "v", "0", "=", "-"])("⌘%s does not mutate or zoom", (key) => {
-    activeTab.value!.session.selection = [["children", 0]];
-    pressDoc(key, { ctrlKey: true });
-    expect(cutNode).not.toHaveBeenCalled();
-    expect(pasteNode).not.toHaveBeenCalled();
-    expect(childCount()).toBe(3);
-    // A phantom `ui.zoom` written here would be waiting for the author back in Design.
-    expect(activeTab.value!.session.ui.zoom).toBe(1);
-  });
-
-  test.each(["Delete", "Backspace", "Enter"])("%s does not mutate the document", (key) => {
-    activeTab.value!.session.selection = [["children", 0]];
-    pressDoc(key);
-    expect(childCount()).toBe(3);
-  });
-
-  test("⌘S still saves", () => {
-    activeTab.value!.doc.dirty = true;
-    const e = pressDoc("s", { ctrlKey: true });
-    expect(saveFile).toHaveBeenCalledTimes(1);
-    expect(e.defaultPrevented).toBe(true);
-  });
-});
-
 // ═════════════════════════════════════════════════════════════════════════════
 // Where the port deliberately disagrees with the old dispatch
 // ═════════════════════════════════════════════════════════════════════════════
@@ -1364,6 +1320,29 @@ describe("deliberate divergences", () => {
     expect(tab.session.selection).toEqual([[]]);
     pressDoc("Escape");
     expect(tab.session.selection).toEqual([]);
+  });
+
+  test("Escape with a popover up is the platform's to answer: it closes the popover and moves nothing", () => {
+    const tab = activeTab.value!;
+    tab.session.selection = [["children", 1, "children", 0]];
+    const open = document.createElement("div");
+    open.setAttribute("popover", "manual");
+    document.body.append(open);
+    // The test DOM has no `:popover-open`: a popover is "up" when the document is asked for one.
+    const asked = spyOn(document, "querySelector").mockImplementation((selector: string) =>
+      selector === ":popover-open" ? open : (document.querySelectorAll(selector)[0] ?? null),
+    );
+    try {
+      const e = pressDoc("Escape");
+      expect(e.defaultPrevented).toBe(false);
+      expect(tab.session.selection).toEqual([["children", 1, "children", 0]]);
+    } finally {
+      asked.mockRestore();
+      open.remove();
+    }
+    // With none up, the same key still walks the ladder.
+    pressDoc("Escape");
+    expect(tab.session.selection).toEqual([["children", 1]]);
   });
 
   test("Escape with nothing selected is not swallowed", () => {
@@ -1401,26 +1380,6 @@ describe("deliberate divergences", () => {
     pressDoc("w", { ctrlKey: true });
     await flush();
     expect(workspace.tabOrder).toEqual(["test-tab"]);
-  });
-
-  /* 5. Preview drops the whole `canvas` scope rather than carrying two hand-written refusal sets
-        that disagreed with each other — ⌘C was allowed and ⌘X was not, on the same invisible
-        selection. Escape and the arrows go with them. */
-  test.each(["Escape", "ArrowDown", "ArrowLeft"])("%s no longer acts in Preview", (key) => {
-    canvasMode = "preview";
-    activeTab.value!.session.selection = [["children", 1, "children", 0]];
-    const e = pressDoc(key);
-    expect(activeTab.value!.session.selection).toEqual([["children", 1, "children", 0]]);
-    expect(e.defaultPrevented).toBe(false);
-  });
-
-  test("⌘C no longer copies an invisible Preview selection", () => {
-    canvasMode = "preview";
-    activeTab.value!.session.selection = [["children", 0]];
-    const e = pressDoc("c", { ctrlKey: true });
-    expect(copyNode).not.toHaveBeenCalled();
-    // The canvas scope is gone, so the browser copies whatever the reader selected in the frame.
-    expect(e.defaultPrevented).toBe(false);
   });
 
   /* 6. A chord bound to a VISIBLE but DISABLED command is swallowed rather than falling through:

@@ -1,5 +1,26 @@
 # Changelog
 
+## [5.0.0](https://github.com/jxsuite/jx/compare/parser-v4.3.4...parser-v5.0.0) (2026-11-12)
+
+
+### ⚠ BREAKING CHANGES
+
+* **studio:** Preview is removed; Edit draws live data and Open in Browser runs the page ([#652](https://github.com/jxsuite/jx/issues/652))
+
+### Features
+
+* **studio:** Preview is removed; Edit draws live data and Open in Browser runs the page ([#652](https://github.com/jxsuite/jx/issues/652)) ([9e1beb1](https://github.com/jxsuite/jx/commit/9e1beb146c9e95f7fbc6137fc2e209b262daffc6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/markup bumped to 1.0.9
+    * @jxsuite/schema bumped to 6.0.0
+  * devDependencies
+    * @jxsuite/runtime bumped to 7.0.0
+
 ## [4.3.4](https://github.com/jxsuite/jx/compare/parser-v4.3.3...parser-v4.3.4) (2026-11-11)
 
 

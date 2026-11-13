@@ -23,10 +23,12 @@ import {
 import {
   dynamicTagKind,
   dynamicTagLabel,
+  dynamicTagPath,
   humanizeIdentifier,
   parseDynamicTag,
   templateSegments,
 } from "@jxsuite/schema/dynamic-tag";
+import type { DynamicTag } from "@jxsuite/schema/dynamic-tag";
 import { plainMarkup } from "./plain-markup";
 import { isDocumentContainer } from "./strip-events";
 import type { RebuiltNode } from "./strip-events";
@@ -180,7 +182,7 @@ function jsLiteral(value: JxDocumentValue): string {
  * A pointer the runtime resolves, as a JavaScript accessor over the template parameters, or null
  * for a scheme a template cannot reach (`window#/`, `$defs`, an external file).
  */
-function refAccessor(ref: string): string | null {
+export function refAccessor(ref: string): string | null {
   const pointer = ref.startsWith("#/") ? ref.slice(2) : ref;
   const [head, ...rest] = pointer.split("/");
   const base = head === "state" || head === "$map" ? head : null;
@@ -510,12 +512,84 @@ function chipDef(mark: TagMark, content: string): JxMutableNode {
   };
 }
 
+/**
+ * The titles a project's content schemas give the fields of a repeater's item, by the field as a
+ * template reads it (`item.data.date`): what a tag is named where a schema names it (studio.md
+ * §6.9). Deduced where the schemas are (`tagTitlesOf` in `editor/dynamic-tags.ts`) and handed to
+ * {@link prepareForEditMode}.
+ */
+export type TagTitles = Readonly<Record<string, string>>;
+
+/** The titles the walk now running names tags by; none outside {@link prepareForEditMode}. */
+let activeTitles: TagTitles | null = null;
+
+/**
+ * The field of a repeater's item a tag reads, as a template spells it from the bare row words
+ * (`item.data.date`, `index`), or null for a tag that reads anything else. `$map.item.data.date`
+ * and `item.data.date` are one field and have one key, so a title is found under either spelling.
+ */
+export function rowFieldKey(tag: DynamicTag): string | null {
+  const path = dynamicTagPath(tag);
+  const steps = [...path.steps];
+  let word: string;
+  if (path.root === "$map") {
+    // `$map.item` and `$map["item"]` alike: a `{ "$ref" }` read as a template spells the second.
+    const first = steps.shift();
+    const name = first?.type === "member" ? first.name : first?.key.value;
+    if (name !== "item" && name !== "index") {
+      return null;
+    }
+    word = name;
+  } else if (path.root === "item" || path.root === "index") {
+    word = path.root;
+  } else {
+    return null;
+  }
+  let key = word;
+  for (const step of steps) {
+    const name = step.type === "member" ? step.name : step.key.value;
+    key +=
+      isString(name) && /^[A-Za-z_$][\w$]*$/u.test(name) ? `.${name}` : `[${JSON.stringify(name)}]`;
+  }
+  return key;
+}
+
+/**
+ * The name of a structured tag: the title its field's schema declares, when the titles in hand hold
+ * one, otherwise the path's own last meaningful member as words (studio.md §6.9).
+ */
+export function tagLabel(tag: DynamicTag, titles: TagTitles | null = activeTitles): string {
+  const key = titles === null ? null : rowFieldKey(tag);
+  const title = key === null ? undefined : titles?.[key];
+  return title === undefined || title === "" ? dynamicTagLabel(tag) : title;
+}
+
 /** The human name and kind of one `${…}` expression. */
-export function describeTag(expr: string): { label: string; kind: TagKind } {
+export function describeTag(
+  expr: string,
+  titles: TagTitles | null = activeTitles,
+): { label: string; kind: TagKind } {
   const tag = parseDynamicTag(expr);
   return tag === null
     ? { kind: "custom", label: CUSTOM_TAG_LABEL }
-    : { kind: dynamicTagKind(tag), label: dynamicTagLabel(tag) };
+    : { kind: dynamicTagKind(tag), label: tagLabel(tag, titles) };
+}
+
+/**
+ * A template as an author reads it: its text, with each tag by its name in braces instead of its
+ * expression. For a name that has room for words, as a breadcrumb or a header has.
+ */
+export function readableTemplate(text: string, titles: TagTitles | null = null): string {
+  if (!text.includes("${")) {
+    return text;
+  }
+  return templateSegments(text)
+    .map((segment) =>
+      segment.type === "literal"
+        ? segment.text
+        : `{${segment.type === "tag" ? tagLabel(segment.tag, titles) : CUSTOM_TAG_LABEL}}`,
+    )
+    .join("");
 }
 
 /**
@@ -680,7 +754,7 @@ function templateRuns(template: string, member = false): (JxMutableNode | string
       segment.type === "tag"
         ? {
             kind: dynamicTagKind(segment.tag),
-            label: dynamicTagLabel(segment.tag),
+            label: tagLabel(segment.tag),
             source: segment.source,
           }
         : { kind: "custom", label: CUSTOM_TAG_LABEL, source: segment.source };
@@ -746,8 +820,18 @@ function opensExpression(
   );
 }
 
-/** The last segment of a pointer, as words: the name of what a `{ "$ref" }` reads. */
-function refLabel(ref: string): string {
+/**
+ * The name of what a `{ "$ref" }` reads: the title its field's schema declares when the pointer
+ * reads a repeater's item and the titles in hand hold one, otherwise its last segment as words.
+ */
+export function refLabel(ref: string, titles: TagTitles | null = activeTitles): string {
+  const accessor = titles === null ? null : refAccessor(ref);
+  const tag = accessor === null ? null : parseDynamicTag(accessor);
+  const key = tag === null ? null : rowFieldKey(tag);
+  const title = key === null ? undefined : titles?.[key];
+  if (title !== undefined && title !== "") {
+    return title;
+  }
   const last = ref.split("/").at(-1) ?? "";
   const label = humanizeIdentifier(last.replaceAll("~1", "/").replaceAll("~0", "~"));
   return label === "" ? "Reference" : label;
@@ -866,14 +950,43 @@ function boundLabel(names: readonly string[]): string {
  * Preparing a prepared tree changes nothing: a page drawn inside a layout is walked once alone and
  * once as the merge.
  *
+ * `titles` names a tag by the title its field's schema declares ({@link TagTitles}); without them
+ * every tag is named by its path.
+ *
  * @param {JxMutableNode} node
  * @returns {JxMutableNode}
  */
-export function prepareForEditMode(node: JxMutableNode): JxMutableNode;
-export function prepareForEditMode(node: JxDocumentValue): JxDocumentValue;
-export function prepareForEditMode(node: JxDocumentValue | undefined): JxDocumentValue | undefined;
-export function prepareForEditMode(node: JxDocumentValue | undefined): JxDocumentValue | undefined {
-  return prepareNode(node);
+export function prepareForEditMode(node: JxMutableNode, titles?: TagTitles | null): JxMutableNode;
+export function prepareForEditMode(
+  node: JxDocumentValue,
+  titles?: TagTitles | null,
+): JxDocumentValue;
+export function prepareForEditMode(
+  node: JxDocumentValue | undefined,
+  titles?: TagTitles | null,
+): JxDocumentValue | undefined;
+export function prepareForEditMode(
+  node: JxDocumentValue | undefined,
+  titles: TagTitles | null = null,
+): JxDocumentValue | undefined {
+  /* The titles are the walk's own for as long as it runs and no longer: the walk is synchronous,
+     and two tabs prepared one after the other name their tags by their own schemas. */
+  return withTagTitles(titles, () => prepareNode(node));
+}
+
+/**
+ * Run `fn` with `titles` as the names tags are given, and put back what was there. For the one
+ * caller that prepares a bare string member, which {@link prepareForEditMode} does not take
+ * (`canvas/iframe-subtree.ts`).
+ */
+export function withTagTitles<T>(titles: TagTitles | null, fn: () => T): T {
+  const outer = activeTitles;
+  activeTitles = titles;
+  try {
+    return fn();
+  } finally {
+    activeTitles = outer;
+  }
 }
 
 /** Merge `extra` into a node's `attributes`, keeping what is there. */

@@ -104,10 +104,10 @@ All in `packages/studio`, run with `bun test --isolate --coverage` from the work
   - "window blur disarms".
   - "a pan drag marks the stage as panning until pointerup, and pointercancel ends it too".
   - "neither button pans a stage with no pan/zoom surface" (the Grid case: no `panzoomWrap`, not prevented, no `setPan`).
-- **`tests/iframe-keys.test.ts`**. New describe "shouldReportPanKey" with: reported in Design, Stylebook and Diff with no session; kept by a caret session, Edit and Preview; kept by a page `<input>`; not reported when modified or prevented. New describe "startPanKeyReport" with: "posts held once per press, prevents every repeat, and posts the release"; "the frame's blur releases a reported hold"; "an unreported release posts nothing"; "teardown removes the listeners".
+- **`tests/iframe-keys.test.ts`**. New describe "shouldReportPanKey" with: reported in Design, Stylebook and Diff with no session; kept by a caret session and by Edit; kept by a page `<input>`; not reported when modified or prevented. New describe "startPanKeyReport" with: "posts held once per press, prevents every repeat, and posts the release"; "the frame's blur releases a reported hold"; "an unreported release posts nothing"; "teardown removes the listeners".
 - **`tests/iframe-entry.test.ts`**:
   - "Space with no caret session reports panKey, and a rebinding on Space is forwarded instead": a synced table claiming `space` yields `forwardKey` and no `panKey`.
-  - "a middle-button drag in Design relays forwardPan in screen space, and Preview relays nothing".
+  - "a middle-button drag in Design relays forwardPan in screen space, and Edit relays nothing".
 - **`tests/iframe-host.test.ts`**:
   - "panKey arms and releases the stage pan", asserting `isPanHeld()`.
   - "forwardPan pans the frame's own stage, and is refused on a stage without a pan surface".
@@ -140,7 +140,7 @@ All in `packages/studio`, run with `bun test --isolate --coverage` from the work
 
   Neither passage has an em dash. If the Open decisions are declined, the passages follow the spec's alternative wording.
 
-- No other page changes. `docs/studio/interface/modes.md` cites §4.2, and its Preview paragraph ("nothing to pan or zoom") stays true. `docs/studio/interface/tabs.md` lists `panels/pane-grid.ts`, which is unchanged. `docs:sync` names the pages whose `code:` lists `panels/pane-context.ts` (`tabs.md`, `modes.md`, `design/breakpoints.md`, `design/stylebook.md`, `design/components.md`); the change there swaps a private list for the shared one, and the pull request says no page moves. The generated shortcuts page projects records, and this gesture is not one.
+- No other page changes. `docs/studio/interface/modes.md` cites §4.2 and says nothing of panning beyond Design's artboard, which stays true. `docs/studio/interface/tabs.md` lists `panels/pane-grid.ts`, which is unchanged. `docs:sync` names the pages whose `code:` lists `panels/pane-context.ts` (`tabs.md`, `modes.md`, `design/breakpoints.md`, `design/stylebook.md`, `design/components.md`); the change there swaps a private list for the shared one, and the pull request says no page moves. The generated shortcuts page projects records, and this gesture is not one.
 - No graduation: studio.md keeps other open items (`bun run plans:status --spec studio`). The landing pull request deletes this file and removes `studio/space-drag-pan` from `plan:studio/keyboard-shortcut-tables`'s `requires`.
 
 ## Acceptance
@@ -155,4 +155,4 @@ All in `packages/studio`, run with `bun test --isolate --coverage` from the work
   4. Space+click on a margin without moving keeps the selection.
   5. With two panes, Space shows the hand on both pan/zoom stages, and a drag pans only the stage under the pointer.
   6. Hold Space, switch to another window, release, and come back: the stage is not armed.
-  7. In Grid, the Library, Edit and Preview, neither drag pans, and Space in Preview still scrolls the page.
+  7. In Grid, the Library and Edit, neither drag pans.

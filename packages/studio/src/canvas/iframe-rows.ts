@@ -83,8 +83,8 @@ export interface RowView {
   limit: number;
   /** A sample item per repeater, by serialized document path, for a list with nothing to draw. */
   samples: Readonly<Record<string, JsonValue>>;
-  /** Whether rows are closed, capped and sampled: false for a render nobody edits (Preview). */
-  editing: boolean;
+  /** The titles a tag is named by, for a node drawn again after the render (studio.md §6.9). */
+  titles: Readonly<Record<string, string>>;
   /** The scope the runtime rendered each stamped element with: a row's own inside a repeater. */
   scopes: WeakMap<HTMLElement, JxScope>;
   /**
@@ -106,13 +106,13 @@ export interface RowView {
 }
 
 /** A fresh {@link RowView}: every repeater on its first row, the default cap, no samples. */
-export function newRowView(init: Partial<Pick<RowView, "limit" | "samples" | "editing">> = {}) {
+export function newRowView(init: Partial<Pick<RowView, "limit" | "samples">> = {}) {
   const view: RowView = {
     active: new Map(),
-    editing: init.editing ?? true,
     ...newDrawnState(),
     limit: init.limit ?? DEFAULT_ROW_LIMIT,
     samples: init.samples ?? {},
+    titles: {},
   };
   return view;
 }
@@ -370,9 +370,7 @@ export function syncRows(container: HTMLElement, view: RowView): void {
     } else {
       delete el.dataset.jxPath;
       mark(el, ECHO_PATH_ATTR, serialized);
-      if (view.editing) {
-        closeEcho(el, isRowRoot);
-      }
+      closeEcho(el, isRowRoot);
     }
   }
 }
@@ -516,7 +514,7 @@ export type RowHooks = Pick<
  * tree is in the document; the caller decides when there is something to sync.
  */
 export function rowHooks(view: RowView, ctx: PathMapCtx, changed: () => void): RowHooks {
-  const hooks: RowHooks = {
+  return {
     onListReconciled: (path, result) => {
       /* The marks are written on the rows the list says it has, so they are the rows' own: they
          stay with a row that moves and need no path to be found by. A layout's own list is the
@@ -549,30 +547,26 @@ export function rowHooks(view: RowView, ctx: PathMapCtx, changed: () => void): R
     onNodeMoved: (node, path) => {
       restampMovedRow(node, path);
     },
+    rowLimit: view.limit,
+    emptyRow: (_arrayDef, path) => {
+      if (!isPageList(path, ctx)) {
+        // A layout's own list draws what the page will: nothing.
+        return;
+      }
+      const { path: repeater } = stripRowIndices(pageDocPath(path, ctx));
+      /* No sample is no item: every binding that reads one throws, is survived, and draws
+         nothing, so a chip shows its name and an attribute stays off. An empty object would read
+         as `undefined` instead, and the template row would spell that word wherever it has text. */
+      const sample = view.samples[serializeJxPath(repeater)] ?? null;
+      if (!isJsonObject(sample)) {
+        return sample;
+      }
+      /* Marked, so an attribute that reads the row can tell this made-up item from a real one and
+         stay off (`templateRowAttribute` in utils/edit-display.ts). Not enumerable: nothing that
+         walks the item sees a field the list never declared. */
+      return Object.defineProperty({ ...sample }, SAMPLE_ROW_KEY, { value: true });
+    },
   };
-  if (!view.editing) {
-    return hooks;
-  }
-  hooks.rowLimit = view.limit;
-  hooks.emptyRow = (_arrayDef, path) => {
-    if (!isPageList(path, ctx)) {
-      // A layout's own list draws what the page will: nothing.
-      return;
-    }
-    const { path: repeater } = stripRowIndices(pageDocPath(path, ctx));
-    /* No sample is no item: every binding that reads one throws, is survived, and draws
-       nothing, so a chip shows its name and an attribute stays off. An empty object would read
-       as `undefined` instead, and the template row would spell that word wherever it has text. */
-    const sample = view.samples[serializeJxPath(repeater)] ?? null;
-    if (!isJsonObject(sample)) {
-      return sample;
-    }
-    /* Marked, so an attribute that reads the row can tell this made-up item from a real one and
-       stay off (`templateRowAttribute` in utils/edit-display.ts). Not enumerable: nothing that
-       walks the item sees a field the list never declared. */
-    return Object.defineProperty({ ...sample }, SAMPLE_ROW_KEY, { value: true });
-  };
-  return hooks;
 }
 
 /** Whether a caret can stand in `node`'s own content: nothing around it is closed to the caret. */

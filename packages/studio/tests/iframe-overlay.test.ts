@@ -149,6 +149,21 @@ describe("createOverlayLayer", () => {
     expect(hover.style.display).toBe("none");
   });
 
+  test("setHover labels the box with what the block draws from data, and only then", () => {
+    const layer = createOverlayLayer(document);
+    const hover = part(layer.root, ".overlay-hover");
+    const label = part(hover, ".overlay-bound-label");
+    layer.setHover({ height: 8, left: 1, top: 2, width: 40 }, "Title · Post date");
+    expect(label.style.display).toBe("block");
+    expect(label.textContent).toBe("Title · Post date");
+    // A block with nothing bound has no label, and a hidden box says nothing.
+    layer.setHover({ height: 8, left: 1, top: 2, width: 40 });
+    expect(label.style.display).toBe("none");
+    expect(label.textContent).toBe("");
+    layer.setHover(null, "Title");
+    expect(label.style.display).toBe("none");
+  });
+
   test("dispose removes the layer from its parent", () => {
     const layer = createOverlayLayer(document);
     document.body.append(layer.root);
@@ -233,20 +248,5 @@ describe("setInsertZone (insertion '+')", () => {
     layer.setInsertZone(null);
     expect(btn.style.display).toBe("none");
     expect(btn.classList.contains("visible")).toBe(false);
-  });
-});
-
-describe("setSuppressed", () => {
-  test("hides the whole layer and restores it", () => {
-    // Preview paints no editing chrome at all — one switch, so no in-flight reply from the previous
-    // Render can leave a box drawn over a page that is supposed to look shipped.
-    const layer = createOverlayLayer(document);
-    layer.setSelection({ height: 10, left: 0, top: 0, width: 10 });
-
-    layer.setSuppressed(true);
-    expect(layer.root.style.display).toBe("none");
-
-    layer.setSuppressed(false);
-    expect(layer.root.style.display).toBe("");
   });
 });

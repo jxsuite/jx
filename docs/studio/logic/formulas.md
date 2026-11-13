@@ -21,7 +21,7 @@ Bindable value rows across the Inspector (**[Content](/docs/studio/design/proper
 
 - **Fixed value**: a value you type here, the same every time.
 - **From data…**: the current value of a signal, picked from a list.
-- **Mixed text**: text with `${…}` placeholders that fill in from signals, like `Hello ${state.$name}`.
+- **Mixed text**: text with placeholders that fill in from your data, like "Hello" followed by a name. The row draws each placeholder as a [tag](/docs/studio/editing/dynamic-tags) with its name and current value; click one to change it, or **Edit as text** to type the `${…}` form, like `Hello ${state.$name}`.
 - **Formula**: computed from other values, built up operator by operator.
 
 Those four names are the whole vocabulary. Every surface that asks how a value is produced (a field row, an operand inside a formula, a handler on the Logic tab) spells the answer the same way, so learning it once is learning it everywhere.

@@ -244,7 +244,6 @@ describe("document and editor", () => {
   test.each<[string, EditorKind, CanvasView]>([
     ["design", "canvas", "design"],
     ["edit", "canvas", "edit"],
-    ["preview", "canvas", "preview"],
     ["grid", "grid", "design"],
     ["source", "code", "design"],
     ["git-diff", "diff", "design"],
@@ -566,8 +565,6 @@ describe("keyScopeStack", () => {
     ["code", "design", ["code", "global"]],
     ["canvas", "design", ["canvas", "global"]],
     ["canvas", "edit", ["canvas", "global"]],
-    // Preview posts no hits, so no element-level chord has anything visible to aim at.
-    ["canvas", "preview", ["global"]],
     ["diff", "design", ["global"]],
     ["home", "design", ["global"]],
     ["none", "design", ["global"]],
@@ -607,7 +604,6 @@ describe("editorKindForMode / canvasViewForMode", () => {
   test.each<[string, EditorKind, CanvasView]>([
     ["edit", "canvas", "edit"],
     ["design", "canvas", "design"],
-    ["preview", "canvas", "preview"],
     ["source", "code", "design"],
     ["grid", "grid", "design"],
     ["stylebook", "config", "design"],

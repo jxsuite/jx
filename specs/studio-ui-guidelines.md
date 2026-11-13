@@ -1,8 +1,8 @@
 # Jx Studio UI/UX Interface Guidelines
 
-**Version:** 0.8.35-draft\
+**Version:** 0.9.0-draft\
 **Status:** Partial\
-**Updated:** 2026-11-11\
+**Updated:** 2026-11-13\
 **Applies to:** `packages/studio/`
 
 ---
@@ -17,7 +17,7 @@ Jx Studio's chrome is built from **the Jx UI kit** (`@jxsuite/ui`, [`ui.md`](./u
 
 The chrome ships two themes, dark (the default the app boots in) and light, chosen in Preferences → Appearance. The kit declares every colour token as a `light-dark()` pair on `:root`, and the shell stamps `data-theme` on `<html>` to force one (`applyChromeTheme()`, `src/shell.ts`). **That stamp is now the only channel, and the removal of the second one is the point.** There were two: this attribute, and a `color` attribute on the `sp-theme` element the frame was wrapped in — so a theme could half-apply. `<sp-theme>` adopted the colour fragment registered under the name it was given and adopted none at all for a name it did not know, so `color="light"` was a valid attribute over an empty palette: every Spectrum colour went undefined, Studio's semantic layer fell through to its dark hex fallbacks, and Light shipped as a setting that moved the backdrop and nothing else. **A theme named in `CHROME_THEMES` must still have a rule of its own in the kit's theme block**, because the failure survived its mechanism: a `data-theme` value the kit declares no `color-scheme` for inherits `light dark` and lets the OS choose. `tests/chrome-theme.test.ts` counts what each declared theme actually gets and pins an undeclared name as the negative control.
 
-**This reverses a recorded decision.** The shell redesign that preceded the kit held that Studio "does not need a design system — it has a good one", and that adding a second is how the first one died. It was right about enforcement and wrong about ownership: a design system this application does not author cannot be edited on its own canvas, and the self-hosting principle (`studio.md` §2) was not true of a chrome whose components were someone else's classes. What that redesign got right still binds — no string DSL for `when`, no floating docks by default, the horizontal tab strip stays, no recursive pane tree, `CANVAS_MODES` and the stylebook wire format do not change, no autosave — and the enforcement it built (`check-styles.ts`, one overlay contract, the region grammar) is what the migration is held to.
+**This reverses a recorded decision.** The shell redesign that preceded the kit held that Studio "does not need a design system — it has a good one", and that adding a second is how the first one died. It was right about enforcement and wrong about ownership: a design system this application does not author cannot be edited on its own canvas, and the self-hosting principle (`studio.md` §2) was not true of a chrome whose components were someone else's classes. What that redesign got right still binds — no string DSL for `when`, no floating docks by default, the horizontal tab strip stays, no recursive pane tree, the stylebook wire format does not change (and `CANVAS_MODES` changed once since, losing Preview when the editing canvas came to draw resolved data, `studio.md` §4.2), no autosave — and the enforcement it built (`check-styles.ts`, one overlay contract, the region grammar) is what the migration is held to.
 
 ### 1.1 Theme Tokens
 
@@ -79,7 +79,7 @@ Use CSS custom properties from `:root` — never hardcode color values.
 
 ### 2.1 Font Stacks
 
-> **Status: Partial.** The chrome draws the kit's font tokens: `--jx-font-sans` is `"Inter Variable", "Inter", system-ui, …` and `--font-mono` leads with the bundled JetBrains Mono (`packages/ui/project.json`, `packages/studio/styles/tokens.json`), so the sans stack in the table is only `tokens.css`'s pre-paint fallback. No content mode and no Georgia canvas face exist: `CANVAS_MODES` is preview, design, edit, stylebook and git-diff.
+> **Status: Partial.** The chrome draws the kit's font tokens: `--jx-font-sans` is `"Inter Variable", "Inter", system-ui, …` and `--font-mono` leads with the bundled JetBrains Mono (`packages/ui/project.json`, `packages/studio/styles/tokens.json`), so the sans stack in the table is only `tokens.css`'s pre-paint fallback. No content mode and no Georgia canvas face exist: `CANVAS_MODES` is design, edit, stylebook and git-diff.
 
 | Context            | Font Stack                                                             |
 | ------------------ | ---------------------------------------------------------------------- |
@@ -533,6 +533,7 @@ Fixed-position toolbar that follows the selected element:
 
 - Shows element tag name, drag handle, and context actions
 - ONE shape: the bar does not rearrange itself when the author starts typing. Controls that cannot act are disabled, not removed — a toolbar whose buttons move under the cursor is worse than one with a greyed button
+- **A fact about the selection is drawn only where it is true.** The Bound pills, the row stepper and the case picker (`studio.md` §4.4) are not verbs that can or cannot act: each names something the selected block has, and a pill for a property that is not bound would name nothing. They are absent rather than disabled, and they stand after every verb, so nothing before them moves when they come and go
 - **It steps aside when the author leaves the canvas.** A pointerdown in parent chrome outside the canvas hides the bar; a selection change or a pointerdown back in the canvas brings it back. The bar is `position: fixed` and clamped into the window, so a bar that outlived the author's attention sat over the pane context bar, the Inspector and the docks — chrome the author was reaching for. Hiding it never clears the SELECTION: the Inspector's whole job is editing what is selected
 - Z-index: 100
 - Shadow: standard elevation shadow
@@ -983,6 +984,8 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.9.0-draft** (2026-11-13) — §1 and §2.1: CANVAS_MODES loses preview, so the canvas modes are design, edit, stylebook and git-diff.
+- **0.8.36-draft** (2026-11-13) — The floating action bar draws a fact about the selection (a Bound pill, the row stepper, the case picker) only where it is true, after every verb (§8.6).
 - **0.8.35-draft** (2026-11-11) — §3.1 The status bar's far-right field is the focused pane's zoom; §12.1 new statusbar/zoom placement admitting the document level, so the status bar is four single-level placements.
 - **0.8.34-draft** (2026-11-11) — 12.1 adds the outline/toolbar placement, document level, for the Outline's Expand All and Collapse All action bar.
 - **0.8.33-draft** (2026-11-11) — §3.1 the Command Bar's controls draw md (24px); the window controls keep sm.

@@ -161,29 +161,24 @@ export function tabOfMountedPanel(panel: UnboundCanvasPanel): Tab | null {
 }
 
 /**
- * The effective canvas mode of a tab: the per-tab preview toggle composed onto its base mode.
+ * The canvas mode of a tab, or `design` for a pane with none.
  *
- * The composition is the same one every downstream gate (document resolution, iframe flags,
- * interaction surfaces) reads, and it lives here — beside the panes — because the answer is a
- * property of a pane's tab, never of the application. Consumers needing the BASE mode read
- * `tab.session.ui.canvasMode` directly.
+ * It lives here, beside the panes, because the answer is a property of a pane's tab, never of the
+ * application.
  *
  * @param {Tab | null} tab
  * @returns {string}
  */
 export function canvasModeOfTab(tab: Tab | null): string {
-  const ui = tab?.session.ui;
-  const base = ui?.canvasMode ?? "design";
-  return ui?.preview && (base === "edit" || base === "design") ? "preview" : base;
+  return tab?.session.ui.canvasMode ?? "design";
 }
 
 /**
- * The effective canvas mode a pane is drawing in.
+ * The canvas mode a pane is drawing in.
  *
  * A LENS draws the source pane's document in a mode of its OWN — that is most of what a lens is —
  * and that mode is never written onto the tab, because the tab belongs to the pane beside it and
- * writing there would flip the document the author is editing. The per-tab preview toggle still
- * composes onto it, so a preview lens of an edit-mode page is still a preview.
+ * writing there would flip the document the author is editing.
  *
  * @param {string} paneId
  * @returns {string}
@@ -191,9 +186,7 @@ export function canvasModeOfTab(tab: Tab | null): string {
 export function canvasModeOfPane(paneId: string): string {
   const derived = derivationOfPane(paneId);
   if (derived?.kind === "lens") {
-    const base = derived.mode;
-    const ui = tabOfPane(paneId)?.session.ui;
-    return ui?.preview && (base === "edit" || base === "design") ? "preview" : base;
+    return derived.mode;
   }
   return canvasModeOfTab(tabOfPane(paneId));
 }

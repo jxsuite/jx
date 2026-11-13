@@ -1,5 +1,57 @@
 # Changelog
 
+## [11.0.0](https://github.com/jxsuite/jx/compare/studio-v10.9.0...studio-v11.0.0) (2026-11-12)
+
+
+### ⚠ BREAKING CHANGES
+
+* **studio:** Preview is removed; Edit draws live data and Open in Browser runs the page ([#652](https://github.com/jxsuite/jx/issues/652))
+
+### Features
+
+* a project's pure formulas are callable in its components ([#642](https://github.com/jxsuite/jx/issues/642)) ([918e404](https://github.com/jxsuite/jx/commit/918e404832f9fc796f9a8e781afcc101693b9a1d))
+* **content-mapper,schema:** tsc and a language server check the code in a .jxn document ([#629](https://github.com/jxsuite/jx/issues/629)) ([5497674](https://github.com/jxsuite/jx/commit/549767449324fe1f7c4efd79591aacdcf0f11153))
+* live-canvas foundations (tag model, formulas, runtime splice, static empty lists) ([#640](https://github.com/jxsuite/jx/issues/640)) ([2106c38](https://github.com/jxsuite/jx/commit/2106c380eb2661a7eda1a0f6d6f5b6aa8686b8a7))
+* Open in Browser runs a component or a layout on its own ([#644](https://github.com/jxsuite/jx/issues/644)) ([ea340c5](https://github.com/jxsuite/jx/commit/ea340c5d83e8e847cb9aa7f1c990e94e84fdf9df))
+* **runtime,studio:** a prop edit writes the prop into the live instance ([#645](https://github.com/jxsuite/jx/issues/645)) ([d1c6e61](https://github.com/jxsuite/jx/commit/d1c6e61301aea36c2532724f1b3a645f7bfbc235))
+* **schema,collab,compiler,studio:** a document's script in .jxn, Studio and shared sessions ([#628](https://github.com/jxsuite/jx/issues/628)) ([ddb7734](https://github.com/jxsuite/jx/commit/ddb7734555e3b26d26ef339fab651b5e2768d75f))
+* **schema,compiler,runtime:** a document carries its own client and server modules in $script ([#625](https://github.com/jxsuite/jx/issues/625)) ([bb35a4f](https://github.com/jxsuite/jx/commit/bb35a4f7e68dc77e06c4b68437fba459480fcd04))
+* **schema,runtime,studio:** quote-aware template scan, and a commit keeps its binding ([#638](https://github.com/jxsuite/jx/issues/638)) ([0152646](https://github.com/jxsuite/jx/commit/0152646f57b280ac2086ca1fee6b6cdaf00cc6d8))
+* **schema,studio:** the Code view completes a .jxn file from its schemas ([#643](https://github.com/jxsuite/jx/issues/643)) ([04db75b](https://github.com/jxsuite/jx/commit/04db75b0b613e1742133f9342f801dc5f2abe4fd))
+* **studio,schema:** the Code view of a .jxn file marks type errors in the whole file ([#639](https://github.com/jxsuite/jx/issues/639)) ([678c8b9](https://github.com/jxsuite/jx/commit/678c8b911eef0dd1e4c8b496e324d551ca9f6f36))
+* **studio:** a dynamic tag opens a popover to pick its source, format and fallback ([#650](https://github.com/jxsuite/jx/issues/650)) ([6d1c4a0](https://github.com/jxsuite/jx/commit/6d1c4a0fa4d20729eb6ceddcd73c34d746995b4a))
+* **studio:** a repeater draws every row on the editing canvas, and any row is editable ([#648](https://github.com/jxsuite/jx/issues/648)) ([0040472](https://github.com/jxsuite/jx/commit/004047270a768fe9471899c95ba3bbe61f91490d))
+* **studio:** bound text draws its value on the editing canvas, as a chip the caret cannot enter ([#647](https://github.com/jxsuite/jx/issues/647)) ([684308d](https://github.com/jxsuite/jx/commit/684308d18aa46e64ba3d4c12d932739e3e7c5b1f))
+* **studio:** Preview is removed; Edit draws live data and Open in Browser runs the page ([#652](https://github.com/jxsuite/jx/issues/652)) ([9e1beb1](https://github.com/jxsuite/jx/commit/9e1beb146c9e95f7fbc6137fc2e209b262daffc6))
+* **studio:** the canvas fetches remote data once, marks what did not resolve, takes a state value ([#649](https://github.com/jxsuite/jx/issues/649)) ([b7a6d63](https://github.com/jxsuite/jx/commit/b7a6d639ab5c813008bc5679ece463c76741b214))
+* **vscode:** a VS Code extension highlights, completes and type checks a .jxn file ([#646](https://github.com/jxsuite/jx/issues/646)) ([70cab4f](https://github.com/jxsuite/jx/commit/70cab4f490ba7abd67b4d5220970e8444535631c))
+
+
+### Bug Fixes
+
+* **schema,content-mapper,studio:** the state a project gives a document is seen by every reader ([#635](https://github.com/jxsuite/jx/issues/635)) ([4e30c53](https://github.com/jxsuite/jx/commit/4e30c53be4a6df4a40959bf8a8e74a55ce6b53b3))
+* **studio:** a one-line raw string in a .jxn file ends where it closes ([#641](https://github.com/jxsuite/jx/issues/641)) ([d148f19](https://github.com/jxsuite/jx/commit/d148f198f6b25ba11c7ac29a6a06cbc45593d005))
+* **studio:** a popover panel is shown on its own jx-ready, not a descendant's ([#623](https://github.com/jxsuite/jx/issues/623)) ([f2a1a7f](https://github.com/jxsuite/jx/commit/f2a1a7f63019312115d17c7b7490a073d1b39ca1))
+* **studio:** Component Settings shows and edits a prop wherever the instance delivers it ([#651](https://github.com/jxsuite/jx/issues/651)) ([b0759a3](https://github.com/jxsuite/jx/commit/b0759a3244d31c5096431a0fb36c54a0d636f832))
+* **ui:** forward form attributes, draw invalid state and guard composition keys ([#626](https://github.com/jxsuite/jx/issues/626)) ([6c513dc](https://github.com/jxsuite/jx/commit/6c513dcd80731fe364e60e07ac10f4f66c80e29c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/ai bumped to 0.43.5
+    * @jxsuite/collab bumped to 0.12.0
+    * @jxsuite/create bumped to 1.8.1
+    * @jxsuite/erase bumped to 0.3.0
+    * @jxsuite/formulas bumped to 0.0.33
+    * @jxsuite/markup bumped to 1.0.9
+    * @jxsuite/protocol bumped to 6.4.0
+    * @jxsuite/runtime bumped to 7.0.0
+    * @jxsuite/schema bumped to 6.0.0
+    * @jxsuite/site bumped to 2.7.0
+    * @jxsuite/ui bumped to 0.12.0
+
 ## [10.9.0](https://github.com/jxsuite/jx/compare/studio-v10.8.0...studio-v10.9.0) (2026-11-11)
 
 

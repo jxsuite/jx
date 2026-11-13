@@ -1,13 +1,13 @@
 {
   "$schema": "https://jxsuite.com/schema/v1",
   "$id": "StudioPaneContext",
-  "$description": "The pane's own chrome — the pane context bar, one mount per pane. (The floating zoom pod that used to ride with it is the status bar's zoom field now: `surfaces/statusbar.json`.) It replaces `#tab-bar`, a 28px band styled identically to the tab strip above it that held five unrelated axes with no labels on any of them; the three axes here each say what they are, and the label is what stops the band re-accreting into an anonymous strip of chips. `panels/pane-context.ts` keeps every decision — which editor kinds a document declares, which canvas views it has, whether preview is a flag over them, what a lens may not write, and what a route param's candidate values are — and hands this document one projection of words, booleans and keyed rows. The bar and the banner share `[part=\"band\"]` so the adapter can MEASURE what the stage must clear: a banner's height is its wrapped text, and only layout knows how many lines that is.",
+  "$description": "The pane's own chrome — the pane context bar, one mount per pane. (The floating zoom pod that used to ride with it is the status bar's zoom field now: `surfaces/statusbar.json`.) It replaces `#tab-bar`, a 28px band styled identically to the tab strip above it that held five unrelated axes with no labels on any of them; the three axes here each say what they are, and the label is what stops the band re-accreting into an anonymous strip of chips. `panels/pane-context.ts` keeps every decision — which editor kinds a document declares, which canvas views it has, what a lens may not write, and what a route param's candidate values are — and hands this document one projection of words, booleans and keyed rows. The bar and the banner share `[part=\"band\"]` so the adapter can MEASURE what the stage must clear: a banner's height is its wrapped text, and only layout knows how many lines that is.",
   "tagName": "div",
   "attributes": {
     "part": "chrome"
   },
   "style": {
-    "$description": "The `.pc-*` rules of `styles/canvas.css`, keyed on `part` and carried here, plus `.jx-collab-banner` from `styles/shell.css` — the banner rides in this band and the rule rides with it. Three token repairs travel with them, all of one shape: `--spectrum-font-size-75` and `--spectrum-font-size-50` resolved only inside `<sp-theme>` and a document mounts outside it, so every rule reading one would silently have taken its px fallback; they are `--jx-text-md` (12px) and `--jx-text-sm` (11px) here, at the same values. Four rules are DELETED rather than moved because the kit already draws them: `.pc-derive-trigger`'s hand-built 22×20 box and its hover are `jx-action-button` quiet, `.pc-preview-toggle[selected]`'s four Spectrum custom-property overrides are the `emphasized` prop, and `.pc-ctx-manage:hover`'s underline is the only half of that rule worth keeping. The one rule ADDED is `pointer-events: auto` on the band and the popovers: `.pane-chrome` is `pointer-events: none` and gave it to its direct children through `.pane-chrome > *`, which a document root with `display: contents` is not — so the two surfaces that take the pointer say so themselves, which is also the honest place for it.",
+    "$description": "The `.pc-*` rules of `styles/canvas.css`, keyed on `part` and carried here, plus `.jx-collab-banner` from `styles/shell.css` — the banner rides in this band and the rule rides with it. Three token repairs travel with them, all of one shape: `--spectrum-font-size-75` and `--spectrum-font-size-50` resolved only inside `<sp-theme>` and a document mounts outside it, so every rule reading one would silently have taken its px fallback; they are `--jx-text-md` (12px) and `--jx-text-sm` (11px) here, at the same values. Rules are DELETED rather than moved where the kit already draws them: `.pc-derive-trigger`'s hand-built 22×20 box and its hover are `jx-action-button` quiet, and `.pc-ctx-manage:hover`'s underline is the only half of that rule worth keeping. The one rule ADDED is `pointer-events: auto` on the band and the popovers: `.pane-chrome` is `pointer-events: none` and gave it to its direct children through `.pane-chrome > *`, which a document root with `display: contents` is not — so the two surfaces that take the pointer say so themselves, which is also the honest place for it.",
     "display": "contents",
     "& [part=\"band\"]": {
       "$description": "The pane's top band: the bar plus the standing statements that must be readable before the first keystroke. One element so the adapter can MEASURE what the stage has to clear — a banner's height is its wrapped text, which only layout knows.",
@@ -60,15 +60,6 @@
     },
     "& [part=\"views\"]": {
       "flexShrink": "0"
-    },
-    "& [part=\"preview-toggle\"]": {
-      "$description": "Not a third radio, and it must not read as one: it says the canvas is inert. The margin separates the two axes the eye is being asked to read as separate; the accent fill is the kit's `emphasized`, which is what deleted the four Spectrum custom properties this rule used to carry. The toggle is `quiet: false`, so it rests as a framed button of its own beside the framed View switch, as the Spectrum button did; quiet, it read as a fourth loose word once the switch beside it drew its frame.",
-      "flexShrink": "0",
-      "marginInlineStart": "6px"
-    },
-    "& jx-action-button[part=\"preview-toggle\"] > [part=\"control\"]": {
-      "$description": "The text padding the View switch's segments get from their group, which this toggle stands outside: the small size's 2px is for a glyph, and 6px is what the group gives a text segment. (0,3,1) outranks the kit's small padding at (0,3,0).",
-      "paddingInline": "6px"
     },
     "& [part=\"context-trigger\"]": {
       "fontVariantNumeric": "tabular-nums"
@@ -526,58 +517,6 @@
                                   }
                                 }
                               ]
-                            },
-                            {
-                              "tagName": "div",
-                              "attributes": {
-                                "part": "preview-slot",
-                                "role": "none"
-                              },
-                              "style": {
-                                "display": "contents"
-                              },
-                              "$switch": {
-                                "$ref": "#/state/previewState"
-                              },
-                              "cases": {
-                                "shown": {
-                                  "tagName": "jx-action-button",
-                                  "attributes": {
-                                    "part": "preview-toggle",
-                                    "data-on": "${state.previewOn ? '' : null}"
-                                  },
-                                  "$props": {
-                                    "size": "sm",
-                                    "quiet": false,
-                                    "toggles": true,
-                                    "emphasized": true,
-                                    "selected": {
-                                      "$ref": "#/state/previewOn"
-                                    },
-                                    "hint": {
-                                      "$ref": "#/state/previewHint"
-                                    }
-                                  },
-                                  "onchange": {
-                                    "$prototype": "Function",
-                                    "body": [
-                                      {
-                                        "operator": "call",
-                                        "target": {
-                                          "$ref": "#/state/togglePreview"
-                                        },
-                                        "value": []
-                                      }
-                                    ]
-                                  },
-                                  "children": [
-                                    {
-                                      "tagName": "span",
-                                      "textContent": "Preview"
-                                    }
-                                  ]
-                                }
-                              }
                             }
                           ]
                         }
@@ -1204,6 +1143,97 @@
                         {
                           "tagName": "span",
                           "textContent": "Show layout elements"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "tagName": "div",
+              "attributes": {
+                "part": "binding-slot",
+                "role": "none"
+              },
+              "style": {
+                "display": "contents"
+              },
+              "$switch": {
+                "$ref": "#/state/bindingState"
+              },
+              "cases": {
+                "shown": {
+                  "tagName": "div",
+                  "attributes": {
+                    "part": "ctx-group",
+                    "data-group": "bindings"
+                  },
+                  "children": [
+                    {
+                      "tagName": "span",
+                      "attributes": {
+                        "part": "ctx-group-label"
+                      },
+                      "textContent": "Bound data"
+                    },
+                    {
+                      "tagName": "jx-action-group",
+                      "attributes": {
+                        "part": "bindings"
+                      },
+                      "$props": {
+                        "selects": "single",
+                        "compact": true,
+                        "label": "Show bound data as"
+                      },
+                      "children": [
+                        {
+                          "$prototype": "Array",
+                          "items": {
+                            "$ref": "#/state/bindings"
+                          },
+                          "key": {
+                            "$ref": "$map/item/key"
+                          },
+                          "map": {
+                            "tagName": "jx-action-button",
+                            "attributes": {
+                              "part": "bindings-item",
+                              "data-value": "${$map.item.value}"
+                            },
+                            "$props": {
+                              "size": "sm",
+                              "checked": {
+                                "$ref": "$map/item/checked"
+                              },
+                              "hint": {
+                                "$ref": "$map/item/hint"
+                              }
+                            },
+                            "onclick": {
+                              "$prototype": "Function",
+                              "body": [
+                                {
+                                  "operator": "call",
+                                  "target": {
+                                    "$ref": "#/state/setBindingDisplay"
+                                  },
+                                  "value": [
+                                    {
+                                      "$ref": "$map/item/value"
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            "children": [
+                              {
+                                "tagName": "span",
+                                "textContent": "${$map.item.label}"
+                              }
+                            ]
+                          }
                         }
                       ]
                     }

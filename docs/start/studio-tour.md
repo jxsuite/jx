@@ -35,7 +35,7 @@ The labeled rail on the far left, and the panel it opens beside it. The rail bel
 
 The center of the window holds one editor pane, or two side by side when :kbd[⌘\] gives the open document a pane of its own, so you can keep a page on screen while you work on its source, its layout or the same page at another size. A pane renders your page or component live, exactly as it will look in production, and you select, edit and rearrange elements directly on it. See **[The canvas](/docs/studio/interface/canvas)**, **[Edit mode](/docs/studio/editing)** and **[Design mode](/docs/studio/design)**.
 
-In Design and Content, the pane has a strip of open documents along its top; Media, Styles and Publish show their own page without one, and a **Back** button on the context bar returns you to it from anything opened beside it. Under the strip, a context bar states which **Editor** is open on the file, which **View** of the canvas is showing (**Edit**, **Design** or **Preview**), and the **Context** it's being rendered in. Details in **[Documents and panes](/docs/studio/interface/tabs)** and **[Editors and views](/docs/studio/interface/modes)**.
+In Design and Content, the pane has a strip of open documents along its top; Media, Styles and Publish show their own page without one, and a **Back** button on the context bar returns you to it from anything opened beside it. Under the strip, a context bar states which **Editor** is open on the file, which **View** of the canvas is showing (**Edit** or **Design**), and the **Context** it's being rendered in. Details in **[Documents and panes](/docs/studio/interface/tabs)** and **[Editors and views](/docs/studio/interface/modes)**.
 
 ## The Inspector
 

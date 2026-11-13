@@ -76,8 +76,12 @@ export interface OverlayLayer {
    * selection box and nothing else, exactly as it did before the selection became a list.
    */
   setCoSelection: (placements: OverlayPlacement[]) => void;
-  /** Position the hover box (or hide it when `placement` is null). */
-  setHover: (placement: OverlayPlacement | null) => void;
+  /**
+   * Position the hover box (or hide it when `placement` is null). `label` names what the hovered
+   * block draws from data (studio.md §4.5): it is drawn on this overlay and not in the page, so it
+   * takes the place of nothing the author wrote.
+   */
+  setHover: (placement: OverlayPlacement | null, label?: string) => void;
   /**
    * Draw the drop indicator for a drag-over (Phase 4c). `placement` is the reference node's rect in
    * overlay-local coords (the caller maps the iframe-space `referenceRect` via
@@ -103,13 +107,6 @@ export interface OverlayLayer {
    * shows exactly one of them. `placement` is overlay-local like the others; null hides it.
    */
   setReplaceTarget: (placement: OverlayPlacement | null) => void;
-  /**
-   * Hide (or restore) the whole layer. Preview renders get it suppressed: the editing affordances
-   * are gated message-by-message in the host, and this is the single switch that guarantees none of
-   * them can be PAINTED over a page that is supposed to look shipped — including any box a
-   * still-in-flight reply from a pre-preview render would otherwise land.
-   */
-  setSuppressed: (suppressed: boolean) => void;
   /** The clickable "+" button, so the caller can attach click + hover (grace-timer) listeners. */
   readonly insertButton: HTMLButtonElement;
   /** The layer root element (caller appends it over the iframe). */
@@ -152,6 +149,10 @@ export function createOverlayLayer(doc: Document = document): OverlayLayer {
   const hoverBox = doc.createElement("div");
   hoverBox.className = "overlay-box overlay-hover";
   hoverBox.style.display = "none";
+  const hoverLabel = doc.createElement("div");
+  hoverLabel.className = "overlay-label overlay-bound-label";
+  hoverLabel.style.display = "none";
+  hoverBox.append(hoverLabel);
 
   // Reuses the legacy `.canvas-drop-indicator` CSS (`.line` = thin bar, `.inside` = dashed box).
   const dropBox = doc.createElement("div");
@@ -196,12 +197,14 @@ export function createOverlayLayer(doc: Document = document): OverlayLayer {
     insertButton,
     root,
     setDropIndicator: (placement, edge = "inside") => placeDropIndicator(dropBox, placement, edge),
-    setHover: (placement) => place(hoverBox, placement),
+    setHover: (placement, label) => {
+      place(hoverBox, placement);
+      const shown = placement !== null && label !== undefined && label !== "";
+      hoverLabel.textContent = shown ? label : "";
+      hoverLabel.style.display = shown ? "block" : "none";
+    },
     setInsertZone: (placement, edge = "center") => placeInsertButton(insertButton, placement, edge),
     setReplaceTarget: (placement) => place(replaceBox, placement),
-    setSuppressed: (suppressed) => {
-      root.style.display = suppressed ? "none" : "";
-    },
     setCoSelection: (placements) => {
       coSelectionGroup.replaceChildren();
       for (const placement of placements) {

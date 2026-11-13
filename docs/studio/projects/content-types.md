@@ -135,7 +135,7 @@ A rule on a date or on a list of values has no switch, because there is no singl
 A collection with no rules shows none of this: painting "Published" on entries of a project that never defined the state would be inventing one.
 
 :::doc-note
-A held entry still renders on the canvas and in **Preview**, because you are the one writing it. It is `jx build` that leaves it out, and pages, routes, search, feeds and the sitemap all agree.
+A held entry still renders on the canvas and in **Open in Browser**, because you are the one writing it. It is `jx build` that leaves it out, and pages, routes, search, feeds and the sitemap all agree.
 :::
 
 :::doc-note

@@ -284,7 +284,8 @@ export function splitSelectorList(selector: string): string[] {
  * `null` means "do not emit this rule at all", and `::backdrop` is the one thing it is returned
  * for. There is no backdrop pseudo-element outside the top layer; synthesising one would paint a
  * full-canvas scrim over the document being edited, and emitting an inert rule would mark the
- * selector as "styled" in the Style panel while doing nothing. Preview renders it natively.
+ * selector as "styled" in the Style panel while doing nothing. A page in a browser renders it
+ * natively.
  *
  * @param {string} selector - A fully resolved selector, canvas-side
  * @returns {string | null} The selector to emit, or null to emit nothing

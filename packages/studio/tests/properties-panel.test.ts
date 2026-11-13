@@ -179,6 +179,34 @@ function control(root: Element, prop: string, part = "widget"): NativeControl {
   return asControl(el ?? null, `in [part="${part}"] of row "${prop}"`);
 }
 
+/**
+ * The characters of a template row: press the strip's "Edit as text" and answer the field it swaps
+ * in. A template is drawn as runs and chips (studio.md §6.9), so the characters are one press
+ * away.
+ */
+async function rawTemplate(root: Element, prop: string): Promise<NativeControl> {
+  await flush(6);
+  const strip = row(root, prop);
+  if (strip.querySelector('[part="raw"]') === null) {
+    const toggle = strip.querySelector('[part="raw-toggle"] [part="control"]');
+    if (!(toggle instanceof HTMLElement)) {
+      throw new TypeError(`row "${prop}" draws no tag strip`);
+    }
+    toggle.click();
+    await flush(6);
+  }
+  const field = strip.querySelector('[part="raw"]');
+  return asControl(
+    field?.querySelector('[part="input"]') ?? field?.querySelector('[part="control"]') ?? null,
+    `in the raw template field of row "${prop}"`,
+  );
+}
+
+/** The chips a template row draws, by name. */
+function stripChips(root: Element, prop: string): string[] {
+  return [...row(root, prop).querySelectorAll('[part="chip-name"]')].map((el) => el.textContent);
+}
+
 /** Type into a control the way a reader does: it reports, and the event bubbles. */
 function type(el: Element, value: string): void {
   asControl(el, "to type into").value = value;
@@ -198,6 +226,21 @@ function check(el: Element, next: boolean): void {
   }
   el.checked = next;
   el.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
+/** Whether a checkbox's own input is checked. */
+function isChecked(el: Element): boolean {
+  if (!(el instanceof HTMLInputElement)) {
+    throw new TypeError("no checkbox input to read");
+  }
+  return el.checked;
+}
+
+/** The attribute names the Custom section lists, in order. */
+function kvKeys(root: Element): string[] {
+  return [...root.querySelectorAll('[part="kv-key"] [part="input"]')].map(
+    (el) => asControl(el, "in a custom attribute's key cell").value,
+  );
 }
 
 /** The values a select offers, in order — the stand-in row for an unlisted value included. */
@@ -892,6 +935,47 @@ describe("component props section", () => {
     });
   });
 
+  test("an npm component's props are its attributes by exact name, flags included", async () => {
+    // A boolean attribute is on when present, whatever it holds, and off when absent; the routes a
+    // Jx component reads (the `props.*` shorthand, a reflected name) are not an npm element's.
+    componentRegistry.push({
+      props: [
+        { name: "dense", type: "boolean" },
+        { default: true, name: "footline", type: "boolean" },
+        { name: "title", type: "string" },
+      ],
+      source: "npm",
+      tagName: "sl-card",
+    });
+    openDoc(
+      {
+        children: [
+          {
+            attributes: {
+              "data-k": "1",
+              dense: "false",
+              "props.title": "Shorthand",
+              title: "Mine",
+            },
+            tagName: "sl-card",
+          },
+        ],
+        tagName: "div",
+      },
+      ["children", 0],
+    );
+    const c = await renderPanel();
+    expect(isChecked(control(c, "dense"))).toBe(true);
+    expect(chip(c, "title")!.getAttribute("title")).toBe("Clear title");
+    expect(kvKeys(section(c, "__custom")!)).toEqual(["data-k", "props.title"]);
+
+    check(control(c, "footline"), true);
+    expect(firstChild().attributes!.footline).toBe(true);
+    await renderPanel();
+    check(control(c, "footline"), false);
+    expect(firstChild().attributes!.footline).toBeUndefined();
+  });
+
   /*
    * The lit picker drew a divider between the document's own signals and a repeater's two. The kit
    * select has no divider and the contract never was the rule: it is that a position inside a `$map`
@@ -1167,7 +1251,7 @@ describe("an item's child nodes", () => {
     const c = await renderPanel();
     await chooseValueSource(c, "textContent", "template");
     await renderPanel();
-    commit(control(c, "textContent"), "${item.$children}");
+    commit(await rawTemplate(c, "textContent"), "${item.$children}");
     await renderPanel();
     expect(template().children).toBe("${item.$children}");
     expect(template().textContent).toBeUndefined();
@@ -1179,7 +1263,7 @@ describe("an item's child nodes", () => {
     const c = await renderPanel();
     await chooseValueSource(c, "textContent", "template");
     await renderPanel();
-    commit(control(c, "textContent"), "${item.id}");
+    commit(await rawTemplate(c, "textContent"), "${item.id}");
     await renderPanel();
     expect(template().textContent).toBe("${item.id}");
     expect(template().children).toBeUndefined();
@@ -1225,8 +1309,9 @@ describe("an item's child nodes", () => {
       entryPage();
       const c = await renderPanel();
       expect(sourceLabel(c, "textContent")).toBe("Mixed text");
-      expect(control(c, "textContent").value).toBe("${state.entry.$children}");
-      commit(control(c, "textContent"), "${state.other.$children}");
+      const field = await rawTemplate(c, "textContent");
+      expect(field.value).toBe("${state.entry.$children}");
+      commit(field, "${state.other.$children}");
       await renderPanel();
       expect(firstChild().children).toBe("${state.other.$children}");
       expect(firstChild().textContent).toBeUndefined();
@@ -1235,7 +1320,7 @@ describe("an item's child nodes", () => {
     test("typing plain text replaces it", async () => {
       entryPage();
       const c = await renderPanel();
-      commit(control(c, "textContent"), "Words");
+      commit(await rawTemplate(c, "textContent"), "Words");
       await renderPanel();
       expect(firstChild().children).toBeUndefined();
       expect(firstChild().textContent).toBe("Words");
@@ -1249,6 +1334,304 @@ describe("an item's child nodes", () => {
     await renderPanel();
     expect(template().children).toBe("${item.$children ?? []}");
     expect(template().textContent).toBeUndefined();
+  });
+});
+
+// ─── Props delivered outside $props (§8.2.6) ──────────────────────────────────
+
+describe("component settings read and write a prop where the instance delivers it", () => {
+  /** The shape of a deck slide: lowercase string props, a flag defaulted on, a numeric choice. */
+  function registerSlide() {
+    componentRegistry.push({
+      path: "components/deck-slide.json",
+      props: [
+        { name: "tag", type: "string" },
+        { name: "ribbon", type: "string" },
+        { default: true, name: "footline", type: "boolean" },
+        { name: "dense", type: "boolean" },
+        { enum: [1, 2, 3], name: "columns", type: "number" },
+        { name: "cardLabel", type: "string" },
+        { name: "title", type: "string" },
+      ],
+      source: "local",
+      tagName: "deck-slide",
+    });
+  }
+
+  function slideDoc(instance: Omit<JxMutableNode, "tagName">): JxMutableNode {
+    return {
+      children: [{ ...instance, tagName: "deck-slide" }],
+      state: { username: { default: "kevin" } },
+      tagName: "div",
+    };
+  }
+
+  test("the props.* shorthand fills Component Settings and leaves Custom", async () => {
+    registerSlide();
+    openDoc(
+      slideDoc({
+        attributes: { "data-x": "1", "props.ribbon": "Why", "props.tag": "Intro", "props.zz": "?" },
+      }),
+      ["children", 0],
+    );
+    const c = await renderPanel();
+    const settings = section(c, "__props")!;
+    expect(control(settings, "tag").value).toBe("Intro");
+    expect(control(settings, "ribbon").value).toBe("Why");
+    expect(chip(settings, "tag")!.dataset.state).toBe("set");
+    // An orphan `props.*` key names no declared prop, so it stays where it can be seen.
+    expect(kvKeys(section(c, "__custom")!)).toEqual(["data-x", "props.zz"]);
+  });
+
+  test("a literal stays in the attribute it came from, and clearing removes that attribute", async () => {
+    registerSlide();
+    openDoc(slideDoc({ attributes: { "props.tag": "Intro" } }), ["children", 0]);
+    const c = await renderPanel();
+    commit(control(c, "tag"), "Overview");
+    expect(firstChild().attributes).toEqual({ "props.tag": "Overview" });
+    expect(firstChild().$props).toBeUndefined();
+
+    await renderPanel();
+    chip(c, "tag")!.click();
+    expect(firstChild().attributes).toBeUndefined();
+    expect(firstChild().$props).toBeUndefined();
+  });
+
+  test("either spelling the runtime reads is the prop's, and is written back as spelled", async () => {
+    registerSlide();
+    openDoc(slideDoc({ attributes: { "props.Tag": "Intro" } }), ["children", 0]);
+    const c = await renderPanel();
+    expect(control(c, "tag").value).toBe("Intro");
+    expect(kvKeys(section(c, "__custom")!)).toEqual([]);
+    commit(control(c, "tag"), "Overview");
+    expect(firstChild().attributes).toEqual({ "props.Tag": "Overview" });
+  });
+
+  test("a binding moves to $props and leaves the attribute in one undoable step", async () => {
+    registerSlide();
+    const tab = openDoc(slideDoc({ attributes: { "props.tag": "Intro" } }), ["children", 0]);
+    const c = await renderPanel();
+    await chooseValueSource(c, "tag", "ref");
+    expect(firstChild().$props).toEqual({ tag: { $ref: "#/state/username" } });
+    expect(firstChild().attributes).toBeUndefined();
+
+    undo(tab);
+    expect(firstChild().attributes).toEqual({ "props.tag": "Intro" });
+    expect(firstChild().$props).toBeUndefined();
+  });
+
+  test('a flag spelled "false" reads off, and checking it moves a boolean to $props', async () => {
+    registerSlide();
+    openDoc(slideDoc({ attributes: { "props.dense": "false", "props.footline": "false" } }), [
+      "children",
+      0,
+    ]);
+    const c = await renderPanel();
+    expect(isChecked(control(c, "dense"))).toBe(false);
+    expect(isChecked(control(c, "footline"))).toBe(false);
+    check(control(c, "dense"), true);
+    expect(firstChild().$props).toEqual({ dense: true });
+    expect(firstChild().attributes).toEqual({ "props.footline": "false" });
+  });
+
+  test("unchecking a flag the component defaults on writes false rather than clearing", async () => {
+    registerSlide();
+    openDoc(slideDoc({ $props: { footline: true } }), ["children", 0]);
+    const c = await renderPanel();
+    check(control(c, "footline"), false);
+    expect(firstChild().$props).toEqual({ footline: false });
+  });
+
+  test("a number picked from a closed set is not a string, so it moves to $props", async () => {
+    registerSlide();
+    openDoc(slideDoc({ attributes: { "props.columns": "2" } }), ["children", 0]);
+    const c = await renderPanel();
+    expect(control(c, "columns").value).toBe("2");
+    commit(control(c, "columns"), "3");
+    expect(firstChild().$props).toEqual({ columns: 3 });
+    expect(firstChild().attributes).toBeUndefined();
+  });
+
+  test("a camelCase prop the shorthand names is read, and a write moves it to $props", async () => {
+    // The site build lifts `props.cardLabel` as written; the runtime lowercases it and never sees it.
+    registerSlide();
+    openDoc(slideDoc({ attributes: { "props.cardLabel": "Old" } }), ["children", 0]);
+    const c = await renderPanel();
+    expect(control(c, "cardLabel").value).toBe("Old");
+    commit(control(c, "cardLabel"), "New");
+    expect(firstChild().$props).toEqual({ cardLabel: "New" });
+    expect(firstChild().attributes).toBeUndefined();
+  });
+
+  test("a top-level key is read and written in place", async () => {
+    registerSlide();
+    openDoc(slideDoc({ tag: "Top" }), ["children", 0]);
+    const c = await renderPanel();
+    expect(control(c, "tag").value).toBe("Top");
+    expect(chip(c, "tag")!.getAttribute("title")).toBe(
+      "Set by the instance's tag property — click to clear tag",
+    );
+    commit(control(c, "tag"), "Moved");
+    expect(firstChild().tag).toBe("Moved");
+    expect(firstChild().$props).toBeUndefined();
+
+    await renderPanel();
+    chip(c, "tag")!.click();
+    expect(firstChild().tag).toBeUndefined();
+  });
+
+  test("a reflected attribute is read in any case, and a binding leaves it for $props", async () => {
+    /* `title` is a DOM property, so the attribute reaches the instance; the runtime reads it once, at
+       connection, so a binding written there would freeze at its first value. */
+    registerSlide();
+    openDoc(slideDoc({ attributes: { TITLE: "Loud" } }), ["children", 0]);
+    const c = await renderPanel();
+    expect(control(c, "title").value).toBe("Loud");
+    expect(kvKeys(section(c, "__custom")!)).toEqual([]);
+    commit(control(c, "title"), "Quiet");
+    expect(firstChild().attributes).toEqual({ TITLE: "Quiet" });
+
+    await renderPanel();
+    await chooseValueSource(c, "title", "ref");
+    expect(firstChild().$props).toEqual({ title: { $ref: "#/state/username" } });
+    expect(firstChild().attributes).toBeUndefined();
+  });
+
+  test("mixed text in a reflected attribute moves to $props too", async () => {
+    registerSlide();
+    openDoc(slideDoc({ attributes: { title: "Loud" } }), ["children", 0]);
+    const c = await renderPanel();
+    await chooseValueSource(c, "title", "template");
+    expect(firstChild().$props).toEqual({ title: "${state.username}" });
+    expect(firstChild().attributes).toBeUndefined();
+  });
+
+  test("an attribute named like a prop that is no DOM property is not the prop's", async () => {
+    /* The runtime draws `$props` here; the attribute reaches nothing. A differently cased one is an
+       ordinary custom attribute and stays in Custom. */
+    registerSlide();
+    openDoc(slideDoc({ $props: { ribbon: "Props" }, attributes: { Ribbon: "Attr" } }), [
+      "children",
+      0,
+    ]);
+    const c = await renderPanel();
+    expect(control(c, "ribbon").value).toBe("Props");
+    expect(kvKeys(section(c, "__custom")!)).toEqual(["Ribbon"]);
+    commit(control(c, "ribbon"), "Edited");
+    expect(firstChild().$props).toEqual({ ribbon: "Edited" });
+    expect(firstChild().attributes).toEqual({ Ribbon: "Attr" });
+  });
+
+  test("an attribute spelled exactly like such a prop is listed in Custom too", async () => {
+    registerSlide();
+    openDoc(slideDoc({ $props: { ribbon: "Props" }, attributes: { ribbon: "Attr" } }), [
+      "children",
+      0,
+    ]);
+    const c = await renderPanel();
+    expect(control(c, "ribbon").value).toBe("Props");
+    expect(kvKeys(section(c, "__custom")!)).toEqual(["ribbon"]);
+  });
+
+  test("clearing a prop held twice removes both, so the shadowed one does not come back", async () => {
+    registerSlide();
+    openDoc(slideDoc({ $props: { tag: "Props" }, attributes: { "props.tag": "Shorthand" } }), [
+      "children",
+      0,
+    ]);
+    let c = await renderPanel();
+    expect(control(c, "tag").value).toBe("Props");
+    chip(c, "tag")!.click();
+    expect(firstChild().$props).toBeUndefined();
+    expect(firstChild().attributes).toBeUndefined();
+    c = await renderPanel();
+    expect(control(c, "tag").value).toBe("");
+    expect(chip(c, "tag")?.dataset.state).not.toBe("set");
+  });
+
+  test("editing a prop held twice leaves it one source", async () => {
+    registerSlide();
+    openDoc(slideDoc({ $props: { tag: "Props" }, attributes: { "props.tag": "Shorthand" } }), [
+      "children",
+      0,
+    ]);
+    const c = await renderPanel();
+    commit(control(c, "tag"), "Edited");
+    expect(firstChild().$props).toEqual({ tag: "Edited" });
+    expect(firstChild().attributes).toBeUndefined();
+  });
+
+  test("both spellings of one shorthand key are cleared together", async () => {
+    /* The live page reads whichever spelling the attribute list writes last, so leaving one behind
+       would bring a value back. */
+    registerSlide();
+    openDoc(slideDoc({ attributes: { "props.Tag": "Up", "props.tag": "Low" } }), ["children", 0]);
+    const c = await renderPanel();
+    expect(control(c, "tag").value).toBe("Low");
+    chip(c, "tag")!.click();
+    expect(firstChild().attributes).toBeUndefined();
+  });
+
+  test("emptying a shorthand field on the way to new text keeps it in the shorthand", async () => {
+    /* A live-preview commit fires while the field is empty; it must not drop the prop out of the
+       attribute, or the next keystroke would land in $props. */
+    registerSlide();
+    openDoc(slideDoc({ attributes: { "data-k": "1", "props.tag": "Intro" } }), ["children", 0]);
+    const c = await renderPanel();
+    commit(control(c, "tag"), "");
+    expect(firstChild().attributes).toEqual({ "data-k": "1", "props.tag": "" });
+    await renderPanel();
+    expect(chip(c, "tag")!.dataset.state).toBe("set");
+    commit(control(c, "tag"), "Overview");
+    expect(firstChild().attributes).toEqual({ "data-k": "1", "props.tag": "Overview" });
+    expect(firstChild().$props).toBeUndefined();
+
+    await renderPanel();
+    chip(c, "tag")!.click();
+    expect(firstChild().attributes).toEqual({ "data-k": "1" });
+  });
+
+  test("an empty top-level key or payload member is kept the same way", async () => {
+    registerSlide();
+    openDoc(
+      slideDoc({
+        attributes: { "data-jx-props": JSON.stringify({ ribbon: "Built" }) },
+        tag: "Top",
+      }),
+      ["children", 0],
+    );
+    const c = await renderPanel();
+    commit(control(c, "tag"), "");
+    commit(control(c, "ribbon"), "");
+    expect(firstChild().tag).toBe("");
+    expect(firstChild().attributes).toEqual({ "data-jx-props": '{"ribbon":""}' });
+    expect(firstChild().$props).toBeUndefined();
+  });
+
+  test("a data-jx-props payload is read, rewritten in place, and a binding leaves it", async () => {
+    registerSlide();
+    openDoc(slideDoc({ attributes: { "data-jx-props": JSON.stringify({ tag: "Built" }) } }), [
+      "children",
+      0,
+    ]);
+    const c = await renderPanel();
+    expect(control(c, "tag").value).toBe("Built");
+    commit(control(c, "tag"), "Rebuilt");
+    expect(firstChild().attributes).toEqual({ "data-jx-props": '{"tag":"Rebuilt"}' });
+
+    await renderPanel();
+    await chooseValueSource(c, "tag", "template");
+    expect(firstChild().$props).toEqual({ tag: "${state.username}" });
+    expect(firstChild().attributes).toBeUndefined();
+  });
+
+  test("a prop with no source still writes $props", async () => {
+    registerSlide();
+    openDoc(slideDoc({ attributes: { "props.tag": "Intro" } }), ["children", 0]);
+    const c = await renderPanel();
+    commit(control(c, "ribbon"), "Why");
+    expect(firstChild().$props).toEqual({ ribbon: "Why" });
+    expect(firstChild().attributes).toEqual({ "props.tag": "Intro" });
   });
 });
 
@@ -1325,6 +1708,19 @@ describe("component prop provenance", () => {
       { args: { name: "username" }, id: "data.expandRow" },
     ]);
     setActiveRegistry(null);
+  });
+
+  test("a value delivered outside $props says where it is set", async () => {
+    registerDefaulted();
+    openDoc(
+      { children: [{ attributes: { "props.title": "Mine" }, tagName: "my-card" }], tagName: "div" },
+      ["children", 0],
+    );
+    const dot = chip(await renderPanel(), "title")!;
+    expect(dot.dataset.state).toBe("set");
+    expect(dot.getAttribute("title")).toBe(
+      "Set by the props.title attribute — click to clear title",
+    );
   });
 
   test("a chip whose donor this document does not define does not pretend to jump", async () => {
@@ -1531,10 +1927,71 @@ describe("attribute dynamic slots", () => {
     openDoc(linkDoc("${state.url}/feed"), ["children", 0]);
     const c = await renderPanel();
     expect(sourceLabel(c, "href")).toBe("Mixed text");
-    const tf = control(c, "href");
+    // Runs and chips by default: the literal text, and the tag by its name, never as `${…}`.
+    await flush(6);
+    expect(stripChips(c, "href")).toEqual(["Url"]);
+    expect(row(c, "href").querySelector('[part="strip"]')?.textContent).not.toContain("${");
+    const tf = await rawTemplate(c, "href");
     expect(tf.value).toBe("${state.url}/feed");
     commit(tf, "${state.alt}/feed");
     expect(firstChild().attributes!.href).toBe("${state.alt}/feed");
+  });
+
+  test("a chip in each kind of row opens the tag at that row's own place", async () => {
+    const ran: RanCommand[] = [];
+    setActiveRegistry(recordingRegistry(ran));
+    registerCard();
+    const press = async (c: Element, prop: string): Promise<void> => {
+      const pill = row(c, prop).querySelector<HTMLElement>('[part="chip"] [part="control"]');
+      if (!pill) {
+        throw new TypeError(`no chip in row "${prop}"`);
+      }
+      pill.click();
+      await flush(4);
+    };
+    const tagArg = (): CommandArgValues | undefined => ran.at(-1)?.args;
+    try {
+      openDoc({ children: [{ tagName: "p", textContent: "${state.msg}!" }], tagName: "div" }, [
+        "children",
+        0,
+      ]);
+      let c = await renderPanel();
+      await flush(6);
+      await press(c, "textContent");
+      expect(ran.at(-1)?.id).toBe("canvas.setTagPopover");
+      expect(tagArg()).toEqual({ tag: { index: 0, path: ["children", 0], slot: ["textContent"] } });
+
+      // Computed children are one whole template in `children`, and the row says "Content".
+      openDoc({ children: [{ children: "${state.items}", tagName: "ul" }], tagName: "div" }, [
+        "children",
+        0,
+      ]);
+      c = await renderPanel();
+      await flush(6);
+      await press(c, "textContent");
+      expect(
+        row(c, "textContent").querySelector('[part="strip"]')?.getAttribute("aria-label"),
+      ).toBe("Content");
+      expect(tagArg()).toEqual({ tag: { index: 0, path: ["children", 0], slot: ["children"] } });
+
+      // A component's prop is a member of `$props`, and an attribute of `attributes`.
+      openDoc(cardDoc({ title: "Hi ${state.username}" }), ["children", 0]);
+      c = await renderPanel();
+      await flush(6);
+      await press(c, "title");
+      expect(tagArg()).toEqual({
+        tag: { index: 0, path: ["children", 0], slot: ["$props", "title"] },
+      });
+      openDoc(linkDoc("${state.url}/feed"), ["children", 0]);
+      c = await renderPanel();
+      await flush(6);
+      await press(c, "href");
+      expect(tagArg()).toEqual({
+        tag: { index: 0, path: ["children", 0], slot: ["attributes", "href"] },
+      });
+    } finally {
+      setActiveRegistry(null);
+    }
   });
 
   test("boolean attribute rows carry the mode chip and bind via ref", async () => {
@@ -1568,13 +2025,16 @@ describe("attribute dynamic slots", () => {
     await chooseValueSource(c, "textContent", "ref");
     expect(firstChild().textContent).toEqual({ $ref: "#/state/msg" });
 
-    // Template-valued text content renders the raw ${} field
+    // Template-valued text content renders its runs and chips, and the characters one press away.
     openDoc({ children: [{ tagName: "p", textContent: "${state.msg}!" }], tagName: "div" }, [
       "children",
       0,
     ]);
     await renderPanel();
-    expect(control(c, "textContent").value).toBe("${state.msg}!");
+    await flush(6);
+    expect(stripChips(c, "textContent")).toEqual(["Msg"]);
+    const raw = await rawTemplate(c, "textContent");
+    expect(raw.value).toBe("${state.msg}!");
   });
 });
 
@@ -1698,11 +2158,14 @@ describe("link-target control", () => {
     expect(c.querySelector('[data-prop="href"]')).not.toBeNull();
   });
 
-  test("a template-string href (${…}) falls back to the raw widget", async () => {
+  test("a template-string href (${…}) is drawn as its tag, not as the link control", async () => {
     openDoc(anchorDoc({ href: "${item.url}" }), ["children", 0]);
     const c = await renderPanel();
     expect(linkField(c)).toBeNull();
-    expect(c.querySelector('[data-prop="href"] jx-textfield')).not.toBeNull();
+    await flush(6);
+    expect(stripChips(c, "href")).toEqual(["Url"]);
+    const raw = await rawTemplate(c, "href");
+    expect(raw.value).toBe("${item.url}");
   });
 
   test("the target attribute is a real enum picker with all four keywords", async () => {
@@ -1747,11 +2210,6 @@ describe("link-target control", () => {
 // ─── Custom attributes section ────────────────────────────────────────────────
 
 describe("custom attributes section", () => {
-  const kvKeys = (root: Element) =>
-    [...root.querySelectorAll('[part="kv-key"] [part="input"]')].map(
-      (el) => asControl(el, "in a custom attribute's key cell").value,
-    );
-
   test("unknown attributes land in the auto-opened Custom section", async () => {
     openDoc(
       { children: [{ attributes: { "data-x": "1", id: "foo" }, tagName: "div" }], tagName: "div" },
@@ -2003,11 +2461,14 @@ describe("popovertarget control", () => {
     expect(picker.value).toBe("in-a-component");
   });
 
-  test("a bound value falls through to the raw widget so it stays an expression", async () => {
+  test("a bound value is drawn as its tag so it stays an expression", async () => {
     openDoc(popoverDoc({ popovertarget: "${state.which}" }), ["children", 0]);
     const c = await renderPanel();
     expect(row(c, "popovertarget").querySelector("jx-select")).toBeNull();
-    expect(row(c, "popovertarget").querySelector("jx-textfield")).not.toBeNull();
+    await flush(6);
+    expect(stripChips(c, "popovertarget")).toEqual(["Which"]);
+    const raw = await rawTemplate(c, "popovertarget");
+    expect(raw.value).toBe("${state.which}");
   });
 
   test("a non-invoker element is never offered the attribute at all", async () => {

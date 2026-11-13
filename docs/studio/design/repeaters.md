@@ -48,7 +48,7 @@ Select the repeater and click **Edit template →** in the **Repeating list** se
 
 Inside the template, each item's data is in scope:
 
-- While editing text, the **Insert data** button on the block action bar offers `item` (the current item) and `index`, its position, alongside the item's own fields: `item.data.title` for a content collection's fields, or `item.name`-style fields for lists of records. The same insertion is a command, **Insert Data**, so you can reach it from :kbd[⌘K] with the token typed rather than picked.
+- While editing text, the **Insert dynamic tag** button on the block action bar offers the item's own fields by name (**Title**, **Post date**), then **Whole item** and **Row number**, and puts the one you pick into the text as a [tag](/docs/studio/editing/dynamic-tags). Each row also shows what a template reads for it: `item.data.title` for a content collection's fields, or `item.name`-style fields for lists of records. The same insertion is a command, **Insert Data**, so you can reach it from :kbd[⌘K] with the token typed rather than picked.
 - In the Inspector, any row whose **value source** is set to **From data…** offers `item`, `index` and the item's own fields alongside the document's signals, so you can pick `item.data.title` from the list instead of typing a template. The same fields appear under **List item** in a formula's operands, including in event handlers.
 
 Studio works out those fields without running anything, from whichever of these the list reads:
@@ -84,12 +84,13 @@ In Edit and Design the canvas draws every item of the list: each row shows its o
 
 - **Click any row to work in it.** Clicking selects the element you clicked, in that row, and a caret goes where you put it. Text that reads the item is a tag you can type around, and what you save is the binding, so typing beside a title in the third row changes the template and every row redraws with its own title.
 - **One row is active at a time.** Selection boxes, the block action bar and the caret all sit in the row you last clicked. The other rows are a live picture of the same template. Clicking another row moves everything there, and nothing is written to your document when you do.
+- **Step through the rows from the bar.** With anything in the list selected, the block action bar shows **Row 3 of 24** between two arrows. The arrows make the previous or the next row the active one and scroll to it, with the same element selected there.
 - **Selecting the repeater itself** in the Outline draws one box around the whole list.
 - **A list inside a list** works the same way at both levels: click an inner item and its outer row becomes the active one too.
 - **Dragging onto the edge of a row** places what you drag before or after the whole list, since a template has one root element. The middle of a row is inside the template.
 - **A text selection stays in its row.** Drag or :kbd[Shift]-click from one row into the next and the selection stops at the end of the row you started in. The next row is the same template, so there is no more text there to select.
 
-A long list is cut short on the canvas so the page stays quick to work with: 24 rows are drawn, and the last one says how many there are when you point at it. Your site always gets the whole list. Studio has no control for drawing more rows yet. The number is set by the `canvas.setRepeaterRows` command, listed with the rest in **[Commands](/docs/studio/interface/commands)**, which a script or an assistant can run.
+A long list is cut short on the canvas so the page stays quick to work with: 24 rows are drawn, and the last one says how many there are when you point at it. Your site always gets the whole list. To draw more or fewer, click the row count on the block action bar and pick a number, from 6 up to 1000. The same choice is the `canvas.setRepeaterRows` command, listed with the rest in **[Commands](/docs/studio/interface/commands)**.
 
 A list with no items still shows its template, as one row marked **No items: showing the template**. Its tags are empty, so each shows its name, and the parts a condition would hide are all shown so you can reach them. The row goes as soon as the list has an item. When the list is empty because its data has not arrived, the row says that instead: **Loading**, **Could not load** or **Runs on the live page**, as described in **[Your site's data](/docs/studio/interface/canvas#your-sites-data)**.
 

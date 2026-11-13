@@ -2,9 +2,9 @@
 
 ## Static HTML Compiler, Custom Element Emitter, and Island Detector
 
-**Version:** 0.5.6-draft\
+**Version:** 0.5.16-draft\
 **Status:** Partial\
-**Updated:** 2026-11-08\
+**Updated:** 2026-11-13\
 **License:** MIT
 
 ---
@@ -809,6 +809,16 @@ An earlier revision of this table claimed ~7 kB and ~3 kB (~10 kB total); those 
 
 ## Changelog
 
+- **0.5.16-draft** (2026-11-13) — §8.1: the build merges into each component the project formulas it reads, for the prerender and the emitted module, so a formula only a component reads is not lost to the page strip pass.
+- **0.5.15-draft** (2026-11-13) — §8.1: an empty repeater expansion collapses when the build itself resolved the list's source, and is still kept for the client when the source is client state or a build-resolved entry a handler writes. The reference scan skips `$paths`, so a page of a paged list is static when nothing else on it is dynamic.
+- **0.5.14-draft** (2026-11-13) — §2.1, §3, §8.1: a pure named formula is a function, not state. It makes a node dynamic only while something left for the client reads it, and the site build drops one whose every call it resolved, so a page whose only state is a formula builds static. The reference scan also reads `state?.key` and a literal-keyed `state["key"]`, and a body that hands `state` on whole keeps every entry.
+- **0.5.13-draft** (2026-11-13) — §2.3: `jx format [paths…] [--check]` formats the function bodies and scripts a `.jxn` file holds, and the file around them, keeping the comments of a file that has any.
+- **0.5.12-draft** (2026-11-13) — §12: a build refuses a client or server script that uses TypeScript the eraser cannot remove, and @jxsuite/compiler/document-scripts exports the reader and plugins.
+- **0.5.11-draft** (2026-11-13) — §12: the site build bundles each document's client module from its $script, resolves an import of a .jxn document, and keeps a server module out of every browser bundle; §6.3 collects #server entries by document; §2.3 qualifies them as a document is read.
+- **0.5.10-draft** (2026-11-13) — A server function that throws answers a fixed "Server error" and logs the cause instead of sending its message; the standalone targets share one pinned CDN default per runtime module (§6.1, §6.3, §12).
+- **0.5.9-draft** (2026-11-13) — §6.4 request gate: the generated worker refuses cross-site and same-site requests that are not navigations in front of every server function and extension mount, server functions answer 415 to a body not declared JSON, and responses carry nosniff, Cross-Origin-Resource-Policy and a default no-store.
+- **0.5.8-draft** (2026-11-13) — §4.4: a compiled element put back in a document keeps the tree it drew. The container is cleared, and slotted children captured and distributed, on the first connection only; a later connection restarts the effects.
+- **0.5.7-draft** (2026-11-13) — §8.1: a project state entry a page inherits is dropped from the built page on the same terms as an array, unless a $src handler survives on the page, and the reference scan covers the whole document except its head and title.
 - **0.5.6-draft** (2026-11-08) — §2.3: a document's function bodies are erased from TypeScript as it is read, and jx validate reports a body that cannot be.
 - **0.5.5-draft** (2026-11-08) — §2.3: jx convert moves the project file between project.json and project.jxn.
 - **0.5.4-draft** (2026-11-08) — §7.2 and §7.6: srcset candidate URLs are percent-encoded so a file name with a space or comma cannot split a candidate; §7.5: the image cache key includes the source's file name, so a renamed image gets variants under its new name.
@@ -863,4 +873,4 @@ An earlier revision of this table claimed ~7 kB and ~3 kB (~10 kB total); those 
 
 ---
 
-_`@jxsuite/compiler` Specification v0.5.6-draft_
+_`@jxsuite/compiler` Specification v0.5.16-draft_

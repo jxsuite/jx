@@ -43,8 +43,8 @@ export function switchValue(argv: readonly string[], name: string): string | nul
 /**
  * Whether a navigation stays inside the window: only its own server's origin does.
  *
- * Studio is one page plus same-origin reloads, and anything else (a link in a preview, a docs link)
- * belongs in the user's browser.
+ * Studio is one page plus same-origin reloads, and anything else (a page Open in Browser runs, a
+ * docs link) belongs in the user's browser.
  *
  * @param target Where the page is going.
  * @param origin The window's server origin.
@@ -193,7 +193,7 @@ const MAX_SUGGESTIONS = 5;
  *
  * Studio cancels `contextmenu` wherever it draws a menu of its own, and leaves it alone where the
  * browser's menu is the right one: inside the text being edited on the canvas (spelling and paste,
- * `canvas/iframe-interaction.ts`), in a text field, and on a link in Preview. Chromium draws that
+ * `canvas/iframe-interaction.ts`), in a text field, and on the canvas margin. Chromium draws that
  * menu; Electron draws none, so in the desktop app those right-clicks did nothing at all. This is
  * the subset of Chromium's menu that answers them: spelling suggestions over a misspelled word, the
  * edit commands in an editable (each enabled as the page says it can run), Copy over a selection,

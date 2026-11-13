@@ -109,15 +109,12 @@ describe("what each pane says", () => {
     });
   });
 
-  test("Preview, Source, Grid and a home have nothing to zoom", () => {
+  test("Source, Grid and a home have nothing to zoom", () => {
     const tab = resetWorkspaceWithTab();
     for (const mode of ["source", "content", "settings"]) {
       tab.session.ui.canvasMode = mode;
       expect(zoomProjectionFor(PRIMARY_PANE, null).state).toBe("hidden");
     }
-    tab.session.ui.canvasMode = "design";
-    tab.session.ui.preview = true;
-    expect(zoomProjectionFor(PRIMARY_PANE, null).state).toBe("hidden");
   });
 
   test("the hints come from the keymap: Reset names no chord it does not have", () => {

@@ -27,7 +27,7 @@ Here is the shape of the workflow, end to end:
 1. Open a component and click **Data** on the Navigator rail. Choose _+ Add… > Value_, name it `count`, set its **Type** to `integer` and its **Default** to `0`. The component now knows a number.
 2. Add a button to the canvas and set its text to show `count`. Click the **value source** chip beside **Text Content** in the Inspector's **Content** view, pick **From data…**, and choose `count`.
 3. With the button selected, open the Inspector's **Logic** view and click **Add Event**. A binding appears on `onclick`. Click its value source chip, pick **Formula**, and build the one-step formula `count += 1`.
-4. Click **Preview**, the toggle beside the **View** control on the context bar, and click the button. The number climbs, and in the **Data** panel you can watch `count` change in real time.
+4. Choose **Open in Browser** (:kbd[⌘⇧O]) and click the button there: the number climbs. On the canvas, the **Data** panel's **On canvas** field draws the button with any value of `count` you set.
 
 No files were written by hand: Studio stored the value, the binding, and the handler inside the component's own JSON file.
 

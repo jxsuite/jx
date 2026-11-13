@@ -62,7 +62,7 @@ import {
 import { openQuickSearch } from "../panels/quick-search";
 import { inspectorTab } from "../panels/right-panel";
 import { requestClose } from "../panels/tab-strip";
-import { layerHost } from "../ui/layers";
+import { isPopoverOpen, layerHost } from "../ui/layers";
 import { openDialogSurface } from "../surfaces/dialog";
 import {
   DOCK_IDS,
@@ -704,8 +704,8 @@ export async function openProjectFlow(hooks: StudioCommandHooks): Promise<void> 
  * The nine verbs the old switch implemented inline and no other surface had a name for.
  *
  * All nine are `keyScope: "canvas"`: they act on a node in the artboard, so they must not fire
- * while a caret owns the keyboard, while the grid engine does, or while Preview is showing a page
- * with no overlays to aim at. That is one field per record instead of two ad-hoc refusal sets.
+ * while a caret owns the keyboard or while the grid engine does. That is one field per record
+ * instead of two ad-hoc refusal sets.
  *
  * Each is ALSO gated on {@link inCanvas}, through the three shared predicates. The `keyScope`
  * answers "may this chord fire here"; the `when` answers "does this verb exist here at all", which
@@ -949,6 +949,19 @@ export function registerStudioCommands(
  * rather than an exception out of the keydown listener.
  */
 function dispatchKey(registry: CommandRegistry, event: KeyboardEvent): string | undefined {
+  /* Bare Escape with a popover up is the platform's, which closes the popover as the key's default
+     action: a chord that ran too would move the selection under a panel that stays open, and
+     claiming the key would cancel the close. */
+  if (
+    event.key === "Escape" &&
+    !event.ctrlKey &&
+    !event.metaKey &&
+    !event.altKey &&
+    !event.shiftKey &&
+    isPopoverOpen()
+  ) {
+    return undefined;
+  }
   const commandId = registry.handleKeyEvent(event, keyScopeStack(registry.context()));
   if (commandId) {
     event.preventDefault();
@@ -1020,10 +1033,6 @@ export function initShortcuts(registry: CommandRegistry, stageContext: StageCont
  * - `settings` — the Project Settings document (`panels/settings-pane.ts`): an `overflow-y: auto`
  *   section column, plus the Raw JSON `<pre>`'s own box inside it.
  * - `entry` — the Entry editor's `overflow-y: auto` form (`content/entry-editor.ts`).
- * - `preview` — the fidelity surface: ONE frame at the pane's own height over its own document, which
- *   is what lets `position: sticky`, scroll-driven animation and `IntersectionObserver` reveals
- *   fire at all. It is in this set for the same reason as the other four and for one of its own —
- *   there is no artboard here to zoom, either.
  */
 const SELF_SCROLLING_MODES: ReadonlySet<string> = new Set([
   /* The Content home — `browse/library-pane.ts`. Its own scrolling list, nothing to zoom. */
@@ -1038,7 +1047,6 @@ const SELF_SCROLLING_MODES: ReadonlySet<string> = new Set([
   "image",
   /* A workspace's home — `workspace/workspace-home.ts`. A centred column with nothing to zoom. */
   "media-home",
-  "preview",
   "publish-home",
   /* Project Settings' home — `settings/settings-workspace.ts`. Two columns, each scrolling its own
      list, with nothing to zoom. */
@@ -1251,9 +1259,9 @@ export function installStageGestures(surface: CanvasSurface): () => void {
     "pointerdown",
     (e: PointerEvent) => {
       const ctx = getContext();
-      if (ctx.canvasMode === "edit" || ctx.canvasMode === "preview") {
+      if (ctx.canvasMode === "edit") {
         return;
-      } // No panning in edit mode, and preview scrolls its own frame rather than panning
+      } // No panning in edit mode
       if (e.button !== 1 || overStageAside(e.target)) {
         return;
       } // Middle button only, and over the boards rather than a column beside them

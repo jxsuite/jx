@@ -41,8 +41,9 @@ import { startEditableRoot } from "./iframe-editable-root";
 import { adjacentBlock, blocksInOrder, offsetOf } from "./iframe-position";
 import { chipSourcesBetween } from "./iframe-chips";
 import { isTagActiveInSelection, toggleInlineFormat } from "../editor/inline-format";
-import { applyLink, insertTemplateToken, linkStateForSelection } from "../editor/inline-link";
-import { RESERVED_KEYS, camelToKebab } from "@jxsuite/runtime";
+import { applyLink, linkStateForSelection } from "../editor/inline-link";
+import { deliveredOutsideProps } from "../utils/prop-source";
+import { insertChip } from "./iframe-tags";
 import { rectOfRange } from "../utils/geometry";
 import { getNodeAtPath } from "../state";
 import { parseJxPath, serializeJxPath } from "./path-mapping";
@@ -55,8 +56,9 @@ import type {
   SerializableRect,
 } from "./iframe-protocol";
 import type { DocPos } from "./iframe-position";
-import { isNonNullObject, isString } from "@jxsuite/schema/guards";
+import { isString } from "@jxsuite/schema/guards";
 import type { JxPath } from "../state";
+import type { TagTitles } from "../utils/edit-display";
 import type { JxMutableNode } from "@jxsuite/schema/types";
 
 /** The commit a block session posts when its text reaches the document. */
@@ -119,77 +121,6 @@ function ownerInstanceOf(el: HTMLElement): HTMLElement | null {
   return null;
 }
 
-/**
- * Whether the instance node delivers `prop` by some route OTHER than `$props` — in which case
- * "absent from `$props`" does not mean "unset", and a `$props` write would add a SECOND source for
- * one rendered value.
- *
- * The routes are the property bridge's own, in the order `connectedCallback` reads them
- * (`compiler.md` §4.4) — a `data-jx-props` payload, literal `props.*` attributes, then JS
- * properties set before connection — plus the one that reaches that third source without going
- * through `$props`. Each was reproduced against the real runtime:
- *
- * 1. `attributes: { "data-jx-props": "{…}" }` — the compiler's pre-rendered payload, parsed into state
- *    before anything else. Studio edits source documents rather than build output, so this is the
- *    rare one; it is here because the bridge reads it.
- * 2. The JSON shorthand `attributes: { "props.text": "…" }`. `connectedCallback` collects `props.*`
- *    attributes into state, so the marker renders that text while `$props` is empty. This repo's
- *    own site carries 95 of them.
- * 3. A prop whose name collides with a REFLECTED HTMLElement property — `title`, `role`, `id`, `lang`,
- *    `dir`, `slot`, `hidden`. `setAttribute("title", …)` writes the JS property as a side effect,
- *    and the merge `key in this && this[key] !== undefined` picks it up. 41 shipped starter
- *    components declare `title` or `role` as state. Matched the way `instanceSupplies` matches:
- *    attribute names are case-insensitive, and an ARIA-style reflection carries a kebab attribute
- *    for a camelCase property (`ariaLabel` → `aria-label`).
- * 4. A TOP-LEVEL key on the instance node — `{ "tagName": "x-card", "heading": "Local" }`. This is the
- *    property-first interface written straight onto the node: `applyProperties` sets every
- *    non-reserved key as a JS property, which is exactly what the merge then reads back off `this`.
- *    Reserved keys (`name`, `items`, `children`, …) are skipped there and so are skipped here —
- *    refusing on one would block a prop that the key never delivered.
- *
- * Editing any of them writes `$props[prop]` and leaves the other value standing. For case 3 the
- * attribute WINS (applyAttributes runs after the $props assignment) so the edit is simply
- * invisible; for the rest `$props` wins and the stale value waits — clearing the prop later
- * resurrects it. Refusing keeps the properties panel, which edits the real source, as the one way
- * in.
- */
-export function deliveredOutsideProps(node: JxMutableNode | undefined, prop: string): boolean {
-  if (!node) {
-    return false;
-  }
-  const attrs = node.attributes;
-  if (attrs) {
-    if (attrs[`props.${prop}`] !== undefined) {
-      return true;
-    }
-    const reflected = new Set([prop.toLowerCase(), camelToKebab(prop).toLowerCase()]);
-    for (const name of Object.keys(attrs)) {
-      if (attrs[name] !== undefined && reflected.has(name.toLowerCase())) {
-        return true;
-      }
-    }
-    const payload = attrs["data-jx-props"];
-    if (isString(payload) && payloadNames(payload, prop)) {
-      return true;
-    }
-  }
-  // `$`-prefixed keys are scope bindings, never DOM properties — `applyProperties` skips them too.
-  if (RESERVED_KEYS.has(prop) || prop.startsWith("$")) {
-    return false;
-  }
-  return node[prop] !== undefined;
-}
-
-/** Whether a `data-jx-props` JSON payload carries `prop`. Unparseable payloads deliver nothing. */
-function payloadNames(payload: string, prop: string): boolean {
-  try {
-    const parsed: unknown = JSON.parse(payload);
-    return isNonNullObject(parsed) && prop in parsed;
-  } catch {
-    return false;
-  }
-}
-
 /** Locate the rendered element for a document path via its stamped `data-jx-path`. */
 function elementForPath(container: HTMLElement, path: JxPath): HTMLElement | null {
   const serialized = serializeJxPath(path);
@@ -222,11 +153,13 @@ export function startIframeInlineEdit(
      * read as the session continuing, with no session behind it.
      */
     onRoot?: (forget: () => void) => void;
+    /** The titles a chip placed by Insert is named by (the render's `tagTitles`). */
+    getTagTitles?: () => TagTitles | null;
   },
 ): () => void {
   const doc = container.ownerDocument;
 
-  // Inline editing exists only in design/edit renders — a stylebook (or preview) render must not
+  // Inline editing exists only in design/edit renders — a stylebook (or git-diff) render must not
   // Start a contenteditable session on its nodes. An absent getMode is permissive (tests).
   const editingAllowed = () => {
     const mode = opts?.getMode?.();
@@ -358,6 +291,13 @@ export function startIframeInlineEdit(
    */
   let removedTags: string[] = [];
 
+  /**
+   * Whether a chip was placed in the active block since its content last reached the document
+   * (Insert, studio.md §6.9). A placed chip is empty: its value is the runtime's to draw, so the
+   * write that stores it is not left in place and the block is drawn again from the document.
+   */
+  let chipPlaced = false;
+
   /** Hand over what has been deleted since the last write, leaving none. */
   const takeRemovedTags = (): string[] => {
     const taken = removedTags;
@@ -377,6 +317,7 @@ export function startIframeInlineEdit(
   const enterEditAt = (el: HTMLElement, path: JxPath) => {
     // A new block starts with nothing deleted: a deletion belongs to the block it happened in.
     removedTags = [];
+    chipPlaced = false;
     channel.post({ kind: "editStart", path });
     startEditing(el, path, {
       // `inPlace` and `removedTags` ride along only when set: both are optional, so omitting them
@@ -392,7 +333,9 @@ export function startIframeInlineEdit(
         /* A commit that deletes a chip is not left in place: the block is drawn again from the
            document, so what the canvas says of its bindings (the names in its bound-block label)
            is what the document now holds, not what it held before the chip went. */
-        if (inPlace && commit.removedTags === undefined) {
+        const placed = chipPlaced;
+        chipPlaced = false;
+        if (inPlace && commit.removedTags === undefined && !placed) {
           commit.inPlace = true;
         }
         channel.post(commit);
@@ -538,7 +481,20 @@ export function startIframeInlineEdit(
       // A binding the link held that the author just replaced is their deletion, like a chip's.
       removedTags.push(...applyLink(el, intent.href));
     } else if (intent.command === "insertData") {
-      insertTemplateToken(el, intent.token);
+      /* A tag, not characters (studio.md §6.9): the chip stands in the block at once, and the
+         input reported for it is what schedules the commit that writes its expression. */
+      insertChip(el, intent.token, opts?.getTagTitles?.() ?? null);
+      chipPlaced = true;
+      /* The pick was made in a list the parent drew, so the keyboard is still there: hand it to the
+         text, with the caret where the chip left it, so the author goes on writing. */
+      const placed = window.getSelection();
+      const caret = placed && placed.rangeCount > 0 ? placed.getRangeAt(0).cloneRange() : null;
+      el.focus({ preventScroll: true });
+      if (placed && caret) {
+        placed.removeAllRanges();
+        placed.addRange(caret);
+      }
+      el.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText" }));
     } else {
       const tag = CMD_TO_TAG[intent.command];
       if (tag) {
