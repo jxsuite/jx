@@ -6,6 +6,10 @@
  * `.node`, so the copy is the whole packaging step. `--target <rust-triple> --as <triple>` is the
  * form the release lane uses to cross-compile one of `RELEASE_TRIPLES`.
  *
+ * `JX_ADDON_BUILD=skip` builds nothing and says so. It is for a job that runs `bun run build` and
+ * encodes no image, in an environment with no Rust: the screenshots lane, whose pinned browser
+ * container has neither a toolchain nor the rights to install one.
+ *
  * `JX_ADDON_PREBUILT=1` makes this a check instead of a build: the Nix package compiles the addon
  * in a derivation of its own (packages/desktop/package.nix) and copies it here, and its sandbox has
  * no registry for cargo to reach, so the `bun run build` it then runs must not start one.
@@ -27,6 +31,13 @@ const triple =
   option("--as") ?? hostTriples({ arch: process.arch, musl: false, platform: process.platform })[0];
 if (!triple) {
   throw new Error(`No addon triple for ${process.platform}-${process.arch}; pass --as <triple>.`);
+}
+
+if (process.env.JX_ADDON_BUILD === "skip") {
+  console.log(
+    "JX_ADDON_BUILD=skip: the compiler addon is not built; image optimization will fail.",
+  );
+  process.exit(0);
 }
 
 if (process.env.JX_ADDON_PREBUILT === "1") {
