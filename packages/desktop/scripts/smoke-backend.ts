@@ -362,13 +362,12 @@ for (const name of ["lit-html", "@vue/reactivity"]) {
 }
 
 /* The packages the bundle leaves external because they load files of their own (`BACKEND_NATIVES`),
-   LOADED on the same runtime from the backend's directory: esbuild runs its platform binary, sharp
-   its libvips, and Arborist its own helpers. Resolving is not enough; a binary built for another
+   LOADED on the same runtime from the backend's directory: esbuild runs its platform binary and
+   Arborist its own helpers. Resolving is not enough; a binary built for another
    platform resolves fine and fails here. */
 const nativeProbes = {
   "@npmcli/arborist": `typeof load("@npmcli/arborist") === "function" || process.exit(1)`,
   esbuild: `load("esbuild").transform("let a = 1", { minify: true }).then((r) => r.code.length > 0 || process.exit(1))`,
-  sharp: `load("sharp")({ create: { width: 1, height: 1, channels: 3, background: "#000" } }).png().toBuffer().then((b) => b.length > 0 || process.exit(1))`,
 } satisfies Record<string, string>;
 for (const [name, probe] of Object.entries(nativeProbes)) {
   const from = JSON.stringify(join(resolve(backend, ".."), "index.js"));
@@ -382,6 +381,33 @@ for (const [name, probe] of Object.entries(nativeProbes)) {
     console.log(`  known ${name} does not load from the backend directory`);
   } else {
     console.log(`  FAIL  ${name} does not load: ${loaded.stderr.toString().split("\n")[0]}`);
+    failed += 1;
+  }
+}
+
+/* The compiler's own addon is one file staged beside the bundle (`stageAddon`), and the loader
+   inlined into the bundle finds it there. LOADED, on the runtime the backend runs on, and asked to
+   do something: a file for another platform, or one that links a library this host lacks, is
+   present and fails exactly here. */
+{
+  const dir = resolve(backend, "..");
+  const addons = readdirSync(dir).filter((name) => /^jx-compiler\..+\.node$/.test(name));
+  const probe =
+    `const load = require("node:module").createRequire(${JSON.stringify(join(dir, "index.js"))}); ` +
+    `const names = ${JSON.stringify(addons)}; let loaded = 0; ` +
+    `for (const name of names) { try { if (/^\\d+\\./.test(load("./" + name).coreVersion())) loaded += 1; } catch {} } ` +
+    `loaded > 0 || process.exit(1)`;
+  const loaded = Bun.spawnSync([runtime, "-e", probe], { env, stderr: "pipe", stdout: "pipe" });
+  if (addons.length > 0 && loaded.exitCode === 0) {
+    console.log("  ok    the compiler addon loads from the backend directory");
+  } else if (allowed.has("load:compiler-addon")) {
+    console.log("  known the compiler addon does not load from the backend directory");
+  } else {
+    console.log(
+      addons.length === 0
+        ? "  FAIL  no compiler addon is staged beside the backend"
+        : `  FAIL  the compiler addon does not load: ${loaded.stderr.toString().split("\n")[0]}`,
+    );
     failed += 1;
   }
 }
