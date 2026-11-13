@@ -16,6 +16,7 @@ coveragePathIgnorePatterns = [
   "../ai/**",
   "../collab/**",
   "../compiler/**",
+  "../compiler-binding/**",
   "../create/**",
   "../desktop/**",
   # The catalogue this package now serves is a dependency, so its metadata module lands here at

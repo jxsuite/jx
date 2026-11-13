@@ -19,6 +19,7 @@ coveragePathIgnorePatterns = [
   "../ai/**",
   "../collab/**",
   "../compiler/**",
+  "../compiler-binding/**",
   "../create/**",
   "../markup/**",
   "../parser/**",

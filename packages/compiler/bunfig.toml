@@ -27,6 +27,8 @@ coveragePathIgnorePatterns = [
   "**/jx-slot-helper-*/**",
   # The bundles the bundler-backend parity test writes to a temp directory and imports.
   "**/jx-bundler-backend-*/**",
+  # The loader for the native addon, gated by packages/compiler-binding's own run, at 99%.
+  "../compiler-binding/**",
   "../../extensions/**",
   "../create/**",
   "../desktop/**",
