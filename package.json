@@ -71,6 +71,8 @@
     "spec:release": "bun scripts/docs/spec-release.ts",
     "test": "bun test --isolate",
     "test:workspaces": "bun run --workspaces test --isolate",
+    "test:affected": "bun scripts/test-affected.ts",
+    "verify": "bun run lint && bun run lint:typecheck && bun run typecheck && bun run typecheck:jxn && bun run test:affected",
     "templates:check": "bun scripts/check-template-versions.ts",
     "templates:sync": "bun scripts/check-template-versions.ts --fix",
     "test:coverage": "bun test --isolate --coverage",

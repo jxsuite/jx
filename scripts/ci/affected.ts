@@ -227,6 +227,15 @@ function owningWorkspace(path: string, workspaces: Workspace[]): string | undefi
 }
 
 /**
+ * The workspaces an EXTRA_EDGES entry seeds for `path`. `scripts/lib/test-selection.ts` reads this
+ * to refuse file-level narrowing there: an extra edge exists precisely because no import records
+ * the dependency, so an import graph cannot say which of the seeded suite's tests it reaches.
+ */
+export function edgeSeeds(path: string): string[] {
+  return [...new Set(EXTRA_EDGES.filter((e) => matches(path, e.patterns)).flatMap((e) => e.seeds))];
+}
+
+/**
  * Every anchor this script's correctness depends on. A rename that moves one of these reds the gate
  * by name rather than degrading it to a narrower run nobody notices.
  */

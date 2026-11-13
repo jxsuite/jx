@@ -133,8 +133,9 @@ cd jx
 bun install
 
 bun run dev            # dev server with the examples project
-bun test --isolate     # test suite
-bun run all-the-things # build, test, lint, typecheck
+bun run test:affected  # the tests your diff can fail
+bun run verify         # lint, typecheck, and test:affected
+bun run all-the-things # build, every test suite, lint, typecheck
 bun run desktop        # launch the desktop app
 ```
 

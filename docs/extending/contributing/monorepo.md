@@ -3,6 +3,9 @@ title: "Working in the monorepo"
 description: "Repo layout, running Studio from source, tests, and the conventions the Jx monorepo enforces in CI."
 code:
   - scripts/ci/affected.ts
+  - scripts/test-affected.ts
+  - scripts/lib/test-selection.ts
+  - scripts/lib/test-graph.ts
   - scripts/check-release-parse.ts
   - scripts/publish-released.ts
   - scripts/check-release-integrity.ts
@@ -34,6 +37,8 @@ The Jx monorepo ([github.com/jxsuite/jx](https://github.com/jxsuite/jx)) is a Bu
 - `bun install`: set up the workspace.
 - `bun run dev`: start the dev server and open Studio in a browser. A browser window has no **Open Project**; add `?project=` and a project folder's absolute path to the address instead, as in `http://localhost:3000/packages/studio/index.html?project=~/Sites/my-site`.
 - `bun test --isolate` (per package): the supported test mode; plain `bun test` has known order-dependent failures.
+- `bun run test:affected`: run only the tests your diff can fail ([Running the tests a change can fail](#running-the-tests-a-change-can-fail)).
+- `bun run verify`: lint, the type-aware lint, both typechecks and `test:affected`. This is the check to run before pushing. `bun run all-the-things` builds every bundle and runs every suite, and is rarely what you need.
 - `bun run typecheck`, `bun run lint`, `bun run format`: tsgo, oxlint (all categories at error), oxfmt.
 - `bun run typecheck:jxn`: `tsc` over the scripts and function bodies of the repository's `.jxn` documents, through `@jxsuite/content-mapper` ([Type checking](/docs/framework/concepts/type-checking)). It has a `tsconfig.jxn.json` of its own because it needs `--runExternalCode`.
 - `bun run lint` also runs the [ai-deslop](https://github.com/maharshi365/deslop) rules, which reject unchecked type assertions, `unknown` parameters and returns, runtime `typeof` branching outside type guards, and duplicate constants and types. `bun run lint:typecheck` is the type-aware pass (deprecated APIs, unnecessary conditions, floating promises, unsafe `any` flow). Both run at error in CI, and neither is turned off for tests or scripts; `.oxlintrc.json` explains each choice.
@@ -64,6 +69,34 @@ import { identities } from "@jxsuite/test-support/inspect-dom";
 
 expect(identities(seen)).toEqual(identities([first, second]));
 ```
+
+## Running the tests a change can fail
+
+The repository holds about 1,240 test files, and most changes can fail only a fraction of them. `bun run test:affected` works out which:
+
+```bash
+bun run test:affected                # your branch and working tree against origin/main
+bun run test:affected --list         # print the selection and run nothing
+bun run test:affected --base HEAD~1  # compare against a different commit
+bun run test:affected --staged       # only what is staged
+bun run test:affected -- --bail      # pass arguments through to bun test
+```
+
+It decides in two steps. First it asks the same script CI uses which workspaces each changed file reaches ([What CI runs, and when](#what-ci-runs-and-when)). Then, inside each of those workspaces, it follows the import statements from every test file and keeps the tests that reach a changed file. A test that reads the filesystem, starts a process or computes an `import()` specifier is always kept, because it can depend on a file it never imports.
+
+Some changes run a workspace's whole suite, because imports cannot say who reads the file:
+
+- a file no module imports, such as a fixture, a data file or a deleted file;
+- a workspace's `package.json`, `bunfig.toml` or `tsconfig`;
+- a file that reaches the workspace through an edge declared in `scripts/ci/affected.ts`.
+
+A file that holds only types selects nothing. No test can load it, and `bun run typecheck` is what checks it.
+
+:::doc-note
+`test:affected` is a fast answer, not the final one. It runs without coverage, so it cannot tell you a file fell below its workspace's threshold, and a test can still depend on code that source loads by a computed path. CI runs every affected workspace whole, with coverage. Run `bun test --isolate --coverage` in the workspace when coverage is the question.
+:::
+
+How much it saves depends on the change. A file deep in a package that few tests import selects a handful of test files. A file in Studio's core selects most of Studio's suite, because most Studio tests mount the application through one shared harness and really do load it.
 
 ## What CI runs, and when
 
