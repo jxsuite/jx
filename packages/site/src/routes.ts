@@ -9,9 +9,9 @@
  * another.
  *
  * It lives HERE rather than in `@jxsuite/compiler` for the reason `resolveI18n` does (`i18n.ts`):
- * the compiler's dependency graph carries `sharp` and `esbuild`, so neither a browser bundle nor a
- * Cloudflare Worker can import it. This module is pure string math with no imports at all, so every
- * host that has to know what `/blog/:slug` means can share one answer.
+ * the compiler's dependency graph carries a native addon and `esbuild`, so neither a browser bundle
+ * nor a Cloudflare Worker can import it. This module is pure string math with no imports at all, so
+ * every host that has to know what `/blog/:slug` means can share one answer.
  */
 
 /** Bracket route segments: `[param]` (named) and `[...param]` (catch-all). */
