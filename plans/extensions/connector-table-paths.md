@@ -107,7 +107,7 @@ Run `bun test --isolate --coverage` from each workspace a slice touches, then `b
 
 - `tests/pages-discovery.test.ts`: `resolvePathEntries hands a discriminated source its data, locale, projectConfig, root and env` (a stub registry whose entry owns section `probe` and records `call`'s arguments), and `expandDynamicRoutes forwards options.env to the source` with the same stub; `a throwing source is collected as a route error and the route is skipped` (`expandDynamicRoutes` with `{ errors }`: one message matching `/Dynamic route \/p\/:id: \$paths could not be expanded: boom/`, the static route beside it kept); `without an errors sink a throwing source rejects`.
 - `tests/connector-mounts.test.ts`, beside the `readDevVars` cases: `projectEnv lays .dev.vars over the process environment and names the project root`.
-- `tests/site-build-reporting.test.ts`: `a $paths source that throws is a build error and every other page still builds` (a local extension owning a section whose `resolvePaths` throws; `result.errors` names the route, `dist/index.html` exists). The file mocks nothing today; it gains `mock.module("sharp", …)` ahead of its `buildSite` import, as `site-build.test.ts` has (AGENTS.md).
+- `tests/site-build-reporting.test.ts`: `a $paths source that throws is a build error and every other page still builds` (a local extension owning a section whose `resolvePaths` throws; `result.errors` names the route, `dist/index.html` exists). The file mocks nothing today; it calls `installFakeBinding()` (`tests/_fake-binding.ts`) ahead of its `buildSite` import, as `site-build.test.ts` does, so no build needs the native addon.
 
 **Slice 2**:
 

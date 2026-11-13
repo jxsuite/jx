@@ -24,6 +24,7 @@ on:
     paths:
       - "packages/ai/**"
       - "packages/collab/**"
+      - "packages/compiler-binding/**"
       - "packages/compiler/**"
       - "packages/create/**"
       - "packages/erase/**"

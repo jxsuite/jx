@@ -1,13 +1,13 @@
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { beforeEach, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 
 import {
   contentHash,
   configHash,
-  variantFilename,
+  variantHash,
   buildSrcset,
   getImageMetadata,
   processImage,
@@ -15,25 +15,18 @@ import {
 } from "../src/site/image-optimizer";
 import { cacheKey, loadCache, saveCache, getCached, setCached } from "../src/site/image-cache";
 import { transformImageNodes } from "../src/site/image-transform";
+import {
+  fakeSource,
+  imageMetadata,
+  installFakeBinding,
+  processImage as encodeVariants,
+  resetFakeSource,
+} from "./_fake-binding";
 import type { CacheManifest } from "../src/site/image-cache";
 import type { JxMutableNode } from "@jxsuite/schema/types";
 
-// Mock sharp module before any imports that use it
-const mockToFile = mock(() => Promise.resolve());
-const mockToFormat = mock(() => ({ toFile: mockToFile }));
-const mockResize = mock(() => ({ toFormat: mockToFormat }));
-/** What sharp's `metadata()` reports: older sharp releases leave any of these out. */
-interface SharpMetadata {
-  format?: string | undefined;
-  height?: number | undefined;
-  width?: number | undefined;
-}
-const mockMetadata = mock((): Promise<SharpMetadata> =>
-  Promise.resolve({ format: "jpeg", height: 600, width: 800 }),
-);
-const mockSharpInstance = { metadata: mockMetadata, resize: mockResize };
-const mockSharp = mock(() => mockSharpInstance);
-void mock.module("sharp", () => ({ default: mockSharp }));
+// The native addon is replaced by a double: these tests prove what the compiler asks of it.
+installFakeBinding();
 
 const TMP = resolve(tmpdir(), `jx-image-test-${Date.now()}`);
 
@@ -51,11 +44,6 @@ function teardown() {
 // ─── Pure utility tests (no Sharp needed) ────────────────────────────────────
 
 describe("image-optimizer utilities", () => {
-  test("variantFilename builds correct name", () => {
-    expect(variantFilename("hero", 640, "a1b2c3d4", "webp")).toBe("hero-640-a1b2c3d4.webp");
-    expect(variantFilename("photo", 1280, "deadbeef", "avif")).toBe("photo-1280-deadbeef.avif");
-  });
-
   test("buildSrcset filters by format", () => {
     const variants = [
       {
@@ -356,6 +344,17 @@ describe("image-transform", () => {
     teardown();
   });
 
+  test("serves an AVIF source as written instead of re-encoding it", async () => {
+    const root = setup();
+    writeFileSync(join(root, "public/images/photo.avif"), "avif bytes");
+    const img: JxMutableNode = { attributes: { src: "/images/photo.avif" }, tagName: "img" };
+    const result = await transformImageNodes(img, defaultConfig, root, { entries: {}, version: 1 });
+    expect(result.imageRefs.size).toBe(0);
+    expect(img.attributes?.src).toBe("/images/photo.avif");
+    expect(img.attributes?.srcset).toBeUndefined();
+    teardown();
+  });
+
   test("skips data-no-optimize images", async () => {
     const root = setup();
     writeFileSync(join(root, "public/images/hero.jpg"), "fake jpg data");
@@ -608,278 +607,127 @@ describe("image-transform", () => {
   });
 });
 
-// ─── Sharp-dependent tests (getImageMetadata, processImage, getSharp error) ──
-// Sharp is mocked because the native binary may not load in all CI environments.
+// ─── The addon boundary (getImageMetadata, processImage) ─────────────────────
 
 describe("getImageMetadata", () => {
-  beforeEach(() => {
-    mockMetadata.mockClear();
-  });
-
-  test("returns width, height, and format via sharp", async () => {
-    const root = setup();
-    const imgPath = join(root, "test.png");
-    writeFileSync(imgPath, "fake png data");
-
-    const meta = await getImageMetadata(imgPath);
-    expect(meta.width).toBe(800);
-    expect(meta.height).toBe(600);
-    expect(meta.format).toBe("jpeg");
-    expect(mockSharp).toHaveBeenCalledWith(imgPath);
-
-    teardown();
-  });
-
-  test("returns 0 for missing width/height and 'unknown' for missing format", async () => {
-    mockMetadata.mockImplementationOnce(() =>
-      Promise.resolve({
-        format: undefined,
-        height: undefined,
-        width: undefined,
-      }),
-    );
-    const root = setup();
-    const imgPath = join(root, "empty.png");
-    writeFileSync(imgPath, "fake");
-
-    const meta = await getImageMetadata(imgPath);
-    expect(meta.width).toBe(0);
-    expect(meta.height).toBe(0);
-    expect(meta.format).toBe("unknown");
-
-    teardown();
+  test("returns what the addon reads from the source's header", async () => {
+    imageMetadata.mockClear();
+    const meta = await getImageMetadata("/project/public/images/test.png");
+    expect(meta).toEqual({ format: "jpeg", height: 600, width: 800 });
+    expect(imageMetadata.mock.calls).toEqual([["/project/public/images/test.png"]]);
   });
 });
 
 describe("processImage", () => {
+  const config = {
+    formats: ["avif", "jpeg"],
+    lazyLoad: true,
+    optimize: true,
+    quality: { avif: 60, jpeg: 75, png: 90, webp: 70 },
+    sizes: "100vw",
+    widths: [320, 640, 1280],
+  };
+
   beforeEach(() => {
-    mockSharp.mockClear();
-    mockResize.mockClear();
-    mockToFormat.mockClear();
-    mockToFile.mockClear();
-    mockMetadata.mockImplementation(() =>
-      Promise.resolve({ format: "jpeg", height: 600, width: 800 }),
-    );
+    encodeVariants.mockClear();
+    resetFakeSource();
   });
 
-  test("generates variants for configured widths and formats", async () => {
+  test("asks the addon for the configured ladder, named by stem and content hash", async () => {
     const root = setup();
-    const cacheImgDir = join(root, ".cache/images");
+    const imgPath = join(root, "public/images/hero shot.jpg");
+    writeFileSync(imgPath, "fake jpeg data");
+    const cacheDir = join(root, ".cache/images");
 
-    const imgPath = join(root, "hero.jpg");
+    await processImage(imgPath, cacheDir, config);
+
+    expect(encodeVariants.mock.calls).toEqual([
+      [
+        {
+          formats: ["avif", "jpeg"],
+          hash: variantHash(imgPath),
+          outDir: join(cacheDir, "_optimized"),
+          quality: { avif: 60, jpeg: 75 },
+          source: imgPath,
+          stem: "hero shot",
+          widths: [320, 640, 1280],
+        },
+      ],
+    ]);
+    teardown();
+  });
+
+  test("a quality the project leaves out is left to the addon's default", async () => {
+    const root = setup();
+    const imgPath = join(root, "public/images/hero.jpg");
     writeFileSync(imgPath, "fake jpeg data");
 
-    const config: any = {
-      formats: ["webp"],
-      lazyLoad: true,
-      optimize: true,
-      quality: { webp: 80 },
-      sizes: "100vw",
-      widths: [320, 640],
-    };
+    await processImage(imgPath, join(root, ".cache/images"), { ...config, quality: {} });
+    expect(encodeVariants.mock.calls[0]?.[0].quality).toEqual({});
 
-    const manifest = await processImage(imgPath, cacheImgDir, config);
-
-    expect(manifest.original.width).toBe(800);
-    expect(manifest.original.height).toBe(600);
-    expect(manifest.original.format).toBe("jpeg");
-    expect(manifest.contentHash).toHaveLength(8);
-    /*
-     * 320 and 640 in webp = 2 variants. The 800 px source is NOT added: 640 is the ceiling the
-     * project configured, and exceeding it produced variants no `sizes` would ever select while
-     * costing an encode and a copy on every build.
-     */
-    expect(manifest.variants).toHaveLength(2);
-
-    const widths = manifest.variants.map((v) => v.width);
-    expect(widths).toContain(320);
-    expect(widths).toContain(640);
-    expect(widths).not.toContain(800);
-
-    for (const v of manifest.variants) {
-      expect(v.format).toBe("webp");
-      expect(v.outputPath).toContain("images/_optimized/hero-");
-      expect(v.absolutePath).toContain(cacheImgDir);
-    }
-
+    await processImage(imgPath, join(root, ".cache/images"), { ...config, quality: { jpeg: 50 } });
+    expect(encodeVariants.mock.calls[1]?.[0].quality).toEqual({ jpeg: 50 });
     teardown();
   });
 
-  test("adds the native width when the source falls between two rungs", async () => {
+  test("describes every variant by its cache path and its site URL", async () => {
     const root = setup();
-    const cacheImgDir = join(root, ".cache/images");
-    mockMetadata.mockImplementationOnce(() =>
-      Promise.resolve({ format: "png", height: 700, width: 1000 }),
-    );
-    const imgPath = join(root, "mid.png");
-    writeFileSync(imgPath, "fake png data");
+    const imgPath = join(root, "public/images/hero.jpg");
+    writeFileSync(imgPath, "fake jpeg data");
+    const cacheDir = join(root, ".cache/images");
+    const hash = variantHash(imgPath);
 
-    const manifest = await processImage(imgPath, cacheImgDir, {
-      formats: ["webp"],
-      lazyLoad: true,
-      optimize: true,
-      quality: { webp: 80 },
-      sizes: "100vw",
-      widths: [320, 640, 1920],
+    const manifest = await processImage(imgPath, cacheDir, config);
+
+    // The manifest keeps the source's own hash; a variant's name also carries the pipeline.
+    expect(manifest.contentHash).toBe(contentHash(imgPath));
+    expect(hash).toMatch(/^[0-9a-f]{8}$/);
+    expect(hash).not.toBe(contentHash(imgPath));
+    expect(manifest.original).toEqual({ format: "jpeg", height: 600, width: 800 });
+    // An 800 px source: the 1280 rung is dropped and the native width is offered instead.
+    expect(manifest.variants.map((v) => `${v.width}:${v.format}`)).toEqual([
+      "320:avif",
+      "320:jpeg",
+      "640:avif",
+      "640:jpeg",
+      "800:avif",
+      "800:jpeg",
+    ]);
+    expect(manifest.variants[0]).toEqual({
+      absolutePath: join(cacheDir, "_optimized", `hero-320-${hash}.avif`),
+      format: "avif",
+      outputPath: `/images/_optimized/hero-320-${hash}.avif`,
+      width: 320,
     });
-
-    // Below the 1920 ceiling, so the ladder cannot otherwise offer the image at full resolution.
-    expect(manifest.variants.map((v) => v.width)).toEqual([320, 640, 1000]);
-
+    for (const variant of manifest.variants) {
+      expect(existsSync(variant.absolutePath)).toBe(true);
+    }
     teardown();
   });
 
-  test("adds original width when no configured widths are smaller", async () => {
+  test("the reported size is the addon's, after orientation", async () => {
     const root = setup();
-    const cacheImgDir = join(root, ".cache/images");
+    const imgPath = join(root, "public/images/portrait.jpg");
+    writeFileSync(imgPath, "fake jpeg data");
+    Object.assign(fakeSource, { height: 4000, width: 3000 });
 
-    // Image is only 50px wide
-    mockMetadata.mockImplementationOnce(() =>
-      Promise.resolve({ format: "png", height: 50, width: 50 }),
-    );
-
-    const imgPath = join(root, "small.png");
-    writeFileSync(imgPath, "small png");
-
-    const config: any = {
-      formats: ["webp"],
-      lazyLoad: true,
-      optimize: true,
-      quality: { webp: 80 },
-      sizes: "100vw",
-      widths: [800, 1200, 1920],
-    };
-
-    const manifest = await processImage(imgPath, cacheImgDir, config);
-    const widths = manifest.variants.map((v) => v.width);
-    // All configured widths > 50, so only original width is used
-    expect(widths).toEqual([50]);
-
+    const manifest = await processImage(imgPath, join(root, ".cache/images"), config);
+    expect(manifest.original).toEqual({ format: "jpeg", height: 4000, width: 3000 });
+    expect(manifest.variants.at(-1)?.width).toBe(1280);
     teardown();
   });
 
-  test("uses the native width when no widths are configured at all", async () => {
+  test("an addon failure rejects with its message", async () => {
+    encodeVariants.mockImplementationOnce(async () => {
+      throw new Error("/x/broken.png: cannot decode image: unexpected end of file");
+    });
     const root = setup();
-    const cacheImgDir = join(root, ".cache/images");
-
-    mockMetadata.mockImplementationOnce(() =>
-      Promise.resolve({ format: "png", height: 300, width: 500 }),
+    const imgPath = join(root, "public/images/broken.png");
+    writeFileSync(imgPath, "not a png");
+    // oxlint-disable-next-line typescript/await-thenable -- rejects.toThrow resolves a Promise at runtime.
+    await expect(processImage(imgPath, join(root, ".cache/images"), config)).rejects.toThrow(
+      "cannot decode image",
     );
-
-    const imgPath = join(root, "unconfigured.png");
-    writeFileSync(imgPath, "unconfigured png");
-
-    const config: any = {
-      formats: ["webp"],
-      lazyLoad: true,
-      optimize: true,
-      quality: { webp: 80 },
-      sizes: "100vw",
-      widths: [],
-    };
-
-    const manifest = await processImage(imgPath, cacheImgDir, config);
-    // An empty ladder is its own ceiling (native width), and the filtered set is empty too, so
-    // The native width is the fallback rather than the "falls between two rungs" rescue.
-    expect(manifest.variants.map((v) => v.width)).toEqual([500]);
-
-    teardown();
-  });
-
-  test("skips variant generation if output file already exists", async () => {
-    const root = setup();
-    const cacheImgDir = join(root, ".cache/images");
-    const optimizedDir = join(cacheImgDir, "_optimized");
-    mkdirSync(optimizedDir, { recursive: true });
-
-    // Image is 320px wide so only one width variant
-    mockMetadata.mockImplementationOnce(() =>
-      Promise.resolve({ format: "png", height: 240, width: 320 }),
-    );
-
-    const imgPath = join(root, "cached.png");
-    writeFileSync(imgPath, "cached png data");
-
-    const hash8 = contentHash(imgPath);
-    const filename = variantFilename("cached", 320, hash8, "webp");
-    // Pre-create the output file so processImage skips generation
-    writeFileSync(join(optimizedDir, filename), "existing");
-
-    const config: any = {
-      formats: ["webp"],
-      lazyLoad: true,
-      optimize: true,
-      quality: { webp: 80 },
-      sizes: "100vw",
-      widths: [320],
-    };
-
-    // Clear mock call count before this specific test
-    mockToFile.mockClear();
-
-    const manifest = await processImage(imgPath, cacheImgDir, config);
-    expect(manifest.variants).toHaveLength(1);
-    // ToFile should NOT have been called since file already exists
-    expect(mockToFile).not.toHaveBeenCalled();
-
-    teardown();
-  });
-
-  test("uses multiple formats", async () => {
-    const root = setup();
-    const cacheImgDir = join(root, ".cache/images");
-
-    // 80px wide so configured width matches original
-    mockMetadata.mockImplementationOnce(() =>
-      Promise.resolve({ format: "png", height: 60, width: 80 }),
-    );
-
-    const imgPath = join(root, "multi.png");
-    writeFileSync(imgPath, "multi png");
-
-    const config: any = {
-      formats: ["webp", "avif"],
-      lazyLoad: true,
-      optimize: true,
-      quality: { avif: 65, webp: 80 },
-      sizes: "100vw",
-      widths: [80],
-    };
-
-    const manifest = await processImage(imgPath, cacheImgDir, config);
-    const formats = manifest.variants.map((v) => v.format);
-    expect(formats).toContain("webp");
-    expect(formats).toContain("avif");
-    expect(manifest.variants).toHaveLength(2);
-
-    teardown();
-  });
-
-  test("uses default quality 80 when format quality not specified", async () => {
-    const root = setup();
-    const cacheImgDir = join(root, ".cache/images");
-
-    mockMetadata.mockImplementationOnce(() =>
-      Promise.resolve({ format: "png", height: 100, width: 100 }),
-    );
-
-    const imgPath = join(root, "noqual.png");
-    writeFileSync(imgPath, "no qual");
-
-    const config: any = {
-      formats: ["jpeg"],
-      lazyLoad: true,
-      optimize: true,
-      quality: {}, // No jpeg quality specified
-      sizes: "100vw",
-      widths: [100],
-    };
-
-    mockToFormat.mockClear();
-    const manifest = await processImage(imgPath, cacheImgDir, config);
-    expect(manifest.variants).toHaveLength(1);
-    expect(mockToFormat).toHaveBeenCalledWith("jpeg", { quality: 80 });
-
     teardown();
   });
 });
@@ -896,13 +744,8 @@ describe("site-loader images config", () => {
     expect(config.images).toBeDefined();
     expect(config.images.optimize).toBe(true);
     expect(config.images.widths).toEqual([320, 640, 960, 1280, 1920]);
-    expect(config.images.formats).toEqual(["webp", "avif"]);
-    expect(config.images.quality).toEqual({
-      avif: 65,
-      jpeg: 80,
-      png: 80,
-      webp: 80,
-    });
+    expect(config.images.formats).toEqual(["avif", "jpeg"]);
+    expect(config.images.quality).toEqual({ avif: 65, jpeg: 80 });
     expect(config.images.sizes).toBe("(max-width: 768px) 100vw, 50vw");
     expect(config.images.lazyLoad).toBe(true);
 
@@ -923,7 +766,7 @@ describe("site-loader images config", () => {
     const { config } = loadProjectConfig(root);
     expect(config.images.optimize).toBe(false);
     expect(config.images.widths).toEqual([400, 800]);
-    expect(config.images.formats).toEqual(["webp", "avif"]);
+    expect(config.images.formats).toEqual(["avif", "jpeg"]);
 
     teardown();
   });

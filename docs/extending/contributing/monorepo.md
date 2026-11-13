@@ -8,6 +8,10 @@ code:
   - scripts/lib/test-graph.ts
   - scripts/check-release-parse.ts
   - scripts/publish-released.ts
+  - scripts/addon-packages.ts
+  - scripts/bench-build.ts
+  - scripts/conformance/run.ts
+  - packages/compiler-binding/scripts/build.ts
   - scripts/check-release-integrity.ts
   - scripts/docs/check-plans.ts
   - scripts/ci/approve-held-runs.ts
@@ -42,6 +46,23 @@ The Jx monorepo ([github.com/jxsuite/jx](https://github.com/jxsuite/jx)) is a Bu
 - `bun run typecheck`, `bun run lint`, `bun run format`: tsgo, oxlint (all categories at error), oxfmt.
 - `bun run typecheck:jxn`: `tsc` over the scripts and function bodies of the repository's `.jxn` documents, through `@jxsuite/content-mapper` ([Type checking](/docs/framework/concepts/type-checking)). It has a `tsconfig.jxn.json` of its own because it needs `--runExternalCode`.
 - `bun run lint` also runs the [ai-deslop](https://github.com/maharshi365/deslop) rules, which reject unchecked type assertions, `unknown` parameters and returns, runtime `typeof` branching outside type guards, and duplicate constants and types. `bun run lint:typecheck` is the type-aware pass (deprecated APIs, unnecessary conditions, floating promises, unsafe `any` flow). Both run at error in CI, and neither is turned off for tests or scripts; `.oxlintrc.json` explains each choice.
+
+## The Rust core
+
+Part of the compiler is written in Rust and loaded as a native addon. Today that is the image encoder. It lives in `packages/compiler-binding`, which holds both the Cargo workspace (`crates/`) and the small package that finds and loads the built file.
+
+- `bun run build:addon` compiles it and puts `jx-compiler.<platform>.node` in that package. `bun run build` runs it first.
+- You need Rust and `nasm` for that. The Nix dev shell provides both. Elsewhere, install Rust with rustup, which reads the pinned version from `packages/compiler-binding/rust-toolchain.toml`, and install `nasm` from your package manager.
+- A build that optimizes an image fails without the addon, and the error names the command above. A site with no images never loads it.
+- Test suites do not need it. Every suite except that package's own and the desktop app's replaces the addon with a double, so `bun run verify` works on a machine with no Rust unless your change reaches one of those two.
+- After changing a crate, run `cargo fmt --all --check`, `cargo clippy --workspace --all-targets --locked -- -D warnings` and `cargo test --workspace --locked` from `packages/compiler-binding`. CI runs the same three.
+
+Two tools measure a change to the compiler, and both work on every project in the repository (the starters, the sites and `examples`):
+
+- `bun run conformance` builds each project, opens its pages in Chromium and records what the browser ends up with: the DOM with each element's geometry and computed style, the accessibility tree, console and network errors, the effect of clicking controls, and a screenshot. `capture` writes a recording, `compare` reports the differences between two, and `self` records the same tree twice to prove the tool repeats itself. Use it when a change replaces part of the compiler, to show the pages still behave the same. `scripts/conformance/README.md` has the details.
+- `bun run bench:build` times a cold and a warm build of each project, split into the phases of the build. Run it before and after on the same machine; the numbers mean nothing across machines.
+
+Every dependency of a crate must be Rust itself, with no C library linked in. That is what lets the addon load on any system without installing anything beside it.
 
 ## The VS Code extension
 

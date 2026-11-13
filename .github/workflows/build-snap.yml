@@ -49,6 +49,10 @@ jobs:
 
       - uses: ./.github/actions/setup-bun
 
+      # Staging copies the compiler's native addon beside the backend bundle, so it is built first.
+      - uses: ./.github/actions/setup-rust
+      - run: bun run build:addon
+
       # The unpacked build, not an AppImage: snapcraft wants the files. `--dir` runs the whole stage
       # (backend bundle and its native modules, studio assets) and stops before the installer is made.
       - name: Build the unpacked Linux app and stage it

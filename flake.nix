@@ -147,6 +147,15 @@
             packages = with pkgs; [
               self'.packages.start-services
               bun
+              # The Rust core (packages/compiler-binding/crates, specs/compiler.md §14). nixpkgs' toolchain, and
+              # rust-toolchain.toml names the same release for CI, as .bun-version does for Bun.
+              # nasm assembles rav1e's SIMD kernels; the AVIF encoder is several times slower
+              # without it.
+              cargo
+              rustc
+              clippy
+              rustfmt
+              nasm
               # The Electron the Nix package runs (electronVersion in electron-builder.yml follows
               # it), so `bun run desktop` and `bun run smoke -- --electron "$ELECTRON_BIN"` run the
               # desktop app and its backend exactly as the package does.
@@ -165,16 +174,14 @@
               export STATE_DIR="''${TMPDIR:-/tmp}/jx-state"
               export PATH="$PWD/node_modules/.bin:$PATH"
 
-              # Prebuilt native npm addons (e.g. sharp's @img/sharp-linux-x64)
-              # ship generic Linux binaries that dlopen() libstdc++.so.6 at
-              # runtime — NixOS has no FHS-standard location for it. Without
-              # this, sharp fails with ERR_DLOPEN_FAILED and image
-              # optimization breaks in `jx build` and in the desktop backend.
+              # A prebuilt native npm addon is a generic Linux binary, and one that dlopen()s
+              # libstdc++.so.6 finds it in no FHS-standard location on NixOS. sharp was the one that
+              # forced this; it is gone, and the compiler's own addon never needs it (it is built
+              # by this shell's Rust against this shell's libc). Kept for whichever dependency
+              # ships such a binary next.
               export LD_LIBRARY_PATH="${pkgs.stdenv.cc.cc.lib}/lib:$LD_LIBRARY_PATH"
               # The desktop app's runner and smoke test find Electron here; never node_modules,
-              # whose `electron` package downloads ~100 MB (packages/desktop/AGENTS.md). The backend
-              # runs as Electron's utility process and inherits LD_LIBRARY_PATH, which is what lets
-              # sharp's prebuilt binaries load on Electron's Node in a checkout.
+              # whose `electron` package downloads ~100 MB (packages/desktop/AGENTS.md).
               export ELECTRON_BIN="${pkgs.electron}/bin/electron"
 
               if [ -f "$PWD/.env" ]; then

@@ -6,12 +6,14 @@
 
 import { describe, expect, it } from "bun:test";
 import { resolve } from "node:path";
-import { buildSiteCalls, runEntry, setBuildSite } from "./_cli-harness.ts";
+import { buildSiteCalls, NO_TIMINGS, runEntry, setBuildSite } from "./_cli-harness.ts";
 
 describe("jx cli — build flag handling", () => {
   it("defaults the root to cwd and honors --no-clean", async () => {
     buildSiteCalls.length = 0;
-    setBuildSite(() => Promise.resolve({ errors: [], files: 1, routes: 1, serverEntries: [] }));
+    setBuildSite(() =>
+      Promise.resolve({ errors: [], files: 1, routes: 1, serverEntries: [], timings: NO_TIMINGS }),
+    );
     const result = await runEntry("cli", ["build", "--no-clean"]);
     expect(result.exited).toBe(false);
     expect(buildSiteCalls[0]?.root).toBe(resolve("."));

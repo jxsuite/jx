@@ -61,7 +61,7 @@ The build writes `dist/_headers` because cacheability is something only the buil
   Cache-Control: public, max-age=31536000, immutable
 ```
 
-Only the optimized images are cached forever, because their filenames embed a hash of the source, so a changed image is a changed URL. **Your component JS and CSS are not**, deliberately: `components/site-header.js` keeps the same URL when you edit the component, so caching it forever would serve stale code to everyone who visited before the edit.
+Only the optimized images are cached forever, because their filenames embed a hash of the source and of the encoder version that wrote them, so a changed image is a changed URL. **Your component JS and CSS are not**, deliberately: `components/site-header.js` keeps the same URL when you edit the component, so caching it forever would serve stale code to everyone who visited before the edit.
 
 **Cloudflare Pages, Cloudflare Workers and Netlify** read this file. The `node` and `bun` adapters serve no static assets, so there it is a description of what the reverse proxy in front of them should send, and the build says so when you use one.
 

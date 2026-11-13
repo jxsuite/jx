@@ -31,7 +31,7 @@ export interface HeaderRuleSet {
 }
 
 /**
- * The only content-addressed output the build produces. `variantFilename()` embeds an 8-character
+ * The only content-addressed output the build produces. A variant's file name embeds an 8-character
  * digest of the source bytes, so a changed image is a changed URL and the old one can be cached
  * forever (RFC 8246).
  */

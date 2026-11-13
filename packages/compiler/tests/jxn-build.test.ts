@@ -5,7 +5,7 @@
  */
 import { parseProjectSource, serializeProjectFile } from "@jxsuite/schema/project-file";
 import { projectFilePath } from "@jxsuite/schema/project-file/node";
-import { afterAll, describe, expect, mock, test } from "bun:test";
+import { afterAll, describe, expect, test } from "bun:test";
 import {
   cpSync,
   existsSync,
@@ -17,13 +17,10 @@ import {
 } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { isJsonObject, isString } from "@jxsuite/schema/guards";
+import { installFakeBinding } from "./_fake-binding.ts";
 import type { JsonValue } from "@jxsuite/schema/types";
 
-const mockSharp = () => ({
-  metadata: () => Promise.resolve({ format: "jpeg", height: 600, width: 800 }),
-  resize: () => ({ toFormat: () => ({ toFile: () => Promise.resolve() }) }),
-});
-void mock.module("sharp", () => ({ default: mockSharp }));
+installFakeBinding();
 
 const { buildSite } = await import("../src/site/site-build.ts");
 const { parseJxn } = await import("@jxsuite/schema/jxn");

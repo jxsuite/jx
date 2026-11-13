@@ -49,7 +49,12 @@ describe("the whole matrix", () => {
      * would put that package's own suite downstream of itself.
      */
     expect(flags).not.toContain("test-support");
-    expect(flags.length).toBe(workspaces.length - 1);
+    /*
+     * And but `compiler-binding`, the loader for the compiler's native addon: it reads no document
+     * and imports no `@jxsuite` package, so a schema change cannot reach it.
+     */
+    expect(flags).not.toContain("compiler-binding");
+    expect(flags.length).toBe(workspaces.length - 2);
   });
 
   test("a change to the shared test preload retests every suite that loads it", () => {
@@ -162,7 +167,8 @@ describe("the nix build", () => {
     // The whole value of moving it: skipped is green, failed is not. `ci` is the one name branch
     // Protection points at, and a nix job it does not depend on could not block anything.
     const workflow = await Bun.file(".github/workflows/test.yml").text();
-    const list = /^ {2}ci:\n(?:.*\n)*? {4}needs: \[([^\]]*)\]/m.exec(workflow)?.[1] ?? "";
+    const list = /^ {2}ci:\n(?:.*\n)*? {4}needs:\s*\[([^\]]*)\]/m.exec(workflow)?.[1] ?? "";
+    // The list is long enough that the formatter breaks it over lines, hence `\s*` and the trim.
     expect(list.split(",").map((name) => name.trim())).toContain("nix");
   });
 

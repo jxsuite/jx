@@ -12,8 +12,8 @@
  *
  * The conventions themselves live in `@jxsuite/site/routes`, not here. The studio and the cloud
  * preview both have to answer "what URL is this file" and neither can import this package — its
- * dependency graph carries `sharp` and `esbuild` — so what remains in this file is the part that
- * genuinely needs a filesystem: the walk, the `$layout` peek, and `$paths` expansion.
+ * dependency graph carries a native addon and `esbuild` — so what remains in this file is the part
+ * that genuinely needs a filesystem: the walk, the `$layout` peek, and `$paths` expansion.
  */
 
 import { erasedDocument } from "../erased.ts";
