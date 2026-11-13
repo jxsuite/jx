@@ -5,6 +5,7 @@
   chromium,
   electron,
   lib,
+  patchelfUnstable,
   runCommand,
   fetchurl,
   fetchFromGitHub,
@@ -287,10 +288,19 @@ stdenv.mkDerivation {
     # compiler's runtime library to just these files fixes them without putting an
     # LD_LIBRARY_PATH on Electron and every process it starts. The musl builds are never loaded on
     # glibc and are left alone.
+    #
+    # `patchelfUnstable`, not the stdenv's `patchelf`, and that is load-bearing. nixpkgs' `patchelf`
+    # moves between 0.15.2 and 0.19.2 from one revision to the next, and 0.15.2's `--add-rpath`
+    # corrupts both of these files (it has to grow the dynamic section, and the result is a libvips
+    # that segfaults in its static initializers, on every Electron tried, 43 through 45). The
+    # install check below is what found it: a pristine tarball loads, the same files after
+    # `patchelf 0.15.2 --add-rpath` crash, and after 0.18.0 or 0.19.2 they load. The stdenv's own
+    # fixup still runs 0.15.2's `--shrink-rpath` and `strip` over the result, which only edit in
+    # place and leave a working file, so only this one step needs the newer tool.
     find $out/lib/jx-studio/node_modules -type f \( \
       -path '*/@img/sharp-linux-*/lib/*.node' -o -path '*/@img/sharp-libvips-linux-*/lib/*.so*' \
     \) -print0 | while IFS= read -r -d "" binary; do
-      patchelf --add-rpath ${lib.getLib stdenv.cc.cc}/lib "$binary"
+      ${patchelfUnstable}/bin/patchelf --add-rpath ${lib.getLib stdenv.cc.cc}/lib "$binary"
     done
     rm -rf $out/lib/jx-studio/packages/*/tests
 

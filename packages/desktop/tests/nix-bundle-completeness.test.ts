@@ -125,3 +125,33 @@ describe("the runtime install is the desktop app's production graph", () => {
     expect(nix).not.toContain("--jx-bun");
   });
 });
+
+/**
+ * The sharp addon and its libvips get the compiler runtime on their RPATH so they load on NixOS,
+ * and which `patchelf` does that decides whether they load at all.
+ *
+ * Nixpkgs' `patchelf` is 0.15.2 in some revisions and 0.19.2 in others. 0.15.2's `--add-rpath`
+ * corrupts `libvips-cpp.so` and the sharp addon: the pristine tarball loads on Electron 43 through
+ * 45, the same files after it segfault in libvips' static initializers, and 0.18.0 or 0.19.2 leave
+ * a working file. The Nix install check catches it, but only in a full `nix build` that takes
+ * minutes, so this holds the line where a stray bare `patchelf` would be written.
+ */
+describe("sharp's rpath is added with a patchelf that does not corrupt it", () => {
+  const nix = readFileSync(resolve(REPO, "packages/desktop/package.nix"), "utf8");
+
+  test("package.nix takes patchelfUnstable and adds the rpath through it", () => {
+    expect(nix).toMatch(/^\s*patchelfUnstable,$/m);
+    expect(nix).toContain("${patchelfUnstable}/bin/patchelf --add-rpath");
+  });
+
+  test("no add-rpath or set-rpath goes through the stdenv's own patchelf", () => {
+    // A command position is the start of a line or after `;`/`&&`/`|`, which is where a bare
+    // `patchelf` would run; the comment explaining the rule names the flag and is not one.
+    const bare = nix
+      .split("\n")
+      .filter((line) => !line.trim().startsWith("#"))
+      .filter((line) => /(^|[;&|]\s*|\s)patchelf\s+--(add|set)-rpath/.test(line))
+      .filter((line) => !line.includes("${patchelfUnstable}/bin/patchelf"));
+    expect(bare).toEqual([]);
+  });
+});
