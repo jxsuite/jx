@@ -1,5 +1,12 @@
 # Changelog
 
+## [11.0.1](https://github.com/jxsuite/jx/compare/studio-v11.0.0...studio-v11.0.1) (2026-11-13)
+
+
+### Bug Fixes
+
+* **studio:** an edit to an innerHTML block stores nodes and removes the markup ([#654](https://github.com/jxsuite/jx/issues/654)) ([ff78ee5](https://github.com/jxsuite/jx/commit/ff78ee5ef000f4eea33ed014e119631d56987b67))
+
 ## [11.0.0](https://github.com/jxsuite/jx/compare/studio-v10.9.0...studio-v11.0.0) (2026-11-12)
 
 
