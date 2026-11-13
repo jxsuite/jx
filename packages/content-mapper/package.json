@@ -1,6 +1,6 @@
 {
   "name": "@jxsuite/content-mapper",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "A TypeScript content mapper for Jx Notation: tsc and an editor check the code in a .jxn document",
   "license": "MIT",
   "repository": {
