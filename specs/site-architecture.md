@@ -2,7 +2,7 @@
 
 ## File-Based Routing, Content Collections, Layouts, and Static Site Generation
 
-**Version:** 0.8.14-draft\
+**Version:** 0.9.0-draft\
 **Status:** Partial\
 **Updated:** 2026-11-13\
 **License:** MIT
@@ -2419,6 +2419,7 @@ This spec builds on existing Jx primitives wherever possible:
 
 ## Changelog
 
+- **0.9.0-draft** (2026-11-13) — §9.2: the image defaults become avif and jpeg with lossless PNG and WebP, the encoder is the compiler's native core rather than sharp, AVIF sources are served as written, and the §9.2.2 marker no longer lists the four-encode limit as unmet.
 - **0.8.14-draft** (2026-11-13) — §7.3: Markdown files open in the Edit view rather than a content mode; §7.6: held entries are kept by jx dev and Studio's canvas.
 - **0.8.13-draft** (2026-11-13) — §10.4, §10.6: a project's pure named formulas reach components; the live page shell and the Studio canvas hand them to the runtime.
 - **0.8.12-draft** (2026-11-13) — CSP frame-ancestors follows security.frameOptions (DENY is 'none', false omits it) and inline speculation rules are hashed (§14.3.1).

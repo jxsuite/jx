@@ -2,7 +2,7 @@
 
 ## Static HTML Compiler, Custom Element Emitter, and Island Detector
 
-**Version:** 0.5.16-draft\
+**Version:** 0.6.0-draft\
 **Status:** Partial\
 **Updated:** 2026-11-13\
 **License:** MIT
@@ -849,6 +849,7 @@ An earlier revision of this table claimed ~7 kB and ~3 kB (~10 kB total); those 
 
 ## Changelog
 
+- **0.6.0-draft** (2026-11-13) — §7: images are encoded by the compiler's own Rust core instead of sharp. The default formats become avif and jpeg, WebP is written losslessly with a build warning, a transparent source asked for as JPEG is written as PNG, EXIF orientation is applied, embedded colour profiles are converted to sRGB, an AVIF source is served as written, variants encode in parallel, and a variant's name covers the pipeline version. New §14 specifies the native core: one addon file per platform, how it is loaded, and that it links no C library.
 - **0.5.16-draft** (2026-11-13) — §8.1: the build merges into each component the project formulas it reads, for the prerender and the emitted module, so a formula only a component reads is not lost to the page strip pass.
 - **0.5.15-draft** (2026-11-13) — §8.1: an empty repeater expansion collapses when the build itself resolved the list's source, and is still kept for the client when the source is client state or a build-resolved entry a handler writes. The reference scan skips `$paths`, so a page of a paged list is static when nothing else on it is dynamic.
 - **0.5.14-draft** (2026-11-13) — §2.1, §3, §8.1: a pure named formula is a function, not state. It makes a node dynamic only while something left for the client reads it, and the site build drops one whose every call it resolved, so a page whose only state is a formula builds static. The reference scan also reads `state?.key` and a literal-keyed `state["key"]`, and a body that hands `state` on whole keeps every entry.
@@ -913,4 +914,4 @@ An earlier revision of this table claimed ~7 kB and ~3 kB (~10 kB total); those 
 
 ---
 
-_`@jxsuite/compiler` Specification v0.5.16-draft_
+_`@jxsuite/compiler` Specification v0.6.0-draft_
