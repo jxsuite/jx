@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.0.1](https://github.com/jxsuite/jx/compare/desktop-v9.0.0...desktop-v9.0.1) (2026-11-13)
+
+
+### Bug Fixes
+
+* **desktop:** add sharp's RPATH with patchelfUnstable so the Nix build loads it ([#656](https://github.com/jxsuite/jx/issues/656)) ([37ebf00](https://github.com/jxsuite/jx/commit/37ebf001968c33968c7664fbb56f4a49ca60e799))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/studio bumped to 11.0.1
+
 ## [9.0.0](https://github.com/jxsuite/jx/compare/desktop-v8.3.1...desktop-v9.0.0) (2026-11-12)
 
 

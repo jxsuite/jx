@@ -10,7 +10,7 @@
   "packages/compiler": "8.7.0",
   "packages/content-mapper": "0.1.0",
   "packages/create": "1.8.1",
-  "packages/desktop": "9.0.0",
+  "packages/desktop": "9.0.1",
   "packages/erase": "0.3.0",
   "packages/formulas": "0.0.33",
   "packages/import": "0.44.2",
@@ -21,6 +21,6 @@
   "packages/server": "9.0.0",
   "packages/site": "2.7.0",
   "packages/starters": "3.6.0",
-  "packages/studio": "11.0.0",
+  "packages/studio": "11.0.1",
   "packages/ui": "0.12.0"
 }
