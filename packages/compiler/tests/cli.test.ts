@@ -15,7 +15,7 @@ describe("jx cli", () => {
 
     expect(stderr).not.toContain("Cannot find module");
     // The build's own stderr is the only account of WHY it exited non-zero, and it is invisible
-    // Otherwise: a CI runner has sharp and the image pass, a NixOS checkout does not.
+    // Otherwise: the image pass needs the native addon, which a checkout may not have built.
     expect(exitCode, `jx build exited ${exitCode}:\n${stderr}`).toBe(0);
   });
 

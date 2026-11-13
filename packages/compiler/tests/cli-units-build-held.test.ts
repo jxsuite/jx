@@ -5,12 +5,14 @@
  */
 
 import { describe, expect, it } from "bun:test";
-import { buildSiteCalls, runEntry, setBuildSite } from "./_cli-harness.ts";
+import { buildSiteCalls, NO_TIMINGS, runEntry, setBuildSite } from "./_cli-harness.ts";
 
 describe("jx cli — --include-held", () => {
   it("asks the build to keep held entries", async () => {
     buildSiteCalls.length = 0;
-    setBuildSite(() => Promise.resolve({ errors: [], files: 1, routes: 1, serverEntries: [] }));
+    setBuildSite(() =>
+      Promise.resolve({ errors: [], files: 1, routes: 1, serverEntries: [], timings: NO_TIMINGS }),
+    );
     await runEntry("cli", ["build", "--include-held"]);
     expect(buildSiteCalls[0]?.opts).toMatchObject({ includeHeld: true });
   });

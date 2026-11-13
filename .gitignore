@@ -85,3 +85,8 @@ packages/desktop/build-resources/embedded.provisionprofile
 # A local checkout of a third-party tree (vendor/electrobun once landed on main as an orphan gitlink
 # with no .gitmodules entry, and every actions/checkout cleanup then failed on it).
 /vendor/
+
+# The Rust core's build tree, and the addon a checkout builds from it (`bun run build:addon`). A
+# release builds one per platform in CI and publishes each as its own npm package.
+packages/compiler-binding/target/
+packages/compiler-binding/*.node

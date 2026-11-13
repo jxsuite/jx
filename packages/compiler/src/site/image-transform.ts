@@ -38,6 +38,8 @@ import type { JxAttributeValue, JxDocument, JxMutableNode, JxStyle } from "@jxsu
 import type { CacheManifest } from "./image-cache.ts";
 
 const SKIP_EXTENSIONS = new Set([".svg", ".gif"]);
+/** Local sources the build service leaves alone rather than re-encodes. */
+const ENCODED_AS_WRITTEN = new Set([".avif"]);
 const EXTERNAL_PREFIXES = ["http://", "https://", "data:", "//"];
 
 /** Per-build memo of original image dimensions + content hash (cloudflare mode). */
@@ -46,13 +48,13 @@ export type ImageMetaCache = Map<
   { width: number | null; height: number | null; hash: string }
 >;
 
-let sharpWarned = false;
+let dimensionsWarned = false;
 
 /**
  * Resolve original image dimensions and content hash for cloudflare mode. Reads only the image
- * header via Sharp — no variants are generated. Dimensions degrade to null when Sharp is
- * unavailable (e.g. native binary won't load): srcsets are still emitted (fit=scale-down guards
- * against upscaling), only the width/height attributes are skipped.
+ * header — no variants are generated. Dimensions degrade to null when the header cannot be read (a
+ * format the compiler does not decode, or no native addon for this platform): srcsets are still
+ * emitted (fit=scale-down guards against upscaling), only the width/height attributes are skipped.
  *
  * @param {string} absoluteSrc
  * @param {ImageMetaCache} metaCache
@@ -66,8 +68,8 @@ async function resolveCfMeta(absoluteSrc: string, metaCache: ImageMetaCache) {
       const m = await getImageMetadata(absoluteSrc);
       meta = { width: m.width, height: m.height, hash };
     } catch (error) {
-      if (!sharpWarned) {
-        sharpWarned = true;
+      if (!dimensionsWarned) {
+        dimensionsWarned = true;
         console.warn(
           `Could not read image dimensions (${errorMessage(error)}) — ` +
             `emitting srcsets without width/height attributes.`,
@@ -497,6 +499,13 @@ async function resolveVariants(
     return { dims, sources: [], srcset };
   }
 
+  /* The build service decodes JPEG, PNG, WebP, TIFF and BMP. An AVIF source is already the format
+     every variant would be converted to, and re-encoding it would only lose quality, so it is
+     served as written (compiler.md §7.3). */
+  if (ENCODED_AS_WRITTEN.has(extname(absoluteSrc).toLowerCase())) {
+    return null;
+  }
+
   let manifest = imageRefs.get(absoluteSrc);
   if (!manifest) {
     manifest = await resolveManifest(absoluteSrc, src, config, projectRoot, cache!);
@@ -508,9 +517,10 @@ async function resolveVariants(
    * offered even if a stale manifest happens to hold variants of it, and one this order does not
    * know keeps the position the project gave it.
    */
+  const asked = writtenFormats(config.formats, manifest.variants);
   const ordered = [
-    ...PICTURE_FORMAT_ORDER.filter((format) => config.formats.includes(format)),
-    ...config.formats.filter((format) => !PICTURE_FORMAT_ORDER.includes(format)),
+    ...PICTURE_FORMAT_ORDER.filter((format) => asked.includes(format)),
+    ...asked.filter((format) => !PICTURE_FORMAT_ORDER.includes(format)),
   ];
   const available = ordered.flatMap((format): PictureSource[] => {
     const srcset = buildSrcset(manifest.variants, format);
@@ -529,10 +539,26 @@ async function resolveVariants(
   const wrap = config.picture !== false && available.length > 1;
   return {
     dims,
-    fallbackSrc: fallbackVariant(manifest.variants, config.formats),
+    fallbackSrc: fallbackVariant(manifest.variants, asked),
     sources: wrap ? available : [],
     srcset: available[0]?.srcset ?? "",
   };
+}
+
+/**
+ * The formats to offer for one image: the project's, with PNG added where it stands in for JPEG.
+ *
+ * JPEG has no alpha channel, so the encoder writes PNG wherever JPEG was asked of a source with
+ * transparency (compiler.md §7.2). That PNG was asked for, under another name, and is offered; any
+ * other format the project did not list stays out even if a stale manifest holds variants of it.
+ */
+function writtenFormats(formats: readonly string[], variants: ImageVariant[]): readonly string[] {
+  const standsIn =
+    formats.includes("jpeg") &&
+    !formats.includes("png") &&
+    variants.some((variant) => variant.format === "png") &&
+    !variants.some((variant) => variant.format === "jpeg");
+  return standsIn ? [...formats, "png"] : formats;
 }
 
 /**
@@ -553,7 +579,10 @@ const UNIVERSAL_FORMATS: readonly string[] = ["jpeg", "png"];
  * smaller image nobody can decode is not an improvement.
  */
 function fallbackVariant(variants: ImageVariant[], formats: readonly string[]): string | undefined {
-  const format = UNIVERSAL_FORMATS.find((candidate) => formats.includes(candidate));
+  const format = UNIVERSAL_FORMATS.find(
+    (candidate) =>
+      formats.includes(candidate) && variants.some((variant) => variant.format === candidate),
+  );
   if (format === undefined) {
     return undefined;
   }

@@ -8,7 +8,8 @@
 
 import { describe, expect, test } from "bun:test";
 
-import { readFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import type { WorkflowStep } from "./lib/workflow-syntax.ts";
@@ -16,6 +17,8 @@ import {
   backfillCommand,
   issueSection,
   npmErrorLine,
+  ADDON_PACKAGES_DIR,
+  addonPackageDirs,
   publishAll,
   summaryTable,
 } from "./publish-released.ts";
@@ -100,6 +103,26 @@ describe("publishAll", () => {
     expect(lines[0]).toBe("::group::packages/catalog -> @jxsuite/catalog@0.1.2");
     expect(lines.at(-2)).toStartWith("FAILED: npm error 404 Not Found - PUT");
     expect(lines.at(-1)).toBe("::endgroup::");
+  });
+});
+
+describe("addonPackageDirs", () => {
+  test("lists each prepared platform package, sorted, and nothing without a manifest", () => {
+    const root = mkdtempSync(join(tmpdir(), "jx-publish-addon-"));
+    try {
+      expect(addonPackageDirs(root)).toEqual([]);
+      for (const triple of ["linux-x64-gnu", "darwin-arm64"]) {
+        mkdirSync(join(root, ADDON_PACKAGES_DIR, triple), { recursive: true });
+        writeFileSync(join(root, ADDON_PACKAGES_DIR, triple, "package.json"), "{}");
+      }
+      mkdirSync(join(root, ADDON_PACKAGES_DIR, "leftover"));
+      expect(addonPackageDirs(root)).toEqual([
+        `${ADDON_PACKAGES_DIR}/darwin-arm64`,
+        `${ADDON_PACKAGES_DIR}/linux-x64-gnu`,
+      ]);
+    } finally {
+      rmSync(root, { force: true, recursive: true });
+    }
   });
 });
 

@@ -31,7 +31,7 @@
  *   PATHS_RELEASED='["packages/runtime"]' bun scripts/publish-released.ts --issue-body issue.md
  */
 
-import { readdirSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
 import { isJsonRecord, isText } from "./lib/json-guards.ts";
@@ -181,6 +181,31 @@ export function issueSection(
   ].join("\n");
 }
 
+/** Where `scripts/addon-packages.ts` writes the per-platform packages of the compiler's addon. */
+export const ADDON_PACKAGES_DIR = "packages/compiler-binding/npm";
+
+/**
+ * The prepared platform packages, to publish BEFORE every workspace package.
+ *
+ * They are not workspaces, so `publish-order.ts` never names them; they exist on disk only in a
+ * publish run that built the addon, and `@jxsuite/compiler-binding` and `@jxsuite/compiler` have by
+ * then been given `optionalDependencies` on each. Publishing them first is the same topological
+ * rule every other package follows: a version npm is told to depend on must already be there. A
+ * directory without a manifest is not a package and is left out.
+ *
+ * @param root The repository root.
+ */
+export function addonPackageDirs(root: string): string[] {
+  const base = join(root, ADDON_PACKAGES_DIR);
+  if (!existsSync(base)) {
+    return [];
+  }
+  return readdirSync(base)
+    .toSorted()
+    .filter((name) => existsSync(join(base, name, "package.json")))
+    .map((name) => join(ADDON_PACKAGES_DIR, name));
+}
+
 /** Read `name` and `version` from a workspace manifest. */
 async function readPackage(dir: string): Promise<ReleasedPackage> {
   const json: unknown = await Bun.file(join(dir, "package.json")).json();
@@ -234,7 +259,10 @@ if (import.meta.main) {
   if (order.exitCode !== 0) {
     process.exit(1);
   }
-  const dirs = decode(order.stdout).split("\n").filter(Boolean);
+  const dirs = [
+    ...addonPackageDirs(process.cwd()),
+    ...decode(order.stdout).split("\n").filter(Boolean),
+  ];
   if (dirs.length === 0) {
     console.log("No npm packages released this run; nothing to publish.");
     process.exit(0);

@@ -218,6 +218,9 @@ jobs:
           fc-list --format '%{family[0]}\n' | sort -u | wc -l
 
       - uses: ./.github/actions/setup-bun
+      # `bun run build` compiles the compiler's Rust core first (`build:addon`), and the thumbnails
+      # are real builds that encode real images.
+      - uses: ./.github/actions/setup-rust
 
       # The picture must be of the working tree's bundle. The runner asserts bundle freshness and
       # Will refuse a stale dist rather than photograph one.
