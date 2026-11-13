@@ -30,60 +30,16 @@ on:
         default: ""
 
 jobs:
-  # The compiler's Rust core, built once per platform npm installs it on. Each leg uploads one
-  # `jx-compiler.<triple>.node`; the publish job turns the set into npm packages
-  # (scripts/addon-packages.ts). The triples are `RELEASE_TRIPLES` in
-  # packages/compiler-binding/src/triple.ts, and scripts/addon-lanes.test.ts holds this matrix to
-  # that list.
+  # The compiler's Rust core, one build per platform (addon.yml, which pull requests run too).
+  # The publish job turns the set of artifacts into npm packages (scripts/addon-packages.ts).
   #
   # Only when a release carries the loader: `packages/compiler` matches both
   # `packages/compiler` (which inlines it into dist/cli.js) and `packages/compiler-binding`.
-  #
-  # UNVERIFIED UNTIL A RELEASE HAS RUN IT, like every release-only lane (.github/AGENTS.md). The
-  # Linux x64 glibc leg is the build every pull request already makes; the other seven have never
-  # run. Linux builds on 22.04 so the addon needs glibc 2.35 rather than the newest runner's.
   addon:
     if: contains(inputs.paths_released, 'packages/compiler')
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - { triple: linux-x64-gnu, os: ubuntu-22.04, target: x86_64-unknown-linux-gnu }
-          - { triple: linux-x64-musl, os: ubuntu-22.04, target: x86_64-unknown-linux-musl }
-          - { triple: linux-arm64-gnu, os: ubuntu-22.04-arm, target: aarch64-unknown-linux-gnu }
-          - { triple: linux-arm64-musl, os: ubuntu-22.04-arm, target: aarch64-unknown-linux-musl }
-          - { triple: darwin-x64, os: macos-latest, target: x86_64-apple-darwin }
-          - { triple: darwin-arm64, os: macos-latest, target: aarch64-apple-darwin }
-          - { triple: win32-x64-msvc, os: windows-latest, target: x86_64-pc-windows-msvc }
-          - { triple: win32-arm64-msvc, os: windows-latest, target: aarch64-pc-windows-msvc }
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          ref: ${{ inputs.sha || github.sha }}
-      - uses: ./.github/actions/setup-bun
-        with:
-          # The build script imports nothing outside its own package.
-          install: "false"
-      - uses: ./.github/actions/setup-rust
-        with:
-          targets: ${{ matrix.target }}
-      # A musl `cdylib` must link the C library dynamically (Rust's musl targets default to
-      # static, which cannot produce a loadable addon), through musl's own compiler driver.
-      - if: endsWith(matrix.triple, '-musl')
-        shell: bash
-        run: |
-          sudo apt-get install -y -qq musl-tools
-          echo "RUSTFLAGS=-C target-feature=-crt-static" >> "$GITHUB_ENV"
-          echo "CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER=musl-gcc" >> "$GITHUB_ENV"
-          echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=musl-gcc" >> "$GITHUB_ENV"
-      - run: bun packages/compiler-binding/scripts/build.ts --target ${{ matrix.target }} --as ${{ matrix.triple }}
-      - uses: actions/upload-artifact@v7
-        with:
-          name: addon-${{ matrix.triple }}
-          path: packages/compiler-binding/jx-compiler.${{ matrix.triple }}.node
-          if-no-files-found: error
+    uses: ./.github/workflows/addon.yml
+    with:
+      sha: ${{ inputs.sha }}
 
   publish:
     needs: addon

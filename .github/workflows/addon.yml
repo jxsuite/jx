@@ -1,0 +1,113 @@
+name: Compiler addon
+permissions:
+  contents: read
+
+# The compiler's Rust core (specs/compiler.md §14), built once per platform npm installs it on,
+# and PROVEN on that platform where a runner can: each leg loads what it built and encodes an
+# image with it (packages/compiler-binding/scripts/probe.ts). Each leg uploads one
+# `jx-compiler.<triple>.node` as the artifact `addon-<triple>`.
+#
+# Two callers. publish.yml, on a release, turns the set into npm packages
+# (scripts/addon-packages.ts). test.yml runs it on a pull request that can change the addon, and
+# that leg exists because of the first release: the matrix lived in publish.yml, so it first ran
+# ON the release, and three of its eight legs failed there (both musl links, and the assembly on
+# Windows arm64) with every package of that release held behind them.
+#
+# The triples are `RELEASE_TRIPLES` in packages/compiler-binding/src/triple.ts, and
+# scripts/addon-lanes.test.ts holds this matrix to that list. Linux builds on 22.04 so a glibc
+# addon needs glibc 2.35 rather than the newest runner's.
+on:
+  workflow_call:
+    inputs:
+      sha:
+        description: The commit to build. Empty is the caller's own.
+        required: false
+        type: string
+        default: ""
+
+jobs:
+  build:
+    name: ${{ matrix.triple }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # `probe` is where the built addon can be run: `host` on a runner of the leg's own
+        # platform, `alpine` in a musl container, `none` for a cross-compiled CPU no runner here
+        # executes (those two are built from the same sources as a leg that is probed).
+        include:
+          - {
+              triple: linux-x64-gnu,
+              os: ubuntu-22.04,
+              target: x86_64-unknown-linux-gnu,
+              probe: host,
+            }
+          - {
+              triple: linux-x64-musl,
+              os: ubuntu-22.04,
+              target: x86_64-unknown-linux-musl,
+              probe: alpine,
+            }
+          - {
+              triple: linux-arm64-gnu,
+              os: ubuntu-22.04-arm,
+              target: aarch64-unknown-linux-gnu,
+              probe: host,
+            }
+          - {
+              triple: linux-arm64-musl,
+              os: ubuntu-22.04-arm,
+              target: aarch64-unknown-linux-musl,
+              probe: alpine,
+            }
+          - { triple: darwin-x64, os: macos-latest, target: x86_64-apple-darwin, probe: none }
+          - { triple: darwin-arm64, os: macos-latest, target: aarch64-apple-darwin, probe: host }
+          - {
+              triple: win32-x64-msvc,
+              os: windows-latest,
+              target: x86_64-pc-windows-msvc,
+              probe: host,
+            }
+          - {
+              triple: win32-arm64-msvc,
+              os: windows-latest,
+              target: aarch64-pc-windows-msvc,
+              probe: none,
+            }
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.sha || github.sha }}
+      - uses: ./.github/actions/setup-bun
+        with:
+          # The build script imports nothing outside its own package.
+          install: "false"
+      - uses: ./.github/actions/setup-rust
+        with:
+          targets: ${{ matrix.target }}
+      # A musl `cdylib` must link the C library dynamically (Rust's musl targets default to
+      # static, which cannot produce a loadable addon), and it is linked by zig, which carries a
+      # musl of its own. Ubuntu's `musl-gcc` cannot do it: Rust asks every dynamic link for
+      # `libgcc_s`, and that wrapper hides the only copy the runner has.
+      - if: endsWith(matrix.triple, '-musl')
+        shell: bash
+        run: |
+          pip3 install --user --quiet cargo-zigbuild
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          echo "RUSTFLAGS=-C target-feature=-crt-static" >> "$GITHUB_ENV"
+      - shell: bash
+        run: bun packages/compiler-binding/scripts/build.ts --target ${{ matrix.target }} --as ${{ matrix.triple }} ${{ endsWith(matrix.triple, '-musl') && '--zig' || '' }}
+      - if: matrix.probe == 'host'
+        run: bun packages/compiler-binding/scripts/probe.ts packages/compiler-binding/jx-compiler.${{ matrix.triple }}.node
+      # Alpine is the musl system the addon is for; its Node image carries the libgcc a Rust
+      # shared library needs, as every Alpine with Node on it does.
+      - if: matrix.probe == 'alpine'
+        run: >-
+          docker run --rm -v "$PWD/packages/compiler-binding:/addon:ro" node:24-alpine
+          node /addon/scripts/probe.ts /addon/jx-compiler.${{ matrix.triple }}.node
+      - uses: actions/upload-artifact@v7
+        with:
+          name: addon-${{ matrix.triple }}
+          path: packages/compiler-binding/jx-compiler.${{ matrix.triple }}.node
+          if-no-files-found: error

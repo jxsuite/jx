@@ -4,7 +4,9 @@
  * `cargo build --release -p jx_napi` writes a shared library named for the platform's linker
  * (`libjx_napi.so`, `libjx_napi.dylib`, `jx_napi.dll`); Node loads it under any name ending in
  * `.node`, so the copy is the whole packaging step. `--target <rust-triple> --as <triple>` is the
- * form the release lane uses to cross-compile one of `RELEASE_TRIPLES`.
+ * form the release lane uses to cross-compile one of `RELEASE_TRIPLES`. `--zig` links through
+ * `cargo zigbuild` instead, which is how the musl triples are built: a glibc runner's own linker
+ * cannot find a C runtime to link a musl shared library against.
  *
  * `JX_ADDON_BUILD=skip` builds nothing and says so. It is for a job that runs `bun run build` and
  * encodes no image, in an environment with no Rust: the screenshots lane, whose pinned browser
@@ -49,7 +51,8 @@ if (process.env.JX_ADDON_PREBUILT === "1") {
   process.exit(0);
 }
 
-const cargo = ["cargo", "build", "--release", "--locked", "-p", "jx_napi"];
+const build = args.includes("--zig") ? "zigbuild" : "build";
+const cargo = ["cargo", build, "--release", "--locked", "-p", "jx_napi"];
 if (rustTarget) {
   cargo.push("--target", rustTarget);
 }

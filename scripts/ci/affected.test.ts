@@ -217,6 +217,16 @@ describe("the nix build", () => {
     expect(workflow).toContain("if: contains(fromJSON(needs.changes.outputs.bundles), 'studio')");
   });
 
+  test("the eight-platform addon build runs for a diff that can change the addon, and no other", async () => {
+    const { buildsAddon } = await import("./affected.ts");
+    expect(buildsAddon(["packages/compiler-binding/crates/jx_media/Cargo.toml"])).toBe(true);
+    expect(buildsAddon([".github/workflows/addon.yml"])).toBe(true);
+    expect(buildsAddon([".github/actions/setup-rust/action.yml"])).toBe(true);
+    expect(buildsAddon(["bun.lock", "packages/compiler/src/site/image-optimizer.ts"])).toBe(false);
+    const workflow = await Bun.file(".github/workflows/test.yml").text();
+    expect(workflow).toContain("if: needs.changes.outputs.addon == 'true'");
+  });
+
   test("every output the changes job forwards is one this script actually writes", async () => {
     /*
      * The mirror of the rule below, and the same silent failure from the other end: a job output

@@ -31,6 +31,7 @@ jobs:
       all_workspaces: ${{ steps.affected.outputs.all_workspaces }}
       lens_mutants: ${{ steps.affected.outputs.gate_lens_mutants }}
       bundles: ${{ steps.affected.outputs.gate_bundle }}
+      addon: ${{ steps.affected.outputs.gate_addon }}
       mode: ${{ steps.affected.outputs.mode }}
     steps:
       - uses: actions/checkout@v7
@@ -568,6 +569,15 @@ jobs:
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - run: cargo test --workspace --locked
 
+  # The compiler's addon on all eight platforms a release publishes it for, each one loaded and
+  # run where a runner can (addon.yml). Only for a diff that can change it (`ADDON_INPUTS` in
+  # scripts/ci/affected.ts): these are the legs a release runs, and the first release was the
+  # first time seven of them ran.
+  addon:
+    needs: changes
+    if: needs.changes.outputs.addon == 'true'
+    uses: ./.github/workflows/addon.yml
+
   # The Nix build, as a job of THIS workflow rather than a workflow of its own.
   #
   # It used to be `on: pull_request` in nix.yml with a `paths:` filter, and that is exactly why it
@@ -609,6 +619,7 @@ jobs:
         test,
         checks,
         rust,
+        addon,
         lens-mutants,
         studio-dist,
         desktop-bundle,
