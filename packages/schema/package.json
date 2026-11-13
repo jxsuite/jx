@@ -72,7 +72,7 @@
     "upgrade": "bun update --latest && bun install"
   },
   "type": "module",
-  "version": "6.0.0",
+  "version": "6.0.1",
   "devDependencies": {
     "json-schema-to-ts": "^3.1.1"
   }

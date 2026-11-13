@@ -1,5 +1,29 @@
 # Changelog
 
+## [11.0.2](https://github.com/jxsuite/jx/compare/studio-v11.0.1...studio-v11.0.2) (2026-11-13)
+
+
+### Bug Fixes
+
+* **schema:** the images config describes the formats the build writes ([2c4773e](https://github.com/jxsuite/jx/commit/2c4773e838862a67adc9f954807970d843adcacf))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/ai bumped to 0.43.6
+    * @jxsuite/collab bumped to 0.12.1
+    * @jxsuite/create bumped to 1.8.2
+    * @jxsuite/erase bumped to 0.3.1
+    * @jxsuite/formulas bumped to 0.0.34
+    * @jxsuite/markup bumped to 1.0.10
+    * @jxsuite/protocol bumped to 6.4.1
+    * @jxsuite/runtime bumped to 7.0.1
+    * @jxsuite/schema bumped to 6.0.1
+    * @jxsuite/site bumped to 2.7.1
+    * @jxsuite/ui bumped to 0.12.1
+
 ## [11.0.1](https://github.com/jxsuite/jx/compare/studio-v11.0.0...studio-v11.0.1) (2026-11-13)
 
 

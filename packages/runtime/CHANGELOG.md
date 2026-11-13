@@ -1,5 +1,16 @@
 # Changelog
 
+## [7.0.1](https://github.com/jxsuite/jx/compare/runtime-v7.0.0...runtime-v7.0.1) (2026-11-13)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/schema bumped to 6.0.1
+  * devDependencies
+    * @jxsuite/erase bumped to 0.3.1
+
 ## [7.0.0](https://github.com/jxsuite/jx/compare/runtime-v6.3.0...runtime-v7.0.0) (2026-11-12)
 
 
