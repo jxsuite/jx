@@ -1,5 +1,33 @@
 # Changelog
 
+## [9.0.0](https://github.com/jxsuite/jx/compare/desktop-v8.3.1...desktop-v9.0.0) (2026-11-12)
+
+
+### ⚠ BREAKING CHANGES
+
+* **studio:** Preview is removed; Edit draws live data and Open in Browser runs the page ([#652](https://github.com/jxsuite/jx/issues/652))
+
+### Features
+
+* **erase,runtime,server,site:** a document's script runs in every interpreting host ([#627](https://github.com/jxsuite/jx/issues/627)) ([cdd349a](https://github.com/jxsuite/jx/commit/cdd349a304f36da6c9abd6a73b55d2449f096248))
+* **studio:** Preview is removed; Edit draws live data and Open in Browser runs the page ([#652](https://github.com/jxsuite/jx/issues/652)) ([9e1beb1](https://github.com/jxsuite/jx/commit/9e1beb146c9e95f7fbc6137fc2e209b262daffc6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/compiler bumped to 8.7.0
+    * @jxsuite/create bumped to 1.8.1
+    * @jxsuite/protocol bumped to 6.4.0
+    * @jxsuite/schema bumped to 6.0.0
+    * @jxsuite/server bumped to 9.0.0
+    * @jxsuite/starters bumped to 3.6.0
+    * @jxsuite/studio bumped to 11.0.0
+  * devDependencies
+    * @jxsuite/server bumped to 9.0.0
+    * @jxsuite/ui bumped to 0.12.0
+
 ## [8.3.1](https://github.com/jxsuite/jx/compare/desktop-v8.3.0...desktop-v8.3.1) (2026-11-11)
 
 

@@ -1,5 +1,24 @@
 # Changelog
 
+## [3.6.0](https://github.com/jxsuite/jx/compare/starters-v3.5.0...starters-v3.6.0) (2026-11-12)
+
+
+### Features
+
+* **schema,compiler,runtime:** a document carries its own client and server modules in $script ([#625](https://github.com/jxsuite/jx/issues/625)) ([bb35a4f](https://github.com/jxsuite/jx/commit/bb35a4f7e68dc77e06c4b68437fba459480fcd04))
+* **schema,content-mapper:** tsc checks the props a .jxn document gives a component ([#632](https://github.com/jxsuite/jx/issues/632)) ([bd912f3](https://github.com/jxsuite/jx/commit/bd912f343fc422ae01a29efdb774665d01d02a86))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/protocol bumped to 6.4.0
+  * devDependencies
+    * @jxsuite/parser bumped to 5.0.0
+    * @jxsuite/runtime bumped to 7.0.0
+    * @jxsuite/schema bumped to 6.0.0
+
 ## [3.5.0](https://github.com/jxsuite/jx/compare/starters-v3.4.0...starters-v3.5.0) (2026-11-11)
 
 

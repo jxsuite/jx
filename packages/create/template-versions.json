@@ -1,6 +1,6 @@
 {
-  "parser": "^4.3.4",
-  "compiler": "^8.6.0",
-  "runtime": "^6.3.0",
-  "server": "^8.7.0"
+  "parser": "^5.0.0",
+  "compiler": "^8.7.0",
+  "runtime": "^7.0.0",
+  "server": "^9.0.0"
 }

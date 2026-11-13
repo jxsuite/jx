@@ -2,9 +2,9 @@
 
 ## AI Assistant for Jx Studio
 
-**Version:** 0.1.42-draft\
+**Version:** 0.1.43-draft\
 **Status:** Partial\
-**Updated:** 2026-11-06\
+**Updated:** 2026-11-13\
 **License:** MIT
 
 ---
@@ -377,6 +377,7 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.1.43-draft** (2026-11-13) — A template over live data is checked by the editing canvas, which runs each such entry once, rather than by Preview.
 - **0.1.42-draft** (2026-11-06) — §3.2 and §3.8: a turn that stops working gets a closing round to reply, the work budget is 30 rounds with a guard against identical rounds, neighbouring read-only calls may run at once, and Studio sheds old tool results to stay inside the window.
 - **0.1.41-draft** (2026-11-06) — §3.1: a render check judges a page as the build would draw it, never calls a server function or sends a Request, and names the entry when a lookup fails.
 - **0.1.40-draft** (2026-11-03) — §2.6 a Claude key reaches Claude through the Anthropic Messages API: the client names its family in X-Api-Provider only where the models route lists it in providers, the gateway projects the version 1 body onto /v1/messages and normalizes its stream into the same frames, and signed thinking is not replayed (§2.2).
@@ -423,4 +424,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_Jx `@jxsuite/ai` Specification v0.1.42-draft — a stub, subject to expansion._
+_Jx `@jxsuite/ai` Specification v0.1.43-draft — a stub, subject to expansion._

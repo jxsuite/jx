@@ -1,5 +1,34 @@
 # Changelog
 
+## [7.0.0](https://github.com/jxsuite/jx/compare/runtime-v6.3.0...runtime-v7.0.0) (2026-11-12)
+
+
+### ⚠ BREAKING CHANGES
+
+* **studio:** Preview is removed; Edit draws live data and Open in Browser runs the page ([#652](https://github.com/jxsuite/jx/issues/652))
+
+### Features
+
+* a project's pure formulas are callable in its components ([#642](https://github.com/jxsuite/jx/issues/642)) ([918e404](https://github.com/jxsuite/jx/commit/918e404832f9fc796f9a8e781afcc101693b9a1d))
+* **erase,runtime,server,site:** a document's script runs in every interpreting host ([#627](https://github.com/jxsuite/jx/issues/627)) ([cdd349a](https://github.com/jxsuite/jx/commit/cdd349a304f36da6c9abd6a73b55d2449f096248))
+* live-canvas foundations (tag model, formulas, runtime splice, static empty lists) ([#640](https://github.com/jxsuite/jx/issues/640)) ([2106c38](https://github.com/jxsuite/jx/commit/2106c380eb2661a7eda1a0f6d6f5b6aa8686b8a7))
+* **runtime,studio:** a prop edit writes the prop into the live instance ([#645](https://github.com/jxsuite/jx/issues/645)) ([d1c6e61](https://github.com/jxsuite/jx/commit/d1c6e61301aea36c2532724f1b3a645f7bfbc235))
+* **schema,compiler,runtime:** a document carries its own client and server modules in $script ([#625](https://github.com/jxsuite/jx/issues/625)) ([bb35a4f](https://github.com/jxsuite/jx/commit/bb35a4f7e68dc77e06c4b68437fba459480fcd04))
+* **schema,runtime,compiler:** $lazy loads on first call in every tier ([#617](https://github.com/jxsuite/jx/issues/617)) ([371b6d4](https://github.com/jxsuite/jx/commit/371b6d4c8a0b155820077485eabe76b05f9d0d3e))
+* **schema,runtime,studio:** quote-aware template scan, and a commit keeps its binding ([#638](https://github.com/jxsuite/jx/issues/638)) ([0152646](https://github.com/jxsuite/jx/commit/0152646f57b280ac2086ca1fee6b6cdaf00cc6d8))
+* **studio:** a repeater draws every row on the editing canvas, and any row is editable ([#648](https://github.com/jxsuite/jx/issues/648)) ([0040472](https://github.com/jxsuite/jx/commit/004047270a768fe9471899c95ba3bbe61f91490d))
+* **studio:** Preview is removed; Edit draws live data and Open in Browser runs the page ([#652](https://github.com/jxsuite/jx/issues/652)) ([9e1beb1](https://github.com/jxsuite/jx/commit/9e1beb146c9e95f7fbc6137fc2e209b262daffc6))
+* **studio:** the canvas fetches remote data once, marks what did not resolve, takes a state value ([#649](https://github.com/jxsuite/jx/issues/649)) ([b7a6d63](https://github.com/jxsuite/jx/commit/b7a6d639ab5c813008bc5679ece463c76741b214))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/schema bumped to 6.0.0
+  * devDependencies
+    * @jxsuite/erase bumped to 0.3.0
+
 ## [6.3.0](https://github.com/jxsuite/jx/compare/runtime-v6.2.2...runtime-v6.3.0) (2026-11-11)
 
 

@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.3.0](https://github.com/jxsuite/jx/compare/erase-v0.2.0...erase-v0.3.0) (2026-11-12)
+
+
+### Features
+
+* **erase,runtime,server,site:** a document's script runs in every interpreting host ([#627](https://github.com/jxsuite/jx/issues/627)) ([cdd349a](https://github.com/jxsuite/jx/commit/cdd349a304f36da6c9abd6a73b55d2449f096248))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/schema bumped to 6.0.0
+
 ## [0.2.0](https://github.com/jxsuite/jx/compare/erase-v0.1.0...erase-v0.2.0) (2026-11-11)
 
 

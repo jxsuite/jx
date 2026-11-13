@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.12.0](https://github.com/jxsuite/jx/compare/ui-v0.11.0...ui-v0.12.0) (2026-11-12)
+
+
+### Features
+
+* **schema,compiler,runtime:** a document carries its own client and server modules in $script ([#625](https://github.com/jxsuite/jx/issues/625)) ([bb35a4f](https://github.com/jxsuite/jx/commit/bb35a4f7e68dc77e06c4b68437fba459480fcd04))
+
+
+### Bug Fixes
+
+* **ui:** composition guard on combobox, forced-colours option highlight, dialog scroll containment ([#622](https://github.com/jxsuite/jx/issues/622)) ([eeaa18e](https://github.com/jxsuite/jx/commit/eeaa18eedb127ee31ed07345003660f6dfe2e099))
+* **ui:** forward form attributes, draw invalid state and guard composition keys ([#626](https://github.com/jxsuite/jx/issues/626)) ([6c513dc](https://github.com/jxsuite/jx/commit/6c513dcd80731fe364e60e07ac10f4f66c80e29c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/runtime bumped to 7.0.0
+    * @jxsuite/schema bumped to 6.0.0
+
 ## [0.11.0](https://github.com/jxsuite/jx/compare/ui-v0.10.4...ui-v0.11.0) (2026-11-11)
 
 

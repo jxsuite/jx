@@ -2,9 +2,9 @@
 
 ## Platform Abstraction, Project Loading, and Component Scoping
 
-**Version:** 0.7.18-draft\
+**Version:** 0.7.19-draft\
 **Status:** Partial\
-**Updated:** 2026-11-08\
+**Updated:** 2026-11-13\
 **License:** MIT
 
 ---
@@ -1161,6 +1161,7 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.7.19-draft** (2026-11-13) — §3.5: the preview-navigation override routes the pages Studio opens outside itself (Open in Browser, Publish links, sign-in) and no longer mentions Preview mode; §9.5: the browser's own context menu is left to the canvas margin rather than a link in Preview.
 - **0.7.18-draft** (2026-11-08) — §4.5: a created project's file is project.jxn.
 - **0.7.17-draft** (2026-11-08) — §7.8: Jx Studio declares .jxn on each channel that can register a file type, an AppImage registers it when asked, and a .jxn that is not Jx Notation is refused by name.
 - **0.7.16-draft** (2026-11-08) — The project file may be project.jxn, which the picker offers and opening from the OS recognises by its project node.
@@ -1264,4 +1265,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_Jx Studio Desktop Architecture Specification v0.7.18-draft_
+_Jx Studio Desktop Architecture Specification v0.7.19-draft_

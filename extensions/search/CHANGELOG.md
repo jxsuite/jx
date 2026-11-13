@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.6.1](https://github.com/jxsuite/jx/compare/search-v0.6.0...search-v0.6.1) (2026-11-12)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/schema bumped to 6.0.0
+
 ## [0.6.0](https://github.com/jxsuite/jx/compare/search-v0.5.5...search-v0.6.0) (2026-11-11)
 
 

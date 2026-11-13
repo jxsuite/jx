@@ -2,9 +2,9 @@
 
 ## File-Based Routing, Content Collections, Layouts, and Static Site Generation
 
-**Version:** 0.8.8-draft\
+**Version:** 0.8.14-draft\
 **Status:** Partial\
-**Updated:** 2026-11-11\
+**Updated:** 2026-11-13\
 **License:** MIT
 
 ---
@@ -2419,6 +2419,12 @@ This spec builds on existing Jx primitives wherever possible:
 
 ## Changelog
 
+- **0.8.14-draft** (2026-11-13) — §7.3: Markdown files open in the Edit view rather than a content mode; §7.6: held entries are kept by jx dev and Studio's canvas.
+- **0.8.13-draft** (2026-11-13) — §10.4, §10.6: a project's pure named formulas reach components; the live page shell and the Studio canvas hand them to the runtime.
+- **0.8.12-draft** (2026-11-13) — CSP frame-ancestors follows security.frameOptions (DENY is 'none', false omits it) and inline speculation rules are hashed (§14.3.1).
+- **0.8.11-draft** (2026-11-13) — §14.6 the service worker never handles /_jx/* and never caches a response marked no-store or private.
+- **0.8.10-draft** (2026-11-13) — §10.4: site state reaches a page two ways, as read-only $site entries that never replace the names the site context defines and as the page's own shadowable, writable state, which a built page keeps only where it still reads it; §10.4 and §5.5 no longer describe a nested site state object, and §3.1 no longer offers site state to components.
+- **0.8.9-draft** (2026-11-13) — Palette discovery and build compilation are two rules: the palette finds a component anywhere in the project, and a build compiles every component a page, layout or project declares wherever it lives, failing on one it cannot compile.
 - **0.8.8-draft** (2026-11-11) — §2.4: starter documents are .jxn.
 - **0.8.7-draft** (2026-11-11) — §9.2.8: an <img> takes its file's focal point (IPTC Image Region) as its object-position; §16 binds IPTC Photo Metadata.
 - **0.8.6-draft** (2026-11-08) — §2.4: new projects are provisioned with project.jxn, with editor support for KDL highlighting.

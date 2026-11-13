@@ -1,5 +1,37 @@
 # Changelog
 
+## [6.0.0](https://github.com/jxsuite/jx/compare/schema-v5.6.0...schema-v6.0.0) (2026-11-12)
+
+
+### ⚠ BREAKING CHANGES
+
+* **studio:** Preview is removed; Edit draws live data and Open in Browser runs the page ([#652](https://github.com/jxsuite/jx/issues/652))
+
+### Features
+
+* **content-mapper,schema:** tsc and a language server check the code in a .jxn document ([#629](https://github.com/jxsuite/jx/issues/629)) ([5497674](https://github.com/jxsuite/jx/commit/549767449324fe1f7c4efd79591aacdcf0f11153))
+* **erase,runtime,server,site:** a document's script runs in every interpreting host ([#627](https://github.com/jxsuite/jx/issues/627)) ([cdd349a](https://github.com/jxsuite/jx/commit/cdd349a304f36da6c9abd6a73b55d2449f096248))
+* live-canvas foundations (tag model, formulas, runtime splice, static empty lists) ([#640](https://github.com/jxsuite/jx/issues/640)) ([2106c38](https://github.com/jxsuite/jx/commit/2106c380eb2661a7eda1a0f6d6f5b6aa8686b8a7))
+* **schema,collab,compiler,studio:** a document's script in .jxn, Studio and shared sessions ([#628](https://github.com/jxsuite/jx/issues/628)) ([ddb7734](https://github.com/jxsuite/jx/commit/ddb7734555e3b26d26ef339fab651b5e2768d75f))
+* **schema,compiler,runtime:** a document carries its own client and server modules in $script ([#625](https://github.com/jxsuite/jx/issues/625)) ([bb35a4f](https://github.com/jxsuite/jx/commit/bb35a4f7e68dc77e06c4b68437fba459480fcd04))
+* **schema,content-mapper,studio:** a body's event and its mapped row are typed by where it stands ([#630](https://github.com/jxsuite/jx/issues/630)) ([e50253b](https://github.com/jxsuite/jx/commit/e50253bac73d9683cb872314bc08cbb04d9e527f))
+* **schema,content-mapper:** a parameter that declares a type is checked as that type ([#636](https://github.com/jxsuite/jx/issues/636)) ([5f525ff](https://github.com/jxsuite/jx/commit/5f525ffe7db418b316d898276c3772f23a8c2955))
+* **schema,content-mapper:** a typed entry and a document's $defs are checked as types ([#633](https://github.com/jxsuite/jx/issues/633)) ([312303f](https://github.com/jxsuite/jx/commit/312303f6a5f775ef3ee06dcfc9deaeb2cd1a9733))
+* **schema,content-mapper:** tsc checks a .jxn document's templates and its references into state ([#631](https://github.com/jxsuite/jx/issues/631)) ([21fda61](https://github.com/jxsuite/jx/commit/21fda619f43492de09daebc925de690a50807ad1))
+* **schema,content-mapper:** tsc checks the props a .jxn document gives a component ([#632](https://github.com/jxsuite/jx/issues/632)) ([bd912f3](https://github.com/jxsuite/jx/commit/bd912f343fc422ae01a29efdb774665d01d02a86))
+* **schema,runtime,studio:** quote-aware template scan, and a commit keeps its binding ([#638](https://github.com/jxsuite/jx/issues/638)) ([0152646](https://github.com/jxsuite/jx/commit/0152646f57b280ac2086ca1fee6b6cdaf00cc6d8))
+* **schema,studio:** the Code view completes a .jxn file from its schemas ([#643](https://github.com/jxsuite/jx/issues/643)) ([04db75b](https://github.com/jxsuite/jx/commit/04db75b0b613e1742133f9342f801dc5f2abe4fd))
+* **studio,schema:** the Code view of a .jxn file marks type errors in the whole file ([#639](https://github.com/jxsuite/jx/issues/639)) ([678c8b9](https://github.com/jxsuite/jx/commit/678c8b911eef0dd1e4c8b496e324d551ca9f6f36))
+* **studio:** a dynamic tag opens a popover to pick its source, format and fallback ([#650](https://github.com/jxsuite/jx/issues/650)) ([6d1c4a0](https://github.com/jxsuite/jx/commit/6d1c4a0fa4d20729eb6ceddcd73c34d746995b4a))
+* **studio:** Preview is removed; Edit draws live data and Open in Browser runs the page ([#652](https://github.com/jxsuite/jx/issues/652)) ([9e1beb1](https://github.com/jxsuite/jx/commit/9e1beb146c9e95f7fbc6137fc2e209b262daffc6))
+* **vscode:** a VS Code extension highlights, completes and type checks a .jxn file ([#646](https://github.com/jxsuite/jx/issues/646)) ([70cab4f](https://github.com/jxsuite/jx/commit/70cab4f490ba7abd67b4d5220970e8444535631c))
+
+
+### Bug Fixes
+
+* **schema,content-mapper,studio:** the state a project gives a document is seen by every reader ([#635](https://github.com/jxsuite/jx/issues/635)) ([4e30c53](https://github.com/jxsuite/jx/commit/4e30c53be4a6df4a40959bf8a8e74a55ce6b53b3))
+* **schema,content-mapper:** a rename reaches an (export) entry and a scope that redeclares a name ([#634](https://github.com/jxsuite/jx/issues/634)) ([d95370f](https://github.com/jxsuite/jx/commit/d95370fad991adbecb1490e444658ae3451669bf))
+
 ## [5.6.0](https://github.com/jxsuite/jx/compare/schema-v5.5.0...schema-v5.6.0) (2026-11-11)
 
 

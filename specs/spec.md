@@ -2,9 +2,9 @@
 
 ## Declarative Document Object Model — JSON Edition
 
-**Version:** 0.9.9-draft\
+**Version:** 0.9.37-draft\
 **Status:** Partial\
-**Updated:** 2026-11-11\
+**Updated:** 2026-11-13\
 **License:** MIT
 
 ---
@@ -3077,6 +3077,34 @@ This rewrites the mutating handlers of Appendix A's idiom using `$expression`, l
 
 ## Changelog
 
+- **0.9.37-draft** (2026-11-13) — §8.4: the runtime's drawing of a whole-children template is what Studio's editing canvas draws, now that Preview is gone.
+- **0.9.36-draft** (2026-11-13) — §6.1: a templated style value survives its expression throwing, as every other template binding does; the variable is left unwritten until the expression can be evaluated.
+- **0.9.35-draft** (2026-11-13) — §22.6 and §23.3: the VS Code extension completes a .jxn file from its project's schemas and registers the content mapper with TypeScript's language server, shipping one for a file no tsconfig.json reads; the mapper answers such a file with the identity `inferred`.
+- **0.9.34-draft** (2026-11-13) — §16.2: `updateInstanceProps(el, before, after)` writes a changed `$props` block into a connected instance in place and answers whether it did, refusing where a write could differ from a fresh render.
+- **0.9.33-draft** (2026-11-13) — §22.6 (new): completion in a .jxn file is one reader, completeJxn, that finds a position in text that need not parse and offers what the schema lists there; §23.3 says no editor outside Studio completes one.
+- **0.9.32-draft** (2026-11-13) — §13.4, §15.3, §15.4, §19.4c: a component inherits its project's closed pure named formulas, under its own state and props; data state, $site and $page still stop at the boundary, and an inherited formula is never a host element property.
+- **0.9.31-draft** (2026-11-13) — §8.4 a string member of children that is one whole template and resolves to an array is spliced in where it stood, in the interpreter as in the site build.
+- **0.9.30-draft** (2026-11-13) — §7.4 window#/ reads the global object where no window exists, so a standard-library callee resolves in a site build.
+- **0.9.29-draft** (2026-11-13) — §10.5 (new): an empty mapped array whose source the build resolved (a class-resolved entry, a paged slice, the site and page context, a row pointer in an expanded row, a literal) is removed and the page stays static, while one over client state keeps its binding.
+- **0.9.28-draft** (2026-11-13) — §19.4c: a named formula is callable from a template, a parameter's type may carry a JSON Schema beside its display text, and the packaged formulas formatDate, formatNumber, relativeTime, notEmpty, orBlank and escapeHtml are specified.
+- **0.9.27-draft** (2026-11-13) — §5.3: the single-expression test reads quotes, comments and nested template literals, so a closing brace inside a string no longer ends the expression.
+- **0.9.26-draft** (2026-11-13) — The §23.3 marker says Studio's Code view checks a whole .jxn file, and what Studio still leaves unchecked.
+- **0.9.25-draft** (2026-11-13) — §23.1: names `jx format`, and no longer says nothing reports type errors, which §23.3 does.
+- **0.9.24-draft** (2026-11-13) — §23.3: a parameter that declares a type is that type inside its body, as CEM text written verbatim or as a schema, and either may name a definition in $defs.
+- **0.9.23-draft** (2026-11-13) — §23.3: a layout's State is open, because a layout in the project's layouts folder is merged with each page it wraps and reads state only that page declares.
+- **0.9.22-draft** (2026-11-13) — §23.3: the content mapper finds every project file at or under the tsconfig's folder when it opens one, asks for each to be watched, and gives what each project gives its documents as the configuration's identity, so an editor that reports a project file changing has that project's documents read again.
+- **0.9.21-draft** (2026-11-13) — A nested scope that declares a name of the state around it extends that state less the name, so a rename started in either scope reaches every member the two share (§23.3).
+- **0.9.20-draft** (2026-11-13) — An (export) entry under its export's own name is one name with it, so a rename started at the function, the entry or a place that reads it rewrites all of them; a (server) entry written so renames whole only from the entry (§23.3).
+- **0.9.19-draft** (2026-11-13) — §23.3: a typed state entry is the type its schema says, and a document's $defs are a namespace of types its schemas name, joined to where each was written.
+- **0.9.18-draft** (2026-11-13) — §23.3: tsc and a language server hold each prop a .jxn document gives a component against that component's State, a document's main module says what it defines, and a file $elements names that is not there is an error at its entry.
+- **0.9.17-draft** (2026-11-13) — Check a .jxn document's templates and its references into state through the content mapper (§23.3).
+- **0.9.16-draft** (2026-11-13) — §23.3: a handler is given the event its binding names on its element, a body in a mapped array reads a typed state.$map, a state function bound by $ref is given its bindings' events, and each nested scope has an interface whose entries rename.
+- **0.9.15-draft** (2026-11-13) — §23.3: tsc and a language server check a .jxn document's bodies and scripts through @jxsuite/content-mapper, which --runExternalCode permits along with every other mapper a tsconfig names.
+- **0.9.14-draft** (2026-11-13) — §23.2: a document's own scripts are implemented everywhere, and the section states how a host that edits a document draws its script as saved, the advice tools give about a relative $src and a lazy entry sharing the client script, and that a shared session merges a script per character. §22.1: `.jxn` writes a script as a script node and its entries as (export) and (server) rows.
+- **0.9.13-draft** (2026-11-13) — §23.2: every interpreting host imports a document's client module in the browser and answers its server module from the proxy; a document is qualified by the address it was read from, a script holds only erasable TypeScript in every tier, and a $src may name a .ts file.
+- **0.9.12-draft** (2026-11-13) — §23.2: a document carries its own client and server modules in $script, named by $src "#client" and "#server" and qualified by the document's path as it is read; §3.1 and §17 reserve $script, and §4.2, §5.3 4c and §11.4 name the two forms.
+- **0.9.11-draft** (2026-11-13) — §21.5 says what the innerHTML claim covers: an authored innerHTML key is written unsanitized.
+- **0.9.10-draft** (2026-11-13) — §5.3 4d: $lazy loads on first call in every tier, including pages compiled for the client and the interpreter, and a lazy entry used as a value is refused in all three; the section is implemented.
 - **0.9.9-draft** (2026-11-11) — §4.2 and §5.3 4d: every tier builds a string body with state first and its other declared names after it, binding by position, and calls a $src export with (state, event) from an event binding whatever it declares.
 - **0.9.8-draft** (2026-11-11) — §5.3 4d: declaring both body and $src is refused in every tier and by the schema, for state entries and inline handlers alike.
 - **0.9.7-draft** (2026-11-11) — §23.3: a body is checked as the function it is the inside of, with State declared from its document, and Studio reports the errors; Partial until the terminal and other editors do.
@@ -3197,4 +3225,4 @@ This rewrites the mutating handlers of Appendix A's idiom using `$expression`, l
 
 ---
 
-_Jx Specification v0.9.9-draft — subject to revision_
+_Jx Specification v0.9.37-draft — subject to revision_

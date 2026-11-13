@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.8.9](https://github.com/jxsuite/jx/compare/auth-v0.8.8...auth-v0.8.9) (2026-11-12)
+
+
+### Bug Fixes
+
+* **security:** generic 500s, sign-out cache clearing, consistent framing, hashed speculation rules ([#624](https://github.com/jxsuite/jx/issues/624)) ([5e8c2e5](https://github.com/jxsuite/jx/commit/5e8c2e54b4b1ad837b7435e72942c2b7dbc61d49))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/connector bumped to 0.8.9
+    * @jxsuite/schema bumped to 6.0.0
+
 ## [0.8.8](https://github.com/jxsuite/jx/compare/auth-v0.8.7...auth-v0.8.8) (2026-11-11)
 
 
