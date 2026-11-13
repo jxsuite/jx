@@ -2,7 +2,7 @@
 
 ## Visual Builder for Jx Documents
 
-**Version:** 0.17.1-draft\
+**Version:** 0.17.2-draft\
 **Status:** Partial\
 **Updated:** 2026-11-13\
 **License:** MIT
@@ -2626,6 +2626,7 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.17.2-draft** (2026-11-13) — §9.5: the build's responsive copies are named as avif and jpeg, the new defaults.
 - **0.17.1-draft** (2026-11-13) — §4.5: a literal innerHTML of text and bare formatting elements is content a caret may enter, read as the children it spells, and every content write removes the key; any other literal innerHTML or innerText closes its element and a write over it is refused. §4.4: a press or a hover on a formatting mark addresses the block whose text it is part of.
 - **0.17.0-draft** (2026-11-13) — §4.2: Preview is removed; the mode table lists every editor with its editor.kind and mode strings, Edit and Design are the two editable views, and Content is not a mode. §2, §4.1 to §4.3, §4.5, §6.2, §10.1, §13.4 and §22: each loses its Preview clause, canvas.view has two values, and a component's test values are the state values set on its props, which Open in Browser carries. §8 is retitled Document Editing and Formats, and its cross-references point at the renumbered subsections.
 - **0.16.66-draft** (2026-11-13) — The tag popover edits one dynamic tag as fields (Source, Format presets drawn with the real value, Show, Fallback, Now, Advanced), opened by canvas.setTagPopover, a chip, a Bound pill or an Inspector chip; the block action bar gains Bound pills, a row stepper and a case picker; Insert places a chip; the Mixed text rung is a strip of runs and chips; canvas.setSwitchCase draws a chosen case; tags are named by schema titles; the bound-block label is drawn by the host; §4.5 and §6.9 are Implemented (§4.4, §4.5, §5.6, §6.2, §6.6, §6.9).
@@ -2896,4 +2897,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_`@jxsuite/studio` Specification v0.17.1-draft_
+_`@jxsuite/studio` Specification v0.17.2-draft_
