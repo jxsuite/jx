@@ -9,6 +9,7 @@ code:
   - packages/studio/src/canvas/iframe-position.ts
   - packages/studio/src/canvas/iframe-chips.ts
   - packages/studio/src/editor/kept-node.ts
+  - packages/studio/src/utils/plain-markup.ts
   - packages/studio/src/canvas/editable-actions.ts
   - packages/studio/src/editor/content-slice.ts
   - packages/studio/src/editor/inline-edit.ts
@@ -111,6 +112,10 @@ The same goes for an option that holds a **number or a yes/no value** rather tha
 Sometimes the page already sets an option some other way: as a plain attribute, or straight on the component tag rather than in its options. Those are left to the Inspector's **Content** view too. Editing it here would quietly create a second copy of the same value: sometimes the page keeps showing the first one and your change appears to do nothing, and otherwise the old copy sits there unused and comes back the day the option is cleared.
 
 Clicking a component's text and clicking away again changes nothing, because an option only gets set on that instance when you actually edit it. :kbd[Esc] is a real cancel, including after Studio has already saved a pause mid-edit.
+
+Clicking bold, italic or code text puts the caret in it and selects the paragraph around it: formatting is part of the text, so the toolbar and :kbd[Delete] act on the block. A link, an image or a `<span>` is still selected by itself, because each has settings of its own in the Inspector.
+
+A JSON page can hold a block's text as an `innerHTML` string. When that string is only text and plain formatting tags such as `<strong>` and `<em>`, you can write in it like any other block, and the first real edit saves it as ordinary child elements in place of the string. When it holds anything else, such as a tag with a class, Studio leaves the block closed to the caret so that nothing in the markup is lost. Edit that one as `innerHTML` in the Inspector or in the **Code** view.
 
 :::doc-note
 Behind the scenes, Studio keeps the markup tidy as you type: adjacent formats merge, and empty leftovers are removed. It saves the result as plain Markdown in the page's file, so bold is just `**bold**` on disk.

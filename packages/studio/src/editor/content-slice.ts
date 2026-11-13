@@ -15,7 +15,12 @@
  */
 
 import { isNonNullObject, isString, templateExpressions } from "@jxsuite/schema/guards";
-import { escapeTemplateText, isClosedContent, unescapeTemplateText } from "../utils/edit-display";
+import {
+  escapeTemplateText,
+  isClosedContent,
+  openMarkup,
+  unescapeTemplateText,
+} from "../utils/edit-display";
 import type { JxDocumentValue, JxMutableNode } from "@jxsuite/schema/types";
 
 /** A block's content as a children array — the form both storage shapes normalize to. */
@@ -62,11 +67,17 @@ function textOf(piece: string | Printed): string {
  * The content of `node` as a children array, whichever way it is stored.
  *
  * A block holds its text either as `textContent` (all-plain) or as `children` (mixed inline
- * markup), and every operation that joins or cuts blocks has to handle both.
+ * markup), and every operation that joins or cuts blocks has to handle both. A third spelling is
+ * read and never written: a literal `innerHTML` of text and bare formatting elements, which is the
+ * content it spells (`openMarkup`). Whatever writes content to a block removes that key.
  */
 export function contentOf(node: JxMutableNode | undefined | null): Content {
   if (!node) {
     return [];
+  }
+  const markup = openMarkup(node);
+  if (markup) {
+    return markup;
   }
   if (Array.isArray(node.children)) {
     return node.children;
@@ -79,7 +90,7 @@ export function contentOf(node: JxMutableNode | undefined | null): Content {
  * `${…}` is marked {@link Printed}, so it is not taken for a member on the way.
  */
 export function piecesOf(node: JxMutableNode | undefined | null): ContentPiece[] {
-  if (!node || Array.isArray(node.children)) {
+  if (!node || Array.isArray(node.children) || openMarkup(node)) {
     return contentOf(node);
   }
   const { textContent } = node;
@@ -213,7 +224,8 @@ export function sliceContent(
         if (stored === null) {
           return null;
         }
-        const { children: _drop, textContent: _dropText, ...rest } = child;
+        // Its markup too: what is kept of it is stored as the other two keys from here on.
+        const { children: _drop, innerHTML: _dropMarkup, textContent: _dropText, ...rest } = child;
         out.push({ ...rest, ...stored });
       }
     }
@@ -352,6 +364,7 @@ export function toStored(children: Content): StoredContent {
  */
 export interface StoredContentLike {
   children?: JxMutableNode["children"];
+  innerHTML?: JxMutableNode["innerHTML"];
   textContent?: JxMutableNode["textContent"] | null;
 }
 
@@ -360,11 +373,14 @@ export interface StoredContentLike {
  * two that differ in meaning never do: adjacent plain strings joined, and content that is one
  * string folded into `textContent` unless that string is one whole `${…}`, at every depth
  * (`editor/content-slice.ts`). An element's empty `textContent` is no content, so a `<br>` the
- * canvas serialized with one is the `<br>` the document holds without.
+ * canvas serialized with one is the `<br>` the document holds without. Content spelled as a literal
+ * `innerHTML` (`openMarkup`) is the children it spells, so a commit of a block nobody typed in
+ * compares equal to the markup it was drawn from.
  */
 function canonicalContent(content: StoredContentLike): StoredContent {
-  const children = Array.isArray(content.children) ? content.children : [];
-  if (!Array.isArray(content.children) && isString(content.textContent)) {
+  const markup = openMarkup(content);
+  const children = markup ?? (Array.isArray(content.children) ? content.children : []);
+  if (!markup && !Array.isArray(content.children) && isString(content.textContent)) {
     // Stored as text already: one string, kept as it is whatever it holds.
     return { textContent: content.textContent };
   }
@@ -373,10 +389,13 @@ function canonicalContent(content: StoredContentLike): StoredContent {
       if (isString(child) || !isNonNullObject(child)) {
         return child;
       }
-      if (!Array.isArray(child.children) && !isString(child.textContent)) {
+      const spelled = openMarkup(child) !== null;
+      if (!spelled && !Array.isArray(child.children) && !isString(child.textContent)) {
         return child;
       }
-      const { children: _children, textContent: _text, ...rest } = child;
+      const { children: _children, textContent: _text, ...kept } = child;
+      const { innerHTML: _markup, ...unspelled } = kept;
+      const rest = spelled ? unspelled : kept;
       const canonical: JxMutableNode = rest;
       const inner = canonicalContent(child);
       return inner.textContent === "" ? canonical : Object.assign(canonical, inner);
