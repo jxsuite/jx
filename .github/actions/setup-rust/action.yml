@@ -23,7 +23,10 @@ runs:
     # without one. arm64 kernels go through the platform assembler every runner already has.
     - if: runner.os == 'Linux'
       shell: bash
-      run: command -v nasm >/dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq nasm; }
+      run: |
+        # A container job runs as root and has no sudo; a hosted runner has sudo and is not root.
+        elevate=""; command -v sudo >/dev/null && elevate="sudo"
+        command -v nasm >/dev/null || { $elevate apt-get update -qq && $elevate apt-get install -y -qq nasm; }
     - if: runner.os == 'macOS'
       shell: bash
       run: command -v nasm >/dev/null || brew install nasm

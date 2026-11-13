@@ -218,13 +218,15 @@ jobs:
           fc-list --format '%{family[0]}\n' | sort -u | wc -l
 
       - uses: ./.github/actions/setup-bun
-      # `bun run build` compiles the compiler's Rust core first (`build:addon`), and the thumbnails
-      # are real builds that encode real images.
-      - uses: ./.github/actions/setup-rust
 
       # The picture must be of the working tree's bundle. The runner asserts bundle freshness and
       # Will refuse a stale dist rather than photograph one.
+      # No compiler addon here: the pinned browser container has no Rust and no rights to install
+      # one, and no shot optimizes an image (Studio renders sources, and the thumbnails build with
+      # optimization off). A shot that ever needs one fails naming `bun run build:addon`.
       - run: bun run build
+        env:
+          JX_ADDON_BUILD: skip
 
       - name: Snapshot the committed images and lock
         shell: bash
