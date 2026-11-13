@@ -10,7 +10,7 @@
     <true/>
     <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
     <true/>
-    <!-- The backend loads native addons (oxfmt, oxlint, sharp) that are signed by their publishers,
+    <!-- The backend loads native addons (oxfmt, oxlint) that are signed by their publishers,
          not by this app's identity. -->
     <key>com.apple.security.cs.disable-library-validation</key>
     <true/>

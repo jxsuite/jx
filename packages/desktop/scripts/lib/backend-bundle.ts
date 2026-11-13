@@ -17,9 +17,9 @@
  *   a bundle is the directory of `index.js`. The directories they read are copied beside it at
  *   exactly the names in {@link BACKEND_DATA}.
  * - Some packages find files of their own by path at run time, which no bundler can follow: `esbuild`
- *   and `sharp` load a platform binary from a sibling package, and Arborist resolves its own
- *   helpers (`node-gyp`'s path, `@npmcli/run-script`). They stay external ({@link BACKEND_NATIVES})
- *   and are staged as REAL files: a `node_modules` beside the bundle, closed under their installed
+ *   loads a platform binary from a sibling package, and Arborist resolves its own helpers
+ *   (`node-gyp`'s path, `@npmcli/run-script`). They stay external ({@link BACKEND_NATIVES}) and are
+ *   staged as REAL files: a `node_modules` beside the bundle, closed under their installed
  *   dependencies, so the binary that ships is the one this host installed. The release lanes build
  *   on native runners for exactly that reason.
  * - A few modules are resolved BY NAME at run time, from the backend's own directory, because what
@@ -31,7 +31,15 @@
  * `scripts/smoke-backend.ts` starts the staged result under Node and proves each of these paths
  * works, because a source tree that passes its tests says nothing about a bundle.
  */
-import { cpSync, existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname, join, resolve } from "node:path";
 
 /** Modules the backend bundle leaves out and nothing stages. */
@@ -51,7 +59,44 @@ export const BACKEND_EXTERNALS = [
  * Packages left out of the bundle because they load files of their own by path, staged as real
  * files with their dependency closure.
  */
-export const BACKEND_NATIVES = ["esbuild", "sharp", "@npmcli/arborist"] as const;
+export const BACKEND_NATIVES = ["esbuild", "@npmcli/arborist"] as const;
+
+/**
+ * Where a checkout builds the compiler's native addon (`bun run build:addon`). The loader is
+ * inlined into the bundle and looks for the addon in the bundle's own directory, so the file is
+ * staged there under the name it was built with (`jx-compiler.<triple>.node`). It is one
+ * self-contained file with no dependency closure, which is why it is not a {@link BACKEND_NATIVES}
+ * entry.
+ */
+export const ADDON_DIR = resolve(import.meta.dirname, "../../../compiler-binding");
+
+/** The addon files a directory holds, by name. */
+export function addonFiles(dir: string): string[] {
+  return existsSync(dir)
+    ? readdirSync(dir).filter((name) => /^jx-compiler\..+\.node$/.test(name))
+    : [];
+}
+
+/**
+ * Copy this host's build of the compiler addon beside the bundle.
+ *
+ * @param outdir The directory the bundle is in.
+ * @param from The directory the addon was built into.
+ * @throws {Error} When no addon has been built, because a backend staged without one starts and
+ *   then fails the first build that has an image in it.
+ */
+export function stageAddon(outdir: string, from = ADDON_DIR): string[] {
+  const files = addonFiles(from);
+  if (files.length === 0) {
+    throw new Error(
+      `No compiler addon in ${from}; run \`bun run build:addon\` (needs Rust) before staging.`,
+    );
+  }
+  for (const name of files) {
+    cpSync(join(from, name), join(outdir, name));
+  }
+  return files;
+}
 
 /**
  * Static data `@jxsuite/create` and `@jxsuite/starters` read relative to their own location: each
@@ -177,10 +222,10 @@ export function stageModuleClosure(outdir: string, names: readonly string[]): vo
 
 /**
  * Bundle the backend into `outdir`: `index.js`, the `package.json` that makes Node read it as ESM,
- * and the data its inlined modules read. With `stageModules`, also the `node_modules` of
- * {@link BACKEND_NATIVES} and {@link BACKEND_MODULES} with their closure, which is what an
- * installer ships; a caller whose bundle sits inside an install that already resolves them (the Nix
- * package) passes false.
+ * the data its inlined modules read, and the compiler's native addon. With `stageModules`, also the
+ * `node_modules` of {@link BACKEND_NATIVES} and {@link BACKEND_MODULES} with their closure, which
+ * is what an installer ships; a caller whose bundle sits inside an install that already resolves
+ * them (the Nix package) passes false.
  *
  * @throws {AggregateError} With the bundler's diagnostics when bundling fails.
  */
@@ -205,6 +250,7 @@ export async function bundleBackend(
   for (const { from, to } of BACKEND_DATA) {
     cpSync(join(desktopDir, from), join(outdir, to), { recursive: true });
   }
+  stageAddon(outdir);
   if (options.stageModules) {
     stageModuleClosure(outdir, [...BACKEND_NATIVES, ...BACKEND_MODULES]);
   }

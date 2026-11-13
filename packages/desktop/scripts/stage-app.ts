@@ -74,7 +74,7 @@ async function stageBackend(): Promise<void> {
 
 const platform = option("platform") ?? process.platform;
 const arch = option("arch") ?? process.arch;
-/* The staged packages carry this host's native binaries (esbuild's, sharp's, oxfmt's), so an
+/* The staged packages carry this host's native binaries (esbuild's, oxfmt's) and this host's build of the compiler addon, so an
    installer for another platform would ship binaries that cannot load there. The release lanes
    build on native runners. */
 if (platform !== process.platform || arch !== process.arch) {

@@ -5,7 +5,8 @@
   chromium,
   electron,
   lib,
-  patchelfUnstable,
+  nasm,
+  rustPlatform,
   runCommand,
   fetchurl,
   fetchFromGitHub,
@@ -41,11 +42,11 @@ let
   };
   # `bun install` only ever downloads the optional native sidecars whose `os`
   # and `cpu` match the host, but bun.lock pins every platform npm publishes —
-  # Windows and macOS esbuild/sharp/oxlint/tsgo binaries included. Served
+  # Windows and macOS esbuild/oxlint/tsgo binaries included. Served
   # unconditionally they become build inputs of `registryTree`, so `nix build`
   # fetches hundreds of megabytes it will never hand to Bun. Filter on the same
-  # two fields Bun filters on; libc deliberately is not one of them, which is
-  # why the `linuxmusl` sharp builds stay (Bun installs those on glibc too).
+  # two fields Bun filters on; libc deliberately is not one of them, so a
+  # `linuxmusl` build stays (Bun installs those on glibc too).
   #
   # A package name that mentions no platform at all is always kept, and a
   # wrongly-dropped tarball fails loudly — the shim answers its fetch with a
@@ -145,9 +146,47 @@ let
   # bundle sits in, and the install check proves they do.
   backendNatives = [
     "esbuild"
-    "sharp"
     "@npmcli/arborist"
   ];
+
+  # The compiler's Rust core, as the Node-API addon the backend loads (specs/compiler.md §14). It is
+  # built here from the same Cargo.lock every other channel builds from, and linked against this
+  # closure's glibc, so unlike the prebuilt sharp it replaced there is nothing to patch afterwards:
+  # every codec is compiled in and the file needs only libc.
+  #
+  # The source is the Cargo workspace alone, so a change to a TypeScript file does not rebuild it.
+  # `nasm` assembles rav1e's SIMD kernels; without it the AVIF encoder is several times slower.
+  compilerAddon = rustPlatform.buildRustPackage {
+    pname = "jx-compiler-addon";
+    inherit version;
+    src = lib.fileset.toSource {
+      root = ../compiler-binding;
+      fileset = lib.fileset.unions [
+        ../compiler-binding/Cargo.toml
+        ../compiler-binding/Cargo.lock
+        ../compiler-binding/crates
+      ];
+    };
+    cargoLock.lockFile = ../compiler-binding/Cargo.lock;
+    # What `scripts/build.ts` passes: the addon reports the npm package's version.
+    env.JX_ADDON_VERSION = (lib.importJSON ../compiler-binding/package.json).version;
+    nativeBuildInputs = [ nasm ];
+    cargoBuildFlags = [
+      "-p"
+      "jx_napi"
+    ];
+    cargoTestFlags = [
+      "-p"
+      "jx_media"
+    ];
+    installPhase = ''
+      runHook preInstall
+      install -Dm755 "$(find target -path '*release/libjx_napi.so' -print -quit)" $out/lib/jx-compiler.node
+      runHook postInstall
+    '';
+  };
+  # The name the loader looks for on this host (`addonFileName` in packages/compiler-binding).
+  addonName = "jx-compiler.linux-${hostCpu}-gnu.node";
 
   # Browser-only libraries the studio build has already bundled into `assets/studio`. They are
   # real dependencies of @jxsuite/studio, because that package publishes its sources to npm, so the
@@ -214,7 +253,9 @@ stdenv.mkDerivation {
     mkdir -p packages/studio/node_modules
     ln -srf node_modules/monaco-editor packages/studio/node_modules/monaco-editor
 
-    bun run build
+    # The compiler addon comes from its own derivation; `bun run build` only checks it is there.
+    cp ${compilerAddon}/lib/jx-compiler.node packages/compiler-binding/${addonName}
+    JX_ADDON_PREBUILT=1 bun run build
     bun run --cwd packages/desktop scripts/pre-build-rpc.ts
 
     # The Electron application's main process and preload (specs/desktop.md §9.7). Electron runs
@@ -237,6 +278,7 @@ stdenv.mkDerivation {
     # dies on its first `require` before opening a window. electron-builder stages a package.json
     # into `build/app` for the same reason, and a checkout bundles into a temporary directory.
     echo '{ "type": "commonjs" }' > packages/desktop/assets/electron/package.json
+    # `bundle-backend.ts` stages the compiler addon copied in above.
     bun run --cwd packages/desktop scripts/bundle-backend.ts assets/backend
 
     # The tree above is the WORKSPACE's: every member's dependencies plus the root's dev tooling
@@ -281,28 +323,9 @@ stdenv.mkDerivation {
 
     ${lib.concatMapStringsSep "\n    " (p: "rm -rf $out/lib/jx-studio/node_modules/${p}") bundledIntoStudio}
 
-    # sharp's prebuilt glibc binaries (the addon and the libvips it links) need libstdc++ and
-    # libgcc_s, which a generic Linux finds in /usr/lib and NixOS has nowhere global. The addon's
-    # RUNPATH only names libvips beside it, so the backend's `import("sharp")` failed with
-    # ERR_DLOPEN_FAILED under Electron's Node and image optimization was silently off. Adding the
-    # compiler's runtime library to just these files fixes them without putting an
-    # LD_LIBRARY_PATH on Electron and every process it starts. The musl builds are never loaded on
-    # glibc and are left alone.
-    #
-    # `patchelfUnstable`, not the stdenv's `patchelf`, and that is load-bearing. nixpkgs' `patchelf`
-    # moves between 0.15.2 and 0.19.2 from one revision to the next, and 0.15.2's `--add-rpath`
-    # corrupts both of these files (it has to grow the dynamic section, and the result is a libvips
-    # that segfaults in its static initializers, on every Electron tried, 43 through 45). The
-    # install check below is what found it: a pristine tarball loads, the same files after
-    # `patchelf 0.15.2 --add-rpath` crash, and after 0.18.0 or 0.19.2 they load. The stdenv's own
-    # fixup still runs 0.15.2's `--shrink-rpath` and `strip` over the result, which only edit in
-    # place and leave a working file, so only this one step needs the newer tool.
-    find $out/lib/jx-studio/node_modules -type f \( \
-      -path '*/@img/sharp-linux-*/lib/*.node' -o -path '*/@img/sharp-libvips-linux-*/lib/*.so*' \
-    \) -print0 | while IFS= read -r -d "" binary; do
-      ${patchelfUnstable}/bin/patchelf --add-rpath ${lib.getLib stdenv.cc.cc}/lib "$binary"
-    done
     rm -rf $out/lib/jx-studio/packages/*/tests
+    # The backend loads the copy staged beside its bundle; the one the build read is a duplicate.
+    rm -f $out/lib/jx-studio/packages/compiler-binding/*.node
 
     # Electron is the root process and owns every window; the backend is its utility process, on
     # Electron's own Node, and owns every project (specs/desktop.md §9.7). The windows are frameless, so Studio draws its own
@@ -358,12 +381,14 @@ stdenv.mkDerivation {
       const load = createRequire(process.argv[1] + "/index.js");
       for (const name of process.argv.slice(2)) load.resolve(name);
     ' $backend ${lib.concatStringsSep " " backendNatives}
-    # Resolving is not loading: sharp resolves fine and then fails to dlopen its binary. Load it on
-    # the Node the backend actually runs on, which is Electron's.
+    # The compiler addon is one file beside the bundle. Present is not loadable: load it on the
+    # Node the backend actually runs on, which is Electron's, and call into it.
+    test -s $backend/${addonName}
     ELECTRON_RUN_AS_NODE=1 ${electron}/bin/electron -e '
       const { createRequire } = require("node:module");
-      createRequire(process.argv[1] + "/index.js")("sharp");
-    ' $backend
+      const addon = createRequire(process.argv[1] + "/index.js")("./" + process.argv[2]);
+      if (!/^\d+\./.test(addon.coreVersion())) process.exit(1);
+    ' $backend ${addonName}
     # The application's bundle was made at build time; prove it is the app and not an empty file,
     # and that nothing of this repository's was left outside it for the runtime to look for.
     app=$out/lib/jx-studio/packages/desktop/assets/electron

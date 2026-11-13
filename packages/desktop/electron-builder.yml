@@ -30,15 +30,15 @@ files:
   - "!node_modules"
   - "!**/node_modules/**"
 
-# Nothing here is rebuilt against Electron: the backend's native packages (esbuild, sharp, oxfmt) are
-# N-API or standalone binaries staged by `scripts/stage-app.ts` from this host's install.
+# Nothing here is rebuilt against Electron: the backend's native packages (esbuild, oxfmt) and the compiler's
+# own addon are N-API or standalone binaries staged by `scripts/stage-app.ts` from this host's install.
 npmRebuild: false
 
 # Files the backend utility process reads from disk, which stay real files rather than `app.asar`
 # entries: its bundle, the native modules beside it, and the studio assets it serves.
 # They are copied from `build/resources`, not `build/resources/backend`: electron-builder always
 # drops a `node_modules` at the root of an extraResources source, whatever the filter says, so a
-# source of `build/resources/backend` loses the backend's `node_modules` (Arborist, esbuild, sharp)
+# source of `build/resources/backend` loses the backend's `node_modules` (Arborist, esbuild)
 # and the packaged backend cannot start. One level up, it is `backend/node_modules` and is kept.
 extraResources:
   - from: build/resources

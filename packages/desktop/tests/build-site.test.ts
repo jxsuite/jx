@@ -19,6 +19,7 @@ const compilerBuild = mock<typeof buildSite>(async () => ({
   files: 7,
   routes: 3,
   serverEntries: [],
+  timings: { bundles: 0, components: 0, content: 0, outputs: 0, routes: 0, setup: 0, total: 0 },
 }));
 void mock.module("@jxsuite/compiler/site", () => ({ buildSite: compilerBuild }));
 
