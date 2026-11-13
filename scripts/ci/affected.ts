@@ -297,6 +297,23 @@ function assertAnchors(workspaces: Workspace[]): void {
   }
 }
 
+/**
+ * What the compiler's native addon is built from, on every platform (.github/workflows/addon.yml).
+ * A pull request that touches one of these builds all eight; no other does, because the eight
+ * include macOS and Windows runners and a dependency bump that cannot reach Rust should not pay for
+ * them. The Linux x64 build every pull request already makes is in the test matrix.
+ */
+const ADDON_INPUTS = [
+  "packages/compiler-binding/**",
+  ".github/workflows/addon.yml",
+  ".github/actions/setup-rust/**",
+];
+
+/** Whether a diff can change what a platform's addon build produces. */
+export function buildsAddon(changed: readonly string[]): boolean {
+  return changed.some((path) => matches(path, ADDON_INPUTS));
+}
+
 interface Decision {
   mode: "all" | "affected";
   reason: string;
@@ -438,6 +455,8 @@ async function main(): Promise<void> {
 
   const event = process.env.GITHUB_EVENT_NAME ?? "";
   let decision: Decision;
+  // A release builds every platform itself (publish.yml), so only a pull request asks here.
+  let addon = false;
 
   if (event && event !== "pull_request") {
     // Push to main, the nightly cron, and manual dispatch all run everything. This is the
@@ -452,6 +471,7 @@ async function main(): Promise<void> {
     };
   } else {
     const changed = await changedFiles();
+    addon = buildsAddon(changed);
     decision =
       changed.length === 0 && event
         ? {
@@ -475,6 +495,7 @@ async function main(): Promise<void> {
     all_workspaces: JSON.stringify(workspaces.map((w) => w.flag)),
     gate_lens_mutants: String(decision.lensMutants),
     gate_bundle: JSON.stringify(decision.bundles),
+    gate_addon: String(addon),
     has_bundle: String(decision.bundles.length > 0),
   } satisfies Record<string, string>;
 
