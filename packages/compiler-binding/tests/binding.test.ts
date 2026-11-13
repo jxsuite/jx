@@ -8,6 +8,7 @@ import {
   loadBinding,
   loadBindingFor,
   processImage,
+  installedPackageDir,
   isBinding,
   runsMusl,
 } from "../src/index.ts";
@@ -195,6 +196,16 @@ describe("finding the addon", () => {
     expect(isBinding({ processImage: "not a function" })).toBe(false);
     expect(isBinding(null)).toBe(false);
     expect(isBinding("jx-compiler.node")).toBe(false);
+  });
+
+  test("the package's own install directory is searched, when the module system knows it", () => {
+    expect(
+      installedPackageDir(() => "/app/node_modules/@jxsuite/compiler-binding/package.json"),
+    ).toEqual(["/app/node_modules/@jxsuite/compiler-binding"]);
+    const unknown = () => {
+      throw new Error("Cannot find module");
+    };
+    expect(installedPackageDir(unknown)).toEqual([]);
   });
 
   test("the real host describes this process", () => {

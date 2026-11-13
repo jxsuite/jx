@@ -104,6 +104,24 @@ export function runsMusl(platform: string, report?: LibcReport): boolean {
   return platform === "linux" && report !== undefined && !report.header?.glibcVersionRuntime;
 }
 
+/**
+ * Where `@jxsuite/compiler-binding` itself is installed, as far as `resolve` can tell.
+ *
+ * The compiler inlines this loader into `dist/cli.js`, the file `jx` runs, and from there "the
+ * package's own root" is the COMPILER's directory. In a checkout the addon is built into this
+ * package, not that one, so the first `jx build` run through the bin in CI found no addon. Asking
+ * the module system where this package lives finds it from anywhere it is a dependency. Where it is
+ * not one (the desktop backend bundle, which stages the file beside itself), there is nothing to
+ * add.
+ */
+export function installedPackageDir(resolve: (specifier: string) => string): string[] {
+  try {
+    return [dirname(resolve("@jxsuite/compiler-binding/package.json"))];
+  } catch {
+    return [];
+  }
+}
+
 /** The real host. */
 export function currentHost(): LoaderHost {
   return {
@@ -113,7 +131,13 @@ export function currentHost(): LoaderHost {
       const loaded: unknown = nodeRequire(specifier);
       return isBinding(loaded) ? loaded : undefined;
     },
-    localDirs: [dirname(import.meta.dirname), import.meta.dirname],
+    localDirs: [
+      ...new Set([
+        dirname(import.meta.dirname),
+        import.meta.dirname,
+        ...installedPackageDir((specifier) => nodeRequire.resolve(specifier)),
+      ]),
+    ],
     /* SAFETY: `getReport` returns an untyped diagnostic object; one optional string is read. */
     musl: runsMusl(process.platform, process.report.getReport() as LibcReport),
     platform: process.platform,

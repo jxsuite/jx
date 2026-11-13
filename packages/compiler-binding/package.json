@@ -14,7 +14,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./triple": "./src/triple.ts"
+    "./triple": "./src/triple.ts",
+    "./package.json": "./package.json"
   },
   "publishConfig": {
     "provenance": true
