@@ -11,6 +11,7 @@ code:
   - scripts/check-release-integrity.ts
   - scripts/docs/check-plans.ts
   - scripts/ci/approve-held-runs.ts
+  - scripts/ci/no-credit-label.ts
   - scripts/check-schema-freshness.ts
   - packages/test-support/src/preload.ts
   - packages/test-support/src/dom-equality.ts
@@ -125,6 +126,8 @@ Pushes to `main`, the nightly cron, and manual dispatch are never gated: they al
 :::doc-note
 `ci` is the aggregate job. It passes when every other job either succeeded or was skipped, and fails if any failed or was cancelled. A job your diff never reached leaves the run green.
 :::
+
+**The `no-credit` label.** A merged pull request earns its author contributor credit ([`CONTRIBUTING.md`](https://github.com/jxsuite/jx/blob/main/CONTRIBUTING.md)), unless it carries this label. `.github/workflows/no-credit-label.yml` applies it when the matrix above would run no tests for the diff, by asking the same `decide()` the matrix uses. It takes back a label it applied once the pull request reaches the tests, and it never removes one a maintainer applied. The label has to be there before the merge.
 
 ## Generated files are fixed for you, not failed at you
 
