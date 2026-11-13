@@ -46,7 +46,7 @@
     },
     "extensions/auth": {
       "name": "@jxsuite/auth",
-      "version": "0.8.8",
+      "version": "0.8.9",
       "dependencies": {
         "@jxsuite/connector": "workspace:^",
         "@jxsuite/schema": "workspace:^",
@@ -61,13 +61,13 @@
     },
     "extensions/connector": {
       "name": "@jxsuite/connector",
-      "version": "0.8.8",
+      "version": "0.8.9",
       "dependencies": {
         "@jxsuite/schema": "workspace:^",
         "kysely": "^0.29.8",
         "kysely-d1": "^0.4.0",
         "kysely-postgres-js": "^5.0.1",
-        "postgres": "^3.4.9",
+        "postgres": "^4.1.0",
       },
       "devDependencies": {
         "@cloudflare/workers-types": "^5.20261031.1",
@@ -77,7 +77,7 @@
     },
     "extensions/feed": {
       "name": "@jxsuite/feed",
-      "version": "0.5.6",
+      "version": "0.5.7",
       "dependencies": {
         "@jxsuite/schema": "workspace:^",
       },
@@ -87,7 +87,7 @@
     },
     "extensions/parser": {
       "name": "@jxsuite/parser",
-      "version": "4.3.4",
+      "version": "5.0.0",
       "dependencies": {
         "@jxsuite/markup": "workspace:^",
         "@jxsuite/schema": "workspace:^",
@@ -116,7 +116,7 @@
     },
     "extensions/search": {
       "name": "@jxsuite/search",
-      "version": "0.6.0",
+      "version": "0.6.1",
       "dependencies": {
         "@jxsuite/schema": "workspace:^",
         "minisearch": "^7.2.0",
@@ -127,7 +127,7 @@
     },
     "packages/ai": {
       "name": "@jxsuite/ai",
-      "version": "0.43.4",
+      "version": "0.43.5",
       "dependencies": {
         "@jxsuite/protocol": "workspace:^",
         "@jxsuite/schema": "workspace:^",
@@ -140,14 +140,14 @@
     },
     "packages/catalog": {
       "name": "@jxsuite/catalog",
-      "version": "0.1.12",
+      "version": "0.1.13",
       "dependencies": {
         "@jxsuite/protocol": "workspace:^",
       },
     },
     "packages/collab": {
       "name": "@jxsuite/collab",
-      "version": "0.11.10",
+      "version": "0.12.0",
       "dependencies": {
         "@jxsuite/schema": "workspace:^",
         "lib0": "^0.2.119",
@@ -157,7 +157,7 @@
     },
     "packages/compiler": {
       "name": "@jxsuite/compiler",
-      "version": "8.6.0",
+      "version": "8.7.0",
       "bin": {
         "jx": "./bin/jx.js",
       },
@@ -182,7 +182,7 @@
     },
     "packages/content-mapper": {
       "name": "@jxsuite/content-mapper",
-      "version": "0.0.0",
+      "version": "0.1.0",
       "dependencies": {
         "@jxsuite/schema": "workspace:^",
         "ts-content-mapper": "0.1.1",
@@ -193,7 +193,7 @@
     },
     "packages/create": {
       "name": "@jxsuite/create",
-      "version": "1.8.0",
+      "version": "1.8.1",
       "bin": {
         "create-jxsuite": "./index.ts",
       },
@@ -204,7 +204,7 @@
     },
     "packages/desktop": {
       "name": "@jxsuite/desktop",
-      "version": "8.3.1",
+      "version": "9.0.0",
       "dependencies": {
         "@jxsuite/compiler": "workspace:^",
         "@jxsuite/create": "workspace:^",
@@ -227,7 +227,7 @@
     },
     "packages/erase": {
       "name": "@jxsuite/erase",
-      "version": "0.2.0",
+      "version": "0.3.0",
       "dependencies": {
         "@jxsuite/schema": "workspace:^",
         "ts-blank-space": "^0.9.0",
@@ -235,7 +235,7 @@
     },
     "packages/formulas": {
       "name": "@jxsuite/formulas",
-      "version": "0.0.32",
+      "version": "0.0.33",
       "dependencies": {
         "@jxsuite/schema": "workspace:^",
       },
@@ -246,7 +246,7 @@
     },
     "packages/import": {
       "name": "@jxsuite/import",
-      "version": "0.44.1",
+      "version": "0.44.2",
       "bin": {
         "jx-import": "./src/cli.ts",
       },
@@ -270,7 +270,7 @@
     },
     "packages/markup": {
       "name": "@jxsuite/markup",
-      "version": "1.0.8",
+      "version": "1.0.9",
       "dependencies": {
         "@jxsuite/schema": "workspace:^",
         "hast-util-from-html": "^2.0.3",
@@ -289,14 +289,14 @@
     },
     "packages/protocol": {
       "name": "@jxsuite/protocol",
-      "version": "6.3.0",
+      "version": "6.4.0",
       "dependencies": {
         "@jxsuite/schema": "workspace:^",
       },
     },
     "packages/runtime": {
       "name": "@jxsuite/runtime",
-      "version": "6.3.0",
+      "version": "7.0.0",
       "dependencies": {
         "@jxsuite/schema": "workspace:^",
         "@vue/reactivity": "3.5.44",
@@ -309,7 +309,7 @@
     },
     "packages/schema": {
       "name": "@jxsuite/schema",
-      "version": "5.6.0",
+      "version": "6.0.0",
       "dependencies": {
         "@bgotink/kdl": "0.4.1",
         "@webref/css": "^8.7.8",
@@ -324,7 +324,7 @@
     },
     "packages/server": {
       "name": "@jxsuite/server",
-      "version": "8.7.0",
+      "version": "9.0.0",
       "dependencies": {
         "@jxsuite/ai": "workspace:^",
         "@jxsuite/catalog": "workspace:^",
@@ -358,7 +358,7 @@
     },
     "packages/site": {
       "name": "@jxsuite/site",
-      "version": "2.6.0",
+      "version": "2.7.0",
       "dependencies": {
         "@jxsuite/runtime": "workspace:^",
         "@jxsuite/schema": "workspace:^",
@@ -366,7 +366,7 @@
     },
     "packages/starters": {
       "name": "@jxsuite/starters",
-      "version": "3.5.0",
+      "version": "3.6.0",
       "dependencies": {
         "@jxsuite/protocol": "workspace:^",
       },
@@ -380,7 +380,7 @@
     },
     "packages/studio": {
       "name": "@jxsuite/studio",
-      "version": "10.9.0",
+      "version": "11.0.0",
       "dependencies": {
         "@atlaskit/pragmatic-drag-and-drop": "^4.0.0",
         "@atlaskit/pragmatic-drag-and-drop-hitbox": "^3.0.0",
@@ -421,7 +421,7 @@
     },
     "packages/ui": {
       "name": "@jxsuite/ui",
-      "version": "0.11.0",
+      "version": "0.12.0",
       "dependencies": {
         "@jxsuite/runtime": "workspace:^",
         "@jxsuite/schema": "workspace:^",
@@ -2395,7 +2395,7 @@
 
     "postcss-selector-parser": ["postcss-selector-parser@7.1.7", "", { "dependencies": { "cssesc": "^3.0.0", "util-deprecate": "^1.0.2" } }, "sha512-wWBro/7hJ40ye6TPiXkUQoXKCw23xSsjriUvqd7Uls9Sso3oLiON1flc18cCdnjgCRXw4fBVqUJJeOdDTh3P3g=="],
 
-    "postgres": ["postgres@3.4.9", "", {}, "sha512-GD3qdB0x1z9xgFI6cdRD6xu2Sp2WCOEoe3mtnyB5Ee0XrrL5Pe+e4CCnJrRMnL1zYtRDZmQQVbvOttLnKDLnaw=="],
+    "postgres": ["postgres@4.1.0", "", {}, "sha512-s+0WH67YAyLdBQUb6XczbziBhY+C9uiQsg9S8R5RHdZhk6sdyK6202E+T2tXpiInSEEjDLRSJ3OpYBe3PN6MsQ=="],
 
     "postject": ["postject@1.0.0-alpha.6", "", { "dependencies": { "commander": "^9.4.0" }, "bin": { "postject": "dist/cli.js" } }, "sha512-b9Eb8h2eVqNE8edvKdwqkrY6O7kAwmI8kcnBv1NScolYJbo59XUF0noFq+lxbC1yN20bmC0WBEbDC5H/7ASb0A=="],
 
