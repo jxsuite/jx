@@ -2,9 +2,9 @@
 
 ## Extension Packages, Schema Composition, and the Capability Contract
 
-**Version:** 0.5.5-draft\
+**Version:** 0.5.7-draft\
 **Status:** Partial\
-**Updated:** 2026-11-08\
+**Updated:** 2026-11-13\
 **License:** MIT
 
 Supersedes v1 ("Format-Extension Classes and the Capability Contract"). The format-class contract from v1 survives unchanged (§6–§8); v2 adds the package layer around it: extension packages, manifest-driven registration, JSON-Schema composition, project sections, server mounts, and the studio settings vocabulary. The relationships vocabulary has a companion spec: [relationships.md](./relationships.md).
@@ -788,6 +788,8 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.5.7-draft** (2026-11-13) — Mount 500s carry a fixed sentence and log their cause; sign-out answers Clear-Site-Data "cache"; email sign-up is recorded as unverified (§13).
+- **0.5.6-draft** (2026-11-13) — §13 mounts sit behind the worker's request gate, and the data mount refuses an insert or update whose body is not declared JSON.
 - **0.5.5-draft** (2026-11-08) — The jxsuite.com project's file is project.jxn.
 - **0.5.4-draft** (2026-11-07) — §1: .jxn is a built-in registry entry that no class can claim.
 - **0.5.3-draft** (2026-11-06) — §8: projectData's context may ask for held entries (includeHeld); a host that passes nothing gets a production answer.
@@ -832,4 +834,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_Jx Extensions Specification v0.5.5-draft_
+_Jx Extensions Specification v0.5.7-draft_

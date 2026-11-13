@@ -2,9 +2,9 @@
 
 ## Real-Time Co-Editing for Jx Projects
 
-**Version:** 0.2.11-draft\
+**Version:** 0.2.12-draft\
 **Status:** Partial\
-**Updated:** 2026-11-08\
+**Updated:** 2026-11-13\
 **License:** MIT
 
 ---
@@ -129,6 +129,7 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.2.12-draft** (2026-11-13) — §3.1: a document's own scripts are stored as one Y.Text per side inside a Y.Map, so two authors typing in one script both keep what they typed; the table also names a function's string body as text, which the marker records as not built yet.
 - **0.2.11-draft** (2026-11-08) — §3.1: a format file is mirrored into the shared text over the room's current text, so a peer's comment survives.
 - **0.2.10-draft** (2026-10-29) — The desktop adapter's path follows its move to src/webview/, and the removed Chromium launcher is no longer named.
 - **0.2.9-draft** (2026-10-21) — The desktop launchers section names the one desktop adapter, chromium/platform.ts, in place of the retired ElectroBun adapter.
@@ -146,4 +147,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_Jx `@jxsuite/collab` Specification v0.2.11-draft — a stub, subject to expansion._
+_Jx `@jxsuite/collab` Specification v0.2.12-draft — a stub, subject to expansion._
