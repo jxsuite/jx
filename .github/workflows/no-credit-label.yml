@@ -1,0 +1,40 @@
+# Labels a pull request `no-credit` when the test matrix would not run for it, so it earns no
+# contributor credit. The rule, and who owns the label, are in scripts/ci/no-credit-label.ts.
+#
+# `pull_request_target` because a fork's `pull_request` token cannot write labels, and that means
+# this job holds a write token on behalf of a stranger's pull request. So it checks out the BASE
+# branch and installs nothing: the script learns the changed paths from the API and never runs or
+# reads the pull request's code. Do not add a `ref:` here. no-credit-label.test.ts fails if you do.
+name: No-credit label
+
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize]
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: no-credit-label-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  label:
+    # Bots earn nothing, so there is nothing to withhold.
+    if: github.event.pull_request.user.type != 'Bot'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-bun
+        with:
+          install: "false"
+      - run: bun scripts/ci/no-credit-label.ts
+        env:
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
