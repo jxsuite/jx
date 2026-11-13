@@ -136,15 +136,20 @@ jobs:
       tag_name: ${{ needs.release-please.outputs.desktop_tag }}
     secrets: inherit
 
-  # The Mac App Store, to TestFlight only. A lane of its own that builds the sandboxed package itself,
-  # so it needs nothing from desktop-macos and does not gate the release. A clean no-op until the
-  # MAS_* secrets exist (packages/desktop/AGENTS.md, "Mac App Store Publishing").
+  # The Mac App Store: upload to TestFlight, then submit to App Review. A lane of its own that builds
+  # the sandboxed package itself, so it needs nothing from desktop-macos and does not gate the
+  # release. A clean no-op until the MAS_* secrets exist (packages/desktop/AGENTS.md, "Mac App Store
+  # Publishing"). The repository variable MAS_RELEASE_TYPE (MANUAL by default, or AFTER_APPROVAL)
+  # decides whether a person releases an approved version, and MAS_SUBMIT=false stops the
+  # submission and leaves every release in TestFlight.
   mas-publish:
     needs: release-please
     if: needs.release-please.outputs.desktop_released == 'true'
     uses: ./.github/workflows/mas-publish.yml
     with:
       tag_name: ${{ needs.release-please.outputs.desktop_tag }}
+      submit: ${{ vars.MAS_SUBMIT != 'false' }}
+      release_type: ${{ vars.MAS_RELEASE_TYPE || 'MANUAL' }}
     secrets: inherit
 
   # The Ubuntu twin of desktop-windows -> store-publish. The snap packs the same unpacked Electron
