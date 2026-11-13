@@ -1,5 +1,19 @@
 # Changelog
 
+## [6.4.0](https://github.com/jxsuite/jx/compare/protocol-v6.3.0...protocol-v6.4.0) (2026-11-12)
+
+
+### Features
+
+* Open in Browser runs a component or a layout on its own ([#644](https://github.com/jxsuite/jx/issues/644)) ([ea340c5](https://github.com/jxsuite/jx/commit/ea340c5d83e8e847cb9aa7f1c990e94e84fdf9df))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/schema bumped to 6.0.0
+
 ## [6.3.0](https://github.com/jxsuite/jx/compare/protocol-v6.2.5...protocol-v6.3.0) (2026-11-11)
 
 

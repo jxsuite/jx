@@ -1,5 +1,41 @@
 # Changelog
 
+## [8.7.0](https://github.com/jxsuite/jx/compare/compiler-v8.6.0...compiler-v8.7.0) (2026-11-12)
+
+
+### Features
+
+* a project's pure formulas are callable in its components ([#642](https://github.com/jxsuite/jx/issues/642)) ([918e404](https://github.com/jxsuite/jx/commit/918e404832f9fc796f9a8e781afcc101693b9a1d))
+* **compiler:** a build compiles every component a document declares, wherever it lives ([#616](https://github.com/jxsuite/jx/issues/616)) ([099aca6](https://github.com/jxsuite/jx/commit/099aca6387e887d00181446e4dde672bd934aefe))
+* **erase,runtime,server,site:** a document's script runs in every interpreting host ([#627](https://github.com/jxsuite/jx/issues/627)) ([cdd349a](https://github.com/jxsuite/jx/commit/cdd349a304f36da6c9abd6a73b55d2449f096248))
+* live-canvas foundations (tag model, formulas, runtime splice, static empty lists) ([#640](https://github.com/jxsuite/jx/issues/640)) ([2106c38](https://github.com/jxsuite/jx/commit/2106c380eb2661a7eda1a0f6d6f5b6aa8686b8a7))
+* **schema,collab,compiler,studio:** a document's script in .jxn, Studio and shared sessions ([#628](https://github.com/jxsuite/jx/issues/628)) ([ddb7734](https://github.com/jxsuite/jx/commit/ddb7734555e3b26d26ef339fab651b5e2768d75f))
+* **schema,compiler,runtime:** a document carries its own client and server modules in $script ([#625](https://github.com/jxsuite/jx/issues/625)) ([bb35a4f](https://github.com/jxsuite/jx/commit/bb35a4f7e68dc77e06c4b68437fba459480fcd04))
+* **schema,runtime,compiler:** $lazy loads on first call in every tier ([#617](https://github.com/jxsuite/jx/issues/617)) ([371b6d4](https://github.com/jxsuite/jx/commit/371b6d4c8a0b155820077485eabe76b05f9d0d3e))
+* **server,compiler:** jx format formats the code a .jxn file holds, as Studio does ([#637](https://github.com/jxsuite/jx/issues/637)) ([bc73203](https://github.com/jxsuite/jx/commit/bc732037fa7dad968e62dce7e04c07ecb6c703f2))
+* **site:** site state stops making every built page dynamic, and never replaces $site's own names ([#619](https://github.com/jxsuite/jx/issues/619)) ([fd6d56c](https://github.com/jxsuite/jx/commit/fd6d56c37a80a1b186cf0b525388368eb144e9d1))
+
+
+### Bug Fixes
+
+* **compiler:** a compiled element moved in the DOM keeps what it drew ([#620](https://github.com/jxsuite/jx/issues/620)) ([3483139](https://github.com/jxsuite/jx/commit/3483139636bca0f229e9e30c626c07b0ee9f97af))
+* **security:** generic 500s, sign-out cache clearing, consistent framing, hashed speculation rules ([#624](https://github.com/jxsuite/jx/issues/624)) ([5e8c2e5](https://github.com/jxsuite/jx/commit/5e8c2e54b4b1ad837b7435e72942c2b7dbc61d49))
+* **server:** the site worker refuses cross-site calls and its answers stay out of caches ([#621](https://github.com/jxsuite/jx/issues/621)) ([7a9d405](https://github.com/jxsuite/jx/commit/7a9d405a24ff2955027f1b6ae835dd7373dbc728))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/create bumped to 1.8.1
+    * @jxsuite/erase bumped to 0.3.0
+    * @jxsuite/runtime bumped to 7.0.0
+    * @jxsuite/schema bumped to 6.0.0
+    * @jxsuite/site bumped to 2.7.0
+  * devDependencies
+    * @jxsuite/connector bumped to 0.8.9
+    * @jxsuite/parser bumped to 5.0.0
+
 ## [8.6.0](https://github.com/jxsuite/jx/compare/compiler-v8.5.0...compiler-v8.6.0) (2026-11-11)
 
 

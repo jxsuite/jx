@@ -1,5 +1,22 @@
 # Changelog
 
+## [2.7.0](https://github.com/jxsuite/jx/compare/site-v2.6.0...site-v2.7.0) (2026-11-12)
+
+
+### Features
+
+* a project's pure formulas are callable in its components ([#642](https://github.com/jxsuite/jx/issues/642)) ([918e404](https://github.com/jxsuite/jx/commit/918e404832f9fc796f9a8e781afcc101693b9a1d))
+* **erase,runtime,server,site:** a document's script runs in every interpreting host ([#627](https://github.com/jxsuite/jx/issues/627)) ([cdd349a](https://github.com/jxsuite/jx/commit/cdd349a304f36da6c9abd6a73b55d2449f096248))
+* **site:** site state stops making every built page dynamic, and never replaces $site's own names ([#619](https://github.com/jxsuite/jx/issues/619)) ([fd6d56c](https://github.com/jxsuite/jx/commit/fd6d56c37a80a1b186cf0b525388368eb144e9d1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/runtime bumped to 7.0.0
+    * @jxsuite/schema bumped to 6.0.0
+
 ## [2.6.0](https://github.com/jxsuite/jx/compare/site-v2.5.1...site-v2.6.0) (2026-11-11)
 
 

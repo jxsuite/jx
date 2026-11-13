@@ -1,8 +1,8 @@
 # Jx Studio UI/UX Interface Guidelines
 
-**Version:** 0.8.35-draft\
+**Version:** 0.9.0-draft\
 **Status:** Partial\
-**Updated:** 2026-11-11\
+**Updated:** 2026-11-13\
 **Applies to:** `packages/studio/`
 
 ---
@@ -984,6 +984,8 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.9.0-draft** (2026-11-13) — §1 and §2.1: CANVAS_MODES loses preview, so the canvas modes are design, edit, stylebook and git-diff.
+- **0.8.36-draft** (2026-11-13) — The floating action bar draws a fact about the selection (a Bound pill, the row stepper, the case picker) only where it is true, after every verb (§8.6).
 - **0.8.35-draft** (2026-11-11) — §3.1 The status bar's far-right field is the focused pane's zoom; §12.1 new statusbar/zoom placement admitting the document level, so the status bar is four single-level placements.
 - **0.8.34-draft** (2026-11-11) — 12.1 adds the outline/toolbar placement, document level, for the Outline's Expand All and Collapse All action bar.
 - **0.8.33-draft** (2026-11-11) — §3.1 the Command Bar's controls draw md (24px); the window controls keep sm.

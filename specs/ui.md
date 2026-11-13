@@ -2,9 +2,9 @@
 
 ## Interface Elements Authored as Jx Documents
 
-**Version:** 0.1.67-draft\
+**Version:** 0.1.70-draft\
 **Status:** Partial\
-**Updated:** 2026-11-11\
+**Updated:** 2026-11-13\
 **License:** MIT\
 **Applies to:** `packages/ui/`, `packages/studio/src/surfaces/`
 
@@ -462,6 +462,9 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.1.70-draft** (2026-11-13) — §10: bound props render live on the editing canvas, a repeater row's included, in Edit and Design alike.
+- **0.1.69-draft** (2026-11-13) — Form controls forward required/readonly/value/name/describedby and draw :user-invalid; jx-checkbox and jx-number-field take invalid; a jx-field label focuses its control; jx-select rows are label-only where the browser draws the list; jx-textfield and Studio ignore Enter and Escape during an input-method composition; shadow tokens follow the scheme in force and hosts declare a color-scheme meta (§4.2, §5.1, §5.3, §10).
+- **0.1.68-draft** (2026-11-13) — jx-combobox ignores keys pressed during an input-method composition, the highlighted jx-option keeps a system highlight under forced colours, and jx-dialog contains its scroll (§4.4, §5.2, §5.3).
 - **0.1.67-draft** (2026-11-11) — §5.3 New element jx-slider: one native range with a filled track, valuetext, a ten-step Shift+Arrow and the host-dispatched input/change pair; a native dblclick bubbles for the host to answer.
 - **0.1.66-draft** (2026-11-11) — 5.5 says the jx-tree-item twisty is a pointer-cursor target spanning the row height that a draggable host must not start a drag from.
 - **0.1.65-draft** (2026-11-11) — four --jx-heading-* tokens are the section-heading recipe; jx-accordion-item's summary and Studio's panel headings draw them.
@@ -533,4 +536,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_Jx UI Kit Specification v0.1.67-draft_
+_Jx UI Kit Specification v0.1.70-draft_
