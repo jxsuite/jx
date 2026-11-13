@@ -120,7 +120,7 @@ No claim closes here. Once it lands:
 
 ## Tests
 
-Run `bun test --isolate --coverage` from `packages/compiler`. No new source file, so the manifest check sees nothing new. Every touched file stays at or above `coverageThreshold = { lines = 0.982, functions = 0.98 }` in `packages/compiler/bunfig.toml`. Raise it to just below the new minimum if the worst file rises. The fixtures contain no image, so sharp is never imported (as in `site-build-component-loading.test.ts`).
+Run `bun test --isolate --coverage` from `packages/compiler`. No new source file, so the manifest check sees nothing new. Every touched file stays at or above `coverageThreshold = { lines = 0.982, functions = 0.98 }` in `packages/compiler/bunfig.toml`. Raise it to just below the new minimum if the worst file rises. The fixtures contain no image, so the compiler's native addon is never loaded (as in `site-build-component-loading.test.ts`).
 
 `packages/compiler/tests/shared.test.ts`, `describe("refReadsRuntimeOnlyState")`:
 

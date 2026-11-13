@@ -759,8 +759,10 @@ describe("image-transform", () => {
       expect(doc.children[1].attributes.srcset).toContain("/cdn-cgi/image/width=");
     });
 
-    test("still emits an unclamped srcset when Sharp metadata is unavailable", async () => {
-      getImageMetadata.mockRejectedValue(new Error("Could not load the sharp module"));
+    test("still emits an unclamped srcset when the image header cannot be read", async () => {
+      getImageMetadata.mockRejectedValue(
+        new Error("The Jx compiler's native addon could not be loaded."),
+      );
 
       const doc: any = {
         tagName: "img",
@@ -1146,6 +1148,58 @@ describe("image-transform — the <img> fallback src", () => {
     expect(imgOf(doc).attributes.src).toBe("/_optimized/hero-1200-abc.png");
     // Through the same encoding as the srcset, so a file name with a space is a valid URL here too.
     expect(variantUrl).toHaveBeenCalledWith("/_optimized/hero-1200-abc.png");
+  });
+});
+
+describe("image-transform — PNG standing in for JPEG", () => {
+  const png = (width: number) => ({
+    absolutePath: `/tmp/fake-${width}.png`,
+    format: "png",
+    outputPath: `/_optimized/logo-${width}-abc.png`,
+    width,
+  });
+  const avif = mockManifest.variants.filter((variant) => variant.format === "avif");
+  const config = { ...defaultConfig, formats: ["avif", "jpeg"] };
+
+  beforeEach(() => {
+    setup();
+  });
+  afterEach(() => {
+    teardown();
+  });
+
+  test("a transparent source asked for as JPEG is offered as the PNG that was written", async () => {
+    processImage.mockImplementationOnce(async () => ({
+      ...mockManifest,
+      variants: [...avif, png(640), png(1200)],
+    }));
+    const doc: any = { attributes: { src: "/images/hero.png" }, tagName: "img" };
+    await transformImageNodes(doc, config, TMP, { entries: {}, version: 1 });
+
+    expect(doc.tagName).toBe("picture");
+    expect(doc.children.map((child: any) => child.attributes.type ?? child.tagName)).toEqual([
+      "image/avif",
+      "image/png",
+      "img",
+    ]);
+    expect(imgOf(doc).attributes.src).toBe("/_optimized/logo-1200-abc.png");
+  });
+
+  test("a PNG the project did not ask for stays out when JPEG was written too", async () => {
+    const jpeg = { ...png(640), format: "jpeg", outputPath: "/_optimized/hero-640-abc.jpeg" };
+    processImage.mockImplementationOnce(async () => ({
+      ...mockManifest,
+      variants: [...avif, jpeg, png(640)],
+    }));
+    const doc: any = { attributes: { src: "/images/hero.png" }, tagName: "img" };
+    await transformImageNodes(doc, config, TMP, { entries: {}, version: 1 });
+
+    expect(doc.children.map((child: any) => child.attributes.type ?? child.tagName)).toEqual([
+      "image/avif",
+      "image/jpeg",
+      "img",
+    ]);
+    expect(imgOf(doc).attributes.src).toBe("/_optimized/hero-640-abc.jpeg");
   });
 });
 

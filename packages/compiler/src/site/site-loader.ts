@@ -48,11 +48,11 @@ const DEFAULTS = {
     layout: null,
   },
   images: {
-    formats: ["webp", "avif"],
+    formats: ["avif", "jpeg"],
     lazyLoad: true,
     optimize: true,
     picture: true,
-    quality: { avif: 65, jpeg: 80, png: 80, webp: 80 },
+    quality: { avif: 65, jpeg: 80 },
     service: "build",
     sizes: "(max-width: 768px) 100vw, 50vw",
     widths: [320, 640, 960, 1280, 1920],

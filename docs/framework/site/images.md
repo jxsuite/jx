@@ -1,6 +1,6 @@
 ---
 title: "Images"
-description: "The build-time image pipeline: responsive srcset variants in WebP and AVIF, lazy-loading attributes, per-image overrides, and caching."
+description: "The build-time image pipeline: responsive srcset variants in AVIF and JPEG, lazy-loading attributes, per-image overrides, and caching."
 spec:
   - site-architecture.md#9
   - site-architecture.md#9.2.8
@@ -12,6 +12,7 @@ code:
   - packages/compiler/src/site/asset-mounts.ts
   - packages/compiler/src/site/image-optimizer.ts
   - packages/compiler/src/site/image-cache.ts
+  - packages/compiler-binding/src/index.ts
 ---
 
 # Images
@@ -27,8 +28,8 @@ All properties are optional; these are the defaults:
   "images": {
     "optimize": true,
     "widths": [320, 640, 960, 1280, 1920],
-    "formats": ["webp", "avif"],
-    "quality": { "webp": 80, "avif": 65, "jpeg": 80, "png": 80 },
+    "formats": ["avif", "jpeg"],
+    "quality": { "avif": 65, "jpeg": 80 },
     "sizes": "(max-width: 768px) 100vw, 50vw",
     "lazyLoad": true,
     "picture": true,
@@ -37,37 +38,60 @@ All properties are optional; these are the defaults:
 }
 ```
 
-| Property        | What it controls                                                                              |
-| --------------- | --------------------------------------------------------------------------------------------- |
-| `optimize`      | Master switch; `false` disables all image processing                                          |
-| `widths`        | Pixel widths for the responsive variants                                                      |
-| `formats`       | Output formats (`"webp"`, `"avif"`, `"jpeg"`, `"png"`)                                        |
-| `quality`       | Per-format compression quality (0–100)                                                        |
-| `sizes`         | Fallback CSS `sizes`, used only when neither the tag nor its container says (below)           |
-| `lazyLoad`      | Adds `loading="lazy"` and `decoding="async"`, whether or not `optimize` is on                 |
-| `picture`       | Wrap a multi-format image in a `<picture>`, one `<source>` per format (default `true`)        |
-| `service`       | `"build"` = Sharp at build time; `"cloudflare"` = transform URLs served by Cloudflare (below) |
-| `remoteDomains` | Https hostnames whose remote images also get transform srcsets, `"cloudflare"` service only   |
+| Property        | What it controls                                                                                |
+| --------------- | ----------------------------------------------------------------------------------------------- |
+| `optimize`      | Master switch; `false` disables all image processing                                            |
+| `widths`        | Pixel widths for the responsive variants                                                        |
+| `formats`       | Output formats: `"avif"`, `"jpeg"`, `"png"`, `"webp"` (see "Formats" below)                     |
+| `quality`       | Lossy quality for `avif` and `jpeg` (1–100)                                                     |
+| `sizes`         | Fallback CSS `sizes`, used only when neither the tag nor its container says (below)             |
+| `lazyLoad`      | Adds `loading="lazy"` and `decoding="async"`, whether or not `optimize` is on                   |
+| `picture`       | Wrap a multi-format image in a `<picture>`, one `<source>` per format (default `true`)          |
+| `service`       | `"build"` = encoded at build time; `"cloudflare"` = transform URLs served by Cloudflare (below) |
+| `remoteDomains` | Https hostnames whose remote images also get transform srcsets, `"cloudflare"` service only     |
 
 ## What the build does
 
-For each eligible image, the pipeline (powered by [Sharp](https://sharp.pixelplumbing.com/)):
+The encoder is part of the compiler, so there is no image library to install and nothing to configure on a build machine. For each eligible image, the pipeline:
 
 1. **Filters widths** to those at or below the image's natural width. There is no upscaling. The image's own width is added as an extra breakpoint only when it is _smaller_ than your largest configured width. Otherwise your largest width is the ceiling you asked for, and a 3840 px screenshot would quietly emit a 3840 px variant in every format that no layout would ever request.
-2. **Generates one variant per width × format** and writes it to `dist/images/_optimized/{stem}-{width}-{hash}.{format}` (e.g. `hero-640-a1b2c3d4.webp`).
+2. **Generates one variant per width × format** and writes it to `dist/images/_optimized/{stem}-{width}-{hash}.{format}` (e.g. `hero-640-a1b2c3d4.avif`). A photo stored sideways is turned upright first, using its EXIF orientation, and an embedded colour profile is converted to sRGB.
 3. **Rewrites the markup.** With one configured format, the `<img>` gets a `srcset` of those variants plus a `sizes` (below). With two or more, it is wrapped in a `<picture>`:
 
 ```html
 <picture>
   <source type="image/avif" srcset="/images/_optimized/hero-640-a1b2.avif 640w, …" sizes="…" />
-  <source type="image/webp" srcset="/images/_optimized/hero-640-a1b2.webp 640w, …" sizes="…" />
-  <img src="/images/hero.jpg" alt="Hero" width="1200" height="800" loading="lazy" />
+  <source type="image/jpeg" srcset="/images/_optimized/hero-640-a1b2.jpeg 640w, …" sizes="…" />
+  <img
+    src="/images/_optimized/hero-1200-a1b2.jpeg"
+    alt="Hero"
+    width="1200"
+    height="800"
+    loading="lazy"
+  />
 </picture>
 ```
 
 The `<img>` carries no `srcset`, which is what makes it a real fallback. A bare `srcset` says nothing about format, so a browser that can't decode AVIF picks an AVIF candidate anyway and shows nothing; `<source type>` is the only markup that lets it decline. Set `"picture": false` if you'd rather have the flat `<img>` and accept that.
 
-Its `src` is the largest variant in a universally decodable format (`jpeg` or `png`) when your `formats` include one, and the original file otherwise. `src` is only ever reached by a client that understood neither `srcset` nor any `<source type>`, so it has to stay decodable; but the original is the _unresized_ source, and a resized variant of the same format is strictly better. With `formats: ["webp", "avif"]` there is nothing safe to point at, so the original stays: a smaller image nobody can decode is not an improvement.
+Its `src` is the largest variant in a universally decodable format (`jpeg` or `png`) when your `formats` include one, and the original file otherwise. `src` is only ever reached by a client that understood neither `srcset` nor any `<source type>`, so it has to stay decodable; but the original is the _unresized_ source, and a resized variant of the same format is strictly better. With `formats: ["avif"]` alone there is nothing safe to point at, so the original stays: a smaller image nobody can decode is not an improvement.
+
+### Formats
+
+| Format | Written as                                                           |
+| ------ | -------------------------------------------------------------------- |
+| `avif` | Lossy, at `quality.avif`                                             |
+| `jpeg` | Lossy and progressive, at `quality.jpeg`                             |
+| `png`  | Lossless                                                             |
+| `webp` | Lossless, so much larger than AVIF or JPEG for a photo or screenshot |
+
+The default pair covers every browser: AVIF for the ones that decode it, JPEG for the rest.
+
+JPEG has no transparency. Where `jpeg` is listed and an image has transparent pixels, the build writes PNG in its place and offers it as `image/png`, so a logo's fallback is not a white rectangle.
+
+:::doc-warning
+WebP is written losslessly. If your `formats` lists `"webp"`, the build prints a warning, because those files are several times the size of the AVIF or JPEG of the same picture. Projects created before this change list `["webp", "avif"]`: change it to `["avif", "jpeg"]`.
+:::
 
 ## How `sizes` is chosen
 
@@ -102,12 +126,13 @@ Mark your hero image `fetchpriority="high"`. The build can't work out which imag
 
 ## Which images are eligible
 
-Processed: `<img>` nodes with a static, local `src` (a string, rather than a `${...}` expression or a `$ref`) pointing at a raster file (`.jpg`, `.jpeg`, `.png`, `.webp`, `.avif`, `.tiff`) that exists on disk.
+Processed: `<img>` nodes with a static, local `src` (a string, rather than a `${...}` expression or a `$ref`) pointing at a raster file (`.jpg`, `.jpeg`, `.png`, `.webp`, `.tiff`, `.bmp`) that exists on disk.
 
 Skipped automatically:
 
 - External URLs (`http://`, `https://`, `//`, `data:`)
 - SVGs and GIFs
+- AVIF files, which are already in the format the build would convert them to
 - Dynamic `src` values (template expressions or bindings)
 - Anything carrying a `data-no-optimize` attribute
 

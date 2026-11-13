@@ -1,0 +1,32 @@
+[package]
+name = "jx_media"
+description = "Jx media pipeline: responsive raster variants, encoded in process."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+fast_image_resize = "6.1"
+image = { version = "0.25", default-features = false, features = [
+  "png",
+  "jpeg",
+  "webp",
+  "tiff",
+  "bmp",
+] }
+image-webp = "0.2"
+jpeg-encoder = "0.7"
+moxcms = "0.9"
+ravif = "0.13"
+rayon = "1"
+thiserror = "2"
+
+[dev-dependencies]
+jpeg-encoder = "0.7"
+tempfile = "3"

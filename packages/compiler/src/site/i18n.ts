@@ -22,7 +22,7 @@ import { servedRoute } from "./static-host.ts";
 /*
  * `resolveI18n` and the two types beside it live in `@jxsuite/schema/locale` rather than here.
  * Studio needs the same answer and cannot import this package — there is no `./site/i18n` export,
- * the dependency graph carries `sharp` and `esbuild`, and Studio bundles for a browser. One
+ * the dependency graph carries a native addon and `esbuild`, and Studio bundles for a browser. One
  * resolution with two hosts is the only shape in which the tag Studio offers is certain to be the
  * tag the build accepts.
  *

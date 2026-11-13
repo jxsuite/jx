@@ -1,0 +1,46 @@
+# The Rust half of the Jx compiler (specs/compiler.md §14), and this package is its npm face: the
+# `jx_napi` crate is the addon `src/index.ts` loads.
+#
+# The Cargo workspace lives INSIDE the npm package rather than at the repository root, and that is
+# load-bearing. release-please releases a component from the commits that touch its directory, and
+# the CI gate (scripts/ci/affected.ts) retests a workspace from the paths under it. A root-level
+# `crates/` would be invisible to both: a codec fix would release nothing and retest nothing.
+[workspace]
+resolver = "2"
+members = ["crates/*"]
+
+[workspace.package]
+# Crates are never published and carry no version of their own: the addon reports the npm
+# package's version, which `scripts/build.ts` hands the compiler as JX_ADDON_VERSION. A version
+# here would also live in Cargo.lock, and a release that bumped one without the other would break
+# every `--locked` build.
+version = "0.0.0"
+edition = "2021"
+rust-version = "1.99"
+license = "MIT"
+repository = "https://github.com/jxsuite/jx"
+publish = false
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+
+[workspace.lints.clippy]
+all = { level = "deny", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+module_name_repetitions = "allow"
+cast_possible_truncation = "allow"
+cast_precision_loss = "allow"
+cast_sign_loss = "allow"
+
+[profile.release]
+lto = "thin"
+codegen-units = 16
+strip = "symbols"
+panic = "abort"
+
+# Image codecs are unusably slow unoptimised, and the test suites encode real images.
+[profile.dev.package."*"]
+opt-level = 3
+[profile.test.package."*"]
+opt-level = 3

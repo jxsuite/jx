@@ -32,7 +32,7 @@ export const SERVICE_WORKER_PATH = "sw.js";
 /**
  * The one path family safe to serve cache-first.
  *
- * It is the build's only content-addressed output — `variantFilename()` embeds a digest of the
+ * It is the build's only content-addressed output — a variant's file name embeds a digest of the
  * source bytes, so a changed image is a changed URL and a cached one can never be wrong. Everything
  * else is named after what it contains rather than after its content (`_headers` says the same in
  * `NEVER_IMMUTABLE`), so caching it first would serve edited components from a stale entry.

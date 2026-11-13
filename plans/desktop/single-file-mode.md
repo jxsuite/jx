@@ -129,7 +129,7 @@ Studio comments cite `desktop.md §4.3` by name: a bare `§` in `packages/studio
 
 ## Tests
 
-Run `bun test --isolate --coverage` from `packages/desktop` (`coverageThreshold = { lines = 0.96, functions = 0.90 }`) and `packages/studio` (`{ lines = 0.958, functions = 0.941 }`), then `bun scripts/check-coverage-manifest.ts` for each. `single-file.ts` is a new source file and ships with its test. Ratchet a threshold only if the worst file rises. The shell suites fake Electron with `tests/_fake-electron.ts` and the hub suites stand up real servers with `tests/_hub-harness.ts`; `sharp` stays mocked as everywhere.
+Run `bun test --isolate --coverage` from `packages/desktop` (`coverageThreshold = { lines = 0.96, functions = 0.90 }`) and `packages/studio` (`{ lines = 0.958, functions = 0.941 }`), then `bun scripts/check-coverage-manifest.ts` for each. `single-file.ts` is a new source file and ships with its test. Ratchet a threshold only if the worst file rises. The shell suites fake Electron with `tests/_fake-electron.ts` and the hub suites stand up real servers with `tests/_hub-harness.ts`.
 
 `packages/desktop` (SFM1.1 unless noted):
 

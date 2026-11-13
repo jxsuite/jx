@@ -6,12 +6,21 @@
 
 import { describe, expect, it } from "bun:test";
 import { resolve } from "node:path";
-import { buildSiteCalls, runCliCalls, runEntry, setBuildSite, setRunCli } from "./_cli-harness.ts";
+import {
+  buildSiteCalls,
+  NO_TIMINGS,
+  runCliCalls,
+  runEntry,
+  setBuildSite,
+  setRunCli,
+} from "./_cli-harness.ts";
 
 describe("jx cli — successful build", () => {
   it("builds with a positional root and --verbose", async () => {
     buildSiteCalls.length = 0;
-    setBuildSite(() => Promise.resolve({ errors: [], files: 5, routes: 3, serverEntries: [] }));
+    setBuildSite(() =>
+      Promise.resolve({ errors: [], files: 5, routes: 3, serverEntries: [], timings: NO_TIMINGS }),
+    );
     const result = await runEntry("cli", ["build", "/tmp/jx-cli-site", "--verbose"]);
     expect(result.exited).toBe(false);
     expect(buildSiteCalls).toHaveLength(1);

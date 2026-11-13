@@ -8,6 +8,7 @@
   "packages/catalog": "0.1.13",
   "packages/collab": "0.12.0",
   "packages/compiler": "8.7.0",
+  "packages/compiler-binding": "0.1.0",
   "packages/content-mapper": "0.1.0",
   "packages/create": "1.8.1",
   "packages/desktop": "9.0.1",

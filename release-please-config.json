@@ -153,6 +153,12 @@
       "bump-minor-pre-major": true,
       "initial-version": "0.1.0"
     },
+    "packages/compiler-binding": {
+      "release-type": "node",
+      "component": "compiler-binding",
+      "bump-minor-pre-major": true,
+      "initial-version": "0.1.0"
+    },
     "packages/content-mapper": {
       "release-type": "node",
       "component": "content-mapper",

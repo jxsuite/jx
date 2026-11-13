@@ -13,10 +13,11 @@ We're crafting a comprehensive web-based application suite that aims to encompas
 
 ## Subsystem notes
 
-Three areas carry long, load-bearing rationale that lives beside the code it governs rather than here. Read the file before touching the area. Claude Code, and any harness that loads nested instruction files, also picks it up on its own when it reads a file in that directory; Codex started at the root does not.
+Four areas carry long, load-bearing rationale that lives beside the code it governs rather than here. Read the file before touching the area. Claude Code, and any harness that loads nested instruction files, also picks it up on its own when it reads a file in that directory; Codex started at the root does not.
 
 - **`.github/AGENTS.md`**: Dependency Autopilot (Dependabot, auto-merge, why `bun.nix` lags, where the Nix build runs) and Releases (release-please's two silent failure modes and the integrity check). Read it before editing `.github/**`, `release-please-config.json` or `.release-please-manifest.json`, or anything about versions, tags and npm publishing.
 - **`packages/desktop/AGENTS.md`**: how the Electron application is packaged (electron-builder, the staged backend and the smoke test that proves it), Microsoft Store publishing and Snap Store publishing. Read it before editing `packages/desktop/**`, `electron-builder.yml`, or the desktop release lanes (`bundle-desktop-*`, `store-publish`, `build-snap`, `snap-publish`).
+- **`packages/compiler-binding/AGENTS.md`**: the Rust core. Read it first.
 - **`scripts/AGENTS.md`**: the Markdown no-wrap rule in full, how `test:affected` selects tests, and the Bun coverage-drop defect behind the manifest check. Read it before touching `scripts/normalize-markdown.ts`, `scripts/lib/unwrap-prose.ts`, `bun run format:md`, `scripts/test-affected.ts` or `scripts/check-coverage-manifest.ts`.
 
 ## Studio UI Rules
@@ -71,7 +72,7 @@ Conventions:
 - Run tests only via `bun test --isolate` (plain `bun test` has known order-dependent failures and is unsupported).
 - **Every happy-dom workspace preloads `@jxsuite/test-support/preload`** (bunfig `preload`, a devDependency, and a `../test-support/**` coverage ignore; `packages/test-support/README.md`). It prints DOM nodes as one line in failure output, warns once when the local Bun differs from `.bun-version`, and **makes deep equality on a DOM node throw at once** (`toEqual`, `toStrictEqual`, `toMatchObject`, `toContainEqual`, `objectContaining`/`arrayContaining`; a node inside a class instance counts, such as an `Event`'s target or a `MutationRecord`), because Bun's diff printer hangs on a live kit element. `toHaveProperty(path, value)` is refused when the value at `path` or `value` holds a node, and `toHaveBeenCalledWith`/`toBeCalledWith` when an expected argument or ANY recorded call does (the last/nth-call forms search only that call): assert a recorded node with `expect(fn.mock.calls[0][0]).toBe(el)`. `toBe`, `toContain` and `toHaveReturnedWith` print through the compact hook and are not guarded. Compare nodes with `toBe`, lists of nodes with `expect(identities(list)).toEqual(identities([a, b]))`.
 - Studio tests: use the shared harness `packages/studio/tests/harness.ts` (lit rendering, state/tab resets, in-memory `StudioPlatform` mock, event helpers, happy-dom rect stubs). The first import of a DOM test file must be `./harness` or `./with-dom.js` — lit-html captures `document` at import time.
-- `mock.module()` before importing the module under test; `await import()` afterwards for modules with import-time side effects. sharp must always be mocked (it is unloadable on NixOS), and so must `electron`: a test hands the shell a fake from `packages/desktop/tests/_fake-electron.ts` and never loads the real module.
+- `mock.module()` before importing the module under test; `await import()` afterwards for modules with import-time side effects. `electron` must always be mocked: a test hands the shell a fake from `packages/desktop/tests/_fake-electron.ts` and never loads the real module.
 - Check per-file coverage with `bun test --isolate --coverage` from the workspace directory (`packages/<pkg>` or `extensions/<ext>`); the table prints to stderr.
 
 ## Starter Roots and the Shadowed Core

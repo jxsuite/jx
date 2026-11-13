@@ -124,6 +124,10 @@ jobs:
 
       - run: bun run build:parser
 
+      # The site's images are encoded by the compiler's Rust core.
+      - uses: ./.github/actions/setup-rust
+      - run: bun run build:addon
+
       - run: bun run build:compiler
 
       - run: bun run --cwd sites/jxsuite.com build

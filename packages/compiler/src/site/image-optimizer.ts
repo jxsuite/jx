@@ -1,17 +1,18 @@
 /**
- * Image-optimizer.js — Sharp wrapper for image resizing and format conversion.
+ * Image-optimizer — responsive image variants, encoded by the compiler's Rust core.
  *
- * Generates responsive image variants (WebP, AVIF) at configured breakpoint widths. Returns an
- * ImageManifest describing all generated variants with their output paths.
+ * Generates the variants of one source image (AVIF, JPEG, PNG, lossless WebP) at the configured
+ * breakpoint widths, and returns an ImageManifest describing them. The pixels never enter
+ * JavaScript: `@jxsuite/compiler-binding` decodes, orients, converts to sRGB, resizes and encodes
+ * in process, in parallel across a source's variants (compiler.md §7.2).
  */
 
 import { createHash } from "node:crypto";
-import { errorMessage } from "@jxsuite/schema/parse";
-import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { basename, extname, resolve } from "node:path";
-import { createRequire } from "node:module";
-// Sharp 0.35 only has a default export (function merged with a types namespace).
-import type SharpNS from "sharp";
+import { imageMetadata, processImage as encodeVariants } from "@jxsuite/compiler-binding";
+
+import type { ImageQuality } from "@jxsuite/compiler-binding";
 
 export interface ImageVariant {
   width: number; // Pixel width of the variant
@@ -23,13 +24,18 @@ export interface ImageVariant {
 export interface ImageManifest {
   variants: ImageVariant[]; // Array of generated responsive variants
   contentHash: string; // 8-char content hash for cache busting
-  original?: { width: number; height: number }; // Original image dimensions
+  original?: { width: number; height: number; format?: string }; // Original image dimensions
 }
 
 export interface ImageConfig {
   optimize: boolean;
   widths: number[];
   formats: string[];
+  /**
+   * Lossy quality per format, 1 to 100. The build service reads `avif` and `jpeg`: PNG is lossless,
+   * and so is WebP as this compiler writes it. `webp` is still read by the Cloudflare service, as
+   * the quality of its transform URLs; `png` is accepted so existing projects still validate.
+   */
   quality: { webp?: number; avif?: number; jpeg?: number; png?: number };
   sizes: string;
   lazyLoad: boolean;
@@ -49,74 +55,19 @@ export interface ImageConfig {
   remoteDomains?: string[];
 }
 
-type SharpModule = typeof SharpNS;
-/**
- * Accepted output-format type, derived from the Sharp instance's own toFormat signature. Reaching
- * into the `SharpNS.FormatEnum` namespace instead is fragile: sharp ships as `export = sharp`, so
- * whether a default type-import exposes the merged namespace depends on esModuleInterop resolution
- * (differs local vs CI).
- */
-type SharpFormat = Parameters<ReturnType<SharpModule>["toFormat"]>[0];
-
-let _sharp: SharpModule | null = null;
-
-async function getSharp() {
-  if (_sharp) {
-    return _sharp;
-  }
-  // Primary: dynamic import — works in tests (mock.module intercepts it) and in
-  // Production installs where @img/sharp-* native packages are adjacent to cli.js.
-  try {
-    const sharpMod = await import("sharp");
-    _sharp = sharpMod.default;
-    return _sharp;
-  } catch {
-    // Fall through to CJS fallback below.
-  }
-  // Fallback: resolve from the project being compiled. This covers symlinked
-  // Monorepo dev environments (e.g. NixOS) where Node.js resolves import.meta.url
-  // To the compiler package's real path, making the @img/sharp-* packages
-  // Unreachable via the primary import path.
-  try {
-    const req = createRequire(resolve(process.cwd(), "package.json"));
-    // SAFETY: sharp's CommonJS entry is `module.exports = sharp`, the value its ESM default exports.
-    _sharp = req("sharp") as SharpModule;
-    return _sharp;
-  } catch (error) {
-    throw new Error(
-      `Sharp is required for image optimization but failed to load: ${errorMessage(error)}`,
-      { cause: error },
-    );
-  }
-}
-
 const OPTIMIZED_DIR = "images/_optimized";
 
 /**
- * The part of sharp's metadata this module reads, with every member optional. The sharp these types
- * describe always reports all three, but `getSharp` may load the project's own copy instead, and
- * sharp before 0.34 declared each of them optional.
- */
-interface ReportedMetadata {
-  format?: string;
-  height?: number;
-  width?: number;
-}
-
-/**
- * Get image metadata (dimensions and format) via Sharp.
+ * Get an image's dimensions and format, reading only its header.
+ *
+ * The dimensions are the ones a viewer sees: an EXIF orientation that turns the image on its side
+ * has already exchanged them.
  *
  * @param {string} srcPath - Absolute path to source image
  * @returns {Promise<{ width: number; height: number; format: string }>}
  */
 export async function getImageMetadata(srcPath: string) {
-  const sharp = await getSharp();
-  const meta: ReportedMetadata = await sharp(srcPath).metadata();
-  return {
-    format: meta.format ?? "unknown",
-    height: meta.height ?? 0,
-    width: meta.width ?? 0,
-  };
+  return imageMetadata(srcPath);
 }
 
 /**
@@ -131,24 +82,41 @@ export function contentHash(srcPath: string) {
 }
 
 /**
+ * Bumped whenever the pipeline produces different output for the same source and settings.
+ *
+ * It is part of two things. The cache key is settings plus source bytes, which answers "would this
+ * produce the same output?" only while the code between them is fixed; capping variants at the
+ * largest configured width changed the answer for every image already cached, and without a version
+ * those images kept their stale manifests. And a variant's file name carries it (`variantHash`),
+ * because `/images/_optimized/*` is served as immutable: the same name must always be the same
+ * bytes, and a new encoder writes different bytes for an unchanged source.
+ *
+ * 1 → 2: variants stop at the largest configured width (compiler.md §7.2).
+ *
+ * 2 → 3: the Rust core encodes. EXIF orientation is applied, embedded colour profiles are converted
+ * to sRGB, WebP is lossless, and a transparent source asked for as JPEG is PNG.
+ */
+const PIPELINE_VERSION = 3;
+
+/**
+ * The hash in a variant's file name: the source's bytes and the pipeline that encoded them.
+ *
+ * @param {string} srcPath - Absolute path to source image
+ * @returns {string} 8-character hex hash
+ */
+export function variantHash(srcPath: string) {
+  return createHash("md5")
+    .update(`${contentHash(srcPath)}:${PIPELINE_VERSION}`)
+    .digest("hex")
+    .slice(0, 8);
+}
+
+/**
  * Compute a config hash from the image optimization settings.
  *
  * @param {ImageConfig} config
  * @returns {string}
  */
-/**
- * Bumped whenever the pipeline decides variants differently for the same settings.
- *
- * The cache key is settings plus source bytes, which answers "would this produce the same output?"
- * only while the code between them is fixed. It is not: capping variants at the largest configured
- * width changed the answer for every image already cached, and without a version here those images
- * keep their stale manifests — including the oversized variants the change exists to stop
- * emitting.
- *
- * 1 → 2: variants stop at the largest configured width (compiler.md §7.2).
- */
-const PIPELINE_VERSION = 2;
-
 export function configHash(config: ImageConfig) {
   const key = JSON.stringify({
     formats: config.formats,
@@ -160,97 +128,50 @@ export function configHash(config: ImageConfig) {
 }
 
 /**
- * Build the output filename for a variant.
- *
- * @param {string} stem - Original filename without extension
- * @param {number} width
- * @param {string} hash8 - 8-char content hash
- * @param {string} format - "webp", "avif", "jpeg", "png"
- * @returns {string}
- */
-export function variantFilename(stem: string, width: number, hash8: string, format: string) {
-  return `${stem}-${width}-${hash8}.${format}`;
-}
-
-/**
  * Process a single source image: resize to each configured width, encode to each format. Writes
  * variants to cacheImgDir/_optimized/ (e.g. .cache/images/_optimized/).
+ *
+ * The width ladder is the configured one capped at the source's own width, plus the source's native
+ * width when it is narrower than the top rung; a source wider than the top rung stops there. A
+ * variant whose file already exists is not encoded again, because its name carries a hash of the
+ * source's bytes and the pipeline version.
  *
  * @param {string} srcPath - Absolute path to source image
  * @param {string} cacheImgDir - Absolute path to the image cache directory (.cache/images/)
  * @param {ImageConfig} config
  * @returns {Promise<ImageManifest>}
  */
-export async function processImage(srcPath: string, cacheImgDir: string, config: ImageConfig) {
-  const sharp = await getSharp();
-  const meta = await getImageMetadata(srcPath);
-  const hash8 = contentHash(srcPath);
-  const stem = basename(srcPath, extname(srcPath));
-
+export async function processImage(
+  srcPath: string,
+  cacheImgDir: string,
+  config: ImageConfig,
+): Promise<ImageManifest> {
   const optimizedDir = resolve(cacheImgDir, "_optimized");
-  mkdirSync(optimizedDir, { recursive: true });
-
-  const variants: ImageVariant[] = [];
-
-  /*
-   * The configured ladder, capped at the source's own width — upscaling only wastes bytes.
-   *
-   * A source SMALLER than every rung would otherwise produce no variants at all, and one that falls
-   * between rungs would never be offered at its native resolution, so both get their own width
-   * added. A source LARGER than the top rung does not: the largest configured width is the ceiling
-   * the project chose, and honouring it is the point of configuring it.
-   *
-   * This used to add the native width unconditionally, so a 3840 px screenshot shipped a 3840 px
-   * AVIF *and* WebP — encoded on every cold build, copied into dist, and offered as a `3840w`
-   * candidate that no `sizes` on any real viewport would pick.
-   */
-  const ceiling = config.widths.length > 0 ? Math.max(...config.widths) : meta.width;
-  const widths = config.widths.filter((w) => w <= meta.width);
-  if (meta.width < ceiling && !widths.includes(meta.width)) {
-    widths.push(meta.width);
+  const quality: ImageQuality = {};
+  if (config.quality.avif !== undefined) {
+    quality.avif = config.quality.avif;
   }
-  if (widths.length === 0) {
-    widths.push(meta.width);
+  if (config.quality.jpeg !== undefined) {
+    quality.jpeg = config.quality.jpeg;
   }
-  widths.sort((a, b) => a - b);
-
-  const tasks: Promise<void>[] = [];
-
-  for (const width of widths) {
-    for (const format of config.formats) {
-      const filename = variantFilename(stem, width, hash8, format);
-      const outputPath = `/${OPTIMIZED_DIR}/${filename}`;
-      const absolutePath = resolve(optimizedDir, filename);
-
-      variants.push({ absolutePath, format, outputPath, width });
-
-      if (existsSync(absolutePath)) {
-        continue;
-      }
-
-      /* SAFETY: `format` is a free string from project config; a name outside the four keyed
-         qualities reads `undefined` from the lookup and takes the default of 80. */
-      const quality = config.quality[format as keyof ImageConfig["quality"]] ?? 80;
-      // SAFETY: toFormat checks the name itself and throws for a format sharp cannot encode.
-      const task = sharp(srcPath)
-        .resize(width)
-        .toFormat(format as SharpFormat, { quality })
-        .toFile(absolutePath)
-        .then(() => {});
-
-      tasks.push(task);
-    }
-  }
-
-  const CONCURRENCY = 4;
-  for (let i = 0; i < tasks.length; i += CONCURRENCY) {
-    await Promise.all(tasks.slice(i, i + CONCURRENCY));
-  }
-
+  const encoded = await encodeVariants({
+    formats: config.formats,
+    hash: variantHash(srcPath),
+    outDir: optimizedDir,
+    quality,
+    source: srcPath,
+    stem: basename(srcPath, extname(srcPath)),
+    widths: config.widths,
+  });
   return {
-    contentHash: hash8,
-    original: { format: meta.format, height: meta.height, width: meta.width },
-    variants,
+    contentHash: contentHash(srcPath),
+    original: encoded.original,
+    variants: encoded.variants.map((variant) => ({
+      absolutePath: resolve(optimizedDir, variant.fileName),
+      format: variant.format,
+      outputPath: `/${OPTIMIZED_DIR}/${variant.fileName}`,
+      width: variant.width,
+    })),
   };
 }
 

@@ -151,7 +151,7 @@ async function buildAt(url: string) {
   writeJSON("project.json", {
     build: { outDir: "./dist" },
     defaults: { layout: "./layouts/base.json" },
-    // Off because sharp cannot load on every platform the suite runs on, and the base pass runs
+    // Off because the suite runs without a built native addon, and the base pass runs
     // Over the finished HTML either way — an optimized `srcset` reaches it as an attribute.
     images: { optimize: false },
     manifest: { enabled: true, icons: [{ sizes: "192x192", src: "/icon-192.png" }], scope: "/" },

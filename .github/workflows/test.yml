@@ -74,6 +74,13 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-bun
+      # Two suites run the compiler's native addon for real, so they need it built: its own
+      # package's, and desktop's, which stages it beside the backend bundle. Every other suite
+      # replaces it with a double (packages/compiler/tests/_fake-binding.ts) and needs no Rust.
+      - if: contains(fromJSON('["packages/compiler-binding", "packages/desktop"]'), matrix.package.dir)
+        uses: ./.github/actions/setup-rust
+      - if: contains(fromJSON('["packages/compiler-binding", "packages/desktop"]'), matrix.package.dir)
+        run: bun run build:addon
       - name: Test with coverage
         shell: bash
         # A per-run deadline well under the job's, for the same liveness reason the job has one,
@@ -537,9 +544,29 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 24
+      # `bun run build` compiles the compiler's Rust core first (`build:addon`), and staging copies
+      # the addon beside the backend bundle, where the smoke test loads it.
+      - uses: ./.github/actions/setup-rust
       - run: bun run build
       - run: bun run --cwd packages/desktop stage
       - run: bun run --cwd packages/desktop smoke
+
+  # The Rust core: formatting, clippy at deny, and the crates' own tests. Not gated on the diff:
+  # with a warm cache it is well under a minute, and a path gate here would be one more list to
+  # keep true. The addon these crates become is exercised from JavaScript by the two matrix legs
+  # that build it.
+  rust:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: packages/compiler-binding
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-rust
+      - run: cargo fmt --all --check
+      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - run: cargo test --workspace --locked
 
   # The Nix build, as a job of THIS workflow rather than a workflow of its own.
   #
@@ -576,7 +603,18 @@ jobs:
   # of this design: a job the diff cannot reach must leave this green.
   ci:
     if: always()
-    needs: [changes, test, checks, lens-mutants, studio-dist, desktop-bundle, nix, coverage-comment]
+    needs:
+      [
+        changes,
+        test,
+        checks,
+        rust,
+        lens-mutants,
+        studio-dist,
+        desktop-bundle,
+        nix,
+        coverage-comment,
+      ]
     runs-on: ubuntu-latest
     steps:
       - name: Gate
