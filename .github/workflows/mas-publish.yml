@@ -1,7 +1,12 @@
-# Builds the Mac App Store package and uploads it to App Store Connect, where it lands in
-# TestFlight. specs/desktop.md §7.7 is the contract and packages/desktop/AGENTS.md's "Mac App
-# Store Publishing" section has the one-time setup. This lane never submits a build to App Review:
-# that is a person's decision, made in App Store Connect.
+# Builds the Mac App Store package, uploads it to App Store Connect (where it lands in TestFlight),
+# and then submits it to App Review, so a desktop release reaches the store with nothing left to
+# click. specs/desktop.md §7.7 is the contract and packages/desktop/AGENTS.md's "Mac App Store
+# Publishing" section has the one-time setup.
+#
+# The submission is its own job (`mas-submit`), so a failure there is retried with "Re-run failed
+# jobs" without building and uploading a second package, which Apple would refuse for its repeated
+# build number. A release calls it with `submit` on; `workflow_dispatch` leaves it off unless asked,
+# so a run from a branch only reaches TestFlight.
 #
 # It is a lane of its own and not a step of bundle-desktop-macos.yml, because nothing about it is
 # shared with the DMG except the staged application: the identity, the container, the entitlements
@@ -18,7 +23,27 @@ on:
         description: Desktop release tag to build and upload.
         required: true
         type: string
+      submit:
+        description: Submit the uploaded build to App Review.
+        default: true
+        type: boolean
+      release_type:
+        description: MANUAL (a person releases the approved version) or AFTER_APPROVAL (the store does).
+        default: MANUAL
+        type: string
   workflow_dispatch:
+    inputs:
+      submit:
+        description: Submit the uploaded build to App Review.
+        default: false
+        type: boolean
+      release_type:
+        description: MANUAL (a person releases the approved version) or AFTER_APPROVAL (the store does).
+        default: MANUAL
+        type: choice
+        options:
+          - MANUAL
+          - AFTER_APPROVAL
 
 permissions:
   contents: read
@@ -30,6 +55,12 @@ jobs:
     # on a beta image.
     runs-on: macos-15
     timeout-minutes: 60
+    outputs:
+      # The build number the package carries (`-c.mac.bundleVersion` below), which the submission
+      # looks the build up by; and whether anything was uploaded at all, since a missing secret
+      # skips every step and leaves nothing to submit.
+      build_number: ${{ github.run_number }}
+      uploaded: ${{ steps.credentials.outputs.configured }}
 
     steps:
       # A no-op until every secret exists, so the lane can merge before App Store Connect is set up.
@@ -149,3 +180,43 @@ jobs:
         run: |
           rm -f ~/.appstoreconnect/private_keys/AuthKey_*.p8
           rm -f packages/desktop/build-resources/embedded.provisionprofile
+
+  # Needs only the API key and a Bun that can run a script with no dependencies, so it runs on Linux
+  # rather than holding a macOS runner through the wait for Apple to process the build, which takes
+  # minutes. Skipped when the upload was skipped (no secrets) or failed (nothing to submit).
+  mas-submit:
+    name: Submit to App Review
+    needs: mas-publish
+    if: inputs.submit && needs.mas-publish.outputs.uploaded == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag_name }}
+
+      # `scripts/mas-submit.ts` imports nothing outside Node, so no install.
+      - name: Set up Bun
+        uses: ./.github/actions/setup-bun
+        with:
+          install: "false"
+
+      # Waits for the build to finish processing, attaches it to the release's version (renaming a
+      # rejected one rather than creating a second), fills in "What's New" where it is empty, and
+      # submits. A version already waiting, in review or live is success; a different version in
+      # review is a warning and leaves the build in TestFlight (scripts/mas-submit.ts).
+      - name: Submit to App Review
+        env:
+          APPLE_API_KEY_BASE64: ${{ secrets.APPLE_API_KEY_BASE64 }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+          RELEASE_TYPE: ${{ inputs.release_type }}
+          BUILD_NUMBER: ${{ needs.mas-publish.outputs.build_number }}
+        run: |
+          set -euo pipefail
+          export APPLE_API_KEY_PATH="$RUNNER_TEMP/AuthKey_${APPLE_API_KEY_ID}.p8"
+          printf '%s' "$APPLE_API_KEY_BASE64" | base64 --decode > "$APPLE_API_KEY_PATH"
+          trap 'rm -f "$APPLE_API_KEY_PATH"' EXIT
+          bun scripts/mas-submit.ts --build "$BUILD_NUMBER" --release-type "$RELEASE_TYPE"
