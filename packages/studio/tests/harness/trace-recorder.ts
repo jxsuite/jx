@@ -679,7 +679,8 @@ function callLine(prefix: string, method: string, args: JsonValue[]): string {
 function compressClientCalls(calls: ClientCall[]): JsonValue[] {
   const multi = new Set(calls.map((call) => call.client)).size > 1;
   return calls.map((call, i) => {
-    const prev = i > 0 ? calls[i - 1] : undefined;
+    // Index -1 reads as undefined for the first call, so no branch is needed.
+    const prev = calls[i - 1];
     let carried = 0;
     if (prev && prev.messages.length <= call.messages.length) {
       const head = call.messages.slice(0, prev.messages.length);

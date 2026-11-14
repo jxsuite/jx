@@ -94,28 +94,28 @@
     "@jxsuite/server": "workspace:^"
   },
   "devDependencies": {
-    "@codspeed/vitest-plugin": "^6.1.0",
+    "@codspeed/vitest-plugin": "^6.1.1",
     "@commitlint/cli": "^21.2.4",
     "@commitlint/config-conventional": "^21.2.4",
     "@commitlint/types": "^21.2.3",
     "@conventional-commits/parser": "0.4.1",
     "@types/bun": "1.4.4",
-    "ai-deslop": "0.4.9",
+    "ai-deslop": "0.5.3",
     "bun-types": "^1.4.4",
     "bun2nix": "^2.1.2",
-    "chrome-devtools-mcp": "^1.12.0",
+    "chrome-devtools-mcp": "^1.13.0",
     "husky": "^9.1.7",
     "metafile-codecov-bundle": "^0.1.1",
     "nano-staged": "^1.0.2",
-    "oxfmt": "^0.75.0",
-    "oxlint": "^1.90.0",
-    "oxlint-tsgolint": "^7.0.2005",
-    "puppeteer-core": "^25.16.0",
+    "oxfmt": "^0.78.0",
+    "oxlint": "^1.93.0",
+    "oxlint-tsgolint": "^7.0.2007",
+    "puppeteer-core": "^25.17.0",
     "release-please": "^17.11.2",
     "ts-migrate": "^0.1.35",
     "ts-migrate-plugins": "^0.1.35",
     "typescript": "7.1.0-beta",
-    "vitest": "^5.0.5"
+    "vitest": "^5.1.0"
   },
   "nano-staged": {
     "*.md": [

@@ -27,7 +27,7 @@
   },
   "dependencies": {
     "@jxsuite/schema": "workspace:^",
-    "hast-util-from-html": "^2.0.3",
+    "hast-util-from-html": "^2.1.0",
     "hast-util-whitespace": "^3.0.0",
     "property-information": "^7.2.0",
     "rehype-sanitize": "^6.0.0",
