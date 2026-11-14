@@ -10,28 +10,45 @@
  * Cross-window note: multiple studio windows share these keys; index writes are last-write-wins,
  * which is accepted for chat history.
  *
+ * **Two surfaces, one store** (specs/ai.md §3.13). The functions below are synchronous, because
+ * localStorage is, and the assistant restores a conversation with them at construction.
+ * {@link localSessionStore} is the same store behind `@jxsuite/ai/sessions`'s asynchronous
+ * `SessionStore`, with its operations serialized: it is what the assistant writes through, and the
+ * seam a slower store (IndexedDB, a desktop application's files) replaces without the assistant
+ * changing.
+ *
+ * - A save **reports** how it went (`SaveResult`) instead of swallowing a full or missing store.
+ * - Every read goes through `migrateTranscript`, so the three generations of payload in people's
+ *   browsers all load as the current shape, and what is saved is `persistWindow`'s window.
+ * - A payload stays a bare array that an older build can load: `blocks` and `meta` are additive.
+ *
  * @license MIT
+ * @docs studio/ai/chat
  */
+
+import { createWriteQueue, SESSION_LIMITS } from "@jxsuite/ai/sessions";
+import type { SaveResult, SessionMeta, SessionStore } from "@jxsuite/ai/sessions";
+import {
+  DEFAULT_SESSION_TITLE,
+  migrateTranscript,
+  persistWindow,
+  sessionTitle,
+} from "@jxsuite/ai/messages";
+import type { JsonObject, JsonValue, LiveMessage } from "@jxsuite/ai/messages";
+import { isString } from "@jxsuite/schema/guards";
+
+export type { SaveResult, SessionMeta } from "@jxsuite/ai/sessions";
 
 const INDEX_KEY_PREFIX = "jx-ai-chat-sessions";
 const PAYLOAD_KEY_PREFIX = "jx-ai-chat-session";
 const LEGACY_KEY_PREFIX = "jx-ai-chat-history";
 
 /** Most sessions kept per project — oldest by updatedAt evicted beyond this. */
-export const MAX_SESSIONS = 20;
+export const MAX_SESSIONS = SESSION_LIMITS.sessions;
 /** Most messages persisted per session (matches the pre-session store's cap). */
-export const MAX_PERSIST_MESSAGES = 50;
+export const MAX_PERSIST_MESSAGES = SESSION_LIMITS.messages;
 
-const DEFAULT_TITLE = "New chat";
-const MAX_TITLE_LENGTH = 60;
-
-export interface SessionMeta {
-  id: string;
-  title: string;
-  createdAt: number;
-  updatedAt: number;
-  messageCount: number;
-}
+const DEFAULT_TITLE = DEFAULT_SESSION_TITLE;
 
 interface SessionIndex {
   version: 1;
@@ -78,24 +95,34 @@ function storage(): Storage | undefined {
   return typeof localStorage === "undefined" ? undefined : localStorage;
 }
 
-function readJson<T>(key: string): T | null {
+/**
+ * A key's parsed value, or null when there is none, it is not JSON, or there is no store. A reader
+ * checks what it gets: a value can be corrupt, or written by a build that is not this one.
+ */
+function readJson(key: string): JsonValue | null {
   try {
     const raw = storage()?.getItem(key);
-    /* SAFETY: every key this module reads is one it wrote through `writeJson`, with the shape its
-       reader names (an index is a `SessionIndex`, a payload or legacy key a `PersistedMessage[]`).
-       A value that is not — corrupt, or written by a foreign build — is caught by each reader's
-       `Array.isArray` check before any member is used. */
-    return raw ? (JSON.parse(raw) as T) : null;
+    /* SAFETY: JSON.parse without a reviver yields nothing but a JSON value. */
+    return raw ? (JSON.parse(raw) as JsonValue) : null;
   } catch {
     return null;
   }
 }
 
-function writeJson(key: string, value: SessionIndex | PersistedMessage[]) {
+/** How a write went: written, refused because the store is full, or no store to write to. */
+type WriteOutcome = "ok" | "quota" | "unavailable";
+
+function writeJson(key: string, value: SessionIndex | readonly PersistedMessage[]): WriteOutcome {
+  const store = storage();
+  if (!store) {
+    return "unavailable";
+  }
   try {
-    storage()?.setItem(key, JSON.stringify(value));
+    store.setItem(key, JSON.stringify(value));
+    return "ok";
   } catch {
-    // Storage full or unavailable — chat history is not critical.
+    // A store that throws on a write is full (`QuotaExceededError`), or refusing every write.
+    return "quota";
   }
 }
 
@@ -106,6 +133,19 @@ function removeKey(key: string) {
     /* Ignore */
   }
 }
+
+/** True when a stored value is an object whose members may be read. */
+function isRecord(value: JsonValue | null | undefined): value is JsonObject {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** A fresh message id for a payload entry stored without one. */
+function restoredId(): string {
+  return `restored_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+}
+
+/** What `migrateTranscript` is given to fill what an old payload lacks. */
+const MIGRATION = { newId: restoredId, now: () => Date.now() };
 
 // ─── Index ──────────────────────────────────────────────────────────────────
 
@@ -118,37 +158,58 @@ function emptyIndex(): SessionIndex {
  * (`jx-ai-chat-history:<root>`) into the first session on first access.
  */
 function readIndex(root: string): SessionIndex {
-  const stored = readJson<SessionIndex>(indexKey(root));
-  if (stored && Array.isArray(stored.sessions)) {
-    return { ...emptyIndex(), ...stored };
+  const stored = readJson(indexKey(root));
+  if (isSessionIndex(stored)) {
+    const index: SessionIndex = stored;
+    return { ...emptyIndex(), ...index };
   }
   return migrateLegacy(root) ?? emptyIndex();
 }
 
-function writeIndex(root: string, index: SessionIndex) {
-  index.sessions.sort((a, b) => b.updatedAt - a.updatedAt);
-  writeJson(indexKey(root), index);
+/**
+ * True when a stored value is a session index: an object holding a `sessions` list. An index is
+ * written only by `writeIndex`; each entry's members are display text and the numbers the list
+ * sorts by, and a value with no such list (corrupt, or foreign) is treated as absent.
+ */
+function isSessionIndex(value: JsonValue | null): value is JsonObject & SessionIndex {
+  return isRecord(value) && Array.isArray(value.sessions);
 }
 
-/** Convert a legacy single-conversation store into a one-session index, if present. */
+function writeIndex(root: string, index: SessionIndex): WriteOutcome {
+  index.sessions.sort((a, b) => b.updatedAt - a.updatedAt);
+  return writeJson(indexKey(root), index);
+}
+
+/**
+ * Convert a legacy single-conversation store into a one-session index, if present.
+ *
+ * The legacy key is removed only once the session it became has been written, payload and index
+ * both: a store too full to take the migrated copy keeps the original, and the migration runs again
+ * on the next read rather than losing the conversation. A key holding nothing to migrate is removed
+ * at once.
+ */
 function migrateLegacy(root: string): SessionIndex | null {
-  const msgs = readJson<PersistedMessage[]>(legacyKey(root));
-  removeKey(legacyKey(root));
-  if (!Array.isArray(msgs) || msgs.length === 0) {
+  const msgs = migrateTranscript(readJson(legacyKey(root)), MIGRATION);
+  if (!msgs || msgs.length === 0) {
+    removeKey(legacyKey(root));
     return null;
   }
-  const timestamps = msgs.map((m) => m.timestamp).filter((t): t is number => typeof t === "number");
+  const timestamps = msgs.map((m) => m.timestamp);
   const firstUser = msgs.find((m) => m.role === "user");
+  const window = persistWindow(msgs, MAX_PERSIST_MESSAGES);
   const meta: SessionMeta = {
     id: newSessionId(),
     title: deriveTitle(firstUser?.content ?? ""),
-    createdAt: timestamps.length > 0 ? Math.min(...timestamps) : Date.now(),
-    updatedAt: timestamps.length > 0 ? Math.max(...timestamps) : Date.now(),
-    messageCount: msgs.length,
+    createdAt: Math.min(...timestamps),
+    updatedAt: Math.max(...timestamps),
+    messageCount: window.length,
   };
-  writeJson(payloadKey(root, meta.id), msgs.slice(-MAX_PERSIST_MESSAGES));
   const index: SessionIndex = { version: 1, activeId: meta.id, sessions: [meta] };
-  writeIndex(root, index);
+  if (writeJson(payloadKey(root, meta.id), window) !== "ok" || writeIndex(root, index) !== "ok") {
+    removeKey(payloadKey(root, meta.id));
+    return null;
+  }
+  removeKey(legacyKey(root));
   return index;
 }
 
@@ -160,21 +221,14 @@ function newSessionId() {
 
 /**
  * Derive a session title from its first user message: first non-empty line, whitespace-collapsed,
- * capped at {@link MAX_TITLE_LENGTH} characters.
+ * capped at 60 characters. It is `sessionTitle` from `@jxsuite/ai/messages`, which every store
+ * titles a conversation with.
  *
  * @param {string} text
  * @returns {string}
  */
 export function deriveTitle(text: string): string {
-  const line =
-    text
-      .split("\n")
-      .map((l) => l.replaceAll(/\s+/g, " ").trim())
-      .find((l) => l.length > 0) ?? "";
-  if (!line) {
-    return DEFAULT_TITLE;
-  }
-  return line.length > MAX_TITLE_LENGTH ? `${line.slice(0, MAX_TITLE_LENGTH - 1)}…` : line;
+  return sessionTitle(text, SESSION_LIMITS.titleChars);
 }
 
 /** List a project's sessions, most recently updated first. */
@@ -224,33 +278,77 @@ export function createSession(root: string, firstUserText?: string): SessionMeta
   return meta;
 }
 
-/** Load a session's messages, or null when it doesn't exist / is corrupt. */
-export function loadSession(root: string, id: string): PersistedMessage[] | null {
-  const msgs = readJson<PersistedMessage[]>(payloadKey(root, id));
-  return Array.isArray(msgs) ? msgs : null;
+/**
+ * Load a session's messages in the current shape, or null when it doesn't exist / is corrupt.
+ *
+ * Every read is migrated (specs/ai.md §3.13). A message stored without an id is given one, and the
+ * payload is written back so the id it was given is the id it keeps.
+ */
+export function loadSession(root: string, id: string): LiveMessage[] | null {
+  const raw = readJson(payloadKey(root, id));
+  const msgs = migrateTranscript(raw, MIGRATION);
+  if (!msgs) {
+    return null;
+  }
+  const minted = Array.isArray(raw) && raw.some((entry) => isRecord(entry) && !isString(entry.id));
+  if (minted) {
+    writeJson(payloadKey(root, id), msgs);
+  }
+  return msgs;
 }
 
+/** What a save that could not be written tells the author. */
+const SAVE_FAILED = {
+  not_in_index: "This conversation is no longer in the list of chats, so it was not saved.",
+  quota:
+    "This browser's storage is full, so the conversation was not saved. Delete older chats to make room.",
+  unavailable: "This browser has no storage available, so the conversation is not being saved.",
+} as const;
+
 /**
- * Persist a session's messages (trimmed to {@link MAX_PERSIST_MESSAGES}) and refresh its index
- * entry (updatedAt, messageCount, and the title while still the default).
+ * Persist a session's messages and refresh its index entry (updatedAt, messageCount, and the title
+ * while still the default), and say how it went.
+ *
+ * What is written is the conversation's window: its last {@link MAX_PERSIST_MESSAGES} messages,
+ * starting at one a person wrote. A session that is not in the index is **not written**: it was
+ * deleted (or never created), and a save that landed after the delete would bring its payload back
+ * with nothing to list it under.
  */
-export function saveSession(root: string, id: string, messages: PersistedMessage[]) {
-  const trimmed = messages.slice(-MAX_PERSIST_MESSAGES);
-  writeJson(payloadKey(root, id), trimmed);
+export function saveSession(
+  root: string,
+  id: string,
+  messages: readonly PersistedMessage[],
+): SaveResult {
+  const refused = (reason: keyof typeof SAVE_FAILED): SaveResult => ({
+    message: SAVE_FAILED[reason],
+    ok: false,
+    reason,
+  });
+  if (!storage()) {
+    return refused("unavailable");
+  }
   const index = readIndex(root);
   const meta = index.sessions.find((s) => s.id === id);
   if (!meta) {
-    return;
+    return refused("not_in_index");
+  }
+  /* SAFETY: a caller's messages are the live chat's (document-assistant's `persistChat`), each a
+     LiveMessage but for the tool-call results it strips; the window only reads `role`. */
+  const window = persistWindow(messages as readonly LiveMessage[], MAX_PERSIST_MESSAGES);
+  const wrote = writeJson(payloadKey(root, id), window);
+  if (wrote !== "ok") {
+    return refused(wrote);
   }
   meta.updatedAt = Date.now();
-  meta.messageCount = trimmed.length;
+  meta.messageCount = window.length;
   if (meta.title === DEFAULT_TITLE) {
-    const firstUser = trimmed.find((m) => m.role === "user");
+    const firstUser = window.find((m) => m.role === "user");
     if (firstUser) {
       meta.title = deriveTitle(firstUser.content);
     }
   }
-  writeIndex(root, index);
+  const indexed = writeIndex(root, index);
+  return indexed === "ok" ? { meta: { ...meta }, ok: true } : refused(indexed);
 }
 
 /** Delete a session's payload and index entry; clears activeId when it was active. */
@@ -291,3 +389,36 @@ export function moveSession(fromRoot: string, toRoot: string, id: string) {
   toIndex.activeId = id;
   writeIndex(toRoot, toIndex);
 }
+
+// ─── The asynchronous store ─────────────────────────────────────────────────
+
+/** The one queue this window's session writes go through, in the order they were asked for. */
+const queue = createWriteQueue();
+
+/**
+ * This store behind the `SessionStore` contract of `@jxsuite/ai/sessions` (specs/ai.md §3.13).
+ *
+ * Every operation runs through one queue, so a save cannot land after the delete that followed it.
+ * The queue starts an operation at once when nothing is waiting, and every operation here is
+ * synchronous, so a caller that does not await still sees its write the moment the call returns.
+ */
+export const localSessionStore: SessionStore = {
+  durable: true,
+  create: (root, firstText) => queue.run(() => createSession(root, firstText)),
+  getActive: (root) => queue.run(() => getActiveSessionId(root)),
+  list: (root) => queue.run(() => listSessions(root)),
+  load: (root, id) => queue.run(() => loadSession(root, id)),
+  move: (fromRoot, toRoot, id) =>
+    queue.run(() => {
+      moveSession(fromRoot, toRoot, id);
+    }),
+  remove: (root, id) =>
+    queue.run(() => {
+      deleteSession(root, id);
+    }),
+  save: (root, id, messages) => queue.run(() => saveSession(root, id, messages)),
+  setActive: (root, id) =>
+    queue.run(() => {
+      setActiveSession(root, id);
+    }),
+};

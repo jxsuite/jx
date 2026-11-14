@@ -70,7 +70,8 @@
         "id": "ctx_summary_1767225600000",
         "role": "user",
         "content": "[Earlier conversation truncated. 31 messages dropped to stay within token budget. The most recent 4 messages are preserved.]",
-        "timestamp": 1767225600000
+        "timestamp": 1767225600000,
+        "meta": { "kind": "ctx_summary" }
       },
       {
         "id": "msg_T_1",
@@ -87,11 +88,12 @@
         ]
       },
       {
-        "content": "{\"success\":false,\"error\":\"This tool call was never completed — the session was reloaded or the history was trimmed.\"}",
         "id": "sealed_call_q_0",
         "role": "tool",
+        "content": "{\"success\":false,\"error\":\"This tool call was never completed — the session was reloaded or the history was trimmed.\"}",
         "timestamp": 1767225601000,
-        "toolCallId": "call_q"
+        "toolCallId": "call_q",
+        "meta": { "kind": "sealed" }
       },
       { "id": "msg_T_2", "role": "user", "content": "Keep going", "timestamp": 1767225602000 },
       {

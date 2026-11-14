@@ -10,6 +10,7 @@ spec:
   - ai.md#3.11 # interactions and approvals run before the tool body
   - ai.md#2.7 # wire version 2 and provider adapters
   - ai.md#3.12 # a suspended turn resumes from a checkpoint
+  - ai.md#3.13 # a persisted conversation
 code:
   - packages/ai/src/tools.ts
   - packages/ai/src/core-types.ts
@@ -24,6 +25,8 @@ code:
   - packages/ai/src/harness/policy.ts
   - packages/ai/src/harness/checkpoint.ts
   - packages/ai/src/messages/digest.ts
+  - packages/ai/src/messages/persist.ts
+  - packages/ai/src/sessions.ts
   - packages/ai/src/testing/memory-host.ts
   - packages/ai/src/testing/scripted-model.ts
   - packages/ai/src/jx-tools/index.ts
@@ -244,6 +247,18 @@ A resume must run with the same tools, policy and system prompt as the turn it c
 A provider failure worth waiting out can suspend a turn too. List its error codes in `policy.suspendOn`, for example a lapsed credential or a rate limit, and a round that fails with one ends the turn `suspended` between rounds. Resume it with `response: null` once the provider will answer.
 
 To test a host of your own, `@jxsuite/ai/testing` has `scriptedModel(rounds)`, a model function that answers each round with the frames you script, and `createMemoryHarnessHost(document)`, an in-memory document the tree tools read and write.
+
+## Keeping conversations
+
+`@jxsuite/ai/sessions` defines `SessionStore`, the contract for wherever a host keeps its conversations: `list`, `load`, `save`, `create`, `remove`, `move`, `getActive` and `setActive`, each per root (a project path, or `""` for none) and each asynchronous. `createMemorySessionStore()` is a store that keeps everything in memory, for a headless run or a test. Studio's own store keeps conversations in the browser's localStorage behind the same contract.
+
+Three helpers from `@jxsuite/ai/messages` do the parts every store shares:
+
+- `migrateTranscript(raw, { newId, now })` reads a stored conversation as the current message shape, whatever version of Studio wrote it, or answers `null` when the value is not a conversation. Run it on every read. It gives an id to a message stored without one, so save what it returns.
+- `persistWindow(messages, max)` is the part of a conversation to save: its last `max` messages, starting at the first one a person wrote.
+- `sessionTitle(text)` titles a conversation from the first thing a person wrote in it.
+
+`save` answers a `SaveResult` rather than throwing. `{ ok: false, reason }` says why nothing was written: `quota` (the store is full), `unavailable` (there is no store), or `not_in_index` (the conversation was deleted, so it is deliberately not written back). Show the first two to the person. A store whose writes can overlap should run them through `createWriteQueue()`, which keeps them in the order they were asked for, so a save still in flight cannot land after the delete that followed it.
 
 ## Which tools the model sees
 

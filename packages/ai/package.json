@@ -26,6 +26,7 @@
     "./catalog": "./src/catalog/index.ts",
     "./testing": "./src/testing/index.ts",
     "./providers": "./src/providers/index.ts",
+    "./sessions": "./src/sessions.ts",
     "./schemas/*": "./schemas/*"
   },
   "publishConfig": {

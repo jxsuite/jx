@@ -35,14 +35,21 @@
       }
     ],
     "restored": [
-      { "role": "user", "content": "No id here", "timestamp": 1767225601000, "id": "restored_T_1" },
+      {
+        "id": "restored_T_1",
+        "role": "user",
+        "content": "No id here",
+        "timestamp": 1767225601000,
+        "meta": { "kind": "restored" }
+      },
       {
         "id": "restored_T_2",
         "role": "assistant",
         "content": "Empty id.",
-        "timestamp": 1767225602000
+        "timestamp": 1767225602000,
+        "meta": { "kind": "restored" }
       },
-      { "id": "msg_T_3", "role": "user", "content": "No timestamp" }
+      { "id": "msg_T_3", "role": "user", "content": "No timestamp", "timestamp": 1767225600000 }
     ],
     "wire": [
       { "role": "user", "content": "No id here" },
@@ -50,6 +57,37 @@
       { "role": "user", "content": "No timestamp" }
     ],
     "repair": { "dropped": 0, "moved": 0, "sealed": 0 },
-    "storage": "unchanged"
+    "storage": {
+      "jx-ai-chat-session:/proj/demo:s_ids": [
+        {
+          "id": "restored_T_1",
+          "role": "user",
+          "content": "No id here",
+          "timestamp": 1767225601000,
+          "meta": { "kind": "restored" }
+        },
+        {
+          "id": "restored_T_2",
+          "role": "assistant",
+          "content": "Empty id.",
+          "timestamp": 1767225602000,
+          "meta": { "kind": "restored" }
+        },
+        { "id": "msg_T_3", "role": "user", "content": "No timestamp", "timestamp": 1767225600000 }
+      ],
+      "jx-ai-chat-sessions:/proj/demo": {
+        "version": 1,
+        "activeId": "s_ids",
+        "sessions": [
+          {
+            "id": "s_ids",
+            "title": "No id here",
+            "createdAt": 1767225601000,
+            "updatedAt": 1767225602000,
+            "messageCount": 3
+          }
+        ]
+      }
+    }
   }
 }

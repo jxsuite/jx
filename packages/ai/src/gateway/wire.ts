@@ -6,14 +6,12 @@
  */
 
 import type { JsonObject, JsonValue } from "../core-types.ts";
+import { checkBlock } from "../messages/blocks.ts";
 import { toOpenAIMessages, toOpenAITools } from "../messages/openai.ts";
 import type { ChatRequestV2 } from "../streaming-client.ts";
 
 /** The roles a message may carry. */
 const ROLES: ReadonlySet<string> = new Set(["user", "assistant", "tool", "system"]);
-
-/** The provider families a block may name. */
-const FAMILIES: ReadonlySet<string> = new Set(["openai-compat", "anthropic"]);
 
 /** The tool-choice words a request may carry. */
 const TOOL_CHOICES: ReadonlySet<string> = new Set(["auto", "none", "required"]);
@@ -69,75 +67,6 @@ function isNumber(value: JsonValue | undefined): value is number {
  */
 function isOptionalNumber(value: JsonValue | undefined): boolean {
   return value === undefined || (isNumber(value) && Number.isFinite(value));
-}
-
-/**
- * The first member of `block` that is not what its `type` requires, as a path under the block, or
- * null when the block is well formed.
- *
- * @param {JsonValue} block - One entry of a message's `blocks`
- * @returns {string | null}
- */
-function checkBlock(block: JsonValue): string | null {
-  if (!isObject(block)) {
-    return "";
-  }
-  switch (block.type) {
-    case "text": {
-      return isString(block.text) ? null : "/text";
-    }
-    case "reasoning": {
-      if (!isString(block.text)) {
-        return "/text";
-      }
-      if (!isOptionalString(block.signature)) {
-        return "/signature";
-      }
-      if (!isOptionalString(block.redacted)) {
-        return "/redacted";
-      }
-      const { provenance } = block;
-      if (provenance === undefined) {
-        return null;
-      }
-      if (!isObject(provenance)) {
-        return "/provenance";
-      }
-      if (!isString(provenance.family) || !FAMILIES.has(provenance.family)) {
-        return "/provenance/family";
-      }
-      if (provenance.model !== null && !isString(provenance.model)) {
-        return "/provenance/model";
-      }
-      return isOptionalString(provenance.binding) ? null : "/provenance/binding";
-    }
-    case "tool_call": {
-      for (const key of ["id", "name", "argumentsText"]) {
-        if (!isString(block[key])) {
-          return `/${key}`;
-        }
-      }
-      return isOptionalString(block.signature) ? null : "/signature";
-    }
-    case "tool_result": {
-      if (!isString(block.callId)) {
-        return "/callId";
-      }
-      if (block.isError !== true && block.isError !== false) {
-        return "/isError";
-      }
-      return isString(block.content) ? null : "/content";
-    }
-    case "opaque": {
-      if (!isString(block.family) || !FAMILIES.has(block.family)) {
-        return "/family";
-      }
-      return block.data === undefined ? "/data" : null;
-    }
-    default: {
-      return "/type";
-    }
-  }
 }
 
 /**
