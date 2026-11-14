@@ -12,7 +12,7 @@
 
 import { AI_PROVIDER_HEADER } from "@jxsuite/ai/streaming-client";
 import type { AiCredentials, AiProviderFamily } from "@jxsuite/ai/streaming-client";
-import type { AiModelsResponse, OfferedAction } from "@jxsuite/protocol";
+import type { AiChatLimits, AiModelsResponse, OfferedAction } from "@jxsuite/protocol";
 import { isBoolean, isNumber, isString } from "@jxsuite/schema/guards";
 import { getPlatform } from "../platform";
 import { offeredActions } from "../platform-errors";
@@ -93,6 +93,10 @@ let proxyModelsError = "";
 let proxyAction: ProxyActionOffer | null = null;
 /** The families the last probe said the chat route reaches; the default alone until one says more. */
 let proxyProviders: AiProviderFamily[] = ["openai-compat"];
+/** The chat-route wire versions the last probe advertised; version 1 alone until one says more. */
+let proxyWire: number[] = [1];
+/** The ceilings the last probe said the chat route enforces; none until one says so. */
+let proxyLimits: AiChatLimits = {};
 
 /** What a managed backend says the assistant needs first, in the backend's own words. */
 export interface ProxyActionOffer {
@@ -143,6 +147,8 @@ export function resetModelCache() {
   proxyModelsError = "";
   proxyAction = null;
   proxyProviders = ["openai-compat"];
+  proxyWire = [1];
+  proxyLimits = {};
   /* The probe's result IS the flags above. Clearing them while keeping the settled promise
      would strand every gate on a permanent "unconfigured, unmanaged" reading — ensureProxyProbe
      would no-op forever and the managed option would vanish until a full reload. */
@@ -324,6 +330,26 @@ export function backendProviders(): readonly AiProviderFamily[] {
   return proxyProviders;
 }
 
+/**
+ * The chat-route wire versions the backend accepts, as the last probe advertised them (specs/ai.md
+ * §2). A backend that says nothing speaks version 1 alone.
+ *
+ * @returns {readonly number[]}
+ */
+export function backendWire(): readonly number[] {
+  return proxyWire;
+}
+
+/**
+ * The ceilings the backend's chat route enforces, as the last probe declared them (specs/ai.md §2).
+ * Empty when it declared none, which is every backend that enforces none.
+ *
+ * @returns {AiChatLimits}
+ */
+export function chatRouteLimits(): AiChatLimits {
+  return proxyLimits;
+}
+
 /** The proxy's preferred model id ("" when it does not declare one). */
 export function getProxyDefaultModel(): string {
   return proxyDefaultModel;
@@ -395,6 +421,41 @@ function providersOf(listed: readonly string[] | undefined): AiProviderFamily[] 
 }
 
 /**
+ * The wire versions a probe advertised, keeping only whole numbers. The answer is the backend's
+ * JSON, so an entry its type calls a number may be anything; a probe that lists nothing usable
+ * speaks version 1.
+ *
+ * @param {AiModelsResponse["wire"]} listed - The probe's `wire`, as sent
+ * @returns {number[]}
+ */
+function wireOf(listed: AiModelsResponse["wire"]): number[] {
+  const versions = Array.isArray(listed)
+    ? listed.filter((version) => isNumber(version) && Number.isInteger(version))
+    : [];
+  return versions.length > 0 ? versions : [1];
+}
+
+/**
+ * The limits a probe declared, keeping only the positive whole numbers: a ceiling of zero or a
+ * string is not one a client can trim to.
+ *
+ * @param {Partial<AiChatLimits> | undefined} declared - The probe's `limits`, as sent
+ * @returns {AiChatLimits}
+ */
+function limitsOf(declared: Partial<AiChatLimits> | undefined): AiChatLimits {
+  const limits: AiChatLimits = {};
+  const maxMessages = declared?.maxMessages;
+  if (isNumber(maxMessages) && Number.isInteger(maxMessages) && maxMessages > 0) {
+    limits.maxMessages = maxMessages;
+  }
+  const maxBodyBytes = declared?.maxBodyBytes;
+  if (isNumber(maxBodyBytes) && Number.isInteger(maxBodyBytes) && maxBodyBytes > 0) {
+    limits.maxBodyBytes = maxBodyBytes;
+  }
+  return limits;
+}
+
+/**
  * Fetch the models available through the AI proxy. Returns the cached list when present unless
  * `force` is set; throws on HTTP/network failure (callers surface the error).
  *
@@ -444,6 +505,8 @@ export async function fetchAvailableModels(
   proxyModelsError = data.upstreamError !== undefined ? (data.upstreamMessage ?? "") : "";
   proxyAction = null;
   proxyProviders = providersOf(data.providers);
+  proxyWire = wireOf(data.wire);
+  proxyLimits = limitsOf(data.limits);
   if (data.code === "action_required") {
     const offer: ProxyActionOffer = { actions: offeredActions(data.actions) };
     if (isString(data.detail) && data.detail) {

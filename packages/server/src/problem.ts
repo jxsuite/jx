@@ -74,6 +74,9 @@ export function problemTypeForStatus(status: number): ProblemTypeName {
     case 413: {
       return "payloadTooLarge";
     }
+    case 429: {
+      return "rateLimited";
+    }
     case 501: {
       return "capabilityUnavailable";
     }

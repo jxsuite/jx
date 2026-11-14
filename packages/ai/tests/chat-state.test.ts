@@ -265,6 +265,21 @@ describe("chat-state error and cancel", () => {
     expect(chat.pendingToolCalls).toEqual([]);
   });
 
+  it("setError records the failure's machine code, and a later send clears it", () => {
+    const chat = createChatState();
+    expect(chat.errorCode).toBeNull();
+    chat.sendMessage("Hello");
+    chat.setError("Reconnect Cloudflare.", "cf_reconnect_required");
+    expect(chat.errorCode).toBe("cf_reconnect_required");
+    // An error with no code leaves none behind from the last one.
+    chat.setError("boom");
+    expect(chat.errorCode).toBeNull();
+    chat.setError("rate limited", "429");
+    chat.sendMessage("again");
+    expect(chat.error).toBeNull();
+    expect(chat.errorCode).toBeNull();
+  });
+
   it("setError is safe when there is no active streaming message", () => {
     const chat = createChatState();
     chat.setError("standalone error");

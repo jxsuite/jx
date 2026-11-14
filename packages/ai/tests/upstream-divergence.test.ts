@@ -2,13 +2,13 @@
  * The direct client's SSE normalizer, frozen against the proxy's upstream fixtures (the v1 freeze
  * taken before the harness refactor), and the list of places where the two normalizers disagree.
  *
- * There are two OpenAI-compatible normalizers today: the proxy's (`packages/server/src/ai-api.ts`,
- * behind POST /__studio/ai/chat) and `createOpenAIStreamingClient` here. This suite feeds the SAME
- * upstream bodies, `packages/server/tests/fixtures/ai-upstream/<name>.sse`, through the client and
- * compares its events with `<name>.client.json` beside them. It then reads the proxy's committed
+ * There is one OpenAI-compatible normalizer, the gateway's, and two callers: the proxy
+ * (`packages/server/src/ai-api.ts`, behind POST /__studio/ai/chat) and
+ * `createOpenAIStreamingClient` here. This suite feeds the SAME upstream bodies,
+ * `packages/server/tests/fixtures/ai-upstream/<name>.sse`, through the client and compares its
+ * events with `<name>.client.json` beside them. It then reads the proxy's committed
  * `<name>.server.json` and asserts that the fixtures where the two differ, and the members that
- * differ, are exactly `EXPECTED_DIVERGENCE` below. A later slice converges them, and that table is
- * what it empties.
+ * differ, are exactly `EXPECTED_DIVERGENCE` below, which is empty.
  *
  * The fixture format, the chunking check and the golden rules are those of
  * `packages/server/tests/ai-upstream-fixtures.test.ts`, which owns the fixtures. The loading and
@@ -44,33 +44,13 @@ const NAMES = readdirSync(FIXTURES)
  * with every member path that differs (member order ignored). A fixture absent from this table
  * produces identical frames on both sides.
  *
- * Across this corpus, today's divergence is two differences, both on error frames. One
- * normaliser (specs/ai.md §2.4) removes both, by moving the client onto the proxy's frames: the clean message,
- * `code` and `problem`. The table is complete for what a fixture can express, which is an upstream
- * RESPONSE. It cannot express a request that never gets one — `fetch` rejecting before any body —
- * and the two sides differ there too (the proxy attaches a `problem` to its network-error frame);
- * `packages/server/tests/ai-api.test.ts` and `tests/streaming-client.test.ts` pin those.
- *
- *   1. An upstream HTTP error. The proxy forwards the message it extracted from the provider's body
- *      (or the status text, for an empty one) and attaches an RFC 9457 `problem`. The client
- *      prefixes `API error <status>: ` to the same message and attaches no `problem`. Both carry
- *      `code: "<status>"`.
- *   2. A failure while reading the stream: a chunk the normalizer throws on, or a connection reset.
- *      The `Stream error: …` message is the same on both sides; only the proxy attaches `problem`.
- *
- * An abort mid-stream is NOT a divergence: both sides end with `done: cancelled`.
+ * The table is empty, and that is the assertion: the client runs the gateway's normalizer
+ * (specs/ai.md §2.4), so an upstream response reaches a caller as the same frames whether a backend
+ * read it or the client did. A fixture can express only an upstream RESPONSE; a request that never
+ * gets one (`fetch` rejecting before any body) is pinned by `tests/streaming-client.test.ts` and
+ * `packages/server/tests/ai-api.test.ts`, and both sides answer it with the same frame too.
  */
-const EXPECTED_DIVERGENCE = {
-  // 1. Upstream HTTP errors: the message format, and the proxy's `problem`.
-  "http-401-error-object": ["$[0].message", "$[0].problem"],
-  "http-403-cloudflare-errors": ["$[0].message", "$[0].problem"],
-  "http-429-error-string": ["$[0].message", "$[0].problem"],
-  "http-500-plain-text": ["$[0].message", "$[0].problem"],
-  "http-502-empty-body": ["$[0].message", "$[0].problem"],
-  // 2. Mid-stream failures: only the proxy's `problem`.
-  "null-chunk": ["$[1].problem"],
-  "reset-mid-stream": ["$[3].problem"],
-} satisfies Record<string, string[]>;
+const EXPECTED_DIVERGENCE: Record<string, string[]> = {};
 
 // ─── Fixture loading (mirrored from packages/server/tests/ai-upstream-fixtures.test.ts) ──────────
 

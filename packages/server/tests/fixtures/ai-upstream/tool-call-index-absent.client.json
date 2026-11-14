@@ -1,0 +1,46 @@
+{
+  "frames": [
+    {
+      "type": "tool_call_start",
+      "id": "call_a",
+      "name": "first"
+    },
+    {
+      "type": "tool_call_delta",
+      "id": "call_a",
+      "args": "{\"x\":"
+    },
+    {
+      "type": "tool_call_start",
+      "id": "call_b",
+      "name": "second"
+    },
+    {
+      "type": "tool_call_delta",
+      "id": "call_b",
+      "args": "{\"y\":"
+    },
+    {
+      "type": "tool_call_delta",
+      "id": "call_a",
+      "args": "1}"
+    },
+    {
+      "type": "tool_call_delta",
+      "id": "call_b",
+      "args": "2}"
+    },
+    {
+      "type": "tool_call_end",
+      "id": "call_a"
+    },
+    {
+      "type": "tool_call_end",
+      "id": "call_b"
+    },
+    {
+      "type": "done",
+      "stopReason": "tool_calls"
+    }
+  ]
+}

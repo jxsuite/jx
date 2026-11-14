@@ -1,9 +1,16 @@
 {
   "frames": [
     {
-      "type": "error",
-      "message": "API error 500: Internal Server Error\n",
-      "code": "500"
+      "code": "500",
+      "message": "Internal Server Error\n",
+      "problem": {
+        "status": 500,
+        "title": "The backend failed to complete the request",
+        "type": "https://jxsuite.com/problems/internal-error",
+        "detail": "Internal Server Error\n",
+        "error": "Internal Server Error\n"
+      },
+      "type": "error"
     }
   ]
 }

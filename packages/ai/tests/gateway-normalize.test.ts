@@ -14,6 +14,7 @@
 import { describe, expect, it } from "bun:test";
 import { problemDetails } from "@jxsuite/protocol";
 import { fetchFailureFrame, normalizeOpenAIStream } from "../src/gateway/normalize.ts";
+import type { NormalizeOptions } from "../src/gateway/normalize.ts";
 import type { StreamEvent } from "../src/streaming-client.ts";
 import type { JsonObject } from "../src/core-types.ts";
 
@@ -122,6 +123,10 @@ function failingUpstream(first: string, error: Error): FailingUpstream {
 // ─── A 200 stream ────────────────────────────────────────────────────────────
 
 const DONE_STOP: StreamEvent = { type: "done", stopReason: "stop" };
+/* A body that closed having sent neither `[DONE]` nor a finish reason this stream reports: the
+   reply was cut off (specs/ai.md §2). `stopReason` stays "stop" for a reader that predates the
+   member. */
+const DONE_CUT: StreamEvent = { type: "done", stopReason: "stop", truncated: true };
 
 const STREAMS: readonly (readonly [label: string, body: string, frames: StreamEvent[]])[] = [
   [
@@ -129,11 +134,11 @@ const STREAMS: readonly (readonly [label: string, body: string, frames: StreamEv
     sse(choice({ content: "Hello" }), choice({ content: " world" }), choice({}, "stop"), "[DONE]"),
     [{ type: "delta", content: "Hello" }, { type: "delta", content: " world" }, DONE_STOP],
   ],
-  ["an empty body is a bare done", "", [DONE_STOP]],
+  ["an empty body is a done that says it was cut off", "", [DONE_CUT]],
   [
-    "a body that ends without [DONE] still finishes",
+    "a body that ends with no [DONE] and no finish reason finishes truncated",
     sse(choice({ content: "a" })),
-    [{ type: "delta", content: "a" }, DONE_STOP],
+    [{ type: "delta", content: "a" }, DONE_CUT],
   ],
   [
     "reasoning under either name, and an empty one is not a frame",
@@ -147,7 +152,7 @@ const STREAMS: readonly (readonly [label: string, body: string, frames: StreamEv
       { type: "reasoning", content: "Weighing it" },
       { type: "reasoning", content: "and again" },
       { type: "delta", content: "Hi" },
-      DONE_STOP,
+      DONE_CUT,
     ],
   ],
   [
@@ -177,7 +182,7 @@ const STREAMS: readonly (readonly [label: string, body: string, frames: StreamEv
     [
       { type: "tool_call_start", id: "c2", name: "" },
       { type: "tool_call_end", id: "c2" },
-      DONE_STOP,
+      DONE_CUT,
     ],
   ],
   [
@@ -200,17 +205,57 @@ const STREAMS: readonly (readonly [label: string, body: string, frames: StreamEv
     ],
   ],
   [
-    "an id repeated on a later chunk starts the call again",
+    "an id repeated on a later chunk continues the call",
     sse(
       choice({ tool_calls: [{ function: { name: "t" }, id: "c1", index: 0 }] }),
       choice({ tool_calls: [{ function: { arguments: "{}" }, id: "c1", index: 0 }] }),
     ),
     [
       { type: "tool_call_start", id: "c1", name: "t" },
-      { type: "tool_call_start", id: "c1", name: "" },
       { type: "tool_call_delta", id: "c1", args: "{}" },
       { type: "tool_call_end", id: "c1" },
-      DONE_STOP,
+      DONE_CUT,
+    ],
+  ],
+  [
+    "a different id at the same index opens a new call",
+    sse(
+      choice({ tool_calls: [{ function: { name: "a" }, id: "c1", index: 0 }] }),
+      choice({ tool_calls: [{ function: { name: "b" }, id: "c2", index: 0 }] }),
+      choice({}, "tool_calls"),
+    ),
+    [
+      { type: "tool_call_start", id: "c1", name: "a" },
+      { type: "tool_call_start", id: "c2", name: "b" },
+      { type: "tool_call_end", id: "c2" },
+      { type: "done", stopReason: "tool_calls" },
+    ],
+  ],
+  [
+    "calls sent with no index are joined by their place in the chunk",
+    sse(
+      choice({
+        tool_calls: [
+          { function: { arguments: '{"x":', name: "a" }, id: "c1" },
+          { function: { arguments: '{"y":', name: "b" }, id: "c2" },
+        ],
+      }),
+      choice({
+        tool_calls: [{ function: { arguments: "1}" } }, { function: { arguments: "2}" } }],
+      }),
+      choice({}, "tool_calls"),
+      "[DONE]",
+    ),
+    [
+      { type: "tool_call_start", id: "c1", name: "a" },
+      { type: "tool_call_delta", id: "c1", args: '{"x":' },
+      { type: "tool_call_start", id: "c2", name: "b" },
+      { type: "tool_call_delta", id: "c2", args: '{"y":' },
+      { type: "tool_call_delta", id: "c1", args: "1}" },
+      { type: "tool_call_delta", id: "c2", args: "2}" },
+      { type: "tool_call_end", id: "c1" },
+      { type: "tool_call_end", id: "c2" },
+      { type: "done", stopReason: "tool_calls" },
     ],
   ],
   [
@@ -272,7 +317,7 @@ const STREAMS: readonly (readonly [label: string, body: string, frames: StreamEv
         prompt_tokens_details: null,
       },
     }),
-    [{ type: "usage", inputTokens: 2, outputTokens: 1 }, DONE_STOP],
+    [{ type: "usage", inputTokens: 2, outputTokens: 1 }, DONE_CUT],
   ],
   [
     "a later count replaces an earlier one",
@@ -280,12 +325,12 @@ const STREAMS: readonly (readonly [label: string, body: string, frames: StreamEv
       { choices: [], usage: { completion_tokens: 1, prompt_tokens: 1 } },
       { choices: [], usage: { completion_tokens: 9, prompt_tokens: 9 } },
     ),
-    [{ type: "usage", inputTokens: 9, outputTokens: 9 }, DONE_STOP],
+    [{ type: "usage", inputTokens: 9, outputTokens: 9 }, DONE_CUT],
   ],
   [
     "a finish the stream does not report keeps it reading",
     sse(choice({}, "content_filter"), choice({ content: "more" })),
-    [{ type: "delta", content: "more" }, DONE_STOP],
+    [{ type: "delta", content: "more" }, DONE_CUT],
   ],
   [
     "lines that are not data, and data that is not JSON, are skipped",
@@ -298,12 +343,12 @@ const STREAMS: readonly (readonly [label: string, body: string, frames: StreamEv
       `data: ${JSON.stringify(choice({ content: "kept" }))}`,
       "",
     ].join("\n"),
-    [{ type: "delta", content: "kept" }, DONE_STOP],
+    [{ type: "delta", content: "kept" }, DONE_CUT],
   ],
   [
     "a chunk with no choices is skipped",
     sse({ id: "x" }, { choices: [] }, choice({ content: "a" })),
-    [{ type: "delta", content: "a" }, DONE_STOP],
+    [{ type: "delta", content: "a" }, DONE_CUT],
   ],
   [
     "anything after [DONE] is ignored",
@@ -318,12 +363,12 @@ const STREAMS: readonly (readonly [label: string, body: string, frames: StreamEv
   [
     "a last line with no newline is never read (the server's behaviour, kept verbatim)",
     `data: ${JSON.stringify(choice({ content: "a" }))}\n\ndata: ${JSON.stringify(choice({ content: "lost" }))}`,
-    [{ type: "delta", content: "a" }, DONE_STOP],
+    [{ type: "delta", content: "a" }, DONE_CUT],
   ],
   [
     "multi-byte text split anywhere decodes whole",
     sse(choice({ content: "héllo ✓ 🙂" })),
-    [{ type: "delta", content: "héllo ✓ 🙂" }, DONE_STOP],
+    [{ type: "delta", content: "héllo ✓ 🙂" }, DONE_CUT],
   ],
 ];
 
@@ -500,13 +545,101 @@ describe("normalizeOpenAIStream: a consumer that stops reading", () => {
     const { cancels, response } = countedUpstream(chunks, end);
     expect(await collect(normalizeOpenAIStream(response))).toEqual([
       { type: "delta", content: "Hi" },
-      DONE_STOP,
+      end ? DONE_CUT : DONE_STOP,
     ]);
     expect(cancels()).toBe(0);
   });
 });
 
 // ─── No response at all ──────────────────────────────────────────────────────
+
+describe("normalizeOpenAIStream: an upstream's quirks", () => {
+  const read = (body: string, options: NormalizeOptions) => {
+    const response = upstream([new TextEncoder().encode(body)]);
+    return collect(normalizeOpenAIStream(response, options));
+  };
+
+  it("reads chain-of-thought from the one member the quirk names", async () => {
+    const body = sse(choice({ reasoning: "kept", reasoning_content: "ignored" }), "[DONE]");
+    expect(await read(body, { quirks: { reasoningField: "reasoning" } })).toEqual([
+      { type: "reasoning", content: "kept" },
+      DONE_STOP,
+    ]);
+  });
+
+  it("finds the cached count at the first path that holds a number", async () => {
+    const body = sse(
+      {
+        choices: [],
+        usage: { completion_tokens: 1, prompt_cache_hit_tokens: 40, prompt_tokens: 50 },
+      },
+      "[DONE]",
+    );
+    const quirks = {
+      cachedTokensPaths: ["prompt_tokens_details.cached_tokens", "prompt_cache_hit_tokens"],
+    };
+    expect(await read(body, { quirks })).toEqual([
+      { type: "usage", inputTokens: 50, outputTokens: 1, cachedInputTokens: 40 },
+      DONE_STOP,
+    ]);
+    // A path through a member that is not an object finds nothing, and reports no cache figure.
+    expect(await read(body, { quirks: { cachedTokensPaths: ["prompt_tokens.cached"] } })).toEqual([
+      { type: "usage", inputTokens: 50, outputTokens: 1 },
+      DONE_STOP,
+    ]);
+  });
+
+  it("restarts a call on every id when the quirk asks for the old reading", async () => {
+    const body = sse(
+      choice({ tool_calls: [{ function: { name: "t" }, id: "c1", index: 0 }] }),
+      choice({ tool_calls: [{ function: { arguments: "{}" }, id: "c1", index: 0 }] }),
+      "[DONE]",
+    );
+    expect(await read(body, { quirks: { newCallOn: "id" } })).toEqual([
+      { type: "tool_call_start", id: "c1", name: "t" },
+      { type: "tool_call_start", id: "c1", name: "" },
+      { type: "tool_call_delta", id: "c1", args: "{}" },
+      { type: "tool_call_end", id: "c1" },
+      DONE_STOP,
+    ]);
+  });
+
+  it("keys on the index alone when the quirk says to trust it", async () => {
+    const body = sse(
+      choice({
+        tool_calls: [
+          { function: { name: "a" }, id: "c1" },
+          { function: { name: "b" }, id: "c2" },
+        ],
+      }),
+      "[DONE]",
+    );
+    // With no index and no fallback, both calls share one key: the second replaces the first.
+    expect(await read(body, { quirks: { callKey: "index" } })).toEqual([
+      { type: "tool_call_start", id: "c1", name: "a" },
+      { type: "tool_call_start", id: "c2", name: "b" },
+      { type: "tool_call_end", id: "c2" },
+      DONE_STOP,
+    ]);
+  });
+
+  it("reports a refusal under the host's code when it has one, and the status otherwise", async () => {
+    const refused = () => Response.json({ error: "lapsed" }, { status: 401 });
+    const [coded] = await collect(
+      normalizeOpenAIStream(refused(), { errorCode: () => "cf_reconnect_required" }),
+    );
+    expect(coded).toMatchObject({
+      code: "cf_reconnect_required",
+      message: "lapsed",
+      type: "error",
+    });
+    // A host with a code for some statuses and none for this one.
+    const codes = new Map<number, string>([[403, "cf_reconnect_required"]]);
+    const noCode = (status: number): string | undefined => codes.get(status);
+    const [plain] = await collect(normalizeOpenAIStream(refused(), { errorCode: noCode }));
+    expect(plain).toMatchObject({ code: "401", message: "lapsed", type: "error" });
+  });
+});
 
 describe("fetchFailureFrame", () => {
   it("an aborted request is done: cancelled", () => {

@@ -358,12 +358,14 @@ export async function handleModels(req: Request): Promise<Response> {
       : Array.isArray(data.data)
         ? data.data
         : [];
-    const models = rawModels.map(({ id, context_window, owned_by }) => ({
-      id,
-      name: id,
-      contextWindow: context_window || 0,
-      ownedBy: owned_by,
-    }));
+    // `modelsResponse` drops a window that is not positive, so an upstream that sent none says none.
+    const models = rawModels.map(({ id, context_window, owned_by }): AiModelInfo => {
+      const model: AiModelInfo = { contextWindow: context_window || 0, id, name: id };
+      if (owned_by !== undefined) {
+        model.ownedBy = owned_by;
+      }
+      return model;
+    });
 
     return modelsResponse({ models, configured: true, managed: false, providers: PROVIDERS });
   } catch (error) {

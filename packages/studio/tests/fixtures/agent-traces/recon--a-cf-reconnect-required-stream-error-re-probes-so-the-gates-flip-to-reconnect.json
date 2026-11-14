@@ -2,7 +2,7 @@
   "chatCalls": [
     "sendMessage(\"make the heading bigger\")",
     "toMessagesArray()",
-    "setError(\"Reconnect Cloudflare to keep using the assistant.\")"
+    "setError(\"Reconnect Cloudflare to keep using the assistant.\", \"cf_reconnect_required\")"
   ],
   "clientCalls": [
     {

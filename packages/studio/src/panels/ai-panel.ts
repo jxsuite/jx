@@ -201,6 +201,7 @@ function watchAssistant() {
       }
       void cs.status;
       void cs.error;
+      void cs.errorCode;
       // The composer's Send/Stop follows the turn, which outlasts the stream's status.
       void assistant.isTurnActive();
       // A usage frame moves the token count and nothing else this effect reads.
@@ -607,7 +608,7 @@ function projectPanel(): AiChatView {
   const cs = assistant.chatState;
   const streaming = cs.status === "streaming";
   const error = !streaming && cs.error ? cs.error : "";
-  const advice = error ? formatErrorAdvice(error) : "";
+  const advice = error ? formatErrorAdvice(error, cs.errorCode) : "";
   const newChatCommand = projectCommand("assistant.newChat", { icon: "plus" });
   const rows = projectRows({
     ask: { importRun, pendingId: assistant.interactions.pending?.callId ?? null },

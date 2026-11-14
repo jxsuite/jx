@@ -1,9 +1,16 @@
 {
   "frames": [
     {
-      "type": "error",
-      "message": "API error 429: Rate limit exceeded: 20 requests per minute. Retry after 3s.",
-      "code": "429"
+      "code": "429",
+      "message": "Rate limit exceeded: 20 requests per minute. Retry after 3s.",
+      "problem": {
+        "status": 429,
+        "title": "Too many requests",
+        "type": "https://jxsuite.com/problems/rate-limited",
+        "detail": "Rate limit exceeded: 20 requests per minute. Retry after 3s.",
+        "error": "Rate limit exceeded: 20 requests per minute. Retry after 3s."
+      },
+      "type": "error"
     }
   ]
 }

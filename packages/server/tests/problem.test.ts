@@ -97,6 +97,10 @@ describe("problemTypeForStatus — a status the table does not name", () => {
     expect(problemTypeForStatus(507)).toBe("internalError");
     expect(problemTypeForStatus(500)).toBe("internalError");
     expect(problemTypeForStatus(418)).toBe("invalidRequest");
-    expect(problemTypeForStatus(429)).toBe("invalidRequest");
+  });
+
+  // Listed since ai.md §2 named it: a client waits on a rate limit, and corrects an invalid request.
+  test("429 is a rate limit, not an invalid request", () => {
+    expect(problemTypeForStatus(429)).toBe("rateLimited");
   });
 });

@@ -4,9 +4,9 @@
       "code": "429",
       "message": "Rate limit exceeded: 20 requests per minute. Retry after 3s.",
       "problem": {
-        "status": 400,
-        "title": "The request was malformed or incomplete",
-        "type": "https://jxsuite.com/problems/invalid-request",
+        "status": 429,
+        "title": "Too many requests",
+        "type": "https://jxsuite.com/problems/rate-limited",
         "detail": "Rate limit exceeded: 20 requests per minute. Retry after 3s.",
         "error": "Rate limit exceeded: 20 requests per minute. Retry after 3s."
       },

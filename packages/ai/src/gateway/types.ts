@@ -15,6 +15,31 @@
 
 import type { ProblemDetails } from "@jxsuite/protocol/problem";
 
+/**
+ * How one OpenAI-compatible upstream departs from the chat-completions wire. Every member is
+ * optional, and the defaults read the widest set of providers correctly; a host names a quirk only
+ * for an upstream it knows needs it.
+ */
+export interface OpenAICompatQuirks {
+  /** The one delta member chain-of-thought arrives in. Both known spellings are read when absent. */
+  readonly reasoningField?: "reasoning_content" | "reasoning";
+  /**
+   * Dotted paths inside the usage object that may hold the cached-input count, tried in order.
+   * Defaults to `prompt_tokens_details.cached_tokens`; DeepSeek uses `prompt_cache_hit_tokens`.
+   */
+  readonly cachedTokensPaths?: readonly string[];
+  /**
+   * What joins a tool call's fragments: `index-then-position` (the default) uses the fragment's
+   * `index` and falls back to its place in the chunk; `index` trusts the index alone.
+   */
+  readonly callKey?: "index" | "index-then-position";
+  /**
+   * When a fragment carrying an id opens a new call: `id-change` (the default) only when the id
+   * differs from the call open at that key; `id` on every fragment that carries one.
+   */
+  readonly newCallOn?: "id" | "id-change";
+}
+
 /** Where one chat request is forwarded. A host decides it per request, in `resolveUpstream`. */
 export interface Upstream {
   /**
@@ -42,6 +67,8 @@ export interface Upstream {
    * `X-Jx-Ai-Session` header, so the raw id never leaves the host.
    */
   readonly sessionAffinity?: string;
+  /** How this upstream departs from the chat-completions wire, when the host knows it does. */
+  readonly quirks?: OpenAICompatQuirks;
 }
 
 /**
@@ -90,6 +117,12 @@ export interface ChatGatewayOptions<C> {
   readonly maxMessages?: number;
   /** Called once per accepted request, after every check and before the upstream is contacted. */
   readonly onAccepted?: (admission: ChatAdmission, upstream: Upstream, context: C) => void;
+  /**
+   * The `code` an error frame carries for an upstream's non-2xx status, when the host knows one
+   * better than the status: a brokered credential that lapsed is something a client can offer to
+   * reconnect, and a bare `401` is not. Undefined keeps the status.
+   */
+  readonly upstreamErrorCode?: (status: number, upstream: Upstream) => string | undefined;
   /** The fetch the upstream is called with. The global `fetch`, looked up per call, when absent. */
   readonly fetch?: typeof fetch;
 }

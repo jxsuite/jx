@@ -19,6 +19,8 @@ import {
 } from "../src/streaming-client.js";
 import type { ProxyStreamingClientOptions, StreamEvent } from "../src/streaming-client.js";
 import type { JsonObject } from "../src/core-types.ts";
+import { problemDetails } from "@jxsuite/protocol/problems";
+import { problemTypeForStatus } from "../src/gateway/problem.ts";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -403,7 +405,7 @@ describe("createOpenAIStreamingClient", () => {
     ]);
   });
 
-  it("ends the stream with a stop done event when the body closes without finish_reason", async () => {
+  it("ends the stream truncated when the body closes with no finish_reason and no [DONE]", async () => {
     mockFetch(() =>
       streamingResponse(
         sseBody([
@@ -423,7 +425,7 @@ describe("createOpenAIStreamingClient", () => {
       { type: "tool_call_start", id: "open", name: "n" },
       { type: "delta", content: "tail" },
       { type: "tool_call_end", id: "open" },
-      { type: "done", stopReason: "stop" },
+      { type: "done", stopReason: "stop", truncated: true },
     ]);
   });
 
@@ -432,7 +434,12 @@ describe("createOpenAIStreamingClient", () => {
     const client = createOpenAIStreamingClient({ baseUrl: "https://x", apiKey: "k" });
     const events = await collect(client.streamChat([], [], "", new AbortController().signal));
     expect(events).toEqual([
-      { type: "error", message: "API error 429: rate limited", code: "429" },
+      {
+        type: "error",
+        message: "rate limited",
+        code: "429",
+        problem: problemDetails(problemTypeForStatus(429), "rate limited"),
+      },
     ]);
   });
 
@@ -443,7 +450,7 @@ describe("createOpenAIStreamingClient", () => {
     expect(events).toHaveLength(1);
     expect(events[0]).toMatchObject({
       type: "error",
-      message: "API error 503: Service Unavailable",
+      message: "Service Unavailable",
       code: "503",
     });
   });
@@ -452,7 +459,13 @@ describe("createOpenAIStreamingClient", () => {
     mockFetch(() => Promise.reject(new Error("boom")));
     const client = createOpenAIStreamingClient({ baseUrl: "https://x", apiKey: "k" });
     const events = await collect(client.streamChat([], [], "", new AbortController().signal));
-    expect(events).toEqual([{ type: "error", message: "Network error: boom" }]);
+    expect(events).toEqual([
+      {
+        type: "error",
+        message: "Network error: boom",
+        problem: problemDetails("upstreamFailure", "Network error: boom"),
+      },
+    ]);
   });
 
   it("yields a cancelled done event when fetch rejects with an AbortError", async () => {
@@ -466,7 +479,13 @@ describe("createOpenAIStreamingClient", () => {
     mockFetch(() => new Response(null, { status: 200 }));
     const client = createOpenAIStreamingClient({ baseUrl: "https://x", apiKey: "k" });
     const events = await collect(client.streamChat([], [], "", new AbortController().signal));
-    expect(events).toEqual([{ type: "error", message: "No response body" }]);
+    expect(events).toEqual([
+      {
+        type: "error",
+        message: "No response body from upstream",
+        problem: problemDetails("upstreamFailure", "No response body from upstream"),
+      },
+    ]);
   });
 
   it("yields an error event when reading the non-ok body text throws", async () => {
@@ -474,7 +493,12 @@ describe("createOpenAIStreamingClient", () => {
     const client = createOpenAIStreamingClient({ baseUrl: "https://x", apiKey: "k" });
     const events = await collect(client.streamChat([], [], "", new AbortController().signal));
     expect(events).toEqual([
-      { type: "error", message: "API error 500: Server Error", code: "500" },
+      {
+        type: "error",
+        message: "Server Error",
+        code: "500",
+        problem: problemDetails(problemTypeForStatus(500), "Server Error"),
+      },
     ]);
   });
 
@@ -482,7 +506,13 @@ describe("createOpenAIStreamingClient", () => {
     mockFetch(() => failingReadResponse(new Error("reader exploded")));
     const client = createOpenAIStreamingClient({ baseUrl: "https://x", apiKey: "k" });
     const events = await collect(client.streamChat([], [], "", new AbortController().signal));
-    expect(events).toEqual([{ type: "error", message: "Stream error: reader exploded" }]);
+    expect(events).toEqual([
+      {
+        type: "error",
+        message: "Stream error: reader exploded",
+        problem: problemDetails("upstreamFailure", "Stream error: reader exploded"),
+      },
+    ]);
   });
 
   it("yields a cancelled done event when reading the body throws an AbortError mid-stream", async () => {
@@ -901,7 +931,14 @@ describe("createProxyStreamingClient", () => {
     );
     const client = createProxyStreamingClient({ chatUrl: "https://proxy/chat" });
     const events = await collect(client.streamChat([], [], "", new AbortController().signal));
-    expect(events).toEqual([{ type: "error", message: "quota exceeded", code: "402" }]);
+    expect(events).toEqual([
+      {
+        type: "error",
+        message: "quota exceeded",
+        code: "402",
+        problem: problemDetails(problemTypeForStatus(402), "quota exceeded"),
+      },
+    ]);
   });
 
   it("extracts message from a nested { error: { message } } JSON body on non-ok", async () => {
@@ -912,7 +949,14 @@ describe("createProxyStreamingClient", () => {
     );
     const client = createProxyStreamingClient({ chatUrl: "https://proxy/chat" });
     const events = await collect(client.streamChat([], [], "", new AbortController().signal));
-    expect(events).toEqual([{ type: "error", message: "bad request detail", code: "400" }]);
+    expect(events).toEqual([
+      {
+        type: "error",
+        message: "bad request detail",
+        code: "400",
+        problem: problemDetails(problemTypeForStatus(400), "bad request detail"),
+      },
+    ]);
   });
 
   it("prefers a non-ok body's machine code over the HTTP status", async () => {
@@ -929,7 +973,25 @@ describe("createProxyStreamingClient", () => {
     const client = createProxyStreamingClient({ chatUrl: "https://proxy/chat" });
     const events = await collect(client.streamChat([], [], "", new AbortController().signal));
     expect(events).toEqual([
-      { type: "error", message: "Reconnect Cloudflare.", code: "cf_reconnect_required" },
+      {
+        type: "error",
+        message: "Reconnect Cloudflare.",
+        code: "cf_reconnect_required",
+        problem: problemDetails("unauthorized", "Reconnect Cloudflare."),
+      },
+    ]);
+  });
+
+  it("carries a refusal that is already a problem document as the frame's problem", async () => {
+    const problem = {
+      ...problemDetails("wireUnsupported", "This backend speaks wire 1."),
+      supported: [1],
+    };
+    mockFetch(() => streamingResponse(JSON.stringify(problem), { status: 400 }));
+    const client = createProxyStreamingClient({ chatUrl: "https://proxy/chat" });
+    const events = await collect(client.streamChat([], [], "", new AbortController().signal));
+    expect(events).toEqual([
+      { type: "error", message: "This backend speaks wire 1.", code: "400", problem },
     ]);
   });
 
@@ -947,7 +1009,14 @@ describe("createProxyStreamingClient", () => {
     );
     const client = createProxyStreamingClient({ chatUrl: "https://proxy/chat" });
     const events = await collect(client.streamChat([], [], "", new AbortController().signal));
-    expect(events).toEqual([{ type: "error", message: "No route for that URI", code: "404" }]);
+    expect(events).toEqual([
+      {
+        type: "error",
+        message: "No route for that URI",
+        code: "404",
+        problem: problemDetails(problemTypeForStatus(404), "No route for that URI"),
+      },
+    ]);
   });
 
   it("shows a truthy non-string error message as text", async () => {
@@ -959,7 +1028,14 @@ describe("createProxyStreamingClient", () => {
     );
     const client = createProxyStreamingClient({ chatUrl: "https://proxy/chat" });
     const events = await collect(client.streamChat([], [], "", new AbortController().signal));
-    expect(events).toEqual([{ type: "error", message: "42", code: "500" }]);
+    expect(events).toEqual([
+      {
+        type: "error",
+        message: "42",
+        code: "500",
+        problem: problemDetails(problemTypeForStatus(500), "42"),
+      },
+    ]);
   });
 
   it("shows a truthy non-string errors entry message as text", async () => {
@@ -968,7 +1044,14 @@ describe("createProxyStreamingClient", () => {
     );
     const client = createProxyStreamingClient({ chatUrl: "https://proxy/chat" });
     const events = await collect(client.streamChat([], [], "", new AbortController().signal));
-    expect(events).toEqual([{ type: "error", message: "true", code: "500" }]);
+    expect(events).toEqual([
+      {
+        type: "error",
+        message: "true",
+        code: "500",
+        problem: problemDetails(problemTypeForStatus(500), "true"),
+      },
+    ]);
   });
 
   it("falls back to the status when the body's code is absent or empty", async () => {
@@ -978,14 +1061,28 @@ describe("createProxyStreamingClient", () => {
     );
     const client = createProxyStreamingClient({ chatUrl: "https://proxy/chat" });
     const events = await collect(client.streamChat([], [], "", new AbortController().signal));
-    expect(events).toEqual([{ type: "error", message: "no reason given", code: "403" }]);
+    expect(events).toEqual([
+      {
+        type: "error",
+        message: "no reason given",
+        code: "403",
+        problem: problemDetails(problemTypeForStatus(403), "no reason given"),
+      },
+    ]);
   });
 
   it("uses the raw body when a non-ok body is not JSON", async () => {
     mockFetch(() => streamingResponse("plain text failure", { status: 500 }));
     const client = createProxyStreamingClient({ chatUrl: "https://proxy/chat" });
     const events = await collect(client.streamChat([], [], "", new AbortController().signal));
-    expect(events).toEqual([{ type: "error", message: "plain text failure", code: "500" }]);
+    expect(events).toEqual([
+      {
+        type: "error",
+        message: "plain text failure",
+        code: "500",
+        problem: problemDetails(problemTypeForStatus(500), "plain text failure"),
+      },
+    ]);
   });
 
   it("uses the raw body when JSON error has no usable message field", async () => {
@@ -1003,21 +1100,41 @@ describe("createProxyStreamingClient", () => {
     mockFetch(() => new Response("", { status: 502, statusText: "Bad Gateway" }));
     const client = createProxyStreamingClient({ chatUrl: "https://proxy/chat" });
     const events = await collect(client.streamChat([], [], "", new AbortController().signal));
-    expect(events).toEqual([{ type: "error", message: "Bad Gateway", code: "502" }]);
+    expect(events).toEqual([
+      {
+        type: "error",
+        message: "Bad Gateway",
+        code: "502",
+        problem: problemDetails(problemTypeForStatus(502), "Bad Gateway"),
+      },
+    ]);
   });
 
   it("yields an error event when reading the non-ok body text throws", async () => {
     mockFetch(() => unreadableResponse(504, "Gateway Timeout"));
     const client = createProxyStreamingClient({ chatUrl: "https://proxy/chat" });
     const events = await collect(client.streamChat([], [], "", new AbortController().signal));
-    expect(events).toEqual([{ type: "error", message: "Gateway Timeout", code: "504" }]);
+    expect(events).toEqual([
+      {
+        type: "error",
+        message: "Gateway Timeout",
+        code: "504",
+        problem: problemDetails(problemTypeForStatus(504), "Gateway Timeout"),
+      },
+    ]);
   });
 
   it("yields a network error event when fetch rejects with a non-abort error", async () => {
     mockFetch(() => Promise.reject(new Error("dns fail")));
     const client = createProxyStreamingClient({ chatUrl: "https://proxy/chat" });
     const events = await collect(client.streamChat([], [], "", new AbortController().signal));
-    expect(events).toEqual([{ type: "error", message: "Network error: dns fail" }]);
+    expect(events).toEqual([
+      {
+        type: "error",
+        message: "Network error: dns fail",
+        problem: problemDetails("upstreamFailure", "Network error: dns fail"),
+      },
+    ]);
   });
 
   it("yields a cancelled done event when fetch rejects with an AbortError", async () => {
@@ -1031,14 +1148,26 @@ describe("createProxyStreamingClient", () => {
     mockFetch(() => new Response(null, { status: 200 }));
     const client = createProxyStreamingClient({ chatUrl: "https://proxy/chat" });
     const events = await collect(client.streamChat([], [], "", new AbortController().signal));
-    expect(events).toEqual([{ type: "error", message: "No response body" }]);
+    expect(events).toEqual([
+      {
+        type: "error",
+        message: "No response body",
+        problem: problemDetails("upstreamFailure", "No response body"),
+      },
+    ]);
   });
 
   it("yields a stream error event when reading the body throws mid-stream", async () => {
     mockFetch(() => failingReadResponse(new Error("proxy reader exploded")));
     const client = createProxyStreamingClient({ chatUrl: "https://proxy/chat" });
     const events = await collect(client.streamChat([], [], "", new AbortController().signal));
-    expect(events).toEqual([{ type: "error", message: "Stream error: proxy reader exploded" }]);
+    expect(events).toEqual([
+      {
+        type: "error",
+        message: "Stream error: proxy reader exploded",
+        problem: problemDetails("upstreamFailure", "Stream error: proxy reader exploded"),
+      },
+    ]);
   });
 
   it("yields a cancelled done event when reading the body throws an AbortError mid-stream", async () => {

@@ -104,29 +104,65 @@ export function formatToolLabel(tc: { name: string; arguments: string }): string
   return `${tc.name}${detail}`;
 }
 
+/** The advice for each kind of failure, keyed below by code and, failing that, by sentence. */
+const ADVICE = {
+  credentials: "Use the settings button below the message box to add an OpenAI-compatible API key.",
+  network: "Check that the dev server is running and reachable.",
+  overflow:
+    "The conversation is longer than this model can read. Start a new chat, or pick a model with a larger context window.",
+  rateLimit: "The API rate limit was hit. Wait a moment and try again.",
+  reconnect:
+    "The connection to your AI provider lapsed. Reconnect it from the settings button below the message box.",
+  server: "The upstream API returned a server error. Try again in a moment.",
+  silent:
+    "Try again, or pick another model: some send back nothing for a request they cannot handle.",
+} as const;
+
+/** The advice a failure's machine code decides on its own, whatever its sentence says. */
+const ADVICE_BY_CODE: ReadonlyMap<string, string> = new Map([
+  ["401", ADVICE.credentials],
+  ["403", ADVICE.credentials],
+  ["cf_reconnect_required", ADVICE.reconnect],
+  ["429", ADVICE.rateLimit],
+  ["context_overflow", ADVICE.overflow],
+  ["500", ADVICE.server],
+  ["502", ADVICE.server],
+  ["503", ADVICE.server],
+  ["504", ADVICE.server],
+]);
+
 /**
- * Return actionable advice for common AI assistant errors so the user knows how to recover instead
- * of just seeing a raw error message.
+ * What to try after a chat error (specs/ai.md §2).
  *
- * @param {string} error
+ * The code decides first, because it is what the failure IS: an upstream's status, or a backend's
+ * own reason. The sentence is read only when there is no code or the code is one this table does
+ * not know, since a provider's wording is the least stable thing about it. An error neither names
+ * gets no advice, which is better than a guess.
+ *
+ * @param {string} error - The sentence the error row shows
+ * @param {string | null} [code] - The machine code the error arrived with, when it had one
  * @returns {string}
  */
-export function formatErrorAdvice(error: string): string {
+export function formatErrorAdvice(error: string, code?: string | null): string {
+  const byCode = code ? ADVICE_BY_CODE.get(code) : undefined;
+  if (byCode !== undefined) {
+    return byCode;
+  }
   const lower = error.toLowerCase();
   if (lower.includes("no api key") || lower.includes("401")) {
-    return "Use the settings button below the message box to add an OpenAI-compatible API key.";
+    return ADVICE.credentials;
   }
   if (lower.includes("network error") || lower.includes("fetch")) {
-    return "Check that the dev server is running and reachable.";
+    return ADVICE.network;
   }
   if (lower.includes("429") || lower.includes("rate limit")) {
-    return "The API rate limit was hit. Wait a moment and try again.";
+    return ADVICE.rateLimit;
   }
   if (lower.includes("500") || lower.includes("internal")) {
-    return "The upstream API returned a server error. Try again in a moment.";
+    return ADVICE.server;
   }
   if (lower.includes("empty reply")) {
-    return "Try again, or pick another model: some send back nothing for a request they cannot handle.";
+    return ADVICE.silent;
   }
   return "";
 }

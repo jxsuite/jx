@@ -1,9 +1,16 @@
 {
   "frames": [
     {
-      "type": "error",
-      "message": "API error 502: Bad Gateway",
-      "code": "502"
+      "code": "502",
+      "message": "Bad Gateway",
+      "problem": {
+        "status": 502,
+        "title": "An upstream service failed",
+        "type": "https://jxsuite.com/problems/upstream-failure",
+        "detail": "Bad Gateway",
+        "error": "Bad Gateway"
+      },
+      "type": "error"
     }
   ]
 }
