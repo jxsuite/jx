@@ -32,6 +32,7 @@
  */
 import { clearSeededSettings, installMockPlatform, resetWorkspaceWithTab } from "./harness";
 import { createChatState, createToolRegistry } from "@jxsuite/ai";
+import { migrateTranscript } from "@jxsuite/ai/messages";
 import type { LiveMessage } from "@jxsuite/ai/messages";
 import type { StreamEvent, StreamingClient } from "@jxsuite/ai/streaming-client";
 import { isJsonObject, isJsonPrimitive, isString } from "@jxsuite/schema/guards";
@@ -552,7 +553,13 @@ describe("a payload the current build saves", () => {
     );
     const revived = createDocumentAssistant();
     expect(revived.activeSessionId()).toBe(live.activeSessionId());
-    const expectedRestore = plain(backfillToolResults(persisted));
+    /* A restore also reads the payload as the current shape (specs/ai.md §3.13), which names each
+       synthetic message's kind in `meta` rather than leaving it to the id's prefix. */
+    const migrated = migrateTranscript(plain(persisted), {
+      newId: () => "unused: every persisted message has an id",
+      now: () => 0,
+    })!;
+    const expectedRestore = plain(backfillToolResults(migrated));
     expect(firstDifference(expectedRestore, plain(revived.chatState.messages))).toBeNull();
     const revivedCalls = revived.chatState.messages.flatMap((m) => m.toolCalls ?? []);
     expect(revivedCalls.every((tc) => tc.result)).toBe(true);

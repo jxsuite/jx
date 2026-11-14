@@ -46,6 +46,7 @@ const WORKER_SAFE_ENTRIES = {
   "./jx-tools": "./src/jx-tools/index.ts",
   "./messages": "./src/messages/index.ts",
   "./providers": "./src/providers/index.ts",
+  "./sessions": "./src/sessions.ts",
   "./streaming-client": "./src/streaming-client.ts",
   "./testing": "./src/testing/index.ts",
   "./tools": "./src/tools.ts",
@@ -131,6 +132,7 @@ const FROZEN_GRAPHS = new Map<string, readonly string[]>([
       "packages/ai/src/gateway/sse.ts",
       "packages/ai/src/gateway/upstream-error.ts",
       "packages/ai/src/gateway/wire.ts",
+      "packages/ai/src/messages/blocks.ts",
       "packages/ai/src/messages/convert.ts",
       "packages/ai/src/messages/openai.ts",
       "packages/ai/src/providers/body.ts",
@@ -171,10 +173,12 @@ const FROZEN_GRAPHS = new Map<string, readonly string[]>([
   [
     "./messages",
     [
+      "packages/ai/src/messages/blocks.ts",
       "packages/ai/src/messages/convert.ts",
       "packages/ai/src/messages/digest.ts",
       "packages/ai/src/messages/index.ts",
       "packages/ai/src/messages/openai.ts",
+      "packages/ai/src/messages/persist.ts",
       "packages/ai/src/messages/repair.ts",
     ],
   ],
@@ -192,6 +196,14 @@ const FROZEN_GRAPHS = new Map<string, readonly string[]>([
       "packages/ai/src/providers/openai-compat.ts",
       "packages/protocol/src/problem.ts",
       "packages/protocol/src/problems.ts",
+    ],
+  ],
+  [
+    "./sessions",
+    [
+      "packages/ai/src/messages/blocks.ts",
+      "packages/ai/src/messages/persist.ts",
+      "packages/ai/src/sessions.ts",
     ],
   ],
   [
