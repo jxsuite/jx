@@ -17,6 +17,20 @@ import type { ModelFn } from "../harness/types.ts";
 import { toWireMessages } from "../messages/convert.ts";
 import type { Provider } from "./types.ts";
 
+export {
+  anthropicCapabilities,
+  anthropicExchange,
+  anthropicToolId,
+  BINDING_CONTROLS_BETA,
+  createAnthropicProvider,
+  toAnthropicMessagesRequest,
+} from "./anthropic.ts";
+export type {
+  AnthropicExchange,
+  AnthropicProviderOptions,
+  MessagesApiRequest,
+  MessagesProjectionOptions,
+} from "./anthropic.ts";
 export { chatCompletionsBody } from "./body.ts";
 export { createOpenAICompatProvider } from "./openai-compat.ts";
 export type { ChatCompletionsBody, ChatCompletionsParts } from "./body.ts";

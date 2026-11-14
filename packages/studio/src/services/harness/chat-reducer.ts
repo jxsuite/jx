@@ -101,6 +101,12 @@ export function applyHarnessEvent(chat: ChatStore, event: HarnessEvent): void {
       chat.appendReasoning(event.text);
       break;
     }
+    case "reasoning_block": {
+      /* What the reasoning's text cannot carry: the signature and the binding a signed block must
+         be replayed under (specs/ai.md §2.6). */
+      chat.appendReasoningBlock(event.block);
+      break;
+    }
     case "tool_call_start": {
       chat.appendToolCallStart(event.callId, event.name);
       break;

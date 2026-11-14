@@ -29,6 +29,11 @@ export interface Provenance {
   readonly family: ProviderFamily;
   /** The model that produced it; null only for data migrated from the v1 shape. */
   readonly model: string | null;
+  /**
+   * The digest of the request the block was produced under (`bindingOf`), for a provider that binds
+   * its thinking to it: the block is replayed only while that digest still holds (§2.6).
+   */
+  readonly binding?: string;
 }
 
 /** Text the model wrote, or the person did. */

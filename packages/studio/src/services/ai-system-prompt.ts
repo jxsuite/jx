@@ -10,6 +10,7 @@
 import { VOID_ELEMENTS } from "../store.js";
 import { flattenTree } from "../state.js";
 import type { ComponentEntry } from "../files/components.js";
+import type { SystemBlock } from "@jxsuite/ai/messages";
 import { isBoolean, isNonNullObject, isNumber, isString } from "@jxsuite/schema/guards";
 import type { JsonPrimitive, JxMutableNode, ProjectConfig } from "@jxsuite/schema/types";
 import { NEW_PROJECT_FILE_NAME } from "@jxsuite/schema/project-file";
@@ -849,6 +850,24 @@ Be concise. Don't explain what Jx is unless asked. Just build.`;
   sections.push(closing);
 
   return SYSTEM_PROMPT_STATIC_PREFIX + sections.join(SECTION_SEPARATOR);
+}
+
+/**
+ * A system prompt as the parts a provider's cache can use (specs/ai.md §2.5, §2.6): the prefix that
+ * is the same for every request, marked as the end of what stays the same, and whatever follows it.
+ * Joined, the parts are the prompt, byte for byte. A prompt that does not start with the prefix (a
+ * caller's own) is one part.
+ *
+ * @param {string} systemPrompt - A prompt `buildSystemPrompt` built, or any other
+ * @returns {SystemBlock[]}
+ */
+export function splitSystemPrompt(systemPrompt: string): SystemBlock[] {
+  if (!systemPrompt.startsWith(SYSTEM_PROMPT_STATIC_PREFIX)) {
+    return [{ text: systemPrompt }];
+  }
+  const rest = systemPrompt.slice(SYSTEM_PROMPT_STATIC_PREFIX.length);
+  const stable: SystemBlock = { cache: true, text: SYSTEM_PROMPT_STATIC_PREFIX };
+  return rest ? [stable, { text: rest }] : [stable];
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────

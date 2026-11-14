@@ -12,6 +12,7 @@
 import { describe, expect, it } from "bun:test";
 import { problemDetails } from "@jxsuite/protocol";
 import {
+  CONTEXT_OVERFLOW_CODE,
   ANTHROPIC_API_VERSION,
   ANTHROPIC_BASE_URL,
   ANTHROPIC_MAX_TOKENS,
@@ -21,11 +22,14 @@ import {
   normalizeAnthropicStream,
   toAnthropicRequest,
 } from "../src/gateway/anthropic.ts";
-import type { AnthropicProjectionInput } from "../src/gateway/anthropic.ts";
+import type {
+  AnthropicNormalizeOptions,
+  AnthropicProjectionInput,
+} from "../src/gateway/anthropic.ts";
 import { createChatHandler } from "../src/gateway/chat.ts";
 import type { Upstream } from "../src/gateway/types.ts";
 import type { JsonObject, JsonValue } from "../src/core-types.ts";
-import type { StreamEvent } from "../src/streaming-client.ts";
+import type { StreamEvent, WireEvent } from "../src/streaming-client.ts";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -95,8 +99,8 @@ function upstream(chunks: Uint8Array[]): CountedUpstream {
   return { cancels: () => cancels, response: new Response(body, { status: 200 }) };
 }
 
-async function collect(frames: AsyncIterable<StreamEvent>): Promise<StreamEvent[]> {
-  const out: StreamEvent[] = [];
+async function collect(frames: AsyncIterable<WireEvent>): Promise<WireEvent[]> {
+  const out: WireEvent[] = [];
   for await (const frame of frames) {
     out.push(frame);
   }
@@ -104,11 +108,15 @@ async function collect(frames: AsyncIterable<StreamEvent>): Promise<StreamEvent[
 }
 
 /** Normalize `body` under every chunking and assert each yields `expected`. */
-async function expectFrames(body: string, expected: StreamEvent[]): Promise<void> {
+async function expectFrames(
+  body: string,
+  expected: WireEvent[],
+  options: AnthropicNormalizeOptions = {},
+): Promise<void> {
   const bytes = new TextEncoder().encode(body);
   for (const split of Object.values(CHUNKINGS)) {
     const { response } = upstream(split(bytes));
-    expect(await collect(normalizeAnthropicStream(response))).toEqual(expected);
+    expect(await collect(normalizeAnthropicStream(response, options))).toEqual(expected);
   }
 }
 
@@ -134,6 +142,7 @@ const MESSAGE_STOP = { type: "message_stop" };
 
 /** The usage frame MESSAGE_START and `stop(…, output)` report. */
 const usage = (output = 12): StreamEvent => ({
+  cacheWriteInputTokens: 5,
   cachedInputTokens: 90,
   inputTokens: 105,
   outputTokens: output,
@@ -480,6 +489,109 @@ describe("normalizeAnthropicStream", () => {
     );
   });
 
+  /* Wire version 2 carries what a signed conversation needs (specs/ai.md §2.7): each frame's
+     block, the signature a thinking block ends with, and a redacted block's payload. */
+  it("on wire version 2, names each frame's block and forwards signatures and redacted thinking", async () => {
+    await expectFrames(
+      sse(
+        MESSAGE_START,
+        {
+          content_block: { thinking: "", type: "thinking" },
+          index: 0,
+          type: "content_block_start",
+        },
+        {
+          delta: { thinking: "Plan.", type: "thinking_delta" },
+          index: 0,
+          type: "content_block_delta",
+        },
+        // A signature may arrive in parts; it is forwarded once, whole.
+        {
+          delta: { signature: "si", type: "signature_delta" },
+          index: 0,
+          type: "content_block_delta",
+        },
+        {
+          delta: { signature: "g", type: "signature_delta" },
+          index: 0,
+          type: "content_block_delta",
+        },
+        { index: 0, type: "content_block_stop" },
+        {
+          content_block: { data: "opaque", type: "redacted_thinking" },
+          index: 1,
+          type: "content_block_start",
+        },
+        { index: 1, type: "content_block_stop" },
+        { content_block: { text: "Sure. ", type: "text" }, index: 2, type: "content_block_start" },
+        { delta: { text: "Done.", type: "text_delta" }, index: 2, type: "content_block_delta" },
+        { index: 2, type: "content_block_stop" },
+        {
+          content_block: { id: "toolu_1", name: "add_child", type: "tool_use" },
+          index: 3,
+          type: "content_block_start",
+        },
+        {
+          delta: { partial_json: "{}", type: "input_json_delta" },
+          index: 3,
+          type: "content_block_delta",
+        },
+        { index: 3, type: "content_block_stop" },
+        stop("tool_use", 40),
+        MESSAGE_STOP,
+      ),
+      [
+        { block: 0, content: "Plan.", type: "reasoning" },
+        { block: 0, signature: "sig", type: "reasoning_signature" },
+        { block: 1, data: "opaque", type: "reasoning_redacted" },
+        { block: 2, content: "Sure. ", type: "delta" },
+        { block: 2, content: "Done.", type: "delta" },
+        { block: 3, id: "toolu_1", name: "add_child", type: "tool_call_start" },
+        { args: "{}", id: "toolu_1", type: "tool_call_delta" },
+        { id: "toolu_1", type: "tool_call_end" },
+        usage(40),
+        { stopReason: "tool_calls", type: "done" },
+      ],
+      { wire: 2 },
+    );
+  });
+
+  it("names a prompt that is too long as context overflow, refused or mid-stream", async () => {
+    const refused = Response.json(
+      {
+        error: {
+          message: "prompt is too long: 250000 tokens > 200000 maximum",
+          type: "invalid_request_error",
+        },
+      },
+      { status: 400 },
+    );
+    const [frame] = await collect(normalizeAnthropicStream(refused));
+    expect(frame).toEqual({
+      code: "context_overflow",
+      message: "prompt is too long: 250000 tokens > 200000 maximum",
+      problem: problemDetails(
+        "contextOverflow",
+        "prompt is too long: 250000 tokens > 200000 maximum",
+      ),
+      type: "error",
+    });
+    await expectFrames(
+      sse(MESSAGE_START, {
+        error: { message: "Prompt is too long", type: "invalid_request_error" },
+        type: "error",
+      }),
+      [
+        {
+          code: CONTEXT_OVERFLOW_CODE,
+          message: "Prompt is too long",
+          problem: problemDetails("contextOverflow", "Prompt is too long"),
+          type: "error",
+        },
+      ],
+    );
+  });
+
   it.each<[string, string]>([
     ["stop_sequence", "stop"],
     ["max_tokens", "length"],
@@ -512,10 +624,18 @@ describe("normalizeAnthropicStream", () => {
         { id: "toolu_9", name: "", type: "tool_call_start" },
         { args: "{}", id: "toolu_9", type: "tool_call_delta" },
         { id: "toolu_9", type: "tool_call_end" },
-        { cachedInputTokens: 90, inputTokens: 105, outputTokens: 0, type: "usage" },
-        { stopReason: "stop", type: "done" },
+        usage(0),
+        // Neither `message_stop` nor a stop reason arrived: the reply was cut off (specs/ai.md §2).
+        { stopReason: "stop", truncated: true, type: "done" },
       ],
     );
+  });
+
+  it("a body that ends after its stop reason, with no message_stop, is not truncated", async () => {
+    await expectFrames(sse(MESSAGE_START, stop("end_turn")), [
+      usage(),
+      { stopReason: "stop", type: "done" },
+    ]);
   });
 
   it("reports no usage frame without an input count, and reads data: with no space", async () => {

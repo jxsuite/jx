@@ -57,6 +57,7 @@ function loggedChat() {
   Object.assign(chat, {
     appendDelta: log("appendDelta", chat.appendDelta),
     appendReasoning: log("appendReasoning", chat.appendReasoning),
+    appendReasoningBlock: log("appendReasoningBlock", chat.appendReasoningBlock),
     appendToolCallDelta: log("appendToolCallDelta", chat.appendToolCallDelta),
     appendToolCallEnd: log("appendToolCallEnd", chat.appendToolCallEnd),
     appendToolCallStart: log("appendToolCallStart", chat.appendToolCallStart),
@@ -110,6 +111,16 @@ describe("applyHarnessEvent", () => {
       "reasoning",
       { ...base, type: "reasoning", messageId: "m", text: "Hm" },
       [["appendReasoning", "Hm"]],
+    ],
+    [
+      "a signed thinking block",
+      {
+        ...base,
+        type: "reasoning_block",
+        messageId: "m",
+        block: { type: "reasoning", text: "Hm", signature: "sig" },
+      },
+      [["appendReasoningBlock", { type: "reasoning", text: "Hm", signature: "sig" }]],
     ],
     [
       "a call starts",

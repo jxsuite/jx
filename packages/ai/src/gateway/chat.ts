@@ -8,13 +8,15 @@ import { upstreamCacheHints } from "../cache-hints.ts";
 import { problemDetails } from "@jxsuite/protocol/problems";
 import type { JsonValue } from "../core-types.ts";
 import { WIRE_HEADER } from "../streaming-client.ts";
-import type {
-  ChatRequestV2,
-  StreamEvent,
-  StreamStartEvent,
-  WireEvent,
-} from "../streaming-client.ts";
+import type { ChatRequestV2, StreamStartEvent, WireEvent } from "../streaming-client.ts";
 import {
+  anthropicCapabilities,
+  anthropicExchange,
+  toAnthropicMessagesRequest,
+} from "../providers/anthropic.ts";
+import type { ProviderRequest } from "../providers/types.ts";
+import {
+  ANTHROPIC_MAX_TOKENS,
   anthropicHeaders,
   isFirstPartyAnthropic,
   normalizeAnthropicStream,
@@ -115,7 +117,7 @@ async function readBody(request: Request, limit: number | undefined): Promise<Ui
  * @param {typeof fetch} upstreamFetch - The fetch to call the upstream with
  * @param {string} url - The upstream's chat URL
  * @param {RequestInit} init - The upstream request
- * @param {(response: Response) => AsyncGenerator<StreamEvent>} normalize - The family's normalizer
+ * @param {(response: Response) => AsyncGenerator<WireEvent>} normalize - The family's normalizer
  * @param {StreamStartEvent} [start] - The frame a version 2 stream opens with
  * @yields {StreamEvent} The route's frames, in wire order
  */
@@ -123,7 +125,7 @@ async function* exchange(
   upstreamFetch: typeof fetch,
   url: string,
   init: RequestInit,
-  normalize: (response: Response) => AsyncGenerator<StreamEvent>,
+  normalize: (response: Response) => AsyncGenerator<WireEvent>,
   start?: StreamStartEvent,
 ): AsyncGenerator<WireEvent> {
   // A version 2 stream opens by saying which wire it is and where the request went (§2.7).
@@ -228,6 +230,8 @@ export function createChatHandler<C extends { readonly signal: AbortSignal }>(
     let wire: 1 | 2 = 1;
     let extras: ProjectedRequest["extras"] = {};
     let neutralCount: number | undefined;
+    /** The version 2 request itself, for the family that is projected from it directly. */
+    let neutral: ChatRequestV2 | undefined;
     let source: ChatRequestBody = body;
     if (body.wire !== undefined && body.wire !== 1) {
       if (body.wire !== 2 || !accepted.includes(2)) {
@@ -248,6 +252,7 @@ export function createChatHandler<C extends { readonly signal: AbortSignal }>(
       /* SAFETY: `checkChatRequestV2` accepted the body, which is what makes it a ChatRequestV2. */
       const v2 = body as ChatRequestV2;
       const projected = projectV2Request(v2);
+      neutral = v2;
       wire = 2;
       ({ extras } = projected);
       // The limit counts the conversation's own messages, not the wire's: one reply is one message.
@@ -296,6 +301,42 @@ export function createChatHandler<C extends { readonly signal: AbortSignal }>(
       wire === 2
         ? { family: upstream.family, model: String(model), type: "stream_start", wire: 2 }
         : undefined;
+
+    /* A version 2 request reaches Claude from the neutral conversation itself (specs/ai.md §2.6):
+       its signed thinking is replayed where its binding still holds, which the version 1 body
+       below cannot carry at all. */
+    if (upstream.family === "anthropic" && neutral) {
+      const round: ProviderRequest = {
+        messages: neutral.messages,
+        model: String(model),
+        system: neutral.system,
+        tools: neutral.tools,
+        ...(neutral.maxTokens === undefined ? null : { maxTokens: neutral.maxTokens }),
+        ...(neutral.temperature === undefined ? null : { temperature: neutral.temperature }),
+      };
+      const messagesBody = (withoutThinking: boolean) =>
+        toAnthropicMessagesRequest(round, {
+          defaultMaxTokens: ANTHROPIC_MAX_TOKENS,
+          firstParty: isFirstPartyAnthropic(upstream.baseUrl),
+          midConversationSystem: anthropicCapabilities(round.model).midConversationSystem,
+          withoutThinking,
+        });
+      const native = async function* native(): AsyncGenerator<WireEvent> {
+        yield { family: "anthropic", model: round.model, type: "stream_start", wire: 2 };
+        yield* anthropicExchange(
+          messagesBody(false),
+          {
+            apiKey: upstream.apiKey,
+            baseUrl: upstream.baseUrl,
+            fetch: upstreamFetch,
+            signal: context.signal,
+            wire: 2,
+          },
+          () => messagesBody(true),
+        );
+      };
+      return new Response(encodeSse(native()), { headers });
+    }
 
     if (upstream.family === "anthropic") {
       const messagesRequest = toAnthropicRequest(

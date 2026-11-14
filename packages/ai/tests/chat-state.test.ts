@@ -244,6 +244,55 @@ describe("chat-state agent loop", () => {
   });
 });
 
+describe("chat-state signed thinking", () => {
+  /* A message that holds signed thinking keeps its whole content as blocks, because the v1 members
+     cannot carry a signature (specs/ai.md §2.6). */
+  it("rebuilds the streaming message's blocks around each signed block", () => {
+    const chat = createChatState();
+    chat.sendMessage("Hello");
+    chat.appendReasoning("Plan.");
+    chat.appendDelta("On it.");
+    chat.appendToolCallStart("c1", "probe");
+    chat.appendToolCallDelta("c1", "{}");
+    const first = {
+      provenance: { binding: "f1:00", family: "anthropic" as const, model: "m" },
+      signature: "sig_0",
+      text: "Plan.",
+      type: "reasoning" as const,
+    };
+    const second = { ...first, redacted: "opaque", signature: "sig_1", text: "" };
+    chat.appendReasoningBlock(first);
+    chat.appendReasoningBlock(second);
+
+    const message = chat.messages.at(-1)!;
+    expect(message.blocks).toEqual([
+      first,
+      second,
+      { text: "On it.", type: "text" },
+      { argumentsText: "{}", id: "c1", name: "probe", type: "tool_call" },
+    ]);
+    // The v1 members still say what they always said, for a reader that predates blocks.
+    expect(message.reasoningContent).toBe("Plan.");
+    expect(message.content).toBe("On it.");
+    // A signed block is Claude's to read: it is not replayed on the OpenAI wire.
+    expect(chat.toMessagesArray().at(-1)).toEqual({
+      content: "On it.",
+      role: "assistant",
+      tool_calls: [{ function: { arguments: "{}", name: "probe" }, id: "c1", type: "function" }],
+    });
+  });
+
+  it("holds only the thinking when the message drew nothing else, and ignores a block with no stream", () => {
+    const chat = createChatState();
+    const block = { signature: "s", text: "t", type: "reasoning" as const };
+    chat.appendReasoningBlock(block);
+    expect(chat.messages).toEqual([]);
+    chat.sendMessage("Hello");
+    chat.appendReasoningBlock(block);
+    expect(chat.messages.at(-1)!.blocks).toEqual([block]);
+  });
+});
+
 describe("chat-state error and cancel", () => {
   it("removes the partial streaming message on setError", () => {
     const chat = createChatState();

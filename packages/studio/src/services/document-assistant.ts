@@ -13,6 +13,7 @@ import { createChatState, createProxyStreamingClient, createToolRegistry } from 
 import { createTurnLock } from "@jxsuite/ai/harness";
 import { negotiateWire } from "@jxsuite/ai/streaming-client";
 import { createSessionFacts } from "@jxsuite/ai/tools";
+import { stripOlderSignatures } from "@jxsuite/ai/messages";
 import type { LiveMessage } from "@jxsuite/ai/messages";
 import type { ProjectConfig } from "@jxsuite/schema/types";
 import { getPlatform } from "../platform";
@@ -483,7 +484,10 @@ export function createDocumentAssistant() {
        and a restore reads it back from there (services/tool-outcomes.ts).
        SAFETY: stripping `result` from each record leaves every other member of a live message as
        it was, and the store's window reads only each message's role. */
-    const stripped = stripToolResults(msgs) as readonly LiveMessage[];
+    const withoutResults = stripToolResults(msgs) as readonly LiveMessage[];
+    /* A signed thinking block is bound to a request this window will not send again once it is
+       reloaded, so only the latest turn's signatures are worth their bytes (specs/ai.md §2.6). */
+    const stripped = stripOlderSignatures(withoutResults);
     void store.save(projectRoot(), sessionId, stripped).then(reportSave);
   }
 
