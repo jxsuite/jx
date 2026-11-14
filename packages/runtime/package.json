@@ -16,6 +16,7 @@
   "exports": {
     ".": "./src/runtime.ts",
     "./css": "./src/css.ts",
+    "./dom-properties": "./src/dom-properties.ts",
     "./expression": "./src/expression.ts",
     "./pointer": "./src/pointer.ts",
     "./statements": "./src/statements.ts",
@@ -39,6 +40,8 @@
   "devDependencies": {
     "@happy-dom/global-registrator": "^21.0.4",
     "@jxsuite/erase": "workspace:^",
-    "@jxsuite/test-support": "workspace:^"
+    "@jxsuite/test-support": "workspace:^",
+    "@webref/elements": "^2.9.2",
+    "@webref/idl": "^3.87.0"
   }
 }

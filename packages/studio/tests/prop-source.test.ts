@@ -96,10 +96,18 @@ describe("deliveredOutsideProps", () => {
   });
 
   test("a top-level key delivers the prop, but a reserved or $-prefixed key does not", () => {
-    const node: JxMutableNode = { $id: "card", label: "Top", name: "n", tagName: "x-card" };
+    const node: JxMutableNode = {
+      $id: "card",
+      description: "d",
+      label: "Top",
+      name: "n",
+      tagName: "x-card",
+    };
     expect(deliveredOutsideProps(node, "label")).toBe(true);
     expect(deliveredOutsideProps(node, "note")).toBe(false);
-    expect(deliveredOutsideProps(node, "name")).toBe(false);
+    expect(deliveredOutsideProps(node, "description")).toBe(false);
+    // An element property like any other (spec.md §8.1): reserved only in a function definition.
+    expect(deliveredOutsideProps(node, "name")).toBe(true);
     expect(deliveredOutsideProps(node, "tagName")).toBe(false);
     expect(deliveredOutsideProps(node, "$id")).toBe(false);
   });

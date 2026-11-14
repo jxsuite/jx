@@ -93,7 +93,7 @@ Jx is a JSON Schema dialect: any 2020-12-compatible validator can check a docume
 - A document must be valid JSON: no comments, no trailing commas, no inline code (behavior lives in `state` entries as strings or structured data).
 - `tagName` is the only required root field; `$schema` and `$id` are recommended.
 - `$defs` is tooling-only: no signals, no functions, no runtime artifacts.
-- Jx reserves the keywords `$prototype`, `$props`, `$switch`, `$map`, `$src`, `$export`, `timing`, `default`, `body`, `arguments`, and `name` on top of the standard JSON Schema vocabulary.
+- Jx reserves the keywords `$prototype`, `$props`, `$switch`, `$map`, `$src`, `$export`, `timing`, `default`, `body`, and `arguments`, and `name` inside a function definition, on top of the standard JSON Schema vocabulary.
 - One document per file; a document nests other documents only by `$ref`, never by pasting their JSON inline.
 
 ## Related

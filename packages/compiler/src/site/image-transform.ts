@@ -27,7 +27,15 @@ import {
 import { cacheKey, getCached, getImageCacheDir, setCached } from "./image-cache.ts";
 import { imgLoadingAttrs } from "./img-loading.ts";
 import { resolveAssetUrl } from "@jxsuite/schema/asset-paths";
-import { isNodeObject, isNonNullObject, isString } from "@jxsuite/schema/guards";
+import { reflectedAttribute } from "@jxsuite/runtime/dom-properties";
+import {
+  isNodeObject,
+  isNonNullObject,
+  isRef,
+  isString,
+  isTemplateString,
+} from "@jxsuite/schema/guards";
+import { propertyAttrText } from "../shared.ts";
 import { errorMessage } from "@jxsuite/schema/parse";
 import { extractXmp, xmpFormatOf } from "@jxsuite/site/xmp-containers";
 import { readMediaRecord } from "@jxsuite/site/xmp-packet";
@@ -659,6 +667,53 @@ function sizesForContainer(containerWidth: number | null): string | undefined {
   return `(max-width: ${width}px) 100vw, ${width}px`;
 }
 
+/**
+ * Move an `<img>` node's element properties into `attributes`, each under the attribute HTML
+ * reflects it to (spec.md §8.1).
+ *
+ * The pipeline reads and writes `attributes` only (`src` in, `srcset`, `sizes`, `width` and
+ * `height` out), and `wrapInPicture` moves `attributes` onto the inner `<img>`. An image written
+ * with properties is the same image, so it is brought to that one spelling first: `alt`, `width`
+ * and `role` then land on the image and not on the `<picture>` around it, and nothing is written
+ * twice. The node-level key is always removed. An `attributes` entry the author wrote wins. A
+ * literal is lifted as the static emitter would write it (`translate: false` as `"no"`), a `$ref`
+ * or a template as written, for the emitter to resolve. `id` and `className` stay on the node,
+ * where the style handle joins the class.
+ *
+ * @param {JxMutableNode | JxDocument} node - The `<img>` node, mutated
+ * @param {Record<string, JxAttributeValue>} attrs - The node's `attributes`
+ */
+function liftImageProperties(
+  node: JxMutableNode | JxDocument,
+  attrs: Record<string, JxAttributeValue>,
+): void {
+  for (const [key, value] of Object.entries(node)) {
+    if (key === "id" || key === "className") {
+      continue;
+    }
+    const reflection = reflectedAttribute("img", key);
+    if (!reflection) {
+      continue;
+    }
+    /* SAFETY: `key` came from the node's own entries; deleting it drops one optional member. */
+    delete (node as Record<string, JxAttributeValue>)[key];
+    if (attrs[reflection.attribute] !== undefined) {
+      continue;
+    }
+    if (isRef(value) || isTemplateString(value)) {
+      attrs[reflection.attribute] = value;
+      continue;
+    }
+    /* SAFETY: a property's value is a document value, which is a scope value. */
+    const text = propertyAttrText(reflection, value as JxAttributeValue);
+    if (text === null) {
+      continue;
+    }
+    // A presence boolean lifts as `true`, which `attributes` writes bare.
+    attrs[reflection.attribute] = text === "" && reflection.kind !== "text" ? true : text;
+  }
+}
+
 async function transformImgNode(
   node: JxMutableNode | JxDocument,
   config: ImageConfig,
@@ -673,15 +728,7 @@ async function transformImgNode(
     node.attributes = {};
   }
   const attrs = node.attributes;
-  /*
-   * A node-level `src` is normalized into `attributes` first. The static emitter only renders a
-   * fixed set of node-level DOM properties and `src` is not among them, so an image written that
-   * way used to acquire a `srcset` and lose its `src` — the fallback the srcset exists to have.
-   */
-  if (attrs.src === undefined && isString(node.src)) {
-    attrs.src = node.src;
-    delete node.src;
-  }
+  liftImageProperties(node, attrs);
   applyFocalPoint(node, attrs.src, projectRoot, mounts);
 
   const variants = config.optimize

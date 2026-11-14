@@ -193,6 +193,33 @@ describe("compileStaticPage", () => {
     expect(html).toContain("<b>Bold</b>");
   });
 
+  test("a static page carries the properties it sets", () => {
+    const doc: JxDocument = {
+      children: [
+        { href: "/x", tagName: "a", textContent: "x" },
+        { tagName: "textarea", value: "hi" },
+        { disabled: true, placeholder: "p", tagName: "input", value: "v" },
+        { innerText: "one\ntwo", tagName: "p" },
+      ],
+    };
+    const { html } = compileStaticPage(doc, baseOpts);
+    expect(html).toContain('<a href="/x">x</a>');
+    expect(html).toContain("<textarea>hi</textarea>");
+    expect(html).toContain("<p>one<br>two</p>");
+    const input = /<input[^>]*>/u.exec(html)?.[0] ?? "";
+    expect(input).toContain(' value="v"');
+    expect(input).toContain(' placeholder="p"');
+    expect(input).toMatch(/ disabled(?: |>)/u);
+  });
+
+  test("an expanded instance's markup is not replaced by a content property", () => {
+    const doc: JxDocument = {
+      children: [{ $static: true, innerHTML: "<b>kept</b>", innerText: "x", tagName: "my-card" }],
+    };
+    const { html } = compileStaticPage(doc, baseOpts);
+    expect(html).toContain("<my-card data-jx-static><b>kept</b></my-card>");
+  });
+
   test("handles string children", () => {
     const doc = {
       children: [{ children: ["Hello ", "World"], tagName: "p" }],

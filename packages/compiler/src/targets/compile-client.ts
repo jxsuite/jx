@@ -38,6 +38,7 @@ import {
   compileExpression,
   compileStatements,
   compileStyles,
+  contentPropertyText,
   createCompileContext,
   emitFormulaFn,
   emitRequestFetch,
@@ -658,6 +659,8 @@ function buildClientNode(
     const bindAttrStrSwitch = ` ${bindAttrs.join(" ")}`;
     return `<${tag}${staticAttrs} data-bind${bindAttrStrSwitch}></${tag}>`;
   }
+  // A content property is the element's text (spec.md §8.1); a bound one keeps its `:prop` above.
+  const contentText = contentPropertyText(source, tag, nextContext.scope);
   if (source.textContent !== undefined && !needsBind) {
     const value = resolveStaticValue(source.textContent, nextContext.scope);
     inner = value == null ? "" : escapeHtml(String(value));
@@ -672,6 +675,8 @@ function buildClientNode(
       ? source.innerHTML
       : resolveStaticValue(source.innerHTML, nextContext.scope);
     inner = resolved == null ? source.innerHTML : String(resolved);
+  } else if (contentText !== undefined) {
+    inner = contentText;
   } else if (isMappedArray(source.children)) {
     // ─── Mapped array → lit-html render binding ───
     counter.needsLit = true;
@@ -904,9 +909,31 @@ function emitLitMapTemplate(def: JxMutableNode | null | undefined, preformatted 
     }
   }
 
-  // Non-reserved properties that render as attributes
-  if (def.contentEditable) {
-    attrs += ` contenteditable="${def.contentEditable}"`;
+  /* Every other property the row sets is bound as a property, as the element target and the
+     runtime do (spec.md §8.1): the platform reflects the ones HTML reflects. */
+  for (const [key, val] of Object.entries(def)) {
+    if (
+      RESERVED_KEYS.has(key) ||
+      key.startsWith("$") ||
+      key.startsWith("on") ||
+      key === "tagName" ||
+      key === "id" ||
+      key === "className" ||
+      key === "style" ||
+      key === "children" ||
+      key === "textContent" ||
+      key === "innerHTML" ||
+      key === "attributes"
+    ) {
+      continue;
+    }
+    if (isRefObject(val)) {
+      attrs += ` .${key}="\${${mapRefToClientExpr(val.$ref)}}"`;
+    } else if (isTemplateString(val)) {
+      attrs += ` .${key}="${mapRefsToLit(val)}"`;
+    } else {
+      attrs += ` .${key}="\${${JSON.stringify(val)}}"`;
+    }
   }
 
   /* A row can hold a component instance, whose children its slots redistribute; a child part

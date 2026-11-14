@@ -917,7 +917,73 @@ describe("compileClient — mapped array advanced features", () => {
     };
     const { files } = compileClient(doc, { title: "Test" });
     const js = files[0]!.content;
-    expect(js).toContain('contenteditable="true"');
+    // Bound as the property, as every other row property is (spec.md §8.1).
+    expect(js).toContain('.contentEditable="${"true"}"');
+    expect(js).not.toContain("contenteditable=");
+  });
+
+  test("a repeater row binds its properties", () => {
+    const doc: JxDocument = {
+      children: [
+        {
+          children: {
+            $prototype: "Array",
+            items: { $ref: "#/state/items" },
+            map: {
+              label: { $ref: "$map/item/l" },
+              tagName: "option",
+              textContent: "${$map.item.l}",
+              title: "t",
+              value: "${$map.item.v}",
+            },
+          },
+          tagName: "select",
+        },
+      ],
+      state: { items: [{ l: "A", v: "a" }] },
+      tagName: "div",
+    };
+    const { files } = compileClient(doc, { title: "Test" });
+    const js = files[0]!.content;
+    expect(js).toContain('.value="${item.v}"');
+    expect(js).toContain('.title="${"t"}"');
+    expect(js).toContain('.label="${item.l}"');
+  });
+
+  test("a literal row property is bound", () => {
+    const doc: JxDocument = {
+      children: [
+        {
+          children: {
+            $prototype: "Array",
+            items: { $ref: "#/state/items" },
+            map: { disabled: true, tagName: "button", textContent: "${$map.item}" },
+          },
+          tagName: "div",
+        },
+      ],
+      state: { items: ["a"] },
+      tagName: "div",
+    };
+    const { files } = compileClient(doc, { title: "Test" });
+    expect(files[0]!.content).toContain('.disabled="${true}"');
+  });
+
+  test("a static element keeps its href in the prerendered HTML", () => {
+    const doc: JxDocument = {
+      children: [
+        { href: "/x", tagName: "a", textContent: "${state.label}" },
+        { tagName: "textarea", value: "${state.label}" },
+        { innerText: "a\nb", tagName: "p" },
+      ],
+      state: { label: "Go" },
+      tagName: "div",
+    };
+    const { html } = compileClient(doc, { title: "Test" });
+    expect(html).toMatch(/<a href="\/x" data-bind[^>]*>Go<\/a>/u);
+    // A bound content property is prerendered as text and keeps its property binding.
+    expect(html).toMatch(/<textarea data-bind :value="[^"]+">Go<\/textarea>/u);
+    expect(html).toContain("<p>a<br>b</p>");
   });
 
   test("textContent as $ref object in map template", () => {

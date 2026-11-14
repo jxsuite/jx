@@ -33,6 +33,8 @@ import {
   splitSelectorList,
 } from "@jxsuite/runtime";
 import { spliceNestingSelector } from "@jxsuite/runtime/css";
+import { isContentProperty, reflectedAttribute } from "@jxsuite/runtime/dom-properties";
+import type { Reflection } from "@jxsuite/runtime/dom-properties";
 import {
   compileOperandSource,
   evaluateExpression,
@@ -1409,7 +1411,98 @@ export function inlineStyleDeclarations(
 }
 
 /**
+ * The text a DOM property writes into its content attribute, converted as the property's setter
+ * converts it (spec.md §8.1), or `null` when it writes no attribute.
+ *
+ * - `null`, `undefined` and anything that is not a string, number or boolean write nothing.
+ * - A `text` row writes the value's string form, the empty string included (`alt=""` and `value=""`
+ *   mean something).
+ * - A `boolean` row applies ToBoolean, then writes its keyword (`translate` is `yes` or `no`) or what
+ *   `booleanAttrValue` gives the attribute: `""` for presence, a word for an enumerated one.
+ * - `hidden` keeps the `until-found` keyword and otherwise follows truthiness.
+ *
+ * @param {Reflection} reflection - The row `reflectedAttribute` returned for the property
+ * @param {JxScope[string]} value - The property's value, already resolved
+ * @returns {string | null} The attribute's text (`""` is the bare form for a `boolean` or `hidden`
+ *   row), or null to write nothing
+ * @docs framework/concepts/elements
+ */
+export function propertyAttrText(reflection: Reflection, value: JxScope[string]): string | null {
+  if (!isString(value) && !isNumber(value) && !isBoolean(value)) {
+    return null;
+  }
+  if (reflection.kind === "text") {
+    return String(value);
+  }
+  if (reflection.kind === "hidden") {
+    if (isString(value) && value.toLowerCase() === "until-found") {
+      return "until-found";
+    }
+    return value ? "" : null;
+  }
+  const on = Boolean(value);
+  if (reflection.keywords) {
+    return reflection.keywords[on ? 0 : 1];
+  }
+  return booleanAttrValue(reflection.attribute, on);
+}
+
+/** The properties `buildAttrs` has always written, in the order it writes them. */
+const LEADING_PROPERTIES = ["hidden", "tabIndex", "title", "lang", "dir"] as const;
+
+/** Keys `buildAttrs` writes at a fixed position, ahead of the definition's other properties. */
+const NON_PROPERTY_KEYS: ReadonlySet<string> = new Set([...LEADING_PROPERTIES, "id", "className"]);
+
+/**
+ * A property's value at build time, or `undefined` when the build has none: the pointer names
+ * runtime-only state (asked before the read, as `renderMappedRows` does), or reading it threw,
+ * which a computed's getter is free to do on build-time data.
+ *
+ * @param {JxDocumentValue | undefined} value
+ * @param {JxScope | null} scope
+ * @returns {JxScope[string]}
+ */
+function resolvePropertyValue(
+  value: JxDocumentValue | undefined,
+  scope: JxScope | null,
+): JxScope[string] {
+  if (isRef(value) && (scope === null || isRuntimeOnlyRef(value.$ref, scope))) {
+    return undefined;
+  }
+  try {
+    return resolveStaticValue(value, scope);
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * One attribute as it is written into a start tag: bare when a boolean wrote the empty string.
+ *
+ * @param {string} name
+ * @param {string} text
+ * @param {boolean} bare - Whether an empty text is presence (`open`) and not a value (`alt=""`)
+ * @returns {string}
+ */
+function serializeAttr(name: string, text: string, bare: boolean): string {
+  return bare && text === "" ? ` ${name}` : ` ${name}="${escapeHtml(text)}"`;
+}
+
+/**
  * Build an HTML attribute string from a static element definition.
+ *
+ * Every DOM property the definition sets is written as the content attribute HTML reflects it to
+ * (spec.md §8.1), from the one table in `@jxsuite/runtime/dom-properties`: the runtime assigns the
+ * property and the platform reflects it, and built HTML has to say the same thing in attributes.
+ * Order: `id`, `class`, then `hidden`, `tabindex`, `title`, `lang` and `dir`, then the other
+ * properties in the definition's key order, then `style`, then `attributes`, then the markers.
+ *
+ * Each attribute name is written once. Where a property and an `attributes` entry name the same
+ * attribute, the entry is written in the property's place, because the runtime applies attributes
+ * after properties; an entry that resolves to nothing removes it. A live row (`value` on an
+ * `<input>`, `checked`, `selected`, `muted`) is the exception: the property set a state a later
+ * attribute write does not move, so the property's attribute stays. `class` is one attribute by its
+ * own rule (spec.md §9.2).
  *
  * @param {JxElement | JxMutableNode} def
  * @param {JxScope | null} scope
@@ -1418,11 +1511,18 @@ export function inlineStyleDeclarations(
  *   caller: its own `style` resolves against the parent's scope, while the definition's host style
  *   resolves against the instance's, and an element cannot carry two `style` attributes.
  * @returns {string}
+ * @docs framework/concepts/elements
  */
 export function buildAttrs(def: JxElement | JxMutableNode, scope: JxScope | null, hostStyle = "") {
-  let out = "";
+  const tag = resolveStaticTagName(def.tagName, scope);
+  // Attribute name to its serialized form, in the order written. Names are lowercase.
+  const written = new Map<string, string>();
+  const live = new Set<string>();
 
   const id = resolveStaticValue(def.id, scope);
+  if (id) {
+    written.set("id", serializeAttr("id", String(id), false));
+  }
   /* One `class` attribute, at the `className` position: the author's classes, then the style
      handle (spec.md §9.2). The author's are `attributes.class` when the element writes one, which
      is what the runtime leaves in effect, since it applies attributes after properties. */
@@ -1434,49 +1534,49 @@ export function buildAttrs(def: JxElement | JxMutableNode, scope: JxScope | null
   ]
     .filter((token) => token !== "")
     .join(" ");
-  const hidden = resolveStaticValue(def.hidden, scope);
-  const tabIndex = resolveStaticValue(def.tabIndex, scope);
-  const title = resolveStaticValue(def.title, scope);
-  const lang = resolveStaticValue(def.lang, scope);
-  const dir = resolveStaticValue(def.dir, scope);
-
-  if (id) {
-    out += ` id="${escapeHtml(String(id))}"`;
-  }
   if (className) {
-    out += ` class="${escapeHtml(className)}"`;
-  }
-  if (hidden) {
-    out += " hidden";
-  }
-  if (tabIndex !== undefined && tabIndex !== null) {
-    out += ` tabindex="${escapeHtml(String(tabIndex))}"`;
-  }
-  if (title) {
-    out += ` title="${escapeHtml(String(title))}"`;
-  }
-  if (lang) {
-    out += ` lang="${escapeHtml(String(lang))}"`;
-  }
-  if (dir) {
-    out += ` dir="${escapeHtml(String(dir))}"`;
+    written.set("class", serializeAttr("class", className, false));
   }
 
-  // The host declarations go last: in one `style` attribute the later declaration of a property
-  // Wins, and the page walk gives the definition's resolved host style the same precedence over an
-  // Instance's own (`{ ...node.style, ...resolvedStyle }`), so the two paths agree.
-  const inline = [inlineStyleDeclarations(def.style, scope), hostStyle].filter(Boolean).join("; ");
-  if (inline) {
-    /*
-     * Escaped like every other attribute. Both halves carry values a template string resolved
-     * from data — a `background-image: url("…")` host style reads its target from a prop — and a
-     * `"` in that data would otherwise end the attribute and hand the rest of the value to the
-     * parser as attributes. The HTML parser decodes `&quot;` before the CSS parser sees the
-     * declaration, so `url(&quot;…&quot;)` renders exactly as `url("…")`, and `rewriteHtmlBase`
-     * already reads the entity-wrapped form back when it re-roots a `url()`.
-     */
-    out += ` style="${escapeHtml(inline)}"`;
+  const writeProperty = (key: string, value: JxDocumentValue | undefined) => {
+    const reflection = reflectedAttribute(tag, key);
+    if (!reflection) {
+      return;
+    }
+    const resolved = resolvePropertyValue(value, scope);
+    /* A live row decides its attribute even when it writes none: `checked: false` leaves the box
+       unchecked whatever `attributes.checked` says afterwards. A value the build cannot read
+       decides nothing. */
+    if (reflection.live && resolved !== undefined) {
+      live.add(reflection.attribute);
+    }
+    const text = propertyAttrText(reflection, resolved);
+    if (text !== null) {
+      written.set(
+        reflection.attribute,
+        serializeAttr(reflection.attribute, text, reflection.kind !== "text"),
+      );
+    }
+  };
+  for (const key of LEADING_PROPERTIES) {
+    writeProperty(key, def[key]);
   }
+  for (const [key, value] of Object.entries(def)) {
+    if (
+      RESERVED_KEYS.has(key) ||
+      NON_PROPERTY_KEYS.has(key) ||
+      key.startsWith("$") ||
+      key.startsWith("on") ||
+      isContentProperty(tag, key)
+    ) {
+      continue;
+    }
+    /* SAFETY: a definition's own member outside the reserved, `$` and `on` keys is a DOM property's
+       value, which a document writes as a literal, a `$ref` or a template (spec.md §8.1). */
+    writeProperty(key, value as JxDocumentValue | undefined);
+  }
+
+  let rest = "";
   if (def.attributes) {
     for (const [k, v] of Object.entries(def.attributes)) {
       // Already written above, merged with the style handle.
@@ -1501,18 +1601,49 @@ export function buildAttrs(def: JxElement | JxMutableNode, scope: JxScope | null
        * Sidebar's own not-the-current-page marker, and second-guessing it would be this same defect
        * Pointed the other way.
        */
+      let serialized: string | null = null;
       if (isBoolean(value)) {
         const text = booleanAttrValue(k, value);
-        if (text !== null) {
-          out += text === "" ? ` ${k}` : ` ${k}="${escapeHtml(text)}"`;
+        serialized = text === null ? null : serializeAttr(k, text, true);
+      } else if (isString(value) || isNumber(value)) {
+        serialized = serializeAttr(k, String(value), false);
+      }
+      /* A name a property already wrote (`setAttribute` lowercases the name on an HTML element, so
+         the match ignores ASCII case) is written once, as the runtime leaves it. */
+      const name = k.toLowerCase();
+      if (live.has(name)) {
+        continue;
+      }
+      if (written.has(name)) {
+        if (serialized === null && (value === null || value === undefined || isBoolean(value))) {
+          written.delete(name);
+        } else if (serialized !== null) {
+          written.set(name, serialized);
         }
         continue;
       }
-      if (isString(value) || isNumber(value)) {
-        out += ` ${k}="${escapeHtml(String(value))}"`;
-      }
+      rest += serialized ?? "";
     }
   }
+
+  let out = [...written.values()].join("");
+
+  // The host declarations go last: in one `style` attribute the later declaration of a property
+  // Wins, and the page walk gives the definition's resolved host style the same precedence over an
+  // Instance's own (`{ ...node.style, ...resolvedStyle }`), so the two paths agree.
+  const inline = [inlineStyleDeclarations(def.style, scope), hostStyle].filter(Boolean).join("; ");
+  if (inline) {
+    /*
+     * Escaped like every other attribute. Both halves carry values a template string resolved
+     * from data — a `background-image: url("…")` host style reads its target from a prop — and a
+     * `"` in that data would otherwise end the attribute and hand the rest of the value to the
+     * parser as attributes. The HTML parser decodes `&quot;` before the CSS parser sees the
+     * declaration, so `url(&quot;…&quot;)` renders exactly as `url("…")`, and `rewriteHtmlBase`
+     * already reads the entity-wrapped form back when it re-roots a `url()`.
+     */
+    out += ` style="${escapeHtml(inline)}"`;
+  }
+  out += rest;
 
   if (def.$static) {
     out += ` data-jx-static`;
@@ -1521,6 +1652,41 @@ export function buildAttrs(def: JxElement | JxMutableNode, scope: JxScope | null
   }
 
   return out;
+}
+
+/**
+ * The element's text when one of its content properties sets it (spec.md §8.1): `innerText`
+ * anywhere, `value` on a `<textarea>` or `<output>`, `text` on an `<option>`. Each of those setters
+ * replaces the element's children with text, so built HTML writes it as escaped text; `innerText`
+ * also turns each line break into a `<br>`, as its setter does. The first one in the definition's
+ * key order wins: a definition with two has contradicted itself. An expanded component instance has
+ * none, because its `innerHTML` is its finished content (`isExpandedInstance`).
+ *
+ * @param {JxElement | JxMutableNode} source
+ * @param {string} tag - The element's resolved tag
+ * @param {JxScope | null} scope
+ * @returns {string | undefined} Escaped HTML, or undefined when the definition sets none
+ * @docs framework/concepts/elements
+ */
+export function contentPropertyText(
+  source: JxElement | JxMutableNode,
+  tag: string,
+  scope: JxScope | null,
+): string | undefined {
+  if (isExpandedInstance(source)) {
+    return undefined;
+  }
+  for (const [key, raw] of Object.entries(source)) {
+    if (raw === undefined || !isContentProperty(tag, key)) {
+      continue;
+    }
+    /* SAFETY: a content property is a DOM property like any other, written as a literal, a `$ref`
+       or a template (spec.md §8.1). */
+    const value = resolvePropertyValue(raw as JxDocumentValue, scope);
+    const text = value === null || value === undefined ? "" : escapeHtml(String(value));
+    return key === "innerText" ? text.replaceAll(/\r\n|\r|\n/gu, "<br>") : text;
+  }
+  return undefined;
 }
 
 /**
@@ -1550,7 +1716,7 @@ export function childSeparator(preformatted: boolean | undefined, indent = "  ")
 export type InnerCompileContext = Omit<CompileContext, "scope"> & { scope: JxScope | null };
 
 /**
- * Build the inner HTML (textContent or children) for a node.
+ * Build the inner HTML (textContent, innerHTML, a content property or children) for a node.
  *
  * @param {JxElement} def
  * @param {JxElement | null} raw
@@ -1581,6 +1747,14 @@ export function buildInner(
   if (source.innerHTML) {
     const value = resolveStaticValue(source.innerHTML, context.scope);
     return value == null ? "" : String(value);
+  }
+  const content = contentPropertyText(
+    source,
+    resolveStaticTagName(source.tagName, context.scope),
+    context.scope,
+  );
+  if (content !== undefined) {
+    return content;
   }
   if (Array.isArray(source.children)) {
     const rawChildren = raw?.children;
@@ -2938,6 +3112,11 @@ function renderInner(
   if (node.innerHTML) {
     const val = resolveStaticValue(node.innerHTML, scope);
     return val != null ? String(val) : node.innerHTML;
+  }
+  // A content property is the element's text (spec.md §8.1).
+  const content = contentPropertyText(node, resolveStaticTagName(node.tagName, scope), scope);
+  if (content !== undefined) {
+    return content;
   }
   // The legacy whole-`children` repeater: the array IS the children slot.
   if (isMappedArray(node.children)) {

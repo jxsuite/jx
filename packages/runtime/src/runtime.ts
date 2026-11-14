@@ -2098,7 +2098,7 @@ export const RESERVED_KEYS = new Set([
   "body",
   "parameters",
   "arguments",
-  "name",
+  // No `name`: it is reserved only inside a function definition (spec.md §17), which is never rendered.
   "tagName",
   "children",
   "style",
