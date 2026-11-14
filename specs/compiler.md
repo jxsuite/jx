@@ -643,13 +643,11 @@ Until 0.4.4 the definition walk had no registry. A nested instance went through 
 
 ### 8.2 CSS Extraction
 
-> **Status: Partial.** Extraction, the shared `buildStyleRules` nesting and the component-sheet inlining ship (see the marker closing this section). The handle sentence below no longer holds: `collectStyles` in `packages/compiler/src/shared.ts` has no `#id` preference, and gives every element with a `style` object a generated class of its own, as `spec.md` §9.2's marker records.
-
 All static `style` definitions are extracted into a single `<style>` block in `<head>`.
 
 Nested selectors and at-rule groups are emitted per `spec.md` §9.2, including the popover states (`:popover-open`, `::backdrop`, `:popover-open::backdrop`) and the DECLARATION-body at-rules (`@position-try`, `@property`, `@font-face`, `@counter-style`), whose block carries no selector and is not scoped to the element whose `style` object declares it.
 
-The nesting is resolved by `buildStyleRules` (`@jxsuite/runtime/css`), the same function the runtime (`spec.md` §9.6) and the site-style builder call, so a document previewed in Studio and the page this emits resolve the same tree. The compiler keeps what is its own: the `#id` / `.jx-N` handle preference, the `:host` translation of §16.6, and the `</style` escaping below.
+The nesting is resolved by `buildStyleRules` (`@jxsuite/runtime/css`), the same function the runtime (`spec.md` §9.6) and the site-style builder call, so a document previewed in Studio and the page this emits resolve the same tree. The compiler keeps what is its own: the element's handle, which `spec.md` §9.2 specifies; the comment it writes above each rule whose block carries a `$description` (`spec.md` §9.2); the `:host` translation of `spec.md` §16.6; and the `</style` escaping below.
 
 Component stylesheets are extracted the same way. A page inlines the CSS of every light-DOM component it uses, appended after the page block so the cascade is unchanged, and emits no `<link rel="stylesheet">` for them — one render-blocking request per component was a page's entire critical request chain, for sheets averaging about 2 kB. The sheets are still written to `dist/components/<tag>.css` for anything that references them directly. A component in shadow mode is unaffected: its sheet is linked from inside the declarative shadow root.
 
@@ -657,7 +655,7 @@ The trade is deliberate. Inlined CSS repeats on every page instead of caching ac
 
 CSS inlined into a `<style>` element has `</style` escaped as `<\/style` — an HTML parser ends the element at that sequence wherever it appears, and style values are author data.
 
-> **Status: Implemented.** `compile-static.js` handles zero-JS output; `site-build`'s `injectComponentScripts` inlines the component sheets.
+> **Status: Implemented.** `compile-static.ts` handles zero-JS output; `site-build`'s `injectComponentScripts` inlines the component sheets.
 
 ---
 

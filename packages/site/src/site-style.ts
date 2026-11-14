@@ -29,6 +29,10 @@
  * to differ was a nested element key, on the belief that "the document's own style pass covers page
  * content": nothing else reads `project.json#/style`, so the canvas simply dropped a site's
  * typography and link rules while the build kept them (#296).
+ *
+ * A block's `$description` is the one thing only the build renders: a static build writes it as a
+ * comment above the rule (`{ comments: true }`, spec.md §9.2), and a host never does, because every
+ * consumer but a static build ignores the description.
  */
 
 import {
@@ -36,11 +40,12 @@ import {
   buildStyleRules,
   isDeclarationAtRule,
   isKeyframesAtRule,
+  commentedRuleText,
   isNestedSelectorKey,
   pureSchemeOf,
 } from "@jxsuite/runtime/css";
 import type { CssBuildOptions } from "@jxsuite/runtime/css";
-import { isNonNullObject } from "@jxsuite/schema/guards";
+import { isNonNullObject, isString } from "@jxsuite/schema/guards";
 import type { JxRef, JxStyle } from "@jxsuite/schema/types";
 
 /** Id of the injected site-style tag (replace-in-place, never accumulate). */
@@ -76,8 +81,28 @@ export interface SiteStyleRoots {
   body: string;
 }
 
+/** What a caller may ask of the sheet beyond its rules. */
+export interface SiteStyleOptions {
+  /**
+   * Write each described rule's `$description` as a comment on the line above it. The static
+   * build's switch: the canvas and the live preview leave it off and emit the rule text alone.
+   */
+  comments?: boolean;
+}
+
 /** The page's own root and body. */
 export const PAGE_ROOTS: SiteStyleRoots = { body: "body", root: ":root" };
+
+/**
+ * Hand a block's own `$description` to the first rule its split writes: the root's when it holds a
+ * declaration, the body's otherwise. A block that writes neither rule carries no comment.
+ */
+function describeFirstRule(block: JxStyle, root: JxStyle, body: JxStyle): void {
+  const description = block["$description"];
+  if (isString(description)) {
+    (Object.keys(root).length > 0 ? root : body)["$description"] = description;
+  }
+}
 
 /**
  * Build the site-style sheet text: custom properties on `:root`, plain properties on `body`,
@@ -104,6 +129,7 @@ export const PAGE_ROOTS: SiteStyleRoots = { body: "body", root: ":root" };
  *   is dropped, which is what every host does
  * @param {SiteStyleRoots} [roots] - The selectors that stand for the page's root and body; the
  *   page's own `:root` and `body` unless the sheet styles a page drawn inside something else
+ * @param {SiteStyleOptions} [options] - `comments: true` is the static build's form
  * @returns {string}
  * @docs studio/interface/canvas
  */
@@ -113,19 +139,20 @@ export function buildSiteStyleCSS(
   transpose: (value: string) => string,
   resolveValue?: SiteStyleValueResolver,
   roots: SiteStyleRoots = PAGE_ROOTS,
+  options: SiteStyleOptions = {},
 ): string {
   const rules: string[] = [];
   const push = (style: JxStyle, selector: string | null) => {
-    const options: CssBuildOptions = { mediaQueries, scope: selector, transposeValue: transpose };
+    const build: CssBuildOptions = { mediaQueries, scope: selector, transposeValue: transpose };
     /* The selector is closed over here rather than threaded through `buildStyleRules`, whose own
        hook sees a rule TARGET (self / descendant / unscoped) and not the selector it hangs off;
        the compiler's report names the selector, so this is where it is known. Set only when given:
        `exactOptionalPropertyTypes` refuses an explicit `undefined` for an optional hook. */
     if (resolveValue) {
-      options.resolveValue = (property, value) => resolveValue(property, value, selector);
+      build.resolveValue = (property, value) => resolveValue(property, value, selector);
     }
-    for (const rule of buildStyleRules(style, options)) {
-      rules.push(rule.text);
+    for (const rule of buildStyleRules(style, build)) {
+      rules.push(options.comments === true ? commentedRuleText(rule) : rule.text);
     }
   };
 
@@ -157,7 +184,8 @@ export function buildSiteStyleCSS(
       }
       continue;
     }
-    if (isNestedSelectorKey(key) || key.startsWith("@")) {
+    // Metadata is no declaration; the block's own `$description` is placed after the split.
+    if (isNestedSelectorKey(key) || key.startsWith("@") || key.startsWith("$")) {
       continue;
     }
     /* Custom properties go to `:root`; so does `color-scheme`, which is the one non-custom
@@ -171,6 +199,8 @@ export function buildSiteStyleCSS(
       bodyProps[key] = value;
     }
   }
+
+  describeFirstRule(siteStyle, rootProps, bodyProps);
 
   // Base rules precede conditional blocks so equal-specificity overrides win by source order.
   push(rootProps, roots.root);
@@ -206,12 +236,16 @@ export function buildSiteStyleCSS(
         }
         continue;
       }
+      if (k.startsWith("$")) {
+        continue;
+      }
       if (k.startsWith("--")) {
         condRoot[k] = v;
       } else {
         condBody[k] = v;
       }
     }
+    describeFirstRule(block, condRoot, condBody);
     push({ [atKey]: condRoot }, roots.root);
     push({ [atKey]: condBody }, roots.body);
     for (const [sel, sub] of condSubs) {

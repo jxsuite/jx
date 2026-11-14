@@ -507,8 +507,8 @@ export interface CssRule {
    * It is NOT in {@link CssRule.text}, and that is the point. `text` is what a sheet inserts and
    * what {@link hashCss} interns, so prose there would make two identical rules two rules and put a
    * paragraph in every adopted sheet at runtime. A static emitter — the one writing a stylesheet a
-   * person will read — renders it as a comment; every other consumer ignores it, exactly as a
-   * document's own `$description` is ignored.
+   * person will read — renders it as a comment through {@link commentedRuleText}; every other
+   * consumer ignores it, exactly as a document's own `$description` is ignored.
    */
   description?: string;
   /** See {@link CssRuleTarget}. */
@@ -521,8 +521,8 @@ export interface CssRule {
 export interface CssBuildOptions {
   /**
    * The selector the style object hangs off. Every nested key resolves against it, so the runtime
-   * passes a placeholder it substitutes afterwards and the compiler passes `#id` / `.jx-N` / a
-   * tag.
+   * passes a placeholder it substitutes afterwards and the compiler passes an element's generated
+   * class or a component's tag.
    */
   scope?: string | null;
   /** The project's `$media` map, for resolving `@--name` keys. */
@@ -612,6 +612,25 @@ export function cssRuleText(
     text = `${conditions[i]} { ${text} }`;
   }
   return text;
+}
+
+/**
+ * A rule as a static build writes it: its `$description` as a comment on the line above, then its
+ * text (spec.md §9.2). An undescribed rule is its text, byte for byte.
+ *
+ * CSS comments have no escape, so a comment terminator in the prose (an asterisk and then a slash)
+ * is written with a space between the two: breaking the sequence is the only way to keep the
+ * comment from ending early. The prose is otherwise verbatim, newlines included.
+ *
+ * @param {Pick<CssRule, "text" | "description">} rule
+ * @returns {string}
+ * @docs framework/concepts/styling
+ */
+export function commentedRuleText(rule: Pick<CssRule, "text" | "description">): string {
+  if (rule.description === undefined) {
+    return rule.text;
+  }
+  return `/* ${rule.description.replaceAll("*/", "* /")} */\n${rule.text}`;
 }
 
 /**
@@ -815,6 +834,10 @@ export function buildStyleRules(style: JxStyle, options: CssBuildOptions = {}): 
     return declarations;
   };
 
+  /** A block's `$description` as the member a rule carries, when it wrote a non-empty one. */
+  const describedBy = (description: JxStyle[string]): { description?: string } =>
+    isString(description) && description !== "" ? { description } : {};
+
   const emit = (
     conditions: readonly string[],
     selector: string | null,
@@ -842,10 +865,7 @@ export function buildStyleRules(style: JxStyle, options: CssBuildOptions = {}): 
       target,
       key: hashCss(text),
     };
-    if (isString(description) && description !== "") {
-      rule.description = description;
-    }
-    rules.push(rule);
+    rules.push({ ...rule, ...describedBy(description) });
   };
 
   /**
@@ -884,6 +904,7 @@ export function buildStyleRules(style: JxStyle, options: CssBuildOptions = {}): 
       return;
     }
     const text = cssKeyframesText(conditions, name, blocks);
+    // The block's own `$description` documents the rule; a stop's is ignored, as a stop is no rule.
     rules.push({
       blocks,
       conditions: [...conditions],
@@ -892,6 +913,7 @@ export function buildStyleRules(style: JxStyle, options: CssBuildOptions = {}): 
       selector: null,
       target: "unscoped",
       text,
+      ...describedBy(block["$description"]),
     });
   };
 
