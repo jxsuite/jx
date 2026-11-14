@@ -73,6 +73,8 @@ The selector is ordinary state, so anything that writes state switches the view:
 
 The runtime renders the `$switch` node as a container element (its `tagName`, or `div` when none is given) and watches the bound reference inside a reactive effect. On every change it clears the container and renders the matching case: inline cases render immediately with the current scope; external cases are fetched, their scope is built, and the result is appended, with stale responses discarded if the key changed again mid-load. A key with no matching case renders nothing.
 
+On a built site, a `$switch` inside a component is prerendered with the case its value starts on, so that content is in the page's HTML. A component that contains a `$switch` always ships its module, because the module is what changes the case later.
+
 ## In Studio
 
 Select the node and open the **[Logic tab](/docs/studio/logic/events)** (:kbd[⌘⇧4]). Its **Condition** section is the node's two halves:

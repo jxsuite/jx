@@ -587,8 +587,10 @@ export function isDynamic(def: JxElement | JxMutableNode | string) {
     return true;
   }
 
+  const finished = isExpandedInstance(def);
   for (const [key, val] of Object.entries(def)) {
-    if (RESERVED_KEYS.has(key)) {
+    // An expanded instance's `innerHTML` is its prerender: a `${` in it is text, not a template.
+    if (RESERVED_KEYS.has(key) || (finished && key === "innerHTML")) {
       continue;
     }
     if (isRef(val)) {
@@ -616,6 +618,20 @@ export function isDynamic(def: JxElement | JxMutableNode | string) {
   }
 
   return false;
+}
+
+/**
+ * Whether a node is a component instance the site build already expanded: it carries the stamp, and
+ * its `innerHTML` is the definition's prerender. That markup is finished HTML, resolved against the
+ * instance's own scope, so no later pass reads a `${` in it as a template: resolved against the
+ * page's scope a code sample would render `undefined`, and the template alone would route a static
+ * page to the client target (compiler.md §8.1).
+ *
+ * @param {JxElement | JxMutableNode} def
+ * @returns {boolean}
+ */
+export function isExpandedInstance(def: JxElement | JxMutableNode): boolean {
+  return def.$static === true || def.$prerendered === true;
 }
 
 // ─── Scope / value resolution ─────────────────────────────────────────────────
@@ -685,6 +701,25 @@ function runtimeOnlyKeysOf(scope: JxScope): Set<string> | undefined {
  */
 export function isRuntimeOnlyStateKey(scope: JxScope, key: string): boolean {
   return runtimeOnlyKeysOf(scope)?.has(key) ?? false;
+}
+
+/**
+ * Whether a `$ref` names state the build holds as runtime-only: a `#/state/<key>` pointer whose
+ * first reference token is marked. A `$map/` pointer never is. Asked BEFORE the pointer is read,
+ * because reading a marked computed runs a getter that is free to throw on partial build-time data,
+ * and a bodyless `$src` Function reads as a placeholder callable, never as its value.
+ *
+ * @param {string} ref - The `$ref` as written
+ * @param {JxScope} scope - The build-time scope, or a row scope whose prototype chain reaches it
+ * @returns {boolean}
+ */
+export function isRuntimeOnlyRef(ref: string, scope: JxScope): boolean {
+  if (!ref.startsWith("#/state/")) {
+    return false;
+  }
+  // The first reference token, unescaped as RFC 6901 §4 orders it (`~1` before `~0`).
+  const [token = ""] = ref.slice("#/state/".length).split("/");
+  return isRuntimeOnlyStateKey(scope, token.replaceAll("~1", "/").replaceAll("~0", "~"));
 }
 
 /**
@@ -934,14 +969,31 @@ export function emitSrcImports(
   return { imports: importLines, loaders };
 }
 
+/** How {@link buildInitialScope} treats an entry a handler writes. */
+export interface BuildScopeOptions {
+  /**
+   * Hold every entry a handler in the document writes as runtime-only, so no template reading it
+   * resolves. Only the pass that REPLACES a template with its value asks for this (the site build's
+   * page-document scope, compiler.md §8.1): a baked value there is a dead binding. Everywhere a
+   * binding survives the prerender (a component's module re-renders its template, a dynamic page's
+   * module binds what it prerenders) the entry bakes its initial value, which is the first paint.
+   */
+  holdMutable?: boolean;
+}
+
 /**
+ * The build-time scope of a `state` block: what each entry holds before any handler has run.
+ *
  * @param {Record<string, JxStateDefinition>} [defs]
  * @param {JxScope | null} [parentScope]
+ * @param {BuildScopeOptions} [options]
  * @returns {JxScope}
+ * @docs framework/build
  */
 export function buildInitialScope(
   defs: Record<string, JxStateDefinition> = {},
   parentScope: JxScope | null = null,
+  options: BuildScopeOptions = {},
 ) {
   const scope = emptyScope(parentScope);
   // Keys whose real value only exists after hydration, so prerender must not interpolate them —
@@ -957,19 +1009,23 @@ export function buildInitialScope(
     writable: true,
   });
 
-  // Pass 0: every entry some handler in this document writes to is mutable, so prerender must not
-  // Bake a binding over it. Narrow on purpose — an entry nothing ever writes stays bakeable, so
-  // Prerendered content is preserved for SEO. A `$src` handler's assignments live in a JS file this
-  // Builder cannot open, so a write that only happens there is still missed (issue #125).
-  const assigned = new Set<string>();
-  for (const def of Object.values(defs)) {
-    if (isFunctionDef(def) || isExpressionDef(def)) {
-      collectAssignedStateKeys(def.body ?? def.$expression, assigned);
+  // Pass 0, for a holding scope only: every entry some handler in this document writes to is
+  // Mutable, so a pass that replaces a template with its value must not bake over it. Narrow on
+  // Purpose: an entry nothing ever writes stays bakeable, so prerendered content is preserved for
+  // SEO. A `$src` handler's assignments live in a JS file this builder cannot open, so a write that
+  // Only happens there is still missed. A scope that does not hold bakes the entry's initial value,
+  // Because the binding that reads it outlives the prerender (compiler.md §8.1).
+  if (options.holdMutable === true) {
+    const assigned = new Set<string>();
+    for (const def of Object.values(defs)) {
+      if (isFunctionDef(def) || isExpressionDef(def)) {
+        collectAssignedStateKeys(def.body ?? def.$expression, assigned);
+      }
     }
-  }
-  for (const key of assigned) {
-    if (key in defs) {
-      runtimeOnly.add(key);
+    for (const key of assigned) {
+      if (key in defs) {
+        runtimeOnly.add(key);
+      }
     }
   }
 
@@ -1268,11 +1324,22 @@ export function evaluateStaticTemplate(str: string, scope: JxScope | null) {
    * ReferenceError the catch below turned into a silent null. A `$head` title referencing the site
    * name reached the page as the literal template text.
    */
-  const args = ["state", "$map", "$site", "$page"] as const;
+  const args = ["state", "$map", "$site", "$page"];
   const values = [scope, scope?.$map, scope?.$site, scope?.$page];
+  /* Inside a repeater row the bare `item` and `index` are bound too, as the compiled map callback
+     and the interpreter bind them (spec.md §10.2). Only there: outside a row the names stay
+     unbound, so a template that reads one fails to resolve as it always did. */
+  const row = scope?.$map;
+  if (isNonNullObject(row) && !Array.isArray(row)) {
+    args.push("item", "index");
+    /* SAFETY: a non-array object answers a member read by name, and a row frame's members are scope
+       values; the view claims nothing about their types. */
+    const frame = row as JxScope;
+    values.push(frame.item, frame.index);
+  }
   try {
     const body = isSingleExpression(str) ? `return (${str.slice(2, -1)})` : `return \`${str}\``;
-    /* SAFETY: `new Function` compiles exactly the four parameters in `args`, and its body returns a
+    /* SAFETY: `new Function` compiles exactly the parameters in `args`, and its body returns a
        template's value, which is whatever the scope it reads holds: one more scope member. */
     const fn = new Function(...args, body) as (...a: JxScope[string][]) => JxScope[string];
     return fn(...values);
@@ -2563,6 +2630,13 @@ export interface ComponentPrerenderContext {
    * it; without one (a unit test, a definition preview) no instance is stamped or bracketed.
    */
   slotIds?: { n: number } | undefined;
+  /**
+   * The tags whose instances ship their module (`computeLiveTags`): every definition that is not
+   * fully static, and every registered tag such a definition renders. An instance of one is stamped
+   * `data-jx-prerendered` and keeps its props as data. Without the set (a unit test, a definition
+   * preview) each definition answers for itself through `isComponentFullyStatic`.
+   */
+  liveTags?: ReadonlySet<string> | undefined;
 }
 
 /**
@@ -2608,7 +2682,7 @@ export function nextSlotId(context: ComponentPrerenderContext | null): number | 
 export function createSlotFill(
   children: SlotChildren,
   scope: JxScope | null,
-  render: (child: StaticChild) => string,
+  render: (child: StaticChild | JxMappedArray) => string,
   id: number | null = null,
 ): SlotFill {
   const groups: SlotFill["groups"] = new Map();
@@ -2623,8 +2697,8 @@ export function createSlotFill(
       }
       content = html !== "";
     } else if (isMappedArray(child)) {
-      // A repeater renders nothing statically; it is content all the same, as its rows will be.
-      html = "";
+      // A repeater is content whether or not the build can render its rows, as its rows will be.
+      html = render(child);
     } else if (!isNodeObject(child)) {
       html = render(child);
       content = html !== "";
@@ -2846,6 +2920,8 @@ export function resolveHostStyle(
  * @param {JxScope | null} scope
  * @param {SlotFill | null} slots
  * @param {ComponentPrerenderContext | null} context
+ * @param {boolean} [preformatted] - Inside a `<pre>`-like subtree, where children are joined with
+ *   nothing: a separator there is text the page shows
  * @returns {string}
  */
 function renderInner(
@@ -2853,6 +2929,7 @@ function renderInner(
   scope: JxScope | null,
   slots: SlotFill | null,
   context: ComponentPrerenderContext | null,
+  preformatted = false,
 ): string {
   if (node.textContent !== undefined) {
     const val = resolveStaticValue(node.textContent, scope);
@@ -2862,12 +2939,80 @@ function renderInner(
     const val = resolveStaticValue(node.innerHTML, scope);
     return val != null ? String(val) : node.innerHTML;
   }
+  // The legacy whole-`children` repeater: the array IS the children slot.
+  if (isMappedArray(node.children)) {
+    return renderMappedRows(node.children, scope, slots, context, preformatted);
+  }
   if (Array.isArray(node.children)) {
     return node.children
-      .map((c: JxElement | JxMutableNode | string) => renderStaticNode(c, scope, slots, context))
-      .join("\n");
+      .map((c: JxElement | JxMutableNode | string) =>
+        renderStaticNode(c, scope, slots, context, preformatted),
+      )
+      .join(preformatted ? "" : "\n");
   }
   return "";
+}
+
+/**
+ * The rows of a repeater as the element's first render draws them (compiler.md §8.1), so a
+ * component's list is in the HTML it ships and not only in the DOM its module builds.
+ *
+ * `items` is a literal array, or a `$ref` read from the scope the repeater sits in. No row is
+ * rendered when the pointer names runtime-only state (`isRuntimeOnlyRef`, asked before the read),
+ * when the read throws or does not yield an array, or when the repeater declares `filter` or
+ * `sort`: the compiled element applies neither yet (spec.md §10.3), so the build cannot know which
+ * rows its first render will hold, and rows the filter would drop must not reach the page. `key` is
+ * not consulted, because nothing adopts a row (spec.md §16.10).
+ *
+ * Each row renders the `map` template in a scope of its own that inherits the repeater's and
+ * carries the iteration frame the way `resolveRefValue` and `evaluateStaticTemplate` read it, so a
+ * per-row `$switch`, a nested repeater and a per-row component instance need nothing further.
+ *
+ * @param {JxMappedArray} arrayDef
+ * @param {JxScope | null} scope - The scope the repeater sits in
+ * @param {SlotFill | null} slots
+ * @param {ComponentPrerenderContext | null} context
+ * @param {boolean} [preformatted]
+ * @returns {string}
+ * @docs framework/concepts/lists
+ */
+export function renderMappedRows(
+  arrayDef: JxMappedArray,
+  scope: JxScope | null,
+  slots: SlotFill | null = null,
+  context: ComponentPrerenderContext | null = null,
+  preformatted = false,
+): string {
+  const template = arrayDef.map;
+  if (!template || arrayDef.filter !== undefined || arrayDef.sort !== undefined) {
+    return "";
+  }
+  const parent = scope ?? emptyScope();
+  let items: JxScope[string] = arrayDef.items;
+  if (isRef(arrayDef.items)) {
+    if (isRuntimeOnlyRef(arrayDef.items.$ref, parent)) {
+      return "";
+    }
+    // Reading the pointer can run a computed's getter, which is free to throw on build-time data.
+    try {
+      items = resolveRefValue(arrayDef.items.$ref, parent);
+    } catch {
+      return "";
+    }
+  }
+  if (!Array.isArray(items)) {
+    return "";
+  }
+  const rows: readonly JxScope[string][] = items;
+  return rows
+    .map((item, index) => {
+      const rowScope = emptyScope(parent);
+      rowScope.$map = { index, item };
+      rowScope["$map/item"] = item;
+      rowScope["$map/index"] = index;
+      return renderStaticNode(template, rowScope, slots, context, preformatted);
+    })
+    .join(preformatted ? "" : "\n");
 }
 
 /**
@@ -2893,18 +3038,28 @@ export type StaticChild =
  *   literal (a shadow root, or a definition rendered with no instance)
  * @param {ComponentPrerenderContext | null} [context] - The component registry, when a custom
  *   element tag met here should be expanded rather than emitted bare
+ * @param {boolean} [preformatted] - Inside a `<pre>`-like subtree (see `renderInner`)
  * @returns {string}
  */
 export function renderStaticNode(
-  node: StaticChild,
+  node: StaticChild | JxMappedArray,
   scope: JxScope | null,
   slots: SlotFill | null = null,
   context: ComponentPrerenderContext | null = null,
+  preformatted = false,
 ): string {
   if (isString(node)) {
     if (isTemplateString(node) && scope) {
       const val = evaluateStaticTemplate(node, scope);
-      return val != null ? escapeHtml(String(val)) : escapeHtml(node);
+      if (val != null) {
+        return escapeHtml(String(val));
+      }
+      /* Inside a component a text child that resolves to nothing renders nothing, as the module's
+         first render does and as `textContent` does: the module owns the binding, and its source
+         left in the markup would be read as a template a second time by the page that holds the
+         instance. A page's own text keeps its source, which is what keeps an unresolvable binding
+         alive for the client (compiler.md §8.1). */
+      return context ? "" : escapeHtml(node);
     }
     return escapeHtml(node);
   }
@@ -2912,15 +3067,17 @@ export function renderStaticNode(
     return escapeHtml(String(node));
   }
   if (Array.isArray(node)) {
-    return node.map((c): string => renderStaticNode(c, scope, slots, context)).join("\n");
+    return node
+      .map((c): string => renderStaticNode(c, scope, slots, context, preformatted))
+      .join(preformatted ? "" : "\n");
   }
   if (!isNonNullObject(node)) {
     return "";
   }
 
-  // Skip mapped arrays — can't pre-render dynamic lists
-  if (node.$prototype === "Array") {
-    return "";
+  // A repeater among siblings renders its rows in place (the whole-`children` form is `renderInner`'s).
+  if (isMappedArray(node)) {
+    return renderMappedRows(node, scope, slots, context, preformatted);
   }
 
   // $switch/cases — resolve the key statically and render the matched case inside a container
@@ -2929,11 +3086,14 @@ export function renderStaticNode(
   if (node.$switch) {
     const switchTag = node.tagName ?? "div";
     const attrs = buildAttrs(node, scope);
-    const key = resolveStaticValue(node.$switch, scope);
+    // A discriminant with no build-time value is not read: the container renders empty.
+    const held =
+      isRef(node.$switch) && scope !== null && isRuntimeOnlyRef(node.$switch.$ref, scope);
+    const key = held ? null : resolveStaticValue(node.$switch, scope);
     const caseDef = key == null ? undefined : node.cases?.[String(key)];
     const inner =
       caseDef !== undefined && !isRefObject(caseDef)
-        ? renderStaticNode(caseDef, scope, slots, context)
+        ? renderStaticNode(caseDef, scope, slots, context, preformatted)
         : "";
     return `<${switchTag}${attrs}>${inner}</${switchTag}>`;
   }
@@ -2963,7 +3123,7 @@ export function renderStaticNode(
       takeSlotNames(node.children, scope, slots);
       return out;
     }
-    const fallback = renderInner(node, scope, slots, context);
+    const fallback = renderInner(node, scope, slots, context, preformatted);
     return out === "" ? fallback : fallback === "" ? out : `${out}\n${fallback}`;
   }
 
@@ -2979,7 +3139,14 @@ export function renderStaticNode(
     return `<${tag}${attrs}>`;
   }
 
-  return `<${tag}${attrs}>${renderInner(node, scope, slots, context)}</${tag}>`;
+  const inner = renderInner(
+    node,
+    scope,
+    slots,
+    context,
+    preformatted || PREFORMATTED_TAGS.has(tag),
+  );
+  return `<${tag}${attrs}>${inner}</${tag}>`;
 }
 
 /**
@@ -3059,10 +3226,11 @@ function renderComponentInstance(
 
   // The instance's children are the parent's nodes: parent scope, parent fill, parent path.
   const { children } = node;
-  const renderChild = (c: StaticChild) => renderStaticNode(c, scope, parentSlots, context);
+  const renderChild = (c: StaticChild | JxMappedArray) =>
+    renderStaticNode(c, scope, parentSlots, context);
 
   const shadow = resolveShadowMode(def, context.defaults);
-  const isStatic = isComponentFullyStatic(def);
+  const isStatic = !isLiveComponent(tag, def, context.liveTags);
   const instanceScope = buildInstanceScope(def, hasScopeProps ? scopeProps : null);
   let innerHTML: string;
   let slotId: number | null = null;
@@ -3125,10 +3293,146 @@ export function preRenderComponentHtml(
 }
 
 /**
+ * Whether an instance of `tag` ships its module: its tag is in the site's live set when there is
+ * one, and otherwise its own definition is not fully static.
+ *
+ * @param {string} tag
+ * @param {JxElement} def
+ * @param {ReadonlySet<string>} [liveTags] - See {@link computeLiveTags}
+ * @returns {boolean}
+ */
+export function isLiveComponent(
+  tag: string,
+  def: JxElement,
+  liveTags?: ReadonlySet<string>,
+): boolean {
+  return liveTags ? liveTags.has(tag) : !isComponentFullyStatic(def);
+}
+
+/**
+ * The registered component tags a definition's template can create: every literal `tagName` and
+ * every candidate of a tag expression, walked through `children` (arrays and both repeater forms'
+ * `map`) and `$switch` `cases`. What a live definition renders, it renders from its module, which
+ * creates each element bare, so each of these needs its own module wherever the definition loads.
+ *
+ * @param {JxElement} def - A component definition
+ * @param {ReadonlyMap<string, JxElement>} registry - Tag name → definition
+ * @returns {Set<string>}
+ */
+export function renderedComponentTags(
+  def: JxElement,
+  registry: ReadonlyMap<string, JxElement>,
+): Set<string> {
+  const out = new Set<string>();
+  const visit = (node: StaticChild | JxMappedArray | undefined, root: boolean): void => {
+    if (Array.isArray(node)) {
+      for (const child of node) {
+        visit(child, false);
+      }
+      return;
+    }
+    if (!isNonNullObject(node)) {
+      return;
+    }
+    if (isMappedArray(node)) {
+      visit(node.map, false);
+      return;
+    }
+    // The root is the definition itself, not an instance it renders.
+    if (!root) {
+      for (const tag of tagNameCandidates(node.tagName)) {
+        if (registry.has(tag)) {
+          out.add(tag);
+        }
+      }
+    }
+    visit(node.children, false);
+    for (const caseDef of Object.values<StaticChild>(node.cases ?? {})) {
+      if (!isRefObject(caseDef)) {
+        visit(caseDef, false);
+      }
+    }
+  };
+  visit(def, true);
+  return out;
+}
+
+/**
+ * The tags whose module a site ships (compiler.md §8.1): every definition that is not fully static,
+ * and, to a fixpoint, every registered tag such a definition renders. One answer per tag for the
+ * whole site, because there is one module per tag: a static component used on its own on one page
+ * and inside a live one on another ships its module on both.
+ *
+ * @param {ReadonlyMap<string, JxElement>} registry - Tag name → definition
+ * @returns {Set<string>}
+ * @docs framework/build
+ */
+export function computeLiveTags(registry: ReadonlyMap<string, JxElement>): Set<string> {
+  const live = new Set<string>();
+  const queue: string[] = [];
+  for (const [tag, def] of registry) {
+    if (!isComponentFullyStatic(def)) {
+      live.add(tag);
+      queue.push(tag);
+    }
+  }
+  for (let tag = queue.pop(); tag !== undefined; tag = queue.pop()) {
+    /* SAFETY: every tag on the queue was read from `registry` or passed `registry.has`. */
+    for (const rendered of renderedComponentTags(registry.get(tag) as JxElement, registry)) {
+      if (!live.has(rendered)) {
+        live.add(rendered);
+        queue.push(rendered);
+      }
+    }
+  }
+  return live;
+}
+
+/**
+ * Component tags ordered so each comes after every registered tag its definition renders, ties by
+ * name: the order a page's module scripts are written in. Module scripts run in document order, and
+ * an outer element defined before its inner one renders that inner element un-upgraded until the
+ * next script runs. A cycle is broken where it is met.
+ *
+ * @param {readonly string[]} tags
+ * @param {ReadonlyMap<string, JxElement>} registry - Tag name → definition
+ * @returns {string[]}
+ */
+export function orderComponentTags(
+  tags: readonly string[],
+  registry: ReadonlyMap<string, JxElement>,
+): string[] {
+  const wanted = new Set(tags);
+  const seen = new Set<string>();
+  const out: string[] = [];
+  const visit = (tag: string): void => {
+    if (seen.has(tag)) {
+      return;
+    }
+    seen.add(tag);
+    const def = registry.get(tag);
+    if (def) {
+      for (const rendered of [...renderedComponentTags(def, registry)].toSorted()) {
+        visit(rendered);
+      }
+    }
+    if (wanted.has(tag)) {
+      out.push(tag);
+    }
+  };
+  for (const tag of [...tags].toSorted()) {
+    visit(tag);
+  }
+  return out;
+}
+
+/**
  * Check if a component definition is fully static (no runtime behavior needed).
  *
  * Returns true when: no event handlers, no $prototype entries (Functions, Request, Storage), no
- * $ref values, and no observed attributes. Conservative — returns false when uncertain.
+ * $ref values, no `$switch`, no tag chosen at creation, and no observed attributes. A repeater is
+ * static only when its `items` is a literal array, it declares no `filter`, `sort` or `key`, and
+ * its `map` is static. Conservative — returns false when uncertain.
  *
  * A definition that declares `observedAttributes` is never static (spec.md §16.5): declaring the
  * list is declaring a runtime interface, since every later change and removal of one must apply and
@@ -3149,7 +3453,7 @@ export function isComponentFullyStatic(doc: JxElement) {
  * @param {JxElement | string | (JxElement | string)[]} node
  * @returns {boolean}
  */
-function _isStaticNode(node: JxElement | string | (JxElement | string)[]): boolean {
+function _isStaticNode(node: JxElement | JxMappedArray | string | (JxElement | string)[]): boolean {
   if (!isNonNullObject(node)) {
     return true;
   }
@@ -3157,8 +3461,24 @@ function _isStaticNode(node: JxElement | string | (JxElement | string)[]): boole
     return node.every((n) => _isStaticNode(n));
   }
 
+  /* A repeater over a literal array, with nothing to filter, sort or key by, is its rows: the
+     build renders them and nothing changes them. Any other repeater is built at run time. */
+  if (isMappedArray(node)) {
+    return (
+      Array.isArray(node.items) &&
+      node.filter === undefined &&
+      node.sort === undefined &&
+      node.key === undefined &&
+      (node.map === undefined || _isStaticNode(node.map))
+    );
+  }
   // Check for $prototype (Functions, Request, Storage, etc.)
   if (node.$prototype) {
+    return false;
+  }
+  /* A `$switch` re-chooses its case and a tag expression its element from state, which only the
+     module can do: the discriminant is a `$ref` the checks below never reach. */
+  if (node.$switch !== undefined || isTagExpression(node.tagName)) {
     return false;
   }
   // Check for $ref
@@ -3192,9 +3512,9 @@ function _isStaticNode(node: JxElement | string | (JxElement | string)[]): boole
   if (Array.isArray(node.children)) {
     return node.children.every((c) => _isStaticNode(c));
   }
-  // The legacy bare children slot: a mapped array builds its children at runtime.
+  // The legacy bare children slot: the repeater answers for itself, as one among siblings does.
   if (isMappedArray(node.children)) {
-    return false;
+    return _isStaticNode(node.children);
   }
 
   return true;

@@ -582,10 +582,11 @@ describe("preRenderComponentHtml — a definition that names itself", () => {
       ...registry(treeNode),
       path: [{ key: "{}", tag: "tree-node" }],
     });
-    // Static all the way down: no handler anywhere, so no payload and no module — the tree is
-    // Plain HTML.
+    // A `$switch` re-chooses its case from state, so the definition is live: every level is
+    // Stamped for its module and carries the props that level was rendered with.
     expect(html).toBe(
-      "<div><tree-node data-jx-static><div><tree-node data-jx-static>" +
+      '<div><tree-node data-jx-props="{&quot;depth&quot;:1}" data-jx-prerendered>' +
+        '<div><tree-node data-jx-props="{&quot;depth&quot;:2}" data-jx-prerendered>' +
         "<div><i>leaf 2</i></div></tree-node></div></tree-node></div>",
     );
   });

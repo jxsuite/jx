@@ -29,7 +29,7 @@ Both sections are open for the same emitters, so one plan owns both. Verified at
 
 `specs/spec.md` §10.3, line 1126:
 
-> **Status: Partial.** The interpreter filters and sorts (`renderMappedArrayInto` in `packages/runtime/src/runtime.ts`). No compiled path reads either key: `emitMappedArray` in `packages/compiler/src/targets/compile-element.ts`, both mapped-array emitters in `compile-client.ts` and the site build's build-time `expandMappedArrayStatic` (`packages/compiler/src/site/site-build.ts`) map `items` as given, so a built list shows every item in source order.
+> **Status: Partial.** The interpreter filters and sorts (`renderMappedArrayInto` in `packages/runtime/src/runtime.ts`). No compiled path reads either key: `emitMappedArray` in `packages/compiler/src/targets/compile-element.ts`, both mapped-array emitters in `compile-client.ts` and the site build's build-time `expandMappedArrayStatic` (`packages/compiler/src/site/site-build.ts`) map `items` as given, so a built list shows every item in source order. A component's prerender (`renderMappedRows` in `packages/compiler/src/shared.ts`) renders no rows for a list that declares either, so the rows a filter would drop are not in the page's HTML.
 
 `specs/spec.md` §10.4, line 1142:
 
@@ -75,6 +75,13 @@ Both sections keep a trailing `> **Status: Implemented.**` marker describing the
 ## Implementation
 
 Four slices, landed in order; CKL1.4 needs the other three.
+
+**Landed since this was drafted** (the change that made a live component prerender its initial state, compiler.md §8.1), and to be reused, not rebuilt:
+
+- `isRuntimeOnlyRef(ref, scope)` is exported from `shared.ts` with the signature CKL1.2 names.
+- `emitMappedArray` already writes a literal `items` as JSON and a pointer as `(<ref> ?? [])`; there is no `ITEMS`. CKL1.2 step 3 wraps that expression in `__jxShape`.
+- `renderMappedRows` (`shared.ts`) is a fourth compiled list path: it prerenders a component's rows and renders none for a list that declares `filter` or `sort`. CKL1.2 replaces that refusal with `shapeMappedItems(items, filter, sort)`, resolving `filter` and `sort` with `resolveRefValue` after `isRuntimeOnlyRef` says no (a placeholder callable must never filter a list to nothing), and removes the `filter`/`sort` refusal from `_isStaticNode`'s repeater rule only if a shaped literal list is to be static, which this plan does not ask for. `packages/compiler/tests/prerender-hydration.test.ts` is the parity harness: add a filtered and a sorted fixture to it, since the prerender and the module's first render must hold the same rows.
+- `buildInitialScope` holds handler-written entries only under `{ holdMutable: true }`, which the site build's page-document scope sets. The wider fixpoint of CKL1.2 step 2 extends the marks of whichever kind a scope carries; the page scope is the one `expandMappedArrayStatic` reads.
 
 **CKL1.1: both `$map` spellings, everywhere.**
 
