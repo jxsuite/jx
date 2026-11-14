@@ -16,12 +16,14 @@ import {
   cpSync,
   existsSync,
   mkdirSync,
+  mkdtempSync,
   readFileSync,
   rmSync,
   statSync,
   writeFileSync,
 } from "node:fs";
 import { createHash } from "node:crypto";
+import { tmpdir } from "node:os";
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import {
   isBoolean,
@@ -46,6 +48,7 @@ import {
 import { rewriteHtmlBase } from "./base-path.ts";
 import {
   CLIENT_EXTERNALS,
+  bundleEntries,
   bundleEntry,
   bundleWorkerSource,
   isBundleableSrc,
@@ -124,6 +127,7 @@ import {
 import type { ComponentPrerenderContext, StaticChild } from "../shared.ts";
 import { SLOT_ATTR } from "@jxsuite/runtime";
 import { resolvePrototypes } from "./prototype-resolver.ts";
+import { classEntrySource, locateClass, readsBuildContext } from "./external-class.ts";
 import { transformImageNodes } from "./image-transform.ts";
 import { collectCspSources, emptyCspSources } from "./csp.ts";
 import { resolveShadowMode } from "../shadow.ts";
@@ -171,9 +175,11 @@ import type {
   JsonObject,
   JsonValue,
   JxAttributeValue,
+  JxDocument,
   JxElement,
   JxHeadEntry,
   JxMappedArray,
+  JxPrototypeDef,
   JxStateDefinition,
   JxStyle,
   ProjectConfig,
@@ -466,6 +472,37 @@ export async function buildSite(
 
   // ── 1b. Build the extension registry from project.json#/extensions ─────
   const registry = await buildProjectExtensionRegistry(projectRoot, projectConfig);
+  /*
+   * Class modules: each `timing: "client"` external class a page or component names is delivered
+   * as an entry module that default-exports the class, keyed by its `/assets/class-<Name>.js` URL
+   * and bundled in ONE call after every document has compiled (compiler.md §12). One call, because
+   * two classes that import the same module have to meet the same instance of it in the browser.
+   */
+  const classEntries = new Map<string, string>();
+  const deliverClass = (
+    def: JxPrototypeDef,
+    docDir: string | null,
+    imports: Record<string, string>,
+  ): string => {
+    const located = locateClass(def, { docDir, imports, projectRoot, registry });
+    if (located === undefined) {
+      throw new Error(
+        `external class "${def.$prototype}" names no class: give it a $src or an imports ` +
+          `entry, or enable the extension that provides "${def.$prototype}"`,
+      );
+    }
+    if (readsBuildContext(located.classDef)) {
+      throw new Error(
+        `external class "${def.$prototype}" reads the build's context (#/$context/) and cannot ` +
+          `run in a browser: use "timing": "compiler"`,
+      );
+    }
+    const source = classEntrySource(located);
+    const assetPath = sidecarAssetPath(`class:${located.exportName}`);
+    claimAsset(assetPath, located.classJsonPath, def.$prototype);
+    classEntries.set(assetPath, source);
+    return assetPath;
+  };
   const formatRegistry = registry.formats;
   // Every document's own modules (spec.md §23.2), read with the formats this project registered.
   const scripts = documentScripts(projectRoot, (path) => readPageDocument(path, formatRegistry));
@@ -613,13 +650,57 @@ export async function buildSite(
     // So it is given the deployment base now (site-architecture.md §14.7).
     const serverBaseUrl = serverRoutePrefix(componentBase);
 
+    /*
+     * A component's build-time external classes (compiler.md §3), resolved once per component file
+     * and written as its initial state, so the module compiled from the file and the definition
+     * every page prerenders from start from the same value. The file is read more than once (as a
+     * site component, as the module's source, as another component's `$elements` dependency), so
+     * the entries the first read resolved are kept and assigned onto each later one.
+     */
+    const componentResolutions = new Map<string, Promise<Record<string, JxStateDefinition>>>();
+    const prepareComponent = async (
+      componentDoc: JxDocument | JxElement,
+      filePath: string | null,
+    ): Promise<void> => {
+      // Every document this build compiles is a file, so the empty key is never shared in practice.
+      const key = filePath ?? "";
+      const resolved = componentResolutions.get(key);
+      if (resolved === undefined) {
+        const resolving = resolvePrototypes(
+          componentDoc,
+          filePath === null ? {} : { sourcePath: filePath },
+          projectRoot,
+          {
+            asInitialValues: true,
+            config: projectConfig,
+            registerBundle: (specifier: string) => {
+              rewriteSidecarSrc(specifier, null);
+            },
+            registry,
+            sections,
+          },
+        );
+        componentResolutions.set(key, resolving);
+        await resolving;
+        return;
+      }
+      const entries = await resolved;
+      if (componentDoc.state) {
+        Object.assign(componentDoc.state, entries);
+      }
+    };
+
     for (const { doc: written, path: componentPath } of siteComponents) {
       /* The definition every page prerenders from, with the project formulas it reads (spec.md
          §13.4). The module is compiled from the file, and is given the same project state. */
       const doc = inheritProjectFormulas(written, projectConfig.state);
       try {
+        await prepareComponent(doc, componentPath);
         const elementOptions: CompileElementOptions = {
           formats: formatRegistry,
+          prepareDocument: prepareComponent,
+          resolveClass: (def, docDir, imports) =>
+            withBase(componentBase, deliverClass(def, docDir, imports)),
           resolveElementPath: (refPath: string, currentDir: string | null) => {
             const depPath = currentDir ? resolve(currentDir, refPath) : resolve(refPath);
             const depTag = componentTagByPath.get(depPath);
@@ -911,6 +992,7 @@ export async function buildSite(
         },
         runtimeImports,
         registerElementBundle,
+        deliverClass,
       );
       siteServerEntries.push(...result.serverEntries);
 
@@ -1253,6 +1335,36 @@ export async function buildSite(
     }
   }
 
+  if (classEntries.size > 0) {
+    log(`Bundling ${classEntries.size} external class module(s)...`);
+    /* Each entry is written to a temporary directory under its asset's base name, which is the name
+       the bundler gives its output; an entry's imports are absolute paths, so where it stands does
+       not matter. */
+    const entryDir = mkdtempSync(join(tmpdir(), "jx-class-entries-"));
+    try {
+      const entryPaths = [...classEntries].map(([assetPath, source]) => {
+        const entryPath = join(entryDir, basename(assetPath));
+        writeFileSync(entryPath, source, "utf8");
+        return entryPath;
+      });
+      const written = await bundleEntries(entryPaths, resolve(outDir, "assets"), {
+        external: CLIENT_EXTERNALS,
+        minify,
+        target: "browser",
+      });
+      fileCount += written.length;
+      for (const assetPath of classEntries.keys()) {
+        log(`  ${assetPath}`);
+      }
+    } catch (error) {
+      const msg = `Error bundling external classes: ${errorMessage(error)}`;
+      errors.push(msg);
+      console.error(msg);
+    } finally {
+      rmSync(entryDir, { force: true, recursive: true });
+    }
+  }
+
   if (elementBundles.size > 0) {
     log(`Bundling ${elementBundles.size} npm element set(s)...`);
     for (const [assetPath, specifiers] of elementBundles) {
@@ -1562,8 +1674,14 @@ async function compilePage(
   runtimeImports: Record<string, string>,
   /** Registers a page's npm `$elements` set as one bundle and returns its URL. */
   registerElementBundle: (specifiers: string[]) => string,
+  /** Registers a `timing: "client"` external class's module and returns its URL (compiler.md §3). */
+  deliverClass: (
+    def: JxPrototypeDef,
+    docDir: string | null,
+    imports: Record<string, string>,
+  ) => string,
 ) {
-  /* Derived rather than passed as a seventeenth parameter: it is a pure function of
+  /* Derived rather than passed as one more parameter: it is a pure function of
      `projectConfig.url`, which is already here, so the two cannot disagree. */
   const basePath = siteBasePath(projectConfig.url);
 
@@ -1861,6 +1979,10 @@ async function compilePage(
      * The page's own module (`app.js`) is JavaScript the page loads, like a component: the page
      * rewrite does not read it, so its `/assets/` imports are re-rooted on the site base here.
      */
+    /* A `timing: "client"` external class the page still holds after resolution and lowering: its
+       module is bundled under `/assets/`, and the page's module imports it (compiler.md §3). */
+    resolveClass: (def: JxPrototypeDef) =>
+      withBase(basePath, deliverClass(def, dirname(route.sourcePath), layoutDoc.imports ?? {})),
     rewriteSrc: (specifier: string) =>
       withBase(basePath, rewriteSidecarSrc(specifier, dirname(route.sourcePath))),
     // The page's own module calls the worker's routes, under the same base the worker registers.

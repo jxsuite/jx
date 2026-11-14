@@ -1814,3 +1814,99 @@ describe("compileClient — style handles (spec.md §9.2)", () => {
     expect(html).toContain(':attr.class="cls"');
   });
 });
+
+// ─── `timing: "client"` external classes (compiler.md §3) ────────────────────
+
+describe("compileClient — client-timed external classes", () => {
+  const doc: JxDocument = {
+    children: [{ tagName: "p", textContent: "${state.forecast.days}" }],
+    state: {
+      again: { $prototype: "Weather", timing: "client" },
+      forecast: {
+        $export: "Weather",
+        $prototype: "Weather",
+        $src: "./Weather.class.json",
+        city: "Lancaster",
+        default: 1,
+        description: "The forecast",
+        timing: "client",
+        units: { temp: "F" },
+      },
+      "user.session": { $prototype: "Session", timing: "client" },
+    },
+    tagName: "main",
+  };
+  const resolveClass = (def: { $prototype: string }) => `/assets/class-${def.$prototype}.js`;
+
+  test("a client-timed external class imports its module and starts null", () => {
+    const { html, files } = compileClient(doc, { resolveClass });
+    const js = files[0]!.content;
+    // One default import per distinct module, however many entries name the class.
+    expect(js).toContain("import _JxClass0 from '/assets/class-Weather.js';");
+    expect(js).toContain("import _JxClass1 from '/assets/class-Session.js';");
+    expect(js.split("import _JxClass").length).toBe(3);
+    expect(js).toContain('  again: null,\n  forecast: null,\n  "user.session": null,');
+    expect(js).toContain("async function __jxInstantiate(C, name, config) {");
+    expect(js).toContain("const _jxInstances = new Map();");
+    // The classes resolve before the page hydrates, and a failure is logged per entry.
+    const wait = js.indexOf("await Promise.all([");
+    expect(wait).toBeGreaterThan(-1);
+    expect(js.indexOf("hydrate(document);")).toBeGreaterThan(wait);
+    expect(js).toContain('__jxInstantiate(_JxClass0, "Weather", {}).then(([v, i]) => {');
+    expect(js).toContain("    state.again = v;");
+    expect(js).toContain('    _jxInstances.set("forecast", i);');
+    expect(js).toContain(
+      "    if (typeof i.subscribe === 'function') i.subscribe((n) => { state.forecast = n; });",
+    );
+    // A key that is not an identifier is written as a member access, not pasted.
+    expect(js).toContain('    state["user.session"] = v;');
+    expect(js).toContain(
+      String.raw`}).catch((e) => { console.error("Jx: external class \"again\" failed", e); }),`,
+    );
+    // Prerender leaves the binding for hydration instead of baking the definition object.
+    expect(html).not.toContain("[object Object]");
+    expect(html).toContain('data-bind :text-content="_t0"');
+  });
+
+  test("the config literal omits the reserved keys", () => {
+    const js = compileClient(doc, { resolveClass }).files[0]!.content;
+    expect(js).toContain(
+      '__jxInstantiate(_JxClass0, "Weather", {"city":"Lancaster","units":{"temp":"F"}})',
+    );
+  });
+
+  test("without a resolver a client-timed class is a compile error", () => {
+    expect(() => compileClient(doc, {})).toThrow(
+      '"again": external class "Weather" with timing "client" compiles only in a site build',
+    );
+  });
+
+  test("a document with no external class emits no instantiate helper", () => {
+    const plain: JxDocument = {
+      children: [{ tagName: "p", textContent: "${state.n}" }],
+      state: { feed: { $prototype: "Request", url: "/api" }, n: 1 },
+      tagName: "main",
+    };
+    const js = compileClient(plain, { resolveClass }).files[0]!.content;
+    expect(js).not.toContain("__jxInstantiate");
+    expect(js).not.toContain("_jxInstances");
+    expect(js).not.toContain("await ");
+    expect(js).toBe(compileClient(plain, {}).files[0]!.content);
+  });
+
+  test("server-timed and unset-timing unmapped classes keep their current output", () => {
+    const other: JxDocument = {
+      children: [{ tagName: "p", textContent: "${state.n}" }],
+      state: {
+        n: 1,
+        onServer: { $prototype: "Ledger", timing: "server" },
+        unset: { $prototype: "Ledger", limit: 2 },
+      },
+      tagName: "main",
+    };
+    const js = compileClient(other, {}).files[0]!.content;
+    expect(js).toContain('  onServer: {"$prototype":"Ledger","timing":"server"},');
+    expect(js).toContain('  unset: {"$prototype":"Ledger","limit":2},');
+    expect(js).not.toContain("__jxInstantiate");
+  });
+});

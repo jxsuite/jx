@@ -696,7 +696,7 @@ describe("paginate $paths", () => {
       "Dynamic route /two/:a/:b: a paged route takes exactly one parameter besides those its each source fills; this one has 2",
       'Dynamic route /missing/*: $paths.paginate names state entry "posts", which this page does not declare',
       'Dynamic route /object/*: state entry "posts" did not resolve to an array at build time',
-      'Dynamic route /unresolved/*: state entry "posts" did not resolve to an array at build time',
+      'Dynamic route /unresolved/*: state entry "posts" ($prototype "Nowhere") names no class: give it a $src or an imports entry, or enable the extension that provides "Nowhere"',
       "Dynamic route /size/*: $paths.pageSize must be a positive integer",
     ]);
     cleanup();

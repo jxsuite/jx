@@ -20,6 +20,7 @@ import { writeProjectSchemas } from "../src/site/schema-command";
 import type { TableDef } from "@jxsuite/connector/types";
 import type { ExtensionRegistry } from "@jxsuite/schema/extension-registry";
 import { isJsonObject, isString } from "@jxsuite/schema/guards";
+import { errorMessage } from "@jxsuite/schema/parse";
 import type { JsonObject, JsonValue, JxDocument, ProjectConfig } from "@jxsuite/schema/types";
 
 const TMP = resolve(import.meta.dir, "__test-connector-mounts__");
@@ -418,7 +419,7 @@ describe("prototype-resolver lower", () => {
     expect(resolvedEntry(doc, "thing").$prototype).toBe("NotRegistered");
   });
 
-  test("a lower() capability that throws warns and leaves the def as-is", async () => {
+  test("a lower() capability that throws fails, naming the entry", async () => {
     const boomDir = `${TMP}-boom`;
     rmSync(boomDir, { force: true, recursive: true });
     try {
@@ -446,11 +447,19 @@ describe("prototype-resolver lower", () => {
         state: { result: { $prototype: "Boom", timing: "server" } },
         tagName: "main",
       };
-      await resolvePrototypes(doc, {}, boomDir, {
-        config: boomConfig,
-        registry: boomRegistry,
-      });
-      // The throw is caught and warned; the def is left exactly as it was.
+      let message = "";
+      try {
+        await resolvePrototypes(doc, {}, boomDir, {
+          config: boomConfig,
+          registry: boomRegistry,
+        });
+      } catch (error) {
+        message = errorMessage(error);
+      }
+      expect(message).toBe(
+        'state entry "result" ($prototype "Boom"): its class could not lower it: lower failed',
+      );
+      // The def is left exactly as it was.
       expect(resolvedEntry(doc, "result").$prototype).toBe("Boom");
     } finally {
       rmSync(boomDir, { force: true, recursive: true });

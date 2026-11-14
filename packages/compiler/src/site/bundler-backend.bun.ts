@@ -6,9 +6,9 @@
  * both under one Bun.
  */
 import { rmSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import type { BuildConfig } from "bun";
-import type { BackendBuild, BundleTargetName } from "./bundler-backend.ts";
+import type { BackendBuild, BackendSplitBuild, BundleTargetName } from "./bundler-backend.ts";
 import { TRANSIENT_ENTRY_PREFIX } from "./bundler-backend.ts";
 import * as esbuildBackend from "./bundler-backend.node.ts";
 
@@ -93,4 +93,38 @@ export async function build(request: BackendBuild): Promise<string> {
   } finally {
     rmSync(entryPath, { force: true });
   }
+}
+
+/**
+ * Bundle several entries with code splitting into `outdir`, and return the files written. Throws
+ * with the backend's diagnostics on failure.
+ */
+export async function buildSplit(request: BackendSplitBuild): Promise<string[]> {
+  if (forcedToEsbuild()) {
+    return esbuildBackend.buildSplit(request);
+  }
+  const config: BuildConfig = {
+    entrypoints: request.entries,
+    external: request.external,
+    format: "esm",
+    minify: request.minify,
+    naming: { chunk: "chunk-[hash].[ext]", entry: "[name].[ext]" },
+    outdir: request.outdir,
+    plugins: request.plugins,
+    splitting: true,
+    target: bunTarget(request.target),
+    throw: false,
+  };
+  if (request.conditions) {
+    config.conditions = request.conditions;
+  }
+  if (request.define) {
+    config.define = request.define;
+  }
+  const result = await Bun.build(config);
+  if (!result.success) {
+    const logs = result.logs.map(String).join("\n");
+    throw new Error(`Bun.build failed for ${request.entries.join(", ")}:\n${logs}`);
+  }
+  return result.outputs.map((output) => resolve(request.outdir, output.path));
 }

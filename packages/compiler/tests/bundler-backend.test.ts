@@ -11,7 +11,12 @@ import { join } from "node:path";
 import * as bunBackend from "../src/site/bundler-backend.bun.ts";
 import * as nodeBackend from "../src/site/bundler-backend.node.ts";
 import type { BackendBuild } from "../src/site/bundler-backend.ts";
-import { bundleToString, resolveBareSpecifier, useNodeFallback } from "../src/site/bundler.ts";
+import {
+  bundleEntries,
+  bundleToString,
+  resolveBareSpecifier,
+  useNodeFallback,
+} from "../src/site/bundler.ts";
 
 const ROOT = mkdtempSync(join(tmpdir(), "jx-bundler-backend-"));
 mkdirSync(join(ROOT, "node_modules/greet-lib"), { recursive: true });
@@ -148,6 +153,111 @@ describe("JX_BUNDLER=esbuild under Bun", () => {
     );
     // The esbuild output ends in one `export { … }` clause.
     expect(await pending).toContain("export {");
+  });
+});
+
+// ─── Code splitting: several entries, one shared module ─────────────────────
+
+/** Two entries that both import one module holding a counter, as two classes share a store. */
+function writeSharedFixture(name: string) {
+  const dir = join(ROOT, name);
+  mkdirSync(join(dir, "src"), { recursive: true });
+  writeFileSync(join(dir, "src/store.js"), "export const store = { count: 0 };\n");
+  writeFileSync(
+    join(dir, "src/reader.js"),
+    'import { store } from "./store.js";\nexport default () => store.count;\n',
+  );
+  writeFileSync(
+    join(dir, "src/writer.js"),
+    'import { store } from "./store.js";\nexport default () => { store.count += 1; };\n',
+  );
+  return { dir, entries: [join(dir, "src/reader.js"), join(dir, "src/writer.js")] };
+}
+
+/** What each split entry's default export is: a function over the shared counter. */
+interface SplitEntry {
+  default: () => number | undefined;
+}
+
+/**
+ * Import the two entries a split build wrote and bump the counter through one, read through the
+ * other.
+ */
+async function sharedCount(outdir: string): Promise<number | undefined> {
+  // SAFETY: both files are built from `writeSharedFixture`'s entries, whose default is a function.
+  const reader = (await import(join(outdir, "reader.js"))) as SplitEntry;
+  // SAFETY: as above; the second of the two entries the fixture writes.
+  const writer = (await import(join(outdir, "writer.js"))) as SplitEntry;
+  writer.default();
+  writer.default();
+  return reader.default();
+}
+
+describe("a split build writes one chunk for a module two entries share", () => {
+  for (const [name, backend] of BACKENDS) {
+    test(`${name}: both entries meet one instance of the shared module`, async () => {
+      const { dir, entries } = writeSharedFixture(`split-${name}`);
+      const outdir = join(dir, "out");
+      const written = await backend.buildSplit({
+        conditions: ["browser"],
+        define: { "process.env.NODE_ENV": '"production"' },
+        entries,
+        external: [],
+        minify: false,
+        outdir,
+        plugins: [],
+        target: "browser",
+      });
+      const names = written.map((file) => file.slice(outdir.length + 1)).toSorted();
+      expect(names).toHaveLength(3);
+      expect(names[0]).toMatch(/^chunk-[\w-]+\.js$/);
+      expect(names.slice(1)).toEqual(["reader.js", "writer.js"]);
+      expect(readdirSync(outdir).toSorted()).toEqual(names);
+      // One store: what the writer entry counted, the reader entry sees.
+      expect(await sharedCount(outdir)).toBe(2);
+    });
+  }
+
+  test("bundleEntries splits through the active backend, and through esbuild when forced", async () => {
+    const { dir, entries } = writeSharedFixture("split-active");
+    const written = await bundleEntries(entries, join(dir, "out"), {
+      minify: false,
+      target: "browser",
+    });
+    expect(written).toHaveLength(3);
+    expect(await sharedCount(join(dir, "out"))).toBe(2);
+
+    const { JX_BUNDLER: prev } = process.env;
+    process.env.JX_BUNDLER = "esbuild";
+    try {
+      const forced = await bundleEntries(entries, join(dir, "out-forced"), {
+        minify: false,
+        target: "browser",
+      });
+      expect(forced).toHaveLength(3);
+    } finally {
+      if (prev === undefined) {
+        delete process.env.JX_BUNDLER;
+      } else {
+        process.env.JX_BUNDLER = prev;
+      }
+    }
+    expect(await sharedCount(join(dir, "out-forced"))).toBe(2);
+  });
+
+  test("a broken entry rejects under both", async () => {
+    for (const [name, backend] of BACKENDS) {
+      const pending = backend.buildSplit({
+        entries: [join(ROOT, "broken.js")],
+        external: [],
+        minify: false,
+        outdir: join(ROOT, `split-broken-${name}`),
+        plugins: [],
+        target: "browser",
+      });
+      // oxlint-disable-next-line typescript/await-thenable -- Bun types `.rejects.toThrow` as void, but it resolves a Promise at runtime; the await is required.
+      await expect(pending).rejects.toThrow();
+    }
   });
 });
 

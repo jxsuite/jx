@@ -113,7 +113,9 @@ For each `timing: "server"` entry, the [compiler](/docs/framework/build) emits t
 
 When `build.adapter` is set in the project file, every server entry a page, its layouts, the project file's `state` or a component declares is collected and bundled into a single worker, one route per export name (`dist/worker.js`, or `dist/_worker.js` plus a `_routes.json` on Cloudflare Pages; see [Build output and adapters](/docs/framework/site/deployment#what-the-worker-serves)). Without an adapter the build stops with an error naming each server entry and the file declaring it, because a static deployment has nothing to run them on. During development the [dev server](/docs/framework/build/dev-server) stands in for the worker: on a site project it answers the same `/_jx/server/<export>` route from the entries the last build collected, with your `.dev.vars` merged into `env`.
 
-Compiler-timed entries never produce runtime artifacts at all. The site build resolves them, bakes the values into the static HTML, and strips the entries from the document.
+Compiler-timed entries never produce runtime artifacts at all. The site build resolves them, bakes the values into the static HTML, and strips the entries from the document. In a component, the value becomes the component's starting state, so it ships inside the component's module. An entry the build cannot resolve stops the build with an error naming it.
+
+An external class with `timing: "client"` is built into a module the page loads. The page waits for the class's value before it hydrates, and a component waits before its first draw, so a template can read the value without guarding against `null` first. See [How compilation works](/docs/framework/build#dynamic-pages).
 
 ## Rules
 

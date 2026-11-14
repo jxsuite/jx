@@ -1,12 +1,13 @@
 /**
  * Prototype-resolver.js — Generic $prototype resolution at build time
  *
- * Mirrors the runtime's import-map → .class.json → $implementation → resolve() pipeline, but runs
- * at compile time using filesystem APIs.
+ * Mirrors the runtime's import-map → .class.json → class → resolve() pipeline, but runs at compile
+ * time using filesystem APIs.
  *
- * Any state entry with a $prototype that maps to a .class.json via doc.imports gets resolved: the
- * class is instantiated, .resolve() is called, and the state entry is replaced with the resolved
- * value.
+ * Any state entry with a $prototype that names an external class (through its `$src`, the
+ * document's `imports`, or an enabled extension's manifest) gets resolved: the class is
+ * constructed, its value is taken, and the state entry is replaced with it. An entry the build
+ * cannot resolve fails the build (compiler.md §3).
  *
  * This is the extension point for content sources (Markdown, CSV, etc.) — each provides a
  * .class.json + JS implementation, and the compiler resolves them generically.
@@ -14,24 +15,21 @@
  * @module prototype-resolver
  */
 
-import { readFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
-import { createRequire } from "node:module";
-import { importImplementation } from "./format-host.ts";
-import { isFunction, isJsonObject, isPrototypeDef, isString } from "@jxsuite/schema/guards";
-import { errorMessage, parseClassDef } from "@jxsuite/schema/parse";
+import { dirname } from "node:path";
+import { isJsonObject, isPrototypeDef, isString } from "@jxsuite/schema/guards";
+import { errorMessage } from "@jxsuite/schema/parse";
 import type { ExtensionRegistry } from "@jxsuite/schema/extension-registry";
 import type {
-  JsonObject,
-  JsonValue,
   JxDocument,
-  JxDocumentValue,
   JxMutableNode,
   JxPrototypeDef,
   JxStateDefinition,
   ProjectConfig,
 } from "@jxsuite/schema/types";
-import type { ProjectSectionData, ProjectSections } from "./project-sections.ts";
+import { externalClassConfig, isExternalClassDef } from "../shared.ts";
+import { instantiateAndResolve, loadClass, locateClass } from "./external-class.ts";
+import type { ClassRoute, ExternalClassConfig } from "./external-class.ts";
+import type { ProjectSections } from "./project-sections.ts";
 
 /**
  * Prototype names handled elsewhere (builtins + legacy content system). These are skipped by the
@@ -39,109 +37,60 @@ import type { ProjectSectionData, ProjectSections } from "./project-sections.ts"
  */
 const SKIP_PROTOTYPES = new Set(["Function", "LocalStorage", "SessionStorage", "Array"]);
 
-/**
- * Keys reserved by the Jx prototype system — stripped before passing config to the external class
- * constructor. Mirrors runtime's EXTERNAL_RESERVED.
- */
-const RESERVED_KEYS = new Set([
-  "$prototype",
-  "$src",
-  "$export",
-  "timing",
-  "default",
-  "description",
-]);
-
-/** The route a document is being resolved for, as far as classes and `lower` read it. */
-interface PrototypeRoute {
-  sourcePath?: string;
-  _pathParams?: Record<string, string>;
-}
-
 /** Project-level context the build threads into every resolved class. */
 interface PrototypeProjectContext {
   config?: ProjectConfig;
   sections?: ProjectSections;
   registry?: ExtensionRegistry;
   registerBundle?: (specifier: string) => void;
-}
-
-/** `config._project`: the project config and root, plus every loaded section under its key. */
-interface ClassProjectContext {
-  config: ProjectConfig | null;
-  root: string;
-  [sectionKey: string]: ProjectSectionData | ProjectConfig | string | null;
-}
-
-/** `config._document`: the route being built and the page's whole state. */
-interface ClassDocumentContext {
-  route: PrototypeRoute;
-  state: Record<string, JxStateDefinition>;
-}
-
-/**
- * The config an external class is constructed with: the def's own non-reserved keys, plus the
- * universal `_project` and `_document` context.
- */
-type ExternalClassConfig = Record<
-  string,
-  JxDocumentValue | ClassProjectContext | ClassDocumentContext | undefined
->;
-
-/** A class instance that computes its value: `resolve()` answers with the JSON to bake in. */
-interface ResolvingInstance {
-  resolve: () => JsonValue | Promise<JsonValue>;
-}
-
-/**
- * What an external class constructs (specs/extensions.md §8): either an instance that resolves its
- * value, or an instance whose own fields ARE the value.
- */
-type ExternalClassInstance = ResolvingInstance | JsonObject;
-
-/** An external class as its implementation module exports it. */
-type ExternalClass = new (config: ExternalClassConfig) => ExternalClassInstance;
-
-/**
- * Whether a constructed instance computes its value through `resolve()`.
- *
- * @param {ExternalClassInstance} instance
- * @returns {boolean}
- */
-function isResolvingInstance(instance: ExternalClassInstance): instance is ResolvingInstance {
-  return isFunction(instance.resolve);
+  /**
+   * Write each resolved value as the entry's initial value (`{ "default": value }`) instead of the
+   * value itself. A component's state is what its compiled module starts from, so a value resolved
+   * for one has to stay a state entry; a page's is baked into its markup and then stripped.
+   */
+  asInitialValues?: boolean;
 }
 
 /**
  * Resolve all generic $prototype entries in a document's state at build time.
  *
- * For each state entry with a $prototype that: 1. Is not a builtin (Function, Array, etc.) 2. Maps
- * to a .class.json path via doc.imports
+ * A client- or server-timed entry stays for its own pipeline, unless its registry class has a
+ * `lower` capability, which compiles it away here into a core-shape def (specs/extensions.md §8.3).
+ * Every other entry that names an external class (`timing: "compiler"`, or no `timing`) is located,
+ * loaded, constructed and replaced with its value (`external-class.ts`).
  *
- * The resolver: - Reads the .class.json from disk - Follows $implementation to import the JS module
+ * Nothing is swallowed: a `lower` that throws, a compiler-timed entry that names no class, and a
+ * class that cannot be located, loaded or resolved are each collected, and one error naming every
+ * such entry is thrown after the rest have been tried.
  *
- * - Instantiates the class with the config - Calls .resolve() and replaces the state entry with the
- *   result
- *
- * @param {JxMutableNode | JxDocument} doc - The page document (mutated in place)
- * @param {PrototypeRoute} route - Route info
+ * @param {JxMutableNode | JxDocument} doc - The document (mutated in place)
+ * @param {ClassRoute} route - Route info
  * @param {string} projectRoot - Absolute path to the project root
  * @param {PrototypeProjectContext} [projectContext] - Project-level context injected into all
  *   classes; `sections` holds the extension-loaded project sections keyed by section key (spread
  *   into `_project`); `registry` enables manifest class resolution and the generic `lower`
  *   capability
+ * @returns {Promise<Record<string, JxStateDefinition>>} The entries it replaced, lowered or
+ *   resolved, by state key
  */
 export async function resolvePrototypes(
   doc: JxMutableNode | JxDocument,
-  route: PrototypeRoute,
+  route: ClassRoute,
   projectRoot: string,
   projectContext: PrototypeProjectContext = {},
-) {
-  const imports = doc.imports ?? {};
+): Promise<Record<string, JxStateDefinition>> {
+  const replaced: Record<string, JxStateDefinition> = {};
   const { state } = doc;
   if (!state) {
-    return;
+    return replaced;
   }
+  const failures: string[] = [];
+  const lookup = {
+    docDir: route.sourcePath ? dirname(route.sourcePath) : null,
+    imports: doc.imports,
+    projectRoot,
+    registry: projectContext.registry,
+  };
 
   for (const [key, def] of Object.entries(state)) {
     if (!isPrototypeDef(def)) {
@@ -150,6 +99,7 @@ export async function resolvePrototypes(
     if (SKIP_PROTOTYPES.has(def.$prototype)) {
       continue;
     }
+    const label = `"${key}" ($prototype "${def.$prototype}")`;
     // Only resolve timing: "compiler" (or unset timing with a class mapping). Timing: "server"
     // And timing: "client" stay for their pipelines — but a registry class with a `lower`
     // Capability compiles away here into a core-shape def (specs/extensions.md §8.3): dynamic
@@ -178,126 +128,79 @@ export async function resolvePrototypes(
             delete lowered.$bundle;
           }
           state[key] = lowered;
+          replaced[key] = lowered;
         } catch (error) {
-          console.warn(
-            `prototype-resolver: failed to lower "${key}" ($prototype: "${def.$prototype}"):`,
-            errorMessage(error),
-          );
+          failures.push(`${label}: its class could not lower it: ${errorMessage(error)}`);
         }
       }
       continue;
     }
 
-    // Look up in imports (project-local wins), then the extension registry's manifest classes.
-    if (!def.$src) {
-      const mapped = imports[def.$prototype] ?? registryClassPath(projectContext, def.$prototype);
-      if (!mapped) {
+    try {
+      const located = locateClass(def, lookup);
+      if (located === undefined) {
+        // A built-in at compiler timing, and an unset-timing name nothing maps, are not this
+        // Resolver's: the first belongs to its own target, the second may only ever run interpreted.
+        if (def.timing === "compiler" && isExternalClassDef(def)) {
+          failures.push(
+            `${label} names no class: give it a $src or an imports entry, or enable the ` +
+              `extension that provides "${def.$prototype}"`,
+          );
+        }
         continue;
       }
-      def.$src = mapped;
-    }
-
-    try {
-      const resolved = await resolveClassPrototype(def, route, projectRoot, state, projectContext);
-      // Preserve timing metadata on the resolved value so compilePage() can strip it
-      if (def.timing && isJsonObject(resolved)) {
-        resolved.timing = def.timing;
-      }
-      state[key] = resolved;
-    } catch (error) {
-      console.warn(
-        `prototype-resolver: failed to resolve "${key}" ($prototype: "${def.$prototype}"):`,
-        errorMessage(error),
+      const Ctor = await loadClass(located);
+      const { value } = await instantiateAndResolve(
+        Ctor,
+        buildConfig(def, route, projectRoot, state, projectContext),
       );
+      if (projectContext.asInitialValues) {
+        state[key] = { default: value ?? null };
+      } else {
+        // Preserve timing metadata on the resolved value so compilePage() can strip it
+        if (def.timing && isJsonObject(value)) {
+          value.timing = def.timing;
+        }
+        state[key] = value;
+      }
+      replaced[key] = state[key];
+    } catch (error) {
+      const hint = def.timing ? "" : ' (set "timing": "client" if it must run in the browser)';
+      failures.push(`${label}: ${errorMessage(error)}${hint}`);
     }
   }
+
+  if (failures.length > 0) {
+    throw new Error(
+      failures.length === 1
+        ? `state entry ${failures[0]}`
+        : `${failures.length} state entries could not be resolved: ${failures.join("; ")}`,
+    );
+  }
+  return replaced;
 }
 
 /**
- * Descriptor path of a manifest class from the extension registry, when one is enabled. Lets
- * `timing: "compiler"` defs name extension classes (TableQuery, ContentCollection, …) without a
- * project-local imports entry.
+ * The config a class is constructed with during the build: the entry's own keys minus the reserved
+ * ones (spec.md §12.3), plus what only the build host knows.
  *
- * @param {{ registry?: ExtensionRegistry }} projectContext
- * @param {string} prototypeName
- * @returns {string | undefined}
- */
-function registryClassPath(
-  projectContext: { registry?: ExtensionRegistry },
-  prototypeName: string,
-): string | undefined {
-  return projectContext.registry?.byName(prototypeName)?.classPath;
-}
-
-/**
- * Resolve a single $prototype entry via its .class.json.
- *
- * @param {JxPrototypeDef} def - The state entry definition
- * @param {PrototypeRoute} route
+ * @param {JxPrototypeDef} def
+ * @param {ClassRoute} route
  * @param {string} projectRoot
- * @param {Record<string, JxStateDefinition>} state - The full page state object
+ * @param {Record<string, JxStateDefinition>} state - The document's whole state
  * @param {PrototypeProjectContext} projectContext
- * @returns {Promise<JsonValue>} The resolved value
+ * @returns {ExternalClassConfig}
  */
-async function resolveClassPrototype(
+function buildConfig(
   def: JxPrototypeDef,
-  route: PrototypeRoute,
+  route: ClassRoute,
   projectRoot: string,
   state: Record<string, JxStateDefinition>,
   projectContext: PrototypeProjectContext,
-): Promise<JsonValue> {
-  const src = def.$src;
-  if (!src) {
-    throw new Error(`$prototype "${def.$prototype}" has no $src to resolve`);
-  }
+): ExternalClassConfig {
+  const config: ExternalClassConfig = { ...externalClassConfig(def) };
 
-  // 1. Resolve .class.json path — handles both npm specifiers and relative paths
-  let classJsonPath;
-  if (src.startsWith("./") || src.startsWith("../")) {
-    // Relative path — resolve from page directory
-    classJsonPath = route.sourcePath
-      ? resolve(dirname(route.sourcePath), src)
-      : resolve(projectRoot, src);
-  } else {
-    // Npm/bare specifier — use createRequire from the project root to walk node_modules
-    const require = createRequire(resolve(projectRoot, "package.json"));
-    classJsonPath = require.resolve(src);
-  }
-
-  // 2. Read and parse .class.json
-  const classJsonText = readFileSync(classJsonPath, "utf8");
-  const classDef = parseClassDef(classJsonText, classJsonPath);
-
-  if (!classDef.$implementation) {
-    throw new Error(`${src} has no $implementation field`);
-  }
-
-  // 3. Resolve $implementation relative to .class.json location
-  const implPath = resolve(dirname(classJsonPath), classDef.$implementation);
-
-  // 4. Import the module (tolerates src-vs-dist layouts and .js → .ts under Bun)
-  const mod = await importImplementation(implPath);
-
-  // 5. Find the exported class
-  const exportName = def.$export ?? classDef.title ?? def.$prototype;
-  /* SAFETY: what is found is the export a `.class.json` names as its implementation, which by the
-     external-class contract (specs/extensions.md §8) is a class taking this config and building an
-     ExternalClassInstance; only its presence is checked below, and the result is baked into the
-     page as JSON. */
-  const ExportedClass = (mod[exportName] ?? mod.default?.[exportName]) as ExternalClass | undefined;
-  if (!ExportedClass) {
-    throw new Error(`Module ${classDef.$implementation} does not export "${exportName}"`);
-  }
-
-  // 6. Build config — filter out reserved keys
-  const config: ExternalClassConfig = {};
-  for (const [k, v] of Object.entries(def)) {
-    if (!RESERVED_KEYS.has(k)) {
-      config[k] = v;
-    }
-  }
-
-  // Auto-set basePath from the page's directory if the config has `src` but no `basePath`
+  // Auto-set basePath from the document's directory if the config has `src` but no `basePath`
   if (config.src && !config.basePath && route.sourcePath) {
     config.basePath = dirname(route.sourcePath);
   }
@@ -310,12 +213,5 @@ async function resolveClassPrototype(
     ...projectContext.sections,
   };
   config._document = { route, state };
-
-  // 7. Instantiate and resolve. Trust boundary: external classes contractually
-  // Return JSON-serializable data (the result is baked into the compiled page).
-  const instance = new ExportedClass(config);
-  if (isResolvingInstance(instance)) {
-    return await instance.resolve();
-  }
-  return instance;
+  return config;
 }

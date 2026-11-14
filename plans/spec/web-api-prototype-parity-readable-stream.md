@@ -34,7 +34,7 @@ This plan claims nothing. It was item 1 of `plan:spec/web-api-prototype-parity`,
 **What exists** (re-verified):
 
 - `resolvePrototype` in `packages/runtime/src/runtime.ts`, `case "ReadableStream": { return null; }` (line 3008). The runtime test "ReadableStream: returns null" (`packages/runtime/tests/runtime.test.ts:1154`) pins it.
-- `BUILT_IN_PROTOTYPES` (line 14) and `ExternalClassDef`'s `$prototype.examples` (line 41) in `packages/schema/defs/external-class-def.schema.ts` list the name. The second list is in `packages/schema/schema.json` and all 28 committed `document.schema.json` files. `BUILT_IN_PROTOTYPES` has no consumer yet; `plan:compiler/client-external-class-hydration` makes it the external-class test.
+- `BUILT_IN_PROTOTYPES` (line 14) and `ExternalClassDef`'s `$prototype.examples` (line 41) in `packages/schema/defs/external-class-def.schema.ts` list the name. The second list is in `packages/schema/schema.json` and all 28 committed `document.schema.json` files. `BUILT_IN_PROTOTYPES` has one consumer, `isExternalClassDef` in `packages/compiler/src/shared.ts`, the external-class test (compiler.md §3).
 - The name appears in three other places:
   - `specs/schema.md` §3.1: "All 13 built-in prototypes" and the line `` `ReadableStream` — (stub) ``;
   - spec.md §12.1's marker: "… `Blob` and `ReadableStream` (§11.2) are missing from the table";
@@ -87,7 +87,7 @@ So a streamed body is a `Request` option, not a prototype of its own.
 - `plan:spec/web-api-prototype-parity` may flip §11.2 once its own rows are built. Its "lowers every built-in" test iterates this list.
 - `plan:schema/generator-inventory`'s Built-in Prototypes rewrite has no `ReadableStream` line to keep. Its integration contract already covers both landing orders: landing first, this plan leaves it no line; landing second, this plan deletes the line from that plan's list, and this plan's "All 12 built-in prototypes" edit is moot because that plan replaces the lead sentence.
 - `plan:spec/reconcile-built-in-prototypes`'s §12.1 table does not list the name.
-- Under `plan:compiler/client-external-class-hydration`, `isExternalClassDef` holds for a `ReadableStream` entry, so a `timing: "compiler"` one fails the build as naming no class. That is the right answer for an unknown name.
+- By compiler.md §3, `isExternalClassDef` holds for a `ReadableStream` entry once the name leaves `BUILT_IN_PROTOTYPES`, so a `timing: "compiler"` one fails the build as naming no class. That is the right answer for an unknown name.
 
 ## Tests
 

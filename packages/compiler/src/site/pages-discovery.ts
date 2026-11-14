@@ -576,7 +576,14 @@ async function expandPagedRoute(
     );
     return [];
   }
-  const items = await resolvePagedEntry(raw, paged.key, route, fixed, ctx);
+  let items: JsonValue | undefined;
+  try {
+    items = await resolvePagedEntry(raw, paged.key, route, fixed, ctx);
+  } catch (error) {
+    // The entry names a class the build could not resolve (compiler.md §3): its error is the route's.
+    ctx.report(route, errorMessage(error));
+    return [];
+  }
   if (!Array.isArray(items)) {
     ctx.report(route, `state entry "${paged.key}" did not resolve to an array at build time`);
     return [];

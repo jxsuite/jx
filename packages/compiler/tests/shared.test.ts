@@ -6,6 +6,12 @@ import {
   buildInitialScope,
   buildInner,
   cloneValue,
+  collectClientClasses,
+  EXTERNAL_CONFIG_RESERVED,
+  externalClassConfig,
+  isClientExternalClass,
+  isExternalClassDef,
+  isRuntimeOnlyStateKey,
   collectServerEntries,
   collectFunctionImports,
   collectSrcImports,
@@ -33,6 +39,7 @@ import {
   tagNameToClassName,
   titleToTagName,
 } from "../src/shared";
+import { BUILT_IN_PROTOTYPES } from "@jxsuite/schema/defs";
 import type { JsonObject, JxElement, JxMutableNode } from "@jxsuite/schema/types";
 import type { JxScope } from "@jxsuite/runtime/types";
 
@@ -2052,5 +2059,87 @@ describe("buildComponentCSS — $description comments (spec.md §9.2)", () => {
         "/* when wide */\nx-card.wide { width: 100% }\n" +
         "/* the label */\n.x-card-0 { color: red }\n",
     );
+  });
+});
+
+// ─── External classes (compiler.md §3) ───────────────────────────────────────
+
+describe("external class predicates and config", () => {
+  test("externalClassConfig strips exactly the reserved keys", () => {
+    expect([...EXTERNAL_CONFIG_RESERVED].toSorted()).toEqual([
+      "$export",
+      "$prototype",
+      "$src",
+      "default",
+      "description",
+      "timing",
+    ]);
+    expect(
+      externalClassConfig({
+        $export: "W",
+        $prototype: "Weather",
+        $src: "./W.class.json",
+        // Reserved by the interpreter's longer list, not by this one: they reach the class.
+        body: "kept",
+        city: "Lancaster",
+        default: 1,
+        description: "d",
+        name: "kept",
+        nested: { a: [1, 2] },
+        timing: "client",
+      }),
+    ).toEqual({ body: "kept", city: "Lancaster", name: "kept", nested: { a: [1, 2] } });
+  });
+
+  test("isExternalClassDef excludes every built-in prototype", () => {
+    for (const name of BUILT_IN_PROTOTYPES) {
+      expect(isExternalClassDef({ $prototype: name })).toBe(false);
+      expect(isClientExternalClass({ $prototype: name, timing: "client" })).toBe(false);
+    }
+    expect(isExternalClassDef({ $prototype: "Weather" })).toBe(true);
+    expect(isExternalClassDef({ default: 1 })).toBe(false);
+    expect(isExternalClassDef("Weather")).toBe(false);
+  });
+
+  test("only an explicit timing client is a client external class", () => {
+    expect(isClientExternalClass({ $prototype: "Weather", timing: "client" })).toBe(true);
+    expect(isClientExternalClass({ $prototype: "Weather" })).toBe(false);
+    expect(isClientExternalClass({ $prototype: "Weather", timing: "compiler" })).toBe(false);
+    expect(isClientExternalClass({ $prototype: "Weather", timing: "server" })).toBe(false);
+  });
+
+  test("buildInitialScope marks a client-timed external class runtime-only", () => {
+    const scope = buildInitialScope({
+      built: { $prototype: "Weather" },
+      label: "${state.live.city}",
+      live: { $prototype: "Weather", timing: "client" },
+    });
+    expect(isRuntimeOnlyStateKey(scope, "live")).toBe(true);
+    // An entry that reads it cannot resolve before hydration either.
+    expect(isRuntimeOnlyStateKey(scope, "label")).toBe(true);
+    expect(isRuntimeOnlyStateKey(scope, "built")).toBe(false);
+    expect(scope.live).toBeUndefined();
+  });
+
+  test("collectClientClasses shares one import between entries naming one module", () => {
+    const classes = collectClientClasses(
+      {
+        a: { $prototype: "Weather", timing: "client", zip: 1 },
+        b: { $prototype: "Weather", timing: "client" },
+        c: { $prototype: "Session", timing: "client" },
+        n: 1,
+      },
+      (def) => `/assets/class-${def.$prototype}.js`,
+    );
+    expect(classes.imports).toEqual([
+      "import _JxClass0 from '/assets/class-Weather.js';",
+      "import _JxClass1 from '/assets/class-Session.js';",
+    ]);
+    expect(classes.entries).toEqual([
+      { binding: "_JxClass0", config: { zip: 1 }, key: "a", name: "Weather" },
+      { binding: "_JxClass0", config: {}, key: "b", name: "Weather" },
+      { binding: "_JxClass1", config: {}, key: "c", name: "Session" },
+    ]);
+    expect(collectClientClasses({ n: 1 })).toEqual({ entries: [], imports: [] });
   });
 });

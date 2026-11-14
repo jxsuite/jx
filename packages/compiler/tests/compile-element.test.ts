@@ -2694,3 +2694,117 @@ describe("compileElement — style handles (spec.md §9.2)", () => {
     expect(module).toContain('title="t"');
   });
 });
+
+// ─── `timing: "client"` external classes (compiler.md §3) ────────────────────
+
+describe("compileElement — client-timed external classes", () => {
+  const doc = (): JxDocument => ({
+    children: [{ tagName: "p", textContent: "${state.forecast.days}" }],
+    imports: { Session: "./Session.class.json" },
+    state: {
+      forecast: {
+        $prototype: "Weather",
+        $src: "./Weather.class.json",
+        city: "Lancaster",
+        description: "The forecast",
+        timing: "client",
+      },
+      session: { $prototype: "Session", timing: "client" },
+    },
+    tagName: "x-weather",
+  });
+  /** The one module a document compiles to. */
+  async function moduleOf(source: JxDocument, opts: Parameters<typeof compileElement>[1] = {}) {
+    const { files } = await compileElement(source, opts);
+    return files[0]!.content;
+  }
+  const seen: (string | null)[] = [];
+  const resolveClass = (
+    def: { $prototype: string },
+    docDir: string | null,
+    imports: Record<string, string>,
+  ) => {
+    seen.push(docDir, imports[def.$prototype] ?? "");
+    return `/assets/class-${def.$prototype}.js`;
+  };
+
+  test("a client-timed external class imports its module and starts null", async () => {
+    seen.length = 0;
+    const js = await moduleOf(doc(), { resolveClass });
+    // The resolver is given where the document is and what it imports.
+    expect(seen).toEqual([null, "", null, "./Session.class.json"]);
+    expect(js).toContain("import _JxClass0 from '/assets/class-Weather.js';");
+    expect(js).toContain("import _JxClass1 from '/assets/class-Session.js';");
+    expect(js).toContain("      forecast: null,\n      session: null,");
+    expect(js).toContain("async function __jxInstantiate(C, name, config) {");
+    expect(js).toContain("  #jxInstances = new Map();");
+    // The classes are constructed once per instance, and the draw waits for them.
+    expect(js).toContain("    this.#jxReady ??= Promise.all([");
+    expect(js).toContain("        this.state.forecast = v;");
+    expect(js).toContain('        this.#jxInstances.set("session", i);');
+    expect(js).toContain(
+      [
+        "    const _c = ++this.#jxConnection;",
+        "    this.#jxReady.then(() => {",
+        "      if (_c === this.#jxConnection && this.isConnected) this.#jxRender();",
+        "    });",
+        "  }",
+        "",
+        "  #jxRender() {",
+        "    const _first = !this.#jxDrawn;",
+        "    this.#jxDrawn = true;",
+      ].join("\n"),
+    );
+    // Everything a connection draws moved into the render method, after the wait.
+    expect(js.indexOf("render(this.template(), this)")).toBeGreaterThan(
+      js.indexOf("#jxRender() {"),
+    );
+    expect(js.indexOf("this.state.onMount.call(")).toBeGreaterThan(js.indexOf("#jxRender() {"));
+  });
+
+  test("the config literal omits the reserved keys", async () => {
+    const js = await moduleOf(doc(), { resolveClass });
+    expect(js).toContain('__jxInstantiate(_JxClass0, "Weather", {"city":"Lancaster"})');
+    expect(js).toContain('__jxInstantiate(_JxClass1, "Session", {})');
+  });
+
+  test("without a resolver a client-timed class is a compile error", async () => {
+    let message = "";
+    try {
+      await compileElement(doc());
+    } catch (error) {
+      message = error instanceof Error ? error.message : "";
+    }
+    expect(message).toBe(
+      '"forecast": external class "Weather" with timing "client" compiles only in a site build',
+    );
+  });
+
+  test("a document with no client class keeps the inline connectedCallback", async () => {
+    const plain = (): JxDocument => ({
+      children: [{ tagName: "p", textContent: "${state.n}" }],
+      state: { feed: { $prototype: "Request", url: "/api" }, n: 1 },
+      tagName: "x-plain",
+    });
+    const js = await moduleOf(plain(), { resolveClass });
+    expect(js).not.toContain("__jxInstantiate");
+    expect(js).not.toContain("#jx");
+    expect(js).toBe(await moduleOf(plain()));
+  });
+
+  test("prepareDocument sees each document before it is compiled", async () => {
+    const prepared: (string | null)[] = [];
+    const js = await moduleOf(
+      { state: { n: 1 }, tagName: "x-prepared", textContent: "${state.n}" },
+      {
+        prepareDocument: async (document, filePath) => {
+          prepared.push(filePath);
+          document.state = { ...document.state, n: { default: 7 } };
+          await Promise.resolve();
+        },
+      },
+    );
+    expect(prepared).toEqual([null]);
+    expect(js).toContain("      n: 7,");
+  });
+});

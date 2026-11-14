@@ -6,7 +6,7 @@
  * discovered through their jx-extension.json manifests; see specs/extensions.md.
  */
 
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, isAbsolute, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { createRequire } from "node:module";
@@ -26,18 +26,14 @@ export type { ExtensionRegistry } from "@jxsuite/schema/extension-registry";
 export type { FormatRegistry, FormatEntry } from "@jxsuite/schema/format-registry";
 
 /**
- * Import a class $implementation module by absolute path, tolerating source-vs-built layouts. A
- * `.class.json` typically declares `"$implementation": "./markdown.js"` next to its TypeScript
- * source: under Bun the sibling `.ts` resolves directly, while under node the built module lives in
- * the package's `dist/` directory. Tries, in order: the literal path, src/ → dist/, that same file
- * with its `.ts` extension read as `.js` (a descriptor that names its TypeScript source, whose
- * built module is JavaScript), and .js → .ts.
+ * The files an `$implementation` path may mean, in the order they are tried: the literal path, its
+ * `src/` read as `dist/`, that built file with a `.ts` extension read as `.js`, and a `.js` read as
+ * the `.ts` beside it. See {@link importImplementation} for why each exists.
  *
  * @param {string} path - Absolute path to the implementation module
- * @returns {Promise<ImplementationExport>} The module's namespace object, whose named exports (and
- *   `default`) are read by name
+ * @returns {string[]}
  */
-export async function importImplementation(path: string): Promise<ImplementationExport> {
+export function implementationCandidates(path: string): string[] {
   const candidates = [path];
   const srcSeg = `${sep}src${sep}`;
   const distSeg = `${sep}dist${sep}`;
@@ -51,6 +47,49 @@ export async function importImplementation(path: string): Promise<Implementation
   if (path.endsWith(".js")) {
     candidates.push(`${path.slice(0, -3)}.ts`);
   }
+  return candidates;
+}
+
+/**
+ * The file an `$implementation` path names, for a bundler, which needs the file itself where
+ * {@link importImplementation} can simply try each import.
+ *
+ * The candidates are {@link implementationCandidates}', with the source beside the literal path
+ * ahead of a built copy: that is the file a Bun import of the literal path loads, so the class a
+ * build ran and the class it ships are one source, and a stale `dist/` beside a newer `src/` is not
+ * what reaches the browser. A published package has no `src/`, and its built module is found.
+ *
+ * @param {string} path - Absolute path to the implementation module
+ * @returns {string}
+ */
+export function implementationFile(path: string): string {
+  const candidates = implementationCandidates(path);
+  const beside = dirname(path);
+  const ordered = [
+    ...candidates.filter((candidate) => dirname(candidate) === beside),
+    ...candidates.filter((candidate) => dirname(candidate) !== beside),
+  ];
+  const found = ordered.find((candidate) => existsSync(candidate));
+  if (found === undefined) {
+    throw new Error(`no module at ${path} (tried ${ordered.join(", ")})`);
+  }
+  return found;
+}
+
+/**
+ * Import a class $implementation module by absolute path, tolerating source-vs-built layouts. A
+ * `.class.json` typically declares `"$implementation": "./markdown.js"` next to its TypeScript
+ * source: under Bun the sibling `.ts` resolves directly, while under node the built module lives in
+ * the package's `dist/` directory. Tries, in order: the literal path, src/ → dist/, that same file
+ * with its `.ts` extension read as `.js` (a descriptor that names its TypeScript source, whose
+ * built module is JavaScript), and .js → .ts.
+ *
+ * @param {string} path - Absolute path to the implementation module
+ * @returns {Promise<ImplementationExport>} The module's namespace object, whose named exports (and
+ *   `default`) are read by name
+ */
+export async function importImplementation(path: string): Promise<ImplementationExport> {
+  const candidates = implementationCandidates(path);
 
   let lastError: unknown;
   for (const candidate of candidates) {

@@ -124,7 +124,7 @@ Because the types, enums, and defaults are right there in the descriptor, Studio
 }
 ```
 
-A page authored with `{ "$prototype": "TableQuery", "table": "posts", "timing": "client" }` compiles into a plain reactive fetch of `/_jx/data/posts?…`. Dynamic-data queries work in compiled sites with **no extension code shipped to the browser**. `lower` may appear on a class with any admission block (or none).
+A page authored with `{ "$prototype": "TableQuery", "table": "posts", "timing": "client" }` compiles into a plain reactive fetch of `/_jx/data/posts?…`. Dynamic-data queries work in compiled sites with **no extension code shipped to the browser**. `lower` may appear on a class with any admission block (or none). If `lower` throws, the build fails and names the entry. A page and a component are lowered alike.
 
 ## `assets`
 

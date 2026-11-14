@@ -30,7 +30,7 @@ import { compileStaticPage } from "./targets/compile-static.ts";
 import { compileClient } from "./targets/compile-client.ts";
 import { isClassDef, isString } from "@jxsuite/schema/guards";
 import { isNativeDocumentPath, parseNativeDocument } from "@jxsuite/schema/jxn";
-import type { JxDocument, JxStyle } from "@jxsuite/schema/types";
+import type { JxDocument, JxPrototypeDef, JxStyle } from "@jxsuite/schema/types";
 import type { FormatRegistry } from "@jxsuite/schema/format-registry";
 
 // Re-exports for consumers
@@ -49,6 +49,11 @@ export interface CompileOptions {
   formats?: FormatRegistry;
   /** Rewrite Function-def `$src` specifiers to served URLs (see CompileElementOptions). */
   rewriteSrc?: (specifier: string) => string;
+  /**
+   * The URL a `timing: "client"` external class's module is served at (compiler.md §3, §12). A site
+   * build supplies it; without it such an entry is a compile error.
+   */
+  resolveClass?: (def: JxPrototypeDef) => string;
   /**
    * The route prefix a `timing: "server"` entry posts to, deployment base included
    * (`serverRoutePrefix`). Default `"/_jx/server"`, for a site served from its origin root.
@@ -148,6 +153,8 @@ export async function compile(sourcePath: string | JxDocument, opts: CompileOpti
       opts.rewriteSrc,
       null,
       opts.serverBaseUrl,
+      [],
+      opts.resolveClass,
     );
     const moduleFile = {
       content: moduleContent,
@@ -191,6 +198,9 @@ export async function compile(sourcePath: string | JxDocument, opts: CompileOpti
   };
   if (opts.serverBaseUrl !== undefined) {
     clientOptions.serverBaseUrl = opts.serverBaseUrl;
+  }
+  if (opts.resolveClass !== undefined) {
+    clientOptions.resolveClass = opts.resolveClass;
   }
   return compileClient(raw, clientOptions);
 }

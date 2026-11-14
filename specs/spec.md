@@ -1270,15 +1270,15 @@ The cookie **name is data, never pattern syntax**: the reader splits the cookie 
 
 ### 11.3 Timing Values
 
-> **Status: Partial.** The compiler row ships only for an external class that names an `$implementation`: a self-contained class is refused with a console warning (§12.4), and a `$prototype: "Request"` is never fetched at build time, because `resolvePrototypes` (`packages/compiler/src/site/prototype-resolver.ts`) finds no class mapping for it and skips it, yet the site build strips both as resolved compiler entries, so nothing is baked and the page gets no fetch either. The client row holds in the interpreter, but in compiled output only for the built-ins a target lowers (§11.2) and for a registry class with a `lower` capability: an external class with `timing: "client"` reaches a built page as its literal definition object (compiler.md §3), and one with no `timing` is resolved at build time (`resolvePrototypes`), so the two tiers disagree about the default. The server row does not hold in a built site: the route is generated, but no compiled page calls it (§11.4).
+> **Status: Partial.** The compiler row ships for an external class, but a `$prototype: "Request"` is never fetched at build time, because `resolvePrototypes` (`packages/compiler/src/site/prototype-resolver.ts`) finds no class mapping for it and skips it, yet the site build strips it as a resolved compiler entry, so nothing is baked and the page gets no fetch either. The client row holds in the interpreter, and in compiled output for an external class (compiler.md §3) and for the built-ins a target lowers (§11.2), but an external class with no `timing` is resolved at build time (`resolvePrototypes`), so the two tiers disagree about the default. The server row does not hold in a built site: the route is generated, but no compiled page calls it (§11.4).
 
-| Value        | When                                                   | Status                                                                                                            |
-| ------------ | ------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------- |
-| `"client"`   | Resolved at runtime in the browser (default)           | **Partial** — a built page does not instantiate an external class (compiler.md §3)                                |
-| `"server"`   | Resolved at runtime on the server via RPC              | **Partial** — the route ships, no compiled caller (§11.4)                                                         |
-| `"compiler"` | Resolved at build time; result baked into emitted HTML | **Partial** — an external class with an `$implementation` only; not a `Request` or a self-contained class (§12.4) |
+| Value        | When                                                   | Status                                                                               |
+| ------------ | ------------------------------------------------------ | ------------------------------------------------------------------------------------ |
+| `"client"`   | Resolved at runtime in the browser (default)           | **Implemented** — external classes (compiler.md §3); each built-in as §11.2 marks it |
+| `"server"`   | Resolved at runtime on the server via RPC              | **Partial** — the route ships, no compiled caller (§11.4)                            |
+| `"compiler"` | Resolved at build time; result baked into emitted HTML | **Partial** — an external class; not a `Request`                                     |
 
-> **Status: Implemented.** The site build resolves a `timing: "compiler"` external class that names an `$implementation` at build time (`prototype-resolver`) and bakes the resolved data into the compiled tree; the resolved entries are then stripped from emitted output. The compiler's `isDynamic` check skips them, so a component whose only state is compiler-timed compiles as fully static HTML.
+> **Status: Implemented.** The site build resolves a `timing: "compiler"` external class at build time (`prototype-resolver`) and bakes the resolved data into the compiled tree; the resolved entries are then stripped from emitted output. The compiler's `isDynamic` check skips them, so a component whose only state is compiler-timed compiles as fully static HTML.
 
 ### 11.4 Server Timing — RPC Function Boundary
 
@@ -1417,7 +1417,7 @@ For **third-party or project-local** classes, `$src` on any `state` entry with a
 
 ### 12.3 External Class Contract
 
-> **Status: Partial.** The constructor config, the `resolve()`/`.value`/instance order and `subscribe(callback)` ship in the interpreter (`importAndInstantiate` and `resolveClassJson` in `packages/runtime/src/runtime.ts`). A built page never instantiates an external class: a `timing: "client"` class reaches it as its literal definition (compiler.md §3), and the build-time resolver (`packages/compiler/src/site/prototype-resolver.ts`) skips `.value`, going from `resolve()` straight to the instance. `unsubscribe()` is never called, so a subscription outlives its component, and no tool reads `returnType`: the Studio repeater check (`packages/studio/src/editor/convert-to-repeater.ts`) reads a `returns` key that `packages/server/src/studio-api.ts` copies from `methods.resolve.returns`, which only `ContentCollection.class.json` declares.
+> **Status: Partial.** The constructor config, the `resolve()`/`.value`/instance order and `subscribe(callback)` ship in the interpreter (`importAndInstantiate` and `resolveClassJson` in `packages/runtime/src/runtime.ts`). A site build applies the same config and order, during the build and in a built page (compiler.md §3). `unsubscribe()` is never called, so a subscription outlives its component, and no tool reads `returnType`: the Studio repeater check (`packages/studio/src/editor/convert-to-repeater.ts`) reads a `returns` key that `packages/server/src/studio-api.ts` copies from `methods.resolve.returns`, which only `ContentCollection.class.json` declares.
 
 **Constructor:** Receives a single configuration object containing all `state` properties except reserved keywords (`$prototype`, `$src`, `$export`, `timing`, `default`, `description`).
 
@@ -1448,7 +1448,7 @@ instance.unsubscribe();
 
 ### 12.4 `.class.json` Schema-Defined Classes
 
-> **Status: Partial.** The `.class.json` entrypoint, `$implementation` and runtime self-contained mode (`classFromSchema`) ship. "Tooling uses this metadata" does not hold: nothing reads `returnType` except `packages/compiler/src/targets/compile-class.ts`, which only sniffs it for an async prefix (§12.3). And the build-time resolver (`packages/compiler/src/site/prototype-resolver.ts`) refuses a class with no `$implementation` with a console warning, after which the site build strips the entry and reports no error, so self-contained mode is runtime-only (compiler.md §5.4).
+> **Status: Partial.** The `.class.json` entrypoint, `$implementation` and self-contained mode ship: `classFromSchema` in the interpreter, and the class a site build generates from the schema (compiler.md §5.4). "Tooling uses this metadata" does not hold: nothing reads `returnType` except `packages/compiler/src/targets/compile-class.ts`, which only sniffs it for an async prefix (§12.3).
 
 All non-Function external classes **must** use a `.class.json` file as their `$src` entrypoint. These are JSON Schema 2020-12 documents describing a class structure with an optional `$implementation` key:
 

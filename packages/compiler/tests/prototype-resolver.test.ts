@@ -29,10 +29,40 @@ function setup() {
   writeFileSync(
     join(FIXTURES, "NoImpl.class.json"),
     JSON.stringify({
-      $defs: { fields: {} },
+      $defs: {
+        fields: { name: { default: "world", identifier: "name", role: "field" } },
+        methods: {
+          value: {
+            getter: { body: "return 'Hello ' + this.name;" },
+            identifier: "value",
+            role: "accessor",
+          },
+        },
+      },
       title: "NoImpl",
     }),
   );
+}
+
+/** Write a class with an `$implementation` into the fixtures, under one name for both files. */
+function writeClass(name: string, source: string) {
+  writeFileSync(join(FIXTURES, `${name}.js`), source);
+  writeFileSync(
+    join(FIXTURES, `${name}.class.json`),
+    JSON.stringify({ $defs: { fields: {} }, $implementation: `./${name}.js`, title: name }),
+  );
+}
+
+/** The rejection of a promise that must reject, as an `Error`. */
+async function rejection(pending: Promise<object>): Promise<Error> {
+  try {
+    await pending;
+  } catch (error) {
+    if (error instanceof Error) {
+      return error;
+    }
+  }
+  throw new Error("expected a rejection");
 }
 
 function cleanup() {
@@ -134,17 +164,19 @@ describe("resolvePrototypes", () => {
     }
   });
 
-  test("throws gracefully when .class.json has no $implementation", async () => {
+  test("resolves a self-contained class at build time", async () => {
     setup();
     try {
-      const doc = {
+      const doc: JxMutableNode = {
         state: {
-          result: { $prototype: "NoImpl", $src: "./NoImpl.class.json" },
+          greeting: { $prototype: "NoImpl", $src: "./NoImpl.class.json" },
+          named: { $prototype: "NoImpl", $src: "./NoImpl.class.json", name: "Jx" },
         },
       };
       await resolvePrototypes(doc, { sourcePath: join(FIXTURES, "page.json") }, FIXTURES);
-      // Should warn but not crash — state entry remains as-is or gets error
-      expect(doc.state.result).toBeDefined();
+      // Generated from the schema (compiler.md §5.4): the field default, then the config's value.
+      expect(doc.state?.greeting).toBe("Hello world");
+      expect(doc.state?.named).toBe("Hello Jx");
     } finally {
       cleanup();
     }
@@ -289,7 +321,7 @@ describe("resolvePrototypes", () => {
     }
   });
 
-  test("warns and preserves state when module does not export expected class", async () => {
+  test("fails naming the entry when the module does not export the class", async () => {
     setup();
     try {
       writeFileSync(
@@ -310,45 +342,161 @@ describe("resolvePrototypes", () => {
           result: {
             $prototype: "WrongExport",
             $src: "./WrongExport.class.json",
+            timing: "compiler",
           },
         },
       };
-      await resolvePrototypes(doc, { sourcePath: join(FIXTURES, "page.json") }, FIXTURES);
-      expect(doc.state.result).toBeDefined();
+      const error = await rejection(
+        resolvePrototypes(doc, { sourcePath: join(FIXTURES, "page.json") }, FIXTURES),
+      );
+      expect(error.message).toBe(
+        'state entry "result" ($prototype "WrongExport"): Module ./WrongExport.js does not export "WrongExport"',
+      );
+      // The entry is left as authored: nothing was resolved into it.
+      expect(doc.state.result.$prototype).toBe("WrongExport");
     } finally {
       cleanup();
     }
   });
 
-  test("returns instance directly when class has no resolve method", async () => {
+  test("reads .value when the class has no resolve()", async () => {
     setup();
     try {
-      writeFileSync(
-        join(FIXTURES, "Simple.js"),
+      writeClass(
+        "Simple",
         `export class Simple {
           constructor(config) { this.value = config.value ?? "default"; }
         }`,
       );
-      writeFileSync(
-        join(FIXTURES, "Simple.class.json"),
-        JSON.stringify({
-          $defs: { fields: {} },
-          $implementation: "./Simple.js",
-          title: "Simple",
-        }),
-      );
+      const doc: JxMutableNode = {
+        state: { result: { $prototype: "Simple", $src: "./Simple.class.json", value: "hello" } },
+      };
+      await resolvePrototypes(doc, { sourcePath: join(FIXTURES, "page.json") }, FIXTURES);
+      expect(doc.state?.result).toBe("hello");
+    } finally {
+      cleanup();
+    }
+  });
 
-      const doc = {
+  test("returns the instance when it has neither resolve() nor value", async () => {
+    setup();
+    try {
+      writeClass(
+        "Plain",
+        `export class Plain {
+          constructor(config) { this.label = config.label; this.count = 2; }
+        }`,
+      );
+      const doc: JxMutableNode = {
         state: {
           result: {
-            $prototype: "Simple",
-            $src: "./Simple.class.json",
-            value: "hello",
+            $prototype: "Plain",
+            $src: "./Plain.class.json",
+            label: "x",
+            timing: "compiler",
           },
         },
       };
       await resolvePrototypes(doc, { sourcePath: join(FIXTURES, "page.json") }, FIXTURES);
-      expect(doc.state.result.value).toBe("hello");
+      // The instance's own fields are the value, marked so the page strips it once it is baked.
+      expect(doc.state?.result).toMatchObject({ count: 2, label: "x", timing: "compiler" });
+    } finally {
+      cleanup();
+    }
+  });
+
+  test("one error lists every failing entry", async () => {
+    setup();
+    try {
+      writeClass("Thrower", `export class Thrower { resolve() { throw new Error("no data"); } }`);
+      const doc: JxMutableNode = {
+        state: {
+          fine: { $prototype: "Multiplier", $src: "./Multiplier.class.json", a: 2, b: 3 },
+          first: { $prototype: "Thrower", $src: "./Thrower.class.json", timing: "compiler" },
+          second: { $prototype: "Ghost", $src: "./Ghost.class.json", timing: "compiler" },
+        },
+      };
+      const error = await rejection(
+        resolvePrototypes(doc, { sourcePath: join(FIXTURES, "page.json") }, FIXTURES),
+      );
+      expect(error.message).toStartWith("2 state entries could not be resolved: ");
+      expect(error.message).toContain('"first" ($prototype "Thrower"): no data');
+      expect(error.message).toContain('"second" ($prototype "Ghost"): ');
+      // The entry that could be resolved was, before the error was thrown.
+      expect(doc.state?.fine).toBe(6);
+    } finally {
+      cleanup();
+    }
+  });
+
+  test("a compiler-timed entry naming no class fails, a compiler-timed built-in does not", async () => {
+    const doc: JxMutableNode = {
+      state: {
+        feed: { $prototype: "Request", timing: "compiler", url: "/api" },
+        g: { $prototype: "Greter", timing: "compiler" },
+      },
+    };
+    const error = await rejection(resolvePrototypes(doc, {}, "/tmp"));
+    expect(error.message).toBe(
+      'state entry "g" ($prototype "Greter") names no class: give it a $src or an imports ' +
+        'entry, or enable the extension that provides "Greter"',
+    );
+  });
+
+  test("an unset-timing failure suggests timing client", async () => {
+    setup();
+    try {
+      writeClass("Browserly", `export class Browserly { resolve() { return window.name; } }`);
+      const doc: JxMutableNode = {
+        state: { result: { $prototype: "Browserly", $src: "./Browserly.class.json" } },
+      };
+      const error = await rejection(
+        resolvePrototypes(doc, { sourcePath: join(FIXTURES, "page.json") }, FIXTURES),
+      );
+      expect(error.message).toStartWith('state entry "result" ($prototype "Browserly"): ');
+      expect(error.message).toEndWith(' (set "timing": "client" if it must run in the browser)');
+    } finally {
+      cleanup();
+    }
+  });
+
+  test("asInitialValues writes each value as the entry's default", async () => {
+    setup();
+    try {
+      writeClass("Nothing", `export class Nothing { resolve() { return undefined; } }`);
+      const doc: JxMutableNode = {
+        state: {
+          empty: { $prototype: "Nothing", $src: "./Nothing.class.json", timing: "compiler" },
+          result: { $prototype: "Multiplier", $src: "./Multiplier.class.json", a: 6, b: 7 },
+        },
+      };
+      await resolvePrototypes(doc, { sourcePath: join(FIXTURES, "c.json") }, FIXTURES, {
+        asInitialValues: true,
+      });
+      // A component starts from the value, so it stays a state entry; no value starts at null.
+      expect(doc.state).toEqual({ empty: { default: null }, result: { default: 42 } });
+    } finally {
+      cleanup();
+    }
+  });
+
+  test("returns the entries it replaced", async () => {
+    setup();
+    try {
+      const doc: JxMutableNode = {
+        state: {
+          count: 0,
+          kept: { $prototype: "Unmapped" },
+          result: { $prototype: "Multiplier", $src: "./Multiplier.class.json", a: 2, b: 2 },
+        },
+      };
+      const replaced = await resolvePrototypes(
+        doc,
+        { sourcePath: join(FIXTURES, "page.json") },
+        FIXTURES,
+      );
+      expect(replaced).toEqual({ result: 4 });
+      expect(await resolvePrototypes({ children: [] }, {}, FIXTURES)).toEqual({});
     } finally {
       cleanup();
     }
