@@ -46,7 +46,7 @@ The build finishes with a summary (`Done: 12 routes → 34 files`) and exits non
 The routing decision is a single recursive tree walk (`isDynamic()`) that never executes your code. A document compiles to plain HTML unless the walk finds one of:
 
 - a `state` entry that exists at runtime (a plain value, a `$prototype` entry, or anything with a `default`)
-- a `${…}` template string in a property, style, or attribute value
+- a `${…}` template string in a property, style, or attribute value, or written as a text child in `children`
 - a `$ref` binding on an element property
 - a `$switch` node
 - a mapped array (`$prototype: "Array"`)
@@ -79,6 +79,8 @@ compiles to literal HTML with the template evaluated and gone:
 <h1>Acme Realty — About us</h1>
 ```
 
+A template written as a text child compiles away the same way: `"children": ["Welcome to ${state.$site.name}"]` becomes plain text in the HTML.
+
 The same applies to `timing: "compiler"` data and to content collections: template strings over build-time values are evaluated against the resolved data, mapped arrays over resolved content are unrolled into repeated markup, and the now-spent state entries are stripped. What reaches `isDynamic()` afterwards is a plain tree, so a blog index that lists every post can still be a zero-JS page.
 
 ## The output tiers
@@ -100,7 +102,7 @@ The import map added to those pages resolves `@vue/reactivity` and `lit-html` fo
 
 ### Dynamic pages
 
-When the page document itself is dynamic (it declares live `state`, binds `$ref`s, or uses runtime template strings), the compiler still pre-renders the full HTML, marks bound elements with `data-bind` attributes, and emits one small module that wires reactivity onto the existing DOM: reactive state, `computed()` for derived values, `effect()` per binding, event handler hookup, and one `POST` to the site's worker for each `timing: "server"` entry. There is no client-side re-render of the initial view; the JS only maintains what changes.
+When the page document itself is dynamic (it declares live `state`, binds `$ref`s, or uses runtime template strings), the compiler still pre-renders the full HTML, marks bound elements with `data-bind` attributes and each bound text child with a pair of HTML comments (text never gets a wrapper element), and emits one small module that wires reactivity onto the existing DOM: reactive state, `computed()` for derived values, `effect()` per binding, event handler hookup, and one `POST` to the site's worker for each `timing: "server"` entry. There is no client-side re-render of the initial view; the JS only maintains what changes.
 
 Two more outputs sit alongside these tiers: a class document (`"$prototype": "Class"`, conventionally a `.class.json` file) handed to the compiler directly compiles to an ES class module, and `timing: "server"` entries compile into the site-wide worker, which needs `build.adapter`: without one the build stops with an error naming each entry.
 

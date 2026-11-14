@@ -19,7 +19,7 @@ size: M
 
 > **Status: Partial.** Element and text-node children, and computed children resolved at build time, ship. Content a computed-children template splices in is not kept literal: the template pass (`resolveDocTemplates` in `packages/compiler/src/site/site-build.ts`) recurses into the resolved nodes and evaluates every `${…}` in their text and attributes, so a content entry's prose or inline code that contains `${` renders its evaluation (`Clicked ${state.count} times` in `docs/start/first-component.md` renders as "Clicked undefined times"), and one left for the client can make the page's module a syntax error.
 
-The marker was added in the closing pass of the detailing program. `plan:compiler/client-template-text-children` found the defect (its Context, "Found: content is read as templates") and deferred it, in its one Open decision, to a plan of its own against this section.
+The marker was added in the closing pass of the detailing program. The change that closed `compiler.md` §2.2 (template text children) found the defect and deferred it to a plan of its own against this section.
 
 **What the code does** (verified against the working tree on 2026-09-27):
 
@@ -27,7 +27,7 @@ The marker was added in the closing pass of the detailing program. `plan:compile
 - **What reaches it.** Every content route: `sites/jxsuite.com/pages/docs/[...slug].json` and the blog, portfolio and shop starters (`packages/starters/sites/*/pages/…`) render `"children": "${state.<entry>.$children ?? []}"`, and `docs/framework/site/routing.md` and `content-collections.md` teach that form. `$children` is the parser's Jx tree (`processMarkdown`, `extensions/parser/src/md.ts`), where inline code and prose are `textContent` or string children.
 - **Two failure shapes.** A template whose reads resolve at build time is baked: `docs/start/first-component.md`'s inline code `Clicked ${state.count} times` renders "Clicked undefined times". One that does not resolve is kept as a template, the page counts as dynamic, and `buildClientNode` (`packages/compiler/src/targets/compile-client.ts`) binds it as `` () => `…` ``; an unbalanced `${` there made `/docs/framework/concepts/security/`'s `app.js` a syntax error (`_t3: () => `${``), so every binding on that page is dead.
 - **The spec states the recursion.** §8.4's "Computed Children (Build Time)" says "The compiler's template pass replaces `children` with the resolved array and recurses into it", while calling the form "the mechanism for injecting parsed content". The interpreter never meets a computed-children string: `renderNode` renders only an array `children` (`packages/runtime/src/runtime.ts`), which §8.4 already states ("not re-evaluated at runtime").
-- **Nothing shipped relies on the evaluation.** `plan:compiler/client-template-text-children`'s scan of every authored document and all 301 tracked Markdown files through `processMarkdown` found 139 `${` in text, every one a `textContent`, and every one a code example or prose describing templates.
+- **Nothing shipped relies on the evaluation.** A scan, made when `compiler.md` §2.2 was closed, of every authored document and all 301 tracked Markdown files through `processMarkdown` found 139 `${` in text, every one a `textContent`, and every one a code example or prose describing templates.
 
 ## Outcome
 
@@ -38,7 +38,7 @@ The marker was added in the closing pass of the detailing program. `plan:compile
 - **Decided:** spliced content is literal in every position and every pass that could evaluate or bind it: `resolveDocTemplates`' recursion, `expandComponents`' slot and instance rendering, the client target (`buildClientNode`), the static target (`compileNode` in `compile-static.ts`) and the prerender (`renderStaticNode` in `shared.ts`). Because the defect is one fact (data is not a template) and fixing one pass moves the evaluation to the next.
 - **Open:** how a spliced node carries "literal". Recommendation: the splice marks it. Each spliced element node gets the internal key `$literal: true`, which every pass above reads as "no string in this subtree is a template", and which no emitter writes out (it joins the `$`-keys `buildAttrs` and `buildClientNode`'s property loop already skip; add it to the reserved set if either does not). A spliced string cannot carry a key, so one containing `${` is split at each `${` into adjacent string children (`"a ${b}"` becomes `"a $"`, `"{b}"`), which render as one run of text and of which none contains `${`. The alternatives: a module-level `WeakSet` of literal nodes loses the mark to any pass that clones a node, and escaping `${` to an entity works only where the text is written raw, as `innerHTML`'s existing `&#36;{` rewrite is (line 1885), and shows `&#36;{` wherever the emitter escapes text, which is every `textContent`.
 - **Decided:** no opt-in. A content entry cannot ask for its prose to be evaluated: a template in content is a template in data, which is the input the §21.4 trust model treats as a document's author, not a content author, and a page that wants a computed value beside its content writes it in the page.
-- **Decided:** no `requires`. `plan:compiler/client-template-text-children` binds template text children in the client target; with this plan's split no spliced string contains `${`, so its text-child path never sees one, and a `$literal` subtree's string children are skipped by the same check whichever lands second adds to that path. `plan:spec/slot-content-page-scope` compiles slotted children in the page's scope; a slotted `$literal` node stays literal there by the same check.
+- **Decided:** no `requires`. `compiler.md` §2.2 (landed) binds template text children in the client target; with this plan's split no spliced string contains `${`, so its text-child path never sees one, and a `$literal` subtree's string children are skipped by a check this plan adds to that path. `plan:spec/slot-content-page-scope` compiles slotted children in the page's scope; a slotted `$literal` node stays literal there by the same check.
 
 ## Implementation
 
@@ -78,7 +78,7 @@ Docs:
 - `docs/framework/concepts/elements.md` (`spec: spec.md#8`): if it describes computed children, the same sentence; otherwise no change. `bun run docs:sync` also names `docs/framework/site/routing.md` (its example uses the form), which needs no change.
 - `docs/start/first-component.md` and `docs/framework/concepts/security.md` need no text change: this plan is what makes their inline code render.
 
-Landing deletes this file, and in `plans/compiler/client-template-text-children.md`, if it has not landed, rewords the Open's citation of this plan to cite spec.md §8.4.
+Landing deletes this file.
 
 ## Acceptance
 

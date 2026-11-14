@@ -2287,7 +2287,9 @@ describe("buildSite — locale routing", () => {
     // An explicit $lang beats the route it sits under.
     expect(/<html[^>]*lang="fr-CA"/.test(html("en/quebec/index.html"))).toBe(true);
     // And the resolved locale is readable from a template.
-    expect(html("index.html")).toContain("en");
+    const home = html("index.html");
+    expect(home).toContain("en");
+    expect(home).not.toContain("${$page.locale}");
   }, 30_000);
 
   /*
@@ -3521,6 +3523,8 @@ describe("buildSite — rich map template expansion", () => {
                   // Single-expression test used to splice into a SyntaxError.
                   { tagName: "p", textContent: "${item.title} — ${item.id}" },
                   "static-sep",
+                  // A template text child resolves per item, like every other position.
+                  "Tag: ${item.id}",
                 ],
                 style: { color: "${item.color}" },
                 tagName: "article",
@@ -3598,6 +3602,9 @@ describe("buildSite — rich map template expansion", () => {
     expect(html).toContain("Second — 2");
     // Static string child preserved.
     expect(html).toContain("static-sep");
+    // Template text child resolved per item (compiler.md §2.2).
+    expect(html).toContain("Tag: 1");
+    expect(html).toContain("Tag: 2");
     // Literal-array items expanded.
     expect(html).toContain("Lit1");
     expect(html).toContain("Lit2");
@@ -3610,6 +3617,73 @@ describe("buildSite — rich map template expansion", () => {
     expect(html).toContain("x-tone");
     // String child template resolving to an array of nodes is spliced in.
     expect(html).toContain("BOLD");
+  });
+});
+
+// ── Template text children (compiler.md §2.2) ─────────────────────────────────
+
+describe("buildSite — template text children", () => {
+  const TEXT_TMP = resolve(import.meta.dir, "__test-site-text-children__");
+  const out = (rel: string) => resolve(TEXT_TMP, "dist", rel);
+
+  beforeAll(async () => {
+    rmSync(TEXT_TMP, { force: true, recursive: true });
+    mkdirSync(resolve(TEXT_TMP, "pages"), { recursive: true });
+    writeFileSync(
+      resolve(TEXT_TMP, "project.json"),
+      JSON.stringify({ build: { outDir: "./dist" }, name: "Text Kids" }),
+      "utf8",
+    );
+    writeFileSync(
+      resolve(TEXT_TMP, "pages/index.json"),
+      JSON.stringify({
+        children: [
+          "Site: ${state.$site.name} / ${state.$page.title}",
+          { tagName: "p", textContent: "T: ${state.$page.title}" },
+          { children: ["Built ${state.stamp}", { tagName: "b", textContent: "!" }], tagName: "p" },
+        ],
+        state: { stamp: { default: "today", timing: "compiler" } },
+        tagName: "main",
+        title: "Home",
+      }),
+      "utf8",
+    );
+    writeFileSync(
+      resolve(TEXT_TMP, "pages/live.json"),
+      JSON.stringify({
+        children: [
+          "Hello ${state.name}",
+          { onclick: { $ref: "#/state/rename" }, tagName: "button", textContent: "Rename" },
+        ],
+        state: { name: "World", rename: { $prototype: "Function", body: "state.name = 'Ada'" } },
+        tagName: "main",
+        title: "Live",
+      }),
+      "utf8",
+    );
+    const result = await buildSite(TEXT_TMP, { verbose: false });
+    expect(result.errors).toHaveLength(0);
+  }, 30_000);
+
+  afterAll(() => {
+    rmSync(TEXT_TMP, { force: true, recursive: true });
+  });
+
+  it("bakes build-time text children and stays static", () => {
+    const html = readFileSync(out("index.html"), "utf8");
+    expect(html).toContain("Site: Text Kids / Home");
+    expect(html).toContain("T: Home");
+    expect(html).toContain("Built today");
+    expect(html).not.toContain("${");
+    expect(html).not.toContain("jx-text");
+    expect(existsSync(out("app.js"))).toBe(false);
+  });
+
+  it("keeps a runtime-only text child bound", () => {
+    expect(readFileSync(out("live/index.html"), "utf8")).toContain(
+      "<!--jx-text:_t0--><!--/jx-text-->",
+    );
+    expect(readFileSync(out("live/app.js"), "utf8")).toContain("`Hello ${state.name}`");
   });
 });
 

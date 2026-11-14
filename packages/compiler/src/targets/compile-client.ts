@@ -9,6 +9,10 @@
  *
  * Output pattern: HTML: pre-rendered with data-bind, :prop="key", @event="key" JS: state (reactive
  * state + computed signals), bind (DOM getters), on (event handlers), hydrate()
+ *
+ * A template string written as a text child has no element to carry a `data-bind`, so it is emitted
+ * between two comments, `<!--jx-text:_tN-->…<!--/jx-text-->`, and `hydrate()` keeps the text node
+ * after the opening comment current (compiler.md §2.2).
  */
 
 import {
@@ -90,6 +94,34 @@ import type {
  */
 type RepeaterSlot = Omit<JxMappedArray, "items"> & { items?: JxMappedArray["items"] };
 
+/**
+ * The key counters one compilation shares between the tree walker and the module emitter, and what
+ * the walker found that the module has to carry.
+ */
+interface ClientCounter {
+  /** Inline event handlers (`_hN`). */
+  h: number;
+  /** Lit-rendered regions (`_listN`, `_childrenN`). */
+  l: number;
+  m: number;
+  /** Whether any region is rendered through lit-html. */
+  needsLit: boolean;
+  /** Bound style declarations (`_sN`). */
+  s: number;
+  /** `$switch` regions (`_swN`). */
+  sw: number;
+  /** Template bindings (`_tN`): `textContent`, attributes, properties and text children. */
+  t: number;
+  /** Whether any text child is bound between comment markers (compiler.md §2.2). */
+  textParts: boolean;
+}
+
+/**
+ * Elements whose content HTML parses as text, so a comment written there is rendered literally and
+ * cannot mark a bound text child.
+ */
+const RAW_TEXT_TAGS = new Set(["script", "style", "textarea", "title"]);
+
 /** A compiled event handler entry: parameter names + function body. */
 interface HandlerDef {
   /** The parameters the body is built with: `state` first, then the event under some name. */
@@ -143,7 +175,16 @@ export function compileClient(
   const styleBlock = compileStyles(raw, raw.$media ?? {}, opts.projectStyle ?? null);
 
   // Collectors for bindings and handlers
-  const counter = { h: 0, l: 0, m: 0, needsLit: false, s: 0, sw: 0, t: 0 };
+  const counter: ClientCounter = {
+    h: 0,
+    l: 0,
+    m: 0,
+    needsLit: false,
+    s: 0,
+    sw: 0,
+    t: 0,
+    textParts: false,
+  };
   const bindings = new Map<string, string>(); // Key → expression string
   const handlers = new Map<string, HandlerDef>(); // Key → { body, args }
 
@@ -349,15 +390,7 @@ ${importmapEntries.join(",\n")}
  * @param {CompileContext} context
  * @param {Map<string, string>} bindings
  * @param {Map<string, HandlerDef>} handlers
- * @param {{
- *   t: number;
- *   s: number;
- *   h: number;
- *   m: number;
- *   sw: number;
- *   l: number;
- *   needsLit: boolean;
- * }} counter
+ * @param {ClientCounter} counter
  * @returns {string}
  */
 function buildClientNode(
@@ -365,19 +398,24 @@ function buildClientNode(
   context: CompileContext,
   bindings: Map<string, string>,
   handlers: Map<string, HandlerDef>,
-  counter: {
-    t: number;
-    s: number;
-    h: number;
-    m: number;
-    sw: number;
-    l: number;
-    needsLit: boolean;
-  },
+  counter: ClientCounter,
 ) {
   // String children are text nodes
   if (isString(def)) {
-    return escapeHtml(def);
+    if (!isTemplateString(def)) {
+      return escapeHtml(def);
+    }
+    /* A template text child is bound without a wrapper element (spec.md §8.4): the two comments
+       delimit the one text node the binding owns, so the separator after it and any text sibling
+       the parser would merge with it stay out. It holds whatever prerender can resolve, as a
+       bound `textContent` does. */
+    const key = `_t${counter.t}`;
+    counter.t += 1;
+    counter.textParts = true;
+    bindings.set(key, `() => \`${def}\``);
+    const value = resolveStaticValue(def, context.scope);
+    const text = value == null ? "" : escapeHtml(String(value));
+    return `<!--jx-text:${key}-->${text}<!--/jx-text-->`;
   }
   if (isNumber(def) || isBoolean(def)) {
     return escapeHtml(String(def));
@@ -644,6 +682,12 @@ function buildClientNode(
     const bindAttrStr2 = ` ${bindAttrs.join(" ")}`;
     return `<${tag}${staticAttrs} data-bind${bindAttrStr2}></${tag}>`;
   } else if (Array.isArray(source.children)) {
+    if (RAW_TEXT_TAGS.has(tag) && source.children.some((c) => isTemplateString(c))) {
+      throw new Error(
+        `A template text child of <${tag}> cannot be bound: HTML reads its content as text. ` +
+          "Write it as the element's textContent.",
+      );
+    }
     inner = source.children
       .map((c) => buildClientNode(c, nextContext, bindings, handlers, counter))
       .join(childSeparator(nextContext.preformatted));
@@ -910,15 +954,7 @@ function bareMapRefsToLit(body: string): string {
  * @param {string[]} initBlocks
  * @param {string[]} serverCalls
  * @param {SrcImports} srcImports
- * @param {{
- *   t: number;
- *   s: number;
- *   h: number;
- *   m: number;
- *   sw: number;
- *   l: number;
- *   needsLit: boolean;
- * }} counter
+ * @param {ClientCounter} counter
  * @param {string} _reactivitySrc
  * @returns {string}
  */
@@ -930,20 +966,12 @@ function emitClientModule(
   initBlocks: string[],
   serverCalls: string[],
   srcImports: SrcImports,
-  counter: {
-    t: number;
-    s: number;
-    h: number;
-    m: number;
-    sw: number;
-    l: number;
-    needsLit: boolean;
-  },
+  counter: ClientCounter,
   _reactivitySrc: string,
   rewriteSrc?: (specifier: string) => string,
 ) {
   const lines: string[] = [];
-  const { needsLit } = counter;
+  const { needsLit, textParts } = counter;
   const needsComputed = computedEntries.length > 0;
 
   lines.push("// Generated by @jxsuite/compiler — do not edit manually");
@@ -1032,9 +1060,20 @@ function emitClientModule(
     lines.push("const on = {};");
   }
   // Hydration function
+  lines.push("", "function hydrate(root) {");
+  if (textParts) {
+    /* Collected BEFORE the element pass, so a region lit renders during it is never walked. 128 is
+       `NodeFilter.SHOW_COMMENT`, written as a literal so the module needs no further global. */
+    lines.push(
+      "  const texts = [];",
+      "  const walker = document.createTreeWalker(root, 128);",
+      "  while (walker.nextNode()) {",
+      "    const c = walker.currentNode;",
+      "    if (c.data.startsWith('jx-text:') && c.data.slice(8) in bind) { texts.push(c); }",
+      "  }",
+    );
+  }
   lines.push(
-    "",
-    "function hydrate(root) {",
     "  root.querySelectorAll('[data-bind]').forEach(el => {",
     "    [...el.attributes].forEach(a => {",
     "      if (a.name.startsWith(':')) {",
@@ -1070,11 +1109,22 @@ function emitClientModule(
     "      }",
     "    });",
     "  });",
-    "}",
-    "",
-    "hydrate(document);",
-    "",
   );
+  if (textParts) {
+    // The prerendered text node is reused; an empty prerender has none, so one is put there.
+    lines.push(
+      "  texts.forEach(c => {",
+      "    const key = c.data.slice(8);",
+      "    let text = c.nextSibling;",
+      "    if (!text || text.nodeType !== 3) {",
+      "      text = document.createTextNode('');",
+      "      c.after(text);",
+      "    }",
+      "    effect(() => { text.data = bind[key](); });",
+      "  });",
+    );
+  }
+  lines.push("}", "", "hydrate(document);", "");
 
   return lines.join("\n");
 }
