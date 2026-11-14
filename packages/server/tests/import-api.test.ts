@@ -333,6 +333,30 @@ describe("streaming", () => {
     expect(importCalls[0]!.options.ai).toMatchObject({ apiKey: "sk-env" });
   });
 
+  test("skips AI naming when the base URL is refused", async () => {
+    const { req, url } = makeRequest(
+      { directory: "refused-ai", url: "https://x.example", aiComponents: true },
+      { "X-Api-Key": "sk-header", "X-Api-Base-URL": "http://[fe90::1]/v1" },
+    );
+    const res = await handleImportApi(req, url, apiOptions);
+    const lines = await readLines(res!);
+    expect(lines.some((l) => String(l.message).includes("not permitted"))).toBe(true);
+    expect(importCalls[0]!.options.ai).toBe(false);
+    expect(lines.at(-1)!.type).toBe("done");
+  });
+
+  test("never sends the env key to a caller-chosen base URL", async () => {
+    process.env.OPENAI_API_KEY = "sk-env";
+    const { req, url } = makeRequest(
+      { directory: "env-key-ai", url: "https://x.example", aiComponents: true },
+      { "X-Api-Base-URL": "https://attacker.example/v1" },
+    );
+    const res = await handleImportApi(req, url, apiOptions);
+    const lines = await readLines(res!);
+    expect(lines.some((l) => String(l.message).includes("explicit API key"))).toBe(true);
+    expect(importCalls[0]!.options.ai).toBe(false);
+  });
+
   test("warns and skips the AI pass when no key resolves", async () => {
     const { req, url } = makeRequest({
       directory: "no-key",

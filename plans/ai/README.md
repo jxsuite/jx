@@ -12,8 +12,8 @@ Audited against b900b326 on 2026-09-26.
 - §3.0–§3.3 (commands by name, the schema gate, the accountable turn, the batch following the document): packages/studio/src/panels/ai-panel.ts, packages/studio/src/commands/live-context.ts, packages/studio/src/services/jx-validate.ts, packages/studio/src/services/ai-write-report.ts, packages/studio/src/services/ai-writes.ts, packages/studio/src/services/tool-executor.ts, packages/studio/tests/ai-tools.test.ts
 - §3.4–§3.6 (`ask_user` and pair repair, `import_site` adoption, command tools and the composite registry): packages/studio/src/services/ai-ask.ts, packages/studio/src/services/context-manager.ts, packages/studio/src/services/ai-import-tools.ts, packages/studio/src/services/project-adoption.ts, packages/studio/src/services/ai-command-tools.ts, packages/studio/src/services/ai-system-prompt.ts, packages/studio/tests/ai-ask.test.ts, packages/studio/tests/ai-import-tools.test.ts, packages/studio/tests/ai-command-tools.test.ts
 - §3.7 (`ToolContext`; marked Implemented): packages/ai/src/tools.ts, packages/ai/src/core-types.ts, packages/ai/tests/tool-context.test.ts
-- §4, the parts its Partial marker names as holding (the file/RPC surfaces, the Origin/Host gate, path containment): packages/server/src/net-guard.ts
-- Informative: §5 (Standards Alignment). Its four `**Subset**` cells are conformance classes. The WHATWG HTML and RFC 9457 rows hold per their evidence column; the two IANA rows bind §4 and describe the guard as §4's marker says it should be, so their tier follows that marker.
+- §4 (the file/RPC surfaces, the Origin/Host gate, path containment, and the provider base-URL guard; unmarked): packages/server/src/net-guard.ts, packages/server/src/ai-api.ts, packages/server/src/import-api.ts, packages/server/tests/ai-api.test.ts, packages/server/tests/import-api.test.ts
+- Informative: §5 (Standards Alignment). Its `**Subset**` cells are conformance classes, and each holds per its evidence column; the two IANA rows bind §4 and describe the guard it specifies.
 
 ## Dispositioned without a plan
 
