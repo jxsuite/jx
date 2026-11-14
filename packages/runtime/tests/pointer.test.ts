@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  canonicalMapRef,
   escapeToken,
   objectKey,
   readPath,
@@ -17,6 +18,16 @@ import {
  * pins what one function returns, but only comparing the interpreter against the compiled accessor
  * catches the two drifting apart again.
  */
+
+describe("canonicalMapRef", () => {
+  test("strips the #/ from a $map pointer and leaves every other ref as it is", () => {
+    expect(canonicalMapRef("#/$map/item/id")).toBe("$map/item/id");
+    expect(canonicalMapRef("#/$map/index")).toBe("$map/index");
+    expect(canonicalMapRef("$map/item")).toBe("$map/item");
+    expect(canonicalMapRef("#/state/$map/x")).toBe("#/state/$map/x");
+    expect(canonicalMapRef("parent#/x")).toBe("parent#/x");
+  });
+});
 
 describe("refSegments", () => {
   test("splits on / and nothing else", () => {

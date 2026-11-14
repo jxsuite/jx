@@ -453,7 +453,7 @@ An `npm:` specifier names a package export, and each renderer resolves it where 
 
 **Parameter binding at event call sites.** An event binding always invokes a handler with `(state, event)`. A string `body`, whether a `state` entry or a handler written inline on an `on*` property, is built with `state` as its first parameter and its other declared names after it in declared order. Binding is **by position**, as ECMAScript's is, and `state` is first because every Jx function takes the reactive state first (§4.2). So the first other name receives the event: `["event"]`, `["state", "event"]`, `["event", "state"]` and `["state"]` all bind what they read, and a body may reference `state` whether or not it declared it. A later name is the call's next argument, so an event binding leaves it `undefined` (a call with too few arguments, as WebIDL's callback invocation does) and `state.key(state, a, b)` from a template fills it. A `$src` entry is the imported function itself: an event binding calls it with `(state, event)` (§4.3), and a template, a `call` node or a lifecycle hook calls it with the arguments that call site passes. Its declared `parameters` describe the export, as a Custom Elements Manifest function does; they do not reorder its arguments. This holds in the interpreter and in every compiled target alike.
 
-**Classifying an external Function.** Because `body` and `$src` are mutually exclusive, a `$src` entry has no body for the framework to inspect, so its role follows its declaration and how the document uses it, never the imported function's arity or source. An entry that declares `parameters` or `arguments` is a callable wherever it is used. So is an entry referenced as a **callable** — bound to an `on*` event (a definition's root-level handlers included, §16.1), invoked by an `$expression` `call` node (§19.4c), called as `state.key(…)` from a template or another body, or named as a lifecycle hook (§16.4). Otherwise its return value is read reactively and the entry is a computed value, matching the inline-body rule in 4b. The document is the one the entry is built in, after the project-state merge (§19.4c), so a project-global entry one page calls and another only reads is a function on the first page and a computed value on the second. Reading an undeclared `$src` entry that resolves to a function (rather than its result) is therefore not a supported way to obtain the imported function itself; declare its `parameters` instead.
+**Classifying an external Function.** Because `body` and `$src` are mutually exclusive, a `$src` entry has no body for the framework to inspect, so its role follows its declaration and how the document uses it, never the imported function's arity or source. An entry that declares `parameters` or `arguments` is a callable wherever it is used. So is an entry referenced as a **callable** — bound to an `on*` event (a definition's root-level handlers included, §16.1), invoked by an `$expression` `call` node (§19.4c), called as `state.key(…)` from a template or another body, named as a repeater's `filter` or `sort` (§10.3), or named as a lifecycle hook (§16.4). Otherwise its return value is read reactively and the entry is a computed value, matching the inline-body rule in 4b. The document is the one the entry is built in, after the project-state merge (§19.4c), so a project-global entry one page calls and another only reads is a function on the first page and a computed value on the second. Reading an undeclared `$src` entry that resolves to a function (rather than its result) is therefore not a supported way to obtain the imported function itself; declare its `parameters` instead.
 
 **Compiled-site delivery.** In compiled sites, bundleable `$src` specifiers — `npm:<pkg>[/subpath]` and project-relative `./…` files (TypeScript included) — are bundled per the entry's `timing`. Client-timing functions compile to self-contained ESM bundles under `/assets/` with deterministic, hash-free names (relative specifiers key on their project-relative path); emitted page and element modules import the bundle URL instead of the raw specifier, so external libraries work on purely static hosts with no `node_modules/` at runtime. `timing: "compiler"` functions are never bundled — they execute in the build host. Absolute URL specifiers (`/lib/x.js`, `https://…`) are emitted verbatim and served as-is.
 
@@ -1154,6 +1154,8 @@ A dynamic list is an array **pseudo-element** — an object with `$prototype: "A
 }
 ```
 
+`items` is a `$ref` to a state entry or a literal array, and nothing else. A template string is not a list: it reads as a string in every tier, so a build refuses one with an error that names it, and the interpreter warns and renders no rows. To compute a list, bind `items` to a state entry and compute the list there.
+
 > **Backward compatibility.** The legacy form where `children` is _itself_ the Array object (`"children": { "$prototype": "Array", … }`) is still accepted: the runtime and compiler render its items directly into the parent element, and the studio normalizes it to a single array member on load.
 
 ### 10.2 Iteration Context
@@ -1169,8 +1171,6 @@ Template strings inside the map read the same context as `${$map.item…}` and `
 
 ### 10.3 Filtering and Sorting
 
-> **Status: Partial.** The interpreter filters and sorts (`renderMappedArrayInto` in `packages/runtime/src/runtime.ts`). No compiled path reads either key: `emitMappedArray` in `packages/compiler/src/targets/compile-element.ts`, both mapped-array emitters in `compile-client.ts` and the site build's build-time `expandMappedArrayStatic` (`packages/compiler/src/site/site-build.ts`) map `items` as given, so a built list shows every item in source order. A component's prerender (`renderMappedRows` in `packages/compiler/src/shared.ts`) renders no rows for a list that declares either, so the rows a filter would drop are not in the page's HTML.
-
 ```json
 {
   "$prototype": "Array",
@@ -1181,15 +1181,17 @@ Template strings inside the map read the same context as `${$map.item…}` and `
 }
 ```
 
-> **Status: Implemented.** The runtime renders array members inline (wrapper-less) via `renderMappedArrayInto()`, handling items, filter, sort, `$map/item`, and `$map/index`.
+`filter` and `sort` are each a `$ref` to a state entry. The list renders `items` filtered, then sorted, and never mutates the source. The resolved value is called as `Array.prototype.filter` calls a predicate, `(item, index, array)`, and as `Array.prototype.toSorted` calls a comparator, `(a, b)`; a `$ref` that does not resolve to a function is ignored. A named formula (§19.4c) receives those arguments on its declared `parameters`, which makes it the form every tier calls the same way. A Function entry with a string body is called with the same arguments, so its first parameter, `state`, receives the item, and one whose body returns and declares no parameters is a computed (§5.3 4b), whose value is not a function. A bodyless `$src` entry named here is a callable (§5.3 4d). Whatever the predicate or comparator reads is a dependency of the list, and keys (§10.4) are read from the result.
+
+A build that expands a list over build-time data applies both there, and leaves the list for the client when `items`, `filter`, `sort` or a list nested in its `map` reads state that a handler writes or that exists only after hydration. A component's prerender applies both as well, so the rows in the page are the rows of the element's first render, and renders no rows when one of the three has no build-time value.
+
+> **Status: Implemented.** The interpreter (`renderMappedArrayInto`), the element target (`emitMappedArray`), the client target (`emitClientList`), the site build's `expandMappedArrayStatic` and a component's prerender (`renderMappedRows`) render array members inline and apply `filter` then `sort` by one rule, `mappedListItems` in `packages/runtime/src/runtime.ts`, which the build calls and the compiled targets inline as `__jxListItems` (`listHelperSource` in `packages/compiler/src/shared.ts`).
 
 ### 10.4 Keys
 
-> **Status: Partial.** The interpreter reconciles by key as described below. The compiled targets do not: `emitMappedArray` in `packages/compiler/src/targets/compile-element.ts` and the client target lower a mapped array to an unkeyed `.map()` with no lit `repeat()`, so compiled rows are rebuilt rather than moved. And a `key` spelled `#/$map/item/…` is refused by the schema (`ArrayNamespace.key`) and falls back to the index at runtime (`mappedRowKey`).
-
 A mapped array MAY declare a `key`: a `$map/item` pointer evaluated once per item that names the row's identity.
 
-Both spellings of a `$map` pointer resolve: the bare `$map/item/x` and the `#/$map/item/x` form that matches how every other pointer in the schema is written. Only the bare one used to, and the other returned null — so a mapped array over it rendered no rows and reported nothing.
+Both spellings of a `$map` pointer are accepted wherever a `$map` pointer may appear, a `key` included, by the schema, the interpreter, the compiled targets and the build: the bare `$map/item/x`, which Studio writes, and `#/$map/item/x`, the form that matches how every other pointer in the schema is written. Only the bare one used to resolve, and the other returned null, so a mapped array over it rendered no rows and reported nothing.
 
 ```json
 {
@@ -1204,11 +1206,11 @@ Rows are reconciled by key. A row whose key survives a change keeps its DOM node
 
 `{ "$ref": "$map/item" }` keys by the item itself — identity for an object, value for a primitive. A key that evaluates to nothing falls back to the index; a duplicate key is reported once, and every occurrence after the first is rebuilt on each change. `$map/index` is not a key, and the schema rejects it: an index names a position rather than a row.
 
-Each row's bindings live in an effect scope of their own, stopped when the row is removed, and reads made while a row is constructed do not subscribe the list: a change to one row's data re-runs that row's bindings, never the list. A host may observe a move through `JxRenderOptions.onNodeMoved`, which reports the reused node and its new document path.
+In the interpreter, each row's bindings live in an effect scope of their own, stopped when the row is removed, and reads made while a row is constructed do not subscribe the list: a change to one row's data re-runs that row's bindings, never the list. A compiled target renders a row's bindings in its host's lit template, so a change to one row's data re-renders the template and lit commits only what changed; the row's node is patched, never rebuilt. An interpreting host may observe a move through `JxRenderOptions.onNodeMoved`, which reports the reused node and its new document path.
 
-The first render of a list is synchronous; every later reconciliation is coalesced into one microtask. An array mutated in place — `reverse()`, `sort()`, an index write — notifies once per element it touches, and a reconciliation run between two of those writes would see an array that is half of each state, tearing down a row that is only transiently absent. A row's own bindings stay synchronous.
+The first render of a list is synchronous; every later reconciliation of a keyed list, and in the interpreter of every list, is coalesced into one microtask. An array mutated in place — `reverse()`, `sort()`, an index write — notifies once per element it touches, and a reconciliation run between two of those writes would see an array that is half of each state, tearing down a row that is only transiently absent. A row's own bindings stay synchronous. A compiled unkeyed list re-renders with its template, which ends in the same DOM, because position is its identity.
 
-> **Status: Implemented.** Runtime `renderMappedArrayInto()` reconciles by key in one forward pass, moving only the rows that are out of place.
+> **Status: Implemented.** The interpreter's `renderMappedArrayInto()` reconciles by key in one forward pass, moving only the rows that are out of place. The compiled targets lower a keyed list to lit's `repeat()` behind `__jxKeyed`, a directive that computes keys by the interpreter's rule (`mappedRowKeys`, inlined as `__jxRowKeys`) and coalesces reconciliation into one microtask (`keyedListDirectiveSource` in `packages/compiler/src/shared.ts`); an unkeyed list lowers to lit's positional array rendering.
 
 ### 10.5 Empty Lists at Build Time
 

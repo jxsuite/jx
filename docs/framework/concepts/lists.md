@@ -4,11 +4,13 @@ description: "Repeating elements from data in Jx: the Array pseudo-element, its 
 spec:
   - spec.md#10
   - spec.md#10.2 # iteration context, including state.$map from a handler
+  - spec.md#10.3 # filter then sort, and how each is called
   - spec.md#10.4 # keys
   - spec.md#10.5 # empty lists at build time
   - compiler.md#8.1 # an empty expansion collapses only when the build resolved the list; a component's repeater prerenders its rows
 code:
   - packages/compiler/src/targets/compile-element.ts
+  - packages/compiler/src/targets/compile-client.ts
   - packages/compiler/src/site/site-build.ts
   - packages/compiler/src/shared.ts
 ---
@@ -150,23 +152,44 @@ Each `<option>` gets its row's `id` as its value, so a `change` handler reads th
 
 ## Filtering and sorting
 
-`filter` and `sort` reference [functions](/docs/framework/concepts/functions) declared in `state`. The filter function receives each item and returns true to keep it; the sort function receives two items and returns a number, like a standard comparator:
+`filter` and `sort` reference [functions](/docs/framework/concepts/functions) declared in `state`. The filter is called with each item (then its index) and returns true to keep it. The sort is called with two items and returns a number, like a standard comparator. The list renders the items filtered first, then sorted:
 
 ```json
 {
   "$prototype": "Array",
   "items": { "$ref": "#/state/allItems" },
   "filter": { "$ref": "#/state/isVisible" },
-  "sort": { "$ref": "#/state/sortByDate" },
+  "sort": { "$ref": "#/state/byRank" },
   "map": { "tagName": "list-item", "item": { "$ref": "$map/item" } }
 }
 ```
 
-Filtering and sorting never mutate the source array; they shape what renders.
+Write both as [named formulas](/docs/framework/concepts/expressions), which take those arguments on the parameters they declare. That form is called the same way in Studio and in a built site:
+
+```json
+{
+  "state": {
+    "isVisible": {
+      "parameters": ["item"],
+      "$expression": { "operator": "!", "target": { "$ref": "$args/item/hidden" } }
+    },
+    "byRank": {
+      "parameters": ["a", "b"],
+      "$expression": {
+        "operator": "-",
+        "target": { "$ref": "$args/a/rank" },
+        "value": { "$ref": "$args/b/rank" }
+      }
+    }
+  }
+}
+```
+
+Filtering and sorting never mutate the source array. Whatever the filter or the sort reads is a dependency of the list, so a row appears when the field its filter reads changes.
 
 ## Keeping rows across changes
 
-Give the list a `key` when people interact with its rows. The key is a `$map/item` pointer that names what makes each row itself.
+Give the list a `key` when people interact with its rows. The key is a `$map/item` pointer that names what makes each row itself. It may also be written `#/$map/item/id`.
 
 ```json
 {
@@ -177,7 +200,7 @@ Give the list a `key` when people interact with its rows. The key is a `$map/ite
 }
 ```
 
-A keyed row keeps its element when the list changes. Reordering moves the element, inserting creates only the new rows, and removing tears down only the removed ones. Focus, scroll position, an open `<details>` and a half-typed value all survive. The `$map.index` of a row that moved updates in place.
+A keyed row keeps its element when the list changes. Reordering moves the element, inserting creates only the new rows, and removing tears down only the removed ones. Focus, scroll position, an open `<details>` and a half-typed value all survive. The `$map.index` of a row that moved updates in place. A built site keeps rows the same way.
 
 Use `{ "$ref": "$map/item" }` to key by the item itself, which works for objects and for primitive values. A key that is missing on an item falls back to that item's position, and the runtime warns once. Two rows with the same key also warn once; the second and later rows are rebuilt on every change.
 
@@ -188,15 +211,15 @@ Without a key, rows are matched by position. That is fine for a list that only g
 An empty list renders nothing: no rows and no wrapper. What a [build](/docs/framework/build) leaves behind depends on where the data comes from.
 
 - **Data the build resolved** is final. A content collection or any other `timing: "compiler"` entry, the slice of a paged route, `$site` and `$page`, a `$map/` pointer inside a row the build expanded, and a literal array are all finished when the build ends. An empty one is removed from the page with its binding, so the page stays as static as it would be with rows.
-- **Client state** is a starting value. A list over `{ "rows": { "default": [] } }`, over an entry a handler writes, or over a `Request` keeps its binding, and the rows appear when the data does.
+- **Client state** is a starting value. A list over `{ "rows": { "default": [] } }`, over an entry a handler writes, or over a `Request` keeps its binding, and the rows appear when the data does. On a page, a list that reads an entry a handler writes is always left for the browser to render, even when it starts with rows, because a list written into the page could never change.
 
 So a page that lists "related posts" from a collection ships no JavaScript for the list on the pages where there are none.
 
 ## How it works
 
-The runtime places an invisible anchor where the Array object sits, then renders the mapped items inline ahead of it. The whole render runs inside a reactive effect: when `items` (or a filter or sort dependency) changes, the previous generation of item nodes and their bindings is disposed and the list re-renders in place. Each item's template renders in a child scope carrying `$map`, and the surrounding document's `state` remains fully visible inside the template.
+The runtime places an invisible anchor where the Array object sits, then renders the mapped items inline ahead of it. When `items` (or a filter or sort dependency) changes, the rows are reconciled: a row whose key survives keeps its node, and only new rows are created and only removed rows are torn down. Several changes made together, such as an in-place `reverse()`, are batched into one pass on the next microtask. Each item's template renders in a child scope carrying `$map`, and the surrounding document's `state` remains fully visible inside the template.
 
-On a built site, a list inside a component is in the page's HTML before any script runs. The build renders one row for each item the list starts with, in the component's own scope, so a navigation menu kept as a data table reaches crawlers as links. The component's module then draws the same rows when it loads and keeps them current. Two cases render no rows at build time and fill in when the module runs: a list whose `items` exists only in the browser (a `Request`, say), and a list that declares `filter` or `sort`. A component whose only list is over a literal array, with no `filter`, `sort` or `key`, never changes, so it ships no JavaScript for the list at all.
+On a built site, a list inside a component is in the page's HTML before any script runs. The build renders one row for each item the list starts with, in the component's own scope, so a navigation menu kept as a data table reaches crawlers as links. The component's module then draws the same rows when it loads and keeps them current. A `filter` and a `sort` are applied at build time too, so the rows in the page are the rows the component shows first. A list renders no rows at build time, and fills in when the module runs, when its `items`, `filter` or `sort` exists only in the browser (a `Request`, say). A component whose only list is over a literal array, with no `filter`, `sort` or `key`, never changes, so it ships no JavaScript for the list at all.
 
 ## Rules
 
@@ -204,7 +227,8 @@ On a built site, a list inside a component is in the page's HTML before any scri
 - `items` must resolve to an array: a state entry, a [data prototype](/docs/framework/concepts/data-prototypes) such as a content collection, or a literal array.
 - The list renders wrapper-less; give structure a container by making the _parent_ the container element (`ul`, `tbody`, a grid `div`).
 - `$map/` references are valid only inside the `map` template.
-- `filter` and `sort` must be `$ref`s to functions in `state`.
+- `items` is a `$ref` or a literal array. A template string there is a build error.
+- `filter` and `sort` must be `$ref`s to callable state entries. A named formula is called the same way everywhere.
 - The legacy form where `children` is _itself_ the Array object is still accepted; Studio normalizes it to a single array member on load.
 
 ## Related

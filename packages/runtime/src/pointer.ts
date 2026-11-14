@@ -29,6 +29,18 @@ export function escapeToken(key: string): string {
 }
 
 /**
+ * The one spelling of a `$map` pointer the resolvers read: `#/$map/item/x` as `$map/item/x`. Both
+ * are accepted wherever a `$map` pointer may appear (spec.md §10.4), so every reader of a `$ref`
+ * calls this first and then tests one prefix. Any other ref comes back as it is.
+ *
+ * @param {string} ref - A `$ref` as written
+ * @returns {string}
+ */
+export function canonicalMapRef(ref: string): string {
+  return ref.startsWith("#/$map/") ? ref.slice(2) : ref;
+}
+
+/**
  * Split a `$ref` path — the part after its scheme — into member names.
  *
  * An empty path is no segments rather than one empty segment, so `#/state/` reads `state` itself

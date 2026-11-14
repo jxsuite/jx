@@ -29,8 +29,9 @@ export const LIFECYCLE_KEYS: ReadonlySet<string> = new Set(["onMount", "onUnmoun
 /**
  * The state keys a document uses as a _callable_, at any depth: bound to an `on*` event (a
  * definition's root-level handlers included, §16.1), invoked by an `$expression` `call` node
- * (§19.4c), called as `state.key(…)` from a template string or another function's body, or named as
- * a lifecycle hook (§16.4). `$defs` holds JSON Schema, not usage, and is skipped.
+ * (§19.4c), called as `state.key(…)` from a template string or another function's body, named as a
+ * repeater's `filter` or `sort` (§10.3), or named as a lifecycle hook (§16.4). `$defs` holds JSON
+ * Schema, not usage, and is skipped.
  *
  * Anything not used as a callable has its return value read reactively. Defaulting the other way
  * round would turn a called helper into a value and break its call site.
@@ -73,6 +74,14 @@ function collectCallableKeys(doc: JxElement): Set<string> {
     // An `$expression` `call` node names its callee in `target` (spec.md §19.4c).
     if (node.operator === "call" && isRef(node.target)) {
       addStateRef(node.target.$ref);
+    }
+    // A repeater calls what its `filter` and `sort` name, per item (spec.md §10.3).
+    if (node.$prototype === "Array") {
+      for (const source of [node.filter, node.sort]) {
+        if (isRef(source)) {
+          addStateRef(source.$ref);
+        }
+      }
     }
     for (const [key, value] of Object.entries(node)) {
       if (key === "$defs") {

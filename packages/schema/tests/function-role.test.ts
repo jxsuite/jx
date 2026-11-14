@@ -92,6 +92,22 @@ describe("a bodyless $src entry", () => {
     expect(roleOf(doc, "rows")).toBe("callable");
   });
 
+  test("is callable when a repeater names it as its filter or its sort", () => {
+    const list = (source: "filter" | "sort") => ({
+      children: [
+        {
+          $prototype: "Array",
+          items: { $ref: "#/state/items" },
+          map: { tagName: "li" },
+          [source]: { $ref: "#/state/rows" },
+        },
+      ],
+      state: { items: [], rows: entry },
+    });
+    expect(roleOf(list("filter"), "rows")).toBe("callable");
+    expect(roleOf(list("sort"), "rows")).toBe("callable");
+  });
+
   test("is callable when a call node targets it", () => {
     const doc = {
       children: [{ tagName: "p", textContent: "x" }],

@@ -22,6 +22,7 @@ import {
   compileStyles,
   escapeHtml,
   isDynamic,
+  pageImportMap,
   tagNameToClassName,
 } from "./shared.ts";
 
@@ -45,6 +46,12 @@ export interface CompileOptions {
   title?: string;
   reactivitySrc?: string;
   litHtmlSrc?: string;
+  /**
+   * The build's whole import map, prefix keys included. A page that writes its own map writes this
+   * one, so a compiled module's package subpath (`lit-html/directives/repeat.js`) resolves there
+   * (compiler.md §12). Without it the page maps the two sources above.
+   */
+  runtimeImports?: Record<string, string>;
   projectStyle?: JxStyle | null;
   formats?: FormatRegistry;
   /** Rewrite Function-def `$src` specifiers to served URLs (see CompileElementOptions). */
@@ -169,14 +176,7 @@ export async function compile(sourcePath: string | JxDocument, opts: CompileOpti
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>${escapeHtml(title)}</title>
-  <script type="importmap">
-  {
-    "imports": {
-      "@vue/reactivity": "${reactivitySrc}",
-      "lit-html": "${litHtmlSrc}"
-    }
-  }
-  </script>
+  ${pageImportMap({ litHtmlSrc, reactivitySrc, runtimeImports: opts.runtimeImports })}
   ${styleBlock}
 </head>
 <body>
@@ -201,6 +201,9 @@ export async function compile(sourcePath: string | JxDocument, opts: CompileOpti
   }
   if (opts.resolveClass !== undefined) {
     clientOptions.resolveClass = opts.resolveClass;
+  }
+  if (opts.runtimeImports !== undefined) {
+    clientOptions.runtimeImports = opts.runtimeImports;
   }
   return compileClient(raw, clientOptions);
 }

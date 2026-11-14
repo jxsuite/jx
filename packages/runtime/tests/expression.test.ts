@@ -330,6 +330,40 @@ describe("evaluateExpression — assignment", () => {
     expect(state.plain).toBe(1);
   });
 
+  test("#/$map/item/x resolves as an operand, a call owner and a write target", () => {
+    const item = { done: false, name: "a", shout: (s: string) => `${s}!` };
+    const state: JxScope = { $map: { index: 2, item } };
+    expect(
+      evaluateExpression(
+        { operator: "+", target: ref("#/$map/item/name"), value: "" },
+        state,
+        null,
+      ),
+    ).toBe("a");
+    expect(
+      evaluateExpression({ operator: "+", target: ref("#/$map/index"), value: 1 }, state, null),
+    ).toBe(3);
+    expect(
+      evaluateExpression(
+        { operator: "call", target: ref("#/$map/item/shout"), value: ["hi"] },
+        state,
+        null,
+      ),
+    ).toBe("hi!");
+    void evaluateExpression(
+      { operator: "=", target: ref("#/$map/item/done"), value: true },
+      state,
+      null,
+    );
+    expect(item.done).toBe(true);
+  });
+
+  test("compileExpression lowers #/$map/item/x as it lowers $map/item/x", () => {
+    const lowered = (pointer: string) => compileExpression({ operator: "!", target: ref(pointer) });
+    expect(lowered("#/$map/item/done")).toBe(lowered("$map/item/done"));
+    expect(lowered("#/$map/index")).toBe(lowered("$map/index"));
+  });
+
   test("= to $map/item deep path mutates the item", () => {
     const item = { done: false };
     const state: JxScope = { $map: { index: 0, item } };

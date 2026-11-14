@@ -53,6 +53,10 @@ describe("resolveClientRuntime", () => {
       expect(Object.values(runtime.imports).every((url) => url.startsWith("https://"))).toBe(true);
       expect(runtime.warnings).toHaveLength(CLIENT_RUNTIME_MODULES.length);
       expect(runtime.warnings[0]).toContain("default-src 'self'");
+      // A CDN fallback carries a prefix key too: the CDN serves the subpaths under the same URL.
+      for (const mod of CLIENT_RUNTIME_MODULES) {
+        expect(runtime.imports[`${mod.specifier}/`]).toBe(`${mod.fallback}/`);
+      }
     } finally {
       rmSync(empty, { force: true, recursive: true });
     }
@@ -453,6 +457,32 @@ describe("package subpaths (site-architecture.md §8.7)", () => {
       chmodSync(join(dir, "assets", "locked.js"), 0o600);
       rmSync(dir, { force: true, recursive: true });
     }
+  });
+
+  test("writes a subpath imported by a module outside assets/", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "jx-subpath-"));
+    try {
+      // A compiled component module and a page's own module, where a keyed list imports `repeat`.
+      await Bun.write(
+        join(dir, "components", "x-list.js"),
+        "import { repeat } from 'lit-html/directives/repeat.js';\n",
+      );
+      await Bun.write(
+        join(dir, "blog", "app.js"),
+        "import { AsyncDirective } from 'lit-html/async-directive.js';\n",
+      );
+      const result = await writeRuntimeSubpaths(dir);
+      expect(result.errors).toEqual([]);
+      expect(existsSync(join(dir, "assets", "lit-html", "directives", "repeat.js"))).toBe(true);
+      expect(existsSync(join(dir, "assets", "lit-html", "async-directive.js"))).toBe(true);
+    } finally {
+      rmSync(dir, { force: true, recursive: true });
+    }
+  });
+
+  test("an output directory that does not exist is not an error", async () => {
+    const result = await writeRuntimeSubpaths(join(tmpdir(), "jx-subpath-never-created"));
+    expect(result).toEqual({ errors: [], written: 0 });
   });
 
   test("no assets directory is not an error", async () => {

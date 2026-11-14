@@ -2,7 +2,7 @@ import { GlobalRegistrator } from "@happy-dom/global-registrator";
 
 import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { reactive } from "@vue/reactivity";
-import { defineElement, mount } from "../src/runtime";
+import { defineElement, mappedListItems, mappedRowKeys, mount } from "../src/runtime";
 import type { JxDocument, JxElement, JxMappedArray } from "@jxsuite/schema/types";
 import type { JxPath } from "../src/types";
 
@@ -193,6 +193,38 @@ describe("keyed $map — keys that cannot identify", () => {
     expect(String(warn.mock.calls[0]![0])).toContain("is empty");
   });
 
+  test("a key spelled #/$map/item/id keys by that field", async () => {
+    const rows = reactive([row("a"), row("b"), row("c")]);
+    await mount(listDoc({ key: { $ref: "#/$map/item/id" } }), host, { scope: { rows } });
+    const ul = host.firstElementChild!;
+    const [a, b, c] = three(ul);
+    rows.reverse();
+    await tick();
+    same(nodes(ul), [c, b, a]);
+    expect(texts(ul)).toEqual(["0:C", "1:B", "2:A"]);
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  test("a diagnostic quotes the key as the author wrote it", async () => {
+    const rows = reactive([{ title: "no id" }]);
+    await mount(listDoc({ key: { $ref: "#/$map/item/id" } }), host, { scope: { rows } });
+    expect(String(warn.mock.calls[0]![0])).toContain('key "#/$map/item/id" is empty');
+  });
+
+  test("a template string as items renders no rows and says why", async () => {
+    // Written as the element a document holds, whose members are any document value.
+    const list: JxElement = {
+      $prototype: "Array",
+      items: "${state.rows}",
+      map: { tagName: "li" },
+    };
+    const doc: JxDocument = { children: [list], tagName: "ul" };
+    await mount(doc, host, { scope: { rows: reactive([row("a")]) } });
+    expect(host.firstElementChild!.childElementCount).toBe(0);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(String(warn.mock.calls[0]![0])).toContain("items must be a $ref or a literal array");
+  });
+
   test("a pointer that is not $map/item falls back to the index with one warning", async () => {
     const rows = reactive([row("a"), row("b")]);
     await mount(listDoc({ key: { $ref: "$map/index" } }), host, { scope: { rows } });
@@ -364,5 +396,32 @@ describe("keyed $map — tracking and teardown", () => {
     rows.push(row("c"));
     await tick();
     expect(ul.childElementCount).toBe(0);
+  });
+});
+
+describe("the list rules, as exports", () => {
+  test("mappedListItems filters, then sorts, and never mutates the source", () => {
+    const source = [3, 1, 2];
+    const over1 = (n: number) => n > 1;
+    const ascending = (a: number, b: number) => a - b;
+    expect(mappedListItems(source, over1, ascending)).toEqual([2, 3]);
+    expect(source).toEqual([3, 1, 2]);
+    // With nothing to apply, the source itself: a caller iterating it inside an effect tracks it.
+    expect(mappedListItems(source)).toBe(source);
+    expect(mappedListItems(source, "not a function", 7)).toBe(source);
+    expect(mappedListItems("not an array", over1)).toEqual([]);
+  });
+
+  test("mappedRowKeys keys by the pointer, by index without one, and marks a duplicate", () => {
+    const messages: string[] = [];
+    const record = (message: string) => {
+      messages.push(message);
+    };
+    const list = [{ id: "a" }, { id: "a" }, {}];
+    expect(mappedRowKeys(null, list, record)).toEqual([0, 1, 2]);
+    expect(mappedRowKeys("$map/item/id", list, record)).toEqual(["a", { duplicate: 1 }, 2]);
+    expect(messages).toHaveLength(2);
+    expect(messages[0]).toContain("is empty");
+    expect(messages[1]).toContain("duplicate key a");
   });
 });
