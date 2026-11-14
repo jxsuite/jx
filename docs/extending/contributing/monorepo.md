@@ -196,6 +196,8 @@ A new package enters the manifest at `0.0.0`, which release-please reads as "no 
 
 A new package also needs a **trusted publisher on npm** before its first release, naming the `jxsuite/jx` repository and the workflow `release-please.yml`. Publishing authenticates through OIDC with no token, and npm refuses a package it has no trusted publisher for with `E404 Not Found` on the `PUT`. The publish job attempts every released package even when one fails, lists each outcome in its job summary, and files the unpublished ones on the `release-incomplete` issue with the command that publishes them:
 
+There is one exception to attempting everything. The addon ships as one package per platform, and the compiler lists them as optional dependencies, so a compiler published without them would install and then fail the first build that has an image. When npm refuses any platform package, `@jxsuite/compiler-binding` and `@jxsuite/compiler` are held back and reported with the rest. Each platform package is a package of its own, so each needs its own trusted publisher.
+
 ```sh
 gh workflow run release-please.yml -f backfill_paths='["packages/runtime"]' -f backfill_sha=runtime-v5.0.0
 ```
