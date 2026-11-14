@@ -1,6 +1,24 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
+import { validateClass } from "@jxsuite/schema";
 import { compileClassJson } from "../src/targets/compile-class";
-import type { JsonObject, JxClassDef } from "@jxsuite/schema/types";
+import { parseClassDef } from "@jxsuite/schema/parse";
+import type { JsonObject, JsonValue, JxClassDef } from "@jxsuite/schema/types";
+
+/** A directory for compiled class modules a test imports; the caller removes it. */
+function moduleDir(): string {
+  return mkdtempSync(join(tmpdir(), "jx-class-module-"));
+}
+
+/** Write a compiled class module into `dir` and return the URL to import it by. */
+function writeModule(dir: string, name: string, source: string): string {
+  const path = join(dir, name);
+  writeFileSync(path, source, "utf8");
+  return pathToFileURL(path).href;
+}
 
 // ─── compileClassJson — Basic class generation ──────────────────────────────
 
@@ -71,6 +89,69 @@ describe("compileClassJson — extends", () => {
       title: "Child",
     });
     expect(result).toContain("class Child extends Parent {");
+    expect(result).toContain('import Parent from "./Parent.js";');
+  });
+
+  test("a $ref base's import drops the fragment and is relative to the document", () => {
+    const bare = compileClassJson({
+      $prototype: "Class",
+      extends: { $ref: "Parent.class.json#/$defs/x" },
+      title: "Child",
+    });
+    expect(bare).toContain('import Parent from "./Parent.js";');
+    const nested = compileClassJson({
+      $prototype: "Class",
+      extends: { $ref: "../base/Parent.class.json" },
+      title: "Child",
+    });
+    expect(nested).toContain('import Parent from "../base/Parent.js";');
+    const absolute = compileClassJson({
+      $prototype: "Class",
+      extends: { $ref: "https://example.com/Parent.class.json" },
+      title: "Child",
+    });
+    expect(absolute).toContain('import Parent from "https://example.com/Parent.js";');
+  });
+
+  test("a $ref base class is imported and extended", async () => {
+    const dir = moduleDir();
+    try {
+      // The base's title differs from its file name, so only the default import can link the two.
+      const parentUrl = writeModule(
+        dir,
+        "Parent.js",
+        compileClassJson({
+          $defs: { methods: { hello: { body: "return 'base';", role: "method" } } },
+          $prototype: "Class",
+          title: "Base",
+        }),
+      );
+      const childUrl = writeModule(
+        dir,
+        "Child.js",
+        compileClassJson({
+          $prototype: "Class",
+          extends: { $ref: "./Parent.class.json" },
+          title: "Child",
+        }),
+      );
+      const { default: Base } = await import(parentUrl);
+      const { Child } = await import(childUrl);
+      const child = new Child();
+      expect(child instanceof Base).toBe(true);
+      expect(child.hello()).toBe("base");
+    } finally {
+      rmSync(dir, { force: true, recursive: true });
+    }
+  });
+
+  test("a string base is a global the host supplies, and is not imported", () => {
+    const result = compileClassJson({
+      $prototype: "Class",
+      extends: "HTMLElement",
+      title: "Foo",
+    });
+    expect(result).not.toContain("import ");
   });
 
   test("$ref with unrecognized pattern falls back to Object", () => {
@@ -81,6 +162,7 @@ describe("compileClassJson — extends", () => {
     });
     expect(result).toContain("class Child {");
     expect(result).not.toContain("extends");
+    expect(result).not.toContain("import ");
   });
 
   test("extends as unknown object type falls back to Object", () => {
@@ -601,11 +683,12 @@ describe("compileClassJson — accessors", () => {
     expect(result).toContain("set val(newVal) {");
   });
 
-  test("setter with no parameters defaults to 'v'", () => {
+  test("setter with no parameters defaults to 'v'", async () => {
     const result = compileClassJson({
       $defs: {
         methods: {
           val: {
+            getter: { body: "return this._val;" },
             identifier: "val",
             role: "accessor",
             setter: { body: "this._val = v;" },
@@ -615,8 +698,176 @@ describe("compileClassJson — accessors", () => {
       $prototype: "Class",
       title: "Foo",
     });
-    // No parameters array → resolveParams returns empty string
-    expect(result).toContain("set val() {");
+    // A setter takes exactly one parameter: `set val() {` is a SyntaxError, so the module must load.
+    expect(result).toContain("set val(v) {");
+    const dir = moduleDir();
+    try {
+      const { Foo } = await import(writeModule(dir, "Foo.js", result));
+      const foo = new Foo();
+      foo.val = 7;
+      expect(foo.val).toBe(7);
+    } finally {
+      rmSync(dir, { force: true, recursive: true });
+    }
+  });
+});
+
+// ─── compileClassJson — what route 0 emits per category (compiler.md §5.3) ──
+
+describe("compileClassJson — the $defs categories (compiler.md §5.3)", () => {
+  test("a protected member compiles as public", () => {
+    const result = compileClassJson({
+      $defs: {
+        fields: { depth: { access: "protected", default: 1, role: "field" } },
+        methods: { walk: { access: "protected", body: "return this.depth;", role: "method" } },
+      },
+      $prototype: "Class",
+      title: "Walker",
+    });
+    expect(result).toContain("this.depth = config.depth !== undefined ? config.depth : 1;");
+    expect(result).toContain("  walk() {");
+    expect(result).not.toContain("#");
+  });
+
+  test("a capability-role method compiles like any method", () => {
+    const result = compileClassJson({
+      $defs: {
+        methods: {
+          parse: {
+            body: "return { source };",
+            parameters: [{ identifier: "source" }],
+            role: "parse",
+            scope: "static",
+          },
+        },
+      },
+      $prototype: "Class",
+      title: "Reader",
+    });
+    expect(result).toContain("  static parse(source) {");
+  });
+
+  test("constructor parameters are not emitted", () => {
+    const result = compileClassJson({
+      $defs: {
+        constructor: {
+          parameters: [{ $ref: "#/$defs/parameters/src" }],
+          role: "constructor",
+        },
+        parameters: { src: { identifier: "src", type: { type: "string" } } },
+        returnTypes: { Out: { type: "string" } },
+      },
+      $prototype: "Class",
+      title: "Reader",
+    });
+    expect(result).toContain("  constructor(config = {}) {");
+    expect(result).not.toContain("src");
+    expect(result).not.toContain("Out");
+  });
+
+  test("a field's value falls back to initializer, then default, then null", () => {
+    const result = compileClassJson({
+      $defs: {
+        fields: {
+          a: { default: 2, initializer: 1, role: "field" },
+          b: { default: 2, role: "field" },
+          c: { role: "field" },
+        },
+      },
+      $prototype: "Class",
+      title: "Fallbacks",
+    });
+    expect(result).toContain("this.a = config.a !== undefined ? config.a : 1;");
+    expect(result).toContain("this.b = config.b !== undefined ? config.b : 2;");
+    expect(result).toContain("this.c = config.c !== undefined ? config.c : null;");
+  });
+});
+
+// ─── compileClassJson — the worked example (compiler.md §5.2) ───────────────
+
+/** The compiler.md §5.2 example, verbatim: edit the two together. */
+const PAGER = String.raw`{
+  "$schema": "https://jxsuite.com/schema/class/v1",
+  "$prototype": "Class",
+  "title": "Pager",
+  "description": "Pages through an array of items",
+  "$defs": {
+    "parameters": {
+      "items": { "identifier": "items", "type": { "type": "array" } },
+      "pageSize": {
+        "identifier": "pageSize",
+        "type": { "type": "integer", "minimum": 1, "default": 10 }
+      },
+      "page": { "identifier": "page", "type": { "type": "integer", "minimum": 0 } }
+    },
+    "returnTypes": {
+      "Page": { "type": "array", "description": "The items on the current page" }
+    },
+    "fields": {
+      "created": { "role": "field", "scope": "static", "initializer": 0 },
+      "items": { "role": "field", "access": "private", "default": [] },
+      "page": { "role": "field", "access": "private", "default": 0 },
+      "pageSize": { "role": "field", "default": 10 }
+    },
+    "constructor": {
+      "role": "constructor",
+      "parameters": [
+        { "$ref": "#/$defs/parameters/items" },
+        { "$ref": "#/$defs/parameters/pageSize" }
+      ],
+      "body": "Pager.created++;"
+    },
+    "methods": {
+      "page": {
+        "role": "accessor",
+        "getter": { "body": "return this.#page;" },
+        "setter": {
+          "parameters": [{ "$ref": "#/$defs/parameters/page" }],
+          "body": "this.#page = Math.min(Math.max(page, 0), this.pageCount - 1);"
+        }
+      },
+      "pageCount": {
+        "role": "accessor",
+        "getter": { "body": "return Math.max(1, Math.ceil(this.#items.length / this.pageSize));" }
+      },
+      "resolve": {
+        "role": "method",
+        "returnType": { "$ref": "#/$defs/returnTypes/Page" },
+        "body": [
+          "const start = this.#page * this.pageSize;",
+          "return this.#items.slice(start, start + this.pageSize);"
+        ]
+      }
+    }
+  }
+}`;
+
+describe("compileClassJson — the compiler.md §5.2 example", () => {
+  test("validates against the class schema", async () => {
+    const document: JsonValue = JSON.parse(PAGER);
+    const result = await validateClass(document);
+    expect(result.valid).toBe(true);
+  });
+
+  test("compiles to a class meeting the external class contract", async () => {
+    const dir = moduleDir();
+    try {
+      const { Pager } = await import(
+        writeModule(dir, "Pager.js", compileClassJson(parseClassDef(PAGER, "Pager.class.json")))
+      );
+      const pager = new Pager({ items: [1, 2, 3, 4, 5, 6, 7], pageSize: 3 });
+      expect(pager.resolve()).toEqual([1, 2, 3]);
+      expect(pager.pageCount).toBe(3);
+      pager.page = 5;
+      expect(pager.page).toBe(2);
+      expect(pager.resolve()).toEqual([7]);
+      const empty = new Pager();
+      expect(empty.pageSize).toBe(10);
+      expect(empty.resolve()).toEqual([]);
+      expect(Pager.created).toBe(2);
+    } finally {
+      rmSync(dir, { force: true, recursive: true });
+    }
   });
 });
 
