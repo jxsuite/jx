@@ -4,8 +4,8 @@
  * `$props` is not the only place a value lives. The property bridge (`compiler.md` §4.4) reads a
  * prop by several routes, and each of them renders while `$props` holds nothing, so a reader that
  * looks at `$props` alone reports the prop as unset. Two readers ask the question: the canvas's
- * prop-bound text, which refuses to edit a prop that lives elsewhere, and the Inspector's Component
- * Settings, which shows and edits the prop where it lives. One answer here keeps them agreeing.
+ * prop-bound text and the Inspector's Component Settings, each of which shows and edits the prop
+ * where it lives. One answer here keeps them agreeing.
  *
  * The routes, as the runtime and the site build apply them:
  *
@@ -166,8 +166,8 @@ export function propSource(node: JxMutableNode | undefined, prop: string): PropS
 /**
  * Whether the instance node delivers `prop` by some route OTHER than `$props`, in which case
  * "absent from `$props`" does not mean "unset", and a `$props` write would add a SECOND source for
- * one rendered value (studio.md §8.2.6). The canvas refuses an inline edit then, and leaves the
- * value to the properties panel, which edits the real source.
+ * one rendered value (studio.md §8.2.6). The frame's patcher draws the instance again then, rather
+ * than writing a changed `$props` into it in place.
  */
 export function deliveredOutsideProps(node: JxMutableNode | undefined, prop: string): boolean {
   return propSources(node, prop).some((source) => source.route !== "$props");
