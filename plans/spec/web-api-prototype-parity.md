@@ -65,8 +65,8 @@ This plan closes the rest: the element target's storage and cookie lowering, and
 
 **Related, no edge.** These plans edit the same functions:
 
-- `plan:compiler/client-external-class-hydration` edits the element's `connectedCallback`, as the landed lifecycle and property-bridge work (`compiler.md` §4.1, §4.4) did. This plan leaves it untouched (see Decisions).
-- `plan:compiler/client-external-class-hydration` defines `isExternalClassDef` as "not in `BUILT_IN_PROTOTYPES`", and `plan:spec/reconcile-built-in-prototypes` recommends that a built-in name always means the built-in, in every tier. This plan's dispatcher lowers by name, which is the compiled half of both, so the three agree without an edge. If review signs the reconcile Open the other way, the plan that work needs adds a decline at the top of `lowerBuiltInPrototype`.
+- The landed external-class work (`compiler.md` §3) edited the element's `connectedCallback`, as the landed lifecycle and property-bridge work (`compiler.md` §4.1, §4.4) did: a definition with a `timing: "client"` class draws in `#jxRender()`. This plan leaves it untouched (see Decisions).
+- `isExternalClassDef` (`packages/compiler/src/shared.ts`, compiler.md §3) is "not in `BUILT_IN_PROTOTYPES`", and `plan:spec/reconcile-built-in-prototypes` recommends that a built-in name always means the built-in, in every tier. This plan's dispatcher lowers by name, which is the compiled half of both, so the three agree without an edge. If review signs the reconcile Open the other way, the plan that work needs adds a decline at the top of `lowerBuiltInPrototype`.
 - `plan:spec/request-url-params` edits `emitRequestFetch`, which this plan does not touch.
 - `plan:spec/timing-values-in-built-sites` owns what `timing` means on a built-in (§11.3).
 - `plan:schema/prototype-property-declarations` narrows what `FormData` and `Blob` accept. Nothing here depends on that, because the lowering mirrors the runtime for any value.
@@ -89,7 +89,7 @@ This plan closes the rest: the element target's storage and cookie lowering, and
   - `Request` keeps its own call sites, because `plan:spec/compiled-request-fetch` and `plan:spec/request-url-params` both edit them.
 - **Decided:** the dispatcher lowers by `$prototype` name alone. It reads neither `$src`, the document's `imports` nor `timing`.
   - Whether `$src` or `imports` can replace a built-in name is §12.5's question, which `plan:spec/reconcile-built-in-prototypes` owns. Its recommendation (a built-in name is always the built-in) is what today's compiled `Request`, storage and `Cookie` lowerings and `isExternalClassDef` already assume, and its integration contract says the compiled targets lower what §11.2 says.
-  - Declining such an entry here would ship it as its literal definition object, which is worse than either reading: the only compiled path that instantiates a class in the browser (`isClientExternalClass`, `plan:compiler/client-external-class-hydration`) excludes every built-in name.
+  - Declining such an entry here would ship it as its literal definition object, which is worse than either reading: the only compiled path that instantiates a class in the browser (`isClientExternalClass`, compiler.md §3) excludes every built-in name.
   - A `timing` on a built-in is §11.3's question, not this section's.
 - **Decided:** the element target binds every lowered entry in its constructor, once per instance. The entry starts as `null` in the state literal, and its effect is not added to `#effects`, so `disconnectedCallback` does not stop it. Four reasons:
   - The interpreted element builds its scope once and never stops these effects.
@@ -315,7 +315,7 @@ It renders each into a `p`. The file's `beforeAll` copies a fixed list of happy-
 
   None describes how a built-in lowers, so the pull request states that no update is needed. The implementation-status and spec-changelog pages are generated.
 
-**Landing.** spec.md does not graduate: other open items remain. The pull request deletes this file and rewrites every `plan:spec/web-api-prototype-parity` citation still in `plans/` to cite spec.md §11.2 (today `plans/schema/generator-inventory.md`, `plans/schema/prototype-property-declarations.md`, `plans/spec/request-url-params.md`, `plans/spec/timing-values-in-built-sites.md` and `plans/compiler/client-external-class-hydration.md`, whichever have not landed); `bun run plans:check` names each `citation-unknown` left.
+**Landing.** spec.md does not graduate: other open items remain. The pull request deletes this file and rewrites every `plan:spec/web-api-prototype-parity` citation still in `plans/` to cite spec.md §11.2 (today `plans/schema/generator-inventory.md`, `plans/schema/prototype-property-declarations.md`, `plans/spec/request-url-params.md` and `plans/spec/timing-values-in-built-sites.md`, whichever have not landed); `bun run plans:check` names each `citation-unknown` left.
 
 ## Acceptance
 

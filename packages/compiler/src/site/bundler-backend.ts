@@ -66,5 +66,17 @@ export interface BackendBuild {
   plugins: BundlePlugin[];
 }
 
+/**
+ * Several entry files bundled in one call with code splitting: each entry becomes `<outdir>/<its
+ * base name>.js`, and a module two entries import becomes one shared `<outdir>/chunk-<hash>.js`
+ * that both import, so it is one instance on a page that loads both.
+ */
+export interface BackendSplitBuild extends Omit<BackendBuild, "entry"> {
+  /** Absolute paths of the entry modules. Their base names must differ. */
+  entries: string[];
+  /** Absolute path of the directory the output is written to. */
+  outdir: string;
+}
+
 /** Basename prefix of the throwaway entry the Bun backend writes for a source entry. */
 export const TRANSIENT_ENTRY_PREFIX = ".jx-entry-";

@@ -17,6 +17,7 @@ code:
   - packages/compiler/src/site/client-runtime.ts
   - packages/compiler/src/site/bundler.ts
   - packages/compiler/src/site/pages-discovery.ts
+  - packages/compiler/src/site/external-class.ts
   - packages/compiler/src/targets/compile-static.ts
   - packages/compiler/src/targets/compile-client.ts
   - packages/compiler/src/shared.ts
@@ -83,6 +84,8 @@ A template written as a text child compiles away the same way: `"children": ["We
 
 The same applies to `timing: "compiler"` data and to content collections: template strings over build-time values are evaluated against the resolved data, mapped arrays over resolved content are unrolled into repeated markup, and the now-spent state entries are stripped. What reaches `isDynamic()` afterwards is a plain tree, so a blog index that lists every post can still be a zero-JS page.
 
+In a component, a `timing: "compiler"` value becomes the component's starting state, resolved once per component file, so the prerendered HTML and the component's script agree. A class the build cannot find, load or resolve fails the build with an error naming the entry. That includes a `timing: "compiler"` entry whose `$prototype` matches no class (check the spelling, its `$src`, the document's `imports`, and that the extension providing it is enabled), and an entry with no `timing` whose class throws during the build. If that class needs the browser, give the entry `"timing": "client"`.
+
 ## The output tiers
 
 ### Fully static
@@ -103,6 +106,8 @@ The import map added to those pages resolves `@vue/reactivity` and `lit-html` fo
 ### Dynamic pages
 
 When the page document itself is dynamic (it declares live `state`, binds `$ref`s, or uses runtime template strings), the compiler still pre-renders the full HTML, marks bound elements with `data-bind` attributes and each bound text child with a pair of HTML comments (text never gets a wrapper element), and emits one small module that wires reactivity onto the existing DOM: reactive state, `computed()` for derived values, `effect()` per binding, event handler hookup, and one `POST` to the site's worker for each `timing: "server"` entry. There is no client-side re-render of the initial view; the JS only maintains what changes.
+
+An external class with `timing: "client"` ships as its own module under `/assets/`: the class's implementation, or the class generated from its `.class.json`. The page builds it, waits for its value, then hydrates, and keeps following it if the class offers `subscribe()`. A component does the same before its first draw. The prerendered HTML is what a visitor sees while a class is resolving, so a slow class delays interactivity and never blanks the page. If a class fails, the error is logged to the console, its entry stays `null`, and the rest of the page still hydrates. Two classes that import the same module share one copy of it in the browser, so a session class and the actions that change it see the same store. A class that reads the build's context (a content collection, a connector) cannot run in the browser: the build stops and says to use `timing: "compiler"`.
 
 Two more outputs sit alongside these tiers: a class document (`"$prototype": "Class"`, conventionally a `.class.json` file) handed to the compiler directly compiles to an ES class module, and `timing: "server"` entries compile into the site-wide worker, which needs `build.adapter`: without one the build stops with an error naming each entry.
 
@@ -195,6 +200,7 @@ Work the static-detection list backwards:
 - **A `${…}` template string** whose inputs exist only at runtime keeps its binding alive. Templates over build-time data compile away.
 - **`$switch`, `$ref` bindings, and mapped arrays** over runtime state need the client tier; mapped arrays over build-resolved content do not.
 - **Interactive components** cost their own module on the pages that use them. The rest of the page stays static.
+- **An external class with `timing: "client"`** loads its class module and the page's hydration script.
 - **A component that declares `observedAttributes`** ships its module, because an attribute can change after the page loads.
 
 ## Related

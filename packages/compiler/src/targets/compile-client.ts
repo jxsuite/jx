@@ -25,6 +25,10 @@ import {
   ATTR_HELPER,
   refuseBodyWithSrc,
   attrHelperSource,
+  collectClientClasses,
+  emitExternalClassResolution,
+  externalClassHelperSource,
+  isClientExternalClass,
   booleanAttrValue,
   DEFAULT_LIT_HTML_SRC,
   DEFAULT_REACTIVITY_SRC,
@@ -71,7 +75,7 @@ import {
   isTagExpression,
   tagNameCandidates,
 } from "@jxsuite/schema/guards";
-import type { CompileContext, SrcImports } from "../shared.ts";
+import type { ClientClasses, CompileContext, SrcImports } from "../shared.ts";
 import {
   escapeToken,
   objectKey,
@@ -88,6 +92,7 @@ import type {
   JxExpressionNode,
   JxMappedArray,
   JxMutableNode,
+  JxPrototypeDef,
   JxStyle,
 } from "@jxsuite/schema/types";
 
@@ -162,6 +167,11 @@ export function compileClient(
      * module, so the base has to be known when it is compiled.
      */
     serverBaseUrl?: string;
+    /**
+     * The URL a `timing: "client"` external class's module is served at (compiler.md §3, §12). Only
+     * a site build has one; without it such an entry is a compile error.
+     */
+    resolveClass?: (def: JxPrototypeDef) => string;
   },
 ) {
   const {
@@ -200,6 +210,8 @@ export function compileClient(
   const serverCalls: string[] = []; // One block per `timing: "server"` entry, after the computed block
 
   const defs = raw.state ?? {};
+  // `timing: "client"` external classes: null until the module below resolves them (compiler.md §3)
+  const clientClasses = collectClientClasses(defs, opts.resolveClass);
   for (const [key, def] of Object.entries(defs)) {
     if (!isNonNullObject(def) || Array.isArray(def)) {
       // Naked primitive or array → reactive state
@@ -301,6 +313,11 @@ export function compileClient(
         initBlocks.push(emitCookieInit(key, def.name ?? key, def.default ?? null));
         continue;
       }
+
+      if (isClientExternalClass(def)) {
+        stateEntries.push([key, null]);
+        continue;
+      }
     }
 
     // `timing: "server"`: null until the site worker's route answers (compiler.md §6.1)
@@ -347,6 +364,7 @@ export function compileClient(
     counter,
     reactivitySrc,
     opts.rewriteSrc,
+    clientClasses,
   );
 
   // Build importmap entries — always include lit-html since compiled custom elements need it
@@ -1004,7 +1022,8 @@ function emitClientModule(
   srcImports: SrcImports,
   counter: ClientCounter,
   _reactivitySrc: string,
-  rewriteSrc?: (specifier: string) => string,
+  rewriteSrc: ((specifier: string) => string) | undefined,
+  clientClasses: ClientClasses,
 ) {
   const lines: string[] = [];
   const { needsLit, textParts } = counter;
@@ -1031,9 +1050,13 @@ function emitClientModule(
   // State — reactive state
   /* The boolean-attribute rule, inlined because this module loads with `@vue/reactivity` and
      nothing else — see `attrHelperSource`. The hydration script below is its only caller. */
-  lines.push(...src.imports, ...src.loaders, "", attrHelperSource());
+  lines.push(...src.imports, ...clientClasses.imports, ...src.loaders, "", attrHelperSource());
   if (serverCalls.length > 0) {
     lines.push("", serverCallHelperSource());
+  }
+  const waitsForClasses = clientClasses.entries.length > 0;
+  if (waitsForClasses) {
+    lines.push("", externalClassHelperSource(), "const _jxInstances = new Map();");
   }
   lines.push("", "const state = reactive({");
   for (const [key, val] of stateEntries) {
@@ -1160,7 +1183,20 @@ function emitClientModule(
       "  });",
     );
   }
-  lines.push("}", "", "hydrate(document);", "");
+  lines.push("}", "");
+  if (waitsForClasses) {
+    /* Hydration waits for the classes: a binding that reads a class's value
+       (`${state.forecast.days.length}`) then reads the value, as it does under the interpreter,
+       which awaits every class before it renders. The prerendered page stays on screen meanwhile. */
+    lines.push(
+      `await ${emitExternalClassResolution(clientClasses.entries, {
+        indent: "",
+        instances: "_jxInstances",
+        statePrefix: "state",
+      })};`,
+    );
+  }
+  lines.push("hydrate(document);", "");
 
   return lines.join("\n");
 }

@@ -238,6 +238,21 @@ export async function bundleEntry(request: BundleRequest, opts: BundleOptions): 
 }
 
 /**
+ * Bundle several entry modules in one call with code splitting, into `outdir`: each entry is
+ * written as `<its base name>.js`, and a module two or more entries import is written once, as a
+ * `chunk-<hash>.js` they all import. That is what makes such a module ONE instance on a page that
+ * loads two of the entries, where {@link bundleEntry} would give each entry its own copy and its
+ * own module state. Returns the files written. Throws with the backend's diagnostics on failure.
+ */
+export async function bundleEntries(
+  entryPaths: string[],
+  outdir: string,
+  opts: BundleOptions,
+): Promise<string[]> {
+  return backend.buildSplit({ entries: entryPaths, outdir, ...backendOptions(opts) });
+}
+
+/**
  * Bundle one entry module and return the code rather than writing it.
  *
  * For a host serving modules on demand (the dev server's and the desktop project server's bare
