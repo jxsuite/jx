@@ -1724,7 +1724,7 @@ Bundle server entries   → dist/worker.js, or dist/_worker.js + _routes.json fo
     ↓
 Bundle client sidecars  → dist/assets/<slug>.js — one self-contained ESM bundle per
                           bundleable Function `$src` specifier (npm:…, ./relative;
-                          spec.md §5.3) collected from pages, components, islands,
+                          spec.md §5.3) collected from pages, components,
                           and lowered-def $bundle hints (extensions.md §8.3).
                           Backend: Bun.build under Bun, esbuild under Node.
     ↓
@@ -2188,7 +2188,7 @@ Four decisions in that line:
 
 ### 14.4 `.nojekyll`
 
-Written unconditionally. GitHub Pages runs Jekyll, which excludes every `_`-prefixed path — which is `_headers`, `_redirects`, `_worker.js`, `_routes.json` and `_islands/`. One empty file closes the whole class of "works locally, half-broken on Pages", which is why it is not an adapter option.
+Written unconditionally. GitHub Pages runs Jekyll, which leaves every `_`-prefixed path out of the published site, at any depth. The build writes one that a page needs, `images/_optimized/`, where the image pipeline puts its variants (§9.2), and a project may ship its own from `public/`; the host-configuration files (`_headers`, `_redirects`, `_worker.js`, `_routes.json`) mean nothing to GitHub Pages either way. One empty file closes the whole class of "works locally, half-broken on Pages", which is why it is not an adapter option.
 
 ### 14.5 Installability and Disclosure Output
 

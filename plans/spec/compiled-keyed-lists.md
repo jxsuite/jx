@@ -98,7 +98,7 @@ Four slices, landed in order; CKL1.4 needs the other three.
 **CKL1.3: lit subpaths reach every compiled module.**
 
 1. `shared.ts`: move `renderImportMap` here (re-exported from `client-runtime.ts` for its callers) and add `pageImportMap({ runtimeImports, reactivitySrc, litHtmlSrc })`: `renderImportMap(runtimeImports)` when given; else the two exact keys, plus `"lit-html/": "<DEFAULT_LIT_HTML_SRC>/"` when `litHtmlSrc` is that default.
-2. The four page-template tiers render their map with it and accept `runtimeImports?`: `compileElementPage` (`compile-element.ts`), `compileClient`, `compileStaticPage` (islands map, `compile-static.ts`) and `compile()`'s custom-element route (`compiler.ts`). `CompileOptions` gains `runtimeImports?`, and `compile()` forwards it to `compileStaticPage` and `compileClient`, its other two routes.
+2. The three page-template tiers that write an import map render it with it and accept `runtimeImports?`: `compileElementPage` (`compile-element.ts`), `compileClient` and `compile()`'s custom-element route (`compiler.ts`). `CompileOptions` gains `runtimeImports?`, and `compile()` forwards it to `compileClient`. `compileStaticPage` writes no map (`compiler.md` §10, Removed) and is untouched.
 3. `site-build.ts`: the page compile passes `runtimeImports` in place of the two `*Src` spreads (lines 1470–1473).
 4. `client-runtime.ts`: `resolveClientRuntime`'s fallback branch also writes `imports["<specifier>/"] = "<fallback>/"`. `writeRuntimeSubpaths` scans every `.js` under `outDir` rather than `outDir/assets`, keeping its pass-to-closure loop.
 
@@ -140,7 +140,7 @@ Each workspace runs `bun test --isolate --coverage` from its directory. Threshol
 **CKL1.3**
 
 - `client-runtime.test.ts`, "resolveClientRuntime": "a CDN fallback carries a prefix key too"; "package subpaths": "writes a subpath imported by a module outside assets/".
-- `compile-client.test.ts`, `compile-element.test.ts` (`compileElementPage`), `compile-static.test.ts` (islands) and `compiler.test.ts` (`compile()`'s custom-element route): "the page import map is the runtimeImports passed in"; "the default CDN map carries the lit-html/ prefix".
+- `compile-client.test.ts`, `compile-element.test.ts` (`compileElementPage`) and `compiler.test.ts` (`compile()`'s custom-element route): "the page import map is the runtimeImports passed in"; "the default CDN map carries the lit-html/ prefix".
 - `site-build-import-map.test.ts`: "a dynamic page's own import map carries the prefix keys".
 
 **CKL1.4**

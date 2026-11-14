@@ -606,74 +606,6 @@ export function isDynamic(def: JxElement | JxMutableNode | string) {
   return false;
 }
 
-/**
- * Shallow variant of isDynamic — checks only this node's own properties, not its children.
- *
- * @param {JxElement | JxMutableNode | string} def
- * @returns {boolean}
- */
-export function isNodeDynamic(def: JxElement | JxMutableNode | string) {
-  if (!isNonNullObject(def)) {
-    return false;
-  }
-
-  if (def.$switch) {
-    return true;
-  }
-  if (isMappedArray(def) || childrenContainArray(def.children)) {
-    return true;
-  }
-
-  for (const [key, val] of Object.entries(def)) {
-    if (RESERVED_KEYS.has(key)) {
-      continue;
-    }
-    if (isRef(val)) {
-      return true;
-    }
-    if (isTemplateString(val)) {
-      return true;
-    }
-  }
-
-  if (isNonNullObject(def.style)) {
-    for (const val of Object.values(def.style)) {
-      if (isTemplateString(val)) {
-        return true;
-      }
-    }
-  }
-
-  if (isNonNullObject(def.attributes)) {
-    for (const val of Object.values(def.attributes)) {
-      if (isTemplateString(val)) {
-        return true;
-      }
-    }
-  }
-
-  return false;
-}
-
-/**
- * Returns true if any node in the tree will need dynamic handling.
- *
- * @param {JxElement | JxMutableNode | string} def
- * @returns {boolean}
- */
-export function hasAnyIsland(def: JxElement | JxMutableNode | string): boolean {
-  if (!isNonNullObject(def)) {
-    return false;
-  }
-  if (isDynamic(def)) {
-    return true;
-  }
-  if (Array.isArray(def.children)) {
-    return def.children.some((c): boolean => hasAnyIsland(c));
-  }
-  return false;
-}
-
 // ─── Scope / value resolution ─────────────────────────────────────────────────
 
 /** What a compile target threads down the tree: the scope in effect, its definitions and `$media`. */
@@ -2040,7 +1972,8 @@ export function tagNameToClassName(tagName: string) {
 }
 
 /**
- * Recursively collect unique $src values from $prototype: "Function" entries.
+ * Recursively collect unique $src values from $prototype: "Function" entries. The site build asks
+ * it whether a page still loads a module whose state reads it cannot see.
  *
  * @param {JxElement} doc
  * @returns {string[]}
