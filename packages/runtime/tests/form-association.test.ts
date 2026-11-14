@@ -387,6 +387,7 @@ describe("a label names the host (spec.md §16.11)", () => {
     const label = (): HTMLLabelElement => {
       const node = document.createElement("label");
       node.textContent = "Name";
+      node.htmlFor = "labelled";
       document.body.append(node);
       return node;
     };
@@ -394,6 +395,7 @@ describe("a label names the host (spec.md §16.11)", () => {
     test("the host's labels name its control, at first render and again on focus", async () => {
       const first = label();
       const el = await connect(field(), {}, (host) => {
+        host.id = "labelled";
         internalsFor(host).labels.push(first);
       });
       expect(input(el).ariaLabelledByElements).toHaveLength(1);
@@ -405,6 +407,15 @@ describe("a label names the host (spec.md §16.11)", () => {
       expect(input(el).ariaLabelledByElements).toHaveLength(2);
     });
 
+    test("the live label list is not read for a host no label can be naming", async () => {
+      // Neither inside a label nor the target of a `for`: the list is never asked for.
+      const el = await connect(field(), {}, (host) => {
+        host.id = "elsewhere";
+        internalsFor(host).labels.push(label());
+      });
+      expect(input(el).ariaLabelledByElements).toBeNull();
+    });
+
     test("a control that already carries a name keeps it, and no labels names nothing", async () => {
       const named = await connect(
         field({
@@ -412,6 +423,7 @@ describe("a label names the host (spec.md §16.11)", () => {
         }),
         {},
         (host) => {
+          host.id = "labelled";
           internalsFor(host).labels.push(label());
         },
       );
@@ -427,6 +439,10 @@ describe("a label names the host (spec.md §16.11)", () => {
     const el = await connect(field(), {}, (host) => {
       internalsFor(host).labels.push(node);
     });
+    // A label the host stands inside is one that can name it, with no `for` and no id.
+    document.body.append(node);
+    node.append(el);
+    el.dispatchEvent(new Event("focusin", { bubbles: true }));
     expect("ariaLabelledByElements" in input(el)).toBe(false);
   });
 });

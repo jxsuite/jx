@@ -214,9 +214,16 @@ function run(
     value: null,
     writable: true,
   });
-  const labels = Array.from({ length: scenario.labels ?? 0 }, () =>
-    document.createElement("label"),
-  );
+  // A label names a host by `for`, and the binding reads its label list only for such a host.
+  const labels = Array.from({ length: scenario.labels ?? 0 }, () => {
+    const label = document.createElement("label");
+    label.htmlFor = "labelled";
+    document.body.append(label);
+    return label;
+  });
+  if (labels.length > 0) {
+    host.id = "labelled";
+  }
   const internals: FormInternals = {
     labels,
     setFormValue: (value) => {
