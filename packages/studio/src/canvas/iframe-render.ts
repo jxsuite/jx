@@ -60,7 +60,7 @@ import { STATUS_ATTR, STATUS_NOTE_ATTR } from "./iframe-remote";
 import type { JxDocument, JxElement, JxStateDefinition, JxStyle } from "@jxsuite/schema/types";
 import type { PathMapCtx } from "./path-mapping";
 import type { RowHooks, RowView } from "./iframe-rows";
-import type { JxScope } from "@jxsuite/runtime/types";
+import type { JxContext, JxScope } from "@jxsuite/runtime/types";
 
 /**
  * Read a `.jxn` `$ref`, which the editing server answers as its text.
@@ -88,6 +88,16 @@ export interface IframeRenderCtx {
   rows: RowView;
   /** The list hooks the render was drawn with, for a subtree drawn again that holds a repeater. */
   hooks: RowHooks;
+}
+
+/**
+ * The mount context a canvas render hands the runtime. `renderNode` reads it for one thing, the
+ * base a `$switch` case that is another document resolves against (spec.md §14.1); without it the
+ * runtime falls back to the page's own address, which in the frame is the Studio bundle's and never
+ * the document's.
+ */
+export function frameContext(docBase: string): JxContext {
+  return { base: docBase, media: null, root: null };
 }
 
 export interface RenderHandle {
@@ -1587,7 +1597,12 @@ function commitResolvedDocument(
   // Runtime's copy of @vue/reactivity, and scope collection is per module instance — a studio
   // EffectScope here collects nothing and dispose() would leak every effect of this render.
   const { result: el, stop } = runScoped(() =>
-    renderNode(opts.doc, $defs, { ...hooks, _path: [], onNodeCreated }),
+    renderNode(opts.doc, $defs, {
+      ...hooks,
+      _ctx: frameContext(opts.docBase),
+      _path: [],
+      onNodeCreated,
+    }),
   );
   opts.container.replaceChildren(el);
   syncRows(opts.container, rows);
