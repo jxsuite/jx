@@ -156,6 +156,35 @@ describe("bakeRepeaterSources", () => {
     warn.mockRestore();
   });
 
+  test("a backend that does not answer holds the render for a bounded time, and no later render", async () => {
+    const warn = spyOn(console, "warn").mockImplementation(() => null);
+    let answer: (value: JsonValue) => void = () => {};
+    installMockPlatform({
+      resolveClass: (body: JsonObject): Promise<JsonValue> => {
+        asked.push(body);
+        return new Promise((resolve) => {
+          answer = resolve;
+        });
+      },
+    });
+    // The first render waits its time out, and draws the entry as written.
+    const first = await bakeRepeaterSources(PAGE, ["shows"], undefined, {}, 5);
+    expect(first.state?.shows).toBe(SHOWS);
+    expect(String(warn.mock.calls.at(-1)?.[1])).toContain("no answer from the backend");
+    // The next one does not wait at all, though its own bound is far off, and asks nothing again.
+    const second = await bakeRepeaterSources(PAGE, ["shows"], undefined, {}, 60_000);
+    expect(second.state?.shows).toBe(SHOWS);
+    expect(asked).toHaveLength(1);
+    // Once the backend has answered, the render after it has the rows.
+    answer([{ id: "late" }]);
+    await Promise.resolve();
+    await Promise.resolve();
+    const third = await bakeRepeaterSources(PAGE, ["shows"], undefined, {}, 60_000);
+    expect(third.state?.shows).toEqual([{ id: "late" }]);
+    expect(asked).toHaveLength(1);
+    warn.mockRestore();
+  });
+
   test("nothing to resolve, or no way to, hands the document back", async () => {
     expect(await bakeRepeaterSources(PAGE, [])).toBe(PAGE);
     expect(await bakeRepeaterSources({ tagName: "p" }, ["shows"])).toEqual({ tagName: "p" });

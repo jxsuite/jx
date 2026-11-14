@@ -683,6 +683,13 @@ export type BindingState = "resolved" | "pending" | "failed" | "not-run";
 /** What a binding that reads an entry the canvas does not run says, on the canvas and beside it. */
 export const NOT_RUN_NOTE = "Runs on the live page";
 
+/**
+ * How long anything a canvas render waits on, or a frame looks up, may go unanswered: a frame's
+ * remote lookup is read as failed after it, and the host stops holding a render for a class the
+ * backend has not resolved (studio.md §4.5).
+ */
+export const REMOTE_TIMEOUT_MS = 30_000;
+
 /** What a binding still waiting for its data says. */
 export const PENDING_NOTE = "Loading";
 
@@ -695,6 +702,17 @@ export const FAILED_NOTE = "Could not load";
  * too.
  */
 export const THROWN_NOTE = "Has an error";
+
+/**
+ * What the template row of a repeater whose `items` is a template string says. A template is not a
+ * list (spec.md §10.1): a build refuses it and the runtime draws no rows, so the row stands for a
+ * list that will never have any, and "No items" would send the author to the data.
+ */
+export const ITEMS_TEMPLATE_NOTE = "Items is a template, not a list";
+
+/** The reason that goes with {@link ITEMS_TEMPLATE_NOTE}, and what to do about it. */
+export const ITEMS_TEMPLATE_ERROR =
+  "A repeater's items is a reference or a literal list. Compute the list in a state entry and point items at it.";
 
 /** One state entry's standing: {@link BindingState}, and what the canvas says about it. */
 export interface EntryStatus {
