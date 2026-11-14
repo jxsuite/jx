@@ -9,10 +9,13 @@
 import { describe, expect, test } from "bun:test";
 import type { JxMutableNode } from "@jxsuite/schema/types";
 import {
+  COMPACTION_REQUEST,
+  DEFAULT_COMPACTION,
   DEFAULT_TURN_POLICY,
   checkResume,
   policyDigest,
   runTurn,
+  summarizeForCompaction,
   turnDigests,
 } from "../src/harness/index.ts";
 import type {
@@ -509,5 +512,68 @@ describe("digest", () => {
     expect(digest([1, 2])).not.toBe(digest([2, 1]));
     // FNV-1a 64 of the two bytes `""`: the scheme is pinned to a value anyone can check.
     expect(digest("")).toBe("f1:07cc7607b4949e25");
+  });
+});
+
+describe("summarizeForCompaction", () => {
+  const request = {
+    messages: [USER],
+    system: [{ text: "You build lists." }],
+    tools: [{ description: "d", inputSchema: { type: "object" as const }, name: "probe" }],
+  };
+
+  test("asks the model, after the conversation, and answers what it wrote", async () => {
+    const model = scriptedModel([
+      [
+        { content: " The author asked for ", type: "delta" },
+        // A call the model makes anyway is ignored: a summary is text.
+        { id: "x", name: "probe", type: "tool_call_start" },
+        { content: "a list. ", type: "delta" },
+        { stopReason: "stop", type: "done" },
+      ],
+    ]);
+    const summary = await summarizeForCompaction(model, request, new AbortController().signal);
+    expect(summary).toBe("The author asked for a list.");
+    const [asked] = model.requests;
+    // The system prompt and the tools travel as they were; the request is the last message.
+    expect(asked!.system).toBe(request.system);
+    expect(asked!.tools).toBe(request.tools);
+    expect(asked!.messages.slice(0, -1)).toEqual([USER]);
+    expect(asked!.messages.at(-1)).toMatchObject({
+      blocks: [{ text: COMPACTION_REQUEST, type: "text" }],
+      meta: { kind: "compaction", origin: "harness" },
+      role: "user",
+    });
+  });
+
+  test.each<[string, WireEvent[]]>([
+    [
+      "the provider failed",
+      [
+        { content: "Half", type: "delta" },
+        { message: "No.", type: "error" },
+      ],
+    ],
+    [
+      "the request was stopped",
+      [
+        { content: "Half", type: "delta" },
+        { stopReason: "cancelled", type: "done" },
+      ],
+    ],
+    ["the model wrote nothing", [{ stopReason: "stop", type: "done" }]],
+    ["the model wrote only whitespace", [{ content: " \n", type: "delta" }]],
+  ])("answers nothing when %s", async (_label, frames) => {
+    const model = scriptedModel([frames]);
+    expect(await summarizeForCompaction(model, request, new AbortController().signal)).toBe("");
+  });
+
+  test("each family has a default: the tail for OpenAI-compatible, a summary for Claude", () => {
+    expect(DEFAULT_COMPACTION["openai-compat"]).toEqual({
+      keepRecent: 20,
+      mode: "keep-tail",
+      thresholdRatio: 0.8,
+    });
+    expect(DEFAULT_COMPACTION.anthropic.mode).toBe("summarize");
   });
 });

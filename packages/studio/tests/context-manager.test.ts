@@ -20,8 +20,14 @@ void mock.module("../src/services/ai-models", () => ({
   proxyActionOffer: () => null,
 }));
 
-const { UNANSWERED_TOOL_RESULT, pruneOrphanToolMessages, shedToolResults, trimContext } =
-  await import("../src/services/context-manager");
+const {
+  UNANSWERED_TOOL_RESULT,
+  compactBySummary,
+  needsCompaction,
+  pruneOrphanToolMessages,
+  shedToolResults,
+  trimContext,
+} = await import("../src/services/context-manager");
 
 beforeEach(() => {
   reportedWindows = {};
@@ -376,6 +382,92 @@ describe("context-manager — the backend's limit on messages per request", () =
     expect(result!.droppedCount).toBe(25);
     expect(cs.messages).toHaveLength(6);
     expect(cs.messages[0]!.content).toContain("to stay within token budget");
+  });
+});
+
+describe("context-manager — compacting by summary", () => {
+  /* The other way to make a long conversation fit (specs/ai.md §2.2, §3.8): everything before the
+     turn's own message is replaced by a summary the model wrote. */
+  function conversation(tokens = 300) {
+    const cs = createChatState({ model: "gpt-4" }); // 8192 → budget 6553.
+    const msgs: Omit<LiveMessage, "id" | "timestamp">[] = [];
+    for (let i = 0; i < 30; i++) {
+      msgs.push({ role: i % 2 === 0 ? "user" : "assistant", content: longContent(tokens) });
+    }
+    pushMessages(cs, [
+      ...msgs,
+      { content: "And now this.", role: "user" },
+      { content: "", role: "assistant" },
+    ]);
+    return cs;
+  }
+
+  test("needsCompaction answers for the token budget and for the backend's message limit", () => {
+    expect(needsCompaction(conversation(), "System prompt")).toBe(true);
+    const short = createChatState({ model: "gpt-4" });
+    pushMessages(short, [{ content: "Hi", role: "user" }]);
+    expect(needsCompaction(short, "System prompt")).toBe(false);
+    routeLimits = { maxMessages: 10 };
+    expect(needsCompaction(conversation(1), "System prompt")).toBe(true);
+    routeLimits = { maxMessages: 100 };
+    expect(needsCompaction(conversation(1), "System prompt")).toBe(false);
+  });
+
+  test("replaces everything before the turn's message with the summary, and keeps the turn", async () => {
+    const cs = conversation();
+    const seen: number[] = [];
+    const result = await compactBySummary(cs, "System prompt", (earlier) => {
+      seen.push(earlier.length);
+      return Promise.resolve("The author wants a pricing page.");
+    });
+    // The thirty earlier messages were handed over, and are one message now.
+    expect(seen).toEqual([30]);
+    expect(result!.droppedCount).toBe(30);
+    expect(cs.messages.map((message) => message.role)).toEqual(["user", "user", "assistant"]);
+    expect(cs.messages[0]).toMatchObject({
+      content:
+        "[Summary of the earlier conversation. 30 messages were condensed, by the assistant, to stay within the model's context:\n\nThe author wants a pricing page.]",
+      meta: { kind: "compaction", origin: "harness" },
+      role: "user",
+    });
+    expect(cs.messages[0]!.id.startsWith("ctx_summary_")).toBe(true);
+    expect(cs.messages[1]!.content).toBe("And now this.");
+    expect(cs.contextWarning).toBe(true);
+    expect(cs.tokenCount).toBe(result!.estimatedTokens);
+    expect(needsCompaction(cs, "System prompt")).toBe(false);
+  });
+
+  test("changes nothing when there is no summary to use", async () => {
+    const cs = conversation();
+    const before = cs.messages.length;
+    expect(await compactBySummary(cs, "System prompt", () => Promise.resolve(""))).toBeNull();
+    expect(cs.messages).toHaveLength(before);
+  });
+
+  test("has nothing to summarize in a conversation that is only its first message", async () => {
+    const cs = createChatState({ model: "gpt-4" });
+    pushMessages(cs, [{ content: longContent(9000), role: "user" }]);
+    let asked = 0;
+    const result = await compactBySummary(cs, "System prompt", () => {
+      asked += 1;
+      return Promise.resolve("unused");
+    });
+    expect(result).toBeNull();
+    expect(asked).toBe(0);
+    const none = createChatState({ model: "gpt-4" });
+    expect(await compactBySummary(none, "", () => Promise.resolve("unused"))).toBeNull();
+  });
+
+  test("replaces nothing in a conversation that moved while the model wrote", async () => {
+    const cs = conversation();
+    const result = await compactBySummary(cs, "System prompt", () => {
+      // A New Chat while the summary was being written.
+      cs.messages.length = 0;
+      pushMessages(cs, [{ content: "Another chat", role: "user" }]);
+      return Promise.resolve("A summary of a conversation that is gone.");
+    });
+    expect(result).toBeNull();
+    expect(cs.messages.map((message) => message.content)).toEqual(["Another chat"]);
   });
 });
 

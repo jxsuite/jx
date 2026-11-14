@@ -363,8 +363,12 @@ export function toAnthropicMessagesRequest(
     if (parts.length === 0) {
       continue;
     }
-    if (results) {
-      results.content.push(...parts);
+    /* One user turn, whatever it is made of: the tool results it follows, or the user message
+       before it (a summary of an earlier conversation, then the person's new message). The API
+       reads consecutive user messages as one turn, and this sends them as one. */
+    const previous = results ?? messages.at(-1);
+    if (previous?.role === "user") {
+      previous.content.push(...parts);
     } else {
       messages.push({ content: parts, role: "user" });
     }

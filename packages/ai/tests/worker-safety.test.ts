@@ -149,6 +149,7 @@ const FROZEN_GRAPHS = new Map<string, readonly string[]>([
     "./harness",
     [
       "packages/ai/src/harness/checkpoint.ts",
+      "packages/ai/src/harness/compaction.ts",
       "packages/ai/src/harness/index.ts",
       "packages/ai/src/harness/lock.ts",
       "packages/ai/src/harness/model.ts",

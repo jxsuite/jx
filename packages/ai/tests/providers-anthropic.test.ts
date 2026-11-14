@@ -247,6 +247,23 @@ describe("toAnthropicMessagesRequest", () => {
     });
   });
 
+  it("sends consecutive user messages as one user turn", () => {
+    // A summary of an earlier conversation, then the person's new message.
+    const body = toAnthropicMessagesRequest(
+      requestOf([user("[Summary of the earlier conversation.]"), user("And now this.")]),
+      OPTIONS,
+    );
+    expect(body.messages).toEqual([
+      {
+        content: [
+          { text: "[Summary of the earlier conversation.]", type: "text" },
+          { text: "And now this.", type: "text" },
+        ],
+        role: "user",
+      },
+    ]);
+  });
+
   it("starts at a person's message and never ends on an assistant one", () => {
     const messages: WireMessage[] = [
       { blocks: [call("orphan")], role: "assistant" },
@@ -270,9 +287,15 @@ describe("toAnthropicMessagesRequest", () => {
       user("Still here."),
     ];
     const body = toAnthropicMessagesRequest(requestOf(messages), OPTIONS);
+    // With nothing left between them, the two messages of a person's are one user turn.
     expect(body.messages).toEqual([
-      { content: [{ text: "Hello.", type: "text" }], role: "user" },
-      { content: [{ text: "Still here.", type: "text" }], role: "user" },
+      {
+        content: [
+          { text: "Hello.", type: "text" },
+          { text: "Still here.", type: "text" },
+        ],
+        role: "user",
+      },
     ]);
   });
 
