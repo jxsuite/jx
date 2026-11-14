@@ -13,6 +13,7 @@ import { createChatState, createProxyStreamingClient, createToolRegistry } from 
 import { createTurnLock } from "@jxsuite/ai/harness";
 import { negotiateWire } from "@jxsuite/ai/streaming-client";
 import { createSessionFacts } from "@jxsuite/ai/tools";
+import type { LiveMessage } from "@jxsuite/ai/messages";
 import type { ProjectConfig } from "@jxsuite/schema/types";
 import { getPlatform } from "../platform";
 import { activeTab, workspace } from "../workspace/workspace";
@@ -44,6 +45,9 @@ import { validateDoc } from "./jx-validate";
 import { reloadFileInTab } from "../files/files";
 import { getExtensionCatalog, refreshExtensionUi } from "../format/format-host";
 import * as sessionStore from "./ai-session-store";
+import type { SaveResult } from "./ai-session-store";
+import { dismiss, notify } from "./notify";
+import type { Notification } from "./notify";
 import { backfillToolResults, stripToolResults } from "./tool-outcomes";
 
 /**
@@ -91,6 +95,10 @@ export function createDocumentAssistant() {
 
   /** The persisted session backing the live chat; null = fresh unsaved chat. */
   let sessionId: string | null = null;
+  /** Where this window's sessions are written: through the queue, in the order asked for. */
+  const store = sessionStore.localSessionStore;
+  /** The standing notice that saving is not working, while it is not. */
+  let saveProblem: Notification | null = null;
   /* What the conversation's tools remember across its turns (an import already ran): every call's
      `ctx.session`. New Chat starts over; a new session id keeps what the conversation knew. */
   let sessionFacts = createSessionFacts();
@@ -138,7 +146,7 @@ export function createDocumentAssistant() {
     // Conversation has to follow it out of the unscoped store.
     onProjectAdopted: (root: string) => {
       if (sessionId) {
-        sessionStore.moveSession("", root, sessionId);
+        void store.move("", root, sessionId);
       }
     },
   });
@@ -152,7 +160,7 @@ export function createDocumentAssistant() {
     // Conversation keeps persisting (saveSession drops writes for ids missing from the index).
     onProjectAdopted: (root: string) => {
       if (sessionId) {
-        sessionStore.moveSession("", root, sessionId);
+        void store.move("", root, sessionId);
       }
     },
     onProjectConfigWritten: async (config: ProjectConfig, text: string) => {
@@ -413,7 +421,7 @@ export function createDocumentAssistant() {
     sessionFacts = createSessionFacts();
     chatState.clearChat();
     sessionId = null;
-    sessionStore.setActiveSession(projectRoot(), null);
+    void store.setActive(projectRoot(), null);
   }
 
   // ── Sessions ──────────────────────────────────────────────────────────
@@ -434,12 +442,12 @@ export function createDocumentAssistant() {
     chatState.clearChat();
     pushRestoredMessages(msgs);
     sessionId = id;
-    sessionStore.setActiveSession(projectRoot(), id);
+    void store.setActive(projectRoot(), id);
   }
 
   /** Delete a persisted session; deleting the open one leaves a fresh unsaved chat. */
   function deleteSession(id: string) {
-    sessionStore.deleteSession(projectRoot(), id);
+    void store.remove(projectRoot(), id);
     if (sessionId === id) {
       stop();
       interactions.reset();
@@ -454,7 +462,15 @@ export function createDocumentAssistant() {
 
   // ── Persistence ───────────────────────────────────────────────────────
 
-  /** Persist the live conversation into its backing session (non-blocking). */
+  /**
+   * Persist the live conversation into its backing session (non-blocking), and say so when the
+   * store could not take it (specs/ai.md §3.13).
+   *
+   * The save goes through the store's queue, so it cannot land after a Delete or a New Chat that
+   * followed it. A conversation that is no longer listed is simply not written, which is what
+   * deleting it meant; a store that is full or missing is the author's to know about, once, as a
+   * notice that does not interrupt the turn.
+   */
   function persistChat() {
     if (!sessionId) {
       return;
@@ -464,8 +480,26 @@ export function createDocumentAssistant() {
       (m) => m.role !== "assistant" || m.content || (m.toolCalls?.length ?? 0) > 0,
     );
     /* Without each call's `result`: the tool message that answers it is the outcome's one copy,
-       and a restore reads it back from there (services/tool-outcomes.ts). */
-    sessionStore.saveSession(projectRoot(), sessionId, stripToolResults(msgs));
+       and a restore reads it back from there (services/tool-outcomes.ts).
+       SAFETY: stripping `result` from each record leaves every other member of a live message as
+       it was, and the store's window reads only each message's role. */
+    const stripped = stripToolResults(msgs) as readonly LiveMessage[];
+    void store.save(projectRoot(), sessionId, stripped).then(reportSave);
+  }
+
+  /** Tell the author once when saving stops working, and take the notice back when it resumes. */
+  function reportSave(result: SaveResult) {
+    if (result.ok || result.reason === "not_in_index") {
+      if (result.ok && saveProblem) {
+        dismiss(saveProblem.id);
+        saveProblem = null;
+      }
+      return;
+    }
+    saveProblem ??= notify("warn", result.message, {
+      key: "assistant.session-save",
+      source: "Assistant",
+    });
   }
 
   /**

@@ -25,11 +25,19 @@
     ],
     "restored": [
       {
+        "id": "restored_T_1",
         "role": "user",
         "content": "\n\n   Redesign   the\tpricing page so every plan card lines up and the call to action stays visible\nsecond line",
-        "id": "restored_T_1"
+        "timestamp": 1767225600000,
+        "meta": { "kind": "restored" }
       },
-      { "role": "assistant", "content": "Sure.", "id": "restored_T_2" }
+      {
+        "id": "restored_T_2",
+        "role": "assistant",
+        "content": "Sure.",
+        "timestamp": 1767225600000,
+        "meta": { "kind": "restored" }
+      }
     ],
     "wire": [
       {
@@ -42,10 +50,19 @@
     "storage": {
       "jx-ai-chat-session:/proj/demo:s_T_1": [
         {
+          "id": "restored_T_1",
           "role": "user",
-          "content": "\n\n   Redesign   the\tpricing page so every plan card lines up and the call to action stays visible\nsecond line"
+          "content": "\n\n   Redesign   the\tpricing page so every plan card lines up and the call to action stays visible\nsecond line",
+          "timestamp": 1767225600000,
+          "meta": { "kind": "restored" }
         },
-        { "role": "assistant", "content": "Sure." }
+        {
+          "id": "restored_T_2",
+          "role": "assistant",
+          "content": "Sure.",
+          "timestamp": 1767225600000,
+          "meta": { "kind": "restored" }
+        }
       ],
       "jx-ai-chat-sessions:/proj/demo": {
         "version": 1,

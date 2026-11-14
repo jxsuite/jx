@@ -12,24 +12,56 @@ import {
   getActiveSessionId,
   listSessions,
   loadSession,
+  localSessionStore,
   MAX_PERSIST_MESSAGES,
   MAX_SESSIONS,
   saveSession,
   setActiveSession,
 } from "../src/services/ai-session-store";
-import type { PersistedMessage } from "../src/services/ai-session-store";
+import type { LiveMessage } from "@jxsuite/ai/messages";
 
 const ROOT = "/proj/demo";
 const INDEX_KEY = `jx-ai-chat-sessions:${ROOT}`;
 const LEGACY_KEY = `jx-ai-chat-history:${ROOT}`;
 
-function msg(role: string, content: string, timestamp?: number): PersistedMessage {
-  return {
-    id: `m_${role}_${content.length}`,
-    role,
-    content,
-    ...(timestamp !== undefined && { timestamp }),
+/** A message as the live chat holds one. `STAMP` is the timestamp of one that names none. */
+const STAMP = Date.parse("2026-07-06T11:00:00Z");
+function msg(role: LiveMessage["role"], content: string, timestamp = STAMP): LiveMessage {
+  return { id: `m_${role}_${content.length}`, role, content, timestamp };
+}
+
+/**
+ * Run `body` against a store that reads and removes as the real one does, and refuses the writes
+ * `refuses` names with the error a full store throws.
+ */
+function withFullStorage(refuses: (key: string) => boolean, body: () => void) {
+  const real = globalThis.localStorage;
+  const fake = {
+    getItem: (key: string) => real.getItem(key),
+    removeItem: (key: string) => {
+      real.removeItem(key);
+    },
+    setItem(key: string, value: string) {
+      if (refuses(key)) {
+        throw new DOMException("full", "QuotaExceededError");
+      }
+      real.setItem(key, value);
+    },
   };
+  Object.defineProperty(globalThis, "localStorage", {
+    configurable: true,
+    value: fake,
+    writable: true,
+  });
+  try {
+    body();
+  } finally {
+    Object.defineProperty(globalThis, "localStorage", {
+      configurable: true,
+      value: real,
+      writable: true,
+    });
+  }
 }
 
 beforeEach(() => {
@@ -71,9 +103,11 @@ describe("session CRUD", () => {
     const meta = createSession(ROOT);
     setSystemTime(new Date("2026-07-06T12:05:00Z"));
     const messages = [msg("user", "hello"), msg("assistant", "hi there")];
-    saveSession(ROOT, meta.id, messages);
+    const saved = saveSession(ROOT, meta.id, messages);
 
     expect(loadSession(ROOT, meta.id)).toEqual(messages);
+    // The save says how it went, with the entry it refreshed.
+    expect(saved).toEqual({ meta: listSessions(ROOT)[0]!, ok: true });
     const [listed] = listSessions(ROOT);
     expect(listed!.messageCount).toBe(2);
     expect(listed!.updatedAt).toBeGreaterThan(meta.createdAt);
@@ -96,9 +130,31 @@ describe("session CRUD", () => {
     expect(loaded[0]!.content).toBe("m10");
   });
 
-  test("saveSession with unknown id writes the payload but no index entry", () => {
-    saveSession(ROOT, "ghost", [msg("user", "boo")]);
-    expect(loadSession(ROOT, "ghost")).toHaveLength(1);
+  /* The window is the last fifty messages, and it begins at one a person wrote (specs/ai.md
+     §3.13): a conversation that opened on a reply or a tool result is one no provider accepts. */
+  test("the saved window starts at a message a person wrote", () => {
+    const meta = createSession(ROOT);
+    const many: LiveMessage[] = Array.from({ length: MAX_PERSIST_MESSAGES + 3 }, (_, i) =>
+      msg(i % 4 === 0 ? "user" : "assistant", `m${i}`),
+    );
+    const saved = saveSession(ROOT, meta.id, many);
+    const loaded = loadSession(ROOT, meta.id)!;
+    // The last fifty begin at m3, a reply; the window moves on to m4, the next message of a person's.
+    expect(loaded[0]).toMatchObject({ content: "m4", role: "user" });
+    expect(loaded).toHaveLength(MAX_PERSIST_MESSAGES - 1);
+    expect(saved).toMatchObject({ meta: { messageCount: MAX_PERSIST_MESSAGES - 1 }, ok: true });
+  });
+
+  /* A save for a conversation that is not listed writes nothing: it was deleted, and a payload
+     that came back after the delete would have nothing to list it under. */
+  test("saveSession with an unknown id writes nothing, and says so", () => {
+    const result = saveSession(ROOT, "ghost", [msg("user", "boo")]);
+    expect(result).toEqual({
+      message: "This conversation is no longer in the list of chats, so it was not saved.",
+      ok: false,
+      reason: "not_in_index",
+    });
+    expect(loadSession(ROOT, "ghost")).toBeNull();
     expect(listSessions(ROOT)).toHaveLength(0);
   });
 
@@ -198,10 +254,164 @@ describe("legacy migration", () => {
   });
 
   test("legacy messages without timestamps fall back to now", () => {
-    localStorage.setItem(LEGACY_KEY, JSON.stringify([msg("user", "untimed")]));
+    localStorage.setItem(
+      LEGACY_KEY,
+      JSON.stringify([{ content: "untimed", id: "m", role: "user" }]),
+    );
     const [meta] = listSessions(ROOT);
     expect(meta!.createdAt).toBe(Date.now());
     expect(meta!.updatedAt).toBe(Date.now());
+    // The message is stamped with the same instant, so every restored message has a timestamp.
+    expect(loadSession(ROOT, meta!.id)).toEqual([
+      { content: "untimed", id: "m", role: "user", timestamp: Date.now() },
+    ]);
+  });
+
+  /* The legacy key is the only copy until the session it becomes has been written. A store too
+     full to take that copy keeps the original, so the next read migrates it instead of losing it. */
+  test("keeps the legacy store when the migrated session cannot be written", () => {
+    const legacy = [msg("user", "old question", 1000), msg("assistant", "old answer", 2000)];
+    localStorage.setItem(LEGACY_KEY, JSON.stringify(legacy));
+    withFullStorage(
+      () => true,
+      () => {
+        expect(listSessions(ROOT)).toHaveLength(0);
+      },
+    );
+    expect(JSON.parse(localStorage.getItem(LEGACY_KEY)!)).toEqual(legacy);
+    // No half-written session is left behind, and with room again the migration completes.
+    expect(Object.keys(localStorage)).toEqual([LEGACY_KEY]);
+    expect(listSessions(ROOT)).toHaveLength(1);
+    expect(localStorage.getItem(LEGACY_KEY)).toBeNull();
+  });
+});
+
+describe("reading a stored conversation", () => {
+  /* Every read is migrated (specs/ai.md §3.13), so an old payload loads as the current shape. */
+  test("a message stored without an id is given one once, and keeps it", () => {
+    const meta = createSession(ROOT, "ids");
+    const key = `jx-ai-chat-session:${ROOT}:${meta.id}`;
+    localStorage.setItem(
+      key,
+      JSON.stringify([
+        { content: "no id", role: "user", timestamp: 5 },
+        { content: "has one", id: "kept", role: "assistant", timestamp: 6 },
+      ]),
+    );
+    const first = loadSession(ROOT, meta.id)!;
+    expect(first[0]!.id).toMatch(/^restored_/);
+    expect(first[0]!.meta).toEqual({ kind: "restored" });
+    expect(first[1]).toEqual({ content: "has one", id: "kept", role: "assistant", timestamp: 6 });
+    // The id was written back, so a second read finds the same one rather than minting another.
+    expect(loadSession(ROOT, meta.id)).toEqual(first);
+  });
+
+  test("a payload with nothing to add is not written back", () => {
+    const meta = createSession(ROOT, "stable");
+    saveSession(ROOT, meta.id, [msg("user", "hello")]);
+    const key = `jx-ai-chat-session:${ROOT}:${meta.id}`;
+    const before = localStorage.getItem(key);
+    loadSession(ROOT, meta.id);
+    expect(localStorage.getItem(key)).toBe(before);
+  });
+
+  test("entries that are not messages are dropped, and a payload that is not a list is absent", () => {
+    const meta = createSession(ROOT, "junk");
+    const key = `jx-ai-chat-session:${ROOT}:${meta.id}`;
+    localStorage.setItem(
+      key,
+      JSON.stringify(["text", null, { role: "narrator" }, msg("user", "kept")]),
+    );
+    expect(loadSession(ROOT, meta.id)).toEqual([msg("user", "kept")]);
+    localStorage.setItem(key, JSON.stringify({ messages: [] }));
+    expect(loadSession(ROOT, meta.id)).toBeNull();
+  });
+});
+
+describe("a save that cannot be written", () => {
+  test("a full store is reported as quota, and the entry is left as it was", () => {
+    const meta = createSession(ROOT, "full");
+    withFullStorage(
+      () => true,
+      () => {
+        expect(saveSession(ROOT, meta.id, [msg("user", "hi")])).toEqual({
+          message:
+            "This browser's storage is full, so the conversation was not saved. Delete older chats to make room.",
+          ok: false,
+          reason: "quota",
+        });
+      },
+    );
+    expect(listSessions(ROOT)[0]!.messageCount).toBe(0);
+  });
+
+  test("a payload that was written but an index that was not is still a failed save", () => {
+    const meta = createSession(ROOT, "half");
+    withFullStorage(
+      (key) => key === INDEX_KEY,
+      () => {
+        expect(saveSession(ROOT, meta.id, [msg("user", "hi")])).toMatchObject({
+          ok: false,
+          reason: "quota",
+        });
+      },
+    );
+  });
+
+  test("a host with no storage is reported as unavailable", () => {
+    const real = globalThis.localStorage;
+    Reflect.deleteProperty(globalThis, "localStorage");
+    try {
+      expect(saveSession(ROOT, "any", [msg("user", "hi")])).toMatchObject({
+        ok: false,
+        reason: "unavailable",
+      });
+    } finally {
+      Object.defineProperty(globalThis, "localStorage", {
+        configurable: true,
+        value: real,
+        writable: true,
+      });
+    }
+  });
+});
+
+describe("localSessionStore", () => {
+  /* The same store behind the asynchronous contract (specs/ai.md §3.13). Its operations are
+     synchronous underneath, so each write has landed by the time its call returns. */
+  test("serves the SessionStore contract over the same keys", async () => {
+    expect(localSessionStore.durable).toBe(true);
+    const created = localSessionStore.create(ROOT, "First ask");
+    // Not awaited yet, and already written.
+    expect(listSessions(ROOT)).toHaveLength(1);
+    const meta = await created;
+    expect(await localSessionStore.getActive(ROOT)).toBe(meta.id);
+
+    const saved = await localSessionStore.save(ROOT, meta.id, [msg("user", "First ask")]);
+    expect(saved).toMatchObject({ meta: { id: meta.id, messageCount: 1 }, ok: true });
+    expect(await localSessionStore.load(ROOT, meta.id)).toEqual([msg("user", "First ask")]);
+    expect(await localSessionStore.list(ROOT)).toEqual(listSessions(ROOT));
+
+    await localSessionStore.setActive(ROOT, null);
+    expect(getActiveSessionId(ROOT)).toBeNull();
+
+    await localSessionStore.move(ROOT, "/proj/other", meta.id);
+    expect(listSessions(ROOT)).toHaveLength(0);
+    expect(getActiveSessionId("/proj/other")).toBe(meta.id);
+
+    await localSessionStore.remove("/proj/other", meta.id);
+    expect(await localSessionStore.load("/proj/other", meta.id)).toBeNull();
+  });
+
+  test("a save asked for before a delete does not bring the conversation back", async () => {
+    const meta = await localSessionStore.create(ROOT, "going");
+    const saving = localSessionStore.save(ROOT, meta.id, [msg("user", "going")]);
+    const removing = localSessionStore.remove(ROOT, meta.id);
+    const late = localSessionStore.save(ROOT, meta.id, [msg("user", "going")]);
+    await Promise.all([saving, removing]);
+    expect(await late).toMatchObject({ ok: false, reason: "not_in_index" });
+    expect(loadSession(ROOT, meta.id)).toBeNull();
+    expect(Object.keys(localStorage).some((key) => key.includes(meta.id))).toBe(false);
   });
 });
 
