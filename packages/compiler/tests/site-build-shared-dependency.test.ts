@@ -91,8 +91,8 @@ describe("buildSite — a dependency shared by two parents is emitted once (issu
   });
 
   it("inlines each parent's rule exactly once too", () => {
-    expect(count(headOf(html), "lcb-card { border: 1px solid }")).toBe(1);
-    expect(count(headOf(html), "lcb-button { padding: 4px }")).toBe(1);
+    expect(count(headOf(html), "lcb-card { display: block; border: 1px solid }")).toBe(1);
+    expect(count(headOf(html), "lcb-button { display: block; padding: 4px }")).toBe(1);
   });
 
   it("loads the shared dependency's module exactly once, and preloads it once", () => {
