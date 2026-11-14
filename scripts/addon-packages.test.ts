@@ -43,7 +43,7 @@ test("a platform package ships exactly its addon, with provenance", () => {
     main: "jx-compiler.linux-x64-gnu.node",
     name: "@jxsuite/compiler-binding-linux-x64-gnu",
     os: ["linux"],
-    publishConfig: { provenance: true },
+    publishConfig: { access: "public", provenance: true },
     version: "1.2.3",
   });
 });
