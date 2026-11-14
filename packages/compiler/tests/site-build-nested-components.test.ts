@@ -330,6 +330,69 @@ describe("buildSite — a non-static instance nested inside a static component",
   });
 });
 
+// ── Observed attributes in a built site (spec.md §16.5) ───────────────────────
+
+describe("buildSite — a page instance's observed attribute", () => {
+  const TMP = resolve(import.meta.dir, "__test-site-observed__");
+  let errors: string[] = [];
+
+  beforeAll(async () => {
+    rmSync(TMP, { force: true, recursive: true });
+    writeJSON(TMP, "project.json", { build: { outDir: "./dist" }, name: "observed" });
+    // No handler, no function: the definition's only runtime surface is its observed attribute.
+    writeJSON(TMP, "components/user-card.json", {
+      children: [{ tagName: "h3", textContent: "${state.username}" }],
+      observedAttributes: ["username"],
+      state: { username: "Guest" },
+      tagName: "user-card",
+    });
+    writeJSON(TMP, "pages/index.json", {
+      $layout: false,
+      children: [
+        { attributes: { username: "Ada" }, tagName: "user-card" },
+        { $props: { username: "Props" }, attributes: { username: "Attr" }, tagName: "user-card" },
+        { tagName: "user-card" },
+      ],
+      tagName: "div",
+      title: "observed",
+    });
+    ({ errors } = await buildSite(TMP, { verbose: false }));
+  });
+
+  afterAll(() => {
+    rmSync(TMP, { force: true, recursive: true });
+  });
+
+  it("builds without error", () => {
+    expect(errors).toEqual([]);
+  });
+
+  it("is in the prerender, with the attribute still on the element and no props payload", () => {
+    expect(bodyOf(TMP)).toContain(
+      '<user-card username="Ada" data-jx-prerendered><h3>Ada</h3></user-card>',
+    );
+  });
+
+  it("lies beneath $props, which alone travel in data-jx-props", () => {
+    expect(bodyOf(TMP)).toContain(
+      '<user-card username="Attr" data-jx-props="{&quot;username&quot;:&quot;Props&quot;}" ' +
+        "data-jx-prerendered><h3>Props</h3></user-card>",
+    );
+  });
+
+  it("leaves an instance that writes none at the declared default", () => {
+    expect(bodyOf(TMP)).toContain("<user-card data-jx-prerendered><h3>Guest</h3></user-card>");
+  });
+
+  it("loads the component's module, which is what hears a later change", () => {
+    const html = readFileSync(resolve(TMP, "dist/index.html"), "utf8");
+    expect(html).toContain('<script type="module" src="/components/user-card.js"></script>');
+    const module = readFileSync(resolve(TMP, "dist/components/user-card.js"), "utf8");
+    expect(module).toContain("static get observedAttributes()");
+    expect(module).toContain("attributeChangedCallback(name, oldVal, newVal)");
+  });
+});
+
 // ── A definition that names itself ────────────────────────────────────────────
 
 describe("buildSite — a component that renders itself", () => {

@@ -5031,15 +5031,27 @@ export function isSignal(v: unknown): v is Ref<unknown> {
  * type. The default is the value the entry had before anyone set the attribute, which is what the
  * removal is asking to go back to.
  *
- * @param defaults The declared defaults by state key; a key absent from it has none.
+ * A COMPUTED entry is never written, by a change or by a removal: its value is produced, and
+ * attribute text replacing a `$prototype` or `$src` entry's function or record is not something a
+ * removal could give back. `declaredDefaults` records such an entry as present with the value
+ * `undefined`, which is what this reads.
+ *
+ * Exported for the compiler, which inlines the rule into generated modules and calls it for the
+ * prerender; `observed-attr-agreement.test.ts` there proves the copy agrees.
+ *
+ * @param defaults The declared defaults by state key; a key absent from it has none, and a key
+ *   present with `undefined` is computed.
  */
-function absorbAttribute(
+export function absorbAttribute(
   state: JxScope,
   name: string,
   value: string | null,
   defaults?: ReadonlyMap<string, JxScopeValue>,
 ): void {
   const camelKey = name.replaceAll(/-([a-z])/g, (_: string, c: string) => c.toUpperCase());
+  if (defaults?.has(camelKey) && defaults.get(camelKey) === undefined) {
+    return;
+  }
   const current = state[camelKey];
   if (isBoolean(current)) {
     // Presence IS the value for a boolean, so a removal is already spelled by the same rule.
@@ -5055,25 +5067,44 @@ function absorbAttribute(
 }
 
 /**
- * The declared default of every state entry that has one, by state key.
+ * The declared default of every state entry, by state key, read the way `buildScope` reads the
+ * entry's shape:
+ *
+ * - An object with `default` declares that value.
+ * - A computed entry (a marker of {@link COMPUTED_STATE_KEYS}, or a `${…}` template string) is
+ *   recorded as PRESENT with the value `undefined`: its value is produced, so it has no default and
+ *   an observed attribute never writes it ({@link absorbAttribute}).
+ * - A pure type definition (`{ "type": "number" }`), which `buildScope` leaves out of state, is
+ *   absent: it declares no default, and recording the schema object as one wrote that object into
+ *   state when its attribute was removed.
+ * - Anything else is its own default: the shorthand `{ "label": "none" }`, a plain object, an array.
+ *
+ * Exported for the compiler, which serializes the observed keys' defaults into generated modules;
+ * `observed-attr-agreement.test.ts` there proves the emitted map equals this function's output.
  *
  * @param def The element definition
  * @returns {Map<string, JxScopeValue>} Key → default
  */
-function declaredDefaults(def: JxElement): Map<string, JxScopeValue> {
+export function declaredDefaults(def: JxElement): Map<string, JxScopeValue> {
   const out = new Map<string, JxScopeValue>();
   for (const [key, entry] of Object.entries(def.state ?? {})) {
-    if (isNonNullObject(entry)) {
+    if (isString(entry) && isTemplateString(entry)) {
+      out.set(key, undefined);
+      continue;
+    }
+    if (isNonNullObject(entry) && !Array.isArray(entry)) {
       if ("default" in entry) {
         out.set(key, entry.default);
         continue;
       }
-      // A computed entry has no default: its value is produced, and a removal leaves it alone.
       if (COMPUTED_STATE_KEYS.some((marker) => marker in entry)) {
+        out.set(key, undefined);
+        continue;
+      }
+      if (hasSchemaKeywords(entry)) {
         continue;
       }
     }
-    // The shorthand `{ "label": "none" }` IS the default, the same way `buildScope` reads it.
     out.set(key, entry);
   }
   return out;
@@ -5750,6 +5781,11 @@ export async function defineElement(source: string | JxDocument, baseUrl?: strin
         return;
       }
       if (this._jxInitialized) {
+        /* Put back in a document (moved to another parent, or removed and inserted). Everything
+           below happens to an instance once, `onMount` included (§16.4): a sidecar wires up what it
+           was handed at the first insertion and is not handed it twice, which is what lets a
+           slotted element, moved by its parent's slot distribution straight after it rendered,
+           mount once. `onUnmount` still runs on every removal. */
         return;
       }
       this._jxInitialized = true;
@@ -5781,9 +5817,10 @@ export async function defineElement(source: string | JxDocument, baseUrl?: strin
          for an attribute set before connection too — but on an instance with no state yet, so it
          had nothing to write into, and `<jx-icon name="plus">` rendered with the default. Before
          the `$props` merges below, so a property a parent set still wins (spec §16.2). */
+      const connectDefaults = declaredDefaults(def);
       for (const attr of observedAttrs) {
         if (this.hasAttribute(attr)) {
-          absorbAttribute(state, attr, this.getAttribute(attr));
+          absorbAttribute(state, attr, this.getAttribute(attr), connectDefaults);
           // The raw string, not the coerced value: coercion is a function of it, so two equal
           // Strings are one input.
           supplied[attr] = this.getAttribute(attr);
@@ -6001,7 +6038,11 @@ export async function defineElement(source: string | JxDocument, baseUrl?: strin
          the ones a prop can write: a computed entry is what threw, and reading it here would
          throw again. Writes are coalesced into one microtask, because a parent sets its props one
          at a time. The same error is reported once, not once per attempt. */
-      const inputs = [...declaredDefaults(def).keys()].filter((key) => !isPrivateStateKey(key));
+      const inputs = Object.keys(def.state ?? {}).filter(
+        (key) =>
+          !isPrivateStateKey(key) &&
+          !(connectDefaults.has(key) && connectDefaults.get(key) === undefined),
+      );
       let lastMessage = failure.message;
       let queued = false;
       const watch = effect(

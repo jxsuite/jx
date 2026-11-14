@@ -500,7 +500,11 @@ describe("compiled element onMount/onUnmount", () => {
     };
     const result = await compileElement(doc);
     const module = result.files[0]!.content;
-    expect(module).toContain("queueMicrotask(() => this.state.onMount(this.state));");
+    // With the host, as its argument and its receiver, and on the first connection only.
+    expect(module).toContain("if (_first && typeof this.state.onMount === 'function') {");
+    expect(module).toContain(
+      "queueMicrotask(() => this.state.onMount.call(this, this.state, this));",
+    );
     expect(module).toContain(
       "if (typeof this.state.onUnmount === 'function') { this.state.onUnmount(this.state); }",
     );
@@ -621,7 +625,7 @@ describe("$lazy $src", () => {
     const result = await compileElement(lazyDoc());
     const module = result.files[0]!.content;
     expect(module).toContain("const onMount = (...args) =>");
-    expect(module).toContain("this.state.onMount(this.state)");
+    expect(module).toContain("this.state.onMount.call(this, this.state, this)");
   });
 
   test("$export still selects the export, off the module namespace", async () => {

@@ -178,7 +178,7 @@ One case the compiler cannot see: a handler loaded through `$src` lives in a Jav
 
 A component instance is expanded wherever it is written: on a page, slotted into another component, or inside another component's own `children`. Each level is prerendered against its own props, so a card that renders a button that renders an icon comes out as three levels of real markup, with no JavaScript when all three are static. Two details follow from that:
 
-- **Props flow down at build time.** A `$props` value written as a template (`"icon": "${state.icon}"`) resolves against the parent component's state, and the child's host `style` templates (a mask image chosen from a prop, say) resolve against the child's own props (the definition's defaults when the instance passes none) and land on the element as an inline `style`.
+- **Props flow down at build time.** A `$props` value written as a template (`"icon": "${state.icon}"`) resolves against the parent component's state, and the child's host `style` templates (a mask image chosen from a prop, say) resolve against the child's own props (the definition's defaults when the instance passes none) and land on the element as an inline `style`. An observed attribute written on the instance counts as a prop too, beneath `$props`.
 - **A component brings the project formulas it calls.** A formula declared in the project file reaches every component (see [Project formulas](/docs/framework/concepts/props-and-scope#project-formulas)). The build resolves a call inside a static component into the markup, and writes the formula into the module of a live component that still calls it, so a page does not have to keep a formula alive for a component on it.
 - **Each component decides its own JavaScript.** A live component nested inside a static one is prerendered as a shell that loads its own module and upgrades in place; the static parent still ships none.
 - **Children land in the slot they name, at every level.** A live component finds the children it was given when it upgrades, so its first paint and its live render place them alike.
@@ -195,6 +195,7 @@ Work the static-detection list backwards:
 - **A `${…}` template string** whose inputs exist only at runtime keeps its binding alive. Templates over build-time data compile away.
 - **`$switch`, `$ref` bindings, and mapped arrays** over runtime state need the client tier; mapped arrays over build-resolved content do not.
 - **Interactive components** cost their own module on the pages that use them. The rest of the page stays static.
+- **A component that declares `observedAttributes`** ships its module, because an attribute can change after the page loads.
 
 ## Related
 

@@ -22,9 +22,13 @@ import {
   definitionHasSlot,
   LIT_PART_GUARD,
   NATIVE_SETTER_HELPER,
+  OBSERVED_ATTR_HELPER,
   PREFORMATTED_TAGS,
   PROP_SUPPLY_HELPER,
   propSupplyHelperSource,
+  observedAttrHelperSource,
+  observedAttributeNames,
+  observedDefaultsSource,
   SLOT_CAPTURE_HELPER,
   SLOT_DISTRIBUTE_HELPER,
   slotHelperSource,
@@ -440,6 +444,16 @@ export function emitElementModule(
   if (tracksGiven) {
     lines.push(`const __jxInherited = new Set(${JSON.stringify(inheritedKeys)});`);
   }
+  /* Observed attributes (spec.md §16.5), emitted only when the definition declares any: the rule,
+     the list the platform reads, and the observed keys' declared defaults. */
+  const observed = observedAttributeNames(doc);
+  if (observed.length > 0) {
+    lines.push(
+      observedAttrHelperSource(),
+      `const __jxObserved = ${JSON.stringify(observed)};`,
+      `const __jxObservedDefaults = () => ${observedDefaultsSource(doc)};`,
+    );
+  }
   if (serverEntries.length > 0) {
     lines.push(serverCallHelperSource());
   }
@@ -464,6 +478,9 @@ export function emitElementModule(
     "  #rendered = false;",
     ...(shadow === null ? [] : ["  #root = null;"]),
     "",
+    ...(observed.length > 0
+      ? ["  static get observedAttributes() { return __jxObserved; }", ""]
+      : []),
     // Constructor: build reactive state
     "  constructor() {",
     "    super();",
@@ -683,6 +700,24 @@ export function emitElementModule(
     "    this.#rendered = true;",
     ...(tracksGiven ? ["    const _given = new Set();"] : []),
     /*
+     * Observed attributes already on the element, read first so that `$props` and a property a
+     * parent set still win (spec.md §16.5), and on the first connection only: a re-insertion must
+     * not put an attribute's value back over state a handler has changed since. A browser has
+     * already delivered these through `attributeChangedCallback` when the element was created or
+     * upgraded, so the read repeats it there; it is kept because it is the interpreter's shape,
+     * and because it does not depend on that delivery.
+     */
+    ...(observed.length > 0
+      ? [
+          "    if (_first) {",
+          "      const _d = __jxObservedDefaults();",
+          "      for (const _a of __jxObserved) {",
+          `        if (this.hasAttribute(_a)) ${OBSERVED_ATTR_HELPER}(this.state, _a, this.getAttribute(_a), _d);`,
+          "      }",
+          "    }",
+        ]
+      : []),
+    /*
      * Each of the three absorption paths below skips a `#`-prefixed key: private state is not part
      * of the component's interface and is never settable through $props (spec.md §5.6). The two
      * attribute paths check at run time because they read keys that arrive with the instance — an
@@ -864,9 +899,13 @@ export function emitElementModule(
     lines.push(`    if (_first) ${SLOT_DISTRIBUTE_HELPER}(this, _slotted);`);
   }
   lines.push(
-    // Lifecycle: onMount (spec §16.4) — same microtask contract as the runtime
-    "    if (typeof this.state.onMount === 'function') {",
-    "      queueMicrotask(() => this.state.onMount(this.state));",
+    /* Lifecycle: onMount (spec.md §16.4), by the interpreter's contract. On a microtask after the
+       render; with the scope and the HOST, and the host as its receiver, so a sidecar reaches the
+       element it belongs to; and on the first connection only, like everything else that happens
+       to an instance once. A parent's slot distribution moves a slotted element straight after it
+       rendered, and a hook that ran per connection handed every slotted component its host twice. */
+    "    if (_first && typeof this.state.onMount === 'function') {",
+    "      queueMicrotask(() => this.state.onMount.call(this, this.state, this));",
     "    }",
     "  }",
     "",
@@ -876,11 +915,27 @@ export function emitElementModule(
     "    this.#effects.length = 0;",
     "    if (typeof this.state.onUnmount === 'function') { this.state.onUnmount(this.state); }",
     "  }",
-    "}",
-    "",
-    `customElements.define('${doc.tagName}', ${className});`,
-    "",
   );
+  if ("onAdopted" in defs) {
+    lines.push(
+      "",
+      "  adoptedCallback() {",
+      "    if (typeof this.state.onAdopted === 'function') { this.state.onAdopted(this.state); }",
+      "  }",
+    );
+  }
+  if (observed.length > 0) {
+    lines.push(
+      "",
+      /* The constructor built the state, so unlike the interpreter this needs no state guard and
+         hears a change made before connection too. */
+      "  attributeChangedCallback(name, oldVal, newVal) {",
+      "    if (oldVal === newVal) return;",
+      `    ${OBSERVED_ATTR_HELPER}(this.state, name, newVal, __jxObservedDefaults());`,
+      "  }",
+    );
+  }
+  lines.push("}", "", `customElements.define('${doc.tagName}', ${className});`, "");
 
   return lines.join("\n");
 }

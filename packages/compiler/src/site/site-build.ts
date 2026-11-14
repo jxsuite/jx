@@ -112,6 +112,7 @@ import {
   isRuntimeOnlyStateKey,
   isSingleExpression,
   liftPropsAttributes,
+  observedAttributeProps,
   nextSlotId,
   preRenderComponentHtml,
   pureSchemeOf,
@@ -2664,7 +2665,12 @@ function expandComponents(
      * render them twice.
      */
     const shadow = resolveShadowMode(def, defaults);
-    const props = node.$props || null;
+    /* The instance's observed attributes, coerced, lie beneath its `$props` (spec.md §16.5): they
+       feed the prerender, the host style and the path, and stay out of `data-jx-props`, because the
+       element's module reads the attribute itself. The page walk has resolved the templates, so
+       the attribute values resolve against nothing. */
+    const observedProps = observedAttributeProps(def, node.attributes, {});
+    const props = observedProps ? { ...observedProps, ...node.$props } : node.$props || null;
     // This instance is the first frame of the path, so a definition that names itself is reported
     // At the first nesting rather than after the stack overflows.
     const context: ComponentPrerenderContext = {

@@ -1,7 +1,9 @@
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
 
 import { describe, expect, test } from "bun:test";
-import { defineElement } from "../src/runtime";
+import { reactive } from "@vue/reactivity";
+import { absorbAttribute, declaredDefaults, defineElement } from "../src/runtime";
+import type { JxScope } from "../src/types";
 
 try {
   GlobalRegistrator.register();
@@ -136,6 +138,109 @@ describe("observed attributes present at connection", () => {
     document.body.append(el);
     await tick();
     expect(el.textContent).toBe("from property");
+    el.remove();
+  });
+});
+
+describe("the observed-attribute rule, as exported for the compiler", () => {
+  /* SAFETY: a reactive object over plain values is the scope `buildScope` returns for them. */
+  const scope = (values: Record<string, string | number | boolean>) => reactive(values) as JxScope;
+
+  test("absorbAttribute is exported and coerces as the element does", () => {
+    const state = scope({ active: false, count: 0, label: "none", userName: "" });
+    absorbAttribute(state, "active", "");
+    absorbAttribute(state, "count", "3");
+    absorbAttribute(state, "label", "Inbox");
+    absorbAttribute(state, "user-name", "Ada");
+    expect({ ...state }).toEqual({ active: true, count: 3, label: "Inbox", userName: "Ada" });
+
+    absorbAttribute(state, "active", "false");
+    expect(state.active).toBe(false);
+
+    // A removal: the declared default where there is one, by type where there is none.
+    const defaults = new Map([["count", 1]]);
+    absorbAttribute(state, "count", null, defaults);
+    absorbAttribute(state, "label", null, defaults);
+    absorbAttribute(state, "active", null, defaults);
+    expect({ ...state }).toEqual({ active: false, count: 1, label: "", userName: "Ada" });
+    absorbAttribute(state, "count", null);
+    expect(state.count).toBe(0);
+  });
+
+  test("declaredDefaults mirrors buildScope's shapes", () => {
+    const defaults = declaredDefaults({
+      state: {
+        computed: { $expression: { operator: "+", target: 1, value: 1 } },
+        fn: { $prototype: "Function", body: "return 1" },
+        list: [1, 2],
+        meta: { kind: "none" },
+        pure: { type: "number" },
+        shorthand: "none",
+        template: "${state.shorthand}!",
+        typed: { default: 1, type: "number" },
+      },
+      tagName: "ca-defaults",
+    });
+    expect([...defaults]).toEqual([
+      ["computed", undefined],
+      ["fn", undefined],
+      ["list", [1, 2]],
+      ["meta", { kind: "none" }],
+      ["shorthand", "none"],
+      ["template", undefined],
+      ["typed", 1],
+    ]);
+    // A pure type definition declares none, and is not computed either: it is simply absent.
+    expect(defaults.has("pure")).toBe(false);
+  });
+
+  test("a pure type definition declares no default, so removing its attribute falls back by type", async () => {
+    const tag = "ca-pure-type";
+    await defineElement({
+      observedAttributes: ["amount"],
+      state: { amount: { type: "number" } },
+      tagName: tag,
+      textContent: "[${JSON.stringify(state.amount)}]",
+    });
+    const el = document.createElement(tag);
+    el.setAttribute("amount", "3");
+    document.body.append(el);
+    await tick();
+    // Coercion follows the value held, and the entry held nothing: the text is taken as written.
+    expect(el.textContent).toBe('["3"]');
+
+    el.removeAttribute("amount");
+    await tick();
+    // The empty string, never the schema object the entry was declared with.
+    expect(el.textContent).toBe('[""]');
+    el.remove();
+  });
+
+  test("an observed attribute never writes a computed entry", async () => {
+    const tag = "ca-computed";
+    await defineElement({
+      observedAttributes: ["greet", "shout"],
+      state: {
+        greet: { $prototype: "Function", body: "return 'hello'", parameters: ["who"] },
+        name: "Ada",
+        shout: "${state.name}!",
+      },
+      tagName: tag,
+      textContent: "${state.greet('you')} ${state.shout}",
+    });
+    // Present at connection, changed afterwards, then removed: none of the three writes.
+    const el = document.createElement(tag);
+    el.setAttribute("greet", "text");
+    el.setAttribute("shout", "text");
+    document.body.append(el);
+    await tick();
+    expect(el.textContent).toBe("hello Ada!");
+
+    el.setAttribute("greet", "other");
+    el.removeAttribute("shout");
+    el.removeAttribute("greet");
+    await tick();
+    expect(el.textContent).toBe("hello Ada!");
     el.remove();
   });
 });

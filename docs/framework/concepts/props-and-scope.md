@@ -10,6 +10,7 @@ code:
   - packages/runtime/src/runtime.ts
   - packages/runtime/src/expression.ts
   - packages/compiler/src/targets/compile-element.ts
+  - packages/compiler/src/shared.ts
 ---
 
 # Props and scope
@@ -148,7 +149,7 @@ A component that lists an entry in `observedAttributes` can also be given that p
 }
 ```
 
-An attribute is text, so it is coerced by the entry's type on the way in: a `string` is taken as written, a `number` goes through `Number()`, and a `boolean` is read by presence, where the literal text `false` counts as absent. An attribute already on the element when it connects is read before `$props` are merged, so a property a parent set still wins.
+An attribute is text, so it is coerced by the entry's type on the way in: a `string` is taken as written, a `number` goes through `Number()`, and a `boolean` is read by presence, where the literal text `false` counts as absent. An entry declared with only a `type` holds nothing until the attribute arrives, so it takes the text as written. An attribute already on the element when it connects is read before `$props` are merged, so a property a parent set still wins.
 
 **Removing an attribute restores the entry's declared default**, rather than leaving the prop holding nothing:
 
@@ -157,7 +158,9 @@ An attribute is text, so it is coerced by the entry's type on the way in: a `str
 <!-- After removeAttribute("count"): count is 1, its declared default, not 0 -->
 ```
 
-That is what makes a numeric prop able to say "unset". A component whose entry is declared in the shorthand form (`"title": "Untitled"`) has that literal as its default; a computed entry, one written with `$expression`, `$prototype`, `$ref` or `$src`, has no default and a removal leaves it alone.
+That is what makes a numeric prop able to say "unset". A component whose entry is declared in the shorthand form (`"title": "Untitled"`) has that literal as its default; a computed entry, one written with `$expression`, `$prototype`, `$ref`, `$src` or as a template string, has no default, and the attribute never writes a computed entry at all. An entry declared with only a `type` has no default either, and a removal clears it to the empty string.
+
+A built site does the same: the prerendered page already shows the attribute's value, and a component that declares `observedAttributes` ships its script so a later change is heard.
 
 :::doc-tip
 Give any prop you expect a host to clear a `default` you would be happy to see. It is the value the prop returns to, and it is the value a reader gets after any code path removes the attribute.

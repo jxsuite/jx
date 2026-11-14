@@ -1749,26 +1749,28 @@ Dependencies are registered depth-first before the parent.
 
 ### 16.4 Lifecycle Hooks
 
-> **Status: Partial.** The interpreter implements all four rows and `mount()`'s two hooks. The compiled element (`packages/compiler/src/targets/compile-element.ts`) calls `onMount(this.state)` without the host, and emits no `adoptedCallback` and no `attributeChangedCallback`, so `onAdopted` never runs in a built site.
+> **Status: Implemented.** Both tiers run every row from one contract: the interpreter's element class (`packages/runtime/src/runtime.ts`) and the module the element target emits (compiler.md §4.1).
 
-| Callback                   | `state` Entry | Called When                            |
-| -------------------------- | ------------- | -------------------------------------- |
-| `connectedCallback`        | `onMount`     | Element inserted into DOM and rendered |
-| `disconnectedCallback`     | `onUnmount`   | Element removed from DOM               |
-| `adoptedCallback`          | `onAdopted`   | Element moved to new document          |
-| `attributeChangedCallback` | (automatic)   | Observed attribute changes             |
+| Callback                   | `state` Entry | Called When                                       |
+| -------------------------- | ------------- | ------------------------------------------------- |
+| `connectedCallback`        | `onMount`     | Element first inserted into DOM, after it renders |
+| `disconnectedCallback`     | `onUnmount`   | Each time the element is removed from DOM         |
+| `adoptedCallback`          | `onAdopted`   | Element moved to new document                     |
+| `attributeChangedCallback` | (automatic)   | Observed attribute changes                        |
 
 **A render that throws is reported, not thrown onward.** The interpreter renders an instance inside its async `connectedCallback`, so a definition whose render throws with the values it was given (a `date` defaulting to `""` passed to `Intl/formatDate`, whose `RangeError` is the standard's own, §19.4c) would otherwise surface as an unhandled rejection that names no element. A `${…}` template binding is not such a throw: it survives its expression throwing and draws nothing until it can (§6.1), so this is a throw elsewhere in the render, such as a `$ref` binding to a computed entry. It is reported on the same two surfaces as a refused instance (§16.9): the console line `Jx: <tag> was not rendered:` with the error, and a bubbling, composed `jx-error` `ErrorEvent` from the element. What rendered before the throw stays, slot content is still distributed into the slots that were drawn, the rest of the page renders, and `onMount` does not run for that instance. A host already out of the document reports nothing.
 
 **And it is drawn again when what it was given changes.** A prop bound to data that arrives after the instance connected (a collection the page resolves after its first render, a row a list fills in) reaches the instance late, so the render that threw was a render of the empty values. The interpreter watches the definition's authored entries, the ones a prop can write, and when one changes it clears the instance and renders it again; a render that succeeds runs `onMount` then and stops the watch. Writes are coalesced into one microtask, the same error is reported once rather than per attempt, and a host removed from the document stops waiting.
 
-`onMount` receives `(state, host)` — the element's scope and the element itself — and is called with the host as `this`, as the compiled element calls it, where a state function is an arrow inside the element class. A behaviour sidecar that has to reach the element it belongs to gets it as an argument; before it did not, and elements dispatched an event at themselves purely so a root handler could read `currentTarget`, which was a round trip standing in for a missing parameter. The other three hooks take `(state)`.
+`onMount` receives `(state, host)` — the element's scope and the element itself — and is called with the host as `this`, as the compiled element calls it, where a state function is an arrow inside the element class. A behaviour sidecar that has to reach the element it belongs to gets it as an argument; before it did not, and elements dispatched an event at themselves purely so a root handler could read `currentTarget`, which was a round trip standing in for a missing parameter. `onUnmount` and `onAdopted` take `(state)`.
 
-A document mounted by a host through `mount()` ([embedding.md](./embedding.md) §2) runs the same two hooks at its own boundary: `onMount` once its root is attached, `onUnmount` from `dispose()`. The names are shared on purpose, so a component and a mounted document read alike.
+**`onMount` runs once per instance, on its first insertion; `onUnmount` runs on every removal.** An element that is moved, or removed and inserted again, is not mounted a second time, in either tier. A parent's slot distribution moves a slotted element straight after that element has rendered (§8.5), so a hook that ran per insertion would hand every slotted component its host twice, and a sidecar written to wire up what it is handed would wire it twice. A sidecar that releases something in `onUnmount` therefore releases what a later insertion can do without, or re-acquires it from the element's own events.
+
+A document mounted by a host through `mount()` ([embedding.md](./embedding.md) §2) runs the same two hooks at its own boundary: `onMount(state)` once its root is attached, with no host argument, since a mounted document has no element of its own that is the component, and `onUnmount(state)` from `dispose()`. The names are shared on purpose, so a component and a mounted document read alike.
 
 ### 16.5 Observed Attributes
 
-> **Status: Partial.** The interpreter implements the section (`absorbAttribute` and `declaredDefaults` in `packages/runtime/src/runtime.ts`). The compiled element module ignores `observedAttributes`: it emits no `static get observedAttributes`, no connect-time attribute read and no `attributeChangedCallback`, so in a built site `<user-card username="Ada">` renders the default, and later changes and removals do nothing.
+> **Status: Implemented.** One rule in every tier (`absorbAttribute` and `declaredDefaults` in `packages/runtime/src/runtime.ts`): the interpreter calls it, the compiled element module carries an inlined copy that a test proves agrees (compiler.md §4.1, §11), and the site build calls it for the prerender (compiler.md §8.1).
 
 ```json
 {
@@ -1778,11 +1780,13 @@ A document mounted by a host through `mount()` ([embedding.md](./embedding.md) �
 }
 ```
 
-Type coercion: `string` → no conversion, `number` → `Number()`, `boolean` → presence check.
+Type coercion: `string` → no conversion, `number` → `Number()`, `boolean` → presence check. Coercion follows the type of the value the entry holds, so an entry declared by `type` alone, which holds nothing until an attribute sets it, takes the text as a string.
 
 An observed attribute already on the element when it connects is read into state before `$props` are merged, so `<user-card username="Ada">` renders with `Ada` and a property a parent set before connection still wins (§16.2). The same coercion applies at connection and on every later change.
 
-REMOVING an observed attribute restores the state entry's declared default. The removal is reported as a null value, and writing that through gave a `string` entry the value `null` and a `number` entry `Number(null)`, which is `0` — so a numeric prop could never express "unset", and clearing one wrote a zero where the author meant to delete a key. The default is the value the entry held before anyone set the attribute, which is what the removal asks to go back to. An entry declared in the shorthand form (`"username": "Guest"`) has that literal as its default; an entry that is computed (`$expression`, `$prototype`, `$ref`, `$src`) has none and a removal leaves it alone. A `boolean` is unaffected, because presence already IS its value. An entry with no declared default falls back by type: `0` for a number, the empty string otherwise, never null.
+REMOVING an observed attribute restores the state entry's declared default. The removal is reported as a null value, and writing that through gave a `string` entry the value `null` and a `number` entry `Number(null)`, which is `0` — so a numeric prop could never express "unset", and clearing one wrote a zero where the author meant to delete a key. The default is the value the entry held before anyone set the attribute, which is what the removal asks to go back to. An entry declared in the shorthand form (`"username": "Guest"`) has that literal as its default; an entry that is computed (`$expression`, `$prototype`, `$ref`, `$src`, or a `${…}` template string) has none, and its attribute never writes it: not on a change and not on a removal. A `boolean` is unaffected, because presence already IS its value. An entry with no declared default (a pure type definition such as `{ "type": "string" }`, or a key the definition does not declare) falls back by the type of the value it holds: `0` for a number, the empty string otherwise, never null.
+
+A built site applies the same rule twice. The prerender reads each observed attribute an instance writes, beneath its `$props`, so the first paint already shows it; and a definition that declares `observedAttributes` is never compiled as fully static, so its module ships and hears every later change.
 
 ### 16.6 Light DOM Rendering
 

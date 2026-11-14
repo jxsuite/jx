@@ -15,7 +15,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } fr
 import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { isBoolean, isNonNullObject } from "@jxsuite/schema/guards";
+import { isBoolean, isFunction, isNonNullObject } from "@jxsuite/schema/guards";
 import type { JsonObject, JsonValue, JxDocument } from "@jxsuite/schema/types";
 import { Window } from "happy-dom";
 import type { Element, HTMLElement } from "happy-dom";
@@ -472,6 +472,190 @@ describe("compiled element — the property bridge", () => {
     expect(el.textContent.trim()).toBe("from attribute");
     // The member the element renders with is still the class's own.
     expect(Object.hasOwn(el, "template")).toBe(false);
+  });
+});
+
+// ── Lifecycle hooks and observed attributes (spec.md §16.4, §16.5) ───────────
+
+describe("compiled element — lifecycle and observed attributes", () => {
+  const CARD: JxDocument = {
+    children: [
+      { className: "username", tagName: "p", textContent: "${state.username}" },
+      { className: "count", tagName: "p", textContent: "${JSON.stringify(state.count)}" },
+      { className: "active", tagName: "p", textContent: "${JSON.stringify(state.active)}" },
+      { className: "meta", tagName: "p", textContent: "${JSON.stringify(state.meta)}" },
+      { className: "amount", tagName: "p", textContent: "${JSON.stringify(state.amount)}" },
+      { className: "shout", tagName: "p", textContent: "${state.shout}" },
+    ],
+    observedAttributes: ["username", "count", "active", "meta", "amount", "shout"],
+    state: {
+      active: false,
+      adopted: 0,
+      amount: { type: "number" },
+      count: { default: 1, type: "number" },
+      meta: { kind: "none" },
+      mounts: 0,
+      onAdopted: { $prototype: "Function", body: "state.adopted += 1" },
+      onMount: {
+        $prototype: "Function",
+        body: "state.mounts += 1; host.dataset.mounted = String(host === this);",
+        parameters: ["state", "host"],
+      },
+      onUnmount: { $prototype: "Function", body: "state.unmounts += 1" },
+      shout: "${state.username}!",
+      unmounts: 0,
+      username: "Guest",
+    },
+    tagName: "ls-observed",
+  };
+
+  const text = (el: Element, name: string) => el.querySelector(`p.${name}`)?.textContent;
+  const microtask = () => Promise.resolve();
+
+  function connect(attributes: Record<string, string> = {}): HTMLElement {
+    const el = win.document.createElement("ls-observed");
+    for (const [name, value] of Object.entries(attributes)) {
+      el.setAttribute(name, value);
+    }
+    win.document.body.append(el);
+    return el;
+  }
+
+  beforeAll(async () => {
+    const { files } = await compileElement(CARD);
+    writeFileSync(resolve(TMP, "observed.js"), files[0]!.content, "utf8");
+    await import(resolve(TMP, "observed.js"));
+  });
+
+  beforeEach(() => {
+    win.document.body.innerHTML = "";
+  });
+
+  test("onMount receives the element as its second argument and as its receiver", async () => {
+    const el = connect();
+    await microtask();
+    expect(stateOf(el).mounts).toBe(1);
+    expect(el.dataset.mounted).toBe("true");
+  });
+
+  test("onMount runs on the first connection only, and onUnmount on every removal", async () => {
+    const el = connect();
+    await microtask();
+    el.remove();
+    win.document.body.append(el);
+    await microtask();
+    el.remove();
+
+    expect(stateOf(el).mounts).toBe(1);
+    expect(stateOf(el).unmounts).toBe(2);
+  });
+
+  test("onAdopted runs from adoptedCallback", () => {
+    const el = connect();
+    // Happy-dom implements no adoption reaction, so the callback is called as the platform would.
+    if (!("adoptedCallback" in el) || !isFunction(el.adoptedCallback)) {
+      throw new Error("Expected the compiled element to define adoptedCallback");
+    }
+    el.adoptedCallback();
+    expect(stateOf(el).adopted).toBe(1);
+  });
+
+  test("an observed attribute present at insertion renders, coerced", () => {
+    const el = connect({ active: "", count: "3", username: "Ada" });
+    expect(text(el, "username")).toBe("Ada");
+    expect(text(el, "count")).toBe("3");
+    expect(text(el, "active")).toBe("true");
+  });
+
+  test("an element upgraded after insertion reads its attributes", async () => {
+    win.document.body.innerHTML = '<ls-observed-late username="Ada" count="4"></ls-observed-late>';
+    const { files } = await compileElement({ ...CARD, tagName: "ls-observed-late" });
+    writeFileSync(resolve(TMP, "observed-late.js"), files[0]!.content, "utf8");
+    await import(resolve(TMP, "observed-late.js"));
+
+    const el = rendered(win.document.querySelector("ls-observed-late"), "ls-observed-late");
+    expect(text(el, "username")).toBe("Ada");
+    expect(text(el, "count")).toBe("4");
+  });
+
+  test("a later change coerces", () => {
+    const el = connect({ active: "" });
+    el.setAttribute("count", "4");
+    el.setAttribute("active", "false");
+    el.setAttribute("username", "Grace");
+
+    expect(stateOf(el).count).toBe(4);
+    expect(stateOf(el).active).toBe(false);
+    expect(text(el, "username")).toBe("Grace");
+  });
+
+  test("a change made before connection is heard too", () => {
+    const el = win.document.createElement("ls-observed");
+    el.setAttribute("username", "Early");
+    expect(stateOf(el).username).toBe("Early");
+  });
+
+  test("a removal restores the declared default", () => {
+    const el = connect({ count: "7", username: "Ada" });
+    el.removeAttribute("count");
+    el.removeAttribute("username");
+
+    expect(stateOf(el).count).toBe(1);
+    expect(text(el, "username")).toBe("Guest");
+  });
+
+  test("a pure type definition takes the text as written, and a removal clears it", () => {
+    const el = connect({ amount: "3" });
+    expect(text(el, "amount")).toBe('"3"');
+    el.removeAttribute("amount");
+    expect(text(el, "amount")).toBe('""');
+  });
+
+  test("an object default comes back as a fresh copy", () => {
+    const first = connect({ meta: "custom" });
+    first.removeAttribute("meta");
+    expect(text(first, "meta")).toBe('{"kind":"none"}');
+    const restored = stateOf(first).meta;
+    if (!isNonNullObject(restored) || Array.isArray(restored)) {
+      throw new Error("Expected the restored default to be an object");
+    }
+    restored.kind = "mutated";
+
+    const second = connect({ meta: "custom" });
+    second.removeAttribute("meta");
+    expect(text(second, "meta")).toBe('{"kind":"none"}');
+  });
+
+  test("an observed attribute never writes a computed entry", () => {
+    const el = connect({ shout: "text", username: "Ada" });
+    expect(text(el, "shout")).toBe("Ada!");
+    el.setAttribute("shout", "other");
+    el.removeAttribute("shout");
+    expect(text(el, "shout")).toBe("Ada!");
+  });
+
+  test("a property set before connection beats the attribute", () => {
+    const el = win.document.createElement("ls-observed");
+    el.setAttribute("username", "from attribute");
+    Object.assign(el, { username: "from property" });
+    win.document.body.append(el);
+    expect(text(el, "username")).toBe("from property");
+  });
+
+  test("data-jx-props beats the attribute", () => {
+    const el = win.document.createElement("ls-observed");
+    el.setAttribute("username", "from attribute");
+    el.dataset.jxProps = JSON.stringify({ username: "from props" });
+    win.document.body.append(el);
+    expect(text(el, "username")).toBe("from props");
+  });
+
+  test("re-insertion does not re-read an attribute over a state change", () => {
+    const el = connect({ username: "Ada" });
+    stateOf(el).username = "Changed";
+    el.remove();
+    win.document.body.append(el);
+    expect(text(el, "username")).toBe("Changed");
   });
 });
 
