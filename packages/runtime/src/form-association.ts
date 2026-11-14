@@ -102,7 +102,29 @@ export function associateForm(
   /* The host's labels name its control, by element reference, so a `<label for>` needs no id
      copied anywhere. A name the control already carries (the element's own `label` or
      `labelledby`) is left alone, and an engine without the reflection names nothing. */
+  /* Whether any `<label>` can be naming the host: one it stands inside, or one whose `for` is its
+     id. Asked before `internals.labels` is, because that is a live list, and a document keeps every
+     live list it has handed out current on each mutation: a few hundred controls that had each
+     read theirs made every later DOM write in the page measurably slower, label or no label. */
+  const mayBeLabelled = (): boolean => {
+    if (host.closest("label")) {
+      return true;
+    }
+    const { id } = host;
+    if (id === "") {
+      return false;
+    }
+    // A `for` is resolved in the host's own tree: its document, or the shadow root it is in.
+    const tree = host.getRootNode();
+    const scope = tree instanceof DocumentFragment ? tree : host.ownerDocument;
+    return [...scope.querySelectorAll("label[for]")].some(
+      (label) => label.getAttribute("for") === id,
+    );
+  };
   const nameControl = (): void => {
+    if (!mayBeLabelled()) {
+      return;
+    }
     const target = control();
     const { labels } = internals;
     if (

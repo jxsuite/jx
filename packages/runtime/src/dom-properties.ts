@@ -313,20 +313,26 @@ export const ELEMENT_ROWS: readonly ElementRow[] = [
 ];
 
 let globalIndex: Map<string, Reflection> | undefined;
-let elementIndex: Map<string, Reflection> | undefined;
+let elementIndex: Map<string, Map<string, Reflection>> | undefined;
 
 /**
- * The element rows keyed by `tag property`. A `Map`, so `constructor`, `toString` and `__proto__`
- * are never rows.
+ * The element rows keyed by property, then by tag. A `Map`, so `constructor`, `toString` and
+ * `__proto__` are never rows. Keyed by property first because most members a definition sets
+ * (`textContent`, a prop) are no row at all, and that answer should cost one lookup and no string.
  *
- * @returns {Map<string, Reflection>}
+ * @returns {Map<string, Map<string, Reflection>>}
  */
-function elementRows(): Map<string, Reflection> {
+function elementRows(): Map<string, Map<string, Reflection>> {
   if (!elementIndex) {
     elementIndex = new Map();
     for (const [property, tags, reflection] of ELEMENT_ROWS) {
+      let byTag = elementIndex.get(property);
+      if (!byTag) {
+        byTag = new Map();
+        elementIndex.set(property, byTag);
+      }
       for (const tag of tags.split(" ")) {
-        elementIndex.set(`${tag} ${property}`, reflection);
+        byTag.set(tag, reflection);
       }
     }
   }
@@ -346,7 +352,7 @@ function elementRows(): Map<string, Reflection> {
 export function reflectedAttribute(tagName: string, property: string): Reflection | null {
   globalIndex ??= new Map(GLOBAL_ROWS);
   return (
-    globalIndex.get(property) ?? elementRows().get(`${tagName.toLowerCase()} ${property}`) ?? null
+    globalIndex.get(property) ?? elementRows().get(property)?.get(tagName.toLowerCase()) ?? null
   );
 }
 
@@ -369,9 +375,8 @@ export function isContentProperty(tagName: string, property: string): boolean {
   if (property === "innerText") {
     return true;
   }
-  const tag = tagName.toLowerCase();
   if (property === "value" || property === "defaultValue") {
-    return VALUE_IS_TEXT.has(tag);
+    return VALUE_IS_TEXT.has(tagName.toLowerCase());
   }
-  return property === "text" && TEXT_IS_TEXT.has(tag);
+  return property === "text" && TEXT_IS_TEXT.has(tagName.toLowerCase());
 }
