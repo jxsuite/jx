@@ -27,13 +27,11 @@ import {
   commentedRuleText,
   declaredDefaults,
   enumeratedAttrNames,
-  isNestedSelectorKey,
   camelToKebab,
   isSingleExpression,
   mappedListItems,
-  splitSelectorList,
 } from "@jxsuite/runtime";
-import { spliceNestingSelector } from "@jxsuite/runtime/css";
+import type { CssBuildOptions } from "@jxsuite/runtime/css";
 import { isContentProperty, reflectedAttribute } from "@jxsuite/runtime/dom-properties";
 import type { Reflection } from "@jxsuite/runtime/dom-properties";
 import {
@@ -1933,6 +1931,12 @@ export function colorSchemePrePaintScript(): string {
 }
 
 /**
+ * Which tree a style object's rules are written into: the builder's `host` and `shadowTree`
+ * (spec.md §16.6), passed through by every emitter that writes a component's sheet.
+ */
+export type StyleTreeOptions = Pick<CssBuildOptions, "host" | "shadowTree">;
+
+/**
  * Push the rules one style object becomes, scoped to `selector`: each rule's text, and above it the
  * comment a static build writes for a block that carries a `$description` (spec.md §9.2).
  *
@@ -1949,14 +1953,17 @@ export function colorSchemePrePaintScript(): string {
  * @param {JxStyle} style
  * @param {string | null} selector - The scope, or null for a bare declaration-body at-rule
  * @param {Record<string, string>} mediaQueries
+ * @param {StyleTreeOptions} [options] - Which tree the rules are written into
  */
 function pushStyleRules(
   rules: string[],
   style: JxStyle,
   selector: string | null,
   mediaQueries: Record<string, string>,
+  options: StyleTreeOptions = {},
 ) {
   for (const rule of buildStyleRules(style, {
+    ...options,
     mediaQueries,
     /* Records what a STATIC build drops, and returns `null` so it drops exactly as before — the
        emitted bytes are unchanged. A reactive declaration is a runtime declaration: it resolves
@@ -3015,6 +3022,7 @@ export function authorClassValue(def: JxElement | JxMutableNode): JxDocumentValu
  * @param {{ n: number }} [counterArg]
  * @param {string} [prefix] - Names the sheet that holds the rules: `jx`, `jxs`, or a component's
  *   tag
+ * @param {{ shadowTree?: boolean }} [options] - Set `shadowTree` for nodes inside a shadow root
  */
 export function collectStyles(
   def: StyleScopeNode | string,
@@ -3023,11 +3031,18 @@ export function collectStyles(
   _parentSel = "",
   counterArg?: { n: number },
   prefix = "jx",
+  options: Pick<StyleTreeOptions, "shadowTree"> = {},
 ) {
   const counter = counterArg ?? { n: 0 };
   walkStyleScopes(def, (node) => {
     if (node.style) {
-      pushStyleRules(rules, node.style, `.${handleFor(node, counter, prefix)}`, mediaQueries);
+      pushStyleRules(
+        rules,
+        node.style,
+        `.${handleFor(node, counter, prefix)}`,
+        mediaQueries,
+        options,
+      );
     }
   });
 }
@@ -3896,7 +3911,7 @@ function renderComponentInstance(
       : "";
     innerHTML =
       `<template shadowrootmode="${shadow}">` +
-      `<link rel="stylesheet" href="/components/${tag}.css">` +
+      `<link rel="stylesheet" href="${componentStylesheetHref(tag)}">` +
       `${renderInner(def, instanceScope, null, nested)}</template>${light}`;
   } else {
     slotId = !isStatic && definitionHasSlot(def.children) ? nextSlotId(context) : null;
@@ -4180,63 +4195,73 @@ function _isStaticNode(node: JxElement | JxMappedArray | string | (JxElement | s
 }
 
 /**
- * Generate CSS rules for a component: host-level styles using tag selector, plus inner element
- * styles keyed on each element's generated `.<tagName>-<n>` class via collectStyles.
+ * The URL a site build serves a component's stylesheet at: the one spelling the prerender's
+ * declarative shadow root, the element module and the file written to `dist/` all share.
  *
- * @param {string} tagName - The custom element tag name (used as CSS selector)
- * @param {JxStyle | null} styleDef - The component's style object
- * @param {JxElement | null} [doc] - The full component document (for walking children)
- * @param {Record<string, string>} [mediaQueries] - Project media query definitions
- * @returns {string} CSS text, or empty string if no styles
- */
-/** `::slotted()` and `::part()` select through a shadow boundary, not the host that owns it. */
-const SHADOW_STANDALONE = /^(?:::slotted\(|::part\()/;
-
-/**
- * Turn one nested style key into a selector, given the component's scope prefix.
- *
- * Three shapes, and the interesting one is `:host`. A style object should mean the same thing in
- * both modes, so `:host` and `:host(.foo)` are **translated** rather than passed through: inside a
- * shadow root they stand alone, and in the light DOM they become the tag name and `<tag>.foo` —
- * which is what "the host, matching this" means when there is no shadow root. Moving a component
- * between modes therefore does not silently break its styles.
- *
- * @param {string} prop - The style-object key, e.g. `":hover"`, `"& .inner"`, `":host(.wide)"`
- * @param {string} scope - `":host"` in shadow mode, the tag name otherwise
+ * @param {string} tagName
  * @returns {string}
  */
-function resolveSelector(prop: string, scope: string): string {
-  /* Member by member, for the reason css.ts's `resolveNestedSelector` does it: a key may be a
-     SELECTOR LIST, and splicing one as a single string spliced only its first `&`. `"& .a, & .b"`
-     came out as `sty-card .a, & .b`, and a raw `&` in a built stylesheet is not a nesting selector
-     at all — the browser discards the list and the component silently loses those rules. This is
-     the one selector path that does not go through the shared builder, because `:host` has to be
-     translated before the scope is applied, so it needed the same fix separately. */
-  return splitSelectorList(prop)
-    .map((member) => resolveSelectorMember(member, scope))
-    .join(", ");
+export function componentStylesheetHref(tagName: string): string {
+  return `/components/${tagName}.css`;
 }
 
-/** One member of {@link resolveSelector}'s list against the scope. */
-function resolveSelectorMember(prop: string, scope: string): string {
-  const spliced = spliceNestingSelector(prop, scope);
-  if (spliced !== null) {
-    return spliced;
-  }
-  if (prop.startsWith(":host")) {
-    const inner = /^:host\((.*)\)$/.exec(prop)?.[1];
-    if (scope === ":host") {
-      return prop;
+/**
+ * The text of a shadow component's stylesheet file: its own rules, then the rules of every
+ * light-DOM component its definition can render.
+ *
+ * The page inlines a light component's sheet into its `<head>`, which cannot reach into a shadow
+ * root, so a light component rendered inside one was unstyled. Its sheet rides in the root's own
+ * instead, which keeps it one request per root. The walk follows light definitions transitively and
+ * stops at a shadow one, which brings its own root and its own sheet; each sheet is written once,
+ * in first-seen order.
+ *
+ * @param {string} tag - A shadow component
+ * @param {ReadonlyMap<string, JxElement>} registry - Tag name → definition
+ * @param {ReadonlyMap<string, string>} ownSheets - Tag name → that component's own rules
+ * @param {ReadonlySet<string>} shadowTags - The components that render into a shadow root
+ * @returns {string}
+ */
+export function shadowSheetText(
+  tag: string,
+  registry: ReadonlyMap<string, JxElement>,
+  ownSheets: ReadonlyMap<string, string>,
+  shadowTags: ReadonlySet<string>,
+): string {
+  const seen = new Set<string>([tag]);
+  const sheets = [ownSheets.get(tag) ?? ""];
+  const visit = (from: string): void => {
+    // `from` is a registered tag: the walk only ever follows tags the registry answered for.
+    for (const rendered of renderedComponentTags(registry.get(from) ?? {}, registry)) {
+      if (seen.has(rendered) || shadowTags.has(rendered)) {
+        continue;
+      }
+      seen.add(rendered);
+      sheets.push(ownSheets.get(rendered) ?? "");
+      visit(rendered);
     }
-    return inner === undefined ? scope : `${scope}${inner}`;
-  }
-  // `:host::slotted(x)` matches nothing — the pseudo-element attaches to a slot, not the host.
-  if (scope === ":host" && SHADOW_STANDALONE.test(prop)) {
-    return prop;
-  }
-  return `${scope}${prop}`;
+  };
+  visit(tag);
+  return sheets.join("");
 }
 
+/**
+ * The stylesheet of one component: its definition's own style under the host's selector, then the
+ * rules of every styled node the definition renders.
+ *
+ * The scope is the tag name in light DOM, which is what keeps `sty-card .inner` from reaching
+ * another component's `.inner`, and `:host` inside a shadow root, where a selector cannot see the
+ * host's tag name at all. The same style object produces different, correct CSS in each mode
+ * without the author restating it: `:host` keys are translated and a key compounding onto a shadow
+ * host is folded into `:host()` by the one function the interpreter also calls (`resolveHostKey` in
+ * `@jxsuite/runtime/css`, spec.md §16.6).
+ *
+ * @param {string} tagName
+ * @param {JxStyle | null} [styleDef] - The definition's own `style`
+ * @param {JxElement | null} [doc] - The definition, for its children's styles
+ * @param {Record<string, string>} [mediaQueries]
+ * @param {ShadowMode | null} [shadow]
+ * @returns {string} The sheet's text, one rule per line
+ */
 export function buildComponentCSS(
   tagName: string,
   styleDef?: JxStyle | null | undefined,
@@ -4245,58 +4270,31 @@ export function buildComponentCSS(
   shadow: ShadowMode | null = null,
 ) {
   const rules: string[] = [];
-  /*
-   * The scope prefix. In light DOM it is the tag name, which is what keeps `sty-card .inner` from
-   * reaching another component's `.inner`. Inside a shadow root the selector cannot see the host's
-   * tag name at all, and `:host` is the standard's way to address it — so the same style object
-   * produces different, correct CSS in each mode without the author restating it.
-   */
   const scope = styleScopePrefix(tagName, shadow);
+  const tree: StyleTreeOptions = { host: shadow === null ? "light" : "shadow" };
+  if (shadow !== null) {
+    tree.shadowTree = true;
+  }
   /* A custom element is `inline` by default and a Jx container behaves like a `<div>`, so a
      definition whose BASE block declares no `display` is given `display: block` in its own rule,
      ahead of its own declarations (spec.md §9.6). The interpreter writes the same default, so a
      component lays out alike in Studio and in a built page. Only the base block is read: a
      `display` inside `:hover` or a breakpoint is not the author supplying one. */
-  const own: JxStyle =
-    isNonNullObject(styleDef) && "display" in styleDef ? {} : { display: "block" };
-
-  if (!isNonNullObject(styleDef)) {
-    pushStyleRules(rules, own, scope, mediaQueries);
-  } else {
-    /* The top level is walked here rather than handed straight to the builder, because ONE of its
-       keys does not mean what `resolveNestedSelector` would make of it: `:host` and `:host(.foo)`
-       are TRANSLATED per {@link resolveSelector} so a style object means the same thing in both
-       modes. Everything below the top level is ordinary nesting, so each block goes to the builder
-       whole — which is also what gives a component's nested selectors the recursion they never had
-       (this used to emit exactly one level and drop anything under it). */
-    const blocks: [string, JxStyle][] = [];
-    for (const [prop, value] of Object.entries(styleDef)) {
-      /* `isRef` first, and it is the whole point: an object carrying `$ref` is a reactive VALUE,
-         not a nested block (spec.md §9.1). Sorted into `blocks` it matched neither branch below —
-         not an at-rule, not a nested selector — and was dropped without reaching the builder at
-         all, so the one emitter that could have reported it never saw it. */
-      if (isRef(value)) {
-        own[prop] = value;
-      } else if (isNonNullObject(value) && !Array.isArray(value)) {
-        blocks.push([prop, value]);
-      } else if (!prop.startsWith("@") && !isNestedSelectorKey(prop)) {
-        own[prop] = value;
-      }
-    }
-    pushStyleRules(rules, own, scope, mediaQueries);
-    for (const [prop, val] of blocks) {
-      if (prop.startsWith("@")) {
-        pushStyleRules(rules, { [prop]: val }, scope, mediaQueries);
-      } else if (isNestedSelectorKey(prop)) {
-        pushStyleRules(rules, val, resolveSelector(prop, scope), mediaQueries);
-      }
-    }
-  }
+  const own: JxStyle = isNonNullObject(styleDef) ? styleDef : {};
+  pushStyleRules(
+    rules,
+    "display" in own ? own : { display: "block", ...own },
+    scope,
+    mediaQueries,
+    tree,
+  );
 
   if (doc) {
     const counter = { n: 0 };
     for (const child of styleChildren(doc)) {
-      collectStyles(child, rules, mediaQueries, "", counter, tagName);
+      collectStyles(child, rules, mediaQueries, "", counter, tagName, {
+        shadowTree: shadow !== null,
+      });
     }
   }
 

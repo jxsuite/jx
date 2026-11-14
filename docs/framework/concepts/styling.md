@@ -72,7 +72,7 @@ Every declaration becomes a CSS rule, the base ones and the nested ones alike. T
 
 Base rules come first, so a state block overrides its own base property. That ordering is the whole reason nothing is written as an `style="…"` attribute: an inline declaration beats any ordinary rule, so a `backgroundColor` written on the element could never be overridden by the `:hover` block sitting next to it in the same object.
 
-When Studio renders the page live, the same rules are delivered through the document's adopted stylesheets and scoped with `data-jx` instead of a class. Different handle, same cascade, so what you see in the canvas is what the published page does.
+When Studio renders the page live, the same rules are delivered through adopted stylesheets (the document's, or a shadow component's own root) and scoped with `data-jx` instead of a class. Different handle, same cascade, so what you see in the canvas is what the published page does.
 
 (You'll also see `data-jx-static`, `data-jx-prerendered` and `data-jx-slots` in compiled output. Those mark hydration state and are never used as CSS selectors.)
 

@@ -190,6 +190,12 @@ export interface JxRenderOptions {
   _path?: JxPath;
   /** The mount context this render belongs to; absent on the legacy direct-render path. */
   _ctx?: JxContext;
+  /**
+   * The tree this render's rules are written into, when it is not the document: the shadow root a
+   * component renders in (spec.md §16.6). Carried here because an element is styled before it is
+   * inserted, so it cannot be asked which tree it will be in.
+   */
+  _styleRoot?: Document | ShadowRoot;
   /** Read by {@link Jx} only: aborting disposes the mount. */
   signal?: AbortSignal;
   /**

@@ -1,7 +1,9 @@
 import "./with-dom.js";
 import { afterEach, describe, expect, test } from "bun:test";
 import {
+  defineElement,
   setCanvasDelinkAnchors,
+  setCanvasLightComponents,
   setCanvasViewportTranspose,
   setStampPropBindings,
 } from "@jxsuite/runtime";
@@ -819,7 +821,6 @@ describe("component-definition root vs a registered custom element (cross-tab re
     // Switches). Without the definition-root guard, the upgrade's connectedCallback wipes the
     // Editor-rendered children and re-renders a live instance with default state — the "component
     // Editor shows an uneditable instance" bug.
-    const { defineElement } = await import("@jxsuite/runtime");
     await defineElement({
       children: [{ children: ["Default Heading"], tagName: "h2" }],
       state: { heading: "Default Heading" },
@@ -1844,6 +1845,38 @@ describe("syncCanvasOverlayCss", () => {
       expect([mode, Boolean(sheet())]).toEqual([mode, true]);
       handle.dispose();
     }
+  });
+
+  test("every mode renders a $shadow component in the light DOM (§4.2)", async () => {
+    // The canvas reads an instance's subtree from the document; a shadow root would hide it.
+    await defineElement({
+      $shadow: "open",
+      children: [{ className: "inner", tagName: "p", textContent: "in" }],
+      tagName: "sd-canvas-probe",
+    });
+    for (const mode of CANVAS_MODES) {
+      const container = document.createElement("div");
+      document.body.append(container);
+      const handle = await renderResolvedDocument({
+        container,
+        doc: { children: [{ tagName: "sd-canvas-probe" }], tagName: "div" },
+        docBase: "http://localhost:3000/page.json",
+        mapperCtx: { ...ctx, canvasMode: mode },
+        mode,
+      });
+      await new Promise((resolve) => {
+        setTimeout(resolve, 20);
+      });
+      const probe = rendered(container, "sd-canvas-probe");
+      expect([mode, probe.shadowRoot === null, probe.querySelector("p.inner") !== null]).toEqual([
+        mode,
+        true,
+        true,
+      ]);
+      handle.dispose();
+      container.remove();
+    }
+    setCanvasLightComponents(false);
   });
 
   test("it is idempotent", () => {

@@ -95,6 +95,12 @@ export function pageShell(page: ComposedPage, options: ShellOptions): string {
     formulas = `\n<script type="application/json" id="jx-project-formulas">${jsonPayload(page.formulas)}</script>`;
     setup += `\nsetProjectFormulas(JSON.parse(document.getElementById("jx-project-formulas").textContent));`;
   }
+  /* The project's shadow default, per realm like the registry it governs (embedding.md §5.2):
+     every component the page defines reads it when it connects, so it is set before the render. */
+  if (page.shadow) {
+    names.push("setShadowDefault");
+    setup += `\nsetShadowDefault(${JSON.stringify(page.shadow)});`;
+  }
   const imports = names.join(", ");
   const style = options.styleUrl
     ? `\n  <link rel="stylesheet" href="${attr(options.styleUrl)}">`

@@ -188,6 +188,8 @@ describe("buildComponentCSS scoping", () => {
     "& .inner": { color: "blue" },
     ":hover": { color: "teal" },
     ":host(.wide)": { maxWidth: "none" },
+    ":host(.wide) .inner": { color: "navy" },
+    "[open]": { color: "plum" },
     "::slotted(p)": { color: "green" },
     color: "red",
   };
@@ -203,8 +205,60 @@ describe("buildComponentCSS scoping", () => {
     const css = buildComponentCSS("sd-probe", style, null, {}, "open");
     expect(css).toContain(":host {");
     expect(css).toContain(":host .inner");
-    expect(css).toContain(":host:hover");
     expect(css).not.toContain("sd-probe");
+  });
+
+  /*
+   * Inside its own tree the host is featureless: only the `:host` family matches it, so
+   * `:host:hover` is a valid selector that never applies. A key compounding onto the host is
+   * folded into `:host()`, which is the spelling that does.
+   */
+  test("a key compounding onto a shadow host is folded into :host()", () => {
+    const shadow = buildComponentCSS("sd-probe", style, null, {}, "open");
+    expect(shadow).toContain(":host(:hover) {");
+    expect(shadow).toContain(":host([open]) {");
+    expect(shadow).not.toContain(":host:hover");
+    const light = buildComponentCSS("sd-probe", style, null, {}, null);
+    expect(light).toContain("sd-probe:hover {");
+    expect(light).toContain("sd-probe[open] {");
+  });
+
+  test("what follows a host compound is kept in both modes", () => {
+    expect(buildComponentCSS("sd-probe", style, null, {}, null)).toContain(
+      "sd-probe.wide .inner {",
+    );
+    expect(buildComponentCSS("sd-probe", style, null, {}, "open")).toContain(
+      ":host(.wide) .inner {",
+    );
+  });
+
+  /*
+   * A forced scheme is an attribute on the document's root element, which no selector inside a
+   * shadow tree can see: both dual-emitted copies were dead there. A root gets the media copy
+   * alone, for the host and for the nodes it renders.
+   */
+  test("a color-scheme block inside a root follows the OS preference only", () => {
+    const media = { "--dark": "(prefers-color-scheme: dark)" };
+    const doc: JxDocument = {
+      children: [{ style: { "@--dark": { color: "white" } }, tagName: "p" }],
+      style: { "@--dark": { color: "silver" } },
+      tagName: "sd-probe",
+    };
+    const shadow = buildComponentCSS("sd-probe", doc.style, doc, media, "open");
+    expect(shadow).toContain("@media (prefers-color-scheme: dark) { :host { color: silver } }");
+    expect(shadow).toContain(
+      "@media (prefers-color-scheme: dark) { .sd-probe-0 { color: white } }",
+    );
+    expect(shadow).not.toContain("data-color-scheme");
+    expect(buildComponentCSS("sd-probe", doc.style, doc, media, null)).toContain(
+      "data-color-scheme",
+    );
+  });
+
+  test("a bare element key at the top level is a descendant rule, as it is at every depth", () => {
+    expect(buildComponentCSS("sd-probe", { p: { margin: "0" } }, null, {}, null)).toContain(
+      "sd-probe p { margin: 0 }",
+    );
   });
 
   /*

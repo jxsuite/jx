@@ -67,6 +67,7 @@ describe("the subpath carries what @jxsuite/site/site-style needs", () => {
       "isNestedSelectorKey",
       "pureSchemeOf",
       "resolveAtQuery",
+      "resolveHostKey",
       "resolveNestedSelector",
       "resolveShadowMode",
       "schemeSelectors",
@@ -646,5 +647,157 @@ describe("resolveShadowMode (spec.md §16.6)", () => {
        way a host does, carrying a value outside the declared union. */
     const lying: ProjectConfig["defaults"] = JSON.parse('{ "shadow": true }');
     expect(css.resolveShadowMode(component(), lying)).toBeNull();
+  });
+});
+
+describe("host keys (spec.md §16.6)", () => {
+  const selectors = (style: JxStyle, options: css.CssBuildOptions) =>
+    css.buildStyleRules(style, options).map((rule) => rule.text);
+  const light = { host: "light", scope: "x-a" } as const;
+  const shadow = { host: "shadow", scope: ":host", shadowTree: true } as const;
+  const red = { color: "red" };
+
+  test(":host and :host(.sel) are the host's own selector in light DOM, and stand in a root", () => {
+    const style = { ":host": red, ":host(.wide)": red };
+    expect(selectors(style, light)).toEqual(["x-a { color: red }", "x-a.wide { color: red }"]);
+    expect(selectors(style, shadow)).toEqual([
+      ":host { color: red }",
+      ":host(.wide) { color: red }",
+    ]);
+  });
+
+  test("what follows the host compound is kept", () => {
+    const style = { ":host(.wide) .inner": red, ":host(.wide):hover": red, ":host > p": red };
+    expect(selectors(style, light)).toEqual([
+      "x-a.wide .inner { color: red }",
+      "x-a.wide:hover { color: red }",
+      "x-a > p { color: red }",
+    ]);
+    expect(selectors(style, shadow)).toEqual([
+      ":host(.wide) .inner { color: red }",
+      ":host(.wide:hover) { color: red }",
+      ":host > p { color: red }",
+    ]);
+  });
+
+  test("a host key translates inside an at-rule block directly under the top level", () => {
+    const style = { "@media (min-width: 1px)": { ":host(.wide)": red } };
+    expect(selectors(style, light)).toEqual([
+      "@media (min-width: 1px) { x-a.wide { color: red } }",
+    ]);
+    expect(selectors(style, shadow)).toEqual([
+      "@media (min-width: 1px) { :host(.wide) { color: red } }",
+    ]);
+  });
+
+  test("a key compounding onto a shadow host folds into :host()", () => {
+    // Inside its own tree the host is featureless: `:host:hover` is valid and never matches.
+    const style = {
+      "&:hover > li": red,
+      "&[open]": red,
+      ".wide": red,
+      ":hover": red,
+      ':not([data-x="a)b"])': red,
+    };
+    expect(selectors(style, shadow)).toEqual([
+      ":host(:hover) > li { color: red }",
+      ":host([open]) { color: red }",
+      ":host(.wide) { color: red }",
+      ":host(:hover) { color: red }",
+      ':host(:not([data-x="a)b"])) { color: red }',
+    ]);
+    expect(selectors(style, light)).toEqual([
+      "x-a:hover > li { color: red }",
+      "x-a[open] { color: red }",
+      "x-a.wide { color: red }",
+      "x-a:hover { color: red }",
+      'x-a:not([data-x="a)b"]) { color: red }',
+    ]);
+  });
+
+  test("a pseudo-element stays outside the parentheses, and a descendant does not fold", () => {
+    const style = {
+      "& .inner": red,
+      ".wrap &:hover": red,
+      "::before": red,
+      ":after": red,
+      ":hover::before": red,
+    };
+    expect(selectors(style, shadow)).toEqual([
+      ":host .inner { color: red }",
+      ".wrap :host:hover { color: red }",
+      ":host::before { color: red }",
+      ":host:after { color: red }",
+      ":host(:hover)::before { color: red }",
+    ]);
+  });
+
+  test("a nested fold composes, and a :host key below a selector key is not translated", () => {
+    expect(selectors({ ":host(.wide)": { ":hover": red } }, shadow)).toEqual([
+      ":host(.wide:hover) { color: red }",
+    ]);
+    expect(selectors({ ".inner": { ":host": red } }, light)).toEqual([
+      "x-a.inner:host { color: red }",
+    ]);
+  });
+
+  test("::slotted() and ::part() stand alone in a root", () => {
+    const style = { "::part(body)": red, "::slotted(p)": red };
+    expect(selectors(style, shadow)).toEqual([
+      "::part(body) { color: red }",
+      "::slotted(p) { color: red }",
+    ]);
+    expect(selectors(style, light)).toEqual([
+      "x-a::part(body) { color: red }",
+      "x-a::slotted(p) { color: red }",
+    ]);
+  });
+
+  test("a name that only begins with host, and an unclosed :host(, are ordinary keys", () => {
+    expect(selectors({ ":host-context(.dark)": red, ":host(.a": red }, light)).toEqual([
+      "x-a:host-context(.dark) { color: red }",
+      "x-a:host(.a { color: red }",
+    ]);
+  });
+
+  test("a rule on the host is a self rule and one below it a descendant rule", () => {
+    const targets = (style: JxStyle) =>
+      css.buildStyleRules(style, light).map((rule) => rule.target);
+    expect(targets({ ":host(.wide)": red, ":host(.wide)::before": red })).toEqual(["self", "self"]);
+    expect(targets({ ":host(.wide) .inner": red, ":host, & p": red })).toEqual([
+      "descendant",
+      "descendant",
+    ]);
+  });
+
+  test("quotes and escapes inside a host argument or a folded compound close nothing", () => {
+    const style = {
+      ':host([title="a)b"]) .x': red,
+      ":host(.a\\)b):hover": red,
+      '[title="a b"]:hover': red,
+      ".a\\ b > i": red,
+    };
+    expect(selectors(style, shadow)).toEqual([
+      ':host([title="a)b"]) .x { color: red }',
+      String.raw`:host(.a\)b:hover) { color: red }`,
+      ':host([title="a b"]:hover) { color: red }',
+      String.raw`:host(.a\ b) > i { color: red }`,
+    ]);
+  });
+
+  test("resolveHostKey distributes over a selector list on either side", () => {
+    expect(css.resolveHostKey(":host(.a), .b", "x-a, x-b", "light")).toBe(
+      "x-a.a, x-a.b, x-b.a, x-b.b",
+    );
+  });
+
+  test("a pure scheme block in a shadow tree writes one unguarded copy", () => {
+    const style = { "@--dark": { color: "white" } };
+    const mediaQueries = { "--dark": "(prefers-color-scheme: dark)" };
+    expect(selectors(style, { ...shadow, mediaQueries })).toEqual([
+      "@media (prefers-color-scheme: dark) { :host { color: white } }",
+    ]);
+    // Outside a root both copies are written, as ever.
+    expect(selectors(style, { ...light, mediaQueries })).toHaveLength(2);
   });
 });

@@ -28,6 +28,8 @@ import { resolveLayout } from "./layout.ts";
 import { mergeHead, withPageDescription } from "./head-merger.ts";
 import type { HeadMergeContext } from "./head-merger.ts";
 import { injectContext } from "./context.ts";
+import { resolveShadowMode } from "@jxsuite/runtime/css";
+import type { ShadowMode } from "@jxsuite/runtime/css";
 import { inheritableFormulas } from "@jxsuite/runtime/expression";
 import { qualifyScripts } from "@jxsuite/schema/document-scripts";
 import { isNonNullObject, isString } from "@jxsuite/schema/guards";
@@ -54,6 +56,12 @@ export interface ComposedPage {
    * shell hands these to the runtime before it renders.
    */
   formulas?: Record<string, JxStateDefinition>;
+  /**
+   * The project's `defaults.shadow` when it names a mode (spec.md §16.6), so the page's components
+   * render into the tree a build would give them. Absent for light DOM, and for a value that is not
+   * a mode, which reads as light here as it does in a build.
+   */
+  shadow?: ShadowMode;
 }
 
 /**
@@ -406,6 +414,10 @@ export async function composePage(
   const formulas = inheritableFormulas(config.state);
   if (Object.keys(formulas).length > 0) {
     composed.formulas = formulas;
+  }
+  const shadow = resolveShadowMode(null, config.defaults);
+  if (shadow !== null) {
+    composed.shadow = shadow;
   }
   return composed;
 }
