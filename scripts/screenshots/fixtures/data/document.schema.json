@@ -2887,6 +2887,20 @@
                 }
               ]
             },
+            "oncsrcchange": {
+              "description": "Event handler for the \"csrcchange\" event.",
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/v1/$defs/RefObject"
+                },
+                {
+                  "$ref": "#/$defs/v1/$defs/ExpressionEntry"
+                },
+                {
+                  "$ref": "#/$defs/v1/$defs/FunctionDef"
+                }
+              ]
+            },
             "oncuechange": {
               "description": "Event handler for the \"cuechange\" event.",
               "oneOf": [
@@ -3589,6 +3603,48 @@
             },
             "onicecandidateerror": {
               "description": "Event handler for the \"icecandidateerror\" event.",
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/v1/$defs/RefObject"
+                },
+                {
+                  "$ref": "#/$defs/v1/$defs/ExpressionEntry"
+                },
+                {
+                  "$ref": "#/$defs/v1/$defs/FunctionDef"
+                }
+              ]
+            },
+            "onicecandidatepairadd": {
+              "description": "Event handler for the \"icecandidatepairadd\" event.",
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/v1/$defs/RefObject"
+                },
+                {
+                  "$ref": "#/$defs/v1/$defs/ExpressionEntry"
+                },
+                {
+                  "$ref": "#/$defs/v1/$defs/FunctionDef"
+                }
+              ]
+            },
+            "onicecandidatepairnominate": {
+              "description": "Event handler for the \"icecandidatepairnominate\" event.",
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/v1/$defs/RefObject"
+                },
+                {
+                  "$ref": "#/$defs/v1/$defs/ExpressionEntry"
+                },
+                {
+                  "$ref": "#/$defs/v1/$defs/FunctionDef"
+                }
+              ]
+            },
+            "onicecandidatepairremove": {
+              "description": "Event handler for the \"icecandidatepairremove\" event.",
               "oneOf": [
                 {
                   "$ref": "#/$defs/v1/$defs/RefObject"
@@ -5493,6 +5549,20 @@
             },
             "onsqueezestart": {
               "description": "Event handler for the \"squeezestart\" event.",
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/v1/$defs/RefObject"
+                },
+                {
+                  "$ref": "#/$defs/v1/$defs/ExpressionEntry"
+                },
+                {
+                  "$ref": "#/$defs/v1/$defs/FunctionDef"
+                }
+              ]
+            },
+            "onssrcchange": {
+              "description": "Event handler for the \"ssrcchange\" event.",
               "oneOf": [
                 {
                   "$ref": "#/$defs/v1/$defs/RefObject"
