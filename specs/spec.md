@@ -2,9 +2,9 @@
 
 ## Declarative Document Object Model — JSON Edition
 
-**Version:** 0.9.37-draft\
+**Version:** 0.9.43-draft\
 **Status:** Partial\
-**Updated:** 2026-11-13\
+**Updated:** 2026-11-14\
 **License:** MIT
 
 ---
@@ -3085,6 +3085,12 @@ This rewrites the mutating handlers of Appendix A's idiom using `$expression`, l
 
 ## Changelog
 
+- **0.9.43-draft** (2026-11-14) — §9.2 and §16.6: a static build writes each style block's description as a comment above its rule, keyframes blocks included, and the compiler's style handle is a generated class beside the author's own, never an author's class or id.
+- **0.9.42-draft** (2026-11-14) — Compiled elements run every lifecycle hook; onMount runs once per instance in both tiers and a mounted document's onMount takes the scope alone; a pure type definition has no declared default and an observed attribute never writes a computed entry; a built site honours observed attributes in the prerender and ships the module of a definition that declares any.
+- **0.9.41-draft** (2026-11-14) — §9.2's status marker records that the compiler gives every styled element a generated class of its own, never an author's id or class.
+- **0.9.40-draft** (2026-11-14) — Compiled elements take every prop an instance supplies, pure type definitions and reflected names included, and forward later property writes into state as the interpreter does, a platform-owned name through its own setter first.
+- **0.9.39-draft** (2026-11-14) — The §11.3, §12.3 and §12.4 status markers no longer list what a site build now does with an external class: construct a self-contained one, read value after resolve, resolve a component's classes, and construct a timing client class in a built page.
+- **0.9.38-draft** (2026-11-14) — The WHATWG DOM standards note says a component uses a shadow tree only when it opts in, not never.
 - **0.9.37-draft** (2026-11-13) — §8.4: the runtime's drawing of a whole-children template is what Studio's editing canvas draws, now that Preview is gone.
 - **0.9.36-draft** (2026-11-13) — §6.1: a templated style value survives its expression throwing, as every other template binding does; the variable is left unwritten until the expression can be evaluated.
 - **0.9.35-draft** (2026-11-13) — §22.6 and §23.3: the VS Code extension completes a .jxn file from its project's schemas and registers the content mapper with TypeScript's language server, shipping one for a file no tsconfig.json reads; the mapper answers such a file with the identity `inferred`.
@@ -3233,4 +3239,4 @@ This rewrites the mutating handlers of Appendix A's idiom using `$expression`, l
 
 ---
 
-_Jx Specification v0.9.37-draft — subject to revision_
+_Jx Specification v0.9.43-draft — subject to revision_
