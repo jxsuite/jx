@@ -328,6 +328,15 @@ function applyFocalPoint(
 }
 
 /**
+ * `text` as a String.prototype.replace replacement that inserts exactly `text`: a replacement
+ * string reads `$1`, `$&`, `$'` and `` $` `` as patterns, and `$$` is how it spells one dollar
+ * sign.
+ */
+export function literalReplacement(text: string): string {
+  return text.replaceAll("$", "$$$$");
+}
+
+/**
  * Transform image nodes in a Jx document tree.
  *
  * Mutates img nodes in place, injecting srcset, sizes, width, height, loading, and decoding.
@@ -877,8 +886,8 @@ async function transformInnerHtmlImages(
 
   let result = html;
   for (const { match, replacement } of replacements) {
-    /* A function: `alt="$10 a month"` in a replacement STRING would be read as a pattern. */
-    result = result.replace(match, () => replacement);
+    /* Escaped: `alt="$10 a month"` in a raw replacement STRING would be read as a pattern. */
+    result = result.replace(match, literalReplacement(replacement));
   }
   return result;
 }
