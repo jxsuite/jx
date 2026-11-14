@@ -38,6 +38,7 @@ import type { JxDocument } from "@jxsuite/schema/types";
 import type { PathMapCtx } from "../src/canvas/path-mapping";
 import type { RenderDocumentOptions, RenderHandle } from "../src/canvas/iframe-render";
 import { serializeJxPath } from "../src/canvas/path-mapping";
+import { renderSubtreeIframe } from "../src/canvas/iframe-subtree";
 
 /** Both halves of a full render in one call, for a container nothing must be released from. */
 async function renderResolvedDocument(opts: RenderDocumentOptions): Promise<RenderHandle> {
@@ -1085,6 +1086,66 @@ describe("a .jxn component the editing server answers as text", () => {
     );
     expect(asked).toEqual(["http://localhost:3000/pages/components/card.jxn"]);
     expect(customElements.get("x-jxn-card")).toBeDefined();
+  });
+});
+
+describe("a $switch case that is another document", () => {
+  const realFetch = globalThis.fetch;
+  afterEach(() => {
+    globalThis.fetch = realFetch;
+  });
+
+  test("is fetched against the document's base, in a full render and in a node drawn again", async () => {
+    const asked: string[] = [];
+    globalThis.fetch = Object.assign(
+      (input: RequestInfo | URL) => {
+        asked.push(String(input));
+        return Promise.resolve(Response.json({ tagName: "article", textContent: "About" }));
+      },
+      { preconnect: realFetch.preconnect },
+    );
+    const container = document.createElement("div");
+    document.body.append(container);
+    const doc: JxDocument = {
+      children: [
+        {
+          $switch: { $ref: "#/state/page" },
+          cases: { about: { $ref: "./views/about.json" } },
+          tagName: "div",
+        },
+      ],
+      state: { page: "about" },
+      tagName: "main",
+    };
+    // The frame's own address is not the document's: a case resolved against it names a file of
+    // The Studio bundle, which the server answers with a 404 or the application shell.
+    const handle = await renderResolvedDocument({
+      container,
+      doc,
+      docBase: "http://localhost:3000/project/pages/index.json",
+      mapperCtx: ctx,
+      mode: "design",
+    });
+    await Bun.sleep(0);
+    expect(asked).toEqual(["http://localhost:3000/project/pages/views/about.json"]);
+    expect(container.querySelector("article")?.textContent).toBe("About");
+
+    asked.length = 0;
+    const again: JxDocument = {
+      ...doc,
+      children: [
+        {
+          $switch: { $ref: "#/state/page" },
+          cases: { about: { $ref: "./views/other.json" } },
+          tagName: "div",
+        },
+      ],
+    };
+    renderSubtreeIframe(again, ["children", 0], handle.ctx);
+    await Bun.sleep(0);
+    expect(asked).toEqual(["http://localhost:3000/project/pages/views/other.json"]);
+    handle.dispose();
+    container.remove();
   });
 });
 
