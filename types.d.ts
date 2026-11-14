@@ -3,6 +3,7 @@ declare module "@webref/elements" {
   interface WebrefElement {
     name: string;
     obsolete?: boolean;
+    interface?: string;
   }
   interface WebrefElementsSpec {
     elements: WebrefElement[];
@@ -34,11 +35,16 @@ declare module "@webref/idl" {
     type: string;
     name?: string;
     idlType?: IdlType;
+    readonly?: boolean;
+    extAttrs?: { name: string; rhs?: { value: unknown } }[];
   }
   interface IdlDefinition {
     type: string;
     name?: string;
     members?: IdlMember[];
+    inheritance?: string | null;
+    target?: string;
+    includes?: string;
   }
   /** One `.idl` file in the package folder, keyed by its shortname in `listAll()`'s result. */
   interface IdlFile {

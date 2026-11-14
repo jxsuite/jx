@@ -75,6 +75,18 @@ const COMPONENTS = {
     state: { inc, n: 1 },
     tagName: "live-parent",
   },
+  /* Element properties (spec.md §8.1): the module binds each as a property and the platform
+     reflects it; the prerender writes the attribute it reflects to. */
+  "prop-box": {
+    children: [
+      { href: "/pricing", tagName: "a", textContent: "go ${state.n}" },
+      { name: "q", placeholder: "Search", tagName: "input", type: "search" },
+      { disabled: true, onclick: { $ref: "#/state/inc" }, tagName: "button", textContent: "+" },
+      { htmlFor: "q", tagName: "label", textContent: "Query" },
+    ],
+    state: { inc, n: 1 },
+    tagName: "prop-box",
+  },
   "rows-rich": {
     children: [
       { tagName: "h4", textContent: "head" },
@@ -134,7 +146,7 @@ const COMPONENTS = {
 } satisfies Record<string, JsonValue>;
 
 /** The hosts compared, by the `id` the page gives each. */
-const HOSTS = ["list", "click", "switch", "rows", "slot", "parent", "alone"] as const;
+const HOSTS = ["list", "click", "switch", "rows", "slot", "parent", "alone", "props"] as const;
 
 let win: Window;
 const before = new Map<string, string>();
@@ -164,6 +176,7 @@ beforeAll(async () => {
       { children: [{ tagName: "em", textContent: "given" }], id: "slot", tagName: "slot-live" },
       { id: "parent", tagName: "live-parent" },
       { $props: { label: "ALONE" }, id: "alone", tagName: "static-chip" },
+      { id: "props", tagName: "prop-box" },
     ],
     tagName: "main",
   });
@@ -238,6 +251,14 @@ describe("a prerendered instance upgrades to the markup it was built with", () =
     host("parent").querySelector("button")?.dispatchEvent(new win.Event("click"));
     expect(host("parent").querySelector("button")?.textContent).toBe("+2");
     expect(host("parent").querySelector("static-chip")?.textContent.trim()).toBe("[INSIDE]");
+  });
+
+  test("an element's properties are in the prerender as the attributes they reflect to", () => {
+    // Read back through the DOM, which serializes a bare attribute as `disabled=""`.
+    expect(before.get("props")).toBe(
+      '<a href="/pricing">go 1</a><input name="q" placeholder="Search" type="search">' +
+        '<button disabled="">+</button><label for="q">Query</label>',
+    );
   });
 
   test("an element written with no prerender renders the same markup from nothing", () => {

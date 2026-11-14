@@ -184,6 +184,8 @@ Individual images can override the global config through ordinary attributes:
 }
 ```
 
+`src`, `alt` and the other image attributes may also be written as element properties (`"alt": "Hero image"`), and the build treats both spellings the same.
+
 - `sizes`: used for this image in place of the container's width and the configured default
 - `srcset`: an image that already has one keeps it, and the build generates no variants for it
 - `loading="eager"`: keeps `loading="lazy"` off an above-the-fold image

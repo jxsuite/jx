@@ -5,6 +5,7 @@ spec:
   - spec.md#8
 code:
   - packages/compiler/src/shared.ts
+  - packages/runtime/src/dom-properties.ts
   - packages/runtime/src/runtime.ts
 ---
 
@@ -38,6 +39,16 @@ Property names follow the DOM, not HTML source: `className` (not `class`), `text
 ```
 
 Two properties are **protected**: `id` and `tagName` identify the element and may not be set via `$ref` bindings.
+
+### In a built page
+
+A page the build prerenders is HTML, which has attributes rather than properties, so the build writes each property as the attribute the browser reflects it to: `href`, `src`, `alt`, `placeholder` and `type` under their own names, `htmlFor` as `for`, `colSpan` as `colspan`, `ariaLabel` as `aria-label`. A boolean property such as `disabled` follows the [boolean rule](#boolean-values). On a form control, `value`, `checked` and `selected` set the starting value, which is what the property shows until someone edits it. `innerText`, the `text` of an `<option>` and the `value` of a `<textarea>` become the element's text.
+
+Some properties have no attribute at all, such as `indeterminate` on a checkbox or `scrollTop`. The build cannot write those, so they take effect only where the runtime renders the element. A custom element's own properties are the same: pass them as [props](/docs/framework/concepts/props-and-scope). Write an SVG element's attributes under `attributes`.
+
+Set each attribute one way. If a property and `attributes` both set one, `attributes` wins, except for a form control's live value, `checked` and `selected`.
+
+A `<select>` gets its `value` before its options exist, so the value selects nothing. Put `selected` on the chosen `<option>` instead.
 
 ## Custom attributes
 

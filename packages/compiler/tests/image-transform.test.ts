@@ -564,10 +564,10 @@ describe("image-transform", () => {
     });
 
     /*
-     * The static emitter renders a fixed set of node-level DOM properties and `src` is not among
-     * them, so an image written this way used to reach the page with a `srcset` and no `src` — the
-     * fallback the candidate list exists to have. Normalizing it is the pipeline's job because the
-     * pipeline is what rewrites this image's markup.
+     * The pipeline reads and writes `attributes` only, and `wrapInPicture` moves `attributes` onto
+     * the inner `<img>`. An image written with element properties is brought to that spelling first
+     * (spec.md §8.1), so its `src` is the fallback the candidate list exists to have. Normalizing
+     * it is the pipeline's job because the pipeline is what rewrites this image's markup.
      */
     test("normalizes a node-level src into attributes even with optimize off", async () => {
       const doc: any = { attributes: {}, src: "/images/hero.png", tagName: "img" };
@@ -579,6 +579,89 @@ describe("image-transform", () => {
 
       expect(doc.attributes.src).toBe("/images/hero.png");
       expect(doc.src).toBeUndefined();
+    });
+
+    test("a node-level src and alt land on the picture's img", async () => {
+      const doc: any = { alt: "Hero", role: "img", src: "/images/hero.png", tagName: "img" };
+
+      await transformImageNodes(doc, defaultConfig, TMP, { entries: {}, version: 1 });
+
+      expect(doc.tagName).toBe("picture");
+      expect(doc.alt).toBeUndefined();
+      expect(doc.role).toBeUndefined();
+      expect(doc.src).toBeUndefined();
+      expect(imgOf(doc).attributes.alt).toBe("Hero");
+      expect(imgOf(doc).attributes.role).toBe("img");
+      expect(imgOf(doc).attributes.src).toBe("/images/hero.png");
+    });
+
+    test("a node-level width is lifted, so the dimensions are written once", async () => {
+      const doc: any = { src: "/images/hero.png", tagName: "img", width: 300 };
+
+      await transformImageNodes(doc, defaultConfig, TMP, { entries: {}, version: 1 });
+
+      expect(doc.width).toBeUndefined();
+      // The author's width wins over the intrinsic pair, exactly as an `attributes.width` does.
+      expect(imgOf(doc).attributes.width).toBe("300");
+      expect(imgOf(doc).attributes.height).toBeUndefined();
+    });
+
+    test("an attributes entry beats the node-level property, and the node-level key is not left on the picture", async () => {
+      const doc: any = {
+        alt: "from the property",
+        attributes: { alt: "from attributes", src: "/images/hero.png" },
+        tagName: "img",
+      };
+
+      await transformImageNodes(doc, defaultConfig, TMP, { entries: {}, version: 1 });
+
+      expect(doc.tagName).toBe("picture");
+      expect(doc.alt).toBeUndefined();
+      expect(imgOf(doc).attributes.alt).toBe("from attributes");
+    });
+
+    test("a keyword boolean is lifted as its word, and a presence boolean as true", async () => {
+      const doc: any = {
+        attributes: { src: "/images/hero.png" },
+        hidden: false,
+        isMap: true,
+        tagName: "img",
+        translate: false,
+      };
+
+      await transformImageNodes(doc, { ...defaultConfig, optimize: false }, TMP, {
+        entries: {},
+        version: 1,
+      });
+
+      expect(doc.attributes.translate).toBe("no");
+      expect(doc.attributes.ismap).toBe(true);
+      // A value that writes no attribute is not lifted, and its key still leaves the node.
+      expect("hidden" in doc.attributes).toBe(false);
+      expect("hidden" in doc).toBe(false);
+      expect(doc.translate).toBeUndefined();
+    });
+
+    test("a bound property is lifted as written, and id and className stay on the node", async () => {
+      const doc: any = {
+        alt: "${state.alt}",
+        className: "hero",
+        id: "lead",
+        src: { $ref: "#/state/src" },
+        tagName: "img",
+      };
+
+      await transformImageNodes(doc, { ...defaultConfig, optimize: false }, TMP, {
+        entries: {},
+        version: 1,
+      });
+
+      expect(doc.attributes.alt).toBe("${state.alt}");
+      expect(doc.attributes.src).toEqual({ $ref: "#/state/src" });
+      expect(doc.alt).toBeUndefined();
+      expect(doc.src).toBeUndefined();
+      expect(doc.id).toBe("lead");
+      expect(doc.className).toBe("hero");
     });
   });
 

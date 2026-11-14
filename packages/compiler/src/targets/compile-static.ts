@@ -9,6 +9,7 @@
 import {
   buildAttrs,
   childSeparator,
+  contentPropertyText,
   colorSchemePrePaintScript,
   compileStyles,
   createCompileContext,
@@ -126,19 +127,20 @@ function compileNode(def: StaticChild, context: CompileContext): string {
 
   // `white-space` inherits, so once inside a <pre> the whole subtree stays whitespace-significant.
   const preformatted = context.preformatted === true || PREFORMATTED_TAGS.has(tag);
-  const inner = buildStaticInner(def, { ...nextContext, preformatted });
+  const inner = buildStaticInner(def, tag, { ...nextContext, preformatted });
 
   return `<${tag}${attrs}>${inner}</${tag}>`;
 }
 
 /**
- * Build the inner HTML (textContent, innerHTML or children) for a node.
+ * Build the inner HTML (textContent, innerHTML, a content property or children) for a node.
  *
  * @param {JxMutableNode} def
+ * @param {string} tag - The node's resolved tag
  * @param {CompileContext} context
  * @returns {string}
  */
-function buildStaticInner(def: JxMutableNode, context: CompileContext): string {
+function buildStaticInner(def: JxMutableNode, tag: string, context: CompileContext): string {
   if (def.textContent !== undefined) {
     const value = resolveStaticValue(def.textContent, context.scope);
     return value == null ? "" : escapeHtml(String(value));
@@ -151,6 +153,11 @@ function buildStaticInner(def: JxMutableNode, context: CompileContext): string {
     // Raw HTML may itself be a template; one that resolves to nothing keeps its authored text.
     const resolved = resolveStaticValue(def.innerHTML, context.scope);
     return resolved == null ? def.innerHTML : String(resolved);
+  }
+  // A content property is the element's text (spec.md §8.1).
+  const content = contentPropertyText(def, tag, context.scope);
+  if (content !== undefined) {
+    return content;
   }
   if (Array.isArray(def.children)) {
     return def.children
