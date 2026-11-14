@@ -2,14 +2,14 @@
 
 ## AI Assistant for Jx Studio
 
-**Version:** 0.1.43-draft\
-**Status:** Partial\
-**Updated:** 2026-11-13\
+**Version:** 0.1.44\
+**Status:** Implemented\
+**Updated:** 2026-11-14\
 **License:** MIT
 
 ---
 
-> **Status: Partial.** This is a stub spec for a shipped subsystem that grew ahead of its specification. It records the contract as implemented today; sections will be expanded as the subsystem stabilizes. The authoritative user documentation is [`docs/studio/ai.md`](../docs/studio/ai.md).
+The authoritative user documentation is [`docs/studio/ai.md`](../docs/studio/ai.md).
 
 ## 1. Overview
 
@@ -475,6 +475,7 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.1.44** (2026-11-14) — Every section is Implemented: the spec graduates out of draft.
 - **0.1.43-draft** (2026-11-13) — A template over live data is checked by the editing canvas, which runs each such entry once, rather than by Preview.
 - **0.1.42-draft** (2026-11-06) — §3.2 and §3.8: a turn that stops working gets a closing round to reply, the work budget is 30 rounds with a guard against identical rounds, neighbouring read-only calls may run at once, and Studio sheds old tool results to stay inside the window.
 - **0.1.41-draft** (2026-11-06) — §3.1: a render check judges a page as the build would draw it, never calls a server function or sends a Request, and names the entry when a lookup fails.
@@ -522,4 +523,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_Jx `@jxsuite/ai` Specification v0.1.43-draft — a stub, subject to expansion._
+_Jx `@jxsuite/ai` Specification v0.1.44_
