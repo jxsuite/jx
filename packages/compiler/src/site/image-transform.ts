@@ -877,7 +877,8 @@ async function transformInnerHtmlImages(
 
   let result = html;
   for (const { match, replacement } of replacements) {
-    result = result.replace(match, replacement);
+    /* A function: `alt="$10 a month"` in a replacement STRING would be read as a pattern. */
+    result = result.replace(match, () => replacement);
   }
   return result;
 }

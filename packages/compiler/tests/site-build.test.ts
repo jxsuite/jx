@@ -1747,6 +1747,54 @@ describe("buildSite — export sidecars alongside HTML", () => {
   });
 });
 
+// ── A dollar sign in a $head entry ───────────────────────────────────────────
+
+describe("buildSite — a dollar sign in a head entry", () => {
+  const DOLLAR_TMP = resolve(import.meta.dir, "__test-site-head-dollar__");
+
+  beforeAll(() => {
+    rmSync(DOLLAR_TMP, { force: true, recursive: true });
+    mkdirSync(resolve(DOLLAR_TMP, "pages"), { recursive: true });
+    writeFileSync(
+      resolve(DOLLAR_TMP, "project.json"),
+      JSON.stringify({ build: { outDir: "./dist" }, name: "Dollar Test" }),
+      "utf8",
+    );
+    writeFileSync(
+      resolve(DOLLAR_TMP, "pages/index.json"),
+      JSON.stringify({
+        $head: [
+          {
+            attributes: { content: "Free for 30 days, then $10 a month.", name: "description" },
+            tagName: "meta",
+          },
+          { attributes: { content: "$& and $' and $` and $$", name: "keywords" }, tagName: "meta" },
+        ],
+        children: [{ tagName: "h1", textContent: "Price" }],
+        title: "Price",
+      }),
+      "utf8",
+    );
+  });
+
+  afterAll(() => {
+    rmSync(DOLLAR_TMP, { force: true, recursive: true });
+  });
+
+  /* The head is spliced in with String.prototype.replace, and a replacement STRING reads `$1` as
+   * capture group 1: "$10 a month" became the old head followed by "0 a month", which closed the
+   * tag early and printed the rest of it at the top of the page. */
+  it("keeps the content as written, and prints none of it into the body", async () => {
+    const result = await buildSite(DOLLAR_TMP);
+    expect(result.errors).toHaveLength(0);
+    const html = readFileSync(resolve(DOLLAR_TMP, "dist/index.html"), "utf8");
+    expect(html).toContain('content="Free for 30 days, then $10 a month."');
+    expect(html).toContain('content="$&amp; and $\' and $` and $$"');
+    expect(html.match(/<head>/g)).toHaveLength(1);
+    expect(html.slice(html.indexOf("<body"))).not.toContain("a month");
+  });
+});
+
 // ── Template strings in title and $head ──────────────────────────────────────
 
 describe("buildSite — template string resolution", () => {

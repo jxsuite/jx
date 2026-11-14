@@ -2007,10 +2007,8 @@ async function compilePage(
 
   // Inject CSS rules collected from component slot content
   if (slotCss.rules.length > 0) {
-    result.html = result.html.replace(
-      "</head>",
-      `<style>\n${escapeStyleText(slotCss.rules.join("\n"))}\n</style>\n</head>`,
-    );
+    const slotStyle = `<style>\n${escapeStyleText(slotCss.rules.join("\n"))}\n</style>\n</head>`;
+    result.html = result.html.replace("</head>", () => slotStyle);
   }
 
   // Post-process: inject merged <head> content into the compiled HTML
@@ -2937,7 +2935,7 @@ function injectComponentScripts(
     componentCss === "" ? "" : `<style>\n${escapeStyleText(componentCss)}\n  </style>`;
   const intoHead = (fragments: string[]) => {
     const block = fragments.filter(Boolean).join("\n  ");
-    return block === "" ? html : html.replace("</head>", `  ${block}\n</head>`);
+    return block === "" ? html : html.replace("</head>", () => `  ${block}\n</head>`);
   };
 
   // Only inject JS for components that have non-static instances. An island-rendered instance is
@@ -2987,7 +2985,7 @@ function injectComponentScripts(
     .map((tag: string) => `<script type="module" src="/components/${tag}.js"></script>`)
     .join("\n  ");
 
-  return result.replace("</body>", `  ${moduleScripts}\n</body>`);
+  return result.replace("</body>", () => `  ${moduleScripts}\n</body>`);
 }
 
 /**
@@ -3016,7 +3014,10 @@ function injectNpmElementScripts(html: string, bundleUrl: string) {
    * documented breakage, not merely 462kb. Bundling the SET as one entry gives one copy, no
    * external, and 190kb for the seven-component demo that motivated this.
    */
-  return html.replace("</body>", `  <script type="module" src="${bundleUrl}"></script>\n</body>`);
+  return html.replace(
+    "</body>",
+    () => `  <script type="module" src="${bundleUrl}"></script>\n</body>`,
+  );
 }
 
 /**
@@ -3050,19 +3051,21 @@ function injectHead(
   }
   let result = html;
   if (headPattern.test(result)) {
-    result = result.replace(headPattern, `<head>\n  ${headHtml}${preservedBlocks}\n</head>`);
+    /* A function, never a string: a replacement STRING reads `$1`, `$&` and `$'` as patterns, so a
+     * head entry holding "$10 a month" spliced capture group 1 (the old head) into the tag. */
+    result = result.replace(headPattern, () => `<head>\n  ${headHtml}${preservedBlocks}\n</head>`);
   }
 
   // Set lang and dir on <html>. `dir` matters for the same reason `lang` does: without it, a
   // Right-to-left page renders left-to-right, and the default is not "unset" but "ltr".
   result = result.replace(/<html\s[^>]*>/i, (match: string) => {
     let tag = /lang=/.test(match)
-      ? match.replace(/lang="[^"]*"/, `lang="${root.lang}"`)
-      : match.replace("<html", `<html lang="${root.lang}"`);
+      ? match.replace(/lang="[^"]*"/, () => `lang="${root.lang}"`)
+      : match.replace("<html", () => `<html lang="${root.lang}"`);
     if (root.dir !== undefined) {
       tag = /\sdir=/.test(tag)
-        ? tag.replace(/\sdir="[^"]*"/, ` dir="${root.dir}"`)
-        : tag.replace("<html", `<html dir="${root.dir}"`);
+        ? tag.replace(/\sdir="[^"]*"/, () => ` dir="${root.dir}"`)
+        : tag.replace("<html", () => `<html dir="${root.dir}"`);
     }
     return tag;
   });
