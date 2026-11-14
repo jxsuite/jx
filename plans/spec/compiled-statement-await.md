@@ -41,7 +41,7 @@ None of these is `async`, and `compileStatements` emits `expr;` for every expres
 
 **Related, no edge.**
 
-- `plan:spec/compiled-host-handlers` (§16.1) moves `emitLitNode`'s `on*` branches into `handlerSource`. Whichever lands second puts the `async` there; either order works.
+- The landed host-handler work (spec.md §16.1) moved `emitLitNode`'s `on*` branches into `handlerSource`, which the map root and the host listeners also call, so this plan puts the `async` there.
 - the shared classifier in `@jxsuite/schema/function-role` (landed) moves `LIFECYCLE_KEYS` to `@jxsuite/schema/function-role`. If it has landed, the element step below imports it from there.
 
 Two compiled problems are not §20.2's:
@@ -105,12 +105,12 @@ Two compiled problems are not §20.2's:
 **`packages/compiler/src/targets/compile-element.ts`**
 
 - In `emitElementModule`, the structured handler branch (no `parameters`; the callable branch goes through `emitStatementsFn`) emits `= async (s, e) => {`. For a key in `LIFECYCLE_KEYS`, it emits `= async (s) => {` followed by `const e = null;`.
-- In `emitLitNode` (in `handlerSource`, if `plan:spec/compiled-host-handlers` has landed), the Function-def handler is emitted as `async (e) => { … }` when `hasStructuredBody(val)`, and stays unchanged for a string body.
+- In `handlerSource` (`compile-element.ts`), the Function-def handler is emitted as `async (e) => { … }` when `hasStructuredBody(val)`, and stays unchanged for a string body.
 
 **Integration contract.** Once this lands:
 
 - `compileStatements` output may contain `await` and a leading `const $jxt = …;`. Every emitter must place it directly inside an `async` function, and the identifiers `$jxr` and `$jxt` are reserved.
-- `emitStatementsFn` emits an `async` callable; it stays the one emitter for a parameterised structured body. A host listener from `plan:spec/compiled-host-handlers` is `async (e) => { … }` around `compileStatements` output, through `handlerSource`.
+- `emitStatementsFn` emits an `async` callable; it stays the one emitter for a parameterised structured body. A host listener (spec.md §16.1, landed) is `async (e) => { … }` around `compileStatements` output, through `handlerSource`.
 - A compiled lifecycle-key body takes no event, so the host the compiled element passes as the second argument (`compiler.md` §4.1) never reaches a verb.
 - `runStatements` keeps its signature and returns `Promise<void>`. It is synchronous up to the first thenable, and its verbs ignore a second argument that lacks the method.
 - Every structured entry a `call` can reach returns a promise, in the interpreter, the build-time scope and the element target (and in an island, for a callable), so a `call` of one suspends its caller.
