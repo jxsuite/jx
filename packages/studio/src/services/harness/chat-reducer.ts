@@ -55,7 +55,13 @@ function applyOutcome(chat: ChatStore, outcome: TurnOutcome): void {
     case "error": {
       /* `setError` alone, never after `finishStream`: it removes the round's partial message, and
          only while that message is still the streaming one. */
-      chat.setError(outcome.error?.message ?? "");
+      /* The code rides along only when the failure carried one, so an error without one records the
+         call it always did. */
+      if (outcome.error?.code === undefined) {
+        chat.setError(outcome.error?.message ?? "");
+      } else {
+        chat.setError(outcome.error.message, outcome.error.code);
+      }
       break;
     }
     default: {

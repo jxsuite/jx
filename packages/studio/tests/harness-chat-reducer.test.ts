@@ -210,6 +210,15 @@ describe("applyHarnessEvent", () => {
       { ...base, type: "turn_end", outcome: outcome("error", { error: { message: "401" } }) },
       [["setError", "401"]],
     ],
+    [
+      "an error that carried a code",
+      {
+        ...base,
+        type: "turn_end",
+        outcome: outcome("error", { error: { code: "429", message: "rate limited" } }),
+      },
+      [["setError", "rate limited", "429"]],
+    ],
     ["a completed turn", { ...base, type: "turn_end", outcome: outcome("complete") }, []],
     ["a cancelled turn", { ...base, type: "turn_end", outcome: outcome("cancelled") }, []],
     ["turn_start", { ...base, type: "turn_start" }, []],

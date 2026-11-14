@@ -14,7 +14,15 @@
  */
 
 import type { AiProviderFamily, ProblemDetails } from "@jxsuite/protocol";
+import { problemDetails } from "@jxsuite/protocol/problems";
 import { AI_SESSION_HEADER, upstreamCacheHints } from "./cache-hints.ts";
+import {
+  fetchFailureFrame,
+  normalizeOpenAIStream,
+  streamFailureFrame,
+} from "./gateway/normalize.ts";
+import { problemTypeForStatus } from "./gateway/problem.ts";
+import type { OpenAICompatQuirks } from "./gateway/types.ts";
 
 /* Re-exported so `./streaming-client`, the subpath a backend already imports, carries the cache
    hints too: a Worker backend hashing the session header needs nothing else from this package. */
@@ -106,6 +114,12 @@ export interface StreamUsageEvent {
 export interface StreamDoneEvent {
   type: "done";
   stopReason: string;
+  /**
+   * Present, and true, when the provider's body ended having sent no terminal marker: the reply was
+   * cut off rather than finished (specs/ai.md §2). `stopReason` is still `"stop"`, so a reader that
+   * predates this member ends the round exactly as it did.
+   */
+  truncated?: true;
 }
 
 /**
@@ -155,7 +169,8 @@ interface OpenAIChatRequestBody {
 
 /** A tool-call fragment inside an OpenAI streaming `delta`. */
 export interface OpenAIToolCallDelta {
-  index: number;
+  /** The call's slot. Optional on the wire: some servers send none, and its place is its position. */
+  index?: number;
   id?: string;
   type?: string;
   function?: { name?: string; arguments?: string };
@@ -190,6 +205,8 @@ export interface OpenAIUsage {
   completion_tokens_details?: { reasoning_tokens?: number } | null;
 }
 
+export type { OpenAICompatQuirks } from "./gateway/types.ts";
+
 /**
  * Normalize OpenAI's usage object into a {@link StreamUsageEvent}, or null when it carries no count.
  * The two detail figures are included only when the provider sent them: absent means "not said",
@@ -213,18 +230,6 @@ export function usageEventFromOpenAI(usage?: OpenAIUsage | null): StreamUsageEve
     event.reasoningTokens = reasoning;
   }
   return event;
-}
-
-/**
- * The stop reasons the client reports, from an OpenAI `finish_reason`. Anything else (a content
- * filter, a provider's own spelling) is not a stop the loop acts on, so it maps to null and the
- * stream keeps reading.
- */
-function stopReasonFromOpenAI(reason: string | null | undefined): string | null {
-  if (reason === "tool_calls" || reason === "length" || reason === "stop") {
-    return reason;
-  }
-  return null;
 }
 
 /**
@@ -341,23 +346,26 @@ function extractMachineCode(rawBody: string): string {
 }
 
 /**
- * The event for an exchange that failed: `done: cancelled` for an abort, otherwise an `error` event
- * whose message is `prefix` and the failure's own message.
+ * The problem an error body describes: the body itself when it is already a problem document (it
+ * names a `type`), otherwise one built from the status and the sentence the body carried.
  *
- * @param {"Network error" | "Stream error"} prefix - Which half of the exchange failed
- * @param {unknown} cause - What the request or the read rejected with
- * @returns {StreamEvent}
+ * @param {string} rawBody - The error response's body, as read
+ * @param {number} status - The response's status
+ * @param {string} message - The sentence extracted from the body
+ * @returns {ProblemDetails}
  */
-function failureEvent(prefix: "Network error" | "Stream error", cause: unknown): StreamEvent {
-  /* SAFETY: `fetch` and a body reader reject with an Error (a TypeError, or the abort's
-     AbortError DOMException), and the reads in a stream throw only TypeErrors. Only `name` and
-     `message` are read, so a custom non-null abort reason that is not an Error reads both as
-     undefined, as it always has. */
-  const failure = cause as Error;
-  if (failure.name === "AbortError") {
-    return { type: "done", stopReason: "cancelled" };
+function problemOf(rawBody: string, status: number, message: string): ProblemDetails {
+  try {
+    const parsed: unknown = JSON.parse(rawBody);
+    if (isMemberBag(parsed) && "type" in parsed && isSentence(parsed.type)) {
+      /* SAFETY: a JSON object naming a string `type` is a problem document by RFC 9457 §3.1; every
+         other member is optional there, and a reader checks the ones it uses. */
+      return parsed as ProblemDetails;
+    }
+  } catch {
+    /* Not JSON: the status and the sentence are all there is. */
   }
-  return { type: "error", message: `${prefix}: ${failure.message}` };
+  return problemDetails(problemTypeForStatus(status), message);
 }
 
 // ─── Type definitions ────────────────────────────────────────────────────────
@@ -401,8 +409,10 @@ export const STREAM_EVENT_TYPES = {
 
 /**
  * Creates an OpenAI-compatible streaming client that fetches from a given base URL with the
- * provided API key, transforms OpenAI SSE into normalized StreamEvents, and accumulates partial
- * tool call argument JSON.
+ * provided API key and normalizes the response with the gateway's own normalizer
+ * (`normalizeOpenAIStream`), so its events are the frames a backend's chat route would have sent
+ * for the same body: an error carries the provider's sentence, its status as `code` and a
+ * `problem`, and a body that ends with no terminal marker finishes `truncated`.
  *
  * @param {object} opts
  * @param {string} opts.baseUrl - OpenAI-compatible API base URL (e.g. "https://api.openai.com/v1")
@@ -422,6 +432,8 @@ export interface OpenAIStreamingClientOptions {
   model?: string;
   temperature?: number | undefined;
   sessionAffinity?: string | undefined;
+  /** How this provider departs from the chat-completions wire, when the caller knows it does. */
+  quirks?: OpenAICompatQuirks | undefined;
 }
 
 export function createOpenAIStreamingClient({
@@ -430,6 +442,7 @@ export function createOpenAIStreamingClient({
   model = "gpt-4o",
   temperature,
   sessionAffinity,
+  quirks,
 }: OpenAIStreamingClientOptions): StreamingClient {
   // Fixed for the client's life, so it is classified once rather than per request.
   const hints = upstreamCacheHints(baseUrl, sessionAffinity);
@@ -482,164 +495,13 @@ export function createOpenAIStreamingClient({
         signal,
       });
     } catch (error) {
-      yield failureEvent("Network error", error);
+      yield fetchFailureFrame(error);
       return;
     }
 
-    if (!response.ok) {
-      let errorBody = "";
-      try {
-        errorBody = await response.text();
-      } catch {
-        /* Ignore */
-      }
-      const message = extractErrorMessage(errorBody, response.statusText);
-      yield {
-        type: "error",
-        message: `API error ${response.status}: ${message}`,
-        code: String(response.status),
-      };
-      return;
-    }
-
-    const reader = response.body?.getReader();
-    if (!reader) {
-      yield { type: "error", message: "No response body" };
-      return;
-    }
-
-    const decoder = new TextDecoder();
-    let buffer = "";
-
-    const pendingToolCalls = new Map<number, { id: string; name: string; args: string }>();
-    /* The finish reason is REMEMBERED rather than acted on. With `include_usage`, the count arrives
-       in a chunk of its own after the one carrying `finish_reason`, so returning on the finish
-       dropped the count on every request. The stream ends at `[DONE]` or when the body closes. */
-    let stopReason: string | null = null;
-    let usage: StreamUsageEvent | null = null;
-
-    /**
-     * Close the tool calls still open. Idempotent, so a finish chunk and `[DONE]` can both call it.
-     *
-     * @yields {StreamEvent} A `tool_call_end` per open call.
-     */
-    function* closePendingToolCalls(): Generator<StreamEvent> {
-      for (const tc of pendingToolCalls.values()) {
-        yield { type: "tool_call_end", id: tc.id };
-      }
-      pendingToolCalls.clear();
-    }
-
-    /**
-     * The stream's last frames: any open calls, the count when there is one, then `done`.
-     *
-     * @yields {StreamEvent} The closing frames, in order.
-     */
-    function* finish(): Generator<StreamEvent> {
-      yield* closePendingToolCalls();
-      if (usage) {
-        yield usage;
-      }
-      yield { type: "done", stopReason: stopReason ?? "stop" };
-    }
-
-    try {
-      for (let chunk = await reader.read(); !chunk.done; chunk = await reader.read()) {
-        buffer += decoder.decode(chunk.value, { stream: true });
-        const lines = buffer.split("\n");
-        // Keep the last (potentially incomplete) line in the buffer
-        buffer = lines.pop() || "";
-
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (!trimmed || !trimmed.startsWith("data: ")) {
-            continue;
-          }
-
-          const dataStr = trimmed.slice(6);
-          if (dataStr === "[DONE]") {
-            yield* finish();
-            return;
-          }
-
-          let parsed: OpenAIStreamChunk;
-          try {
-            /* SAFETY: the interface is the provider's wire shape, and this loop only reads it: each
-               member passes optional chaining, a truthiness test or a predicate before it shapes an
-               event, and a chunk too malformed to read (JSON `null`, a non-iterable `tool_calls`)
-               throws into the catch below, which reports it as a stream error. */
-            parsed = JSON.parse(dataStr) as OpenAIStreamChunk;
-          } catch {
-            continue; // Skip unparseable chunks
-          }
-
-          // Usually a final chunk with no choices, but a provider may put it beside the finish.
-          usage = usageEventFromOpenAI(parsed.usage) ?? usage;
-
-          const choice = parsed.choices?.[0];
-          if (!choice) {
-            continue;
-          }
-
-          const { delta } = choice;
-
-          // Text content
-          if (delta?.content) {
-            yield { type: "delta", content: delta.content };
-          }
-
-          // Chain-of-thought, under either of the two names providers give it.
-          const reasoning = delta?.reasoning_content ?? delta?.reasoning;
-          if (isText(reasoning) && reasoning) {
-            yield { type: "reasoning", content: reasoning };
-          }
-
-          // Tool calls
-          if (delta?.tool_calls) {
-            for (const tc of delta.tool_calls) {
-              const existing = pendingToolCalls.get(tc.index);
-
-              if (tc.id) {
-                // First appearance of this tool call
-                const entry = {
-                  id: tc.id,
-                  name: tc.function?.name || "",
-                  args: tc.function?.arguments || "",
-                };
-                pendingToolCalls.set(tc.index, entry);
-
-                yield { type: "tool_call_start", id: tc.id, name: entry.name };
-
-                if (entry.args) {
-                  yield { type: "tool_call_delta", id: tc.id, args: entry.args };
-                }
-              } else if (existing && tc.function?.arguments) {
-                // Subsequent argument fragment
-                existing.args += tc.function.arguments;
-                yield {
-                  type: "tool_call_delta",
-                  id: existing.id,
-                  args: tc.function.arguments,
-                };
-              }
-            }
-          }
-
-          // Finish reason: close the calls now, report the reason at the end of the stream.
-          const finished = stopReasonFromOpenAI(choice.finish_reason);
-          if (finished) {
-            yield* closePendingToolCalls();
-            stopReason = finished;
-          }
-        }
-      }
-
-      // Stream ended without `[DONE]`
-      yield* finish();
-    } catch (error) {
-      void reader.cancel();
-      yield failureEvent("Stream error", error);
-    }
+    /* The gateway's normalizer, so a provider reached directly and one reached through a backend
+       yield the same frames for the same body (specs/ai.md §2.4). */
+    yield* normalizeOpenAIStream(response, quirks ? { quirks } : {});
   }
 
   return { streamChat };
@@ -810,7 +672,7 @@ export function createProxyStreamingClient({
         signal,
       });
     } catch (error) {
-      yield failureEvent("Network error", error);
+      yield fetchFailureFrame(error);
       return;
     }
 
@@ -832,13 +694,18 @@ export function createProxyStreamingClient({
         type: "error",
         message: cleanMessage,
         code: machineCode || String(response.status),
+        problem: problemOf(errorBody, response.status, cleanMessage),
       };
       return;
     }
 
     const reader = response.body?.getReader();
     if (!reader) {
-      yield { type: "error", message: "No response body" };
+      yield {
+        type: "error",
+        message: "No response body",
+        problem: problemDetails("upstreamFailure", "No response body"),
+      };
       return;
     }
 
@@ -878,7 +745,7 @@ export function createProxyStreamingClient({
       }
     } catch (error) {
       void reader.cancel();
-      yield failureEvent("Stream error", error);
+      yield streamFailureFrame(error);
     }
   }
 

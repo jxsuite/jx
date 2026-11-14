@@ -1,0 +1,8 @@
+data: {"choices":[{"delta":{"tool_calls":[{"id":"call_a","type":"function","function":{"name":"first","arguments":"{\"x\":"}},{"id":"call_b","type":"function","function":{"name":"second","arguments":"{\"y\":"}}]}}]}
+
+data: {"choices":[{"delta":{"tool_calls":[{"function":{"arguments":"1}"}},{"function":{"arguments":"2}"}}]}}]}
+
+data: {"choices":[{"delta":{},"finish_reason":"tool_calls"}]}
+
+data: [DONE]
+

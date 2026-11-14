@@ -21,7 +21,7 @@ import {
 } from "@jxsuite/ai/messages";
 import { isJsonObject, isString } from "@jxsuite/schema/guards";
 import type { JsonObject, JsonValue } from "@jxsuite/schema/types";
-import { modelContextWindow } from "./ai-models";
+import { chatRouteLimits, modelContextWindow } from "./ai-models";
 
 /** How many tool messages {@link pruneOrphanToolMessages} dropped, moved and sealed. */
 export interface OrphanToolRepair {
@@ -208,6 +208,12 @@ export function estimatePromptTokens(systemPrompt: string): number {
 
 // ─── Trim ───────────────────────────────────────────────────────────────────
 
+/** What a trim did: the conversation's estimate afterwards, and how many messages it dropped. */
+export interface TrimResult {
+  estimatedTokens: number;
+  droppedCount: number;
+}
+
 /**
  * Trim chat history so the total estimated token count stays within the budget. Returns trimming
  * metadata, or null if no trimming was needed.
@@ -217,12 +223,12 @@ export function estimatePromptTokens(systemPrompt: string): number {
  *
  * @param {ReturnType<typeof import("@jxsuite/ai/chat-state").createChatState>} chatState
  * @param {string} systemPrompt
- * @returns {{ estimatedTokens: number; droppedCount: number } | null}
+ * @returns {TrimResult | null}
  */
 export function trimContext(
   chatState: ReturnType<typeof createChatState>,
   systemPrompt: string,
-): { estimatedTokens: number; droppedCount: number } | null {
+): TrimResult | null {
   const window = contextWindowFor(chatState.model);
   const maxTokens = Math.floor(window * BUDGET_FRACTION);
   const warnTokens = Math.floor(window * WARN_FRACTION);
@@ -231,11 +237,27 @@ export function trimContext(
   const allMessages = chatState.messages;
   const total = contextTokens(chatState, systemTokens);
 
-  if (total <= maxTokens) {
+  /* The backend's own ceiling on messages per request (specs/ai.md §2). A conversation inside the
+     token budget can still be past it, and the request would be refused with a 413 the user can do
+     nothing about, so it is trimmed to here first. One slot is left for the note below. */
+  const { maxMessages } = chatRouteLimits();
+  const countFloor =
+    maxMessages !== undefined && allMessages.length > maxMessages
+      ? allMessages.length - (maxMessages - 1)
+      : 0;
+  const overCount = countFloor > 0;
+
+  if (total <= maxTokens && !overCount) {
     chatState.setTokenCount(total);
     // Warn once the conversation crosses half the window, even before we trim.
     chatState.setContextWarning(total >= warnTokens);
     return { estimatedTokens: total, droppedCount: 0 };
+  }
+
+  if (total <= maxTokens) {
+    return dropLeading(chatState, systemTokens, countFloor, {
+      reason: "this backend's limit on messages per request",
+    });
   }
 
   // Must trim. How many messages to drop?
@@ -267,6 +289,8 @@ export function trimContext(
   // For the Jx assistant, there is no system message in the messages array —
   // The system prompt is passed separately. So keepFrom is safe.
 
+  keepFrom = Math.max(keepFrom, countFloor);
+
   if (keepFrom <= 0) {
     // Can't trim further without losing everything. Warn but don't truncate.
     chatState.setTokenCount(total);
@@ -274,8 +298,27 @@ export function trimContext(
     return { estimatedTokens: total, droppedCount: 0 };
   }
 
-  const droppedCount = keepFrom;
-  allMessages.splice(0, keepFrom);
+  return dropLeading(chatState, systemTokens, keepFrom, { reason: "token budget" });
+}
+
+/**
+ * Drop the first `count` messages and leave a note in their place saying so.
+ *
+ * @param {ReturnType<typeof createChatState>} chatState
+ * @param {number} systemTokens - The system prompt's estimate, in the units the budget is kept in
+ * @param {number} count - How many leading messages to drop
+ * @param {{ reason: string }} why - What the conversation was trimmed to stay within, for the note
+ * @returns {TrimResult}
+ */
+function dropLeading(
+  chatState: ReturnType<typeof createChatState>,
+  systemTokens: number,
+  count: number,
+  why: { reason: string },
+): TrimResult {
+  const allMessages = chatState.messages;
+  const droppedCount = count;
+  allMessages.splice(0, count);
   // The provider counted a transcript that no longer exists; the estimate is all there is now.
   chatState.clearUsage();
 
@@ -283,7 +326,7 @@ export function trimContext(
   allMessages.unshift({
     id: `ctx_summary_${Date.now()}`,
     role: "user",
-    content: `[Earlier conversation truncated. ${droppedCount} messages dropped to stay within token budget. The most recent ${allMessages.length - 1} messages are preserved.]`,
+    content: `[Earlier conversation truncated. ${droppedCount} messages dropped to stay within ${why.reason}. The most recent ${allMessages.length - 1} messages are preserved.]`,
     timestamp: Date.now(),
   });
 

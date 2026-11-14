@@ -1303,6 +1303,7 @@ describe("X-Api-Provider: anthropic", () => {
             { contextWindow: 1_000_000, id: "claude-sonnet-5-5", name: "Claude Sonnet 5.5" },
           ],
           providers: ["openai-compat", "anthropic"],
+          wire: [1],
         });
         expect(calls[0]?.url).toBe("https://api.anthropic.com/v1/models?limit=1000");
         expect(calls[0]?.headers.get("anthropic-version")).toBeTruthy();

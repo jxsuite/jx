@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { createChatState } from "@jxsuite/ai";
 import type { LiveMessage } from "@jxsuite/ai/messages";
+import type { AiChatLimits } from "@jxsuite/protocol";
 import { SEAL_CUT_OFF, isSealContent } from "@jxsuite/ai/messages";
 
 /**
@@ -11,7 +12,10 @@ import { SEAL_CUT_OFF, isSealContent } from "@jxsuite/ai/messages";
  * Doubled rather than seeded through a real fetch so this file stays DOM-free.
  */
 let reportedWindows: Record<string, number> = {};
+/** The limits the backend's probe declared for its chat route, doubled the same way. */
+let routeLimits: AiChatLimits = {};
 void mock.module("../src/services/ai-models", () => ({
+  chatRouteLimits: () => routeLimits,
   modelContextWindow: (id: string) => reportedWindows[id],
   proxyActionOffer: () => null,
 }));
@@ -21,6 +25,7 @@ const { UNANSWERED_TOOL_RESULT, pruneOrphanToolMessages, shedToolResults, trimCo
 
 beforeEach(() => {
   reportedWindows = {};
+  routeLimits = {};
 });
 
 function longContent(tokens: number) {
@@ -315,6 +320,62 @@ describe("context-manager — the provider's own count", () => {
     const result = trimContext(cs, "");
     expect(result!.droppedCount).toBeGreaterThan(0);
     expect(cs.usage).toBeNull();
+  });
+});
+
+describe("context-manager — the backend's limit on messages per request", () => {
+  /* A backend may refuse a request for how many messages it carries, whatever they weigh
+     (specs/ai.md §2). The probe declares the ceiling, and the trim honours it. */
+  function exchange(count: number) {
+    const cs = createChatState({ model: "gpt-4o" });
+    const msgs: Omit<LiveMessage, "id" | "timestamp">[] = [];
+    for (let i = 0; i < count; i++) {
+      msgs.push({ role: i % 2 === 0 ? "user" : "assistant", content: `message ${i}` });
+    }
+    pushMessages(cs, msgs);
+    return cs;
+  }
+
+  test("a conversation inside the token budget is still trimmed to the limit", () => {
+    routeLimits = { maxMessages: 10 };
+    const cs = exchange(14);
+    const result = trimContext(cs, "System prompt");
+    // Ten in all: nine kept and the note that says the rest were dropped.
+    expect(result!.droppedCount).toBe(5);
+    expect(cs.messages).toHaveLength(10);
+    // The note's count is the token trim's own (one under what is kept), moved here verbatim.
+    expect(cs.messages[0]!.content).toBe(
+      "[Earlier conversation truncated. 5 messages dropped to stay within this backend's limit on messages per request. The most recent 8 messages are preserved.]",
+    );
+    expect(cs.messages.at(-1)!.content).toBe("message 13");
+    expect(cs.contextWarning).toBe(true);
+  });
+
+  test("a conversation at or under the limit is left alone", () => {
+    routeLimits = { maxMessages: 10 };
+    const cs = exchange(10);
+    expect(trimContext(cs, "System prompt")!.droppedCount).toBe(0);
+    expect(cs.messages).toHaveLength(10);
+  });
+
+  test("no declared limit means no count trim", () => {
+    const cs = exchange(200);
+    expect(trimContext(cs, "System prompt")!.droppedCount).toBe(0);
+  });
+
+  test("a conversation over both the budget and the limit is trimmed to the tighter of the two", () => {
+    routeLimits = { maxMessages: 6 };
+    const cs = createChatState({ model: "gpt-4" });
+    const msgs: Omit<LiveMessage, "id" | "timestamp">[] = [];
+    for (let i = 0; i < 30; i++) {
+      msgs.push({ role: i % 2 === 0 ? "user" : "assistant", content: longContent(300) });
+    }
+    pushMessages(cs, msgs);
+    const result = trimContext(cs, longContent(500));
+    // The token trim alone keeps the last twenty; the limit leaves five and the note.
+    expect(result!.droppedCount).toBe(25);
+    expect(cs.messages).toHaveLength(6);
+    expect(cs.messages[0]!.content).toContain("to stay within token budget");
   });
 });
 

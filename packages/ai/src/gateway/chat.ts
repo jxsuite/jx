@@ -13,6 +13,7 @@ import {
   toAnthropicRequest,
 } from "./anthropic.ts";
 import { fetchFailureFrame, normalizeOpenAIStream } from "./normalize.ts";
+import type { NormalizeOptions } from "./normalize.ts";
 import { problemResponse, refusal } from "./problem.ts";
 import { encodeSse, SSE_HEADERS } from "./sse.ts";
 import type { ChatGatewayOptions, GatewayRefusal, Upstream } from "./types.ts";
@@ -255,8 +256,14 @@ export function createChatHandler<C extends { readonly signal: AbortSignal }>(
       upstreamBody.tool_choice = "auto";
       upstreamBody.parallel_tool_calls = true;
     }
+    const errorCode = (status: number): string | undefined =>
+      options.upstreamErrorCode?.(status, upstream);
     const hints = upstreamCacheHints(upstream.baseUrl, upstream.sessionAffinity);
     Object.assign(upstreamBody, hints.body);
+
+    const normalizeOptions: NormalizeOptions = upstream.quirks
+      ? { errorCode, quirks: upstream.quirks }
+      : { errorCode };
 
     const frames = exchange(
       upstreamFetch,
@@ -271,7 +278,7 @@ export function createChatHandler<C extends { readonly signal: AbortSignal }>(
         body: JSON.stringify(upstreamBody),
         signal: context.signal,
       },
-      normalizeOpenAIStream,
+      (response) => normalizeOpenAIStream(response, normalizeOptions),
     );
     return new Response(encodeSse(frames), { headers: SSE_HEADERS });
   };

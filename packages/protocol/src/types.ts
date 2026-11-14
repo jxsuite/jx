@@ -830,6 +830,25 @@ export interface AiModelInfo {
   contextWindow?: number;
   /** Whether the model supports tool/function calling (agentic editing). */
   toolSupport?: boolean;
+  /** One sentence about the model, when the provider's listing carries one. */
+  description?: string;
+  /** Who publishes the model, as the provider's listing names them (`owned_by`). */
+  ownedBy?: string;
+  /** The wire the model is reached over, when a backend lists models of more than one family. */
+  family?: AiProviderFamily;
+  /** Whether the model streams chain-of-thought, when the backend knows. */
+  reasoning?: boolean;
+}
+
+/**
+ * The ceilings a backend's chat route enforces, as its models route declares them (ai.md §2). A
+ * client that knows them trims before it sends, rather than learning them from a 413.
+ */
+export interface AiChatLimits {
+  /** The most messages one chat request may carry. */
+  maxMessages?: number;
+  /** The largest chat request body accepted, in bytes. */
+  maxBodyBytes?: number;
 }
 
 /** Response of the AI proxy's models route (the chat route's sibling). */
@@ -854,6 +873,13 @@ export interface AiModelsResponse {
    * NOT** send it a key for any other family.
    */
   providers?: AiProviderFamily[];
+  /**
+   * The chat-route wire versions this backend accepts (ai.md §2). Absent means `[1]`: a backend
+   * that predates the member speaks version 1 and nothing else.
+   */
+  wire?: number[];
+  /** The ceilings the chat route enforces, when the backend enforces any. */
+  limits?: AiChatLimits;
   /** Set when the upstream provider was unreachable and defaults were returned. */
   upstreamError?: number | string;
   /**

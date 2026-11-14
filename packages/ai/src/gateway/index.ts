@@ -34,7 +34,7 @@ export {
   toAnthropicRequest,
 } from "./anthropic.ts";
 export { createChatHandler, DEFAULT_UPSTREAM_BASE_URL } from "./chat.ts";
-export { modelsResponse } from "./models.ts";
+export { modelsResponse, WIRE_VERSIONS } from "./models.ts";
 export { normalizeOpenAIStream } from "./normalize.ts";
 export { problemResponse } from "./problem.ts";
 export { encodeSse } from "./sse.ts";
@@ -46,4 +46,12 @@ export type {
   AnthropicProjectionOptions,
   AnthropicRequestBody,
 } from "./anthropic.ts";
-export type { ChatAdmission, ChatGatewayOptions, GatewayRefusal, Upstream } from "./types.ts";
+export type { ModelsResponseOptions } from "./models.ts";
+export type { NormalizeOptions } from "./normalize.ts";
+export type {
+  ChatAdmission,
+  ChatGatewayOptions,
+  GatewayRefusal,
+  OpenAICompatQuirks,
+  Upstream,
+} from "./types.ts";
