@@ -82,13 +82,10 @@ describe("compileMarkdown", () => {
   test("converts emphasis and strong", () => {
     const doc = {
       children: [
-        {
-          children: [
-            { tagName: "em", textContent: "italic" },
-            { tagName: "strong", textContent: "bold" },
-          ],
-          tagName: "p",
-        },
+        // Separate paragraphs: `*italic***bold**` is ambiguous markdown, and mdast-util-to-markdown
+        // >= 2.2.3 writes the adjacent strong as `__bold__` to keep the two runs apart.
+        { children: [{ tagName: "em", textContent: "italic" }], tagName: "p" },
+        { children: [{ tagName: "strong", textContent: "bold" }], tagName: "p" },
       ],
     };
     const { content } = compileMarkdown(doc);

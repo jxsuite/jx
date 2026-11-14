@@ -14,6 +14,7 @@ import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } fr
 import { resolve } from "node:path";
 import {
   bundleEntry,
+  bundleToString,
   bundleWorkerSource,
   isBundleableSrc,
   resolveSidecarEntry,
@@ -439,8 +440,27 @@ describe("workerBundleOptions", () => {
       expect(workerBundleOptions(adapter)).toEqual({
         conditions: ["workerd", "worker"],
         external: ["cloudflare:*", "node:*"],
+        plugins: [expect.objectContaining({ name: "jx-bare-node-builtins" })],
         target: "workerd",
       });
+    }
+  });
+
+  test("cloudflare adapters rewrite bare node builtins to external node: imports, as postgres 4 imports them", async () => {
+    const dir = `${TMP}-bare-builtins`;
+    rmSync(dir, { force: true, recursive: true });
+    mkdirSync(dir, { recursive: true });
+    try {
+      const entry = resolve(dir, "entry.mjs");
+      writeFileSync(
+        entry,
+        `import os from "os";\nimport tls from "tls";\nexport default [os, tls];\n`,
+      );
+      const out = await bundleToString(entry, workerBundleOptions("cloudflare-workers"));
+      expect(out).toMatch(/from\s*"node:os"/);
+      expect(out).toMatch(/from\s*"node:tls"/);
+    } finally {
+      rmSync(dir, { force: true, recursive: true });
     }
   });
 

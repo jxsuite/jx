@@ -13,6 +13,7 @@
  */
 
 import { rmSync, writeFileSync } from "node:fs";
+import { builtinModules } from "node:module";
 import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
 import { isNpmSpecifier, NPM_SPECIFIER_PREFIX } from "@jxsuite/schema/asset-paths";
@@ -151,16 +152,36 @@ function hookPlugins(opts: BundleOptions): BundlePlugin[] {
 }
 
 /**
+ * Node builtins written without the `node:` prefix (`tls`, `diagnostics_channel`, ...). A package
+ * may import either spelling — postgres 4's workerd entry reaches `tls` and `diagnostics_channel`
+ * through its shared `index.js` — and `nodejs_compat` serves both at runtime.
+ *
+ * A plugin rather than `external` entries: Bun's browser target substitutes its own polyfill for a
+ * bare `os` or `fs` even when listed external, so the import has to be rewritten to `node:<name>`.
+ */
+const bareNodeBuiltins: BundlePlugin = {
+  name: "jx-bare-node-builtins",
+  setup(build) {
+    const names = builtinModules.filter((name) => !name.startsWith("_") && !name.includes(":"));
+    const filter = new RegExp(
+      `^(${names.map((name) => name.replaceAll("/", String.raw`\/`)).join("|")})$`,
+    );
+    build.onResolve({ filter }, (args) => ({ external: true, path: `node:${args.path}` }));
+  },
+};
+
+/**
  * Per-adapter bundle options for the generated site worker (WinterTC runtimes). Cloudflare resolves
- * with workerd conditions and keeps `cloudflare:*`/`node:*` imports external (nodejs_compat
- * provides node builtins at runtime); node/bun bundle platform-native with builtins external by
- * construction.
+ * with workerd conditions and keeps `cloudflare:*`/`node:*` imports (and bare node builtins,
+ * rewritten to `node:`) external (nodejs_compat provides node builtins at runtime); node/bun bundle
+ * platform-native with builtins external by construction.
  */
 export function workerBundleOptions(adapter: string): BundleOptions {
   if (adapter === "cloudflare-workers" || adapter === "cloudflare-pages") {
     return {
       conditions: ["workerd", "worker"],
       external: ["cloudflare:*", "node:*"],
+      plugins: [bareNodeBuiltins],
       target: "workerd",
     };
   }
@@ -323,7 +344,7 @@ export async function bundleWorkerSource(
 ): Promise<void> {
   const opts = workerBundleOptions(adapter);
   if (plugins !== undefined) {
-    opts.plugins = plugins;
+    opts.plugins = [...(opts.plugins ?? []), ...plugins];
   }
   await bundleSource(source, { outfile, resolveDir: projectRoot }, opts);
 }
