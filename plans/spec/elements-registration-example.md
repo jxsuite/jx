@@ -52,7 +52,7 @@ A paper plan. One pull request makes the edits under Specs & docs, adds the frag
 3. `bun run spec:change spec.md minor -m "…"` with the sentence under Specs & docs.
 4. Delete `plans/spec/elements-registration-example.md`.
 
-**Integration contract.** No plan requires this one. Once it lands, §13.1 states that `$elements` is an array whose `{ "$ref" }` entries name documents and that the instance tag is the referenced definition's own `tagName`; §16.3 stays the section that specifies registration order. `plan:spec/one-way-prop-forwarding` and `plan:_shared/compiled-prop-bridge` also edit `props-and-scope.md`: the first its frontmatter, "Static and bound props", "Signal forwarding", "Resolution order", "How it works" and "Rules", the second its frontmatter and a new section after "Static and bound props". This plan edits only "Component instances", so whichever lands second rebases an adjacent hunk at most.
+**Integration contract.** No plan requires this one. Once it lands, §13.1 states that `$elements` is an array whose `{ "$ref" }` entries name documents and that the instance tag is the referenced definition's own `tagName`; §16.3 stays the section that specifies registration order. `plan:spec/one-way-prop-forwarding` also edits `props-and-scope.md`: its frontmatter, "Static and bound props", "Signal forwarding", "Resolution order", "How it works" and "Rules". The landed property bridge (`compiler.md` §4.4) added a "Setting props from script" section after "Static and bound props". This plan edits only "Component instances", so whichever lands second rebases an adjacent hunk at most.
 
 ## Tests
 

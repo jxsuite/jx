@@ -1570,7 +1570,7 @@ A component instance is created by **registering** the component document in the
 
 ### 13.2 Explicit Props
 
-> **Status: Partial.** The interpreter implements the rule below (`instanceSupplies` in `packages/runtime/src/runtime.ts`). The compiled element does not: the `connectedCallback` that `compile-element.ts` emits merges a property only when `this.hasOwnProperty(key)`, so a compiled parent's `.title=` binding, which goes through the reflected accessor and creates no own property, is dropped and the component renders its default.
+> **Status: Implemented.** Both tiers apply the rule below: the interpreter calls `instanceSupplies` (`packages/runtime/src/runtime.ts`), and the compiled element carries an inlined copy that a test proves agrees with it (compiler.md §4.4).
 
 Props are passed via `$props` on the instance node. This is the only mechanism for passing state across component boundaries:
 
@@ -1585,11 +1585,13 @@ Props are passed via `$props` on the instance node. This is the only mechanism f
 }
 ```
 
+A prop is accepted for any key the definition's `state` declares, including a pure type definition such as `{ "type": "string" }`, which has no value of its own until one is supplied.
+
 **An instance supplies a prop, or it does not.** The runtime takes a value from the instance only where the instance genuinely carries one — an own JS property, or an attribute of that name. Probing the element for the key alone is not enough, because a state key that collides with a **reflected** DOM property (`title`, `role`, `id`, `lang`, `dir`, `slot`, `hidden`) always answers: the accessor lives on the prototype and reports `""` when nothing is set, which would otherwise beat the component's declared default and render blank. Testing for an own property alone is equally wrong in the other direction — assigning a reflected name goes through that same accessor and creates no own property, so a real `$props.title` would be discarded. The attribute the accessor writes is what distinguishes the two.
 
 ### 13.3 Signal Forwarding
 
-> **Status: Partial.** Forwarding is one way, parent to child, and fully so only in the interpreter, which writes the resolved value onto the child as a property and re-writes it from an effect when the parent changes (`renderCustomElementWithProps` in `packages/runtime/src/runtime.ts`). A compiled parent binds `.prop=`, but the compiled element defines no property accessors and reads a property once, in `connectedCallback` (§16.2), so it takes the parent's value at connection and loses every later change. In both tiers a child's write to a primitive prop updates only the child, and only a shared object or array proxy is seen by both scopes.
+> **Status: Partial.** Forwarding is one way, parent to child. The interpreter writes the resolved value onto the child as a property and re-writes it from an effect when the parent changes (`renderCustomElementWithProps` in `packages/runtime/src/runtime.ts`). Compiled output binds `.prop=`, which lit re-commits, only inside a component definition and a client `$map` row (`compile-element.ts`, `compile-client.ts`). Where a parent writes the property, the child's accessor (§16.2) carries each change into its scope. An instance written on a built page receives its `$props` once, in `data-jx-props`, with each `$ref` unresolved (`expandComponents` in `packages/compiler/src/site/site-build.ts`). In both tiers a child's write to a primitive prop updates only the child, and only a shared object or array proxy is seen by both scopes.
 
 When a `$props` value is a `$ref` to a signal, the child receives the same reactive reference — writes in either scope trigger effects in both.
 
@@ -1710,11 +1712,13 @@ A Jx component whose root `tagName` contains a hyphen is a custom element defini
 
 ### 16.2 Property-First Interface
 
-> **Status: Partial.** The interpreter defines a property accessor forwarding into state for every non-private state key (`packages/runtime/src/runtime.ts`); for a key the platform already owns (`title`, `lang`, `hidden`) the accessor calls the native setter first, so the attribute still reflects and a value delivered after connection still reaches the render. The compiled element module (`compile-element.ts`) defines none: it reads a property only in `connectedCallback`, so `el.key = v` after connection, including the `.key=` binding a compiled parent re-commits when its own state changes, writes an inert own property and the element never re-renders.
+> **Status: Implemented.** Both tiers install the accessors: the interpreter in its element class (`packages/runtime/src/runtime.ts`), the compiled element in the `connectedCallback` its module carries (compiler.md §4.4).
 
 Custom elements use JavaScript properties as their primary data interface. `$props` can include signal references, functions, objects, and scalars. HTML observed attributes are a secondary mechanism.
 
-A prop the definition declares under the name of an `HTMLElement` property (`title`, `lang`) gets no forwarding accessor, so `el.title = v` writes the element's own property. A parent's `$props` binding addresses the definition's prop rather than the element's, and so in the interpreter it writes the instance's state as well once the instance has connected: a list row whose data arrives after it connected draws its title.
+Each non-private state key gets an accessor on the element, forwarding into its state. The accessor is installed when the element first connects, after the props it arrived with are merged, so a property set before connection is merged and one set afterwards re-renders the element, in both tiers. A private key gets no accessor (§5.6), an inherited project formula gets one only on an instance given a prop of that name (§13.4), and compiled output also skips a key that names a member of its element class (compiler.md §4.4).
+
+A prop the definition declares under the name of a property the platform already owns (`title`, `lang`, `hidden`) is forwarded too: its accessor calls the platform's own setter first, so the attribute still reflects, and then writes state. Its value at connection is taken by §13.2's rule. So a parent's `$props` binding of that name reaches the instance's state whenever it changes: a list row whose data arrives after it connected draws its title.
 
 `updateInstanceProps(el, before, after)` is the same interface for a host that edits a document, such as the Studio canvas: given the `$props` block a connected instance was drawn with and the block it should show now, it writes the props that changed and answers `true`, and the instance's bindings redraw what reads them. It is deliberately narrow. It answers `true` only where the instance then shows what a fresh render of the same node would, and `false` everywhere else, where the host renders the instance again:
 

@@ -4,10 +4,12 @@ description: "How state crosses component boundaries in Jx: explicit $props, sig
 spec:
   - spec.md#13
   - spec.md#15
+  - spec.md#16.2
   - spec.md#16.5
 code:
   - packages/runtime/src/runtime.ts
   - packages/runtime/src/expression.ts
+  - packages/compiler/src/targets/compile-element.ts
 ---
 
 # Props and scope
@@ -69,6 +71,12 @@ A prop value is either a plain JSON value (fixed for this instance) or a `$ref` 
 ```
 
 Inside `card.json`, `title` and `count` behave like the component's own state entries, typically declared there with defaults and overridden per instance.
+
+## Setting props from script
+
+A component's props are also its JavaScript properties. Setting `card.count = 5` on an instance sets the component's `count`, before or after the element is on the page, and re-renders it once it is there, in Studio and in a built site alike. When one component renders another, the props it binds arrive the same way, so a change in the parent reaches the child.
+
+A prop is accepted for every entry the component's `state` declares, including one declared with only a `type`. Private `#`-prefixed entries are not props and have no property.
 
 A prop may share its name with a built-in element property such as `title`, `lang` or `hidden`. Setting it still updates the component, including a value that arrives after the element is on the page, and the matching HTML attribute is set as well.
 

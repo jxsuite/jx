@@ -5113,11 +5113,14 @@ const _privatePropWarned = new Set<string>();
  * declares one. What the accessor DOES do is write the attribute, so the attribute is the evidence
  * that somebody set it, whether that was `$props` before connection or the author in the document.
  *
+ * Exported for the compiler, which inlines the rule into generated modules; a compiler test proves
+ * the copy agrees.
+ *
  * @param {HTMLElement} el - The instance being connected.
  * @param {string} key - A state key declared by the component definition.
  * @returns {boolean}
  */
-function instanceSupplies(el: HTMLElement, key: string): boolean {
+export function instanceSupplies(el: HTMLElement, key: string): boolean {
   if (Object.hasOwn(el, key)) {
     return true;
   }

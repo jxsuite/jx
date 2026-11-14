@@ -5,6 +5,7 @@ import {
   DEFAULT_LIT_HTML_SRC,
   DEFAULT_REACTIVITY_SRC,
   buildComponentCSS,
+  propSupplyHelperSource,
   takeDroppedReactiveStyles,
 } from "../src/shared";
 import { emitElementModule } from "../src/targets/compile-element";
@@ -263,7 +264,7 @@ describe("compileElement", () => {
 
     const { content } = result.files[0]!;
     expect(content).toContain("connectedCallback()");
-    expect(content).toContain("this.state[key] = this[key]");
+    expect(content).toContain("this.state[_k] = this[_k];");
     expect(content).toContain("this.#effects.push(effect(() => render(this.template(), this)))");
   });
 
@@ -1986,9 +1987,91 @@ describe("compileElement — $props delivery", () => {
       "const _pn = this.getAttributeNames().filter(n => n.startsWith('props.') && n.length > 6);",
     );
     expect(content).toContain("const _k = _n.slice(6);");
-    expect(content).toContain("if (_k in this.state) {");
+    expect(content).toContain("if (__jxProps.includes(_k)) {");
     expect(content).toContain("this.state[_k] = this.getAttribute(_n);");
     expect(content).toContain("this.removeAttribute(_n);");
+  });
+});
+
+// ─── The property bridge ────────────────────────────────────────────────────
+
+describe("compileElement — the property bridge (spec.md §13.2, §16.2)", () => {
+  async function moduleOf(state: Record<string, JxStateDefinition>, opts = {}): Promise<string> {
+    const result = await compileElement({ children: [], state, tagName: "test-bridge" }, opts);
+    return result.files[0]!.content;
+  }
+
+  test("props are accepted for every declared key, pure type definitions included", async () => {
+    const content = await moduleOf({ "#cache": 1, count: 0, label: { type: "string" } });
+    expect(content).toContain('const __jxProps = ["count","label"];');
+    expect(content).toContain("if (__jxProps.includes(k)) this.state[k] = v;");
+    expect(content).toContain("if (__jxProps.includes(_k)) {");
+    expect(content).not.toContain("in this.state)");
+  });
+
+  test("the property merge uses the supply rule, not an own-property test", async () => {
+    const content = await moduleOf({ count: 0 });
+    expect(content).not.toContain("hasOwnProperty");
+    expect(content).toContain("_k in this && this[_k] !== undefined && __jxSupplies(this, _k)");
+    expect(content.split(propSupplyHelperSource())).toHaveLength(2);
+  });
+
+  test("accessors are installed once, after the merge, and call the platform's setter first", async () => {
+    const content = await moduleOf({ count: 0 });
+    const guard = content.indexOf("if (_first) {");
+    const merge = content.indexOf("this.state[_k] = this[_k];");
+    const define = content.indexOf("Object.defineProperty(this, _k, {");
+    expect(guard).toBeGreaterThan(-1);
+    expect(merge).toBeGreaterThan(guard);
+    expect(define).toBeGreaterThan(merge);
+    expect(content).toContain("const _set = __jxNativeSetter(this, _k);");
+    expect(content).toContain("set: (v) => { if (_set) _set.call(this, v); this.state[_k] = v; },");
+    // The one first-connection flag is read before anything else in the callback.
+    expect(content).toContain("connectedCallback() {\n    const _first = !this.#rendered;");
+  });
+
+  test("a key naming a member of the emitted class arrives by attribute but is not bridged", async () => {
+    const content = await moduleOf({ n: 0, state: 1, template: "t" });
+    expect(content).toContain('const __jxProps = ["n","state","template"];');
+    expect(content).toContain('const __jxBridged = ["n"];');
+  });
+
+  test("a document with nothing to bridge emits no bridge", async () => {
+    for (const state of [{ "#x": 1 }, { template: "t" }]) {
+      const content = await moduleOf(state);
+      expect(content).toContain("const __jxProps = ");
+      expect(content).not.toContain("__jxBridged");
+      expect(content).not.toContain("__jxSupplies");
+      expect(content).not.toContain("__jxNativeSetter");
+      expect(content).not.toContain("defineProperty");
+    }
+  });
+
+  test("an inherited project formula is bridged only on an instance given a prop of that name", async () => {
+    const projectState = {
+      shout: {
+        $expression: { operator: "+", target: { $ref: "$args/text" }, value: "!" },
+        parameters: ["text"],
+      },
+    } satisfies Record<string, JxStateDefinition>;
+    const result = await compileElement(
+      {
+        children: [{ tagName: "p", textContent: "${state.shout(state.name)}" }],
+        state: { name: "a" },
+        tagName: "test-bridge-inherit",
+      },
+      { projectState },
+    );
+    const { content } = result.files[0]!;
+    expect(content).toContain('const __jxBridged = ["shout","name"];');
+    expect(content).toContain('const __jxInherited = new Set(["shout"]);');
+    expect(content).toContain("const _given = new Set();");
+    expect(content).toContain("if (__jxProps.includes(k)) { this.state[k] = v; _given.add(k); }");
+    expect(content).toContain("if (__jxInherited.has(_k) && !_given.has(_k)) continue;");
+    // A component that inherits nothing tracks nothing.
+    const plain = await moduleOf({ name: "a" });
+    expect(plain).not.toContain("__jxInherited");
+    expect(plain).not.toContain("_given");
   });
 });
 
