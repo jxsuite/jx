@@ -12,43 +12,16 @@
  * than usual, because a **closed** declarative shadow root is not reachable through
  * `element.shadowRoot` and hydration has to find it another way (§16.6).
  *
+ * The verdict itself is the runtime's (`resolveShadowMode` in `@jxsuite/runtime/css`), re-exported
+ * here for the compiler's callers; the CSS scope a component sheet is written under is the
+ * compiler's own.
+ *
  * @docs framework/concepts/components
  */
 
-import type { JxDocument, JxElement, ProjectConfig } from "@jxsuite/schema/types";
+import type { ShadowMode } from "@jxsuite/runtime/css";
 
-/** The two modes the standard defines, or null for light DOM. */
-export type ShadowMode = "open" | "closed";
-
-/** A value `$shadow` or `defaults.shadow` may carry. */
-export type ShadowSetting = ShadowMode | false;
-
-/** Whether a document value is one of the settings `$shadow` / `defaults.shadow` may carry. */
-function isShadowSetting(value: unknown): value is ShadowSetting {
-  return value === false || value === "open" || value === "closed";
-}
-
-/**
- * The shadow mode a component renders in, or null for light DOM.
- *
- * A component's own `$shadow` wins over the project default in both directions — including
- * `$shadow: false`, which is how one component opts _out_ of a project that opted in.
- *
- * @param {JxDocument | JxElement | null | undefined} doc - The component definition
- * @param {ProjectConfig["defaults"] | undefined} defaults
- * @returns {ShadowMode | null}
- */
-export function resolveShadowMode(
-  doc: JxDocument | JxElement | null | undefined,
-  defaults?: ProjectConfig["defaults"],
-): ShadowMode | null {
-  const own = doc?.$shadow;
-  if (isShadowSetting(own)) {
-    return own === false ? null : own;
-  }
-  const projectDefault = defaults?.shadow;
-  return isShadowSetting(projectDefault) && projectDefault !== false ? projectDefault : null;
-}
+export { resolveShadowMode, type ShadowMode, type ShadowSetting } from "@jxsuite/runtime/css";
 
 /**
  * The CSS scope prefix for a component's own rules.
