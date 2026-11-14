@@ -33,7 +33,7 @@ try {
   writeFileSync(source, gradientPng(64, 32));
   const manifest = await addon.processImage({
     formats: ["avif", "jpeg"],
-    hash: "probe",
+    hashes: { avif: "probe", jpeg: "probe" },
     outDir: join(dir, "out"),
     quality: { avif: 50, jpeg: 70 },
     source,

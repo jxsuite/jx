@@ -22,6 +22,13 @@ export interface ImageQuality {
   jpeg?: number;
 }
 
+/**
+ * The quality the addon encodes at when a request names none. They are stated here as well as in
+ * the Rust core (`Quality::default` in `crates/jx_media`) because a caller hashes the quality into
+ * a variant's name before the addon sees the request; `tests/binding.test.ts` holds the two equal.
+ */
+export const DEFAULT_IMAGE_QUALITY: Readonly<Required<ImageQuality>> = { avif: 65, jpeg: 80 };
+
 /** One source image and the variants to make of it. */
 export interface ImageRequest {
   /** Absolute path of the source image. */
@@ -30,8 +37,12 @@ export interface ImageRequest {
   outDir: string;
   /** The file-name stem of every variant. */
   stem: string;
-  /** The source's content hash, part of every variant's name. */
-  hash: string;
+  /**
+   * The hash in each variant's name, keyed by the format it was asked for under: one entry per name
+   * in `formats`. A PNG written where JPEG was asked of a transparent source takes JPEG's hash,
+   * unless `png` is listed too.
+   */
+  hashes: Record<string, string>;
   /** The configured width ladder. */
   widths: number[];
   /** Output format names: `avif`, `jpeg`, `png`, `webp`. */

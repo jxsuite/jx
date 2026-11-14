@@ -46,7 +46,10 @@ fn request(source: PathBuf, out: &TempDir, formats: &[Format]) -> Request {
         source,
         out_dir: out.path().join("nested/_optimized"),
         stem: "hero".to_owned(),
-        hash: "abcd1234".to_owned(),
+        hashes: formats
+            .iter()
+            .map(|&format| (format, "abcd1234".to_owned()))
+            .collect(),
         widths: vec![16, 32, 128],
         formats: formats.to_vec(),
         quality: Quality::default(),
@@ -228,7 +231,7 @@ fn an_existing_variant_is_kept_and_a_complete_set_skips_the_decode() {
     bytes.truncate(length / 2);
     std::fs::write(&request.source, bytes).unwrap();
     assert_eq!(process(&request).unwrap().variants.len(), 3);
-    request.hash = "ffff0000".to_owned();
+    request.hashes.insert(Format::Png, "ffff0000".to_owned());
     assert!(matches!(process(&request), Err(Error::Decode { .. })));
 }
 
@@ -325,4 +328,41 @@ fn an_unwritable_output_directory_and_an_oversized_jpeg_are_errors() {
 fn a_one_pixel_tall_result_never_rounds_to_zero() {
     assert_eq!(resize::scaled_height(1000, 1, 10), 1);
     assert_eq!(resize::scaled_height(64, 32, 16), 8);
+}
+
+#[test]
+fn each_format_is_named_from_its_own_hash() {
+    let dir = TempDir::new().unwrap();
+    let source = dir.path().join("opaque.png");
+    ImageBuffer::from_fn(64, 32, |x, y| Rgb([(x * 4) as u8, (y * 8) as u8, 96]))
+        .save(&source)
+        .unwrap();
+    let names = |request: &Request| -> Vec<String> {
+        process(request)
+            .unwrap()
+            .variants
+            .into_iter()
+            .map(|variant| variant.file_name)
+            .collect()
+    };
+    let mut request = request(source, &dir, &[Format::Jpeg, Format::Png]);
+    request.widths = vec![16];
+    request.hashes.insert(Format::Jpeg, "aaaa0000".to_owned());
+    request.hashes.insert(Format::Png, "bbbb1111".to_owned());
+    assert_eq!(
+        names(&request),
+        ["hero-16-aaaa0000.jpeg", "hero-16-bbbb1111.png"]
+    );
+
+    // A PNG standing in for JPEG takes JPEG's hash, unless PNG was asked for by name as well.
+    request.source = write_png(dir.path(), "logo.png", 64, 32);
+    request.stem = "logo".to_owned();
+    assert_eq!(names(&request), ["logo-16-bbbb1111.png"]);
+    request.formats = vec![Format::Jpeg];
+    assert_eq!(names(&request), ["logo-16-aaaa0000.png"]);
+
+    request.formats = vec![Format::Avif];
+    let error = process(&request).unwrap_err();
+    assert!(matches!(error, Error::MissingHash(Format::Avif)));
+    assert!(error.to_string().contains("\"avif\""));
 }
