@@ -30,7 +30,12 @@ export interface InteractionStore {
   readonly pending: PendingInteraction | null;
   /** The strategy a turn resolves its interactions through. */
   readonly strategy: InteractionStrategy;
-  /** Answer the pending question. False when nothing is pending. */
+  /**
+   * Answer what is pending with the author's own words. A question takes them as its answer. An
+   * approval reads them as its three choices (`APPROVAL_CHOICES`), or as a plain yes, and takes
+   * anything else as a no: a call the author did not clearly allow does not run. False when nothing
+   * is pending.
+   */
   readonly answer: (text: string) => boolean;
   /** Decline to answer ("you decide"), which settles as a success. False when nothing is pending. */
   readonly skip: () => boolean;
@@ -40,8 +45,23 @@ export interface InteractionStore {
   readonly reset: () => void;
 }
 
+/** The three answers an approval card offers, in the order it draws them. */
+export const APPROVAL_CHOICES = {
+  allow: "Allow",
+  always: "Allow for this chat",
+  decline: "Decline",
+} as const;
+
+/** What an author may type instead of pressing Allow. */
+const AFFIRMATIVE = new Set(["allow", "approve", "ok", "okay", "y", "yes"]);
+
 /** What the host may hook. */
 export interface InteractionStoreOptions {
+  /**
+   * Called when the author allows a tool for the rest of the chat, before the turn hears the
+   * answer, so the next call of that tool is not put to them again.
+   */
+  readonly onTrust?: (tool: string) => void;
   /**
    * Called once a request is pending, before the turn waits on it. A host saves the conversation
    * here: a turn waiting on a person may wait for as long as they like, and a reload in the
@@ -49,6 +69,8 @@ export interface InteractionStoreOptions {
    */
   readonly onPending?: () => void;
 }
+
+const SKIPPED: InteractionResponse = { answer: null, kind: "question", skipped: true };
 
 /** The answer a stopped turn gives: a question unanswered and not skipped, an approval refused. */
 function unanswered(request: InteractionRequest): InteractionResponse {
@@ -65,6 +87,7 @@ function unanswered(request: InteractionRequest): InteractionResponse {
  */
 export function createInteractionStore({
   onPending,
+  onTrust,
 }: InteractionStoreOptions = {}): InteractionStore {
   const state = reactive<{ pending: PendingInteraction | null }>({ pending: null });
   /** The settler for the pending request, kept out of the reactive object (it is not render data). */
@@ -110,8 +133,20 @@ export function createInteractionStore({
           onPending?.();
         }),
     },
-    answer: (text) => finish(() => ({ answer: text, kind: "question", skipped: false })),
-    skip: () => finish(() => ({ answer: null, kind: "question", skipped: true })),
+    answer: (text) =>
+      finish((request) => {
+        if (request.kind === "question") {
+          return { answer: text, kind: "question", skipped: false };
+        }
+        const said = text.trim().toLowerCase();
+        const always = said === APPROVAL_CHOICES.always.toLowerCase();
+        if (always) {
+          onTrust?.(request.tool);
+        }
+        return { approved: always || AFFIRMATIVE.has(said), kind: "approval" };
+      }),
+    // "You decide" is a question's answer; nobody can decide an approval but the author.
+    skip: () => finish((request) => (request.kind === "question" ? SKIPPED : unanswered(request))),
     cancel,
     reset: cancel,
   };

@@ -111,8 +111,14 @@ export type ApprovalDecision =
   | { readonly kind: "deny"; readonly message: string }
   | { readonly kind: "confirm"; readonly reason: ApprovalReason; readonly summary: string };
 
-/** Decides, per call, whether it needs the author's approval before it runs. */
-export type ApprovalPolicy = (definition: ToolDefinition, args: ToolArguments) => ApprovalDecision;
+/**
+ * Decides, per call, whether it needs the author's approval before it runs. It may answer later:
+ * whether a write replaces a file is something a host has to look up.
+ */
+export type ApprovalPolicy = (
+  definition: ToolDefinition,
+  args: ToolArguments,
+) => ApprovalDecision | Promise<ApprovalDecision>;
 
 /** The policy that approves every call: what a host with no approvals runs. */
 export const proceedAlways: ApprovalPolicy = () => ({ kind: "proceed" });
@@ -695,7 +701,13 @@ export async function invokeTool(
   try {
     const args = parseArguments(call.argumentsText);
     const definition = registry.getDefinition(call.name);
-    const step = definition ? beforeExecute(registry, definition, args, approval, response) : null;
+    /* Awaited only when the policy answered later. One that answers at once (every policy but a
+       host's lookup) leaves the body starting in the tick the call did, as it always has, so a Stop
+       cannot land between a call being announced and its tool hearing the signal. */
+    const before = definition
+      ? beforeExecute(registry, definition, args, approval, response)
+      : null;
+    const step = before instanceof Promise ? await before : before;
     if (step?.status === "needs_input") {
       return step;
     }
@@ -734,7 +746,7 @@ function beforeExecute(
   args: ToolArguments,
   approval: ApprovalPolicy,
   response: InteractionResponse | undefined,
-): InvokeOutcome | null {
+): InvokeOutcome | null | Promise<InvokeOutcome | null> {
   const { interaction, settle } = definition;
   if (interaction && settle) {
     const validation = registry.validate(definition.name, args);
@@ -752,6 +764,17 @@ function beforeExecute(
     return "refusal" in request ? refused(request.refusal) : { status: "needs_input", request };
   }
   const decision = approval(definition, args);
+  return decision instanceof Promise
+    ? decision.then((later) => decided(definition, later, response))
+    : decided(definition, decision, response);
+}
+
+/** What an approval decision comes to for a call: refused, put to the author, or (null) run. */
+function decided(
+  definition: ToolDefinition,
+  decision: ApprovalDecision,
+  response: InteractionResponse | undefined,
+): InvokeOutcome | null {
   if (decision.kind === "deny") {
     return refused(decision.message);
   }

@@ -1041,6 +1041,62 @@ describe("the Assistant command family", () => {
   });
 });
 
+describe("a turn waiting on the author's leave to run a call", () => {
+  /* A disk write that replaces a file is put to the author before it runs (ai.md §3.11), and the
+     call's own chip is the card that asks. */
+  async function raiseApproval() {
+    pushMessage("assistant", "", {
+      toolCalls: [{ arguments: '{"path":"pages/about.json"}', id: "w1", name: "write_file" }],
+    });
+    liveTurn.active = true;
+    if (interactions.strategy.mode !== "inline") {
+      throw new Error("Studio's strategy waits within the turn");
+    }
+    const settled = interactions.strategy.resolve(
+      {
+        kind: "approval",
+        reason: "not-undoable",
+        summary: 'Replace "pages/about.json"?',
+        title: "Write a file",
+        tool: "write_file",
+      },
+      { callId: "w1", signal: new AbortController().signal },
+    );
+    await flush(3);
+    return { settled };
+  }
+
+  beforeEach(() => {
+    resetAsk(interactions);
+    liveTurn.active = false;
+    chatState.messages.length = 0;
+  });
+
+  test("the call's chip asks, with three answers and no way to leave it to the assistant", async () => {
+    const { settled } = await raiseApproval();
+    expect(q('[part="ask-question"]')!.textContent!.trim()).toBe('Replace "pages/about.json"?');
+    expect(q('[part="ask-context"]')!.textContent).toContain("cannot be undone");
+    const labels = [...host.querySelectorAll('[part="ask-option"]')].map((option) =>
+      option.textContent!.trim(),
+    );
+    expect(labels).toEqual(["Allow", "Allow for this chat", "Decline"]);
+    expect(q('[part="ask-skip"]')).toBeNull();
+
+    resetAsk(interactions);
+    expect(await settled).toEqual({ approved: false, kind: "approval" });
+  });
+
+  test("pressing Allow lets the call run", async () => {
+    const { settled } = await raiseApproval();
+    const [allow] = host.querySelectorAll('[part="ask-option"]');
+    pointer(allow!, "click");
+    await flush(3);
+    expect(await settled).toEqual({ approved: true, kind: "approval" });
+    // The card is gone with the question: the chip is a chip again.
+    expect(q('[part="ask-option"]')).toBeNull();
+  });
+});
+
 describe("a turn suspended on a question", () => {
   /** Put a question on screen the way the tool does, and settle the panel's rAF render. */
   async function raiseQuestion(options: string[] = []) {

@@ -107,7 +107,11 @@ export interface ChatChipView {
   /** The sentence the question came with. */
   context: string;
   hasContext: boolean;
-  /** `pending`, `unanswered`, `answered`, `failed` or `none` — which half of the card to draw. */
+  /**
+   * `pending`, `approval`, `unanswered`, `answered`, `failed` or `none` — which half of the card to
+   * draw. `approval` is a call waiting on the author's leave to run (ai.md §3.11): its choices and
+   * nothing else, since "you decide" is not an answer to it.
+   */
   askState: string;
   /** The answers an `ask_user` card offers as shortcuts. */
   options: KeyedLabel[];
