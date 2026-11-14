@@ -140,7 +140,7 @@ Coverage: no new source file, so the manifest check is unaffected. The touched f
 
 **`specs/extensions.md` §5.4**, whose `jx validate` bullet enumerates the walk: after "every document under `components/`, `pages/`, and `layouts/` against the bundled document schema" add "; that no named formula reaches itself through `call`, a page judged together with `project.json`'s `state` as the build merges them (spec.md §19.4c)". The §5.4 marker is not touched (it records the unserved canonical URLs). Fragment: `bun run spec:change extensions.md minor -m "§5.4 jx validate also reports a named formula that reaches itself through call (spec.md §19.4c)."` If `plan:spec/expression-build-checks` lands first and adds its own clause there, this one follows it.
 
-**`specs/compiler.md` §11** (guard Open only), in the entry form §11 uses (and that `plan:compiler/shared-utilities-signatures` makes its contract), after the `attrHelperSource()` entry:
+**`specs/compiler.md` §11** (guard Open only), in the entry form §11 uses, after the `attrHelperSource()` entry:
 
 ```markdown
 ### `formulaGuardSource()` — the call-depth bound, inlined for a generated module

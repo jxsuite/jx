@@ -86,7 +86,7 @@ Verified at the working tree on 2026-09-26:
 **Integration contract.** Once this lands:
 
 - For a string-body Function entry, the classifier's verdict follows the four-step order above: declared parameters, callable use (the classifier's own root-aware use set), `bodyReturnsValue`, handler. Every tier reads it.
-- `buildInitialScope(defs, parentScope, roles?)` takes the document's roles; a caller that has the document passes `classifyFunctionEntries(doc)`, and one that does not gets the state-only default. compiler.md §11 lists it with three parameters once `plan:compiler/shared-utilities-signatures` has landed too.
+- `buildInitialScope(defs, parentScope, roles?)` takes the document's roles; a caller that has the document passes `classifyFunctionEntries(doc)`, and one that does not gets the state-only default. compiler.md §11 then lists it with three parameters.
 - On a client-compiled page, every callable string-body state entry is `state[key]` with signature `(state, e)`, assigned before the init blocks, and `on[key]` calls it. This is the general rule `plan:spec/one-way-prop-forwarding-page-bindings`' prop-named delivery defers to: that plan assigns `state[key]` only for the handler kinds this rule leaves out.
 - spec.md §5.3 4b states the rule, defines "used as a callable" by pointing at §5.3 4d's list, and carries `Implemented`. 4d's "matching the inline-body rule in 4b" is true as written.
 
@@ -138,7 +138,7 @@ Verified at the working tree on 2026-09-26:
 - The bare-`return;` paragraph (line 407) gains a closing sentence: "The test is textual, so a `return` inside a nested callback also counts; that matters only for an entry nothing calls or binds."
 - §5.3 4d: no edit. Its "matching the inline-body rule in 4b" becomes true.
 
-**`specs/compiler.md` §11**, in place, because `buildInitialScope` is a listed helper whose parameters this plan changes. If `plan:compiler/shared-utilities-signatures` has landed, the heading's code span `buildInitialScope(defs?, parentScope?)` becomes `buildInitialScope(defs?, parentScope?, roles?)` in that plan's entry form (the summary after the dash is unchanged), with no marker change, and a fragment: `bun run spec:change compiler.md patch -m "§11: the static-scope helper's heading names its optional third parameter, the document's function roles."` If it has not landed, this plan edits no heading and writes no compiler.md fragment: that plan writes the three-parameter heading (its Related says so).
+**`specs/compiler.md` §11**, in place, because `buildInitialScope` is a listed helper whose parameters this plan changes. The heading's code span `buildInitialScope(defs?, parentScope?)` becomes `buildInitialScope(defs?, parentScope?, roles?)` in §11's entry form (the summary after the dash is unchanged), with no marker change, and a fragment: `bun run spec:change compiler.md patch -m "§11: the static-scope helper's heading names its optional third parameter, the document's function roles."`
 
 **Fragment:** `bun run spec:change spec.md minor -m "§5.3 4b: an inline Function body is a computed value only when it declares no parameters, nothing uses it as a callable, and it returns a value, in every tier; a bound handler whose body returns a value now handles its event."` It is minor because this is an implement, and the only behaviour it changes was broken in every tier.
 

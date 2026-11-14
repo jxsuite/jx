@@ -21,7 +21,7 @@ size: S
 
 > **Status: Partial.** The interpreter follows the steps below (`buildScope` in `packages/runtime/src/runtime.ts`), but an object with no `default`, `$prototype` or `$expression` is sorted by two different predicates, and the algorithm names neither. The interpreter treats it as a pure type definition, holding no value, when any key is one of its own schema keywords (`hasSchemaKeywords`); the compiled targets do so only when every key is one of a different set (`isSchemaOnlyDef` in `packages/schema/src/guards.ts`). So `{}` and `{ "description": "x" }` hold a value in the interpreter and none in built output, and `{ "type": "string", "label": "x" }` the reverse.
 
-The marker was added in the closing pass of the detailing program. `plan:compiler/shared-utilities-signatures` found the split while detailing compiler.md §11 and recorded it in its Context; `plan:spec/cem-manifest-export`, `plan:_shared/compiled-prop-bridge` and `plan:_shared/compiled-element-lifecycle` each work around it without owning it.
+The marker was added in the closing pass of the detailing program. The split was found while detailing compiler.md §11; `plan:spec/cem-manifest-export`, `plan:_shared/compiled-prop-bridge` and `plan:_shared/compiled-element-lifecycle` each work around it without owning it.
 
 **What the code does** (verified against the working tree on 2026-09-27):
 
@@ -72,7 +72,7 @@ Run `bun test --isolate --coverage` from `packages/schema`, `packages/runtime` a
 - **§5.3, Shape 1 rules**: "A plain object with no `$prototype`, no `type`, no `default`, and no `properties` is an object state property" becomes "A plain object with no `$prototype`, `$expression` or `default` is an object state property unless it is a pure type definition (§5.7): so `{}`, `{ "title": "Hello" }` and `{ "type": "admin", "name": "x" }` are values."
 - **Fragment:** `bun run spec:change spec.md minor -m "§5.7 names the pure type definition step both tiers apply: an object whose every key is a JSON Schema keyword and not only annotations holds no value, so an empty object or a data object with a type field is a value in the interpreter and in built output alike."` Level minor: it redefines which entries hold a value in both tiers, an additive rule where the spec had none.
 
-`specs/compiler.md` §11, in place: the H3 entry for `isSchemaOnly(def)` ("Shape 2b detection (pure type definitions)") is renamed to `isPureTypeDef(value)` with the summary "pure type definition detection (spec.md §5.7), re-exported from `@jxsuite/schema/guards`". If `plan:compiler/shared-utilities-signatures` has landed, its heading reads `isSchemaOnly(value)` and its Implemented marker says "`isSchemaOnly` is re-exported from `@jxsuite/schema/guards`"; rename both. **Fragment:** `bun run spec:change compiler.md patch -m "§11 names isPureTypeDef, the one pure type definition predicate both tiers share, in place of isSchemaOnly."`
+`specs/compiler.md` §11, in place: the H3 entry for `isSchemaOnly(value)` ("Pure type definition detection (every key a JSON Schema keyword)") is renamed to `isPureTypeDef(value)` with the summary "pure type definition detection (spec.md §5.7), re-exported from `@jxsuite/schema/guards`". The §11 heading reads `isSchemaOnly(value)` and the section's Implemented marker says "`isSchemaOnly` is re-exported from `@jxsuite/schema/guards`"; rename both. **Fragment:** `bun run spec:change compiler.md patch -m "§11 names isPureTypeDef, the one pure type definition predicate both tiers share, in place of isSchemaOnly."`
 
 Docs: `docs/framework/concepts/state.md` (`spec: spec.md#5`):
 
@@ -80,7 +80,7 @@ Docs: `docs/framework/concepts/state.md` (`spec: spec.md#5`):
 - "How it works": "a plain object with no reserved keys is a naked object value" becomes "an object made only of JSON Schema keywords, not only annotations, is a declaration with no value; any other plain object is a naked object value".
 - Add `packages/schema/src/guards.ts` to the page's `code:` list (it has none today, so the list is new). No em dashes.
 
-Landing deletes this file. If `plan:compiler/shared-utilities-signatures` has not landed, its "Noticed, not claimed" paragraph cites this plan: reword it to cite spec.md §5.7, or `plans:check` reports `citation-unknown`.
+Landing deletes this file.
 
 ## Acceptance
 
