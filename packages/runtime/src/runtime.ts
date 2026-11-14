@@ -6134,12 +6134,14 @@ export async function defineElement(source: string | JxDocument, baseUrl?: strin
 function writeInstanceProp(el: HTMLElement, key: string, resolved: JxScopeValue): void {
   const value = isString(resolved) ? canvasAssetValue(el.tagName, key, resolved) : resolved;
   elementProperties(el)[key] = value;
-  /* A declared prop that shares its name with an `HTMLElement` property (`title`, `lang`) gets
-     no forwarding accessor (§16.2), so the write above lands on the element and never reaches
-     the instance's state. Connection reads it once; a binding that changes AFTER connection
-     (a row whose data arrives later) was lost, and the instance went on drawing the value it
-     connected with. The binding is the parent's `$props`, addressed to the definition's prop,
-     so it writes that prop's state. */
+  /* A prop that shares its name with an `HTMLElement` property (`title`, `lang`) is forwarded
+     like any other once the instance has connected (§16.2): its accessor calls the platform's
+     setter, then writes state, so the write above already reaches state there. The write below
+     covers the instance that holds the name in its state with NO accessor for it, which is a
+     name its live definition does not declare and it was not given at connection (an inherited
+     project formula, §13.4). There the write above lands on the platform's property alone, and
+     the instance would go on drawing the value it connected with. The binding is the parent's
+     `$props`, addressed to the instance's state, so it writes that state. */
   const instanceState = instanceStateOf(el);
   if (instanceState && key in HTMLElement.prototype && Object.hasOwn(toRaw(instanceState), key)) {
     instanceState[key] = value;
