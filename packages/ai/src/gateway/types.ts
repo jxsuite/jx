@@ -86,11 +86,14 @@ export interface GatewayRefusal {
 
 /** What a request the gateway accepted asked for, reported to `onAccepted` for audit. */
 export interface ChatAdmission {
-  /** The wire version of the accepted body. Version 1 is the only one. */
-  readonly wire: 1;
+  /** The wire version of the accepted body. */
+  readonly wire: 1 | 2;
   /** The model the request is forwarded with: the body's, or the upstream's default. */
   readonly model: string;
-  /** How many messages the body carried, not counting the system prompt the gateway prepends. */
+  /**
+   * How many messages the body carried, not counting the system prompt the gateway prepends. A
+   * version 2 body's are counted as the conversation's own messages, before they are projected.
+   */
   readonly messageCount: number;
   /** The body's size in bytes, as read rather than as declared. */
   readonly bytes: number;
@@ -115,6 +118,12 @@ export interface ChatGatewayOptions<C> {
   readonly maxBodyBytes?: number;
   /** The most messages one request may carry. */
   readonly maxMessages?: number;
+  /**
+   * The wire versions this host's chat route accepts. `WIRE_VERSIONS` (both) when absent; a host
+   * that must hold its clients to version 1 says `[1]`, and should advertise the same list from its
+   * models route.
+   */
+  readonly wire?: readonly number[];
   /** Called once per accepted request, after every check and before the upstream is contacted. */
   readonly onAccepted?: (admission: ChatAdmission, upstream: Upstream, context: C) => void;
   /**

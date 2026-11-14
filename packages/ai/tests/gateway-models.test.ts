@@ -48,25 +48,25 @@ describe("modelsResponse", () => {
     expect(await response.json()).toEqual({
       configured: true,
       models: [{ id: "m-0", name: "m-0" }, { id: "m-neg" }, { contextWindow: 8192, id: "m-8k" }],
-      wire: [1],
+      wire: [1, 2],
     });
   });
 
   it("advertises the host's wire versions and the limits its chat route enforces", async () => {
     const response = modelsResponse(
       { configured: true, models: [] },
-      { limits: { maxBodyBytes: 1_000_000, maxMessages: 200 }, wire: [1, 2] },
+      { limits: { maxBodyBytes: 1_000_000, maxMessages: 200 }, wire: [1] },
     );
     expect(await response.json()).toEqual({
       configured: true,
       limits: { maxBodyBytes: 1_000_000, maxMessages: 200 },
       models: [],
-      wire: [1, 2],
+      wire: [1],
     });
   });
 
   it("says nothing about limits when the host enforces none", async () => {
     const response = modelsResponse({ configured: true, models: [] }, { limits: {} });
-    expect(await response.json()).toEqual({ configured: true, models: [], wire: [1] });
+    expect(await response.json()).toEqual({ configured: true, models: [], wire: [1, 2] });
   });
 });

@@ -83,6 +83,8 @@ export const ALLOWLIST = new Set([
   "src/messages/types.ts",
   // The @jxsuite/ai turn engine's contract (TurnInput, HarnessEvent, TurnOutcome, ...): types only.
   "src/harness/types.ts",
+  // The @jxsuite/ai provider adapter contract (Provider, ProviderRequest, ProviderCapabilities): types only.
+  "src/providers/types.ts",
   // The @jxsuite/ai document tools' host contract (DocumentHost, DocEdit, SelectionEffect, ...): types only.
   "src/jx-tools/types.ts",
   // @jxsuite/server's `serve()` contract (ServeServer, ServeSocket, ServeOptions): interfaces only.

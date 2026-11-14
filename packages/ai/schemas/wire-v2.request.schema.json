@@ -1,0 +1,216 @@
+{
+  "$id": "https://jxsuite.com/schemas/ai/wire-v2.request.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "The body of a version 2 chat request: the conversation in no provider's words. Members the schema does not name are ignored by a gateway, so the object is open.",
+  "properties": {
+    "maxTokens": {
+      "type": "number"
+    },
+    "messages": {
+      "items": {
+        "properties": {
+          "blocks": {
+            "items": {
+              "oneOf": [
+                {
+                  "properties": {
+                    "text": {
+                      "type": "string"
+                    },
+                    "type": {
+                      "const": "text"
+                    }
+                  },
+                  "required": ["type", "text"],
+                  "type": "object"
+                },
+                {
+                  "properties": {
+                    "provenance": {
+                      "properties": {
+                        "binding": {
+                          "type": "string"
+                        },
+                        "family": {
+                          "enum": ["openai-compat", "anthropic"]
+                        },
+                        "model": {
+                          "type": ["string", "null"]
+                        }
+                      },
+                      "required": ["family", "model"],
+                      "type": "object"
+                    },
+                    "redacted": {
+                      "type": "string"
+                    },
+                    "signature": {
+                      "type": "string"
+                    },
+                    "text": {
+                      "type": "string"
+                    },
+                    "type": {
+                      "const": "reasoning"
+                    }
+                  },
+                  "required": ["type", "text"],
+                  "type": "object"
+                },
+                {
+                  "properties": {
+                    "argumentsText": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "signature": {
+                      "type": "string"
+                    },
+                    "type": {
+                      "const": "tool_call"
+                    }
+                  },
+                  "required": ["type", "id", "name", "argumentsText"],
+                  "type": "object"
+                },
+                {
+                  "properties": {
+                    "callId": {
+                      "type": "string"
+                    },
+                    "content": {
+                      "type": "string"
+                    },
+                    "isError": {
+                      "type": "boolean"
+                    },
+                    "type": {
+                      "const": "tool_result"
+                    }
+                  },
+                  "required": ["type", "callId", "isError", "content"],
+                  "type": "object"
+                },
+                {
+                  "properties": {
+                    "data": true,
+                    "family": {
+                      "enum": ["openai-compat", "anthropic"]
+                    },
+                    "type": {
+                      "const": "opaque"
+                    }
+                  },
+                  "required": ["type", "family", "data"],
+                  "type": "object"
+                }
+              ]
+            },
+            "type": "array"
+          },
+          "role": {
+            "enum": ["user", "assistant", "tool", "system"]
+          }
+        },
+        "required": ["role", "blocks"],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "metadata": {
+      "description": "For the backend's own audit and rate limiting. Never forwarded to a provider.",
+      "properties": {
+        "round": {
+          "type": "number"
+        },
+        "sessionId": {
+          "type": "string"
+        },
+        "turnId": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "model": {
+      "type": "string"
+    },
+    "reasoning": {
+      "properties": {
+        "effort": {
+          "enum": ["low", "medium", "high"]
+        }
+      },
+      "type": "object"
+    },
+    "system": {
+      "items": {
+        "properties": {
+          "cache": {
+            "const": true
+          },
+          "text": {
+            "type": "string"
+          }
+        },
+        "required": ["text"],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "temperature": {
+      "type": "number"
+    },
+    "toolChoice": {
+      "oneOf": [
+        {
+          "enum": ["auto", "none", "required"]
+        },
+        {
+          "properties": {
+            "name": {
+              "type": "string"
+            }
+          },
+          "required": ["name"],
+          "type": "object"
+        }
+      ]
+    },
+    "tools": {
+      "items": {
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "inputSchema": {
+            "type": "object"
+          },
+          "name": {
+            "type": "string"
+          },
+          "strict": {
+            "type": "boolean"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": ["name", "description", "inputSchema"],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "wire": {
+      "const": 2
+    }
+  },
+  "required": ["wire", "system", "messages", "tools"],
+  "title": "Jx chat request, wire version 2",
+  "type": "object"
+}

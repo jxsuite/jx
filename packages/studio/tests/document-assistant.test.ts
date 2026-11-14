@@ -237,6 +237,8 @@ describe("document-assistant", () => {
     // The persisted session's id rides along, so the backend can derive a prompt-cache key from it.
     expect(lastClientOpts?.sessionId).toBe(listSessions("")[0]!.id);
     expect<string | null | undefined>(lastClientOpts?.sessionId).toBe(a.activeSessionId());
+    // No probe has advertised wire version 2, so the client is built for the wire every backend reads.
+    expect(lastClientOpts?.wire).toBe(1);
   });
 
   /* The family rides along only when it is not the default, so an OpenAI-compatible send is the

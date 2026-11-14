@@ -51,10 +51,11 @@ import type { JsonValue } from "@jxsuite/schema/types";
 export const GENERATORS = [
   ["bun", "run", "generate:schema"],
   ["bun", "run", "schema:generate-all"],
+  ["bun", "run", "generate:wire-schemas"],
 ] as const;
 
 /** Which generator owns a path, for grouping in the report. */
-export type SchemaKind = "core" | "entry" | "fragment";
+export type SchemaKind = "core" | "entry" | "fragment" | "contract";
 
 /**
  * Classify a committed schema by the generator that writes it.
@@ -70,6 +71,10 @@ export type SchemaKind = "core" | "entry" | "fragment";
 export function classifySchema(path: string): SchemaKind {
   if (path.startsWith("packages/schema/")) {
     return "core";
+  }
+  // The chat wire's published schemas (ai.md §2.7), written by `generate:wire-schemas`.
+  if (path.startsWith("packages/ai/schemas/")) {
+    return "contract";
   }
   if (path.endsWith("/project.schema.json") || path.endsWith("/document.schema.json")) {
     return "entry";

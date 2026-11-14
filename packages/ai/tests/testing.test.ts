@@ -44,15 +44,34 @@ function referenceGateway(wire?: readonly number[]): ConformanceGateway {
 }
 
 describe("gatewayConformanceCases", () => {
-  for (const conformance of gatewayConformanceCases({ headers: { "X-Api-Key": "k" } })) {
+  const cases = gatewayConformanceCases({ headers: { "X-Api-Key": "k" }, wire: [1, 2] });
+  for (const conformance of cases) {
     it(conformance.id, async () => {
       await conformance.run(referenceGateway());
     });
   }
 
+  it("holds only a gateway that declares version 2 to the version 2 cases", () => {
+    expect(gatewayConformanceCases().length).toBe(cases.length - 2);
+  });
+
+  it("fails a gateway that answers a version 2 request without saying which wire it served", async () => {
+    const start = cases.find((conformance) => conformance.id.includes("opening with stream_start"));
+    const gateway: ConformanceGateway = {
+      ...referenceGateway(),
+      chat: () =>
+        Promise.resolve(
+          new Response("data: {}\n\n", { headers: { "Content-Type": "text/event-stream" } }),
+        ),
+    };
+    expect(start!.run(gateway)).rejects.toThrow(
+      'expected the X-Jx-AI-Wire response header to say 2; got "absent"',
+    );
+  });
+
   it("checks the wire versions the host declares", async () => {
     const [models] = gatewayConformanceCases({ wire: [1, 2] }).slice(-1);
-    await models!.run(referenceGateway([1, 2]));
+    await models!.run(referenceGateway());
     // A gateway that advertises less than the host declared fails the case, by name.
     expect(models!.run(referenceGateway([1]))).rejects.toThrow(
       "gateway conformance: expected wire to list [1,2]; got [1]",

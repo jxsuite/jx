@@ -45,6 +45,7 @@ const WORKER_SAFE_ENTRIES = {
   "./harness": "./src/harness/index.ts",
   "./jx-tools": "./src/jx-tools/index.ts",
   "./messages": "./src/messages/index.ts",
+  "./providers": "./src/providers/index.ts",
   "./streaming-client": "./src/streaming-client.ts",
   "./testing": "./src/testing/index.ts",
   "./tools": "./src/tools.ts",
@@ -76,24 +77,34 @@ const NOT_WORKER_SAFE = {
 } satisfies Readonly<Record<string, NotWorkerSafeEntry>>;
 
 /**
+ * Exports that are not modules: the chat wire's published JSON Schemas (specs/ai.md §2.7), which a
+ * backend reads as data. There is nothing to bundle, so there is nothing for this gate to hold.
+ */
+const DATA_EXPORTS = { "./schemas/*": "./schemas/*" } as const;
+
+/**
  * The module graph each Worker-safe entry bundles today, repository-relative and sorted. This is
  * the non-vacuity pin: a build that resolved nothing cannot match it, and a new module entering a
  * Worker graph is a diff someone reads. streaming-client reaches the gateway's normalizer and the
  * two protocol problem modules it builds error frames with, since the OpenAI client runs that
  * normalizer rather than a copy of it (specs/ai.md §2.4); its type import of the protocol root is
- * erased. `./testing` reaches nothing but itself: the frame types it borrows are erased too.
- * `./messages` imports nothing outside itself at runtime; its `types.ts` is type-only and erased
- * like the rest. `./harness` reaches `./tools`, two `./messages` modules and `message-id.ts` (the
- * id counter it shares with chat-state): the graph that proves the harness depends on the tools,
- * not the reverse. `cache-hints.ts` is in both graphs on purpose: it is the prompt-cache hint table
- * both upstream callers share, and it needs nothing but `crypto.subtle` and `URL`. The gateway is
- * the one entry that imports protocol at runtime, and only its two problem modules (for
- * `problemDetails` and `PROBLEM_MEDIA_TYPE`), never the root barrel, which would bring the route
- * table too. Its type-only imports (`gateway/types.ts`, and the frame types it borrows from
- * streaming-client) are erased the same way. `./jx-tools` is the one entry that reaches
- * @jxsuite/schema, and only its two leaves, `doc-ops` and the `guards` it imports, never the root
- * that builds the schema. When a change adds a module on purpose, confirm it passes FORBIDDEN
- * ("reaches no forbidden module" checks) and add it here.
+ * erased. Since wire version 2 (specs/ai.md §2.7) it also reaches the two `./messages` modules that
+ * project a neutral conversation onto the version 1 body, for the proxy client's downgrade, and the
+ * chat-completions body builder it shares with `./providers`; the gateway reaches the same modules
+ * to read a version 2 request, and streaming-client itself for the wire header's name. `./testing`
+ * reaches nothing but itself: the frame types it borrows are erased too. `./messages` imports
+ * nothing outside itself at runtime; its `types.ts` is type-only and erased like the rest.
+ * `./harness` reaches `./tools`, two `./messages` modules and `message-id.ts` (the id counter it
+ * shares with chat-state): the graph that proves the harness depends on the tools, not the reverse.
+ * `cache-hints.ts` is in both graphs on purpose: it is the prompt-cache hint table both upstream
+ * callers share, and it needs nothing but `crypto.subtle` and `URL`. The gateway is the one entry
+ * that imports protocol at runtime, and only its two problem modules (for `problemDetails` and
+ * `PROBLEM_MEDIA_TYPE`), never the root barrel, which would bring the route table too. Its
+ * type-only imports (`gateway/types.ts`, and the frame types it borrows from streaming-client) are
+ * erased the same way. `./jx-tools` is the one entry that reaches @jxsuite/schema, and only its two
+ * leaves, `doc-ops` and the `guards` it imports, never the root that builds the schema. When a
+ * change adds a module on purpose, confirm it passes FORBIDDEN ("reaches no forbidden module"
+ * checks) and add it here.
  */
 const FROZEN_GRAPHS = new Map<string, readonly string[]>([
   [
@@ -118,6 +129,11 @@ const FROZEN_GRAPHS = new Map<string, readonly string[]>([
       "packages/ai/src/gateway/problem.ts",
       "packages/ai/src/gateway/sse.ts",
       "packages/ai/src/gateway/upstream-error.ts",
+      "packages/ai/src/gateway/wire.ts",
+      "packages/ai/src/messages/convert.ts",
+      "packages/ai/src/messages/openai.ts",
+      "packages/ai/src/providers/body.ts",
+      "packages/ai/src/streaming-client.ts",
       "packages/protocol/src/problem.ts",
       "packages/protocol/src/problems.ts",
     ],
@@ -159,12 +175,31 @@ const FROZEN_GRAPHS = new Map<string, readonly string[]>([
     ],
   ],
   [
+    "./providers",
+    [
+      "packages/ai/src/cache-hints.ts",
+      "packages/ai/src/gateway/normalize.ts",
+      "packages/ai/src/gateway/problem.ts",
+      "packages/ai/src/gateway/upstream-error.ts",
+      "packages/ai/src/messages/convert.ts",
+      "packages/ai/src/messages/openai.ts",
+      "packages/ai/src/providers/body.ts",
+      "packages/ai/src/providers/index.ts",
+      "packages/ai/src/providers/openai-compat.ts",
+      "packages/protocol/src/problem.ts",
+      "packages/protocol/src/problems.ts",
+    ],
+  ],
+  [
     "./streaming-client",
     [
       "packages/ai/src/cache-hints.ts",
       "packages/ai/src/gateway/normalize.ts",
       "packages/ai/src/gateway/problem.ts",
       "packages/ai/src/gateway/upstream-error.ts",
+      "packages/ai/src/messages/convert.ts",
+      "packages/ai/src/messages/openai.ts",
+      "packages/ai/src/providers/body.ts",
       "packages/ai/src/streaming-client.ts",
       "packages/protocol/src/problem.ts",
       "packages/protocol/src/problems.ts",
@@ -511,6 +546,7 @@ describe("the Worker-safe list stays honest", () => {
     const classified = Object.fromEntries([
       ...Object.entries(WORKER_SAFE_ENTRIES),
       ...Object.entries(NOT_WORKER_SAFE).map(([subpath, entry]) => [subpath, entry.file]),
+      ...Object.entries(DATA_EXPORTS),
     ]);
     expect(
       Object.keys(WORKER_SAFE_ENTRIES).filter((subpath) => subpath in NOT_WORKER_SAFE),
@@ -762,6 +798,9 @@ describe("canary builds trip the gate", () => {
       "packages/ai/src/gateway/normalize.ts",
       "packages/ai/src/gateway/problem.ts",
       "packages/ai/src/gateway/upstream-error.ts",
+      "packages/ai/src/messages/convert.ts",
+      "packages/ai/src/messages/openai.ts",
+      "packages/ai/src/providers/body.ts",
       "packages/ai/src/streaming-client.ts",
       "packages/ai/src/tools.ts",
       "packages/protocol/src/problem.ts",

@@ -8,6 +8,7 @@ spec:
   - ai.md#3.9 # portable document tools
   - ai.md#3.10 # catalog membership
   - ai.md#3.11 # interactions and approvals run before the tool body
+  - ai.md#2.7 # wire version 2 and provider adapters
 code:
   - packages/ai/src/tools.ts
   - packages/ai/src/core-types.ts
@@ -24,6 +25,9 @@ code:
   - packages/ai/src/jx-tools/doc-tools.ts
   - packages/ai/src/jx-tools/entries.ts
   - packages/ai/src/jx-tools/facts.ts
+  - packages/ai/src/providers/index.ts
+  - packages/ai/src/providers/openai-compat.ts
+  - packages/ai/src/providers/body.ts
   - packages/ai/src/catalog/index.ts
   - packages/ai/src/catalog/catalog.ts
   - packages/ai/src/catalog/mcp.ts
@@ -143,6 +147,19 @@ const turn = runTurn({
 });
 const outcome = await turn.outcome;
 ```
+
+`fromStreamingClient` sends each round as the version 1 chat body. When the backend's models probe lists wire version 2, build the client with `wire: negotiateWire(probe)`: it then offers `streamTurn`, `fromStreamingClient` uses it, and each round carries the neutral conversation itself rather than its OpenAI projection. If the backend refuses version 2 after all, the client sends that round again as version 1 and stays on version 1.
+
+A host with no backend in between, such as a headless run or an eval, reaches a provider directly with an adapter from `@jxsuite/ai/providers`:
+
+```ts
+import { createOpenAICompatProvider, providerModel } from "@jxsuite/ai/providers";
+
+const provider = createOpenAICompatProvider({ baseUrl, apiKey });
+const turn = runTurn({ history, system, tools, model: providerModel(provider, "gpt-4.1") });
+```
+
+The adapter sends the same request body the direct OpenAI client sends and reads the answer with the same normalizer a backend runs, so the frames are the same however the provider is reached. `provider.capabilities(model)` says what the family asks of a request: whether the system prompt may change between rounds, whether the tool list may, and whether a token ceiling is required.
 
 Every step of the turn reaches `onEvent` as it happens, in order: the round starting, each piece of text, each tool call and its result, and finally `turn_end`. Apply them to your own transcript there, or iterate the run (`for await (const event of turn)`) to read them later; every reader sees the whole turn. The outcome says how the turn ended (`complete`, `cap_partial`, `cap_failed`, `error`, `cancelled` or `empty`), which message to show the turn's changes under, and every message the turn added.
 

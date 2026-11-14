@@ -5,18 +5,29 @@
  */
 
 import { upstreamCacheHints } from "../cache-hints.ts";
-import type { StreamEvent } from "../streaming-client.ts";
+import { problemDetails } from "@jxsuite/protocol/problems";
+import type { JsonValue } from "../core-types.ts";
+import { WIRE_HEADER } from "../streaming-client.ts";
+import type {
+  ChatRequestV2,
+  StreamEvent,
+  StreamStartEvent,
+  WireEvent,
+} from "../streaming-client.ts";
 import {
   anthropicHeaders,
   isFirstPartyAnthropic,
   normalizeAnthropicStream,
   toAnthropicRequest,
 } from "./anthropic.ts";
+import { WIRE_VERSIONS } from "./models.ts";
 import { fetchFailureFrame, normalizeOpenAIStream } from "./normalize.ts";
 import type { NormalizeOptions } from "./normalize.ts";
 import { problemResponse, refusal } from "./problem.ts";
 import { encodeSse, SSE_HEADERS } from "./sse.ts";
 import type { ChatGatewayOptions, GatewayRefusal, Upstream } from "./types.ts";
+import { checkChatRequestV2, projectV2Request } from "./wire.ts";
+import type { ProjectedRequest } from "./wire.ts";
 
 /**
  * The upstream a host forwards to when it configures none: OpenAI's own chat-completions API.
@@ -36,6 +47,8 @@ interface ChatRequestBody {
   tools?: unknown;
   systemPrompt?: unknown;
   model?: unknown;
+  /** Absent on a version 1 body. Anything but 1 or an accepted version is refused. */
+  wire?: unknown;
 }
 
 /** The chat-completions body forwarded upstream. */
@@ -45,8 +58,11 @@ interface UpstreamBody {
   stream: boolean;
   stream_options: { include_usage: boolean };
   tools?: unknown;
-  tool_choice?: string;
+  tool_choice?: string | object;
   parallel_tool_calls?: boolean;
+  temperature?: number;
+  max_tokens?: number;
+  reasoning_effort?: string;
   prompt_cache_key?: string;
 }
 
@@ -100,6 +116,7 @@ async function readBody(request: Request, limit: number | undefined): Promise<Ui
  * @param {string} url - The upstream's chat URL
  * @param {RequestInit} init - The upstream request
  * @param {(response: Response) => AsyncGenerator<StreamEvent>} normalize - The family's normalizer
+ * @param {StreamStartEvent} [start] - The frame a version 2 stream opens with
  * @yields {StreamEvent} The route's frames, in wire order
  */
 async function* exchange(
@@ -107,7 +124,12 @@ async function* exchange(
   url: string,
   init: RequestInit,
   normalize: (response: Response) => AsyncGenerator<StreamEvent>,
-): AsyncGenerator<StreamEvent> {
+  start?: StreamStartEvent,
+): AsyncGenerator<WireEvent> {
+  // A version 2 stream opens by saying which wire it is and where the request went (§2.7).
+  if (start) {
+    yield start;
+  }
   let response: Response;
   try {
     response = await upstreamFetch(url, init);
@@ -127,7 +149,9 @@ async function* exchange(
  * 1. `admit`, before the body is read.
  * 2. `resolveUpstream`: where the request goes, or why it goes nowhere.
  * 3. The body is read, stopping at `maxBodyBytes` (413), and parsed as JSON (400 when it is not).
- * 4. `messages` must be an array (400); its absence reads as an empty one.
+ * 4. The wire version: a body naming `wire: 2` is checked as one (400 when it is not one), and a
+ *    version this gateway does not accept is a 400 `wire-unsupported` listing the ones it does.
+ *    `messages` must be an array (400); its absence reads as an empty one.
  * 5. `maxMessages` (413).
  * 6. `onAccepted`.
  * 7. The stream: a `200 text/event-stream` whose frames are the upstream's response normalized by
@@ -140,6 +164,11 @@ async function* exchange(
  * resolved a `sessionAffinity`, it rides along as the prompt-cache hint the upstream's host
  * understands, and not at all to any other host (`upstreamCacheHints`). The upstream request
  * carries `context.signal`, so aborting it ends the stream with `done: cancelled`.
+ *
+ * A version 2 body is the same conversation in no provider's words (specs/ai.md §2.7). It is read
+ * as the version 1 body it describes and forwarded exactly as that one would be, so one transcript
+ * reaches the upstream as the same bytes on either wire; its stream opens with a `stream_start`
+ * frame, and every answer names the wire it was served on in `X-Jx-AI-Wire`.
  *
  * An upstream of the `anthropic` family receives the same body projected onto the Messages API
  * instead (`toAnthropicRequest`, specs/ai.md §2.6), at `<baseUrl>/v1/messages`, with the key as
@@ -192,18 +221,58 @@ export function createChatHandler<C extends { readonly signal: AbortSignal }>(
       return problemResponse(refusal("invalidRequest", INVALID_JSON));
     }
 
+    /* A body naming a wire version other than 1 is version 2 or it is refused: with the versions
+       this gateway accepts, so the client can speak one of them instead (§2.7). A body of JSON
+       `null` throws here, as it always has. */
+    const accepted = options.wire ?? WIRE_VERSIONS;
+    let wire: 1 | 2 = 1;
+    let extras: ProjectedRequest["extras"] = {};
+    let neutralCount: number | undefined;
+    let source: ChatRequestBody = body;
+    if (body.wire !== undefined && body.wire !== 1) {
+      if (body.wire !== 2 || !accepted.includes(2)) {
+        const problem = problemDetails(
+          "wireUnsupported",
+          `This backend accepts chat wire version ${accepted.join(" or ")}.`,
+          { supported: [...accepted] },
+        );
+        return problemResponse({ problem, status: problem.status });
+      }
+      /* SAFETY: `body` came from JSON.parse, so it is a JSON value; the check reads it as one. */
+      const failing = checkChatRequestV2(body as JsonValue);
+      if (failing !== null) {
+        return problemResponse(
+          refusal("invalidRequest", `Not a version 2 chat request: ${failing || "/"} is invalid.`),
+        );
+      }
+      /* SAFETY: `checkChatRequestV2` accepted the body, which is what makes it a ChatRequestV2. */
+      const v2 = body as ChatRequestV2;
+      const projected = projectV2Request(v2);
+      wire = 2;
+      ({ extras } = projected);
+      // The limit counts the conversation's own messages, not the wire's: one reply is one message.
+      neutralCount = v2.messages.length;
+      source = {
+        messages: projected.messages,
+        systemPrompt: projected.systemPrompt,
+        tools: projected.tools,
+        ...(projected.model === undefined ? null : { model: projected.model }),
+      };
+    }
+
     /* Defaults apply to an ABSENT member only, so a `null` one is forwarded as sent (and a `null`
-       `messages` is refused below). A body of JSON `null` throws here, as it always has. */
-    const { messages = [], tools = [], systemPrompt = "", model = upstream.defaultModel } = body;
+       `messages` is refused below). */
+    const { messages = [], tools = [], systemPrompt = "", model = upstream.defaultModel } = source;
 
     if (!Array.isArray(messages)) {
       return problemResponse(refusal("invalidRequest", "messages must be an array"));
     }
-    if (options.maxMessages !== undefined && messages.length > options.maxMessages) {
+    const messageCount = neutralCount ?? messages.length;
+    if (options.maxMessages !== undefined && messageCount > options.maxMessages) {
       return problemResponse(
         refusal(
           "payloadTooLarge",
-          `The request carries ${String(messages.length)} messages; this gateway accepts at most ${String(options.maxMessages)}.`,
+          `The request carries ${String(messageCount)} messages; this gateway accepts at most ${String(options.maxMessages)}.`,
         ),
       );
     }
@@ -211,9 +280,9 @@ export function createChatHandler<C extends { readonly signal: AbortSignal }>(
     options.onAccepted?.(
       {
         bytes: bytes.byteLength,
-        messageCount: messages.length,
+        messageCount,
         model: String(model),
-        wire: 1,
+        wire,
       },
       upstream,
       context,
@@ -221,6 +290,12 @@ export function createChatHandler<C extends { readonly signal: AbortSignal }>(
 
     // Looked up per request, not captured at construction: a host or a test may swap it.
     const upstreamFetch = options.fetch ?? fetch;
+    // The answer names the wire it was served on; a version 2 stream also opens by saying so.
+    const headers = { ...SSE_HEADERS, [WIRE_HEADER]: String(wire) };
+    const start: StreamStartEvent | undefined =
+      wire === 2
+        ? { family: upstream.family, model: String(model), type: "stream_start", wire: 2 }
+        : undefined;
 
     if (upstream.family === "anthropic") {
       const messagesRequest = toAnthropicRequest(
@@ -237,8 +312,9 @@ export function createChatHandler<C extends { readonly signal: AbortSignal }>(
           signal: context.signal,
         },
         normalizeAnthropicStream,
+        start,
       );
-      return new Response(encodeSse(frames), { headers: SSE_HEADERS });
+      return new Response(encodeSse(frames), { headers });
     }
 
     // SAFETY: Array.isArray above proved `messages` is an array; its entries are forwarded unread.
@@ -253,9 +329,12 @@ export function createChatHandler<C extends { readonly signal: AbortSignal }>(
        numeric `length` yields `undefined` (or its own member), which `> 0` compares as it always has. */
     if (tools && (tools as { length: number }).length > 0) {
       upstreamBody.tools = tools;
-      upstreamBody.tool_choice = "auto";
+      upstreamBody.tool_choice = extras.tool_choice ?? "auto";
       upstreamBody.parallel_tool_calls = true;
     }
+    // What version 1 has no word for; absent on a version 1 request, so its body is unchanged.
+    const { tool_choice: _choice, ...sampling } = extras;
+    Object.assign(upstreamBody, sampling);
     const errorCode = (status: number): string | undefined =>
       options.upstreamErrorCode?.(status, upstream);
     const hints = upstreamCacheHints(upstream.baseUrl, upstream.sessionAffinity);
@@ -279,7 +358,8 @@ export function createChatHandler<C extends { readonly signal: AbortSignal }>(
         signal: context.signal,
       },
       (response) => normalizeOpenAIStream(response, normalizeOptions),
+      start,
     );
-    return new Response(encodeSse(frames), { headers: SSE_HEADERS });
+    return new Response(encodeSse(frames), { headers });
   };
 }

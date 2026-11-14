@@ -21,7 +21,10 @@ import type {
   Upstream,
 } from "../src/gateway/types.ts";
 import type { JsonObject, JsonValue } from "../src/core-types.ts";
-import type { StreamEvent } from "../src/streaming-client.ts";
+import type { StreamEvent, WireEvent } from "../src/streaming-client.ts";
+import { toChatMessages, toWireMessages } from "../src/messages/convert.ts";
+import { toOpenAIMessages, toOpenAITools } from "../src/messages/openai.ts";
+import type { ChatMessage, ToolSpec } from "../src/messages/types.ts";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -132,14 +135,14 @@ async function drain(pending: Promise<Response>): Promise<string> {
 }
 
 /** The frames of an SSE body, parsed. */
-async function framesOf(response: Response): Promise<StreamEvent[]> {
+async function framesOf(response: Response): Promise<WireEvent[]> {
   const text = await response.text();
   return text
     .split("\n\n")
     .filter((block) => block !== "")
     .map(
       // SAFETY: each block is one `data: ` line encodeSse wrote from JSON.stringify of a StreamEvent.
-      (block) => JSON.parse(block.slice("data: ".length)) as StreamEvent,
+      (block) => JSON.parse(block.slice("data: ".length)) as WireEvent,
     );
 }
 
@@ -568,6 +571,8 @@ describe("createChatHandler: the stream", () => {
       "cache-control": "no-cache",
       connection: "keep-alive",
       "content-type": "text/event-stream",
+      // The wire the answer was served on (specs/ai.md §2.7).
+      "x-jx-ai-wire": "1",
     });
     expect(await framesOf(response)).toEqual([
       { content: "Hi", type: "delta" },
@@ -697,6 +702,188 @@ describe("createChatHandler: a client that stops reading", () => {
   });
 });
 
+// ─── Wire version 2 (specs/ai.md §2.7) ───────────────────────────────────────
+
+describe("createChatHandler: wire version 2", () => {
+  /** One conversation, as the neutral model holds it. */
+  const CONVERSATION: ChatMessage[] = toChatMessages([
+    { content: "Make the heading red", id: "u1", role: "user", timestamp: 1 },
+    {
+      content: "",
+      id: "a1",
+      reasoningContent: "The heading is the h1.",
+      role: "assistant",
+      timestamp: 2,
+      toolCalls: [{ arguments: '{"path":[0]}', id: "c1", name: "set_style" }],
+    },
+    { content: '{"success":true}', id: "t1", role: "tool", timestamp: 3, toolCallId: "c1" },
+    { content: "", id: "a2", role: "assistant", timestamp: 4 },
+  ]);
+  const TOOLS: ToolSpec[] = [
+    {
+      description: "Set a style",
+      inputSchema: { properties: {}, type: "object" },
+      name: "set_style",
+    },
+  ];
+  const SYSTEM = [{ text: "You edit pages. " }, { text: "Be brief." }];
+
+  /* The projections yield plain data, and a client sends its JSON text: a body here is that text,
+     which `chatRequest` sends as written. */
+  const v1Body = (): string =>
+    JSON.stringify({
+      messages: toOpenAIMessages(CONVERSATION),
+      model: "m-9",
+      systemPrompt: "You edit pages. Be brief.",
+      tools: toOpenAITools(TOOLS),
+    });
+  const v2Body = (extra: JsonObject = {}): string =>
+    JSON.stringify({
+      messages: toWireMessages(CONVERSATION),
+      model: "m-9",
+      system: SYSTEM,
+      tools: TOOLS,
+      wire: 2,
+      ...extra,
+    });
+
+  /** Send `body` and read the answer to its end, so the upstream call has been made. */
+  const send = async (handler: ReturnType<typeof createChatHandler<Context>>, body: JsonValue) => {
+    const response = await handler(chatRequest(body), context());
+    return framesOf(response);
+  };
+
+  it("reaches the upstream as the same bytes as the version 1 body of the same transcript", async () => {
+    const { calls, impl } = fakeFetch();
+    const handler = createChatHandler<Context>({ fetch: impl, resolveUpstream: () => UPSTREAM });
+    await send(handler, v1Body());
+    await send(handler, v2Body());
+    expect(calls).toHaveLength(2);
+    expect(String(calls[1]!.init.body)).toBe(String(calls[0]!.init.body));
+    expect(calls[1]!.url).toBe(calls[0]!.url);
+  });
+
+  it("opens the stream with stream_start and names the wire in the response", async () => {
+    const { impl } = fakeFetch();
+    const handler = createChatHandler<Context>({ fetch: impl, resolveUpstream: () => UPSTREAM });
+    const response = await handler(chatRequest(v2Body()), context());
+    expect(response.headers.get("X-Jx-AI-Wire")).toBe("2");
+    expect(await framesOf(response)).toEqual([
+      { family: "openai-compat", model: "m-9", type: "stream_start", wire: 2 },
+      { content: "Hi", type: "delta" },
+      { stopReason: "stop", type: "done" },
+    ]);
+  });
+
+  it("names the upstream's default model when the body names none", async () => {
+    const { calls, impl } = fakeFetch();
+    const handler = createChatHandler<Context>({ fetch: impl, resolveUpstream: () => UPSTREAM });
+    const response = await handler(
+      chatRequest({ messages: [], system: [], tools: [], wire: 2 }),
+      context(),
+    );
+    const [start] = await framesOf(response);
+    expect(start).toMatchObject({ model: UPSTREAM.defaultModel, type: "stream_start" });
+    expect(calls[0]!.body.model).toBe(UPSTREAM.defaultModel);
+  });
+
+  it("forwards what version 1 has no word for, and never the request's metadata", async () => {
+    const { calls, impl } = fakeFetch();
+    const handler = createChatHandler<Context>({ fetch: impl, resolveUpstream: () => UPSTREAM });
+    const body = v2Body({
+      maxTokens: 512,
+      metadata: { round: 2, sessionId: "s", turnId: "t" },
+      reasoning: { effort: "low" },
+      temperature: 0,
+      toolChoice: { name: "set_style" },
+    });
+    await send(handler, body);
+    expect(calls[0]!.body).toMatchObject({
+      max_tokens: 512,
+      reasoning_effort: "low",
+      temperature: 0,
+      tool_choice: { function: { name: "set_style" }, type: "function" },
+    });
+    expect(calls[0]!.body.metadata).toBeUndefined();
+
+    await send(handler, v2Body({ toolChoice: "required" }));
+    expect(calls[1]!.body.tool_choice).toBe("required");
+  });
+
+  it("counts the conversation's own messages against maxMessages, and reports the wire", async () => {
+    const { impl } = fakeFetch();
+    const admissions: ChatAdmission[] = [];
+    const handler = createChatHandler<Context>({
+      fetch: impl,
+      maxMessages: 3,
+      onAccepted: (admission) => admissions.push(admission),
+      resolveUpstream: () => UPSTREAM,
+    });
+    // Three sent messages (the empty assistant turn is not one), which is the limit exactly.
+    await send(handler, v2Body());
+    expect(admissions).toEqual([
+      expect.objectContaining({ messageCount: 3, model: "m-9", wire: 2 }),
+    ]);
+  });
+
+  it("projects a version 2 body onto the Anthropic Messages API for that family", async () => {
+    const { calls, impl } = fakeFetch(() => Promise.resolve(new Response("", { status: 200 })));
+    const handler = createChatHandler<Context>({
+      fetch: impl,
+      resolveUpstream: () => ({ ...UPSTREAM, baseUrl: "https://claude.test", family: "anthropic" }),
+    });
+    const [start] = await send(handler, v2Body());
+    expect(start).toEqual({ family: "anthropic", model: "m-9", type: "stream_start", wire: 2 });
+    expect(calls[0]!.url).toBe("https://claude.test/v1/messages");
+    expect(calls[0]!.body.system).toBeDefined();
+  });
+
+  it("refuses a body that names wire 2 and is not a version 2 request, by the member that fails", async () => {
+    const { calls, impl } = fakeFetch();
+    const handler = createChatHandler<Context>({ fetch: impl, resolveUpstream: () => UPSTREAM });
+    const response = await handler(
+      chatRequest({ messages: [{ blocks: [], role: "narrator" }], system: [], tools: [], wire: 2 }),
+      context(),
+    );
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({
+      detail: "Not a version 2 chat request: /messages/0/role is invalid.",
+      type: problemDetails("invalidRequest").type,
+    });
+    expect(calls).toHaveLength(0);
+  });
+
+  it.each<[string, JsonValue, readonly number[] | undefined, number[]]>([
+    ["a version it has never heard of", { messages: [], wire: 3 }, undefined, [1, 2]],
+    ["version 2 when the host accepts only version 1", { messages: [], wire: 2 }, [1], [1]],
+  ])(
+    "refuses %s as wire-unsupported, listing what it accepts",
+    async (_label, body, wire, supported) => {
+      const { calls, impl } = fakeFetch();
+      const options: ChatGatewayOptions<Context> = { fetch: impl, resolveUpstream: () => UPSTREAM };
+      const handler = createChatHandler<Context>(wire ? { ...options, wire } : options);
+      const response = await handler(chatRequest(body), context());
+      expect(response.status).toBe(400);
+      expect(response.headers.get("Content-Type")).toBe(PROBLEM_MEDIA_TYPE);
+      expect(await response.json()).toMatchObject({
+        supported,
+        type: problemDetails("wireUnsupported").type,
+      });
+      expect(calls).toHaveLength(0);
+    },
+  );
+
+  it("reads a body that says wire 1 as the version 1 body it is", async () => {
+    const { calls, impl } = fakeFetch();
+    const handler = createChatHandler<Context>({ fetch: impl, resolveUpstream: () => UPSTREAM });
+    const response = await handler(chatRequest({ messages: [], wire: 1 }), context());
+    expect(response.headers.get("X-Jx-AI-Wire")).toBe("1");
+    const [first] = await framesOf(response);
+    expect(first).toEqual({ content: "Hi", type: "delta" });
+    expect(calls).toHaveLength(1);
+  });
+});
+
 // ─── The barrel ──────────────────────────────────────────────────────────────
 
 describe("@jxsuite/ai/gateway", () => {
@@ -709,6 +896,7 @@ describe("@jxsuite/ai/gateway", () => {
       "DEFAULT_UPSTREAM_BASE_URL",
       "WIRE_VERSIONS",
       "affinityKey",
+      "checkChatRequestV2",
       "createChatHandler",
       "encodeSse",
       "extractUpstreamErrorMessage",

@@ -4,7 +4,7 @@
  * @module @jxsuite/ai/gateway
  */
 
-import type { StreamEvent } from "../streaming-client.ts";
+import type { WireEvent } from "../streaming-client.ts";
 
 /**
  * The headers a chat stream is answered with. `no-cache` because a replayed stream is a different
@@ -26,10 +26,10 @@ export const SSE_HEADERS = {
  * upstream request is on the wire before the response is returned), and this extraction keeps it.
  * An iterable that throws errors the stream.
  *
- * @param {AsyncIterable<StreamEvent>} events - The frames, in wire order
+ * @param {AsyncIterable<WireEvent>} events - The frames, in wire order
  * @returns {ReadableStream<Uint8Array>}
  */
-export function encodeSse(events: AsyncIterable<StreamEvent>): ReadableStream<Uint8Array> {
+export function encodeSse(events: AsyncIterable<WireEvent>): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder();
   return new ReadableStream<Uint8Array>({
     async start(controller) {
