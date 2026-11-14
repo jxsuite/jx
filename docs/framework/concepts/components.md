@@ -7,9 +7,11 @@ spec:
   - spec.md#16.9
   - spec.md#16.4
   - spec.md#16.10 # an upgrade replaces the prerendered nodes
+  - spec.md#16.11 # form association
 code:
   - packages/compiler/src/shadow.ts
   - packages/runtime/src/css.ts
+  - packages/runtime/src/form-association.ts
   - packages/compiler/src/targets/compile-element.ts
   - packages/runtime/src/runtime.ts
 ---
@@ -271,6 +273,39 @@ Write `:host` in your styles either way. In a shadow component it stays `:host`,
 :::
 
 `closed` works too, and means what the standard says: nothing outside can reach the root, not even your own scripts via `element.shadowRoot`. Use it when you mean it.
+
+## Form controls
+
+A component that holds a value can take part in a `<form>` the way a native control does. Declare `"formAssociated": true` on it:
+
+```json
+{
+  "tagName": "star-rating",
+  "$shadow": "open",
+  "formAssociated": true,
+  "formValue": { "$ref": "#/state/value" },
+  "state": { "value": "3", "required": false, "disabled": false },
+  "children": [
+    { "tagName": "input", "attributes": { "type": "number" }, "value": { "$ref": "#/state/value" } }
+  ]
+}
+```
+
+The state keys are HTML's own names for a control's state, and each one is optional:
+
+| The form                                       | Your component                                                                                              |
+| ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| is submitted                                   | `formValue` is sent under the element's `name` attribute. `null` sends nothing.                             |
+| is validated                                   | With `required` true and an empty `value` (or `checked` false), the element is `:invalid` and blocks submit |
+| is reset                                       | `value` and `checked` return to what the element started with                                               |
+| sits in a disabled `<fieldset>`                | `disabled` becomes true, and goes back when the fieldset is enabled                                         |
+| has a `<label for>` pointing at your component | Clicking the label focuses the first `input`, `textarea` or `select` inside, which is named by the label    |
+
+:::doc-warning
+Leave `formValue` out when the component is in the light DOM and renders a native control that carries the `name` itself. That inner control is already inside the form and submits on its own, so a `formValue` would send the value twice. A shadow-root component needs `formValue`, because nothing inside a shadow root reaches the form.
+:::
+
+A browser without `ElementInternals` ignores the declaration: the component renders and works as before, it just is not wired to the form.
 
 ## Props and encapsulation
 

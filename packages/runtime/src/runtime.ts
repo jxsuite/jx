@@ -38,6 +38,8 @@ import {
   transposeCanvasOverlaySelector,
 } from "./css.ts";
 import type { CssBuildOptions, ShadowSetting } from "./css.ts";
+import { associateForm } from "./form-association.ts";
+import type { FormAssociation, FormStateKeys } from "./form-association.ts";
 import {
   evaluateExpression,
   evaluateOperand,
@@ -2116,6 +2118,8 @@ async function resolveFunction(
 export const RESERVED_KEYS = new Set([
   "$schema",
   "$shadow",
+  "formAssociated",
+  "formValue",
   "$id",
   "$defs",
   "state",
@@ -5299,6 +5303,68 @@ export function derivedStateKeys(def: JxElement): Set<string> {
 }
 
 /**
+ * Which of HTML's names for a form control's state (`value`, `checked`, `disabled`, `required`) a
+ * definition declares as state a write can reach: declared, and not derived. What a form-associated
+ * element's callbacks read and write (spec.md §16.11).
+ *
+ * Exported for the compiler, which writes the verdict into a generated module as a literal.
+ *
+ * @param def The element definition
+ * @returns {FormStateKeys}
+ */
+export function formStateKeys(def: JxElement): FormStateKeys {
+  const declared = def.state ?? {};
+  const derived = derivedStateKeys(def);
+  const writable = (key: string): boolean => key in declared && !derived.has(key);
+  return {
+    checked: writable("checked"),
+    disabled: writable("disabled"),
+    required: writable("required"),
+    value: writable("value"),
+  };
+}
+
+/**
+ * Each element's `ElementInternals`, or null on a platform that has none. `attachInternals` may be
+ * called once per element, and two things want what it answers: a closed shadow root's adoption
+ * (spec.md §16.6) and form association (§16.11).
+ */
+const _internals = new WeakMap<HTMLElement, ElementInternals | null>();
+
+/** An element's internals, attached on first ask. */
+function internalsOf(el: HTMLElement): ElementInternals | null {
+  const known = _internals.get(el);
+  if (known !== undefined) {
+    return known;
+  }
+  // The DOM typings declare the method; an older engine and the test DOM do not have it.
+  const attach: (() => ElementInternals) | undefined = el.attachInternals;
+  const internals = isFunction(attach) ? attach.call(el) : null;
+  _internals.set(el, internals);
+  return internals;
+}
+
+/** The form association of each instance that has one, for the platform's form callbacks. */
+const _formAssociations = new WeakMap<HTMLElement, FormAssociation>();
+
+/** A definition's declared `formValue`, resolved against an instance's scope (spec.md §16.11). */
+function resolveFormValue(declared: JxDocumentValue, state: JxScope): JxScopeValue {
+  if (isRefValue(declared)) {
+    return resolveRef(declared.$ref, state);
+  }
+  if (isString(declared) && isTemplateString(declared)) {
+    /* Survives its expression throwing, as every template binding does (§6.1): nothing is
+       submitted until it can be read, and the effect runs again when what it read changes. */
+    try {
+      return evaluateValueTemplate(declared, state);
+    } catch {
+      return null;
+    }
+  }
+  return declared;
+}
+
+/**
  * The declared default of every state entry, by state key, read the way `buildScope` reads the
  * entry's shape:
  *
@@ -5483,6 +5549,13 @@ export {
   transposeCanvasOverlaySelector,
   transposeCanvasPopoverSelector,
 } from "./css.ts";
+export { associateForm } from "./form-association.ts";
+export type {
+  FormAssociation,
+  FormAssociationOptions,
+  FormInternals,
+  FormStateKeys,
+} from "./form-association.ts";
 export type {
   CssBuildOptions,
   CssKeyframeBlock,
@@ -6013,6 +6086,20 @@ export async function defineElement(source: string | JxDocument, baseUrl?: strin
       return observedAttrs;
     }
 
+    /* Read once by the platform, when the class is defined, as `observedAttributes` is: an
+       element is form-associated for good or not at all (spec.md §16.11). */
+    static get formAssociated() {
+      return initialDef.formAssociated === true;
+    }
+
+    formResetCallback() {
+      _formAssociations.get(this)?.reset();
+    }
+
+    formDisabledCallback(disabled: boolean) {
+      _formAssociations.get(this)?.disabled(disabled);
+    }
+
     async connectedCallback() {
       // An element carrying `data-jx-definition-root` IS the definition being rendered by an
       // External renderer (the studio canvas editing this component's own document) — its subtree
@@ -6211,7 +6298,7 @@ export async function defineElement(source: string | JxDocument, baseUrl?: strin
       if (shadowMode === null) {
         slottedChildren = captureSlotted(this);
       } else {
-        const adopted = shadowMode === "open" ? this.shadowRoot : this.attachInternals().shadowRoot;
+        const adopted = shadowMode === "open" ? this.shadowRoot : internalsOf(this)?.shadowRoot;
         shadowRoot = adopted ?? this.attachShadow({ mode: shadowMode });
       }
       const renderRoot = (): HTMLElement | ShadowRoot => shadowRoot ?? this;
@@ -6308,6 +6395,23 @@ export async function defineElement(source: string | JxDocument, baseUrl?: strin
       };
 
       let attempt = runScoped(draw);
+      /* Form association (§16.11), once the element has a tree: its control is in it. On a
+         platform without `ElementInternals` the element is simply not associated, and a light-DOM
+         control's own native control goes on carrying its value as it always has. */
+      const internals = def.formAssociated === true ? internalsOf(this) : null;
+      if (internals) {
+        const { formValue } = def;
+        const association = associateForm(this, internals, state, {
+          formValue: formValue === undefined ? undefined : () => resolveFormValue(formValue, state),
+          keys: formStateKeys(def),
+          root: renderRoot,
+          watch: (fn) => {
+            effect(fn);
+          },
+        });
+        _formAssociations.set(this, association);
+        association.start();
+      }
       const failure = attempt.result;
       if (!failure) {
         mounted();
