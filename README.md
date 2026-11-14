@@ -78,7 +78,7 @@ Start from a blank project or one of 13 starters. Publishing is git-push-driven:
 
 ## Studio
 
-Jx Studio is a desktop application for editing Jx projects, and the desktop app is how you run the visual editor today. Jx Cloud, a hosted version you reach in a browser and sign in to with GitHub, is in development. Contributors working in this repository can also run Studio in the browser via the dev server.
+Jx Studio is a desktop application for editing Jx projects, free and MIT licensed. [Jx Cloud](https://jxsuite.com/cloud) is the same editor hosted at studio.jxsuite.com: you sign in with GitHub and edit a repository in the browser, on a paid subscription with a free trial. Contributors working in this repository can also run Studio in the browser via the dev server.
 
 <p align="center">
   <img src="docs/images/hero.png" alt="Jx Studio editing the jxsuite.com homepage: layers panel, live canvas, and element inspector" width="800">
@@ -94,7 +94,7 @@ The document format is the contract, so a model works on exactly the artifact a 
 
 - **`jx schema`** emits self-contained schemas for your project. They resolve with no `node_modules` and no network, so any validator can check generated output offline.
 - **`jx validate`** is a deterministic pass/fail over the whole project, which makes it a usable CI gate for machine-written documents.
-- **Studio's assistant** edits through the same document operations a person uses, so an AI change lands in the undo stack and in your git diff like any other edit. Bring your own key; Studio ships no account and no hosted model, and sends nothing anywhere until you connect a provider.
+- **Studio's assistant** edits through the same document operations a person uses, so an AI change lands in the undo stack and in your git diff like any other edit. On the desktop it is bring your own key: Studio ships no hosted model, and sends nothing anywhere until you connect a provider.
 - **[`.claude/commands/jx.md`](.claude/commands/jx.md)** is a ready-made `/jx` authoring command for coding agents working in a Jx project.
 
 ## Extending

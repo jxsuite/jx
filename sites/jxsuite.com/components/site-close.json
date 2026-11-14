@@ -1,0 +1,82 @@
+{
+  "tagName": "site-close",
+  "$description": "The page's close: one heading, one line and the main action at its largest, word for word as the toolbar and the hero name it.",
+  "$elements": [
+    {
+      "$ref": "./cta-button.json"
+    }
+  ],
+  "state": {
+    "heading": "",
+    "text": ""
+  },
+  "style": {
+    "display": "block",
+    "padding": "var(--section-top) var(--gutter)",
+    "borderTop": "1px solid var(--color-border)"
+  },
+  "children": [
+    {
+      "tagName": "div",
+      "style": {
+        "maxWidth": "var(--max-width)",
+        "margin": "0 auto"
+      },
+      "children": [
+        {
+          "tagName": "h2",
+          "style": {
+            "fontWeight": "var(--display-weight)",
+            "letterSpacing": "var(--display-tracking)",
+            "color": "var(--color-text-primary)",
+            "margin": "0",
+            "textWrap": "balance",
+            "fontSize": "clamp(2.25rem, 5vw, 4.5rem)",
+            "lineHeight": "1.02",
+            "maxWidth": "16ch"
+          },
+          "textContent": "${state.heading}"
+        },
+        {
+          "tagName": "p",
+          "style": {
+            "margin": "1.5rem 0 2.5rem",
+            "maxWidth": "52ch",
+            "fontSize": "clamp(1.0625rem, 1.4vw, 1.25rem)",
+            "lineHeight": "1.5",
+            "color": "var(--color-text-secondary)"
+          },
+          "textContent": "${state.text}"
+        },
+        {
+          "tagName": "div",
+          "style": {
+            "display": "flex",
+            "flexWrap": "wrap",
+            "gap": "0.75rem"
+          },
+          "children": [
+            {
+              "tagName": "cta-button",
+              "attributes": {
+                "props.href": "https://studio.jxsuite.com/",
+                "props.label": "Start a free trial",
+                "props.variant": "primary",
+                "props.size": "xl"
+              }
+            },
+            {
+              "tagName": "cta-button",
+              "attributes": {
+                "props.href": "/download",
+                "props.label": "Download Studio",
+                "props.variant": "secondary",
+                "props.size": "xl"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

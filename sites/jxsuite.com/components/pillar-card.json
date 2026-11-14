@@ -22,13 +22,13 @@
         "width": "2.5rem",
         "height": "2.5rem",
         "borderRadius": "var(--radius)",
-        "backgroundColor": "rgba(59, 130, 246, 0.1)",
+        "backgroundColor": "var(--color-tonal)",
         "display": "flex",
         "alignItems": "center",
         "justifyContent": "center",
         "fontFamily": "var(--font-mono)",
         "fontSize": "0.8125rem",
-        "fontWeight": "700",
+        "fontWeight": "var(--display-weight)",
         "color": "var(--color-accent)"
       },
       "textContent": "${state.icon}"
@@ -37,7 +37,7 @@
       "tagName": "h3",
       "style": {
         "fontSize": "1.25rem",
-        "fontWeight": "700",
+        "fontWeight": "var(--display-weight)",
         "letterSpacing": "-0.02em",
         "margin": "0",
         "color": "var(--color-text-primary)"

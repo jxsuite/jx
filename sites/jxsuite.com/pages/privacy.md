@@ -21,7 +21,7 @@ $elements:
   - "$ref": "../components/section-label.json"
 ---
 
-::::div{style.padding="clamp(4rem, 8vw, 6rem) clamp(1rem, 3vw, 2rem) clamp(3rem, 6vw, 4rem)"}
+::::div{style.padding="clamp(4rem, 8vw, 6rem) var(--gutter) clamp(3rem, 6vw, 4rem)"}
 :::div{style.maxWidth="46rem" style.margin="0 auto"}
 
 ::section-label{props.text="Legal"}

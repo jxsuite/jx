@@ -8,7 +8,7 @@ defaults layout="./layouts/base.json" lang=en
 
 images {
     optimize #true
-    widths 320 640 960 1280 1920
+    widths 320 640 960 1280 1920 2560
     formats avif jpeg
     quality avif=65 jpeg=80
     sizes "(max-width: 768px) 100vw, 50vw"
@@ -30,53 +30,82 @@ $media {
 }
 
 style {
-    --color-bg-primary "#ffffff"
-    --color-bg-secondary "#fafafa"
-    --color-bg-surface "#f4f4f5"
-    --color-bg-surface-hover "#e4e4e7"
-    --color-border "#d4d4d8"
-    --color-border-subtle "#e4e4e7"
-    --color-text-primary "#18181b"
-    --color-text-secondary "#52525b"
-    --color-text-muted "#5f5f68"
+    "@font-face" {
+        fontFamily "'Host Grotesk'"
+        fontStyle normal
+        fontWeight "400 700"
+        fontDisplay swap
+        src "url('/fonts/host-grotesk-latin.woff2') format('woff2')"
+    }
+    --color-bg-primary "#f7f7f9"
+    --color-bg-secondary "#eeeef2"
+    --color-bg-surface "#ffffff"
+    --color-bg-surface-hover "#eeeef2"
+    --color-border "#c9c9d2"
+    --color-border-subtle "#e1e1e7"
+    --color-text-primary "#1d1d22"
+    --color-text-secondary "#45454f"
+    --color-text-muted "#5e5e6c"
     --color-brand "#1a1a2e"
-    --color-accent "#2563eb"
-    --color-accent-hover "#1d4ed8"
+    --color-accent "#1d4ed8"
+    --color-accent-hover "#1e40af"
     --color-accent-solid "#2563eb"
-    --color-backdrop "rgba(255, 255, 255, 0.85)"
-    --color-backdrop-strong "rgba(255, 255, 255, 0.92)"
-    --color-shadow "rgba(0, 0, 0, 0.12)"
-    --color-shadow-strong "rgba(0, 0, 0, 0.18)"
+    --color-accent-solid-hover "#1d4ed8"
+    --color-tonal "rgba(29, 29, 34, 0.07)"
+    --color-tonal-hover "rgba(29, 29, 34, 0.12)"
+    --color-inverse-bg "#111114"
+    --color-inverse-surface "#1d1d22"
+    --color-inverse-text "#eeeef2"
+    --color-inverse-muted "#a2a2af"
+    --color-backdrop "rgba(247, 247, 249, 0.88)"
+    --color-backdrop-strong "rgba(247, 247, 249, 0.95)"
+    --color-shadow "rgba(29, 29, 34, 0.12)"
+    --color-shadow-strong "rgba(29, 29, 34, 0.2)"
     --color-success "#047857"
     --color-warning "#b45309"
-    --color-highlight-bg "#eef2ff"
-    --color-highlight-text "#1e1b4b"
-    --color-highlight-border "#c7d2fe"
-    --font-mono "'JetBrains Mono', 'SF Mono', Consolas, 'Liberation Mono', Menlo, monospace"
+    --color-highlight-bg "#ffffff"
+    --color-highlight-text "#1d1d22"
+    --color-highlight-border "#c9c9d2"
+    --font-sans "'Host Grotesk', system-ui, -apple-system, 'Segoe UI', sans-serif"
+    --font-mono "'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace"
+    --display-weight "500"
+    --display-tracking "-0.035em"
     --radius "8px"
     --radius-lg "12px"
-    --max-width "1200px"
+    --max-width "1280px"
+    --gutter "clamp(1.5rem, 5.5vw, 5rem)"
+    --section-top "clamp(4.5rem, 9vw, 7.5rem)"
+    --section-bottom "clamp(3.5rem, 6vw, 5rem)"
     @--dark {
-        --color-bg-primary "#0a0a0a"
-        --color-bg-secondary "#111111"
-        --color-bg-surface "#1a1a1a"
-        --color-bg-surface-hover "#222222"
-        --color-border "#222222"
-        --color-border-subtle "#1a1a1a"
-        --color-text-primary "#fafafa"
-        --color-text-secondary "#a1a1aa"
-        --color-text-muted "#8b8b94"
-        --color-accent "#3b82f6"
-        --color-accent-hover "#60a5fa"
-        --color-backdrop "rgba(10, 10, 10, 0.8)"
-        --color-backdrop-strong "rgba(10, 10, 10, 0.9)"
+        --color-bg-primary "#111114"
+        --color-bg-secondary "#17171b"
+        --color-bg-surface "#1d1d22"
+        --color-bg-surface-hover "#26262c"
+        --color-border "#45454f"
+        --color-border-subtle "#2f2f36"
+        --color-text-primary "#eeeef2"
+        --color-text-secondary "#c9c9d2"
+        --color-text-muted "#a2a2af"
+        --color-brand "#eeeef2"
+        --color-accent "#5f95f7"
+        --color-accent-hover "#93b7fa"
+        --color-accent-solid "#2563eb"
+        --color-accent-solid-hover "#3b82f6"
+        --color-tonal "rgba(238, 238, 242, 0.1)"
+        --color-tonal-hover "rgba(238, 238, 242, 0.17)"
+        --color-inverse-bg "#0b0b0d"
+        --color-inverse-surface "#17171b"
+        --color-inverse-text "#eeeef2"
+        --color-inverse-muted "#a2a2af"
+        --color-backdrop "rgba(17, 17, 20, 0.86)"
+        --color-backdrop-strong "rgba(17, 17, 20, 0.94)"
         --color-shadow "rgba(0, 0, 0, 0.4)"
         --color-shadow-strong "rgba(0, 0, 0, 0.5)"
-        --color-success "#059669"
-        --color-warning "#d97706"
-        --color-highlight-bg "rgba(255, 255, 255, 0.97)"
-        --color-highlight-text "#1a1a2e"
-        --color-highlight-border "rgba(0, 0, 0, 0.08)"
+        --color-success "#34d399"
+        --color-warning "#fbbf24"
+        --color-highlight-bg "#1d1d22"
+        --color-highlight-text "#eeeef2"
+        --color-highlight-border "#45454f"
     }
     :focus-visible {
         outline "2px solid var(--color-accent)"
@@ -86,23 +115,24 @@ style {
     maxWidth "100vw"
     overflowX clip
     padding "0"
-    fontFamily "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
+    fontFamily "var(--font-sans)"
     backgroundColor "var(--color-bg-primary)"
     color "var(--color-text-primary)"
+    a {
+        color "var(--color-accent)"
+        textUnderlineOffset "0.2em"
+    }
     table {
         width "100%"
         borderCollapse collapse
-        fontSize "0.9375rem"
+        fontSize "1rem"
         textAlign left
         borderTop "1px solid var(--color-border)"
         thead {
             padding "1rem 1.25rem"
-            fontFamily "var(--font-mono)"
-            fontSize "0.6875rem"
-            fontWeight "600"
+            fontSize "0.875rem"
+            fontWeight "500"
             color "var(--color-text-muted)"
-            textTransform uppercase
-            letterSpacing "0.1em"
             borderBottom "1px solid var(--color-border)"
         }
         tbody {
@@ -110,16 +140,6 @@ style {
                 borderBottom "1px solid var(--color-border-subtle)"
                 :hover {
                     backgroundColor "var(--color-bg-surface)"
-                }
-                :first-child {
-                    color "var(--color-accent)"
-                    fontWeight "700"
-                    fontStyle italic
-                }
-                :last-child {
-                    color "var(--color-accent)"
-                    fontWeight "700"
-                    fontStyle italic
                 }
             }
             td {
@@ -131,12 +151,6 @@ style {
                     fontWeight "600"
                     borderLeft none
                 }
-                :last-child {
-                    color "var(--color-highlight-text)"
-                    fontWeight "600"
-                    borderLeftColor "var(--color-highlight-border)"
-                    backgroundColor "var(--color-highlight-bg)"
-                }
             }
             th {
                 padding "1rem 1.25rem"
@@ -146,12 +160,6 @@ style {
                     color "var(--color-text-primary)"
                     fontWeight "600"
                     borderLeft none
-                }
-                :last-child {
-                    color "var(--color-highlight-text)"
-                    fontWeight "600"
-                    borderLeftColor "var(--color-highlight-border)"
-                    backgroundColor "var(--color-highlight-bg)"
                 }
             }
         }

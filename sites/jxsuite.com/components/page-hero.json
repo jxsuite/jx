@@ -1,0 +1,65 @@
+{
+  "tagName": "page-hero",
+  "$description": "The opening of every page but the two that lead with a screenshot: the h1 on the left line, its lead, then the slotted actions.",
+  "state": {
+    "heading": "",
+    "lead": ""
+  },
+  "style": {
+    "display": "block",
+    "padding": "clamp(3.5rem, 8vw, 6.5rem) var(--gutter) clamp(2.5rem, 5vw, 4rem)"
+  },
+  "children": [
+    {
+      "tagName": "div",
+      "style": {
+        "maxWidth": "var(--max-width)",
+        "margin": "0 auto"
+      },
+      "children": [
+        {
+          "tagName": "h1",
+          "style": {
+            "fontWeight": "var(--display-weight)",
+            "letterSpacing": "-0.04em",
+            "color": "var(--color-text-primary)",
+            "margin": "0",
+            "textWrap": "balance",
+            "fontSize": "clamp(2.5rem, 5vw, 4.5rem)",
+            "lineHeight": "1.02",
+            "maxWidth": "18ch"
+          },
+          "textContent": "${state.heading}"
+        },
+        {
+          "tagName": "p",
+          "style": {
+            "margin": "1.5rem 0 0",
+            "maxWidth": "56ch",
+            "fontSize": "clamp(1.0625rem, 1.4vw, 1.25rem)",
+            "lineHeight": "1.5",
+            "color": "var(--color-text-secondary)"
+          },
+          "textContent": "${state.lead}"
+        },
+        {
+          "tagName": "div",
+          "style": {
+            "display": "flex",
+            "flexWrap": "wrap",
+            "gap": "0.75rem",
+            "marginTop": "2rem",
+            ":empty": {
+              "display": "none"
+            }
+          },
+          "children": [
+            {
+              "tagName": "slot"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
