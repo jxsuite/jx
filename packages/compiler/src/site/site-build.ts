@@ -613,6 +613,26 @@ export async function buildSite(
 
   closePhase("content");
 
+  /* The image pipeline's state, opened before the components compile: a component's images are
+     decided on its definition (step 5), so its module and its prerender agree. */
+  const cfImages = projectConfig.images.optimize && projectConfig.images.service === "cloudflare";
+  const imageCache = projectConfig.images.optimize && !cfImages ? loadCache(projectRoot) : null;
+  const imageMetaCache: ImageMetaCache | null = cfImages ? new Map() : null;
+  if (imageCache && projectConfig.images.formats?.includes("webp")) {
+    console.warn(
+      `images.formats lists "webp", which this compiler writes losslessly: its files are several ` +
+        `times the size of AVIF or JPEG. Keep it only for pixel-exact output; ["avif", "jpeg"] ` +
+        `is the default.`,
+    );
+  }
+  if (cfImages) {
+    console.log(
+      `images.service is "cloudflare" — srcsets use /cdn-cgi/image transform URLs. ` +
+        `Ensure Image Transformations are enabled for your zone (Cloudflare dashboard → ` +
+        `Images → Transformations); these URLs do not work on *.pages.dev / *.workers.dev previews.`,
+    );
+  }
+
   // ── 5. Compile site components ──────────────────────────────────────────
   const compiledComponentTags: string[] = [];
   const componentCSS = new Map<string, string>(); // TagName → CSS text
@@ -664,6 +684,22 @@ export async function buildSite(
       componentDoc: JxDocument | JxElement,
       filePath: string | null,
     ): Promise<void> => {
+      /*
+       * A component's images are decided on its definition, before the module is compiled from it
+       * and before any page prerenders it (site-architecture.md §9.2.7). Decided on the page alone,
+       * as it was, they reached only the prerendered markup: the module then replaced an `<img>`
+       * carrying `loading="lazy"` and a candidate list with one that had neither.
+       */
+      await transformImageNodes(
+        componentDoc,
+        /* SAFETY: `loadProjectConfig` spreads its `images` defaults under the author's block, so
+           every member the optimizer's config requires is present. */
+        projectConfig.images as ImageConfig,
+        projectRoot,
+        imageCache,
+        imageMetaCache ?? undefined,
+        assetMounts,
+      );
       // Every document this build compiles is a file, so the empty key is never shared in practice.
       const key = filePath ?? "";
       const resolved = componentResolutions.get(key);
@@ -835,24 +871,6 @@ export async function buildSite(
   closePhase("components");
 
   // ── 6. Compile each route ───────────────────────────────────────────────
-
-  const cfImages = projectConfig.images.optimize && projectConfig.images.service === "cloudflare";
-  const imageCache = projectConfig.images.optimize && !cfImages ? loadCache(projectRoot) : null;
-  const imageMetaCache: ImageMetaCache | null = cfImages ? new Map() : null;
-  if (imageCache && projectConfig.images.formats?.includes("webp")) {
-    console.warn(
-      `images.formats lists "webp", which this compiler writes losslessly: its files are several ` +
-        `times the size of AVIF or JPEG. Keep it only for pixel-exact output; ["avif", "jpeg"] ` +
-        `is the default.`,
-    );
-  }
-  if (cfImages) {
-    console.log(
-      `images.service is "cloudflare" — srcsets use /cdn-cgi/image transform URLs. ` +
-        `Ensure Image Transformations are enabled for your zone (Cloudflare dashboard → ` +
-        `Images → Transformations); these URLs do not work on *.pages.dev / *.workers.dev previews.`,
-    );
-  }
 
   // Sitemap is generated from the route table when a production `url` is configured
   // (absolute <loc> URLs require it) and not explicitly disabled via build.sitemap: false.

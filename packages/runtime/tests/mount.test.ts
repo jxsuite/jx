@@ -746,6 +746,31 @@ describe("bindings skip an equal write", () => {
   });
 });
 
+describe("the first write of an empty string", () => {
+  test("writes the attribute a reflected property reads as empty while it is absent", async () => {
+    // Built HTML and a compiled module both write `title=""` (spec.md §8.1).
+    await mount({ dir: "", lang: "", tagName: "p", title: "" }, host);
+    const el = renderedRoot();
+    expect(el.getAttribute("title")).toBe("");
+    expect(el.getAttribute("lang")).toBe("");
+    expect(el.getAttribute("dir")).toBe("");
+  });
+
+  test("a later equal write of the empty string is still skipped", async () => {
+    const m = await mount(
+      { tagName: "p", title: "${state.t}${state.other ? '' : ''}", state: { other: 0, t: "" } },
+      host,
+    );
+    const el = renderedRoot();
+    expect(el.getAttribute("title")).toBe("");
+    const setter = mock((_v: string) => null);
+    Object.defineProperty(el, "title", { configurable: true, get: () => "", set: setter });
+    m.scope.other = 1;
+    await tick();
+    expect(setter).not.toHaveBeenCalled();
+  });
+});
+
 describe("Jx() over mount()", () => {
   test("returns the scope, honours a signal, and still seeds the module root media", async () => {
     const scope = await Jx({ tagName: "p", textContent: "${state.n}", state: { n: 7 } }, host);
