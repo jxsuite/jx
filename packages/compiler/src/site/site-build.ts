@@ -105,18 +105,20 @@ import {
   buildInstanceScope,
   collectStyles,
   colorSchemePrePaintScript,
+  computeLiveTags,
   createSlotFill,
   definitionHasSlot,
   escapeStyleText,
   evaluateStaticTemplate,
   inheritProjectFormulas,
-  isComponentFullyStatic,
+  isLiveComponent,
   isPureNamedFormula,
   isRuntimeOnlyStateKey,
   isSingleExpression,
   liftPropsAttributes,
   observedAttributeProps,
   nextSlotId,
+  orderComponentTags,
   preRenderComponentHtml,
   pureSchemeOf,
   referencesStateKey,
@@ -782,6 +784,17 @@ export async function buildSite(
     );
   }
 
+  /*
+   * Which components ship their module, decided once for the site (compiler.md §8.1): a definition
+   * that is not fully static, and every registered tag such a definition renders, because its
+   * module creates that element bare and only the element's own module fills it in. The rest are
+   * static: their instances are stamped `data-jx-static` and no page loads a module for them.
+   */
+  const liveTags = computeLiveTags(componentDefs);
+  const staticTags = new Set([...componentDefs.keys()].filter((tag) => !liveTags.has(tag)));
+  // A page writes its module scripts so each tag follows every tag it renders.
+  const scriptOrder = orderComponentTags(compiledComponentTags, componentDefs);
+
   // ── 5b. Collect server entries ──────────────────────────────────────────
   /*
    * Every `timing: "server"` entry the site declares, before deduplication: each compiled
@@ -1007,14 +1020,6 @@ export async function buildSite(
         }
       }
 
-      // Determine which component tags are fully static (for script omission)
-      const staticTags = new Set<string>();
-      for (const [tag, def] of componentDefs) {
-        if (isComponentFullyStatic(def)) {
-          staticTags.add(tag);
-        }
-      }
-
       // Inject component CSS and JS scripts
       if (compiledComponentTags.length > 0) {
         result.html = injectComponentScripts(
@@ -1024,6 +1029,7 @@ export async function buildSite(
           staticTags,
           result.files.map((f: { content: string }) => f.content).join("\n"),
           runtimeImports,
+          scriptOrder,
         );
       }
 
@@ -1772,8 +1778,10 @@ async function compilePage(
     route.pagedState?.key,
   );
 
-  // Build scope from resolved state so template strings in title/$head can be evaluated
-  const scope = buildInitialScope(layoutDoc.state ?? {});
+  // Build scope from resolved state so template strings in title/$head can be evaluated. It HOLDS
+  // Every entry a handler writes: the template pass below replaces a template with its value, and a
+  // Value baked over a binding the page's module must keep is a dead binding (compiler.md §8.1).
+  const scope = buildInitialScope(layoutDoc.state ?? {}, null, { holdMutable: true });
 
   // Determine the page title — resolve template strings against the scope
   let title = pageTitle ?? projectConfig.name;
@@ -1819,7 +1827,21 @@ async function compilePage(
   };
   // One counter per page, so every `data-jx-slots` id on it is unique (spec.md §8.5).
   const slotIds = { n: 0 };
-  expandComponents(layoutDoc, componentDefs, slotCss, projectConfig.defaults, slotIds);
+  /* Children written inside an instance are serialized here, before the page compiles, so nothing
+     binds them afterwards (spec.md §15.2). A template the pass above left for the client would
+     therefore be lost, so it is resolved against a scope that does not hold: the entry's initial
+     value is what the page shows. Built on first use: most pages place no such template, and the
+     scope clones the page's whole state. */
+  let slotScopeMemo: JxScope | undefined;
+  const slotScope = () => (slotScopeMemo ??= buildInitialScope(layoutDoc.state ?? {}));
+  expandComponents(layoutDoc, componentDefs, {
+    defaults: projectConfig.defaults,
+    // Derived rather than passed: a pure function of the registry, which is already here.
+    liveTags: computeLiveTags(componentDefs),
+    slotCss,
+    slotIds,
+    slotScope,
+  });
 
   // Strip resolved timing: "compiler" state entries — they're now baked into the tree
   // And keeping them would cause isDynamic() to misclassify the page as dynamic.
@@ -2713,6 +2735,20 @@ interface SlotCssCollector {
   media: Record<string, string>;
 }
 
+/** What {@link expandComponents} carries down the page tree. */
+interface ExpandOptions {
+  /** Collects the static styles of slotted children, which are serialized before the style pass. */
+  slotCss?: SlotCssCollector;
+  /** Project defaults, read for `defaults.shadow` (spec.md §16.6). */
+  defaults?: ProjectConfig["defaults"];
+  /** The page's `data-jx-slots` counter. */
+  slotIds?: { n: number };
+  /** The tags whose instances ship their module (`computeLiveTags`). */
+  liveTags?: ReadonlySet<string>;
+  /** The scope the children written inside an instance resolve in: the page's, not holding. */
+  slotScope?: () => JxScope;
+}
+
 /**
  * Walk the document tree and expand registered custom elements in-place. Applies $props via
  * preRenderComponentHtml, marks static/prerendered. Slot children get their static styles collected
@@ -2721,23 +2757,20 @@ interface SlotCssCollector {
  * @param {JxElement | string | (JxElement | string)[]} node - A nested array (authored JSON can
  *   carry one among children) is walked member by member
  * @param {Map<string, JxElement>} componentDefs
- * @param {SlotCssCollector} [slotCss]
- * @param {ProjectConfig["defaults"]} [defaults] - Read for `defaults.shadow` (spec.md §16.6)
- * @param {{ n: number }} [slotIds] - The page's `data-jx-slots` counter
+ * @param {ExpandOptions} [options]
  */
 function expandComponents(
   node: JxElement | string | (JxElement | string)[],
   componentDefs: Map<string, JxElement>,
-  slotCss?: SlotCssCollector,
-  defaults?: ProjectConfig["defaults"],
-  slotIds?: { n: number },
+  options: ExpandOptions = {},
 ) {
+  const { defaults, liveTags, slotCss, slotIds, slotScope } = options;
   if (!isNonNullObject(node)) {
     return;
   }
   if (Array.isArray(node)) {
     for (const n of node) {
-      expandComponents(n, componentDefs, slotCss, defaults, slotIds);
+      expandComponents(n, componentDefs, options);
     }
     return;
   }
@@ -2745,7 +2778,7 @@ function expandComponents(
   // Recurse into children first (bottom-up expansion)
   if (Array.isArray(node.children)) {
     for (const child of node.children) {
-      expandComponents(child, componentDefs, slotCss, defaults, slotIds);
+      expandComponents(child, componentDefs, options);
     }
   }
 
@@ -2773,11 +2806,12 @@ function expandComponents(
      * was given. Instances written inside `def` itself are another matter — those are reached
      * below, through `preRenderComponentHtml`, with `node` as the first frame of the path.
      */
-    const renderSlotted = (c: StaticChild) => {
+    const childScope = (): JxScope => slotScope?.() ?? {};
+    const renderSlotted = (c: StaticChild | JxMappedArray) => {
       if (slotCss && isNonNullObject(c) && !Array.isArray(c)) {
         collectStyles(c, slotCss.rules, slotCss.media, "", slotCss.counter, "jxs");
       }
-      return renderStaticNode(c, {}, null);
+      return renderStaticNode(c, childScope(), null);
     };
 
     /*
@@ -2798,10 +2832,11 @@ function expandComponents(
     const context: ComponentPrerenderContext = {
       componentDefs,
       defaults,
+      liveTags,
       path: [{ key: JSON.stringify(props ?? {}), tag: tagName }],
       slotIds,
     };
-    const isStatic = isComponentFullyStatic(def);
+    const isStatic = !isLiveComponent(tagName, def, liveTags);
     const { children } = node;
     /* Light mode places the children by slot name (spec.md §8.5). A live instance whose definition
        has a slot is stamped and its groups bracketed, so its element recovers them on upgrade. */
@@ -2815,7 +2850,7 @@ function expandComponents(
     const innerHTML = preRenderComponentHtml(
       def,
       props,
-      shadow ? null : createSlotFill(children, {}, renderSlotted, slotId),
+      shadow ? null : createSlotFill(children, childScope(), renderSlotted, slotId),
       context,
     );
     if (slotId !== null) {
@@ -2891,6 +2926,9 @@ function expandComponents(
  * @param {Set<string>} [staticTags] - Tags where ALL instances are fully static (skip JS)
  * @param {string} [islandSource] - Concatenated island modules emitted for this page
  * @param {Record<string, string>} [runtimeImports] - The import map's `imports` object
+ * @param {readonly string[]} [scriptOrder] - The tags in the order their module scripts are written
+ *   (`orderComponentTags`); the component CSS keeps the order of `allComponentTags`, so the cascade
+ *   does not move
  * @returns {string}
  */
 function injectComponentScripts(
@@ -2900,6 +2938,7 @@ function injectComponentScripts(
   staticTags = new Set<string>(),
   islandSource = "",
   runtimeImports: Record<string, string> = {},
+  scriptOrder: readonly string[] = allComponentTags,
 ) {
   // A component reaches a page two ways: as a literal tag in the static HTML, or referenced only
   // From inside an island's client template — in which case the tag exists solely in the island's
@@ -2944,7 +2983,10 @@ function injectComponentScripts(
   // Never prerendered, so it needs its module even when the component itself is fully static —
   // That module is what fills the element in client-side. This holds when the tag ALSO appears in
   // The static HTML: those instances are prerendered, but the ones the island creates are not.
-  const jsTags = usedTags.filter((tag: string) => inIsland(tag) || !staticTags.has(tag));
+  const used = new Set(usedTags);
+  const jsTags = scriptOrder.filter(
+    (tag: string) => used.has(tag) && (inIsland(tag) || !staticTags.has(tag)),
+  );
   if (jsTags.length === 0) {
     return intoHead([styleBlock]);
   }

@@ -1433,7 +1433,12 @@ function emitNodeInner(
  * @returns {string}
  */
 function emitMappedArray(arrayDef: JxMappedArray, indent: string) {
-  const itemsExpr = isRef(arrayDef.items) ? refToExpr(arrayDef.items.$ref) : "ITEMS";
+  /* A literal `items` is written into the module as JSON, as the client target writes it. A
+     pointer that reads nothing is an empty list, as in the interpreter, not a `TypeError` thrown
+     inside the render effect after the prerender has been cleared. */
+  const itemsExpr = isRef(arrayDef.items)
+    ? `(${refToExpr(arrayDef.items.$ref)} ?? [])`
+    : JSON.stringify(Array.isArray(arrayDef.items) ? arrayDef.items : []);
   const mapDef = arrayDef.map;
 
   if (!mapDef) {

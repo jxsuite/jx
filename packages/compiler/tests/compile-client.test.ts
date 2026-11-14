@@ -1668,7 +1668,7 @@ describe("compileClient — template text children (compiler.md §2.2)", () => {
   const rename: JxFunctionDef = { $prototype: "Function", body: "state.name = 'Ada'" };
   const button = { onclick: { $ref: "#/state/rename" }, tagName: "button", textContent: "Go" };
 
-  test("binds a runtime-only text child between markers and leaves its sibling alone", () => {
+  test("binds a text child over handler-written state between markers, holding its initial value", () => {
     const { html, files } = compileClient(
       {
         children: ["Hello ${state.name}", button],
@@ -1677,10 +1677,35 @@ describe("compileClient — template text children (compiler.md §2.2)", () => {
       },
       {},
     );
-    expect(html).toContain("<!--jx-text:_t0--><!--/jx-text-->");
+    // The module binds what it prerenders, so the initial value is the first paint (§9.1).
+    expect(html).toContain("<!--jx-text:_t0-->Hello World<!--/jx-text-->");
     expect(html).toContain('<button data-bind @click="rename">Go</button>');
     expect(files[0]!.content).toContain("_t0: () => `Hello ${state.name}`");
     expect(files[0]!.content).toContain("createTreeWalker");
+  });
+
+  test("leaves a text child with no build-time value empty between its markers", () => {
+    const { html } = compileClient(
+      {
+        children: ["Feed ${state.feed}"],
+        state: { feed: { $prototype: "Request", url: "/api/feed" } },
+        tagName: "div",
+      },
+      {},
+    );
+    expect(html).toContain("<!--jx-text:_t0--><!--/jx-text-->");
+  });
+
+  test("prerenders the initial value of a bound textContent a handler writes", () => {
+    const { html } = compileClient(
+      {
+        children: [{ tagName: "p", textContent: "num: ${state.n}" }, button],
+        state: { n: 5, rename: { $prototype: "Function", body: "state.n++" } },
+        tagName: "div",
+      },
+      {},
+    );
+    expect(html).toMatch(/<p data-bind :text-content="_t\d+">num: 5<\/p>/);
   });
 
   test("prerenders a bakeable text child, escaped", () => {

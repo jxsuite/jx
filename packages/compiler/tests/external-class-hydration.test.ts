@@ -215,12 +215,14 @@ describe("a page with a client-timed external class (compiler.md §3)", () => {
     // Prerender left every binding that reads a class, or state a handler writes, for hydration.
     expect(pageHtml).toContain('<p id="feed" data-bind :text-content=');
     await settle();
-    // The class is constructed, and nothing has hydrated: no binding is filled, no handler bound.
+    // The class is constructed, and nothing has hydrated: the class binding is empty, and the
+    // Binding over handler-written state shows the initial value the build prerendered
+    // (compiler.md §9.1) with no handler bound yet to change it.
     expect(constructed.get("page")).toBe(1);
     expect(required("#feed").textContent).toBe("");
-    expect(required("#count").textContent).toBe("");
+    expect(required("#count").textContent).toBe("count=5");
     required("#bump").dispatchEvent(new win.Event("click"));
-    expect(required("#count").textContent).toBe("");
+    expect(required("#count").textContent).toBe("count=5");
 
     await open("page");
     await pageLoading;

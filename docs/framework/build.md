@@ -94,7 +94,7 @@ When nothing dynamic survives the build-time resolution, the page is plain HTML 
 
 ### Components on a static page
 
-A page whose own document is static stays static when it uses interactive components. Each instance is prerendered where it is written, and a component that needs JavaScript (a hyphenated `tagName`, say `site-counter`) loads `dist/components/site-counter.js` only on the pages that use it. The module upgrades the prerendered element in place, taking the props it was rendered with from its `data-jx-props` attribute:
+A page whose own document is static stays static when it uses interactive components. Each instance is prerendered where it is written, and a component that needs JavaScript (a hyphenated `tagName`, say `site-counter`) loads `dist/components/site-counter.js` only on the pages that use it. The prerendered element already holds what the component first shows: its text, the rows of its lists, and the starting value of anything a handler changes. The module upgrades that element in place, taking the props it was rendered with from its `data-jx-props` attribute:
 
 ```html
 <site-counter data-jx-props='{"start":3}' data-jx-prerendered>…</site-counter>
@@ -167,11 +167,13 @@ The trade is deliberate. Inlined CSS repeats on every page instead of caching ac
 
 ## What prerendering will and won't bake
 
-Every page is prerendered: the compiler evaluates `${state.…}` against the build-time scope and writes the result into the HTML. That is what makes a page's content visible to crawlers and to readers with no JavaScript. But baking a template **replaces** it (the binding is gone, not stale), so the compiler bakes only what it can prove will never change:
+Every page is prerendered: the compiler evaluates `${state.…}` against the build-time scope and writes the result into the HTML. That is what makes a page's content visible to crawlers and to readers with no JavaScript. A value that can change later is written as the first thing the visitor sees, and the binding that changes it is kept beside it:
 
 - **A constant bakes.** `{"tagline": {"type": "string", "default": "Ship JSON"}}` read as `${state.tagline}` becomes text in the HTML, with no JavaScript behind it.
-- **An entry a handler writes to stays bound.** If any handler in the document assigns to `state.saved` (`=`, `+=`, `++`, or an in-place `push`/`splice`/`sort`), every template reading it keeps its binding, even though the entry has a perfectly ordinary build-time value.
-- **A computed over changing state stays bound.** A computed `$prototype: "Function"` (a body that returns a value and declares no parameters) is evaluated at build time, so a computed is left unresolved too when it reads a written entry, a `$src` value, or a `Request`, however many steps removed.
+- **An entry a handler writes to shows its initial value and stays bound.** If any handler in the document assigns to `state.count` (`=`, `+=`, `++`, or an in-place `push`/`splice`/`sort`), a template reading it is prerendered with the value the entry starts with, and keeps its binding. In a component the component's module owns that binding. On a page the page's module does.
+- **A computed over changing state does the same.** A computed `$prototype: "Function"` (a body that returns a value and declares no parameters) is evaluated at build time, so a computed that reads a written entry shows its initial result and stays bound, however many steps removed.
+- **A value that exists only in the browser renders empty.** A `Request`, a `$src` function read as a value, and a `timing: "client"` class have nothing to show at build time, so a template that reads one is left for the browser to fill.
+- **A list inside a component renders its rows.** A mapped array in a component is prerendered with one row per item it starts with, and a `$switch` with the case it starts on. A list that declares `filter` or `sort` renders no rows at build time, so nothing the filter would hide reaches the HTML.
 - **An empty list is static when the build resolved its data.** A list over a content collection, a `timing: "compiler"` entry, a paged slice, `$site` or `$page`, or a literal array that turns out empty renders nothing and leaves no JavaScript behind. A list over client state that starts empty (`{"rows": {"default": []}}`) keeps its binding, because the browser may still fill it.
 - **An array a computed still reads stays in client state.** Expanding an array into a list at build time no longer drops it: if a computed or a template still reads `state.rows` at runtime, the array ships to the browser. Mark it `timing: "compiler"` to say the data really is build-time only.
 
@@ -185,7 +187,7 @@ A component instance is expanded wherever it is written: on a page, slotted into
 
 - **Props flow down at build time.** A `$props` value written as a template (`"icon": "${state.icon}"`) resolves against the parent component's state, and the child's host `style` templates (a mask image chosen from a prop, say) resolve against the child's own props (the definition's defaults when the instance passes none) and land on the element as an inline `style`. An observed attribute written on the instance counts as a prop too, beneath `$props`.
 - **A component brings the project formulas it calls.** A formula declared in the project file reaches every component (see [Project formulas](/docs/framework/concepts/props-and-scope#project-formulas)). The build resolves a call inside a static component into the markup, and writes the formula into the module of a live component that still calls it, so a page does not have to keep a formula alive for a component on it.
-- **Each component decides its own JavaScript.** A live component nested inside a static one is prerendered as a shell that loads its own module and upgrades in place; the static parent still ships none.
+- **Each component decides its own JavaScript, and a live one decides for what it renders.** A live component nested inside a static one is prerendered with its content, loads its own module and upgrades in place, and the static parent still ships none. The other direction is different: a live component draws its children from its module, so every component it renders loads a module too, on every page that uses that component.
 - **Children land in the slot they name, at every level.** A live component finds the children it was given when it upgrades, so its first paint and its live render place them alike.
 
 :::doc-warning
@@ -199,7 +201,8 @@ Work the static-detection list backwards:
 - **Live `state` on the page document**, even `{"count": 0}`, makes the page dynamic. If the data never changes after the build, move it to `timing: "compiler"` or reference `$site`/`$page` context instead. A `project.json` `state` entry counts only on the pages where something still reads it as `state.<key>` in the browser.
 - **A `${…}` template string** whose inputs exist only at runtime keeps its binding alive. Templates over build-time data compile away.
 - **`$switch`, `$ref` bindings, and mapped arrays** over runtime state need the client tier; mapped arrays over build-resolved content do not.
-- **Interactive components** cost their own module on the pages that use them. The rest of the page stays static.
+- **Interactive components** cost their own module on the pages that use them. The rest of the page stays static. A component is interactive when it has an event handler, a function or request in its `state`, a `$ref` binding, a `$switch`, a tag chosen at creation, or a mapped array over anything but a literal array with no `filter`, `sort` or `key`.
+- **A component that a live component renders** ships its module wherever it is used, even on a page where it stands alone.
 - **An external class with `timing: "client"`** loads its class module and the page's hydration script.
 - **A component that declares `observedAttributes`** ships its module, because an attribute can change after the page loads.
 

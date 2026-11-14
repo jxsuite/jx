@@ -16,6 +16,7 @@ import {
   PREFORMATTED_TAGS,
   pureSchemeOf,
   resolveStaticTagName,
+  isExpandedInstance,
   resolveStaticValue,
   SELF_CLOSING,
 } from "../shared.ts";
@@ -143,6 +144,10 @@ function buildStaticInner(def: JxMutableNode, context: CompileContext): string {
     return value == null ? "" : escapeHtml(String(value));
   }
   if (def.innerHTML) {
+    // An expanded instance's markup is finished HTML, never a template (`isExpandedInstance`).
+    if (isExpandedInstance(def)) {
+      return def.innerHTML;
+    }
     // Raw HTML may itself be a template; one that resolves to nothing keeps its authored text.
     const resolved = resolveStaticValue(def.innerHTML, context.scope);
     return resolved == null ? def.innerHTML : String(resolved);

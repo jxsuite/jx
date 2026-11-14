@@ -50,6 +50,7 @@ import {
   LIT_PART_GUARD,
   PREFORMATTED_TAGS,
   pureSchemeOf,
+  isExpandedInstance,
   resolveStaticValue,
   serverCallHelperSource,
   collectFunctionImports,
@@ -666,7 +667,10 @@ function buildClientNode(
   } else if (source.innerHTML) {
     // ResolveStaticValue may return null if innerHTML contains `${` from rendered content
     // (e.g., code examples) that isn't an actual template expression. Fall back to raw value.
-    const resolved = resolveStaticValue(source.innerHTML, nextContext.scope);
+    // An expanded instance's markup is finished HTML, never a template (`isExpandedInstance`).
+    const resolved = isExpandedInstance(source)
+      ? source.innerHTML
+      : resolveStaticValue(source.innerHTML, nextContext.scope);
     inner = resolved == null ? source.innerHTML : String(resolved);
   } else if (isMappedArray(source.children)) {
     // ─── Mapped array → lit-html render binding ───
