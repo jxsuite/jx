@@ -538,6 +538,52 @@ describe("startCanvasIframe", () => {
   });
 });
 
+describe("startCanvasIframe: a surface specimen (studio.md §4.6)", () => {
+  /** A list over a host scope member, as a surface document reads one. */
+  const tree = (): JxMutableNode => ({
+    children: [
+      {
+        $prototype: "Array",
+        items: { $ref: "#/state/rows" },
+        key: { $ref: "$map/item/key" },
+        map: { tagName: "p", textContent: "${$map.item.text}" },
+      },
+    ],
+    tagName: "div",
+  });
+
+  /** Post a render and wait for the frame to acknowledge it: a specimen is imported on demand. */
+  async function draw(extra: Partial<RenderMsg>) {
+    const pair = fakeChannelPair<ParentToIframe, IframeToParent>();
+    const acks: IframeToParent[] = [];
+    pair.parent.onMessage((m) => acks.push(m));
+    const container = document.createElement("div");
+    teardown = startCanvasIframe({ channel: pair.iframe, container });
+    pair.parent.post(renderMsg(4, tree(), tree(), extra));
+    for (let turn = 0; turn < 20 && !findAck(acks, "renderComplete"); turn += 1) {
+      pair.flush();
+      await flush();
+    }
+    pair.flush();
+    return { acks, container };
+  }
+
+  test("a render that names one is drawn with its scope, which the Data panel is sent", async () => {
+    const { acks, container } = await draw({ specimen: { name: "panel-data", variant: null } });
+    const lines = [...container.querySelectorAll("p")].map((line) => line.textContent);
+    expect(lines).toContain('"Shipping the canvas"');
+    expect(lines.length).toBe(8);
+    const scope = acksOf(acks, "dataScope").at(-1)?.scope;
+    expect(Object.keys(scope ?? {})).toContain("rows");
+  });
+
+  test("a render that names none is drawn with no scope, as it always was", async () => {
+    const { container } = await draw({});
+    // The list has nothing to read, so the canvas draws its template row and no value.
+    expect(container.textContent).not.toContain("Shipping the canvas");
+  });
+});
+
 describe("startCanvasIframe — patch", () => {
   /** A fresh doc per render: an h1 child the patches target by path `["children", 0]`. */
   const freshH1 = () => ({ children: [{ children: ["Hi"], tagName: "h1" }], tagName: "div" });

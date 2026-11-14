@@ -131,6 +131,14 @@ export interface TabUi {
    */
   switchCases: Record<string, string>;
   /**
+   * The variant of its surface specimen the canvas draws this tab with
+   * (`canvas.setSpecimenVariant`, studio.md §4.6), or null for the specimen's default scope. Only a
+   * tab holding one of Studio's own surfaces has a specimen. View state, like {@link stateValues}:
+   * nothing is written to the document, no undo entry is taken, and it is not kept between
+   * sessions.
+   */
+  specimenVariant: string | null;
+  /**
    * The tag whose popover is open (`canvas.setTagPopover`, studio.md §6.9), or null for none: the
    * node, the property that holds the tag and its place in that property's string. At most one per
    * tab. View state: opening and closing a popover writes nothing.
@@ -383,6 +391,7 @@ function createDefaultUi(canvasMode: string): TabUi {
     repeaterRows: DEFAULT_ROW_LIMIT,
     stateValues: {},
     switchCases: {},
+    specimenVariant: null,
     tagPopover: null,
     previewColorScheme: "auto" as const,
     previewLocale: null,

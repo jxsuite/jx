@@ -14,6 +14,8 @@ spec:
   - ui.md#5.6 # colour
   - ui.md#8 # icons
   - ui.md#9 # build and distribution
+  - ui.md#10 # the canvas frame's kit
+  - studio.md#4.6 # surface specimens
 code:
   - packages/ui/src/index.ts
   - scripts/build-ui-dist.ts
@@ -41,6 +43,10 @@ code:
   - packages/ui/src/behaviors/swatch-group.ts
   - packages/ui/src/behaviors/color-field.ts
   - packages/ui/src/color.ts
+  - packages/ui/src/document-loaders.ts
+  - packages/studio/src/surfaces/specimen.ts
+  - packages/studio/src/surfaces/specimens.ts
+  - packages/studio/src/canvas/iframe-specimen.ts
 ---
 
 # The Jx UI kit
@@ -961,6 +967,55 @@ The kit is a Jx project. Open `packages/ui/project.json` in Studio to see every 
 Studio's own chrome is a Jx project too: `packages/studio/project.json`, whose documents are the surfaces under `src/surfaces/`. Open either project and Studio edits itself. Save a component under `components/` and every part of the shell that draws that element is re-mounted with the new definition, and every open canvas is told the new definition and drawn again; save a surface under `src/surfaces/` and the roots drawn from it are re-mounted, keeping the host state they had. A toast says how many places changed, and a warning says why a save was not applied: a document whose `tagName` disagrees with its file name, or a surface file no adapter mounts. The lane acts only on those two paths, so saving any other project's files does nothing to the shell.
 
 On the canvas, a kit element is drawn from the project's own files, and its behaviour is fetched the first time a page needs it, one small chunk per behaviour, so a page that uses no kit element loads none of them. A bound prop shows its real value in Edit and Design, so a stylebook page's controls render as they will on the page; use **Open in Browser** to click through them.
+
+### Open a surface on the canvas
+
+A surface has no data of its own. In the running shell its adapter hands it everything it shows: the rows of a menu, the fields of the status bar, the sections of the Style tab. On the canvas there is no adapter, so Studio draws one of its own surfaces with a **specimen**: a fixture, kept beside the surface as `<name>.specimen.ts`, that supplies sample data in the shape the adapter would. Open `src/surfaces/menu.json` and the canvas draws a context menu with six rows, a chord, a disabled row with its reason, and a submenu. Open `src/surfaces/style-panel.json` and it draws the Style tab on a selected heading.
+
+A specimen is drawn in Edit and in Design, in the chrome's own type and colours. A surface that spans the whole window, such as the status bar, is drawn at a window's width instead of the canvas's default column, because its specimen's entry in `SPECIMENS` names a `width`. A surface that is a menu, a popover or a dialog is drawn open, in place. The parts of a surface that Studio fills with something that is not a document (a code editor, the Target Line, a pane's canvas) stay empty boxes.
+
+A specimen can declare **variants**, other states of the same surface: the status bar with no document open, the Style tab with nothing selected. Choose one from the **resolving with** control on the context bar, which reads `Specimen` until you do. The same choice is the `canvas.setSpecimenVariant` command.
+
+Seven surfaces have a specimen today: the status bar, the menu, the Style tab, the progress dialog, the model picker, the Deploy settings section and the Data panel's value tree. Every other surface still opens as its bare structure, with no text, until its specimen is written.
+
+To write one, export the scope interface from the surface's adapter and type the specimen against it:
+
+```ts
+// src/surfaces/settings-deploy.specimen.ts
+import { reactive } from "../reactivity";
+import { defineSpecimen } from "./specimen";
+import type { DeployScope } from "./settings-deploy";
+
+function deploy(error: string): DeployScope {
+  const scope: DeployScope = reactive<DeployScope>({
+    adapter: "cloudflare",
+    adapters: [
+      { label: "Static", value: "static" },
+      { label: "Cloudflare Workers", value: "cloudflare" },
+    ],
+    error,
+    hasError: error !== "",
+    setAdapter: (value) => {
+      scope.adapter = value;
+    },
+  });
+  return scope;
+}
+
+export default defineSpecimen<DeployScope>({
+  drive: (root) => {
+    root.querySelector('[part="adapter"]')?.dispatchEvent(new Event("change", { bubbles: true }));
+  },
+  scope: () => deploy(""),
+  variants: { failed: () => deploy("project.json could not be written") },
+});
+```
+
+Then add its entry to `SPECIMENS` in `src/surfaces/specimens.ts` and take its name off the backlog in `tests/surface-specimens.test.ts`. That suite checks the specimen against the surface: every value the document reads is supplied, nothing supplied goes unread, each variant mounts the way the shell mounts it, and `drive` reaches every function through the rendered controls.
+
+:::doc-warning
+A specimen may import types from its adapter, and values only from `../reactivity` and `./specimen`. Its code runs in the canvas frame, where the shell does not exist, and `check-surface-purity.ts` fails a specimen that imports anything else.
+:::
 
 A save writes the file in the layout the repository keeps it in. The surfaces and the kit components are formatted by the pre-commit hook, with short objects such as `"attributes": { "part": "bar" }` on one line, and Studio [preserves that layout](/docs/studio/interface/tabs#studio-saves-only-when-you-do) when it writes, so `git diff` after a save shows the edit and nothing else.
 

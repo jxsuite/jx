@@ -51,6 +51,7 @@ const { createCommandRegistry } = await import("../src/commands/registry");
 const { makeContext } = await import("../src/commands/context");
 const { activeRegistry, setActiveRegistry } = await import("../src/commands/active-registry");
 const { canvasViewCommands } = await import("../src/canvas/canvas-utils");
+const { STUDIO_PROJECT_URL } = await import("../src/surfaces/specimens");
 const { collabState } = await import("../src/collab/collab-state");
 const { getEffectiveLocales } = await import("../src/site-context");
 const { tabOfPane } = await import("../src/canvas/canvas-surface");
@@ -255,6 +256,7 @@ function installRegistry(ran: string[]) {
         "canvas.setResolvingOpen",
         "canvas.setRouteParam",
         "canvas.setStateValue",
+        "canvas.setSpecimenVariant",
         // Axis 3's fourth segment. Its id is in the `i18n.` namespace and its definition site is
         // `canvas-utils.ts`, for the reason that record's comment gives.
         "i18n.switchLocale",
@@ -1279,6 +1281,59 @@ describe("resolving with", () => {
     paneContext.render();
     await flush(4);
     expect(resolvingLabel()).toBe("1 set");
+  });
+
+  test("one of Studio's own surfaces resolves with its specimen, and the popover lists its variants", async () => {
+    resetStudioState({ projectConfig: { name: "Jx Studio", url: STUDIO_PROJECT_URL } });
+    const tab = resetWorkspaceWithTab(
+      { children: [], tagName: "div" },
+      { documentPath: "src/surfaces/statusbar.json", id: "surface-tab" },
+    );
+    await mountBar();
+    await flush(4);
+    expect(resolvingLabel()).toBe("Specimen");
+    const variants = partAll("specimen-variant");
+    expect(variants.map((el) => el.dataset.value)).toEqual(["default", "no-document"]);
+    expect(
+      variants.map((el) => el.querySelector('[part="label"] span')?.textContent.trim()),
+    ).toEqual(["Default", "no-document"]);
+    expect(variants.map((el) => control(el).getAttribute("aria-checked"))).toEqual([
+      "true",
+      "false",
+    ]);
+    expect(
+      variants[0]!.closest('[part="ctx-group"]')!.querySelector('[part="ctx-group-label"]')!
+        .textContent,
+    ).toBe("resolving with");
+
+    // A row runs the verb, and the trigger then reads the variant it names.
+    variants[1]!.querySelector("button")!.click();
+    await flush(4);
+    expect(tab.session.ui.specimenVariant).toBe("no-document");
+    expect(resolvingLabel()).toBe("no-document");
+    expect(
+      partAll("specimen-variant").map((el) => control(el).getAttribute("aria-checked")),
+    ).toEqual(["false", "true"]);
+
+    // A variant the specimen no longer declares draws the default, so the default reads chosen.
+    tab.session.ui.specimenVariant = "retired";
+    paneContext.render();
+    await flush(4);
+    expect(
+      partAll("specimen-variant").map((el) => control(el).getAttribute("aria-checked")),
+    ).toEqual(["true", "false"]);
+  });
+
+  test("the same file in any other project has no specimen group", async () => {
+    resetStudioState({ projectConfig: { name: "Site", url: "https://example.com" } });
+    resetWorkspaceWithTab(
+      { children: [], tagName: "div" },
+      { documentPath: "src/surfaces/statusbar.json", id: "not-a-surface" },
+    );
+    await mountBar();
+    await flush(4);
+    expect(part("resolving-trigger")).toBeNull();
+    expect(partAll("specimen-variant")).toEqual([]);
   });
 
   test("canvas.setResolvingOpen is the door the camera and the keyboard use", async () => {

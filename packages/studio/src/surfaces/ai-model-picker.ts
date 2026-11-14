@@ -78,7 +78,7 @@ interface ModelPickerFlags {
   hasFailure: boolean;
 }
 
-interface ModelPickerScope extends ModelPickerView, ModelPickerActions, ModelPickerFlags {}
+export interface ModelPickerScope extends ModelPickerView, ModelPickerActions, ModelPickerFlags {}
 
 /** The view plus the flag the document switches on. */
 function derive(view: ModelPickerView): ModelPickerView & ModelPickerFlags {

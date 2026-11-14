@@ -17,6 +17,7 @@ import { invalidateRepeaterSources } from "../src/canvas/repeater-sources";
 import { loadComponentRegistry } from "../src/files/components";
 import { activateTab, activeTab, closeAllTabs, openTab } from "../src/workspace/workspace";
 
+import { STUDIO_PROJECT_URL } from "../src/surfaces/specimens";
 import { isNodeObject, isString } from "@jxsuite/schema/guards";
 import type { JxMutableNode } from "@jxsuite/schema/types";
 
@@ -111,6 +112,36 @@ describe("resolveCanvasDocument", () => {
     resetStudioState({ projectConfig: { style: { "--brand": "#0f0", color: "red" } } });
     const result = await resolve({ children: [], tagName: "div" });
     expect(result.siteStyle).toEqual({ "--brand": "#0f0", color: "red" });
+  });
+
+  test("a surface of Studio's own project resolves with its specimen, and the tab's variant", async () => {
+    resetStudioState({ projectConfig: { name: "Jx Studio", url: STUDIO_PROJECT_URL } });
+    const surface = { documentPath: "src/surfaces/statusbar.json" };
+    const plain = await resolve({ tagName: "div" }, surface);
+    expect(plain.specimen).toEqual({ name: "statusbar", variant: null });
+    // The variant is the tab's view state, read at resolution.
+    const tab = resetWorkspaceWithTab({ tagName: "div" }, surface);
+    tab.session.ui.specimenVariant = "no-document";
+    const varied = await resolveCanvasDocument(tab.doc.document, tab);
+    expect(varied.specimen).toEqual({ name: "statusbar", variant: "no-document" });
+    // A surface with no specimen yet, and any other document of the project, have none.
+    for (const documentPath of ["src/surfaces/shell.json", "pages/index.json"]) {
+      const other = await resolve({ tagName: "div" }, { documentPath });
+      expect(other.specimen, documentPath).toBeNull();
+    }
+  });
+
+  test("no other project resolves a specimen, whatever its files are called", async () => {
+    const surface = { documentPath: "src/surfaces/statusbar.json" };
+    resetStudioState({ projectConfig: { name: "Jx UI Kit", url: "https://jxsuite.com/ui" } });
+    const kit = await resolve({ tagName: "div" }, surface);
+    expect(kit.specimen).toBeNull();
+    resetStudioState({ projectConfig: {} });
+    const unnamed = await resolve({ tagName: "div" }, surface);
+    expect(unnamed.specimen).toBeNull();
+    resetStudioState();
+    const none = await resolve({ tagName: "div" }, surface);
+    expect(none.specimen).toBeNull();
   });
 
   test("a repeater passes through with a sample item for its empty state", async () => {

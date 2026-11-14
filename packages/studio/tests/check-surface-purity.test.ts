@@ -56,6 +56,37 @@ describe("surface purity", () => {
     expect(surfacePurityFindings([panel], KIT)).toEqual([]);
   });
 
+  test("a specimen importing a value from the shell is a finding; its adapter's types are not", () => {
+    const path = "src/surfaces/menu.specimen.ts";
+    const clean = [
+      'import { reactive } from "../reactivity";',
+      'import { defineSpecimen } from "./specimen";',
+      'import type { MenuScope } from "./menu";',
+      "import type {",
+      "  ProjectedRow,",
+      '} from "./menu";',
+    ].join("\n");
+    expect(surfacePurityFindings([{ path, text: clean }], KIT)).toEqual([]);
+
+    const leaky = [
+      'import { reactive } from "../reactivity";',
+      "import {",
+      "  shell,",
+      '} from "../shell";',
+      'import "../store";',
+      'const late = import("./menu");',
+    ].join("\n");
+    const findings = surfacePurityFindings([{ path, text: leaky }], KIT);
+    expect(findings.map((f) => f.line)).toEqual([2, 5, 6]);
+    expect(findings.map((f) => f.text)).toEqual([
+      expect.stringContaining('"../shell"'),
+      expect.stringContaining('"../store"'),
+      expect.stringContaining('"./menu"'),
+    ]);
+    // The rule is the specimen's alone: an adapter imports the shell by design.
+    expect(surfacePurityFindings([{ path: "src/surfaces/menu.ts", text: leaky }], KIT)).toEqual([]);
+  });
+
   test("files outside src, tests, and clean sources yield nothing", () => {
     expect(
       surfacePurityFindings(

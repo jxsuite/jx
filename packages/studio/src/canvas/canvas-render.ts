@@ -128,7 +128,7 @@ import {
 import { parseMediaEntries } from "../utils/canvas-media";
 import { clearEditWidth, resolveEditColumnWidth } from "./edit-width";
 import { mountEditWidthHandle } from "./edit-width-drag";
-import { getEffectiveMedia, getEffectiveStyle } from "../site-context";
+import { getCanvasMedia, getEffectiveStyle } from "../site-context";
 import {
   commitActiveEditSession,
   getEditSnapshot,
@@ -1875,14 +1875,14 @@ function renderCanvasImpl(surface: CanvasSurface) {
     sizeBreakpoints,
     featureQueries: _featureQueries,
     baseWidth,
-  } = parseMediaEntries(getEffectiveMedia(S.document.$media));
+  } = parseMediaEntries(getCanvasMedia(tab.documentPath, S.document.$media));
   const hasMedia = sizeBreakpoints.length > 0;
   const { featureToggles } = S.ui;
 
   // Create panzoom wrapper (the element that gets transformed)
   if (!hasMedia) {
     // Single panel — use baseWidth if a custom one is defined, otherwise full-width
-    const effectiveMedia = getEffectiveMedia(S.document.$media);
+    const effectiveMedia = getCanvasMedia(tab.documentPath, S.document.$media);
     const hasBaseWidth = effectiveMedia["--"];
     const label = hasBaseWidth ? `${mediaDisplayName("--")} (${baseWidth}px)` : null;
     const entry = canvasPanelEntry(

@@ -3610,6 +3610,9 @@ function preparePassRender(
     if (Object.keys(resolved.tagTitles).length > 0) {
       prepared.tagTitles = resolved.tagTitles;
     }
+    if (resolved.specimen) {
+      prepared.specimen = resolved.specimen;
+    }
     /* A host with no backend to resolve a class through (the cloud) draws each list that reads a
        collection as its template row. Said once for the tab, not once per list or per render
        (studio.md §4.5). */

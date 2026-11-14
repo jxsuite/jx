@@ -7,6 +7,8 @@
  *    a kit element under lit would need the child-part bridge this design avoids.
  * 2. An adapter (`src/surfaces/*.ts`) that imports lit — an adapter passes state in; its markup is the
  *    document beside it.
+ * 3. A specimen (`src/surfaces/*.specimen.ts`) that imports a value from anywhere but the reactivity
+ *    primitives and the specimen contract: its chunk runs in the canvas frame.
  *
  * **There were three, and the third is retired rather than kept as a matcher over a dead string.**
  * It failed on a surface document whose `tagName` began `sp-`, because a document could only use
@@ -38,6 +40,45 @@ const ADAPTER_TS = /^src\/surfaces\/.*\.ts$/;
 const STUDIO_TS = /^src\/.*\.ts$/;
 const LIT_IMPORT = /from\s+["'](?:lit|lit-html)(?:\/[^"']*)?["']/;
 const KIT_TAG_IN_TEMPLATE = /<(jx-[a-z0-9-]+)/g;
+const SPECIMEN_TS = /^src\/surfaces\/.*\.specimen\.ts$/;
+/**
+ * An import: the clause between the keyword and the module (empty for a side-effect import, a
+ * parenthesis for a dynamic one), and the module it names.
+ */
+const IMPORT_STATEMENT =
+  /\bimport(\s*\(\s*|\s+(?:type\s+)?(?:[^"';]*?\sfrom\s+)?)["']([^"']+)["']/g;
+/** A clause that begins `type`: the whole statement is erased. */
+const TYPE_ONLY = /^\s+type\s/;
+/** The modules a specimen may import a VALUE from: the reactivity primitives and the contract. */
+const SPECIMEN_VALUE_IMPORTS: ReadonlySet<string> = new Set(["../reactivity", "./specimen"]);
+
+/**
+ * A specimen that imports a value from the shell (studio-ui-guidelines.md §9.4).
+ *
+ * A specimen's chunk is loaded by the canvas frame, where there is no shell: an adapter imports the
+ * store, the registry and the workspace, and a specimen that imported its adapter would carry all
+ * of it into the frame. The bundler would not object, so this does. A type import is erased and
+ * costs nothing, which is how a specimen is typed against its adapter's scope.
+ *
+ * @param {SourceFile} file - One `src/surfaces/*.specimen.ts` source
+ * @returns {Finding[]}
+ */
+function specimenImportFindings({ path, text }: SourceFile): Finding[] {
+  const findings: Finding[] = [];
+  for (const match of text.matchAll(IMPORT_STATEMENT)) {
+    // Both groups take part in every match, so neither is ever absent.
+    const clause = String(match[1]);
+    const source = String(match[2]);
+    if (!TYPE_ONLY.test(clause) && !SPECIMEN_VALUE_IMPORTS.has(source)) {
+      findings.push({
+        file: path,
+        line: text.slice(0, match.index).split("\n").length,
+        text: `a specimen imports a value from "${source}"; import the adapter's types only, since its chunk runs in the canvas frame, where there is no shell`,
+      });
+    }
+  }
+  return findings;
+}
 
 /**
  * Every violation in the given sources.
@@ -58,6 +99,9 @@ export function surfacePurityFindings(
       continue;
     }
     const adapter = ADAPTER_TS.test(path);
+    if (SPECIMEN_TS.test(path)) {
+      findings.push(...specimenImportFindings({ path, text }));
+    }
     for (const [i, line] of lines.entries()) {
       if (adapter && LIT_IMPORT.test(line)) {
         findings.push({
@@ -112,7 +156,9 @@ export function report(findings: Finding[], root: string): CliReport {
   }
   return {
     failed: false,
-    lines: ["✓ check-surface-purity: no kit tag in a lit template, no lit import in an adapter"],
+    lines: [
+      "✓ check-surface-purity: no kit tag in a lit template, no lit import in an adapter, no shell import in a specimen",
+    ],
   };
 }
 
