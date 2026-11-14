@@ -63,7 +63,7 @@ export interface ProgressSurfaceHandle {
   close: () => void;
 }
 
-interface ProgressScope {
+export interface ProgressScope {
   title: string;
   status: string;
   /**

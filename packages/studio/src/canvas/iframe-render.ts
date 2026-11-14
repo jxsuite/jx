@@ -940,6 +940,26 @@ export function syncStylebookCss(doc: Document, mode: CanvasMode): void {
 }
 
 /**
+ * The chrome tokens the standing render is drawn with, when it is a surface specimen's
+ * (`iframe-specimen.ts`); null for every other render. Kept here so a site-style update that
+ * arrives after the render is folded over the same tokens.
+ */
+let specimenTheme: JxStyle | null = null;
+
+/**
+ * The style block the site sheet is built from: the project's own, over the chrome's tokens when
+ * the standing render is a surface specimen's (studio.md §4.6), so a project that sets a token
+ * still wins. Null when there is neither.
+ */
+function withSpecimenTheme(siteStyle: JxStyle | null | undefined): JxStyle | null {
+  const own = isNonNullObject(siteStyle) ? siteStyle : null;
+  if (!specimenTheme) {
+    return own;
+  }
+  return own ? { ...specimenTheme, ...own } : specimenTheme;
+}
+
+/**
  * Apply the project's site style as a real stylesheet (replace-in-place): custom properties on
  * `:root`, plain properties on `body`, conditional blocks dual-emitted per the forced-scheme
  * contract. A stylesheet — not inline root properties — so `:root[data-color-scheme]` override
@@ -950,13 +970,14 @@ export function applySiteStyle(
   mediaQueries: Record<string, string> = {},
 ): void {
   const existing = document.head.querySelector(`#${SITE_STYLE_ID}`);
-  if (!siteStyle || !isNonNullObject(siteStyle)) {
+  const style = withSpecimenTheme(siteStyle);
+  if (!style) {
     existing?.remove();
     return;
   }
   /* `canvasStyleValue`, not `transposeCanvasUnits`: the site style block is CSS the canvas emits
      itself, so a `url()` in it needs the same asset resolution every other declaration gets. */
-  const css = buildSiteStyleCSS(siteStyle, mediaQueries, canvasStyleValue);
+  const css = buildSiteStyleCSS(style, mediaQueries, canvasStyleValue);
   if (existing) {
     existing.textContent = css;
     return;
@@ -1024,6 +1045,13 @@ export function applyPreviewLocale(
 }
 
 /**
+ * An overlay a surface specimen's render drew open because the surface IS that overlay
+ * (`showRootOverlay` in `iframe-specimen.ts`, studio.md §4.6). The tab's open state did not open
+ * it, so clearing that state does not close it.
+ */
+const NOT_HELD = ":not([data-jx-overlay-held])";
+
+/**
  * Draw the popover at `path` open, and every other one closed.
  *
  * The canvas-only twin of `showPopover()` — one attribute, no top layer, no light dismiss, and
@@ -1039,7 +1067,7 @@ export function applyPreviewLocale(
  * @docs studio/interface/canvas
  */
 export function applyCanvasPopoverOpen(root: ParentNode, path: string | null): void {
-  for (const el of root.querySelectorAll<HTMLElement>("[data-jx-popover-open]")) {
+  for (const el of root.querySelectorAll<HTMLElement>(`[data-jx-popover-open]${NOT_HELD}`)) {
     delete el.dataset.jxPopoverOpen;
   }
   if (path === null) {
@@ -1076,7 +1104,7 @@ export function applyCanvasPopoverOpen(root: ParentNode, path: string | null): v
  * modally, backdrop and all.
  */
 export function applyCanvasDialogOpen(root: ParentNode, path: string | null): void {
-  for (const el of root.querySelectorAll<HTMLElement>("[data-jx-dialog-open]")) {
+  for (const el of root.querySelectorAll<HTMLElement>(`[data-jx-dialog-open]${NOT_HELD}`)) {
     delete el.dataset.jxDialogOpen;
   }
   if (path === null) {
@@ -1234,11 +1262,13 @@ export function makeStamper(ctx: PathMapCtx, view: RowView = newRowView()) {
     // Hosts persist across tab switches), the upgrade's connectedCallback would wipe the stamped
     // Editable tree and re-render a live instance with default state. Mark the root so the
     // Runtime's element class leaves it alone (see defineElement's connectedCallback guard).
-    const isDefinitionRoot =
+    const isCustomRoot =
       path.length === 0 &&
       isNonNullObject(def) &&
       isString(def.tagName) &&
       def.tagName.includes("-");
+    // A surface specimen's root is an instance the kit draws, not a definition being edited.
+    const isDefinitionRoot = isCustomRoot && ctx.instanceRoot !== true;
     if (isDefinitionRoot) {
       created.dataset.jxDefinitionRoot = "";
     }
@@ -1252,7 +1282,7 @@ export function makeStamper(ctx: PathMapCtx, view: RowView = newRowView()) {
     // The opened document's own root is excluded: when a component definition is the file being
     // Edited, its subtree IS the document and must stay editable.
     const isIsland =
-      !isDefinitionRoot && created.tagName.includes("-") && isEditableMode(ctx.canvasMode);
+      !isCustomRoot && created.tagName.includes("-") && isEditableMode(ctx.canvasMode);
     if (isIsland) {
       created.contentEditable = "false";
       islands.push(path);
@@ -1433,6 +1463,11 @@ export interface RenderDocumentOptions {
   rows?: RowView;
   /** Called after a repeater redrew itself once this render is in the document. */
   onRowsChanged?: () => void;
+  /**
+   * The surface specimen this render resolves with (studio.md §4.6): one of Studio's own surfaces,
+   * and which of its variants. Absent or null for every other document.
+   */
+  specimen?: { name: string; variant: string | null } | null;
 }
 
 /**
@@ -1528,8 +1563,29 @@ export async function prepareResolvedDocument(
   await registerElements(opts.doc, opts.docBase);
   // A typed function body compiles in buildScope, synchronously, so its eraser arrives first.
   await prepareBodies(opts.doc);
-  const $defs = await buildScope(opts.doc, {}, opts.docBase);
-  return () => commitResolvedDocument(opts, $defs);
+  /* A surface of Studio's own has no state and names no elements: its scope is its specimen's, and
+     the kit it draws with is defined here, before the scope is built and the tree drawn. Imported
+     on demand, so a frame that never opens a surface never loads a specimen, a kit document or
+     the chrome's tokens. */
+  const specimens = opts.specimen ? await import("./iframe-specimen") : null;
+  const specimen =
+    specimens && opts.specimen ? await specimens.prepareSpecimen(opts.specimen, opts.doc) : null;
+  const $defs = await buildScope(opts.doc, specimen?.scope ?? {}, opts.docBase);
+  if (!specimens || !specimen) {
+    return () => commitResolvedDocument(opts, $defs, null);
+  }
+  /* The root of a surface is an INSTANCE of the kit element it names (a `jx-menu`, a `jx-dialog`),
+     as it is when the shell mounts it, and never the definition the stamper would take a hyphenated
+     root for. */
+  const drawn = { ...opts, mapperCtx: { ...opts.mapperCtx, instanceRoot: true } };
+  return () => {
+    const handle = commitResolvedDocument(drawn, $defs, specimen.theme);
+    const root = drawn.container.firstChild;
+    if (root instanceof Element) {
+      specimens.showRootOverlay(root);
+    }
+    return handle;
+  };
 }
 
 /**
@@ -1539,7 +1595,9 @@ export async function prepareResolvedDocument(
 function commitResolvedDocument(
   opts: RenderDocumentOptions,
   $defs: IframeRenderCtx["defs"],
+  theme: JxStyle | null,
 ): RenderHandle {
+  specimenTheme = theme;
   /* The head-level sheets belong to the picture, so they change with it rather than ahead of it:
      written before the awaits, a mode switch restyled the OLD tree with the new mode's rules for
      as long as the new tree took to build, and a render that then failed left them that way. */

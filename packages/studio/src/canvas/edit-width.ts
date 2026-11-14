@@ -40,7 +40,7 @@
  * @docs studio/design/breakpoints
  */
 
-import { getEffectiveMedia } from "../site-context";
+import { getCanvasMedia } from "../site-context";
 import { mediaForWidth, parseMediaEntries } from "../utils/canvas-media";
 import type { CanvasSurface } from "./canvas-surface";
 import type { Tab } from "../tabs/tab";
@@ -78,7 +78,7 @@ const _editWidths = new Map<string, EditWidthRecord>();
 
 /** The size breakpoints and base width a tab renders against, site context included. */
 function mediaEntriesOfTab(tab: Tab) {
-  return parseMediaEntries(getEffectiveMedia(tab.doc.document.$media));
+  return parseMediaEntries(getCanvasMedia(tab.documentPath, tab.doc.document.$media));
 }
 
 /**

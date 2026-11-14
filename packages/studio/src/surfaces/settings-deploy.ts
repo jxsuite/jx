@@ -51,7 +51,7 @@ export interface DeploySurfaceHandle {
  * The scope the document reads. `hasError` is derived here: `$switch` is a document's only
  * conditional.
  */
-interface DeployScope {
+export interface DeployScope {
   adapter: string;
   adapters: SurfaceOption[];
   error: string;

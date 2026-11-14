@@ -7,7 +7,8 @@
  * here are therefore the IDEMPOTENCE ones and the refusals — an unsupported mode, Diff by name, and
  * a zoom outside the range the controls silently clamp.
  */
-import { resetWorkspaceWithTab } from "./harness";
+import { resetStudioState, resetWorkspaceWithTab } from "./harness";
+import { STUDIO_PROJECT_URL } from "../src/surfaces/specimens";
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { createCommandRegistry } from "../src/commands/registry";
 import { makeContext } from "../src/commands/context";
@@ -254,6 +255,8 @@ describe("the records themselves", () => {
       // The popover beside them ran a command — the defect `runContextCommand`'s docstring names.
       // A state value drawn in place of the document's own (§4.5) is also a component's test value.
       "canvas.setStateValue",
+      // Which variant of its specimen one of Studio's own surfaces is drawn in (§4.6).
+      "canvas.setSpecimenVariant",
       "canvas.setRouteParam",
       "selection.set",
       "selection.setPaths",
@@ -437,6 +440,78 @@ describe("canvas.setRepeaterRows", () => {
     }
     expect(activeTab.value?.session.ui.repeaterRows).toBe(24);
     expect(renderedPanes).toEqual([]);
+  });
+});
+
+describe("canvas.setSpecimenVariant", () => {
+  /** A tab holding one of Studio's own surfaces, in Studio's own project. */
+  function withSurface(documentPath = "src/surfaces/statusbar.json"): Tab {
+    resetStudioState({ projectConfig: { name: "Jx Studio", url: STUDIO_PROJECT_URL } });
+    closeAllTabs();
+    return openTab({ document: { tagName: "div" }, documentPath, id: "surface-tab" });
+  }
+
+  test("sets the variant for the canvas and repaints the pane, once, without touching the document", () => {
+    const tab = withSurface();
+    void registry.run("canvas.setSpecimenVariant", { variant: "no-document" });
+    expect(tab.session.ui.specimenVariant).toBe("no-document");
+    expect(renderedPanes).toEqual([PRIMARY_PANE]);
+    void registry.run("canvas.setSpecimenVariant", { variant: "no-document" });
+    expect(renderedPanes).toEqual([PRIMARY_PANE]);
+    expect(tab.doc.dirty).toBe(false);
+    expect(tab.history.index).toBe(0);
+  });
+
+  test("null and default both draw the specimen's own scope again", () => {
+    const tab = withSurface();
+    for (const clear of [null, "default"]) {
+      tab.session.ui.specimenVariant = "no-document";
+      renderedPanes.length = 0;
+      void registry.run("canvas.setSpecimenVariant", { variant: clear });
+      expect(tab.session.ui.specimenVariant).toBeNull();
+      expect(renderedPanes).toEqual([PRIMARY_PANE]);
+    }
+    // Clearing what is not set renders nothing.
+    void registry.run("canvas.setSpecimenVariant", { variant: null });
+    expect(renderedPanes).toEqual([PRIMARY_PANE]);
+  });
+
+  test("refuses a variant the specimen does not declare, naming the ones it does", () => {
+    const tab = withSurface();
+    expect(() => registry.run("canvas.setSpecimenVariant", { variant: "sideways" })).toThrow(
+      'command "canvas.setSpecimenVariant" argument "variant": "sideways" is not a variant of ' +
+        "the statusbar specimen. Its variants: default, no-document",
+    );
+    expect(tab.session.ui.specimenVariant).toBeNull();
+    expect(renderedPanes).toEqual([]);
+  });
+
+  test("refuses a document that has no specimen, and still clears one left behind", () => {
+    const refusal = 'command "canvas.setSpecimenVariant": this document has no surface specimen';
+    const page = withSurface("pages/index.json");
+    expect(() => registry.run("canvas.setSpecimenVariant", { variant: "empty" })).toThrow(refusal);
+    // The same file in any other project is not a surface of Studio's.
+    const elsewhere = withSurface();
+    resetStudioState({ projectConfig: { url: "https://example.com" } });
+    expect(() => registry.run("canvas.setSpecimenVariant", { variant: "no-document" })).toThrow(
+      refusal,
+    );
+    elsewhere.session.ui.specimenVariant = "no-document";
+    void registry.run("canvas.setSpecimenVariant", { variant: null });
+    expect(elsewhere.session.ui.specimenVariant).toBeNull();
+    expect(page.session.ui.specimenVariant).toBeNull();
+  });
+
+  test("names the pane whose tab it means", () => {
+    const tab = withSurface();
+    splitRight();
+    focusPane(PRIMARY_PANE);
+    void registry.run("canvas.setSpecimenVariant", {
+      pane: SECONDARY_PANE,
+      variant: "no-document",
+    });
+    expect(tab.session.ui.specimenVariant).toBe("no-document");
+    expect(renderedPanes).toEqual([SECONDARY_PANE]);
   });
 });
 

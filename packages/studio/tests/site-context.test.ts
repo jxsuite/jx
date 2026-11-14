@@ -2,7 +2,9 @@ import "./with-dom.js";
 import { beforeEach, describe, expect, test } from "bun:test";
 import { setProjectState } from "../src/store";
 import type { ProjectConfig } from "@jxsuite/schema/types";
+import { STUDIO_PROJECT_URL } from "../src/surfaces/specimens";
 import {
+  getCanvasMedia,
   getEffectiveElements,
   getEffectiveHead,
   getEffectiveImports,
@@ -34,6 +36,39 @@ beforeEach(() => {
 });
 
 // ─── getEffectiveMedia ─────────────────────────────────────────────────────
+
+describe("getCanvasMedia", () => {
+  const STUDIO = { name: "Jx Studio", url: STUDIO_PROJECT_URL };
+
+  test("a surface whose specimen names a width is drawn at it, as the tab's base width", () => {
+    openProject(STUDIO);
+    expect(getCanvasMedia("src/surfaces/statusbar.json")).toEqual({ "--": "1200px" });
+    // A surface as wide as its content, one with no specimen, and any other file, are not.
+    expect(getCanvasMedia("src/surfaces/menu.json")).toEqual({});
+    expect(getCanvasMedia("src/surfaces/shell.json")).toEqual({});
+    expect(getCanvasMedia("pages/index.json")).toEqual({});
+    expect(getCanvasMedia(null)).toEqual({});
+  });
+
+  test("a base width the document or the project declares wins", () => {
+    openProject(STUDIO);
+    expect(getCanvasMedia("src/surfaces/statusbar.json", { "--": "640px" })).toEqual({
+      "--": "640px",
+    });
+    openProject({ ...STUDIO, $media: { "--": "900px", "--md": "(max-width: 768px)" } });
+    expect(getCanvasMedia("src/surfaces/statusbar.json")).toEqual({
+      "--": "900px",
+      "--md": "(max-width: 768px)",
+    });
+  });
+
+  test("in any other project it is the effective media and nothing more", () => {
+    openProject({ $media: { "--lg": "(min-width: 1024px)" } });
+    expect(getCanvasMedia("src/surfaces/statusbar.json", { "--sm": "(min-width: 640px)" })).toEqual(
+      { "--lg": "(min-width: 1024px)", "--sm": "(min-width: 640px)" },
+    );
+  });
+});
 
 describe("getEffectiveMedia", () => {
   test("returns doc media when no project config", () => {

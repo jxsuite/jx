@@ -6,7 +6,8 @@
 
 import type { CanvasPanel } from "../types";
 
-import { renderOnly } from "../store";
+import { projectState, renderOnly } from "../store";
+import { specimenOf, specimenVariants } from "../surfaces/specimens";
 import { ref } from "../reactivity";
 import {
   activeCanvasSurface,
@@ -2008,6 +2009,70 @@ export function canvasViewCommands(deps: CanvasCommandDeps): AnyCommand[] {
         }
       },
       title: "Set State Value on Canvas",
+    },
+    /*
+     * Which variant of its specimen a surface is drawn in (studio.md §4.6).
+     *
+     * One of Studio's own surfaces resolves on the canvas with a fixture scope, its specimen, and
+     * a specimen may declare other states of the same surface by name: the bar with no document
+     * open, the tab with nothing selected. This names the one to draw. View state, like a state
+     * value set for the canvas: the tab's, written nowhere, and a render, since the scope decides
+     * which nodes exist.
+     */
+    {
+      args: {
+        additionalProperties: false,
+        properties: {
+          ...paneArg,
+          variant: {
+            description:
+              "The name of the variant to draw, as the surface's specimen declares it. Null or " +
+              '"default" draws the specimen\'s default scope again.',
+            type: ["string", "null"],
+          },
+        },
+        required: ["variant"],
+        type: "object",
+      },
+      category: "View",
+      id: "canvas.setSpecimenVariant",
+      level: "document",
+      menus: ["palette"],
+      group: "3_canvas",
+      requires: "one of Studio's own surfaces open, with a specimen",
+      when: documentOpen,
+      run: (_commandCtx, args: CommandArgValues) => {
+        const tab = contextTab("canvas.setSpecimenVariant", args);
+        const { variant } = args;
+        const next =
+          variant === null || variant === undefined || variant === "default" ? null : variant;
+        if (next === null) {
+          // Clearing is never refused, as for every other value set for the canvas.
+          if (tab.session.ui.specimenVariant !== null) {
+            tab.session.ui.specimenVariant = null;
+            repaint(args);
+          }
+          return;
+        }
+        const name = specimenOf(projectState?.projectConfig?.url, tab.documentPath);
+        if (name === null) {
+          throw new RangeError(
+            'command "canvas.setSpecimenVariant": this document has no surface specimen',
+          );
+        }
+        const declared = specimenVariants(name);
+        if (!isString(next) || !declared.includes(next)) {
+          throw new RangeError(
+            `command "canvas.setSpecimenVariant" argument "variant": "${String(next)}" is not a ` +
+              `variant of the ${name} specimen. Its variants: default${declared.map((v) => `, ${v}`).join("")}`,
+          );
+        }
+        if (tab.session.ui.specimenVariant !== next) {
+          tab.session.ui.specimenVariant = next;
+          repaint(args);
+        }
+      },
+      title: "Set Specimen Variant on Canvas",
     },
     {
       args: {

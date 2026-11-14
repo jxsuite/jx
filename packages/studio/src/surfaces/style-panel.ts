@@ -323,7 +323,7 @@ export interface StylePanelSurface {
 }
 
 /** The scope the document reads: the view plus the actions, flat. */
-interface StylePanelScope extends StylePanelView, StylePanelActions {}
+export interface StylePanelScope extends StylePanelView, StylePanelActions {}
 
 /** A node definition's `part`, as written in the document. */
 function partOf(def: JxElement | string): string {

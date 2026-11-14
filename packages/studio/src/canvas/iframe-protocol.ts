@@ -180,6 +180,15 @@ export type ParentToIframe =
        */
       tagTitles?: Readonly<Record<string, string>>;
       /**
+       * The surface specimen this render resolves with (studio.md §4.6): the document is one of
+       * Studio's own surfaces, drawn with the fixture scope of that name and the variant chosen for
+       * the tab, null for the default. Plain data for the reason `assets` is: the scope holds
+       * functions, and functions do not cross a realm, so the frame makes it from the name. Absent
+       * for every other document; a frame that predates the field ignores it and draws the surface
+       * with no scope, as it always did.
+       */
+      specimen?: { name: string; variant: string | null };
+      /**
        * The document's remote data for this render (studio.md §4.5): which session of the tab's
        * cache it is drawn from, every answer that session holds, and whether THIS frame is the one
        * that fetches what the session lacks. Present only for an editable view, and filled in when

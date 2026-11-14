@@ -5,7 +5,9 @@ spec:
   - studio.md#4.1
   - studio.md#4.2
   - studio.md#4.5
+  - studio.md#4.6
 code:
+  - packages/studio/src/canvas/canvas-utils.ts
   - packages/studio/src/utils/edit-display.ts
   - packages/studio/src/surfaces/commandbar.json
   - packages/studio/src/surfaces/commandbar.ts
@@ -115,6 +117,7 @@ Edit and Design both draw the page with its real data: dynamic text filled in, r
 
 - For pages with dynamic addresses (a product page, a blog post), a picker per URL parameter so you choose which real record the canvas draws.
 - For components, a field per component option so you can try test values.
+- For one of Studio's own surfaces, opened from `packages/studio`, the variant of its [specimen](/docs/extending/ui-kit#open-a-surface-on-the-canvas) to draw it with.
 
 Its button says how many you have set, so you can tell at a glance whether the canvas is showing defaults. A component's test value is the same value the **[Data panel](/docs/studio/logic/data)** shows set on that entry, so setting it in either place sets it in both.
 

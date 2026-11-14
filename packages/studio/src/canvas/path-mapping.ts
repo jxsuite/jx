@@ -85,6 +85,11 @@ export interface PathMapCtx {
   layoutWrapped: boolean;
   pageContentPrefix: JxPath | null;
   pageContentOffset: number | null;
+  /**
+   * The document's hyphenated root is an instance to draw, not a definition being edited: set by
+   * the frame for a surface specimen's render (studio.md §4.6), absent everywhere else.
+   */
+  instanceRoot?: boolean;
 }
 
 /**

@@ -874,6 +874,8 @@ function installPaneRenderEffects(paneId: string): void {
       void tab.session.ui.stateValues;
       // So is the case of a `$switch` chosen for it (`canvas.setSwitchCase`).
       void tab.session.ui.switchCases;
+      // And the variant a surface's specimen is drawn in (`canvas.setSpecimenVariant`).
+      void tab.session.ui.specimenVariant;
       void tab.session.ui.showLayout;
     }
     // Project-level render inputs: the stylebook catalogue's filters are shell state, so a change
