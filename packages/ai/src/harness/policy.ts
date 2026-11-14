@@ -54,4 +54,5 @@ export const DEFAULT_TURN_POLICY: TurnPolicy = {
   },
   emptyText: "The model sent back an empty reply.",
   approval: proceedAlways,
+  suspendOn: [],
 };

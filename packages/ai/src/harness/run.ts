@@ -20,6 +20,9 @@
  * - **The history is repaired before it is sent** (§3.4). Every tool call is put back beside its
  *   reply, and a call with none is sealed, so a history a restore, a trim or a Stop broke does not
  *   get the turn's first request refused.
+ * - **A turn that cannot go on stops where it can be picked up** (§3.12). With the `suspend` strategy
+ *   a call that needs a person, and with `suspendOn` a provider error worth waiting out, ends the
+ *   turn `suspended` with a checkpoint; `resume` continues it from there, running no call twice.
  *
  * @module @jxsuite/ai/harness
  * @license MIT
@@ -38,13 +41,23 @@ import {
   linkCallSignal,
   toolError,
 } from "../tools.ts";
-import type { Actor, ToolCall, ToolContext } from "../tools.ts";
+import type {
+  Actor,
+  InteractionRequest,
+  InteractionResponse,
+  ToolCall,
+  ToolContext,
+  ToolResult,
+} from "../tools.ts";
+import { checkResume, turnDigests } from "./checkpoint.ts";
 import { LaneBusyError } from "./lock.ts";
 import { joinSystem } from "./model.ts";
 import { DEFAULT_TURN_POLICY } from "./policy.ts";
 import type {
   HarnessEvent,
   CapReason,
+  SuspendReason,
+  TurnCheckpoint,
   TurnError,
   TurnInput,
   TurnOutcome,
@@ -59,6 +72,32 @@ type EventBody = HarnessEvent extends infer E
     ? Omit<E, "v" | "seq" | "turnId">
     : never
   : never;
+
+/** What a call came to: its result, or the request it must wait on a person for. */
+type CallSettlement = ToolResult | { readonly suspend: InteractionRequest };
+
+/** True when a call did not finish, because the turn must suspend on what it asks. */
+function isSuspension(settlement: CallSettlement): settlement is {
+  readonly suspend: InteractionRequest;
+} {
+  return "suspend" in settlement;
+}
+
+/**
+ * Why a provider error a host chose to suspend on stopped the turn: a rate limit when its code says
+ * so, and otherwise a credential the host can renew.
+ */
+function suspendReasonFor(code: string): SuspendReason {
+  return /rate|limit|429/i.test(code) ? "rate_limit" : "credentials";
+}
+
+/** The id of the last assistant message that drew something, or null. */
+function lastDrawn(messages: readonly ChatMessage[]): string | null {
+  return (
+    messages.findLast((message) => message.role === "assistant" && !isEmptyAssistant(message))
+      ?.id ?? null
+  );
+}
 
 /** True when a member name of a usage frame is one of the counts {@link Usage} names. */
 function isUsageField(key: string): key is keyof Usage {
@@ -159,7 +198,10 @@ export function assistantActorId(sessionId: string | null, turnId: string): stri
 export function runTurn(input: TurnInput): TurnRun {
   const newId = input.newId ?? nextMessageId;
   const now = input.now ?? Date.now;
-  const turnId = input.turnId ?? newId();
+  const resumed = input.resume?.checkpoint;
+  const resumeAnswer = input.resume?.response;
+  // A resumed turn is the turn it was: its messages, its actor and its ledger entries keep one id.
+  const turnId = input.turnId ?? resumed?.turnId ?? newId();
   const release = input.lock ? input.lock.acquire(turnId) : () => {};
   if (release === null) {
     throw new LaneBusyError(input.lock?.active ?? "");
@@ -235,14 +277,32 @@ export function runTurn(input: TurnInput): TurnRun {
    * Invoke one call to its result. A call that needs a person is put to the host's strategy and
    * invoked again with the answer, so no tool body ever awaits a person (specs/ai.md §3.11).
    */
-  async function invoke(call: ToolCall, ctx: ToolContext, callSignal: AbortSignal) {
-    let outcome = await invokeTool(input.tools, call, ctx, { approval: policy.approval });
+  async function invoke(
+    call: ToolCall,
+    ctx: ToolContext,
+    callSignal: AbortSignal,
+    answer?: InteractionResponse,
+  ): Promise<CallSettlement> {
+    /* An answer in hand is the one a suspended turn was resumed with: the person has already been
+       asked, so the call goes straight to it (§3.12). */
+    if (answer) {
+      emit({ type: "interaction_settled", callId: call.callId, response: answer });
+    }
+    let outcome = await invokeTool(
+      input.tools,
+      call,
+      ctx,
+      answer ? { approval: policy.approval, response: answer } : { approval: policy.approval },
+    );
     while (outcome.status === "needs_input") {
       if (interactions.mode === "none") {
         return toolError(`${call.name} needs a person, and none is available here.`);
       }
       const { request } = outcome;
       emit({ type: "interaction_request", callId: call.callId, request });
+      if (interactions.mode === "suspend") {
+        return { suspend: request };
+      }
       const response = await interactions.resolve(request, {
         callId: call.callId,
         signal: callSignal,
@@ -254,12 +314,14 @@ export function runTurn(input: TurnInput): TurnRun {
   }
 
   async function loop(): Promise<TurnOutcome> {
-    const appended: ChatMessage[] = [];
-    const applied: string[] = [];
-    const errors: string[] = [];
-    let anchor: string | null = null;
-    let rounds = 0;
-    let workRounds = 0;
+    const appended: ChatMessage[] = resumed ? [...resumed.appended] : [];
+    const applied: string[] = resumed ? [...resumed.applied] : [];
+    const errors: string[] = resumed ? [...resumed.errors] : [];
+    // What the turn wrote before it was suspended; this run's ledger holds only what it writes now.
+    const priorWrites = resumed ? resumed.writes : [];
+    let anchor: string | null = lastDrawn(appended);
+    let rounds = resumed ? resumed.round : 0;
+    let workRounds = resumed ? resumed.workRounds : 0;
     let lastUsage: Usage | null = null;
     let totalUsage: Usage | null = null;
     /* How many rounds made exactly these calls and got exactly these results. Nothing the model
@@ -269,7 +331,7 @@ export function runTurn(input: TurnInput): TurnRun {
 
     const finish = (
       kind: TurnOutcomeKind,
-      extra: Pick<TurnOutcome, "cap" | "error" | "removedMessageId"> = {},
+      extra: Pick<TurnOutcome, "cap" | "checkpoint" | "error" | "removedMessageId"> = {},
     ): TurnOutcome => {
       const outcome: TurnOutcome = {
         kind,
@@ -277,7 +339,7 @@ export function runTurn(input: TurnInput): TurnRun {
         anchorMessageId: anchor,
         rounds,
         workRounds,
-        writes: [...ledger.writes],
+        writes: [...priorWrites, ...ledger.writes],
         usage: { last: lastUsage, total: totalUsage },
         appended,
         ...extra,
@@ -312,12 +374,39 @@ export function runTurn(input: TurnInput): TurnRun {
       return finish("cap_partial", { cap: { messageId: capId, text } });
     };
 
+    /* End the turn where it can be picked up (§3.12): the checkpoint is everything a later run needs
+       to continue, reported as its own event first so a host can store it before the turn ends. */
+    const suspend = (
+      reason: SuspendReason,
+      at: Pick<TurnCheckpoint, "awaiting" | "pending">,
+      extra: Pick<TurnOutcome, "error" | "removedMessageId"> = {},
+    ): TurnOutcome => {
+      const checkpoint: TurnCheckpoint = {
+        v: 1,
+        turnId,
+        sessionId,
+        createdAt: now(),
+        model: input.modelInfo ?? { family: "openai-compat", model: "" },
+        ...turnDigests(input),
+        round: rounds,
+        workRounds,
+        appended: [...appended],
+        ...at,
+        writes: [...priorWrites, ...ledger.writes],
+        applied: [...applied],
+        errors: [...errors],
+        reason,
+      };
+      emit({ type: "checkpoint", checkpoint });
+      return finish("suspended", { checkpoint, ...extra });
+    };
+
     /** How many calls from the front of `calls` run together: at least the first. */
-    const parallelRunLength = (calls: readonly (readonly [string, { name: string }])[]): number => {
+    const parallelRunLength = (calls: readonly ToolCall[]): number => {
       if (!policy.parallelReadOnly) {
         return 1;
       }
-      const end = calls.findIndex(([, call]) => {
+      const end = calls.findIndex((call) => {
         const definition = input.tools.getDefinition(call.name);
         return (
           definition?.annotations?.readOnlyHint !== true ||
@@ -331,14 +420,163 @@ export function runTurn(input: TurnInput): TurnRun {
       return Math.max(end, 1);
     };
 
-    emit({ type: "turn_start" });
+    /**
+     * Run a round's calls from `start` to the end, in stream order, and report each result. With
+     * `parallelReadOnly`, a run of neighbouring read-only calls runs at once, because none of them
+     * can change what another reads; their results are still reported in order, so the transcript
+     * and the wire see what a serial turn would. A question or a write is never in such a run, so
+     * it still sees everything before it.
+     *
+     * Answers how the turn ended, when it ended here (stopped, or suspended on a call that needs a
+     * person), and otherwise whether any of the calls was work. `answer` is the person's reply to
+     * the first call, for a turn resumed on it; `seen` collects what the round's repeat guard
+     * compares.
+     */
+    const runCalls = async (
+      messageId: string,
+      roundCalls: readonly ToolCall[],
+      start: number,
+      seen: string[],
+      answer?: InteractionResponse,
+    ): Promise<TurnOutcome | { readonly didWork: boolean }> => {
+      let didWork = false;
+      let next = start;
+      while (next < roundCalls.length) {
+        if (aborted()) {
+          return finish("cancelled");
+        }
+        const first = next;
+        const batch = roundCalls.slice(first, first + parallelRunLength(roundCalls.slice(first)));
+        next = first + batch.length;
+        let writesSeen = ledger.writes.length;
+        const settlements = await Promise.all(
+          batch.map(async (call, index) => {
+            const { callId } = call;
+            emit({
+              type: "tool_start",
+              callId,
+              name: call.name,
+              interactive: input.tools.getDefinition(call.name)?.interactive === true,
+            });
+            /* The call's own signal: it aborts with the turn, and is unlinked once the call
+               settles, so a Stop later in the turn reaches nothing that already finished. */
+            const link = linkCallSignal(signal);
+            const ctx = createToolContext({
+              actor,
+              callId,
+              ledger,
+              progress: (progress) => {
+                emit({ type: "tool_progress", callId, progress });
+              },
+              session,
+              signal: link.signal,
+            });
+            try {
+              return await invoke(
+                call,
+                ctx,
+                link.signal,
+                first === start && index === 0 ? answer : undefined,
+              );
+            } finally {
+              link.release();
+            }
+          }),
+        );
+        for (const [index, call] of batch.entries()) {
+          const { callId } = call;
+          const result = settlements[index]!;
+          /* The call needs a person and the host is not waiting on one here: the turn stops with
+             this call first in line. Any call after it in the batch is read-only (that is what put
+             it in one), so running it again on resume repeats nothing. */
+          if (isSuspension(result)) {
+            return suspend(result.suspend.kind === "approval" ? "permission" : "interaction", {
+              awaiting: { callId, request: result.suspend },
+              pending: { messageId, calls: [...roundCalls], next: first + index },
+            });
+          }
+          input.hooks?.afterTool?.({ callId, name: call.name, result });
+          // A call that suspends the turn on a person does not spend its work budget.
+          if (input.tools.getDefinition(call.name)?.interactive !== true) {
+            didWork = true;
+          }
+          if (!result.success && result.error) {
+            errors.push(result.error);
+          }
+          const recorded = ledger.writes.slice(writesSeen);
+          writesSeen = ledger.writes.length;
+          if (result.success && result.summary && recorded.some((write) => write.ok)) {
+            applied.push(result.summary);
+          }
+          for (const write of recorded) {
+            emit({ type: "write", callId, write });
+          }
+          const content = JSON.stringify(result);
+          seen.push(call.name, call.argumentsText, content);
+          const toolMessageId = newId();
+          appended.push({
+            id: toolMessageId,
+            role: "tool",
+            blocks: [
+              {
+                type: "tool_result",
+                callId,
+                isError: result.success === false,
+                content,
+              },
+            ],
+            timestamp: now(),
+          });
+          emit({ type: "tool_result", callId, messageId, toolMessageId, result });
+        }
+      }
+      return { didWork };
+    };
+
+    emit(resumed ? { type: "turn_start", resumed: true } : { type: "turn_start" });
     const { sealed, dropped, moved } = repair;
     if (sealed.length + dropped.length + moved.length > 0) {
       emit({ type: "transcript_repaired", sealed, dropped, moved });
     }
+
+    /* A resumed turn first finishes the round it stopped in (§3.12): the call it was waiting on
+       gets the person's answer, the calls after it run, and none before it runs again. */
+    if (resumed) {
+      const check = checkResume(resumed, input);
+      if (!check.ok) {
+        return finish("error", {
+          error: {
+            code: "resume_refused",
+            message: `This turn cannot be resumed: ${check.reason}.`,
+          },
+        });
+      }
+      if (aborted()) {
+        return finish("cancelled");
+      }
+      const { pending } = resumed;
+      if (pending) {
+        const ran = await runCalls(
+          pending.messageId,
+          pending.calls,
+          pending.next,
+          [],
+          (resumed.awaiting && resumeAnswer) || undefined,
+        );
+        if ("kind" in ran) {
+          return ran;
+        }
+        if (ran.didWork) {
+          workRounds += 1;
+        }
+        if (aborted()) {
+          return finish("cancelled");
+        }
+      }
+    }
     /* The turn ends from inside this loop: on a round with no calls, or on the closing round, which
        the bounds below reach whatever the model does. */
-    for (let round = 1; ; round++) {
+    for (let round = rounds + 1; ; round++) {
       rounds = round;
       let closing: CapReason | null = null;
       if (repeating) {
@@ -347,7 +585,9 @@ export function runTurn(input: TurnInput): TurnRun {
         closing = "budget";
       }
       const messageId =
-        round === 1 && input.firstMessageId !== undefined ? input.firstMessageId : newId();
+        round === 1 && input.firstMessageId !== undefined && !resumed
+          ? input.firstMessageId
+          : newId();
       emit(
         closing
           ? { type: "round_start", round, workRounds, messageId, closing }
@@ -467,6 +707,16 @@ export function runTurn(input: TurnInput): TurnRun {
           : { message: errorMessage };
         input.hooks?.onStreamError?.(error);
         emit({ type: "round_end", messageId, stopReason, truncated, dropped: true, error });
+        /* An error the host said is worth waiting out (§3.12): the turn stops before this round,
+           so a resume asks the model again once the provider will answer. */
+        if (errorCode && !closing && !aborted() && policy.suspendOn.includes(errorCode)) {
+          rounds = round - 1;
+          return suspend(
+            suspendReasonFor(errorCode),
+            { awaiting: null, pending: null },
+            { error, removedMessageId: messageId },
+          );
+        }
         // The closing round was a courtesy: losing it is not what the turn failed of.
         return closing && !aborted()
           ? capped(closing)
@@ -522,88 +772,21 @@ export function runTurn(input: TurnInput): TurnRun {
         return finish("complete");
       }
 
-      /* The calls run in stream order. With `parallelReadOnly`, a run of neighbouring read-only
-         calls runs at once, because none of them can change what another reads; their results are
-         still reported in order, so the transcript and the wire see what a serial turn would. A
-         question or a write is never in such a run, so it still sees everything before it. */
-      let didWork = false;
       const seen: string[] = [];
-      const pending = [...calls];
-      while (pending.length > 0) {
-        if (aborted()) {
-          return finish("cancelled");
-        }
-        const batch = pending.splice(0, parallelRunLength(pending));
-        let writesSeen = ledger.writes.length;
-        const results = await Promise.all(
-          batch.map(async ([callId, call]) => {
-            emit({
-              type: "tool_start",
-              callId,
-              name: call.name,
-              interactive: input.tools.getDefinition(call.name)?.interactive === true,
-            });
-            /* The call's own signal: it aborts with the turn, and is unlinked once the call
-               settles, so a Stop later in the turn reaches nothing that already finished. */
-            const link = linkCallSignal(signal);
-            const ctx = createToolContext({
-              actor,
-              callId,
-              ledger,
-              progress: (progress) => {
-                emit({ type: "tool_progress", callId, progress });
-              },
-              session,
-              signal: link.signal,
-            });
-            try {
-              return await invoke(
-                { callId, name: call.name, argumentsText: call.argumentsText },
-                ctx,
-                link.signal,
-              );
-            } finally {
-              link.release();
-            }
-          }),
-        );
-        for (const [index, [callId, call]] of batch.entries()) {
-          const result = results[index]!;
-          input.hooks?.afterTool?.({ callId, name: call.name, result });
-          // A call that suspends the turn on a person does not spend its work budget.
-          if (input.tools.getDefinition(call.name)?.interactive !== true) {
-            didWork = true;
-          }
-          if (!result.success && result.error) {
-            errors.push(result.error);
-          }
-          const recorded = ledger.writes.slice(writesSeen);
-          writesSeen = ledger.writes.length;
-          if (result.success && result.summary && recorded.some((write) => write.ok)) {
-            applied.push(result.summary);
-          }
-          for (const write of recorded) {
-            emit({ type: "write", callId, write });
-          }
-          const content = JSON.stringify(result);
-          seen.push(call.name, call.argumentsText, content);
-          const toolMessageId = newId();
-          appended.push({
-            id: toolMessageId,
-            role: "tool",
-            blocks: [
-              {
-                type: "tool_result",
-                callId,
-                isError: result.success === false,
-                content,
-              },
-            ],
-            timestamp: now(),
-          });
-          emit({ type: "tool_result", callId, messageId, toolMessageId, result });
-        }
+      const ran = await runCalls(
+        messageId,
+        Array.from(calls, ([callId, call]): ToolCall => ({
+          callId,
+          name: call.name,
+          argumentsText: call.argumentsText,
+        })),
+        0,
+        seen,
+      );
+      if ("kind" in ran) {
+        return ran;
       }
+      const { didWork } = ran;
 
       if (didWork) {
         workRounds += 1;

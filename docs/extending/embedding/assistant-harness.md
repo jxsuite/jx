@@ -9,6 +9,7 @@ spec:
   - ai.md#3.10 # catalog membership
   - ai.md#3.11 # interactions and approvals run before the tool body
   - ai.md#2.7 # wire version 2 and provider adapters
+  - ai.md#3.12 # a suspended turn resumes from a checkpoint
 code:
   - packages/ai/src/tools.ts
   - packages/ai/src/core-types.ts
@@ -21,6 +22,10 @@ code:
   - packages/ai/src/harness/lock.ts
   - packages/ai/src/harness/model.ts
   - packages/ai/src/harness/policy.ts
+  - packages/ai/src/harness/checkpoint.ts
+  - packages/ai/src/messages/digest.ts
+  - packages/ai/src/testing/memory-host.ts
+  - packages/ai/src/testing/scripted-model.ts
   - packages/ai/src/jx-tools/index.ts
   - packages/ai/src/jx-tools/doc-tools.ts
   - packages/ai/src/jx-tools/entries.ts
@@ -204,6 +209,41 @@ When the model calls it, the turn asks your host through the `interactions` stra
 Set `interactive: true` on such a tool, so a round that only asked does not count against the turn's work budget.
 
 The same strategy carries approvals. Give the turn a policy as `policy.approval`, and every call is put to it before the tool runs: return `{ kind: "proceed" }`, `{ kind: "deny", message }` to refuse it with a sentence the model reads, or `{ kind: "confirm", reason, summary }` to ask the author first. A call the author declines never runs. The default policy, `proceedAlways`, approves everything.
+
+## Suspending and resuming a turn
+
+Waiting inside the turn only works while something keeps the turn alive. A Worker answering one request, or a headless run, cannot hold a turn open until a person replies. Give such a host the `suspend` strategy instead:
+
+```ts
+const first = runTurn({ history, system, model, tools, interactions: { mode: "suspend" } });
+const outcome = await first.outcome;
+if (outcome.kind === "suspended") {
+  await store.save(conversationId, { history, checkpoint: outcome.checkpoint });
+}
+```
+
+A call that needs a person now ends the turn with the outcome `suspended` and a checkpoint. Nothing of that call has run. The checkpoint is plain JSON: the messages the turn added, the calls of the round it stopped in, the request it is waiting on (`awaiting.request`), and what it had written. Store it in the same write as the conversation, and show the person the request.
+
+When they answer, start the turn again with the checkpoint and the answer:
+
+```ts
+const resumed = runTurn({
+  history, // the same conversation the first run was given
+  system,
+  model,
+  tools,
+  interactions: { mode: "suspend" },
+  resume: { checkpoint, response: { kind: "approval", approved: true } },
+});
+```
+
+The resumed turn settles the waiting call with the answer, runs the calls after it, and carries on. No call that already ran is run again, so a turn suspended and resumed leaves the document an uninterrupted turn would. A turn can suspend more than once: each call that needs a person stops it again.
+
+A resume must run with the same tools, policy and system prompt as the turn it continues. If any of them changed, the turn ends at once with an `error` outcome whose code is `resume_refused`, before it runs or sends anything. `checkResume(checkpoint, input)` answers the same question without starting a turn.
+
+A provider failure worth waiting out can suspend a turn too. List its error codes in `policy.suspendOn`, for example a lapsed credential or a rate limit, and a round that fails with one ends the turn `suspended` between rounds. Resume it with `response: null` once the provider will answer.
+
+To test a host of your own, `@jxsuite/ai/testing` has `scriptedModel(rounds)`, a model function that answers each round with the frames you script, and `createMemoryHarnessHost(document)`, an in-memory document the tree tools read and write.
 
 ## Which tools the model sees
 
