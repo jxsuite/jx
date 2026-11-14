@@ -29,6 +29,7 @@ import {
   listHelperSource,
   mappedArrayFeatures,
   pageImportMap,
+  readsBareState,
   refuseTemplateItems,
   LIT_PART_GUARD,
   NATIVE_SETTER_HELPER,
@@ -681,9 +682,15 @@ export function emitElementModule(
      runtime and the build-time scope evaluate it (spec.md §5.3), so a component reads the same
      value hydrated as it did prerendered. */
   for (const [key, template] of templateEntries) {
+    const rewritten = rewriteState(template, "this.state", { code: false });
+    const value = templateValueSource(rewritten);
+    /* A template may hand the scope itself to a helper (`${state.applySelection(state)}`), which
+       the interpreter binds as a parameter. Here it is declared for the computed that reads it. */
     lines.push(
       "",
-      `    ${refAccessor("this.state", escapeToken(key))} = computed(() => ${templateValueSource(rewriteState(template, "this.state", { code: false }))});`,
+      holesReadBareState(rewritten)
+        ? `    ${refAccessor("this.state", escapeToken(key))} = computed(() => { const state = this.state; return ${value}; });`
+        : `    ${refAccessor("this.state", escapeToken(key))} = computed(() => ${value});`,
     );
   }
 
@@ -707,6 +714,20 @@ export function emitElementModule(
       const body = rewriteState(isString(def.body) ? def.body : "", "this.state");
       lines.push(`      ${body}`, "    });");
     }
+  }
+
+  /* Root-level handlers listen on the host (spec.md §16.1, §4.3). They have no node in the
+     template, so the constructor attaches each to the element, lowered as a child's binding is. It
+     runs once per instance, which is the once-only the interpreter gets from its initialized flag:
+     no options, the element's own lifetime, never removed. The block keeps `s` out of the
+     constructor's scope, where a `$src` import could share the name. */
+  const listeners = hostHandlers(doc);
+  if (listeners.length > 0) {
+    lines.push("", "    {", "      const s = this.state;");
+    for (const { type, source } of listeners) {
+      lines.push(`      this.addEventListener(${JSON.stringify(type)}, ${source});`);
+    }
+    lines.push("    }");
   }
 
   lines.push("  }", ""); // End constructor
@@ -733,10 +754,16 @@ export function emitElementModule(
       ? `      ${toLitTextContent(doc.textContent)}`
       : emitLitChildren(doc.children, doc.style, "      ", false, false, hoistScope);
 
+  /* `state` on its own inside a template hole (a helper handed the scope) reads the same object
+     `s` does; declared only for a template that names it. */
+  const templateNamesState = [templateBody, ...hoistScope.decls].some((text) =>
+    holesReadBareState(text),
+  );
   lines.push(
     // Template method
     "  template() {",
     "    const s = this.state;",
+    ...(templateNamesState ? ["    const state = s;"] : []),
     ...hoistScope.decls,
     "    return html`",
     templateBody,
@@ -926,6 +953,9 @@ export function emitElementModule(
       }),
     );
   }
+  /* The definition's root `attributes`, written on the host (spec.md §16.1) after the props merge
+     and before the render, as the interpreter's `applyAttributes(this, def.attributes)` is. */
+  lines.push(...hostAttributeLines(doc));
   if (isNonNullObject(doc.style)) {
     const dynamicStyles: [string, string][] = [];
     for (const [prop, value] of Object.entries(doc.style)) {
@@ -1353,23 +1383,9 @@ ${no}
     }
     refuseBodyWithSrc(`inline "${key}" handler`, val);
     const eventName = key.slice(2).toLowerCase();
-    if (isBoundRef(val)) {
-      parts.push(
-        mapCtx
-          ? `@${eventName}="\${(e) => { ${mapCtx}${refToExpr(val.$ref)}(s, e); }}"`
-          : `@${eventName}="\${(e) => ${refToExpr(val.$ref)}(s, e)}"`,
-      );
-    } else if (isNonNullObject(val) && "$expression" in val) {
-      /* SAFETY: an `on*` binding object carrying `$expression` is a declarative handler, and the
-         document schema types that member as an expression node (spec.md §19). It is passed on
-         unvalidated, exactly as authored, so a malformed node fails inside compileExpression. */
-      const compiled = compileExpression(val.$expression as JxExpressionNode, {
-        eventParam: "e",
-        statePrefix: "s",
-      });
-      parts.push(`@${eventName}="\${(e) => { ${mapCtx}${compiled}; }}"`);
-    } else if (isFunctionDef(val)) {
-      parts.push(`@${eventName}="\${(e) => { ${mapCtx}${inlineHandlerBody(val)} }}"`);
+    const handler = handlerSource(val, mapCtx);
+    if (handler !== null) {
+      parts.push(`@${eventName}="\${${handler}}"`);
     }
   }
 
@@ -1572,17 +1588,10 @@ function emitMappedArray(arrayDef: JxMappedArray, indent: string) {
     }
     refuseBodyWithSrc(`inline "${key}" handler`, val);
     const eventName = key.slice(2).toLowerCase();
-    if (isRef(val)) {
-      parts.push(`@${eventName}="\${(e) => { s.$map = $map; ${refToExpr(val.$ref)}(s, e); }}"`);
-    } else if (isExpressionDef(val)) {
-      const compiled = compileExpression(val.$expression, {
-        eventParam: "e",
-        statePrefix: "s",
-      });
-      parts.push(`@${eventName}="\${(e) => { s.$map = $map; ${compiled}; }}"`);
-    } else if (isFunctionDef(val)) {
-      // A map root binds an inline handler as any other element does, with the iteration published.
-      parts.push(`@${eventName}="\${(e) => { s.$map = $map; ${inlineHandlerBody(val)} }}"`);
+    // A map root binds a handler as any other element does, with the iteration published.
+    const handler = handlerSource(val, "s.$map = $map; ");
+    if (handler !== null) {
+      parts.push(`@${eventName}="\${${handler}}"`);
     }
   }
 
@@ -1773,6 +1782,143 @@ function toLitTextContent(value: string | null | JxRef) {
     return toLitExpr(value);
   }
   return String(value);
+}
+
+/**
+ * Whether any `${…}` hole of emitted lit template text names `state` on its own ({@link
+ * readsBareState}). Only the holes are read: the word in a template's literal text is text.
+ *
+ * @param {string} text - Emitted template source
+ * @returns {boolean}
+ */
+function holesReadBareState(text: string): boolean {
+  let depth = 0;
+  let hole = "";
+  for (let at = 0; at < text.length; at++) {
+    const char = text.charAt(at);
+    if (depth === 0) {
+      if (char === "$" && text.charAt(at + 1) === "{") {
+        depth = 1;
+        hole = "";
+        at += 1;
+      }
+      continue;
+    }
+    if (char === "{") {
+      depth += 1;
+    } else if (char === "}") {
+      depth -= 1;
+      if (depth === 0) {
+        if (readsBareState(hole)) {
+          return true;
+        }
+        continue;
+      }
+    }
+    hole += char;
+  }
+  return false;
+}
+
+/**
+ * The arrow an `on*` value lowers to, in each of the spellings a handler has (spec.md §4.3), or
+ * `null` for a value that is none of them. One lowering for every place a handler binds: a child's
+ * `@event` binding, a map root's, and a listener on the host (spec.md §16.1), which says a root
+ * handler attaches "exactly as they would to an element inside a document".
+ *
+ * @param {JxDocumentValue | undefined} val - The `on*` value as the document holds it
+ * @param {string} mapCtx - The statement that publishes the iteration inside a map, or `""`
+ * @returns {string | null}
+ */
+function handlerSource(val: JxDocumentValue | undefined, mapCtx: string): string | null {
+  if (isBoundRef(val)) {
+    return mapCtx
+      ? `(e) => { ${mapCtx}${refToExpr(val.$ref)}(s, e); }`
+      : `(e) => ${refToExpr(val.$ref)}(s, e)`;
+  }
+  if (isNonNullObject(val) && "$expression" in val) {
+    /* SAFETY: an `on*` binding object carrying `$expression` is a declarative handler, and the
+       document schema types that member as an expression node (spec.md §19). It is passed on
+       unvalidated, exactly as authored, so a malformed node fails inside compileExpression. */
+    const compiled = compileExpression(val.$expression as JxExpressionNode, {
+      eventParam: "e",
+      statePrefix: "s",
+    });
+    return `(e) => { ${mapCtx}${compiled}; }`;
+  }
+  if (isFunctionDef(val)) {
+    return `(e) => { ${mapCtx}${inlineHandlerBody(val)} }`;
+  }
+  return null;
+}
+
+/**
+ * A definition's root-level event handlers (spec.md §16.1), as the listeners the constructor
+ * attaches to the host: every root key that passes the interpreter's test (`bindDefinitionHandlers`
+ * in `@jxsuite/runtime`: it starts with `on` and is not reserved) and holds a handler.
+ *
+ * @param {JxDocument} doc
+ * @returns {{ type: string; source: string }[]}
+ */
+function hostHandlers(doc: JxDocument): { type: string; source: string }[] {
+  const listeners: { type: string; source: string }[] = [];
+  for (const [key, val] of Object.entries(doc)) {
+    if (!key.startsWith("on") || RESERVED_KEYS.has(key)) {
+      continue;
+    }
+    refuseBodyWithSrc(`root "${key}" handler`, val);
+    const source = handlerSource(val, "");
+    if (source !== null) {
+      listeners.push({ source, type: key.slice(2).toLowerCase() });
+    }
+  }
+  return listeners;
+}
+
+/**
+ * The statements that write a definition's root `attributes` on the host (spec.md §16.1), by the
+ * rule the interpreter's `applyAttributes` applies to them: a value that resolves to nothing takes
+ * the attribute off, a boolean is presence or text by its attribute's family (spec.md §8.3), and
+ * anything else is its string form. A literal is written once, on the first connection; a `$ref` or
+ * a template is an effect, registered with the element's others so it stops when the host leaves.
+ *
+ * In `connectedCallback` and never the constructor: a custom element constructor must not add
+ * attributes, and the values read state the props merge has just filled.
+ *
+ * @param {JxDocument} doc
+ * @returns {string[]} Lines for `connectedCallback`, at its indentation
+ */
+function hostAttributeLines(doc: JxDocument): string[] {
+  const lines: string[] = [];
+  const write = (name: string, expr: string, namesState: boolean): string[] => [
+    "    this.#effects.push(effect(() => {",
+    namesState ? "      const s = this.state, state = s;" : "      const s = this.state;",
+    `      const _v = ${ATTR_HELPER}(${name}, ${expr});`,
+    `      if (_v === null || _v === undefined) this.removeAttribute(${name});`,
+    `      else this.setAttribute(${name}, String(_v));`,
+    "    }));",
+  ];
+  for (const [key, val] of Object.entries(doc.attributes ?? {})) {
+    const name = JSON.stringify(key);
+    if (isRef(val)) {
+      lines.push(...write(name, refToExpr(val.$ref), false));
+    } else if (isString(val) && isWholeTemplate(val)) {
+      const template = toLitExpr(val);
+      lines.push(...write(name, template.slice(2, -1), holesReadBareState(template)));
+    } else if (isString(val) && val.includes("${")) {
+      const template = toLitExpr(val);
+      lines.push(...write(name, `\`${template}\``, holesReadBareState(template)));
+    } else if (isBoolean(val)) {
+      const text = booleanAttrValue(key, val);
+      if (text !== null) {
+        lines.push(`    if (_first) this.setAttribute(${name}, ${JSON.stringify(text)});`);
+      }
+    } else if (isString(val) || isNumber(val)) {
+      // A document is JSON, so anything else here (a `null`) names no attribute.
+      lines.push(`    if (_first) this.setAttribute(${name}, ${JSON.stringify(String(val))});`);
+    }
+  }
+  return lines;
 }
 
 /**
