@@ -14,7 +14,7 @@
 import { releaseElementStyles, renderNode, runScoped } from "@jxsuite/runtime";
 import { isNumber, isString } from "@jxsuite/schema/guards";
 import { getNodeAtPath } from "../state";
-import { makeStamper } from "./iframe-render";
+import { frameContext, makeStamper } from "./iframe-render";
 import { withRowIndices } from "./path-mapping";
 import { prepareForEditMode, prepareTextMember, withTagTitles } from "../utils/edit-display";
 import { stripEventHandlers } from "../utils/strip-events";
@@ -78,6 +78,7 @@ export function renderSubtreeIframe(
     drawn = runScoped(() =>
       renderNode(def, instance?.scope ?? ctx.defs, {
         ...ctx.hooks,
+        _ctx: frameContext(ctx.docBase),
         _path: docPathToRenderPath(withRowIndices(docPath, instance?.rows ?? []), ctx),
         onNodeCreated: makeStamper(ctx.mapperCtx, ctx.rows),
       }),
