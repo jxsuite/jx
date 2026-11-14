@@ -706,11 +706,15 @@ A text field in the row keeps the arrow keys while its caret still has text to m
 
 A `jx-color-field` in the row is one stop, and the stop is its swatch. Arrow onto it and :kbd[Enter] opens the picker, which holds everything a colour needs. The text box, the eyedropper and the system colour well beside it leave the tab order while the field sits in a toolbar, so there they are reached with a pointer; in a form each has its own stop again.
 
-Two kinds of control are not moved between by the toolbar's arrows, and each keeps a tab stop of its own instead. Anything that runs its own arrow keys is left alone, such as a `jx-action-group` or a `jx-tabs`: two roving carets over one row would disagree about which control is current. So is anything whose arrow keys are already spoken for, such as a `jx-select`, a range, a spin button or a `jx-combobox`, because walking the caret past one would rewrite what somebody had chosen or open a list they had not asked for.
+A `jx-action-group` or a `jx-tabs` in the row is one stop too. The arrows walk every control in the row, the group's buttons or the strip's tabs included, and at the group's last button the same arrow moves on to the control after it. Inside the row those arrows only move: they do not pick the button they land on and do not switch to the tab they land on, so you can walk past a set of choices without changing it. Press :kbd[Space] or :kbd[Enter] to choose. The group does not wrap while it sits in a toolbar (the row does), :kbd[Home] and :kbd[End] inside it reach its own first and last member, and coming back into it lands where you left it. A closable tab's close button leaves the tab order there, and :kbd[Delete] closes the focused tab.
+
+You write nothing for this. The toolbar sets a `tabindex` property on the group or the strip, the same property it sets on a button, and the element passes it to whichever member holds its caret. Clear it (`el.tabindex = ""`) if you move a group out of a toolbar by hand and it should take its own tab stop back.
+
+Two kinds of control are not moved between by the toolbar's arrows, and each keeps a tab stop of its own instead. A control whose arrow keys are already spoken for is left alone, such as a `jx-select`, a range, a spin button or a `jx-combobox`, because walking the caret past one would rewrite what somebody had chosen or open a list they had not asked for. So is a `jx-swatch-group` or a `jx-tree`, which answers both arrow pairs and leaves the row no key: put a `jx-color-field` in the row for a colour, and stand a palette or a tree beside the toolbar.
 
 There is no overflow menu, by decision. A row that will not fit is a row to shorten. Where a list of what is out of view is genuinely needed, the host measures it and opens a `jx-menu` of its own commands, which is what the editor's tab strips do.
 
-Which of the two to use: `jx-action-group` for a row of `jx-action-button`s that share one look, and `jx-toolbar` for a row of mixed controls. A group may stand beside a toolbar, never inside one.
+Which of the two to use: `jx-action-group` for a row of `jx-action-button`s that share one look, and `jx-toolbar` for a row of mixed controls. A group may stand inside a toolbar, as one of its controls.
 
 ## Trees
 

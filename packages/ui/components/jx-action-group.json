@@ -28,11 +28,24 @@
       "attribute": "orientation",
       "description": "horizontal or vertical. It chooses which arrow pair moves the caret, and it turns both the layout and the segmented seam through 90 degrees off data-orientation. It also sets aria-orientation, but only where ARIA permits one: role=group — what selects=\"multiple\" resolves to — supports neither aria-orientation nor its inheritance, and Chrome drops the attribute there, so writing it anyway would be an aria-allowed-attr violation in a consumer's own axe run."
     },
+    "tabindex": {
+      "type": "string",
+      "default": "",
+      "description": "The stop a roving container holds this group at, which is what lets a jx-toolbar count the whole group as one item: the group forwards it to the child holding its own caret, so \"0\" leaves that child as the row's one tab stop and \"-1\" parks every child, and the group remembers where its caret stood. Empty, the default, is a group standing alone with a tab stop of its own. While it is set the arrows are navigation only: they walk the children without wrapping and without choosing one, an arrow at either end is left for the container, and Space or Enter chooses. It is a PROPERTY ONLY (el.tabindex = \"0\") and deliberately not an observed attribute: written as an attribute it would land on the host, and a host carrying tabindex is itself focusable, so the group would gain a stop instead of giving one up."
+    },
+    "applyRoving": {
+      "$prototype": "Function",
+      "$src": "jx-ui:/behaviors/action-group.ts",
+      "$export": "applyRoving",
+      "parameters": ["scope"],
+      "description": "Forwards the tabindex a roving container wrote onto the children and returns it. Idempotent: it runs inside a render effect."
+    },
+    "roving": "${state.applyRoving(state)}",
     "onKeydown": {
       "$prototype": "Function",
       "$src": "jx-ui:/behaviors/action-group.ts",
       "$export": "onGroupKeydown",
-      "description": "The group keyboard contract: the arrow along its own axis moves the roving caret between enabled children with wrap, Home and End go to the ends, and in selects=single the child that takes the caret is clicked."
+      "description": "The group keyboard contract: the arrow along its own axis moves the roving caret between enabled children with wrap, Home and End go to the ends, and in selects=single the child that takes the caret is clicked. Held by a roving container (tabindex set), an arrow neither wraps nor clicks, and one with no child left in its direction is not handled, so the container answers it."
     },
     "onReady": {
       "$prototype": "Function",
@@ -62,7 +75,8 @@
     "aria-label": "${state.label || null}",
     "aria-orientation": "${state.selects === 'multiple' ? null : state.orientation}",
     "data-orientation": "${state.orientation}",
-    "data-compact": "${state.compact ? '' : null}"
+    "data-compact": "${state.compact ? '' : null}",
+    "data-roved": "${state.roving || null}"
   },
   "onkeydown": {
     "$ref": "#/state/onKeydown"

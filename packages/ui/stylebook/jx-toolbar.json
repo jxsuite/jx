@@ -28,6 +28,18 @@
       "$ref": "../components/jx-color-field.json"
     },
     {
+      "$ref": "../components/jx-tab.json"
+    },
+    {
+      "$ref": "../components/jx-tabs.json"
+    },
+    {
+      "$ref": "../components/jx-swatch.json"
+    },
+    {
+      "$ref": "../components/jx-swatch-group.json"
+    },
+    {
       "$ref": "../components/jx-toolbar.json"
     }
   ],
@@ -73,6 +85,36 @@
           },
           "value": {
             "$ref": "event#/currentTarget/dataset/verb"
+          }
+        }
+      ]
+    },
+    "align": "left",
+    "chooseAlign": {
+      "$prototype": "Function",
+      "body": [
+        {
+          "operator": "=",
+          "target": {
+            "$ref": "#/state/align"
+          },
+          "value": {
+            "$ref": "event#/currentTarget/dataset/value"
+          }
+        }
+      ]
+    },
+    "view": "table",
+    "setView": {
+      "$prototype": "Function",
+      "body": [
+        {
+          "operator": "=",
+          "target": {
+            "$ref": "#/state/view"
+          },
+          "value": {
+            "$ref": "event#/detail"
           }
         }
       ]
@@ -123,6 +165,9 @@
     },
     "& > div[data-vertical]": {
       "width": "max-content"
+    },
+    "& [part=\"views\"]": {
+      "borderBlockEnd": "0"
     }
   },
   "children": [
@@ -392,39 +437,246 @@
     },
     {
       "tagName": "h2",
-      "textContent": "What a toolbar does NOT rove"
+      "textContent": "A composite in the row"
     },
     {
       "tagName": "p",
-      "textContent": "A jx-action-group runs a roving caret of its own, so it stands BESIDE a toolbar rather than inside one: two carets over one set of buttons is two writers of the same tabindex, and they do not agree. The group below is its own single tab stop, exactly as it is anywhere else."
+      "textContent": "A jx-action-group or a jx-tabs runs a roving caret of its own, and inside a toolbar it is still ONE item: the toolbar writes the composite's own tabindex prop and the composite forwards it to the child holding its caret, so Tab reaches the row once. The arrows walk every control in the row, the composite's children included. Inside the composite they move without choosing, so a reader can pass the alignment below without changing it, and Space or Enter chooses; at the composite's last child the same arrow moves on to the next control."
     },
     {
       "tagName": "div",
       "children": [
         {
-          "tagName": "jx-action-group",
+          "tagName": "jx-toolbar",
           "$props": {
-            "label": "Text style"
+            "label": "Paragraph"
           },
           "children": [
             {
               "tagName": "jx-action-button",
               "$props": {
+                "size": "sm",
                 "label": "Bold",
                 "hint": "Bold",
                 "icon": "text-b",
-                "quiet": false,
                 "toggles": true
               }
             },
             {
+              "tagName": "jx-divider",
+              "$props": {
+                "orientation": "vertical"
+              }
+            },
+            {
+              "tagName": "jx-action-group",
+              "$props": {
+                "label": "Alignment",
+                "selects": "single"
+              },
+              "children": [
+                {
+                  "tagName": "jx-action-button",
+                  "$props": {
+                    "size": "sm",
+                    "label": "Align left",
+                    "hint": "Align left",
+                    "icon": "text-align-left",
+                    "checked": "${state.align === 'left' ? 'true' : 'false'}"
+                  },
+                  "attributes": {
+                    "data-value": "left"
+                  },
+                  "onclick": {
+                    "$ref": "#/state/chooseAlign"
+                  }
+                },
+                {
+                  "tagName": "jx-action-button",
+                  "$props": {
+                    "size": "sm",
+                    "label": "Align centre",
+                    "hint": "Align centre",
+                    "icon": "text-align-center",
+                    "checked": "${state.align === 'center' ? 'true' : 'false'}"
+                  },
+                  "attributes": {
+                    "data-value": "center"
+                  },
+                  "onclick": {
+                    "$ref": "#/state/chooseAlign"
+                  }
+                },
+                {
+                  "tagName": "jx-action-button",
+                  "$props": {
+                    "size": "sm",
+                    "label": "Align right",
+                    "hint": "Align right",
+                    "icon": "text-align-right",
+                    "checked": "${state.align === 'right' ? 'true' : 'false'}"
+                  },
+                  "attributes": {
+                    "data-value": "right"
+                  },
+                  "onclick": {
+                    "$ref": "#/state/chooseAlign"
+                  }
+                }
+              ]
+            },
+            {
+              "tagName": "jx-divider",
+              "$props": {
+                "orientation": "vertical"
+              }
+            },
+            {
+              "tagName": "jx-textfield",
+              "attributes": {
+                "part": "filter"
+              },
+              "$props": {
+                "size": "sm",
+                "type": "search",
+                "label": "Find in paragraph",
+                "placeholder": "Find"
+              }
+            },
+            {
+              "tagName": "span",
+              "attributes": {
+                "part": "spacer"
+              }
+            },
+            {
+              "tagName": "span",
+              "attributes": {
+                "part": "count"
+              },
+              "textContent": "align: ${state.align}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "tagName": "div",
+      "children": [
+        {
+          "tagName": "jx-toolbar",
+          "$props": {
+            "label": "Library"
+          },
+          "children": [
+            {
               "tagName": "jx-action-button",
               "$props": {
-                "label": "Italic",
-                "hint": "Italic",
-                "icon": "text-italic",
-                "quiet": false,
-                "toggles": true
+                "size": "sm",
+                "label": "Refresh",
+                "hint": "Reload from source",
+                "icon": "arrows-clockwise"
+              }
+            },
+            {
+              "tagName": "jx-tabs",
+              "attributes": {
+                "part": "views",
+                "label": "Layout",
+                "selected": "${state.view}"
+              },
+              "onchange": {
+                "$ref": "#/state/setView"
+              },
+              "children": [
+                {
+                  "tagName": "jx-tab",
+                  "attributes": {
+                    "value": "table",
+                    "label": "Table"
+                  }
+                },
+                {
+                  "tagName": "jx-tab",
+                  "attributes": {
+                    "value": "cards",
+                    "label": "Cards"
+                  }
+                },
+                {
+                  "tagName": "jx-tab",
+                  "attributes": {
+                    "value": "media",
+                    "label": "Media"
+                  }
+                }
+              ]
+            },
+            {
+              "tagName": "jx-action-button",
+              "$props": {
+                "size": "sm",
+                "label": "Add file",
+                "hint": "Add a file",
+                "icon": "plus"
+              }
+            },
+            {
+              "tagName": "span",
+              "attributes": {
+                "part": "spacer"
+              }
+            },
+            {
+              "tagName": "span",
+              "attributes": {
+                "part": "count"
+              },
+              "textContent": "view: ${state.view}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "tagName": "h2",
+      "textContent": "What a toolbar does NOT rove"
+    },
+    {
+      "tagName": "p",
+      "textContent": "A control whose own arrows are spoken for is not an item and keeps a tab stop of its own: a select, a range, a spin button and a combobox would have their value rewritten by a caret walking past. A jx-swatch-group answers both arrow pairs and chooses as it moves, so it stands BESIDE a toolbar rather than inside one, as the palette below does; in a row the colour control is jx-color-field."
+    },
+    {
+      "tagName": "div",
+      "children": [
+        {
+          "tagName": "jx-swatch-group",
+          "$props": {
+            "label": "Fill",
+            "value": {
+              "$ref": "#/state/fill"
+            }
+          },
+          "children": [
+            {
+              "tagName": "jx-swatch",
+              "$props": {
+                "color": "#3b82f6",
+                "label": "Blue"
+              }
+            },
+            {
+              "tagName": "jx-swatch",
+              "$props": {
+                "color": "#22c55e",
+                "label": "Green"
+              }
+            },
+            {
+              "tagName": "jx-swatch",
+              "$props": {
+                "color": "#ef4444",
+                "label": "Red"
               }
             }
           ]
