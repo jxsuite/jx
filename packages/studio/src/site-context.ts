@@ -11,6 +11,7 @@
 import { parseNativeDocument } from "@jxsuite/schema/jxn";
 import { isNonNullObject, isString } from "@jxsuite/schema/guards";
 import { projectState } from "./store";
+import { specimenOf, specimenWidth } from "./surfaces/specimens";
 import { getPlatform } from "./platform";
 import { commitProjectConfig } from "./tabs/project-config";
 
@@ -41,6 +42,31 @@ export function getEffectiveMedia(docMedia?: Record<string, string>) {
     return { ...siteMedia };
   }
   return { ...siteMedia, ...docMedia };
+}
+
+/**
+ * The `$media` a tab's canvas is sized by: {@link getEffectiveMedia}, with one addition.
+ *
+ * A surface of Studio's own is drawn on the canvas with its specimen (studio.md §4.6), and some
+ * surfaces are as wide as the window they sit in: the status bar is one row across the whole shell
+ * and lays out to nothing in the canvas's default column. Its specimen names the width it is drawn
+ * at, which becomes the tab's base width (`--`) unless the document or the project declares one.
+ *
+ * @param {string | null | undefined} documentPath - The tab's document, under the project root
+ * @param {Record<string, string> | undefined} docMedia - The document's own `$media`
+ * @returns {Record<string, string>}
+ */
+export function getCanvasMedia(
+  documentPath: string | null | undefined,
+  docMedia?: Record<string, string>,
+): Record<string, string> {
+  const media = getEffectiveMedia(docMedia);
+  if (media["--"] !== undefined) {
+    return media;
+  }
+  const specimen = specimenOf(projectState?.projectConfig?.url, documentPath);
+  const width = specimen === null ? null : specimenWidth(specimen);
+  return width === null ? media : { ...media, "--": `${width}px` };
 }
 
 /**

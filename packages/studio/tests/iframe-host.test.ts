@@ -183,6 +183,7 @@ const DEFAULT_RESOLVED: ResolvedFixture = {
   tagTitles: {},
   scripts: {},
   siteStyle: null,
+  specimen: null,
   unresolvedSources: [],
 };
 let resolved: ResolvedFixture = structuredClone(DEFAULT_RESOLVED);
@@ -1338,6 +1339,28 @@ describe("iframe canvas interaction", () => {
     expect(render?.kind === "render" && render.tagTitles).toEqual({
       "item.data.date": "Post date",
     });
+  });
+
+  test("the surface specimen the render resolved rides with the render message", async () => {
+    resetWorkspaceWithTab();
+    resolved = {
+      ...structuredClone(DEFAULT_RESOLVED),
+      specimen: { name: "statusbar", variant: "no-document" },
+    };
+    await mountReady();
+    const render = channels[0]!.posts.find((message) => message.kind === "render");
+    expect(render?.kind === "render" && render.specimen).toEqual({
+      name: "statusbar",
+      variant: "no-document",
+    });
+  });
+
+  test("a render of any other document names no specimen", async () => {
+    resetWorkspaceWithTab();
+    await mountReady();
+    const render = channels[0]!.posts.find((message) => message.kind === "render");
+    expect(render?.kind).toBe("render");
+    expect(render).not.toHaveProperty("specimen");
   });
 
   test("a render with no titles carries none", async () => {

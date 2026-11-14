@@ -93,7 +93,7 @@ interface StatusItem {
 }
 
 /** One item as the surface reads it: a button that runs a command through `run`, or a readout. */
-interface ProjectedItem {
+export interface ProjectedItem {
   /** Unique within the bar; the row's identity and what `run` receives. */
   key: string;
   kind: "button" | "state";
@@ -105,7 +105,7 @@ interface ProjectedItem {
   args: CommandArgValues | undefined;
 }
 
-interface ProjectedField {
+export interface ProjectedField {
   id: string;
   region: string;
   items: ProjectedItem[];
@@ -305,7 +305,7 @@ function present(fields: readonly (ProjectedField | null)[]): ProjectedField[] {
   return fields.filter((field): field is ProjectedField => field !== null);
 }
 
-interface StatusbarScope {
+export interface StatusbarScope {
   /** The fields before the DOCUMENT slot: PROJECT. */
   leading: ProjectedField[];
   /** Whether the DOCUMENT slot has a trail to show. */

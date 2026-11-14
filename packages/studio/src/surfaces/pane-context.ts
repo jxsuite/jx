@@ -130,9 +130,14 @@ export interface PaneContextView {
   resolvingState: "shown" | "hidden";
   /** "2 set", or "Defaults". */
   resolvingLabel: string;
-  resolvingKind: "params" | "props";
+  resolvingKind: "params" | "props" | "specimen";
   params: PaneContextParam[];
   props: PaneContextProp[];
+  /**
+   * The variants of the surface specimen the document resolves with (studio.md §4.6): the default
+   * first, then each the specimen declares. Empty for a document with no specimen.
+   */
+  specimenVariants: PaneContextChoice[];
 
   /** The size group on the bar: hidden when the project declares no breakpoint to choose. */
   sizesState: "shown" | "hidden";
@@ -170,6 +175,8 @@ export interface PaneContextActions {
   manageContexts: () => void;
   setParam: (name: string, value: string) => void;
   setProp: (name: string, raw: string) => void;
+  /** Draw the surface with a variant of its specimen; `default` is the specimen's own scope. */
+  setSpecimenVariant: (variant: string) => void;
   exportFile: () => void;
 }
 
@@ -243,6 +250,7 @@ function project(scope: PaneContextScope, view: PaneContextView): void {
   scope.resolvingKind = view.resolvingKind;
   scope.params = view.params;
   scope.props = view.props;
+  scope.specimenVariants = view.specimenVariants;
   scope.sizes = view.sizes;
   scope.sizesState = view.sizesState;
   scope.schemeState = view.schemeState;
@@ -287,6 +295,7 @@ export function emptyPaneContextView(): PaneContextView {
     params: [],
     presetState: "hidden",
     props: [],
+    specimenVariants: [],
     resolvingKind: "params",
     resolvingLabel: "Defaults",
     resolvingState: "hidden",

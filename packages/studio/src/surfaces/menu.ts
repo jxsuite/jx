@@ -131,7 +131,7 @@ type MenuElement = HTMLElement & {
  * A row as the document reads it: the projection with every optional filled in, plus the flags its
  * bindings need.
  */
-type ProjectedRow = Omit<
+export type ProjectedRow = Omit<
   MenuRowProjection,
   "checked" | "children" | "chord" | "requires" | "submenuLabel"
 > & {
@@ -147,7 +147,7 @@ type ProjectedRow = Omit<
 };
 
 /** The scope shape `menu.json` reads. */
-interface MenuScope {
+export interface MenuScope {
   rows: ProjectedRow[];
   label: string;
   x: number;

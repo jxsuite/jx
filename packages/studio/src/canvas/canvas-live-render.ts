@@ -52,6 +52,7 @@ import { repeaterSampleItems, tagTitlesOf } from "../editor/repeater-scope";
 import type { RepeaterSamples } from "../editor/repeater-scope";
 import type { TagTitles } from "../utils/edit-display";
 import { withSwitchCases } from "./switch-cases";
+import { specimenOf } from "../surfaces/specimens";
 
 import type { AssetContext } from "./asset-refs";
 import type { CanvasScripts, ScriptCollector } from "./canvas-scripts";
@@ -438,6 +439,12 @@ export async function resolveCanvasDocument(
    * reads one draws its template row (studio.md §4.5).
    */
   unresolvedSources: string[];
+  /**
+   * The surface specimen the document resolves with, and the variant chosen for the tab: one of
+   * Studio's own surfaces opened in Studio's own project (studio.md §4.6). Null for every other
+   * document and every other project.
+   */
+  specimen: { name: string; variant: string | null } | null;
 }> {
   const S = { documentPath: tab?.documentPath, mode: tab?.doc.mode };
   const canvasMode = modeOverride ?? canvasModeOfTab(tab);
@@ -533,6 +540,8 @@ export async function resolveCanvasDocument(
   }
 
   const docBase = S.documentPath ? new URL(S.documentPath, fileBase).href : undefined;
+  // By the project's identity and the document's path under it, so a copy of Studio is Studio.
+  const specimenName = specimenOf(projectConfig?.url, S.documentPath);
   /*
    * How this render addresses media, as PLAIN DATA — the resolver itself is a function and cannot
    * cross into the canvas realm, so the iframe rebuilds it from this.
@@ -691,6 +700,9 @@ export async function resolveCanvasDocument(
     rowSamples: repeaterSampleItems(doc, projectConfig),
     scripts: scripts.scripts,
     siteStyle: projectState?.projectConfig?.style ?? null,
+    specimen: specimenName
+      ? { name: specimenName, variant: tab?.session.ui.specimenVariant ?? null }
+      : null,
     tagTitles,
     unresolvedSources,
   };

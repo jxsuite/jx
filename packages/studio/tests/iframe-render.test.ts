@@ -2,6 +2,7 @@ import "./with-dom.js";
 import { afterEach, describe, expect, test } from "bun:test";
 import {
   defineElement,
+  preloadModule,
   setCanvasDelinkAnchors,
   setCanvasLightComponents,
   setCanvasViewportTranspose,
@@ -31,6 +32,7 @@ import {
   syncStylebookCss,
 } from "../src/canvas/iframe-render";
 import { BUILD_LANES } from "@jxsuite/schema/asset-paths";
+import { KIT_LOADERS } from "@jxsuite/ui/loaders";
 import { CANVAS_MODES } from "../src/canvas/iframe-protocol";
 import { SITE_STYLE_ID } from "@jxsuite/site/site-style";
 import type { AssetContext } from "../src/canvas/asset-refs";
@@ -1144,6 +1146,152 @@ describe("a $switch case that is another document", () => {
     renderSubtreeIframe(again, ["children", 0], handle.ctx);
     await Bun.sleep(0);
     expect(asked).toEqual(["http://localhost:3000/project/pages/views/other.json"]);
+    handle.dispose();
+    container.remove();
+  });
+});
+
+describe("a surface specimen's render (studio.md §4.6)", () => {
+  /** A surface document, read off disk as the canvas reads it. */
+  async function surface(name: string): Promise<JxDocument> {
+    /* SAFETY: every `src/surfaces/*.json` is a Jx document the shell mounts through the runtime. */
+    return (await Bun.file(
+      new URL(`../src/surfaces/${name}.json`, import.meta.url),
+    ).json()) as JxDocument;
+  }
+
+  /** Draw a surface as the frame does for a render that names its specimen. */
+  async function draw(
+    name: string,
+    variant: string | null,
+    container: HTMLElement,
+  ): Promise<RenderHandle> {
+    // The frame answers the kit's behaviour specifiers from its loaders (`iframe-entry.ts`).
+    for (const [specifier, load] of Object.entries(KIT_LOADERS)) {
+      preloadModule(specifier, load);
+    }
+    const handle = await renderResolvedDocument({
+      container,
+      doc: await surface(name),
+      docBase: `http://localhost:3000/src/surfaces/${name}.json`,
+      mapperCtx: { ...ctx, canvasMode: "edit" },
+      mode: "edit",
+      specimen: { name, variant },
+    });
+    await Bun.sleep(0);
+    return handle;
+  }
+
+  test("the status bar draws its fields with text, and a variant draws another state", async () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const handle = await draw("statusbar", null, container);
+    const items = [...container.querySelectorAll('[part="item"]')];
+    expect(items.map((item) => item.textContent)).toEqual(["Jx Studio", "main", "h1"]);
+    expect(container.querySelectorAll('[part="field"]').length).toBe(2);
+    expect(container.querySelector('[part="zoom"]')).not.toBeNull();
+    expect(customElements.get("jx-slider")).toBeDefined();
+    // The chrome's tokens are in the site sheet, under no project style at all.
+    const sheet = installedSheet(SITE_STYLE_ID);
+    expect(sheet).toContain("@layer jx-ui");
+    expect(sheet).toContain("--fg:");
+    handle.dispose();
+
+    const bare = await draw("statusbar", "no-document", container);
+    // The SELECTION list is empty there, so the canvas draws its template row (§4.5) and no item.
+    expect(container.querySelectorAll('[part="field"]:not([data-jx-template-row])').length).toBe(1);
+    expect(
+      [...container.querySelectorAll('[part="item"]')].map((item) => item.textContent),
+    ).toEqual(["Jx Studio", "main"]);
+    expect(container.querySelector('[part="zoom"]')).toBeNull();
+    bare.dispose();
+    container.remove();
+  });
+
+  test("the menu is an instance of the kit's, drawn open with its rows", async () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const handle = await draw("menu", null, container);
+    const root = firstElementOf(container);
+    // An instance the kit draws, not a definition being edited.
+    expect(root.dataset.jxDefinitionRoot).toBeUndefined();
+    expect(root.dataset.jxPath).toBe("[]");
+    expect(root.getAttribute("role")).toBe("menu");
+    expect(root.dataset.jxPopoverOpen).toBe("");
+    const rows = [...container.querySelectorAll("jx-menu-item")];
+    expect(rows.length).toBe(8);
+    expect(container.textContent).toContain("Duplicate");
+    expect(container.textContent).not.toMatch(/\$\{|❪/u);
+    // The tab's own open state does not close an overlay the surface IS.
+    applyCanvasPopoverOpen(container, null);
+    expect(root.dataset.jxPopoverOpen).toBe("");
+    handle.dispose();
+    container.remove();
+  });
+
+  test("the style tab draws its editor case, and a dialog surface its dialog", async () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const handle = await draw("style-panel", null, container);
+    expect(container.querySelector('[part="filter"]')).not.toBeNull();
+    const labels = [...container.querySelectorAll('[part="row-label"]')].map(
+      (label) => label.textContent,
+    );
+    expect(labels.filter((label) => label.startsWith("Font")).length).toBe(1);
+    expect(labels.filter((label) => label.startsWith("Tracking")).length).toBe(1);
+    expect(container.querySelectorAll('[part="section"]').length).toBe(2);
+    expect(container.querySelector('[part="empty"]')).toBeNull();
+    handle.dispose();
+
+    const empty = await draw("style-panel", "empty", container);
+    expect(container.querySelector('[part="empty-message"]')?.textContent).toBe(
+      "Select an element to style it.",
+    );
+    empty.dispose();
+
+    const modal = await draw("progress-modal", null, container);
+    const dialog = rendered(container, "jx-dialog > dialog");
+    expect(dialog.dataset.jxDialogOpen).toBe("");
+    expect(dialog.textContent).toContain("Installing dependencies");
+    applyCanvasDialogOpen(container, null);
+    expect(dialog.dataset.jxDialogOpen).toBe("");
+    modal.dispose();
+    container.remove();
+  });
+
+  test("a render that names no specimen, or one the frame lacks, draws as it always did", async () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const doc = await surface("menu");
+    const base = {
+      container,
+      doc,
+      docBase: "http://localhost:3000/src/surfaces/menu.json",
+      mapperCtx: { ...ctx, canvasMode: "edit" },
+      mode: "edit" as const,
+    };
+    const plain = await renderResolvedDocument(base);
+    expect(firstElementOf(container).dataset.jxDefinitionRoot).toBe("");
+    // The next render is no specimen's, so the chrome's tokens leave the sheet with the last one.
+    expect(document.head.querySelector(`#${SITE_STYLE_ID}`)).toBeNull();
+    plain.dispose();
+    const unknown = await renderResolvedDocument({
+      ...base,
+      specimen: { name: "no-such-surface", variant: null },
+    });
+    expect(firstElementOf(container).dataset.jxDefinitionRoot).toBe("");
+    unknown.dispose();
+    container.remove();
+  });
+
+  test("a site-style update during a specimen's render keeps the chrome's tokens under it", async () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const handle = await draw("panel-data", null, container);
+    applySiteStyle({ "--brand": "#0f0" });
+    const sheet = installedSheet(SITE_STYLE_ID);
+    expect(sheet).toContain("--brand: #0f0");
+    expect(sheet).toContain("@layer jx-ui");
     handle.dispose();
     container.remove();
   });

@@ -68,7 +68,7 @@ export interface DataTreeActions {
 }
 
 /** The scope the document reads. */
-interface DataTreeScope extends DataTreeActions {
+export interface DataTreeScope extends DataTreeActions {
   rows: DataTreeRow[];
 }
 

@@ -499,7 +499,9 @@ export function countBareCatches(code: string): number {
 export function scanHex(rel: string, source: string): ScanFindings {
   const errors: Finding[] = [];
   const warnings: Finding[] = [];
-  const isData = DATA_FILES.some((f) => rel.endsWith(f));
+  /* A surface specimen is a fixture (studio.md §4.6): a colour in one is a row's VALUE, the hex a
+     project's token resolves to, exactly as it would be in the project the adapter read it from. */
+  const isData = DATA_FILES.some((f) => rel.endsWith(f)) || rel.endsWith(".specimen.ts");
   const lines = source.split("\n");
   for (let idx = 0; idx < lines.length; idx++) {
     const line = lines[idx]!;

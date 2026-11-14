@@ -44,6 +44,7 @@
 
 import { writesEntryOnCanvas } from "../content/content-collections";
 import { projectState, updateUi } from "../store";
+import { specimenOf, specimenVariants } from "../surfaces/specimens";
 import { effect, effectScope } from "../reactivity";
 import { PRIMARY_PANE, focusPane, workspace } from "../workspace/workspace";
 import {
@@ -312,6 +313,7 @@ export function mount(host: HTMLElement, ctx: PaneContextCtx) {
         void tab.session.ui.previewLocale;
         void tab.session.ui.previewParams;
         void tab.session.ui.stateValues;
+        void tab.session.ui.specimenVariant;
         void tab.session.ui.showLayout;
         // The read-only banner (`collab.md` §4) is part of this chrome, so its two facts are
         // Tracked here too: a peer downgrading you mid-session must make the sentence appear, not
@@ -907,13 +909,19 @@ function contextAxis(tab: Tab, paneId: string, ctx: PaneContextCtx): Partial<Pan
   const page = isPageDoc(tab);
   const params = page ? paramRows(tab) : [];
   const props = page ? [] : propRows(tab, paneId);
+  /* One of Studio's own surfaces resolves with its specimen (studio.md §4.6): the values it is
+     rendered with are a fixture, chosen by name rather than typed. A surface declares no state, so
+     it has no test values and the two never share the popover. */
+  const specimen = specimenOf(projectState?.projectConfig?.url, tab.documentPath);
+  const variant = specimen === null ? null : ui.specimenVariant;
+  const variants = specimen === null ? [] : specimenRows(specimenVariants(specimen), variant);
   /* How many of those fields carry a value. The trigger has to say something true at a glance, the
      way the Context trigger says `Base · Auto` — a chevron with no reading is a control you have to
      open in order to learn whether it was worth opening. */
   const resolvingSet = page
     ? Object.values(ui.previewParams).filter((v) => v !== "").length
     : props.filter((row) => row.name in ui.stateValues).length;
-  const hasResolving = page ? params.length > 0 : props.length > 0;
+  const hasResolving = specimen !== null || (page ? params.length > 0 : props.length > 0);
 
   const display = ui.bindingDisplay;
   const editable = ui.canvasMode === "edit" || ui.canvasMode === "design";
@@ -941,8 +949,13 @@ function contextAxis(tab: Tab, paneId: string, ctx: PaneContextCtx): Partial<Pan
     ...localeGroup(locale),
     params,
     props,
-    resolvingKind: page ? "params" : "props",
-    resolvingLabel: resolvingSet > 0 ? `${resolvingSet} set` : "Defaults",
+    resolvingKind: specimen !== null ? "specimen" : page ? "params" : "props",
+    resolvingLabel:
+      specimen !== null
+        ? (variant ?? "Specimen")
+        : resolvingSet > 0
+          ? `${resolvingSet} set`
+          : "Defaults",
     resolvingState: hasResolving ? "shown" : "hidden",
     schemes: SCHEMES.map(([value, label, hint]) => ({
       checked: scheme === value ? "true" : "false",
@@ -952,6 +965,7 @@ function contextAxis(tab: Tab, paneId: string, ctx: PaneContextCtx): Partial<Pan
       value,
     })) satisfies PaneContextChoice[],
     schemeState: schemeQueries.length > 0 ? "shown" : "hidden",
+    specimenVariants: variants,
     sizes: sizeRows(sizeBreakpoints, activeMedia),
     // Base alone is not a choice: a one-segment group would be a control that cannot move.
     sizesState: sizeBreakpoints.length > 0 ? "shown" : "hidden",
@@ -1122,6 +1136,9 @@ function actionsFor(paneId: string, ctx: PaneContextCtx): PaneContextActions {
     },
     setBindingDisplay: (display) => {
       runContextCommand(paneId, "canvas.setBindingDisplay", { display });
+    },
+    setSpecimenVariant: (variant) => {
+      runContextCommand(paneId, "canvas.setSpecimenVariant", { variant });
     },
     setScheme: (scheme) => {
       runContextCommand(paneId, "canvas.setColorScheme", { scheme });
@@ -1330,6 +1347,27 @@ function parsePropValue(raw: string): JsonValue {
   } catch {
     return raw;
   }
+}
+
+/**
+ * The specimen group's rows: the specimen's own scope first, then each variant it declares.
+ *
+ * @param {readonly string[]} declared - The variant names, as the specimen table lists them
+ * @param {string | null} chosen - The tab's variant, or null for the default
+ */
+function specimenRows(declared: readonly string[], chosen: string | null): PaneContextChoice[] {
+  // A variant the table no longer lists draws the default, so the default is what reads chosen.
+  const current = chosen !== null && declared.includes(chosen) ? chosen : "default";
+  return ["default", ...declared].map((name) => ({
+    checked: name === current ? ("true" as const) : ("false" as const),
+    hint:
+      name === "default"
+        ? "The surface as its specimen draws it at rest"
+        : `The surface in its ${name} state`,
+    key: name,
+    label: name === "default" ? "Default" : name,
+    value: name,
+  }));
 }
 
 /**

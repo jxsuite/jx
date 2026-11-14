@@ -366,6 +366,12 @@ describe("scanHex", () => {
     expect(scanHex("src/a.ts", "color: var(--accent, #123456);").errors).toEqual([]);
   });
 
+  test("a hex in a surface specimen is a fixture's value, not chrome", () => {
+    const fixture = 'row("color", "Color", "color", "#1d1d22")';
+    expect(scanHex("src/surfaces/style-panel.specimen.ts", fixture).errors).toEqual([]);
+    expect(scanHex("src/surfaces/style-panel.ts", fixture).errors.length).toBe(1);
+  });
+
   test("allows any hex in a colour-data file", () => {
     expect(scanHex("src/settings/css-vars-editor.ts", "#123456").errors).toEqual([]);
   });

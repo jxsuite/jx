@@ -1392,6 +1392,9 @@ export function startCanvasIframe(opts: {
         if (msg.projectFormulas) {
           renderOpts.projectFormulas = msg.projectFormulas;
         }
+        if (msg.specimen) {
+          renderOpts.specimen = msg.specimen;
+        }
         renderOpts.rows = rowView;
         renderOpts.onRowsChanged = settleRows;
         /* Everything that takes time happens here, against a frame still showing the previous

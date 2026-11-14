@@ -1434,6 +1434,67 @@
                               }
                             }
                           ]
+                        },
+                        "specimen": {
+                          "tagName": "jx-action-group",
+                          "attributes": {
+                            "part": "fields",
+                            "data-fields": "specimen"
+                          },
+                          "$props": {
+                            "selects": "single",
+                            "compact": true,
+                            "label": "Specimen variant"
+                          },
+                          "children": [
+                            {
+                              "$prototype": "Array",
+                              "items": {
+                                "$ref": "#/state/specimenVariants"
+                              },
+                              "key": {
+                                "$ref": "$map/item/key"
+                              },
+                              "map": {
+                                "tagName": "jx-action-button",
+                                "attributes": {
+                                  "part": "specimen-variant",
+                                  "data-value": "${$map.item.value}"
+                                },
+                                "$props": {
+                                  "size": "sm",
+                                  "checked": {
+                                    "$ref": "$map/item/checked"
+                                  },
+                                  "hint": {
+                                    "$ref": "$map/item/hint"
+                                  }
+                                },
+                                "onclick": {
+                                  "$prototype": "Function",
+                                  "body": [
+                                    {
+                                      "operator": "call",
+                                      "target": {
+                                        "$ref": "#/state/setSpecimenVariant"
+                                      },
+                                      "value": [
+                                        {
+                                          "$ref": "$map/item/value"
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                },
+                                "children": [
+                                  {
+                                    "tagName": "span",
+                                    "textContent": "${$map.item.label}"
+                                  }
+                                ]
+                              }
+                            }
+                          ]
                         }
                       }
                     }
