@@ -2079,6 +2079,125 @@ describe("compileElement — boolean attributes (spec.md §8.3)", () => {
   });
 });
 
+// ─── The binding table and worked example (compiler.md §4.2, §4.3) ──────────
+
+/*
+ * Each emitted form is tested on its own elsewhere in this file. This describe exists so that a
+ * change to one of them fails a test that names the spec text to update with it: compiler.md §4.3's
+ * table and §4.2's example output.
+ */
+describe("compileElement — the binding table (compiler.md §4.3)", () => {
+  async function tableModule() {
+    const hiddenRow: JsonObject = { hidden: "${state.loading}", tagName: "div" };
+    /*
+     * SAFETY: JxElement types `hidden` as the boolean the property holds, and a template string is
+     * how a document binds one (spec.md §8.1); the element target reads the key as authored and
+     * emits a property binding for it, which is what this row covers.
+     */
+    const boundHidden = hiddenRow as JxElement;
+    const result = await compileElement({
+      children: [
+        { tagName: "p", textContent: "${state.name}" },
+        { onclick: { $ref: "#/state/fn" }, tagName: "button" },
+        { $props: { items: { $ref: "#/state/items" } }, tagName: "x-list" },
+        boundHidden,
+        { className: "${state.cls}", tagName: "div" },
+        { style: { color: "${state.c}" }, tagName: "div" },
+        {
+          attributes: { "aria-expanded": "${state.open}", hidden: "${state.loading}" },
+          tagName: "details",
+        },
+      ],
+      state: {
+        c: "red",
+        cls: "c",
+        fn: { $prototype: "Function", body: "state.n++" },
+        items: [],
+        loading: false,
+        n: 0,
+        name: "n",
+        open: false,
+      },
+      tagName: "test-binding-table",
+    });
+    return result.files[0]!.content;
+  }
+
+  test("every row compiles to the lit-html form the table shows", async () => {
+    const module = await tableModule();
+    expect(module).toContain(">${s.name}</p>");
+    expect(module).toContain('@click="${(e) => s.fn(s, e)}"');
+    expect(module).toContain('.items="${s.items}"');
+    expect(module).toContain('.hidden="${s.loading}"');
+    expect(module).toContain('class="${s.cls}"');
+    expect(module).toContain('style="color: ${s.c}"');
+    expect(module).toContain(
+      "aria-expanded=\"${__jxAttrText('aria-expanded', s.open) ?? nothing}\"",
+    );
+  });
+
+  test("a boolean is decided by the property or by the helper, never by a lit boolean binding", async () => {
+    const module = await tableModule();
+    expect(module).toContain('.hidden="${s.loading}"');
+    expect(module).toContain("hidden=\"${__jxAttrText('hidden', s.loading) ?? nothing}\"");
+    // `?? nothing` cannot match: the pattern needs a name and `=` straight after the `?`.
+    expect(module).not.toMatch(/\s\?[a-z][\w-]*=/);
+  });
+
+  test("the worked example (compiler.md §4.2) emits what the section shows", async () => {
+    // The §4.2 input, verbatim.
+    const result = await compileElement({
+      tagName: "user-card",
+      state: {
+        username: "Guest",
+        status: "online",
+        displayStatus: "${state.status === 'online' ? 'Available' : 'Away'}",
+        setAway: {
+          $prototype: "Function",
+          body: "state.status = 'away'",
+        },
+      },
+      style: { display: "block", padding: "1em" },
+      children: [
+        { tagName: "h3", textContent: "${state.username}" },
+        {
+          tagName: "button",
+          textContent: "Set Away",
+          onclick: { $ref: "#/state/setAway" },
+        },
+      ],
+    });
+    const module = result.files[0]!.content;
+    for (const line of [
+      "import { reactive, computed, effect, stop } from '@vue/reactivity';",
+      "import { render, html, nothing } from 'lit-html';",
+      "#effects = [];",
+      "#rendered = false;",
+      "this.state.setAway = (state) => {",
+      "this.state.displayStatus = computed(() => (this.state.status === 'online' ? 'Available' : 'Away'));",
+      ">${s.username}</h3>",
+      '@click="${(e) => s.setAway(s, e)}"',
+      "const _first = !this.#rendered;",
+      "this.#rendered = true;",
+      "this.removeAttribute('data-jx-prerendered');",
+      "if (_first) this.replaceChildren();",
+      "this.#effects.push(effect(() => render(this.template(), this)));",
+      "for (const _e of this.#effects) { stop(_e); }",
+      "this.#effects.length = 0;",
+      "customElements.define('user-card', UserCard);",
+    ]) {
+      expect(module).toContain(line);
+    }
+    // A function entry is assigned before a computed one, whatever order `state` declares them in.
+    expect(module.indexOf("this.state.setAway =")).toBeLessThan(
+      module.indexOf("this.state.displayStatus ="),
+    );
+    // The static `style` goes to the component stylesheet (§8.2), never into the module.
+    expect(module).not.toContain("padding");
+    expect(module).not.toContain("display: block");
+  });
+});
+
 // ─── timing: "server" entries ─────────────────────────────────────────────────
 
 describe("compileElement — timing server entries", () => {
