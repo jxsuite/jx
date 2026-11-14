@@ -22,7 +22,7 @@
  */
 
 import { isNonNullObject, isRef, isString, isTemplateString } from "@jxsuite/schema/guards";
-import type { JxRef, JxStyle } from "@jxsuite/schema/types";
+import type { JxDocument, JxElement, JxRef, JxStyle, ProjectConfig } from "@jxsuite/schema/types";
 
 /**
  * Convert camelCase to kebab-case.
@@ -986,4 +986,49 @@ export function buildStyleRules(style: JxStyle, options: CssBuildOptions = {}): 
 
   walk(style, scope, [], "self");
   return rules;
+}
+
+/** The two modes the standard defines for a shadow root. */
+export type ShadowMode = "open" | "closed";
+
+/** A value `$shadow` or `defaults.shadow` may carry. */
+export type ShadowSetting = ShadowMode | false;
+
+/** Whether a document value is one of the settings `$shadow` / `defaults.shadow` may carry. */
+function isShadowSetting(value: unknown): value is ShadowSetting {
+  return value === false || value === "open" || value === "closed";
+}
+
+/**
+ * The shadow mode a component renders in, or null for light DOM.
+ *
+ * Light DOM is the default and stays the default. It is not a placeholder for shadow DOM: a Jx
+ * component's styles are reachable from the page, which is how a project restyles a component it
+ * did not write, and the `<slot>` emulation that makes light-DOM composition work has different
+ * distribution semantics from real slotting. Switching a component to a shadow root changes both,
+ * so it is a per-component decision an author makes deliberately.
+ *
+ * `$shadow` on a component document, `defaults.shadow` on the project, `false` if neither says
+ * otherwise. `"open"` and `"closed"` are the standard's two modes. A component's own `$shadow` wins
+ * over the project default in both directions, including `$shadow: false`, which is how one
+ * component opts _out_ of a project that opted in.
+ *
+ * One verdict for every tier: the interpreter, the compiler (which re-exports it) and any host that
+ * has to know a component's mode without either.
+ *
+ * @param {JxDocument | JxElement | null | undefined} doc - The component definition
+ * @param {ProjectConfig["defaults"] | undefined} defaults
+ * @returns {ShadowMode | null}
+ * @docs framework/concepts/components
+ */
+export function resolveShadowMode(
+  doc: JxDocument | JxElement | null | undefined,
+  defaults?: ProjectConfig["defaults"],
+): ShadowMode | null {
+  const own = doc?.$shadow;
+  if (isShadowSetting(own)) {
+    return own === false ? null : own;
+  }
+  const projectDefault = defaults?.shadow;
+  return isShadowSetting(projectDefault) && projectDefault !== false ? projectDefault : null;
 }

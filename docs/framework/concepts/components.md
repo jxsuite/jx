@@ -9,6 +9,7 @@ spec:
   - spec.md#16.10 # an upgrade replaces the prerendered nodes
 code:
   - packages/compiler/src/shadow.ts
+  - packages/runtime/src/css.ts
   - packages/compiler/src/targets/compile-element.ts
   - packages/runtime/src/runtime.ts
 ---

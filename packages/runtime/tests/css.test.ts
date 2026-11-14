@@ -21,7 +21,7 @@ import { describe, expect, test } from "bun:test";
 
 import * as css from "../src/css.ts";
 
-import type { JsonObject, JxStyle } from "@jxsuite/schema/types";
+import type { JsonObject, JxDocument, JxStyle, ProjectConfig } from "@jxsuite/schema/types";
 
 const SOURCE = readFileSync(join(import.meta.dirname, "../src/css.ts"), "utf8");
 
@@ -68,6 +68,7 @@ describe("the subpath carries what @jxsuite/site/site-style needs", () => {
       "pureSchemeOf",
       "resolveAtQuery",
       "resolveNestedSelector",
+      "resolveShadowMode",
       "schemeSelectors",
       "spliceNestingSelector",
       "splitSelectorList",
@@ -614,5 +615,36 @@ describe("commentedRuleText (spec.md §9.2)", () => {
     const text = css.commentedRuleText({ description: "a */ b", text: "p { color: red }" });
     expect(text).toBe("/* a * / b */\np { color: red }");
     expect(text.split("*/")).toHaveLength(2);
+  });
+});
+
+describe("resolveShadowMode (spec.md §16.6)", () => {
+  const component = (extra: JxDocument = {}): JxDocument => ({ tagName: "sd-probe", ...extra });
+
+  test("light DOM unless something says otherwise", () => {
+    expect(css.resolveShadowMode(component())).toBeNull();
+    expect(css.resolveShadowMode(component(), {})).toBeNull();
+    expect(css.resolveShadowMode(null)).toBeNull();
+  });
+
+  test("a project default turns it on for every component", () => {
+    expect(css.resolveShadowMode(component(), { shadow: "open" })).toBe("open");
+    expect(css.resolveShadowMode(component(), { shadow: "closed" })).toBe("closed");
+  });
+
+  // Both directions: `$shadow: false` is how one component opts out of a project that opted in.
+  test("a component's own $shadow wins over the project", () => {
+    expect(css.resolveShadowMode(component({ $shadow: "closed" }), { shadow: "open" })).toBe(
+      "closed",
+    );
+    expect(css.resolveShadowMode(component({ $shadow: false }), { shadow: "open" })).toBeNull();
+  });
+
+  test("a value that is not a mode is ignored rather than guessed at", () => {
+    expect(css.resolveShadowMode(component({ $shadow: "yes" }), { shadow: "open" })).toBe("open");
+    /* `defaults` arrives from a parsed project.json, which the type cannot police: decode one the
+       way a host does, carrying a value outside the declared union. */
+    const lying: ProjectConfig["defaults"] = JSON.parse('{ "shadow": true }');
+    expect(css.resolveShadowMode(component(), lying)).toBeNull();
   });
 });
