@@ -147,6 +147,14 @@ function foreignEvent(event: { type: string }): StreamEvent {
    export too. Read live after that, `createChatState` would be the recording double itself. */
 const createChatState: typeof liveCreateChatState = liveCreateChatState;
 
+/* These scenarios are about what the assistant's tools do once they run, so the author's leave to
+   overwrite a file (specs/ai.md §3.11) is given in advance: every call proceeds, as it does in the
+   eval runner. `document-assistant-approval.test.ts` holds the policy itself. */
+void mock.module("../src/services/harness/approval-policy", () => ({
+  studioApprovalPolicy: () => () => ({ kind: "proceed" }),
+  trustFact: (tool: string) => `approval.trusted:${tool}`,
+}));
+
 /* The barrel, with its two factories recorded: `createChatState` stays real behind the proxy, and
    `createProxyStreamingClient` is the document-assistant suite's scripted client behind the spy. */
 const realAi = await import("@jxsuite/ai");

@@ -1158,6 +1158,57 @@
                                                     }
                                                   ]
                                                 },
+                                                "approval": {
+                                                  "tagName": "div",
+                                                  "attributes": {
+                                                    "part": "ask-options",
+                                                    "role": "group",
+                                                    "aria-label": "Whether to allow this action"
+                                                  },
+                                                  "children": [
+                                                    {
+                                                      "$prototype": "Array",
+                                                      "items": {
+                                                        "$ref": "$map/item/options"
+                                                      },
+                                                      "key": {
+                                                        "$ref": "$map/item/key"
+                                                      },
+                                                      "map": {
+                                                        "tagName": "jx-button",
+                                                        "attributes": {
+                                                          "part": "ask-option"
+                                                        },
+                                                        "$props": {
+                                                          "size": "sm",
+                                                          "variant": "secondary"
+                                                        },
+                                                        "children": [
+                                                          {
+                                                            "tagName": "span",
+                                                            "textContent": "${$map.item.label}"
+                                                          }
+                                                        ],
+                                                        "onclick": {
+                                                          "$prototype": "Function",
+                                                          "body": [
+                                                            {
+                                                              "operator": "call",
+                                                              "target": {
+                                                                "$ref": "#/state/answer"
+                                                              },
+                                                              "value": [
+                                                                {
+                                                                  "$ref": "$map/item/label"
+                                                                }
+                                                              ]
+                                                            }
+                                                          ]
+                                                        }
+                                                      }
+                                                    }
+                                                  ]
+                                                },
                                                 "unanswered": {
                                                   "tagName": "p",
                                                   "attributes": {

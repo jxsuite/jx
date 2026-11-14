@@ -611,7 +611,11 @@ function projectPanel(): AiChatView {
   const advice = error ? formatErrorAdvice(error, cs.errorCode) : "";
   const newChatCommand = projectCommand("assistant.newChat", { icon: "plus" });
   const rows = projectRows({
-    ask: { importRun, pendingId: assistant.interactions.pending?.callId ?? null },
+    ask: {
+      approval: assistant.interactions.pending,
+      importRun,
+      pendingId: assistant.interactions.pending?.callId ?? null,
+    },
     messages: cs.messages,
     status: cs.status,
   });

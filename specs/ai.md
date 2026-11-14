@@ -395,6 +395,13 @@ A call that needs a person, a question the model puts or an approval the host re
 
 **The answer is the call's result.** What the person said reaches the model as the call's tool result (§3.4), so a question and its answer are one entry in the transcript, and the round that only asked spends no work budget.
 
+**Studio confirms what undo cannot take back, and nothing else.** Studio's policy (`studioApprovalPolicy` in `packages/studio/src/services/harness/approval-policy.ts`, held by `packages/studio/tests/document-assistant-approval.test.ts`) puts two kinds of call to the author before they run:
+
+- **A disk write that replaces a file.** `write_file`, `create_component` and `create_page` write straight to disk, which Studio's history cannot undo. A write to a path that already holds a file is confirmed (`not-undoable`), naming the path; a write that creates a file proceeds, because nothing is lost. A path the tool will refuse is left for the tool to refuse.
+- **Enabling an extension** (`enable_extension`), which installs a package from the registry (`open-world`).
+
+Every other call proceeds: an edit to the document tree is one keystroke from being undone, so asking about each would cost the author more than it protects. The request is drawn in the call's own chip, as a question is (§3.4): what would happen, why it is being asked, and three answers, **Allow**, **Allow for this chat** and **Decline**. There is no "you decide": an approval is the author's alone, and skipping one declines it. A typed answer is read as one of the three or as a plain yes, and anything else declines, so a call the author did not clearly allow does not run. A declined call answers `The author declined this call.` and the turn carries on. **Allow for this chat** is recorded per tool in the conversation's session facts (§3.7), so it lasts as long as the chat does and New Chat starts with none. A policy may answer asynchronously, since whether a write replaces a file is something a host has to look up. The eval runner approves every call.
+
 ### 3.12 A suspended turn resumes from a checkpoint
 
 > **Status: Implemented.** The `suspend` strategy, `suspendOn`, `resume` and the checkpoint in `packages/ai/src/harness/run.ts` and `types.ts`; `checkResume`, `policyDigest` and `turnDigests` in `packages/ai/src/harness/checkpoint.ts`; `digest` and `canonicalJson` in `packages/ai/src/messages/digest.ts`; `createMemoryHarnessHost` and `scriptedModel` in `packages/ai/src/testing/`. `packages/ai/tests/harness-checkpoint.test.ts` holds the contract below, including the equivalence: a turn suspended and resumed at every call leaves the document an uninterrupted turn leaves.
@@ -444,7 +451,7 @@ The four file tools are the same wherever the assistant runs. `projectToolEntrie
 
 The assistant executes only through the same file/RPC surfaces a human uses, behind the server's Origin/Host gate and path containment (`@jxsuite/server` §4.2). It has no independent network or filesystem access beyond the connected provider endpoint.
 
-A host can require the author's approval before a call runs (§3.11): the approval is decided from the call before any of the tool's code executes, so a declined call has done nothing. Studio's policy approves every call today, and undo remains its backstop for document edits.
+A host can require the author's approval before a call runs (§3.11): the approval is decided from the call before any of the tool's code executes, so a declined call has done nothing. Studio asks before the two kinds of call undo cannot take back (§3.11): a disk write that replaces a file, and an extension being enabled. Undo remains its backstop for document edits.
 
 The file tools contain the path themselves before they validate or write anything. `list_files`, `read_file`, `write_file`, `create_page` and `create_component` refuse an absolute path, a drive letter, a home directory and any `..` segment with an error that quotes the path, and otherwise use the normalized project-relative path for the read or write, the open-tab check and the ledger. The server's containment remains the second check rather than the only one, and a refusal from the tool is one the model can act on.
 

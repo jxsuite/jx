@@ -42,6 +42,8 @@ import { splitAttachedContext } from "./attached-context";
 import { renderMarkdown } from "./chat-markdown";
 import { summarizeWrites, writesForTurn } from "../../services/ai-writes";
 import { ASK_TOOL } from "../../services/tool-outcomes";
+import { APPROVAL_CHOICES } from "../../services/harness/interaction-store";
+import type { PendingInteraction } from "../../services/harness/interaction-store";
 import { activeRegistry } from "../../commands/active-registry";
 
 import type { AskAnswer } from "../../services/ai-ask";
@@ -300,6 +302,35 @@ export function parseAsk(tc: LiveToolCall): AskArgs | null {
   };
 }
 
+/** Why a call is put to the author, said to them. */
+const APPROVAL_REASONS = {
+  destructive: "This removes or replaces something, and cannot be undone from Studio's history.",
+  "not-undoable": "This is saved straight to disk, and cannot be undone from Studio's history.",
+  "open-world": "This installs a package from the registry into your project.",
+} as const;
+
+/**
+ * The card for a call waiting on the author's leave to run, or null when the loop is not waiting on
+ * that for this call. It is drawn as a question is: what is asked, why, and the three answers.
+ *
+ * @param {LiveToolCall} tc
+ * @param {PendingInteraction | null | undefined} pending - What the loop is waiting on
+ * @returns {AskArgs | null}
+ */
+function approvalFor(
+  tc: LiveToolCall,
+  pending: PendingInteraction | null | undefined,
+): AskArgs | null {
+  if (!pending || pending.callId !== tc.id || pending.request.kind !== "approval") {
+    return null;
+  }
+  return {
+    context: APPROVAL_REASONS[pending.request.reason],
+    options: Object.values(APPROVAL_CHOICES),
+    question: pending.request.summary,
+  };
+}
+
 /**
  * What became of one tool call.
  *
@@ -354,6 +385,11 @@ export function toolOutcomeText(tc: LiveToolCall): string {
 export interface AskHandlers {
   /** The id of the question the loop is still waiting on, or null. */
   pendingId?: string | null;
+  /**
+   * What the loop is waiting on, when it is the author's leave to run a call (ai.md §3.11). That
+   * call's chip is drawn as the card that asks.
+   */
+  approval?: PendingInteraction | null;
   /** The live record for an `import_site` call, if this renderer's host has one. */
   importRun?: (id: string) => ImportRunRecord | null;
 }
@@ -447,7 +483,8 @@ export function projectChip(tc: LiveToolCall, handlers: AskHandlers = {}): ChatC
   const outcome = toolOutcome(tc, tc.id === handlers.pendingId || Boolean(tc.result));
   const text = toolOutcomeText(tc);
   const run = tc.name === IMPORT_TOOL ? (handlers.importRun?.(tc.id) ?? null) : null;
-  const ask = tc.name === ASK_TOOL ? parseAsk(tc) : null;
+  const approval = approvalFor(tc, handlers.approval);
+  const ask = approval ?? (tc.name === ASK_TOOL ? parseAsk(tc) : null);
   /* SAFETY: a successful ask_user result carries an AskAnswer (services/ai-ask.ts). Any other
      tool's data only feeds `answer`, which the surface draws inside the ask card alone, and
      `askState`, which is set only when `ask` is non-null, so a mistyped read never reaches the
@@ -473,7 +510,10 @@ export function projectChip(tc: LiveToolCall, handlers: AskHandlers = {}): ChatC
     tool: tc.name,
     ...(run ? projectImport(run) : noImport()),
   };
-  if (ask) {
+  if (approval) {
+    // Its choices and nothing else: nobody can decide an approval but the author.
+    base.askState = "approval";
+  } else if (ask) {
     /* The options are a shortcut, never the whole answer — the composer is always live beneath, and
        its placeholder says so. A question whose real answer is "neither, do this instead" must stay
        answerable, which is why `pending` draws the options AND leaves the field alone. */

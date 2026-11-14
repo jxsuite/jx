@@ -93,6 +93,14 @@ function toolCallRound(id: string, name: string, args: JsonObject): StreamEvent[
   ];
 }
 
+/* These scenarios are about what the assistant's tools do once they run, so the author's leave to
+   overwrite a file (specs/ai.md §3.11) is given in advance: every call proceeds, as it does in the
+   eval runner. `document-assistant-approval.test.ts` holds the policy itself. */
+void mock.module("../src/services/harness/approval-policy", () => ({
+  studioApprovalPolicy: () => () => ({ kind: "proceed" }),
+  trustFact: (tool: string) => `approval.trusted:${tool}`,
+}));
+
 void mock.module("@jxsuite/ai", () => ({
   createChatState,
   createProxyStreamingClient: (opts: ProxyStreamingClientOptions) => {

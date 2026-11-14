@@ -10,6 +10,8 @@ code:
   - packages/studio/src/panels/ai-chat/sessions-view.ts
   - packages/studio/src/surfaces/ai-chat.ts
   - packages/studio/src/services/ai-session-store.ts
+  - packages/studio/src/services/harness/approval-policy.ts
+  - packages/studio/src/services/harness/interaction-store.ts
   - packages/studio/src/services/tool-outcomes.ts
   - packages/studio/src/services/import-client.ts
   - packages/studio/src/services/ai-writes.ts
@@ -85,6 +87,15 @@ Three things follow from that:
 :::doc-tip
 The assistant is told to ask sparingly: only for things that are genuinely your judgement, only one at a time, and never for something it could have looked up itself. When it asks, the answer changes what it builds.
 :::
+
+## When the assistant asks before it acts
+
+Most of what the assistant does can be undone with :kbd[⌘Z], so it does not ask first. Two things cannot, and it asks about those:
+
+- **Replacing a file on disk.** Writing over a page, a component or any other file that already exists is saved straight to disk and is not in Studio's history. Creating a new file is not asked about, because nothing is lost.
+- **Enabling an extension**, which installs a package into your project.
+
+The request appears as a card on that action, saying what would happen and why it is asking, with three buttons. **Allow** lets this one action run. **Allow for this chat** also stops the assistant asking about that kind of action for the rest of the conversation; a new chat asks again. **Decline** tells the assistant you said no, and it carries on without doing it. You can type instead: "yes" allows, and anything else is taken as a no. Nothing has happened to the file until you allow it.
 
 ## Watching a long job
 
