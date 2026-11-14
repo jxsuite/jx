@@ -13,6 +13,8 @@
  * @docs extending/embedding/assistant-harness
  */
 
+export { checkResume, policyDigest, turnDigests } from "./checkpoint.ts";
+export type { TurnDigests } from "./checkpoint.ts";
 export { LaneBusyError, createTurnLock } from "./lock.ts";
 export { fromStreamingClient, joinSystem } from "./model.ts";
 export { CHARS_PER_TOKEN, DEFAULT_TURN_POLICY } from "./policy.ts";
@@ -23,6 +25,8 @@ export type {
   InteractionStrategy,
   ModelFn,
   ModelRequest,
+  SuspendReason,
+  TurnCheckpoint,
   TurnError,
   TurnHooks,
   TurnInput,

@@ -142,8 +142,12 @@ describe("the size of @jxsuite/ai in the page", () => {
    *
    * Raised again to 46,080 for the turn engine's closing round, its repeat guard and parallel reads
    * (41,995 bytes): new behaviour in the page, specs/ai.md §3.8.
+   *
+   * Raised again to 51,200 (48,714 bytes) for the one stream normalizer the page's client now
+   * shares with every backend (specs/ai.md §2.4), wire version 2 with its downgrade (§2.7), and the
+   * suspend and resume of §3.12: each is behaviour the page runs or must be able to speak.
    */
-  const CEILING = 46_080;
+  const CEILING = 51_200;
 
   /** The `@jxsuite/ai` subpaths Studio imports or re-exports for their values, not only types. */
   function runtimeSubpaths(): string[] {

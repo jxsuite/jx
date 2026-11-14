@@ -8,7 +8,13 @@
 import { describe, expect, it } from "bun:test";
 import { createChatHandler, modelsResponse } from "../src/gateway/index.ts";
 import type { Upstream } from "../src/gateway/index.ts";
-import { fakeUpstream, gatewayConformanceCases } from "../src/testing/index.ts";
+import {
+  createMemoryHarnessHost,
+  fakeUpstream,
+  gatewayConformanceCases,
+  scriptedModel,
+} from "../src/testing/index.ts";
+import { createToolContext } from "../src/tools.ts";
 import type { ConformanceGateway, UpstreamFetch } from "../src/testing/index.ts";
 
 const UPSTREAM: Upstream = {
@@ -138,5 +144,70 @@ describe("fakeUpstream", () => {
     const first = await reader.read();
     expect(new TextDecoder().decode(first.value)).toBe("data");
     expect(reader.read()).rejects.toThrow("connection reset");
+  });
+});
+
+describe("createMemoryHarnessHost", () => {
+  const meta = {
+    actor: { id: "a", kind: "assistant" as const, sessionId: null, turnId: "t" },
+    callId: "c",
+    tool: "probe",
+  };
+
+  it("applies an edit its producer accepts, and leaves the document it was given alone", async () => {
+    const initial = { children: [], tagName: "ul" };
+    const host = createMemoryHarnessHost(initial);
+    const ref = host.documents.resolve(createToolContext({ callId: "c" }));
+    expect(ref).toEqual({ id: "memory", path: null });
+    const receipt = await host.documents.edit(
+      { id: "memory", path: null },
+      () => ({
+        ok: true,
+        ops: [{ key: "id", op: "set-key", path: [], value: "list" }],
+        selection: { kind: "keep" },
+        summary: "Set id",
+      }),
+      meta,
+    );
+    expect(receipt).toEqual({ applied: true, changed: true });
+    expect(host.document()).toEqual({ children: [], id: "list", tagName: "ul" });
+    expect(initial).toEqual({ children: [], tagName: "ul" });
+    expect(host.documents.undoable).toBe("none");
+    expect(await host.reporter.before({ id: "memory", path: null })).toBeNull();
+    expect(await host.reporter.after({ id: "memory", path: null }, null, "Did it.")).toEqual({
+      success: true,
+      summary: "Did it.",
+    });
+    expect(host.checkpoints.size).toBe(0);
+  });
+
+  it("refuses an edit its producer refuses, changing nothing", async () => {
+    const host = createMemoryHarnessHost({ tagName: "p" });
+    const receipt = await host.documents.edit(
+      { id: "memory", path: null },
+      () => ({ error: "No such node.", ok: false }),
+      meta,
+    );
+    expect(receipt).toEqual({ applied: false, message: "No such node.", reason: "refused" });
+    expect(host.document()).toEqual({ tagName: "p" });
+  });
+});
+
+describe("scriptedModel", () => {
+  it("answers each call with the next round, then a bare done, and remembers what it was asked", async () => {
+    const model = scriptedModel([[{ content: "one", type: "delta" }]]);
+    const request = { messages: [], system: [], tools: [] };
+    const frames = [];
+    for await (const frame of model(request, new AbortController().signal)) {
+      frames.push(frame);
+    }
+    for await (const frame of model(request, new AbortController().signal)) {
+      frames.push(frame);
+    }
+    expect(frames).toEqual([
+      { content: "one", type: "delta" },
+      { stopReason: "stop", type: "done" },
+    ]);
+    expect(model.requests).toEqual([request, request]);
   });
 });

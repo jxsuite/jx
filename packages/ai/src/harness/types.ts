@@ -13,6 +13,7 @@ import type {
   InteractionRequest,
   InteractionResponse,
   SessionFacts,
+  ToolCall,
   ToolRegistry,
   ToolResult,
   WriteLedger,
@@ -67,6 +68,9 @@ export interface TurnError {
  * - `cancelled`: the turn was stopped.
  * - `empty`: the model answered with neither text nor a tool call, and nothing earlier in the turn
  *   was drawn either.
+ * - `suspended`: the turn stopped where it needs something it cannot get now (a person's answer, or a
+ *   provider that will accept the request later), and left a checkpoint to resume from (specs/ai.md
+ *   §3.12).
  */
 export type TurnOutcomeKind =
   | "complete"
@@ -74,7 +78,14 @@ export type TurnOutcomeKind =
   | "cap_failed"
   | "error"
   | "cancelled"
-  | "empty";
+  | "empty"
+  | "suspended";
+
+/**
+ * Why a turn suspended: on a question, on an approval (`permission`), or on a provider error the
+ * host said is worth waiting out, read as a credential problem or a rate limit from its code.
+ */
+export type SuspendReason = "interaction" | "credentials" | "permission" | "rate_limit";
 
 /** Why a turn stopped working: its work budget ran out, or it was repeating itself. */
 export type CapReason = "budget" | "repeating";
@@ -104,11 +115,17 @@ export interface TurnPolicy {
   readonly emptyText: string;
   /** Whether each call needs the author's approval before it runs. Defaults to `proceedAlways`. */
   readonly approval: ApprovalPolicy;
+  /**
+   * The provider error codes a turn suspends on rather than fails of (specs/ai.md §3.12): a lapsed
+   * credential or a rate limit that a later resume can get past. None by default.
+   */
+  readonly suspendOn: readonly string[];
 }
 
 /**
  * How a turn gets a person's answer when a call needs one (specs/ai.md §3.11): `inline` asks the
- * host and waits on the answer within the turn, and `none` answers that nobody is available.
+ * host and waits on the answer within the turn, `suspend` ends the turn with a checkpoint to resume
+ * once there is an answer (§3.12), and `none` answers that nobody is available.
  */
 export type InteractionStrategy =
   | {
@@ -122,6 +139,8 @@ export type InteractionStrategy =
         at: { readonly callId: string; readonly signal: AbortSignal },
       ) => Promise<InteractionResponse>;
     }
+  /** Checkpoint and end the turn `suspended`; a later turn resumes it with the answer (§3.12). */
+  | { readonly mode: "suspend" }
   | { readonly mode: "none" };
 
 /** What a host can do between the engine's steps. */
@@ -180,6 +199,16 @@ export interface TurnInput {
   /** Held for the whole turn; a turn started on a held lock throws `LaneBusyError`. */
   readonly lock?: TurnLock;
   /**
+   * Continue a suspended turn (specs/ai.md §3.12): the checkpoint it left, and the person's answer
+   * to the request it was waiting on, or null when it was waiting on none (or has none yet, in
+   * which case the request is put to `interactions` again). `history` is the conversation the
+   * original turn was given: what the turn itself added is in the checkpoint.
+   */
+  readonly resume?: {
+    readonly checkpoint: TurnCheckpoint;
+    readonly response: InteractionResponse | null;
+  };
+  /**
    * Called with every event, synchronously and in order, before the engine takes its next step. A
    * host that keeps its own transcript applies each event here.
    */
@@ -209,8 +238,9 @@ interface EventBase {
 
 /** What a turn reports as it runs, in the order it happens. */
 export type HarnessEvent = EventBase &
+  /** `resumed` is present, and true, on a turn continuing from a checkpoint. */
   (
-    | { readonly type: "turn_start" }
+    | { readonly type: "turn_start"; readonly resumed?: true }
     | {
         /**
          * The history broke a tool call's pairing with its reply, and the turn repaired it before
@@ -293,6 +323,8 @@ export type HarnessEvent = EventBase &
         readonly toolMessageId: string;
         readonly result: ToolResult;
       }
+    /** The turn is about to end `suspended`: what a host stores to resume it. */
+    | { readonly type: "checkpoint"; readonly checkpoint: TurnCheckpoint }
     | { readonly type: "turn_end"; readonly outcome: TurnOutcome }
   );
 
@@ -312,6 +344,44 @@ export interface TurnOutcome {
   readonly cap?: { readonly messageId: string; readonly text: string };
   /** For `error` and `empty`: the round message that was dropped. */
   readonly removedMessageId?: string;
-  /** For `error`, `empty` and `cap_failed`. */
+  /** For `error`, `empty` and `cap_failed`, and for a turn suspended on a provider error. */
   readonly error?: TurnError;
+  /** For `suspended`: what the turn resumes from. */
+  readonly checkpoint?: TurnCheckpoint;
+}
+
+/**
+ * Where a suspended turn stopped (specs/ai.md §3.12). Plain JSON: a host stores it in the same
+ * write as the conversation, and hands it back as `TurnInput.resume` to continue.
+ */
+export interface TurnCheckpoint {
+  readonly v: 1;
+  readonly turnId: string;
+  readonly sessionId: string | null;
+  readonly createdAt: number;
+  readonly model: { readonly family: ProviderFamily; readonly model: string };
+  /** The tools, policy and system prompt the turn ran under; a resume under others is refused. */
+  readonly catalogDigest: string;
+  readonly policyDigest: string;
+  readonly systemDigest: string;
+  /** The last round the turn completed or was in the middle of. */
+  readonly round: number;
+  readonly workRounds: number;
+  /** Every message the turn had added when it stopped. */
+  readonly appended: readonly ChatMessage[];
+  /**
+   * The round whose calls were not all run: its message, its calls in order, and the index of the
+   * first one still to run. Null when the turn stopped between rounds.
+   */
+  readonly pending: {
+    readonly messageId: string;
+    readonly calls: readonly ToolCall[];
+    readonly next: number;
+  } | null;
+  /** The request the turn is waiting on a person for, and the call that made it. */
+  readonly awaiting: { readonly callId: string; readonly request: InteractionRequest } | null;
+  readonly writes: readonly AiWrite[];
+  readonly applied: readonly string[];
+  readonly errors: readonly string[];
+  readonly reason: SuspendReason;
 }

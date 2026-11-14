@@ -92,10 +92,11 @@ const DATA_EXPORTS = { "./schemas/*": "./schemas/*" } as const;
  * project a neutral conversation onto the version 1 body, for the proxy client's downgrade, and the
  * chat-completions body builder it shares with `./providers`; the gateway reaches the same modules
  * to read a version 2 request, and streaming-client itself for the wire header's name. `./testing`
- * reaches nothing but itself: the frame types it borrows are erased too. `./messages` imports
- * nothing outside itself at runtime; its `types.ts` is type-only and erased like the rest.
- * `./harness` reaches `./tools`, two `./messages` modules and `message-id.ts` (the id counter it
- * shares with chat-state): the graph that proves the harness depends on the tools, not the reverse.
+ * reaches itself and, for its in-memory document host, the same two `@jxsuite/schema` leaves
+ * `./jx-tools` does: the frame types it borrows are erased too. `./messages` imports nothing
+ * outside itself at runtime; its `types.ts` is type-only and erased like the rest. `./harness`
+ * reaches `./tools`, two `./messages` modules and `message-id.ts` (the id counter it shares with
+ * chat-state): the graph that proves the harness depends on the tools, not the reverse.
  * `cache-hints.ts` is in both graphs on purpose: it is the prompt-cache hint table both upstream
  * callers share, and it needs nothing but `crypto.subtle` and `URL`. The gateway is the one entry
  * that imports protocol at runtime, and only its two problem modules (for `problemDetails` and
@@ -141,6 +142,7 @@ const FROZEN_GRAPHS = new Map<string, readonly string[]>([
   [
     "./harness",
     [
+      "packages/ai/src/harness/checkpoint.ts",
       "packages/ai/src/harness/index.ts",
       "packages/ai/src/harness/lock.ts",
       "packages/ai/src/harness/model.ts",
@@ -148,6 +150,7 @@ const FROZEN_GRAPHS = new Map<string, readonly string[]>([
       "packages/ai/src/harness/run.ts",
       "packages/ai/src/message-id.ts",
       "packages/ai/src/messages/convert.ts",
+      "packages/ai/src/messages/digest.ts",
       "packages/ai/src/messages/openai.ts",
       "packages/ai/src/messages/repair.ts",
       "packages/ai/src/tools.ts",
@@ -169,6 +172,7 @@ const FROZEN_GRAPHS = new Map<string, readonly string[]>([
     "./messages",
     [
       "packages/ai/src/messages/convert.ts",
+      "packages/ai/src/messages/digest.ts",
       "packages/ai/src/messages/index.ts",
       "packages/ai/src/messages/openai.ts",
       "packages/ai/src/messages/repair.ts",
@@ -211,6 +215,10 @@ const FROZEN_GRAPHS = new Map<string, readonly string[]>([
       "packages/ai/src/testing/conformance.ts",
       "packages/ai/src/testing/fake-upstream.ts",
       "packages/ai/src/testing/index.ts",
+      "packages/ai/src/testing/memory-host.ts",
+      "packages/ai/src/testing/scripted-model.ts",
+      "packages/schema/src/doc-ops.ts",
+      "packages/schema/src/guards.ts",
     ],
   ],
   ["./tools", ["packages/ai/src/tools.ts"]],
