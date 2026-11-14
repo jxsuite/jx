@@ -127,6 +127,7 @@ import {
   pureSchemeOf,
   referencesStateKey,
   renderStaticNode,
+  resolveHostAttributes,
   resolveHostStyle,
   refuseTemplateItems,
   buildListRows,
@@ -2936,12 +2937,22 @@ function expandComponents(
      * instance that took the definition's defaults with no host style at all — no size, no mask —
      * while the same instance one level down had them.
      */
-    const resolvedStyle = resolveHostStyle(def.style, buildInstanceScope(def, props));
+    const instanceScope = buildInstanceScope(def, props);
+    const resolvedStyle = resolveHostStyle(def.style, instanceScope);
     if (Object.keys(resolvedStyle).length > 0) {
       /* SAFETY: every value in `resolvedStyle` replaces a template-string declaration of
          `def.style`, and the page style pass interpolates declaration values into CSS text, so the
          merged object is a style in every way the build reads one. */
       node.style = { ...node.style, ...resolvedStyle } as JxStyle;
+    }
+
+    /* The definition's root attributes, resolved against the instance and written over the
+       instance's own, as the element writes them on itself when it connects (spec.md §16.1). The
+       prerendered host therefore already matches a rule keyed on one (`&[data-variant="accent"]`),
+       and a static instance, which loads no module, carries them at all. */
+    const hostAttributes = resolveHostAttributes(def.attributes, instanceScope);
+    if (Object.keys(hostAttributes).length > 0) {
+      node.attributes = { ...node.attributes, ...hostAttributes };
     }
 
     /*

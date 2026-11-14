@@ -1706,8 +1706,6 @@ A template reads the page context bare: `${$page.locale}` and `${$site.name}` ar
 
 ### 16.1 Definition
 
-> **Status: Partial.** The interpreter binds root-level `on*` handlers on the host (`bindDefinitionHandlers` in `packages/runtime/src/runtime.ts`). The compiled element module every site build ships (`compileElement`) does not: its `template()` renders only the definition's children and no host listener is emitted, so a root `onclick`, `onkeydown` or `ontoggle` is dropped in production.
-
 A Jx component whose root `tagName` contains a hyphen is a custom element definition:
 
 ```json
@@ -1722,7 +1720,11 @@ A Jx component whose root `tagName` contains a hyphen is a custom element defini
 }
 ```
 
-**A definition's root-level event handlers listen on the host element.** `onclick`, `onkeydown`, `ontoggle` and the rest, written beside `tagName` and `state`, attach to the element itself exactly as they would to an element inside a document, with the definition's own scope as `state` and the host as `event.currentTarget`. That is where an element's contract lives: a menu row's activation, a panel's keyboard handling and the `toggle` a popover fires all arrive at the host, and a definition that had to render an inner wrapper to hear them would be one element that looks like two. The other root-level keys — `observedAttributes`, `emits`, `description` — describe the element and are never written onto an instance.
+**A definition's root-level event handlers listen on the host element.** `onclick`, `onkeydown`, `ontoggle` and the rest, written beside `tagName` and `state`, attach to the element itself exactly as they would to an element inside a document, with the definition's own scope as `state` and the host as `event.currentTarget`. Each is attached once per instance, with `addEventListener` and no options (§4.3), and lives as long as the element: moving the element neither adds a second listener nor removes the first. That is where an element's contract lives: a menu row's activation, a panel's keyboard handling and the `toggle` a popover fires all arrive at the host, and a definition that had to render an inner wrapper to hear them would be one element that looks like two. The other root-level keys — `observedAttributes`, `emits`, `description` — describe the element and are never written onto an instance.
+
+**A definition's root `attributes` are written on the host element.** Each is applied when the element connects, by §8.3's rule, against the definition's own scope: a literal once, a `$ref` or a `${…}` template as a binding that follows state, and a value that resolves to nothing takes the attribute off. They are written after an instance's own attributes, so where both name one attribute the definition's value is the one the element shows. This is how an element states what it is to the tree around it (a `role`, an `aria-label` computed from a prop) and gives its own stylesheet something to select (`&[data-variant="accent"]`). A built page carries them in the prerendered host too, resolved against that instance, so a rule keyed on one matches before the element's module loads and a static instance, which loads none, has them at all.
+
+> **Status: Implemented.** Both tiers bind the handlers and write the attributes: the interpreter in its element class (`bindDefinitionHandlers`, `applyAttributes` in `packages/runtime/src/runtime.ts`), the compiled element in the constructor and `connectedCallback` its module carries (`hostHandlers`, `hostAttributeLines` in `packages/compiler/src/targets/compile-element.ts`), and the build in every expansion of an instance (`resolveHostAttributes` in `packages/compiler/src/shared.ts`).
 
 ### 16.2 Property-First Interface
 

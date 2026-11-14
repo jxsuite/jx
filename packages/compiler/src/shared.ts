@@ -85,6 +85,7 @@ import type { JxScope } from "@jxsuite/runtime/types";
 import type {
   CemParameter,
   JsonValue,
+  JxAttributeValue,
   JxDocument,
   JxDocumentValue,
   JxElement,
@@ -820,6 +821,25 @@ function movesState(read: string, at: number, bare: boolean): boolean {
  * @param options `bare` moves `state` alone too, not only `state.member`; `code: false` reads text
  *   that is not a body (an attribute's template), where nothing is a string or a comment.
  */
+/**
+ * Whether emitted source still names `state` on its own, after {@link rewriteState} moved every
+ * `state.member` read: `${state.applySelection(state)}` hands the scope itself to a helper, as a
+ * template may (the interpreter binds `state` as a parameter of every template). The element target
+ * has no variable of that name, so a module whose templates do this declares one beside the alias
+ * it reads through. A false positive (the word in literal text) costs one unused `const`.
+ *
+ * @param {string} source - Emitted template or expression source
+ * @returns {boolean}
+ */
+export function readsBareState(source: string): boolean {
+  for (let at = source.indexOf("state"); at !== -1; at = source.indexOf("state", at + 1)) {
+    if (movesState(source, at, true) && !movesState(source, at, false)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 export function rewriteState(
   text: string,
   to: string,
@@ -3453,6 +3473,9 @@ export function observedAttributeProps(
  */
 export type ResolvedHostStyle = Record<string, JxScope[string]>;
 
+/** A definition's root attributes, resolved against one instance. */
+export type ResolvedHostAttributes = Record<string, JxAttributeValue>;
+
 /**
  * The definition's host `style` entries that depend on the instance, resolved against it.
  *
@@ -3465,6 +3488,36 @@ export type ResolvedHostStyle = Record<string, JxScope[string]>;
  * @param {JxScope} scope - The instance's scope (`buildInstanceScope`)
  * @returns {ResolvedHostStyle}
  */
+/**
+ * A definition's root `attributes` as an instance's host carries them at build time (spec.md
+ * §16.1): each value resolved against the instance's scope, so the prerendered host already holds
+ * what the element writes on itself when it connects, and a static instance, which never runs a
+ * module, holds them at all. A value the build cannot resolve, or one that resolves to nothing, is
+ * left out: the module decides it.
+ *
+ * @param {JxElement["attributes"]} attributes - The definition's root `attributes`
+ * @param {JxScope} scope - The instance's scope
+ * @returns {ResolvedHostAttributes}
+ */
+export function resolveHostAttributes(attributes: JxElement["attributes"], scope: JxScope) {
+  const resolved: ResolvedHostAttributes = {};
+  for (const [name, value] of Object.entries(attributes ?? {})) {
+    if (isRef(value) && isRuntimeOnlyRef(value.$ref, scope)) {
+      continue;
+    }
+    let result: JxScope[string];
+    try {
+      result = resolveStaticValue(value, scope);
+    } catch {
+      continue;
+    }
+    if (isString(result) || isNumber(result) || isBoolean(result)) {
+      resolved[name] = result;
+    }
+  }
+  return resolved;
+}
+
 export function resolveHostStyle(
   style: JxStyle | null | undefined,
   scope: JxScope,
@@ -3860,8 +3913,12 @@ function renderComponentInstance(
   const instance = { ...node };
   delete instance.$props;
   delete instance.children;
+  // The definition's own root attributes over the instance's, as the element writes them (§16.1).
+  const hostAttributes = { ...attributes, ...resolveHostAttributes(def.attributes, instanceScope) };
   instance.attributes =
-    !isStatic && hasProps ? { ...attributes, "data-jx-props": JSON.stringify(props) } : attributes;
+    !isStatic && hasProps
+      ? { ...hostAttributes, "data-jx-props": JSON.stringify(props) }
+      : hostAttributes;
   if (slotId !== null) {
     instance.attributes = { ...instance.attributes, [SLOT_ATTR]: String(slotId) };
   }

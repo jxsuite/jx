@@ -2,6 +2,7 @@
 title: "Components"
 description: "How Jx components work: self-describing JSON, state management, a component's own script, custom elements, and the shadow-DOM opt-in."
 spec:
+  - spec.md#16.1 # root-level handlers and attributes are the host's
   - spec.md#16.6
   - spec.md#16.9
   - spec.md#16.4
@@ -164,6 +165,8 @@ This cuts both ways. Your page CSS **can** reach into a component and restyle it
 :::
 
 **Handlers written at the root listen on the element itself.** An `onclick`, `onkeydown` or `ontoggle` beside `tagName` attaches to the host, with the component's own `state` and the host as `event.currentTarget`. That is where a component's contract belongs: a row's activation or a panel's keyboard handling arrives at the element, not at a wrapper it had to render to hear it.
+
+**Attributes written at the root are written on the element itself.** An `attributes` block beside `tagName` sets them on the host when it connects, and a `${}` template or a `$ref` there follows the component's state. Use it for what the element is to the page around it, such as a `role`, an `aria-label` built from a prop, or a `data-variant` the component's own style selects with `&[data-variant="accent"]`. A value that resolves to `null` removes the attribute. Where an instance writes the same attribute, the component's value wins. A built page writes these on the prerendered element too, so the styles apply before any script runs.
 
 ```json
 {
