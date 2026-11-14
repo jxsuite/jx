@@ -160,6 +160,18 @@ describe("the live set", () => {
     ]);
   });
 
+  test("computeLiveTags counts what a live definition renders only on a page that draws it", () => {
+    // A page that places the chip alone keeps it static: the card is live, but not drawn here.
+    const alone = computeLiveTags(registry, { children: [{ tagName: "x-chip" }], tagName: "main" });
+    expect([...alone].toSorted()).toEqual(["x-card"]);
+    // A page that reaches the card through a static wrapper makes everything it renders live.
+    const wrapped = computeLiveTags(registry, {
+      children: [{ tagName: "x-lone" }],
+      tagName: "main",
+    });
+    expect([...wrapped].toSorted()).toEqual(["x-a", "x-badge", "x-card", "x-chip", "x-icon"]);
+  });
+
   test("isLiveComponent reads the set, or the definition when there is none", () => {
     const live = computeLiveTags(registry);
     expect(isLiveComponent("x-chip", chip, live)).toBe(true);

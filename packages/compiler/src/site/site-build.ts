@@ -893,14 +893,6 @@ export async function buildSite(
     log(`  Wrote custom-elements.json (${definitions.length} element(s))`);
   }
 
-  /*
-   * Which components ship their module, decided once for the site (compiler.md §8.1): a definition
-   * that is not fully static, and every registered tag such a definition renders, because its
-   * module creates that element bare and only the element's own module fills it in. The rest are
-   * static: their instances are stamped `data-jx-static` and no page loads a module for them.
-   */
-  const liveTags = computeLiveTags(componentDefs);
-  const staticTags = new Set([...componentDefs.keys()].filter((tag) => !liveTags.has(tag)));
   // A page writes its module scripts so each tag follows every tag it renders.
   const scriptOrder = orderComponentTags(compiledComponentTags, componentDefs);
 
@@ -1117,7 +1109,7 @@ export async function buildSite(
           result.html,
           compiledComponentTags,
           componentCSS,
-          staticTags,
+          new Set(compiledComponentTags.filter((tag) => !result.liveTags.has(tag))),
           result.files.map((f: { content: string }) => f.content).join("\n"),
           runtimeImports,
           scriptOrder,
@@ -1928,10 +1920,17 @@ async function compilePage(
      scope clones the page's whole state. */
   let slotScopeMemo: JxScope | undefined;
   const slotScope = () => (slotScopeMemo ??= buildInitialScope(layoutDoc.state ?? {}));
+  /*
+   * Which components ship their module on this page (compiler.md §8.1): a definition that is not
+   * fully static, and every registered tag such a definition renders when this page draws it,
+   * because its module creates that element bare and only the element's own module fills it in.
+   * The rest are static here: stamped `data-jx-static`, with no module loaded for them. Read
+   * before the expansion, which replaces each instance's children with its prerender.
+   */
+  const liveTags = computeLiveTags(componentDefs, layoutDoc);
   expandComponents(layoutDoc, componentDefs, {
     defaults: projectConfig.defaults,
-    // Derived rather than passed: a pure function of the registry, which is already here.
-    liveTags: computeLiveTags(componentDefs),
+    liveTags,
     slotCss,
     slotIds,
     slotScope,
@@ -2161,6 +2160,7 @@ async function compilePage(
     excludeFromSitemap: pageDoc.$sitemap === false,
     files: result.files,
     html: result.html,
+    liveTags,
     /*
      * Reported rather than warned about here: a mistyped `rel` almost always lives in the site or
      * layout `$head`, which means it is on every page, and the caller is the only scope that can
