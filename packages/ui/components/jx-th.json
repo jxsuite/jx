@@ -1,0 +1,37 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "JxTh",
+  "tagName": "jx-th",
+  "$description": "A header cell of a `jx-table`: a CSS table cell that heads a column, or with scope=row heads a row.",
+  "observedAttributes": ["scope"],
+  "state": {
+    "scope": {
+      "type": "string",
+      "default": "col",
+      "attribute": "scope",
+      "description": "col or row, the word a native th uses. col, the default, makes the cell a columnheader; row makes it a rowheader, the cell a reader hears again as they move along that row."
+    }
+  },
+  "attributes": {
+    "role": "${state.scope === 'row' ? 'rowheader' : 'columnheader'}"
+  },
+  "style": {
+    "display": "table-cell",
+    "&[hidden]": {
+      "display": "none"
+    },
+    "boxSizing": "border-box",
+    "padding": "var(--jx-space-2) var(--jx-space-3)",
+    "verticalAlign": "middle",
+    "borderBlockEnd": "1px solid var(--jx-border)",
+    "textAlign": "start",
+    "fontWeight": "600",
+    "color": "var(--jx-fg-dim)",
+    "whiteSpace": "nowrap"
+  },
+  "children": [
+    {
+      "tagName": "slot"
+    }
+  ]
+}

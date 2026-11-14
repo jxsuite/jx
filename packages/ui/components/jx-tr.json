@@ -1,0 +1,30 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "JxTr",
+  "tagName": "jx-tr",
+  "$description": "One row of a `jx-table`: a CSS table row with the row role. It owns no look, because whether a row responds to a pointer, and how, is the consumer's to say.",
+  "observedAttributes": ["rowindex"],
+  "state": {
+    "rowindex": {
+      "type": "number",
+      "default": 0,
+      "attribute": "rowindex",
+      "description": "Which row of the WHOLE set this is, one-based and counting the header row, written as aria-rowindex. A table that draws only the rows in view gives every row its place, so a reader hears where the slice sits. Zero, the default, writes nothing."
+    }
+  },
+  "attributes": {
+    "role": "row",
+    "aria-rowindex": "${state.rowindex > 0 ? state.rowindex : null}"
+  },
+  "style": {
+    "display": "table-row",
+    "&[hidden]": {
+      "display": "none"
+    }
+  },
+  "children": [
+    {
+      "tagName": "slot"
+    }
+  ]
+}

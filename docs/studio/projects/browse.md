@@ -138,7 +138,7 @@ Images, video, fonts and documents are not content: they live in the [Media work
 
 ## Big projects stay quick
 
-The Content workspace renders what fits the window, not what is in the project: a 300-page site draws about forty cards, and the rest arrive as you scroll. A card's live preview is built the moment the card comes into view (never before), and a fixed number of rendered previews stay in memory however long you browse. Table, Calendar and Board draw text only, so they stay cheap by construction.
+The Content workspace renders what fits the window, not what is in the project: a 300-page site draws about forty cards, and the rest arrive as you scroll. A card's live preview is built the moment the card comes into view (never before), and a fixed number of rendered previews stay in memory however long you browse. Table, Calendar and Board draw text only, so they stay cheap by construction. The Table draws only the rows in view too, and a screen reader is still told the whole list: the table announces how many rows the collection has, and each row announces its place in it.
 
 ## When the list is short
 

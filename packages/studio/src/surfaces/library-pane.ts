@@ -82,6 +82,12 @@ export interface LibraryRow {
   checked: boolean;
   /** The checkbox's name: `Select Spring planting`. */
   selectLabel: string;
+  /**
+   * Which row of the WHOLE list this is in the Table, one-based and counting the header row, so the
+   * first file is row 2 (the table's `aria-rowindex`, ui.md §5.4). Zero in every other layout,
+   * which writes nothing.
+   */
+  rowIndex: number;
 }
 
 /** One table cell: which column it is in, and what it says. */
@@ -192,6 +198,12 @@ export interface LibraryView {
   padTop: string;
   padBottom: string;
   rows: LibraryRow[];
+  /**
+   * How many rows the Table's whole list has, the header row included (the table's
+   * `aria-rowcount`): the Table draws a window, and a reader is told the size of the list rather
+   * than of the slice. Zero outside the Table.
+   */
+  rowCount: number;
   columns: LibraryColumn[];
   /** The Table's Cover column: `shown` when the collection's entries have a picture field. */
   coverState: "hidden" | "shown";
@@ -302,6 +314,7 @@ function project(scope: LibraryScope, view: LibraryView): void {
   scope.padTop = view.padTop;
   scope.padBottom = view.padBottom;
   scope.rows = view.rows;
+  scope.rowCount = view.rowCount;
   scope.columns = view.columns;
   scope.groups = view.groups;
   scope.truncated = view.truncated;
@@ -404,6 +417,7 @@ export function mountLibrarySurface(
     selectState: "hidden",
     selectToggleState: "hidden",
     selecting: false,
+    rowCount: 0,
     rowSize: "normal",
     deleteDisabled: true,
     toggleSelecting: actions.toggleSelecting,

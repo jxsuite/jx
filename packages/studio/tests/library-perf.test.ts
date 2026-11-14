@@ -268,6 +268,31 @@ describe(`${PAGE_COUNT} pages, the Pages collection`, () => {
     await layOutPane();
     // 700px / 32px = 22 visible rows, +1 partial, +3 overscan.
     expect(host.querySelectorAll('[part="table-row"]').length).toBe(26);
+    /* The window is what is DRAWN, and a reader is told about the whole list (ui.md §5.4): the
+       table states every row it has, the header included, and each drawn row states its own place
+       in that list. Without the two a 300-page project is announced as a table of 26 rows. */
+    const table = host.querySelector<HTMLElement>('[part="table"]')!;
+    const indexes = () =>
+      [...host.querySelectorAll<HTMLElement>('[part="table-row"]')].map((row) => ({
+        index: row.getAttribute("aria-rowindex"),
+        path: row.dataset["path"] ?? "",
+      }));
+    // The fixture's files are `pages/page-NNN.json` and sort by path, so NNN is the file's place.
+    const expected = (path: string) => String(Number(/page-(\d+)\.json$/u.exec(path)?.[1]) + 2);
+    expect(table.getAttribute("aria-rowcount")).toBe(String(PAGE_COUNT + 1));
+    expect(host.querySelector('[part="table-head"]')?.getAttribute("aria-rowindex")).toBe("1");
+    expect(indexes()[0]).toEqual({ index: "2", path: "pages/page-000.json" });
+    const body = host.querySelector<HTMLElement>('[part="body"]')!;
+    body.scrollTop = 32 * 120;
+    body.dispatchEvent(new Event("scroll"));
+    await flush();
+    const scrolled = indexes();
+    expect(Number(scrolled[0]!.index)).toBeGreaterThan(100);
+    for (const { index, path } of scrolled) {
+      expect(index, path).toBe(expected(path));
+    }
+    expect(table.getAttribute("aria-rowcount")).toBe(String(PAGE_COUNT + 1));
+    expect(scrolled.length).toBeLessThanOrEqual(40);
   });
 
   test("the same project in two languages renders the same window, and one language less", async () => {

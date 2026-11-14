@@ -7,7 +7,7 @@
     "part": "packages"
   },
   "style": {
-    "$description": "The section's own look. Three borrowings end here. `.settings-section` was an orphan class with no rule anywhere, so the section's rhythm was carried by the toolbar's inline `margin-bottom`; it is drawn below instead of implied. `.settings-section-title` and `.settings-field-desc` keep their stylesheet — nine settings sections are still lit and still name them — so this document carries its own copy of each, with `--spectrum-font-size-75` re-pointed at the kit's scale: a document is mounted outside `<sp-theme>`, where that name resolves to nothing and every one of these would silently have taken its 12px fallback. And the table is drawn here rather than by `sp-table`, which is the one thing on this surface the kit has no element for: four Spectrum tags went, and a `<table>` with three column headers replaced them, so the columns are announced as columns and a row is a row rather than a `role=\"row\"` a component asserts.",
+    "$description": "The section's own look. Three borrowings end here. `.settings-section` was an orphan class with no rule anywhere, so the section's rhythm was carried by the toolbar's inline `margin-bottom`; it is drawn below instead of implied. `.settings-section-title` and `.settings-field-desc` keep their stylesheet — nine settings sections are still lit and still name them — so this document carries its own copy of each, with `--spectrum-font-size-75` re-pointed at the kit's scale: a document is mounted outside `<sp-theme>`, where that name resolves to nothing and every one of these would silently have taken its 12px fallback. And the table is the kit's `jx-table` (ui.md §5.4), so the columns are announced as columns and a row as a row, and the header and cell look are the kit's rather than a third copy of them; what stays here is what only this table knows, its monospace versions and its pair of buttons.",
     "display": "block",
     "fontFamily": "var(--jx-font-sans)",
     "& [part=\"title\"]": {
@@ -42,24 +42,6 @@
       "margin": "0",
       "fontSize": "var(--jx-text-md)",
       "color": "var(--fg-dim)"
-    },
-    "& [part=\"table\"]": {
-      "width": "100%",
-      "borderCollapse": "collapse",
-      "fontSize": "var(--jx-text-md)",
-      "color": "var(--fg)"
-    },
-    "& [part=\"column\"]": {
-      "padding": "var(--jx-space-2) var(--jx-space-3)",
-      "textAlign": "start",
-      "fontWeight": "500",
-      "color": "var(--fg-dim)",
-      "borderBottom": "1px solid var(--border)"
-    },
-    "& [part=\"name-cell\"], & [part=\"current\"], & [part=\"latest\"], & [part=\"row-actions\"]": {
-      "padding": "var(--jx-space-2) var(--jx-space-3)",
-      "verticalAlign": "middle",
-      "borderBottom": "1px solid var(--border)"
     },
     "& [part=\"name-cell\"]": {
       "overflowWrap": "anywhere"
@@ -314,203 +296,154 @@
           "textContent": "No dependencies."
         },
         "listed": {
-          "tagName": "table",
+          "tagName": "jx-table",
           "attributes": {
             "part": "table"
           },
           "children": [
             {
-              "tagName": "thead",
+              "tagName": "jx-tr",
               "children": [
                 {
-                  "tagName": "tr",
+                  "tagName": "jx-th",
+                  "attributes": {
+                    "part": "column"
+                  },
+                  "textContent": "Package"
+                },
+                {
+                  "tagName": "jx-th",
+                  "attributes": {
+                    "part": "column"
+                  },
+                  "textContent": "Current"
+                },
+                {
+                  "tagName": "jx-th",
+                  "attributes": {
+                    "part": "column"
+                  },
+                  "textContent": "Latest"
+                },
+                {
+                  "tagName": "jx-th",
+                  "attributes": {
+                    "part": "column"
+                  },
                   "children": [
                     {
-                      "tagName": "th",
+                      "tagName": "span",
                       "attributes": {
-                        "part": "column",
-                        "scope": "col"
+                        "part": "hidden-label"
                       },
-                      "textContent": "Package"
-                    },
-                    {
-                      "tagName": "th",
-                      "attributes": {
-                        "part": "column",
-                        "scope": "col"
-                      },
-                      "textContent": "Current"
-                    },
-                    {
-                      "tagName": "th",
-                      "attributes": {
-                        "part": "column",
-                        "scope": "col"
-                      },
-                      "textContent": "Latest"
-                    },
-                    {
-                      "tagName": "th",
-                      "attributes": {
-                        "part": "column",
-                        "scope": "col"
-                      },
-                      "children": [
-                        {
-                          "tagName": "span",
-                          "attributes": {
-                            "part": "hidden-label"
-                          },
-                          "textContent": "Actions"
-                        }
-                      ]
+                      "textContent": "Actions"
                     }
                   ]
                 }
               ]
             },
             {
-              "tagName": "tbody",
-              "attributes": {
-                "part": "rows"
+              "$prototype": "Array",
+              "items": {
+                "$ref": "#/state/rows"
               },
-              "children": [
-                {
-                  "$prototype": "Array",
-                  "items": {
-                    "$ref": "#/state/rows"
-                  },
-                  "key": {
-                    "$ref": "$map/item/name"
-                  },
-                  "map": {
-                    "tagName": "tr",
+              "key": {
+                "$ref": "$map/item/name"
+              },
+              "map": {
+                "tagName": "jx-tr",
+                "attributes": {
+                  "part": "row",
+                  "data-package": "${$map.item.name}"
+                },
+                "children": [
+                  {
+                    "tagName": "jx-td",
                     "attributes": {
-                      "part": "row",
-                      "data-package": "${$map.item.name}"
+                      "part": "name-cell"
                     },
                     "children": [
                       {
-                        "tagName": "td",
+                        "tagName": "span",
                         "attributes": {
-                          "part": "name-cell"
+                          "part": "package-name"
+                        },
+                        "textContent": "${$map.item.name}"
+                      },
+                      {
+                        "tagName": "span",
+                        "attributes": {
+                          "part": "dev-slot",
+                          "role": "none"
+                        },
+                        "style": {
+                          "display": "contents"
+                        },
+                        "$switch": {
+                          "$ref": "$map/item/dev"
+                        },
+                        "cases": {
+                          "true": {
+                            "tagName": "span",
+                            "attributes": {
+                              "part": "dev"
+                            },
+                            "textContent": "· dev"
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "tagName": "jx-td",
+                    "attributes": {
+                      "part": "current"
+                    },
+                    "textContent": "${$map.item.version}"
+                  },
+                  {
+                    "tagName": "jx-td",
+                    "attributes": {
+                      "part": "latest"
+                    },
+                    "textContent": "${$map.item.latest}"
+                  },
+                  {
+                    "tagName": "jx-td",
+                    "attributes": {
+                      "part": "row-actions"
+                    },
+                    "children": [
+                      {
+                        "tagName": "div",
+                        "attributes": {
+                          "part": "actions"
                         },
                         "children": [
                           {
                             "tagName": "span",
                             "attributes": {
-                              "part": "package-name"
-                            },
-                            "textContent": "${$map.item.name}"
-                          },
-                          {
-                            "tagName": "span",
-                            "attributes": {
-                              "part": "dev-slot",
+                              "part": "update-slot",
                               "role": "none"
                             },
                             "style": {
                               "display": "contents"
                             },
                             "$switch": {
-                              "$ref": "$map/item/dev"
+                              "$ref": "$map/item/canUpdate"
                             },
                             "cases": {
                               "true": {
-                                "tagName": "span",
-                                "attributes": {
-                                  "part": "dev"
-                                },
-                                "textContent": "· dev"
-                              }
-                            }
-                          }
-                        ]
-                      },
-                      {
-                        "tagName": "td",
-                        "attributes": {
-                          "part": "current"
-                        },
-                        "textContent": "${$map.item.version}"
-                      },
-                      {
-                        "tagName": "td",
-                        "attributes": {
-                          "part": "latest"
-                        },
-                        "textContent": "${$map.item.latest}"
-                      },
-                      {
-                        "tagName": "td",
-                        "attributes": {
-                          "part": "row-actions"
-                        },
-                        "children": [
-                          {
-                            "tagName": "div",
-                            "attributes": {
-                              "part": "actions"
-                            },
-                            "children": [
-                              {
-                                "tagName": "span",
-                                "attributes": {
-                                  "part": "update-slot",
-                                  "role": "none"
-                                },
-                                "style": {
-                                  "display": "contents"
-                                },
-                                "$switch": {
-                                  "$ref": "$map/item/canUpdate"
-                                },
-                                "cases": {
-                                  "true": {
-                                    "tagName": "jx-action-button",
-                                    "attributes": {
-                                      "part": "update"
-                                    },
-                                    "$props": {
-                                      "icon": "arrows-clockwise",
-                                      "size": "sm",
-                                      "quiet": true,
-                                      "label": "Update ${$map.item.name} to ${$map.item.upgrade}",
-                                      "hint": "Update ${$map.item.name} to ${$map.item.upgrade}",
-                                      "disabled": {
-                                        "$ref": "#/state/busy"
-                                      }
-                                    },
-                                    "onclick": {
-                                      "$prototype": "Function",
-                                      "body": [
-                                        {
-                                          "operator": "call",
-                                          "target": {
-                                            "$ref": "#/state/update"
-                                          },
-                                          "value": [
-                                            {
-                                              "$ref": "$map/item/name"
-                                            }
-                                          ]
-                                        }
-                                      ]
-                                    }
-                                  }
-                                }
-                              },
-                              {
                                 "tagName": "jx-action-button",
                                 "attributes": {
-                                  "part": "remove"
+                                  "part": "update"
                                 },
                                 "$props": {
-                                  "icon": "trash",
+                                  "icon": "arrows-clockwise",
                                   "size": "sm",
                                   "quiet": true,
-                                  "label": "Remove ${$map.item.name}",
-                                  "hint": "Remove ${$map.item.name}",
+                                  "label": "Update ${$map.item.name} to ${$map.item.upgrade}",
+                                  "hint": "Update ${$map.item.name} to ${$map.item.upgrade}",
                                   "disabled": {
                                     "$ref": "#/state/busy"
                                   }
@@ -521,7 +454,7 @@
                                     {
                                       "operator": "call",
                                       "target": {
-                                        "$ref": "#/state/remove"
+                                        "$ref": "#/state/update"
                                       },
                                       "value": [
                                         {
@@ -532,16 +465,51 @@
                                   ]
                                 }
                               }
-                            ]
+                            }
+                          },
+                          {
+                            "tagName": "jx-action-button",
+                            "attributes": {
+                              "part": "remove"
+                            },
+                            "$props": {
+                              "icon": "trash",
+                              "size": "sm",
+                              "quiet": true,
+                              "label": "Remove ${$map.item.name}",
+                              "hint": "Remove ${$map.item.name}",
+                              "disabled": {
+                                "$ref": "#/state/busy"
+                              }
+                            },
+                            "onclick": {
+                              "$prototype": "Function",
+                              "body": [
+                                {
+                                  "operator": "call",
+                                  "target": {
+                                    "$ref": "#/state/remove"
+                                  },
+                                  "value": [
+                                    {
+                                      "$ref": "$map/item/name"
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
                           }
                         ]
                       }
                     ]
                   }
-                }
-              ]
+                ]
+              }
             }
-          ]
+          ],
+          "$props": {
+            "label": "Packages"
+          }
         }
       }
     }

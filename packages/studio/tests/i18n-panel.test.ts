@@ -746,6 +746,40 @@ describe("the scan", () => {
     const host = await paintSettled();
     expect(part(host, "truncated")?.textContent).toContain("1 more page is not");
   });
+
+  test("a full grid, the cap at four languages, draws every square, in a native table", async () => {
+    /* The panel's worst case: the cap's rows times every declared language, each square a cell
+       holding a button. The first paint is timed and printed, never asserted: a wall-clock figure
+       is the machine's, and what this holds is that every square is there.
+
+       This is also the case that decided the grid stays a native `<table>` (ui.md §5.4). Drawn
+       with the kit's `jx-table` it is a thousand element instances where a native table draws
+       none, and this figure a little more than doubled (65ms to 136ms here, medians of seven), so
+       the panel keeps the second shape §3.5 allows and each row is headed by a native row
+       header. */
+    resetStudioState({
+      projectConfig: {
+        i18n: { defaultLocale: "en", locales: ["en", "fr", "de", "es"] },
+        name: "Demo",
+      },
+      projectRoot: "/demo",
+    });
+    const many: Record<string, string> = {};
+    for (let i = 0; i < PARITY_ROW_LIMIT; i += 1) {
+      many[`pages/p${String(i).padStart(4, "0")}.json`] = "{}";
+    }
+    installMockPlatform({}, many);
+    const started = performance.now();
+    const host = await paintSettled();
+    const elapsed = performance.now() - started;
+    console.error(`languages grid, ${PARITY_ROW_LIMIT} rows x 4 locales: ${elapsed.toFixed(0)}ms`);
+    expect(parts(host, "row")).toHaveLength(PARITY_ROW_LIMIT);
+    expect(parts(host, "cell")).toHaveLength(PARITY_ROW_LIMIT * 4);
+    expect(parts(host, "key")).toHaveLength(PARITY_ROW_LIMIT);
+    expect(part(host, "parity")?.localName).toBe("table");
+    expect(parts(host, "key").every((key) => key.matches('th[scope="row"]'))).toBe(true);
+    expect(parts(host, "locale-head").every((head) => head.matches('th[scope="col"]'))).toBe(true);
+  });
 });
 
 describe("the record", () => {
