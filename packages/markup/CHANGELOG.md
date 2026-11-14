@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.0.11](https://github.com/jxsuite/jx/compare/markup-v1.0.10...markup-v1.0.11) (2026-11-14)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/schema bumped to 6.0.2
+
 ## [1.0.10](https://github.com/jxsuite/jx/compare/markup-v1.0.9...markup-v1.0.10) (2026-11-13)
 
 
