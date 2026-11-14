@@ -33,6 +33,7 @@ dist/
 ├── 404.html                  # The not-found page, when pages/404.* exists
 ├── about/index.md            # A Markdown copy of each page, linked from its <head>
 ├── components/               # Compiled component JS + CSS sidecars
+├── custom-elements.json      # When the site has components
 ├── images/_optimized/        # Responsive image variants
 ├── sitemap.xml               # When url is set in the project file
 ├── robots.txt                # From public/, with a Sitemap: line appended

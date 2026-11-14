@@ -862,8 +862,8 @@ For custom element definitions:
 | Parameters editor     | Edit CEM parameter objects on functions | **Implemented**                                                                                                                                                                                                                   |
 | Emits editor          | Declare events dispatched by functions  | **Implemented**                                                                                                                                                                                                                   |
 | Observed attributes   | Manage `observedAttributes` array       | **Pending** — nothing reads or writes the root `observedAttributes` array; the Logic tab's Observed Attributes section lists, read-only, the state entries carrying the CEM `attribute` field, which the runtime does not observe |
-| CSS custom properties | Declare `--custom-property` interfaces  | **Partial** — the root style's `--*` keys are listed read-only in the Logic tab, and the uncalled generator in `services/cem-export.ts` would include them (`spec.md` §16.8); there is no declaration form                        |
-| CSS parts             | Declare `::part()` styling hooks        | **Partial** — `part` attributes are collected (`collectCssParts`) and listed read-only in the Logic tab, and the uncalled generator would include them; there is no declaration form                                              |
+| CSS custom properties | Declare `--custom-property` interfaces  | **Partial** — the root style's `--*` keys are listed read-only in the Logic tab, and a site build's Custom Elements Manifest exports them (`spec.md` §16.8); there is no declaration form                                         |
+| CSS parts             | Declare `::part()` styling hooks        | **Partial** — `part` attributes are collected (`collectCssParts`) and listed read-only in the Logic tab, and the build's manifest exports them for a shadow-root component (`spec.md` §16.8); there is no declaration form        |
 
 ---
 

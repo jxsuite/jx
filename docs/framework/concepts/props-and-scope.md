@@ -149,6 +149,8 @@ A component that lists an entry in `observedAttributes` can also be given that p
 }
 ```
 
+`observedAttributes` is what makes the element read an attribute. The `attribute` and `reflects` fields on an entry describe the prop for tooling, in the [Custom Elements Manifest](/docs/framework/build#the-custom-elements-manifest) the build writes. An attribute writes the entry whose name is its own in camel case, so `user-name` sets `userName`.
+
 An attribute is text, so it is coerced by the entry's type on the way in: a `string` is taken as written, a `number` goes through `Number()`, and a `boolean` is read by presence, where the literal text `false` counts as absent. An entry declared with only a `type` holds nothing until the attribute arrives, so it takes the text as written. An attribute already on the element when it connects is read before `$props` are merged, so a property a parent set still wins.
 
 **Removing an attribute restores the entry's declared default**, rather than leaving the prop holding nothing:

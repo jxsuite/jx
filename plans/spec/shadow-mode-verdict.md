@@ -33,7 +33,7 @@ This plan claims nothing. It is the first bullet of `plan:spec/shadow-dom-parity
 ## Decisions
 
 - **Decided:** the move is verbatim: same names, same signature, same rule, no behaviour change. The verdict is one rule both tiers apply, and the audit record's spec-wide decision puts such a rule in one runtime export; a stylesheet-free function needs no inlining into generated modules.
-- **Decided:** `packages/compiler/src/shadow.ts` re-exports rather than every caller being repointed, so the three compiler imports, `plan:spec/cem-manifest-export`'s site-build call and every plan citation of that file stay valid. `styleScopePrefix` stays there: it is the compiler's choice of CSS scope for a component sheet, and nothing outside the compiler reads it.
+- **Decided:** `packages/compiler/src/shadow.ts` re-exports rather than every caller being repointed, so the three compiler imports, the manifest step's site-build call (spec.md §16.8, landed) and every plan citation of that file stay valid. `styleScopePrefix` stays there: it is the compiler's choice of CSS scope for a component sheet, and nothing outside the compiler reads it.
 - **Decided:** the four `resolveShadowMode` cases are copied into the runtime's own suite, because coverage is enforced per workspace and the function's lines now belong to `packages/runtime`. The compiler's cases stay unchanged and now pin the re-export.
 - **Decided:** the moved function keeps its `@docs framework/concepts/components` tag, on its own JSDoc (as `css.ts` tags each function), so `components.md` lists `css.ts` in `code:` beside `shadow.ts`.
 
