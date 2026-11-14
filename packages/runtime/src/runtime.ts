@@ -5199,6 +5199,7 @@ export {
   camelToKebab,
   COLOR_SCHEME_ATTR,
   COLOR_SCHEME_STORAGE_KEY,
+  commentedRuleText,
   cssPropertyName,
   cssRuleText,
   hashCss,

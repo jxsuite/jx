@@ -1949,3 +1949,96 @@ describe("style handles (spec.md §9.2)", () => {
     expect(buildComponentCSS("x-list", doc.style, doc, {})).toBe(".x-list-0 { color: red }\n");
   });
 });
+
+// ─── $description comments ────────────────────────────────────────────────────
+
+describe("compileStyles — $description comments (spec.md §9.2)", () => {
+  const sheetOf = (built: string) => built.slice("<style>\n".length, -"\n</style>".length);
+
+  test("a described base rule is preceded by its comment", () => {
+    const built = compileStyles({
+      style: { $description: "why", color: "red" },
+      tagName: "div",
+    });
+    expect(sheetOf(built)).toBe("/* why */\n.jx-0 { color: red }");
+  });
+
+  test("a nested block's comment sits above its own rule only", () => {
+    const built = compileStyles({
+      style: { ":hover": { $description: "the hover", color: "blue" }, color: "red" },
+      tagName: "div",
+    });
+    expect(sheetOf(built)).toBe(
+      ".jx-0 { color: red }\n/* the hover */\n.jx-0:hover { color: blue }",
+    );
+  });
+
+  test("each @font-face block in an array carries its own comment", () => {
+    const built = compileStyles({
+      style: {
+        "@font-face": [
+          { $description: "regular", fontFamily: "A", src: "url(/a.woff2)" },
+          { $description: "bold", fontFamily: "A", fontWeight: "700", src: "url(/b.woff2)" },
+        ],
+      },
+      tagName: "div",
+    });
+    expect(sheetOf(built)).toBe(
+      "/* regular */\n@font-face { font-family: A; src: url(/a.woff2) }\n" +
+        "/* bold */\n@font-face { font-family: A; font-weight: 700; src: url(/b.woff2) }",
+    );
+  });
+
+  test("a @keyframes block's comment sits above the animation", () => {
+    const built = compileStyles({
+      style: {
+        "@keyframes pulse": { $description: "the pulse", from: { opacity: "0" } },
+      },
+      tagName: "div",
+    });
+    expect(sheetOf(built)).toBe("/* the pulse */\n@keyframes pulse { from { opacity: 0 } }");
+  });
+
+  test("both copies of a scheme-query block carry the comment", () => {
+    const built = compileStyles(
+      { style: { "@--dark": { $description: "dark", color: "#fff" } }, tagName: "div" },
+      { "--dark": "(prefers-color-scheme: dark)" },
+    );
+    const lines = sheetOf(built).split("\n");
+    const comments = lines.flatMap((line, i) => (line === "/* dark */" ? [i] : []));
+    expect(comments).toHaveLength(2);
+    expect(lines[comments[0]! + 1]).toContain("@media (prefers-color-scheme: dark)");
+    expect(lines[comments[1]! + 1]).toContain('[data-color-scheme="dark"]');
+  });
+
+  test("</style in a description is escaped with the block", () => {
+    const built = compileStyles({
+      style: { $description: "ends </style> early */ twice", color: "red" },
+      tagName: "div",
+    });
+    expect(sheetOf(built).split("\n")).toEqual([
+      String.raw`/* ends <\/style> early * / twice */`,
+      ".jx-0 { color: red }",
+    ]);
+    expect(built.split("</style").length).toBe(2);
+  });
+});
+
+describe("buildComponentCSS — $description comments (spec.md §9.2)", () => {
+  test("a component sheet carries its rules' comments", () => {
+    const doc: JxElement = {
+      children: [{ style: { $description: "the label", color: "red" }, tagName: "span" }],
+      style: {
+        $description: "the host",
+        ":host(.wide)": { $description: "when wide", width: "100%" },
+        display: "block",
+      },
+      tagName: "x-card",
+    };
+    expect(buildComponentCSS("x-card", doc.style, doc, {})).toBe(
+      "/* the host */\nx-card { display: block }\n" +
+        "/* when wide */\nx-card.wide { width: 100% }\n" +
+        "/* the label */\n.x-card-0 { color: red }\n",
+    );
+  });
+});

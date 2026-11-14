@@ -58,6 +58,7 @@ describe("the subpath carries what @jxsuite/site/site-style needs", () => {
       "COLOR_SCHEME_STORAGE_KEY",
       "buildStyleRules",
       "camelToKebab",
+      "commentedRuleText",
       "cssPropertyName",
       "cssRuleText",
       "hashCss",
@@ -483,6 +484,22 @@ describe("buildStyleRules on a block that documents itself", () => {
     expect(rules.map((rule) => rule.description)).toEqual(["the hover", "the face"]);
   });
 
+  test("a @keyframes block carries its own description, and a stop's is ignored", () => {
+    const rules = build({
+      "@keyframes pulse": {
+        $description: "why",
+        from: { $description: "x", opacity: "0" },
+        to: { opacity: "1" },
+      },
+    });
+    expect(rules).toHaveLength(1);
+    expect(rules[0]!.description).toBe("why");
+    expect(rules[0]!.text).toBe("@keyframes pulse { from { opacity: 0 } to { opacity: 1 } }");
+    // An undescribed animation carries no member at all, like any other rule.
+    const [plain] = build({ "@keyframes fade": { to: { opacity: "1" } } });
+    expect("description" in plain!).toBe(false);
+  });
+
   test("a rule that documents nothing carries no description at all", () => {
     const [rule] = build({ color: "red" });
     expect(rule!.description).toBeUndefined();
@@ -579,5 +596,23 @@ describe("hashCss keys a rule by what it says", () => {
         key: expect.stringMatching(/^[0-9a-z]+$/),
       });
     }
+  });
+});
+
+describe("commentedRuleText (spec.md §9.2)", () => {
+  test("a described rule is its comment line, then its text", () => {
+    expect(css.commentedRuleText({ description: "why", text: ":root { color: red }" })).toBe(
+      "/* why */\n:root { color: red }",
+    );
+  });
+
+  test("an undescribed rule is its text, byte for byte", () => {
+    expect(css.commentedRuleText({ text: ":root { color: red }" })).toBe(":root { color: red }");
+  });
+
+  test("a */ in the prose cannot end the comment", () => {
+    const text = css.commentedRuleText({ description: "a */ b", text: "p { color: red }" });
+    expect(text).toBe("/* a * / b */\np { color: red }");
+    expect(text.split("*/")).toHaveLength(2);
   });
 });

@@ -56,6 +56,22 @@ describe("compileStyles — the project block is the site builder's", () => {
     expect(sheetOf(built)).toBe("body { margin: 0 }\n.jx-0 { color: red }");
   });
 
+  test("a project block's description reaches the page as a comment", () => {
+    // The build asks the site builder for comments; a host calling the same builder does not.
+    const built = compileStyles(
+      { children: [], tagName: "div" },
+      {},
+      {
+        $description: "Page defaults.",
+        a: { $description: "Links are quiet.", textDecoration: "none" },
+        margin: "0",
+      },
+    );
+    expect(sheetOf(built)).toBe(
+      "/* Page defaults. */\nbody { margin: 0 }\n/* Links are quiet. */\na { text-decoration: none }",
+    );
+  });
+
   test("a document with no project block and no styles still emits nothing", () => {
     // The builder answers "" for `{}` with no scheme query, and "" is not a rule.
     expect(compileStyles({ children: [], tagName: "div" }, {}, null)).toBe("");

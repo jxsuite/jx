@@ -34,7 +34,7 @@ size: M
 
 The three corrections match the defects `plan:spec/report-dropped-reactive-styles` found while detailing and routed here.
 
-**The handle.** the landed style-handle assignment (`spec.md` §9.2) (an enabling plan both this plan and `plan:_shared/static-style-handle-and-descriptions` require) gives every styled element, a repeater's item template included, a class that selects it alone, read back with `styleHandleOf(node)` (the class without its dot, or `undefined`). This plan needs that: a rule reading a variable only the declaring element sets would leave every other element sharing an author's class with an unset property, and the stub's scratch case (two page-level instances sharing `className: "icon"` both render the second `mask-image`) is a handle defect. That plan declines a per-render handle because this plan carries per-instance values through the indirection (see Decisions).
+**The handle.** the landed style-handle assignment (`spec.md` §9.2) (landed) gives every styled element, a repeater's item template included, a class that selects it alone, read back with `styleHandleOf(node)` (the class without its dot, or `undefined`). This plan needs that: a rule reading a variable only the declaring element sets would leave every other element sharing an author's class with an unset property, and the stub's scratch case (two page-level instances sharing `className: "icon"` both render the second `mask-image`) is a handle defect. That plan declines a per-render handle because this plan carries per-instance values through the indirection (see Decisions).
 
 **Related.** §9.2 and §9.6; §9.3 (`plan:spec/report-dropped-reactive-styles`); `compiler.md` §4.3 (the binding table's style row) and §8.1 (component expansion); `plan:spec/shadow-dom-parity`, which also rewrites `buildComponentCSS` and `pushStyleRules`.
 
@@ -89,7 +89,7 @@ The three corrections match the defects `plan:spec/report-dropped-reactive-style
 
 No change to `packages/site`.
 
-**Integration contract.** Once this lands, `styleVariable`, `inlineStyleSources`, `resolveInlineStyle` and `resolveHostStyle(style, tagName, scope)` are exported from `packages/compiler/src/shared.ts`, and they are the only way an emitter learns what to set on an element. No emitter writes a style declaration inline except a custom property. A host's variables are keyed on its tag name in both shadow modes, so `plan:spec/shadow-dom-parity`'s move of the `:host` translation into `css.ts` keeps every name, and its fold of `buildComponentCSS`'s calls deletes `descendant`. `pushStyleRules` records only an `unscoped` value and slot content, and its options take `key`. `compoundsOntoScope` is exported from `@jxsuite/runtime`. A comment `plan:_shared/static-style-handle-and-descriptions` writes rides on the same rules. `spec.md` §9.1 states the build's indirection.
+**Integration contract.** Once this lands, `styleVariable`, `inlineStyleSources`, `resolveInlineStyle` and `resolveHostStyle(style, tagName, scope)` are exported from `packages/compiler/src/shared.ts`, and they are the only way an emitter learns what to set on an element. No emitter writes a style declaration inline except a custom property. A host's variables are keyed on its tag name in both shadow modes, so `plan:spec/shadow-dom-parity`'s move of the `:host` translation into `css.ts` keeps every name, and its fold of `buildComponentCSS`'s calls deletes `descendant`. `pushStyleRules` records only an `unscoped` value and slot content, and its options take `key`. `compoundsOntoScope` is exported from `@jxsuite/runtime`. A comment the landed `spec.md` §9.2 text (handle and `$description` comments) writes rides on the same rules. `spec.md` §9.1 states the build's indirection.
 
 ## Tests
 
@@ -143,7 +143,7 @@ Fragment (`major` if the first Open is accepted, since it reverses a documented 
   - "CSS extraction": replace the sentence the prerequisite adds ("A style value that follows your data reaches the built page only from…") with "A style value that follows your data reaches the built page wherever it sits on an element, because its rule reads a custom property the element carries. A value in an at-rule the whole page shares, such as `@font-face`, is left out, and `jx build` warns once per declaration with the files it appears in."
 - No change: `docs/framework/concepts/components.md` and `lists.md` (they list `compile-element.ts`; neither says how a style value is written, and `lists.md`'s "`style` works in the map template" becomes true), `functions.md` (lists both targets for handlers), `elements.md`, `overlays.md` and `color-schemes.md` (they cite §9 or list `shared.ts`, and nothing they state moves), and `docs/framework/site/deployment.md`, `seo.md` and `redirects.md` (they list `site-build.ts` for routing, headers and head tags).
 
-Neither spec graduates. Landing deletes this file and rewrites the lines naming it in `plans/spec/shadow-dom-parity.md` and `plans/_shared/static-style-handle-and-descriptions.md`, if still present, to cite `spec.md` §9.1.
+Neither spec graduates. Landing deletes this file and rewrites the lines naming it in `plans/spec/shadow-dom-parity.md`, if still present, to cite `spec.md` §9.1.
 
 ## Acceptance
 

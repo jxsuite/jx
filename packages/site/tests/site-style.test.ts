@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { SITE_STYLE_ID, buildSiteStyleCSS } from "../src/site-style.ts";
+import type { JxStyle } from "@jxsuite/schema/types";
 import { isString } from "@jxsuite/schema/guards";
 /* The build's emitter, read across the workspace boundary: `shared.ts` is not a package export,
    and the dependency runs the other way (the compiler depends on this package). The parity test
@@ -192,6 +193,7 @@ describe("buildSiteStyleCSS", () => {
          here. This test is what keeps the delegation from being undone: a second copy of the
          split would have to reproduce every one of these bytes to stay green. */
       const style = {
+        $description: "The site's tokens.",
         "--font-display": "Forum, Georgia, serif",
         "--bg": "light-dark(#fff, #111)",
         colorScheme: "light dark",
@@ -199,6 +201,7 @@ describe("buildSiteStyleCSS", () => {
         margin: "0",
         '&[data-theme="light"]': { "--bg": "#fff", a: { color: "navy" } },
         "h1, h2": {
+          $description: "Headings take the display face.",
           fontFamily: "var(--font-display)",
           textTransform: "uppercase",
           ":hover": { color: "red" },
@@ -207,14 +210,22 @@ describe("buildSiteStyleCSS", () => {
         a: { textDecoration: "none" },
         ".card": { color: "red" },
         "@--dark": { "--bg": "#000", margin: "1px", ".card": { borderColor: "#333" } },
-        "@font-face": { fontFamily: "Jx", src: "url(/a.woff2)" },
+        "@font-face": { $description: "The brand face.", fontFamily: "Jx", src: "url(/a.woff2)" },
         "@keyframes toast-in": { from: { opacity: "0" }, to: { opacity: "1" } },
       };
       const media = { "--dark": "(prefers-color-scheme: dark)", "--md": "(min-width: 768px)" };
       const built = compileStyles({ tagName: "div" }, media, style);
       expect(built.startsWith("<style>\n") && built.endsWith("\n</style>")).toBe(true);
       const pageSheet = built.slice("<style>\n".length, -"\n</style>".length);
-      expect(buildSiteStyleCSS(style, media, id)).toBe(pageSheet);
+      // The build's form is the commented one, so like is compared with like.
+      expect(buildSiteStyleCSS(style, media, id, undefined, undefined, { comments: true })).toBe(
+        pageSheet,
+      );
+      expect(pageSheet).toContain("/* The site's tokens. */\n:root {");
+      expect(pageSheet).toContain("/* Headings take the display face. */\nh1, h2 {");
+      expect(pageSheet).toContain("/* The brand face. */\n@font-face {");
+      // A host shows the same rules and none of the prose.
+      expect(buildSiteStyleCSS(style, media, id)).not.toContain("/*");
       // And it is not vacuous: the rules the issue names are in both.
       expect(pageSheet).toContain(
         "\nh1, h2 { font-family: var(--font-display); text-transform: uppercase }\n",
@@ -247,6 +258,54 @@ describe("buildSiteStyleCSS", () => {
       const built = compileStyles({ tagName: "div" }, media, null);
       const pageSheet = built.slice("<style>\n".length, -"\n</style>".length);
       expect(buildSiteStyleCSS({}, media, id)).toBe(pageSheet);
+    });
+  });
+
+  describe("$description comments (spec.md §9.2)", () => {
+    const commented = (style: JxStyle, media: Record<string, string> = {}) =>
+      buildSiteStyleCSS(style, media, id, undefined, undefined, { comments: true });
+
+    test("a host sheet carries no comment", () => {
+      const style = {
+        $description: "the page",
+        margin: "0",
+        ".card": { $description: "the card", color: "red" },
+      };
+      expect(buildSiteStyleCSS(style, {}, id)).toBe("body { margin: 0 }\n.card { color: red }");
+    });
+
+    test("with comments, each described rule is preceded by its comment", () => {
+      expect(
+        commented({
+          ".card": { $description: "the card", ":hover": { color: "blue" }, color: "red" },
+          a: { color: "navy" },
+        }),
+      ).toBe(
+        "/* the card */\n.card { color: red }\n.card:hover { color: blue }\na { color: navy }",
+      );
+    });
+
+    test("a top-level description comments the first rule the split writes", () => {
+      // `:root` when the block holds a custom property, and then `body` goes without.
+      expect(commented({ $description: "why", "--bg": "#fff", margin: "0" })).toBe(
+        "/* why */\n:root { --bg: #fff }\nbody { margin: 0 }",
+      );
+      expect(commented({ $description: "why", margin: "0" })).toBe("/* why */\nbody { margin: 0 }");
+      // A block that writes neither rule has nothing to comment.
+      expect(commented({ $description: "why", a: { color: "navy" } })).toBe("a { color: navy }");
+    });
+
+    test("a conditional block's description follows the same rule", () => {
+      const media = { "--md": "(min-width: 768px)" };
+      expect(
+        commented({ "@--md": { $description: "wide", "--gap": "2rem", margin: "1px" } }, media),
+      ).toBe(
+        "/* wide */\n@media (min-width: 768px) { :root { --gap: 2rem } }\n" +
+          "@media (min-width: 768px) { body { margin: 1px } }",
+      );
+      expect(commented({ "@--md": { $description: "wide", margin: "1px" } }, media)).toBe(
+        "/* wide */\n@media (min-width: 768px) { body { margin: 1px } }",
+      );
     });
   });
 
