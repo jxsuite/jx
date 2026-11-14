@@ -11,6 +11,7 @@
 
 import { createChatState, createProxyStreamingClient, createToolRegistry } from "@jxsuite/ai";
 import { createTurnLock } from "@jxsuite/ai/harness";
+import { negotiateWire } from "@jxsuite/ai/streaming-client";
 import { createSessionFacts } from "@jxsuite/ai/tools";
 import type { ProjectConfig } from "@jxsuite/schema/types";
 import { getPlatform } from "../platform";
@@ -35,7 +36,7 @@ import { runAgentLoop } from "./tool-executor";
 import { buildSystemPrompt } from "./ai-system-prompt";
 import type { ExtensionCatalogSummary } from "./ai-system-prompt";
 import { getAiProvider, getBaseUrl, getOpenAiKey } from "./ai-settings";
-import { preferredModel } from "./ai-models";
+import { backendWire, preferredModel } from "./ai-models";
 import { pruneOrphanToolMessages, trimContext } from "./context-manager";
 import { renderCheck } from "./render-critic";
 import type { RenderProbe } from "./ai-write-report";
@@ -338,6 +339,9 @@ export function createDocumentAssistant() {
         /* The persisted conversation, so the backend can keep its rounds on one warm prompt cache.
            Sent to the backend only, which hashes it before any provider sees it (specs/ai.md §2.5). */
         sessionId,
+        /* Version 2 only to a backend whose probe advertised it (specs/ai.md §2.7); every other
+           backend is sent the version 1 body it has always read. */
+        wire: negotiateWire({ wire: backendWire() }),
       });
 
       if (sessionFacts.sessionId !== sessionId) {

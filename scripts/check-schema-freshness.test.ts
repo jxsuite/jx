@@ -128,6 +128,7 @@ describe("classifySchema", () => {
     ["packages/starters/sites/blog/document.schema.json", "entry"],
     ["examples/project.schema.json", "entry"],
     ["extensions/parser/schemas/project.fragment.schema.json", "fragment"],
+    ["packages/ai/schemas/wire-v2.request.schema.json", "contract"],
   ];
   test.each(cases)("%s is %s", (path, kind) => {
     expect(classifySchema(path)).toBe(kind);
@@ -273,6 +274,8 @@ describe("the generators this gate runs", () => {
     expect(GENERATORS.map((g) => g.join(" "))).toEqual([
       "bun run generate:schema",
       "bun run schema:generate-all",
+      // Independent of the two above: the chat wire's schemas embed neither (ai.md §2.7).
+      "bun run generate:wire-schemas",
     ]);
   });
 

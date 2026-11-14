@@ -15,9 +15,17 @@ import {
   createOpenAIStreamingClient,
   createAnthropicStreamingClient,
   createProxyStreamingClient,
+  negotiateWire,
+  STREAM_EVENT_TYPES,
   usageEventFromOpenAI,
+  WIRE_EVENT_TYPES,
+  WIRE_HEADER,
 } from "../src/streaming-client.js";
-import type { ProxyStreamingClientOptions, StreamEvent } from "../src/streaming-client.js";
+import type {
+  ProxyStreamingClientOptions,
+  StreamEvent,
+  WireEvent,
+} from "../src/streaming-client.js";
 import type { JsonObject } from "../src/core-types.ts";
 import { problemDetails } from "@jxsuite/protocol/problems";
 import { problemTypeForStatus } from "../src/gateway/problem.ts";
@@ -99,8 +107,10 @@ function unreadableResponse(status: number, statusText: string): Response {
 }
 
 /** Drains a client's stream into an array of the union every client is contracted to yield. */
-async function collect(gen: AsyncIterable<StreamEvent>): Promise<StreamEvent[]> {
-  const events: StreamEvent[] = [];
+async function collect<Frame extends WireEvent = StreamEvent>(
+  gen: AsyncIterable<Frame>,
+): Promise<Frame[]> {
+  const events: Frame[] = [];
   for await (const event of gen) {
     events.push(event);
   }
@@ -1175,5 +1185,143 @@ describe("createProxyStreamingClient", () => {
     const client = createProxyStreamingClient({ chatUrl: "https://proxy/chat" });
     const events = await collect(client.streamChat([], [], "", new AbortController().signal));
     expect(events).toEqual([{ type: "done", stopReason: "cancelled" }]);
+  });
+});
+
+// ─── Wire version 2 (specs/ai.md §2.7) ───────────────────────────────────────
+
+describe("negotiateWire", () => {
+  it.each<[string, { wire?: readonly number[] } | null, 1 | 2]>([
+    ["no probe at all", null, 1],
+    ["a probe that predates the member", {}, 1],
+    ["a probe that lists version 1 alone", { wire: [1] }, 1],
+    ["a probe that lists version 2", { wire: [1, 2] }, 2],
+    ["a probe that lists only versions this client does not speak", { wire: [3] }, 1],
+  ])("%s speaks version %d", (_label, probe, wire) => {
+    expect(negotiateWire(probe)).toBe(wire);
+  });
+});
+
+describe("createProxyStreamingClient on wire version 2", () => {
+  const REQUEST = {
+    messages: [
+      { blocks: [{ text: "Hi", type: "text" as const }], role: "user" as const },
+      { blocks: [], role: "assistant" as const },
+    ],
+    system: [{ text: "Be " }, { text: "brief." }],
+    tools: [{ description: "d", inputSchema: { type: "object" as const }, name: "probe" }],
+  };
+  const V2_FRAMES = sseBody([
+    JSON.stringify({ family: "openai-compat", model: "m", type: "stream_start", wire: 2 }),
+    JSON.stringify({ type: "delta", content: "Hello" }),
+    JSON.stringify({ type: "done", stopReason: "stop" }),
+  ]);
+
+  it("a version 1 client offers no streamTurn", () => {
+    expect(
+      createProxyStreamingClient({ chatUrl: "https://proxy/chat" }).streamTurn,
+    ).toBeUndefined();
+    expect(
+      createProxyStreamingClient({ chatUrl: "https://proxy/chat", wire: 1 }).streamTurn,
+    ).toBeUndefined();
+  });
+
+  it("sends the neutral conversation with the wire header, and relays every frame", async () => {
+    const record = mockFetch(() => streamingResponse(V2_FRAMES, { status: 200 }));
+    const client = createProxyStreamingClient({
+      chatUrl: "https://proxy/chat",
+      model: "m",
+      wire: 2,
+    });
+    const events = await collect(client.streamTurn!(REQUEST, new AbortController().signal));
+    expect(events).toEqual([
+      { family: "openai-compat", model: "m", type: "stream_start", wire: 2 },
+      { type: "delta", content: "Hello" },
+      { type: "done", stopReason: "stop" },
+    ]);
+    expect(record.calls).toHaveLength(1);
+    expect(record.calls[0]!.headers[WIRE_HEADER]).toBe("2");
+    expect(record.calls[0]!.body).toEqual({ model: "m", wire: 2, ...REQUEST });
+  });
+
+  it("falls back to version 1 once, for good, when the backend refuses version 2", async () => {
+    const refusal = problemDetails("wireUnsupported", "This backend accepts chat wire version 1.", {
+      supported: [1],
+    });
+    const record = mockFetch((_url, init) =>
+      String(init.body).includes('"wire":2')
+        ? Response.json(refusal, { status: 400 })
+        : streamingResponse(
+            sseBody([
+              JSON.stringify({ type: "delta", content: "Hello" }),
+              JSON.stringify({ type: "done", stopReason: "stop" }),
+            ]),
+            { status: 200 },
+          ),
+    );
+    const client = createProxyStreamingClient({
+      chatUrl: "https://proxy/chat",
+      model: "m",
+      wire: 2,
+    });
+    const first = await collect(client.streamTurn!(REQUEST, new AbortController().signal));
+    // The refusal is not shown: the turn carries on, on the wire the backend does accept.
+    expect(first).toEqual([
+      { type: "delta", content: "Hello" },
+      { type: "done", stopReason: "stop" },
+    ]);
+    expect(record.calls).toHaveLength(2);
+    // The retry is the version 1 body of the same request: the empty assistant turn is not sent.
+    expect(record.calls[1]!.headers[WIRE_HEADER]).toBeUndefined();
+    expect(record.calls[1]!.body).toEqual({
+      messages: [{ content: "Hi", role: "user" }],
+      model: "m",
+      systemPrompt: "Be brief.",
+      tools: [
+        {
+          function: { description: "d", name: "probe", parameters: { type: "object" } },
+          type: "function",
+        },
+      ],
+    });
+
+    // The next round does not ask again.
+    await collect(client.streamTurn!(REQUEST, new AbortController().signal));
+    expect(record.calls).toHaveLength(3);
+    expect(record.calls[2]!.body.wire).toBeUndefined();
+  });
+
+  it("shows any other refusal of a version 2 request as the error it is", async () => {
+    const record = mockFetch(() => Response.json({ error: "No key" }, { status: 401 }));
+    const client = createProxyStreamingClient({ chatUrl: "https://proxy/chat", wire: 2 });
+    const events = await collect(client.streamTurn!(REQUEST, new AbortController().signal));
+    expect(events).toEqual([
+      {
+        type: "error",
+        message: "No key",
+        code: "401",
+        problem: problemDetails("unauthorized", "No key"),
+      },
+    ]);
+    expect(record.calls).toHaveLength(1);
+  });
+
+  it("a version 1 round relays only the frames version 1 has", async () => {
+    mockFetch(() => streamingResponse(V2_FRAMES, { status: 200 }));
+    const client = createProxyStreamingClient({ chatUrl: "https://proxy/chat", wire: 2 });
+    const events = await collect(client.streamChat([], [], "", new AbortController().signal));
+    expect(events).toEqual([
+      { type: "delta", content: "Hello" },
+      { type: "done", stopReason: "stop" },
+    ]);
+  });
+
+  it("names the three frame types version 2 adds beside the eight it keeps", () => {
+    expect(WIRE_EVENT_TYPES).toEqual({
+      ...STREAM_EVENT_TYPES,
+      REASONING_REDACTED: "reasoning_redacted",
+      REASONING_SIGNATURE: "reasoning_signature",
+      STREAM_START: "stream_start",
+    });
   });
 });

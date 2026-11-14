@@ -26,7 +26,8 @@
   "headers": {
     "cache-control": "no-cache",
     "connection": "keep-alive",
-    "content-type": "text/event-stream"
+    "content-type": "text/event-stream",
+    "x-jx-ai-wire": "1"
   },
   "status": 200
 }

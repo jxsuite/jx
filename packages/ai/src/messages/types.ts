@@ -160,6 +160,8 @@ export interface LiveMessage {
 /** One part of a system prompt. A request's parts are joined in order, with nothing between. */
 export interface SystemBlock {
   readonly text: string;
+  /** Marks the end of a part that stays the same across requests, for a provider's prompt cache. */
+  readonly cache?: true;
 }
 
 /** A tool as a provider is told about it. */

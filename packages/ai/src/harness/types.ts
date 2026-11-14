@@ -24,7 +24,7 @@ import type {
   SystemBlock,
   ToolSpec,
 } from "../messages/types.ts";
-import type { StreamEvent, StreamUsageEvent } from "../streaming-client.ts";
+import type { StreamUsageEvent, WireEvent } from "../streaming-client.ts";
 
 /** What one round asks the model. */
 export interface ModelRequest {
@@ -40,8 +40,11 @@ export interface ModelRequest {
   readonly closing?: ChatMessage;
 }
 
-/** Streams one round's answer. Called exactly once per round. */
-export type ModelFn = (request: ModelRequest, signal: AbortSignal) => AsyncIterable<StreamEvent>;
+/**
+ * Streams one round's answer. Called exactly once per round. The frames may be a version 2
+ * stream's: the engine reads the eight it always has and passes over any other.
+ */
+export type ModelFn = (request: ModelRequest, signal: AbortSignal) => AsyncIterable<WireEvent>;
 
 /** A provider's token count for one request. */
 export type Usage = Omit<StreamUsageEvent, "type">;

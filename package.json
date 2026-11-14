@@ -54,6 +54,7 @@
     "format:md": "bun scripts/normalize-markdown.ts",
     "docs:markdown": "bun scripts/normalize-markdown.ts --check --no-wrap",
     "generate:schema": "bun run --cwd packages/schema schema",
+    "generate:wire-schemas": "bun run --cwd packages/ai generate:wire-schemas",
     "schema:verify": "bun scripts/check-schema-freshness.ts",
     "lint": "oxlint --threads 1 .",
     "lint:fix": "oxlint --threads 1 --fix .",

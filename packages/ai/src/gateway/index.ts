@@ -39,6 +39,7 @@ export { normalizeOpenAIStream } from "./normalize.ts";
 export { problemResponse } from "./problem.ts";
 export { encodeSse } from "./sse.ts";
 export { extractUpstreamErrorMessage } from "./upstream-error.ts";
+export { checkChatRequestV2 } from "./wire.ts";
 export type { UpstreamCacheHints } from "../cache-hints.ts";
 export type {
   AnthropicModelListing,
