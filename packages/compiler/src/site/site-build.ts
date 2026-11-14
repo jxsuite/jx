@@ -128,7 +128,7 @@ import type { ComponentPrerenderContext, StaticChild } from "../shared.ts";
 import { SLOT_ATTR } from "@jxsuite/runtime";
 import { resolvePrototypes } from "./prototype-resolver.ts";
 import { classEntrySource, locateClass, readsBuildContext } from "./external-class.ts";
-import { transformImageNodes } from "./image-transform.ts";
+import { literalReplacement, transformImageNodes } from "./image-transform.ts";
 import { collectCspSources, emptyCspSources } from "./csp.ts";
 import { resolveShadowMode } from "../shadow.ts";
 import {
@@ -2008,7 +2008,7 @@ async function compilePage(
   // Inject CSS rules collected from component slot content
   if (slotCss.rules.length > 0) {
     const slotStyle = `<style>\n${escapeStyleText(slotCss.rules.join("\n"))}\n</style>\n</head>`;
-    result.html = result.html.replace("</head>", () => slotStyle);
+    result.html = result.html.replace("</head>", literalReplacement(slotStyle));
   }
 
   // Post-process: inject merged <head> content into the compiled HTML
@@ -2935,7 +2935,7 @@ function injectComponentScripts(
     componentCss === "" ? "" : `<style>\n${escapeStyleText(componentCss)}\n  </style>`;
   const intoHead = (fragments: string[]) => {
     const block = fragments.filter(Boolean).join("\n  ");
-    return block === "" ? html : html.replace("</head>", () => `  ${block}\n</head>`);
+    return block === "" ? html : html.replace("</head>", literalReplacement(`  ${block}\n</head>`));
   };
 
   // Only inject JS for components that have non-static instances. An island-rendered instance is
@@ -2985,7 +2985,7 @@ function injectComponentScripts(
     .map((tag: string) => `<script type="module" src="/components/${tag}.js"></script>`)
     .join("\n  ");
 
-  return result.replace("</body>", () => `  ${moduleScripts}\n</body>`);
+  return result.replace("</body>", literalReplacement(`  ${moduleScripts}\n</body>`));
 }
 
 /**
@@ -3016,7 +3016,7 @@ function injectNpmElementScripts(html: string, bundleUrl: string) {
    */
   return html.replace(
     "</body>",
-    () => `  <script type="module" src="${bundleUrl}"></script>\n</body>`,
+    literalReplacement(`  <script type="module" src="${bundleUrl}"></script>\n</body>`),
   );
 }
 
@@ -3051,21 +3051,24 @@ function injectHead(
   }
   let result = html;
   if (headPattern.test(result)) {
-    /* A function, never a string: a replacement STRING reads `$1`, `$&` and `$'` as patterns, so a
+    /* Escaped, never raw: a replacement STRING reads `$1`, `$&` and `$'` as patterns, so a
      * head entry holding "$10 a month" spliced capture group 1 (the old head) into the tag. */
-    result = result.replace(headPattern, () => `<head>\n  ${headHtml}${preservedBlocks}\n</head>`);
+    result = result.replace(
+      headPattern,
+      literalReplacement(`<head>\n  ${headHtml}${preservedBlocks}\n</head>`),
+    );
   }
 
   // Set lang and dir on <html>. `dir` matters for the same reason `lang` does: without it, a
   // Right-to-left page renders left-to-right, and the default is not "unset" but "ltr".
   result = result.replace(/<html\s[^>]*>/i, (match: string) => {
     let tag = /lang=/.test(match)
-      ? match.replace(/lang="[^"]*"/, () => `lang="${root.lang}"`)
-      : match.replace("<html", () => `<html lang="${root.lang}"`);
+      ? match.replace(/lang="[^"]*"/, literalReplacement(`lang="${root.lang}"`))
+      : match.replace("<html", literalReplacement(`<html lang="${root.lang}"`));
     if (root.dir !== undefined) {
       tag = /\sdir=/.test(tag)
-        ? tag.replace(/\sdir="[^"]*"/, () => ` dir="${root.dir}"`)
-        : tag.replace("<html", () => `<html dir="${root.dir}"`);
+        ? tag.replace(/\sdir="[^"]*"/, literalReplacement(` dir="${root.dir}"`))
+        : tag.replace("<html", literalReplacement(`<html dir="${root.dir}"`));
     }
     return tag;
   });
