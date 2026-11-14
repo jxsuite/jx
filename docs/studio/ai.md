@@ -16,6 +16,7 @@ code:
   - packages/studio/src/surfaces/ai-credentials-form.ts
   - packages/studio/src/surfaces/ai-credentials-form.json
   - packages/studio/src/surfaces/ai-model-picker.ts
+  - packages/server/src/ai-api.ts
 ---
 
 # AI assistant
@@ -72,7 +73,7 @@ Below the Cloudflare option (or on its own, everywhere else) is the **AI provide
 
 1. Where Studio can reach more than one kind of provider (the desktop app and the dev server can), choose a **Provider** first: **OpenAI-compatible** or **Anthropic (Claude)**. The fields below follow your choice.
 2. Paste an API key. For OpenAI-compatible, any compatible key works: OpenAI itself, a compatible hosted provider, or a local model server. For Anthropic, paste a Claude API key from the Claude Console (it starts `sk-ant-`).
-3. Optionally set an **Endpoint**. Leave it empty for the provider's own API (OpenAI, or `https://api.anthropic.com`), or point it at a compatible server such as a local LLM (for example `http://localhost:11434/v1`). An Anthropic endpoint is written without `/v1`, the way Anthropic's own tools write it.
+3. Optionally set an **Endpoint**. Leave it empty for the provider's own API (OpenAI, or `https://api.anthropic.com`), or point it at a compatible server such as a local LLM (for example `http://localhost:11434/v1`). An Anthropic endpoint is written without `/v1`, the way Anthropic's own tools write it. The desktop app and `jx dev` refuse an endpoint on a link-local address (`169.254.x.x` or `fe80::`) or a cloud metadata address, and do not follow a redirect, so enter the address that answers (`https://` where the provider redirects there).
 4. Pick a **Model**. Click **Fetch models** to list what your key can use under the field, then open the list and choose one, or type a model ID directly: anything you type is accepted, whether or not the list has it, and if it does the list opens on your row. Leave it empty to use your provider's own default.
 5. **Save** and **Cancel** appear as soon as the form differs from what is saved. Click **Save**; the buttons go away, and the form keeps showing what it saved, so you can see the endpoint it kept and the model it recorded. **Cancel** puts the saved values back.
 
