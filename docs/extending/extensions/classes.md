@@ -10,6 +10,8 @@ spec:
 code:
   - extensions/parser/src/Markdown.class.json
   - packages/schema/src/extension-registry.ts
+  - packages/schema/defs/class-def.schema.ts
+  - packages/compiler/src/targets/compile-class.ts
 ---
 
 # Custom classes
@@ -60,13 +62,13 @@ The parser's `Markdown.class.json`, heavily abbreviated:
 
 The `$defs` object is organized into well-known categories:
 
-| Category      | Purpose                                                                  |
-| ------------- | ------------------------------------------------------------------------ |
-| `parameters`  | Constructor parameter properties (config object fields)                  |
-| `fields`      | Instance fields (private if `#`-prefixed)                                |
-| `constructor` | Constructor body and super args                                          |
-| `methods`     | Instance methods and accessors, plus static capability methods by `role` |
-| `returnTypes` | Named return-type schemas for tooling                                    |
+| Category      | Purpose                                                                                                                                                                                                                                      |
+| ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `parameters`  | Named, typed parameter schemas. Studio offers each as a key of the constructor's `config`, required when the constructor's `parameters` reference it and its `type` has no `default`; a method's `parameters` reference them to name its own |
+| `fields`      | Fields: private through `access: "private"`, static through `scope: "static"`; an instance field takes the `config` key of the same name                                                                                                     |
+| `constructor` | The constructor `body` and `superCall.arguments`                                                                                                                                                                                             |
+| `methods`     | Methods, accessors (`role: "accessor"` with `getter` and `setter`), and static capability methods by `role`                                                                                                                                  |
+| `returnTypes` | Named return-type schemas a method's `returnType` references                                                                                                                                                                                 |
 
 ## The external class contract
 

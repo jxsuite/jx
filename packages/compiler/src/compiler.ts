@@ -3,6 +3,7 @@
  *
  * Routes Jx documents to the appropriate compilation target:
  *
+ * - `$prototype: "Class"` → compile-class.js (ES class module, compiler.md §5.6)
  * - Fully static → compile-static.js (plain HTML/CSS, zero JS)
  * - Custom element (-) → compile-element.js (lit-html web component)
  * - Dynamic (standard) → compile-client.js (pre-rendered HTML + reactive bindings)
@@ -74,8 +75,10 @@ interface PageTargetOverrides {
 /**
  * Compile a Jx document to HTML (+ optional JS module files).
  *
- * Routing: 1. Not dynamic → static HTML/CSS, zero JS 2. tagName contains hyphen → custom element
- * (lit-html) 3. Otherwise → pre-rendered HTML with reactive bindings
+ * Routing, first match wins: 0. Root `$prototype` is `"Class"` → ES class module (compiler.md §5.6)
+ *
+ * 1. Not dynamic → static HTML/CSS, zero JS 2. tagName contains hyphen → custom element (lit-html) 3.
+ *    Otherwise → pre-rendered HTML with reactive bindings
  *
  * @param {string | JxDocument} sourcePath - Path to .json file, URL, or raw document object
  * @param {CompileOptions} [opts]
@@ -113,12 +116,13 @@ export async function compile(sourcePath: string | JxDocument, opts: CompileOpti
   // Function bodies as JavaScript before anything analyses them (spec.md §23.1).
   raw = erasedDocument(raw, isString(sourcePath) ? sourcePath : "the document");
 
-  // Route 0: .class.json schema-defined class → JS class module
+  // Route 0: a class document (`$prototype: "Class"`, whatever the file is called) → JS class module
   if (isClassDef(raw)) {
     const { compileClassJson } = await import("./targets/compile-class.js");
     const jsContent = compileClassJson(raw);
+    // Beside the source and never over it: the extension, and a `.class` before it, become `.js`.
     const outputPath = isString(sourcePath)
-      ? sourcePath.replace(/\.class\.json$/, ".js")
+      ? sourcePath.replace(/(\.class)?\.[^./\\]+$/, ".js")
       : `${raw.title}.js`;
     return { files: [{ content: jsContent, path: outputPath }], html: "" };
   }

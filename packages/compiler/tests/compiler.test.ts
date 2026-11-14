@@ -588,11 +588,54 @@ describe("compile — Class route ($prototype: 'Class')", () => {
     try {
       const { html, files } = await compile(classPath);
       expect(html).toBe("");
-      expect(files[0]!.path).toContain("Widget.js");
+      expect(files[0]!.path).toBe(join(fixDir, "Widget.js"));
       expect(files[0]!.content).toContain("class Widget");
     } finally {
       rmSync(fixDir, { force: true, recursive: true });
     }
+  });
+
+  test("a class document named .json compiles to a .js module", async () => {
+    const { writeFileSync, mkdirSync, rmSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const fixDir = join(import.meta.dir, "_fixtures_class");
+    mkdirSync(fixDir, { recursive: true });
+    const classPath = join(fixDir, "Widget.json");
+    writeFileSync(classPath, JSON.stringify({ $prototype: "Class", title: "Widget" }));
+    try {
+      const { files } = await compile(classPath);
+      // Beside the source, never over it.
+      expect(files[0]!.path).toBe(join(fixDir, "Widget.js"));
+    } finally {
+      rmSync(fixDir, { force: true, recursive: true });
+    }
+  });
+
+  test("a .class.json file without $prototype Class is not route 0", async () => {
+    const { writeFileSync, mkdirSync, rmSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const fixDir = join(import.meta.dir, "_fixtures_class");
+    mkdirSync(fixDir, { recursive: true });
+    const classPath = join(fixDir, "Plain.class.json");
+    writeFileSync(
+      classPath,
+      JSON.stringify({ $defs: { methods: { go: { body: "return 1;" } } }, title: "Plain" }),
+    );
+    try {
+      const { html, files } = await compile(classPath);
+      expect(files).toEqual([]);
+      expect(html).toContain("<!DOCTYPE html>");
+    } finally {
+      rmSync(fixDir, { force: true, recursive: true });
+    }
+  });
+
+  test("$defs categories do not route a document to route 0", async () => {
+    const { html, files } = await compile({
+      $defs: { constructor: { body: "x" }, fields: {}, methods: {} },
+    });
+    expect(files).toEqual([]);
+    expect(html).toContain("<!DOCTYPE html>");
   });
 });
 
