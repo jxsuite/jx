@@ -475,6 +475,83 @@ describe("compiled element — the property bridge", () => {
   });
 });
 
+/** An element exposing the derived keys of the read-only fixture as properties. */
+interface DerivedProbe {
+  readonly doubled: number;
+  readonly full: string;
+  readonly shout: string;
+}
+
+function isDerivedProbe(el: HTMLElement): el is HTMLElement & DerivedProbe {
+  return "doubled" in el && "full" in el && "shout" in el;
+}
+
+/** The fixture's derived properties, failing the test when the accessors were never installed. */
+function derivedOf(el: HTMLElement): DerivedProbe {
+  if (!isDerivedProbe(el)) {
+    throw new TypeError("the element exposes no derived keys");
+  }
+  return el;
+}
+
+describe("compiled element — a derived key is read-only (spec.md §16.2)", () => {
+  const DERIVED: JxDocument = {
+    children: [{ className: "full", tagName: "p", textContent: "${state.full}" }],
+    state: {
+      doubled: { $expression: { operator: "*", target: { $ref: "#/state/n" }, value: 2 } },
+      first: "Ada",
+      full: "${state.first} ${state.last}",
+      last: "Lovelace",
+      n: 2,
+      shout: { $prototype: "Function", body: "return state.first.toUpperCase()" },
+      title: "${state.first}",
+    },
+    tagName: "ls-derived",
+  };
+
+  let el: HTMLElement;
+
+  beforeAll(async () => {
+    const { files } = await compileElement(DERIVED);
+    writeFileSync(resolve(TMP, "derived.js"), files[0]!.content, "utf8");
+    await import(resolve(TMP, "derived.js"));
+    el = win.document.createElement("ls-derived");
+    // Supplied before connection, as a parent's property binding would: read, then discarded.
+    Object.assign(el, { full: "given", n: 5 });
+    win.document.body.append(el);
+  });
+
+  const descriptor = (key: string) => Object.getOwnPropertyDescriptor(el, key);
+
+  test("a template, a derived expression and a computed function get a getter and no setter", () => {
+    for (const key of ["full", "doubled", "shout", "title"]) {
+      const own = descriptor(key);
+      expect([key, isFunction(own?.get), own?.set]).toEqual([key, true, undefined]);
+    }
+    expect(derivedOf(el).full).toBe("Ada Lovelace");
+    expect(derivedOf(el).doubled).toBe(10);
+    expect(derivedOf(el).shout).toBe("ADA");
+  });
+
+  test("a write from outside is refused as a read-only property's is, and changes nothing", () => {
+    expect(() => {
+      Object.assign(el, { full: "x" });
+    }).toThrow(TypeError);
+    expect(Reflect.set(el, "full", "x")).toBe(false);
+    expect(el.querySelector("p.full")?.textContent).toBe("Ada Lovelace");
+    // A derived key named for a platform property does not reach the platform's setter either.
+    expect(Reflect.set(el, "title", "x")).toBe(false);
+    expect(el.getAttribute("title")).toBeNull();
+  });
+
+  test("an authored key keeps its setter, and the derived key follows it", () => {
+    expect(isFunction(descriptor("first")?.set)).toBe(true);
+    Object.assign(el, { first: "Grace" });
+    expect(derivedOf(el).full).toBe("Grace Lovelace");
+    expect(el.querySelector("p.full")?.textContent).toBe("Grace Lovelace");
+  });
+});
+
 // ── Lifecycle hooks and observed attributes (spec.md §16.4, §16.5) ───────────
 
 describe("compiled element — lifecycle and observed attributes", () => {

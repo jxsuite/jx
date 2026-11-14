@@ -4,6 +4,7 @@ import { reactive } from "@vue/reactivity";
 
 import {
   defineElement,
+  derivedStateKeys,
   instanceSupplies,
   Jx,
   renderNode as _renderNode,
@@ -13,10 +14,12 @@ import {
   resetDocumentStyles,
   setRootMedia,
   setStampPropBindings,
+  updateInstanceProps,
 } from "../src/runtime";
 import { elementCSS } from "./style-text.ts";
 
-import type { JxElement, JxStyle } from "@jxsuite/schema/types";
+import { isFunction, isNumber, isString } from "@jxsuite/schema/guards";
+import type { JxDocument, JxElement, JxStyle } from "@jxsuite/schema/types";
 
 try {
   GlobalRegistrator.register();
@@ -851,5 +854,111 @@ describe("the custom-element display default", () => {
     expect(css).toContain("padding: 4px");
     expect(css).toContain("color: blue");
     expect(css).not.toContain("color: red");
+  });
+});
+
+/** What an element's own accessor for `key` answers, read through the getter the test is about. */
+function readThroughGetter(el: HTMLElement, key: string): string | number | undefined {
+  const value: unknown = Object.getOwnPropertyDescriptor(el, key)?.get?.call(el);
+  return isString(value) || isNumber(value) ? value : undefined;
+}
+
+describe("a derived key is read-only (spec.md §16.2)", () => {
+  const settle = () =>
+    new Promise((resolve) => {
+      setTimeout(resolve, 20);
+    });
+
+  const derived = (tag: string): JxDocument => ({
+    children: [{ className: "full", tagName: "p", textContent: "${state.full}" }],
+    state: {
+      doubled: { $expression: { operator: "*", target: { $ref: "#/state/n" }, value: 2 } },
+      first: "Ada",
+      full: "${state.first} ${state.last}",
+      last: "Lovelace",
+      n: 2,
+      shout: { $prototype: "Function", body: "return state.first.toUpperCase()" },
+      title: "${state.first}",
+    },
+    tagName: tag,
+  });
+
+  async function connected(): Promise<HTMLElement> {
+    const tag = uniqueTag();
+    await defineElement(derived(tag));
+    const el = document.createElement(tag);
+    // Supplied before connection, as a parent's property write would: read, then discarded.
+    Object.assign(el, { full: "given", n: 5 });
+    document.body.append(el);
+    await settle();
+    return el;
+  }
+
+  test("a template, a derived expression and a computed function get a getter and no setter", async () => {
+    const el = await connected();
+    for (const key of ["full", "doubled", "shout", "title"]) {
+      const own = Object.getOwnPropertyDescriptor(el, key);
+      expect([key, isFunction(own?.get), own?.set]).toEqual([key, true, undefined]);
+    }
+    expect(readThroughGetter(el, "full")).toBe("Ada Lovelace");
+    expect(readThroughGetter(el, "doubled")).toBe(10);
+    expect(readThroughGetter(el, "shout")).toBe("ADA");
+  });
+
+  test("a write from outside is refused as a read-only property's is, and changes nothing", async () => {
+    const el = await connected();
+    expect(() => {
+      Object.assign(el, { full: "x" });
+    }).toThrow(TypeError);
+    expect(Reflect.set(el, "full", "x")).toBe(false);
+    expect(el.querySelector("p.full")?.textContent).toBe("Ada Lovelace");
+    // A derived key named for a platform property does not reach the platform's setter either.
+    expect(Reflect.set(el, "title", "x")).toBe(false);
+    expect(el.getAttribute("title")).toBeNull();
+  });
+
+  test("an authored key keeps its setter, and the derived key follows it", async () => {
+    const el = await connected();
+    expect(isFunction(Object.getOwnPropertyDescriptor(el, "first")?.set)).toBe(true);
+    Object.assign(el, { first: "Grace" });
+    expect(readThroughGetter(el, "full")).toBe("Grace Lovelace");
+    expect(el.querySelector("p.full")?.textContent).toBe("Grace Lovelace");
+  });
+
+  test("a parent's $props for a derived key is ignored, as it always was, and never throws", async () => {
+    const tag = uniqueTag();
+    await defineElement(derived(tag));
+    const scope = reactive({ label: "one" });
+    const el = renderNode({ $props: { full: { $ref: "#/state/label" } }, tagName: tag }, scope);
+    document.body.append(el);
+    await settle();
+    expect(() => {
+      scope.label = "two";
+    }).not.toThrow();
+    expect(el.querySelector("p.full")?.textContent).toBe("Ada Lovelace");
+    expect(updateInstanceProps(el, { full: "a" }, { full: "b" })).toBe(false);
+  });
+
+  test("derivedStateKeys names exactly the entries a scope computes", () => {
+    expect([...derivedStateKeys(derived("x-keys"))].toSorted()).toEqual([
+      "doubled",
+      "full",
+      "shout",
+      "title",
+    ]);
+    expect(
+      derivedStateKeys({
+        state: {
+          bump: { $expression: { operator: "+=", target: { $ref: "#/state/n" }, value: 1 } },
+          formula: {
+            $expression: { operator: "*", target: { $ref: "$args/n" }, value: 2 },
+            parameters: ["n"],
+          },
+          handler: { $prototype: "Function", body: "state.n++" },
+          n: 1,
+        },
+      }).size,
+    ).toBe(0);
+    expect(derivedStateKeys({}).size).toBe(0);
   });
 });

@@ -5266,6 +5266,39 @@ export function absorbAttribute(
 }
 
 /**
+ * The state keys a definition DERIVES: the entries its scope computes from other entries, which a
+ * write from outside cannot set.
+ *
+ * A `"${…}"` template, an `$expression` that is neither a named formula nor a mutation, and a
+ * Function entry the document uses as a computed (spec.md §5.3) are each a computed in the scope.
+ * Their accessor on the element therefore has a getter and no setter (spec.md §16.2), as a
+ * read-only IDL attribute does: a derived value has no cell of its own to write into, and the
+ * setter that used to stand there dropped the write in silence (after running the platform's own
+ * setter for a name such as `title`).
+ *
+ * Exported for the compiler, whose element module installs the same accessors from the same
+ * verdict.
+ *
+ * @param def The element definition
+ * @returns {Set<string>}
+ */
+export function derivedStateKeys(def: JxElement): Set<string> {
+  const derived = new Set<string>();
+  const roles = classifyFunctionEntries(def);
+  for (const [key, entry] of Object.entries(def.state ?? {})) {
+    const computes = isString(entry)
+      ? isTemplateString(entry)
+      : isExpressionDef(entry)
+        ? !isNamedFormulaDef(entry) && !isMutating(entry.$expression.operator)
+        : roles.get(key) === "computed";
+    if (computes) {
+      derived.add(key);
+    }
+  }
+  return derived;
+}
+
+/**
  * The declared default of every state entry, by state key, read the way `buildScope` reads the
  * entry's shape:
  *
@@ -6123,6 +6156,7 @@ export async function defineElement(source: string | JxDocument, baseUrl?: strin
        * `el["#cache"] = x` writing straight through everything above.
        */
       const declared = live.doc.state ?? {};
+      const derived = derivedStateKeys(def);
       for (const key of Object.keys(def.state ?? {})) {
         if (isPrivateStateKey(key)) {
           continue;
@@ -6141,6 +6175,12 @@ export async function defineElement(source: string | JxDocument, baseUrl?: strin
            delivered after connection (a template over data that resolves asynchronously) wrote
            only the attribute: the instance kept the empty value it connected with, and a card's
            `title` never rendered. */
+        /* A derived key is read-only: a getter and no setter, as a read-only IDL attribute has, so
+           a write from outside is refused by the language rather than dropped by the scope. */
+        if (derived.has(key)) {
+          Object.defineProperty(this, key, { configurable: true, get: () => state[key] });
+          continue;
+        }
         const native = nativeSetter(this, key);
         Object.defineProperty(this, key, {
           configurable: true,
@@ -6376,6 +6416,13 @@ export async function defineElement(source: string | JxDocument, baseUrl?: strin
  * @param {JxScopeValue} resolved - Its value, already resolved from any binding.
  */
 function writeInstanceProp(el: HTMLElement, key: string, resolved: JxScopeValue): void {
+  /* A derived key's accessor has no setter (§16.2). A parent's `$props` naming one was never
+     applied, the scope having nowhere to put it, and is skipped here rather than thrown from
+     inside the parent's own binding. */
+  const own = Object.getOwnPropertyDescriptor(el, key);
+  if (own?.get && !own.set) {
+    return;
+  }
   const value = isString(resolved) ? canvasAssetValue(el.tagName, key, resolved) : resolved;
   elementProperties(el)[key] = value;
   /* A prop that shares its name with an `HTMLElement` property (`title`, `lang`) is forwarded
@@ -6689,6 +6736,7 @@ export function updateInstanceProps(
   const def = withProjectFormulas(registered);
   const defaults = declaredDefaults(def);
   const declared = def.state ?? {};
+  const derived = derivedStateKeys(def);
   const observed = _observedAttributes.get(el.localName) ?? [];
   const writes: (() => void)[] = [];
   for (const key of new Set([...Object.keys(before ?? {}), ...Object.keys(after ?? {})])) {
@@ -6702,6 +6750,8 @@ export function updateInstanceProps(
       (was !== undefined && !isScalarProp(was)) ||
       (now !== undefined && !isScalarProp(now)) ||
       producedElsewhere(declared[key]) ||
+      // A derived key is read-only (§16.2): a fresh render ignores the prop, and so must this.
+      derived.has(key) ||
       // What the instance holds now decided things at render too (a marker, a handler).
       (key in declared && !isScalarProp(toRaw(state)[key])) ||
       // The element class's own fields, which a property write would overwrite.
