@@ -184,4 +184,47 @@ describe("the runtime seam", () => {
     expect(seen[0]?.host).toBe(el);
     el.remove();
   });
+
+  test("a moved element runs onUnmount on each removal, and onMount on the first insertion only", async () => {
+    /* The insertion rule (§16.4), which the compiled element shares. A parent's slot distribution
+       moves a slotted element straight after it rendered, so a hook that ran per insertion would
+       hand every slotted component its host twice. */
+    const calls: string[] = [];
+    const { preloadModule } = await import("../src/runtime");
+    preloadModule("seam:/moved.ts", {
+      mount: () => {
+        calls.push("mount");
+      },
+      unmount: () => {
+        calls.push("unmount");
+      },
+    });
+    const tag = uniqueTag();
+    await defineElement({
+      children: [{ tagName: "p", textContent: "drawn" }],
+      state: {
+        onMount: { $export: "mount", $prototype: "Function", $src: "seam:/moved.ts" },
+        onUnmount: { $export: "unmount", $prototype: "Function", $src: "seam:/moved.ts" },
+      },
+      tagName: tag,
+    });
+    const first = document.createElement("div");
+    const second = document.createElement("div");
+    document.body.append(first, second);
+    const el = document.createElement(tag);
+    first.append(el);
+    await tick();
+    expect(calls).toEqual(["mount"]);
+
+    second.append(el);
+    await tick();
+    expect(calls).toEqual(["mount", "unmount"]);
+    expect(el.querySelectorAll("p")).toHaveLength(1);
+
+    el.remove();
+    await tick();
+    expect(calls).toEqual(["mount", "unmount", "unmount"]);
+    first.remove();
+    second.remove();
+  });
 });

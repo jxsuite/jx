@@ -48,7 +48,7 @@ studio.md §6.5 → Implemented, every row of its table Implemented:
 - CSS custom properties: the section is on every component root, and each row opens the Style tab's Custom section, the one writer.
 - CSS parts: the section is on a component that renders into a shadow root, lists each name of each element's `part`, and each row selects that element on the Content tab, the one writer.
 
-Ride-along, not a claim: spec.md §16.5 gains one sentence, that an entry whose key has no attribute spelling cannot be set from markup. The rule every control here rests on, that an observed attribute writes the entry its camel-cased name spells, is added by `plan:spec/cem-manifest-export`. The marker stays `plan:_shared/compiled-element-lifecycle`'s.
+Ride-along, not a claim: spec.md §16.5 gains one sentence, that an entry whose key has no attribute spelling cannot be set from markup. The rule every control here rests on, that an observed attribute writes the entry its camel-cased name spells, is added by `plan:spec/cem-manifest-export`. The marker is Implemented and stays so.
 
 studio.md does not graduate: other items stay open with their own plans.
 
@@ -170,7 +170,7 @@ After the table, two paragraphs:
 >
 > **Custom properties and parts are declared where they already live.** A custom property is a `--` key in the component root's style, added, renamed and removed in the Style tab's Custom section (§6.2), and each row here opens it there. A part is a name in an element's `part` attribute, set on the Content tab (§6.1), and each row here selects that element. The CSS Parts section appears only when the component's own `$shadow`, or else the project's `defaults.shadow`, renders it into a shadow root, since light DOM has no `::part` (`spec.md` §16.6). A name on the definition's root is not listed: it names the host in the tree around it.
 
-**spec.md §16.5**, in place, body only (the marker is `plan:_shared/compiled-element-lifecycle`'s). After the camel-case sentence `plan:spec/cem-manifest-export` adds (the hard edge guarantees it has landed):
+**spec.md §16.5**, in place, body only (the marker is Implemented and stays so). After the camel-case sentence `plan:spec/cem-manifest-export` adds (the hard edge guarantees it has landed):
 
 > An entry whose key has no such spelling, such as `URL` or `$open`, cannot be set from markup.
 

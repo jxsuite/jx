@@ -155,6 +155,24 @@ describe("a render that throws at connection (spec.md §16.4)", () => {
     expect(errors).toHaveBeenCalledTimes(1);
   });
 
+  test("a prop declared by type alone is watched too", async () => {
+    // It holds no value and declares no default, and it is still an entry a prop can write.
+    arm();
+    const tag = uniqueTag();
+    const def = datedCard(tag);
+    def.state!.date = { type: "string" };
+    await defineElement(def);
+    await mount({ children: [{ tagName: tag }] }, host);
+    await pause();
+    /* SAFETY: as above, `date` is a declared state entry, so the instance has its accessor. */
+    const card = host.querySelector(tag) as HTMLElement & { date: string };
+    expect(card.textContent).not.toContain("After");
+    card.date = "2026-03-14";
+    await pause();
+    expect(card.textContent).toContain("March 14");
+    expect(card.textContent).toContain("After");
+  });
+
   test("a redraw that fails the same way is not reported again; a new failure is", async () => {
     arm();
     const tag = uniqueTag();

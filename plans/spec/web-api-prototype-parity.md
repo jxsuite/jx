@@ -65,7 +65,7 @@ This plan closes the rest: the element target's storage and cookie lowering, and
 
 **Related, no edge.** These plans edit the same functions:
 
-- `plan:_shared/compiled-element-lifecycle` and `plan:compiler/client-external-class-hydration` edit the element's `connectedCallback`, as the landed property bridge (`compiler.md` §4.4) did. This plan leaves it untouched (see Decisions).
+- `plan:compiler/client-external-class-hydration` edits the element's `connectedCallback`, as the landed lifecycle and property-bridge work (`compiler.md` §4.1, §4.4) did. This plan leaves it untouched (see Decisions).
 - `plan:compiler/client-external-class-hydration` defines `isExternalClassDef` as "not in `BUILT_IN_PROTOTYPES`", and `plan:spec/reconcile-built-in-prototypes` recommends that a built-in name always means the built-in, in every tier. This plan's dispatcher lowers by name, which is the compiled half of both, so the three agree without an edge. If review signs the reconcile Open the other way, the plan that work needs adds a decline at the top of `lowerBuiltInPrototype`.
 - `plan:spec/request-url-params` edits `emitRequestFetch`, which this plan does not touch.
 - `plan:spec/timing-values-in-built-sites` owns what `timing` means on a built-in (§11.3).

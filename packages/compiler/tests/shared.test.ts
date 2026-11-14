@@ -596,6 +596,18 @@ describe("isComponentFullyStatic", () => {
     expect(isComponentFullyStatic({ children: [{ tagName: "p" }], tagName: "div" })).toBe(true);
   });
 
+  test("a definition declaring observedAttributes is not static", () => {
+    // Declaring the list is declaring a runtime interface: only the module hears a later change.
+    const card = {
+      children: [{ tagName: "p" }],
+      state: { username: "Guest" },
+      tagName: "user-card",
+    };
+    expect(isComponentFullyStatic(card)).toBe(true);
+    expect(isComponentFullyStatic({ ...card, observedAttributes: ["username"] })).toBe(false);
+    expect(isComponentFullyStatic({ ...card, observedAttributes: [] })).toBe(true);
+  });
+
   test("returns false for event handlers", () => {
     expect(
       isComponentFullyStatic({

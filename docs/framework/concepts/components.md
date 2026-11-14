@@ -182,6 +182,32 @@ This cuts both ways. Your page CSS **can** reach into a component and restyle it
 }
 ```
 
+### Lifecycle hooks
+
+A component can run code at three moments by declaring a function under a reserved name in its `state`:
+
+| Entry       | Receives        | Runs                                                       |
+| ----------- | --------------- | ---------------------------------------------------------- |
+| `onMount`   | `(state, host)` | Once, after the element is first inserted and has rendered |
+| `onUnmount` | `(state)`       | Each time the element is removed from the document         |
+| `onAdopted` | `(state)`       | When the element is moved into another document            |
+
+`onMount` is handed the element itself as its second argument, which is what a behavior that measures, focuses or observes its own element needs. It runs once per element: moving the element, or removing it and putting it back, does not run it again, while `onUnmount` runs on every removal. Hooks behave the same in Studio and in a built site.
+
+```json
+{
+  "tagName": "auto-focus",
+  "state": {
+    "onMount": {
+      "$prototype": "Function",
+      "parameters": ["state", "host"],
+      "body": "host.querySelector('input')?.focus()"
+    }
+  },
+  "children": [{ "tagName": "input" }]
+}
+```
+
 ## Opting into a shadow root
 
 If you want that boundary, ask for it per component:
