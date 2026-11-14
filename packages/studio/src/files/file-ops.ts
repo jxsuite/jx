@@ -32,7 +32,7 @@ import { errorMessage } from "@jxsuite/schema/parse";
 import { notify } from "../services/notify";
 import type { NotifyOptions } from "../services/notify";
 import { isString } from "@jxsuite/schema/guards";
-import { validateComponentSlots } from "../services/cem-export";
+import { validateComponentSlots } from "../services/component-slots";
 import { reportModuleAdvice } from "../services/module-report";
 import { reportPopoverProblems } from "../services/popover-report";
 import { getPlatform } from "../platform";

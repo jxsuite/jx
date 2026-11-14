@@ -8,6 +8,7 @@ import {
   childrenContainArray,
   displayTagName,
   ensureNestedStyle,
+  attributeStateKey,
   isPrivateStateKey,
   getEventBinding,
   getNestedStyle,
@@ -595,6 +596,17 @@ describe("the tag-name helpers", () => {
     expect(displayTagName(conditional)).toBe("a|div");
     expect(displayTagName("section")).toBe("section");
     expect(displayTagName(null)).toBe("");
+  });
+});
+
+describe("attributeStateKey", () => {
+  test("camel-cases each hyphenated segment", () => {
+    expect(attributeStateKey("user-name")).toBe("userName");
+    expect(attributeStateKey("a-b-c")).toBe("aBC");
+    expect(attributeStateKey("plain")).toBe("plain");
+    // Only a hyphen before a lowercase letter is a segment boundary.
+    expect(attributeStateKey("trailing-")).toBe("trailing-");
+    expect(attributeStateKey("data-1x")).toBe("data-1x");
   });
 });
 

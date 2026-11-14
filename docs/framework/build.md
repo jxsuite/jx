@@ -11,8 +11,10 @@ spec:
   - compiler.md#4.1 # element module output structure
   - compiler.md#4.4 # property bridge: the data-jx-props payload
   - site-architecture.md#10.3 # which components a build compiles
+  - spec.md#16.8 # the Custom Elements Manifest a build writes
 code:
   - packages/compiler/src/site/site-build.ts
+  - packages/schema/src/cem-manifest.ts
   - packages/compiler/src/site/component-set.ts
   - packages/compiler/src/site/client-runtime.ts
   - packages/compiler/src/site/bundler.ts
@@ -38,7 +40,7 @@ Running `jx build` (see [CLI commands](/docs/framework/build/cli)) orchestrates 
 3. **Expand dynamic routes**: a `[param]` page's `$paths` definition produces one concrete route per entry, or one per page of a [paged list](/docs/framework/site/routing#paging-a-list). The page's own URL pattern is handed to the extension that owns the `$paths` shape, which is how a content type with a `route` produces exactly the parameters each page needs (see [Routing](/docs/framework/site/routing)).
 4. **Compile components**: every component file directly in `components/`, plus every component a page, one of its layouts or `project.json` names in `$elements` with `{ "$ref" }`, wherever the file lives (a subfolder of `components/`, or a `_`-prefixed file next to a page), and the components those name in turn. A `$ref` is relative to the file that declares it. A `$ref` that names no file, a file outside the project or a file with no hyphenated `tagName`, and two files declaring the same `tagName`, are build errors.
 5. **Compile each route**: resolve its layout, merge `$head` from site + layout + page, inject the read-only `$site`/`$page` context, resolve build-time data, transform images for responsive output, then hand the assembled document to the compiler.
-6. **Emit `dist/`**: one `index.html` per route (with `build.trailingSlash: "always"`, the default), compiled component modules and CSS under `dist/components/`, `public/` copied verbatim, plus `sitemap.xml` (when `url` is set in the project file), `_redirects`, and a bundled server worker when `build.adapter` is set (`worker.js`, or `_worker.js` + `_routes.json` for Cloudflare Pages).
+6. **Emit `dist/`**: one `index.html` per route (with `build.trailingSlash: "always"`, the default), compiled component modules and CSS under `dist/components/`, `custom-elements.json` (when at least one component compiled), `public/` copied verbatim, plus `sitemap.xml` (when `url` is set in the project file), `_redirects`, and a bundled server worker when `build.adapter` is set (`worker.js`, or `_worker.js` + `_routes.json` for Cloudflare Pages).
 
 The build finishes with a summary (`Done: 12 routes → 34 files`) and exits non-zero if any route or component failed.
 
@@ -206,6 +208,31 @@ Work the static-detection list backwards:
 - **A component that a live component renders** ships its module wherever it is used, even on a page where it stands alone.
 - **An external class with `timing: "client"`** loads its class module and the page's hydration script.
 - **A component that declares `observedAttributes`** ships its module, because an attribute can change after the page loads.
+
+## The Custom Elements Manifest
+
+When a build compiles at least one component, it writes `dist/custom-elements.json`: a [Custom Elements Manifest](https://github.com/webcomponents/custom-elements-manifest) that describes each compiled element for editors, documentation tools and other projects. Nothing on your pages loads it.
+
+Each component is one module in the file. It lists:
+
+- the attributes the element observes (its `observedAttributes`), each linked to the state entry it writes
+- public state entries as fields, with their type, default and description
+- public functions as methods, with their parameters
+- the events its functions declare in `emits`
+- its slots, the custom properties its root style declares, and, for a shadow-root component, its parts
+
+Private state (a key that starts with `#`) never appears. Computed values, data sources and lifecycle hooks are not listed, because nothing outside the component sets or calls them.
+
+An `attribute` written on a state entry is left out when the component does not observe it, and the build prints a warning that names the entry. Add the name to `observedAttributes`, or remove the annotation.
+
+Module paths are relative to the project root, such as `dist/components/user-card.js`. To publish your components as a package, point `package.json` at the file. The build never edits `package.json` itself:
+
+```json
+{
+  "customElements": "dist/custom-elements.json",
+  "files": ["dist"]
+}
+```
 
 ## Related
 

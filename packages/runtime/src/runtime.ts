@@ -68,6 +68,7 @@ import {
   isNestedStyle,
   isNonNullObject,
   isNumber,
+  attributeStateKey,
   isPrivateStateKey,
   isPrototypeDef,
   isRef as isRefValue,
@@ -5110,7 +5111,7 @@ export function absorbAttribute(
   value: string | null,
   defaults?: ReadonlyMap<string, JxScopeValue>,
 ): void {
-  const camelKey = name.replaceAll(/-([a-z])/g, (_: string, c: string) => c.toUpperCase());
+  const camelKey = attributeStateKey(name);
   if (defaults?.has(camelKey) && defaults.get(camelKey) === undefined) {
     return;
   }
