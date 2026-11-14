@@ -17,7 +17,7 @@ import {
 import type { HarnessEvent, ModelFn, ModelRequest, TurnInput } from "../src/harness/index.ts";
 import { createLedger, createToolDefinition, createToolRegistry } from "../src/tools.ts";
 import type { ToolContext, ToolDefinition, ToolRegistry, ToolResult } from "../src/tools.ts";
-import { SEAL_RELOADED } from "../src/messages/index.ts";
+import { SEAL_RELOADED, bindingOf, toWireMessages } from "../src/messages/index.ts";
 import type { ChatMessage } from "../src/messages/index.ts";
 import type { StreamEvent, StreamingClient } from "../src/streaming-client.ts";
 
@@ -435,6 +435,78 @@ describe("the model, once per round", () => {
       "tool",
     ]);
     expect(turns[0]!.tools.map((tool) => tool.name)).toEqual(["probe"]);
+  });
+
+  /* A provider that signs its thinking sends it block by block (specs/ai.md §2.6). The engine
+     closes each signed block with the provenance and the binding it must be replayed under. */
+  test("signed thinking becomes bound reasoning blocks on the round's message", async () => {
+    const requests: ModelRequest[] = [];
+    const model: ModelFn = async function* model(request) {
+      requests.push(request);
+      if (requests.length > 1) {
+        yield* textRound("Done.");
+        return;
+      }
+      yield { family: "anthropic", model: "claude-opus-5-5", type: "stream_start", wire: 2 };
+      yield { block: 0, content: "Plan", type: "reasoning" };
+      yield { block: 0, content: " it.", type: "reasoning" };
+      yield { block: 0, signature: "sig_0", type: "reasoning_signature" };
+      yield { block: 1, data: "opaque", type: "reasoning_redacted" };
+      yield { block: 2, content: "Loose.", type: "reasoning" };
+      yield { block: 3, content: "On it.", type: "delta" };
+      yield* callRound(["a", "probe"]);
+    };
+    const system = [{ text: "Sys" }];
+    const { events, outcome } = await run({ model, system, tools: registry({ probe: {} }) });
+
+    const [message] = outcome.appended;
+    const binding = bindingOf(
+      { system, tools: requests[0]!.tools },
+      toWireMessages(requests[0]!.messages),
+      1,
+    );
+    const provenance = { binding, family: "anthropic", model: "claude-opus-5-5" } as const;
+    expect(message!.blocks).toEqual([
+      { provenance, signature: "sig_0", text: "Plan it.", type: "reasoning" },
+      { provenance, redacted: "opaque", text: "", type: "reasoning" },
+      // Unsigned thinking beside it is kept as that family's, with nothing to bind.
+      {
+        provenance: { family: "anthropic", model: "claude-opus-5-5" },
+        text: "Loose.",
+        type: "reasoning",
+      },
+      { text: "On it.", type: "text" },
+      { argumentsText: "{}", id: "a", name: "probe", type: "tool_call" },
+    ]);
+    // One event per signed or redacted block, after the stream and before the round ends.
+    const blockEvents = events.filter((event) => event.type === "reasoning_block");
+    expect(blockEvents.map((event) => event.block.signature ?? event.block.redacted)).toEqual([
+      "sig_0",
+      "opaque",
+    ]);
+    const order = types(events);
+    expect(order.indexOf("reasoning_block")).toBeLessThan(order.indexOf("round_end"));
+    // The next round is sent the message as it stands, signed blocks and all.
+    expect(requests[1]!.messages[1]!.blocks).toEqual(message!.blocks);
+  });
+
+  test("signed thinking with no stream_start is bound to the model the host named, or to none", async () => {
+    const signedRound: StreamEvent[] = [];
+    const model: ModelFn = async function* model() {
+      yield { block: 0, content: "t", type: "reasoning" };
+      yield { block: 0, signature: "s", type: "reasoning_signature" };
+      yield { content: "Hi.", type: "delta" };
+      yield { stopReason: "stop", type: "done" };
+      yield* signedRound;
+    };
+    const named = await run({ model, modelInfo: { family: "anthropic", model: "named" } });
+    expect(named.outcome.appended[0]!.blocks[0]).toMatchObject({
+      provenance: { family: "anthropic", model: "named" },
+    });
+    const unnamed = await run({ model });
+    expect(unnamed.outcome.appended[0]!.blocks[0]).toMatchObject({
+      provenance: { family: "anthropic", model: null },
+    });
   });
 
   test("usage carries the frame as streamed and the prompt's estimate; the outcome sums it", async () => {

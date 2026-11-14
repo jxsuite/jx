@@ -35,6 +35,7 @@ import type { SessionFacts, ToolRegistry } from "@jxsuite/ai/tools";
 
 import type { Tab } from "../tabs/tab";
 import { openBatchLane } from "../tabs/transact";
+import { splitSystemPrompt } from "./ai-system-prompt";
 import { estimatePromptTokens, shedToolResults } from "./context-manager";
 import { fileTurn, openTurnLedger, turnAnchor } from "./ai-writes";
 import { applyHarnessEvent } from "./harness/chat-reducer";
@@ -108,7 +109,7 @@ export async function runAgentLoop({
   try {
     const input: TurnInputDraft = {
       history,
-      system: [{ text: systemPrompt }],
+      system: splitSystemPrompt(systemPrompt),
       /* Projected from the chat store, the transcript of record. The streaming client is read on
          every round, and the turn's own signal is the host's, so a request is the one it was. */
       model: (request) => {
@@ -128,7 +129,7 @@ export async function runAgentLoop({
               messages: request.closing
                 ? [...conversation, ...toWireMessages([request.closing])]
                 : conversation,
-              system: [{ text: systemPrompt }],
+              system: splitSystemPrompt(systemPrompt),
               tools: [...request.tools],
             },
             turnSignal,

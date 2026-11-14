@@ -29,10 +29,11 @@
  */
 
 import { nextMessageId } from "../message-id.ts";
-import { isEmptyAssistant } from "../messages/convert.ts";
+import { bindingOf } from "../messages/binding.ts";
+import { isEmptyAssistant, toWireMessages } from "../messages/convert.ts";
 import { fromOpenAITools } from "../messages/openai.ts";
 import { repairToolPairs } from "../messages/repair.ts";
-import type { Block, ChatMessage } from "../messages/types.ts";
+import type { Block, ChatMessage, ProviderFamily, ReasoningBlock } from "../messages/types.ts";
 import {
   createLedger,
   createSessionFacts,
@@ -609,6 +610,19 @@ export function runTurn(input: TurnInput): TurnRun {
         : null;
       let text = "";
       let reasoning: string | undefined;
+      /* A provider that signs its thinking sends it block by block (wire version 2, §2.7): each
+         block's text, and the signature or redacted payload it must be replayed with. */
+      const thinking = new Map<number, { text: string; signature?: string; redacted?: string }>();
+      const thinkingAt = (block: number) => {
+        let entry = thinking.get(block);
+        if (!entry) {
+          entry = { text: "" };
+          thinking.set(block, entry);
+        }
+        return entry;
+      };
+      let answering: { family: ProviderFamily; model: string } | undefined = input.modelInfo;
+      const sent = [...history, ...appended];
       /* The message records each call as it starts, the way a transcript shows it; execution keys
          them by id, so a call id streamed twice runs once, with the arguments of its last start. */
       const records: { id: string; name: string; argumentsText: string }[] = [];
@@ -620,13 +634,8 @@ export function runTurn(input: TurnInput): TurnRun {
 
       for await (const frame of input.model(
         note
-          ? {
-              system: input.system,
-              messages: [...history, ...appended, note],
-              tools,
-              closing: note,
-            }
-          : { system: input.system, messages: [...history, ...appended], tools },
+          ? { system: input.system, messages: [...sent, note], tools, closing: note }
+          : { system: input.system, messages: sent, tools },
         signal,
       )) {
         /* A closing round's calls will not run, so they are not drawn either: a call on screen, or
@@ -647,7 +656,22 @@ export function runTurn(input: TurnInput): TurnRun {
           }
           case "reasoning": {
             reasoning = (reasoning ?? "") + frame.content;
+            if (frame.block !== undefined) {
+              thinkingAt(frame.block).text += frame.content;
+            }
             emit({ type: "reasoning", messageId, text: frame.content });
+            break;
+          }
+          case "reasoning_signature": {
+            thinkingAt(frame.block).signature = frame.signature;
+            break;
+          }
+          case "reasoning_redacted": {
+            thinkingAt(frame.block).redacted = frame.data;
+            break;
+          }
+          case "stream_start": {
+            answering = { family: frame.family, model: frame.model };
             break;
           }
           case "tool_call_start": {
@@ -723,6 +747,32 @@ export function runTurn(input: TurnInput): TurnRun {
           : finish("error", { error, removedMessageId: messageId });
       }
 
+      /* Thinking the provider signed or redacted is bound to this round's request: the system
+         prompt, the tools and every message sent (§2.6). Each such block records that binding, so a
+         later request replays it only while the binding still holds. Unsigned thinking beside it is
+         kept as that family's, which is what keeps it off another family's wire. */
+      const bound: ReasoningBlock[] = [];
+      if ([...thinking.values()].some((entry) => entry.signature ?? entry.redacted)) {
+        const wire = toWireMessages(sent);
+        const binding = bindingOf({ system: input.system, tools }, wire, wire.length);
+        const family = answering?.family ?? "anthropic";
+        const model = answering?.model ?? null;
+        for (const [, entry] of [...thinking].toSorted(([a], [b]) => a - b)) {
+          const signed = entry.signature !== undefined || entry.redacted !== undefined;
+          const block: ReasoningBlock = {
+            type: "reasoning",
+            text: entry.text,
+            ...(entry.signature === undefined ? null : { signature: entry.signature }),
+            ...(entry.redacted === undefined ? null : { redacted: entry.redacted }),
+            provenance: signed ? { family, model, binding } : { family, model },
+          };
+          bound.push(block);
+          if (signed) {
+            emit({ type: "reasoning_block", messageId, block });
+          }
+        }
+      }
+
       /* A turn that has drawn nothing by the end of a round with no calls ends here. A stopped
          round is not empty: the author ended it. */
       const stopped = stopReason === "cancelled" || aborted();
@@ -741,8 +791,8 @@ export function runTurn(input: TurnInput): TurnRun {
 
       emit({ type: "round_end", messageId, stopReason, truncated, dropped: false });
       if (drawn) {
-        const blocks: Block[] = [];
-        if (reasoning !== undefined) {
+        const blocks: Block[] = [...bound];
+        if (bound.length === 0 && reasoning !== undefined) {
           blocks.push({ type: "reasoning", text: reasoning });
         }
         if (text) {

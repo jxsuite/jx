@@ -15,6 +15,7 @@
  * @docs extending/embedding/assistant-harness
  */
 
+export { bindingOf, isBoundReasoning, stripOlderSignatures } from "./binding.ts";
 export { isEmptyAssistant, toChatMessages, toLiveMessages, toWireMessages } from "./convert.ts";
 export { canonicalJson, digest } from "./digest.ts";
 export { fromOpenAITools, toOpenAIMessages, toOpenAITools } from "./openai.ts";

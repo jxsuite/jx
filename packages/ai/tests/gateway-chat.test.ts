@@ -22,9 +22,10 @@ import type {
 } from "../src/gateway/types.ts";
 import type { JsonObject, JsonValue } from "../src/core-types.ts";
 import type { StreamEvent, WireEvent } from "../src/streaming-client.ts";
+import { bindingOf } from "../src/messages/binding.ts";
 import { toChatMessages, toWireMessages } from "../src/messages/convert.ts";
 import { toOpenAIMessages, toOpenAITools } from "../src/messages/openai.ts";
-import type { ChatMessage, ToolSpec } from "../src/messages/types.ts";
+import type { ChatMessage, ToolSpec, WireMessage } from "../src/messages/types.ts";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -836,6 +837,67 @@ describe("createChatHandler: wire version 2", () => {
     expect(start).toEqual({ family: "anthropic", model: "m-9", type: "stream_start", wire: 2 });
     expect(calls[0]!.url).toBe("https://claude.test/v1/messages");
     expect(calls[0]!.body.system).toBeDefined();
+  });
+
+  /* A version 2 request reaches Claude from the neutral conversation itself (specs/ai.md §2.6):
+     signed thinking is replayed where its binding still holds, which version 1 cannot carry. */
+  it("replays signed thinking to Claude, and reads its stream for version 2", async () => {
+    const system = [{ text: "You edit pages." }];
+    const open: WireMessage[] = [{ blocks: [{ text: "Go.", type: "text" }], role: "user" }];
+    const binding = bindingOf({ system, tools: TOOLS }, open, 1);
+    const messages: WireMessage[] = [
+      ...open,
+      {
+        blocks: [
+          {
+            provenance: { binding, family: "anthropic", model: "claude-opus-5-5" },
+            signature: "sig",
+            text: "Plan.",
+            type: "reasoning",
+          },
+          { argumentsText: "{}", id: "toolu_1", name: "set_style", type: "tool_call" },
+        ],
+        role: "assistant",
+      },
+      {
+        blocks: [{ callId: "toolu_1", content: "{}", isError: false, type: "tool_result" }],
+        role: "tool",
+      },
+    ];
+    const stream = [
+      'data: {"type":"content_block_start","index":0,"content_block":{"type":"thinking"}}',
+      'data: {"type":"content_block_delta","index":0,"delta":{"type":"signature_delta","signature":"next"}}',
+      'data: {"type":"content_block_stop","index":0}',
+      'data: {"type":"message_stop"}',
+      "",
+    ].join("\n\n");
+    const bound = { error: { message: "This block is bound to a different conversation." } };
+    const answers = [Response.json(bound, { status: 400 }), new Response(stream)];
+    const { calls, impl } = fakeFetch(() => Promise.resolve(answers.shift()!));
+    const handler = createChatHandler<Context>({
+      fetch: impl,
+      resolveUpstream: () => ({ ...UPSTREAM, baseUrl: "https://claude.test", family: "anthropic" }),
+    });
+    const body = JSON.stringify({
+      maxTokens: 99,
+      messages,
+      model: "claude-opus-5-5",
+      system,
+      temperature: 1,
+      tools: TOOLS,
+      wire: 2,
+    });
+    const frames = await send(handler, body);
+    expect(frames).toEqual([
+      { family: "anthropic", model: "claude-opus-5-5", type: "stream_start", wire: 2 },
+      { block: 0, signature: "next", type: "reasoning_signature" },
+      { stopReason: "stop", type: "done" },
+    ]);
+    // Refused as bound elsewhere, the request that replayed the signed block was sent again without.
+    expect(calls).toHaveLength(2);
+    expect(calls[0]!.body).toMatchObject({ max_tokens: 99, temperature: 1 });
+    expect(JSON.stringify(calls[0]!.body.messages)).toContain('"signature":"sig"');
+    expect(JSON.stringify(calls[1]!.body.messages)).not.toContain("thinking");
   });
 
   it("refuses a body that names wire 2 and is not a version 2 request, by the member that fails", async () => {

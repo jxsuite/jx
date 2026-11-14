@@ -22,7 +22,7 @@
 import { problemDetails } from "@jxsuite/protocol/problems";
 import type { AiModelInfo } from "@jxsuite/protocol/types";
 import type { JsonObject } from "../core-types.ts";
-import type { StreamEvent, StreamUsageEvent } from "../streaming-client.ts";
+import type { StreamEvent, StreamUsageEvent, WireEvent } from "../streaming-client.ts";
 import type { JSONSchema } from "../tools.ts";
 import { noBodyFrame, streamFailureFrame, upstreamErrorFrame } from "./normalize.ts";
 import { extractUpstreamErrorMessage } from "./upstream-error.ts";
@@ -50,7 +50,7 @@ export const ANTHROPIC_MAX_TOKENS = 32_000;
 const MAX_MODEL_PAGES = 10;
 
 /** A tool-use id the Messages API accepts. */
-const TOOL_ID = /^[a-zA-Z0-9_-]+$/;
+export const ANTHROPIC_TOOL_ID = /^[a-zA-Z0-9_-]+$/;
 
 // ─── The version 1 body, as a client sends it ───────────────────────────────
 
@@ -94,7 +94,7 @@ interface TextBlock {
 }
 
 /** A call the model made, replayed. */
-interface ToolUseBlock {
+export interface ToolUseBlock {
   type: "tool_use";
   id: string;
   name: string;
@@ -174,11 +174,12 @@ interface AnthropicStreamEvent {
   type?: string;
   index?: number;
   message?: { usage?: AnthropicUsage };
-  content_block?: { type?: string; id?: string; name?: string; text?: string };
+  content_block?: { type?: string; id?: string; name?: string; text?: string; data?: string };
   delta?: {
     type?: string;
     text?: string;
     thinking?: string;
+    signature?: string;
     partial_json?: string;
     stop_reason?: string | null;
   };
@@ -314,7 +315,7 @@ function createToolIds(): (id: string) => string {
     if (known !== undefined) {
       return known;
     }
-    const base = TOOL_ID.test(id) ? id : `toolu_${id.replaceAll(/[^a-zA-Z0-9_-]/g, "_")}`;
+    const base = ANTHROPIC_TOOL_ID.test(id) ? id : `toolu_${id.replaceAll(/[^a-zA-Z0-9_-]/g, "_")}`;
     let next = base;
     for (let suffix = 2; used.has(next); suffix += 1) {
       next = `${base}_${String(suffix)}`;
@@ -620,7 +621,33 @@ function usageFrame(counts: UsageCounts): StreamUsageEvent | null {
   if (counts.cacheRead !== undefined) {
     frame.cachedInputTokens = counts.cacheRead;
   }
+  if (counts.cacheWrite !== undefined) {
+    frame.cacheWriteInputTokens = counts.cacheWrite;
+  }
   return frame;
+}
+
+/** The machine code an error frame carries when the conversation outgrew the model's window. */
+export const CONTEXT_OVERFLOW_CODE = "context_overflow";
+
+/**
+ * Name a failure for what it is when the API's sentence says the prompt is too long: the
+ * `context-overflow` problem and its code, which a client acts on by shortening the conversation.
+ * The Messages API reports it as an `invalid_request_error` like any other, so its sentence is the
+ * only witness, and this is the one place the gateway reads a provider's wording.
+ *
+ * @param {StreamEvent} frame - An error frame, as built from the API's answer
+ * @returns {StreamEvent}
+ */
+function namingOverflow(frame: StreamEvent): StreamEvent {
+  if (frame.type !== "error" || !/prompt is too long/i.test(frame.message)) {
+    return frame;
+  }
+  return {
+    ...frame,
+    code: CONTEXT_OVERFLOW_CODE,
+    problem: problemDetails("contextOverflow", frame.message),
+  };
 }
 
 /**
@@ -641,29 +668,49 @@ function errorEventFrame(error: AnthropicStreamEvent["error"]): StreamEvent {
   if (isEntry(error) && isText(error.type) && error.type) {
     frame.code = error.type;
   }
-  return frame;
+  return namingOverflow(frame);
+}
+
+/** How a Messages API stream is read. */
+export interface AnthropicNormalizeOptions {
+  /**
+   * The wire the frames are for. Version 2 adds what a signed conversation needs (specs/ai.md
+   * §2.7): each frame's `block`, a `reasoning_signature` per signed thinking block and a
+   * `reasoning_redacted` per redacted one. Version 1, the default, carries none of them.
+   */
+  readonly wire?: 1 | 2;
 }
 
 /**
  * Normalize a Messages API streaming response into the chat route's frames.
  *
  * - A non-2xx response is one `error` frame, read as the OpenAI-compatible normalizer reads one.
- * - `text_delta` is `delta`, and a non-empty `thinking_delta` is `reasoning`. Signatures and redacted
- *   thinking are not forwarded (the version 1 wire cannot replay them).
+ * - `text_delta` is `delta`, and a non-empty `thinking_delta` is `reasoning`. On version 1,
+ *   signatures and redacted thinking are not forwarded (that wire cannot replay them).
  * - A `tool_use` block is `tool_call_start`, a `tool_call_delta` per non-empty `input_json_delta`,
  *   and `tool_call_end` at its `content_block_stop`.
  * - An `error` event is an `error` frame carrying an `upstreamFailure` problem, with the API's error
  *   type as `code`, and it ends the stream.
  * - The last frames are the open calls' ends, the `usage` count when there is one, and `done` with
- *   the mapped stop reason, at `message_stop` or wherever the body ends.
+ *   the mapped stop reason, at `message_stop` or wherever the body ends. A body that ends having
+ *   sent neither `message_stop` nor a stop reason was cut off, and its `done` carries `truncated`.
+ * - A failure whose sentence says the prompt is too long is the `context-overflow` problem.
+ * - On wire version 2, each `delta`, `reasoning` and `tool_call_start` names its content `block`, a
+ *   signed thinking block ends with `reasoning_signature`, and a redacted one is
+ *   `reasoning_redacted`.
  * - An aborted read is `done: cancelled`; a consumer that stops reading cancels the upstream body.
  *
  * @param {Response} response - The upstream's response to `POST /v1/messages`
- * @yields {StreamEvent} The route's frames, in wire order
+ * @param {AnthropicNormalizeOptions} [options] - The wire the frames are for
+ * @yields {WireEvent} The route's frames, in wire order
  */
-export async function* normalizeAnthropicStream(response: Response): AsyncGenerator<StreamEvent> {
+export async function* normalizeAnthropicStream(
+  response: Response,
+  options: AnthropicNormalizeOptions = {},
+): AsyncGenerator<WireEvent> {
+  const v2 = options.wire === 2;
   if (!response.ok) {
-    yield await upstreamErrorFrame(response);
+    yield namingOverflow(await upstreamErrorFrame(response));
     return;
   }
   const reader = response.body?.getReader();
@@ -676,8 +723,11 @@ export async function* normalizeAnthropicStream(response: Response): AsyncGenera
   let buffer = "";
   /** The open tool-use blocks' ids, by content-block index. */
   const calls = new Map<number, string>();
+  /** The signatures of the open thinking blocks, by content-block index (wire version 2). */
+  const signatures = new Map<number, string>();
   const counts: UsageCounts = {};
   let stopReason: string | null = null;
+  let stopped = false;
 
   /**
    * The stream's last frames: the open calls, then the count BEFORE `done`, because a reader stops
@@ -694,16 +744,19 @@ export async function* normalizeAnthropicStream(response: Response): AsyncGenera
     if (usage) {
       yield usage;
     }
-    yield { stopReason: stopReason ?? "stop", type: "done" };
+    // Cut off: neither `message_stop` nor a stop reason arrived (specs/ai.md §2).
+    yield stopped || stopReason !== null
+      ? { stopReason: stopReason ?? "stop", type: "done" }
+      : { stopReason: "stop", truncated: true, type: "done" };
   }
 
   /**
    * The frames for one event of the stream. `message_stop` and `error` are the loop's to act on.
    *
    * @param {AnthropicStreamEvent} event - The parsed `data:` payload
-   * @yields {StreamEvent} Its frames
+   * @yields {WireEvent} Its frames
    */
-  function* framesOf(event: AnthropicStreamEvent): Generator<StreamEvent> {
+  function* framesOf(event: AnthropicStreamEvent): Generator<WireEvent> {
     const index = isCount(event.index) ? event.index : -1;
     const block = isEntry(event.content_block) ? event.content_block : null;
     const delta = isEntry(event.delta) ? event.delta : null;
@@ -712,16 +765,30 @@ export async function* normalizeAnthropicStream(response: Response): AsyncGenera
     } else if (event.type === "content_block_start" && block) {
       if (block.type === "tool_use" && isText(block.id)) {
         calls.set(index, block.id);
-        yield { id: block.id, name: isText(block.name) ? block.name : "", type: "tool_call_start" };
+        const name = isText(block.name) ? block.name : "";
+        yield v2
+          ? { block: index, id: block.id, name, type: "tool_call_start" }
+          : { id: block.id, name, type: "tool_call_start" };
       } else if (block.type === "text" && isText(block.text) && block.text) {
-        yield { content: block.text, type: "delta" };
+        yield v2
+          ? { block: index, content: block.text, type: "delta" }
+          : { content: block.text, type: "delta" };
+      } else if (v2 && block.type === "redacted_thinking" && isText(block.data)) {
+        yield { block: index, data: block.data, type: "reasoning_redacted" };
       }
     } else if (event.type === "content_block_delta" && delta) {
       const id = calls.get(index);
       if (delta.type === "text_delta" && isText(delta.text) && delta.text) {
-        yield { content: delta.text, type: "delta" };
+        yield v2
+          ? { block: index, content: delta.text, type: "delta" }
+          : { content: delta.text, type: "delta" };
       } else if (delta.type === "thinking_delta" && isText(delta.thinking) && delta.thinking) {
-        yield { content: delta.thinking, type: "reasoning" };
+        yield v2
+          ? { block: index, content: delta.thinking, type: "reasoning" }
+          : { content: delta.thinking, type: "reasoning" };
+      } else if (delta.type === "signature_delta" && isText(delta.signature)) {
+        // The signature may arrive in parts; it is owed back whole, so it is sent once, at the end.
+        signatures.set(index, (signatures.get(index) ?? "") + delta.signature);
       } else if (
         delta.type === "input_json_delta" &&
         id !== undefined &&
@@ -735,6 +802,11 @@ export async function* normalizeAnthropicStream(response: Response): AsyncGenera
       if (id !== undefined) {
         calls.delete(index);
         yield { id, type: "tool_call_end" };
+      }
+      const signature = signatures.get(index);
+      if (v2 && signature) {
+        signatures.delete(index);
+        yield { block: index, signature, type: "reasoning_signature" };
       }
     } else if (event.type === "message_delta") {
       if (delta && isText(delta.stop_reason)) {
@@ -770,6 +842,7 @@ export async function* normalizeAnthropicStream(response: Response): AsyncGenera
           continue;
         }
         if (event.type === "message_stop") {
+          stopped = true;
           yield* finish();
           settled = true;
           return;

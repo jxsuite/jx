@@ -371,7 +371,7 @@ describe("StreamingClient", () => {
     expect(client.streamChat).toBeInstanceOf(Function);
   });
 
-  it("Anthropic client stub returns error event", async () => {
+  it("Anthropic client signposts the provider adapter", async () => {
     const client = createAnthropicStreamingClient({
       baseUrl: "https://api.anthropic.com",
       apiKey: "test-key",
@@ -382,12 +382,7 @@ describe("StreamingClient", () => {
       events.push(event);
     }
 
-    expect(events).toEqual([
-      {
-        type: "error",
-        message: "Anthropic provider is not yet implemented (planned for v2). Use OpenAI.",
-        code: "NOT_IMPLEMENTED",
-      },
-    ]);
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({ code: "NOT_IMPLEMENTED", type: "error" });
   });
 });

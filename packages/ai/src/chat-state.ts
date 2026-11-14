@@ -14,7 +14,13 @@ import { reactive } from "@vue/reactivity";
 import { nextMessageId } from "./message-id.ts";
 import { toChatMessages } from "./messages/convert.ts";
 import { toOpenAIMessages } from "./messages/openai.ts";
-import type { LiveMessage, LiveToolCall, OpenAIMessage } from "./messages/types.ts";
+import type {
+  Block,
+  LiveMessage,
+  LiveToolCall,
+  OpenAIMessage,
+  ReasoningBlock,
+} from "./messages/types.ts";
 import type { StreamUsageEvent } from "./streaming-client.ts";
 import type { ToolResult } from "./tools.ts";
 
@@ -101,6 +107,7 @@ function isCount(value: unknown): value is number {
  *   beginAssistantTurn: () => void;
  *   appendDelta: (content: string) => void;
  *   appendReasoning: (content: string) => void;
+ *   appendReasoningBlock: (block: ReasoningBlock) => void;
  *   appendToolCallStart: (id: string, name: string) => void;
  *   appendToolCallDelta: (id: string, args: string) => void;
  *   appendToolCallEnd: (id: string) => void;
@@ -236,6 +243,38 @@ export function createChatState(opts: { model?: string } = {}) {
       return;
     }
     _streamingMessage.reasoningContent = (_streamingMessage.reasoningContent ?? "") + content;
+  }
+
+  /**
+   * Record a thinking block the provider signed or redacted on the message being streamed
+   * (specs/ai.md §2.6). Its text has already arrived as reasoning; what this adds is what the text
+   * cannot carry: the signature, and the binding it must be replayed under.
+   *
+   * A message that holds such a block keeps its whole content as `blocks` (the v1 members cannot
+   * say it), rebuilt here from what has streamed: the signed thinking in order, then the text, then
+   * the calls. It is called once the round's stream has ended, so both are complete.
+   *
+   * @param {ReasoningBlock} block
+   */
+  function appendReasoningBlock(block: ReasoningBlock) {
+    if (!_streamingMessage) {
+      return;
+    }
+    const message = _streamingMessage;
+    const signed = [...(message.blocks ?? []).filter((held) => held.type === "reasoning"), block];
+    const blocks: Block[] = [...signed];
+    if (message.content) {
+      blocks.push({ type: "text", text: message.content });
+    }
+    for (const call of message.toolCalls ?? []) {
+      blocks.push({
+        type: "tool_call",
+        id: call.id,
+        name: call.name,
+        argumentsText: call.arguments,
+      });
+    }
+    message.blocks = blocks;
   }
 
   /**
@@ -482,6 +521,7 @@ export function createChatState(opts: { model?: string } = {}) {
     beginAssistantTurn,
     appendDelta,
     appendReasoning,
+    appendReasoningBlock,
     appendToolCallStart,
     appendToolCallDelta,
     appendToolCallEnd,

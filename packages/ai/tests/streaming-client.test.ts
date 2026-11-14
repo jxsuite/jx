@@ -687,19 +687,28 @@ describe("usageEventFromOpenAI", () => {
 // ─── Anthropic client ───────────────────────────────────────────────────────
 
 describe("createAnthropicStreamingClient", () => {
-  it("yields a single NOT_IMPLEMENTED error event", async () => {
+  /* A signpost: Claude is reached directly through `@jxsuite/ai/providers` (specs/ai.md §2.6).
+     Its one frame carries a problem like every other error frame (§2). */
+  it("answers one error frame that says where the direct path is, and reaches nothing", async () => {
+    const record = mockFetch(() => new Response(""));
     const client = createAnthropicStreamingClient({
       baseUrl: "https://api.anthropic.com",
       apiKey: "k",
     });
     const events = await collect(client.streamChat([], [], "", new AbortController().signal));
+    const message =
+      "This client does not reach Anthropic directly. Use createAnthropicProvider from " +
+      "@jxsuite/ai/providers, or send through a backend whose chat route serves the anthropic family.";
     expect(events).toEqual([
       {
         type: "error",
-        message: "Anthropic provider is not yet implemented (planned for v2). Use OpenAI.",
+        message,
         code: "NOT_IMPLEMENTED",
+        problem: problemDetails("capabilityUnavailable", message),
       },
     ]);
+    expect(client.streamTurn).toBeUndefined();
+    expect(record.calls).toHaveLength(0);
   });
 });
 

@@ -22,6 +22,7 @@ import type {
   ChatMessage,
   JsonValue,
   ProviderFamily,
+  ReasoningBlock,
   SystemBlock,
   ToolSpec,
 } from "../messages/types.ts";
@@ -263,6 +264,17 @@ export type HarnessEvent = EventBase &
       }
     | { readonly type: "text"; readonly messageId: string; readonly text: string }
     | { readonly type: "reasoning"; readonly messageId: string; readonly text: string }
+    | {
+        /**
+         * A thinking block the provider signed or redacted, closed: with the provenance and the
+         * binding it must be replayed under (specs/ai.md §2.6). Heard once per such block, after
+         * the round's stream and before its `round_end`. A host that keeps its own transcript
+         * records it on the round's message, since the text alone cannot be replayed.
+         */
+        readonly type: "reasoning_block";
+        readonly messageId: string;
+        readonly block: ReasoningBlock;
+      }
     | {
         readonly type: "tool_call_start";
         readonly messageId: string;
