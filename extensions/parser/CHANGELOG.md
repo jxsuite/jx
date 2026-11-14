@@ -1,5 +1,22 @@
 # Changelog
 
+## [5.0.2](https://github.com/jxsuite/jx/compare/parser-v5.0.1...parser-v5.0.2) (2026-11-14)
+
+
+### Bug Fixes
+
+* keep CI green on the dependency bumps ([68a6870](https://github.com/jxsuite/jx/commit/68a687052711e1331d16dd0b46cd52d862d3bc87))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/markup bumped to 1.0.11
+    * @jxsuite/schema bumped to 6.0.2
+  * devDependencies
+    * @jxsuite/runtime bumped to 7.1.0
+
 ## [5.0.1](https://github.com/jxsuite/jx/compare/parser-v5.0.0...parser-v5.0.1) (2026-11-13)
 
 

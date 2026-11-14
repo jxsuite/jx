@@ -1,5 +1,29 @@
 # Changelog
 
+## [11.1.0](https://github.com/jxsuite/jx/compare/studio-v11.0.2...studio-v11.1.0) (2026-11-14)
+
+
+### Features
+
+* **compiler:** one build can leave images alone, and a Pages preview does ([a01797d](https://github.com/jxsuite/jx/commit/a01797d3ac64be915d0237b6402bbb97a852b21f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/ai bumped to 0.43.7
+    * @jxsuite/collab bumped to 0.12.2
+    * @jxsuite/create bumped to 1.8.3
+    * @jxsuite/erase bumped to 0.3.2
+    * @jxsuite/formulas bumped to 0.0.35
+    * @jxsuite/markup bumped to 1.0.11
+    * @jxsuite/protocol bumped to 6.4.2
+    * @jxsuite/runtime bumped to 7.1.0
+    * @jxsuite/schema bumped to 6.0.2
+    * @jxsuite/site bumped to 2.8.0
+    * @jxsuite/ui bumped to 0.12.2
+
 ## [11.0.2](https://github.com/jxsuite/jx/compare/studio-v11.0.1...studio-v11.0.2) (2026-11-13)
 
 

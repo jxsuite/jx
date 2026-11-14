@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.1.2](https://github.com/jxsuite/jx/compare/content-mapper-v0.1.1...content-mapper-v0.1.2) (2026-11-14)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/schema bumped to 6.0.2
+
 ## [0.1.1](https://github.com/jxsuite/jx/compare/content-mapper-v0.1.0...content-mapper-v0.1.1) (2026-11-13)
 
 

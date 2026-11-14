@@ -1,5 +1,12 @@
 # Changelog
 
+## [6.0.2](https://github.com/jxsuite/jx/compare/schema-v6.0.1...schema-v6.0.2) (2026-11-14)
+
+
+### Bug Fixes
+
+* keep CI green on the dependency bumps ([68a6870](https://github.com/jxsuite/jx/commit/68a687052711e1331d16dd0b46cd52d862d3bc87))
+
 ## [6.0.1](https://github.com/jxsuite/jx/compare/schema-v6.0.0...schema-v6.0.1) (2026-11-13)
 
 
