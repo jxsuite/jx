@@ -73,9 +73,7 @@ OXC-powered tools for the Studio function body editor:
 | ---------- | ----------------------------- |
 | `chokidar` | File watching for live reload |
 
-| `@npmcli/arborist` | Package operations (npm's installer) |
-| `npm-package-arg` | Validating a package spec before anything is installed |
-| `ws` | WebSockets for `serve()` on Node |
+| `@npmcli/arborist` | Package operations (npm's installer) | | `npm-package-arg` | Validating a package spec before anything is installed | | `ws` | WebSockets for `serve()` on Node |
 
 `createDevServer()` and the build pipeline run on Bun (`Bun.serve`, `Bun.build`, `Bun.Transpiler`).
 
