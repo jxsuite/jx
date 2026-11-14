@@ -1,5 +1,14 @@
 # Changelog
 
+## [3.7.2](https://github.com/jxsuite/jx/compare/starters-v3.7.1...starters-v3.7.2) (2026-11-14)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/protocol bumped to 6.5.0
+
 ## [3.7.1](https://github.com/jxsuite/jx/compare/starters-v3.7.0...starters-v3.7.1) (2026-11-14)
 
 

@@ -1,5 +1,31 @@
 # Changelog
 
+## [9.1.0](https://github.com/jxsuite/jx/compare/server-v9.0.3...server-v9.1.0) (2026-11-14)
+
+
+### Features
+
+* **ai:** chat wire version 2 and the OpenAI-compatible provider adapter ([1100e10](https://github.com/jxsuite/jx/commit/1100e1050bb74a92fb4159dd79bc7b30dc062752))
+* **ai:** one stream normalizer for the gateway and the direct client ([474be7a](https://github.com/jxsuite/jx/commit/474be7ae0a1419004e1a6d0c02c7d5d888a97eb6))
+
+
+### Bug Fixes
+
+* **server:** judge the provider base URL by range, and follow no redirect ([299f1b2](https://github.com/jxsuite/jx/commit/299f1b27605fae52a7ece232a7ee309b9531b90e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/ai bumped to 0.44.0
+    * @jxsuite/catalog bumped to 0.1.16
+    * @jxsuite/compiler bumped to 9.1.1
+    * @jxsuite/create bumped to 1.8.4
+    * @jxsuite/import bumped to 0.44.6
+    * @jxsuite/protocol bumped to 6.5.0
+    * @jxsuite/starters bumped to 3.7.2
+
 ## [9.0.3](https://github.com/jxsuite/jx/compare/server-v9.0.2...server-v9.0.3) (2026-11-14)
 
 
