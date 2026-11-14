@@ -12,7 +12,7 @@ import {
   declaresParameters,
   handlerParamNames,
 } from "@jxsuite/schema/function-role";
-import { RESERVED_KEYS, camelToKebab } from "@jxsuite/runtime";
+import { RESERVED_KEYS, camelToKebab, derivedStateKeys } from "@jxsuite/runtime";
 import {
   ATTR_HELPER,
   DEFAULT_LIT_HTML_SRC,
@@ -522,8 +522,15 @@ export function emitElementModule(
   const inheritedKeys = bridgedKeys.filter((key) => inherited.includes(key));
   const tracksGiven = inheritedKeys.length > 0;
   lines.push(`const __jxProps = ${JSON.stringify(propKeys)};`);
+  /* The bridged keys the scope DERIVES (spec.md §16.2): each gets a getter and no setter, from
+     the verdict the interpreter reads, and is never merged from a property. */
+  const derived = derivedStateKeys(doc);
+  const derivedKeys = bridgedKeys.filter((key) => derived.has(key));
   if (bridgedKeys.length > 0) {
     lines.push(`const __jxBridged = ${JSON.stringify(bridgedKeys)};`, propSupplyHelperSource());
+  }
+  if (derivedKeys.length > 0) {
+    lines.push(`const __jxDerived = new Set(${JSON.stringify(derivedKeys)});`);
   }
   if (tracksGiven) {
     lines.push(`const __jxInherited = new Set(${JSON.stringify(inheritedKeys)});`);
@@ -908,6 +915,8 @@ export function emitElementModule(
        */
       "    if (_first) {",
       "      for (const _k of __jxBridged) {",
+      // A derived key has no cell to merge into; the property a parent wrote is discarded below.
+      ...(derivedKeys.length > 0 ? ["        if (__jxDerived.has(_k)) continue;"] : []),
       `        if (_k in this && this[_k] !== undefined && ${PROP_SUPPLY_HELPER}(this, _k)) {`,
       "          this.state[_k] = this[_k];",
       ...(tracksGiven ? ["          _given.add(_k);"] : []),
@@ -915,6 +924,15 @@ export function emitElementModule(
       "      }",
       "      for (const _k of __jxBridged) {",
       ...(tracksGiven ? ["        if (__jxInherited.has(_k) && !_given.has(_k)) continue;"] : []),
+      // A derived key is read-only: a getter and no setter, as a read-only IDL attribute has.
+      ...(derivedKeys.length > 0
+        ? [
+            "        if (__jxDerived.has(_k)) {",
+            "          Object.defineProperty(this, _k, { configurable: true, get: () => this.state[_k] });",
+            "          continue;",
+            "        }",
+          ]
+        : []),
       // A name the platform owns keeps reflecting: its own setter runs first, then state.
       `        const _set = ${NATIVE_SETTER_HELPER}(this, _k);`,
       "        Object.defineProperty(this, _k, {",
