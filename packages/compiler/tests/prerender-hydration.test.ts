@@ -32,12 +32,22 @@ function writeJSON(path: string, obj: JsonValue) {
  * stamps are bookkeeping, and whitespace between tags is the emitters' own indentation.
  */
 function normalize(html: string): string {
-  return html
-    .replaceAll(/<!--[\s\S]*?-->/g, "")
-    .replaceAll(/\sdata-jx-[a-z]+(?:="[^"]*")?/g, "")
-    .replaceAll(/\s+/g, " ")
-    .replaceAll(/\s*(<|>)\s*/g, "$1")
-    .trim();
+  return (
+    html
+      .replaceAll(/<!--[\s\S]*?-->/g, "")
+      .replaceAll(/\sdata-jx-[a-z]+(?:="[^"]*")?/g, "")
+      // Attribute order is the order each emitter happened to write in, and means nothing.
+      .replaceAll(
+        /<([\w-]+)((?:\s[\w:-]+(?:="[^"]*")?)+)\s*>/g,
+        (_tag, name: string, attrs: string) => {
+          const sorted = (attrs.match(/[\w:-]+(?:="[^"]*")?/g) ?? []).toSorted();
+          return `<${name} ${sorted.join(" ")}>`;
+        },
+      )
+      .replaceAll(/\s+/g, " ")
+      .replaceAll(/\s*(<|>)\s*/g, "$1")
+      .trim()
+  );
 }
 
 const inc = { $prototype: "Function", body: "state.n++" };
@@ -86,6 +96,16 @@ const COMPONENTS = {
     ],
     state: { inc, n: 1 },
     tagName: "prop-box",
+  },
+  /* An empty-string property and an image: both emitters write `title=""`, and both carry the
+     loading attributes the project decides. */
+  "empty-box": {
+    children: [
+      { dir: "", lang: "", tagName: "p", textContent: "p ${state.n}", title: "" },
+      { alt: "", onclick: { $ref: "#/state/inc" }, src: "/pic.png", tagName: "img" },
+    ],
+    state: { inc, n: 1 },
+    tagName: "empty-box",
   },
   "rows-rich": {
     children: [
@@ -146,7 +166,17 @@ const COMPONENTS = {
 } satisfies Record<string, JsonValue>;
 
 /** The hosts compared, by the `id` the page gives each. */
-const HOSTS = ["list", "click", "switch", "rows", "slot", "parent", "alone", "props"] as const;
+const HOSTS = [
+  "list",
+  "click",
+  "switch",
+  "rows",
+  "slot",
+  "parent",
+  "alone",
+  "props",
+  "empty",
+] as const;
 
 let win: Window;
 const before = new Map<string, string>();
@@ -177,6 +207,7 @@ beforeAll(async () => {
       { id: "parent", tagName: "live-parent" },
       { $props: { label: "ALONE" }, id: "alone", tagName: "static-chip" },
       { id: "props", tagName: "prop-box" },
+      { id: "empty", tagName: "empty-box" },
     ],
     tagName: "main",
   });
@@ -259,6 +290,19 @@ describe("a prerendered instance upgrades to the markup it was built with", () =
       '<a href="/pricing">go 1</a><input name="q" placeholder="Search" type="search">' +
         '<button disabled="">+</button><label for="q">Query</label>',
     );
+  });
+
+  test("an image carries the project's loading attributes in the prerender and from the module", () => {
+    // Decided once, on the definition (site-architecture.md §9.2.7), so both emitters write them.
+    expect(before.get("empty")).toContain(
+      '<img alt="" decoding="async" loading="lazy" src="/pic.png">',
+    );
+    expect(host("empty").querySelector("img")?.getAttribute("loading")).toBe("lazy");
+  });
+
+  test("a property set to the empty string is an empty attribute on both sides", () => {
+    expect(before.get("empty")).toContain('<p dir="" lang="" title="">p 1</p>');
+    expect(host("empty").querySelector("p")?.getAttribute("title")).toBe("");
   });
 
   test("an element written with no prerender renders the same markup from nothing", () => {

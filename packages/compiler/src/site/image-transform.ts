@@ -416,26 +416,47 @@ async function walkAndTransform(
     );
   }
 
-  if (Array.isArray(node.children)) {
-    // Every descendant is bounded by the narrowest literal max-width or width above it.
-    const inner = containerWidthOf(node, containerWidth);
-    for (const child of node.children) {
-      // Text children carry no images, and a non-object child (an authored `null`) is skipped.
-      if (!isNodeObject(child)) {
-        continue;
-      }
-      await walkAndTransform(
-        child,
-        config,
-        projectRoot,
-        cache,
-        metaCache,
-        imageRefs,
-        mounts,
-        inner,
-      );
-    }
+  // Every descendant is bounded by the narrowest literal max-width or width above it.
+  const inner = containerWidthOf(node, containerWidth);
+  for (const child of templateChildren(node)) {
+    await walkAndTransform(child, config, projectRoot, cache, metaCache, imageRefs, mounts, inner);
   }
+}
+
+/**
+ * The element definitions under a node: its `children`, a repeater's `map` template wherever the
+ * repeater sits (the whole `children` value or one child among siblings), and every `$switch` case.
+ * A row and a case are rendered later, by a module, from this same definition, so an `<img>` in one
+ * is decided here or nowhere (site-architecture.md §9.2.7).
+ *
+ * @param {JxMutableNode | JxDocument} node
+ * @returns {JxMutableNode[]}
+ */
+function templateChildren(node: JxMutableNode | JxDocument): JxMutableNode[] {
+  const found: JxMutableNode[] = [];
+  const visit = (child: JxMutableNode["children"] | JxMutableNode | string | null) => {
+    // Text children carry no images, and a non-object child (an authored `null`) is skipped.
+    if (!isNodeObject(child)) {
+      return;
+    }
+    if (child.$prototype === "Array") {
+      visit(child.map);
+      return;
+    }
+    found.push(child);
+  };
+  if (Array.isArray(node.children)) {
+    for (const child of node.children) {
+      visit(child);
+    }
+  } else {
+    visit(node.children);
+  }
+  const cases: Record<string, JxMutableNode> = node.cases ?? {};
+  for (const branch of Object.values(cases)) {
+    visit(branch);
+  }
+  return found;
 }
 
 /** A `<source>` in a generated `<picture>`: one image format, one candidate list. */
@@ -875,8 +896,10 @@ async function transformInnerHtmlImages(
       config.optimize && src !== ""
         ? await resolveVariants(
             src,
-            // An image that already carries a candidate list is its author's.
-            DATA_NO_OPT_RE.test(attrs) || hasAttr(attrs, "srcset"),
+            /* An image that already carries a candidate list is its author's, and so is one
+               inside a `<picture>`: its sources are the candidate list, whether an author wrote
+               them or the node half did while prerendering the component this markup came from. */
+            DATA_NO_OPT_RE.test(attrs) || hasAttr(attrs, "srcset") || insidePicture(html, m.index),
             config,
             projectRoot,
             cache,
@@ -937,6 +960,19 @@ async function transformInnerHtmlImages(
     result = result.replace(match, literalReplacement(replacement));
   }
   return result;
+}
+
+/**
+ * Whether the tag starting at `index` sits inside a `<picture>`: the nearest `<picture` before it
+ * is not yet closed.
+ *
+ * @param {string} html
+ * @param {number} index
+ * @returns {boolean}
+ */
+function insidePicture(html: string, index: number): boolean {
+  const before = html.slice(0, index).toLowerCase();
+  return before.lastIndexOf("<picture") > before.lastIndexOf("</picture>");
 }
 
 /**

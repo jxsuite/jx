@@ -1397,6 +1397,8 @@ The compiler adds `loading="lazy"` and `decoding="async"` unless one of three th
 | The author set `loading` | Left exactly as written, `eager` or `lazy`                                                                     |
 | `fetchpriority="high"`   | Nothing is added — a high-priority lazy image is a contradiction the browser resolves by ignoring the priority |
 
+A component's images are decided on its definition, before its module is compiled and before any page prerenders it, so the element's own render writes the same `<img>` (or `<picture>`, §9.2.2) the page was built with; a repeater's `map` template and every `$switch` case are decided with it. An `<img>` already inside a `<picture>` in prerendered markup is left its sources.
+
 A document compiled on its own — outside a project, with no `images` config to read — gets no loading attributes at all. The setting is the project's, and inventing a default for a document that never declared one is how the previous behaviour reached the LCP image in the first place.
 
 **The compiler does not guess which image is the LCP.** That depends on the viewport, not the document, so there is no correct static answer; `fetchpriority="high"` is how the author gives one. Before this contract the static emitter added `loading="lazy"` to every `<img>` that lacked one — outside `images.optimize`, outside the pipeline, and therefore to the LCP image as well, which is the one image on a page that must never be lazy.

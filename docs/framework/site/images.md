@@ -128,6 +128,8 @@ Images embedded in pre-rendered Markdown content go through the same transformat
 
 `loading` and `decoding` are decided by `lazyLoad` alone, for every image on the site, including ones the optimizer skipped, and every image in a project with `"optimize": false`. Whether an image is worth re-encoding says nothing about when it should be fetched.
 
+An image inside a component is decided on the component itself, so the element renders the same loading attributes and candidates that its prerendered markup carries. That includes an image in a repeater's `map` template or in a `$switch` case.
+
 Three things stop `loading="lazy"` from being added:
 
 | You write                     | The build does                             |

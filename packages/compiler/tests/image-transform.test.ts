@@ -1419,6 +1419,63 @@ describe("image-transform — the innerHTML half matches the node half", () => {
   });
 });
 
+describe("image-transform — images a module renders later", () => {
+  beforeEach(() => {
+    setup();
+    processImage.mockReset();
+    processImage.mockResolvedValue(mockManifest);
+  });
+  afterEach(() => {
+    teardown();
+  });
+
+  const lazyOnly = { ...defaultConfig, optimize: false };
+
+  test("a repeater's map template is decided, as the whole children value or one child", async () => {
+    const row = () => ({ attributes: { src: { $ref: "$map/item/src" } }, tagName: "img" });
+    const whole: any = {
+      children: { $prototype: "Array", items: [], map: row() },
+      tagName: "ul",
+    };
+    await transformImageNodes(whole, lazyOnly, TMP, null);
+    expect(whole.children.map.attributes).toMatchObject({ decoding: "async", loading: "lazy" });
+
+    const among: any = {
+      children: ["text", null, { $prototype: "Array", items: [], map: row() }],
+      tagName: "ul",
+    };
+    await transformImageNodes(among, lazyOnly, TMP, null);
+    expect(among.children[2].map.attributes.loading).toBe("lazy");
+  });
+
+  test("every $switch case is decided", async () => {
+    const doc: any = {
+      $switch: { $ref: "#/state/which" },
+      cases: {
+        a: { attributes: { src: "/a.png" }, tagName: "img" },
+        b: { children: [{ attributes: { src: "/b.png" }, tagName: "img" }], tagName: "p" },
+      },
+      tagName: "div",
+    };
+    await transformImageNodes(doc, lazyOnly, TMP, null);
+    expect(doc.cases.a.attributes.loading).toBe("lazy");
+    expect(doc.cases.b.children[0].attributes.loading).toBe("lazy");
+  });
+
+  test("an image already inside a picture in innerHTML is not given a second one", async () => {
+    const html =
+      '<picture><source type="image/avif" srcset="/a.avif 640w"><img src="/images/hero.png"></picture>' +
+      '<img src="/images/hero.png">';
+    const doc: any = { innerHTML: html, tagName: "div" };
+    await transformImageNodes(doc, defaultConfig, TMP, { entries: {}, version: 1 });
+    // The first keeps its own sources and gains only the loading attributes; the second is wrapped.
+    expect(doc.innerHTML.split("<picture>").length - 1).toBe(2);
+    expect(doc.innerHTML).toContain(
+      '<source type="image/avif" srcset="/a.avif 640w"><img src="/images/hero.png" decoding="async" loading="lazy"></picture>',
+    );
+  });
+});
+
 describe("image-transform — the <img> fallback src", () => {
   beforeEach(() => {
     setup();
