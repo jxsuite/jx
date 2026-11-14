@@ -1,5 +1,23 @@
 # Changelog
 
+## [9.3.0](https://github.com/jxsuite/jx/compare/desktop-v9.2.0...desktop-v9.3.0) (2026-11-14)
+
+
+### Features
+
+* **desktop:** submit the Mac App Store build to App Review from CI ([64a0cbb](https://github.com/jxsuite/jx/commit/64a0cbb48e70eae2d9e4b97a3425f4eba5c583e8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/compiler bumped to 9.1.0
+    * @jxsuite/server bumped to 9.0.3
+    * @jxsuite/studio bumped to 11.1.0
+  * devDependencies
+    * @jxsuite/server bumped to 9.0.3
+
 ## [9.2.0](https://github.com/jxsuite/jx/compare/desktop-v9.1.0...desktop-v9.2.0) (2026-11-14)
 
 

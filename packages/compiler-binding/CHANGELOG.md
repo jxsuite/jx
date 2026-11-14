@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.2](https://github.com/jxsuite/jx/compare/compiler-binding-v0.2.1...compiler-binding-v0.2.2) (2026-11-14)
+
+
+### Bug Fixes
+
+* **compiler-binding:** the musl and Windows arm64 addons build, and a pull request proves all eight ([3aa091e](https://github.com/jxsuite/jx/commit/3aa091eeecff51640ba353f07ff080271931a457))
+
 ## [0.2.1](https://github.com/jxsuite/jx/compare/compiler-binding-v0.2.0...compiler-binding-v0.2.1) (2026-11-14)
 
 

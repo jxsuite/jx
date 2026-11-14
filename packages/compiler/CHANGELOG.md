@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.1.0](https://github.com/jxsuite/jx/compare/compiler-v9.0.1...compiler-v9.1.0) (2026-11-14)
+
+
+### Features
+
+* **compiler:** one build can leave images alone, and a Pages preview does ([a01797d](https://github.com/jxsuite/jx/commit/a01797d3ac64be915d0237b6402bbb97a852b21f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/compiler-binding bumped to 0.2.2
+
 ## [9.0.1](https://github.com/jxsuite/jx/compare/compiler-v9.0.0...compiler-v9.0.1) (2026-11-14)
 
 

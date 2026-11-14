@@ -1,5 +1,12 @@
 # Changelog
 
+## [11.1.0](https://github.com/jxsuite/jx/compare/studio-v11.0.2...studio-v11.1.0) (2026-11-14)
+
+
+### Features
+
+* **compiler:** one build can leave images alone, and a Pages preview does ([a01797d](https://github.com/jxsuite/jx/commit/a01797d3ac64be915d0237b6402bbb97a852b21f))
+
 ## [11.0.2](https://github.com/jxsuite/jx/compare/studio-v11.0.1...studio-v11.0.2) (2026-11-13)
 
 
