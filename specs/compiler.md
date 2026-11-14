@@ -737,31 +737,25 @@ The container is emitted **empty**, with the matched case supplied at hydration.
 
 ## 11. Shared Utilities
 
-> **Status: Partial.** Three entries do not match the code: `transformImageNodes` is `(doc, config, projectRoot, cache, metaCache?, mounts?)` and returns `{ imageRefs }` (`packages/compiler/src/site/image-transform.ts`); `processImage` is `(srcPath, cacheImgDir, config)` and writes to the image cache, not an `outDir` (`image-optimizer.ts`); and `buildRoute` is a private helper of `packages/compiler/src/targets/compile-server.ts`, not a shared utility. The others ship as listed, in `packages/compiler/src/shared.ts`.
+Helpers that `packages/compiler/src/shared.ts` exports for the compilation targets and the site build. Each heading gives the parameters under the names the code declares, `?` marking an optional one. They are internal to `@jxsuite/compiler`: of them, the package root re-exports only `isDynamic`. The image pipeline's entry points, `transformImageNodes` and `processImage`, are specified with the pipeline (§7.2, §7.5), and the route each server entry becomes is shown in §6.3.
 
 ### `isDynamic(def)` — Recursive static detection
 
-### `isSchemaOnly(def)` — Shape 2b detection (pure type definitions)
+### `isSchemaOnly(value)` — Pure type definition detection (every key a JSON Schema keyword)
 
-### `buildInitialScope(state)` — Static scope for compile-time pre-rendering
+### `buildInitialScope(defs?, parentScope?)` — Static scope for compile-time pre-rendering
 
 ### `attrHelperSource()` — the boolean-attribute rule, inlined for a generated module
 
 The element and client targets emit modules that load with `lit-html` and `@vue/reactivity` and nothing else, so they cannot call `booleanAttrValue` — they carry a copy whose enumerated-name list is serialized from `@jxsuite/runtime`'s `enumeratedAttrNames()`. A test asserts the emitted literal still equals that export, which is what keeps the four writers of the rule one decision (spec.md §8.3).
 
-### `compileStyles(def)` — CSS extraction from component tree
+### `compileStyles(doc, mediaQueries?, projectStyle?)` — CSS extraction from component tree
 
 Project-level emission order is: base `:root` (custom properties) and `body` (direct properties) rules first, then conditional `@`-blocks, so equal-specificity overrides win by source order. Inside a project-level `@`-block, custom properties land on `:root`, direct properties on `body`, and selector-keyed sub-objects on their own selector. Blocks keyed by a pure `prefers-color-scheme` query dual-emit per the forced-scheme contract (spec §9.5): a media-guarded copy (`:where(:root:not([data-color-scheme]))`) plus an unconditional forced copy (`:root:where([data-color-scheme="…"])`), both specificity-neutral via `:where()`. When any `$media` value is a pure scheme query, `compileStyles` also emits the `color-scheme` declaration triplet on `:root` (suppressed when the author sets `colorScheme` in project style), and the compilation targets inject the pre-paint scheme-restore `<script>` (`colorSchemePrePaintScript()`) into `<head>` ahead of all style blocks — the site pipeline does this via the merged head (`prePaintScheme: false` disables the target-level copy).
 
 ### `collectServerEntries(doc)` — Find all `timing: "server"` entries
 
-### `buildRoute(exportName, baseUrl)` — Emit a single Hono POST route with try/catch and `c.env` passing
-
-### `transformImageNodes(doc, cache, config, projectRoot, outDir)` — Walk document tree, optimize eligible `<img>` nodes, inject `srcset`/`sizes`/`width`/`height`/`loading`
-
-### `processImage(srcPath, config, outDir)` — Generate responsive variants for a single image through the native core
-
-> **Status: Implemented.** Shared utilities in `shared.js`; image pipeline in `image-optimizer.js`, `image-transform.js`, `image-cache.js`.
+> **Status: Implemented.** Shared utilities in `packages/compiler/src/shared.ts`, where `isSchemaOnly` is re-exported from `@jxsuite/schema/guards`.
 
 ---
 
