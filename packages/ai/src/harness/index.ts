@@ -14,6 +14,8 @@
  */
 
 export { checkResume, policyDigest, turnDigests } from "./checkpoint.ts";
+export { COMPACTION_REQUEST, DEFAULT_COMPACTION, summarizeForCompaction } from "./compaction.ts";
+export type { CompactionPolicy } from "./compaction.ts";
 export type { TurnDigests } from "./checkpoint.ts";
 export { LaneBusyError, createTurnLock } from "./lock.ts";
 export { fromStreamingClient, joinSystem } from "./model.ts";

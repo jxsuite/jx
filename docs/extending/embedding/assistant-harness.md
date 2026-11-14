@@ -25,6 +25,7 @@ code:
   - packages/ai/src/harness/model.ts
   - packages/ai/src/harness/policy.ts
   - packages/ai/src/harness/checkpoint.ts
+  - packages/ai/src/harness/compaction.ts
   - packages/ai/src/messages/digest.ts
   - packages/ai/src/messages/persist.ts
   - packages/ai/src/sessions.ts
@@ -179,6 +180,8 @@ Every step of the turn reaches `onEvent` as it happens, in order: the round star
 `policy` bounds the turn: `maxWorkRounds` (30), `maxRounds` (60) and `maxIdenticalRounds` (3, the same calls with the same results). At any of them the turn runs one closing round, in which the model is told to reply and any tool call it makes is ignored, so a turn that spent its budget reading still answers. The note that tells it arrives as `request.closing`, and is already the last of `request.messages`. If your model function builds its request from your own transcript rather than from `request.messages`, add it yourself, and do not save it. Set `parallelReadOnly: true` to run neighbouring tools with `readOnlyHint` at once; their results still arrive in call order.
 
 The engine does not watch the size of a request, because only you know your model's window. A host that allows many rounds should shrink old tool results before a request outgrows it, as Studio does.
+
+Between turns, shorten a conversation that has grown too long before you start the next one. `DEFAULT_COMPACTION` from `@jxsuite/ai/harness` names what each provider family is given by default: `keep-tail` (drop the oldest messages) for an OpenAI-compatible provider, and `summarize` for Claude. For a summary, `summarizeForCompaction(model, request, signal)` asks the model to summarize the conversation in `request` and answers the text. Replace the earlier messages in your transcript with one user message holding it, then run the turn. An empty answer means no summary could be written, so drop the oldest messages instead.
 
 To keep two turns from running at once, pass the same `createTurnLock()` to each: a turn started while another holds the lock throws `LaneBusyError` straight away, before it sends anything.
 

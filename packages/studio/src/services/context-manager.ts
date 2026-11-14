@@ -12,7 +12,8 @@
  */
 
 import type { createChatState } from "@jxsuite/ai/chat-state";
-import { CHARS_PER_TOKEN } from "@jxsuite/ai/harness";
+import { CHARS_PER_TOKEN, DEFAULT_COMPACTION } from "@jxsuite/ai/harness";
+import type { LiveMessage } from "@jxsuite/ai/messages";
 import {
   SEAL_RELOADED,
   repairToolPairs,
@@ -61,7 +62,7 @@ const MODEL_CONTEXT_WINDOWS: [string, number][] = [
 const DEFAULT_CONTEXT_WINDOW = 32_000;
 
 /** Fraction of the window we'll actually fill before trimming. */
-const BUDGET_FRACTION = 0.8;
+const BUDGET_FRACTION = DEFAULT_COMPACTION["openai-compat"].thresholdRatio;
 
 /** Fraction of the window at which we surface a "context getting large" warning. */
 const WARN_FRACTION = 0.5;
@@ -99,7 +100,7 @@ function contextWindowFor(model: string | undefined): number {
 }
 
 /** Messages to keep at the tail (most recent), regardless of budget. */
-const KEEP_RECENT = 20;
+const KEEP_RECENT = DEFAULT_COMPACTION["openai-compat"].keepRecent;
 
 /**
  * Minimum number of user or tool messages we must preserve beyond the recent window so the model
@@ -335,6 +336,77 @@ function dropLeading(
   chatState.setContextWarning(true);
 
   return { estimatedTokens: newTotal, droppedCount };
+}
+
+/**
+ * Whether the conversation has outgrown what one request may carry: the model's budget, or the
+ * backend's own limit on messages (specs/ai.md §2). {@link trimContext} and {@link compactBySummary}
+ * act on the same answer.
+ *
+ * @param {ReturnType<typeof createChatState>} chatState
+ * @param {string} systemPrompt
+ * @returns {boolean}
+ */
+export function needsCompaction(
+  chatState: ReturnType<typeof createChatState>,
+  systemPrompt: string,
+): boolean {
+  const maxTokens = Math.floor(contextWindowFor(chatState.model) * BUDGET_FRACTION);
+  const total = contextTokens(chatState, estimateTokens(systemPrompt));
+  const { maxMessages } = chatRouteLimits();
+  return (
+    total > maxTokens || (maxMessages !== undefined && chatState.messages.length > maxMessages)
+  );
+}
+
+/**
+ * Replace everything before the turn's own message with a summary of it (specs/ai.md §2.2, §3.8).
+ *
+ * The tail-keeping trim drops the oldest messages, whatever they held. A summary keeps what the
+ * conversation decided instead, and replaces the whole of the earlier conversation at once, which
+ * is what a provider that binds its thinking to the request needs: nothing that follows is bound to
+ * a history cut in the middle. It runs between turns, never inside one, so no tool call is
+ * separated from its reply.
+ *
+ * Answers null when there is nothing to summarize, or `summarize` produced nothing (the provider
+ * failed, the turn was stopped): the caller then trims the tail instead, and nothing has changed.
+ *
+ * @param {ReturnType<typeof createChatState>} chatState
+ * @param {string} systemPrompt
+ * @param {(earlier: readonly LiveMessage[]) => Promise<string>} summarize - Asks the model for a
+ *   summary of the messages given
+ * @returns {Promise<TrimResult | null>}
+ */
+export async function compactBySummary(
+  chatState: ReturnType<typeof createChatState>,
+  systemPrompt: string,
+  summarize: (earlier: readonly LiveMessage[]) => Promise<string>,
+): Promise<TrimResult | null> {
+  const turnStart = chatState.messages.findLastIndex((message) => message.role === "user");
+  if (turnStart <= 0) {
+    return null;
+  }
+  const turnMessage = chatState.messages[turnStart]!;
+  const summary = await summarize(chatState.messages.slice(0, turnStart));
+  /* The conversation is the chat store's, and it may have moved while the model wrote: a New Chat
+     or another chat opened. Nothing is replaced unless the turn's message is still where it was. */
+  if (!summary || chatState.messages[turnStart] !== turnMessage) {
+    return null;
+  }
+  chatState.messages.splice(0, turnStart, {
+    content: `[Summary of the earlier conversation. ${turnStart} messages were condensed, by the assistant, to stay within the model's context:\n\n${summary}]`,
+    id: `ctx_summary_${Date.now()}`,
+    meta: { kind: "compaction", origin: "harness" },
+    role: "user",
+    timestamp: Date.now(),
+  });
+  // The provider counted a transcript that no longer exists; the estimate is all there is now.
+  chatState.clearUsage();
+  const estimatedTokens =
+    estimateTokens(systemPrompt) + estimateTokens(chatState.toMessagesArray());
+  chatState.setTokenCount(estimatedTokens);
+  chatState.setContextWarning(true);
+  return { droppedCount: turnStart, estimatedTokens };
 }
 
 // ─── Shed ───────────────────────────────────────────────────────────────────

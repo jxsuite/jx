@@ -10,10 +10,15 @@
  */
 
 import { createChatState, createProxyStreamingClient, createToolRegistry } from "@jxsuite/ai";
-import { createTurnLock } from "@jxsuite/ai/harness";
+import {
+  createTurnLock,
+  DEFAULT_COMPACTION,
+  fromStreamingClient,
+  summarizeForCompaction,
+} from "@jxsuite/ai/harness";
 import { negotiateWire } from "@jxsuite/ai/streaming-client";
 import { createSessionFacts } from "@jxsuite/ai/tools";
-import { stripOlderSignatures } from "@jxsuite/ai/messages";
+import { fromOpenAITools, stripOlderSignatures, toChatMessages } from "@jxsuite/ai/messages";
 import type { LiveMessage } from "@jxsuite/ai/messages";
 import type { ProjectConfig } from "@jxsuite/schema/types";
 import { getPlatform } from "../platform";
@@ -36,11 +41,16 @@ import { adoptProject } from "./project-adoption";
 import { resetAiWrites } from "./ai-writes";
 import { abortImportRun, resetImportRuns } from "./import-run";
 import { runAgentLoop } from "./tool-executor";
-import { buildSystemPrompt } from "./ai-system-prompt";
+import { buildSystemPrompt, splitSystemPrompt } from "./ai-system-prompt";
 import type { ExtensionCatalogSummary } from "./ai-system-prompt";
 import { getAiProvider, getBaseUrl, getOpenAiKey } from "./ai-settings";
 import { backendWire, preferredModel } from "./ai-models";
-import { pruneOrphanToolMessages, trimContext } from "./context-manager";
+import {
+  compactBySummary,
+  needsCompaction,
+  pruneOrphanToolMessages,
+  trimContext,
+} from "./context-manager";
 import { renderCheck } from "./render-critic";
 import type { RenderProbe } from "./ai-write-report";
 import { validateDoc } from "./jx-validate";
@@ -319,10 +329,19 @@ export function createDocumentAssistant() {
 
     chatState.sendMessage(text);
 
-    // Trim context before streaming to keep the conversation within token limits.
-    const trimmed = trimContext(chatState, buildPrompt());
-    if (trimmed) {
-      chatState.setTokenCount(trimmed.estimatedTokens);
+    /* A conversation that has outgrown its model is compacted here, between turns and never inside
+       one (specs/ai.md §2.2, §3.8). An OpenAI-compatible provider keeps the tail, as it always
+       has. Claude is sent a summary of the earlier conversation instead, which the model has to be
+       asked for, so that waits until the turn's signal is armed below. */
+    const prompt = buildPrompt();
+    const family = getAiProvider() === "anthropic" ? "anthropic" : "openai-compat";
+    const summarizing =
+      DEFAULT_COMPACTION[family].mode === "summarize" && needsCompaction(chatState, prompt);
+    if (!summarizing) {
+      const trimmed = trimContext(chatState, prompt);
+      if (trimmed) {
+        chatState.setTokenCount(trimmed.estimatedTokens);
+      }
     }
 
     /* AFTER the trim, not before: the trim splices from the front and is itself one of the three
@@ -374,6 +393,26 @@ export function createDocumentAssistant() {
 
       if (sessionFacts.sessionId !== sessionId) {
         sessionFacts = createSessionFacts(sessionId, sessionFacts.toJSON());
+      }
+      if (summarizing) {
+        const compacted = await compactBySummary(chatState, prompt, (earlier) =>
+          summarizeForCompaction(
+            fromStreamingClient(streamingClient),
+            {
+              messages: toChatMessages(earlier),
+              system: splitSystemPrompt(prompt),
+              tools: fromOpenAITools(toolRegistry.listForLLM()),
+            },
+            signal,
+          ),
+        );
+        /* No summary (the provider failed, or wrote nothing) still leaves a conversation too long
+           to send, so the tail is kept instead. A stopped turn is left as it was. */
+        if (!compacted && !signal.aborted) {
+          trimContext(chatState, prompt);
+        }
+        pruneOrphanToolMessages(chatState);
+        persistChat();
       }
       await runAgentLoop({
         chatState,

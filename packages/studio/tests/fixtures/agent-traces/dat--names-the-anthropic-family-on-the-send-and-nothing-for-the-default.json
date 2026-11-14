@@ -10,6 +10,7 @@
     "[chat 1] setError(\"The model sent back an empty reply.\")",
     "[chat 2] sendMessage(\"hi\")",
     "[chat 2] toMessagesArray()",
+    "[chat 2] toMessagesArray()",
     "[chat 2] setTokenCount(5534)",
     "[chat 2] setContextWarning(false)",
     "[chat 2] setTokenCount(5534)",

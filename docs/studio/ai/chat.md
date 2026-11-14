@@ -45,7 +45,12 @@ The row under the message box holds the composer's controls:
 
 The chat header shows how much of the model's context the conversation is using: `18.4k` for about eighteen thousand tokens. It appears once there's something to count and stays quiet until it matters.
 
-Past **half** the model's window it turns amber. That is the point at which the assistant starts dropping the oldest turns to make room, so a long conversation quietly forgets what you told it near the beginning. When you see amber and the assistant seems to have lost the thread, start a new chat: the reply that follows will have your whole message rather than the tail of it.
+Past **half** the model's window it turns amber, a warning that the conversation is getting long. Once it passes 80% of the window, the earlier part of the conversation is replaced before your next message is sent, and a note in the transcript says so. What replaces it depends on the provider:
+
+- With **Claude**, the assistant writes a summary of the conversation so far, and the summary takes the place of the earlier messages. This takes one extra request, so the reply starts a little later. If the summary cannot be written, the oldest messages are dropped instead.
+- With an **OpenAI-compatible** provider, the oldest messages are dropped and the most recent ones are kept.
+
+Either way the assistant no longer has the exact words of the earlier messages. When you see amber and the assistant seems to have lost the thread, start a new chat: the reply that follows will have your whole message rather than a shortened history.
 
 ## Attach context
 
