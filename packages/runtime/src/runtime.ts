@@ -5306,13 +5306,21 @@ export {
   pureSchemeOf,
   resolveAtQuery,
   resolveNestedSelector,
+  resolveShadowMode,
   schemeSelectors,
   spliceNestingSelector,
   splitSelectorList,
   transposeCanvasOverlaySelector,
   transposeCanvasPopoverSelector,
 } from "./css.ts";
-export type { CssBuildOptions, CssKeyframeBlock, CssRule, CssRuleTarget } from "./css.ts";
+export type {
+  CssBuildOptions,
+  CssKeyframeBlock,
+  CssRule,
+  CssRuleTarget,
+  ShadowMode,
+  ShadowSetting,
+} from "./css.ts";
 
 /**
  * Convert a style rules object to a CSS text string (skipping nested selectors).
