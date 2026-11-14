@@ -42,6 +42,8 @@ The prefix of the `$ref` string selects where the lookup happens:
 | Event context    | `"event#/target/value"` | Property path on the handler event (expressions)                                                             |
 | External file    | `"./other.json"`        | A component document, for `$switch` cases and `$elements` registration, not a bare `children` node (see §13) |
 
+`#/$map/item` is accepted wherever `$map/item` is.
+
 Paths navigate nested data with further `/` segments: `"#/state/user/name"`, `"$map/item/title"`. A numeric index is just a segment: `"#/state/items/0"`.
 
 :::doc-note

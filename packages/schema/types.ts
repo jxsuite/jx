@@ -379,8 +379,9 @@ export interface JxMappedArray {
   filter?: Bindable<string>;
   sort?: Bindable<string>;
   /**
-   * A `$map/item` pointer naming each row's identity (spec §10.4). Keyed rows keep their DOM node
-   * and effects across reorders, insertions and removals; absent, rows are keyed by index.
+   * A `$map/item` pointer naming each row's identity (spec §10.4), in either spelling
+   * (`$map/item/id` or `#/$map/item/id`). Keyed rows keep their DOM node and effects across
+   * reorders, insertions and removals; absent, rows are keyed by index.
    */
   key?: JxRef;
 }

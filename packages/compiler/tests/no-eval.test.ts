@@ -28,6 +28,20 @@ describe("compiled output contains no eval (spec §21.1)", () => {
         { tagName: "span", textContent: "${state.count}" },
         { tagName: "span", textContent: { $ref: "#/state/label" } },
         { tagName: "button", textContent: "+", onclick: { $ref: "#/state/inc" } },
+        // A filtered, sorted and keyed list: its inlined helpers and directive are held to the rule.
+        {
+          tagName: "ul",
+          children: [
+            {
+              $prototype: "Array",
+              filter: { $ref: "#/state/keep" },
+              items: { $ref: "#/state/rows" },
+              key: { $ref: "$map/item/id" },
+              map: { tagName: "li", textContent: "${$map.item.id}" },
+              sort: { $ref: "#/state/keep" },
+            },
+          ],
+        },
       ],
     };
 
@@ -38,6 +52,7 @@ describe("compiled output contains no eval (spec §21.1)", () => {
 
     const js = result.files.map((f) => f.content).join("\n");
     expect(js.length).toBeGreaterThan(0);
+    expect(js).toContain("__jxKeyed(");
     expect(js).not.toContain("new Function");
     expect(js).not.toMatch(/\beval\s*\(/);
     // Sanity: the template text really did make it into the module (verbatim splice, not eval).

@@ -114,6 +114,7 @@ import {
   isLiveComponent,
   isPureNamedFormula,
   isRuntimeOnlyStateKey,
+  listSettled,
   isSingleExpression,
   liftPropsAttributes,
   observedAttributeProps,
@@ -124,7 +125,8 @@ import {
   referencesStateKey,
   renderStaticNode,
   resolveHostStyle,
-  resolveRefValue,
+  refuseTemplateItems,
+  buildListRows,
 } from "../shared.ts";
 import type { ComponentPrerenderContext, StaticChild } from "../shared.ts";
 import { SLOT_ATTR } from "@jxsuite/runtime";
@@ -1799,7 +1801,10 @@ async function compilePage(
   // Build scope from resolved state so template strings in title/$head can be evaluated. It HOLDS
   // Every entry a handler writes: the template pass below replaces a template with its value, and a
   // Value baked over a binding the page's module must keep is a dead binding (compiler.md §8.1).
-  const scope = buildInitialScope(layoutDoc.state ?? {}, null, { holdMutable: true });
+  const scope = buildInitialScope(layoutDoc.state ?? {}, null, {
+    document: layoutDoc,
+    holdMutable: true,
+  });
 
   // Determine the page title — resolve template strings against the scope
   let title = pageTitle ?? projectConfig.name;
@@ -2025,24 +2030,18 @@ async function compilePage(
       withBase(basePath, deliverClass(def, dirname(route.sourcePath), layoutDoc.imports ?? {})),
     rewriteSrc: (specifier: string) =>
       withBase(basePath, rewriteSidecarSrc(specifier, dirname(route.sourcePath))),
+    /*
+     * The page-template tiers emit their own import map, and `injectComponentScripts` sees a map
+     * already present and declines to add its own, so both halves have to name the same URLs. The
+     * whole map, prefix keys included: a compiled module imports lit subpaths (a keyed list's
+     * `repeat`), and a page map holding only the two exact keys left those unresolvable on exactly
+     * the pages that write their own map (site-architecture.md §8.7).
+     */
+    runtimeImports,
     // The page's own module calls the worker's routes, under the same base the worker registers.
     serverBaseUrl: serverRoutePrefix(basePath),
     title,
   };
-  /*
-   * The page-template tiers emit their own import map, and it defaulted to the CDN — so a page
-   * that reached the client or custom-element target kept loading its runtime from esm.sh even after
-   * the self-hosting landed, because `injectComponentScripts` sees a map already present and
-   * declines to add its own. Both halves have to name the same URLs.
-   */
-  const reactivitySrc = runtimeImports["@vue/reactivity"];
-  if (reactivitySrc !== undefined) {
-    compileOptions.reactivitySrc = reactivitySrc;
-  }
-  const litHtmlSrc = runtimeImports["lit-html"];
-  if (litHtmlSrc !== undefined) {
-    compileOptions.litHtmlSrc = litHtmlSrc;
-  }
   const result = await compile(layoutDoc, compileOptions);
 
   // Inject CSS rules collected from component slot content
@@ -2706,9 +2705,10 @@ function isBuildResolvedListSource(
 
 /**
  * Statically expand a mapped array to its resolved item nodes, or null when the array node is left
- * for client-side rendering: `items` does not resolve to an array at build time, or it resolves to
- * an empty one out of client state, which the client may still fill. An empty array is returned
- * only for a source the build fully resolved ({@link isBuildResolvedListSource}).
+ * for client-side rendering: a source it reads is not settled at build time ({@link listSettled}),
+ * `items` does not resolve to an array, or it resolves to an empty one out of client state, which
+ * the client may still fill. An empty array is returned only for a source the build fully resolved
+ * ({@link isBuildResolvedListSource}).
  *
  * @param {JxMappedArray} arrayDef
  * @param {JxScope} scope
@@ -2720,17 +2720,25 @@ function expandMappedArrayStatic(
   scope: JxScope,
   buildResolved: ReadonlySet<string>,
 ): (JxElement | string)[] | null {
+  refuseTemplateItems(arrayDef);
   const itemsSrc = arrayDef.items;
-  // A non-array, non-ref `items` falls through to the array check below and expands to nothing.
-  const items = isRef(itemsSrc) ? resolveRefValue(itemsSrc.$ref, scope) : itemsSrc;
   const mapTemplate = arrayDef.map;
-  if (!Array.isArray(items) || !mapTemplate) {
+  /* Expanded only when everything the list reads is settled at build time (spec.md §10.3). A list
+     whose `items`, `filter` or `sort` reads state a handler writes, or that only exists after
+     hydration, was baked: the page shipped its first rows and a module with no binding to change
+     them. A list nested in the template is asked too, because a row left unexpanded inside an
+     expanded one would lose the `$map` it reads. */
+  if (!mapTemplate || !listSettled(arrayDef, scope)) {
     return null;
   }
-  if (items.length === 0 && !isBuildResolvedListSource(itemsSrc, scope, buildResolved)) {
+  // `items` filtered, then sorted, or null when it is not an array or a read threw.
+  const rows = buildListRows(arrayDef, scope);
+  if (rows === null) {
     return null;
   }
-  const rows: readonly JxScope[string][] = items;
+  if (rows.length === 0 && !isBuildResolvedListSource(itemsSrc, scope, buildResolved)) {
+    return null;
+  }
   return rows.map((item, index) => {
     /* SAFETY: `Object.create(scope)` is a new object with no own keys whose prototype is `scope`,
        so every key it answers is a binding of `scope` until the row's own are set below. */

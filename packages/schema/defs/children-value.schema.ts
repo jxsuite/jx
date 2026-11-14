@@ -10,12 +10,13 @@ export const arrayNamespaceSchema = {
     key: {
       additionalProperties: false,
       description:
-        "The identity of each rendered row: a $map/item pointer read per item. A row whose key " +
+        "The identity of each rendered row: a $map/item pointer read per item, in either spelling " +
+        "($map/item/id or #/$map/item/id). A row whose key " +
         "survives a change keeps its DOM node and its effects across reorders, insertions and " +
         "removals; without a key, rows are keyed by index. $map/index is not a key — an index " +
         "names a position, not a row.",
       properties: {
-        $ref: { pattern: String.raw`^\$map/item(/.+)?$`, type: "string" },
+        $ref: { pattern: String.raw`^(#/)?\$map/item(/.+)?$`, type: "string" },
       },
       required: ["$ref"],
       type: "object",

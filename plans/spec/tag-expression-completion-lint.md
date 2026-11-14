@@ -22,7 +22,7 @@ size: M
 
 §19.6's "Why once and not live" paragraph (line 2236) rests on the lint: "`jx validate` warns when a tag discriminant is also an assignment target, so the case where the rule bites is caught before it ships." The promise is repeated in the `tagExpressionSchema` docstring (`packages/schema/defs/tag-expression.schema.ts`) and in `renderNode`'s comment (`packages/runtime/src/runtime.ts:1385`). Nothing implements it.
 
-This is an enabling plan: it claims nothing, and `plan:spec/tag-expression-completion`, which owns §19.6 and does the compiled half, requires it. They are split because the compiled half requires `plan:spec/compiled-keyed-lists` and this half needs none of that. Verified on 2026-09-27.
+This is an enabling plan: it claims nothing, and `plan:spec/tag-expression-completion`, which owns §19.6 and does the compiled half, requires it. They are split because the compiled half builds on the landed keyed-list lowering (compiler.md §4.7) and this half needs none of that. Verified on 2026-09-27.
 
 **What exists**
 

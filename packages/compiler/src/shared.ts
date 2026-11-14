@@ -30,6 +30,7 @@ import {
   isNestedSelectorKey,
   camelToKebab,
   isSingleExpression,
+  mappedListItems,
   splitSelectorList,
 } from "@jxsuite/runtime";
 import { spliceNestingSelector } from "@jxsuite/runtime/css";
@@ -71,7 +72,14 @@ import {
 import type { TagNameSlot } from "@jxsuite/schema/guards";
 import { resolveShadowMode, styleScopePrefix } from "./shadow.ts";
 import type { ShadowMode } from "./shadow.ts";
-import { escapeToken, objectKey, readPath, refAccessor } from "@jxsuite/runtime/pointer";
+import {
+  canonicalMapRef,
+  escapeToken,
+  objectKey,
+  readPath,
+  refAccessor,
+  refSegments,
+} from "@jxsuite/runtime/pointer";
 import type { JxScope } from "@jxsuite/runtime/types";
 import type {
   CemParameter,
@@ -390,6 +398,50 @@ const RUNTIME_ONLY_KEYS = Symbol("jx.runtimeOnlyStateKeys");
 // CDN defaults
 export const DEFAULT_REACTIVITY_SRC = "https://esm.sh/@vue/reactivity@3.5.40";
 export const DEFAULT_LIT_HTML_SRC = "https://esm.sh/lit-html@3.3.0";
+
+/**
+ * Render the `<script type="importmap">` block for an `imports` object.
+ *
+ * @param {Record<string, string>} imports
+ * @returns {string}
+ */
+export function renderImportMap(imports: Record<string, string>): string {
+  const entries = Object.entries(imports)
+    .map(([name, url]) => `      ${JSON.stringify(name)}: ${JSON.stringify(url)}`)
+    .join(",\n");
+  return `<script type="importmap">\n  {\n    "imports": {\n${entries}\n    }\n  }\n  </script>`;
+}
+
+/** What a page-template tier is told about where its runtime modules are served. */
+export interface PageImportSources {
+  /** The build's whole import map, prefix keys included. Wins over the two sources below. */
+  runtimeImports?: Record<string, string> | undefined;
+  reactivitySrc: string;
+  litHtmlSrc: string;
+}
+
+/**
+ * The import map a page-template tier writes (compiler.md §12). A site build hands over its whole
+ * map, so a page's own map carries the prefix keys a compiled module's package subpath resolves
+ * through (`lit-html/directives/repeat.js`, which a keyed list imports). A document compiled on its
+ * own gets the two exact keys, plus the `lit-html/` prefix when lit is served from the default CDN,
+ * whose URL space has the subpaths under it. A caller's own `litHtmlSrc` names one file and says
+ * nothing about where its siblings are, so no prefix is invented for it.
+ *
+ * @param {PageImportSources} sources
+ * @returns {string} The `<script type="importmap">` block
+ */
+export function pageImportMap(sources: PageImportSources): string {
+  if (sources.runtimeImports !== undefined) {
+    return renderImportMap(sources.runtimeImports);
+  }
+  const exact = { "@vue/reactivity": sources.reactivitySrc, "lit-html": sources.litHtmlSrc };
+  return renderImportMap(
+    sources.litHtmlSrc === DEFAULT_LIT_HTML_SRC
+      ? { ...exact, "lit-html/": `${DEFAULT_LIT_HTML_SRC}/` }
+      : exact,
+  );
+}
 
 // ─── Schema keywords & detection ─────────────────────────────────────────────
 // Centralized in @jxsuite/schema/guards; re-exported here for existing callers.
@@ -849,6 +901,36 @@ function collectAssignedStateKeys(node: JxDocumentValue | undefined, into: Set<s
 }
 
 /**
+ * The state keys written by handlers declared inline on an element (`onclick: { "$prototype":
+ * "Function", … }` or an `$expression`), anywhere a render can reach: `children` in either shape, a
+ * repeater's `map`, and a `$switch`'s `cases`.
+ *
+ * @param {SlotChildren} children
+ * @param {Set<string>} into
+ */
+function collectInlineHandlerWrites(children: SlotChildren, into: Set<string>): void {
+  for (const child of slotChildList(children)) {
+    if (isMappedArray(child)) {
+      collectInlineHandlerWrites(child.map ? [child.map] : [], into);
+      continue;
+    }
+    if (!isNodeObject(child)) {
+      continue;
+    }
+    for (const [key, value] of Object.entries(child)) {
+      if (key.startsWith("on") && (isFunctionDef(value) || isExpressionDef(value))) {
+        collectAssignedStateKeys(value.body ?? value.$expression, into);
+      }
+    }
+    collectInlineHandlerWrites(
+      Object.values(child.cases ?? {}).filter((c) => isNodeObject(c) && !isRefObject(c)),
+      into,
+    );
+    collectInlineHandlerWrites(child.children, into);
+  }
+}
+
+/**
  * Refuse a Function declaration that names both a `body` and a `$src` (spec.md §5.3 4d). The pair
  * has no meaning: each tier used to keep a different half, so a document that built in one target
  * did something else in another. Every place the compiler lowers a Function declaration calls this
@@ -981,6 +1063,12 @@ export interface BuildScopeOptions {
    * module binds what it prerenders) the entry bakes its initial value, which is the first paint.
    */
   holdMutable?: boolean;
+  /**
+   * The document the `state` block belongs to, for a holding scope: a handler written inline on an
+   * element's `on*` key writes state exactly as one declared in `state` does, and its writes are
+   * held too (compiler.md §8.1 scans "every handler body in the document").
+   */
+  document?: JxElement | JxMutableNode | undefined;
 }
 
 /**
@@ -1024,6 +1112,9 @@ export function buildInitialScope(
         collectAssignedStateKeys(def.body ?? def.$expression, assigned);
       }
     }
+    if (options.document) {
+      collectInlineHandlerWrites([options.document], assigned);
+    }
     for (const key of assigned) {
       if (key in defs) {
         runtimeOnly.add(key);
@@ -1061,6 +1152,12 @@ export function buildInitialScope(
   // The scope as its already-evaluated *result*, so a template reading it sees an ordinary string
   // And prerender bakes it — destroying the binding rather than merely staling it (issue #124).
   const computedBodies: [string, string][] = [];
+  /* Every other entry the scope holds a value or a callable for, by its source: an `$expression`
+     (a computed, a handler or a named formula) and a Function body, string or structured. Each
+     joins the fixpoint below, so what compiler.md §8.1 says of a computed holds of them all: one
+     that reads a runtime-only entry is runtime-only in turn. A repeater asks this of its `items`,
+     `filter` and `sort` before the build expands it (`isRuntimeOnlyRef`). */
+  const entrySources: [string, string][] = [];
 
   for (const [key, def] of Object.entries(defs)) {
     if (isTemplateString(def)) {
@@ -1072,6 +1169,7 @@ export function buildInitialScope(
     }
     if (isExpressionDef(def)) {
       const node = def.$expression;
+      entrySources.push([key, JSON.stringify(node)]);
       if (isNamedFormulaDef(def)) {
         // Named formula: callable, positional args mapped onto its declared parameters.
         const params: readonly FormulaParameter[] = def.parameters;
@@ -1102,6 +1200,7 @@ export function buildInitialScope(
         // Structured body (spec §20): a side-effecting handler in the build-time scope. Build-time
         // Code may call it bare, so the scope it runs against falls back to this one.
         const { body } = def;
+        entrySources.push([key, JSON.stringify(body)]);
         setOwnScopeValue(scope, key, (s?: JxScope, event?: Event) => {
           void runStatements(body, s ?? scope, event ?? null);
         });
@@ -1119,6 +1218,7 @@ export function buildInitialScope(
           computedBodies.push([key, body]);
         } else {
           setOwnScopeValue(scope, key, fn);
+          entrySources.push([key, body]);
         }
       } else {
         // Bodyless `$src` Function — the real implementation is only loaded in the browser, so this
@@ -1155,6 +1255,12 @@ export function buildInitialScope(
     marked = false;
     for (const [key, source] of [...computedBodies, ...templateDefs]) {
       if (!runtimeOnly.has(key) && readsRuntimeOnlyState(source, scope)) {
+        runtimeOnly.add(key);
+        marked = true;
+      }
+    }
+    for (const [key, source] of entrySources) {
+      if (!runtimeOnly.has(key) && readsMarkedState(source, runtimeOnly)) {
         runtimeOnly.add(key);
         marked = true;
       }
@@ -1229,8 +1335,9 @@ export function resolveRefValue(refValue: JsonValue | undefined, scope: JxScope)
   if (!isString(refValue)) {
     return refValue;
   }
-  if (refValue.startsWith("$map/")) {
-    const parts = refValue.split("/");
+  const mapRef = canonicalMapRef(refValue);
+  if (mapRef.startsWith("$map/")) {
+    const parts = mapRef.split("/");
     const key = parts[1]!;
     /* SAFETY: `?.` stops at null and undefined, and every other value answers a member read by
        name; the member comes back as a scope member, so the view claims nothing about its type. */
@@ -1289,6 +1396,27 @@ function readsRuntimeOnlyState(str: string, scope: JxScope | null) {
       continue;
     }
     if (isFunction(value)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Whether an entry's source reads a state key already marked runtime-only: a `#/state/<key>`
+ * pointer in a structured body or an `$expression`, or a `state.<key>` member in a string body.
+ * Narrower than {@link readsRuntimeOnlyState} on purpose: it consults the marks alone and never
+ * reads the scope, so a callable that names another callable is not marked for that.
+ *
+ * @param {string} source - A string body, or the JSON text of a structured body or expression
+ * @param {ReadonlySet<string>} runtimeOnly
+ * @returns {boolean}
+ */
+function readsMarkedState(source: string, runtimeOnly: ReadonlySet<string>): boolean {
+  for (const match of source.matchAll(/#\/state\/([^"/\\]+)|\bstate\.([A-Za-z_$][\w$]*)/g)) {
+    const [, token, member] = match;
+    const key = token === undefined ? member : token.replaceAll("~1", "/").replaceAll("~0", "~");
+    if (key !== undefined && runtimeOnly.has(key)) {
       return true;
     }
   }
@@ -1900,6 +2028,275 @@ export function attrHelperSource(): string {
     `  return v ? '' : null;\n` +
     `}`
   );
+}
+
+/** What the mapped arrays of a document need from the module compiled for it. */
+export interface MappedArrayFeatures {
+  /** Some list declares a `$ref` `filter` or `sort`, so the module carries `__jxListItems`. */
+  arranged: boolean;
+  /** Some list declares a `key`, so the module carries the keyed-list directive. */
+  keyed: boolean;
+}
+
+/**
+ * Which list helpers a document's module needs, from one walk made before anything is emitted: its
+ * `children` in either shape, every repeater's `map`, and every `$switch` case. Decided here and
+ * not while emitting, because a list is reached through emitters that carry no module-level state.
+ *
+ * @param {JxElement | JxMutableNode} doc
+ * @returns {MappedArrayFeatures}
+ */
+export function mappedArrayFeatures(doc: JxElement | JxMutableNode): MappedArrayFeatures {
+  const features: MappedArrayFeatures = { keyed: false, arranged: false };
+  const visit = (children: SlotChildren): void => {
+    for (const child of slotChildList(children)) {
+      if (isMappedArray(child)) {
+        features.arranged ||= isRef(child.filter) || isRef(child.sort);
+        features.keyed ||= isRef(child.key);
+        visit(child.map ? [child.map] : []);
+        continue;
+      }
+      if (!isNodeObject(child)) {
+        continue;
+      }
+      visit(Object.values(child.cases ?? {}).filter((c) => isNodeObject(c) && !isRefObject(c)));
+      visit(child.children);
+    }
+  };
+  visit([doc]);
+  return features;
+}
+
+/**
+ * Whether everything a mapped array reads is settled at build time: none of `items`, `filter` and
+ * `sort` names runtime-only state ({@link isRuntimeOnlyRef}), and the same holds of every mapped
+ * array in its `map` template, through `children` and `$switch` cases. A list nested in the
+ * template is asked too, because a row left unexpanded inside an expanded one would lose the `$map`
+ * it reads.
+ *
+ * @param {JxMappedArray} arrayDef
+ * @param {JxScope} scope - The build-time scope the repeater sits in
+ * @returns {boolean}
+ */
+export function listSettled(arrayDef: JxMappedArray, scope: JxScope): boolean {
+  for (const source of [arrayDef.items, arrayDef.filter, arrayDef.sort]) {
+    if (isRef(source) && isRuntimeOnlyRef(source.$ref, scope)) {
+      return false;
+    }
+  }
+  const settled = (children: SlotChildren): boolean => {
+    for (const child of slotChildList(children)) {
+      if (isMappedArray(child)) {
+        if (!listSettled(child, scope)) {
+          return false;
+        }
+        continue;
+      }
+      if (!isNodeObject(child)) {
+        continue;
+      }
+      const cases = Object.values(child.cases ?? {}).filter(
+        (c) => isNodeObject(c) && !isRefObject(c),
+      );
+      if (!settled(cases) || !settled(child.children)) {
+        return false;
+      }
+    }
+    return true;
+  };
+  return settled(arrayDef.map ? [arrayDef.map] : []);
+}
+
+/**
+ * Refuse a repeater whose `items` is a template string. `items` is a `$ref` or a literal array
+ * (spec.md §10.1); a `${…}` template there is a string in every tier, which is no rows and no
+ * diagnostic, so the build says so instead of shipping an empty list.
+ *
+ * @param {{ items?: JxDocumentValue }} arrayDef - A repeater as the document holds it
+ */
+export function refuseTemplateItems(arrayDef: { items?: JxDocumentValue | undefined }): void {
+  const { items } = arrayDef;
+  if (isTemplateString(items)) {
+    throw new Error(
+      `A repeater's items must be a $ref or a literal array, not the template string ` +
+        `${JSON.stringify(items)}. A template is not read as a list: bind items to a state entry ` +
+        "by $ref, and compute the list in that entry.",
+    );
+  }
+}
+
+/**
+ * The member names a `key` pointer walks from each item (spec.md §10.4): none for `$map/item`, the
+ * unescaped reference tokens for `$map/item/<path>`, in either spelling, and `null` for a pointer
+ * that names no item, which the emitted key rule reports and answers with the index. Split here so
+ * the emitted helper walks plain names and carries no pointer grammar.
+ *
+ * @param {string} pointer - The `key` pointer as written
+ * @returns {string[] | null}
+ */
+export function keyPath(pointer: string): string[] | null {
+  const ref = canonicalMapRef(pointer);
+  if (ref === "$map/item") {
+    return [];
+  }
+  return ref.startsWith("$map/item/") ? refSegments(ref.slice("$map/item/".length)) : null;
+}
+
+/** The name of the list-shaping helper a module with a filtered or sorted list calls. */
+export const LIST_ITEMS_HELPER = "__jxListItems";
+
+/** The name of the row-key helper the keyed-list directive calls. */
+export const LIST_KEYS_HELPER = "__jxRowKeys";
+
+/** The name of the helper that holds a keyed list's literal `items` array across renders. */
+export const LIST_LITERAL_HELPER = "__jxLiteral";
+
+/** The name of the keyed-list directive a module with a keyed list calls in its template. */
+export const KEYED_LIST_HELPER = "__jxKeyed";
+
+/**
+ * The source of the two list rules, to be emitted into a generated module's preamble:
+ * `__jxListItems`, the port of `mappedListItems` (spec.md §10.3), and `__jxRowKeys`, the port of
+ * `mappedRowKeys` over a key path split at compile time (spec.md §10.4, {@link keyPath}).
+ *
+ * Inlined copies for the reason `attrHelperSource` gives: a compiled module loads `lit-html` and
+ * `@vue/reactivity` and nothing else. `list-helpers.test.ts` evaluates this text and holds each
+ * function to the runtime export it ports, messages included.
+ *
+ * @returns {string} Two `function` declarations
+ * @docs framework/concepts/lists
+ */
+export function listHelperSource(): string {
+  return (
+    `function ${LIST_ITEMS_HELPER}(items, filter, sort) {\n` +
+    `  if (!Array.isArray(items)) return [];\n` +
+    `  let list = items;\n` +
+    `  if (typeof filter === 'function') list = list.filter(filter);\n` +
+    `  if (typeof sort === 'function') list = [...list].sort(sort);\n` +
+    `  return list;\n` +
+    `}\n` +
+    `function ${LIST_KEYS_HELPER}(list, path, pointer, warn) {\n` +
+    `  const keys = list.map((item, index) => {\n` +
+    `    if (pointer === null) return index;\n` +
+    `    if (path === null) {\n` +
+    '      warn(`key "${pointer}" is not a $map/item pointer — rows fall back to their index`);\n' +
+    `      return index;\n` +
+    `    }\n` +
+    `    if (path.length === 0) return item;\n` +
+    `    let key = item;\n` +
+    `    for (const name of path) key = key?.[name];\n` +
+    `    if (key === undefined || key === null) {\n` +
+    '      warn(`key "${pointer}" is empty for some items — those rows fall back to their index`);\n' +
+    `      return index;\n` +
+    `    }\n` +
+    `    return key;\n` +
+    `  });\n` +
+    `  const seen = new Set();\n` +
+    `  for (let i = 0; i < keys.length; i++) {\n` +
+    `    if (seen.has(keys[i])) {\n` +
+    "      warn(`duplicate key ${String(keys[i])} — every occurrence after the first is rebuilt on each change`);\n" +
+    `      keys[i] = { duplicate: i };\n` +
+    `    } else {\n` +
+    `      seen.add(keys[i]);\n` +
+    `    }\n` +
+    `  }\n` +
+    `  return keys;\n` +
+    `}`
+  );
+}
+
+/** The lit imports a module with a keyed list adds: the directive base class, and `repeat`. */
+export const KEYED_LIST_IMPORTS: readonly string[] = [
+  `import { AsyncDirective, directive } from 'lit-html/async-directive.js';`,
+  `import { repeat } from 'lit-html/directives/repeat.js';`,
+];
+
+/**
+ * The source of the keyed-list directive (spec.md §10.4), to be emitted after `listHelperSource()`
+ * in a module that imports {@link KEYED_LIST_IMPORTS} and `effect`, `stop` and `shallowRef`.
+ *
+ * `__jxKeyed(items, filter, sort, path, pointer, row)` sits in a lit template where a list goes and
+ * renders lit's `repeat()` over a snapshot it owns. The snapshot is computed in an effect of the
+ * directive's own, which is what gives a compiled keyed list the interpreter's two properties:
+ *
+ * - **Coalescing.** A reactive array mutated in place (`reverse()`, `sort()`, an index write)
+ *   triggers once per element it touches. The host's render is synchronous, so a `repeat()` fed the
+ *   live array would reconcile against an array that is half of each state and tear down the row
+ *   whose key exists to keep it. The directive's effect runs on one microtask per burst, as
+ *   `renderMappedArrayInto`'s does, and only then hands the host a new snapshot.
+ * - **A plain copy.** The snapshot is `Array.from` of the arranged list, taken inside that effect, so
+ *   the host render never iterates the reactive source and is not re-run per index.
+ *
+ * Row templates stay in the host's render: `row(item, index)` is called by `repeat()` there, so a
+ * row's own bindings update synchronously with the rest of the template.
+ *
+ * The first run is synchronous, inside the host's first render. A reconnected directive's first run
+ * is queued, because lit reconnects inside a commit, where a write to the snapshot could not
+ * re-trigger the host effect that is running it.
+ *
+ * @returns {string} One class declaration and the directive made from it
+ * @docs framework/concepts/lists
+ */
+export function keyedListDirectiveSource(): string {
+  return [
+    "class __JxKeyedList extends AsyncDirective {",
+    "  #args = null;",
+    "  #runner = null;",
+    "  #queued = false;",
+    "  #warned = false;",
+    "  #snap = shallowRef({ list: [], keys: [] });",
+    "  #warn = (message) => {",
+    "    if (this.#warned) return;",
+    "    this.#warned = true;",
+    "    console.warn(`Jx $map: ${message}`);",
+    "  };",
+    "  #compute = () => {",
+    "    const [items, filter, sort, path, pointer] = this.#args;",
+    `    const list = Array.from(${LIST_ITEMS_HELPER}(items, filter, sort));`,
+    `    this.#snap.value = { list, keys: ${LIST_KEYS_HELPER}(list, path, pointer, this.#warn) };`,
+    "  };",
+    "  #schedule = () => {",
+    "    if (this.#queued) return;",
+    "    this.#queued = true;",
+    "    queueMicrotask(() => {",
+    "      this.#queued = false;",
+    "      if (this.#runner) this.#runner();",
+    "    });",
+    "  };",
+    "  #start(lazy) {",
+    "    this.#runner = effect(this.#compute, { lazy, scheduler: this.#schedule });",
+    "    if (lazy) this.#schedule();",
+    "  }",
+    "  render() {}",
+    "  update(_part, args) {",
+    "    const previous = this.#args;",
+    "    this.#args = args;",
+    "    if (!this.#runner) {",
+    "      if (this.isConnected) this.#start(false);",
+    "    } else if (previous[0] !== args[0] || previous[1] !== args[1] || previous[2] !== args[2]) {",
+    "      this.#schedule();",
+    "    }",
+    "    const snap = this.#snap.value;",
+    "    return repeat(snap.list, (_item, index) => snap.keys[index], args[5]);",
+    "  }",
+    "  disconnected() {",
+    "    if (this.#runner) stop(this.#runner);",
+    "    this.#runner = null;",
+    "  }",
+    "  reconnected() {",
+    "    if (!this.#runner && this.#args) this.#start(true);",
+    "  }",
+    "}",
+    `const ${KEYED_LIST_HELPER} = directive(__JxKeyedList);`,
+    /* A literal `items` array, by its JSON text, parsed once. Written inline it would be a new
+       array on every render, which the directive reads as a new list: it would reshape, hand the
+       host a new snapshot, and the host's re-render would hand it another new array, forever. */
+    "const __jxLiterals = new Map();",
+    `function ${LIST_LITERAL_HELPER}(text) {`,
+    "  if (!__jxLiterals.has(text)) __jxLiterals.set(text, JSON.parse(text));",
+    "  return __jxLiterals.get(text);",
+    "}",
+  ].join("\n");
 }
 
 /** The name of the prop-supply helper an element module with a property bridge calls. */
@@ -3136,12 +3533,13 @@ function renderInner(
  * The rows of a repeater as the element's first render draws them (compiler.md §8.1), so a
  * component's list is in the HTML it ships and not only in the DOM its module builds.
  *
- * `items` is a literal array, or a `$ref` read from the scope the repeater sits in. No row is
- * rendered when the pointer names runtime-only state (`isRuntimeOnlyRef`, asked before the read),
- * when the read throws or does not yield an array, or when the repeater declares `filter` or
- * `sort`: the compiled element applies neither yet (spec.md §10.3), so the build cannot know which
- * rows its first render will hold, and rows the filter would drop must not reach the page. `key` is
- * not consulted, because nothing adopts a row (spec.md §16.10).
+ * `items` is a literal array, or a `$ref` read from the scope the repeater sits in, and `filter`
+ * and `sort` are applied to it by the rule the element applies (`mappedListItems`, spec.md §10.3),
+ * so the rows here are the rows of its first render, in its order. No row is rendered when any of
+ * the three pointers names runtime-only state (`isRuntimeOnlyRef`, asked before the read: a
+ * placeholder callable must never filter a list to nothing), or when a read or a predicate throws
+ * on build-time data, or when `items` does not yield an array. `key` is not consulted, because
+ * nothing adopts a row (spec.md §16.10).
  *
  * Each row renders the `map` template in a scope of its own that inherits the repeater's and
  * carries the iteration frame the way `resolveRefValue` and `evaluateStaticTemplate` read it, so a
@@ -3163,26 +3561,15 @@ export function renderMappedRows(
   preformatted = false,
 ): string {
   const template = arrayDef.map;
-  if (!template || arrayDef.filter !== undefined || arrayDef.sort !== undefined) {
+  if (!template) {
     return "";
   }
+  refuseTemplateItems(arrayDef);
   const parent = scope ?? emptyScope();
-  let items: JxScope[string] = arrayDef.items;
-  if (isRef(arrayDef.items)) {
-    if (isRuntimeOnlyRef(arrayDef.items.$ref, parent)) {
-      return "";
-    }
-    // Reading the pointer can run a computed's getter, which is free to throw on build-time data.
-    try {
-      items = resolveRefValue(arrayDef.items.$ref, parent);
-    } catch {
-      return "";
-    }
-  }
-  if (!Array.isArray(items)) {
+  const rows = buildListRows(arrayDef, parent);
+  if (rows === null) {
     return "";
   }
-  const rows: readonly JxScope[string][] = items;
   return rows
     .map((item, index) => {
       const rowScope = emptyScope(parent);
@@ -3192,6 +3579,41 @@ export function renderMappedRows(
       return renderStaticNode(template, rowScope, slots, context, preformatted);
     })
     .join(preformatted ? "" : "\n");
+}
+
+/**
+ * A repeater's rows at build time: `items` filtered, then sorted, by the interpreter's own rule
+ * (`mappedListItems`), or `null` when the build cannot know them. That is when `items`, `filter` or
+ * `sort` names runtime-only state, when reading one throws (a computed's getter is free to on
+ * build-time data), when a predicate or comparator throws, or when `items` is not an array.
+ *
+ * The component prerender and the site build's page expansion both ask here, so a list is arranged
+ * by one rule wherever the build draws it.
+ *
+ * @param {JxMappedArray} arrayDef
+ * @param {JxScope} scope - The scope the repeater sits in
+ * @returns {readonly JxScope[string][] | null}
+ */
+export function buildListRows(
+  arrayDef: JxMappedArray,
+  scope: JxScope,
+): readonly JxScope[string][] | null {
+  const read = (source: JxDocumentValue | undefined): JxScope[string] =>
+    isRef(source) ? resolveRefValue(source.$ref, scope) : undefined;
+  for (const source of [arrayDef.items, arrayDef.filter, arrayDef.sort]) {
+    if (isRef(source) && isRuntimeOnlyRef(source.$ref, scope)) {
+      return null;
+    }
+  }
+  try {
+    const items = isRef(arrayDef.items) ? read(arrayDef.items) : arrayDef.items;
+    if (!Array.isArray(items)) {
+      return null;
+    }
+    return mappedListItems(items, read(arrayDef.filter), read(arrayDef.sort));
+  } catch {
+    return null;
+  }
 }
 
 /**
