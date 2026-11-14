@@ -16,7 +16,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { JsonValue } from "@jxsuite/schema/types";
-import { rewriteHtmlBase } from "../src/site/base-path";
+import { rebaseDocument, rewriteCssUrls, rewriteHtmlBase } from "../src/site/base-path";
 import { buildSite } from "../src/site/site-build";
 
 // ─── The HTML pass ───────────────────────────────────────────────────────────
@@ -135,6 +135,108 @@ describe("rewriteHtmlBase", () => {
   });
 });
 
+// ─── The document pass ───────────────────────────────────────────────────────
+
+describe("rebaseDocument", () => {
+  const definition = () => ({
+    attributes: { "data-href": "/kept", href: "/root" },
+    cases: {
+      a: { attributes: { src: "/a.png" }, tagName: "img" },
+    },
+    children: [
+      "text",
+      {
+        children: [
+          {
+            attributes: { srcset: "/o/hero-640.avif 640w, /o/hero-1280.avif 1280w" },
+            tagName: "source",
+          },
+          { attributes: { src: { $ref: "#/state/src" } }, src: "/hero.jpg", tagName: "img" },
+        ],
+        tagName: "picture",
+      },
+      {
+        $prototype: "Array",
+        items: [],
+        map: { formAction: "/send", poster: "${state.poster}", tagName: "button" },
+      },
+      { innerHTML: '<img src="/in.png" srcset="/in.png 1x">', tagName: "div" },
+      { attributes: { style: "background: url(/bg.png)" }, tagName: "p" },
+    ],
+    tagName: "x-card",
+  });
+
+  test("re-roots every URL the definition's own markup writes", () => {
+    const doc = definition();
+    rebaseDocument(doc, BASE);
+    expect(doc).toEqual({
+      attributes: { "data-href": "/kept", href: "/m/probe/root" },
+      cases: {
+        a: { attributes: { src: "/m/probe/a.png" }, tagName: "img" },
+      },
+      children: [
+        "text",
+        {
+          children: [
+            {
+              attributes: {
+                srcset: "/m/probe/o/hero-640.avif 640w, /m/probe/o/hero-1280.avif 1280w",
+              },
+              tagName: "source",
+            },
+            {
+              attributes: { src: { $ref: "#/state/src" } },
+              src: "/m/probe/hero.jpg",
+              tagName: "img",
+            },
+          ],
+          tagName: "picture",
+        },
+        {
+          $prototype: "Array",
+          items: [],
+          map: { formAction: "/m/probe/send", poster: "${state.poster}", tagName: "button" },
+        },
+        {
+          innerHTML: '<img src="/m/probe/in.png" srcset="/m/probe/in.png 1x">',
+          tagName: "div",
+        },
+        { attributes: { style: "background: url(/m/probe/bg.png)" }, tagName: "p" },
+      ],
+      tagName: "x-card",
+    });
+  });
+
+  test("is idempotent, and an empty base leaves the document as written", () => {
+    const once = definition();
+    rebaseDocument(once, BASE);
+    const twice = structuredClone(once);
+    rebaseDocument(twice, BASE);
+    expect(twice).toEqual(once);
+
+    const untouched = definition();
+    rebaseDocument(untouched, "");
+    expect(untouched).toEqual(definition());
+  });
+
+  test("a children value that is one repeater is walked through its template", () => {
+    const map = { href: "/row", tagName: "a" };
+    rebaseDocument({ children: { $prototype: "Array", items: [], map }, tagName: "x-list" }, BASE);
+    expect(map.href).toBe("/m/probe/row");
+  });
+});
+
+describe("rewriteCssUrls", () => {
+  test("re-roots a stylesheet's own url() references", () => {
+    expect(rewriteCssUrls("a { background: url(/x.png) } b { src: url(x.woff) }", BASE)).toBe(
+      "a { background: url(/m/probe/x.png) } b { src: url(x.woff) }",
+    );
+    expect(rewriteCssUrls("a { background: url(/x.png) }", "")).toBe(
+      "a { background: url(/x.png) }",
+    );
+  });
+});
+
 // ─── The whole build ─────────────────────────────────────────────────────────
 
 const TMP = resolve(import.meta.dir, "__test-base-path__");
@@ -178,6 +280,35 @@ beforeAll(() => {
     title: "Home",
   });
   writeJSON("pages/about.json", { children: [{ children: ["About"], tagName: "h1" }] });
+  /* A live component: its module replaces what the page prerendered, so the URLs it draws have to
+     be the ones the page carried. */
+  writeJSON("components/probe-card.json", {
+    children: [
+      { attributes: { href: "/about" }, children: ["About"], tagName: "a" },
+      {
+        attributes: { srcset: "/hero.jpg 1x, /hero@2x.jpg 2x" },
+        src: "/hero.jpg",
+        tagName: "img",
+      },
+      {
+        attributes: { poster: "/hero.jpg" },
+        style: { backgroundImage: "url(/hero.jpg)" },
+        tagName: "video",
+      },
+      { attributes: { href: "https://example.org/x" }, children: ["Out"], tagName: "a" },
+      {
+        children: ["${state.count}"],
+        onclick: { $ref: "#/state/add" },
+        tagName: "button",
+      },
+    ],
+    state: {
+      add: { $prototype: "Function", body: "state.count++" },
+      count: 0,
+    },
+    tagName: "probe-card",
+  });
+  writeJSON("pages/card.json", { children: [{ tagName: "probe-card" }], title: "Card" });
   mkdirSync(resolve(TMP, "public"), { recursive: true });
   writeFileSync(resolve(TMP, "public/hero.jpg"), "jpg", "utf8");
   writeFileSync(resolve(TMP, "public/icon-192.png"), "png", "utf8");
@@ -240,6 +371,17 @@ describe("a site whose url carries a path", () => {
         start_url: "/m/probe/",
       }),
     );
+  }, 120_000);
+
+  test("a component module draws the URLs its prerender carries", async () => {
+    const result = await buildAt("https://example.pages.dev/m/probe/");
+    expect(result.errors).toEqual([]);
+    const module = read("dist/components/probe-card.js");
+    expect(module).toContain("/m/probe/about");
+    expect(module).toContain("/m/probe/hero.jpg 1x, /m/probe/hero@2x.jpg 2x");
+    expect(module).not.toMatch(/["'`=]\/(?:about|hero)/);
+    expect(module).toContain("https://example.org/x");
+    expect(read("dist/components/probe-card.css")).toContain("url(/m/probe/hero.jpg)");
   }, 120_000);
 
   test("the same fixture at an origin root emits no prefix anywhere", async () => {
