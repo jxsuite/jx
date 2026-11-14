@@ -201,9 +201,11 @@ The version 1 chat body is the OpenAI chat-completions conversation: a backend t
 
 ## 3. Tool Surface
 
-> **Status: Partial.** The tool schemas and the edit-application path do not live in `packages/ai/src`: `packages/ai/src/tools.ts` holds only the generic registry, `ToolContext` and write ledger, the hand tools are registered in `packages/studio/src/services/ai-*.ts` (§3.6), and their document edits apply through `transactDoc` in `packages/studio/src/tabs/transact.ts`. The tool list this paragraph defers is still not enumerated here, although `AI_TOOL_TIERS` in `packages/studio/src/services/ai-system-prompt.ts` and the command records that declare `aiTool` are that list.
+The assistant works a Jx project through tools. It reads and edits the open document, its element tree and its state, with each edit rendered live on the canvas and reachable by undo (§3.2); it lists, reads, searches and writes project files, and creates pages and components; it creates or imports a project when none is open (§3.5); it puts a question to the author (§3.4); and it runs the Studio commands that declare themselves tools (§3.6).
 
-The assistant is given a fixed set of document-editing tools (create/edit page and component, inspect the tree, apply edits the canvas renders live). The tool schemas and the edit-application path live in `packages/ai/src`. This section is a placeholder; the concrete tool list will be enumerated here once it stabilizes.
+**Where a tool lives follows who wrote it (§3.6).** `@jxsuite/ai/tools` is the generic layer: the registry, the `ToolDefinition` shape, `ToolContext` and the turn's write ledger (§3.7). It defines no concrete tool. The hand tools are registered by Studio, and their document edits apply through Studio's transaction path (`packages/studio/src/tabs/transact.ts`), which is what puts each one on the tab's undo history. The document tools and the file tools among them are defined once, portably, in `@jxsuite/ai/jx-tools`, and Studio registers them over its own hosts (§3.9, §3.14). The command tools are Studio's command records, projected from the window's registry.
+
+**The list is what §3.6 names, not this section.** The hand tools are the ones §3.6 gates by tier, and the command tools are the records that declare `aiTool` (`studio.md` §13.1). `packages/studio/tests/ai-system-prompt.test.ts` holds each to what is registered, in both directions, and the two name sets disjoint, so a copy here would be a third list that nothing holds to the other two.
 
 ### 3.0 The assistant is addressable by name
 
