@@ -880,13 +880,16 @@ export interface AiModelsResponse {
   wire?: number[];
   /** The ceilings the chat route enforces, when the backend enforces any. */
   limits?: AiChatLimits;
-  /** Set when the upstream provider was unreachable and defaults were returned. */
+  /**
+   * Set when the upstream listing failed: its HTTP status, or `"network"` when it could not be
+   * reached. Defaults were returned. This, not {@link upstreamMessage}, is what marks the failure.
+   */
   upstreamError?: number | string;
   /**
    * The upstream's own error message, when {@link upstreamError} is set. Populated from whatever
    * envelope the upstream used — OpenAI's `{error}`, or an array-shaped one like Cloudflare's
    * `{errors: [{message}]}` — so a caller can show the real reason (e.g. "No route for that URI")
-   * instead of a bare status code.
+   * instead of a bare status code. May be absent or empty; a client then shows the status.
    */
   upstreamMessage?: string;
   /**

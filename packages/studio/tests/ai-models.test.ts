@@ -19,7 +19,7 @@ import {
   modelContextWindow,
   modelToolSupport,
   PROBE_STALE_MS,
-  proxyModelsErrorMessage,
+  proxyListingFailure,
   refreshStaleProbe,
   resetModelCache,
   isManagedProxy,
@@ -291,7 +291,7 @@ describe("proxy state flags", () => {
         { status: 200 },
       );
     await fetchAvailableModels();
-    expect(proxyModelsErrorMessage()).toBe("No route for that URI");
+    expect(proxyListingFailure()).toEqual({ reason: "No route for that URI", status: 404 });
   });
 
   test("clears the upstream message once a fetch succeeds cleanly", async () => {
@@ -301,11 +301,42 @@ describe("proxy state flags", () => {
         { status: 200 },
       );
     await fetchAvailableModels();
-    expect(proxyModelsErrorMessage()).toBe("nope");
+    expect(proxyListingFailure()?.reason).toBe("nope");
 
     fetchImpl = async () => Response.json({ models: [{ id: "gpt-4o" }] }, { status: 200 });
     await fetchAvailableModels({ force: true });
-    expect(proxyModelsErrorMessage()).toBe("");
+    expect(proxyListingFailure()).toBeNull();
+  });
+
+  test.each([
+    ["no message", { upstreamError: 404 }, "HTTP 404"],
+    ["an empty message", { upstreamError: 404, upstreamMessage: "" }, "HTTP 404"],
+    ["a blank message", { upstreamError: 502, upstreamMessage: "  " }, "HTTP 502"],
+    ["a padded message", { upstreamError: 404, upstreamMessage: " No route \n" }, "No route"],
+    ["an unreachable provider", { upstreamError: "network" }, "Provider unreachable"],
+    ["a code of its own", { upstreamError: "timeout" }, "timeout"],
+    ["an empty code", { upstreamError: "" }, "Model listing failed"],
+    ["a message that is not text", { upstreamError: 500, upstreamMessage: 7 }, "HTTP 500"],
+  ])("witnesses a listing answered with %s", async (_label, answer, reason) => {
+    fetchImpl = async () => Response.json({ models: [], ...answer }, { status: 200 });
+    await fetchAvailableModels();
+    expect(proxyListingFailure()?.reason).toBe(reason);
+  });
+
+  test("a null upstreamError is no failure", async () => {
+    fetchImpl = async () => Response.json({ models: [], upstreamError: null }, { status: 200 });
+    await fetchAvailableModels();
+    expect(proxyListingFailure()).toBeNull();
+  });
+
+  test("a listing failure is reported only for the credentials it was listed under", async () => {
+    fetchImpl = async () => Response.json({ models: [], upstreamError: 404 }, { status: 200 });
+    const listedUnder = { apiKey: "sk-a", baseUrl: "" };
+    await fetchAvailableModels({ credentials: listedUnder });
+    expect(proxyListingFailure({ apiKey: "sk-b", baseUrl: "" })).toBeNull();
+    expect(proxyListingFailure(listedUnder)).toEqual({ reason: "HTTP 404", status: 404 });
+    resetModelCache();
+    expect(proxyListingFailure(listedUnder)).toBeNull();
   });
 });
 
