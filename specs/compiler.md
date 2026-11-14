@@ -369,13 +369,13 @@ await writeElementPack(pack, "dist");
 
 It returns files and writes none, each with a path relative to the pack's directory:
 
-| File                   | Holds                                                                                                                                                                                       |
-| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `<tag>.js`             | The module §4.1 describes. It imports the definitions it names in `$elements` as its siblings (`./<tag>.js`), wherever their files are, so importing one element registers what it renders. |
-| `<tag>.css`            | The definition's stylesheet (§4.5), when it has one.                                                                                                                                        |
-| `index.js`             | One import per module, each tag after the tags it renders, so importing it registers the pack.                                                                                              |
-| `elements.css`         | Every light-DOM definition's stylesheet, in that order, for a page to link. A shadow definition's sheet is left out: it is linked from inside its own root.                                 |
-| `custom-elements.json` | The pack's Custom Elements Manifest (spec.md §16.8), each module's `path` prefixed with `packDir`, since a manifest's paths are read against the package root.                              |
+| File                   | Holds                                                                                                                                                                                                                           |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `<tag>.js`             | The module §4.1 describes. It imports the definitions it names in `$elements` as its siblings (`./<tag>.js`), wherever their files are, so importing one element registers what it renders.                                     |
+| `<tag>.css`            | The definition's stylesheet (§4.5).                                                                                                                                                                                             |
+| `index.js`             | One import per module, each tag after the tags it renders, so importing it registers the pack.                                                                                                                                  |
+| `elements.css`         | Every light-DOM definition's stylesheet, in that order, for a page to link. A shadow definition's sheet is left out: its module links the sibling `<tag>.css` into the root it attaches, resolved against the module's own URL. |
+| `custom-elements.json` | The pack's Custom Elements Manifest (spec.md §16.8), each module's `path` prefixed with `packDir`, since a manifest's paths are read against the package root.                                                                  |
 
 `pack.warnings` carries the manifest generator's warnings and `pack.tags` the registration order. A pack compiles `.json` and `.jxn` documents. A file with no hyphenated `tagName`, two files declaring one `tagName`, and a `$elements` reference to a file outside the pack are errors. A caller that needs more than the modules as emitted, a bundler pass over a library's TypeScript behaviour modules for one, runs it over the files before writing them.
 

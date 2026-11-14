@@ -112,6 +112,16 @@ describe("compileElementPack", () => {
     expect(page).not.toContain(":host");
   });
 
+  test("a shadow definition links its own stylesheet into a root it attaches", async () => {
+    /* A pack is used with no prerender around it, so every instance's root is one the module
+       attaches. The sheet is the sibling the pack writes, found from the module's own URL. */
+    const pack = await compileElementPack({ components: COMPONENTS, rewriteSrc });
+    expect(fileOf(pack, "x-panel.js")).toContain(
+      'href: new URL("./x-panel.css", import.meta.url).href',
+    );
+    expect(fileOf(pack, "a-button.js")).not.toContain("a-button.css");
+  });
+
   test("the manifest names each module under the pack's directory", async () => {
     const pack = await compileElementPack({ components: COMPONENTS, rewriteSrc });
     expect(pack.manifest.modules.map((module) => module.path)).toEqual([
