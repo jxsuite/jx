@@ -1348,7 +1348,17 @@ export function buildAttrs(def: JxElement | JxMutableNode, scope: JxScope | null
   let out = "";
 
   const id = resolveStaticValue(def.id, scope);
-  const className = resolveStaticValue(def.className, scope);
+  /* One `class` attribute, at the `className` position: the author's classes, then the style
+     handle (spec.md §9.2). The author's are `attributes.class` when the element writes one, which
+     is what the runtime leaves in effect, since it applies attributes after properties. */
+  const mergesClass = writesMergedClass(def);
+  const authorClass = mergesClass ? resolveStaticValue(authorClassValue(def), scope) : null;
+  const className = [
+    isString(authorClass) || isNumber(authorClass) ? String(authorClass) : "",
+    styleHandleOf(def) ?? "",
+  ]
+    .filter((token) => token !== "")
+    .join(" ");
   const hidden = resolveStaticValue(def.hidden, scope);
   const tabIndex = resolveStaticValue(def.tabIndex, scope);
   const title = resolveStaticValue(def.title, scope);
@@ -1359,7 +1369,7 @@ export function buildAttrs(def: JxElement | JxMutableNode, scope: JxScope | null
     out += ` id="${escapeHtml(String(id))}"`;
   }
   if (className) {
-    out += ` class="${escapeHtml(String(className))}"`;
+    out += ` class="${escapeHtml(className)}"`;
   }
   if (hidden) {
     out += " hidden";
@@ -1394,6 +1404,10 @@ export function buildAttrs(def: JxElement | JxMutableNode, scope: JxScope | null
   }
   if (def.attributes) {
     for (const [k, v] of Object.entries(def.attributes)) {
+      // Already written above, merged with the style handle.
+      if (mergesClass && k === "class") {
+        continue;
+      }
       const value = resolveStaticValue(v, scope);
       /*
        * A boolean is the attribute's PRESENCE or its text, depending on which family HTML puts the
@@ -1884,14 +1898,165 @@ export function escapeStyleText(css: string): string {
 }
 
 /**
- * @param {JxElement | JxMutableNode | string} def
+ * Where a style pass keeps the handle it gave a node. A symbol, because `className` is author data
+ * that may be a `$ref` or a template and is never written; an assigned symbol-keyed property is
+ * enumerable, so it survives the object spreads the prerender and the element target make, and it
+ * stays out of `JSON.stringify` (`data-jx-props`, emitted documents). `structuredClone` would drop
+ * it: a pass that deep-clones a node between a style pass and an emitter must carry it over.
+ */
+const STYLE_HANDLE = Symbol("jx.styleHandle");
+
+/** A node as a style pass leaves it. */
+interface Handled {
+  [STYLE_HANDLE]?: string;
+}
+
+/** A node a style pass walks: an element, or a repeater standing among its children. */
+type StyleScopeNode = JxElement | JxMutableNode | JxMappedArray;
+
+/**
+ * The generated class a style pass gave `node`, without its dot, or `undefined` for a node no pass
+ * has handled. The class selects that element and nothing else (for a repeater's item template, the
+ * rows it renders), and its static rules are keyed on it (spec.md §9.2).
+ *
+ * @param {StyleScopeNode} node
+ * @returns {string | undefined}
+ * @docs framework/concepts/styling
+ */
+export function styleHandleOf(node: StyleScopeNode): string | undefined {
+  /* SAFETY: `STYLE_HANDLE` is module-private and `handleFor` is its only writer, which always
+     stores a string under it; a node no pass has walked answers undefined. */
+  return (node as Handled)[STYLE_HANDLE];
+}
+
+/**
+ * The handle of `def`, minted on first use. Idempotent: a node keeps the first handle any pass
+ * gives it, because one object can be walked by two passes that must agree (the element module's
+ * stamping pass and the page sheet, in `compile()`'s custom-element route).
+ */
+function handleFor(def: JxElement | JxMutableNode, counter: { n: number }, prefix: string): string {
+  const existing = styleHandleOf(def);
+  if (existing !== undefined) {
+    return existing;
+  }
+  const handle = `${prefix}-${counter.n}`;
+  counter.n += 1;
+  /* SAFETY: the same private slot `styleHandleOf` reads; no declared member of a node is touched. */
+  (def as Handled)[STYLE_HANDLE] = handle;
+  return handle;
+}
+
+/**
+ * The members a style pass descends into from `def`: an array `children`, or the repeater itself
+ * when `children` is one (the legacy whole-children form).
+ *
+ * @param {JxElement | JxMutableNode} def
+ * @returns {(StyleScopeNode | string)[]}
+ */
+export function styleChildren(def: JxElement | JxMutableNode): (StyleScopeNode | string)[] {
+  const { children } = def;
+  if (Array.isArray(children)) {
+    return children;
+  }
+  return isMappedArray(children) ? [children] : [];
+}
+
+/**
+ * The one traversal every style pass makes, so the sheet and each emitter number the same nodes in
+ * the same order. Pre-order: the node, its children in order with a repeater's `map` template at
+ * the repeater's position, then its `$switch` cases. A repeater is not itself an element, so only
+ * its template is visited, and one with no template is skipped.
+ */
+function walkStyleScopes(
+  def: StyleScopeNode | string,
+  visit: (node: JxElement | JxMutableNode) => void,
+): void {
+  if (!isNonNullObject(def)) {
+    return;
+  }
+  if (isMappedArray(def)) {
+    if (def.map) {
+      walkStyleScopes(def.map, visit);
+    }
+    return;
+  }
+  visit(def);
+  for (const child of styleChildren(def)) {
+    walkStyleScopes(child, visit);
+  }
+  // $switch case nodes render in place of the container's content — walk them too
+  if (isNonNullObject(def.cases)) {
+    for (const c of Object.values<JxElement | JxMutableNode>(def.cases)) {
+      walkStyleScopes(c, visit);
+    }
+  }
+}
+
+/**
+ * Give every node under `def` that carries a `style` object its handle, without building a rule.
+ * The element target stamps its template with this: its sheet is `buildComponentCSS`'s, and
+ * building the rules a second time would record each dropped reactive declaration twice.
+ *
+ * @param {StyleScopeNode | string} def
+ * @param {{ n: number }} counter
+ * @param {string} prefix - Names the sheet that holds the rules: `jx`, `jxs`, or a component's tag
+ */
+export function assignStyleHandles(
+  def: StyleScopeNode | string,
+  counter: { n: number },
+  prefix: string,
+): void {
+  walkStyleScopes(def, (node) => {
+    if (node.style) {
+      handleFor(node, counter, prefix);
+    }
+  });
+}
+
+/**
+ * Whether an emitter writes this element's `class` attribute once, merged: it has a style handle or
+ * a `className`. An element with neither keeps whatever `attributes.class` it writes, where and how
+ * it always was.
+ *
+ * @param {JxElement | JxMutableNode} def
+ * @returns {boolean}
+ */
+export function writesMergedClass(def: JxElement | JxMutableNode): boolean {
+  return styleHandleOf(def) !== undefined || Boolean(def.className);
+}
+
+/**
+ * The author's own classes for an element: `attributes.class` when the element writes one, else
+ * `className`. The runtime applies attributes after properties, so that is the value it leaves in
+ * effect, and the compiled emitters follow it.
+ *
+ * @param {JxElement | JxMutableNode} def
+ * @returns {JxDocumentValue | undefined} A string, a `$ref`, or whatever the document holds there
+ */
+export function authorClassValue(def: JxElement | JxMutableNode): JxDocumentValue | undefined {
+  const { attributes } = def;
+  return isNonNullObject(attributes) && Object.hasOwn(attributes, "class")
+    ? attributes.class
+    : def.className;
+}
+
+/**
+ * Collect the static rules of every styled node under `def`, each keyed on a generated class of the
+ * node's own (spec.md §9.2): never an author's class, which every other element carrying it would
+ * share, and never an `id`, whose rule would outweigh the runtime's (0,1,0) handle and make a built
+ * page cascade differently from its preview. A repeater's item template gets one handle its rows
+ * share. The class reaches markup through `styleHandleOf`, which every emitter reads.
+ *
+ * @param {StyleScopeNode | string} def
  * @param {string[]} rules
  * @param {Record<string, string>} mediaQueries
  * @param {string} [_parentSel]
- * @param {{ n: number }} [counter]
+ * @param {{ n: number }} [counterArg]
+ * @param {string} [prefix] - Names the sheet that holds the rules: `jx`, `jxs`, or a component's
+ *   tag
  */
 export function collectStyles(
-  def: JxElement | JxMutableNode | string,
+  def: StyleScopeNode | string,
   rules: string[],
   mediaQueries: Record<string, string>,
   _parentSel = "",
@@ -1899,42 +2064,11 @@ export function collectStyles(
   prefix = "jx",
 ) {
   const counter = counterArg ?? { n: 0 };
-  if (!isNonNullObject(def)) {
-    return;
-  }
-
-  if (def.style && !def.id && !def.className) {
-    def.className = `${prefix}-${counter.n}`;
-    counter.n += 1;
-  }
-
-  /* A chosen tag needs a selector that matches every candidate, not the first one.
-     `#id` and `.class` are unaffected — they identify the element regardless of what it turns out
-     to be — but a bare tag selector has to become the union, or styling an `<a>|<div>` wrapper
-     would style exactly one of the two branches and silently miss the other. */
-  const tagSelector = tagNameCandidates(def.tagName).join(", ") || "*";
-  const selector = def.id
-    ? `#${def.id}`
-    : def.className
-      ? `.${def.className.split(" ")[0]}`
-      : tagSelector;
-
-  if (def.style) {
-    pushStyleRules(rules, def.style, selector, mediaQueries);
-  }
-
-  if (Array.isArray(def.children)) {
-    for (const c of def.children) {
-      collectStyles(c, rules, mediaQueries, selector, counter, prefix);
+  walkStyleScopes(def, (node) => {
+    if (node.style) {
+      pushStyleRules(rules, node.style, `.${handleFor(node, counter, prefix)}`, mediaQueries);
     }
-  }
-
-  // $switch case nodes render in place of the container's content — collect their styles too
-  if (isNonNullObject(def.cases)) {
-    for (const c of Object.values<JxElement | JxMutableNode>(def.cases)) {
-      collectStyles(c, rules, mediaQueries, selector, counter, prefix);
-    }
-  }
+  });
 }
 
 // ─── Utilities ────────────────────────────────────────────────────────────────
@@ -2701,7 +2835,7 @@ function _isStaticNode(node: JxElement | string | (JxElement | string)[]): boole
 
 /**
  * Generate CSS rules for a component: host-level styles using tag selector, plus inner element
- * styles using .jx-N selectors via collectStyles.
+ * styles keyed on each element's generated `.<tagName>-<n>` class via collectStyles.
  *
  * @param {string} tagName - The custom element tag name (used as CSS selector)
  * @param {JxStyle | null} styleDef - The component's style object
@@ -2805,9 +2939,9 @@ export function buildComponentCSS(
     }
   }
 
-  if (doc && Array.isArray(doc.children)) {
+  if (doc) {
     const counter = { n: 0 };
-    for (const child of doc.children) {
+    for (const child of styleChildren(doc)) {
       collectStyles(child, rules, mediaQueries, "", counter, tagName);
     }
   }

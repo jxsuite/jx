@@ -228,6 +228,48 @@ describe("buildSite — two levels of nesting and a per-instance host style", ()
   });
 });
 
+// ── Two instances that share an author's class ───────────────────────────────
+
+describe("buildSite — two page-level instances sharing a class", () => {
+  const TMP = resolve(import.meta.dir, "__test-site-shared-class__");
+  let errors: string[] = [];
+
+  beforeAll(async () => {
+    rmSync(TMP, { force: true, recursive: true });
+    writeJSON(TMP, "project.json", { build: { outDir: "./dist" }, name: "shared-class" });
+    writeJSON(TMP, "components/lcb-icon.json", {
+      state: { name: "arrow" },
+      style: { display: "inline-block", maskImage: "${'var(--icon-' + state.name + ')'}" },
+      tagName: "lcb-icon",
+    });
+    writeJSON(TMP, "pages/index.json", {
+      $layout: false,
+      children: [
+        { $props: { name: "phone" }, className: "icon", tagName: "lcb-icon" },
+        { $props: { name: "mail" }, className: "icon", tagName: "lcb-icon" },
+      ],
+      tagName: "div",
+      title: "shared class",
+    });
+    ({ errors } = await buildSite(TMP, { verbose: false }));
+  });
+
+  afterAll(() => {
+    rmSync(TMP, { force: true, recursive: true });
+  });
+
+  it("two page-level instances sharing a class keep their own values", () => {
+    expect(errors).toEqual([]);
+    const html = readFileSync(resolve(TMP, "dist/index.html"), "utf8");
+    // The author's class was the handle, so both icons rendered the second mask (spec.md §9.2).
+    expect(html).toContain('<lcb-icon class="icon jx-0" data-jx-static></lcb-icon>');
+    expect(html).toContain('<lcb-icon class="icon jx-1" data-jx-static></lcb-icon>');
+    expect(html).toContain(".jx-0 { mask-image: var(--icon-phone) }");
+    expect(html).toContain(".jx-1 { mask-image: var(--icon-mail) }");
+    expect(html).not.toContain(".icon {");
+  });
+});
+
 // ── A live child inside a static parent ───────────────────────────────────────
 
 describe("buildSite — a non-static instance nested inside a static component", () => {

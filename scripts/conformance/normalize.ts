@@ -18,6 +18,15 @@ export interface Rule {
   apply: (text: string) => string;
 }
 
+/**
+ * A class the compiler mints as a style handle: `jx-N` in a page's sheet, `jxs-N` in the block a
+ * page collects from slotted content, and `<component-tag>-N` in a component's sheet. A custom
+ * element's tag always holds a hyphen, so the third form is a hyphenated name and a number. An
+ * author's class of that shape (`col-md-6`) leaves the comparison with it, on both sides alike, and
+ * what it does is still compared as computed style and geometry.
+ */
+const STYLE_HANDLE = /^(?:jxs?|[a-z][a-z0-9]*(?:-[a-z0-9]+)+)-\d+$/u;
+
 export const RULES: readonly Rule[] = [
   {
     apply: (text) => text.replaceAll(/https?:\/\/(?:127\.0\.0\.1|localhost):\d+/gu, ""),
@@ -38,11 +47,13 @@ export const RULES: readonly Rule[] = [
   {
     apply: (text) =>
       text.replaceAll(/ class="([^"]*)"/gu, (_whole, list: string) => {
-        const kept = list.split(/\s+/u).filter((token) => token !== "" && !/^jx-\d+$/u.test(token));
+        const kept = list
+          .split(/\s+/u)
+          .filter((token) => token !== "" && !STYLE_HANDLE.test(token));
         return kept.length > 0 ? ` class="${kept.join(" ")}"` : "";
       }),
     name: "style-handle",
-    why: "`jx-N` is a class the compiler mints to carry an element's own style (`collectStyles` in packages/compiler/src/shared.ts); its effect is compared as computed style and geometry.",
+    why: "`jx-N`, `jxs-N` and `<component-tag>-N` are classes the compiler mints to carry an element's own style, named for the sheet that holds its rules (`collectStyles` in packages/compiler/src/shared.ts, spec.md §9.2). Which elements carry one and what number each takes is the compiler's business: every element with a style object has one, so an `id` or a class added to an element renumbers the rest. Its effect is compared as computed style and geometry.",
   },
   {
     apply: (text) => text.replaceAll(/\bjx-island-\d+\b/gu, "jx-island"),

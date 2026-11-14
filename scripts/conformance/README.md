@@ -55,7 +55,7 @@ Comparison rewrites both sides with the rules in `normalize.ts` and then compare
 
 - the port a capture was served on;
 - the hash in an optimized image's file name, and a `?v=` content hash;
-- a `jx-N` class the compiler mints to carry an element's own style;
+- a class the compiler mints to carry an element's own style (`jx-N`, `jxs-N`, or a component's `<tag>-N`);
 - the ordinal in an island's tag name.
 
 That list is the harness's whole tolerance. As the compiler's output is redesigned, rules are added here, in the pull request that changes the output, each with its reason. A rule added only to make a comparison pass hides the next real regression of the same shape.

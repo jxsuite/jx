@@ -29,6 +29,7 @@ import {
   renderStaticNode,
   resolveRefValue,
   resolveStaticValue,
+  styleHandleOf,
   tagNameToClassName,
   titleToTagName,
 } from "../src/shared";
@@ -948,7 +949,7 @@ describe("compileStyles", () => {
       tagName: "div",
     };
     const result = compileStyles(doc);
-    expect(result).toContain("#btn:hover");
+    expect(result).toContain(".jx-0:hover");
     expect(result).toContain("color: blue");
   });
 
@@ -961,7 +962,9 @@ describe("compileStyles", () => {
       tagName: "div",
     };
     compileStyles(doc);
-    expect(doc.className).toMatch(/^jx-\d+$/);
+    expect(styleHandleOf(doc)).toMatch(/^jx-\d+$/);
+    // The handle is the compiler's own; the author's `className` is never written.
+    expect(doc.className).toBeUndefined();
   });
 
   test("resolves custom media queries via mediaQueries map", () => {
@@ -1063,10 +1066,10 @@ describe("compileStyles", () => {
     };
     const result = compileStyles(doc, { "--dark": "(prefers-color-scheme: dark)" });
     expect(result).toContain(
-      "@media (prefers-color-scheme: dark) { :where(:root:not([data-color-scheme])) #hero { color: #fff } }",
+      "@media (prefers-color-scheme: dark) { :where(:root:not([data-color-scheme])) .jx-0 { color: #fff } }",
     );
-    expect(result).toContain(':where(:root[data-color-scheme="dark"]) #hero { color: #fff }');
-    expect(result).toContain(':where(:root[data-color-scheme="dark"]) #hero:hover { color: #ccc }');
+    expect(result).toContain(':where(:root[data-color-scheme="dark"]) .jx-0 { color: #fff }');
+    expect(result).toContain(':where(:root[data-color-scheme="dark"]) .jx-0:hover { color: #ccc }');
   });
 
   test("emits the color-scheme triplet when a pure scheme query is declared", () => {
@@ -1439,9 +1442,9 @@ describe("compileStyles — non-media at-rules", () => {
       },
       tagName: "div",
     });
-    expect(result).toContain("#toast { animation: toast-in 180ms ease-out }");
+    expect(result).toContain(".jx-0 { animation: toast-in 180ms ease-out }");
     expect(result).toContain("@keyframes toast-in { from { opacity: 0 } to { opacity: 1 } }");
-    expect(result).not.toContain("#toast from");
+    expect(result).not.toContain(".jx-0 from");
   });
 
   test("@(feature: value) keeps its parentheses", () => {
@@ -1469,7 +1472,7 @@ describe("compileStyles — non-media at-rules", () => {
     const result = compileStyles(doc);
     expect(result).toContain("@starting-style");
     expect(result).not.toContain("@media starting-style");
-    expect(result).toContain("#panel:popover-open");
+    expect(result).toContain(".jx-0:popover-open");
     expect(result).toContain("transform: translateX(100%)");
   });
 
@@ -1486,8 +1489,8 @@ describe("compileStyles — non-media at-rules", () => {
       tagName: "div",
     };
     const result = compileStyles(doc);
-    expect(result).toContain("@starting-style { #menu:popover-open { opacity: 0 } }");
-    expect(result).toContain("@starting-style { #menu:popover-open::backdrop { opacity: 0 } }");
+    expect(result).toContain("@starting-style { .jx-0:popover-open { opacity: 0 } }");
+    expect(result).toContain("@starting-style { .jx-0:popover-open::backdrop { opacity: 0 } }");
   });
 
   test("@starting-style does not emit empty base rule", () => {
@@ -1502,8 +1505,8 @@ describe("compileStyles — non-media at-rules", () => {
       tagName: "div",
     };
     const result = compileStyles(doc);
-    expect(result).not.toContain("@starting-style { #x {  } }");
-    expect(result).not.toContain("@starting-style { #x { } }");
+    expect(result).not.toContain("@starting-style { .jx-0 {  } }");
+    expect(result).not.toContain("@starting-style { .jx-0 { } }");
   });
 
   test("@supports emits as-is without @media wrapper", () => {
@@ -1516,7 +1519,7 @@ describe("compileStyles — non-media at-rules", () => {
       tagName: "div",
     };
     const result = compileStyles(doc);
-    expect(result).toContain("@supports (display: grid) { #s { display: grid } }");
+    expect(result).toContain("@supports (display: grid) { .jx-0 { display: grid } }");
     expect(result).not.toContain("@media");
   });
 
@@ -1560,7 +1563,7 @@ describe("compileStyles — :popover-open and ::backdrop pseudo selectors", () =
       tagName: "div",
     };
     const result = compileStyles(doc);
-    expect(result).toContain("#pop:popover-open { transform: translateX(0) }");
+    expect(result).toContain(".jx-0:popover-open { transform: translateX(0) }");
   });
 
   test("::backdrop emits correct selector", () => {
@@ -1573,7 +1576,7 @@ describe("compileStyles — :popover-open and ::backdrop pseudo selectors", () =
       tagName: "div",
     };
     const result = compileStyles(doc);
-    expect(result).toContain("#pop::backdrop { background-color: rgba(0,0,0,0.5) }");
+    expect(result).toContain(".jx-0::backdrop { background-color: rgba(0,0,0,0.5) }");
   });
 
   test("&:popover-open::backdrop emits compound selector", () => {
@@ -1586,7 +1589,7 @@ describe("compileStyles — :popover-open and ::backdrop pseudo selectors", () =
       tagName: "div",
     };
     const result = compileStyles(doc);
-    expect(result).toContain("#pop:popover-open::backdrop { opacity: 1 }");
+    expect(result).toContain(".jx-0:popover-open::backdrop { opacity: 1 }");
   });
 });
 
@@ -1630,7 +1633,7 @@ describe("buildComponentCSS — $media propagation", () => {
     };
     const css = buildComponentCSS("my-menu", doc.style, doc, {});
     expect(css).toContain(
-      "@starting-style { #flyout:popover-open { transform: translateX(100%) } }",
+      "@starting-style { .my-menu-0:popover-open { transform: translateX(100%) } }",
     );
     expect(css).not.toContain("@media");
   });
@@ -1650,7 +1653,7 @@ describe("compileStyles — declaration-body at-rules", () => {
     expect(result).toContain("@position-try --flip-up {");
     expect(result).toContain("inset-block-start: auto");
     // The defect this fixes: a selector inside makes the whole block dead, silently.
-    expect(result).not.toContain("@position-try --flip-up { #menu");
+    expect(result).not.toContain("@position-try --flip-up { .jx-0");
   });
 
   test("@property does the same, and @media still wraps a selector", () => {
@@ -1665,7 +1668,7 @@ describe("compileStyles — declaration-body at-rules", () => {
     });
     expect(result).toContain("@property --ratio {");
     expect(result).toContain("syntax: '<number>'");
-    expect(result).toContain("#x { color: red }");
+    expect(result).toContain(".jx-0 { color: red }");
   });
 
   test("@starting-style and @supports keep their selector level", () => {
@@ -1678,8 +1681,8 @@ describe("compileStyles — declaration-body at-rules", () => {
       },
       tagName: "div",
     });
-    expect(result).toContain("@starting-style { #p:popover-open { opacity: 0 } }");
-    expect(result).toContain("@supports not (position-area: block-end) { #p { top: 5rem } }");
+    expect(result).toContain("@starting-style { .jx-0:popover-open { opacity: 0 } }");
+    expect(result).toContain("@supports not (position-area: block-end) { .jx-0 { top: 5rem } }");
   });
 
   test("an empty declaration block emits nothing", () => {
@@ -1782,5 +1785,167 @@ describe("collectFunctionImports (spec.md §5.3 4d)", () => {
       "const _jxLazy0Load = () => (_jxLazy0 ??= import('/assets/lazy.js'));",
       "const c = (...args) => _jxLazy0Load().then((m) => m.c(...args));",
     ]);
+  });
+});
+
+// ─── Style handles ────────────────────────────────────────────────────────────
+
+describe("style handles (spec.md §9.2)", () => {
+  /** A node with a `className` no document type allows: a `$ref`, which the schema does. */
+  const refClassNode = (className: JsonObject): JxElement => {
+    const decoded: JsonObject = { className, style: { color: "red" }, tagName: "p" };
+    /* SAFETY: deliberately outside JxElement. The document schema lets `className` be a `$ref`
+       (`StringOrRef`), which the TypeScript member narrows to a string; the compiler reads it with
+       runtime checks, which is what this pins. */
+    return decoded as JxElement;
+  };
+
+  test("an author's class is never the handle", () => {
+    const styled: JxElement = { className: "card", style: { color: "red" }, tagName: "div" };
+    const plain: JxElement = { className: "card", tagName: "div" };
+    const sheet = compileStyles({ children: [styled, plain], tagName: "main" });
+    expect(sheet).toContain(".jx-0 { color: red }");
+    expect(sheet).not.toContain(".card");
+    expect(renderStaticNode(styled, null)).toBe('<div class="card jx-0"></div>');
+    expect(renderStaticNode(plain, null)).toBe('<div class="card"></div>');
+  });
+
+  test("two elements sharing a class keep their own rules", () => {
+    const sheet = compileStyles({
+      children: [
+        { className: "card", style: { color: "red" }, tagName: "div" },
+        { className: "card", style: { color: "blue" }, tagName: "div" },
+      ],
+      tagName: "main",
+    });
+    expect(sheet).toContain(".jx-0 { color: red }");
+    expect(sheet).toContain(".jx-1 { color: blue }");
+  });
+
+  test("a bound className or id never reaches a selector", () => {
+    const byClass: JxElement = {
+      className: "${state.cls}",
+      style: { color: "red" },
+      tagName: "p",
+    };
+    const byId: JxElement = { id: "${state.pid}", style: { color: "blue" }, tagName: "p" };
+    const doc: JxElement = { children: [byClass, byId], tagName: "main" };
+    const sheet = compileStyles(doc);
+    expect(sheet).not.toContain("${");
+    const scope: JxScope = { cls: "hot", pid: "box" };
+    expect(renderStaticNode(byClass, scope)).toBe('<p class="hot jx-0"></p>');
+    expect(renderStaticNode(byId, scope)).toBe('<p id="box" class="jx-1"></p>');
+  });
+
+  test("a $ref className composes instead of aborting the build", () => {
+    const node = refClassNode({ $ref: "#/state/cls" });
+    expect(compileStyles(node)).toContain(".jx-0 { color: red }");
+    expect(renderStaticNode(node, { cls: "hot" })).toBe('<p class="hot jx-0"></p>');
+    // An unresolved one leaves the handle alone.
+    expect(renderStaticNode(node, null)).toBe('<p class="jx-0"></p>');
+  });
+
+  test("an id is not the handle", () => {
+    const node: JxElement = { id: "1st", style: { color: "red" }, tagName: "p" };
+    const sheet = compileStyles(node);
+    expect(sheet).toContain(".jx-0 { color: red }");
+    expect(sheet).not.toContain("#1st");
+    expect(renderStaticNode(node, null)).toBe('<p id="1st" class="jx-0"></p>');
+  });
+
+  test("a rule on an element with an id weighs what its sibling's does", () => {
+    const sheet = compileStyles({
+      children: [
+        { id: "intro", style: { color: "red" }, tagName: "p" },
+        { style: { color: "red" }, tagName: "p" },
+      ],
+      style: { "& p": { color: "blue" } },
+      tagName: "section",
+    });
+    expect(sheet).toContain(".jx-0 p { color: blue }");
+    expect(sheet).toContain(".jx-1 { color: red }");
+    expect(sheet).toContain(".jx-2 { color: red }");
+    expect(sheet).not.toContain("#intro");
+  });
+
+  test("attributes.class replaces className and keeps the handle", () => {
+    const node: JxElement = {
+      attributes: { class: "b", href: "/x" },
+      className: "a",
+      style: { color: "red" },
+      tagName: "a",
+    };
+    compileStyles(node);
+    expect(renderStaticNode(node, null)).toBe('<a class="b jx-0" href="/x"></a>');
+  });
+
+  test("a className beside attributes.class writes one class attribute without a handle too", () => {
+    const node: JxElement = { attributes: { class: "b" }, className: "a", tagName: "a" };
+    expect(renderStaticNode(node, null)).toBe('<a class="b"></a>');
+  });
+
+  test("assignment is idempotent", () => {
+    const node: JxElement = { style: { color: "red" }, tagName: "p" };
+    const doc: JxElement = { children: [node], tagName: "main" };
+    compileStyles(doc);
+    const first = styleHandleOf(node);
+    const again = compileStyles(doc);
+    expect(first).toBe("jx-0");
+    expect(styleHandleOf(node)).toBe(first);
+    expect(again.split(".jx-0 {").length).toBe(2);
+    expect(renderStaticNode(node, null)).toBe('<p class="jx-0"></p>');
+  });
+
+  test("the handle survives a spread and stays out of JSON", () => {
+    const node: JxElement = { style: { color: "red" }, tagName: "p" };
+    compileStyles(node);
+    expect(styleHandleOf({ ...node })).toBe("jx-0");
+    expect(JSON.stringify(node)).toBe('{"style":{"color":"red"},"tagName":"p"}');
+    expect(styleHandleOf({ tagName: "p" })).toBeUndefined();
+  });
+
+  test("a repeater's item template gets one handle, in walk order", () => {
+    const row = (color: string): JxElement => ({
+      style: { ":hover": { color: "black" }, color },
+      tagName: "li",
+    });
+    const whole = row("green");
+    const member = row("blue");
+    const sibling: JxElement = { style: { color: "red" }, tagName: "p" };
+    const sheet = compileStyles({
+      children: [
+        sibling,
+        { children: { $prototype: "Array", items: [], map: whole }, tagName: "ul" },
+        { children: [{ $prototype: "Array", items: [], map: member }], tagName: "ul" },
+        // A repeater with no template has nothing to style.
+        { children: [{ $prototype: "Array", items: [] }], tagName: "ul" },
+      ],
+      tagName: "main",
+    });
+    expect(styleHandleOf(sibling)).toBe("jx-0");
+    expect(styleHandleOf(whole)).toBe("jx-1");
+    expect(styleHandleOf(member)).toBe("jx-2");
+    expect(sheet).toContain(".jx-1 { color: green }");
+    expect(sheet).toContain(".jx-1:hover { color: black }");
+    expect(sheet).toContain(".jx-2:hover { color: black }");
+  });
+
+  test("an unhandled element keeps its attributes.class bytes", () => {
+    expect(buildAttrs({ attributes: { class: "b", href: "/x" }, tagName: "a" }, null)).toBe(
+      ' class="b" href="/x"',
+    );
+  });
+
+  test("a component sheet reaches a definition whose children is one repeater", () => {
+    const doc: JxElement = {
+      children: {
+        $prototype: "Array",
+        items: { $ref: "#/state/rows" },
+        map: { className: "row", style: { color: "red" }, tagName: "li" },
+      },
+      state: { rows: [] },
+      tagName: "x-list",
+    };
+    expect(buildComponentCSS("x-list", doc.style, doc, {})).toBe(".x-list-0 { color: red }\n");
   });
 });

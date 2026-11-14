@@ -458,7 +458,7 @@ describe("compile — CSS extraction", () => {
       tagName: "button",
     });
     expect(html).toContain("<style>");
-    expect(html).toContain("#btn:hover");
+    expect(html).toContain(".jx-0:hover");
     expect(html).toContain("color: red");
   });
 
@@ -468,7 +468,9 @@ describe("compile — CSS extraction", () => {
       style: { ".inner": { padding: "1rem" } },
       tagName: "div",
     });
-    expect(html).toContain(".card.inner");
+    expect(html).toContain(".jx-0.inner");
+    expect(html).not.toContain(".card.inner");
+    expect(html).toContain('class="card hero jx-0"');
   });
 
   test("&.compound selector in style", async () => {
@@ -477,7 +479,7 @@ describe("compile — CSS extraction", () => {
       style: { "&.active": { outline: "2px solid blue" } },
       tagName: "div",
     });
-    expect(html).toContain("#root.active");
+    expect(html).toContain(".jx-0.active");
   });
 
   test("[attr] selector in style", async () => {
@@ -486,7 +488,7 @@ describe("compile — CSS extraction", () => {
       style: { "[disabled]": { opacity: "0.5" } },
       tagName: "input",
     });
-    expect(html).toContain("#inp[disabled]");
+    expect(html).toContain(".jx-0[disabled]");
   });
 
   test("node with no id or className gets auto-scoped class", async () => {
@@ -515,7 +517,7 @@ describe("compile — CSS extraction", () => {
       ],
       tagName: "div",
     });
-    expect(html).toContain("#para:hover");
+    expect(html).toContain(".jx-0:hover");
     expect(html).toContain("text-decoration: underline");
   });
 
@@ -530,7 +532,7 @@ describe("compile — CSS extraction", () => {
     });
     expect(html).toContain("@media (min-width: 768px)");
     expect(html).toContain("font-size: 2rem");
-    expect(html).toContain("#box:hover");
+    expect(html).toContain(".jx-0:hover");
     expect(html).toContain("color: blue");
   });
 });

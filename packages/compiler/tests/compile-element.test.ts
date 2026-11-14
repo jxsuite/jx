@@ -1,7 +1,12 @@
 import { enumeratedAttrNames } from "@jxsuite/runtime";
 import { describe, expect, test } from "bun:test";
 import { compileElement, compileElementPage } from "../src/compiler";
-import { DEFAULT_LIT_HTML_SRC, DEFAULT_REACTIVITY_SRC } from "../src/shared";
+import {
+  DEFAULT_LIT_HTML_SRC,
+  DEFAULT_REACTIVITY_SRC,
+  buildComponentCSS,
+  takeDroppedReactiveStyles,
+} from "../src/shared";
 import { emitElementModule } from "../src/targets/compile-element";
 import { resolve } from "node:path";
 import type {
@@ -2364,5 +2369,147 @@ describe("compileElement: an inline handler on a map root", () => {
     expect(result.files[0]!.content).toContain(
       '@click="${(e) => { s.$map = $map; ((state, event) => { state.picked = state.$map.index;\n})(s, e); }}"',
     );
+  });
+});
+
+describe("compileElement — style handles (spec.md §9.2)", () => {
+  const row: JsonObject = {
+    className: "row",
+    style: { ":hover": { color: "blue" }, color: "red" },
+    tagName: "li",
+    textContent: "${$map.item}",
+  };
+  const repeater = (): JsonObject => ({
+    $prototype: "Array",
+    items: { $ref: "#/state/rows" },
+    map: structuredClone(row),
+  });
+  /** A parsed copy, as the build gives the sheet and the module one parse each. */
+  const parsed = (doc: JsonObject): JxDocument => structuredClone(doc);
+  const sheetOf = (doc: JsonObject): string => {
+    const copy = parsed(doc);
+    return buildComponentCSS("x-list", copy.style, copy, {});
+  };
+
+  test("a row template carries the definition's handle and its rules reach the sheet", () => {
+    const rootRepeater: JsonObject = {
+      children: repeater(),
+      state: { rows: [] },
+      tagName: "x-list",
+    };
+    const nested: JsonObject = {
+      children: [{ children: [repeater()], tagName: "ul" }],
+      state: { rows: [] },
+      tagName: "x-list",
+    };
+    for (const doc of [rootRepeater, nested]) {
+      const module = emitElementModule(parsed(doc), "XList", []);
+      expect(module).toContain('class="row x-list-0"');
+      const css = sheetOf(doc);
+      expect(css).toContain(".x-list-0 { color: red }");
+      expect(css).toContain(".x-list-0:hover { color: blue }");
+    }
+  });
+
+  test("the module stamps exactly the handles the component sheet selects", () => {
+    const doc: JsonObject = {
+      children: [
+        { id: "a", style: { color: "red" }, tagName: "p" },
+        { className: "b", style: { color: "green" }, tagName: "p" },
+        {
+          $switch: { $ref: "#/state/mode" },
+          cases: { one: { style: { color: "blue" }, tagName: "b" } },
+          style: { display: "block" },
+          tagName: "div",
+        },
+        { children: [repeater()], tagName: "ul" },
+      ],
+      state: { mode: "one", rows: [] },
+      tagName: "x-el",
+    };
+    const copy = parsed(doc);
+    const css = buildComponentCSS("x-el", copy.style, copy, {});
+    const module = emitElementModule(parsed(doc), "XEl", []);
+    const tokens = (text: string) => [...new Set(text.match(/x-el-\d+/gu))].toSorted();
+    expect(tokens(css)).toEqual(["x-el-0", "x-el-1", "x-el-2", "x-el-3", "x-el-4"]);
+    expect(tokens(module)).toEqual(tokens(css));
+    expect(module).toContain('id="a"');
+    expect(module).toContain('class="b x-el-1"');
+  });
+
+  test("a dropped reactive declaration is recorded once", () => {
+    const doc: JsonObject = {
+      children: [{ style: { ":hover": { color: "${state.c}" } }, tagName: "p" }],
+      state: { c: "red" },
+      tagName: "x-el",
+    };
+    takeDroppedReactiveStyles();
+    const copy = parsed(doc);
+    buildComponentCSS("x-el", copy.style, copy, {});
+    emitElementModule(parsed(doc), "XEl", []);
+    expect(takeDroppedReactiveStyles()).toHaveLength(1);
+  });
+
+  test("one class attribute with attributes.class, literal and bound", () => {
+    const module = emitElementModule(
+      parsed({
+        children: [
+          {
+            attributes: { class: "b" },
+            className: "a",
+            style: { color: "red" },
+            tagName: "p",
+          },
+          { attributes: { class: "${state.cls}" }, style: { color: "red" }, tagName: "p" },
+          { attributes: { class: { $ref: "#/state/cls" } }, style: { color: "red" }, tagName: "p" },
+          { attributes: { class: 7 }, style: { color: "red" }, tagName: "p" },
+          // No handle and no className: the attributes loop still writes it, as it always did.
+          { attributes: { class: "plain" }, tagName: "p" },
+        ],
+        state: { cls: "hot" },
+        tagName: "x-el",
+      }),
+      "XEl",
+      [],
+    );
+    expect(module).toContain('class="b x-el-0"');
+    expect(module).toContain('class="${s.cls} x-el-1"');
+    expect(module).toContain('class="${s.cls ?? ""} x-el-2"');
+    expect(module).toContain('class="7 x-el-3"');
+    expect(module).toContain('class="plain"');
+    expect(module.match(/class="/gu)).toHaveLength(5);
+  });
+
+  test("a $ref className binds instead of printing [object Object]", () => {
+    const module = emitElementModule(
+      parsed({
+        children: [
+          { className: { $ref: "#/state/cls" }, tagName: "p" },
+          {
+            children: [
+              {
+                $prototype: "Array",
+                items: { $ref: "#/state/rows" },
+                map: {
+                  attributes: { class: "x", title: "t" },
+                  className: { $ref: "$map/item/cls" },
+                  tagName: "li",
+                },
+              },
+            ],
+            tagName: "ul",
+          },
+        ],
+        state: { cls: "hot", rows: [] },
+        tagName: "x-el",
+      }),
+      "XEl",
+      [],
+    );
+    expect(module).not.toContain("[object Object]");
+    expect(module).toContain('class="${s.cls ?? ""}"');
+    // The row writes `attributes.class`, which replaces its `className`, once.
+    expect(module).toContain('class="x"');
+    expect(module).toContain('title="t"');
   });
 });
