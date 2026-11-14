@@ -24,7 +24,7 @@
         "margin": "0 auto 1.25rem",
         "fontFamily": "var(--font-mono)",
         "fontSize": "0.875rem",
-        "fontWeight": "700",
+        "fontWeight": "var(--display-weight)",
         "color": "var(--color-accent)"
       },
       "textContent": "${state.number}"

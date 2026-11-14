@@ -5,48 +5,181 @@
     "position": "sticky",
     "top": "0",
     "zIndex": "100",
-    "backgroundColor": "var(--color-backdrop)",
-    "backdropFilter": "blur(12px)",
-    "borderBottom": "1px solid var(--color-border)",
-    "padding": "0 clamp(1rem, 3vw, 2rem)"
+    "backgroundColor": "var(--color-bg-primary)",
+    "borderBottom": "1px solid var(--color-border-subtle)",
+    "padding": "0 var(--gutter)"
   },
   "children": [
     {
       "tagName": "nav",
-      "attributes": { "aria-label": "Main" },
+      "attributes": {
+        "aria-label": "Main"
+      },
       "style": {
         "maxWidth": "var(--max-width)",
         "margin": "0 auto",
-        "display": "flex",
+        "display": "grid",
+        "gridTemplateColumns": "1fr auto 1fr",
         "alignItems": "center",
-        "justifyContent": "space-between",
-        "height": "3.5rem"
+        "height": "4rem",
+        "@--lg": {
+          "gridTemplateColumns": "auto 1fr"
+        }
       },
       "children": [
         {
           "tagName": "a",
-          "attributes": { "href": "/" },
+          "attributes": {
+            "href": "/",
+            "aria-label": "Jx Suite home"
+          },
           "style": {
             "color": "var(--color-text-primary)",
             "textDecoration": "none",
-            "fontWeight": "700",
+            "fontWeight": "600",
             "fontSize": "1.0625rem",
             "letterSpacing": "-0.02em",
-            "display": "flex",
+            "display": "inline-flex",
             "alignItems": "center",
-            "gap": "0.5rem"
+            "gap": "0.5rem",
+            "minHeight": "2.75rem",
+            "justifySelf": "start"
           },
           "children": [
             {
               "tagName": "img",
               "attributes": {
                 "src": "/favicon.svg",
-                "alt": "Jx Suite",
-                "width": "20",
-                "height": "20"
+                "alt": "",
+                "width": "22",
+                "height": "22"
               }
             },
-            "Suite"
+            "Jx Suite"
+          ]
+        },
+        {
+          "$title": "Toolbar Words",
+          "tagName": "div",
+          "style": {
+            "display": "flex",
+            "alignItems": "center",
+            "gap": "clamp(1.25rem, 2.2vw, 2rem)",
+            "@--lg": {
+              "display": "none"
+            }
+          },
+          "children": [
+            {
+              "tagName": "a",
+              "attributes": {
+                "href": "/studio"
+              },
+              "style": {
+                "display": "inline-flex",
+                "alignItems": "center",
+                "minHeight": "2.75rem",
+                "color": "var(--color-text-secondary)",
+                "textDecoration": "none",
+                "fontSize": "1rem",
+                "fontWeight": "400",
+                "textUnderlineOffset": "0.3em",
+                "transition": "color 0.15s",
+                ":hover": {
+                  "color": "var(--color-text-primary)",
+                  "textDecoration": "underline"
+                }
+              },
+              "children": ["Studio"]
+            },
+            {
+              "tagName": "a",
+              "attributes": {
+                "href": "/cloud"
+              },
+              "style": {
+                "display": "inline-flex",
+                "alignItems": "center",
+                "minHeight": "2.75rem",
+                "color": "var(--color-text-secondary)",
+                "textDecoration": "none",
+                "fontSize": "1rem",
+                "fontWeight": "400",
+                "textUnderlineOffset": "0.3em",
+                "transition": "color 0.15s",
+                ":hover": {
+                  "color": "var(--color-text-primary)",
+                  "textDecoration": "underline"
+                }
+              },
+              "children": ["Jx Cloud"]
+            },
+            {
+              "tagName": "a",
+              "attributes": {
+                "href": "/framework"
+              },
+              "style": {
+                "display": "inline-flex",
+                "alignItems": "center",
+                "minHeight": "2.75rem",
+                "color": "var(--color-text-secondary)",
+                "textDecoration": "none",
+                "fontSize": "1rem",
+                "fontWeight": "400",
+                "textUnderlineOffset": "0.3em",
+                "transition": "color 0.15s",
+                ":hover": {
+                  "color": "var(--color-text-primary)",
+                  "textDecoration": "underline"
+                }
+              },
+              "children": ["Framework"]
+            },
+            {
+              "tagName": "a",
+              "attributes": {
+                "href": "/templates"
+              },
+              "style": {
+                "display": "inline-flex",
+                "alignItems": "center",
+                "minHeight": "2.75rem",
+                "color": "var(--color-text-secondary)",
+                "textDecoration": "none",
+                "fontSize": "1rem",
+                "fontWeight": "400",
+                "textUnderlineOffset": "0.3em",
+                "transition": "color 0.15s",
+                ":hover": {
+                  "color": "var(--color-text-primary)",
+                  "textDecoration": "underline"
+                }
+              },
+              "children": ["Templates"]
+            },
+            {
+              "tagName": "a",
+              "attributes": {
+                "href": "/docs/start/first-project"
+              },
+              "style": {
+                "display": "inline-flex",
+                "alignItems": "center",
+                "minHeight": "2.75rem",
+                "color": "var(--color-text-secondary)",
+                "textDecoration": "none",
+                "fontSize": "1rem",
+                "fontWeight": "400",
+                "textUnderlineOffset": "0.3em",
+                "transition": "color 0.15s",
+                ":hover": {
+                  "color": "var(--color-text-primary)",
+                  "textDecoration": "underline"
+                }
+              },
+              "children": ["Docs"]
+            }
           ]
         },
         {
@@ -55,120 +188,68 @@
           "style": {
             "display": "flex",
             "alignItems": "center",
-            "gap": "clamp(0.75rem, 2vw, 1.25rem)"
+            "justifySelf": "end",
+            "gap": "clamp(0.5rem, 1.2vw, 1rem)"
           },
           "children": [
-            { "tagName": "site-search" },
+            {
+              "tagName": "site-search"
+            },
             {
               "tagName": "div",
               "style": {
                 "display": "flex",
-                "alignItems": "center",
-                "gap": "clamp(1rem, 3vw, 1.75rem)",
-                "@--md": { "display": "none" }
+                "@--lg": {
+                  "display": "none"
+                }
               },
               "children": [
                 {
-                  "tagName": "a",
-                  "attributes": { "href": "/studio" },
-                  "style": {
-                    "color": "var(--color-text-secondary)",
-                    "textDecoration": "none",
-                    "fontSize": "0.875rem",
-                    "fontWeight": "500",
-                    "transition": "color 0.15s",
-                    ":hover": { "color": "var(--color-text-primary)" }
-                  },
-                  "children": ["Studio"]
-                },
-                {
-                  "tagName": "a",
-                  "attributes": { "href": "/framework" },
-                  "style": {
-                    "color": "var(--color-text-secondary)",
-                    "textDecoration": "none",
-                    "fontSize": "0.875rem",
-                    "fontWeight": "500",
-                    "transition": "color 0.15s",
-                    ":hover": { "color": "var(--color-text-primary)" }
-                  },
-                  "children": ["Framework"]
-                },
-                {
-                  "tagName": "a",
-                  "attributes": { "href": "/templates" },
-                  "style": {
-                    "color": "var(--color-text-secondary)",
-                    "textDecoration": "none",
-                    "fontSize": "0.875rem",
-                    "fontWeight": "500",
-                    "transition": "color 0.15s",
-                    ":hover": { "color": "var(--color-text-primary)" }
-                  },
-                  "children": ["Templates"]
-                },
-                {
-                  "tagName": "a",
-                  "attributes": { "href": "/compare" },
-                  "style": {
-                    "color": "var(--color-text-secondary)",
-                    "textDecoration": "none",
-                    "fontSize": "0.875rem",
-                    "fontWeight": "500",
-                    "transition": "color 0.15s",
-                    ":hover": { "color": "var(--color-text-primary)" }
-                  },
-                  "children": ["Compare"]
-                },
-                {
-                  "tagName": "a",
-                  "attributes": { "href": "/docs/start/first-project" },
-                  "style": {
-                    "color": "var(--color-text-secondary)",
-                    "textDecoration": "none",
-                    "fontSize": "0.875rem",
-                    "fontWeight": "500",
-                    "transition": "color 0.15s",
-                    ":hover": { "color": "var(--color-text-primary)" }
-                  },
-                  "children": ["Docs"]
-                },
-                { "tagName": "theme-toggle" },
-                {
-                  "tagName": "a",
-                  "attributes": {
-                    "href": "https://github.com/jxsuite/jx",
-                    "target": "_blank",
-                    "rel": "noopener noreferrer"
-                  },
-                  "style": {
-                    "color": "var(--color-text-secondary)",
-                    "textDecoration": "none",
-                    "fontSize": "0.875rem",
-                    "fontWeight": "500",
-                    "transition": "color 0.15s",
-                    ":hover": { "color": "var(--color-text-primary)" }
-                  },
-                  "children": ["GitHub"]
-                },
-                {
-                  "tagName": "a",
-                  "attributes": { "href": "/download" },
-                  "style": {
-                    "display": "inline-flex",
-                    "alignItems": "center",
-                    "backgroundColor": "var(--color-accent-solid)",
-                    "color": "white",
-                    "textDecoration": "none",
-                    "fontSize": "0.875rem",
-                    "fontWeight": "600",
-                    "padding": "0.4rem 1rem",
-                    "borderRadius": "var(--radius)",
-                    "transition": "background-color 0.15s"
-                  },
-                  "children": ["Download"]
+                  "tagName": "theme-toggle"
                 }
               ]
+            },
+            {
+              "$title": "Main Action",
+              "tagName": "a",
+              "attributes": {
+                "href": "https://studio.jxsuite.com/"
+              },
+              "style": {
+                "display": "inline-flex",
+                "alignItems": "center",
+                "minHeight": "2.75rem",
+                "boxSizing": "border-box",
+                "padding": "0 1.25rem",
+                "backgroundColor": "var(--color-accent-solid)",
+                "color": "#ffffff",
+                "textDecoration": "none",
+                "fontSize": "1rem",
+                "fontWeight": "500",
+                "borderRadius": "var(--radius)",
+                "whiteSpace": "nowrap",
+                "transition": "background-color 0.15s, transform 0.15s",
+                ":hover": {
+                  "backgroundColor": "var(--color-accent-solid-hover)",
+                  "transform": "translateY(-1px)"
+                },
+                ":active": {
+                  "transform": "translateY(1px)"
+                },
+                "@--sm": {
+                  "display": "none"
+                },
+                "@(prefers-reduced-motion: reduce)": {
+                  "transition": "none",
+                  ":hover": {
+                    "transform": "none"
+                  },
+                  ":active": {
+                    "transform": "none"
+                  }
+                }
+              },
+              "children": ["Start a free trial"]
             },
             {
               "$title": "Hamburger Button",
@@ -181,13 +262,16 @@
                 "display": "none",
                 "flexDirection": "column",
                 "justifyContent": "space-between",
-                "width": "28px",
-                "height": "20px",
+                "width": "44px",
+                "height": "44px",
                 "background": "none",
                 "border": "none",
                 "cursor": "pointer",
-                "padding": "0",
-                "@--md": { "display": "flex" }
+                "padding": "12px 8px",
+                "@--lg": {
+                  "display": "flex"
+                },
+                "boxSizing": "border-box"
               },
               "children": [
                 {
@@ -228,12 +312,15 @@
           "$title": "Mobile Menu Popover",
           "tagName": "nav",
           "id": "site-mobile-menu",
-          "attributes": { "popover": "auto", "aria-label": "Site menu" },
+          "attributes": {
+            "popover": "auto",
+            "aria-label": "Site menu"
+          },
           "style": {
             "inset": "0 0 0 auto",
             "width": "min(300px, 80vw)",
             "height": "100vh",
-            "backgroundColor": "var(--color-bg-secondary)",
+            "backgroundColor": "var(--color-bg-primary)",
             "borderLeft": "1px solid var(--color-border)",
             "border": "none",
             "margin": "0",
@@ -242,22 +329,35 @@
             "flexDirection": "column",
             "transform": "translateX(100%)",
             "transition": "transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), display 0.3s allow-discrete, overlay 0.3s allow-discrete",
-            ":popover-open": { "display": "flex", "transform": "translateX(0)" },
+            ":popover-open": {
+              "display": "flex",
+              "transform": "translateX(0)"
+            },
             "::backdrop": {
               "backgroundColor": "rgba(0, 0, 0, 0.5)",
               "opacity": "0",
               "transition": "opacity 0.3s ease, display 0.3s allow-discrete, overlay 0.3s allow-discrete"
             },
-            "&:popover-open::backdrop": { "opacity": "1" },
+            "&:popover-open::backdrop": {
+              "opacity": "1"
+            },
             "@starting-style": {
-              ":popover-open": { "transform": "translateX(100%)" },
-              "&:popover-open::backdrop": { "opacity": "0" }
+              ":popover-open": {
+                "transform": "translateX(100%)"
+              },
+              "&:popover-open::backdrop": {
+                "opacity": "0"
+              }
             },
             "@(prefers-reduced-motion: reduce)": {
               "transition": "none",
               "transform": "none",
-              ":popover-open": { "transform": "none" },
-              "::backdrop": { "transition": "none" }
+              ":popover-open": {
+                "transform": "none"
+              },
+              "::backdrop": {
+                "transition": "none"
+              }
             }
           },
           "children": [
@@ -299,11 +399,27 @@
                 "padding": "0.9rem 1.5rem",
                 "color": "var(--color-text-primary)",
                 "textDecoration": "none",
-                "fontSize": "1rem",
+                "fontSize": "1.0625rem",
                 "fontWeight": "500",
                 "borderBottom": "1px solid var(--color-border-subtle)"
               },
               "children": ["Studio"]
+            },
+            {
+              "tagName": "a",
+              "attributes": {
+                "href": "/cloud"
+              },
+              "style": {
+                "display": "block",
+                "padding": "0.9rem 1.5rem",
+                "color": "var(--color-text-primary)",
+                "textDecoration": "none",
+                "fontSize": "1.0625rem",
+                "fontWeight": "500",
+                "borderBottom": "1px solid var(--color-border-subtle)"
+              },
+              "children": ["Jx Cloud"]
             },
             {
               "tagName": "a",
@@ -315,7 +431,7 @@
                 "padding": "0.9rem 1.5rem",
                 "color": "var(--color-text-primary)",
                 "textDecoration": "none",
-                "fontSize": "1rem",
+                "fontSize": "1.0625rem",
                 "fontWeight": "500",
                 "borderBottom": "1px solid var(--color-border-subtle)"
               },
@@ -331,27 +447,11 @@
                 "padding": "0.9rem 1.5rem",
                 "color": "var(--color-text-primary)",
                 "textDecoration": "none",
-                "fontSize": "1rem",
+                "fontSize": "1.0625rem",
                 "fontWeight": "500",
                 "borderBottom": "1px solid var(--color-border-subtle)"
               },
               "children": ["Templates"]
-            },
-            {
-              "tagName": "a",
-              "attributes": {
-                "href": "/compare"
-              },
-              "style": {
-                "display": "block",
-                "padding": "0.9rem 1.5rem",
-                "color": "var(--color-text-primary)",
-                "textDecoration": "none",
-                "fontSize": "1rem",
-                "fontWeight": "500",
-                "borderBottom": "1px solid var(--color-border-subtle)"
-              },
-              "children": ["Compare"]
             },
             {
               "tagName": "a",
@@ -363,14 +463,29 @@
                 "padding": "0.9rem 1.5rem",
                 "color": "var(--color-text-primary)",
                 "textDecoration": "none",
-                "fontSize": "1rem",
+                "fontSize": "1.0625rem",
                 "fontWeight": "500",
                 "borderBottom": "1px solid var(--color-border-subtle)"
               },
               "children": ["Docs"]
             },
             {
-              "$title": "GitHub link — opens a new tab, so the drawer stays open behind it",
+              "tagName": "a",
+              "attributes": {
+                "href": "/compare"
+              },
+              "style": {
+                "display": "block",
+                "padding": "0.9rem 1.5rem",
+                "color": "var(--color-text-primary)",
+                "textDecoration": "none",
+                "fontSize": "1.0625rem",
+                "fontWeight": "500",
+                "borderBottom": "1px solid var(--color-border-subtle)"
+              },
+              "children": ["Compare"]
+            },
+            {
               "tagName": "a",
               "attributes": {
                 "href": "https://github.com/jxsuite/jx",
@@ -382,7 +497,7 @@
                 "padding": "0.9rem 1.5rem",
                 "color": "var(--color-text-primary)",
                 "textDecoration": "none",
-                "fontSize": "1rem",
+                "fontSize": "1.0625rem",
                 "fontWeight": "500",
                 "borderBottom": "1px solid var(--color-border-subtle)"
               },
@@ -401,26 +516,62 @@
                 "fontWeight": "500",
                 "borderBottom": "1px solid var(--color-border-subtle)"
               },
-              "children": ["Color scheme", { "tagName": "theme-toggle" }]
+              "children": [
+                "Color scheme",
+                {
+                  "tagName": "theme-toggle"
+                }
+              ]
             },
             {
-              "tagName": "a",
-              "attributes": {
-                "href": "/download"
-              },
+              "tagName": "div",
               "style": {
-                "display": "block",
-                "margin": "1.25rem 1.5rem 0",
-                "padding": "0.75rem 1.5rem",
-                "backgroundColor": "var(--color-accent-solid)",
-                "color": "white",
-                "textDecoration": "none",
-                "fontSize": "1rem",
-                "fontWeight": "600",
-                "borderRadius": "var(--radius)",
-                "textAlign": "center"
+                "paddingTop": "0.5rem"
               },
-              "children": ["Download"]
+              "children": [
+                {
+                  "tagName": "a",
+                  "attributes": {
+                    "href": "https://studio.jxsuite.com/"
+                  },
+                  "style": {
+                    "display": "flex",
+                    "alignItems": "center",
+                    "justifyContent": "center",
+                    "minHeight": "2.75rem",
+                    "margin": "0.75rem 1.5rem 0",
+                    "padding": "0 1.5rem",
+                    "backgroundColor": "var(--color-accent-solid)",
+                    "color": "#ffffff",
+                    "textDecoration": "none",
+                    "fontSize": "1rem",
+                    "fontWeight": "500",
+                    "borderRadius": "var(--radius)"
+                  },
+                  "children": ["Start a free trial"]
+                },
+                {
+                  "tagName": "a",
+                  "attributes": {
+                    "href": "/download"
+                  },
+                  "style": {
+                    "display": "flex",
+                    "alignItems": "center",
+                    "justifyContent": "center",
+                    "minHeight": "2.75rem",
+                    "margin": "0.75rem 1.5rem 0",
+                    "padding": "0 1.5rem",
+                    "backgroundColor": "var(--color-tonal)",
+                    "color": "var(--color-text-primary)",
+                    "textDecoration": "none",
+                    "fontSize": "1rem",
+                    "fontWeight": "500",
+                    "borderRadius": "var(--radius)"
+                  },
+                  "children": ["Download Studio"]
+                }
+              ]
             }
           ]
         }

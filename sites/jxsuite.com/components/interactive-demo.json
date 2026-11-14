@@ -175,7 +175,7 @@
           "textContent": "${state.count}",
           "style": {
             "fontSize": "4rem",
-            "fontWeight": "700",
+            "fontWeight": "var(--display-weight)",
             "fontVariantNumeric": "tabular-nums",
             "color": "var(--color-accent, #007bff)",
             "lineHeight": "1"

@@ -8,7 +8,7 @@ code:
 
 # Install Jx Studio
 
-Jx Studio is a desktop application: you run it on your own machine, against your own files. Jx Cloud, a hosted version you open in a browser and sign in to with GitHub, is in development, so the desktop app is how you run the visual editor today.
+Jx Studio is a desktop application: you run it on your own machine, against your own files, and it is free. There is also a hosted version, [Jx Cloud](/cloud), which you open in a browser at studio.jxsuite.com and sign in to with GitHub. It is a paid subscription with a free trial, and it needs no install. This page covers the desktop app.
 
 ## Download the app
 

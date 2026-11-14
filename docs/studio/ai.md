@@ -51,7 +51,7 @@ Until AI is connected, the tab shows the chat as usual with one line beneath it 
 
 ### Connect Cloudflare (Jx Cloud)
 
-Jx Cloud, the hosted Studio, is in development. On it that section leads with **Connect Cloudflare**: Studio brokers **Workers AI** on your own Cloudflare account, so you need no API key and no third-party provider account. Click **Connect Cloudflare**, approve the authorization in the Cloudflare window that opens, and you land back in Studio with the assistant connected. Inference runs on your own Cloudflare account and bills to it; Jx only brokers the request.
+On Jx Cloud, the hosted Studio, that section leads with **Connect Cloudflare**: Studio brokers **Workers AI** on your own Cloudflare account, so you need no API key and no third-party provider account. Click **Connect Cloudflare**, approve the authorization in the Cloudflare window that opens, and you land back in Studio with the assistant connected. Inference runs on your own Cloudflare account and bills to it; Jx only brokers the request.
 
 A hosted Studio may need something from you before the assistant runs. If yours does, the section says what in the platform's own words and offers what the platform offers in place of **Connect Cloudflare**. The assistant unlocks once that is done.
 

@@ -48,56 +48,56 @@
     {
       "id": "signed",
       "file": "sites/jxsuite.com/pages/download.md",
-      "text": "Signed &amp; notarized. Apple Silicon, macOS 12 or later.",
+      "text": "Signed and notarized. Apple Silicon, macOS 12 or later.",
       "evidence": ".github/workflows/bundle-desktop-macos.yml"
     },
     {
       "id": "price-figure",
       "file": "sites/jxsuite.com/pages/index.md",
-      "text": "$0",
-      "evidence": "LICENSE"
+      "text": "$10 a month",
+      "reason": "Jx Studio Cloud's list price. It is defined outside this repository, in the platform's plan definition (PLAN.priceLabel) and its production Stripe price, which checkout shows before any charge; AGENTS.md's marketing policy makes matching it a review item."
     },
     {
       "id": "price-figure",
-      "file": "sites/jxsuite.com/pages/framework.md",
-      "text": "$5 VPS",
-      "reason": "Illustrative third-party hosting price, labelled as such in the same sentence, not a Jx product claim."
+      "file": "sites/jxsuite.com/pages/cloud.md",
+      "text": "$10 a month",
+      "reason": "Jx Studio Cloud's list price. It is defined outside this repository, in the platform's plan definition (PLAN.priceLabel) and its production Stripe price, which checkout shows before any charge; AGENTS.md's marketing policy makes matching it a review item."
     },
     {
       "id": "price-figure",
-      "file": "sites/jxsuite.com/pages/compare.json",
+      "file": "sites/jxsuite.com/pages/compare.md",
+      "text": "$10 a month",
+      "reason": "Jx Studio Cloud's list price. It is defined outside this repository, in the platform's plan definition (PLAN.priceLabel) and its production Stripe price, which checkout shows before any charge; AGENTS.md's marketing policy makes matching it a review item."
+    },
+    {
+      "id": "price-figure",
+      "file": "sites/jxsuite.com/pages/compare.md",
       "text": "$80/mo",
       "reason": "Illustrative cost-of-ownership estimate, labelled as such in the section header."
     },
     {
       "id": "price-figure",
-      "file": "sites/jxsuite.com/pages/compare.json",
+      "file": "sites/jxsuite.com/pages/compare.md",
       "text": "$200/yr",
       "reason": "Illustrative cost-of-ownership estimate, labelled as such in the section header."
     },
     {
       "id": "price-figure",
-      "file": "sites/jxsuite.com/pages/compare.json",
+      "file": "sites/jxsuite.com/pages/compare.md",
       "text": "$4,000/yr",
       "reason": "Illustrative cost-of-ownership estimate, labelled as such in the section header."
     },
     {
       "id": "price-figure",
-      "file": "sites/jxsuite.com/pages/compare.json",
+      "file": "sites/jxsuite.com/pages/compare.md",
       "text": "$300/yr",
       "reason": "Illustrative cost-of-ownership estimate, labelled as such in the section header."
     },
     {
       "id": "price-figure",
-      "file": "sites/jxsuite.com/pages/compare.json",
+      "file": "sites/jxsuite.com/pages/compare.md",
       "text": "~$5,460",
       "reason": "Illustrative cost-of-ownership estimate, labelled as such in the section header."
-    },
-    {
-      "id": "price-figure",
-      "file": "sites/jxsuite.com/pages/compare.json",
-      "text": "$0",
-      "reason": "Static hosting free tier + MIT license; the illustrative Jx column."
     }
   ]
 }

@@ -18,7 +18,7 @@
       "tagName": "div",
       "style": {
         "fontSize": "clamp(2.5rem, 5vw, 4rem)",
-        "fontWeight": "700",
+        "fontWeight": "var(--display-weight)",
         "letterSpacing": "-0.03em",
         "lineHeight": "1",
         "color": "var(--color-accent)"

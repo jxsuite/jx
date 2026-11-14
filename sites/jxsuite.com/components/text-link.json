@@ -1,0 +1,36 @@
+{
+  "tagName": "text-link",
+  "$description": "An inline action that is not a button: accent text with an underline that thickens on hover.",
+  "state": {
+    "href": "/",
+    "label": "Read it"
+  },
+  "style": {
+    "display": "inline-block"
+  },
+  "children": [
+    {
+      "tagName": "a",
+      "attributes": {
+        "href": "${state.href}"
+      },
+      "style": {
+        "display": "inline-flex",
+        "alignItems": "center",
+        "minHeight": "2.75rem",
+        "color": "var(--color-accent)",
+        "fontWeight": "500",
+        "fontSize": "1rem",
+        "textDecoration": "underline",
+        "textDecorationThickness": "1px",
+        "textUnderlineOffset": "0.25em",
+        "transition": "color 0.15s",
+        ":hover": {
+          "color": "var(--color-accent-hover)",
+          "textDecorationThickness": "2px"
+        }
+      },
+      "textContent": "${state.label}"
+    }
+  ]
+}
