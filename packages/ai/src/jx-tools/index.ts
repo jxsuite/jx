@@ -14,6 +14,8 @@ export { coerceIndex } from "@jxsuite/schema/doc-ops";
 export { DOC_TOOLS } from "./doc-tools.ts";
 export { docToolEntries, FROZEN_SENTENCE } from "./entries.ts";
 export { JX_TOOL_FACTS, toolFacts } from "./facts.ts";
+export { invalidPathResult, normalizeProjectPath, projectToolEntries } from "./project.ts";
+export type { ProjectEntry, ProjectHost, WriteVerdict } from "./project.ts";
 export type { JxToolName, ToolEffect, ToolFacts } from "./facts.ts";
 export type {
   DocEdit,
