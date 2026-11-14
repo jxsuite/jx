@@ -144,8 +144,9 @@ describe("the size of @jxsuite/ai in the page", () => {
    * (41,995 bytes): new behaviour in the page, specs/ai.md §3.8.
    *
    * Raised again to 51,200 (48,714 bytes) for the one stream normalizer the page's client now
-   * shares with every backend (specs/ai.md §2.4), wire version 2 with its downgrade (§2.7), and the
-   * suspend and resume of §3.12: each is behaviour the page runs or must be able to speak.
+   * shares with every backend (specs/ai.md §2.4), wire version 2 with its downgrade (ai.md §2.7),
+   * and the suspend and resume of ai.md §3.12: each is behaviour the page runs or must be able to
+   * speak.
    *
    * Raised again to 58,368 (54,107 bytes) when the session store's shared half moved here: the
    * migration every read runs, the saved window, the store contract and its write queue
@@ -154,7 +155,7 @@ describe("the size of @jxsuite/ai in the page", () => {
    *
    * Raised again to 64,512 (61,503 bytes) when the four file tools moved here from Studio's own
    * project tools, to run over any host (specs/ai.md §3.14), with the catalog's argument check
-   * (§3.10): a move, plus the seam a host's validator is asked through.
+   * (ai.md §3.10): a move, plus the seam a host's validator is asked through.
    */
   const CEILING = 64_512;
 

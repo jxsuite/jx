@@ -163,6 +163,36 @@ describe("the approval policy", () => {
     expect(ran).toEqual(["act"]);
   });
 
+  /* Whether a write replaces a file is something a host has to look up, so a policy may answer
+     later (specs/ai.md §3.11). The call waits for it, and nothing runs meanwhile. */
+  test("a policy that answers later is waited for, on the first invoke and the second", async () => {
+    const { ran, registry } = tools();
+    const asked: string[] = [];
+    const later: ApprovalPolicy = (definition) => {
+      asked.push(definition.name);
+      return Promise.resolve({ kind: "confirm", reason: "not-undoable", summary: "Replace it?" });
+    };
+    const first = await invokeTool(registry, call("act"), createToolContext(), { approval: later });
+    expect(first).toMatchObject({
+      request: { kind: "approval", reason: "not-undoable", summary: "Replace it?" },
+      status: "needs_input",
+    });
+    expect(ran).toEqual([]);
+    const second = await invokeTool(registry, call("act"), createToolContext(), {
+      approval: later,
+      response: { approved: true, kind: "approval" },
+    });
+    expect(second).toMatchObject({ executed: true, status: "done" });
+    expect(ran).toEqual(["act"]);
+    expect(asked).toEqual(["act", "act"]);
+
+    const denied = await invokeTool(registry, call("act"), createToolContext(), {
+      approval: () => Promise.resolve({ kind: "deny", message: "Not from here." }),
+    });
+    expect(denied).toMatchObject({ executed: false, result: { error: "Not from here." } });
+    expect(ran).toEqual(["act"]);
+  });
+
   test("a tool with no title is named by its name", async () => {
     const registry = createToolRegistry();
     registry.register(

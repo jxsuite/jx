@@ -26,6 +26,7 @@ import { componentRegistry } from "../files/components";
 import { activeRegistry } from "../commands/active-registry";
 import { registerAiTools } from "./ai-tools";
 import { registerAskTool } from "./ai-ask";
+import { studioApprovalPolicy, trustFact } from "./harness/approval-policy";
 import { createInteractionStore } from "./harness/interaction-store";
 import { commandToolBlurbs, createCommandToolRegistry } from "./ai-command-tools";
 import { registerProjectTools } from "./ai-project-tools";
@@ -122,7 +123,25 @@ export function createDocumentAssistant() {
      suspends the turn for as long as they like, and the conversation is otherwise saved only when a
      turn starts and ends; saving once it is pending is what lets a reload find the question to
      restore as open rather than losing the whole unfinished turn. */
-  const interactions = createInteractionStore({ onPending: () => persistChat() });
+  const interactions = createInteractionStore({
+    onPending: () => persistChat(),
+    /* "Allow for this chat" is a fact about the conversation, so it lasts as long as the chat
+       does: New Chat replaces the facts, and with them every standing approval. */
+    onTrust: (tool) => sessionFacts.set(trustFact(tool), true),
+  });
+  /* What the author is asked about before it runs (specs/ai.md §3.11): a disk write that replaces a
+     file, and an extension being enabled. Everything else runs, with undo as its backstop. */
+  const approval = studioApprovalPolicy({
+    fileExists: async (path) => {
+      try {
+        await getPlatform().readFile(path);
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    session: () => sessionFacts,
+  });
 
   const innerRegistry = createToolRegistry();
   // Ungated: a question is not a function of what happens to be open.
@@ -365,6 +384,7 @@ export function createDocumentAssistant() {
         session: sessionFacts,
         getTab: () => activeTab.value,
         interactions,
+        policy: { approval },
       });
     } catch (error) {
       /*
