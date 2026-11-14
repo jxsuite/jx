@@ -195,7 +195,7 @@ Re-derive it after each detailing pull request with `bun run plans:status`, whic
 | 2   | schema, extensions, relationships, imports, parser, jx-markdown | None graduated at census. extensions is cited nineteen times by site-architecture.  |
 | 3   | compiler                                                        | Cites spec and extensions.                                                          |
 | 4   | site-architecture                                               | Cites extensions and spec.                                                          |
-| 5   | ai                                                              | `plan:ai/harness-phase-1` covers most of it.                                        |
+| 5   | ai                                                              | Graduated: the harness program covered most of it.                                  |
 | 6   | ui and studio-ui-guidelines                                     | One pull request: they cite each other throughout and share accessibility gaps.     |
 | 7   | studio                                                          | Cites studio-ui-guidelines, site-architecture and ui.                               |
 | 8   | desktop                                                         | Cites studio and server.                                                            |
