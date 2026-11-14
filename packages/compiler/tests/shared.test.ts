@@ -643,12 +643,32 @@ describe("isComponentFullyStatic", () => {
 });
 
 describe("buildComponentCSS", () => {
+  test("a definition with no display in its base block gets display: block (spec.md §9.6)", () => {
+    // The interpreter writes the default into the element's own rule; a build must agree.
+    expect(buildComponentCSS("my-comp", { color: "red" })).toContain(
+      "my-comp { display: block; color: red }",
+    );
+    expect(buildComponentCSS("my-comp", null)).toBe("my-comp { display: block }\n");
+    expect(buildComponentCSS("my-comp", { color: "red" }, null, {}, "open")).toContain(
+      ":host { display: block; color: red }",
+    );
+  });
+
+  test("the base block's own display is kept, and one in a nested block does not count", () => {
+    expect(buildComponentCSS("my-comp", { display: "revert-layer" })).toBe(
+      "my-comp { display: revert-layer }\n",
+    );
+    const css = buildComponentCSS("my-comp", { ":hover": { display: "flex" } });
+    expect(css).toContain("my-comp { display: block }");
+    expect(css).toContain("my-comp:hover { display: flex }");
+  });
+
   test("generates CSS for flat styles", () => {
     const css = buildComponentCSS("my-comp", {
       color: "red",
       fontSize: "16px",
     });
-    expect(css).toContain("my-comp { color: red; font-size: 16px }");
+    expect(css).toContain("my-comp { display: block; color: red; font-size: 16px }");
   });
 
   test("skips pseudo-selectors from host rules but emits them as CSS rules", () => {
@@ -657,7 +677,7 @@ describe("buildComponentCSS", () => {
       "@--md": { fontSize: "20px" },
       color: "red",
     });
-    expect(css).toContain("my-comp { color: red }");
+    expect(css).toContain("my-comp { display: block; color: red }");
     expect(css).toContain(":hover");
     expect(css).toContain("@media");
   });
@@ -700,12 +720,12 @@ describe("buildComponentCSS", () => {
 
   test("skips template strings", () => {
     const css = buildComponentCSS("my-comp", { color: "${state.color}" });
-    expect(css).toBe("");
+    expect(css).toBe("my-comp { display: block }\n");
   });
 
-  test("returns empty for null/undefined style", () => {
-    expect(buildComponentCSS("my-comp", null)).toBe("");
-    expect(buildComponentCSS("my-comp")).toBe("");
+  test("a definition with no style carries only the display default", () => {
+    expect(buildComponentCSS("my-comp", null)).toBe("my-comp { display: block }\n");
+    expect(buildComponentCSS("my-comp")).toBe("my-comp { display: block }\n");
   });
 
   test("dual-emits scheme blocks scoped to the component tag", () => {
@@ -2263,7 +2283,9 @@ describe("style handles (spec.md §9.2)", () => {
       state: { rows: [] },
       tagName: "x-list",
     };
-    expect(buildComponentCSS("x-list", doc.style, doc, {})).toBe(".x-list-0 { color: red }\n");
+    expect(buildComponentCSS("x-list", doc.style, doc, {})).toBe(
+      "x-list { display: block }\n.x-list-0 { color: red }\n",
+    );
   });
 });
 

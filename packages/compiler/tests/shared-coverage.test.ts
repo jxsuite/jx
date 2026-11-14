@@ -252,7 +252,7 @@ describe("buildComponentCSS — media blocks", () => {
       "@--mobile": "not-an-object",
       color: "red",
     });
-    expect(css).toContain("my-el { color: red }");
+    expect(css).toContain("my-el { display: block; color: red }");
     expect(css).not.toContain("@media");
     expect(css).not.toContain("not-an-object");
   });
