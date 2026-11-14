@@ -172,9 +172,9 @@ class UserCard extends HTMLElement {
   }
 
   connectedCallback() {
-    // Props: data-jx-props, then props.* attributes, then properties (§4.4)
     const _first = !this.#rendered;
     this.#rendered = true;
+    // Props: data-jx-props, then props.* attributes, then properties and their accessors (§4.4)
     if (this.hasAttribute("data-jx-prerendered")) {
       this.removeAttribute("data-jx-prerendered");
     }
@@ -223,29 +223,50 @@ Until 0.3.0 the compiler lowered a ref by replacing `/` with `.` and pasting the
 
 ### 4.4 Property Bridge
 
-> **Status: Partial.** The third source is narrower than the snippet: the emitted merge takes a property only when `this.hasOwnProperty(key)` (`packages/compiler/src/targets/compile-element.ts`), not `key in this`, so a value set before connection through a reflected `HTMLElement` property (`title`, `lang`, `hidden` and the rest), which creates no own property, is dropped and the component renders its default, where the interpreter takes it (`instanceSupplies` in `packages/runtime/src/runtime.ts`, `spec.md` §13.2).
-
-`connectedCallback` takes props from three sources, in order — a `data-jx-props` payload, literal `props.*` attributes, then JS properties set before connection — and registers the render effect:
+`connectedCallback` takes props from three sources, in order: a `data-jx-props` payload, literal `props.*` attributes, then, on the first connection, JS properties the instance carries. Each is accepted only for a key the definition's `state` declares, a pure type definition included, and refused for a private one (spec.md §5.6). It then installs the property-first interface (spec.md §16.2) and registers the render effect:
 
 ```js
+const __jxProps = ["count", "title", "label"]; // every declared state key that is not private
+const __jxBridged = ["count", "title", "label"]; // __jxProps, less the members of the class
+// __jxSupplies and __jxNativeSetter: the property bridge's two rules (§11)
+
 connectedCallback() {
-  // …data-jx-props payload…
+  const _first = !this.#rendered;
+  this.#rendered = true;
+  // …data-jx-props payload: if (__jxProps.includes(k)) this.state[k] = v;
   const _pn = this.getAttributeNames().filter(n => n.startsWith('props.') && n.length > 6);
   for (const _n of _pn) {
     const _k = _n.slice(6);
-    if (_k in this.state) {
+    if (_k.startsWith('#')) { this.removeAttribute(_n); continue; }
+    if (__jxProps.includes(_k)) {
       this.state[_k] = this.getAttribute(_n);
       this.removeAttribute(_n);
     }
   }
-  for (const key of Object.keys(this.state)) {
-    if (key in this && this[key] !== undefined) {
-      this.state[key] = this[key];
+  if (_first) {
+    for (const _k of __jxBridged) {
+      if (_k in this && this[_k] !== undefined && __jxSupplies(this, _k)) {
+        this.state[_k] = this[_k];
+      }
+    }
+    for (const _k of __jxBridged) {
+      const _set = __jxNativeSetter(this, _k);
+      Object.defineProperty(this, _k, {
+        configurable: true,
+        get: () => this.state[_k],
+        set: (v) => { if (_set) _set.call(this, v); this.state[_k] = v; },
+      });
     }
   }
   this.#effects.push(effect(() => render(this.template(), this)));
 }
 ```
+
+The key sets are the definition's, written into the module as literals. A membership test against `this.state` would refuse a pure type definition (`{ "type": "string" }`), which holds no value and so is not in the reactive object until a prop sets it. `__jxBridged`, the two helpers and the `if (_first)` block are emitted only when there is a key to bridge.
+
+The third source takes what the instance genuinely carries (spec.md §13.2): an own property, or the attribute a reflected property writes. `key in this` alone would let `title` answer with its empty native value and beat the declared default, and an own-property test alone drops a parent's `.title=`, which creates no own property. The rule is `instanceSupplies` in `@jxsuite/runtime`, inlined by `propSupplyHelperSource()` (§11). Every bridged key then gets an accessor on the instance forwarding into `this.state`, so a later `el.key = v`, a compiled parent's re-committed `.key=` binding included, re-renders the element. For a key the platform already owns (`title`, `lang`, `hidden`) the accessor calls the platform's setter first, so the attribute still reflects (spec.md §16.2). The accessors go on the instance and after the merge because a write before connection has made an own property, which the merge reads and the accessor then replaces; on the prototype that early write would land in state at once, and the two attribute sources would then overwrite it, where a property is the source that wins.
+
+A key that names a member of the emitted class (`state`, `template`, `constructor`, a lifecycle callback) is the one compiled-only exception: it arrives through the two attribute sources, but is neither merged from a property nor given an accessor, because either would replace the member. A project formula a component inherits (spec.md §13.4) is in its scope and not in its interface, so it is bridged only on an instance that was given a prop of that name.
 
 The `props.*` attribute form is how a JSON-authored instance and an island-rendered map body both deliver props, and it mirrors the interpreted runtime; values are strings, and because HTML lowercases attribute names a matching state key must be lowercase. A `$props` entry whose value is a template string is emitted as a binding, not as quoted text.
 
@@ -700,6 +721,10 @@ Helpers that `packages/compiler/src/shared.ts` exports for the compilation targe
 ### `attrHelperSource()` — the boolean-attribute rule, inlined for a generated module
 
 The element and client targets emit modules that load with `lit-html` and `@vue/reactivity` and nothing else, so they cannot call `booleanAttrValue` — they carry a copy whose enumerated-name list is serialized from `@jxsuite/runtime`'s `enumeratedAttrNames()`. A test asserts the emitted literal still equals that export, which is what keeps the four writers of the rule one decision (spec.md §8.3).
+
+### `propSupplyHelperSource()` — the prop-supply rule, inlined for a generated module
+
+An element module with a property bridge (§4.4) carries two functions, for the reason `attrHelperSource()` gives. `__jxSupplies` restates `instanceSupplies` from `@jxsuite/runtime`, the rule of spec.md §13.2, and a test runs both over one matrix of key, own property and attribute, which is what keeps the copy from drifting. `__jxNativeSetter` finds the platform's own setter for a key on the prototype chain, which a forwarding accessor calls before it writes state (spec.md §16.2).
 
 ### `compileStyles(doc, mediaQueries?, projectStyle?)` — CSS extraction from component tree
 

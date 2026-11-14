@@ -33,7 +33,7 @@ size: M
 
 **What is missing**: a reflection table (property to content attribute, per element, with the setter's conversion), used by `buildAttrs`; the content properties in the inner builders; property bindings in the client target's lit templates; the image lift widened; and a decision on `name` and on `<select>`.
 
-**Related, no edge.** the landed style-handle assignment (`spec.md` §9.2) owns how the compiler's style handle and an author's `class` combine, so this plan leaves the `id` and `class` emission alone. `plan:jx-markdown/directive-attribute-routing` checked an edge to this plan and declined it; its Open asks whether this plan should also make an `attributes` binding of `value`, `checked` or `selected` write the live property (Open C below). `plan:_shared/compiled-prop-bridge` decides reflected names at run time and needs no table. `plan:site-architecture/head-and-layout-shape-root-title` removes a page's `title` from its root, which `buildAttrs` already writes.
+**Related, no edge.** the landed style-handle assignment (`spec.md` §9.2) owns how the compiler's style handle and an author's `class` combine, so this plan leaves the `id` and `class` emission alone. `plan:jx-markdown/directive-attribute-routing` checked an edge to this plan and declined it; its Open asks whether this plan should also make an `attributes` binding of `value`, `checked` or `selected` write the live property (Open C below). The landed property bridge (`compiler.md` §4.4) decides reflected names at run time and needs no table. `plan:site-architecture/head-and-layout-shape-root-title` removes a page's `title` from its root, which `buildAttrs` already writes.
 
 ## Outcome
 

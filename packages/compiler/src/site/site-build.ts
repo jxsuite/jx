@@ -2729,7 +2729,7 @@ function expandComponents(
     /*
      * A non-static instance discards its prerendered markup on upgrade and re-renders, so the
      * props have to survive as data or the element comes back with its state defaults — correct
-     * content painting first and then being replaced by the wrong content. compiler.md §5.2 gives
+     * content painting first and then being replaced by the wrong content. compiler.md §4.4 gives
      * connectedCallback three prop sources and this is the first of them; the compiler read it but
      * never wrote it, and lifting `props.*` into $props above removed the other channel too.
      *
