@@ -5,12 +5,9 @@
   },
   "style": {
     "display": "block",
-    "fontFamily": "var(--font-mono)",
-    "fontSize": "0.75rem",
-    "fontWeight": "600",
-    "color": "var(--color-accent)",
-    "textTransform": "uppercase",
-    "letterSpacing": "0.08em",
+    "fontSize": "0.875rem",
+    "fontWeight": "500",
+    "color": "var(--color-text-muted)",
     "marginBottom": "1rem"
   },
   "textContent": "${state.text}"

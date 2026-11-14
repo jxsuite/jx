@@ -113,24 +113,6 @@
       "text": "stale allow entry",
       "evidence": "scripts/docs/check-site-claims.ts",
       "reason": "Quoting the failure message check-site-claims.ts prints, verbatim."
-    },
-    {
-      "id": "emoji",
-      "file": "sites/jxsuite.com/pages/download.md",
-      "text": "🍎",
-      "reason": "The platform icon on the macOS download card. Site design, not prose decoration; removing it changes the page."
-    },
-    {
-      "id": "emoji",
-      "file": "sites/jxsuite.com/pages/download.md",
-      "text": "🪟",
-      "reason": "The platform icon on the Windows download card."
-    },
-    {
-      "id": "emoji",
-      "file": "sites/jxsuite.com/pages/download.md",
-      "text": "🐧",
-      "reason": "The platform icon on the Linux download card."
     }
   ]
 }

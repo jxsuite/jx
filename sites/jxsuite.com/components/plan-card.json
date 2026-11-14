@@ -1,0 +1,78 @@
+{
+  "tagName": "plan-card",
+  "$description": "One column of the price section: what it is called, what it costs, one line on the terms, then the slotted list of what it covers and its action.",
+  "state": {
+    "name": "",
+    "price": "",
+    "text": ""
+  },
+  "style": {
+    "display": "flex",
+    "flexDirection": "column",
+    "alignItems": "flex-start",
+    "padding": "clamp(1.5rem, 2.5vw, 2.25rem)",
+    "borderRadius": "var(--radius-lg)",
+    "backgroundColor": "var(--color-bg-surface)",
+    "border": "1px solid var(--color-border-subtle)",
+    "& ul": {
+      "margin": "1.5rem 0 2rem",
+      "padding": "0",
+      "listStyle": "none",
+      "alignSelf": "stretch",
+      "flex": "1"
+    },
+    "& li": {
+      "padding": "0.75rem 0",
+      "borderTop": "1px solid var(--color-border-subtle)",
+      "fontSize": "1rem",
+      "lineHeight": "1.5",
+      "color": "var(--color-text-secondary)"
+    },
+    "& p": {
+      "margin": "0"
+    },
+    "@--sm": {
+      "alignItems": "stretch"
+    }
+  },
+  "children": [
+    {
+      "tagName": "h3",
+      "style": {
+        "fontWeight": "var(--display-weight)",
+        "color": "var(--color-text-primary)",
+        "margin": "0",
+        "fontSize": "1.25rem",
+        "letterSpacing": "-0.015em",
+        "lineHeight": "1.3"
+      },
+      "textContent": "${state.name}"
+    },
+    {
+      "tagName": "p",
+      "style": {
+        "fontWeight": "var(--display-weight)",
+        "color": "var(--color-text-primary)",
+        "margin": "0.75rem 0 0.5rem",
+        "fontSize": "clamp(2.25rem, 4vw, 3rem)",
+        "letterSpacing": "var(--display-tracking)",
+        "lineHeight": "1.1"
+      },
+      "textContent": "${state.price}"
+    },
+    {
+      "tagName": "p",
+      "style": {
+        "margin": "0",
+        "fontSize": "1rem",
+        "lineHeight": "1.6",
+        "color": "var(--color-text-secondary)",
+        "maxWidth": "40ch"
+      },
+      "textContent": "${state.text}"
+    },
+    {
+      "tagName": "slot"
+    }
+  ]
+}

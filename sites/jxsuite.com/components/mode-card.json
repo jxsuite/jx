@@ -1,5 +1,6 @@
 {
   "tagName": "mode-card",
+  "$description": "One Studio workspace: its screenshot, its name and what you do there.",
   "state": {
     "name": "Mode",
     "description": "Description",
@@ -10,7 +11,7 @@
     "display": "flex",
     "flexDirection": "column",
     "borderRadius": "var(--radius-lg)",
-    "border": "1px solid var(--color-border)",
+    "border": "1px solid var(--color-border-subtle)",
     "backgroundColor": "var(--color-bg-surface)",
     "overflow": "hidden"
   },
@@ -29,36 +30,35 @@
         "display": "block",
         "width": "100%",
         "height": "auto",
-        "borderBottom": "1px solid var(--color-border)"
+        "borderBottom": "1px solid var(--color-border-subtle)"
       }
     },
     {
       "tagName": "div",
       "style": {
-        "display": "flex",
-        "flexDirection": "column",
-        "gap": "0.75rem",
-        "padding": "1.5rem"
+        "padding": "clamp(1.25rem, 2.5vw, 2rem)"
       },
       "children": [
         {
           "tagName": "h3",
           "style": {
-            "fontSize": "1.125rem",
-            "fontWeight": "700",
-            "letterSpacing": "-0.02em",
+            "fontWeight": "var(--display-weight)",
+            "letterSpacing": "-0.015em",
+            "color": "var(--color-text-primary)",
             "margin": "0",
-            "color": "var(--color-text-primary)"
+            "textWrap": "balance",
+            "fontSize": "1.25rem",
+            "lineHeight": "1.3"
           },
           "textContent": "${state.name}"
         },
         {
           "tagName": "p",
           "style": {
-            "fontSize": "0.875rem",
+            "margin": "0.5rem 0 0",
+            "fontSize": "1rem",
             "lineHeight": "1.6",
-            "color": "var(--color-text-secondary)",
-            "margin": "0"
+            "color": "var(--color-text-secondary)"
           },
           "textContent": "${state.description}"
         }

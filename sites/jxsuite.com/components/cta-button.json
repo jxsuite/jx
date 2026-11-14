@@ -1,14 +1,20 @@
 {
   "tagName": "cta-button",
+  "$description": "The site's one button pair. `primary` is the filled accent and marks the main action; `secondary` is the tonal fill every other button takes. `size: xl` is the close's big button.",
   "state": {
     "href": "/",
     "label": "Click",
     "variant": "primary",
+    "size": "md",
     "newTab": false,
-    "isPrimary": "${state.variant === 'primary'}"
+    "isPrimary": "${state.variant === 'primary'}",
+    "isXl": "${state.size === 'xl'}"
   },
   "style": {
-    "display": "inline-block"
+    "display": "inline-block",
+    "@--sm": {
+      "display": "block"
+    }
   },
   "children": [
     {
@@ -19,17 +25,46 @@
         "rel": "${state.newTab ? 'noopener noreferrer' : ''}"
       },
       "style": {
+        "backgroundColor": "var(--btn-bg)",
+        "color": "var(--btn-ink)",
+        "minHeight": "var(--btn-h)",
+        "padding": "var(--btn-pad)",
+        "fontSize": "var(--btn-size)",
         "display": "inline-flex",
         "alignItems": "center",
-        "padding": "0.6875rem 1.75rem",
+        "justifyContent": "center",
+        "boxSizing": "border-box",
         "borderRadius": "var(--radius)",
         "textDecoration": "none",
-        "fontWeight": "600",
-        "fontSize": "0.9375rem",
-        "transition": "background-color 0.15s, border-color 0.15s, color 0.15s",
-        "backgroundColor": "${state.isPrimary ? 'var(--color-accent-solid)' : 'transparent'}",
-        "color": "${state.isPrimary ? 'white' : 'var(--color-text-secondary)'}",
-        "border": "${state.isPrimary ? '1px solid transparent' : '1px solid var(--color-border)'}"
+        "fontWeight": "500",
+        "whiteSpace": "nowrap",
+        "transition": "background-color 0.15s, transform 0.15s",
+        ":hover": {
+          "backgroundColor": "var(--btn-bg-hover)",
+          "transform": "translateY(-1px)"
+        },
+        ":active": {
+          "transform": "translateY(1px)"
+        },
+        "@--sm": {
+          "display": "flex",
+          "width": "100%"
+        },
+        "@(prefers-reduced-motion: reduce)": {
+          "transition": "none",
+          ":hover": {
+            "transform": "none"
+          },
+          ":active": {
+            "transform": "none"
+          }
+        },
+        "--btn-bg": "${state.isPrimary ? 'var(--color-accent-solid)' : 'var(--color-tonal)'}",
+        "--btn-bg-hover": "${state.isPrimary ? 'var(--color-accent-solid-hover)' : 'var(--color-tonal-hover)'}",
+        "--btn-ink": "${state.isPrimary ? '#ffffff' : 'var(--color-text-primary)'}",
+        "--btn-h": "${state.isXl ? '3.5rem' : '2.75rem'}",
+        "--btn-pad": "${state.isXl ? '0 2rem' : '0 1.5rem'}",
+        "--btn-size": "${state.isXl ? '1.125rem' : '1rem'}"
       },
       "textContent": "${state.label}"
     }

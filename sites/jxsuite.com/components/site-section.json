@@ -1,0 +1,62 @@
+{
+  "tagName": "site-section",
+  "$description": "The one section scaffold: the gutters, the top and bottom padding, the heading on the left line with its lead under it, then the slotted content. `ground: alt` puts the section on the surface band.",
+  "state": {
+    "heading": "",
+    "lead": "",
+    "ground": "main"
+  },
+  "style": {
+    "display": "block",
+    "padding": "var(--section-top) var(--gutter) var(--section-bottom)",
+    "backgroundColor": "${state.ground === 'alt' ? 'var(--color-bg-secondary)' : 'transparent'}",
+    "scrollMarginTop": "4rem"
+  },
+  "children": [
+    {
+      "tagName": "div",
+      "style": {
+        "maxWidth": "var(--max-width)",
+        "margin": "0 auto"
+      },
+      "children": [
+        {
+          "tagName": "h2",
+          "style": {
+            "fontWeight": "var(--display-weight)",
+            "letterSpacing": "var(--display-tracking)",
+            "color": "var(--color-text-primary)",
+            "margin": "0",
+            "textWrap": "balance",
+            "fontSize": "clamp(1.875rem, 3.4vw, 3rem)",
+            "lineHeight": "1.08",
+            "maxWidth": "22ch"
+          },
+          "textContent": "${state.heading}"
+        },
+        {
+          "tagName": "p",
+          "style": {
+            "margin": "1.25rem 0 0",
+            "maxWidth": "58ch",
+            "fontSize": "clamp(1.0625rem, 1.4vw, 1.25rem)",
+            "lineHeight": "1.5",
+            "color": "var(--color-text-secondary)"
+          },
+          "textContent": "${state.lead}"
+        },
+        {
+          "tagName": "div",
+          "style": {
+            "marginTop": "clamp(2.5rem, 4vw, 3.5rem)"
+          },
+          "children": [
+            {
+              "tagName": "slot"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
