@@ -439,17 +439,18 @@ describe("buildSite — what a live component renders, and what a page gives it"
     );
   });
 
-  it("stamps every instance of a tag a live component renders live, with its props as data", () => {
+  it("stamps a tag a live component renders live on the pages that draw that component", () => {
     // The module loads for `live-parent`'s sake and upgrades this instance too: without its props
     // As data it would come back with the definition's defaults.
     expect(bodyOf(TMP)).toContain(
       '<static-chip data-jx-props="{&quot;label&quot;:&quot;ALONE&quot;}" data-jx-prerendered>' +
         "<span>[ALONE]</span></static-chip>",
     );
+    // A page that places the chip without the live component keeps it static, with no script.
     expect(bodyOf(TMP, "alone/index.html")).toContain(
-      '<static-chip data-jx-props="{&quot;label&quot;:&quot;ONLY&quot;}" data-jx-prerendered>',
+      "<static-chip data-jx-static><span>[ONLY]</span></static-chip>",
     );
-    expect(scriptsOf(TMP, "alone/index.html")).toEqual(["static-chip"]);
+    expect(scriptsOf(TMP, "alone/index.html")).toEqual([]);
   });
 
   it("writes a tag's module script after the scripts of the tags it renders", () => {

@@ -192,7 +192,7 @@ A component instance is expanded wherever it is written: on a page, slotted into
 
 - **Props flow down at build time.** A `$props` value written as a template (`"icon": "${state.icon}"`) resolves against the parent component's state, and the child's host `style` templates (a mask image chosen from a prop, say) resolve against the child's own props (the definition's defaults when the instance passes none) and land on the element as an inline `style`. An observed attribute written on the instance counts as a prop too, beneath `$props`.
 - **A component brings the project formulas it calls.** A formula declared in the project file reaches every component (see [Project formulas](/docs/framework/concepts/props-and-scope#project-formulas)). The build resolves a call inside a static component into the markup, and writes the formula into the module of a live component that still calls it, so a page does not have to keep a formula alive for a component on it.
-- **Each component decides its own JavaScript, and a live one decides for what it renders.** A live component nested inside a static one is prerendered with its content, loads its own module and upgrades in place, and the static parent still ships none. The other direction is different: a live component draws its children from its module, so every component it renders loads a module too, on every page that uses that component.
+- **Each component decides its own JavaScript, and a live one decides for what it renders.** A live component nested inside a static one is prerendered with its content, loads its own module and upgrades in place, and the static parent still ships none. The other direction is different: a live component draws its children from its module, so every component it renders loads a module too, on each page where the live component appears. A page that uses the rendered component on its own still ships no script for it.
 - **Children land in the slot they name, at every level.** A live component finds the children it was given when it upgrades, so its first paint and its live render place them alike.
 
 :::doc-warning
@@ -207,7 +207,7 @@ Work the static-detection list backwards:
 - **A `${…}` template string** whose inputs exist only at runtime keeps its binding alive. Templates over build-time data compile away.
 - **`$switch`, `$ref` bindings, and mapped arrays** over runtime state need the client tier; mapped arrays over build-resolved content do not.
 - **Interactive components** cost their own module on the pages that use them. The rest of the page stays static. A component is interactive when it has an event handler, a function or request in its `state`, a `$ref` binding, a `$switch`, a tag chosen at creation, or a mapped array over anything but a literal array with no `filter`, `sort` or `key`.
-- **A component that a live component renders** ships its module wherever it is used, even on a page where it stands alone.
+- **A component that a live component renders** ships its module on the pages where that live component appears. On a page where it stands alone it stays static.
 - **An external class with `timing: "client"`** loads its class module and the page's hydration script.
 - **A component that declares `observedAttributes`** ships its module, because an attribute can change after the page loads.
 
