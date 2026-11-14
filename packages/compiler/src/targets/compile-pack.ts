@@ -135,6 +135,9 @@ export async function compileElementPack(options: ElementPackOptions): Promise<E
   }
 
   const elementOptions: CompileElementOptions = {
+    /* A pack is used with no prerender around it, so a shadow definition's root is always one its
+       module attaches, and the sheet it must link is the sibling written below. */
+    stylesheetHref: (tag) => `./${tag}.css`,
     resolveElementPath: (refPath, currentDir) => {
       const target = currentDir === null ? resolve(refPath) : resolve(currentDir, refPath);
       const tag = tagByPath.get(target);

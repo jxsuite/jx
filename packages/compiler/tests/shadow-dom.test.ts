@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { compileElement } from "../src/targets/compile-element";
+import type { CompileElementOptions } from "../src/targets/compile-element";
 import { buildComponentCSS } from "../src/shared";
 import { resolveShadowMode, styleScopePrefix } from "../src/shadow";
 import type { JxDocument, ProjectConfig } from "@jxsuite/schema/types";
@@ -26,8 +27,19 @@ const component = (extra: JxDocument = {}): JxDocument => ({
   ...extra,
 });
 
-const moduleFor = async (doc: JxDocument, defaults?: ProjectConfig["defaults"]) => {
-  const { files } = await compileElement(doc, defaults === undefined ? {} : { defaults });
+const moduleFor = async (
+  doc: JxDocument,
+  defaults?: ProjectConfig["defaults"],
+  stylesheetHref?: (tagName: string) => string | null,
+) => {
+  const options: CompileElementOptions = {};
+  if (defaults !== undefined) {
+    options.defaults = defaults;
+  }
+  if (stylesheetHref !== undefined) {
+    options.stylesheetHref = stylesheetHref;
+  }
+  const { files } = await compileElement(doc, options);
   return files.map((file) => file.content).join("\n");
 };
 
@@ -94,7 +106,37 @@ describe("the emitted module — shadow DOM", () => {
    */
   test("adopts an existing declarative root instead of re-attaching", async () => {
     const source = await moduleFor(component({ $shadow: "open" }));
-    expect(source).toContain("this.shadowRoot ?? this.attachShadow({ mode: 'open' })");
+    expect(source).toContain("const _a = this.shadowRoot;");
+    expect(source).toContain("this.#root = _a ?? this.attachShadow({ mode: 'open' });");
+  });
+
+  /*
+   * A root the PARSER made carries its stylesheet link, written by the prerender. A root the module
+   * attaches itself, for an instance a list, a `$switch` case or a script created, has none, and
+   * the document's sheets cannot reach in: the instance was unstyled.
+   */
+  test("a root the module attaches links the component sheet", async () => {
+    const source = await moduleFor(component({ $shadow: "open" }), undefined, (tag) =>
+      tag === "sd-probe" ? "/components/sd-probe.css" : null,
+    );
+    expect(source).toContain(
+      "if (!_a) this.#root.append(Object.assign(document.createElement('link'), " +
+        "{ rel: 'stylesheet', href: \"/components/sd-probe.css\" }));",
+    );
+  });
+
+  test("a module-relative sheet is resolved against the module's own URL", async () => {
+    const source = await moduleFor(component({ $shadow: "closed" }), undefined, () => "./x.css");
+    expect(source).toContain('href: new URL("./x.css", import.meta.url).href }');
+  });
+
+  test("without an href, nothing is linked", async () => {
+    expect(await moduleFor(component({ $shadow: "open" }))).not.toContain("createElement('link')");
+    expect(await moduleFor(component({ $shadow: "open" }), undefined, () => null)).not.toContain(
+      "createElement('link')",
+    );
+    // A light component has no root to link into, whatever the option says.
+    expect(await moduleFor(component(), undefined, () => "/x.css")).not.toContain("/x.css");
   });
 
   /*
@@ -104,10 +146,9 @@ describe("the emitted module — shadow DOM", () => {
    */
   test("finds a closed declarative root through ElementInternals", async () => {
     const source = await moduleFor(component({ $shadow: "closed" }));
-    expect(source).toContain(
-      "this.attachInternals().shadowRoot ?? this.attachShadow({ mode: 'closed' })",
-    );
-    expect(source).not.toContain("this.shadowRoot ??");
+    expect(source).toContain("const _a = this.attachInternals().shadowRoot;");
+    expect(source).toContain("this.#root = _a ?? this.attachShadow({ mode: 'closed' });");
+    expect(source).not.toContain("this.shadowRoot");
   });
 
   /*

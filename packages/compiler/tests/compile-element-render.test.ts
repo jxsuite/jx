@@ -661,6 +661,53 @@ describe("compiled element — lifecycle and observed attributes", () => {
 
 // ── The shipped todo-app example, end to end ─────────────────────────────────
 
+describe("compiled element — a shadow root, executed (spec.md §16.6)", () => {
+  const SHADOW: JxDocument = {
+    $shadow: "open",
+    children: [
+      { className: "inner", tagName: "p", textContent: "n=${state.n}" },
+      { tagName: "slot" },
+    ],
+    state: { n: 1 },
+    tagName: "ls-shadow",
+  };
+
+  beforeAll(async () => {
+    const { files } = await compileElement(SHADOW, {
+      stylesheetHref: (tag) => `/components/${tag}.css`,
+    });
+    writeFileSync(resolve(TMP, "shadow.js"), files[0]!.content, "utf8");
+    // Upgraded when the module defines the element: the root the "parser" made is already there.
+    const parsed = win.document.createElement("ls-shadow");
+    parsed.id = "declared";
+    const declared = parsed.attachShadow({ mode: "open" });
+    declared.innerHTML = '<link rel="stylesheet" href="/components/ls-shadow.css"><p>stale</p>';
+    win.document.body.append(parsed);
+    await import(resolve(TMP, "shadow.js"));
+  });
+
+  test("a root the module attaches links the component sheet", () => {
+    const fresh = win.document.createElement("ls-shadow");
+    fresh.append(win.document.createElement("b"));
+    win.document.body.append(fresh);
+    const root = rendered(fresh, "ls-shadow").shadowRoot;
+    expect(root?.querySelector("link[rel=stylesheet]")?.getAttribute("href")).toBe(
+      "/components/ls-shadow.css",
+    );
+    expect(root?.querySelector("p.inner")?.textContent).toBe("n=1");
+    // The light child stays where it was written, for the real slot to project.
+    expect(fresh.children).toHaveLength(1);
+    expect(root?.querySelector("slot")).not.toBeNull();
+  });
+
+  test("a declarative root is adopted: the link is kept once and the markup replaced", () => {
+    const declaredHost = rendered(win.document.querySelector("#declared"), "#declared");
+    const root = declaredHost.shadowRoot;
+    expect(root?.querySelectorAll("link")).toHaveLength(1);
+    expect([...(root?.querySelectorAll("p") ?? [])].map((p) => p.textContent)).toEqual(["n=1"]);
+  });
+});
+
 describe("compiled element — examples/components/todo-app.json", () => {
   let app: Element;
 
