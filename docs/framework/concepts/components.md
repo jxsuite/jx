@@ -252,19 +252,22 @@ The build emits a **declarative shadow root**, so the component paints correctly
 </sd-card>
 ```
 
+The live preview (Open in Browser) renders it into a shadow root too. The Studio canvas keeps every component in the light DOM, so you can select and edit inside it.
+
 ### What changes
 
-|                           | Light DOM (default)                     | `$shadow`              |
-| ------------------------- | --------------------------------------- | ---------------------- |
-| Page CSS reaches in       | yes                                     | no                     |
-| `<slot>`                  | emulated: children are moved into place | real slot distribution |
-| Your styles are scoped by | the tag name                            | `:host`                |
-| Stylesheet lives in       | the page `<head>`                       | the shadow root        |
+|                             | Light DOM (default)                     | `$shadow`                                  |
+| --------------------------- | --------------------------------------- | ------------------------------------------ |
+| Page CSS reaches in         | yes                                     | no                                         |
+| `<slot>`                    | emulated: children are moved into place | real slot distribution                     |
+| Your styles are scoped by   | the tag name                            | `:host`                                    |
+| Stylesheet lives in         | the page `<head>`                       | the shadow root                            |
+| Forced light or dark scheme | followed                                | not seen: the visitor's OS setting applies |
 
 **Slots are the difference that matters.** The light-DOM emulation _moves_ your children into the component's rendered tree. A real slot leaves them where they are and projects them, so they stay your page's children, your page's CSS still styles them, and the component reaches them with `::slotted()`.
 
 :::doc-tip
-Write `:host` in your styles either way. In a shadow component it stays `:host`; in a light one the build turns it into the tag name, and `:host(.wide)` into `sd-card.wide`. That means the same style object works in both modes, so flipping `$shadow` doesn't silently break your CSS.
+Write `:host` in your styles either way. In a shadow component it stays `:host`, and a state like `:hover` or `.wide` is written `:host(:hover)` for you; in a light one, the build and Studio turn `:host` into the component itself, and `:host(.wide)` into `sd-card.wide`. That means the same style object works in both modes, so flipping `$shadow` doesn't silently break your CSS.
 :::
 
 `closed` works too, and means what the standard says: nothing outside can reach the root, not even your own scripts via `element.shadowRoot`. Use it when you mean it.

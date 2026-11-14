@@ -388,14 +388,44 @@ describe("buildSite — a component prerendered into a declarative shadow root",
       resolve(DIR, "components/site-card.json"),
       JSON.stringify({
         $style: { ".card": { color: "red" } },
-        children: [{ children: ["Card"], class: "card", tagName: "div" }],
+        children: [
+          { children: ["Card"], class: "card", tagName: "div" },
+          { tagName: "site-badge" },
+          { children: ["${state.n}"], onclick: { $ref: "#/state/inc" }, tagName: "button" },
+        ],
+        state: { inc: { $prototype: "Function", body: "state.n++" }, n: 0 },
         tagName: "site-card",
       }),
       "utf8",
     );
+    // A light component the shadow one renders, itself rendering another: both ride in its sheet.
+    writeFileSync(
+      resolve(DIR, "components/site-badge.json"),
+      JSON.stringify({
+        $shadow: false,
+        children: [{ tagName: "site-dot" }],
+        style: { color: "blue" },
+        tagName: "site-badge",
+      }),
+      "utf8",
+    );
+    writeFileSync(
+      resolve(DIR, "components/site-dot.json"),
+      JSON.stringify({ $shadow: false, style: { width: "4px" }, tagName: "site-dot" }),
+      "utf8",
+    );
+    // No style of its own, and still a root that links a sheet.
+    writeFileSync(
+      resolve(DIR, "components/site-plain.json"),
+      JSON.stringify({ children: [{ tagName: "site-card" }], tagName: "site-plain" }),
+      "utf8",
+    );
     writeFileSync(
       resolve(DIR, "pages/index.json"),
-      JSON.stringify({ children: [{ tagName: "site-card" }], tagName: "main" }),
+      JSON.stringify({
+        children: [{ tagName: "site-card" }, { tagName: "site-plain" }],
+        tagName: "main",
+      }),
       "utf8",
     );
   });
@@ -413,6 +443,37 @@ describe("buildSite — a component prerendered into a declarative shadow root",
     expect(html).toContain('<template shadowrootmode="open">');
     const template = html.slice(html.indexOf("<template"), html.indexOf("</template>"));
     expect(template).toContain('<link rel="stylesheet" href="/components/site-card.css">');
+  });
+
+  const dist = async (path: string) => Bun.file(resolve(DIR, "dist", path)).text();
+
+  it("the project default reaches the component module, which links its own sheet", async () => {
+    // The prerender shipped a declarative root while the module rendered into the host beside it.
+    const module = await dist("components/site-card.js");
+    expect(module).toContain("this.attachShadow({ mode: 'open' })");
+    expect(module).not.toContain("this.replaceChildren()");
+    expect(module).toContain('href: "/components/site-card.css"');
+  });
+
+  it("a shadow component's sheet carries the light components it renders, each once", async () => {
+    const sheet = await dist("components/site-card.css");
+    expect(sheet.startsWith(":host { display: block }")).toBe(true);
+    expect(sheet.split("site-badge { display: block; color: blue }")).toHaveLength(2);
+    expect(sheet).toContain("site-dot { display: block; width: 4px }");
+    // A light component's own file is still written, and holds only its own rules.
+    expect(await dist("components/site-badge.css")).toBe(
+      "site-badge { display: block; color: blue }\n",
+    );
+  });
+
+  it("the walk stops at a shadow component, which brings its own root and sheet", async () => {
+    const sheet = await dist("components/site-plain.css");
+    expect(sheet).toBe(":host { display: block }\n");
+  });
+
+  it("a shadow sheet is kept out of the page's inlined styles", async () => {
+    const html = await dist("index.html");
+    expect(html.slice(0, html.indexOf("</head>"))).not.toContain(":host");
   });
 });
 

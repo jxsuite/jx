@@ -144,6 +144,10 @@ export function resolveNestedSelector(scope: string, key: string): string {
 
 /** One member of a scope against one member of a key — the four-branch decision itself. */
 function resolveOneNestedSelector(scope: string, key: string): string {
+  const folded = foldOntoHost(scope, key);
+  if (folded !== null) {
+    return folded;
+  }
   const spliced = spliceNestingSelector(key, scope);
   if (spliced !== null) {
     return spliced;
@@ -152,6 +156,199 @@ function resolveOneNestedSelector(scope: string, key: string): string {
     return `${scope}${key}`;
   }
   return `${scope} ${key}`;
+}
+
+/** The `:host` or `:host(…)` compound a selector ends in: what precedes it, and its argument. */
+interface TrailingHost {
+  prefix: string;
+  inner: string;
+}
+
+/**
+ * The index just past the parenthesis that closes the one opened at `open`, or -1 when it never
+ * closes. Quotes and escapes are skipped, so a `)` in an attribute value closes nothing.
+ */
+function closingParen(text: string, open: number): number {
+  let depth = 0;
+  let quote: string | null = null;
+  for (let i = open; i < text.length; i += 1) {
+    const ch = text[i]!;
+    if (ch === "\\") {
+      i += 1;
+    } else if (quote) {
+      quote = ch === quote ? null : quote;
+    } else if (ch === '"' || ch === "'") {
+      quote = ch;
+    } else if (ch === "(") {
+      depth += 1;
+    } else if (ch === ")") {
+      depth -= 1;
+      if (depth === 0) {
+        return i + 1;
+      }
+    }
+  }
+  return -1;
+}
+
+/** A selector member's trailing `:host` / `:host(…)` compound, or null when it ends in neither. */
+function trailingHost(scope: string): TrailingHost | null {
+  if (scope.endsWith(":host")) {
+    return { inner: "", prefix: scope.slice(0, -":host".length) };
+  }
+  const at = scope.lastIndexOf(":host(");
+  if (at === -1 || closingParen(scope, at + ":host".length) !== scope.length) {
+    return null;
+  }
+  return { inner: scope.slice(at + ":host(".length, -1), prefix: scope.slice(0, at) };
+}
+
+/** A member's leading `:host` / `:host(…)` compound and what follows it, or null without one. */
+function leadingHost(member: string): { inner: string | null; rest: string } | null {
+  if (!member.startsWith(":host")) {
+    return null;
+  }
+  const after = member.slice(":host".length);
+  if (after.startsWith("(")) {
+    const end = closingParen(after, 0);
+    return end === -1 ? null : { inner: after.slice(1, end - 1), rest: after.slice(end) };
+  }
+  // `:host-context(…)` and any other name that merely begins with `host` is not the host compound.
+  return /^[\w-]/u.test(after) ? null : { inner: null, rest: after };
+}
+
+/** The pseudo-elements CSS 2 let an author write with one colon. */
+const LEGACY_PSEUDO_ELEMENT = /^:(?:before|after|first-line|first-letter)(?![\w-])/u;
+
+/**
+ * Where a selector's FIRST compound ends: at a combinator, at whitespace, or at a pseudo-element,
+ * whichever comes first outside parentheses, brackets and quotes. The length when none does.
+ */
+function firstCompoundEnd(selector: string): number {
+  let depth = 0;
+  let quote: string | null = null;
+  for (let i = 0; i < selector.length; i += 1) {
+    const ch = selector[i]!;
+    if (ch === "\\") {
+      i += 1;
+    } else if (quote) {
+      quote = ch === quote ? null : quote;
+    } else if (ch === '"' || ch === "'") {
+      quote = ch;
+    } else if (ch === "(" || ch === "[") {
+      depth += 1;
+    } else if (ch === ")" || ch === "]") {
+      depth -= 1;
+    } else if (depth === 0) {
+      if (/[\s>+~]/u.test(ch) || selector.startsWith("::", i)) {
+        return i;
+      }
+      if (ch === ":" && LEGACY_PSEUDO_ELEMENT.test(selector.slice(i))) {
+        return i;
+      }
+    }
+  }
+  return selector.length;
+}
+
+/**
+ * Fold a key that compounds onto a shadow host into the host's own parentheses, or answer null when
+ * the scope does not end in the host or the key does not compound onto it.
+ *
+ * Inside its own shadow tree the host is FEATURELESS (CSS Scoping 1): no class, attribute or
+ * pseudo-class selector matches it, only the `:host` family does. So `:host:hover` and `:host.wide`
+ * are valid selectors that never match, and the spelling that does is `:host(:hover)`. A
+ * pseudo-element stays outside, because `:host()` takes a compound selector without one and a
+ * browser drops the whole rule otherwise: `:host(:hover)::before`. Whatever follows the first
+ * compound is kept as written (`:host(:hover) > li`).
+ */
+function foldOntoHost(scope: string, key: string): string | null {
+  const host = trailingHost(scope);
+  if (host === null || !compoundsOntoScope(key)) {
+    return null;
+  }
+  const nesting = nestingIndexes(key);
+  // `.wrap &:hover` puts the scope mid-selector: nothing to fold, and nothing this can make match.
+  if (nesting.length > 1 || (nesting.length === 1 && nesting[0] !== 0)) {
+    return null;
+  }
+  const own = nesting.length === 1 ? key.slice(1) : key;
+  const end = firstCompoundEnd(own);
+  if (end === 0) {
+    return `${scope}${own}`;
+  }
+  return `${host.prefix}:host(${host.inner}${own.slice(0, end)})${own.slice(end)}`;
+}
+
+/** `::slotted()` and `::part()` attach to a slot or a part, never to the host. */
+const SHADOW_STANDALONE = /^::(?:slotted|part)\(/u;
+
+/** One member of {@link resolveHostKey}'s key against one member of its scope. */
+function resolveHostMember(member: string, scope: string, host: "light" | "shadow"): string {
+  const leading = leadingHost(member);
+  if (leading === null) {
+    // `:host::slotted(x)` matches nothing: the pseudo-element attaches to a slot, not the host.
+    return host === "shadow" && SHADOW_STANDALONE.test(member)
+      ? member
+      : resolveOneNestedSelector(scope, member);
+  }
+  const { inner, rest } = leading;
+  if (host === "light") {
+    // "The host, matching this" with no root is the host's own selector, compounded.
+    return `${scope}${inner ?? ""}${rest}`;
+  }
+  /* In a root the key's own host compound stands, on whatever precedes the scope's (a scheme
+     guard, say), and a rest that compounds onto it is folded like any other key. */
+  const scopeHost = trailingHost(scope);
+  const own = `${scopeHost?.prefix ?? ""}:host${inner === null ? "" : `(${inner})`}`;
+  if (rest === "") {
+    return own;
+  }
+  return /^[\s>+~]/u.test(rest) ? `${own}${rest}` : resolveOneNestedSelector(own, rest);
+}
+
+/**
+ * Resolve a style key written against a component's HOST: the top level of a definition's style, or
+ * an at-rule block directly under it.
+ *
+ * A style object should mean the same thing in both modes, so `:host` and `:host(.sel)` are
+ * TRANSLATED rather than passed through: inside a shadow root they stand alone, and in the light
+ * DOM they become the host's own selector and that selector with `.sel`, which is what "the host,
+ * matching this" means when there is no root. Whatever follows the host compound is kept, so
+ * `":host(.wide) .inner"` is `x-a.wide .inner` in light and unchanged in a root. A key that does
+ * not name the host is an ordinary nested key ({@link resolveNestedSelector}), which in a root
+ * folds a compounding key into `:host()`.
+ *
+ * One function for both tiers: the compiler's component stylesheet and the interpreter's adopted
+ * sheet call it, so moving a component between modes, or from Studio to a build, does not silently
+ * break its styles (spec.md §16.6).
+ *
+ * @param {string} key - The style-object key, e.g. `":host(.wide)"`, `":hover"`, `"& .inner"`
+ * @param {string} scope - The host's selector: `":host"` in a root, the tag or handle otherwise
+ * @param {"light" | "shadow"} host - Which tree the rule is written into
+ * @returns {string}
+ * @docs framework/concepts/components
+ */
+export function resolveHostKey(key: string, scope: string, host: "light" | "shadow"): string {
+  const resolved: string[] = [];
+  for (const scopePart of splitSelectorList(scope)) {
+    for (const member of splitSelectorList(key)) {
+      resolved.push(resolveHostMember(member, scopePart, host));
+    }
+  }
+  return resolved.join(", ");
+}
+
+/** Whether a host key ({@link resolveHostKey}) still addresses the host rather than a descendant. */
+function hostKeyCompounds(key: string): boolean {
+  return splitSelectorList(key).every((member) => {
+    const leading = leadingHost(member);
+    if (leading === null) {
+      return compoundsOntoScope(member);
+    }
+    const end = firstCompoundEnd(leading.rest);
+    return leading.rest.slice(end).replace(/^::?[\w-]+(?:\([^)]*\))?/u, "") === "";
+  });
 }
 
 /**
@@ -549,6 +746,20 @@ export interface CssBuildOptions {
    * itself differently from one on a descendant.
    */
   resolveValue?: (property: string, value: string | JxRef, target: CssRuleTarget) => string | null;
+  /**
+   * Set when `scope` is a component's HOST and the style object is its definition's: the top-level
+   * keys, and those of an at-rule block directly under the top level, then resolve through
+   * {@link resolveHostKey}, which translates `:host` and `:host(…)` for the tree named here. Unset,
+   * a `:host` key is an ordinary compound and means nothing.
+   */
+  host?: "light" | "shadow";
+  /**
+   * Set when the rules are written INSIDE a shadow root. A block keyed by a pure color-scheme query
+   * is then emitted once, under its media query alone: the forced-scheme copy and the no-scheme
+   * guard both select on the document's root element, which no selector in a shadow tree can see,
+   * so there both copies were dead (spec.md §9.5).
+   */
+  shadowTree?: boolean;
 }
 
 /** A style-object key that names a nested selector rather than a CSS property. */
@@ -735,6 +946,8 @@ export function buildStyleRules(style: JxStyle, options: CssBuildOptions = {}): 
     transposeValue = (value: string) => value,
     transposeSelector = (selector: string) => selector,
     resolveValue,
+    host,
+    shadowTree = false,
   } = options;
   const rules: CssRule[] = [];
 
@@ -923,6 +1136,7 @@ export function buildStyleRules(style: JxStyle, options: CssBuildOptions = {}): 
     selector: string | null,
     conditions: readonly string[],
     target: CssRuleTarget,
+    atHost: boolean,
   ) => {
     /* Not a query. `@--` is the canvas's base-width block — the value a breakpoint panel renders
        at when no named breakpoint applies — and resolving it would emit `@media --`. */
@@ -946,20 +1160,23 @@ export function buildStyleRules(style: JxStyle, options: CssBuildOptions = {}): 
     const query = resolveAtQuery(atKey, mediaQueries);
     const atRule = query === null ? atKey : `@media ${query}`;
     const scheme = query === null ? null : pureSchemeOf(query);
-    if (scheme !== null && selector !== null) {
+    if (scheme !== null && selector !== null && !shadowTree) {
       const { auto, forced } = schemeSelectors(selector, scheme);
-      walk(block, auto, [...conditions, atRule], target);
-      walk(withoutKeyframes(block), forced, conditions, target);
+      walk(block, auto, [...conditions, atRule], target, atHost);
+      walk(withoutKeyframes(block), forced, conditions, target, atHost);
       return;
     }
-    walk(block, selector, [...conditions, atRule], target);
+    walk(block, selector, [...conditions, atRule], target, atHost);
   };
 
+  /* `atHost` is true while the walk is still on the host's own selector: the top level, and an
+     at-rule block directly under it. Below a nested selector key a `:host` key means nothing. */
   function walk(
     node: JxStyle,
     selector: string | null,
     conditions: readonly string[],
     target: CssRuleTarget,
+    atHost: boolean,
   ) {
     emit(
       conditions,
@@ -971,20 +1188,29 @@ export function buildStyleRules(style: JxStyle, options: CssBuildOptions = {}): 
     for (const [key, value] of Object.entries(node)) {
       for (const block of blocksOf(key, value)) {
         if (key.startsWith("@")) {
-          walkAt(key, block, selector, conditions, target);
+          walkAt(key, block, selector, conditions, target, atHost);
+        } else if (selector !== null && atHost && host !== undefined) {
+          walk(
+            block,
+            resolveHostKey(key, selector, host),
+            conditions,
+            hostKeyCompounds(key) ? target : "descendant",
+            false,
+          );
         } else if (selector !== null) {
           walk(
             block,
             resolveNestedSelector(selector, key),
             conditions,
             compoundsOntoScope(key) ? target : "descendant",
+            false,
           );
         }
       }
     }
   }
 
-  walk(style, scope, [], "self");
+  walk(style, scope, [], "self", true);
   return rules;
 }
 

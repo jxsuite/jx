@@ -103,6 +103,8 @@ import { serverRoutePrefix } from "../targets/compile-server.ts";
 import type { SiteConnectorSpec, SiteMountSpec } from "../targets/compile-server.ts";
 import {
   buildComponentCSS,
+  componentStylesheetHref,
+  shadowSheetText,
   buildInitialScope,
   collectSrcImports,
   buildInstanceScope,
@@ -667,6 +669,11 @@ export async function buildSite(
     // `<script>` and the CSS sidecar both use, wherever the source file lives. So a component's
     // `$elements` imports are renamed to match, which needs every component's tag up front.
     const componentTagByPath = new Map(siteComponents.map((c) => [c.path, c.tagName]));
+    // The components whose stylesheet this build writes, and so the only ones a module may link.
+    const localTags = new Set(componentTagByPath.values());
+    // Each component's own rules, and which of them render into a shadow root (spec.md §16.6).
+    const ownSheets = new Map<string, string>();
+    const shadowTags = new Set<string>();
 
     /*
      * A component is a JavaScript module the page loads, and the page rewrite (`rewriteHtmlBase`) never
@@ -762,10 +769,19 @@ export async function buildSite(
           rewriteSrc: (specifier: string, docDir: string | null) =>
             withBase(componentBase, rewriteSidecarSrc(specifier, docDir)),
           serverBaseUrl,
+          /* A root the module attaches itself links the sheet its prerender would have. Only for
+             a component whose sheet is written below; a `$elements` dependency compiled from
+             elsewhere has none. */
+          stylesheetHref: (tag) =>
+            localTags.has(tag) ? withBase(componentBase, componentStylesheetHref(tag)) : null,
         };
         if (projectConfig.$media) {
           elementOptions.$media = projectConfig.$media;
         }
+        /* The project default decides the module's mode as it decides the prerender's: without
+           it a page shipped a declarative root and a module that cleared the light DOM and
+           rendered into the host beside it. */
+        elementOptions.defaults = projectConfig.defaults;
         const result = await compileElement(componentPath, elementOptions);
         for (const f of result.files) {
           // Name the output after the tag. `injectComponentScripts` emits
@@ -807,25 +823,22 @@ export async function buildSite(
             projectConfig.$media ?? {},
             componentShadow,
           );
-          if (css) {
-            /*
-             * A shadow component's sheet is linked from inside its own declarative shadow root, so
-             * it is written to disk but kept OUT of the page-level map: a `:host`-rooted rule in
-             * the document head matches nothing, and the duplicate request is pure cost.
-             */
-            if (componentShadow === null) {
-              componentCSS.set(doc.tagName, css);
-            }
+          ownSheets.set(doc.tagName, css);
+          if (componentShadow === null) {
+            // Inlined into every page that uses it, and written for anything that links it.
+            componentCSS.set(doc.tagName, css);
             collectAssetRefs(css, assetMounts, assetRefs);
-            /* The file is fetched as written (a shadow component links it from its root), so its
-               `url()` references are re-rooted here; the copy a page inlines is re-rooted with
-               the page. */
             writeFileSync(
               resolve(componentOutDir, `${doc.tagName}.css`),
               rewriteCssUrls(css, componentBase),
               "utf8",
             );
             fileCount += 1;
+          } else {
+            /* Linked from inside its own root, so it is kept OUT of the page-level map: a
+               `:host` rule in the document head matches nothing. Written after the loop, once
+               every light component it renders has a sheet to carry in. */
+            shadowTags.add(doc.tagName);
           }
         }
       } catch (error) {
@@ -834,6 +847,19 @@ export async function buildSite(
         errors.push(`Error compiling component ${file}: ${message}`);
         console.error(`Error compiling component ${file}: ${message}`);
       }
+    }
+    /* A shadow component's file carries its own rules and those of every light component it can
+       render, because the page's sheet cannot reach into the root (spec.md §16.6). The file is
+       fetched as written, so its `url()` references are re-rooted here. */
+    for (const tag of shadowTags) {
+      const css = shadowSheetText(tag, componentDefs, ownSheets, shadowTags);
+      collectAssetRefs(css, assetMounts, assetRefs);
+      writeFileSync(
+        resolve(componentOutDir, `${tag}.css`),
+        rewriteCssUrls(css, componentBase),
+        "utf8",
+      );
+      fileCount += 1;
     }
     log(
       `  Compiled ${compiledComponentTags.length} component(s): ${compiledComponentTags.join(", ")}`,
@@ -2934,7 +2960,7 @@ function expandComponents(
      */
     node.innerHTML = shadow
       ? `<template shadowrootmode="${shadow}">` +
-        `<link rel="stylesheet" href="/components/${tagName}.css">` +
+        `<link rel="stylesheet" href="${componentStylesheetHref(tagName)}">` +
         `${innerHTML}</template>${slotContent ?? ""}`
       : innerHTML;
     delete node.children;

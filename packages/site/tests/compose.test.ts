@@ -262,6 +262,22 @@ describe("composePage", () => {
     expect("formulas" in bare).toBe(false);
   });
 
+  test("carries defaults.shadow, and nothing when it is absent or not a mode", async () => {
+    const files = { "pages/index.json": JSON.stringify({ tagName: "main" }) };
+    const open = await compose(files, { defaults: { shadow: "open" } });
+    expect(open.shadow).toBe("open");
+
+    const none = await compose(files, {});
+    expect("shadow" in none).toBe(false);
+    const off = await compose(files, { defaults: { shadow: false } });
+    expect("shadow" in off).toBe(false);
+    /* A parsed project.json may hold anything; a value that is not a mode is light DOM, as it is
+       in a build. */
+    const lying: ProjectConfig = JSON.parse('{ "defaults": { "shadow": "yes" } }');
+    const invalid = await compose(files, lying);
+    expect("shadow" in invalid).toBe(false);
+  });
+
   test("$head is merged into the shell's head and REMOVED from the document", async () => {
     // Left on the document, the runtime would inject every entry a second time on mount.
     const page = await compose({
