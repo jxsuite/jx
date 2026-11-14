@@ -19,6 +19,15 @@
  * `closable` exists, and a strip that does not answer it is left with no `tabindex="0"` at all —
  * unreachable by Tab, with nothing for a host to press to repair it.
  *
+ * **Inside a roving container the strip is ONE item, and it says so through one prop.** A
+ * `jx-toolbar` writes the strip's own property-only `tabindex` exactly as it writes a leaf
+ * control's (specs/ui.md §5.5), and the strip forwards it to the tab holding its caret: `"0"`
+ * leaves that tab as the row's one stop, `"-1"` parks every tab, and the strip remembers where its
+ * caret stood. While the prop is set the arrows are navigation and nothing else: they walk the tabs
+ * without activating one whatever `activation` says, they do not wrap, and at either end the key is
+ * left for the container to answer. Enter and Space activate. Each tab is told it is `roved`, so a
+ * closable tab's close button leaves the tab order and Delete is its key.
+ *
  * @docs extending/ui-kit
  */
 
@@ -33,12 +42,14 @@ export interface TabsState {
   label?: string;
   activation?: string;
   orientation?: string;
+  /** The stop a roving container wrote: empty when the strip stands alone. */
+  tabindex?: string;
 }
 
 /** A tab element with the property accessors its document installs. */
-type TabElement = HTMLElement & { value?: string; selected?: boolean };
+type TabElement = HTMLElement & { value?: string; selected?: boolean; roved?: boolean };
 /** A tablist element with the property accessors its document installs. */
-type TabsElement = HTMLElement & { selected?: string };
+type TabsElement = HTMLElement & { selected?: string; tabindex?: string };
 
 /**
  * The element each scope belongs to, learned once at mount.
@@ -83,6 +94,24 @@ function watchTabs(host: HTMLElement): void {
   watched.set(host, observer);
 }
 
+/**
+ * Where a strip's caret stood when a container held it, and the selection it stood beside.
+ *
+ * A strip standing alone derives its caret from `selected` on every sync. A strip a container holds
+ * moves its caret WITHOUT selecting, so the caret is a fact of its own, and a parked strip carries
+ * no `tabindex="0"` to read it back from. The selection is kept beside it because a selection that
+ * has moved since outranks the memory: the caret goes back to the tab that is showing.
+ */
+const carets = new WeakMap<HTMLElement, { tab: HTMLElement; selected: string }>();
+
+/**
+ * The stop a roving container wrote on the strip: `"0"`, `"-1"`, or the empty string when the strip
+ * stands alone and keeps a stop of its own.
+ */
+function stopOf(host: TabsElement): string {
+  return String(host.tabindex ?? "");
+}
+
 /** The tablist an event's `currentTarget` is. */
 function hostOf(event: Event): TabsElement | null {
   const target = event.currentTarget;
@@ -118,9 +147,11 @@ function valueOf(tab: TabElement): string {
  *
  * @param tabs The strip's tabs.
  * @param index Where to put the caret; out of range wraps.
+ * @param host The strip, when a roving container holds it: the caret is then remembered, because it
+ *   moved without the selection and a parked strip has nowhere else to keep it.
  * @returns The tab that took it, or null when there are none.
  */
-export function focusTab(tabs: TabElement[], index: number): TabElement | null {
+export function focusTab(tabs: TabElement[], index: number, host?: TabsElement): TabElement | null {
   if (tabs.length === 0) {
     return null;
   }
@@ -129,6 +160,9 @@ export function focusTab(tabs: TabElement[], index: number): TabElement | null {
     tab.tabIndex = at === next ? 0 : -1;
   }
   const tab = tabs[next]!;
+  if (host) {
+    carets.set(host, { tab, selected: String(host.selected ?? "") });
+  }
   tab.focus();
   return tab;
 }
@@ -142,18 +176,27 @@ export function focusTab(tabs: TabElement[], index: number): TabElement | null {
  * inside a render effect.
  *
  * @param host The `jx-tabs` element.
+ * @param stop The stop a roving container wrote on the strip; read off the element when omitted.
  */
-export function syncTabs(host: TabsElement): void {
+export function syncTabs(host: TabsElement, stop: string = stopOf(host)): void {
   const tabs = tabsOf(host);
   if (tabs.length === 0) {
     return;
   }
   const selected = String(host.selected ?? "");
+  const kept = carets.get(host);
+  const remembered = stop !== "" && kept?.selected === selected ? tabs.indexOf(kept.tab) : -1;
   const found = tabs.findIndex((tab) => valueOf(tab) === selected);
-  const caret = found === -1 ? 0 : found;
+  let caret = 0;
+  if (remembered !== -1) {
+    caret = remembered;
+  } else if (found !== -1) {
+    caret = found;
+  }
   for (const [at, tab] of tabs.entries()) {
     tab.selected = valueOf(tab) === selected;
-    tab.tabIndex = at === caret ? 0 : -1;
+    tab.roved = stop !== "";
+    tab.tabIndex = at === caret && stop !== "-1" ? 0 : -1;
   }
 }
 
@@ -180,9 +223,11 @@ export function syncTabs(host: TabsElement): void {
  */
 export function applySelection(scope: TabsState): string {
   const selected = String(scope.selected ?? "");
+  // Read off the SCOPE, which is what subscribes this to a container writing the stop.
+  const stop = String(scope.tabindex ?? "");
   const host = hosts.get(scope);
   if (host) {
-    syncTabs(host);
+    syncTabs(host, stop);
   }
   return selected;
 }
@@ -243,6 +288,11 @@ export function onTabsSelect(scope: TabsState, event: Event): void {
  * pressed on the TAB. On the close button inside it, Enter and Space belong to the platform's own
  * button activation and this handler steps aside.
  *
+ * A strip a roving container holds (its `tabindex` prop is set) answers the arrows as navigation
+ * only: a move never activates, and an arrow with no tab left in its direction is not handled at
+ * all, so it bubbles to the container, which moves its own caret to the next control in the row.
+ * Home and End stay the strip's own ends, as they stay a text field's.
+ *
  * @param {TabsState} scope
  * @param {KeyboardEvent} event
  */
@@ -261,13 +311,20 @@ export function onTabsKeydown(scope: TabsState, event: KeyboardEvent): void {
   const vertical = String(scope.orientation ?? "horizontal") === "vertical";
   const forward = vertical ? "ArrowDown" : "ArrowRight";
   const back = vertical ? "ArrowUp" : "ArrowLeft";
+  const roved = stopOf(host) !== "";
   let moved: number | null = null;
   switch (event.key) {
     case forward: {
+      if (roved && active === tabs.length - 1) {
+        return;
+      }
       moved = active + 1;
       break;
     }
     case back: {
+      if (roved && active <= 0) {
+        return;
+      }
       moved = active === -1 ? -1 : active - 1;
       break;
     }
@@ -306,8 +363,8 @@ export function onTabsKeydown(scope: TabsState, event: KeyboardEvent): void {
     }
   }
   if (moved !== null) {
-    const tab = focusTab(tabs, moved);
-    if (tab && String(scope.activation ?? "auto") !== "manual") {
+    const tab = focusTab(tabs, moved, roved ? host : undefined);
+    if (tab && !roved && String(scope.activation ?? "auto") !== "manual") {
       tab.click();
     }
   }

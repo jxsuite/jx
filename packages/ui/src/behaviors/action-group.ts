@@ -14,6 +14,15 @@
  * a child's internals to place the caret. The one observer it does own watches the group's OWN
  * subtree, for the reason `watchRoving` gives.
  *
+ * **Inside a roving container the group is ONE item, and it says so through one prop.** A
+ * `jx-toolbar` writes the group's own property-only `tabindex` exactly as it writes a leaf
+ * control's (specs/ui.md §5.5), and the group forwards it to the child holding its caret: `"0"`
+ * leaves that child as the row's one stop, `"-1"` parks every child, and the group remembers where
+ * its caret stood so a reader who walks back in finds it there. While the prop is set the arrows
+ * are navigation and nothing else, which is the APG's rule for a radio group in a toolbar: they
+ * walk the children without choosing one, they do not wrap, and at either end the key is left for
+ * the container to answer. Space and Enter choose, on the child's own `<button>`.
+ *
  * @docs extending/ui-kit
  */
 
@@ -24,7 +33,30 @@ const ITEM = "jx-action-button";
 export interface ActionGroupState {
   selects?: string;
   orientation?: string;
+  /** The stop a roving container wrote: empty when the group stands alone. */
+  tabindex?: string;
 }
+
+/** A group element, with the property accessor its own document installs. */
+type GroupElement = HTMLElement & { tabindex?: string };
+
+/**
+ * The element each scope belongs to, learned once at mount.
+ *
+ * A WeakMap rather than a key on the scope: the scope is a deep reactive proxy, and an element
+ * stored in one is an element every effect that reads it subscribes to.
+ */
+const hosts = new WeakMap<object, HTMLElement>();
+
+/**
+ * Where each group's caret last stood.
+ *
+ * A group a container has parked carries no `tabindex="0"` to read its caret back from, and without
+ * this the caret would fall back to the first child every time the row's caret left: a reader who
+ * arrowed out of the group's far end and straight back would land at its near one. It is also what
+ * keeps a sync that re-enters itself on the same answer (see `writeRoving`).
+ */
+const carets = new WeakMap<HTMLElement, HTMLElement>();
 
 /** A child action button, with the property accessors its own document installs. */
 type ItemElement = HTMLElement & {
@@ -35,7 +67,7 @@ type ItemElement = HTMLElement & {
 };
 
 /** The group an event's `currentTarget` is. */
-function groupOf(event: Event): HTMLElement | null {
+function groupOf(event: Event): GroupElement | null {
   const target = event.currentTarget;
   return target instanceof HTMLElement && target.localName === GROUP ? target : null;
 }
@@ -89,21 +121,43 @@ function focusControl(item: ItemElement): void {
   (control ?? item).focus();
 }
 
-/** Write the roving tabindex: `0` on `caret`, `-1` on every other child, disabled ones included. */
-function writeRoving(items: ItemElement[], caret: ItemElement | null): void {
+/**
+ * The stop a roving container wrote on the group: `"0"`, `"-1"`, or the empty string when the group
+ * stands alone and keeps a stop of its own.
+ */
+function stopOf(group: GroupElement): string {
+  return String(group.tabindex ?? "");
+}
+
+/**
+ * Write the roving tabindex: the group's stop on `caret`, `-1` on every other child, disabled ones
+ * included. A parked group writes `-1` on its caret too, and remembers which child it was.
+ */
+function writeRoving(group: GroupElement, items: ItemElement[], caret: ItemElement | null): void {
+  const stop = stopOf(group) === "-1" ? "-1" : "0";
+  /* Remembered BEFORE the writes, not after: a child's `tabindex` is reactive state, and the
+     `roving` computed that reaches this through `applyRoving` has read it, so the first write
+     below re-enters the sync half way through the loop. With the caret already recorded the
+     re-entrant pass picks the same child and writes the same values, which is what idempotent has
+     to mean here. */
+  if (caret) {
+    carets.set(group, caret);
+  }
   for (const item of items) {
-    item.tabindex = item === caret ? "0" : "-1";
+    item.tabindex = item === caret ? stop : "-1";
   }
 }
 
 /**
- * The child that should hold the caret: the one that already holds it and still can, else the
- * chosen one, else the first that can act — and null when nothing in the group can.
+ * The child that should hold the caret: the one the group last put it on, if it still can take it,
+ * else the one already carrying `tabindex="0"`, else the chosen one, else the first that can act —
+ * and null when nothing in the group can.
  */
-function caretFor(items: ItemElement[]): ItemElement | null {
+function caretFor(group: GroupElement, items: ItemElement[]): ItemElement | null {
   const enabled = items.filter((item) => !isDisabled(item));
+  const kept = enabled.find((item) => item === carets.get(group));
   const held = enabled.find((item) => item.tabindex === "0");
-  return held ?? enabled.find((item) => isChosen(item)) ?? enabled[0] ?? null;
+  return kept ?? held ?? enabled.find((item) => isChosen(item)) ?? enabled[0] ?? null;
 }
 
 /**
@@ -113,7 +167,7 @@ function caretFor(items: ItemElement[]): ItemElement | null {
  * @param index An index into the group's ENABLED children; negative counts from the end.
  * @returns The child that took the caret, or null when the group has none that can.
  */
-export function focusItem(group: HTMLElement, index: number): ItemElement | null {
+export function focusItem(group: GroupElement, index: number): ItemElement | null {
   const items = itemsOf(group);
   const enabled = items.filter((item) => !isDisabled(item));
   if (enabled.length === 0) {
@@ -121,7 +175,7 @@ export function focusItem(group: HTMLElement, index: number): ItemElement | null
   }
   const at = ((index % enabled.length) + enabled.length) % enabled.length;
   const caret = enabled[at]!;
-  writeRoving(items, caret);
+  writeRoving(group, items, caret);
   focusControl(caret);
   return caret;
 }
@@ -140,16 +194,37 @@ export function focusItem(group: HTMLElement, index: number): ItemElement | null
  *
  * @param group The `jx-action-group` element.
  */
-export function syncRoving(group: HTMLElement): void {
+export function syncRoving(group: GroupElement): void {
   const items = itemsOf(group);
-  writeRoving(items, caretFor(items));
+  writeRoving(group, items, caretFor(group, items));
+}
+
+/**
+ * The `roving` computed's body: read the stop a container wrote, and put it on the children.
+ *
+ * The HOST reads it as `data-roved`, so it is an effect of `tabindex` and re-runs whenever a
+ * container writes that prop, with no method call: the same shape as `jx-tabs`' `data-selection`.
+ * Before mount the element does not yet know itself and has no children to write to; the value
+ * still comes back, so the attribute is right from the first paint.
+ *
+ * @param scope The `jx-action-group` reactive scope.
+ * @returns The stop, for the attribute that reads it.
+ */
+export function applyRoving(scope: ActionGroupState): string {
+  const stop = String(scope.tabindex ?? "");
+  const group = hosts.get(scope);
+  if (group) {
+    syncRoving(group);
+  }
+  return stop;
 }
 
 /** Whether the group's children already say what {@link syncRoving} would write. */
-function isSettled(group: HTMLElement): boolean {
+function isSettled(group: GroupElement): boolean {
   const items = itemsOf(group);
-  const caret = caretFor(items);
-  return items.every((item) => item.tabindex === (item === caret ? "0" : "-1"));
+  const caret = caretFor(group, items);
+  const stop = stopOf(group) === "-1" ? "-1" : "0";
+  return items.every((item) => item.tabindex === (item === caret ? stop : "-1"));
 }
 
 /** Groups already being watched, so a second `jx-ready` does not observe them twice. */
@@ -172,7 +247,7 @@ const watched = new WeakSet<HTMLElement>();
  *
  * @param group The `jx-action-group` element.
  */
-function watchRoving(group: HTMLElement): void {
+function watchRoving(group: GroupElement): void {
   if (watched.has(group)) {
     return;
   }
@@ -199,6 +274,12 @@ function watchRoving(group: HTMLElement): void {
  *
  * Enter, Space, the focus ring and `:disabled` are the platform's, on each child's own `<button>`.
  *
+ * A group a roving container holds (its `tabindex` prop is set) answers the same keys as navigation
+ * only. An arrow with no child left in its direction is not handled at all, so it bubbles to the
+ * container, which moves its own caret to the next control in the row; and no arrow clicks, because
+ * a reader walking a toolbar must be able to pass a set of choices without changing which one is
+ * chosen. Home and End stay the group's own ends, as they stay a text field's.
+ *
  * @param {ActionGroupState} state
  * @param {KeyboardEvent} event
  */
@@ -208,6 +289,7 @@ export function onGroupKeydown(state: ActionGroupState, event: KeyboardEvent): v
     return;
   }
   const vertical = state.orientation === "vertical";
+  const roved = stopOf(group) !== "";
   const enabled = itemsOf(group).filter((item) => !isDisabled(item));
   const active = enabled.findIndex(
     (item) =>
@@ -215,8 +297,14 @@ export function onGroupKeydown(state: ActionGroupState, event: KeyboardEvent): v
   );
   let caret: ItemElement | null = null;
   if (event.key === (vertical ? "ArrowDown" : "ArrowRight")) {
+    if (roved && active === enabled.length - 1) {
+      return;
+    }
     caret = focusItem(group, active + 1);
   } else if (event.key === (vertical ? "ArrowUp" : "ArrowLeft")) {
+    if (roved && active <= 0) {
+      return;
+    }
     caret = focusItem(group, active === -1 ? -1 : active - 1);
   } else if (event.key === "Home") {
     caret = focusItem(group, 0);
@@ -231,7 +319,7 @@ export function onGroupKeydown(state: ActionGroupState, event: KeyboardEvent): v
      `change` only from inside its own click handler, so a group that wrote `checked` on a child
      would move the selection with nothing announcing it — the host would never hear the key at
      all. Clicking is the one path both a pointer and an arrow take. */
-  if (caret && state.selects === "single") {
+  if (caret && state.selects === "single" && !roved) {
     caret.click();
   }
 }
@@ -242,12 +330,13 @@ export function onGroupKeydown(state: ActionGroupState, event: KeyboardEvent): v
  * `onMount` is handed the reactive scope and nothing else, so the element announces itself with
  * `jx-ready` — the kit's existing readiness event — and this reads the host off that event.
  *
- * @param {ActionGroupState} _state
+ * @param {ActionGroupState} state
  * @param {Event} event
  */
-export function onGroupReady(_state: ActionGroupState, event: Event): void {
+export function onGroupReady(state: ActionGroupState, event: Event): void {
   const group = groupOf(event);
   if (group) {
+    hosts.set(state, group);
     syncRoving(group);
     watchRoving(group);
   }

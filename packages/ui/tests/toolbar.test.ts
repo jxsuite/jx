@@ -234,6 +234,75 @@ function pressOn(node: HTMLElement, key: string): KeyboardEvent {
   return event;
 }
 
+type JxGroup = HTMLElement & { tabindex: string };
+type JxStrip = HTMLElement & { tabindex: string; selected: string };
+
+/** A `jx-action-group` of labelled buttons: `"label!"` is disabled, and `chosen` is checked. */
+function makeGroup(label: string, labels: string[], chosen = ""): JxGroup {
+  /* SAFETY: `registerUi()` in `beforeAll` defined `jx-action-group` from its document before any
+     test runs, so `createElement` constructs that class synchronously, and jx-action-group.json
+     declares `tabindex` as a state prop the class exposes as a property. */
+  const group = document.createElement("jx-action-group") as JxGroup;
+  group.setAttribute("label", label);
+  for (const spec of labels) {
+    const name = spec.replace(/!$/u, "");
+    const button = document.createElement("jx-action-button");
+    button.setAttribute("label", name);
+    button.setAttribute("icon", "plus");
+    if (spec.endsWith("!")) {
+      button.setAttribute("disabled", "");
+    }
+    if (chosen !== "") {
+      button.setAttribute("checked", name === chosen ? "true" : "false");
+    }
+    group.append(button);
+  }
+  return group;
+}
+
+/** A `jx-tabs` strip with one tab per value, optionally closable. */
+function makeStrip(values: string[], selected: string, closable = false): JxStrip {
+  /* SAFETY: `registerUi()` in `beforeAll` defined `jx-tabs` from its document before any test runs,
+     so `createElement` constructs that class synchronously, and jx-tabs.json declares `tabindex`
+     and `selected` as state props the class exposes as properties. */
+  const strip = document.createElement("jx-tabs") as JxStrip;
+  strip.setAttribute("label", "Views");
+  strip.setAttribute("selected", selected);
+  for (const value of values) {
+    const tab = document.createElement("jx-tab");
+    tab.setAttribute("value", value);
+    tab.setAttribute("label", value);
+    if (closable) {
+      tab.setAttribute("closable", "");
+    }
+    strip.append(tab);
+  }
+  return strip;
+}
+
+/** The roving `tabindex` on each of a group's own buttons. */
+const stopsOf = (group: HTMLElement) =>
+  [...group.querySelectorAll<HTMLElement>('jx-action-button > [part="control"]')].map((control) =>
+    control.getAttribute("tabindex"),
+  );
+
+/** The name of every node in a toolbar that Tab would stop on. */
+const stopsIn = (el: HTMLElement) =>
+  [...el.querySelectorAll<HTMLElement>("button, input, [role='tab']")].flatMap((node) =>
+    node.getAttribute("tabindex") === "-1"
+      ? []
+      : [node.getAttribute("aria-label") ?? node.getAttribute("label") ?? node.textContent],
+  );
+
+/** The node that holds focus, which every key in these tests is sent from. */
+function activeNode(): HTMLElement {
+  const active = document.activeElement;
+  if (!(active instanceof HTMLElement)) {
+    throw new TypeError("nothing holds focus");
+  }
+  return active;
+}
+
 describe("jx-toolbar", () => {
   test("it declares the toolbar role, its name and its axis, and the axis needs no second attribute", async () => {
     /* `jx-action-group` carries `data-orientation` as well, because the `group` role it can resolve
@@ -575,34 +644,305 @@ describe("jx-toolbar", () => {
     expect(focused()).toBe("Save");
   });
 
-  test("a nested jx-action-group is left alone: two roving carets over one row is two writers", async () => {
+  test("a nested jx-action-group is ONE item: the toolbar writes one prop and the group forwards it", async () => {
     /* The group's own sidecar is the single writer of its children's `tabindex`, and a toolbar that
        also roved them would park the row's caret on one child while the group parked its own on
-       another — they disagree, and the loser is whichever wrote last. So a composite is not a
-       toolbar item at all: it keeps its own single tab stop and the toolbar's arrows do not reach
-       into it. Stated as a limit in ui.md §5.5 rather than engineered around, because nothing in
-       Studio nests one and the alternative is a second caret protocol between two elements. */
+       another. So the toolbar never writes a group's children. It writes the GROUP's property-only
+       `tabindex`, the door every leaf control opens, and the group forwards it to the child holding
+       its caret (ui.md §5.5). Before the group declared the prop it was a second tab stop in the
+       row, which is the deviation this closes. */
     const el = await bar({ label: "Tools" }, ["action:Save", "action:More"]);
-    const group = document.createElement("jx-action-group");
-    group.setAttribute("label", "Text style");
-    for (const label of ["Bold", "Italic"]) {
-      const button = document.createElement("jx-action-button");
-      button.setAttribute("label", label);
-      button.setAttribute("icon", "plus");
-      group.append(button);
-    }
+    const group = makeGroup("Text style", ["Bold", "Italic", "Underline"]);
     el.lastElementChild!.before(group);
     await settle();
-    // The group's buttons are the GROUP's items, never the toolbar's.
-    expect(names(el)).toEqual(["Save", "More"]);
-    // And the group still has its own one stop, untouched by the toolbar's sync.
-    const inside = [...group.querySelectorAll<HTMLElement>('jx-action-button [part="control"]')];
-    expect(inside.map((c) => c.getAttribute("tabindex"))).toEqual(["0", "-1"]);
-    // An arrow inside the group is answered by the group and never reaches the toolbar.
-    const before = carets(el);
-    pressOn(inside[0]!, "ArrowRight");
-    expect(carets(el)).toEqual(before);
-    expect(inside.map((c) => c.getAttribute("tabindex"))).toEqual(["-1", "0"]);
+    expect(names(el)).toEqual(["Save", "Text style", "More"]);
+    // The row has exactly one stop, and it is not in the group: every child is parked.
+    expect(stopsIn(el)).toEqual(["Save"]);
+    expect(stopsOf(group)).toEqual(["-1", "-1", "-1"]);
+    expect(group.dataset["roved"]).toBe("-1");
+    // Property only: the host carries no tabindex, or it would be a stop of its own.
+    expect(group.hasAttribute("tabindex")).toBe(false);
+    // The toolbar's arrow enters the group at the child holding the group's caret.
+    press(el, "ArrowRight");
+    expect(focused()).toBe("Bold");
+    expect(stopsIn(el)).toEqual(["Bold"]);
+    expect(group.dataset["roved"]).toBe("0");
+    // Inside, the arrow is the group's, and it walks the children.
+    const walked = pressOn(activeNode(), "ArrowRight");
+    expect(focused()).toBe("Italic");
+    expect(walked.defaultPrevented).toBe(true);
+    expect(stopsIn(el)).toEqual(["Italic"]);
+    pressOn(activeNode(), "ArrowRight");
+    expect(focused()).toBe("Underline");
+    // At the end the group does not wrap: the key is the toolbar's, and the row's caret moves on.
+    pressOn(activeNode(), "ArrowRight");
+    expect(focused()).toBe("More");
+    expect(stopsIn(el)).toEqual(["More"]);
+    expect(stopsOf(group)).toEqual(["-1", "-1", "-1"]);
+    // Straight back in lands where the caret left, so the walk reads as one row both ways.
+    pressOn(activeNode(), "ArrowLeft");
+    expect(focused()).toBe("Underline");
+    pressOn(activeNode(), "ArrowLeft");
+    pressOn(activeNode(), "ArrowLeft");
+    expect(focused()).toBe("Bold");
+    pressOn(activeNode(), "ArrowLeft");
+    expect(focused()).toBe("Save");
+    // The row wraps; the group never does while it is held.
+    pressOn(activeNode(), "ArrowLeft");
+    expect(focused()).toBe("More");
+    expect(stopsIn(el)).toEqual(["More"]);
+  });
+
+  test("Home and End inside a held group are the group's own ends, as they are a text field's", async () => {
+    const el = await bar({ label: "Tools" }, ["action:Save", "action:More"]);
+    const group = makeGroup("Text style", ["Bold", "Italic", "Underline"]);
+    el.lastElementChild!.before(group);
+    await settle();
+    press(el, "ArrowRight");
+    const end = pressOn(activeNode(), "End");
+    expect(focused()).toBe("Underline");
+    expect(end.defaultPrevented).toBe(true);
+    pressOn(activeNode(), "Home");
+    expect(focused()).toBe("Bold");
+    expect(stopsIn(el)).toEqual(["Bold"]);
+  });
+
+  test("walking a held radiogroup does not change which choice is chosen; Space does", async () => {
+    /* The APG's rule for a radio group in a toolbar. Standing alone, `selects="single"` clicks the
+       child an arrow lands on, because selection follows focus in a radio group. In a toolbar the
+       arrows are how a reader gets PAST the group, and a walk that rewrote the alignment on the way
+       to the button after it would be the data loss the select and the spin button are excluded
+       for. So the arrows only move, and the child's own button answers Space and Enter. */
+    const el = await bar({ label: "Tools" }, ["action:Save", "action:More"]);
+    const group = makeGroup("Align", ["Left", "Centre", "Right"], "Centre");
+    group.setAttribute("selects", "single");
+    el.lastElementChild!.before(group);
+    await settle();
+    const clicks: string[] = [];
+    group.addEventListener("click", (event) => {
+      const host =
+        event.target instanceof Element ? event.target.closest("jx-action-button") : null;
+      clicks.push(host?.getAttribute("label") ?? "");
+    });
+    // Arriving lands on the chosen child, which is where Tab alone would land in a radiogroup.
+    press(el, "ArrowRight");
+    expect(focused()).toBe("Centre");
+    pressOn(activeNode(), "ArrowRight");
+    expect(focused()).toBe("Right");
+    pressOn(activeNode(), "ArrowLeft");
+    pressOn(activeNode(), "ArrowLeft");
+    expect(focused()).toBe("Left");
+    expect(clicks).toEqual([]);
+    // Standing alone the same key clicks, which is the contract a toolbar suspends.
+    const alone = makeGroup("Align", ["Left", "Centre"], "Left");
+    alone.setAttribute("selects", "single");
+    document.body.append(alone);
+    await settle();
+    const heard: string[] = [];
+    alone.addEventListener("click", (event) => {
+      const host =
+        event.target instanceof Element ? event.target.closest("jx-action-button") : null;
+      heard.push(host?.getAttribute("label") ?? "");
+    });
+    pressOn(alone.querySelector<HTMLElement>('[part="control"]')!, "ArrowRight");
+    expect(heard).toEqual(["Centre"]);
+  });
+
+  test("a vertical group in a horizontal toolbar keeps its own axis and gives the row's away", async () => {
+    /* The cross axis is the composite's and the row's own axis is the row's: Down and Up walk the
+       group, and Right leaves it for the next control from wherever the caret stands. */
+    const el = await bar({ label: "Tools" }, ["action:Save", "action:More"]);
+    const group = makeGroup("Layers", ["Front", "Back"]);
+    group.setAttribute("orientation", "vertical");
+    el.lastElementChild!.before(group);
+    await settle();
+    press(el, "ArrowRight");
+    expect(focused()).toBe("Front");
+    pressOn(activeNode(), "ArrowDown");
+    expect(focused()).toBe("Back");
+    // No wrap while held, and the toolbar does not own Down, so the key goes unanswered.
+    const down = pressOn(activeNode(), "ArrowDown");
+    expect(focused()).toBe("Back");
+    expect(down.defaultPrevented).toBe(false);
+    const up = pressOn(group.querySelector<HTMLElement>('[part="control"]')!, "ArrowUp");
+    expect(up.defaultPrevented).toBe(false);
+    pressOn(activeNode(), "ArrowRight");
+    expect(focused()).toBe("More");
+  });
+
+  test("a held group whose children cannot act is not an item, and one that empties gives the caret up", async () => {
+    const el = await bar({ label: "Tools" }, ["action:Save"]);
+    const group = makeGroup("Text style", ["Bold!", "Italic!"]);
+    el.append(group);
+    await settle();
+    expect(names(el)).toEqual(["Save", "Text style"]);
+    press(el, "ArrowRight");
+    // Nothing in the group can take focus, so the row wraps past it.
+    expect(focused()).toBe("Save");
+    expect(stopsIn(el)).toEqual(["Save"]);
+    // A parked group answers for itself with the first control that could act, and an empty one
+    // With nothing but itself.
+    const parked = makeGroup("Layers", ["Front", "Back"]);
+    const empty = makeGroup("None", []);
+    el.append(parked, empty);
+    await settle();
+    expect(stopsOf(parked)).toEqual(["-1", "-1"]);
+    expect(controlOf(parked).getAttribute("aria-label")).toBe("Front");
+    expect(controlOf(empty)).toBe(empty);
+    expect(names(el)).toEqual(["Save", "Text style", "Layers", "None"]);
+    press(el, "End");
+    expect(focused()).toBe("Front");
+  });
+
+  test("a group removed from the toolbar gets its own tab stop back when the prop is cleared", async () => {
+    /* The prop is the whole protocol, so clearing it is how a host that moves a group out of a row
+       hands the stop back. The group remembers nothing about toolbars. */
+    const group = makeGroup("Text style", ["Bold", "Italic"]);
+    document.body.append(group);
+    await settle();
+    expect(stopsOf(group)).toEqual(["0", "-1"]);
+    group.tabindex = "-1";
+    expect(stopsOf(group)).toEqual(["-1", "-1"]);
+    group.tabindex = "0";
+    expect(stopsOf(group)).toEqual(["0", "-1"]);
+    group.tabindex = "";
+    await tick();
+    expect(stopsOf(group)).toEqual(["0", "-1"]);
+    expect(group.dataset["roved"]).toBeUndefined();
+    // Alone again, the arrows wrap as they always did.
+    const controls = [...group.querySelectorAll<HTMLElement>('[part="control"]')];
+    pressOn(controls[0]!, "ArrowLeft");
+    expect(focused()).toBe("Italic");
+  });
+
+  test("a nested jx-tabs is ONE item: the strip forwards the stop, and a walk does not activate", async () => {
+    /* A strip holds no native control at all: its tabs are focusable HOSTS. So the toolbar finds
+       the strip by its tag, and before the strip declared the prop the toolbar did not see it and
+       the strip was a silent second stop. Held, the arrows walk the tabs without selecting one,
+       whatever `activation` says, and Enter selects. */
+    const el = await bar({ label: "Tools" }, ["action:Save", "action:More"]);
+    const strip = makeStrip(["one", "two", "three"], "two");
+    el.lastElementChild!.before(strip);
+    await settle();
+    expect(itemsOf(el).map((item) => item.localName)).toEqual([
+      "jx-action-button",
+      "jx-tabs",
+      "jx-action-button",
+    ]);
+    const tabs = [...strip.querySelectorAll<HTMLElement>("jx-tab")];
+    const stops = () => tabs.map((tab) => tab.getAttribute("tabindex"));
+    expect(stops()).toEqual(["-1", "-1", "-1"]);
+    expect(strip.getAttribute("tabindex")).toBe("-1");
+    const changes: string[] = [];
+    strip.addEventListener("change", (event) => {
+      changes.push(event instanceof CustomEvent ? String(event.detail) : "");
+    });
+    // Arriving lands on the tab that is showing.
+    press(el, "ArrowRight");
+    expect(document.activeElement).toBe(tabs[1]!);
+    expect(stops()).toEqual(["-1", "0", "-1"]);
+    pressOn(tabs[1]!, "ArrowRight");
+    expect(document.activeElement).toBe(tabs[2]!);
+    expect(changes).toEqual([]);
+    expect(strip.selected).toBe("two");
+    // Leaving parks every tab, and coming straight back finds the caret where it left.
+    pressOn(tabs[2]!, "ArrowRight");
+    expect(focused()).toBe("More");
+    expect(stops()).toEqual(["-1", "-1", "-1"]);
+    pressOn(activeNode(), "ArrowLeft");
+    expect(document.activeElement).toBe(tabs[2]!);
+    // Enter activates, and the caret follows the selection it made.
+    pressOn(tabs[2]!, "Enter");
+    expect(changes).toEqual(["three"]);
+    expect(stops()).toEqual(["-1", "-1", "0"]);
+    // Home is the strip's own first tab, and the back arrow from there is the toolbar's.
+    pressOn(tabs[2]!, "Home");
+    expect(document.activeElement).toBe(tabs[0]!);
+    expect(changes).toEqual(["three"]);
+    pressOn(tabs[0]!, "ArrowLeft");
+    expect(focused()).toBe("Save");
+    // A selection the host moves while the strip is parked outranks the remembered caret.
+    strip.selected = "two";
+    await tick();
+    press(el, "ArrowRight");
+    expect(document.activeElement).toBe(tabs[1]!);
+  });
+
+  test("a held strip's close button leaves the tab order, and Delete still closes", async () => {
+    /* A selected closable tab is two stops standing alone: the tab and its close button. A
+       container told the strip is one stop must find exactly one, so the strip tells each tab it is
+       `roved` and the close button parks, as a colour field's text field does (ui.md §5.6). */
+    const el = await bar({ label: "Tools" }, ["action:Save"]);
+    const strip = makeStrip(["one", "two"], "one", true);
+    el.append(strip);
+    await settle();
+    const tabs = [...strip.querySelectorAll<HTMLElement>("jx-tab")];
+    const closes = () =>
+      tabs.map((tab) => tab.querySelector('[part="close"]')?.getAttribute("tabindex"));
+    expect(closes()).toEqual(["-1", "-1"]);
+    press(el, "ArrowRight");
+    expect(document.activeElement).toBe(tabs[0]!);
+    expect(closes()).toEqual(["-1", "-1"]);
+    const closed: string[] = [];
+    strip.addEventListener("close", (event) => {
+      closed.push(event instanceof CustomEvent ? String(event.detail) : "");
+    });
+    pressOn(tabs[0]!, "Delete");
+    expect(closed).toEqual(["one"]);
+    // Standing alone the selected tab's close button is a stop again.
+    strip.tabindex = "";
+    await tick();
+    expect(closes()).toEqual(["0", "-1"]);
+    expect(tabs.map((tab) => tab.getAttribute("tabindex"))).toEqual(["0", "-1"]);
+  });
+
+  test("the composites a toolbar holds are exactly the ones that declare the caret prop", async () => {
+    /* The toolbar names them by TAG, because it roves either side of a child's upgrade and an
+       element that has not upgraded has no accessor to test for. This is what keeps that list and
+       the documents in agreement: a composite that declares `tabindex` and is not held would be a
+       second stop again, and one that is held without declaring it would be a caret write that
+       lands on nothing. The others stay out for the reasons ui.md §5.5 gives. */
+    const COMPOSITES = [
+      "jx-action-group",
+      "jx-tabs",
+      "jx-tree",
+      "jx-swatch-group",
+      "jx-listbox",
+      "jx-menu",
+    ] as const;
+    const held: string[] = [];
+    for (const tag of COMPOSITES) {
+      const el = build({ label: "Tools" }, ["plain:A"]);
+      const composite = document.createElement(tag);
+      composite.append(document.createElement("button"));
+      el.append(composite);
+      if (itemsOf(el).includes(composite)) {
+        held.push(tag);
+      }
+      expect(
+        itemsOf(el).some((item) => item.localName === "button" && item.textContent === ""),
+      ).toBe(false);
+    }
+    const declared = COMPOSITES.filter((tag) => "tabindex" in (documents[tag].state ?? {}));
+    expect(held).toEqual([...declared]);
+    expect(held).toEqual(["jx-action-group", "jx-tabs"]);
+    for (const tag of declared) {
+      const entry = documents[tag].state?.["tabindex"];
+      if (!isExpandedSignal(entry)) {
+        throw new Error(`${tag} declares no tabindex prop with a default`);
+      }
+      expect(entry.default, tag).toBe("");
+      expect(entry.attribute, tag).toBeUndefined();
+    }
+  });
+
+  test("a group inside another composite is that one's, and the toolbar holds neither", async () => {
+    const el = build({ label: "Tools" }, ["plain:A"]);
+    const tree = document.createElement("jx-tree");
+    const group = makeGroup("Text style", ["Bold"]);
+    tree.append(group);
+    el.append(tree);
+    expect(itemsOf(el).map((item) => item.textContent)).toEqual(["A"]);
   });
 
   test("a key inside a NESTED toolbar is that one's, and a key the contract does not name passes through", async () => {
@@ -798,6 +1138,20 @@ describe("jx-toolbar", () => {
       }
       expect(JSON.stringify(doc), tag).not.toContain('"role":"toolbar"');
     }
+  });
+
+  test("the stylebook page shows a composite held in a row, of each kind the toolbar holds", () => {
+    /* The specimen a reader checks the keyboard against: a radiogroup and a tab strip, each inside
+       a toolbar with a control either side, so both ends of the hand-over can be walked. */
+    const held = walk(page)
+      .filter((node) => node.tagName === "jx-toolbar")
+      .flatMap((node) => walk(node).slice(1))
+      .map((node) => node.tagName);
+    expect(held).toContain("jx-action-group");
+    expect(held).toContain("jx-tabs");
+    // And the composite that is NOT held stands outside every toolbar on the page.
+    expect(held).not.toContain("jx-swatch-group");
+    expect(walk(page).some((node) => node.tagName === "jx-swatch-group")).toBe(true);
   });
 
   test("the element and a consumer document both pass the kit's lints", () => {
