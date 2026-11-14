@@ -24,10 +24,13 @@
  */
 
 import {
+  dynamicPipePath,
   dynamicTagKind,
   dynamicTagLiteral,
-  dynamicTagPath,
+  dynamicTagPipe,
+  dynamicTagPipes,
   humanizeIdentifier,
+  mapDynamicTagPipes,
   parseDynamicTag,
   printDynamicTag,
 } from "@jxsuite/schema/dynamic-tag";
@@ -46,7 +49,7 @@ import {
   refAccessor,
   refBindingKey,
   refLabel,
-  rowFieldKey,
+  rowFieldKeyOf,
   tagLabel,
 } from "../utils/edit-display";
 import { namedFormulaEntries, packagedFormulaEntries } from "../ui/formula-catalog";
@@ -332,17 +335,29 @@ export interface SourceRow extends SurfaceOption {
 }
 
 /**
- * What the Source picker holds for a tag: the row field it reads spelled from the bare row words,
- * or its path as written. `$map.item.data.title` and `item.data.title` are one row of the picker.
+ * The picker's groups as the Source select draws them: each row's value today is its `description`,
+ * the member the kit's select draws beside an option's label in its list.
  */
-export function sourceValue(tag: DynamicTag): string {
-  const field = rowFieldKey(tag);
+export function sourceOptionGroups(groups: readonly SourceGroup[]): SourceGroup[] {
+  return groups.map((group) => ({
+    ...group,
+    rows: group.rows.map((row) =>
+      row.hint === undefined || row.hint === "" ? row : { ...row, description: row.hint },
+    ),
+  }));
+}
+
+/**
+ * What the Source picker holds for a path: the row field it reads spelled from the bare row words,
+ * or the path as written. `$map.item.data.title` and `item.data.title` are one row of the picker.
+ */
+function pathSourceValue(path: DynamicTagPath): string {
+  const field = rowFieldKeyOf(path);
   if (field !== null) {
     return field;
   }
   /* Spelled one way whatever the tag wrote: `state?.["title"]`, which is how a `{ "$ref" }` reads
      as a template, is the picker's `state.title` row. */
-  const path = dynamicTagPath(tag);
   let value: string = path.root;
   for (const step of path.steps) {
     const name = step.type === "member" ? step.name : step.key.value;
@@ -353,13 +368,32 @@ export function sourceValue(tag: DynamicTag): string {
 }
 
 /**
+ * What the Source picker holds for each value a tag reads, in the order the tag reads them: one for
+ * most tags, and one per source of a chain (`a || b || ''` is two). Never empty.
+ */
+export function sourceValues(tag: DynamicTag): string[] {
+  return dynamicTagPipes(tag).map((pipe) => pathSourceValue(dynamicPipePath(pipe)));
+}
+
+/** The path of each value a tag reads, in order, with every formula around it peeled off. */
+export function sourcePaths(tag: DynamicTag): DynamicTagPath[] {
+  return dynamicTagPipes(tag).map((pipe) => dynamicPipePath(pipe));
+}
+
+/**
  * The path a picked source is written as. A row field is spelled the way the tag being edited
  * spells the row (`$map.item.…` or `item.…`), so picking another field and picking the first one
  * back writes the expression the author began with. Null for a value that is no path.
  */
 export function sourcePath(value: string, like: DynamicTagPath | null): DynamicTagPath | null {
   const parsed = parseDynamicTag(value);
-  if (parsed === null || parsed.pipe.type !== "path" || parsed.negations !== 0 || parsed.fallback) {
+  if (
+    parsed === null ||
+    parsed.pipe.type !== "path" ||
+    parsed.negations !== 0 ||
+    parsed.alternatives ||
+    parsed.fallback
+  ) {
     return null;
   }
   const { pipe } = parsed;
@@ -400,9 +434,12 @@ function withPipePath(pipe: DynamicTagPipe, path: DynamicTagPath): DynamicTagPip
   return pipe.type === "path" ? path : { ...pipe, input: withPipePath(pipe.input, path) };
 }
 
-/** `tag` reading another value: its formats, its fallback and its `!` are kept. */
-export function withSource(tag: DynamicTag, path: DynamicTagPath): DynamicTag {
-  return { ...tag, pipe: withPipePath(tag.pipe, path) };
+/**
+ * `tag` reading another value in the place of its `index`-th source ({@link sourceValues}): that
+ * source's formats, the sources beside it, the fallback and the `!` are kept.
+ */
+export function withSource(tag: DynamicTag, path: DynamicTagPath, index = 0): DynamicTag {
+  return mapDynamicTagPipes(tag, (pipe, at) => (at === index ? withPipePath(pipe, path) : pipe));
 }
 
 /**
@@ -410,7 +447,7 @@ export function withSource(tag: DynamicTag, path: DynamicTagPath): DynamicTag {
  * holds a path of member steps from `state` or the row and nothing else.
  */
 export function refOfTag(tag: DynamicTag): string | null {
-  if (tag.negations !== 0 || tag.fallback || tag.pipe.type !== "path") {
+  if (tag.negations !== 0 || tag.alternatives || tag.fallback || tag.pipe.type !== "path") {
     return null;
   }
   const { root, steps } = tag.pipe;
@@ -493,11 +530,27 @@ export function withFallback(
     previous !== undefined && text === fallbackText(tag)
       ? previous
       : fallbackLiteral(text, previous);
+  /* A chain reads its sources under one operator, and JavaScript takes no other beside it. A
+     fallback that applies on the other condition is therefore said of the chain as a whole, in
+     parentheses, which leaves when each source gives way to the next exactly as it was. */
+  const between = tag.alternatives?.[0]?.operator;
+  if (between !== undefined && between !== operator) {
+    const { fallback: _moved, ...chain } = tag;
+    return { fallback: { operator, value }, negations: 0, pipe: { tag: chain, type: "group" } };
+  }
   return { ...tag, fallback: { operator, value } };
 }
 
-/** `tag` read as its value (0), as "is empty" (1, `!`) or as "is set" (2, `!!`). */
+/**
+ * `tag` read as its value (0), as "is empty" (1, `!`) or as "is set" (2, `!!`). The question is
+ * asked of everything the tag reads: `!` binds one source, so a chain that is asked for the first
+ * time is put in parentheses first (`!(a || b)`), and one already carrying a `!` keeps its shape.
+ */
 export function withNegations(tag: DynamicTag, negations: 0 | 1 | 2): DynamicTag {
+  if (negations !== 0 && tag.negations === 0 && tag.alternatives) {
+    const { fallback, ...chain } = tag;
+    return { negations, pipe: { tag: chain, type: "group" }, ...(fallback && { fallback }) };
+  }
   return { ...tag, negations };
 }
 
@@ -578,12 +631,32 @@ function declaredTypes(formula: FormatFormula): string[] | null {
   return text === "string" || text === "number" || text === "boolean" ? [text] : null;
 }
 
+/** The schema formats that say a string is an address: text to follow, not text to rewrite. */
+const URL_FORMATS = new Set(["uri", "uri-reference", "iri", "iri-reference"]);
+
 /**
  * Whether a formula is worth offering for a value of this type. A formula that declares nothing
  * takes anything; an empty value says nothing about what the field holds, so every formula stays.
+ *
+ * `format` is what the field's schema says the value is, where one says. A URL is a string only in
+ * how it is stored: a formula for text (a capitaliser, an escaper) would be offered for every image
+ * source and link, and fits none of them. So a formula that declares it takes a string is not
+ * offered for a URL, unless its own first parameter declares that format.
  */
-export function formatAccepts(formula: FormatFormula, type: ValueType): boolean {
+export function formatAccepts(
+  formula: FormatFormula,
+  type: ValueType,
+  format: string | null = null,
+): boolean {
   const declared = declaredTypes(formula);
+  if (
+    format !== null &&
+    URL_FORMATS.has(format) &&
+    declared?.includes("string") === true &&
+    formula.parameters[0]?.schema?.["format"] !== format
+  ) {
+    return false;
+  }
   if (declared === null || type === "empty") {
     return true;
   }
@@ -666,17 +739,29 @@ export function formatPresets(formulas: readonly FormatFormula[]): FormatPreset[
   return formulas.flatMap((formula) => presetsOf(formula));
 }
 
-/** `tag` with its value passed through `preset`, or through nothing when `preset` is null. */
+/**
+ * `tag` with its value passed through `preset`, or through nothing when `preset` is null. The value
+ * is the first one the tag reads: a later source of a chain keeps the format it was written with.
+ */
 export function withFormat(tag: DynamicTag, preset: FormatPreset | null): DynamicTag {
-  const path = dynamicTagPath(tag);
-  const pipe: DynamicTagPipe =
-    preset === null ? path : { args: preset.args, input: path, name: preset.formula, type: "call" };
-  return { ...tag, pipe };
+  return mapDynamicTagPipes(tag, (pipe, index) => {
+    if (index !== 0) {
+      return pipe;
+    }
+    const path = dynamicPipePath(pipe);
+    return preset === null
+      ? path
+      : { args: preset.args, input: path, name: preset.formula, type: "call" };
+  });
 }
 
-/** The one formula a tag's value passes through, or null for none and for a chain of several. */
+/**
+ * The one formula a tag's first value passes through, or null for none and for formulas nested in
+ * one another.
+ */
 export function formatCall(tag: DynamicTag): DynamicTagCall | null {
-  return tag.pipe.type === "call" && tag.pipe.input.type === "path" ? tag.pipe : null;
+  const pipe = dynamicTagPipe(tag);
+  return pipe.type === "call" && pipe.input.type === "path" ? pipe : null;
 }
 
 /** Whether two literal lists hold the same values, whatever each was written as. */
@@ -692,7 +777,7 @@ function sameArgs(a: readonly DynamicTagLiteral[], b: readonly DynamicTagLiteral
  * (other arguments, a formula that is not offered, formulas nested in one another).
  */
 export function presetOfTag(tag: DynamicTag, presets: readonly FormatPreset[]): string {
-  if (tag.pipe.type === "path") {
+  if (dynamicTagPipe(tag).type === "path") {
     return "";
   }
   const call = formatCall(tag);
@@ -705,7 +790,7 @@ export function presetOfTag(tag: DynamicTag, presets: readonly FormatPreset[]): 
 
 /** The expression a preset gives a tag's value, for drawing the preset with the real value. */
 export function presetExpression(tag: DynamicTag, preset: FormatPreset | null): string {
-  return printDynamicTag(withFormat({ negations: 0, pipe: tag.pipe }, preset));
+  return printDynamicTag(withFormat({ negations: 0, pipe: dynamicTagPipe(tag) }, preset));
 }
 
 // ─── A format's own parameters ───────────────────────────────────────────────
@@ -890,7 +975,7 @@ export function withParameter(
   }
   // A gap before a later argument is `null`: a call has no way to skip a position.
   const filled = args.map((arg) => arg ?? dynamicTagLiteral(null));
-  return { ...tag, pipe: { ...call, args: filled } };
+  return mapDynamicTagPipes(tag, (pipe, index) => (index === 0 ? { ...call, args: filled } : pipe));
 }
 
 // ─── Writing back ────────────────────────────────────────────────────────────

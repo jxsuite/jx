@@ -40,11 +40,17 @@
 
 /**
  * A row as the element draws it: the value the control reports back, and the label the reader sees.
- * Only `value` and `label` are ever read here.
+ * Only `value` and `label` are ever read here; `description` is the document's to draw.
  */
 export interface SelectRow {
   value: string;
   label: string;
+  /**
+   * A few words drawn beside the label in the open list and never in the closed control: what the
+   * row holds, or what picking it means (ui.md §5.1). Left out of a plain select's rows, which
+   * print an option as its text.
+   */
+  description?: string;
 }
 
 /** The reactive scope a `jx-select` document hands its sidecar. */

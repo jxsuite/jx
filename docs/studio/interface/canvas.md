@@ -96,7 +96,7 @@ A small floating toolbar appears above the selected element. It stays on the ele
 - **Move up** and **Move down** arrows swap the element with its neighbors.
 - For a component instance, **Edit Component** opens the component itself; for anything else, **Convert to Component** turns the selection into a reusable component.
 - While you're editing text, formatting buttons (bold, italic, and friends) and an **Insert dynamic tag** button join the bar. See [Edit mode](/docs/studio/editing).
-- When the element draws anything from data, one **Bound pill** per bound property follows: **Text: Title**, **Image: Featured image**, **Link: Permalink**. Click a pill to change what that property reads. See **[Dynamic tags](/docs/studio/editing/dynamic-tags)**.
+- When the element draws anything from data, one **Bound pill** per bound property follows: **Text: Title**, **Image: Featured image**, **Link: Permalink**. Click a pill to change what that property reads. The first four are named, and an element bound in more places adds a pill such as **+3 more** that lists the rest. See **[Dynamic tags](/docs/studio/editing/dynamic-tags)**.
 - Inside a repeating list, a **row stepper** (**Row 3 of 24**, with an arrow each side) moves to another row, and its count sets how many rows are drawn.
 - On an element that switches between cases, a **Case** button chooses which case the canvas draws. Your page still decides for itself when it runs; this only changes what you are looking at, so you can work on a case you could otherwise not reach.
 
@@ -154,7 +154,7 @@ In Edit and Design, everything your page draws from data shows the data: text, i
 
 Data a layout reads from a content type, such as a sidebar's navigation, is loaded the same way, and a package script a component names with `npm:` is loaded from your project's installed packages.
 
-Data a page fetches is drawn too. A `GET` request and a server function each run once when you open the page, and the answer is reused for every redraw until you click **Refresh** in the **[Data panel](/docs/studio/logic/data#fetched-once)**. A request that would change something on a server, meaning any method but `GET`, is never sent from the canvas.
+Data a page fetches is drawn too. A `GET` request and a server function each run once when you open the page, and the answer is reused for every redraw until you click **Refresh** in the **[Data panel](/docs/studio/logic/data#fetched-once)**. A request that would change something on a server, meaning any method but `GET`, is never sent from the canvas. A collection your lists read is loaded before the page is first drawn, and the canvas waits up to 30 seconds for it. After that the page is drawn without it and its lists fill in on a later redraw, once the collection has arrived.
 
 Where a binding has no value, the canvas says why and never shows the expression. The binding's name is drawn with one of three states, quietly underlined: **Loading** while its data is on the way, **Could not load** when the request failed (rest the pointer on it for the reason), and **Runs on the live page** for data the canvas does not fetch. A binding whose own expression fails says **Has an error**, which is a mistake in the expression and not in the data. A bound image is outlined the same way, and a list waiting for its data says so on its template row.
 

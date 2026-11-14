@@ -231,10 +231,12 @@ Neither half changes how the formula evaluates.
 
 ## Structured tags
 
-A `${…}` in a template string is JavaScript, and it stays JavaScript. Most bindings are far simpler than that, though: a value read from a path, perhaps passed through a formula, perhaps with a fallback. `@jxsuite/schema/dynamic-tag` reads exactly that subset, so a tool can show a binding as fields and write it back unchanged:
+A `${…}` in a template string is JavaScript, and it stays JavaScript. Most bindings are far simpler than that, though: a value read from a path, perhaps passed through a formula, perhaps with a fallback, perhaps one of several values tried in turn. `@jxsuite/schema/dynamic-tag` reads exactly that subset, so a tool can show a binding as fields and write it back unchanged:
 
 ```text
-tag     := "!"{0,2} pipe ( ("??" | "||") literal )?
+tag     := "!"{0,2} source ( op source )* ( op literal )?
+source  := pipe | "(" tag ")"
+op      := "??" | "||"
 pipe    := "state." ident "(" pipe ( "," literal )* ")" | path
 path    := root ( "." ident | "?." ident | "[" key "]" | "?.[" key "]" )*
 root    := "state" | "item" | "index" | "$map" | "$page" | "$site"
@@ -242,22 +244,25 @@ key     := string | number
 literal := a JSON value | a single-quoted string
 ```
 
-| Expression                                                    | Read as                                    |
-| ------------------------------------------------------------- | ------------------------------------------ |
-| `$map.item.data.title ?? ''`                                  | The row's title, or nothing                |
-| `state.entry.data.seo?.image?.alt ?? ''`                      | A path with optional steps and a fallback  |
-| `state.formatDate($map.item.data.date, {"dateStyle":"long"})` | A path through a formula, with an argument |
-| `!state.entry.data.premium`                                   | A path, negated                            |
-| `state.price * 1.2`                                           | Not a tag: arithmetic                      |
-| `state.a ? state.b : ''`                                      | Not a tag: a ternary                       |
+| Expression                                                        | Read as                                     |
+| ----------------------------------------------------------------- | ------------------------------------------- |
+| `$map.item.data.title ?? ''`                                      | The row's title, or nothing                 |
+| `state.entry.data.seo?.image?.alt ?? ''`                          | A path with optional steps and a fallback   |
+| `state.formatDate($map.item.data.date, {"dateStyle":"long"})`     | A path through a formula, with an argument  |
+| `!state.entry.data.premium`                                       | A path, negated                             |
+| `state.entry.data.seo?.title \|\| state.entry.data.title \|\| ''` | Two paths tried in turn, then a fallback    |
+| `(item.image ?? '') \|\| '/x.jpg'`                                | A tag in parentheses, with its own fallback |
+| `state.price * 1.2`                                               | Not a tag: arithmetic                       |
+| `state.a ? state.b : ''`                                          | Not a tag: a ternary                        |
 
-The functions are `parseDynamicTag(expr)`, which takes the text inside one `${…}` and returns the tag or `null`; `printDynamicTag(tag)`; `dynamicTagLabel(tag)`, a readable name from the last meaningful path segment (`featuredImage` is "Featured image"); and `templateSegments(template)`, which splits a whole template string into literal text, tags and custom expressions.
+The functions are `parseDynamicTag(expr)`, which takes the text inside one `${…}` and returns the tag or `null`; `printDynamicTag(tag)`; `dynamicTagLabel(tag)`, a readable name from the last meaningful path segment (`featuredImage` is "Featured image", and so is `featuredImage.src`, because `src`, `url` and `value` say how a value is held and not what it is); `dynamicTagPipes(tag)`, every value a tag reads in order; and `templateSegments(template)`, which splits a whole template string into literal text, tags and custom expressions.
 
 Three rules make it safe to build an editor on:
 
 - **Nothing is guessed.** An expression outside the grammar is `null`, never a near match. Show it as custom code and keep it as written.
+- **One tag uses one operator.** JavaScript refuses `??` beside `||` unless one of them is in parentheses, so a chain is all `??` or all `||`, and a tag in parentheses is how the two are combined.
 - **A literal keeps its text.** `''` stays `''` and an options object keeps its spacing, because a literal is printed from the text it was read from.
-- **White space is tolerated in four places and written one way.** The reader accepts it around the tag, around the fallback operator, around the commas between arguments and inside the parentheses. The printer writes none around the tag or inside the parentheses, one space on each side of the operator, and a comma and a space between arguments. So print a tag only when you changed it: `templateSegments` hands back each tag's verbatim source for the ones you did not.
+- **White space is tolerated in four places and written one way.** The reader accepts it around the tag, around an operator, around the commas between arguments and inside the parentheses. The printer writes none around the tag or inside the parentheses, one space on each side of the operator, and a comma and a space between arguments. So print a tag only when you changed it: `templateSegments` hands back each tag's verbatim source for the ones you did not.
 
 ## Reading the event
 

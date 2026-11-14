@@ -44,6 +44,18 @@ export interface TagFormatRow {
   checked: string;
 }
 
+/** One value the tag reads: a row of the ordered list of sources. */
+export interface TagSourceRow {
+  /** Its place among the tag's sources, counted from 0, as text. */
+  key: string;
+  /** The words beside it: "Source" for the first, "Then" for each one read after it. */
+  label: string;
+  /** The control's accessible name, which says which source of several it is. */
+  name: string;
+  /** What the picker holds for it: `item.data.title`. */
+  value: string;
+}
+
 /** Everything the document draws, as one assignment. */
 export interface DynamicTagView {
   /** What the tag is called: "Post date", or "Custom expression". */
@@ -52,7 +64,11 @@ export interface DynamicTagView {
   property: string;
   /** Whether the tag is in the recognised grammar, and so has fields. */
   structured: boolean;
-  source: string;
+  /**
+   * The values the tag reads, in the order it reads them: one for most tags, and one per source of
+   * a chain (`a || b || ''`), each read when those before it gave nothing.
+   */
+  sources: TagSourceRow[];
   sourceGroups: SourceGroup[];
   formats: TagFormatRow[];
   params: ParameterField[];
@@ -77,7 +93,8 @@ export interface DynamicTagView {
 
 /** What a control asks the flow to do. Every one of these is a decision the flow owns. */
 export interface DynamicTagActions {
-  setSource: (value: string) => void;
+  /** Read another value in the place of the source `key` names. */
+  setSource: (key: string, value: string) => void;
   setFormat: (id: string) => void;
   setParam: (key: string, value: string) => void;
   setShow: (value: string) => void;
@@ -99,7 +116,7 @@ interface DynamicTagScope extends DynamicTagView {
   draftClean: boolean;
   draftInvalid: boolean;
   draftNote: string;
-  setSource: (value: string) => void;
+  setSource: (key: string, value: string) => void;
   setFormat: (id: string) => void;
   setParam: (key: string, value: string) => void;
   setShow: (value: string) => void;
@@ -141,8 +158,8 @@ export function emptyDynamicTagView(): DynamicTagView {
     property: "",
     show: "0",
     showOptions: [],
-    source: "",
     sourceGroups: [],
+    sources: [],
     structured: false,
     title: "",
   };
@@ -178,7 +195,6 @@ export interface DynamicTagSurface {
  */
 export function mountDynamicTag(host: HTMLElement, actions: DynamicTagActions): DynamicTagSurface {
   let panelEl: PanelElement | null = null;
-  let sourceEl: HTMLElement | null = null;
   let expressionEl: HTMLElement | null = null;
   /** The panel's height when it was last drawn; a guess before it ever was. */
   let lastHeight = PANEL_HEIGHT_GUESS;
@@ -220,7 +236,8 @@ export function mountDynamicTag(host: HTMLElement, actions: DynamicTagActions): 
     setFormat: (id: string) => actions.setFormat(id),
     setParam: (key: string, value: string) => actions.setParam(key, isString(value) ? value : ""),
     setShow: (value: string) => actions.setShow(isString(value) ? value : "0"),
-    setSource: (value: string) => actions.setSource(isString(value) ? value : ""),
+    setSource: (key: string, value: string) =>
+      actions.setSource(isString(key) ? key : "0", isString(value) ? value : ""),
     toggled: (_scope: JxScope, event: Event) => {
       /* The panel's own toggle and nobody else's: the Advanced section inside it is a disclosure,
          and its toggle arrives here too. Taking that one for the panel closing shut the popover
@@ -252,8 +269,6 @@ export function mountDynamicTag(host: HTMLElement, actions: DynamicTagActions): 
       if (part === "panel") {
         // SAFETY: `part: "panel"` is the document's `jx-popover`, whose class has both methods.
         panelEl = element as PanelElement;
-      } else if (part === "source") {
-        sourceEl = element;
       } else if (part === "expression") {
         expressionEl = element;
       }
@@ -280,7 +295,10 @@ export function mountDynamicTag(host: HTMLElement, actions: DynamicTagActions): 
       if (!wanted || !panel.isConnected) {
         return;
       }
-      const first = scope.structured ? sourceEl : expressionEl;
+      // The first source of the list, which for most tags is the only one.
+      const first = scope.structured
+        ? panel.querySelector<HTMLElement>('[part="source"]')
+        : expressionEl;
       const control = (first?.isConnected === true ? first : panel).querySelector<HTMLElement>(
         "select, textarea, input, button:not([disabled])",
       );

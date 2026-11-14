@@ -1261,36 +1261,53 @@ function insertView(node: JxMutableNode): Pick<BlockBarView, "insertDisabled" | 
 
 // ─── Bound pills, rows and cases ─────────────────────────────────────────────
 
-/** The most Bound pills the bar draws; a block bound in more places says the rest in its last pill. */
+/** The most Bound pills the bar draws by name; a block bound in more places lists the rest. */
 const MAX_PILLS = 4;
+
+/** The key of the pill that opens the list of the bindings past {@link MAX_PILLS}. */
+const MORE_PILLS_KEY = "more";
 
 /** What a pill's key holds: the tag's property and its place among that property's expressions. */
 function pillKey(slot: readonly (string | number)[], index: number): string {
   return JSON.stringify([slot, index]);
 }
 
-/** One pill per bound property of `node` (studio.md §6.9), named for the property and the value. */
+/**
+ * One pill per bound property of `node` (studio.md §6.9), named for the property and the value. A
+ * block bound in more than {@link MAX_PILLS} places draws that many and one more that says how many
+ * are left and opens them as a list, so every binding of a block is reachable from the bar.
+ */
 function pillsOf(tab: ActiveTab, path: JxPath, node: JxMutableNode): BlockBarPill[] {
   const titles = tagTitlesAt(tab.doc.document, path, projectState?.projectConfig ?? null);
-  return boundTagsOf(node, titles)
-    .slice(0, MAX_PILLS)
-    .map((tag) => {
-      const label = pillLabel(tag);
-      return {
-        hint: `Edit binding: ${label}`,
-        key: pillKey(tag.slot, tag.index),
-        label,
-        property: tag.property,
-      };
+  const tags = boundTagsOf(node, titles);
+  const pills: BlockBarPill[] = tags.slice(0, MAX_PILLS).map((tag) => {
+    const label = pillLabel(tag);
+    return {
+      hint: `Edit binding: ${label}`,
+      key: pillKey(tag.slot, tag.index),
+      label,
+      popup: "dialog",
+      property: tag.property,
+      text: label,
+    };
+  });
+  const left = tags.length - pills.length;
+  if (left > 0) {
+    pills.push({
+      // Its words are on screen and it opens a list, which a tooltip would cover (studio.md §4.4).
+      hint: "",
+      key: MORE_PILLS_KEY,
+      label: left === 1 ? "1 more binding of this block" : `${left} more bindings of this block`,
+      popup: "menu",
+      property: "",
+      text: `+${left} more`,
     });
+  }
+  return pills;
 }
 
-/** Open the tag a pill names, under the pill, and give the pill the focus back when it closes. */
-function openPill(key: string, anchor: HTMLElement): void {
-  const path = primarySelection(activeTab.value?.session.selection);
-  if (!path) {
-    return;
-  }
+/** Open the tag a pill's key names, under `anchor`, which takes the focus back when it closes. */
+function openPillTag(path: JxPath, key: string, anchor: HTMLElement): void {
   let slot: (string | number)[];
   let index: number;
   try {
@@ -1304,6 +1321,36 @@ function openPill(key: string, anchor: HTMLElement): void {
     { index, path, slot },
     { at: { x: box.left, y: box.bottom + TAG_POPOVER_GAP }, returnFocus: anchor },
   );
+}
+
+/** Open the list of the bindings the bar has no room to name, each of which opens its tag. */
+function openMorePills(tab: ActiveTab, path: JxPath, anchor: HTMLElement): void {
+  const node = getNodeAtPath(tab.doc.document, path);
+  const titles = tagTitlesAt(tab.doc.document, path, projectState?.projectConfig ?? null);
+  const rest = boundTagsOf(node, titles).slice(MAX_PILLS);
+  showSlashMenu(anchor, "", {
+    commands: rest.map((tag) => ({
+      description: "",
+      label: pillLabel(tag),
+      tag: pillKey(tag.slot, tag.index),
+    })),
+    onSelect: (cmd) => openPillTag(path, cmd.tag, anchor),
+    showFilter: rest.length > 6,
+  });
+}
+
+/** Open the tag a pill names, under the pill, and give the pill the focus back when it closes. */
+function openPill(key: string, anchor: HTMLElement): void {
+  const tab = activeTab.value;
+  const path = primarySelection(tab?.session.selection);
+  if (!tab || !path) {
+    return;
+  }
+  if (key === MORE_PILLS_KEY) {
+    openMorePills(tab, path, anchor);
+  } else {
+    openPillTag(path, key, anchor);
+  }
 }
 
 /** The repeater a selection is, or the nearest one it stands in; null outside any. */

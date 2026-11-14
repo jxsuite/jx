@@ -24,11 +24,13 @@ import {
   dynamicTagKind,
   dynamicTagLabel,
   dynamicTagPath,
+  dynamicTagStepName,
+  isGenericStepName,
   humanizeIdentifier,
   parseDynamicTag,
   templateSegments,
 } from "@jxsuite/schema/dynamic-tag";
-import type { DynamicTag } from "@jxsuite/schema/dynamic-tag";
+import type { DynamicTag, DynamicTagPath } from "@jxsuite/schema/dynamic-tag";
 import { plainMarkup } from "./plain-markup";
 import { isDocumentContainer } from "./strip-events";
 import type { RebuiltNode } from "./strip-events";
@@ -524,12 +526,11 @@ export type TagTitles = Readonly<Record<string, string>>;
 let activeTitles: TagTitles | null = null;
 
 /**
- * The field of a repeater's item a tag reads, as a template spells it from the bare row words
- * (`item.data.date`, `index`), or null for a tag that reads anything else. `$map.item.data.date`
+ * The field of a repeater's item a path reads, as a template spells it from the bare row words
+ * (`item.data.date`, `index`), or null for a path that reads anything else. `$map.item.data.date`
  * and `item.data.date` are one field and have one key, so a title is found under either spelling.
  */
-export function rowFieldKey(tag: DynamicTag): string | null {
-  const path = dynamicTagPath(tag);
+export function rowFieldKeyOf(path: DynamicTagPath): string | null {
   const steps = [...path.steps];
   let word: string;
   if (path.root === "$map") {
@@ -554,14 +555,50 @@ export function rowFieldKey(tag: DynamicTag): string | null {
   return key;
 }
 
+/** The field of a repeater's item a tag reads first ({@link rowFieldKeyOf}). */
+export function rowFieldKey(tag: DynamicTag): string | null {
+  return rowFieldKeyOf(dynamicTagPath(tag));
+}
+
+/** The title `titles` holds for the field `path` reads, or `""` when it holds none. */
+function titleOf(path: DynamicTagPath, titles: TagTitles): string {
+  const key = rowFieldKeyOf(path);
+  return (key === null ? undefined : titles[key]) ?? "";
+}
+
+/**
+ * The title of the nearest step before a generic last key (`src`, `url`, `value`) that names
+ * something: a featured image's `src` is the featured image. `""` when the path does not end in a
+ * generic key, or when the step that would name it has no title, which leaves the name to the
+ * path's own words ({@link dynamicTagLabel} makes the same walk).
+ */
+function ownerTitle(path: DynamicTagPath, titles: TagTitles): string {
+  const last = path.steps.at(-1);
+  const lastName = last === undefined ? null : dynamicTagStepName(last);
+  if (lastName === null || !isGenericStepName(lastName)) {
+    return "";
+  }
+  for (let end = path.steps.length - 1; end > 0; end -= 1) {
+    const step = path.steps[end - 1];
+    const name = step === undefined ? null : dynamicTagStepName(step);
+    if (name !== null && !isGenericStepName(name)) {
+      return titleOf({ ...path, steps: path.steps.slice(0, end) }, titles);
+    }
+  }
+  return "";
+}
+
 /**
  * The name of a structured tag: the title its field's schema declares, when the titles in hand hold
- * one, otherwise the path's own last meaningful member as words (studio.md §6.9).
+ * one, otherwise the path's own last meaningful member as words (studio.md §6.9). A field held
+ * under a generic key is named for the step that holds it, by that step's title where it has one.
  */
 export function tagLabel(tag: DynamicTag, titles: TagTitles | null = activeTitles): string {
-  const key = titles === null ? null : rowFieldKey(tag);
-  const title = key === null ? undefined : titles?.[key];
-  return title === undefined || title === "" ? dynamicTagLabel(tag) : title;
+  if (titles === null) {
+    return dynamicTagLabel(tag);
+  }
+  const path = dynamicTagPath(tag);
+  return titleOf(path, titles) || ownerTitle(path, titles) || dynamicTagLabel(tag);
 }
 
 /** The human name and kind of one `${…}` expression. */
@@ -825,15 +862,19 @@ function opensExpression(
  * reads a repeater's item and the titles in hand hold one, otherwise its last segment as words.
  */
 export function refLabel(ref: string, titles: TagTitles | null = activeTitles): string {
-  const accessor = titles === null ? null : refAccessor(ref);
+  const accessor = refAccessor(ref);
   const tag = accessor === null ? null : parseDynamicTag(accessor);
-  const key = tag === null ? null : rowFieldKey(tag);
+  const key = tag === null || titles === null ? null : rowFieldKey(tag);
   const title = key === null ? undefined : titles?.[key];
   if (title !== undefined && title !== "") {
     return title;
   }
-  const last = ref.split("/").at(-1) ?? "";
-  const label = humanizeIdentifier(last.replaceAll("~1", "/").replaceAll("~0", "~"));
+  const last = (ref.split("/").at(-1) ?? "").replaceAll("~1", "/").replaceAll("~0", "~");
+  // A generic key is named for what holds it, as a template that reads the same field is.
+  if (tag !== null && isGenericStepName(last)) {
+    return tagLabel(tag, titles);
+  }
+  const label = humanizeIdentifier(last);
   return label === "" ? "Reference" : label;
 }
 

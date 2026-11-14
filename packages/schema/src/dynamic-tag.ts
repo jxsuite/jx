@@ -7,7 +7,9 @@
  * formula, perhaps with a fallback. This module reads exactly that shape and nothing else:
  *
  * ```text
- * tag     := "!"{0,2} pipe ( ws ("??" | "||") ws literal )?
+ * tag     := "!"{0,2} source ( ws op ws source )* ( ws op ws literal )?
+ * source  := pipe | "(" ws tag ws ")"
+ * op      := "??" | "||"
  * pipe    := "state." ident "(" ws pipe ( ws "," ws literal )* ws ")" | path
  * path    := root ( "." ident | "?." ident | "[" key "]" | "?.[" key "]" )*
  * root    := "state" | "item" | "index" | "$map" | "$page" | "$site"
@@ -20,26 +22,29 @@
  * It takes the text INSIDE one `${…}`. Three rules hold it together:
  *
  * - **A strict subset of JavaScript.** Every tag is an expression the template engine already
- *   evaluates, with the meaning JavaScript gives it: `!` binds the pipe, and the fallback applies
- *   to the result. JSON is a subset of JavaScript expressions, and a single-quoted string is
- *   admitted only with the escapes JSON also has (plus `\'`), so a literal's value is the same in
- *   both. The one JSON value refused is an object with a `__proto__` key, which JavaScript reads as
- *   the object's prototype and not as a key.
+ *   evaluates, with the meaning JavaScript gives it: `!` binds the first source, and each operator
+ *   applies to the result of everything before it. One tag uses one operator, since JavaScript
+ *   refuses `??` beside `||` unless one of them is parenthesised, and a parenthesised tag is how
+ *   the two are combined: `(item.image ?? '') || '/x.jpg'`. JSON is a subset of JavaScript
+ *   expressions, and a single-quoted string is admitted only with the escapes JSON also has (plus
+ *   `\'`), so a literal's value is the same in both. The one JSON value refused is an object with a
+ *   `__proto__` key, which JavaScript reads as the object's prototype and not as a key.
  * - **Reading never guesses.** Anything outside the grammar (a lambda, a ternary, arithmetic, a
- *   parenthesised operand, a chain of two fallbacks, a call on anything but `state.<name>`, a path
- *   step after a call) is `null`, which a caller shows as a custom expression and keeps verbatim.
+ *   parenthesised argument of a formula, a literal before the last place of a chain, `??` beside
+ *   `||` with no parentheses, a call on anything but `state.<name>`, a path step after a call) is
+ *   `null`, which a caller shows as a custom expression and keeps verbatim.
  * - **Reading never normalises.** {@link printDynamicTag} of a parsed tag is the input byte for byte
  *   when the input is canonical, and a literal is always printed as it was written (`raw`), so `''`
  *   stays `''` and `{"dateStyle":"long"}` keeps its spacing when another part of the tag is
  *   edited.
  *
- * **White space.** The canonical form has none around the tag, exactly one space on each side of a
- * fallback operator, `, ` between arguments, and none inside the parentheses. The parser also
- * accepts white space in those four places (and only those: none inside a path, after `!`, or
- * before `(`), and the printer writes the canonical form. So a tag whose spacing is not canonical
- * parses, and printing it would respace it. That is why a writer must keep the source of a tag it
- * did not edit: {@link templateSegments} hands every tag back with its verbatim `source`, and a tag
- * is printed only when the user changed it.
+ * **White space.** The canonical form has none around the tag, exactly one space on each side of an
+ * operator, `, ` between arguments, and none inside the parentheses of a call or of a parenthesised
+ * tag. The parser also accepts white space in those four places (and only those: none inside a
+ * path, after `!`, or before the `(` of a call), and the printer writes the canonical form. So a
+ * tag whose spacing is not canonical parses, and printing it would respace it. That is why a writer
+ * must keep the source of a tag it did not edit: {@link templateSegments} hands every tag back with
+ * its verbatim `source`, and a tag is printed only when the user changed it.
  *
  * Browser-safe: no DOM, no Node.
  *
@@ -94,17 +99,41 @@ export interface DynamicTagCall {
 
 export type DynamicTagPipe = DynamicTagPath | DynamicTagCall;
 
-/** The value a tag yields when its pipe is nullish (`??`) or falsy (`||`). */
+/** When the next value of a tag is read: the one before it is nullish (`??`) or falsy (`||`). */
+export type DynamicTagOperator = "??" | "||";
+
+/** A tag in parentheses, standing where a pipe may: `(item.image ?? '')`. */
+export interface DynamicTagGroup {
+  readonly type: "group";
+  readonly tag: DynamicTag;
+}
+
+/** One value a tag reads: a pipe, or a whole tag in parentheses. */
+export type DynamicTagSource = DynamicTagPipe | DynamicTagGroup;
+
+/** A source read when every source before it gave nothing. */
+export interface DynamicTagAlternative {
+  readonly operator: DynamicTagOperator;
+  readonly source: DynamicTagSource;
+}
+
+/** The value a tag yields when every source is nullish (`??`) or falsy (`||`). */
 export interface DynamicTagFallback {
-  readonly operator: "??" | "||";
+  readonly operator: DynamicTagOperator;
   readonly value: DynamicTagLiteral;
 }
 
-/** One structured tag. */
+/**
+ * One structured tag. Every operator of one tag is the same one (the grammar reads no other), so a
+ * writer that needs the other puts what it has in parentheses and applies it to that.
+ */
 export interface DynamicTag {
-  /** How many `!` precede the pipe: `!x` is "is empty", `!!x` is "is set". */
+  /** How many `!` precede the first source: `!x` is "is empty", `!!x` is "is set". */
   readonly negations: 0 | 1 | 2;
-  readonly pipe: DynamicTagPipe;
+  /** The first source, which for most tags is the only one. */
+  readonly pipe: DynamicTagSource;
+  /** The sources read after it, in order, each when those before it gave nothing. */
+  readonly alternatives?: readonly DynamicTagAlternative[];
   readonly fallback?: DynamicTagFallback;
 }
 
@@ -359,19 +388,87 @@ function readPipe(cursor: Cursor): DynamicTagPipe | null {
   return readPath(cursor);
 }
 
-function readFallback(cursor: Cursor): DynamicTagFallback | null {
-  let operator: DynamicTagFallback["operator"] | null = null;
+/** The operator at the cursor, which it then passes; `null` for none. */
+function readOperator(cursor: Cursor): DynamicTagOperator | null {
   if (eat(cursor, "??")) {
-    operator = "??";
-  } else if (eat(cursor, "||")) {
-    operator = "||";
+    return "??";
   }
-  if (operator === null) {
-    return null;
+  return eat(cursor, "||") ? "||" : null;
+}
+
+/** A pipe, or a tag in parentheses. */
+function readSource(cursor: Cursor): DynamicTagSource | null {
+  if (!eat(cursor, "(")) {
+    return readPipe(cursor);
   }
   take(cursor, SPACE);
-  const value = readLiteral(cursor);
-  return value === null ? null : { operator, value };
+  const tag = readTag(cursor);
+  take(cursor, SPACE);
+  return tag !== null && eat(cursor, ")") ? { tag, type: "group" } : null;
+}
+
+/** What follows the first source: further sources, then at most one literal, under one operator. */
+interface Tail {
+  alternatives: DynamicTagAlternative[];
+  fallback?: DynamicTagFallback;
+}
+
+/**
+ * The tail of a tag, leaving the cursor after its last operand; `null` when it is malformed. A
+ * source and a literal never start alike (a source opens with `(` or a root word, a literal with a
+ * quote, a bracket, a digit, a minus or a JSON keyword), so which one follows an operator is read
+ * off the text and not guessed.
+ */
+function readTail(cursor: Cursor): Tail | null {
+  const tail: Tail = { alternatives: [] };
+  let used: DynamicTagOperator | null = null;
+  for (;;) {
+    const before = cursor.at;
+    take(cursor, SPACE);
+    const operator = readOperator(cursor);
+    if (operator === null) {
+      cursor.at = before;
+      return tail;
+    }
+    // JavaScript refuses `??` beside `||` without parentheses, so a tag holds one or the other.
+    if (used !== null && operator !== used) {
+      return null;
+    }
+    used = operator;
+    take(cursor, SPACE);
+    const operand = cursor.at;
+    const source = readSource(cursor);
+    if (source === null) {
+      cursor.at = operand;
+      const value = readLiteral(cursor);
+      if (value === null) {
+        return null;
+      }
+      // A literal ends the tag: nothing is read after a value that is always there.
+      tail.fallback = { operator, value };
+      return tail;
+    }
+    tail.alternatives.push({ operator, source });
+  }
+}
+
+/** A tag at the cursor, which is left after its last character. */
+function readTag(cursor: Cursor): DynamicTag | null {
+  let negations: DynamicTag["negations"] = 0;
+  if (eat(cursor, "!")) {
+    negations = eat(cursor, "!") ? 2 : 1;
+  }
+  const pipe = readSource(cursor);
+  const tail = pipe === null ? null : readTail(cursor);
+  if (pipe === null || tail === null) {
+    return null;
+  }
+  return {
+    negations,
+    pipe,
+    ...(tail.alternatives.length > 0 && { alternatives: tail.alternatives }),
+    ...(tail.fallback && { fallback: tail.fallback }),
+  };
 }
 
 /**
@@ -385,24 +482,9 @@ function readFallback(cursor: Cursor): DynamicTagFallback | null {
 export function parseDynamicTag(expr: string): DynamicTag | null {
   const cursor: Cursor = { at: 0, text: expr };
   take(cursor, SPACE);
-  let negations: DynamicTag["negations"] = 0;
-  if (eat(cursor, "!")) {
-    negations = eat(cursor, "!") ? 2 : 1;
-  }
-  const pipe = readPipe(cursor);
-  if (pipe === null) {
-    return null;
-  }
+  const tag = readTag(cursor);
   take(cursor, SPACE);
-  if (cursor.at === expr.length) {
-    return { negations, pipe };
-  }
-  const fallback = readFallback(cursor);
-  take(cursor, SPACE);
-  if (fallback === null || cursor.at !== expr.length) {
-    return null;
-  }
-  return { fallback, negations, pipe };
+  return cursor.at === expr.length ? tag : null;
 }
 
 // ─── Writing ─────────────────────────────────────────────────────────────────
@@ -428,24 +510,103 @@ function printPipe(pipe: DynamicTagPipe): string {
  * canonical text and not changed, the text it was read from.
  */
 export function printDynamicTag(tag: DynamicTag): string {
+  const alternatives = (tag.alternatives ?? [])
+    .map(({ operator, source }) => ` ${operator} ${printSource(source)}`)
+    .join("");
   const fallback = tag.fallback ? ` ${tag.fallback.operator} ${tag.fallback.value.raw}` : "";
-  return "!".repeat(tag.negations) + printPipe(tag.pipe) + fallback;
+  return "!".repeat(tag.negations) + printSource(tag.pipe) + alternatives + fallback;
+}
+
+function printSource(source: DynamicTagSource): string {
+  return source.type === "group" ? `(${printDynamicTag(source.tag)})` : printPipe(source);
+}
+
+// ─── Sources ─────────────────────────────────────────────────────────────────
+
+/** The sources of a tag as written, in order: the first, then each alternative's. */
+function sourcesOf(tag: DynamicTag): DynamicTagSource[] {
+  return [tag.pipe, ...(tag.alternatives ?? []).map((alternative) => alternative.source)];
+}
+
+/**
+ * Every pipe a tag reads, in the order it reads them, with the pipes of a parenthesised tag in the
+ * place the parentheses stand. `(a ?? '') || b` reads `a`, then `b`. Never empty.
+ */
+export function dynamicTagPipes(tag: DynamicTag): DynamicTagPipe[] {
+  return sourcesOf(tag).flatMap((source) =>
+    source.type === "group" ? dynamicTagPipes(source.tag) : [source],
+  );
+}
+
+/** Where {@link mapDynamicTagPipes} stands: how many pipes it has passed. */
+interface PipeCount {
+  at: number;
+}
+
+function mapSource(
+  source: DynamicTagSource,
+  change: (pipe: DynamicTagPipe, index: number) => DynamicTagPipe,
+  count: PipeCount,
+): DynamicTagSource {
+  if (source.type === "group") {
+    return { tag: mapTag(source.tag, change, count), type: "group" };
+  }
+  const index = count.at;
+  count.at += 1;
+  return change(source, index);
+}
+
+function mapTag(
+  tag: DynamicTag,
+  change: (pipe: DynamicTagPipe, index: number) => DynamicTagPipe,
+  count: PipeCount,
+): DynamicTag {
+  const pipe = mapSource(tag.pipe, change, count);
+  const alternatives = tag.alternatives?.map((alternative) => ({
+    ...alternative,
+    source: mapSource(alternative.source, change, count),
+  }));
+  return { ...tag, pipe, ...(alternatives && { alternatives }) };
+}
+
+/**
+ * `tag` with each of its pipes replaced by what `change` answers for it, in the order and under the
+ * indices of {@link dynamicTagPipes}. Parentheses, operators, `!` and the fallback are kept.
+ */
+export function mapDynamicTagPipes(
+  tag: DynamicTag,
+  change: (pipe: DynamicTagPipe, index: number) => DynamicTagPipe,
+): DynamicTag {
+  return mapTag(tag, change, { at: 0 });
 }
 
 // ─── Describing ──────────────────────────────────────────────────────────────
 
-/** The path a tag reads: its pipe with every formula call peeled off. */
-export function dynamicTagPath(tag: DynamicTag): DynamicTagPath {
-  let { pipe } = tag;
-  while (pipe.type === "call") {
-    pipe = pipe.input;
-  }
-  return pipe;
+/** The first pipe a tag reads: the one its name, its kind and its format are those of. */
+export function dynamicTagPipe(tag: DynamicTag): DynamicTagPipe {
+  return tag.pipe.type === "group" ? dynamicTagPipe(tag.pipe.tag) : tag.pipe;
 }
 
-/** `field` for a tag that prints a value as stored, `format` for one that runs it through a formula. */
+/** The path a pipe reads: the pipe with every formula call peeled off. */
+export function dynamicPipePath(pipe: DynamicTagPipe): DynamicTagPath {
+  let inner = pipe;
+  while (inner.type === "call") {
+    inner = inner.input;
+  }
+  return inner;
+}
+
+/** The path a tag reads first: its first pipe with every formula call peeled off. */
+export function dynamicTagPath(tag: DynamicTag): DynamicTagPath {
+  return dynamicPipePath(dynamicTagPipe(tag));
+}
+
+/**
+ * `field` for a tag that prints a value as stored, `format` for one that runs it through a formula.
+ * A tag that reads several values is of the kind its first one is.
+ */
 export function dynamicTagKind(tag: DynamicTag): "field" | "format" {
-  return tag.pipe.type === "call" ? "format" : "field";
+  return dynamicTagPipe(tag).type === "call" ? "format" : "field";
 }
 
 /** A row and a page are named for what they are, since their root words say little to an author. */
@@ -465,7 +626,7 @@ const ROOT_LABELS: Readonly<Record<DynamicTagRoot, string>> = {
 const CONTAINER_NAMES = new Set(["data"]);
 
 /** The name a step contributes to a label, or `null` for a numeric index or a container word. */
-function stepName(step: DynamicTagStep): string | null {
+export function dynamicTagStepName(step: DynamicTagStep): string | null {
   const name = step.type === "member" ? step.name : step.key.value;
   if (!isString(name) || CONTAINER_NAMES.has(name)) {
     return null;
@@ -489,21 +650,42 @@ export function humanizeIdentifier(name: string): string {
 }
 
 /**
+ * Step names that say how a value is held and not what it is: an image's `src`, a link's `url`, a
+ * field's `value`. A path ending in one is named for the step before it, so
+ * `item.data.featuredImage.src` is "Featured image" and not "Src".
+ */
+const GENERIC_NAMES = new Set(["src", "url", "value"]);
+
+/** Whether a step name is one of the generic keys a tag is not named for when it can be helped. */
+export function isGenericStepName(name: string): boolean {
+  return GENERIC_NAMES.has(name);
+}
+
+/**
  * A short human name for a tag: its last meaningful path segment as words. `$map.item.data.date` is
  * "Date", `state.entry.data` is "Entry", and a path with nothing to name (`$map`, `state[0]`) is
- * named for its root. A caller that knows the content schema's own title for the field prefers
- * that; this is the answer when there is none.
+ * named for its root. A last segment that is a generic key ({@link isGenericStepName}) gives way to
+ * the nearest segment before it that names something, and names the tag only when there is none
+ * (`state.url` is "Url", `$map.item.src` is "Src"). A tag that reads several values is named for
+ * the first. A caller that knows the content schema's own title for the field prefers that; this is
+ * the answer when there is none.
  */
 export function dynamicTagLabel(tag: DynamicTag): string {
   const path = dynamicTagPath(tag);
-  for (const step of path.steps.toReversed()) {
-    const name = stepName(step);
+  let generic = "";
+  for (const [index, step] of [...path.steps.entries()].toReversed()) {
+    // The row word after `$map` is the row and not a field of it: it names nothing a key gives way to.
+    if (generic !== "" && path.root === "$map" && index === 0) {
+      break;
+    }
+    const name = dynamicTagStepName(step);
     const label = name === null ? "" : humanizeIdentifier(name);
-    if (label !== "") {
+    if (label !== "" && name !== null && !isGenericStepName(name)) {
       return label;
     }
+    generic ||= label;
   }
-  return ROOT_LABELS[path.root];
+  return generic === "" ? ROOT_LABELS[path.root] : generic;
 }
 
 // ─── Templates ───────────────────────────────────────────────────────────────

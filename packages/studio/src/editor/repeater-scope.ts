@@ -32,6 +32,7 @@ import {
   isString,
 } from "@jxsuite/schema/guards";
 
+import type { DynamicTagPath } from "@jxsuite/schema/dynamic-tag";
 import type { JxPath } from "../state";
 import type {
   JsonObject,
@@ -431,6 +432,34 @@ export function tagTitlesAt(
     }
   }
   return Object.fromEntries(titles);
+}
+
+/**
+ * The `format` the schema of what `source` reads declares (`uri`, `date-time`), or null where no
+ * schema says: what narrows the formats a tag standing at `path` is offered (studio.md §6.9). A row
+ * field is read off the item in scope at `path`, and a state path off the entry it starts from.
+ */
+export function sourceFormatAt(
+  doc: JxMutableNode,
+  path: JxPath | null | undefined,
+  config: ProjectConfig | null | undefined,
+  source: DynamicTagPath,
+): string | null {
+  const ctx: ItemSources = { config, doc };
+  const names = source.steps.map((step) =>
+    step.type === "member" ? step.name : String(step.key.value),
+  );
+  let schema: JsonObject | null = null;
+  if (source.root === "state") {
+    const [entry, ...rest] = names;
+    schema =
+      entry === undefined ? null : walkSchema(stateSchema(doc.state?.[entry], ctx), rest, ctx);
+  } else if (Array.isArray(path)) {
+    const row = source.root === "$map" ? names[0] : source.root;
+    const rest = source.root === "$map" ? names.slice(1) : names;
+    schema = row === "item" ? walkSchema(itemSchemaAt(path, ctx), rest, ctx) : null;
+  }
+  return isString(schema?.format) ? schema.format : null;
 }
 
 /**

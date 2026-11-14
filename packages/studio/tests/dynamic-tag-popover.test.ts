@@ -173,7 +173,13 @@ const DATE: JxPath = [...EPISODE, "children", 1];
 const IMAGE: JxPath = [...EPISODE, "children", 2];
 const CUSTOM: JxPath = [...EPISODE, "children", 3];
 const BYLINE: JxPath = [...EPISODE, "children", 4];
+const CHAIN: JxPath = [...EPISODE, "children", 5];
+const COVER: JxPath = [...EPISODE, "children", 6];
 const REF: JxPath = ["children", 1];
+const LINK: JxPath = ["children", 2];
+
+const CHAIN_EXPR = "item.data.seo?.title || item.data.title || item.data.author || ''";
+const COVER_EXPR = "(item.data.image ?? '') || '/x.jpg'";
 
 const CUSTOM_EXPR = "(d) => d ? new Date(d).getFullYear() : ''";
 
@@ -197,20 +203,36 @@ function episodes(): JxMutableNode {
             },
             { tagName: "p", textContent: `\${${CUSTOM_EXPR}}` },
             { children: ["By ", "${item.data.author}", { tagName: "em" }], tagName: "p" },
+            { tagName: "h4", textContent: `\${${CHAIN_EXPR}}` },
+            { attributes: { src: `\${${COVER_EXPR}}` }, tagName: "img" },
           ],
           tagName: "article",
         },
       },
       { tagName: "h1", textContent: { $ref: "#/state/heading" } },
+      { attributes: { href: "${state.link.url}" }, tagName: "a", textContent: "More" },
     ],
     state: {
       episodes: {
         default: [
-          { data: { author: "A", date: "2026-10-29", image: "/a.png", title: "One" } },
+          {
+            data: {
+              author: "A",
+              date: "2026-10-29",
+              image: "/a.png",
+              seo: { title: "S" },
+              title: "One",
+            },
+          },
           { data: { author: "B", date: "2026-10-22", image: "/b.png", title: "Two" } },
         ],
       },
       heading: "Episodes",
+      link: {
+        default: { url: "https://example.com/" },
+        properties: { url: { format: "uri", type: "string" } },
+        type: "object",
+      },
     },
     tagName: "main",
   };
@@ -746,6 +768,153 @@ describe("each control rewrites the tag exactly, as one undo step", () => {
     // The template, not a row: every row draws it.
     expect(held(TITLE, "textContent")).toBe("${$map.item.data.title ?? 'Untitled'}");
     expect(JSON.stringify(tab.doc.document.state?.["episodes"])).toContain('"title":"Two"');
+  });
+});
+
+/** The Source controls, in the order the panel lists them. */
+function sourceControls(): HTMLSelectElement[] {
+  return [...panel().querySelectorAll<HTMLSelectElement>('[part="source"] [part="control"]')];
+}
+
+/** The words beside each Source control. */
+function sourceLabels(): string[] {
+  return [...panel().querySelectorAll('[part="source-row"]')].map(
+    /* SAFETY: a source row is a `jx-field`, which declares `label` (a string) as public state. */
+    (row) => (row as HTMLElement & { label: string }).label,
+  );
+}
+
+/** Pick `value` in the Source control at `index`, as a reader does. */
+async function pickSource(index: number, value: string): Promise<void> {
+  const control = sourceControls()[index];
+  if (!control) {
+    throw new TypeError(`the popover draws no source ${index}`);
+  }
+  control.value = value;
+  control.dispatchEvent(new Event("change", { bubbles: true }));
+  await flush(8);
+}
+
+describe("a tag that reads several values in turn", () => {
+  test("a chain is an ordered list of sources, each named for its place", async () => {
+    await open(CHAIN, ["textContent"]);
+    expect(part("fields")).not.toBeNull();
+    expect(part("title")?.textContent).toBe("Title");
+    expect(sourceControls().map((control) => control.value)).toEqual([
+      "item.data.seo.title",
+      "item.data.title",
+      "item.data.author",
+    ]);
+    expect(sourceLabels()).toEqual(["Source", "Then", "Then"]);
+    expect(sourceControls().map((control) => control.getAttribute("aria-label"))).toEqual([
+      "Source",
+      "Then: source 2",
+      "Then: source 3",
+    ]);
+    expect(controlOf("fallback-when").value).toBe("||");
+    expect(controlOf("fallback-text").value).toBe("");
+    // The value before any format is the first source's own.
+    expect(asks[0]?.templates.slice(0, 2)).toEqual([
+      { id: "now", template: `\${${CHAIN_EXPR}}` },
+      { id: "plain", template: "${item.data.seo?.title}" },
+    ]);
+  });
+
+  test("one source is picked where it stands, and picked back restores the text as written", async () => {
+    await open(CHAIN, ["textContent"]);
+    await pickSource(1, "item.data.date");
+    expect(held(CHAIN, "textContent")).toBe(
+      "${item.data.seo?.title || item.data.date || item.data.author || ''}",
+    );
+    expect(tab.history.index).toBe(1);
+    await pickSource(1, "item.data.title");
+    expect(held(CHAIN, "textContent")).toBe(`\${${CHAIN_EXPR}}`);
+    // The first, with its optional step, comes back as it was written too.
+    await pickSource(0, "item.data.date");
+    expect(held(CHAIN, "textContent")).toBe(
+      "${item.data.date || item.data.title || item.data.author || ''}",
+    );
+    await pickSource(0, "item.data.seo.title");
+    expect(held(CHAIN, "textContent")).toBe(`\${${CHAIN_EXPR}}`);
+    expect(tab.history.index).toBe(4);
+  });
+
+  test("a fallback on the other condition, and a question, are said of the whole chain", async () => {
+    await open(CHAIN, ["textContent"]);
+    await commit("fallback-when", "??");
+    expect(held(CHAIN, "textContent")).toBe(
+      "${(item.data.seo?.title || item.data.title || item.data.author) ?? ''}",
+    );
+    // Still one tag with three sources, read through the parentheses.
+    expect(sourceControls()).toHaveLength(3);
+    undo(tab);
+    await flush(8);
+    await commit("show", "1");
+    expect(held(CHAIN, "textContent")).toBe(
+      "${!(item.data.seo?.title || item.data.title || item.data.author) || ''}",
+    );
+    expect(controlOf("show").value).toBe("1");
+  });
+
+  test("a parenthesised path before a fallback has fields, and its outer fallback is the field", async () => {
+    answers.set(`\${${COVER_EXPR}}`, { text: "/a.png" });
+    await open(COVER, ["attributes", "src"]);
+    expect(part("fields")).not.toBeNull();
+    expect(advanced().open).toBe(false);
+    expect(sourceControls().map((control) => control.value)).toEqual(["item.data.image"]);
+    expect(controlOf("fallback-when").value).toBe("||");
+    expect(controlOf("fallback-text").value).toBe("/x.jpg");
+    await commit("fallback-text", "/none.jpg");
+    expect(getNodeAtPath(tab.doc.document, COVER)?.attributes?.["src"]).toBe(
+      "${(item.data.image ?? '') || '/none.jpg'}",
+    );
+    await pickSource(0, "item.data.title");
+    expect(getNodeAtPath(tab.doc.document, COVER)?.attributes?.["src"]).toBe(
+      "${(item.data.title ?? '') || '/none.jpg'}",
+    );
+  });
+
+  test("text typed into Advanced that the grammar covers keeps the fields", async () => {
+    await open(TITLE, ["textContent"]);
+    await typeDraft("($map.item.data.title ?? '') || $map.item.data.author || 'Untitled'");
+    // Not a Custom expression: nothing is said, and Apply gives the tag its fields back.
+    expect(part("advanced-note")?.textContent).toBe("");
+    await apply();
+    expect(held(TITLE, "textContent")).toBe(
+      "${($map.item.data.title ?? '') || $map.item.data.author || 'Untitled'}",
+    );
+    expect(part("fields")).not.toBeNull();
+    expect(sourceControls().map((control) => control.value)).toEqual([
+      "item.data.title",
+      "item.data.author",
+    ]);
+    // Arithmetic is still code, and says so before it is applied.
+    await typeDraft("($map.item.data.title ?? 0) + 1");
+    expect(part("advanced-note")?.textContent).toBe("Kept as a custom expression.");
+  });
+
+  test("a formula a later source calls is copied in with the write", async () => {
+    await open(TITLE, ["textContent"]);
+    await typeDraft("$map.item.data.title || state.formatDate($map.item.data.date)");
+    await apply();
+    expect(tab.doc.document.state?.["formatDate"]).toBeDefined();
+  });
+});
+
+describe("a URL is offered no formula for text", () => {
+  test("the field's schema format narrows the list, and a plain string keeps it", async () => {
+    await open(TITLE, ["textContent"]);
+    const plain = formats();
+    expect(plain).toContain("capitalize:");
+    expect(plain).toContain("escapeHtml:");
+    await open(LINK, ["attributes", "href"]);
+    const offered = formats();
+    for (const text of ["capitalize:", "escapeHtml:", "initials:"]) {
+      expect(offered).not.toContain(text);
+    }
+    // What declares no type takes anything, a URL included.
+    expect(offered).toContain("orBlank:");
+    expect(offered[0]).toBe("*");
   });
 });
 
