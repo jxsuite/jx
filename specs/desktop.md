@@ -2,9 +2,9 @@
 
 ## Platform Abstraction, Project Loading, and Component Scoping
 
-**Version:** 0.7.21-draft\
+**Version:** 0.7.22-draft\
 **Status:** Partial\
-**Updated:** 2026-11-13\
+**Updated:** 2026-11-14\
 **License:** MIT
 
 ---
@@ -1161,6 +1161,7 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.7.22-draft** (2026-11-14) — §7.7: a desktop release is submitted to App Review after its upload (the mas-submit job), App Review accepted 8.0.1 (483), and the export compliance answer stays a person's.
 - **0.7.21-draft** (2026-11-13) — §7.1 and §9.3: the compiler's native addon is staged as one file beside the backend bundle and built from source by the Nix package, replacing the staged and patched sharp binaries.
 - **0.7.20-draft** (2026-11-13) — §9.3: the Nix package adds sharp's RPATH with patchelfUnstable, because nixpkgs' patchelf 0.15.2 corrupts those binaries.
 - **0.7.19-draft** (2026-11-13) — §3.5: the preview-navigation override routes the pages Studio opens outside itself (Open in Browser, Publish links, sign-in) and no longer mentions Preview mode; §9.5: the browser's own context menu is left to the canvas margin rather than a link in Preview.
@@ -1267,4 +1268,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_Jx Studio Desktop Architecture Specification v0.7.21-draft_
+_Jx Studio Desktop Architecture Specification v0.7.22-draft_
