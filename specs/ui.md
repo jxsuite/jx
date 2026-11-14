@@ -422,13 +422,26 @@ The manifest is one key space: a `name` on `jx-icon`, an `icon` on a Studio comm
 
 ## 9. Build and Distribution
 
-> **Status: Implemented.** `registerUi()` (`packages/ui/src/index.ts`), the `@layer jx-ui` theme and the stylebook (one page per element under `stylebook/`, read by the conformance test) are built.
+> **Status: Implemented.** `registerUi()` (`packages/ui/src/index.ts`), the `@layer jx-ui` theme, the stylebook (one page per element under `stylebook/`, read by the conformance test) and the optional compiled distribution (`scripts/build-ui-dist.ts`, proved by `scripts/build-ui-dist.test.ts`) are built.
 
-> **Status: Future.** A compiled distribution. §1 calls it a later optimisation and never a correctness dependency, so the kit ships JSON sources and TypeScript until one is wanted.
-
-`@jxsuite/ui` ships JSON sources and TypeScript, not compiled classes. `registerUi()` preloads every component document under `jx-ui:/components/<tag>.json` and every behaviour module under the `$src` specifier the documents spell, then defines each element through the runtime's `defineElement`, and adopts the theme (embedding.md §6). It is idempotent per realm and touches no network.
+`@jxsuite/ui` ships JSON sources and TypeScript, and registers by interpreting them. `registerUi()` preloads every component document under `jx-ui:/components/<tag>.json` and every behaviour module under the `$src` specifier the documents spell, then defines each element through the runtime's `defineElement`, and adopts the theme (embedding.md §6). It is idempotent per realm and touches no network.
 
 The theme sheet is wrapped in one cascade layer, `@layer jx-ui`. A site's or Studio's own rules are unlayered and therefore win over a kit token by cascade order, never by specificity; Jx's own style emitter stays unlayered (spec.md §9.6).
+
+**A compiled distribution is the optional other path.** §1 calls it an optimisation and never a correctness dependency, so it changes nothing about `registerUi()`, which stays the default and the only path Studio uses. The published package also carries `dist/`: every component document compiled ahead of time by `compileElementPack` (compiler.md §4.9), for a page that ships the kit and wants element classes without the documents or the interpreter that reads them.
+
+| In `dist/`                  | Imported as                         | Holds                                                                         |
+| --------------------------- | ----------------------------------- | ----------------------------------------------------------------------------- |
+| `index.js`                  | `@jxsuite/ui/compiled`              | One import per element: importing it defines the whole kit                    |
+| `<tag>.js`                  | `@jxsuite/ui/compiled/<tag>.js`     | One element, importing the elements it renders, so it can be loaded alone     |
+| `chunks/`                   | (by the modules above)              | What two or more elements share: the behaviour modules, compiled from `src/`  |
+| `elements.css`, `<tag>.css` | `@jxsuite/ui/compiled/elements.css` | The elements' own rules, which the interpreter would have adopted at run time |
+| `theme.css`                 | `@jxsuite/ui/compiled/theme.css`    | The theme sheet, in its `@layer jx-ui`                                        |
+| `custom-elements.json`      | `@jxsuite/ui/custom-elements.json`  | The kit's Custom Elements Manifest (spec.md §16.8)                            |
+
+The modules are JavaScript with two bare imports, `lit-html` and `@vue/reactivity`, which the package declares as optional peers: only this path needs them. A page that uses it links the two stylesheets itself, since a compiled element adopts no sheet. The compiled elements keep the contract of §3: the same attributes and properties, the same parts, the same events, and the same behaviour modules, which the build compiles into the pack. A realm registers the kit one way or the other, never both: each path defines the same tags.
+
+`dist/` is a build output, never committed. `bun run build:ui` writes it and the root `bun run build`, which a release runs before it packs, includes it. `package.json` does not name the manifest in a `customElements` field: a tool that reads that field would offer the compiled modules to a project whose host already registers the kit by interpretation, and the two would define one tag twice.
 
 The kit is a Jx project (`packages/ui/project.json`): Studio opens it, the Library pane lists its components, and `stylebook/` holds one page per element showing every variant and state. A conformance test validates every document against the schema, runs the overlay lint over it, and refuses a raw colour or an internal node without a `part`.
 

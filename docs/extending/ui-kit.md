@@ -16,6 +16,7 @@ spec:
   - ui.md#9 # build and distribution
 code:
   - packages/ui/src/index.ts
+  - scripts/build-ui-dist.ts
   - packages/ui/src/theme.ts
   - packages/ui/src/icons.ts
   - packages/ui/src/behaviors/menu.ts
@@ -57,6 +58,24 @@ await registerUi();
 `registerUi()` defines every kit element in the current page and adopts the theme. It reads its documents from your bundle, so nothing is fetched. Calling it again does nothing.
 
 Pass `{ theme: false }` to skip the theme, or `{ document }` to target another document.
+
+### Or load the compiled elements
+
+`registerUi()` interprets the kit's documents in the page, which needs the Jx runtime. The published package also carries the same elements compiled ahead of time. Use them when a page ships the kit and you want element classes with nothing to interpret:
+
+```ts
+import "@jxsuite/ui/compiled";
+import "@jxsuite/ui/compiled/theme.css";
+import "@jxsuite/ui/compiled/elements.css";
+```
+
+The first import defines every element. To load only some, import each by its tag, such as `@jxsuite/ui/compiled/jx-button.js`. An element imports the ones it renders.
+
+The compiled modules import `lit-html` and `@vue/reactivity` by name, so install both. The two stylesheets hold the theme and the elements' own rules. Link them yourself, because a compiled element adopts no styles.
+
+The elements behave the same either way: the same attributes, properties, parts and events. Use one path per page, not both, since each defines the same tags. Studio always uses `registerUi()`.
+
+`@jxsuite/ui/custom-elements.json` is the kit's [Custom Elements Manifest](/docs/framework/build#the-custom-elements-manifest), for editors and documentation tools.
 
 ## Use the theme
 

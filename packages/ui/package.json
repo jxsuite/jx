@@ -14,6 +14,7 @@
     "theme/",
     "icons/",
     "stylebook/",
+    "dist",
     "project.json"
   ],
   "type": "module",
@@ -23,6 +24,9 @@
     "./icons": "./src/icons.ts",
     "./documents": "./src/documents.ts",
     "./loaders": "./src/loaders.ts",
+    "./compiled": "./dist/index.js",
+    "./compiled/*": "./dist/*",
+    "./custom-elements.json": "./dist/custom-elements.json",
     "./color": "./src/color.ts",
     "./behaviors/color-area": "./src/behaviors/color-area.ts",
     "./behaviors/color-field": "./src/behaviors/color-field.ts",
@@ -52,6 +56,7 @@
     "provenance": true
   },
   "scripts": {
+    "build": "bun ../../scripts/build-ui-dist.ts",
     "build:icons": "bun run scripts/build-icons.ts",
     "test": "bun test --isolate",
     "test:coverage": "bun test --isolate --coverage",
@@ -65,5 +70,17 @@
     "@happy-dom/global-registrator": "^21.0.4",
     "@jxsuite/test-support": "workspace:^",
     "@phosphor-icons/core": "^2.1.1"
+  },
+  "peerDependencies": {
+    "@vue/reactivity": "3.5.45",
+    "lit-html": "^3.3.3"
+  },
+  "peerDependenciesMeta": {
+    "@vue/reactivity": {
+      "optional": true
+    },
+    "lit-html": {
+      "optional": true
+    }
   }
 }
