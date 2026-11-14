@@ -10,7 +10,11 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { basename, extname, resolve } from "node:path";
-import { imageMetadata, processImage as encodeVariants } from "@jxsuite/compiler-binding";
+import {
+  DEFAULT_IMAGE_QUALITY,
+  imageMetadata,
+  processImage as encodeVariants,
+} from "@jxsuite/compiler-binding";
 
 import type { ImageQuality } from "@jxsuite/compiler-binding";
 
@@ -37,7 +41,8 @@ export interface ImageConfig {
    * the quality of its transform URLs; `png` is accepted so existing projects still validate.
    */
   quality: { webp?: number; avif?: number; jpeg?: number; png?: number };
-  sizes: string;
+  /** The project-wide fallback `sizes`. A site build always has one; a direct caller may not. */
+  sizes?: string;
   lazyLoad: boolean;
   /**
    * Wrap a multi-format image in a `<picture>` with one `<source>` per format. Default true.
@@ -91,22 +96,52 @@ export function contentHash(srcPath: string) {
  * because `/images/_optimized/*` is served as immutable: the same name must always be the same
  * bytes, and a new encoder writes different bytes for an unchanged source.
  *
- * 1 → 2: variants stop at the largest configured width (compiler.md §7.2).
+ * 1 → 2: variants stop at the largest configured width (site-architecture.md §9.2.2).
  *
  * 2 → 3: the Rust core encodes. EXIF orientation is applied, embedded colour profiles are converted
  * to sRGB, WebP is lossless, and a transparent source asked for as JPEG is PNG.
+ *
+ * 3 → 4: a variant's filename digest covers its format and that format's quality
+ * (site-architecture.md §9.2.5).
  */
-const PIPELINE_VERSION = 3;
+const PIPELINE_VERSION = 4;
+
+/** The quality recorded for a format the encoder writes losslessly and the project gave none. */
+const LOSSLESS_QUALITY = 100;
 
 /**
- * The hash in a variant's file name: the source's bytes and the pipeline that encoded them.
+ * The quality one format is encoded at: the project's, else the encoder's default for it.
+ *
+ * @param {ImageConfig["quality"]} quality
+ * @param {string} format
+ * @returns {number}
+ */
+export function qualityFor(quality: ImageConfig["quality"], format: string): number {
+  const configured = new Map<string, number | undefined>(Object.entries(quality)).get(format);
+  if (configured !== undefined) {
+    return configured;
+  }
+  const defaults = new Map<string, number>(Object.entries(DEFAULT_IMAGE_QUALITY));
+  return defaults.get(format) ?? LOSSLESS_QUALITY;
+}
+
+/**
+ * The hash in a variant's file name: the source's bytes, the pipeline that encoded them, and the
+ * format and quality they were encoded at.
+ *
+ * The settings are in it because the encoder keeps a variant whose file already exists, and
+ * `/images/_optimized/*` is served as immutable. Named from the source alone, a changed quality
+ * found the old files under the same names and kept them, and a host with a cold cache shipped new
+ * bytes at a URL returning visitors held for a year.
  *
  * @param {string} srcPath - Absolute path to source image
+ * @param {string} format - The format the variant was asked for in
+ * @param {number} quality - The quality that format is encoded at
  * @returns {string} 8-character hex hash
  */
-export function variantHash(srcPath: string) {
+export function variantHash(srcPath: string, format: string, quality: number) {
   return createHash("md5")
-    .update(`${contentHash(srcPath)}:${PIPELINE_VERSION}`)
+    .update(`${contentHash(srcPath)}:${PIPELINE_VERSION}:${format}:${quality}`)
     .digest("hex")
     .slice(0, 8);
 }
@@ -129,15 +164,15 @@ export function configHash(config: ImageConfig) {
 
 /**
  * Process a single source image: resize to each configured width, encode to each format. Writes
- * variants to cacheImgDir/_optimized/ (e.g. .cache/images/_optimized/).
+ * variants to cacheImgDir/_optimized/, the image cache (`getImageCacheDir`).
  *
  * The width ladder is the configured one capped at the source's own width, plus the source's native
  * width when it is narrower than the top rung; a source wider than the top rung stops there. A
  * variant whose file already exists is not encoded again, because its name carries a hash of the
- * source's bytes and the pipeline version.
+ * source's bytes, the pipeline version, and its format and quality (`variantHash`).
  *
  * @param {string} srcPath - Absolute path to source image
- * @param {string} cacheImgDir - Absolute path to the image cache directory (.cache/images/)
+ * @param {string} cacheImgDir - Absolute path to the image cache directory
  * @param {ImageConfig} config
  * @returns {Promise<ImageManifest>}
  */
@@ -156,7 +191,12 @@ export async function processImage(
   }
   const encoded = await encodeVariants({
     formats: config.formats,
-    hash: variantHash(srcPath),
+    hashes: Object.fromEntries(
+      config.formats.map((format) => [
+        format,
+        variantHash(srcPath, format, qualityFor(config.quality, format)),
+      ]),
+    ),
     outDir: optimizedDir,
     quality,
     source: srcPath,

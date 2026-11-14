@@ -32,8 +32,8 @@ export interface HeaderRuleSet {
 
 /**
  * The only content-addressed output the build produces. A variant's file name embeds an 8-character
- * digest of the source bytes, so a changed image is a changed URL and the old one can be cached
- * forever (RFC 8246).
+ * digest of the source bytes and the settings they were encoded with, so a changed image or a
+ * changed quality is a changed URL and the old one can be cached forever (RFC 8246).
  */
 export const IMMUTABLE_PATTERN = "/images/_optimized/*";
 

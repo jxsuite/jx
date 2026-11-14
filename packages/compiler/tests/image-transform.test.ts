@@ -548,6 +548,21 @@ describe("image-transform", () => {
       expect(doc.src).toBeUndefined();
     });
 
+    test("an authored srcset leaves a node image to its author", async () => {
+      const doc: any = {
+        attributes: { src: "/images/hero.png", srcset: "/mine-640.png 640w" },
+        tagName: "img",
+      };
+
+      await transformImageNodes(doc, defaultConfig, TMP, { entries: {}, version: 1 });
+
+      expect(processImage).not.toHaveBeenCalled();
+      expect(doc.tagName).toBe("img");
+      expect(doc.attributes.srcset).toBe("/mine-640.png 640w");
+      expect(doc.attributes.loading).toBe("lazy");
+      expect(doc.attributes.width).toBeUndefined();
+    });
+
     /*
      * The static emitter renders a fixed set of node-level DOM properties and `src` is not among
      * them, so an image written this way used to reach the page with a `srcset` and no `src` — the
@@ -580,7 +595,7 @@ describe("image-transform", () => {
       expect(doc.attributes.srcset).toBeUndefined();
     });
 
-    test("skips GIF images", async () => {
+    test("every gif is skipped", async () => {
       writeFileSync(join(TMP, "public/images/anim.gif"), "GIF89a");
       const doc: any = {
         attributes: { src: "/images/anim.gif" },
@@ -590,6 +605,32 @@ describe("image-transform", () => {
 
       await transformImageNodes(doc, defaultConfig, TMP, cache);
       expect(doc.attributes.srcset).toBeUndefined();
+    });
+
+    test("a local file outside the raster allowlist is left alone", async () => {
+      // None of these is a format the encoder decodes; each used to reach it and fail its route.
+      for (const path of ["favicon.ico", "images/clip.heic", "images/photo"]) {
+        writeFileSync(join(TMP, "public", path), "not a raster the encoder reads");
+        const doc: any = { attributes: { src: `/${path}` }, tagName: "img" };
+
+        await transformImageNodes(doc, defaultConfig, TMP, { entries: {}, version: 1 });
+
+        expect(doc.tagName).toBe("img");
+        expect(doc.attributes.srcset).toBeUndefined();
+        expect(doc.attributes.width).toBeUndefined();
+        expect(doc.attributes.loading).toBe("lazy");
+      }
+      expect(processImage).not.toHaveBeenCalled();
+    });
+
+    test("a .tif is processed like a .tiff", async () => {
+      for (const name of ["scan.tif", "scan.tiff", "SCAN.JPG"]) {
+        writeFileSync(join(TMP, "public/images", name), "fake-tiff-data");
+        const doc: any = { attributes: { src: `/images/${name}` }, tagName: "img" };
+        await transformImageNodes(doc, defaultConfig, TMP, { entries: {}, version: 1 });
+        expect(sourcesOf(doc)).toHaveLength(2);
+      }
+      expect(processImage).toHaveBeenCalledTimes(3);
     });
 
     test("skips external URLs", async () => {
@@ -830,6 +871,39 @@ describe("image-transform", () => {
       expect(doc.innerHTML).not.toContain("cdn-cgi");
       expect(doc.innerHTML).toContain('loading="lazy"');
       expect(getImageMetadata).not.toHaveBeenCalled();
+    });
+
+    test("an allowlisted remote URL with no extension still gets a transform srcset", async () => {
+      // The remote rule is a denylist: a remote URL often has no extension at all.
+      const config = { ...cfConfig, remoteDomains: ["cdn.example.com"] };
+      const doc: any = {
+        attributes: { src: "https://cdn.example.com/photos/abc123" },
+        tagName: "img",
+      };
+      await transformImageNodes(doc, config, TMP, null, new Map());
+      expect(doc.attributes.srcset).toContain(
+        "/cdn-cgi/image/width=640,quality=75,fit=scale-down,format=auto/https://cdn.example.com/photos/abc123 640w",
+      );
+
+      const svg: any = {
+        attributes: { src: "https://cdn.example.com/logo.svg" },
+        tagName: "img",
+      };
+      await transformImageNodes(svg, config, TMP, null, new Map());
+      expect(svg.attributes.srcset).toBeUndefined();
+    });
+
+    test("a local avif is still resized by Cloudflare, and a non-raster file is not", async () => {
+      writeFileSync(join(TMP, "public/images/photo.avif"), "avif bytes");
+      writeFileSync(join(TMP, "public/favicon.ico"), "ico bytes");
+      const avif: any = { attributes: { src: "/images/photo.avif" }, tagName: "img" };
+      const ico: any = { attributes: { src: "/favicon.ico" }, tagName: "img" };
+
+      await transformImageNodes(avif, cfConfig, TMP, null, new Map());
+      await transformImageNodes(ico, cfConfig, TMP, null, new Map());
+
+      expect(avif.attributes.srcset).toContain("/cdn-cgi/image/width=640,");
+      expect(ico.attributes.srcset).toBeUndefined();
     });
 
     test("optimizes allowlisted remote sources with an unclamped srcset", async () => {
@@ -1145,6 +1219,120 @@ describe("image-transform — sizes derived from the container", () => {
        absent member is exactly the "no project default" case under test. */
     await transformImageNodes(doc, noSizes as ImageConfig, TMP, cache());
     expect(sourcesOf(doc)[0].attributes.sizes).toBeUndefined();
+  });
+});
+
+describe("image-transform — the innerHTML half matches the node half", () => {
+  beforeEach(() => {
+    setup();
+    processImage.mockReset();
+    processImage.mockResolvedValue(mockManifest);
+  });
+  afterEach(() => {
+    teardown();
+  });
+
+  const cache = () => ({ entries: {}, version: 1 });
+  const oneFormat = { ...defaultConfig, formats: ["avif"] };
+  const count = (html: string, needle: string) => html.split(needle).length - 1;
+
+  test("the node holding the innerHTML derives sizes", async () => {
+    const doc: any = {
+      innerHTML: '<p><img src="/images/hero.png" alt=""></p>',
+      style: { maxWidth: "720px" },
+      tagName: "div",
+    };
+    await transformImageNodes(doc, defaultConfig, TMP, cache());
+    expect(count(doc.innerHTML, "<source ")).toBe(2);
+    expect(count(doc.innerHTML, 'sizes="(max-width: 720px) 100vw, 720px"')).toBe(2);
+
+    // An ancestor narrower than the holder bounds it, as it bounds a node image.
+    const nested: any = {
+      children: [{ innerHTML: '<img src="/images/hero.png">', tagName: "article" }],
+      style: { width: "20rem" },
+      tagName: "div",
+    };
+    await transformImageNodes(nested, oneFormat, TMP, cache());
+    expect(nested.children[0].innerHTML).toContain('sizes="(max-width: 320px) 100vw, 320px"');
+  });
+
+  test("a sizes on the tag is kept and not duplicated", async () => {
+    const html = '<img src="/images/hero.png" sizes="42px" alt="">';
+    const single: any = { innerHTML: html, style: { maxWidth: "720px" }, tagName: "div" };
+    await transformImageNodes(single, oneFormat, TMP, cache());
+    expect(count(single.innerHTML, "sizes=")).toBe(1);
+    expect(single.innerHTML).toContain('sizes="42px"');
+
+    const wrapped: any = { innerHTML: html, style: { maxWidth: "720px" }, tagName: "div" };
+    await transformImageNodes(wrapped, defaultConfig, TMP, cache());
+    // Both sources carry the author's value, and the fallback <img> carries none.
+    expect(count(wrapped.innerHTML, 'sizes="42px"')).toBe(2);
+    expect(/<img[^>]*sizes=/.test(wrapped.innerHTML)).toBe(false);
+    expect(wrapped.innerHTML).toContain('<img src="/images/hero.png" alt=""');
+  });
+
+  test("no project sizes and no container writes no sizes attribute", async () => {
+    const { sizes: _dropped, ...noSizes } = defaultConfig;
+    for (const config of [
+      noSizes,
+      { ...noSizes, formats: ["avif"] },
+      { ...oneFormat, sizes: "" },
+    ]) {
+      const doc: any = { innerHTML: '<img src="/images/hero.png">', tagName: "div" };
+      await transformImageNodes(doc, config, TMP, cache());
+      expect(doc.innerHTML).toContain("srcset=");
+      expect(doc.innerHTML).not.toContain("sizes=");
+    }
+  });
+
+  test("the fallback src points at the largest png variant", async () => {
+    const png = (width: number) => ({
+      absolutePath: `/tmp/fake-${width}.png`,
+      format: "png",
+      outputPath: `/_optimized/hero-${width}-abc.png`,
+      width,
+    });
+    processImage.mockResolvedValue({
+      ...mockManifest,
+      variants: [...mockManifest.variants, png(640), png(1200)],
+    });
+    const config = { ...defaultConfig, formats: ["avif", "webp", "png"] };
+    const doc: any = {
+      innerHTML: '<img class="hero" src="/images/hero.png" alt="Hero">',
+      tagName: "div",
+    };
+    await transformImageNodes(doc, config, TMP, cache());
+    expect(doc.innerHTML).toContain(
+      '<img class="hero" src="/_optimized/hero-1200-abc.png" alt="Hero"',
+    );
+    expect(doc.innerHTML).not.toContain('src="/images/hero.png"');
+
+    const bare: any = { innerHTML: '<img src="/images/hero.png">', tagName: "div" };
+    await transformImageNodes(bare, { ...config, picture: false }, TMP, cache());
+    expect(bare.innerHTML).toContain('<img src="/_optimized/hero-1200-abc.png" srcset=');
+  });
+
+  test("data-src is not read as the src", async () => {
+    const doc: any = {
+      innerHTML: '<img data-src="/images/missing.png" src="/images/hero.png">',
+      tagName: "div",
+    };
+    await transformImageNodes(doc, oneFormat, TMP, cache());
+    expect(processImage).toHaveBeenCalledTimes(1);
+    expect(doc.innerHTML).toContain(' srcset="/_optimized/hero-640-abc.avif 640w');
+    expect(doc.innerHTML).toContain('data-src="/images/missing.png"');
+  });
+
+  test("a data-srcset is not an authored srcset", async () => {
+    const doc: any = {
+      innerHTML: '<img src="/images/hero.png" data-srcset="x" data-width="9" data-height="9">',
+      tagName: "div",
+    };
+    await transformImageNodes(doc, oneFormat, TMP, cache());
+    expect(processImage).toHaveBeenCalledTimes(1);
+    expect(doc.innerHTML).toContain(' srcset="/_optimized/hero-640-abc.avif 640w');
+    // And `data-width` is not `width`: the intrinsic size is still written.
+    expect(doc.innerHTML).toContain(' width="1200" height="800"');
   });
 });
 

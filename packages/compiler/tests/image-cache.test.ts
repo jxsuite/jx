@@ -1,15 +1,19 @@
 import { describe, expect, test } from "bun:test";
 import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, sep } from "node:path";
 import {
   _testResetNpmCacheBase,
+  _testSetNpmCacheBase,
   cacheKey,
   getCached,
   getImageCacheDir,
   loadCache,
   saveCache,
   setCached,
+  usedVariantPaths,
 } from "../src/site/image-cache";
+
+import type { CacheManifest } from "../src/site/image-cache";
 
 const TMP = join(import.meta.dir, "__test-image-cache__");
 
@@ -101,11 +105,74 @@ describe("image-cache", () => {
   test("takes npm's cache from the environment without running npm", () => {
     // PATH is empty, so a probe would fail and fall back: only the environment can name this.
     withEnv({ ...NO_NPM_ENV, PATH: "", npm_config_cache: "/env/npm-cache" }, () => {
-      expect(getImageCacheDir(TMP)).toBe("/env/npm-cache/jxsuite-images/__test-image-cache__");
+      expect(getImageCacheDir(TMP)).toMatch(
+        /^\/env\/npm-cache\/jxsuite-images\/__test-image-cache__-[0-9a-f]{8}$/,
+      );
     });
     withEnv({ ...NO_NPM_ENV, NPM_CONFIG_CACHE: "/ENV/npm-cache", PATH: "" }, () => {
-      expect(getImageCacheDir(TMP)).toBe("/ENV/npm-cache/jxsuite-images/__test-image-cache__");
+      expect(getImageCacheDir(TMP)).toMatch(
+        /^\/ENV\/npm-cache\/jxsuite-images\/__test-image-cache__-[0-9a-f]{8}$/,
+      );
     });
+  });
+
+  /* Each case below pins the npm branch: on a host without npm both roots would take the
+     in-project fallback, and the first case would pass without testing anything. */
+  test("two roots with one basename get two cache directories", () => {
+    _testSetNpmCacheBase(join(TMP, "npm"));
+    try {
+      const first = getImageCacheDir(join(TMP, "a", "site"));
+      const second = getImageCacheDir(join(TMP, "b", "site"));
+      expect(first).not.toBe(second);
+      for (const dir of [first, second]) {
+        expect(dir.startsWith(join(TMP, "npm", "jxsuite-images"))).toBe(true);
+        expect(dir).toMatch(/[\\/]site-[0-9a-f]{8}$/);
+      }
+    } finally {
+      _testResetNpmCacheBase();
+    }
+  });
+
+  test("one root always resolves to the same directory", () => {
+    _testSetNpmCacheBase(join(TMP, "npm"));
+    try {
+      const root = join(TMP, "a", "site");
+      expect(getImageCacheDir(root)).toBe(getImageCacheDir(root));
+      // A trailing separator or a `.` segment names the same project.
+      expect(getImageCacheDir(join(root, ".") + sep)).toBe(getImageCacheDir(root));
+    } finally {
+      _testResetNpmCacheBase();
+    }
+  });
+
+  test("usedVariantPaths lists each touched entry's variants once", () => {
+    const variant = (name: string) => ({
+      absolutePath: `/cache/_optimized/${name}`,
+      format: "avif",
+      outputPath: `/images/_optimized/${name}`,
+      width: 320,
+    });
+    const entry = (...names: string[]) => ({
+      manifest: { contentHash: "abcd1234", variants: names.map((name) => variant(name)) },
+      source: "/images/x.png",
+      timestamp: 0,
+    });
+    const cache: CacheManifest = {
+      entries: {
+        one: entry("a.avif", "shared.avif"),
+        two: entry("shared.avif", "b.avif"),
+        untouched: entry("stale.avif"),
+      },
+      // "failed" was looked up and never stored: its image did not encode.
+      touched: new Set(["one", "two", "failed"]),
+      version: 1,
+    };
+    expect(usedVariantPaths(cache).toSorted()).toEqual([
+      "/cache/_optimized/a.avif",
+      "/cache/_optimized/b.avif",
+      "/cache/_optimized/shared.avif",
+    ]);
+    expect(usedVariantPaths({ entries: cache.entries, version: 1 })).toEqual([]);
   });
 
   test.skipIf(process.platform === "win32")(

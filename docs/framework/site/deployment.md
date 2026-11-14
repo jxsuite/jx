@@ -61,7 +61,7 @@ The build writes `dist/_headers` because cacheability is something only the buil
   Cache-Control: public, max-age=31536000, immutable
 ```
 
-Only the optimized images are cached forever, because their filenames embed a hash of the source and of the encoder version that wrote them, so a changed image is a changed URL. **Your component JS and CSS are not**, deliberately: `components/site-header.js` keeps the same URL when you edit the component, so caching it forever would serve stale code to everyone who visited before the edit.
+Only the optimized images are cached forever, because their filenames embed a hash of the source and of the format and quality it was encoded at, so a changed image or a changed quality is a changed URL. **Your component JS and CSS are not**, deliberately: `components/site-header.js` keeps the same URL when you edit the component, so caching it forever would serve stale code to everyone who visited before the edit.
 
 **Cloudflare Pages, Cloudflare Workers and Netlify** read this file. The `node` and `bun` adapters serve no static assets, so there it is a description of what the reverse proxy in front of them should send, and the build says so when you use one.
 
@@ -208,7 +208,7 @@ Also off by default, and this one for a sharper reason than the rest: a service 
 That writes `dist/sw.js` and adds a small registration script to every page. What it does:
 
 - **HTML is always network-first.** The cache is a fallback for a request that failed, never a substitute for one; otherwise a stale page outlives every attempt you make to fix it.
-- **Only `/images/_optimized/*` is cache-first**, because it's the one output whose filename contains a hash of its own contents. A cached hit there can't be wrong. Your components and assets aren't cached first for the same reason they aren't marked `immutable`: editing one reuses its URL.
+- **Only `/images/_optimized/*` is cache-first**, because it's the one output whose filename embeds a hash of the source and of the format and quality it was encoded at. A cached hit there can't be wrong. Your components and assets aren't cached first for the same reason they aren't marked `immutable`: editing one reuses its URL.
 - **Sessions and data are never cached.** The worker leaves every `/_jx/*` request alone, so a signed-in visitor's session and rows always come from the network, and it doesn't keep any response your host marks `Cache-Control: no-store` or `private`.
 - **`offlineFallback` is served for a failed navigation.** If you forget to precache it, the build adds it and tells you, because a page that was never cached can't be served offline.
 

@@ -5,6 +5,7 @@
 //! is never blocked on an encoder; inside a call, work fans out across rayon's pool, whose size is
 //! the machine's parallelism and is the pipeline's one concurrency limit.
 
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 use napi::bindgen_prelude::{AsyncTask, Error, Result, Status};
@@ -29,8 +30,8 @@ pub struct ImageRequest {
     pub out_dir: String,
     /// The file-name stem of every variant.
     pub stem: String,
-    /// The source's content hash, part of every variant's name.
-    pub hash: String,
+    /// The hash in each variant's name, keyed by the format name it was asked for under.
+    pub hashes: HashMap<String, String>,
     /// The configured width ladder.
     pub widths: Vec<u32>,
     /// Output format names: `avif`, `jpeg`, `png`, `webp`.
@@ -119,8 +120,8 @@ impl Task for ProcessImage {
 ///
 /// # Errors
 ///
-/// Rejects when a format name is unknown, the source cannot be decoded, or a file cannot be
-/// written.
+/// Rejects when a format name is unknown or has no hash, the source cannot be decoded, or a file
+/// cannot be written.
 #[napi]
 pub fn process_image(request: ImageRequest) -> Result<AsyncTask<ProcessImage>> {
     let defaults = jx_media::Quality::default();
@@ -130,12 +131,18 @@ pub fn process_image(request: ImageRequest) -> Result<AsyncTask<ProcessImage>> {
         .map(|name| name.parse::<jx_media::Format>())
         .collect::<jx_media::Result<Vec<_>>>()
         .map_err(|error| failure(&error))?;
+    let hashes = request
+        .hashes
+        .into_iter()
+        .map(|(name, hash)| Ok((name.parse::<jx_media::Format>()?, hash)))
+        .collect::<jx_media::Result<HashMap<_, _>>>()
+        .map_err(|error| failure(&error))?;
     let chosen = request.quality.as_ref();
     Ok(AsyncTask::new(ProcessImage(jx_media::Request {
         source: PathBuf::from(request.source),
         out_dir: PathBuf::from(request.out_dir),
         stem: request.stem,
-        hash: request.hash,
+        hashes,
         widths: request.widths,
         formats,
         quality: jx_media::Quality {

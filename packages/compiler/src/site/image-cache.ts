@@ -3,12 +3,16 @@
  *
  * Stores a manifest of previously processed images so that unchanged sources can skip re-encoding
  * on subsequent builds. Cache lives in the npm global cache directory under jxsuite-images/ so that
- * CI environments (e.g. Cloudflare Pages) can persist it via their npm cache layer.
+ * CI environments (e.g. Cloudflare Pages) can persist it via their npm cache layer. Each project
+ * has its own directory there, named for its directory and a digest of its absolute path: the name
+ * alone put two checkouts called `site` in one cache, where each one's pruning deleted the other's
+ * variants.
  */
 
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { basename, extname, resolve } from "node:path";
 import { execSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { configHash, contentHash } from "./image-optimizer.ts";
 
@@ -94,6 +98,11 @@ function npmCacheBase(): string | null {
  * Cloudflare Pages) automatically persist optimized images across builds. Falls back to
  * .cache/images inside the project root when npm is unavailable or does not answer in time.
  *
+ * Inside npm's cache the directory is `<project directory name>-<digest>`, the digest being 8 hex
+ * characters of the project root's absolute path, so two projects with one directory name never
+ * share a cache (site-architecture.md §9.2.5). A directory under the bare name, written by an older
+ * compiler, is left in place and never read: it may belong to a project still on that compiler.
+ *
  * Result is memoized — npm is asked at most once per process.
  *
  * @param {string} projectRoot
@@ -104,7 +113,9 @@ export function getImageCacheDir(projectRoot: string): string {
     _npmCacheBase = npmCacheBase();
   }
   if (_npmCacheBase) {
-    return resolve(_npmCacheBase, "jxsuite-images", basename(projectRoot));
+    const root = resolve(projectRoot);
+    const digest = createHash("md5").update(root).digest("hex").slice(0, 8);
+    return resolve(_npmCacheBase, "jxsuite-images", `${basename(root)}-${digest}`);
   }
   return resolve(projectRoot, ".cache/images");
 }
@@ -214,7 +225,27 @@ function pruneStale(cache: CacheManifest, touched: Set<string>) {
 // ─── Entry access ─────────────────────────────────────────────────────────────
 
 /**
- * Check if a cache entry exists and its output files are still present.
+ * The variant files of every entry this build resolved, each once: what the build copies into
+ * `dist/images/_optimized/`. A key that was looked up and never stored (its image failed) names no
+ * entry and contributes nothing.
+ *
+ * @param {CacheManifest} cache
+ * @returns {string[]} Absolute paths
+ */
+export function usedVariantPaths(cache: CacheManifest): string[] {
+  const paths = new Set<string>();
+  const entries = new Map<string, PersistedEntry>(Object.entries(cache.entries));
+  for (const key of cache.touched ?? []) {
+    for (const variant of entries.get(key)?.manifest.variants ?? []) {
+      paths.add(variant.absolutePath);
+    }
+  }
+  return [...paths];
+}
+
+/**
+ * Look an entry up, and mark its key as resolved by this build. Whether the entry's variant files
+ * are still on disk is the caller's check (`resolveManifest` in image-transform.ts).
  *
  * @param {CacheManifest} cache
  * @param {string} key

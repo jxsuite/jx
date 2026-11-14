@@ -6,7 +6,7 @@
  * encoder itself is proven in `packages/compiler-binding/crates/jx_media` and against the real
  * addon in `packages/compiler-binding/tests`. The double keeps the two behaviours callers depend
  * on: the width ladder (capped at the source, native width offered below the top rung) and a file
- * on disk for every variant it names.
+ * on disk for every variant it names, named from the hash its format was given.
  */
 
 import { mock } from "bun:test";
@@ -40,7 +40,7 @@ export const processImage = mock(async (request: ImageRequest): Promise<ImageMan
   mkdirSync(request.outDir, { recursive: true });
   const variants = ladder(fakeSource.width, request.widths).flatMap((width) =>
     request.formats.map((format) => {
-      const fileName = `${request.stem}-${width}-${request.hash}.${format}`;
+      const fileName = `${request.stem}-${width}-${request.hashes[format]}.${format}`;
       writeFileSync(join(request.outDir, fileName), "");
       return { fileName, format, width };
     }),
@@ -50,5 +50,10 @@ export const processImage = mock(async (request: ImageRequest): Promise<ImageMan
 
 /** Replace the addon with the double for every module imported after this call. */
 export function installFakeBinding() {
-  void mock.module("@jxsuite/compiler-binding", () => ({ imageMetadata, processImage }));
+  void mock.module("@jxsuite/compiler-binding", () => ({
+    // The addon's own defaults, restated: the double replaces the module that exports them.
+    DEFAULT_IMAGE_QUALITY: { avif: 65, jpeg: 80 },
+    imageMetadata,
+    processImage,
+  }));
 }

@@ -8,6 +8,7 @@ import {
   contentHash,
   configHash,
   variantHash,
+  qualityFor,
   buildSrcset,
   getImageMetadata,
   processImage,
@@ -23,6 +24,7 @@ import {
   resetFakeSource,
 } from "./_fake-binding";
 import type { CacheManifest } from "../src/site/image-cache";
+import type { ImageManifest } from "../src/site/image-optimizer";
 import type { JxMutableNode } from "@jxsuite/schema/types";
 
 // The native addon is replaced by a double: these tests prove what the compiler asks of it.
@@ -645,7 +647,10 @@ describe("processImage", () => {
       [
         {
           formats: ["avif", "jpeg"],
-          hash: variantHash(imgPath),
+          hashes: {
+            avif: variantHash(imgPath, "avif", 60),
+            jpeg: variantHash(imgPath, "jpeg", 75),
+          },
           outDir: join(cacheDir, "_optimized"),
           quality: { avif: 60, jpeg: 75 },
           source: imgPath,
@@ -675,7 +680,7 @@ describe("processImage", () => {
     const imgPath = join(root, "public/images/hero.jpg");
     writeFileSync(imgPath, "fake jpeg data");
     const cacheDir = join(root, ".cache/images");
-    const hash = variantHash(imgPath);
+    const hash = variantHash(imgPath, "avif", 60);
 
     const manifest = await processImage(imgPath, cacheDir, config);
 
@@ -702,6 +707,65 @@ describe("processImage", () => {
     for (const variant of manifest.variants) {
       expect(existsSync(variant.absolutePath)).toBe(true);
     }
+    teardown();
+  });
+
+  test("variantHash changes with the format and its quality", () => {
+    const root = setup();
+    const imgPath = join(root, "public/images/hero.jpg");
+    writeFileSync(imgPath, "fake jpeg data");
+
+    const hash = variantHash(imgPath, "avif", 65);
+    expect(variantHash(imgPath, "avif", 65)).toBe(hash);
+    expect(variantHash(imgPath, "avif", 50)).not.toBe(hash);
+    expect(variantHash(imgPath, "jpeg", 65)).not.toBe(hash);
+    writeFileSync(imgPath, "other jpeg data");
+    expect(variantHash(imgPath, "avif", 65)).not.toBe(hash);
+    teardown();
+  });
+
+  test("a quality change names new files instead of reusing the old ones", async () => {
+    const root = setup();
+    const imgPath = join(root, "public/images/hero.jpg");
+    writeFileSync(imgPath, "fake jpeg data");
+    const cacheDir = join(root, ".cache/images");
+    const paths = (manifest: ImageManifest, format: string) =>
+      manifest.variants.flatMap((v) => (v.format === format ? [v.outputPath] : []));
+
+    const before = await processImage(imgPath, cacheDir, { ...config, quality: { avif: 65 } });
+    const after = await processImage(imgPath, cacheDir, { ...config, quality: { avif: 50 } });
+
+    const [first, second] = encodeVariants.mock.calls.map(([request]) => request.hashes);
+    expect(second?.avif).not.toBe(first?.avif);
+    expect(second?.jpeg).toBe(first?.jpeg);
+    expect(paths(before, "avif")).toHaveLength(3);
+    for (const path of paths(after, "avif")) {
+      expect(paths(before, "avif")).not.toContain(path);
+    }
+    expect(paths(after, "jpeg")).toEqual(paths(before, "jpeg"));
+    teardown();
+  });
+
+  test("the request carries one hash per configured format", async () => {
+    const root = setup();
+    const imgPath = join(root, "public/images/hero.jpg");
+    writeFileSync(imgPath, "fake jpeg data");
+
+    await processImage(imgPath, join(root, ".cache/images"), {
+      ...config,
+      formats: ["avif", "jpeg", "png", "webp"],
+      quality: { png: 90 },
+    });
+
+    // A quality the project leaves out is the encoder's default; a lossless format has none.
+    expect(encodeVariants.mock.calls[0]?.[0].hashes).toEqual({
+      avif: variantHash(imgPath, "avif", 65),
+      jpeg: variantHash(imgPath, "jpeg", 80),
+      png: variantHash(imgPath, "png", 90),
+      webp: variantHash(imgPath, "webp", 100),
+    });
+    expect(qualityFor({ avif: 40 }, "avif")).toBe(40);
+    expect(qualityFor({}, "jpeg")).toBe(80);
     teardown();
   });
 

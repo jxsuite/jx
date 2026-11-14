@@ -3,6 +3,7 @@ import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "n
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  DEFAULT_IMAGE_QUALITY,
   currentHost,
   imageMetadata,
   loadBinding,
@@ -14,7 +15,7 @@ import {
 } from "../src/index.ts";
 import { gradientPng } from "./_png.ts";
 
-import type { Binding, LoaderHost } from "../src/index.ts";
+import type { Binding, ImageQuality, ImageRequest, LoaderHost } from "../src/index.ts";
 
 let dir = "";
 let source = "";
@@ -43,7 +44,7 @@ describe("the addon, loaded for real", () => {
     const outDir = join(dir, "out");
     const manifest = await processImage({
       formats: ["avif", "jpeg", "png", "webp"],
-      hash: "abcd1234",
+      hashes: { avif: "abcd1234", jpeg: "abcd1234", png: "abcd1234", webp: "abcd1234" },
       outDir,
       quality: { avif: 50, jpeg: 70 },
       source,
@@ -66,10 +67,62 @@ describe("the addon, loaded for real", () => {
     });
   });
 
+  test("each format's files carry the hash that format was given", async () => {
+    const outDir = join(dir, "per-format");
+    const manifest = await processImage({
+      formats: ["avif", "jpeg"],
+      hashes: { avif: "aaaa0000", jpeg: "bbbb1111" },
+      outDir,
+      source,
+      stem: "hero",
+      widths: [16],
+    });
+    expect(manifest.variants.map((v) => v.fileName)).toEqual([
+      "hero-16-aaaa0000.avif",
+      "hero-16-bbbb1111.jpeg",
+    ]);
+  });
+
+  test("a request with no quality encodes at the defaults this package states", async () => {
+    const encode = async (name: string, quality?: ImageQuality) => {
+      const outDir = join(dir, name);
+      const request: ImageRequest = {
+        formats: ["avif", "jpeg"],
+        hashes: { avif: "q", jpeg: "q" },
+        outDir,
+        source,
+        stem: "hero",
+        widths: [32],
+      };
+      if (quality) {
+        request.quality = quality;
+      }
+      await processImage(request);
+      return ["avif", "jpeg"].map((format) =>
+        readFileSync(join(outDir, `hero-32-q.${format}`)).toString("base64"),
+      );
+    };
+    const unset = await encode("quality-unset");
+    expect(unset).toEqual(await encode("quality-default", { ...DEFAULT_IMAGE_QUALITY }));
+    expect(unset).not.toEqual(await encode("quality-other", { avif: 30, jpeg: 30 }));
+  });
+
   test("an unknown format and an undecodable source reject with the reason", async () => {
-    const request = { hash: "h", outDir: join(dir, "bad"), source, stem: "hero", widths: [16] };
+    const request = {
+      hashes: { png: "h" },
+      outDir: join(dir, "bad"),
+      source,
+      stem: "hero",
+      widths: [16],
+    };
     expect(processImage({ ...request, formats: ["heic"] })).rejects.toThrow(
       'unsupported output format "heic"',
+    );
+    expect(processImage({ ...request, formats: ["png"], hashes: { heic: "h" } })).rejects.toThrow(
+      'unsupported output format "heic"',
+    );
+    expect(processImage({ ...request, formats: ["avif"] })).rejects.toThrow(
+      'no file-name hash was given for format "avif"',
     );
     const text = join(dir, "notes.png");
     writeFileSync(text, "plain text");

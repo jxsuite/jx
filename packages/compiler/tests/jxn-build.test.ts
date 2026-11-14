@@ -5,7 +5,7 @@
  */
 import { parseProjectSource, serializeProjectFile } from "@jxsuite/schema/project-file";
 import { projectFilePath } from "@jxsuite/schema/project-file/node";
-import { afterAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import {
   cpSync,
   existsSync,
@@ -23,6 +23,7 @@ import type { JsonValue } from "@jxsuite/schema/types";
 installFakeBinding();
 
 const { buildSite } = await import("../src/site/site-build.ts");
+const { _testResetNpmCacheBase, _testSetNpmCacheBase } = await import("../src/site/image-cache.ts");
 const { parseJxn } = await import("@jxsuite/schema/jxn");
 
 const STARTERS = resolve(import.meta.dir, "../../starters/sites");
@@ -30,7 +31,19 @@ const WORK = resolve(import.meta.dir, ".jxn-build");
 const DOCUMENT_ROOTS = ["components", "layouts", "pages"];
 const SOURCE_TIME = new Date("2026-01-01T00:00:00Z");
 
+/*
+ * The image cache is kept inside the work directory. Left in the machine's npm cache it is state
+ * this suite shares with everything else that builds there, and it once was the cause of a failure
+ * here: both spellings' copies resolved to one directory per spelling for every starter and every
+ * checkout, the build copied that whole directory into `dist`, and a file another run left in one
+ * of the two made the two file lists differ.
+ */
+beforeAll(() => {
+  _testSetNpmCacheBase(join(WORK, ".npm-cache"));
+});
+
 afterAll(() => {
+  _testResetNpmCacheBase();
   rmSync(WORK, { force: true, recursive: true });
 });
 

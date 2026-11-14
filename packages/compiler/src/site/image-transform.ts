@@ -37,9 +37,24 @@ import type { ImageConfig, ImageManifest, ImageVariant } from "./image-optimizer
 import type { JxAttributeValue, JxDocument, JxMutableNode, JxStyle } from "@jxsuite/schema/types";
 import type { CacheManifest } from "./image-cache.ts";
 
-const SKIP_EXTENSIONS = new Set([".svg", ".gif"]);
-/** Local sources the build service leaves alone rather than re-encodes. */
+/**
+ * The local sources the variant pass takes: the extensions of the formats the compiler's native
+ * core decodes (JPEG, PNG, WebP, TIFF and BMP; `crates/jx_media` in `@jxsuite/compiler-binding`).
+ * Anything else, or no extension at all, is left alone: a `.ico`, a `.heic` or an upload with no
+ * extension used to reach the encoder, fail to decode, and fail every route whose layout held it.
+ * Every GIF is outside it, animated or not (site-architecture.md §9.2.3).
+ */
+const RASTER_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".webp", ".tif", ".tiff", ".bmp"]);
+/**
+ * Local sources the build service serves as written, and the Cloudflare service still resizes: the
+ * native core has no AVIF decoder and nothing better to convert one to, while Cloudflare reads it.
+ */
 const ENCODED_AS_WRITTEN = new Set([".avif"]);
+/**
+ * What an allowlisted remote source is refused for. A denylist, because a remote URL often has no
+ * extension at all and Cloudflare decodes more than the build service does.
+ */
+const REMOTE_SKIP_EXTENSIONS = new Set([".svg", ".gif"]);
 const EXTERNAL_PREFIXES = ["http://", "https://", "data:", "//"];
 
 /** Per-build memo of original image dimensions + content hash (cloudflare mode). */
@@ -178,10 +193,8 @@ function shouldSkip(src: string) {
   if (EXTERNAL_PREFIXES.some((p) => src.startsWith(p))) {
     return true;
   }
-  if (SKIP_EXTENSIONS.has(extname(src).toLowerCase())) {
-    return true;
-  }
-  return false;
+  const extension = extname(src).toLowerCase();
+  return !RASTER_EXTENSIONS.has(extension) && !ENCODED_AS_WRITTEN.has(extension);
 }
 
 /**
@@ -210,7 +223,7 @@ function isAllowedRemote(src: string, config: ImageConfig) {
   }
   try {
     const url = new URL(src);
-    if (SKIP_EXTENSIONS.has(extname(url.pathname).toLowerCase())) {
+    if (REMOTE_SKIP_EXTENSIONS.has(extname(url.pathname).toLowerCase())) {
       return false;
     }
     return config.remoteDomains.includes(url.hostname);
@@ -318,8 +331,8 @@ function applyFocalPoint(
  * Transform image nodes in a Jx document tree.
  *
  * Mutates img nodes in place, injecting srcset, sizes, width, height, loading, and decoding.
- * Optimized variants are written to .cache/images/_optimized/ — the caller is responsible for
- * copying them to the dist directory after all pages are compiled.
+ * Optimized variants are written to the image cache's `_optimized/` (`getImageCacheDir`), and the
+ * build copies the ones it used into the dist directory after all pages are compiled.
  *
  * @param {JxMutableNode | JxDocument} doc - The Jx document tree (mutated in place)
  * @param {ImageConfig} config
@@ -381,6 +394,8 @@ async function walkAndTransform(
       metaCache,
       imageRefs,
       mounts,
+      // The node holding the content is the innermost container of every image in it.
+      containerWidthOf(node, containerWidth),
     );
   }
 
@@ -438,11 +453,11 @@ interface ResolvedVariants {
  * Generate (or look up) this image's variants and describe what the markup should say.
  *
  * Returns null whenever the image is not ours to touch — a bound `src`, an SVG, a remote URL off
- * the allowlist, a missing file, an explicit `data-no-optimize`. Both callers treat null the same
- * way: leave the markup alone apart from the loading attributes.
+ * the allowlist, a missing file, an explicit `data-no-optimize`, an authored `srcset`. Both callers
+ * treat null the same way: leave the markup alone apart from the loading attributes.
  *
  * @param {JxAttributeValue | undefined} src - The `src` as written, which may be bound or absent
- * @param {boolean} optedOut - `data-no-optimize` is present
+ * @param {boolean} optedOut - `data-no-optimize` or an authored `srcset` is present
  * @param {ImageConfig} config
  * @param {string} projectRoot
  * @param {CacheManifest | null} cache
@@ -490,9 +505,7 @@ async function resolveVariants(
     return { dims, sources: [], srcset };
   }
 
-  /* The build service decodes JPEG, PNG, WebP, TIFF and BMP. An AVIF source is already the format
-     every variant would be converted to, and re-encoding it would only lose quality, so it is
-     served as written (compiler.md §7.3). */
+  // An AVIF source is already in the best format every variant would be converted to.
   if (ENCODED_AS_WRITTEN.has(extname(absoluteSrc).toLowerCase())) {
     return null;
   }
@@ -540,8 +553,9 @@ async function resolveVariants(
  * The formats to offer for one image: the project's, with PNG added where it stands in for JPEG.
  *
  * JPEG has no alpha channel, so the encoder writes PNG wherever JPEG was asked of a source with
- * transparency (compiler.md §7.2). That PNG was asked for, under another name, and is offered; any
- * other format the project did not list stays out even if a stale manifest holds variants of it.
+ * transparency (site-architecture.md §9.2.2). That PNG was asked for, under another name, and is
+ * offered; any other format the project did not list stays out even if a stale manifest holds
+ * variants of it.
  */
 function writtenFormats(formats: readonly string[], variants: ImageVariant[]): readonly string[] {
   const standsIn =
@@ -603,7 +617,7 @@ function pxLength(value: JxStyle[string]): number | null {
 
 /**
  * The narrowest literal `max-width` or `width` this element declares in its base `style`, or the
- * inherited bound when that is narrower. Nested blocks are not read (compiler.md §7.2.1).
+ * inherited bound when that is narrower. Nested blocks are not read (site-architecture.md §9.2.2).
  *
  * Only literal lengths count. A `clamp()`, a percentage or a custom property is a real constraint
  * too, but not one the build can resolve — and a wrong `sizes` is worse than none, because the
@@ -673,7 +687,8 @@ async function transformImgNode(
   const variants = config.optimize
     ? await resolveVariants(
         attrs.src,
-        attrs["data-no-optimize"] !== undefined,
+        // An image that already carries a candidate list is its author's, as in the innerHTML half.
+        attrs["data-no-optimize"] !== undefined || attrs.srcset !== undefined,
         config,
         projectRoot,
         cache,
@@ -694,7 +709,9 @@ async function transformImgNode(
   if (variants) {
     if (variants.srcset !== "") {
       attrs.srcset = variants.srcset;
-      attrs.sizes = resolvedSizes;
+      if (resolvedSizes !== undefined) {
+        attrs.sizes = resolvedSizes;
+      }
       if (variants.fallbackSrc !== undefined) {
         attrs.src = variants.fallbackSrc;
       }
@@ -725,12 +742,12 @@ async function transformImgNode(
  *
  * @param {JxMutableNode | JxDocument} node - The `<img>` node, mutated into a `<picture>`
  * @param {PictureSource[]} sources
- * @param {JxAttributeValue} sizes
+ * @param {JxAttributeValue | undefined} sizes - The resolved `sizes`, when anything names one
  */
 function wrapInPicture(
   node: JxMutableNode | JxDocument,
   sources: readonly PictureSource[],
-  sizes: JxAttributeValue,
+  sizes: JxAttributeValue | undefined,
 ) {
   const imgAttrs = { ...node.attributes };
   const inheritedSizes = imgAttrs.sizes ?? sizes;
@@ -745,7 +762,7 @@ function wrapInPicture(
   const children = sources.map((source): JxMutableNode => {
     const attributes: Record<string, JxAttributeValue> = {};
     // An empty `sizes` is not a neutral default — omit it and let the browser assume 100vw.
-    if (inheritedSizes !== "") {
+    if (inheritedSizes !== undefined && inheritedSizes !== "") {
       attributes.sizes = inheritedSizes;
     }
     attributes.srcset = source.srcset;
@@ -760,11 +777,15 @@ function wrapInPicture(
 }
 
 const IMG_TAG_RE = /<img\b([^>]*)>/gi;
-const SRCSET_ATTR_RE = /\bsrcset="/;
 const DATA_NO_OPT_RE = /\bdata-no-optimize\b/;
+const SRC_ATTR_RE = /(^|\s)src="[^"]*"/i;
+const SIZES_ATTR_RE = /(?:^|\s)sizes="[^"]*"/i;
 
 /**
- * Transform `<img>` tags embedded in pre-rendered innerHTML strings.
+ * Transform `<img>` tags embedded in pre-rendered innerHTML strings, by the rules
+ * {@link transformImgNode} applies to a node: the same eligibility, the same `src` fallback, the
+ * same `sizes` order. A rule added to one half is added to the other (site-architecture.md
+ * §9.2.2).
  *
  * @param {string} html
  * @param {ImageConfig} config
@@ -773,6 +794,7 @@ const DATA_NO_OPT_RE = /\bdata-no-optimize\b/;
  * @param {ImageMetaCache} metaCache
  * @param {Map<string, ImageManifest>} imageRefs
  * @param {readonly AssetMount[]} mounts
+ * @param {number | null} containerWidth - The bound of the node holding this HTML
  * @returns {Promise<string>}
  */
 async function transformInnerHtmlImages(
@@ -783,6 +805,7 @@ async function transformInnerHtmlImages(
   metaCache: ImageMetaCache,
   imageRefs: Map<string, ImageManifest>,
   mounts: readonly AssetMount[],
+  containerWidth: number | null,
 ) {
   const replacements: { match: string; replacement: string }[] = [];
 
@@ -792,12 +815,12 @@ async function transformInnerHtmlImages(
 
     // Attribute values in pre-rendered innerHTML are entity-escaped — decode for processing
     const src = (attrValue(attrs, "src") ?? "").replaceAll("&amp;", "&");
-    const alreadyResponsive = SRCSET_ATTR_RE.test(attrs);
     const variants =
-      config.optimize && src !== "" && !alreadyResponsive
+      config.optimize && src !== ""
         ? await resolveVariants(
             src,
-            DATA_NO_OPT_RE.test(attrs),
+            // An image that already carries a candidate list is its author's.
+            DATA_NO_OPT_RE.test(attrs) || hasAttr(attrs, "srcset"),
             config,
             projectRoot,
             cache,
@@ -807,11 +830,26 @@ async function transformInnerHtmlImages(
           )
         : null;
 
+    // The tag, then the layout, then the project: the order the node half resolves `sizes` in.
+    const ownSizes = attrValue(attrs, "sizes");
+    const resolvedSizes = ownSizes ?? sizesForContainer(containerWidth) ?? config.sizes;
+
+    let written = attrs;
     let extra = "";
     if (variants && variants.srcset !== "") {
-      extra += ` srcset="${variants.srcset}" sizes="${config.sizes}"`;
+      extra += ` srcset="${variants.srcset}"`;
+      if (ownSizes === undefined && resolvedSizes !== undefined && resolvedSizes !== "") {
+        extra += ` sizes="${resolvedSizes}"`;
+      }
+      const { fallbackSrc } = variants;
+      if (fallbackSrc !== undefined) {
+        written = attrs.replace(
+          SRC_ATTR_RE,
+          (_match, space: string) => `${space}src="${fallbackSrc}"`,
+        );
+      }
     }
-    if (variants?.dims && !/\bwidth=/.test(attrs) && !/\bheight=/.test(attrs)) {
+    if (variants?.dims && !hasAttr(attrs, "width") && !hasAttr(attrs, "height")) {
       extra += ` width="${variants.dims.width}" height="${variants.dims.height}"`;
     }
     const loading = imgLoadingAttrs(
@@ -832,8 +870,8 @@ async function transformInnerHtmlImages(
 
     const img =
       variants && variants.sources.length > 0
-        ? renderPictureTag(attrs, variants.sources, config.sizes, extra)
-        : `<img${attrs}${extra}>`;
+        ? renderPictureTag(written, variants.sources, resolvedSizes, extra)
+        : `<img${written}${extra}>`;
     replacements.push({ match: tag, replacement: img });
   }
 
@@ -850,31 +888,46 @@ async function transformInnerHtmlImages(
  *
  * @param {string} attrs - The original tag's attribute string
  * @param {readonly PictureSource[]} sources
- * @param {string} sizes
+ * @param {string | undefined} sizes - The resolved `sizes`, the tag's own included
  * @param {string} extra - Attributes this pass decided to add
  * @returns {string}
  */
 function renderPictureTag(
   attrs: string,
   sources: readonly PictureSource[],
-  sizes: string,
+  sizes: string | undefined,
   extra: string,
 ) {
-  const inheritedSizes = attrValue(attrs, "sizes") ?? sizes;
+  const imgAttrs = attrs.replace(SIZES_ATTR_RE, "");
   const imgExtra = extra.replace(/ srcset="[^"]*"/, "").replace(/ sizes="[^"]*"/, "");
+  // An empty `sizes` is not a neutral default: leave it off and the browser assumes 100vw.
+  const sizesAttr = sizes === undefined || sizes === "" ? "" : ` sizes="${sizes}"`;
   const sourceTags = sources
-    .map((s) => `<source type="${s.type}" srcset="${s.srcset}" sizes="${inheritedSizes}">`)
+    .map((s) => `<source type="${s.type}" srcset="${s.srcset}"${sizesAttr}>`)
     .join("");
-  return `<picture>${sourceTags}<img${attrs}${imgExtra}></picture>`;
+  return `<picture>${sourceTags}<img${imgAttrs}${imgExtra}></picture>`;
 }
 
 /**
- * Read one double-quoted attribute out of a raw tag attribute string.
+ * Read one double-quoted attribute out of a raw tag attribute string. The name is matched whole:
+ * `data-src` is not `src`.
  *
  * @param {string} attrs
  * @param {string} name
  * @returns {string | undefined}
  */
 function attrValue(attrs: string, name: string): string | undefined {
-  return new RegExp(`\\b${name}="([^"]*)"`, "i").exec(attrs)?.[1];
+  return new RegExp(`(?:^|\\s)${name}="([^"]*)"`, "i").exec(attrs)?.[1];
+}
+
+/**
+ * Whether a raw tag attribute string sets an attribute. The name is matched whole: a lazy-loader's
+ * `data-srcset` is not an authored `srcset`, and `data-width` is not `width`.
+ *
+ * @param {string} attrs
+ * @param {string} name
+ * @returns {boolean}
+ */
+function hasAttr(attrs: string, name: string): boolean {
+  return new RegExp(`(?:^|\\s)${name}=`, "i").test(attrs);
 }
