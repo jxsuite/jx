@@ -27,8 +27,10 @@ import {
   rewrittenValue,
   sameSlot,
   slotValue,
+  sourceOptionGroups,
   sourcePath,
-  sourceValue,
+  sourcePaths,
+  sourceValues,
   tagAt,
   withFallback,
   withFormat,
@@ -40,6 +42,11 @@ import {
 import type { DynamicTag, DynamicTagPath } from "@jxsuite/schema/dynamic-tag";
 import type { JxMutableNode } from "@jxsuite/schema/types";
 import type { BoundTag, FormatPreset } from "../src/editor/dynamic-tags";
+
+/** What the Source picker holds for the value a tag reads first. */
+function sourceValue(tag: DynamicTag): string | undefined {
+  return sourceValues(tag)[0];
+}
 
 /** A tag read from an expression the test knows is in the grammar. */
 function tagOf(expr: string): DynamicTag {
@@ -134,7 +141,7 @@ describe("where a node's tags are stored", () => {
         [["attributes", "href"], 0, "Link: Id", "field"],
         [["children", 1], 0, "Text: Author", "field"],
         [["innerHTML"], 0, "HTML: Html", "field"],
-        [["src"], 0, "Image: Src", "field"],
+        [["src"], 0, "Image: Image", "field"],
         [["style", "color"], 0, "Color: Brand", "field"],
         [["textContent"], 0, "Text: A", "field"],
         [["textContent"], 1, "Text: B", "field"],
@@ -198,6 +205,36 @@ describe("where a node's tags are stored", () => {
       "Post date",
       "Post date",
     ]);
+  });
+
+  test("a value held under a generic key is named for what holds it", () => {
+    const image = {
+      attributes: { href: "${item.data.link.url}", title: { $ref: "$map/item/data/cover/src" } },
+      src: "${$map.item.data.featuredImage.src ?? ''}",
+      tagName: "img",
+    };
+    // With no titles in hand: the step before the key, as words.
+    expect(boundTagsOf(image).map((tag) => pillLabel(tag))).toEqual([
+      "Link: Link",
+      "Title: Cover",
+      "Image: Featured image",
+    ]);
+    // The holder's own title where its schema declares one, and the key's own before that.
+    const titles = {
+      "item.data.cover": "Cover art",
+      "item.data.featuredImage": "Lead image",
+      "item.data.link.url": "Canonical address",
+    };
+    expect(boundTagsOf(image, titles).map((tag) => pillLabel(tag))).toEqual([
+      "Link: Canonical address",
+      "Title: Cover art",
+      "Image: Lead image",
+    ]);
+    // A generic key with nothing before it to name stands, and a key that is not generic is its own.
+    expect(boundTagsOf({ src: "${state.src}", tagName: "img" }, titles)[0]?.label).toBe("Src");
+    expect(boundTagsOf({ src: "${item.data.cover.alt}", tagName: "img" }, titles)[0]?.label).toBe(
+      "Alt",
+    );
   });
 
   test("what a property is called", () => {
@@ -335,6 +372,118 @@ describe("Source", () => {
     expect(refOfTag(tagOf("state.rows[0]"))).toBeNull();
     expect(refOfTag(tagOf("$page.title"))).toBeNull();
     expect(refOfTag(tagOf("state"))).toBeNull();
+  });
+});
+
+describe("a tag that reads several values in turn", () => {
+  const CHAIN =
+    "state.entry.data.seo?.title || state.entry.data.title || state.entry.data.name || ''";
+  const COVER = "(item.data.cover?.src ?? '') || '/x.jpg'";
+
+  test("each source is one row of the picker, in the order the tag reads them", () => {
+    expect(sourceValues(tagOf(CHAIN))).toEqual([
+      "state.entry.data.seo.title",
+      "state.entry.data.title",
+      "state.entry.data.name",
+    ]);
+    expect(sourceValue(tagOf(CHAIN))).toBe("state.entry.data.seo.title");
+    // A parenthesised tag's sources stand where its parentheses do.
+    expect(sourceValues(tagOf(COVER))).toEqual(["item.data.cover.src"]);
+    expect(sourceValues(tagOf("item.a || (item.b ?? item.c)"))).toEqual([
+      "item.a",
+      "item.b",
+      "item.c",
+    ]);
+    expect(sourcePaths(tagOf(CHAIN)).map((path) => path.steps.length)).toEqual([4, 3, 3]);
+  });
+
+  test("one source is replaced where it stands, and the rest of the tag is kept as written", () => {
+    const tag = tagOf(CHAIN);
+    const [, second] = sourcePaths(tag);
+    const path = sourcePath("state.entry.data.headline", second ?? null);
+    expect(path).not.toBeNull();
+    expect(printDynamicTag(withSource(tag, path!, 1))).toBe(
+      "state.entry.data.seo?.title || state.entry.data.headline || state.entry.data.name || ''",
+    );
+    // The first is the default, and a place the tag has no source at changes nothing.
+    expect(printDynamicTag(withSource(tag, path!))).toBe(
+      "state.entry.data.headline || state.entry.data.title || state.entry.data.name || ''",
+    );
+    const untouched = withSource(tag, path!, 9);
+    expect(printDynamicTag(untouched)).toBe(CHAIN);
+    const [cover] = sourcePaths(tagOf(COVER));
+    const inside = sourcePath("item.data.poster", cover ?? null);
+    const poster = withSource(tagOf(COVER), inside!);
+    expect(printDynamicTag(poster)).toBe("(item.data.poster ?? '') || '/x.jpg'");
+  });
+
+  test("a fallback on the other condition is said of the chain as a whole", () => {
+    // The same operator joins the chain; the other one cannot stand beside it in JavaScript.
+    expect(edited("item.a || item.b", (tag) => withFallback(tag, "||", "x"))).toBe(
+      "item.a || item.b || 'x'",
+    );
+    expect(edited("item.a || item.b || ''", (tag) => withFallback(tag, "??"))).toBe(
+      "(item.a || item.b) ?? ''",
+    );
+    expect(edited("!item.a ?? item.b", (tag) => withFallback(tag, "||", "x"))).toBe(
+      "(!item.a ?? item.b) || 'x'",
+    );
+    // Removing it leaves the sources, and a tag of one source changes its operator in place.
+    expect(edited(CHAIN, (tag) => withFallback(tag, null))).toBe(
+      "state.entry.data.seo?.title || state.entry.data.title || state.entry.data.name",
+    );
+    expect(edited(COVER, (tag) => withFallback(tag, "??"))).toBe(
+      "(item.data.cover?.src ?? '') ?? '/x.jpg'",
+    );
+    for (const text of [
+      "(item.a || item.b) ?? ''",
+      "(!item.a ?? item.b) || 'x'",
+      "(item.data.cover?.src ?? '') ?? '/x.jpg'",
+    ]) {
+      expect(() => new Function("item", `return (${text});`)).not.toThrow();
+    }
+  });
+
+  test("a question is asked of everything the tag reads", () => {
+    expect(edited("item.a || item.b || ''", (tag) => withNegations(tag, 1))).toBe(
+      "!(item.a || item.b) || ''",
+    );
+    expect(edited("item.a ?? item.b", (tag) => withNegations(tag, 2))).toBe("!!(item.a ?? item.b)");
+    // A chain that already carries a `!` keeps its shape, and so does one asked nothing.
+    expect(edited("!item.a || item.b", (tag) => withNegations(tag, 2))).toBe("!!item.a || item.b");
+    expect(edited("item.a || item.b", (tag) => withNegations(tag, 0))).toBe("item.a || item.b");
+    expect(edited(COVER, (tag) => withNegations(tag, 1))).toBe(
+      "!(item.data.cover?.src ?? '') || '/x.jpg'",
+    );
+  });
+
+  test("the format is the first value's, and a later source keeps its own", () => {
+    const presets = formatPresets(formatFormulas({}));
+    const upper = presetNamed(presets, "capitalize:");
+    expect(edited("item.a || state.orBlank(item.b) || ''", (tag) => withFormat(tag, upper))).toBe(
+      "state.capitalize(item.a) || state.orBlank(item.b) || ''",
+    );
+    expect(edited("(state.capitalize(item.a) ?? '') || 'x'", (tag) => withFormat(tag, null))).toBe(
+      "(item.a ?? '') || 'x'",
+    );
+    const chained = tagOf("state.capitalize(item.a) || item.b");
+    expect(formatCall(chained)?.name).toBe("capitalize");
+    expect(presetOfTag(chained, presets)).toBe("capitalize:");
+    expect(presetOfTag(tagOf("(item.a ?? '') || 'x'"), presets)).toBe("");
+    expect(presetExpression(tagOf(COVER), upper)).toBe("state.capitalize(item.data.cover?.src)");
+    const formulas = formatFormulas({});
+    expect(
+      edited('state.formatDate(item.a, {"dateStyle":"long"}) || item.b', (tag) =>
+        withParameter(tag, formulas, "1.dateStyle", "short"),
+      ),
+    ).toBe('state.formatDate(item.a, {"dateStyle":"short"}) || item.b');
+  });
+
+  test("a chain is no pointer, and is not a source to pick", () => {
+    expect(refOfTag(tagOf("state.a ?? state.b"))).toBeNull();
+    expect(refOfTag(tagOf("(state.a)"))).toBeNull();
+    expect(sourcePath("item.a || item.b", null)).toBeNull();
+    expect(sourcePath("(item.a)", null)).toBeNull();
   });
 });
 
@@ -500,6 +649,47 @@ describe("Format", () => {
     // Nothing declared takes anything, and an empty value rules nothing out.
     expect(formatAccepts(named("orBlank"), "object")).toBe(true);
     expect(formatAccepts(named("relativeTime"), "empty")).toBe(true);
+  });
+
+  test("a URL is offered no formula for text", () => {
+    const named = (name: string) => formulas.find((formula) => formula.name === name)!;
+    for (const format of ["uri", "uri-reference", "iri", "iri-reference"]) {
+      expect(formatAccepts(named("capitalize"), "string", format)).toBe(false);
+      expect(formatAccepts(named("escapeHtml"), "string", format)).toBe(false);
+      // An empty value rules out nothing by its type, and a URL field still rules these out.
+      expect(formatAccepts(named("capitalize"), "empty", format)).toBe(false);
+      // A formula that declares no type takes anything, a URL included.
+      expect(formatAccepts(named("orBlank"), "string", format)).toBe(true);
+    }
+    // Any other format, and none, narrows nothing.
+    expect(formatAccepts(named("capitalize"), "string", "date-time")).toBe(true);
+    expect(formatAccepts(named("capitalize"), "string", null)).toBe(true);
+    // A formula written for URLs says so on its own parameter, and is offered for that format.
+    const forUrls = {
+      ...named("capitalize"),
+      parameters: [{ name: "value", schema: { format: "uri", type: "string" }, type: "string" }],
+    };
+    expect(formatAccepts(forUrls, "string", "uri")).toBe(true);
+    expect(formatAccepts(forUrls, "string", "uri-reference")).toBe(false);
+  });
+
+  test("the Source select is handed each row's value as its description", () => {
+    const groups = [
+      {
+        id: "state",
+        label: "Page data",
+        rows: [
+          { hint: 'string · "Ada"', label: "Name", value: "state.name" },
+          { hint: "", label: "Rows", value: "state.rows" },
+          { label: "Whole item", value: "item" },
+        ],
+      },
+    ];
+    expect(sourceOptionGroups(groups)[0]?.rows).toEqual([
+      { description: 'string · "Ada"', hint: 'string · "Ada"', label: "Name", value: "state.name" },
+      { hint: "", label: "Rows", value: "state.rows" },
+      { label: "Whole item", value: "item" },
+    ]);
   });
 });
 

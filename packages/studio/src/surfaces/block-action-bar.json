@@ -114,7 +114,7 @@
       "display": "contents"
     },
     "& [part=\"pill\"] > [part=\"control\"]": {
-      "$description": "A Bound pill (studio.md §6.9): one per bound property of the selected block, naming the property and the value it reads. Drawn in the binding colour the canvas outlines a bound block with, so the pill and the outline read as one thing; it is the block's bound label, drawn here on the host's own surface and no longer as a pseudo-element of the block.",
+      "$description": "A Bound pill (studio.md §6.9): one per bound property of the selected block, naming the property and the value it reads, and after the fourth one more that counts the rest and opens them as a list. Drawn in the binding colour the canvas outlines a bound block with, so the pill and the outline read as one thing; it is the block's bound label, drawn here on the host's own surface and no longer as a pseudo-element of the block.",
       "minHeight": "0",
       "maxWidth": "200px",
       "padding": "0 var(--jx-space-2)",
@@ -562,7 +562,9 @@
                           "hint": {
                             "$ref": "$map/item/hint"
                           },
-                          "haspopup": "dialog"
+                          "haspopup": {
+                            "$ref": "$map/item/popup"
+                          }
                         },
                         "onclick": {
                           "$ref": "#/state/openPill"
@@ -573,7 +575,7 @@
                             "attributes": {
                               "part": "pill-text"
                             },
-                            "textContent": "${$map.item.label}"
+                            "textContent": "${$map.item.text}"
                           }
                         ]
                       }

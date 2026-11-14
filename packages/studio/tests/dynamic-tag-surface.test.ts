@@ -144,11 +144,21 @@ describe("where the panel goes", () => {
 describe("the keyboard", () => {
   test("goes to the Source control of a structured tag and to the expression of a custom one", async () => {
     surface = mountDynamicTag(host, actions);
-    surface.update(view({ structured: true }));
+    surface.update(
+      view({
+        sources: [
+          { key: "0", label: "Source", name: "Source", value: "state.x" },
+          { key: "1", label: "Then", name: "Then: source 2", value: "state.y" },
+        ],
+        structured: true,
+      }),
+    );
     await flush(8);
     surface.open({ x: 0, y: 0 });
     await frame();
-    expect(document.activeElement?.closest('[part="source"]')).not.toBeNull();
+    // The first source of the list takes the keyboard.
+    const row = document.activeElement?.closest<HTMLElement>('[part="source-row"]');
+    expect(row?.dataset.index).toBe("0");
     surface.close();
     surface.update(view({ advancedOpen: true, structured: false }));
     await flush(4);

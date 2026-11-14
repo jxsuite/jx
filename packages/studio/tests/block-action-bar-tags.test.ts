@@ -256,7 +256,42 @@ describe("Bound pills", () => {
     ]);
   });
 
-  test("at most four are drawn", async () => {
+  test("four are drawn by name, and a fifth counts the rest and opens them as a list", async () => {
+    tab.doc.document.children = [
+      {
+        attributes: { a: "${state.a}", b: "${state.b}", c: "${state.c}" },
+        tagName: "p",
+        textContent: "${state.d} ${state.e} ${state.f}",
+      },
+    ];
+    await select(["children", 0]);
+    expect(pills()).toEqual(["A: A", "B: B", "C: C", "Text: D", "+2 more"]);
+    const more = [...(bar()?.querySelectorAll<HTMLElement>('[part="pill"]') ?? [])].at(-1) ?? null;
+    expect(control(more)?.getAttribute("aria-haspopup")).toBe("menu");
+    expect(control(more)?.getAttribute("aria-label")).toBe("2 more bindings of this block");
+    // Its words are on screen and it opens a list: no tooltip to cover the first row.
+    expect(more?.querySelector('[part="tip"]')).toBeNull();
+    press(more);
+    const rows = await menuRows();
+    expect(rows.map((row) => labelOf(row))).toEqual(["Text: E", "Text: F"]);
+    // A row opens its own tag, as a pill does.
+    rows[1]?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    await flush(4);
+    expect(ran).toEqual([
+      ["canvas.setTagPopover", { tag: { index: 2, path: ["children", 0], slot: ["textContent"] } }],
+    ]);
+  });
+
+  test("exactly four bindings are four pills and no list, and five say one is left", async () => {
+    tab.doc.document.children = [
+      {
+        attributes: { a: "${state.a}", b: "${state.b}", c: "${state.c}" },
+        tagName: "p",
+        textContent: "${state.d}",
+      },
+    ];
+    await select(["children", 0]);
+    expect(pills()).toEqual(["A: A", "B: B", "C: C", "Text: D"]);
     tab.doc.document.children = [
       {
         attributes: { a: "${state.a}", b: "${state.b}", c: "${state.c}" },
@@ -265,7 +300,7 @@ describe("Bound pills", () => {
       },
     ];
     await select(["children", 0]);
-    expect(pills()).toHaveLength(4);
+    expect(pills().at(-1)).toBe("+1 more");
   });
 });
 

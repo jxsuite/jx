@@ -112,11 +112,16 @@ export interface BlockBarView {
 export interface BlockBarPill {
   /** The tag's place in the node, as text: its identity across updates and what a press hands back. */
   key: string;
-  /** "Image: Featured image". */
+  /** The accessible name: "Image: Featured image", or how many bindings the last pill lists. */
   label: string;
+  /** The words drawn on it: the label, or "+3 more" on the pill that lists the rest. */
+  text: string;
+  /** The tooltip, or `""` for none. */
   hint: string;
   /** What the tag is bound to, in the tag model's own word: "Image", "Link", "Text". */
   property: string;
+  /** What a press opens: the tag's popover (`dialog`), or the list of the bindings left (`menu`). */
+  popup: "dialog" | "menu";
 }
 
 /** What the bar's controls do. Every one of these is a decision, so every one comes from the flow. */

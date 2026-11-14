@@ -121,7 +121,7 @@ On the canvas, text bound to a source with no value never shows its expression. 
 
 ## Refresh
 
-Click **Refresh** in the panel's toolbar to fetch everything again: Studio forgets the answers it kept for this tab, re-reads the collections your lists use, and re-renders the canvas. Use it after the data behind a URL has changed, or to retry a source that failed. The button says **Refreshing…** until every source has answered or failed, so a slow fetch looks slow rather than looking like a button that did nothing.
+Click **Refresh** in the panel's toolbar to fetch everything again: Studio forgets the answers it kept for this tab, re-reads the collections your lists use, and re-renders the canvas. Collections belong to the project, so every other open tab re-reads its own the next time it is drawn. Use it after the data behind a URL has changed, or to retry a source that failed. The button says **Refreshing…** until every source has answered or failed, so a slow fetch looks slow rather than looking like a button that did nothing.
 
 :::doc-note
 To see a `POST` run, or a server function with your deployment's real secrets, use **[Open in Browser](/docs/studio/interface#command-bar)**, where the page behaves as it will on the built site.
