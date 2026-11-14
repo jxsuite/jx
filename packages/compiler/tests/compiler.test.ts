@@ -376,7 +376,7 @@ describe("compile — dynamic documents (standard tagName → client target)", (
     expect(html).not.toContain('type="module"');
   });
 
-  test("static parent with dynamic child: routes to client target", async () => {
+  test("static parent with one dynamic child: the whole page routes to the client target, with no islands", async () => {
     const { html, files } = await compile({
       children: [
         { tagName: "p", textContent: "static" },
@@ -386,8 +386,10 @@ describe("compile — dynamic documents (standard tagName → client target)", (
     });
     // IsDynamic detects the dynamic child → client target
     expect(files.length).toBe(1);
+    expect(files.map((f) => f.path)).toEqual(["app.js"]);
     expect(html).toContain("importmap");
     expect(html).not.toContain("<jx-app>");
+    expect(html).not.toContain("jx-island");
   });
 
   test("${} template string in property makes node dynamic → client target", async () => {

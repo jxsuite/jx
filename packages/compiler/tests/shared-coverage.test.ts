@@ -3,9 +3,7 @@ import {
   buildComponentCSS,
   collectSrcImports,
   compileStyles,
-  hasAnyIsland,
   isComponentFullyStatic,
-  isNodeDynamic,
   renderStaticNode,
   resolveRefValue,
 } from "../src/shared";
@@ -21,18 +19,6 @@ function styleFromJson(json: JsonObject): JxStyle {
      return null and the entry is dropped. The non-`JxStyle` entries here exist to reach that branch. */
   return json as JxStyle;
 }
-
-describe("isNodeDynamic — style template string", () => {
-  test("template string in style marks node dynamic", () => {
-    expect(isNodeDynamic({ style: { color: "${theme}" }, tagName: "div" })).toBe(true);
-  });
-});
-
-describe("hasAnyIsland — non-object", () => {
-  test("string is never an island", () => {
-    expect(hasAnyIsland("just text")).toBe(false);
-  });
-});
 
 describe("resolveRefValue — non-string passthrough", () => {
   test("returns non-string ref values unchanged", () => {

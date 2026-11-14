@@ -1038,7 +1038,7 @@ export async function buildSite(
         fileCount += 1;
       }
 
-      // Write any additional files (island modules, etc.)
+      // Write any additional files (the page's own module, etc.)
       for (const file of result.files) {
         const filePath = resolve(dirname(outPath), file.path);
         mkdirSync(dirname(filePath), { recursive: true });
@@ -1861,7 +1861,7 @@ async function compilePage(
   };
   /*
    * The page-template tiers emit their own import map, and it defaulted to the CDN — so a page
-   * that reached compile-static/compile-client kept loading its runtime from esm.sh even after
+   * that reached the client or custom-element target kept loading its runtime from esm.sh even after
    * the self-hosting landed, because `injectComponentScripts` sees a map already present and
    * declines to add its own. Both halves have to name the same URLs.
    */

@@ -19,11 +19,9 @@ import {
   escapeHtml,
   evaluateStaticTemplate,
   getPathValue,
-  hasAnyIsland,
   isClassJsonSrc,
   isComponentFullyStatic,
   isDynamic,
-  isNodeDynamic,
   isRefObject,
   isSchemaOnly,
   isTemplateString,
@@ -205,84 +203,6 @@ describe("isDynamic", () => {
         state: {
           data: { $export: "getData", $src: "./data.js", timing: "compiler" },
         },
-      }),
-    ).toBe(false);
-  });
-});
-
-describe("isNodeDynamic", () => {
-  test("does not recurse into children", () => {
-    expect(
-      isNodeDynamic({
-        children: [{ tagName: "span", textContent: { $ref: "#/state/x" } }],
-        tagName: "div",
-      }),
-    ).toBe(false);
-  });
-
-  test("detects $switch on node", () => {
-    expect(isNodeDynamic({ $switch: { $ref: "#/state/mode" } })).toBe(true);
-  });
-
-  test("detects template string in attributes as dynamic", () => {
-    expect(
-      isNodeDynamic({
-        attributes: { "data-id": "${$item.get()}" },
-        tagName: "div",
-      }),
-    ).toBe(true);
-  });
-
-  test("attributes without template strings is not dynamic", () => {
-    expect(
-      isNodeDynamic({
-        attributes: { "data-id": "static-value" },
-        tagName: "div",
-      }),
-    ).toBe(false);
-  });
-
-  test("detects a node that is itself an Array pseudo-element", () => {
-    expect(
-      isNodeDynamic({ $prototype: "Array", items: { $ref: "#/state/x" }, map: { tagName: "li" } }),
-    ).toBe(true);
-  });
-
-  test("detects an Array pseudo-element among children", () => {
-    expect(
-      isNodeDynamic({
-        children: [
-          { tagName: "li" },
-          { $prototype: "Array", items: { $ref: "#/state/x" }, map: { tagName: "li" } },
-        ],
-        tagName: "ul",
-      }),
-    ).toBe(true);
-  });
-});
-
-describe("hasAnyIsland", () => {
-  test("returns true if root is dynamic", () => {
-    expect(hasAnyIsland({ state: { count: { default: 0 } } })).toBe(true);
-  });
-
-  test("returns true if any descendant is dynamic", () => {
-    expect(
-      hasAnyIsland({
-        children: [
-          { tagName: "p", textContent: "static" },
-          { tagName: "span", textContent: { $ref: "#/state/x" } },
-        ],
-        tagName: "div",
-      }),
-    ).toBe(true);
-  });
-
-  test("returns false for fully static tree", () => {
-    expect(
-      hasAnyIsland({
-        children: [{ tagName: "p", textContent: "hello" }],
-        tagName: "div",
       }),
     ).toBe(false);
   });

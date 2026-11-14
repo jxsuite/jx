@@ -9,6 +9,7 @@ spec:
   - compiler.md#8.1 # fully static output, runtime-only reads left unresolved, component instances expanded at every level
   - compiler.md#9.1 # pre-rendered HTML + reactive JS
   - compiler.md#4.1 # element module output structure
+  - compiler.md#4.4 # property bridge: the data-jx-props payload
   - site-architecture.md#10.3 # which components a build compiles
 code:
   - packages/compiler/src/site/site-build.ts
@@ -86,20 +87,28 @@ The same applies to `timing: "compiler"` data and to content collections: templa
 
 When nothing dynamic survives the build-time resolution, the page is plain HTML with its CSS in the head: zero JavaScript, no import map, no module scripts. This is the default outcome, not an optimization you opt into.
 
-### Islands in a static shell
+### Components on a static page
 
-A dynamic subtree inside an otherwise-static document doesn't drag the whole page into the client tier. The compiler cuts the subtree out, compiles it to a small custom-element module, and leaves a placeholder tag in the HTML:
+A page whose own document is static stays static when it uses interactive components. Each instance is prerendered where it is written, and a component that needs JavaScript (a hyphenated `tagName`, say `site-counter`) loads `dist/components/site-counter.js` only on the pages that use it. The module upgrades the prerendered element in place, taking the props it was rendered with from its `data-jx-props` attribute:
 
 ```html
-<jx-island-0></jx-island-0>
-<script type="module" src="./_islands/jx-island-0.js"></script>
+<site-counter data-jx-props='{"start":3}' data-jx-prerendered>…</site-counter>
+<script type="module" src="/components/site-counter.js"></script>
 ```
 
-The module upgrades the element in place. Components you author with a hyphenated `tagName` (say `site-counter`) work the same way: the page HTML stays static, and `dist/components/site-counter.js` loads only on pages that use the element. The import map added to those pages resolves `@vue/reactivity` and `lit-html` for the island modules.
+The import map added to those pages resolves `@vue/reactivity` and `lit-html` for the component modules, and a fully static component ships no module at all. Anything dynamic in the page document itself, at any depth, makes the whole page a [dynamic page](#dynamic-pages) instead: the compiler does not cut a dynamic subtree out of a static page. To keep a page static with one live part, make that part a component.
+
+### Dynamic pages
+
+When the page document itself is dynamic (it declares live `state`, binds `$ref`s, or uses runtime template strings), the compiler still pre-renders the full HTML, marks bound elements with `data-bind` attributes, and emits one small module that wires reactivity onto the existing DOM: reactive state, `computed()` for derived values, `effect()` per binding, event handler hookup, and one `POST` to the site's worker for each `timing: "server"` entry. There is no client-side re-render of the initial view; the JS only maintains what changes.
+
+Two more outputs sit alongside these tiers: `.class.json` documents compile to ES class modules, and `timing: "server"` entries compile into the site-wide worker, which needs `build.adapter`: without one the build stops with an error naming each entry.
+
+Across all three tiers the emitter indents nested children so the generated HTML stays readable, except inside `pre`, `textarea`, and the rest of the tags browsers render with `white-space: pre`. There, and everywhere below them (`white-space` inherits), children are concatenated with no separator, because indentation between elements would be content rather than formatting. This is what keeps a syntax-highlighted code block, one `<span>` per token, rendering as the code you wrote.
 
 ## Where the runtime comes from
 
-Those two modules are bundled into your `dist/` at build time and the import map points at them:
+`@vue/reactivity` and `lit-html` are bundled into your `dist/` at build time and the import map points at them:
 
 ```html
 <script type="importmap">
@@ -135,14 +144,6 @@ The trailing-slash entries cover package _subpaths_. A component or a `$src` mod
 They used to load from `https://esm.sh`. Self-hosting removes a third party from the load path of every interactive page, and it's what makes a `default-src 'self'` Content-Security-Policy possible at all. The old argument for a shared CDN was a shared browser cache, and that stopped being true when browsers began partitioning the HTTP cache by site.
 :::
 
-### Dynamic pages
-
-When the page document itself is dynamic (it declares live `state`, binds `$ref`s, or uses runtime template strings), the compiler still pre-renders the full HTML, marks bound elements with `data-bind` attributes, and emits one small module that wires reactivity onto the existing DOM: reactive state, `computed()` for derived values, `effect()` per binding, event handler hookup, and one `POST` to the site's worker for each `timing: "server"` entry. There is no client-side re-render of the initial view; the JS only maintains what changes.
-
-Two more outputs sit alongside these tiers: `.class.json` documents compile to ES class modules, and `timing: "server"` entries compile into the site-wide worker, which needs `build.adapter`: without one the build stops with an error naming each entry.
-
-Across all three tiers the emitter indents nested children so the generated HTML stays readable, except inside `pre`, `textarea`, and the rest of the tags browsers render with `white-space: pre`. There, and everywhere below them (`white-space` inherits), children are concatenated with no separator, because indentation between elements would be content rather than formatting. This is what keeps a syntax-highlighted code block, one `<span>` per token, rendering as the code you wrote.
-
 ## CSS extraction
 
 Style never ships as JavaScript. During compilation, every static `style` definition (the project-level `style` from the project file, the layout's, the page's, and each node's) is extracted into a single `<style>` block in the page `<head>`, with `$media` breakpoint names expanded to real media queries. Styles found in component slot content are collected into the same block. See [Styling](/docs/framework/concepts/styling) for the authoring model.
@@ -163,7 +164,7 @@ Every page is prerendered: the compiler evaluates `${state.…}` against the bui
 - **An entry a handler writes to stays bound.** If any handler in the document assigns to `state.saved` (`=`, `+=`, `++`, or an in-place `push`/`splice`/`sort`), every template reading it keeps its binding, even though the entry has a perfectly ordinary build-time value.
 - **A computed over changing state stays bound.** A computed `$prototype: "Function"` (a body that returns a value and declares no parameters) is evaluated at build time, so a computed is left unresolved too when it reads a written entry, a `$src` value, or a `Request`, however many steps removed.
 - **An empty list is static when the build resolved its data.** A list over a content collection, a `timing: "compiler"` entry, a paged slice, `$site` or `$page`, or a literal array that turns out empty renders nothing and leaves no JavaScript behind. A list over client state that starts empty (`{"rows": {"default": []}}`) keeps its binding, because the browser may still fill it.
-- **An array a computed still reads stays in client state.** Expanding an array into a list at build time no longer drops it: if a computed or a template still reads `state.rows` at runtime, the array ships with the island. Mark it `timing: "compiler"` to say the data really is build-time only.
+- **An array a computed still reads stays in client state.** Expanding an array into a list at build time no longer drops it: if a computed or a template still reads `state.rows` at runtime, the array ships to the browser. Mark it `timing: "compiler"` to say the data really is build-time only.
 
 :::doc-note
 One case the compiler cannot see: a handler loaded through `$src` lives in a JavaScript file the build does not open, so a state entry written **only** from there is still treated as a constant and baked. Declare a writer for it in the document if a binding over it goes dead.
@@ -197,4 +198,4 @@ Work the static-detection list backwards:
 - [The dev server](/docs/framework/build/dev-server): the development-time counterpart
 - [Site architecture](/docs/framework/site): the directory layout the build consumes
 - [Reactivity](/docs/framework/concepts/reactivity): what the dynamic tier compiles from
-- [Components](/docs/framework/concepts/components): the component model behind islands
+- [Components](/docs/framework/concepts/components): the component model behind interactive regions

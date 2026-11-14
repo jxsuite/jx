@@ -241,9 +241,10 @@ export function writeHeaders(outDir: string, rules: readonly HeaderRule[]): numb
 /**
  * Write `dist/.nojekyll`.
  *
- * GitHub Pages runs Jekyll, which excludes every `_`-prefixed path — which is `_headers`,
- * `_redirects`, `_worker.js`, `_routes.json` and `_islands/`. One empty file closes the whole class
- * of "works locally, half-broken on Pages", so it is unconditional rather than an adapter option.
+ * GitHub Pages runs Jekyll, which leaves every `_`-prefixed path out of the published site, at any
+ * depth. The one the build writes that a page needs is `images/_optimized/`, and a project may ship
+ * its own from `public/`. One empty file closes the whole class of "works locally, half-broken on
+ * Pages", so it is unconditional rather than an adapter option.
  */
 export function writeNoJekyll(outDir: string): number {
   const path = join(outDir, ".nojekyll");
