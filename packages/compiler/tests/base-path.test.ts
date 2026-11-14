@@ -308,7 +308,20 @@ beforeAll(() => {
     },
     tagName: "probe-card",
   });
-  writeJSON("pages/card.json", { children: [{ tagName: "probe-card" }], title: "Card" });
+  // A shadow component: its module links its own sheet into a root it attaches.
+  writeJSON("components/probe-root.json", {
+    $shadow: "open",
+    children: [
+      { children: ["${state.count}"], onclick: { $ref: "#/state/add" }, tagName: "button" },
+    ],
+    state: { add: { $prototype: "Function", body: "state.count++" }, count: 0 },
+    style: { backgroundImage: "url(/hero.jpg)" },
+    tagName: "probe-root",
+  });
+  writeJSON("pages/card.json", {
+    children: [{ tagName: "probe-card" }, { tagName: "probe-root" }],
+    title: "Card",
+  });
   mkdirSync(resolve(TMP, "public"), { recursive: true });
   writeFileSync(resolve(TMP, "public/hero.jpg"), "jpg", "utf8");
   writeFileSync(resolve(TMP, "public/icon-192.png"), "png", "utf8");
@@ -382,6 +395,14 @@ describe("a site whose url carries a path", () => {
     expect(module).not.toMatch(/["'`=]\/(?:about|hero)/);
     expect(module).toContain("https://example.org/x");
     expect(read("dist/components/probe-card.css")).toContain("url(/m/probe/hero.jpg)");
+    // A shadow root's sheet is fetched as written, from the link the prerender or the module adds.
+    expect(read("dist/components/probe-root.js")).toContain(
+      'href: "/m/probe/components/probe-root.css"',
+    );
+    expect(read("dist/components/probe-root.css")).toContain("url(/m/probe/hero.jpg)");
+    expect(read("dist/card/index.html")).toContain(
+      '<link rel="stylesheet" href="/m/probe/components/probe-root.css">',
+    );
   }, 120_000);
 
   test("the same fixture at an origin root emits no prefix anywhere", async () => {

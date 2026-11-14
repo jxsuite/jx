@@ -34,8 +34,10 @@ import {
   cssPropertyName,
   hashCss,
   isNestedSelectorKey,
+  resolveShadowMode,
   transposeCanvasOverlaySelector,
 } from "./css.ts";
+import type { CssBuildOptions, ShadowSetting } from "./css.ts";
 import {
   evaluateExpression,
   evaluateOperand,
@@ -745,6 +747,41 @@ export function setCanvasDelinkAnchors(on: boolean) {
 let _canvasDelinkPopovers = false;
 export function setCanvasDelinkPopovers(on: boolean) {
   _canvasDelinkPopovers = on;
+}
+
+/**
+ * The project's shadow default (`defaults.shadow`, spec.md §16.6) for this realm: what a component
+ * that declares no `$shadow` of its own renders into.
+ *
+ * Per realm and not per mount, for the reason the custom-element registry is (embedding.md §5.2):
+ * an element class has no mount context when it connects, and one page is one project. A host that
+ * serves a project's pages sets it before the first render; a component's own `$shadow` still wins
+ * in both directions. Anything that is not a mode is light DOM, by `resolveShadowMode`'s own rule.
+ *
+ * @param {ShadowSetting | null | undefined} setting - `"open"`, `"closed"`, or `false` for light
+ * @docs framework/concepts/components
+ */
+let _shadowDefault: ShadowSetting = false;
+export function setShadowDefault(setting: ShadowSetting | null | undefined): void {
+  _shadowDefault = resolveShadowMode(null, { shadow: setting ?? false }) ?? false;
+}
+
+/**
+ * Studio-canvas switch: render EVERY component in the light DOM, whatever its `$shadow` or the
+ * realm's default says.
+ *
+ * An editing canvas reads an instance's subtree from the document: inline prop editing finds the
+ * node a prop is bound to, the edit-mode stylesheet outlines it, and a path lookup resolves a click
+ * to a document node. None of that reaches into a shadow root, and a closed one cannot be reached
+ * at all. So the canvas keeps components light and Open in Browser is where an author sees a shadow
+ * component as it ships (studio.md §4.2). The cost is that the canvas shows page CSS reaching into
+ * it.
+ *
+ * @param {boolean} on
+ */
+let _canvasLightComponents = false;
+export function setCanvasLightComponents(on: boolean): void {
+  _canvasLightComponents = on;
 }
 
 /**
@@ -2078,6 +2115,7 @@ async function resolveFunction(
  */
 export const RESERVED_KEYS = new Set([
   "$schema",
+  "$shadow",
   "$id",
   "$defs",
   "state",
@@ -2363,7 +2401,17 @@ export function renderNode(
   if (def.style && tagName.includes("-")) {
     callSiteStyles.set(el, def.style);
   }
-  applyStyle(el, def.style ?? {}, scopeMedia(localState), localState);
+  applyStyleInto(
+    el,
+    def.style ?? {},
+    scopeMedia(localState),
+    localState,
+    false,
+    options?._styleRoot,
+    /* A definition root being edited as a document is the host of its own style: its `:host`
+       keys mean the element itself, as they will in every instance (spec.md §16.6). */
+    ns === null && el.dataset.jxDefinitionRoot !== undefined ? "light" : undefined,
+  );
   applyAttributes(el, def.attributes ?? {}, localState);
 
   const kids = def.children;
@@ -2921,25 +2969,47 @@ function textSink(tag: HTMLStyleElement): StyleSink {
 }
 
 /**
- * Open a sheet on `doc`, preferring a constructable one.
+ * A tree rules are written into: a document, or the shadow root an element renders in. A selector
+ * matches only inside the tree whose sheet holds it, so a rule goes where the element it names is
+ * (spec.md §16.6).
+ */
+export type StyleRoot = Document | ShadowRoot;
+
+/**
+ * Whether a node is a shadow root. Asked of the node rather than of `instanceof ShadowRoot`: an
+ * element rendered into another realm's document (a canvas frame) has that realm's constructors.
+ */
+function isShadowRoot(node: Node): node is ShadowRoot {
+  return node.nodeType === 11 && "host" in node;
+}
+
+/** The document a style root belongs to: itself, or the one its shadow host lives in. */
+function documentOf(root: StyleRoot): Document {
+  return isShadowRoot(root) ? root.ownerDocument : root;
+}
+
+/**
+ * Open a sheet on `root`, preferring a constructable one.
  *
  * A constructable stylesheet cannot be adopted into another document, which is why the registry
- * below is keyed on the document and never cached at module scope: the Studio iframe, the live
- * preview tab and the parent page each open their own.
+ * below is keyed on the root and never cached at module scope: the Studio iframe, the live preview
+ * tab and the parent page each open their own, and so does every shadow root, which adopts its own
+ * sheets and inherits none of its document's.
  *
- * @param {Document} doc
+ * @param {StyleRoot} root
  * @returns {StyleSink}
  */
-function openSink(doc: Document): StyleSink {
+function openSink(root: StyleRoot): StyleSink {
+  const doc = documentOf(root);
   // A window without constructable stylesheets (an older engine, a test DOM) lacks the global.
   const view: (Window & { CSSStyleSheet?: typeof CSSStyleSheet }) | null = doc.defaultView;
   const SheetConstructor = view?.CSSStyleSheet;
-  if (isFunction(SheetConstructor) && Array.isArray(doc.adoptedStyleSheets)) {
+  if (isFunction(SheetConstructor) && Array.isArray(root.adoptedStyleSheets)) {
     try {
       const sheet = new SheetConstructor();
-      doc.adoptedStyleSheets = [...doc.adoptedStyleSheets, sheet];
+      root.adoptedStyleSheets = [...root.adoptedStyleSheets, sheet];
       return cssomSink(sheet, () => {
-        doc.adoptedStyleSheets = doc.adoptedStyleSheets.filter((s) => s !== sheet);
+        root.adoptedStyleSheets = root.adoptedStyleSheets.filter((s) => s !== sheet);
       });
     } catch {
       // No constructable stylesheets, or a frozen adoptedStyleSheets. Fall through to a tag.
@@ -2947,7 +3017,7 @@ function openSink(doc: Document): StyleSink {
   }
   const tag = doc.createElement("style");
   tag.dataset.jxSheet = "";
-  (documentHead(doc) ?? doc.documentElement).append(tag);
+  (isShadowRoot(root) ? root : (documentHead(doc) ?? doc.documentElement)).append(tag);
   return tag.sheet ? cssomSink(tag.sheet, () => tag.remove()) : textSink(tag);
 }
 
@@ -2968,7 +3038,7 @@ interface InternEntry {
   refs: number;
 }
 
-/** Everything one document's rules are kept in. */
+/** Everything one style root's rules are kept in. */
 interface SheetState {
   shared: StyleSink;
   /** Opened on the first live edit, and only then — most documents never have one. */
@@ -2977,25 +3047,30 @@ interface SheetState {
   scratchOwners: Map<HTMLElement, readonly string[]>;
   /** Scope handle to the rule set it names. */
   interned: Map<string, InternEntry>;
-  /** Declaration-body at-rule text to the one copy of it. */
+  /** Declaration-body at-rule text to the one copy of it. Used on a document's state only. */
   hoisted: Map<string, InternEntry>;
-  /** Distinguishes `--jx-r<serial>-<n>` variables between elements. */
-  serial: number;
 }
 
 /**
- * The per-document registry. A `WeakMap` rather than a module-level singleton because one process
+ * The per-root registry. A `WeakMap` rather than a module-level singleton because one process
  * renders into several documents (canvas iframe, preview tab, parent) and a constructable sheet
- * belongs to exactly one of them.
+ * belongs to exactly one of them. A shadow root is a key of its own, and its state dies with it.
  */
-const sheetStates = new WeakMap<Document, SheetState>();
+const sheetStates = new WeakMap<StyleRoot, SheetState>();
 
 /**
- * @param {Document} doc
+ * The next `--jx-r<serial>-<n>` serial, per DOCUMENT rather than per sheet: custom properties
+ * inherit across a shadow boundary, so a host with rules in two trees must never be handed one name
+ * twice.
+ */
+const variableSerials = new WeakMap<Document, number>();
+
+/**
+ * @param {StyleRoot} root
  * @returns {SheetState}
  */
-function sheetStateFor(doc: Document): SheetState {
-  const existing = sheetStates.get(doc);
+function sheetStateFor(root: StyleRoot): SheetState {
+  const existing = sheetStates.get(root);
   if (existing) {
     return existing;
   }
@@ -3004,18 +3079,22 @@ function sheetStateFor(doc: Document): SheetState {
     interned: new Map(),
     scratch: null,
     scratchOwners: new Map(),
-    serial: 0,
-    shared: openSink(doc),
+    shared: openSink(root),
   };
-  sheetStates.set(doc, created);
+  sheetStates.set(root, created);
   return created;
 }
 
 /** What one element holds, so that releasing it is exact rather than approximate. */
 interface ElementStyleEntry {
-  doc: Document;
+  /** The tree the scoped rules were written into. */
+  root: StyleRoot;
   /** The state this entry's handles belong to; a reset replaces it and orphans them. */
   state: SheetState;
+  /** The state its hoisted at-rules went to: the document's. Only read when `hoisted` holds one. */
+  documentState: SheetState;
+  /** How host keys were translated, kept so a re-apply translates them the same way. */
+  host: "light" | "shadow" | undefined;
   uid: string;
   /** The interning key in the shared sheet, or null when the element is on the scratch sheet. */
   interned: string | null;
@@ -3034,6 +3113,13 @@ interface ElementStyleEntry {
  * would either leak it or take it away from another element that shares it.
  */
 const elementStyles = new WeakMap<HTMLElement, ElementStyleEntry>();
+
+/**
+ * The rules a SHADOW HOST's definition wrote into its own root, as `:host` rules. Kept apart from
+ * {@link elementStyles}, which for such a host holds the usage site's rules in the tree around it:
+ * the two sets live in different sheets and are applied and released independently.
+ */
+const hostStyles = new WeakMap<HTMLElement, ElementStyleEntry>();
 
 /** The scope handle `buildStyleRules` writes, before the hash of its own output replaces it. */
 const SCOPE_TOKEN = "jx-scope";
@@ -3117,31 +3203,48 @@ function retainInterned(
  * @param {ElementStyleEntry} [only] - Release only if this is still the element's current entry
  */
 export function releaseElementStyles(el: HTMLElement, only?: ElementStyleEntry): void {
-  const entry = elementStyles.get(el);
+  releaseStyleEntry(el, elementStyles, only);
+  releaseStyleEntry(el, hostStyles, only);
+}
+
+/**
+ * Release the entry one of the two maps holds for an element ({@link elementStyles} or
+ * {@link hostStyles}), so applying one rule set never takes the other away.
+ */
+function releaseStyleEntry(
+  el: HTMLElement,
+  entries: WeakMap<HTMLElement, ElementStyleEntry>,
+  only?: ElementStyleEntry,
+): void {
+  const entry = entries.get(el);
   if (!entry || (only !== undefined && entry !== only)) {
     return;
   }
-  elementStyles.delete(el);
+  entries.delete(el);
   entry.stop?.();
   for (const name of entry.vars) {
     el.style.removeProperty(name);
   }
-  delete el.dataset.jx;
+  // The handle belongs to the element's own rule set; a host rule set is selected by `:host`.
+  if (entries === elementStyles) {
+    delete el.dataset.jx;
+  }
   /* A `resetDocumentStyles` between the two replaces the state, and its sheets are already gone —
-     so the element-local half above always runs and the sheet half is skipped as already done. */
-  if (sheetStates.get(entry.doc) !== entry.state) {
-    return;
-  }
-  const { state } = entry;
-  if (entry.interned === null) {
-    if (state.scratchOwners.delete(el)) {
-      rewriteScratch(state);
+     so the element-local half above always runs and each sheet half is skipped as already done. */
+  const { state, documentState } = entry;
+  if (sheetStates.get(entry.root) === state) {
+    if (entry.interned === null) {
+      if (state.scratchOwners.delete(el)) {
+        rewriteScratch(state);
+      }
+    } else {
+      releaseInterned(state, state.interned, entry.interned);
     }
-  } else {
-    releaseInterned(state, state.interned, entry.interned);
   }
-  for (const key of entry.hoisted) {
-    releaseInterned(state, state.hoisted, key);
+  if (entry.hoisted.length > 0 && sheetStates.get(documentOf(entry.root)) === documentState) {
+    for (const key of entry.hoisted) {
+      releaseInterned(documentState, documentState.hoisted, key);
+    }
   }
 }
 
@@ -3163,6 +3266,7 @@ export function resetDocumentStyles(doc: Document = document): void {
     return;
   }
   sheetStates.delete(doc);
+  variableSerials.delete(doc);
   for (const el of state.scratchOwners.keys()) {
     elementStyles.delete(el);
     delete el.dataset.jx;
@@ -3187,12 +3291,15 @@ export function resetDocumentStyles(doc: Document = document): void {
  * Studio style inspector asks and, before this, nothing could answer without scraping `<style>`
  * tags out of the head.
  *
- * @param {Document} [doc] - Defaults to the ambient document
+ * Given a shadow root, it answers for that root's own sheet: the rules of the component rendered
+ * into it and of everything inside it (spec.md §16.6).
+ *
+ * @param {StyleRoot} [root] - Defaults to the ambient document
  * @returns {string} One rule per line, shared sheet first
  * @docs framework/concepts/styling
  */
-export function documentStyleText(doc: Document = document): string {
-  const state = sheetStates.get(doc);
+export function documentStyleText(root: StyleRoot = document): string {
+  const state = sheetStates.get(root);
   if (!state) {
     return "";
   }
@@ -3314,7 +3421,9 @@ export function reapplyStyle(
   mediaQueries: Record<string, string> = {},
   state: JxScope = {},
 ) {
-  applyStyleInto(el, styleDef ?? {}, mediaQueries, state, true);
+  // The tree and the host translation of the rules being replaced are the element's, not the edit's.
+  const prior = elementStyles.get(el);
+  applyStyleInto(el, styleDef ?? {}, mediaQueries, state, true, prior?.root, prior?.host);
 }
 
 /**
@@ -3323,6 +3432,12 @@ export function reapplyStyle(
  * @param {Record<string, string>} mediaQueries
  * @param {JxScope} state
  * @param {boolean} live - Write to the scratch sheet (the Studio edit path) rather than intern
+ * @param {StyleRoot} [styleRoot] - The tree the rules select in. An element is styled before it is
+ *   inserted, so it cannot be asked; the default is its document
+ * @param {"light" | "shadow"} [host] - Set when `el` is a component's host and `styleDef` its
+ *   definition's style. `"light"` translates `:host` keys to the element's own handle. `"shadow"`
+ *   makes this the element's HOST RULE SET: `:host` rules in `styleRoot`, the root it renders into,
+ *   held beside (never instead of) the rules the usage site wrote in the tree around it
  */
 function applyStyleInto(
   el: HTMLElement,
@@ -3330,10 +3445,15 @@ function applyStyleInto(
   mediaQueries: Record<string, string>,
   state: JxScope,
   live: boolean,
+  styleRoot?: StyleRoot,
+  host?: "light" | "shadow",
 ) {
-  releaseElementStyles(el);
+  const entries = host === "shadow" ? hostStyles : elementStyles;
+  releaseStyleEntry(el, entries);
   const doc = el.ownerDocument;
-  const sheetState = sheetStateFor(doc);
+  const root = styleRoot ?? doc;
+  const sheetState = sheetStateFor(root);
+  const inShadowTree = isShadowRoot(root);
 
   /* One gate for the whole call, so every recursion answers alike. Off in production and in
      preview, where the selector is written exactly as authored.
@@ -3361,6 +3481,10 @@ function applyStyleInto(
   let serial = -1;
   let indirect = 0;
   const sources: { name: string; value: string | JxRef }[] = [];
+  const hostOption: Pick<CssBuildOptions, "host"> = {};
+  if (host !== undefined) {
+    hostOption.host = host;
+  }
   const rules = buildStyleRules(styleDef, {
     mediaQueries,
     resolveValue: (property, value, target) => {
@@ -3390,12 +3514,14 @@ function applyStyleInto(
            position. Without this, every instance of a definition with one reactive declaration
            (the kit's tree row binds its indent) interned a rule set of its own: an Outline
            scrolling through a long page minted fifteen rules per row and grew the shared sheet
-           past fourteen thousand, slowing every insert and every style recalculation after. */
-        name = `--jx-s${indirect}`;
+           past fourteen thousand, slowing every insert and every style recalculation after.
+           A shadow host carries two rule sets that both set variables on it, so its host set
+           counts under a letter of its own. */
+        name = host === "shadow" ? `--jx-h${indirect}` : `--jx-s${indirect}`;
       } else {
         if (serial < 0) {
-          ({ serial } = sheetState);
-          sheetState.serial += 1;
+          serial = variableSerials.get(doc) ?? 0;
+          variableSerials.set(doc, serial + 1);
         }
         name = `--jx-r${serial}-${indirect}`;
       }
@@ -3403,9 +3529,11 @@ function applyStyleInto(
       sources.push({ name, value });
       return `var(${name})`;
     },
-    scope: SCOPE_TOKEN,
+    scope: host === "shadow" ? ":host" : SCOPE_TOKEN,
+    shadowTree: inShadowTree,
     transposeSelector,
     transposeValue: canvasStyleValue,
+    ...hostOption,
   });
   /* `sources.length` too, not `rules.length` alone: a style whose ONLY reactive declaration is a
      custom property on the element itself emits no rule at all, and returning here would install
@@ -3419,16 +3547,22 @@ function applyStyleInto(
      once per element that mentions them. */
   const scoped = rules.filter((rule) => rule.target !== "unscoped");
   const unscoped = rules.filter((rule) => rule.target === "unscoped");
+  /* At-rules that declare a document-global name are hoisted to the document, whatever the tree.
+     Its state is opened only when a rule needs it, so a root's rules open no sheet on the page. */
+  const documentState = inShadowTree && unscoped.length > 0 ? sheetStateFor(doc) : sheetState;
   for (const rule of unscoped) {
-    retainInterned(sheetState, sheetState.hoisted, rule.text, [rule.text]);
+    retainInterned(documentState, documentState.hoisted, rule.text, [rule.text]);
   }
 
   const uid = `jx-${hashCss(scoped.map((rule) => rule.key).join("|"))}`;
   const texts = scoped.map((rule) => rule.text.replaceAll(SCOPE_TOKEN, `[data-jx="${uid}"]`));
   if (texts.length > 0) {
-    el.dataset.jx = uid;
+    // A host rule set is selected by `:host`, so it needs no handle on the element.
+    if (host !== "shadow") {
+      el.dataset.jx = uid;
+    }
     if (live) {
-      sheetState.scratch ??= openSink(doc);
+      sheetState.scratch ??= openSink(root);
       sheetState.scratchOwners.set(el, texts);
       rewriteScratch(sheetState);
     } else {
@@ -3437,9 +3571,11 @@ function applyStyleInto(
   }
 
   const entry: ElementStyleEntry = {
-    doc,
+    documentState,
     hoisted: unscoped.map((rule) => rule.text),
+    host,
     interned: texts.length > 0 && !live ? uid : null,
+    root,
     state: sheetState,
     stop: null,
     uid,
@@ -3466,11 +3602,11 @@ function applyStyleInto(
     });
     entry.stop = () => scope.stop();
   }
-  elementStyles.set(el, entry);
+  entries.set(el, entry);
   /* Ties the rules to the render that made them: a mapped array's discarded generation, or a
      Studio subtree being replaced, stops its scope and the rule set goes with it. Guarded on the
      entry so a later `reapplyStyle` is not undone by an older scope disposing after it. */
-  onScopeDispose(() => releaseElementStyles(el, entry), true);
+  onScopeDispose(() => releaseStyleEntry(el, entries, entry), true);
 }
 
 /*
@@ -4009,7 +4145,7 @@ function renderSwitch(def: JxElement, state: JxScope, options?: JxRenderOptions)
   }
 
   applyProperties(container, def, state);
-  applyStyle(container, def.style ?? {}, scopeMedia(state), state);
+  applyStyleInto(container, def.style ?? {}, scopeMedia(state), state, false, options?._styleRoot);
   applyAttributes(container, def.attributes ?? {}, state);
   /* Every case renders in a detached scope of its own, stopped before the next case renders and
      when the container's own scope stops. A generation counter names the case a pending external
@@ -5305,6 +5441,7 @@ export {
   isNestedSelectorKey,
   pureSchemeOf,
   resolveAtQuery,
+  resolveHostKey,
   resolveNestedSelector,
   resolveShadowMode,
   schemeSelectors,
@@ -6017,9 +6154,32 @@ export async function defineElement(source: string | JxDocument, baseUrl?: strin
 
       this._state = state;
 
-      // Capture light DOM children (for slot distribution) before rendering
-      const slottedChildren = captureSlotted(this);
-      this.replaceChildren();
+      /* Where this instance renders (spec.md §16.6). Light DOM: into the element, with its light
+         children captured for the slot emulation. A shadow root: into the root, adopted when the
+         parser already made one (attaching over a declarative root throws) and attached otherwise,
+         with the light children left where they are for the real `<slot>`s to project. A closed
+         root is not on the element, by definition, and `ElementInternals` is the only way back to
+         one; it is held in this closure and never on the element. */
+      const shadowMode = _canvasLightComponents
+        ? null
+        : resolveShadowMode(def, { shadow: _shadowDefault });
+      const treeRoot = this.getRootNode();
+      // The tree the rules around this host select in: its document's, unless it is in a root.
+      const outerRoot = isShadowRoot(treeRoot) ? treeRoot : undefined;
+      let shadowRoot: ShadowRoot | null = null;
+      let slottedChildren: ChildNode[] | null = null;
+      if (shadowMode === null) {
+        slottedChildren = captureSlotted(this);
+      } else {
+        const adopted = shadowMode === "open" ? this.shadowRoot : this.attachInternals().shadowRoot;
+        shadowRoot = adopted ?? this.attachShadow({ mode: shadowMode });
+      }
+      const renderRoot = (): HTMLElement | ShadowRoot => shadowRoot ?? this;
+      renderRoot().replaceChildren();
+      // What the definition draws styles into the root it is drawn in.
+      const innerRoot = shadowRoot ?? outerRoot;
+      const childOptions: JxRenderOptions | undefined =
+        innerRoot === undefined ? undefined : { _styleRoot: innerRoot };
 
       /* Custom elements default to `display: inline`; a Jx container behaves like a `<div>`, so
          one is supplied. It goes in the element's OWN RULE rather than inline: an inline
@@ -6030,13 +6190,22 @@ export async function defineElement(source: string | JxDocument, baseUrl?: strin
       const ownStyle = def.style;
       const defStyle =
         ownStyle && declaresDisplay(ownStyle) ? ownStyle : { display: "block", ...ownStyle };
-      /* Definition first, call site second, so the call site wins at equal specificity by source
-         order — the promise §9.2 already makes for base-before-nested. Merged into ONE call
-         because each `applyStyle` releases what the last one interned. */
-      const hostStyle = mergeStyle(defStyle, callSiteStyles.get(this));
-
-      // Render template into light DOM (once, not in effect — inner effects handle reactivity)
-      applyStyle(this, hostStyle, scopeMedia(state), state);
+      const media = scopeMedia(state);
+      if (shadowRoot) {
+        /* Two rule sets, in two trees. The usage site's stays an ordinary rule in the tree around
+           the host, and the definition's becomes `:host` rules in the root. An outer tree's
+           declaration beats an inner one's, so the usage site still wins, as a built page's class
+           rule for the instance beats the component's `:host` rules. */
+        applyStyleInto(this, callSiteStyles.get(this) ?? {}, media, state, false, outerRoot);
+        applyStyleInto(this, defStyle, media, state, false, shadowRoot, "shadow");
+      } else {
+        /* Definition first, call site second, so the call site wins at equal specificity by source
+           order — the promise §9.2 already makes for base-before-nested. Merged into ONE call
+           because each `applyStyle` releases what the last one interned. */
+        const hostStyle = mergeStyle(defStyle, callSiteStyles.get(this));
+        applyStyleInto(this, hostStyle, media, state, false, outerRoot, "light");
+      }
+      // Render the template once, not in an effect: inner effects handle reactivity.
       applyAttributes(this, def.attributes ?? {}, state);
       bindDefinitionHandlers(this, def, state);
 
@@ -6046,7 +6215,9 @@ export async function defineElement(source: string | JxDocument, baseUrl?: strin
        * dropped here, so such a component rendered empty everywhere the interpreter runs.
        */
       if (!Array.isArray(def.children) && def.textContent !== undefined) {
-        bindProperty(this, "textContent", def.textContent, state);
+        /* SAFETY: a shadow root's `textContent` setter replaces its children exactly as an
+           element's does, which is the only member `bindProperty` uses for this key. */
+        bindProperty(renderRoot() as HTMLElement, "textContent", def.textContent, state);
       }
       const children = Array.isArray(def.children) ? def.children : [];
       /* A render that throws is reported the way a refusal is (§16.4), for the same reason: thrown
@@ -6065,7 +6236,7 @@ export async function defineElement(source: string | JxDocument, baseUrl?: strin
         try {
           underInstancePath(ownPath, () => {
             for (const childDef of children) {
-              this.append(renderNode(childDef, state));
+              renderRoot().append(renderNode(childDef, state, childOptions));
             }
           });
         } catch (error) {
@@ -6073,8 +6244,10 @@ export async function defineElement(source: string | JxDocument, baseUrl?: strin
         } finally {
           _canvasInsideStampedHost = wasInside;
         }
-        // Slot distribution (light DOM)
-        distributeSlots(this, slottedChildren);
+        // Slot distribution is the light DOM's emulation; a shadow root's slots are real.
+        if (slottedChildren !== null) {
+          distributeSlots(this, slottedChildren);
+        }
         return failure;
       };
 
@@ -6136,7 +6309,7 @@ export async function defineElement(source: string | JxDocument, baseUrl?: strin
               }
               watch();
               attempt.stop();
-              this.replaceChildren();
+              renderRoot().replaceChildren();
               pauseTracking();
               try {
                 attempt = runScoped(draw);
@@ -6633,7 +6806,7 @@ function renderCustomElementWithProps(
   if (def.style) {
     callSiteStyles.set(el, def.style);
   }
-  applyStyle(el, def.style ?? {}, scopeMedia(state), state);
+  applyStyleInto(el, def.style ?? {}, scopeMedia(state), state, false, options?._styleRoot);
   applyAttributes(el, def.attributes ?? {}, state);
   /* And its ordinary properties and handlers — `id`, `hidden`, `className`, an `onselect` — exactly
      as an ordinary element gets them. A custom element used in a document is still an element in

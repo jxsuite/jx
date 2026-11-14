@@ -122,6 +122,8 @@ Its button says how many you have set, so you can tell at a glance whether the c
 
 The canvas is for composing, so it does not run the page: clicking a link selects it, buttons run nothing, and a popover or a dialog is shown in place rather than over the page. To see the page behave, use **Open in Browser** (:kbd[⌘⇧O]), which opens it in your own browser with your unsaved edits included. Navigation between pages, your own JavaScript, server-side data and anything that depends on a real URL all behave there exactly as they will once the site is built. Keep the tab open: each later **Open in Browser** points the same tab at the page you are on.
 
+A component that renders into a shadow root does so in the browser. The canvas keeps it in the light DOM so that its content stays editable.
+
 A component or a layout opens the same way, on a page of its own: a component with the test values you set, and a layout around placeholder content. Full guide: **[Components](/docs/studio/design/components)**.
 
 :::doc-note

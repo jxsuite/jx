@@ -26,7 +26,9 @@ export function elementCSS(el: HTMLElement): string {
     return "";
   }
   const handle = `[data-jx="${uid}"]`;
-  return documentStyleText(el.ownerDocument)
+  // A rule lives in the tree it selects in: the element's shadow root when it is inside one.
+  const root = el.getRootNode();
+  return documentStyleText(root instanceof ShadowRoot ? root : el.ownerDocument)
     .split("\n")
     .filter((line) => line.includes(handle))
     .join("\n");

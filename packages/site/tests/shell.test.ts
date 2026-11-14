@@ -146,6 +146,20 @@ describe("pageShell — project formulas for components (spec.md §13.4)", () =>
   });
 });
 
+describe("pageShell — the project's shadow default (spec.md §16.6)", () => {
+  test("a project shadow default is set before the render", () => {
+    const html = pageShell({ ...page(), shadow: "closed" }, BASIC);
+    expect(html).toContain("import { Jx, setShadowDefault }");
+    const at = html.indexOf('setShadowDefault("closed");');
+    expect(at).toBeGreaterThan(-1);
+    expect(at).toBeLessThan(html.indexOf("await Jx("));
+  });
+
+  test("no default, no call", () => {
+    expect(pageShell(page(), BASIC)).not.toContain("setShadowDefault");
+  });
+});
+
 describe("problemShell", () => {
   test("names the reason the page could not render", () => {
     expect(problemShell("Layout not found: ./layouts/base.json")).toContain(

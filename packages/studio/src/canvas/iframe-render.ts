@@ -24,6 +24,7 @@ import {
   setCanvasDelinkAnchors,
   setCanvasDelinkCommands,
   setCanvasDelinkPopovers,
+  setCanvasLightComponents,
   setCanvasViewportTranspose,
   setDocumentParser,
   setProjectFormulas,
@@ -1488,6 +1489,11 @@ export async function prepareResolvedDocument(
      would put its dialog in the top layer and make the rest of the page inert, which is the
      popover problem plus an unclickable document. The frame reports the click instead. */
   setCanvasDelinkCommands(true);
+  /* Every component in the light DOM, whatever its `$shadow` or the project's `defaults.shadow`
+     says (§4.2): inline prop editing, the edit-mode stylesheet and path lookups all read an
+     instance's subtree from the document, and a closed root cannot be reached at all. Open in
+     Browser is where a shadow component is seen as it ships. */
+  setCanvasLightComponents(true);
   // Stamp `data-jx-bound-prop` on component-internal invertible text bindings in design/edit only —
   // The inline prop-edit affordance. Set every render so a stylebook render in the same Iframe
   // Clears it. A page's own bound text is drawn as chips (`prepareForEditMode`), whose

@@ -163,7 +163,7 @@ A rule whose style block carries a `$description` keeps it as a comment on the l
 
 **Component CSS is inlined into that block too**, after the page's own rules so the cascade is unchanged, and no `<link rel="stylesheet">` is emitted for it. A stylesheet link per component is a render-blocking request per component. jxsuite.com's home page had eleven of them, 22 kB in total, for sheets averaging 2 kB each: the whole of its critical request chain, spent on round trips rather than bytes.
 
-The sidecars are still written to `dist/components/<tag>.css` for anything that references them directly, and a component in [shadow mode](/docs/framework/concepts/elements) is unaffected: its sheet is linked from inside the declarative shadow root, where it belongs, and an element pack's module links its own sheet into the root it attaches.
+The sidecars are still written to `dist/components/<tag>.css` for anything that references them directly, and a component in [shadow mode](/docs/framework/concepts/components#opting-into-a-shadow-root) is unaffected: its sheet is linked from inside the declarative shadow root, where it belongs, or from inside the root the element attaches when a client render creates it, and it carries the styles of the light components inside it. An element pack's module links its own sheet the same way.
 
 :::doc-note
 The trade is deliberate. Inlined CSS repeats on every page instead of caching across navigations. It is small, it compresses against the markup around it, and on a phone a round trip costs more than the bytes do.
