@@ -286,6 +286,7 @@ export function libraryRow(
     meta: file.type,
     name: entry?.title ?? file.name,
     path: file.path,
+    rowIndex: 0,
     selectLabel: `Select ${entry?.title ?? file.name}`,
     src: image ? previewFileSrc(file.path) : thumb,
   };
@@ -301,6 +302,7 @@ function nameRow(file: LibraryFile, entry?: EntryFacts): LibraryRow {
     meta: file.type,
     name: entry?.title ?? file.name,
     path: file.path,
+    rowIndex: 0,
     selectLabel: `Select ${entry?.title ?? file.name}`,
     src: "",
   };

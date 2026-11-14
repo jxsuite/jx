@@ -1,0 +1,171 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StylebookTr",
+  "tagName": "main",
+  "$elements": [
+    {
+      "$ref": "../components/jx-table.json"
+    },
+    {
+      "$ref": "../components/jx-tr.json"
+    },
+    {
+      "$ref": "../components/jx-th.json"
+    },
+    {
+      "$ref": "../components/jx-td.json"
+    }
+  ],
+  "style": {
+    "fontFamily": "var(--jx-font-sans)",
+    "fontSize": "var(--jx-text-md)",
+    "color": "var(--jx-fg)",
+    "background": "var(--jx-bg)",
+    "padding": "var(--jx-space-6)",
+    "minHeight": "100vh",
+    "& > h1": {
+      "fontSize": "var(--jx-text-lg)",
+      "fontWeight": "600",
+      "margin": "0 0 var(--jx-space-5)"
+    },
+    "& > h2": {
+      "fontSize": "var(--jx-text-md)",
+      "fontWeight": "600",
+      "color": "var(--jx-fg-dim)",
+      "margin": "var(--jx-space-5) 0 var(--jx-space-2)"
+    },
+    "& > p": {
+      "color": "var(--jx-fg-dim)",
+      "margin": "0 0 var(--jx-space-5)"
+    },
+    "& > div": {
+      "maxWidth": "560px",
+      "margin": "0 0 var(--jx-space-5)",
+      "border": "1px solid var(--jx-border)",
+      "borderRadius": "var(--jx-radius-sm)",
+      "background": "var(--jx-bg-panel)"
+    },
+    "& [part=\"version\"]": {
+      "fontFamily": "var(--jx-font-mono)",
+      "whiteSpace": "nowrap"
+    }
+  },
+  "children": [
+    {
+      "tagName": "h1",
+      "textContent": "jx-tr"
+    },
+    {
+      "tagName": "p",
+      "textContent": "One row: a CSS table row with the row role. It owns no look of its own, so hover, a cursor and a click are the consumer's to add where a row responds."
+    },
+    {
+      "tagName": "div",
+      "children": [
+        {
+          "tagName": "jx-table",
+          "$props": {
+            "label": "Packages"
+          },
+          "children": [
+            {
+              "tagName": "jx-tr",
+              "children": [
+                {
+                  "tagName": "jx-th",
+                  "textContent": "Package"
+                },
+                {
+                  "tagName": "jx-th",
+                  "textContent": "Current"
+                },
+                {
+                  "tagName": "jx-th",
+                  "textContent": "Latest"
+                }
+              ]
+            },
+            {
+              "tagName": "jx-tr",
+              "children": [
+                {
+                  "tagName": "jx-th",
+                  "$props": {
+                    "scope": "row"
+                  },
+                  "textContent": "@jxsuite/runtime"
+                },
+                {
+                  "tagName": "jx-td",
+                  "attributes": {
+                    "part": "version"
+                  },
+                  "textContent": "^0.19.0"
+                },
+                {
+                  "tagName": "jx-td",
+                  "attributes": {
+                    "part": "version"
+                  },
+                  "textContent": "0.22.0"
+                }
+              ]
+            },
+            {
+              "tagName": "jx-tr",
+              "children": [
+                {
+                  "tagName": "jx-th",
+                  "$props": {
+                    "scope": "row"
+                  },
+                  "textContent": "@jxsuite/ui"
+                },
+                {
+                  "tagName": "jx-td",
+                  "attributes": {
+                    "part": "version"
+                  },
+                  "textContent": "^0.4.1"
+                },
+                {
+                  "tagName": "jx-td",
+                  "attributes": {
+                    "part": "version"
+                  },
+                  "textContent": "0.4.1"
+                }
+              ]
+            },
+            {
+              "tagName": "jx-tr",
+              "children": [
+                {
+                  "tagName": "jx-th",
+                  "$props": {
+                    "scope": "row"
+                  },
+                  "textContent": "hono"
+                },
+                {
+                  "tagName": "jx-td",
+                  "attributes": {
+                    "part": "version"
+                  },
+                  "textContent": "^4.6.0"
+                },
+                {
+                  "tagName": "jx-td",
+                  "attributes": {
+                    "part": "version"
+                  },
+                  "textContent": "4.7.2"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

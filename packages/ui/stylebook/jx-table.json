@@ -1,0 +1,300 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "StylebookTable",
+  "tagName": "main",
+  "$elements": [
+    {
+      "$ref": "../components/jx-table.json"
+    },
+    {
+      "$ref": "../components/jx-tr.json"
+    },
+    {
+      "$ref": "../components/jx-th.json"
+    },
+    {
+      "$ref": "../components/jx-td.json"
+    }
+  ],
+  "style": {
+    "fontFamily": "var(--jx-font-sans)",
+    "fontSize": "var(--jx-text-md)",
+    "color": "var(--jx-fg)",
+    "background": "var(--jx-bg)",
+    "padding": "var(--jx-space-6)",
+    "minHeight": "100vh",
+    "& > h1": {
+      "fontSize": "var(--jx-text-lg)",
+      "fontWeight": "600",
+      "margin": "0 0 var(--jx-space-5)"
+    },
+    "& > h2": {
+      "fontSize": "var(--jx-text-md)",
+      "fontWeight": "600",
+      "color": "var(--jx-fg-dim)",
+      "margin": "var(--jx-space-5) 0 var(--jx-space-2)"
+    },
+    "& > p": {
+      "color": "var(--jx-fg-dim)",
+      "margin": "0 0 var(--jx-space-5)"
+    },
+    "& > div": {
+      "maxWidth": "560px",
+      "margin": "0 0 var(--jx-space-5)",
+      "border": "1px solid var(--jx-border)",
+      "borderRadius": "var(--jx-radius-sm)",
+      "background": "var(--jx-bg-panel)"
+    },
+    "& [part=\"version\"]": {
+      "fontFamily": "var(--jx-font-mono)",
+      "whiteSpace": "nowrap"
+    }
+  },
+  "children": [
+    {
+      "tagName": "h1",
+      "textContent": "jx-table"
+    },
+    {
+      "tagName": "p",
+      "textContent": "The table: a CSS table with the table role, named by its label. It owns the font, the full width and the separate, zero-spaced borders its cells draw their hairlines on. Rows are written, or mapped, directly inside it."
+    },
+    {
+      "tagName": "div",
+      "children": [
+        {
+          "tagName": "jx-table",
+          "$props": {
+            "label": "Packages"
+          },
+          "children": [
+            {
+              "tagName": "jx-tr",
+              "children": [
+                {
+                  "tagName": "jx-th",
+                  "textContent": "Package"
+                },
+                {
+                  "tagName": "jx-th",
+                  "textContent": "Current"
+                },
+                {
+                  "tagName": "jx-th",
+                  "textContent": "Latest"
+                }
+              ]
+            },
+            {
+              "tagName": "jx-tr",
+              "children": [
+                {
+                  "tagName": "jx-th",
+                  "$props": {
+                    "scope": "row"
+                  },
+                  "textContent": "@jxsuite/runtime"
+                },
+                {
+                  "tagName": "jx-td",
+                  "attributes": {
+                    "part": "version"
+                  },
+                  "textContent": "^0.19.0"
+                },
+                {
+                  "tagName": "jx-td",
+                  "attributes": {
+                    "part": "version"
+                  },
+                  "textContent": "0.22.0"
+                }
+              ]
+            },
+            {
+              "tagName": "jx-tr",
+              "children": [
+                {
+                  "tagName": "jx-th",
+                  "$props": {
+                    "scope": "row"
+                  },
+                  "textContent": "@jxsuite/ui"
+                },
+                {
+                  "tagName": "jx-td",
+                  "attributes": {
+                    "part": "version"
+                  },
+                  "textContent": "^0.4.1"
+                },
+                {
+                  "tagName": "jx-td",
+                  "attributes": {
+                    "part": "version"
+                  },
+                  "textContent": "0.4.1"
+                }
+              ]
+            },
+            {
+              "tagName": "jx-tr",
+              "children": [
+                {
+                  "tagName": "jx-th",
+                  "$props": {
+                    "scope": "row"
+                  },
+                  "textContent": "hono"
+                },
+                {
+                  "tagName": "jx-td",
+                  "attributes": {
+                    "part": "version"
+                  },
+                  "textContent": "^4.6.0"
+                },
+                {
+                  "tagName": "jx-td",
+                  "attributes": {
+                    "part": "version"
+                  },
+                  "textContent": "4.7.2"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "tagName": "h2",
+      "textContent": "A slice of a larger set"
+    },
+    {
+      "tagName": "p",
+      "textContent": "Three rows of forty. rowcount on the table and rowindex on each row tell a screen reader the whole set and where this slice sits in it; the header row is counted, so the set is 41 rows and the first data row drawn here is row 18."
+    },
+    {
+      "tagName": "div",
+      "children": [
+        {
+          "tagName": "jx-table",
+          "$props": {
+            "label": "Packages, rows 17 to 19 of 40",
+            "rowcount": 41
+          },
+          "children": [
+            {
+              "tagName": "jx-tr",
+              "children": [
+                {
+                  "tagName": "jx-th",
+                  "textContent": "Package"
+                },
+                {
+                  "tagName": "jx-th",
+                  "textContent": "Current"
+                },
+                {
+                  "tagName": "jx-th",
+                  "textContent": "Latest"
+                }
+              ],
+              "$props": {
+                "rowindex": 1
+              }
+            },
+            {
+              "tagName": "jx-tr",
+              "children": [
+                {
+                  "tagName": "jx-th",
+                  "$props": {
+                    "scope": "row"
+                  },
+                  "textContent": "lit"
+                },
+                {
+                  "tagName": "jx-td",
+                  "attributes": {
+                    "part": "version"
+                  },
+                  "textContent": "^3.2.0"
+                },
+                {
+                  "tagName": "jx-td",
+                  "attributes": {
+                    "part": "version"
+                  },
+                  "textContent": "3.3.0"
+                }
+              ],
+              "$props": {
+                "rowindex": 18
+              }
+            },
+            {
+              "tagName": "jx-tr",
+              "children": [
+                {
+                  "tagName": "jx-th",
+                  "$props": {
+                    "scope": "row"
+                  },
+                  "textContent": "marked"
+                },
+                {
+                  "tagName": "jx-td",
+                  "attributes": {
+                    "part": "version"
+                  },
+                  "textContent": "^14.0.0"
+                },
+                {
+                  "tagName": "jx-td",
+                  "attributes": {
+                    "part": "version"
+                  },
+                  "textContent": "15.0.1"
+                }
+              ],
+              "$props": {
+                "rowindex": 19
+              }
+            },
+            {
+              "tagName": "jx-tr",
+              "children": [
+                {
+                  "tagName": "jx-th",
+                  "$props": {
+                    "scope": "row"
+                  },
+                  "textContent": "monaco-editor"
+                },
+                {
+                  "tagName": "jx-td",
+                  "attributes": {
+                    "part": "version"
+                  },
+                  "textContent": "^0.52.0"
+                },
+                {
+                  "tagName": "jx-td",
+                  "attributes": {
+                    "part": "version"
+                  },
+                  "textContent": "0.52.2"
+                }
+              ],
+              "$props": {
+                "rowindex": 20
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

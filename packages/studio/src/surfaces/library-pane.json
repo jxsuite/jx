@@ -176,7 +176,7 @@
       "color": "var(--fg-dim)"
     },
     "& [part=\"table\"]": {
-      "$description": "A windowed list rather than a table component: the rows have to be sliceable, and every table widget wants the whole set.",
+      "$description": "A windowed list wearing the kit's table (ui.md §5.4): `jx-table`, `jx-tr`, `jx-th` and `jx-td` give it the roles, the name and the whole-set counts a reader hears, and this surface gives the four boxes its own layout, because a window needs every row to be exactly the height the arithmetic says and the columns keep floors a CSS table cannot hold. The rows are the window; `rowcount` and each row's `rowindex` say where the slice sits in the whole list.",
       "display": "flex",
       "flexDirection": "column",
       "minWidth": "min-content",
@@ -227,14 +227,18 @@
       "display": "flex",
       "alignItems": "center",
       "justifyContent": "center",
-      "cursor": "default"
+      "cursor": "default",
+      "padding": "0",
+      "borderBlockEnd": "0"
     },
     "& [part=\"cover-cell\"]": {
       "flex": "0 0 56px",
       "display": "flex",
       "alignItems": "center",
       "color": "var(--fg-dim)",
-      "fontSize": "var(--jx-text-sm)"
+      "fontSize": "var(--jx-text-sm)",
+      "padding": "0",
+      "borderBlockEnd": "0"
     },
     "& [part=\"cover\"], & [part=\"cover-empty\"]": {
       "display": "block",
@@ -245,7 +249,10 @@
       "background": "var(--bg-input)"
     },
     "& [part=\"cell\"]": {
-      "$description": "Every column keeps a floor: with a collection's six field columns beside the file facts, a cell that may shrink to nothing is a column of ellipses. When the floors outgrow the pane, the table scrolls sideways instead. Each cell's text is kept out of its intrinsic width (`contain: inline-size`), so the table's `min-content` is the sum of those floors rather than of every full title.",
+      "$description": "Every column keeps a floor: with a collection's six field columns beside the file facts, a cell that may shrink to nothing is a column of ellipses. When the floors outgrow the pane, the table scrolls sideways instead. Each cell's text is kept out of its intrinsic width (`contain: inline-size`), so the table's `min-content` is the sum of those floors rather than of every full title. The padding and the hairline a `jx-td` draws are withdrawn: the gap is the row's, and so is the rule under it, because a flex cell is only as tall as its text and a hairline per cell would step up and down along the row.",
+      "display": "block",
+      "padding": "0",
+      "borderBlockEnd": "0",
       "flex": "1",
       "minWidth": "80px",
       "contain": "inline-size",
@@ -1301,19 +1308,16 @@
               ]
             },
             "table": {
-              "tagName": "div",
+              "tagName": "jx-table",
               "attributes": {
                 "part": "table",
-                "role": "table",
-                "aria-label": "${state.title}",
                 "data-rows": "${state.rowSize}"
               },
               "children": [
                 {
-                  "tagName": "div",
+                  "tagName": "jx-tr",
                   "attributes": {
-                    "part": "table-head",
-                    "role": "row"
+                    "part": "table-head"
                   },
                   "children": [
                     {
@@ -1330,10 +1334,9 @@
                       },
                       "cases": {
                         "shown": {
-                          "tagName": "div",
+                          "tagName": "jx-th",
                           "attributes": {
-                            "part": "select-cell",
-                            "role": "columnheader"
+                            "part": "select-cell"
                           },
                           "children": [
                             {
@@ -1387,10 +1390,9 @@
                       },
                       "cases": {
                         "shown": {
-                          "tagName": "div",
+                          "tagName": "jx-th",
                           "attributes": {
-                            "part": "cover-cell",
-                            "role": "columnheader"
+                            "part": "cover-cell"
                           },
                           "textContent": "Cover"
                         }
@@ -1405,21 +1407,24 @@
                         "$ref": "$map/item/field"
                       },
                       "map": {
-                        "tagName": "div",
+                        "tagName": "jx-th",
                         "attributes": {
                           "part": "cell",
-                          "role": "columnheader",
                           "data-field": "${$map.item.field}"
                         },
                         "textContent": "${$map.item.title}"
                       }
                     }
-                  ]
+                  ],
+                  "$props": {
+                    "rowindex": 1
+                  }
                 },
                 {
                   "tagName": "div",
                   "attributes": {
                     "part": "pad",
+                    "role": "none",
                     "style": "${state.padTop}"
                   }
                 },
@@ -1432,10 +1437,9 @@
                     "$ref": "$map/item/path"
                   },
                   "map": {
-                    "tagName": "div",
+                    "tagName": "jx-tr",
                     "attributes": {
                       "part": "table-row",
-                      "role": "row",
                       "data-path": "${$map.item.path}",
                       "tabindex": "0"
                     },
@@ -1542,10 +1546,9 @@
                         },
                         "cases": {
                           "shown": {
-                            "tagName": "div",
+                            "tagName": "jx-td",
                             "attributes": {
-                              "part": "select-cell",
-                              "role": "cell"
+                              "part": "select-cell"
                             },
                             "onclick": {
                               "$prototype": "Function",
@@ -1615,10 +1618,9 @@
                         },
                         "cases": {
                           "shown": {
-                            "tagName": "div",
+                            "tagName": "jx-td",
                             "attributes": {
-                              "part": "cover-cell",
-                              "role": "cell"
+                              "part": "cover-cell"
                             },
                             "children": [
                               {
@@ -1666,10 +1668,9 @@
                           "$ref": "$map/item/field"
                         },
                         "map": {
-                          "tagName": "div",
+                          "tagName": "jx-td",
                           "attributes": {
                             "part": "cell",
-                            "role": "cell",
                             "data-field": "${$map.item.field}"
                           },
                           "children": [
@@ -1690,13 +1691,19 @@
                           ]
                         }
                       }
-                    ]
+                    ],
+                    "$props": {
+                      "rowindex": {
+                        "$ref": "$map/item/rowIndex"
+                      }
+                    }
                   }
                 },
                 {
                   "tagName": "div",
                   "attributes": {
                     "part": "pad",
+                    "role": "none",
                     "style": "${state.padBottom}"
                   }
                 },
@@ -1791,7 +1798,13 @@
                     }
                   }
                 }
-              ]
+              ],
+              "$props": {
+                "label": "${state.title}",
+                "rowcount": {
+                  "$ref": "#/state/rowCount"
+                }
+              }
             },
             "calendar": {
               "tagName": "div",
