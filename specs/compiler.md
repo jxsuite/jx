@@ -21,13 +21,11 @@ Pages are always prerendered at build time — there is no per-request page rend
 
 ## 2. Compilation Routes
 
-> **Status: Partial.** Route 0's condition is not the file extension: `compile()` in `packages/compiler/src/compiler.ts` takes route 0 on `isClassDef(raw)`, which is exactly `$prototype === "Class"` (`packages/schema/src/guards.ts`), whatever the file is called (§5.6).
-
-The compiler inspects each input document and routes to the appropriate compilation target:
+The compiler inspects each input document and routes to the appropriate compilation target. Routes 0 to 3 are tried in that order and the first match wins:
 
 | Route              | Condition                             | Output                                 | Status          |
 | ------------------ | ------------------------------------- | -------------------------------------- | --------------- |
-| 0 — Class          | Input is `.class.json`                | ES class module                        | **Implemented** |
+| 0 — Class          | Root `$prototype` is `"Class"` (§5.6) | ES class module                        | **Implemented** |
 | 1 — Static         | `isDynamic()` returns false           | Plain HTML/CSS, zero JS                | **Implemented** |
 | 2 — Custom Element | Root `tagName` contains hyphen        | `class extends HTMLElement` + lit-html | **Implemented** |
 | 3 — Dynamic Page   | `isDynamic()` returns true, no hyphen | Pre-rendered HTML + reactive JS        | **Implemented** |
@@ -311,56 +309,85 @@ ${{
 
 ### 5.2 Document Format
 
-> **Status: Partial.** The example below would neither validate nor compile. The class schema (`classDefSchema` in `packages/schema/defs/class-def.schema.ts`, published as `https://jxsuite.com/schema/class/v1`) requires `$prototype: "Class"` and `title`, and `compileClassJson` takes the class name from `title` and throws without it; a method carries `role`, `access`, `scope`, `identifier` and a `parameters` array, and is async when its `returnType` names a `Promise` or its body awaits, not through an `async` key (`extensions/connector/src/D1.class.json` is a shipped document).
+> **Status: Implemented.** The example validates against the class schema and runs once compiled (`packages/compiler/tests/compile-class.test.ts`).
+
+A class document is validated by the class schema, `https://jxsuite.com/schema/class/v1`, and `schema.md` §3.3 is its contract: `$prototype: "Class"` and `title` are required, beside `extends`, `$implementation`, the `$defs` categories, the admission blocks of `extensions.md` §6 and `$studio`. Route 0 reads `title` (the class name, required by `compileClassJson`), `extends` (a class name, or a `$ref` to another class document, whose module it imports by its default export), `$id` (written as a source comment) and the `$defs` categories (§5.3). It ignores `$implementation` (§5.4), the admission blocks and `$studio`, which hosts read (`extensions.md` §6.1). A self-contained class using every category:
 
 ```json
 {
-  "$schema": "https://jxsuite.com/schema/v1/class",
-  "$id": "MarkdownCollection",
-  "description": "Globs and parses markdown files into a collection",
+  "$schema": "https://jxsuite.com/schema/class/v1",
+  "$prototype": "Class",
+  "title": "Pager",
+  "description": "Pages through an array of items",
   "$defs": {
     "parameters": {
-      "src": {
-        "type": "string",
-        "description": "Glob pattern for markdown files"
+      "items": { "identifier": "items", "type": { "type": "array" } },
+      "pageSize": {
+        "identifier": "pageSize",
+        "type": { "type": "integer", "minimum": 1, "default": 10 }
       },
-      "sortBy": { "type": "string", "default": "date" },
-      "sortOrder": {
-        "type": "string",
-        "default": "desc",
-        "enum": ["asc", "desc"]
-      },
-      "limit": { "type": "integer" }
+      "page": { "identifier": "page", "type": { "type": "integer", "minimum": 0 } }
+    },
+    "returnTypes": {
+      "Page": { "type": "array", "description": "The items on the current page" }
     },
     "fields": {
-      "files": { "type": "array", "items": { "$ref": "#/$defs/fields/file" } },
-      "resolved": { "type": "boolean", "default": false }
+      "created": { "role": "field", "scope": "static", "initializer": 0 },
+      "items": { "role": "field", "access": "private", "default": [] },
+      "page": { "role": "field", "access": "private", "default": 0 },
+      "pageSize": { "role": "field", "default": 10 }
     },
     "constructor": {
-      "body": "Object.assign(this, config)"
+      "role": "constructor",
+      "parameters": [
+        { "$ref": "#/$defs/parameters/items" },
+        { "$ref": "#/$defs/parameters/pageSize" }
+      ],
+      "body": "Pager.created++;"
     },
     "methods": {
+      "page": {
+        "role": "accessor",
+        "getter": { "body": "return this.#page;" },
+        "setter": {
+          "parameters": [{ "$ref": "#/$defs/parameters/page" }],
+          "body": "this.#page = Math.min(Math.max(page, 0), this.pageCount - 1);"
+        }
+      },
+      "pageCount": {
+        "role": "accessor",
+        "getter": { "body": "return Math.max(1, Math.ceil(this.#items.length / this.pageSize));" }
+      },
       "resolve": {
-        "async": true,
-        "body": "..."
+        "role": "method",
+        "returnType": { "$ref": "#/$defs/returnTypes/Page" },
+        "body": [
+          "const start = this.#page * this.pageSize;",
+          "return this.#items.slice(start, start + this.pageSize);"
+        ]
       }
     }
-  },
-  "$implementation": "./md.js"
+  }
 }
 ```
 
+Compiled, `new Pager({ items, pageSize: 3 })` resolves to the first three items, the `page` setter clamps to the last page, and `Pager.created` counts instances: the external class contract (`spec.md` §12.3) with no `$implementation`.
+
 ### 5.3 `$defs` Object Categories
 
-> **Status: Partial.** The table does not match `class-def.schema.ts` or `compile-class.ts`: a field is private through `access: "private"`, not a `#`-prefixed key; an accessor is `role: "accessor"` with `getter`/`setter` objects, not a `get`/`set` prefix or `accessor: true`; `parameters` holds reusable typed parameter schemas that a method's parameters reference by `$ref` (`resolveParams`), not constructor config fields; and `constructor` takes `superCall.arguments` beside `body`.
+> **Status: Implemented.** The categories are `classDefSchema`'s (`packages/schema/defs/class-def.schema.ts`), and what route 0 emits for each is `compileClassJson` (`packages/compiler/src/targets/compile-class.ts`, `packages/compiler/tests/compile-class.test.ts`).
 
-| Category      | Purpose                                                                 |
-| ------------- | ----------------------------------------------------------------------- |
-| `parameters`  | Constructor parameter properties (config object fields)                 |
-| `fields`      | Instance fields (private if `#`-prefixed)                               |
-| `constructor` | Constructor body and super args                                         |
-| `methods`     | Instance methods and accessors (`get`/`set` prefix or `accessor: true`) |
-| `returnTypes` | Named return type schemas for tooling                                   |
+What each category holds is the class schema's (`schema.md` §3.3); what route 0 emits for it:
+
+| Category      | Holds                                                                                                                                                                               | Route 0 emits                                                                                                                                                                                                                                                                                                                                                                        |
+| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `parameters`  | Named parameter schemas: `identifier` (required), `type` (holding the `default` tooling reads), `description`, `examples`, `format`                                                 | Nothing. Tooling offers each as a key of the constructor's `config` argument, required when the constructor's `parameters` reference it and it has no default; a method's `parameters` reference them to name its own                                                                                                                                                                |
+| `fields`      | Fields by key: `identifier` (default: the key), `access` (`public` by default, `private`, `protected`), `scope` (`instance` by default, `static`), `initializer`, `default`, `type` | A static field `static name = value`; an instance field assigned in the constructor from `config[identifier]`. The value falls back to `initializer`, then `default`, then `null`. `private` names the member `#name`; `protected` compiles as public                                                                                                                                |
+| `constructor` | `body` (a string or an array of lines), `superCall.arguments` (source expressions), `parameters`                                                                                    | `constructor(config = {})`: `super(…)` with `superCall.arguments` when `superCall` is present or `extends` names a base class, then the field assignments, then `body`                                                                                                                                                                                                               |
+| `methods`     | Methods by key: `identifier` (default: the key), `role`, `access`, `scope`, `parameters`, `body`, `returnType`, `getter` and `setter`, `timing`                                     | `role: "accessor"`: `get name()` from `getter.body` and `set name(p)` from `setter.body`, `p` named by `setter.parameters` (`v` when it names none). Any other role, the capability roles of `extensions.md` §8 included: a method, `static` and `#`-prefixed by `scope` and `access`, and `async` when its body contains `await` or its `returnType` is a `$ref` naming a `Promise` |
+| `returnTypes` | Named output schemas that a `returnType` references by `$ref`                                                                                                                       | Nothing                                                                                                                                                                                                                                                                                                                                                                              |
+
+A parameter referenced by `$ref` is named by the reference's last segment, and an inline one by its `identifier`. `type`, `description`, `examples` and `timing` are read by hosts and tooling (`extensions.md` §6.1 and §8.1) and never emitted.
 
 ### 5.4 The `$implementation` Key
 
@@ -383,18 +410,15 @@ The compiler emits:
 - Constructor with `super()` support
 - Getters/setters (accessor methods)
 - Async method detection
-- `extends` clause from `$ref` or string
+- `extends` clause from a string, or from a `$ref` to another class document, whose module's default export is imported
 
 ### 5.6 Detection and Routing
 
-> **Status: Partial.** Neither condition below routes a document: route 0 is taken on `isClassDef(raw)` in `packages/compiler/src/compiler.ts`, which is exactly `$prototype === "Class"` (`packages/schema/src/guards.ts`). A `.class.json` file without that key, or a root whose `$defs` has `constructor`, `methods` or `fields` and no `tagName`, falls through to the static, element or client route; §2's route-0 condition has the same drift.
+A document is a class document when its root's `$prototype` is `"Class"` (`isClassDef` in `packages/schema/src/guards.ts`). `compile()` tests this before any other route (§2), whatever the file is called and for a document passed in memory. Nothing else makes a document a class: a component's `$defs` holds type definitions under any name (`schema.md` §3.1), so `constructor`, `methods` or `fields` among them do not route it here, and a `*.class.json` file without the key compiles as the component it then is; `jx validate` reports that file, because it checks every project-local `*.class.json` against the class schema, which requires the key (`extensions.md` §5.4).
 
-A file is a `.class.json` document when:
+A class document's file is named `*.class.json` by convention, the name other hosts find it by: a `$src` entrypoint (`spec.md` §12.2) and an extension manifest's classes (`extensions.md` §4). Route 0 writes one module exporting the class by name and as its default, beside its source, named after it with the extension (and a `.class` before it) replaced by `.js`, or, for a document passed in memory, at the `title` plus `.js`.
 
-- File extension is `.class.json`, OR
-- Root object has `$defs` with `constructor` or `methods` or `fields`, AND no `tagName`
-
-> **Status: Implemented.** `compile-class.js` handles full `.class.json` → ES class compilation.
+> **Status: Implemented.** `packages/compiler/src/targets/compile-class.ts` handles full `.class.json` → ES class compilation.
 
 ---
 

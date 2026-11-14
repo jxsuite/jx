@@ -2,7 +2,8 @@
  * Compile-class.js — Compile .class.json schema-defined classes to JavaScript ES modules
  *
  * Generates proper ES modules with private fields, static members, accessors, etc. from a JSON
- * Schema 2020-12 class definition.
+ * Schema 2020-12 class definition (compiler.md §5). A module imports nothing but a `$ref` base
+ * class, by the default export of the sibling module route 0 writes for that document.
  */
 
 import { erasedClass } from "../erased.ts";
@@ -44,6 +45,12 @@ export function compileClassJson(authored: JxClassDef) {
     lines.push(`// Source: ${classDef.$id}`);
   }
   lines.push("");
+
+  // A `$ref` base is another class document's module; a named base is a global the host supplies.
+  const baseImport = baseClassImport(classDef.extends);
+  if (baseImport !== null) {
+    lines.push(baseImport, "");
+  }
 
   // Class declaration
   const extendsClause = baseClass !== "Object" ? ` extends ${baseClass}` : "";
@@ -136,7 +143,8 @@ export function compileClassJson(authored: JxClassDef) {
       }
       // Setter
       if (m.setter) {
-        const setterParams = resolveParams(m.setter.parameters ?? []);
+        // A setter takes exactly one parameter, so one that declares none is given a name.
+        const setterParams = resolveParams(m.setter.parameters ?? []) || "v";
         lines.push(
           `  ${staticPrefix}set ${prefix}${name}(${setterParams}) {`,
           `    ${m.setter.body}`,
@@ -182,10 +190,41 @@ function resolveBaseClass(ext: JxClassDef["extends"]) {
     return ext;
   }
   if (ext.$ref) {
-    const match = ext.$ref.match(/([A-Za-z0-9_]+)\.class\.json/);
+    const match = ext.$ref.match(CLASS_DOCUMENT_REF);
     return match ? match[1] : "Object";
   }
   return "Object";
+}
+
+/** A `$ref` to a class document: the file's base name is the local name the class extends. */
+const CLASS_DOCUMENT_REF = /([A-Za-z0-9_]+)\.class\.json/;
+
+/**
+ * The import a `$ref` base class needs, or `null` when `extends` names a global class, an
+ * unrecognised reference, or nothing.
+ *
+ * The specifier is the reference without its fragment, pointed at the module route 0 writes beside
+ * that document. The default export is what links the two, so a base whose `title` differs from its
+ * file name still resolves; a reference with no leading `./`, `../`, `/` or scheme is relative to
+ * the document, which a module specifier has to say.
+ *
+ * @param {JxClassDef["extends"]} ext
+ * @returns {string | null}
+ */
+function baseClassImport(ext: JxClassDef["extends"]): string | null {
+  if (!ext || isString(ext) || !ext.$ref) {
+    return null;
+  }
+  const match = ext.$ref.match(CLASS_DOCUMENT_REF);
+  if (!match) {
+    return null;
+  }
+  const [path = ""] = ext.$ref.split("#");
+  const modulePath = path.replace(/\.class\.json$/, ".js");
+  const specifier = /^(?:\.{0,2}\/|[a-z][a-z0-9+.-]*:)/i.test(modulePath)
+    ? modulePath
+    : `./${modulePath}`;
+  return `import ${match[1]} from ${JSON.stringify(specifier)};`;
 }
 
 /**
