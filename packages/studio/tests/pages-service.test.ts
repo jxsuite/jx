@@ -142,6 +142,10 @@ describe("Cloudflare API wrappers", () => {
       config: { owner: "octocat", repo_name: "site" },
       type: "github",
     });
+    // Preview deployments leave images alone; production carries no such variable.
+    expect(body.deployment_configs).toEqual({
+      preview: { env_vars: { JX_IMAGES_OPTIMIZE: { type: "plain_text", value: "false" } } },
+    });
   });
 
   test("a project in a subfolder builds in that folder", async () => {
@@ -276,6 +280,40 @@ describe("connectDeploy", () => {
     const deploy = await connectDeploy({ build: {}, name: "My Site" }, OPTS);
     expect(deploy.productionUrl).toBe("https://my-site.pages.dev");
     expect(calls.some((c) => c.init?.method === "POST")).toBe(false);
+    // It predates the preview default, so it is given it.
+    expect(calls.find((c) => c.init?.method === "PATCH")).toEqual({
+      init: {
+        body: {
+          deployment_configs: {
+            preview: { env_vars: { JX_IMAGES_OPTIMIZE: { type: "plain_text", value: "false" } } },
+          },
+        },
+        method: "PATCH",
+      },
+      path: `/accounts/${DEPLOY.accountId}/pages/projects/my-site`,
+    });
+  });
+
+  test("leaves a project alone that already says how its previews treat images", async () => {
+    const { calls } = withCfApi({
+      "/pages/projects/my-site": {
+        deployment_configs: {
+          preview: { env_vars: { JX_IMAGES_OPTIMIZE: { type: "plain_text", value: "true" } } },
+        },
+        name: "my-site",
+      },
+    });
+    await connectDeploy({ build: {}, name: "My Site" }, OPTS);
+    expect(calls.some((c) => c.init?.method === "PATCH")).toBe(false);
+  });
+
+  test("still connects when Cloudflare refuses the preview default", async () => {
+    withCfApi({
+      "/pages/projects/my-site": (init?: { method?: string }) =>
+        init?.method === "PATCH" ? new Error("403") : { name: "my-site" },
+    });
+    const deploy = await connectDeploy({ build: {}, name: "My Site" }, OPTS);
+    expect(deploy.projectName).toBe("my-site");
   });
 
   test("creates the project when missing", async () => {

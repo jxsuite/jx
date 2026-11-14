@@ -59,14 +59,15 @@ A scaffold that fails partway cleans up after itself, so a retry sees the destin
 Build the site to the configured `outDir` (default `dist/`). See [How compilation works](/docs/framework/build) for what happens inside.
 
 ```bash
-jx build [root] [--verbose] [--no-clean] [--include-held]
+jx build [root] [--verbose] [--no-clean] [--include-held] [--no-optimize-images]
 ```
 
-| Flag             | What it does                                                                                                                                                            |
-| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `--verbose`      | Print detailed build progress.                                                                                                                                          |
-| `--no-clean`     | Don't remove the output directory first. Pages already there stay, including a held entry's page that `jx dev` wrote.                                                   |
-| `--include-held` | Keep entries a content type's [`hold` rules](/docs/framework/site/content-collections#holding-entries-back) match, for a preview deploy. Without it, they are left out. |
+| Flag                   | What it does                                                                                                                                                                                             |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--verbose`            | Print detailed build progress.                                                                                                                                                                           |
+| `--no-clean`           | Don't remove the output directory first. Pages already there stay, including a held entry's page that `jx dev` wrote.                                                                                    |
+| `--include-held`       | Keep entries a content type's [`hold` rules](/docs/framework/site/content-collections#holding-entries-back) match, for a preview deploy. Without it, they are left out.                                  |
+| `--no-optimize-images` | Publish images as they are, whatever `images.optimize` says. `JX_IMAGES_OPTIMIZE=false` in the environment does the same. See [Images](/docs/framework/site/images#skipping-optimization-for-one-build). |
 
 Prints a summary (`Done: 12 routes → 34 files`) on success; lists route errors and exits `1` if any page failed to compile.
 

@@ -44,6 +44,12 @@ Once connected, the panel offers to create a Pages project tied to your reposito
 
 Studio creates the Pages project (or reuses one with that name if it already exists) and configures it to build and publish your site on every push. If Cloudflare reports it can't see the repository, the error includes a link to install the **Cloudflare Pages** GitHub App. Install it on the repository and try again.
 
+### Preview deployments skip image optimization
+
+Cloudflare builds a preview for every branch other than the production one. Those builds are for looking a change over, so Studio sets the variable `JX_IMAGES_OPTIMIZE` to `false` on the Pages project's **Preview** environment when it connects, whether it created the project or reused it. A preview then publishes your images as they are and finishes much sooner. Production builds are not affected.
+
+To have previews optimized like the live site, set `JX_IMAGES_OPTIMIZE` to `true` for the Preview environment under **Settings › Variables and Secrets** in Cloudflare's dashboard. Studio leaves a value you set alone. The variable needs `@jxsuite/compiler` 9.1 or newer in the project; an older compiler ignores it.
+
 ## Watch deployments
 
 After connecting, the panel becomes a status view:

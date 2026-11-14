@@ -1289,6 +1289,8 @@ Image optimization is configured in `project.json` under the `images` key. All p
 | `service`       | `string`   | `"build"`                          | `"build"` = encoded at build time; `"cloudflare"` = `/cdn-cgi/image` transform URLs served by Cloudflare (§9.2.6)  |
 | `remoteDomains` | `string[]` | `[]`                               | Hostnames whose remote (https) images get transform srcsets — `"cloudflare"` service only (see §9.2.6)             |
 
+**One build can leave images alone without the project saying so.** `jx build --no-optimize-images`, `JX_IMAGES_OPTIMIZE` set to `false`, `0`, `no` or `off` in the build's environment, and `buildSite`'s `optimizeImages: false` each build as if `optimize` were `false`: no variant is encoded, the native core is never loaded, and every `<img>` keeps its source, while `lazyLoad` and the focal point apply as they do in any project with `optimize: false`. It is for a build nobody measures, a preview deployment above all, where encoding is most of the build's time. The switch only turns off: any other value of the variable, and its absence, leave the project's own `optimize` in charge, so it cannot turn on what a project turned off. The build says so in one line when it applies.
+
 #### 9.2.2 Build-Time Behavior
 
 > **Status: Partial.** The pipeline ships (`processImage` in `packages/compiler/src/site/image-optimizer.ts`, `transformImgNode` in `packages/compiler/src/site/image-transform.ts`), and the one-format and `<picture>` shapes match. Five statements do not: the native width is added only below the top configured rung, the `<img>` `src` becomes the largest jpeg or png variant when one is emitted, a container-derived `sizes` outranks the config, `width` and `height` are injected only when `optimize` is on, and variants are encoded into the image cache and copied to `dist/images/_optimized/` afterwards. `compiler.md` §7.2 states the shipped behaviour.
@@ -1761,6 +1763,7 @@ jx dev                   # Build, then serve with live reload (rebuilds before e
 # Production build
 jx build                 # Full static site build
 jx build --include-held  # The same, keeping held entries (§7.6)
+jx build --no-optimize-images  # The same, publishing images as they are (§9.2.1)
 
 # Preview production build
 jx preview               # Serve an already-built dist/ (default port 4173)

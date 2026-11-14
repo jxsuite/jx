@@ -148,3 +148,12 @@ export function loadProjectConfig(projectRoot: string) {
     projectRoot: resolve(projectRoot),
   };
 }
+
+/**
+ * Whether `JX_IMAGES_OPTIMIZE` turns image optimization off for this build. Only a plain "no" does:
+ * unset, empty or anything else leaves the project's own `images.optimize` in charge, so the
+ * variable can switch a build off and can never switch one on that the project switched off.
+ */
+export function imagesOptimizeOff(value: string | undefined): boolean {
+  return ["0", "false", "no", "off"].includes((value ?? "").trim().toLowerCase());
+}

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { loadProjectConfig } from "../src/site/site-loader";
+import { imagesOptimizeOff, loadProjectConfig } from "../src/site/site-loader";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -12,6 +12,20 @@ function setup() {
 function cleanup() {
   rmSync(FIXTURES, { force: true, recursive: true });
 }
+
+describe("imagesOptimizeOff", () => {
+  test("a plain no switches a build's image optimization off, however it is cased", () => {
+    for (const value of ["false", "0", "no", " OFF "]) {
+      expect(imagesOptimizeOff(value)).toBe(true);
+    }
+  });
+
+  test("nothing else does, so the variable can never switch on what a project switched off", () => {
+    for (const value of [undefined, "", "true", "1", "preview"]) {
+      expect(imagesOptimizeOff(value)).toBe(false);
+    }
+  });
+});
 
 describe("loadProjectConfig", () => {
   test("throws when project.json contains invalid JSON", () => {

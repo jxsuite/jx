@@ -50,6 +50,20 @@ All properties are optional; these are the defaults:
 | `service`       | `"build"` = encoded at build time; `"cloudflare"` = transform URLs served by Cloudflare (below) |
 | `remoteDomains` | Https hostnames whose remote images also get transform srcsets, `"cloudflare"` service only     |
 
+## Skipping optimization for one build
+
+Encoding is usually most of a build's time, and a build that only exists to be looked over doesn't need it. You can leave images alone for one build without touching the project file:
+
+```bash
+jx build --no-optimize-images
+# or, where you can't change the command:
+JX_IMAGES_OPTIMIZE=false jx build
+```
+
+The build then behaves as if `optimize` were `false`: every `<img>` keeps its original source, and lazy loading and focal points still apply. The variable accepts `false`, `0`, `no` or `off`. Any other value leaves the project's own setting in charge, so it can't switch optimization on for a project that turned it off.
+
+Studio sets this variable on the preview environment of a Cloudflare Pages project it connects, so branch previews build quickly and your live site is still optimized. See [Publish to Cloudflare Pages](/docs/studio/publish/cloudflare#preview-deployments-skip-image-optimization).
+
 ## What the build does
 
 The encoder is part of the compiler, so there is no image library to install and nothing to configure on a build machine. For each eligible image, the pipeline:

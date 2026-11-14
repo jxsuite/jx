@@ -224,6 +224,9 @@ export type BuildTimings = Record<BuildPhase | "total", number>;
  * @param {boolean} [options.verbose] - Log progress
  * @param {boolean} [options.includeHeld] - Keep entries a content type's `hold` rules match, for a
  *   preview. Left off, a build leaves them out (site-architecture.md §7.6).
+ * @param {boolean} [options.optimizeImages] - `false` builds as if the project said
+ *   `images.optimize: false`, whatever it says: no variant is encoded and every `<img>` keeps its
+ *   source. For a build nobody measures, such as a preview deploy (site-architecture.md §9.2.1).
  * @returns {Promise<{ routes: number; files: number; errors: string[]; timings: BuildTimings }>}
  */
 export async function buildSite(
@@ -232,9 +235,10 @@ export async function buildSite(
     clean?: boolean;
     verbose?: boolean;
     includeHeld?: boolean;
+    optimizeImages?: boolean;
   } = {},
 ) {
-  const { clean = true, includeHeld = false, verbose = false } = options;
+  const { clean = true, includeHeld = false, optimizeImages = true, verbose = false } = options;
   const errors: string[] = [];
   const log = verbose ? console.log.bind(console) : () => {};
   const timings: BuildTimings = {
@@ -258,6 +262,10 @@ export async function buildSite(
   // ── 1. Load project configuration ──────────────────────────────────────────
   log("Loading project.json...");
   const { config: projectConfig } = loadProjectConfig(projectRoot);
+  if (!optimizeImages && projectConfig.images.optimize) {
+    projectConfig.images = { ...projectConfig.images, optimize: false };
+    console.log("Image optimization is off for this build: images are published as they are.");
+  }
 
   // The legacy imports-based content model is gone (specs/extensions.md v2) — fail loudly with
   // The migration path instead of silently ignoring the section.

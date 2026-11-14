@@ -2776,6 +2776,16 @@ describe("buildSite — image optimization cache logging", () => {
     _testResetNpmCacheBase();
   });
 
+  it("leaves every image as it is when the build is told not to optimize", async () => {
+    const result = await buildSite(IMG_TMP, { optimizeImages: false });
+    expect(result.errors).toHaveLength(0);
+    const html = readFileSync(resolve(IMG_TMP, "dist/index.html"), "utf8");
+    expect(html).toContain('src="/images/hero.png"');
+    expect(html).not.toContain("srcset");
+    expect(existsSync(resolve(IMG_TMP, "dist/images/_optimized"))).toBe(false);
+    expect(existsSync(resolve(IMG_TMP, ".cache/images"))).toBe(false);
+  });
+
   it("logs and saves image cache when optimize is enabled", async () => {
     const result = await buildSite(IMG_TMP, { verbose: true });
     expect(result.errors).toHaveLength(0);

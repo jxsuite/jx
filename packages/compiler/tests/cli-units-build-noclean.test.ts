@@ -17,7 +17,12 @@ describe("jx cli — build flag handling", () => {
     const result = await runEntry("cli", ["build", "--no-clean"]);
     expect(result.exited).toBe(false);
     expect(buildSiteCalls[0]?.root).toBe(resolve("."));
-    expect(buildSiteCalls[0]?.opts).toEqual({ clean: false, includeHeld: false, verbose: false });
+    expect(buildSiteCalls[0]?.opts).toEqual({
+      clean: false,
+      includeHeld: false,
+      optimizeImages: true,
+      verbose: false,
+    });
     expect(result.logs.join("\n")).toContain("Done: 1 routes → 1 files");
   });
 });
