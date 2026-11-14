@@ -32,6 +32,8 @@
  */
 
 import { formatSrcset, parseSrcset, withBase } from "@jxsuite/schema/asset-paths";
+import { isMappedArray, isNonNullObject, isString } from "@jxsuite/schema/guards";
+import type { JxDocument, JxElement, JxMutableNode } from "@jxsuite/schema/types";
 
 /**
  * Attributes whose value is a single URL.
@@ -89,8 +91,15 @@ const URL_META_RE =
  */
 const ENTITY_QUOTE_RE = /^(&quot;|&#34;|&apos;|&#39;)([\s\S]*)\1$/;
 
-/** Rewrite every `url(...)` in a CSS fragment, in a `<style>` block or a `style` attribute. */
-function rewriteCssUrls(css: string, base: string): string {
+/**
+ * Rewrite every `url(...)` in a CSS fragment: a `<style>` block, a `style` attribute, or a
+ * stylesheet the build writes as a file of its own.
+ *
+ * @param {string} css
+ * @param {string} base - From `siteBasePath`; `""` returns the text untouched
+ * @returns {string}
+ */
+export function rewriteCssUrls(css: string, base: string): string {
   return css.replaceAll(CSS_URL_RE, (match, quote: string, inner: string) => {
     const raw = inner.trim();
     const escaped = ENTITY_QUOTE_RE.exec(raw);
@@ -172,4 +181,81 @@ export function rewriteHtmlBase(html: string, base: string): string {
     );
     return rewrittenAttrs === attrs ? match : `<${tagName}${rewrittenAttrs}>`;
   });
+}
+
+/** One element node: its `attributes`, then the element properties written beside `tagName`. */
+function rebaseNode(node: JxElement | JxMutableNode, base: string): void {
+  const tag = isString(node.tagName) ? node.tagName.toLowerCase() : "";
+  const { attributes } = node;
+  if (isNonNullObject(attributes)) {
+    for (const [name, value] of Object.entries(attributes)) {
+      if (isString(value)) {
+        attributes[name] = rewriteAttrValue(tag, "", name, value, base);
+      }
+    }
+  }
+  /* An element property is written under its IDL name (`src`, `formAction`), which lowercases to
+     the content attribute it reflects. `style` here is a style object, never CSS text, and its
+     rules ship in the component's stylesheet, which is re-rooted as a file. */
+  for (const name of Object.keys(node)) {
+    const lower = name.toLowerCase();
+    const value = node[name];
+    if (isString(value) && (URL_ATTRS.has(lower) || SRCSET_ATTRS.has(lower))) {
+      node[name] = rewriteAttrValue(tag, "", lower, value, base);
+    }
+  }
+  // Markup a node carries as text is HTML like any other, optimized pictures included.
+  if (isString(node.innerHTML)) {
+    node.innerHTML = rewriteHtmlBase(node.innerHTML, base);
+  }
+}
+
+/** A node, then everything it can render: children, a repeater's template, `$switch` cases. */
+function rebaseTree(def: JxMutableNode[string], base: string): void {
+  if (!isNonNullObject(def) || Array.isArray(def)) {
+    return;
+  }
+  if (isMappedArray(def)) {
+    rebaseTree(def.map, base);
+    return;
+  }
+  /* SAFETY: a non-array object in a document's element tree that is not a repeater is an element
+     node, which is all the tree holds besides strings. */
+  const node = def as JxMutableNode;
+  rebaseNode(node, base);
+  const { cases, children } = node;
+  if (Array.isArray(children)) {
+    for (const child of children) {
+      rebaseTree(child, base);
+    }
+  } else {
+    rebaseTree(children, base);
+  }
+  if (isNonNullObject(cases)) {
+    for (const caseNode of Object.values(cases)) {
+      rebaseTree(caseNode, base);
+    }
+  }
+}
+
+/**
+ * Re-root every site-absolute URL a document's own markup writes, in place: the document-side
+ * counterpart of {@link rewriteHtmlBase}, for a definition compiled into a module.
+ *
+ * A component's module is JavaScript, which the HTML pass never reads, and it replaces the markup
+ * the page prerendered. Left alone it drew `/hero.jpg` over the prerender's `/m/site/hero.jpg`: the
+ * picture a visitor had already been shown 404ed the moment the element upgraded. The same
+ * attributes are rewritten by the same rule (`href`, `src`, `poster`, `action`, `formaction`,
+ * `data`, `srcset`, `imagesrcset` and `url()` in a `style` attribute), on every node the definition
+ * can render, so the optimizer's candidate lists are covered with the rest. A `${…}` template that
+ * does not open with `/`, and a value that arrives through state, are data and are left as
+ * written.
+ *
+ * @param {JxDocument | JxElement} doc - Mutated
+ * @param {string} base - From `siteBasePath`; `""` leaves the document untouched
+ */
+export function rebaseDocument(doc: JxDocument | JxElement, base: string): void {
+  if (base !== "") {
+    rebaseTree(doc, base);
+  }
 }
