@@ -1,5 +1,14 @@
 # Changelog
 
+## [9.0.1](https://github.com/jxsuite/jx/compare/compiler-v9.0.0...compiler-v9.0.1) (2026-11-14)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/compiler-binding bumped to 0.2.1
+
 ## [9.0.0](https://github.com/jxsuite/jx/compare/compiler-v8.7.0...compiler-v9.0.0) (2026-11-13)
 
 

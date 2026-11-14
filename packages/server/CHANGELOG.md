@@ -1,5 +1,15 @@
 # Changelog
 
+## [9.0.2](https://github.com/jxsuite/jx/compare/server-v9.0.1...server-v9.0.2) (2026-11-14)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/compiler bumped to 9.0.1
+    * @jxsuite/import bumped to 0.44.4
+
 ## [9.0.1](https://github.com/jxsuite/jx/compare/server-v9.0.0...server-v9.0.1) (2026-11-13)
 
 
