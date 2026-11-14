@@ -1658,3 +1658,72 @@ describe("compileClient: $lazy $src (spec.md §5.3 4d)", () => {
     expect(() => compileClient(doc, { title: "T" })).toThrow('"total" declares "$lazy": true');
   });
 });
+
+describe("compileClient — template text children (compiler.md §2.2)", () => {
+  const rename: JxFunctionDef = { $prototype: "Function", body: "state.name = 'Ada'" };
+  const button = { onclick: { $ref: "#/state/rename" }, tagName: "button", textContent: "Go" };
+
+  test("binds a runtime-only text child between markers and leaves its sibling alone", () => {
+    const { html, files } = compileClient(
+      {
+        children: ["Hello ${state.name}", button],
+        state: { name: "World", rename },
+        tagName: "div",
+      },
+      {},
+    );
+    expect(html).toContain("<!--jx-text:_t0--><!--/jx-text-->");
+    expect(html).toContain('<button data-bind @click="rename">Go</button>');
+    expect(files[0]!.content).toContain("_t0: () => `Hello ${state.name}`");
+    expect(files[0]!.content).toContain("createTreeWalker");
+  });
+
+  test("prerenders a bakeable text child, escaped", () => {
+    const { html } = compileClient(
+      { children: ["Hello ${state.name}"], state: { name: "<World>" }, tagName: "div" },
+      {},
+    );
+    expect(html).toContain("<!--jx-text:_t0-->Hello &lt;World&gt;<!--/jx-text-->");
+  });
+
+  test("shares the _t counter with textContent bindings", () => {
+    const { html, files } = compileClient(
+      {
+        children: [{ tagName: "h1", textContent: "${state.name}" }, "Hi ${state.name}"],
+        state: { name: "World" },
+        tagName: "div",
+      },
+      {},
+    );
+    expect(html).toContain(':text-content="_t0"');
+    expect(html).toContain("<!--jx-text:_t1-->");
+    expect(files[0]!.content).toContain("_t1: () => `Hi ${state.name}`");
+  });
+
+  test("refuses a runtime-only text child of a raw-text element", () => {
+    const state = {
+      draft: "x",
+      edit: { $prototype: "Function", body: "state.draft = 'y'" } satisfies JxFunctionDef,
+    };
+    const page = (textarea: JsonObject): JxDocument => ({
+      children: [textarea, { onclick: { $ref: "#/state/edit" }, tagName: "button" }],
+      state,
+      tagName: "div",
+    });
+    expect(() =>
+      compileClient(page({ children: ["${state.draft}"], tagName: "textarea" }), {}),
+    ).toThrow(/<textarea> cannot be bound.*textContent/su);
+    expect(
+      compileClient(page({ tagName: "textarea", textContent: "${state.draft}" }), {}).html,
+    ).toContain(':text-content="_t0"');
+  });
+
+  test("a plain text child emits no marker and no walker", () => {
+    const { html, files } = compileClient(
+      { children: ["plain"], state: { name: "World" }, tagName: "div" },
+      {},
+    );
+    expect(html).not.toContain("jx-text");
+    expect(files[0]!.content).not.toContain("createTreeWalker");
+  });
+});

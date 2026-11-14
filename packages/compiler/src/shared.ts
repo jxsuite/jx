@@ -518,10 +518,18 @@ function withoutPureFormulas(def: JxElement | JxMutableNode): string {
 /**
  * Determine whether a node (or any of its descendants) requires client-side JavaScript.
  *
+ * A template string written as a text child counts, at any depth, exactly as a template in a
+ * property does (compiler.md §2.1, §2.2): the site build bakes every one it can before routing, so
+ * one that reaches here needs the client. A whole-`children` template string is not a text child
+ * and is not counted (spec.md §8.4 resolves it at build time only).
+ *
  * @param {JxElement | JxMutableNode | string} def
  * @returns {boolean}
  */
 export function isDynamic(def: JxElement | JxMutableNode | string) {
+  if (isString(def)) {
+    return isTemplateString(def);
+  }
   if (!isNonNullObject(def)) {
     return false;
   }

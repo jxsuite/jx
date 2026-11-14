@@ -36,6 +36,7 @@ A node is static if it and all descendants satisfy:
 
 - No `state` entries that produce signals or functions. A pure named formula is not one unless something on the node still reads it (§3)
 - No `${}` template strings in any property value
+- No `${}` template string among its `children` (a template text child, §2.2)
 - No `$prototype` namespaces
 - No `$switch` nodes
 - No `$prototype: "Array"` children
@@ -43,13 +44,13 @@ A node is static if it and all descendants satisfy:
 
 Static detection is a single recursive tree walk — no code execution required.
 
-> **Status: Implemented.** `isDynamic()` in `shared.js` performs complete recursive analysis.
+> **Status: Implemented.** `isDynamic()` in `packages/compiler/src/shared.ts` performs complete recursive analysis.
 
 ### 2.2 Text Node Children
 
-> **Status: Partial.** All three targets emit bare strings and numbers as text nodes, and the element target binds a template text child reactively (`toLitTextContent` in `compile-element.ts`). The other two do not. The client target's `buildClientNode` (`packages/compiler/src/targets/compile-client.ts`) escapes a child such as `"Hello ${state.name}"` and writes it out verbatim, neither prerendered nor bound, so template text is reactive in that tier only inside a lit-rendered region (a mapped array, or mixed children rendered through `emitChildLit`). The static target does the same (`compileNode` in `compile-static.ts`), and the site build's prerender does not resolve such a child first: `resolveDocTemplates` in `packages/compiler/src/site/site-build.ts` substitutes a template child only when it evaluates to an array. `isDynamic` does not count a template child, so a page whose only template is a text child routes static and ships the literal `${…}`, while a `textContent` template beside it resolves.
+> **Status: Implemented.** `isDynamic` in `packages/compiler/src/shared.ts`; `resolveDocTemplates` and `expandMapTemplate` in `packages/compiler/src/site/site-build.ts`; `buildClientNode` and `emitClientModule` in `packages/compiler/src/targets/compile-client.ts`; `packages/compiler/tests/compile-client.test.ts`, `client-text-children.test.ts`, `site-build.test.ts`.
 
-Bare strings and numbers in `children` arrays compile to text nodes in all three output tiers. All three compilation targets (`compile-element.js`, `compile-static.js`, `compile-client.js`) handle `typeof def === "string"` children. Template strings (`"${...}"`) in text node children are reactive in the client tier.
+Bare strings and numbers in `children` arrays compile to text nodes in all three output tiers, with no wrapper element (`compile-element.ts`, `compile-static.ts` and `compile-client.ts` each handle a string child). A template string among them (`"Hello ${state.name}"`) is a template like any other (spec.md §6) and gets what a `textContent` template gets, since the two are one construct written two ways. The site build bakes it when it reads only build-time values, under §8.1's rules, and inside a repeater expanded at build time it resolves per item. One that survives makes its document dynamic (§2.1), so the static target never meets one. The client target emits it between two comments, `<!--jx-text:_tN-->…<!--/jx-text-->`, holding whatever prerender could resolve, and `hydrate()` keeps the text node after the opening comment current with an `effect()`; the comments are what bind a text node without a wrapper and without touching its element siblings. Inside a lit-rendered region (a mapped array, a `$switch` case, or children mixed with a repeater) and in the element target (§4.3) it is a hole in the lit template. The client target refuses one it would have to bind inside `script`, `style`, `textarea` or `title`, whose content HTML reads as text, so no comment can mark it there; `textContent` binds those elements. A whole-`children` template string is not a text child: spec.md §8.4 resolves it once, at build time.
 
 ---
 
@@ -668,9 +669,9 @@ For dynamic documents that are not custom elements, the compiler emits:
 
 - Pre-rendered HTML from static portions
 - `@vue/reactivity` bootstrapper for dynamic state
-- `effect()` bindings for reactive properties
+- `effect()` bindings for reactive properties and template text children (§2.2)
 
-> **Status: Implemented.** `compile-client.js` handles dynamic page compilation.
+> **Status: Implemented.** `compile-client.ts` handles dynamic page compilation.
 
 ### 9.2 `$switch` on a Dynamic Page
 

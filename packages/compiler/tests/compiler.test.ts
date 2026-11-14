@@ -339,6 +339,12 @@ describe("compile — static nodes", () => {
 // ─── compile — dynamic documents ──────────────────────────────────────────────
 
 describe("compile — dynamic documents (standard tagName → client target)", () => {
+  test("a document whose only template is a text child routes to the client target", async () => {
+    const { html, files } = await compile({ children: ["Year ${1 + 1}"], tagName: "p" });
+    expect(files.map((f) => f.path)).toEqual(["app.js"]);
+    expect(html).toContain("<!--jx-text:_t0-->Year 2<!--/jx-text-->");
+  });
+
   test("dynamic root with standard tag emits pre-rendered HTML + JS module", async () => {
     const { html, files } = await compile(
       { state: { $count: 0 }, tagName: "div" },

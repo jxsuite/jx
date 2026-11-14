@@ -24,9 +24,11 @@ import {
 import { createHash } from "node:crypto";
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import {
+  isBoolean,
   isJsonObject,
   isMappedArray,
   isNonNullObject,
+  isNumber,
   isPrototypeDef,
   isRef,
   isString,
@@ -2213,7 +2215,20 @@ function inertAttribute(resolved: string): string {
 }
 
 /**
- * Deep-clone a map template, resolving template strings and $ref values against the given scope.
+ * The text a resolved template text child stands for, or `null` when the result is not text: a
+ * string, number or boolean is substituted, while `null`, `undefined` and an object keep the
+ * template, as `textContent`'s fallback does (compiler.md §2.2).
+ *
+ * @param {JxScope[string]} value
+ * @returns {string | null}
+ */
+function textChildValue(value: JxScope[string]): string | null {
+  return isString(value) || isNumber(value) || isBoolean(value) ? String(value) : null;
+}
+
+/**
+ * Deep-clone a map template, resolving template strings and $ref values against the given scope. A
+ * template text child resolves per item like every other position.
  *
  * @param {JxElement} template
  * @param {JxScope} scope
@@ -2230,7 +2245,9 @@ function expandMapTemplate(template: JxElement, scope: JxScope): JxElement {
     if (k === "children" && Array.isArray(template.children)) {
       node.children = template.children.map((child) => {
         if (isString(child)) {
-          return child;
+          return isTemplateString(child)
+            ? (textChildValue(evaluateMapTemplate(child, scope)) ?? child)
+            : child;
         }
         return expandMapTemplate(child, scope);
       });
@@ -2315,7 +2332,8 @@ function evaluateMapTemplate(str: string, scope: JxScope): JxScope[string] {
 
 /**
  * Recursively resolve template strings in a document tree against a scope. Mutates the document in
- * place — evaluates ${...} in innerHTML, textContent, style values, and attribute values.
+ * place — evaluates ${...} in innerHTML, textContent, style values, attribute values, and text
+ * children (compiler.md §2.2).
  *
  * @param {JxElement | string} node
  * @param {JxScope} scope
@@ -2432,6 +2450,12 @@ function resolveDocTemplates(
             resolveDocTemplates(spliced, scope, buildResolved);
           }
           i += resolvedNodes.length;
+          continue;
+        }
+        const resolvedText = textChildValue(resolved);
+        if (resolvedText !== null) {
+          node.children[i] = resolvedText;
+          i += 1;
           continue;
         }
       }
