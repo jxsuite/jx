@@ -20,6 +20,12 @@
 import type { JxScope } from "@jxsuite/runtime/types";
 
 /**
+ * The base every kit document resolves its references against. Here rather than in the package
+ * index so a host that defines the kit lazily can name it without the index's eager behaviours.
+ */
+export const KIT_BASE = "jx-ui:/components/";
+
+/**
  * A module the runtime imports on first use, keyed as the kit's documents spell their `$src`. The
  * namespace it resolves to is read into scope, export by export, as `KIT_MODULES` entries are.
  */

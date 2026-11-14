@@ -35,6 +35,7 @@ import * as toast from "./behaviors/toast.ts";
 import * as toastHost from "./behaviors/toast-host.ts";
 import { documents } from "./documents.ts";
 import * as icons from "./icons.ts";
+import { KIT_BASE } from "./loaders.ts";
 import { installTheme } from "./theme.ts";
 
 export { documents, INVOKER_TAGS, KIT_TAGS, POPOVER_TAGS } from "./documents.ts";
@@ -49,8 +50,7 @@ export {
   themeTokens,
 } from "./theme.ts";
 
-/** The base every kit document resolves its references against. */
-export const KIT_BASE = "jx-ui:/components/";
+export { KIT_BASE } from "./loaders.ts";
 
 /**
  * Behaviour modules, under the `$src` specifiers the documents use. The runtime reads each
