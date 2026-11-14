@@ -36,11 +36,33 @@ const FOCUSABLE =
  *
  * A control inside one of these belongs to IT, not to the toolbar. Two roving carets over one set
  * of buttons is two writers of the same `tabindex`, and they do not agree: the group parks its
- * caret on the child it thinks is current and the toolbar parks the row's on another. So a nested
- * composite is left alone entirely — it keeps its own single tab stop, and the toolbar's arrows do
- * not reach into it. See §5.5 for why that limit is stated rather than engineered around.
+ * caret on the child it thinks is current and the toolbar parks the row's on another. So the
+ * toolbar never roves a composite's children. Whether the composite itself is an item is
+ * {@link ROVED_COMPOSITE}'s question.
  */
 const COMPOSITE = "jx-action-group, jx-tabs, jx-tree, jx-swatch-group, jx-listbox, jx-menu";
+
+/**
+ * The composites that ARE toolbar items: the ones that declare the property-only `tabindex` a leaf
+ * control declares, and forward it to whichever child holds their own caret (§5.5).
+ *
+ * The toolbar writes that one prop and nothing else, so there is still one writer of every child's
+ * `tabindex`, which is the composite. `"0"` leaves the composite's caret child as the row's one
+ * stop and `"-1"` parks all of them. The arrows are shared by the rule the APG gives a radio group
+ * in a toolbar: inside the composite they walk its children, without wrapping and without choosing
+ * one, and the composite does not handle an arrow that has no child left in its direction, so the
+ * key bubbles here and the row's caret moves on. A list by TAG, not a test for the prop, because
+ * the row is roved either side of a child's upgrade and an element that has not upgraded has no
+ * accessor to find; `tests/toolbar.test.ts` holds the list to the documents that declare the prop.
+ *
+ * The other composites stay out, each for its own reason: a swatch group answers BOTH arrow pairs
+ * and chooses as it moves, so no key is left for the row; a tree owns both axes too; a listbox
+ * never takes focus; and a menu is a popover's content, not a row's.
+ */
+const ROVED_COMPOSITE = "jx-action-group, jx-tabs";
+
+/** What a held composite still has to stand a caret on: a tab, or a button that can act. */
+const LIVE = "[role='tab'], button:not(:disabled)";
 
 /**
  * Controls whose own arrow keys are theirs: they step a value or drive a popup, rather than moving
@@ -106,6 +128,7 @@ function itemFor(bar: HTMLElement, node: HTMLElement): ItemElement {
 /**
  * The node inside an item that actually takes focus.
  *
+ * A composite the toolbar holds is asked first, and answers with its own caret (see the branch).
  * `[part="control"]` and `[part="input"]` are the kit's own two names for "this element's own
  * control" (`jx-button`, `jx-action-button`, `jx-swatch` and `jx-color-field` use the first,
  * `jx-textfield` and `jx-number-field` the second), so they are asked for first — but only if the
@@ -124,6 +147,16 @@ export function controlOf(item: ItemElement): HTMLElement {
   if (item.matches(FOCUSABLE)) {
     return item;
   }
+  if (item.matches(ROVED_COMPOSITE)) {
+    /* A composite names its own roved node by the caret it wrote: the one descendant carrying
+       `tabindex="0"` once the toolbar has handed it the stop. Parked, it has none, and the first
+       node that could take focus stands in for the questions asked of a parked item. */
+    return (
+      item.querySelector<HTMLElement>('[tabindex="0"]') ??
+      item.querySelector<HTMLElement>(LIVE) ??
+      item
+    );
+  }
   const named = [...item.querySelectorAll<HTMLElement>('[part="control"], [part="input"]')].find(
     (node) => node.matches(FOCUSABLE),
   );
@@ -134,17 +167,24 @@ export function controlOf(item: ItemElement): HTMLElement {
  * The toolbar's own items, in document order.
  *
  * @param bar The `jx-toolbar` element.
- * @returns The controls it roves; a nested toolbar's, a nested composite's and a control that owns
- *   its own arrow keys are not among them.
+ * @returns The controls it roves, a composite that declares the caret prop counting as ONE; a
+ *   nested toolbar's controls, a composite's own children, a composite that declares no such prop
+ *   and a control that owns its own arrow keys are not among them.
  */
 export function itemsOf(bar: HTMLElement): ItemElement[] {
   const items: ItemElement[] = [];
-  for (const node of bar.querySelectorAll<HTMLElement>(FOCUSABLE)) {
+  /* The composites are asked for by tag beside the focusable nodes, because a `jx-tabs` holds
+     none: its tabs are focusable hosts, not native controls, and a strip found only through a
+     close button would be a strip the toolbar missed whenever no tab could be closed. */
+  for (const node of bar.querySelectorAll<HTMLElement>(`${FOCUSABLE}, ${ROVED_COMPOSITE}`)) {
     if (node.closest(TOOLBAR) !== bar) {
       continue;
     }
-    const composite = node.closest<HTMLElement>(COMPOSITE);
-    if (composite && bar.contains(composite)) {
+    const composite = compositeAround(bar, node);
+    if (composite) {
+      if (composite.matches(ROVED_COMPOSITE) && !items.includes(composite)) {
+        items.push(composite);
+      }
       continue;
     }
     const item = itemFor(bar, node);
@@ -153,6 +193,26 @@ export function itemsOf(bar: HTMLElement): ItemElement[] {
     }
   }
   return items;
+}
+
+/**
+ * The OUTERMOST composite between a node and the toolbar, the node itself included.
+ *
+ * Outermost, because a composite inside another belongs to that one: a group in a tree row is the
+ * tree's business, and the toolbar holds neither.
+ *
+ * @param bar The toolbar.
+ * @param node A node inside it.
+ * @returns The composite that owns the node, or null when none does.
+ */
+function compositeAround(bar: HTMLElement, node: HTMLElement): ItemElement | null {
+  let found: ItemElement | null = null;
+  for (let el: HTMLElement | null = node; el && el !== bar; el = el.parentElement) {
+    if (el.matches(COMPOSITE)) {
+      found = el;
+    }
+  }
+  return found;
 }
 
 /**
@@ -167,6 +227,10 @@ export function itemsOf(bar: HTMLElement): ItemElement[] {
 function isOut(item: ItemElement): boolean {
   if (item.hidden) {
     return true;
+  }
+  if (item.matches(ROVED_COMPOSITE)) {
+    // A composite with no child that can take focus is a stop that goes nowhere.
+    return item.querySelector(LIVE) === null;
   }
   return item.disabled === undefined ? item.hasAttribute("disabled") : item.disabled === true;
 }

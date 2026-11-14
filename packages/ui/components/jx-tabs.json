@@ -28,12 +28,17 @@
       "attribute": "orientation",
       "description": "horizontal or vertical. It chooses which arrow keys move the caret, and which edge carries both the strip's rule and the selected tab's mark on it — a tab cannot see the strip's orientation from its own sheet, so the strip draws that mark."
     },
+    "tabindex": {
+      "type": "string",
+      "default": "",
+      "description": "The stop a roving container holds this strip at, which is what lets a jx-toolbar count the whole strip as one item: the strip forwards it to the tab holding its caret, so \"0\" leaves that tab as the row's one tab stop and \"-1\" parks every tab, and the strip remembers where its caret stood. Empty, the default, is a strip standing alone with a tab stop of its own. While it is set the arrows are navigation only: they walk the tabs without wrapping and without activating one whatever activation says, an arrow at either end is left for the container, and Enter or Space activates; each tab is told it is roved, so a close button leaves the tab order and Delete closes. It is a PROPERTY ONLY (el.tabindex = \"0\") and deliberately not an observed attribute: the host's own tabindex attribute is the platform's and stays -1."
+    },
     "applySelection": {
       "$prototype": "Function",
       "$src": "jx-ui:/behaviors/tabs.ts",
       "$export": "applySelection",
       "parameters": ["scope"],
-      "description": "Writes the selection onto the tabs and returns it. Idempotent: it runs inside a render effect."
+      "description": "Writes the selection, and the stop a roving container wrote, onto the tabs and returns the selection. Idempotent: it runs inside a render effect."
     },
     "sync": "${state.applySelection(state)}",
     "onKeydown": {
