@@ -126,7 +126,7 @@ Fragment: `bun run spec:change compiler.md minor -m "§8.2: CSS extraction write
 - `docs/framework/build.md` (`spec:` cites `compiler.md#8.2`): in "CSS extraction", after the paragraph at line 139, add "A rule whose style block carries a `$description` keeps it as a comment on the line above the rule, wherever the build writes that rule."
 - No change: `docs/studio/interface/canvas.md` (lists `site-style.ts`; the canvas output is unchanged), `overlays.md` (cites `spec.md#9.2` for the popover states), and `color-schemes.md` and `elements.md` under `docs/framework/concepts/` (they list `css.ts` or `shared.ts` but describe nothing that changes). The re-export added to `packages/runtime/src/runtime.ts` changes no documented behaviour.
 
-Landing deletes this file, and rewrites every line still citing it to cite `spec.md` §9.2, or the gate's `citation-unknown` fails: today `plans/spec/static-style-rules-only.md`, `plans/spec/shadow-dom-parity.md`, `plans/spec/report-dropped-reactive-styles.md` and `plans/site-architecture/build-output-prose.md`. The prerequisite's own landing has already removed `spec/style-handle-assignment` from this file's `requires`.
+Landing deletes this file, and rewrites every line still citing it to cite `spec.md` §9.2, or the gate's `citation-unknown` fails: today `plans/spec/static-style-rules-only.md`, `plans/spec/shadow-dom-parity.md`, and `plans/spec/report-dropped-reactive-styles.md`. The prerequisite's own landing has already removed `spec/style-handle-assignment` from this file's `requires`.
 
 ## Acceptance
 

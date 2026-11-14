@@ -7,7 +7,7 @@
  */
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { buildSite } from "../src/site/site-build.ts";
 import type { JsonObject } from "@jxsuite/schema/types";
@@ -299,7 +299,7 @@ describe("buildSite — a well-known file public/ already ships", () => {
   });
 });
 
-describe("buildSite — _headers under an adapter that serves no static assets", () => {
+describe("buildSite — host files under an adapter that serves no static assets", () => {
   const DIR = resolve(import.meta.dir, "__test-site-headers-adapter__");
 
   beforeAll(() => {
@@ -307,6 +307,7 @@ describe("buildSite — _headers under an adapter that serves no static assets",
       build: { adapter: "node" },
       headers: { hsts: { includeSubDomains: true, maxAge: 31_536_000 } },
       name: "Adapted",
+      redirects: { "/blog/:slug": "/posts/:slug", "/old": "/new" },
     });
   });
   afterAll(() => rmSync(DIR, { force: true, recursive: true }));
@@ -320,6 +321,22 @@ describe("buildSite — _headers under an adapter that serves no static assets",
 
     expect(warnings.some((w) => w.includes("serves no static assets"))).toBe(true);
     expect(existsSync(resolve(DIR, "dist/_headers"))).toBe(true);
+  });
+
+  /*
+   * `_redirects` is not adapter output: the build writes it whenever `redirects` has a rule. The
+   * no-adapter half is pinned by site-build.test.ts; this is the half a condition on `adapter`
+   * would break without failing anything else.
+   */
+  it("writes _redirects and its HTML fallback whatever the adapter (site-architecture.md §14.1)", async () => {
+    await captured(() => buildSite(DIR));
+
+    const redirects = readFileSync(resolve(DIR, "dist/_redirects"), "utf8");
+    expect(redirects).toContain("/old /new 301");
+    expect(redirects).toContain("/blog/:slug /posts/:slug 301");
+    expect(readFileSync(resolve(DIR, "dist/old/index.html"), "utf8")).toContain(
+      'http-equiv="refresh"',
+    );
   });
 });
 
