@@ -7,7 +7,7 @@
  * to be pinned to, so a row showing it again is the regression these tests exist to catch.
  *
  * Everything is addressed by `part`, because the section is a document: there is no `sp-table-row`,
- * `sp-table-cell` or `.settings-muted` to find any more. A row is a `<tr>` carrying the package it
+ * `sp-table-cell` or `.settings-muted` to find any more. A row is a `jx-tr` carrying the package it
  * draws, and the two buttons on it are named after that package rather than after the verb, so the
  * queries below say which row they act on.
  */
@@ -117,6 +117,32 @@ describe("renderDependenciesEditor", () => {
     // A devDependency says so beside its name rather than in a column of its own.
     expect(cell(c, "@jxsuite/compiler", "dev")).toBe("· dev");
     expect(row(c, "hono")?.querySelector('[part="dev"]')).toBeNull();
+  });
+
+  test("the package list is the kit's table: four column headers and a row per package", async () => {
+    /* The section drew a native `<table>` while the kit had no table element; it is `jx-table` now
+       (ui.md §5.4), so the roles and the header and cell look are written once, in the kit. */
+    const c = await setup(TWO_DEPS);
+    const table = c.querySelector<HTMLElement>('[part="table"]')!;
+    expect(table.localName).toBe("jx-table");
+    expect(table.getAttribute("role")).toBe("table");
+    expect(table.getAttribute("aria-label")).toBe("Packages");
+    const heads = [...table.querySelectorAll('[role="columnheader"]')];
+    expect(heads.map((head) => head.textContent.trim())).toEqual([
+      "Package",
+      "Current",
+      "Latest",
+      "Actions",
+    ]);
+    const rows = [...table.querySelectorAll<HTMLElement>('[part="row"]')];
+    expect(rows.map((line) => line.dataset["package"])).toEqual(["@jxsuite/compiler", "hono"]);
+    expect(rows.every((line) => line.getAttribute("role") === "row")).toBe(true);
+    // Nothing stands between the table and its rows, or between a row and its cells.
+    expect([...table.children].every((child) => child.localName === "jx-tr")).toBe(true);
+    expect(rows.every((line) => [...line.children].every((kid) => kid.localName === "jx-td"))).toBe(
+      true,
+    );
+    expect(c.querySelector("table, thead, tbody, tr, th, td")).toBeNull();
   });
 
   test("a package already AT its latest shows that version, with no update button", async () => {

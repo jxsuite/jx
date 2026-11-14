@@ -106,7 +106,7 @@ All edits are to `specs/ui.md`, in place. No numbered heading moves. Each new pa
 
 **Integration contract.** `plan:ui/principles-text` requires this plan. Once it lands:
 
-- ui.md §3.3 defines a behaviour by its binding (handler, lifecycle hook, parameterised callable) and lists six kinds of sidecar work by element. A plan that adds a sidecar doing a new kind of work, or adds a kit element that uses an existing kind, adds it to the matching bullet in the same pull request. `plan:ui/menu-radio-rows` (a radio row is still activated by `click()`) and `plan:ui/jx-table` need no edit unless they add a sidecar.
+- ui.md §3.3 defines a behaviour by its binding (handler, lifecycle hook, parameterised callable) and lists six kinds of sidecar work by element. A plan that adds a sidecar doing a new kind of work, or adds a kit element that uses an existing kind, adds it to the matching bullet in the same pull request. `plan:ui/menu-radio-rows` (a radio row is still activated by `click()`) needs no edit unless it adds a sidecar, and the four table elements of ui.md §5.4 have none.
 - ui.md §7 says when a sidecar owns a key. `plan:ui/element-contract-text` can rely on §3.2's "Declarative first" bullet being consistent with it as written, so it need not edit that bullet for this reason.
 - If the Open decision is taken, principle 5 names `blur()`, `click()`, declared-prop writes, the selection API and event dispatch, and `plan:ui/principles-text`'s marker rewrite may credit principle 5 whole to the conformance scan, which is what that plan's edge on this one waits for. If it is not, step 6 moves into that plan unchanged and the edge stays.
 

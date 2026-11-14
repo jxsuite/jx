@@ -681,6 +681,45 @@ The group chooses the pattern and the keyboard and does not own the selection. I
 
 For a single-choice row, set `checked` to `"true"` or `"false"` on each button rather than `selected`, and do not set `toggles`. A button that both announces a chosen state and flips itself would fight the host that owns the value, so the element refuses the combination.
 
+## Tables
+
+`jx-table` is a table made of four elements: `jx-table` holds `jx-tr` rows, and a row holds `jx-th` header cells and `jx-td` cells. Each announces itself as what it is, so a screen reader hears a table, its columns and its rows.
+
+```json
+{
+  "tagName": "jx-table",
+  "$props": { "label": "Packages" },
+  "children": [
+    {
+      "tagName": "jx-tr",
+      "children": [
+        { "tagName": "jx-th", "textContent": "Package" },
+        { "tagName": "jx-th", "textContent": "Version" }
+      ]
+    },
+    {
+      "tagName": "jx-tr",
+      "children": [
+        { "tagName": "jx-th", "$props": { "scope": "row" }, "textContent": "hono" },
+        { "tagName": "jx-td", "textContent": "4.7.2" }
+      ]
+    }
+  ]
+}
+```
+
+`label` names the table, and a reader entering it hears the name, so give every table one. A `jx-th` heads its column. Set `scope` to `"row"` on the cell that names a row, and it is announced again as the reader moves along that row.
+
+Write the rows directly inside the table, or map them from an array: a mapped list leaves no wrapper, so the rows are still the table's own children. If you must put an element between the table and a row, or between a row and a cell, give it `display: contents` and `role="none"`. Any other box there is drawn as a stray row and breaks the table apart.
+
+A table that draws only the rows in view should still say how long the list is. Set `rowcount` on the table to the number of rows in the whole list, counting the header row, and `rowindex` on each row to its place in that list, starting at 1 for the header. Leave both out for a table that draws every row.
+
+The cells draw the padding, the rule under each row and the header's weight and tone. Hover, a pointer cursor, a sticky header and column widths are yours to add through `part`, because only you know whether a row responds and how wide a column should be. The four elements have no parts of their own.
+
+There is no spanning. A table that needs a cell across two columns or two rows is a native `<table>` with kit elements inside its cells, which is also fine. Never wrap a native `<table>` in a kit element.
+
+`jx-table` is a table to read, not a grid to move around in: it takes no focus and has no arrow keys.
+
 ## Toolbars
 
 `jx-toolbar` is a row of controls with one tab stop. Reach for it when the row holds more than buttons: a text field, a divider, a plain `jx-button`, a count at the far end.

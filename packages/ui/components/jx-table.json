@@ -1,0 +1,45 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "JxTable",
+  "tagName": "jx-table",
+  "$description": "The table itself, in the shape ui.md §3.5 records: the element IS the box, a CSS table with the table role, and never a wrapper round a native one. Its rows are its own children, because a slot leaves no node and a mapped array leaves only a comment, so a slice of rows is still a table. It is the static table pattern, not the grid: it takes no focus and has no keyboard.",
+  "observedAttributes": ["label", "rowcount"],
+  "state": {
+    "label": {
+      "type": "string",
+      "default": "",
+      "attribute": "label",
+      "description": "The accessible name of the table, written as aria-label. A table is announced by its name when a reader enters it, and nothing lints its absence, because a role-carrying custom element is outside the naming rules. Empty writes no attribute."
+    },
+    "rowcount": {
+      "type": "number",
+      "default": 0,
+      "attribute": "rowcount",
+      "description": "How many rows the WHOLE set has, the header row included, written as aria-rowcount. It is for a table that draws only the rows in view: without it a reader is told the table has as many rows as happen to be rendered. Zero, the default, writes nothing, which is how a table that draws every row says count me from the DOM. The element prints what it is given; the host does the counting."
+    }
+  },
+  "attributes": {
+    "role": "table",
+    "aria-label": "${state.label || null}",
+    "aria-rowcount": "${state.rowcount > 0 ? state.rowcount : null}"
+  },
+  "style": {
+    "display": "table",
+    "&[hidden]": {
+      "display": "none"
+    },
+    "boxSizing": "border-box",
+    "width": "100%",
+    "borderCollapse": "separate",
+    "borderSpacing": "0",
+    "fontFamily": "var(--jx-font-sans)",
+    "fontSize": "var(--jx-text-md)",
+    "lineHeight": "var(--jx-leading-md)",
+    "color": "var(--jx-fg)"
+  },
+  "children": [
+    {
+      "tagName": "slot"
+    }
+  ]
+}

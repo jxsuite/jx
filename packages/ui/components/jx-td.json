@@ -1,0 +1,24 @@
+{
+  "$schema": "https://jxsuite.com/schema/v1",
+  "$id": "JxTd",
+  "tagName": "jx-td",
+  "$description": "A data cell of a `jx-table`: a CSS table cell with the cell role, the kit's padding and the hairline under it.",
+  "attributes": {
+    "role": "cell"
+  },
+  "style": {
+    "display": "table-cell",
+    "&[hidden]": {
+      "display": "none"
+    },
+    "boxSizing": "border-box",
+    "padding": "var(--jx-space-2) var(--jx-space-3)",
+    "verticalAlign": "middle",
+    "borderBlockEnd": "1px solid var(--jx-border)"
+  },
+  "children": [
+    {
+      "tagName": "slot"
+    }
+  ]
+}

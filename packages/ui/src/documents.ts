@@ -37,9 +37,13 @@ import jxSwatchGroup from "../components/jx-swatch-group.json";
 import jxSwitch from "../components/jx-switch.json";
 import jxTab from "../components/jx-tab.json";
 import jxTabPanel from "../components/jx-tab-panel.json";
+import jxTable from "../components/jx-table.json";
 import jxTabs from "../components/jx-tabs.json";
+import jxTd from "../components/jx-td.json";
 import jxTextfield from "../components/jx-textfield.json";
+import jxTh from "../components/jx-th.json";
 import jxToast from "../components/jx-toast.json";
+import jxTr from "../components/jx-tr.json";
 import jxTree from "../components/jx-tree.json";
 import jxTreeItem from "../components/jx-tree-item.json";
 import jxToastHost from "../components/jx-toast-host.json";
@@ -100,6 +104,10 @@ export const documents = {
   "jx-tree": kitDocument(jxTree),
   "jx-accordion-item": kitDocument(jxAccordionItem),
   "jx-accordion": kitDocument(jxAccordion),
+  "jx-table": kitDocument(jxTable),
+  "jx-tr": kitDocument(jxTr),
+  "jx-th": kitDocument(jxTh),
+  "jx-td": kitDocument(jxTd),
   "jx-divider": kitDocument(jxDivider),
   "jx-split": kitDocument(jxSplit),
   "jx-kbd": kitDocument(jxKbd),

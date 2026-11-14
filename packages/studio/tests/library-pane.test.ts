@@ -924,6 +924,49 @@ describe("collections", () => {
     expect(rows.some((row) => row.includes("Winter prep") && row.includes("Published"))).toBe(true);
   });
 
+  test("the Table is the kit's table, and it states the whole list it draws a window of", async () => {
+    /* The Table wrote `role="table"`, `row`, `columnheader` and `cell` on its own divs. They are
+       `jx-table`, `jx-tr`, `jx-th` and `jx-td` now (ui.md §5.4), which is where the roles, the name
+       and the whole-set counts are written once. The layout stays this surface's. */
+    await mount();
+    setLibraryLayout("table");
+    await flush();
+    await flush();
+    const table = part("table")!;
+    expect(table.localName).toBe("jx-table");
+    expect(table.getAttribute("role")).toBe("table");
+    expect(table.getAttribute("aria-label")).toBe("Pages");
+    const rows = parts("table-row");
+    expect(rows.length).toBeGreaterThan(0);
+    // Every file plus the header row; and the first file is row 2, because the header is row 1.
+    expect(table.getAttribute("aria-rowcount")).toBe(String(rows.length + 1));
+    const head = part("table-head")!;
+    expect(head.localName).toBe("jx-tr");
+    expect(head.getAttribute("role")).toBe("row");
+    expect(head.getAttribute("aria-rowindex")).toBe("1");
+    expect(rows.map((row) => row.getAttribute("aria-rowindex"))).toEqual(
+      rows.map((_row, at) => String(at + 2)),
+    );
+    expect(
+      rows.every((row) => row.localName === "jx-tr" && row.getAttribute("role") === "row"),
+    ).toBe(true);
+    const cells = parts("cell");
+    expect(
+      cells.every((cell) =>
+        cell.localName === "jx-th"
+          ? cell.getAttribute("role") === "columnheader"
+          : cell.localName === "jx-td" && cell.getAttribute("role") === "cell",
+      ),
+    ).toBe(true);
+    // The two spacers that hold the window open are no part of the table a reader hears.
+    expect(parts("pad").map((pad) => pad.getAttribute("role"))).toEqual(["none", "none"]);
+    // And a layout that is not the Table states no counts at all.
+    setLibraryLayout("cards");
+    await flush();
+    await flush();
+    expect(part("table")).toBeNull();
+  });
+
   test("a collection offers Edit in grid, which opens its grid; Pages does not", async () => {
     await mount();
     expect(part("edit-grid")).toBeNull();

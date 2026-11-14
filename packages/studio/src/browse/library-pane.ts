@@ -1366,9 +1366,12 @@ function homeView(panel: ActiveLibraryPane | null, paneId: string): LibraryView 
     region: paneRegion(paneId, "content"),
     rows:
       kind === "cards" || kind === "table"
-        ? slice.map((file) => {
+        ? slice.map((file, at) => {
             const row = libraryRow(file, kind === "table" ? columns : [], live, factsOf(file));
             row.checked = tickedSet.has(file.path);
+            /* The header is row 1, and `range.start` indexes the filtered list, so a row keeps its
+               place in the whole list while the window scrolls over it. */
+            row.rowIndex = kind === "table" ? range.start + at + 2 : 0;
             return subtitles ? withPageSubtitle(row, subtitles) : row;
           })
         : [],
@@ -1376,6 +1379,7 @@ function homeView(panel: ActiveLibraryPane | null, paneId: string): LibraryView 
     bulkText:
       ticked.length === 0 ? `Tick the ${plural} to delete` : `${ticked.length} ${noun} selected`,
     deleteDisabled: ticked.length === 0,
+    rowCount: kind === "table" ? files.length + 1 : 0,
     rowSize: covered || subtitles !== null ? "tall" : "normal",
     coverState: covered ? "shown" : "hidden",
     searchLabel: `Search ${plural}`,

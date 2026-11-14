@@ -87,7 +87,7 @@ All spec edits are in `specs/ui.md`, in place. Every paragraph and bullet is one
 
 7. **Ride-along spec edits.**
    - §5.3 `jx-field` row (line 251): after "the label-to-control naming contract the four classes it replaces could not hold", add "; a `help` slot that replaces the `description` sentence when filled". `plan:studio-ui-guidelines/inline-error-role` rewrites another clause of the same cell (`invalid` takes the label from `warning`); the clauses are independent, and whichever plan lands second keeps the other's.
-   - §5.4 `jx-accordion-item` row (line 278): after "a re-announced `toggle` that stops at the element", add "; slots `heading` (an inert mark beside the label) and `actions` (a control whose click neither toggles nor is cancelled)". `plan:ui/jx-table` adds rows to the same table, and the edits do not overlap.
+   - §5.4 `jx-accordion-item` row (line 278): after "a re-announced `toggle` that stops at the element", add "; slots `heading` (an inert mark beside the label) and `actions` (a control whose click neither toggles nor is cancelled)". The table elements' row (ui.md §5.4) is in the same table, and the edits do not overlap.
    - §3's own marker is not touched. `plan:ui/behaviour-list-text` removes its "(§3.1, §3.2, §3.3)" enumeration. The "Declarative first" bullet is not touched either, and that plan relies on it as written.
 8. **`packages/ui/src/behaviors/split.ts`**, `announce()` (line 162): `new CustomEvent(name, { bubbles: true, detail: modifiers })`. Update its doc comment to say it bubbles and is not composed (ui.md §3.2).
 9. **`packages/ui/components/jx-option.json`**, `state.onClick`: delete `"composed": true` from the `select` dispatch.
@@ -102,7 +102,7 @@ All spec edits are in `specs/ui.md`, in place. Every paragraph and bullet is one
 **Integration contract.** No plan requires this one. Once it lands:
 
 - ui.md §3.2 is Implemented, and `conformance.test.ts` refuses five things in any kit document: a state key or `attribute` starting `aria-`; a declared `label`, `labelledby` or `describedby` that the document never references; a `<slot>` whose name is not in `SLOT_NAMES`; a `dispatchEvent` in a document's own function body without `bubbles: true`, with `composed`, or missing from its function's `emits`; and `composed:` in any behaviour module.
-- A plan that adds an element must pass all five. One that adds a named slot adds the name to §3.2's table and to `SLOT_NAMES` in the same pull request. That covers `plan:ui/jx-table` (its elements should need only default slots), `plan:ui/menu-radio-rows` (`jx-menu-group`, if built, may want `heading`, which already means an inert mark beside a label) and `plan:ui/studio-toast-host`, which uses `jx-toast`'s existing `action` slot.
+- A plan that adds an element must pass all five. One that adds a named slot adds the name to §3.2's table and to `SLOT_NAMES` in the same pull request. That covers the four table elements of ui.md §5.4 (each has one default slot and nothing else), `plan:ui/menu-radio-rows` (`jx-menu-group`, if built, may want `heading`, which already means an inert mark beside a label) and `plan:ui/studio-toast-host`, which uses `jx-toast`'s existing `action` slot.
 - `plan:ui/overlay-transitions-and-slot`'s `[part="overlay-slot"]` is a part, not a slot name, and is unaffected.
 
 ## Tests
