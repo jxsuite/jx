@@ -39,12 +39,12 @@ Every clause holds at 84735a9f. §16.8's body only lists the four annotations; i
 
 **What is missing:** one generator both the build and any other host can import, the build calling it, §16.8 saying what the manifest contains and where it is written, and the Studio remnant removed.
 
-**Related, no edge** (see Decisions): `plan:studio/cem-contract-editors` (a dependent: the `observedAttributes` editor, and custom-property and part lists that route to the controls already writing them, with no new annotation), `plan:_shared/compiled-prop-bridge` and `plan:_shared/compiled-element-lifecycle` (the compiled module's §16.2 properties and §16.5 attributes, which the manifest describes), the shared classifier in `@jxsuite/schema/function-role` (landed) (the computed-or-callable verdict for Function entries), `plan:imports/cem-discovery-on-every-backend` (the reader side, and CEM reader types in `component-meta.ts`), `plan:site-architecture/build-output-prose` (§14.2's marker).
+**Related, no edge** (see Decisions): `plan:studio/cem-contract-editors` (a dependent: the `observedAttributes` editor, and custom-property and part lists that route to the controls already writing them, with no new annotation), `plan:_shared/compiled-prop-bridge` and `plan:_shared/compiled-element-lifecycle` (the compiled module's §16.2 properties and §16.5 attributes, which the manifest describes), the shared classifier in `@jxsuite/schema/function-role` (landed) (the computed-or-callable verdict for Function entries), `plan:imports/cem-discovery-on-every-backend` (the reader side, and CEM reader types in `component-meta.ts`), site-architecture.md §14.2 (reconciled; its tree is the one this plan adds a line to).
 
 ## Outcome
 
 - spec.md §16.8 → Implemented: the section specifies the manifest (location, module frame, the annotation-to-CEM mapping, what is left out) and `jx build` writes it. The Studio clause leaves the marker; it remains studio.md §6.5's Pending "Observed attributes" cell.
-- Ride-alongs, not claims: spec.md §16.5 states the camel-case key rule the `fieldName` link rests on (its marker stays `plan:_shared/compiled-element-lifecycle`'s); spec.md §5.6's Implemented marker names the new generator; studio.md §6.5's two CSS cells stop citing the deleted file (both stay Partial); site-architecture.md §12.1's and §14.2's output trees list the file (§14.2 stays Partial).
+- Ride-alongs, not claims: spec.md §16.5 states the camel-case key rule the `fieldName` link rests on (its marker stays `plan:_shared/compiled-element-lifecycle`'s); spec.md §5.6's Implemented marker names the new generator; studio.md §6.5's two CSS cells stop citing the deleted file (both stay Partial); site-architecture.md §12.1's and §14.2's output trees list the file (§14.2 carries no marker of its own).
 
 ## Decisions
 
@@ -152,7 +152,7 @@ Replace the marker with:
 
 **studio.md §6.5** (cells only, both stay `**Partial**`): the CSS custom properties cell's "and the uncalled generator in `services/cem-export.ts` would include them (`spec.md` §16.8)" becomes "and a site build's Custom Elements Manifest exports them (`spec.md` §16.8)"; the CSS parts cell's "and the uncalled generator would include them" becomes "and the build's manifest exports them for a shadow-root component (`spec.md` §16.8)".
 
-**site-architecture.md** §12.1 (`Emit dist/` tree) and §14.2 (artifact tree): a `custom-elements.json` line, commented "Custom Elements Manifest of the compiled components (spec.md §16.8)". §14.2's marker is untouched.
+**site-architecture.md** §12.1 (`Emit dist/` tree) and §14.2 (artifact tree): a `custom-elements.json` line, commented "Custom Elements Manifest of the compiled components (spec.md §16.8)".
 
 **Fragments** (no graduation: spec.md keeps other open items):
 

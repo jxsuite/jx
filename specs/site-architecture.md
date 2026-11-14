@@ -1587,16 +1587,16 @@ Individual file `$media`, `$style`, and `$elements` merge on top of site-level d
 
 ### 10.7 CSS Cascade
 
-> **Status: Partial.** The order ships (`packages/site/src/site-style.ts`, `packages/compiler/src/shared.ts`, and `injectComponentScripts` in `packages/compiler/src/site/site-build.ts`, which emits component CSS last in `<head>`). Item 6 does not hold as written: components render into light DOM by default, but a component may opt into a shadow root (`$shadow`, or `defaults.shadow` for a project; `packages/compiler/src/shadow.ts`, `spec.md` §16.6), and a shadow component's stylesheet is linked inside its declarative shadow root rather than joining this cascade.
-
-The global stylesheet is emitted in this order:
+A built page carries its CSS in its `<head>`, in this order, after any stylesheet its merged `$head` links or embeds (§8.3); there is no site-wide stylesheet file (§14.2):
 
 1. Site-level `:root` custom properties (from `--`-prefixed keys in `style`) and `body` direct properties
 2. Site-level conditional (`@--dark`, `@--md`, etc.) overrides — custom properties on `:root`, direct properties on `body`; scheme-query blocks dual-emitted as a media-guarded copy plus a forced `data-color-scheme` copy (spec §9.5)
 3. The `color-scheme` declaration triplet, when a scheme query is declared
-4. Layout-level styles
-5. Page-level styles
-6. Component-level styles (scoped by tag-name prefix and generated `.<tagName>-<n>` classes — there is no shadow DOM; `spec.md` §16.6)
+4. Layout and page styles, from the page merged into its layout (§5.1): the root element's `style`, where a key the page sets overrides the layout's, then every other element's rules in document order. Items 1 to 4 are one `<style>` block.
+5. The styles of content a page or layout passes into a component's slots, in a second block.
+6. Component styles: the sheet of every light-DOM component the page or one of its islands uses, inlined into one `<style>` block at the end of `<head>`, after everything above (compiler.md §8.2). Components render into light DOM by default, so these rules are scoped by selector: the component's tag name prefixes its own rules, and a nested element with its own `style` is selected by a per-element handle (`spec.md` §9.2, §16.6).
+
+A component that opts into a shadow root (`$shadow`, or `defaults.shadow` for the project; `spec.md` §16.6) takes no part in this order. Its rules are written against `:host`, its sheet `/components/<tag>.css` is linked from inside its declarative shadow root, and no page or project selector matches inside that root. Inherited properties and the custom properties of item 1 still cross the boundary, so `var(--color-primary)` works in either mode.
 
 This follows the natural CSS cascade — more specific sources override less specific ones, and base rules always precede their conditional overrides so equal-specificity variants win by source order. When a scheme query is declared, the pre-paint scheme-restore `<script>` is injected into the merged `<head>` immediately after the charset/viewport defaults — ahead of every style block.
 
@@ -2032,16 +2032,16 @@ A document formats through **blessed `Intl` helpers**, listed once in `packages/
 
 ### 14.1 Output Targets
 
-> **Status: Partial.** The four adapters and their worker output ship as §14.1.1 records. The table's `_redirects` entries do not match: the build writes `dist/_redirects` whenever `redirects` is non-empty, under every adapter and with none (`generateRedirects` in `packages/compiler/src/site/site-build.ts`), not only for the two Cloudflare adapters.
-
 The build output is standard static files deployable anywhere. When `build.adapter` is set, the compiler additionally generates platform-specific files:
 
-| Provider               | Extra Output                                                                                                                                              |
-| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| _(none)_               | Just `dist/` with HTML/CSS/JS/assets                                                                                                                      |
-| `"cloudflare-workers"` | `dist/worker.js` (Hono server with asset fallback), `_redirects`                                                                                          |
-| `"cloudflare-pages"`   | `dist/_worker.js` (advanced-mode Hono server) + `dist/_routes.json`, unless the site has neither server entries nor active extension mounts; `_redirects` |
-| `"node"` / `"bun"`     | `dist/worker.js` (Hono server, no asset fallback)                                                                                                         |
+| Provider               | Extra Output                                                                                                                                |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| _(none)_               | Just `dist/` with HTML/CSS/JS/assets                                                                                                        |
+| `"cloudflare-workers"` | `dist/worker.js` (Hono server with asset fallback)                                                                                          |
+| `"cloudflare-pages"`   | `dist/_worker.js` (advanced-mode Hono server) + `dist/_routes.json`, unless the site has neither server entries nor active extension mounts |
+| `"node"` / `"bun"`     | `dist/worker.js` (Hono server, no asset fallback)                                                                                           |
+
+`_redirects` is not adapter output. The build writes `dist/_redirects` whenever `redirects` has a rule, under every adapter and with none, beside the HTML fallbacks that §11.3 writes for hosts that ignore the file (§11.1). `_headers` (§14.3) and `.nojekyll` (§14.4) likewise do not depend on the adapter.
 
 Configured in `project.json`:
 
@@ -2083,8 +2083,6 @@ When `images.service` is `"cloudflare"` (§9.2.6), no additional adapter output 
 
 ### 14.2 Build Artifacts
 
-> **Status: Partial.** The artifacts in the tree ship (`buildSite` in `packages/compiler/src/site/site-build.ts`). Two statements do not match: `_redirects` is written under every adapter whenever `redirects` is non-empty rather than being platform-specific (§14.1), and pages do not link component stylesheets: light-DOM component CSS is inlined into one `<style>` block at the end of `<head>` (`injectComponentScripts`), and `/components/<tag>.css` is linked only from inside a shadow component's declarative shadow root (§10.7).
-
 ```
 dist/
 ├── index.html                   # Static HTML page (page styles inlined in <style>)
@@ -2109,17 +2107,17 @@ dist/
 │       └── hero-640-a1b2c3d4.avif
 ├── 404.html                     # The not-found page, when pages/404.* exists (§8.4.2)
 ├── sitemap.xml                  # Auto-generated from the route table (when url is set)
-├── robots.txt                   # From public/, with a Sitemap: line appended
+├── robots.txt                   # From public/, or a permissive default when the sitemap needs one; Sitemap: line appended
 ├── favicon.svg                  # Copied from public/
 ├── _headers                     # Response headers (§14.3)
-├── _redirects                   # Platform-specific
+├── _redirects                   # From redirects, whatever the adapter (§11.1, §14.1)
 ├── .nojekyll                    # Stops GitHub Pages' Jekyll eating every _-prefixed path
 └── worker.js                    # Server worker (whenever adapter is set; on cloudflare-pages it is
                                  # named _worker.js, paired with _routes.json, and skipped entirely
                                  # when there are no server entries and no active mounts)
 ```
 
-Page and layout styles are inlined into each page's `<style>` block — there is no site-wide bundled stylesheet and no hashed `_assets/` directory. Pages reference the components they use via `<link rel="stylesheet" href="/components/<tag>.css">` and `<script type="module" src="/components/<tag>.js">` (the script is omitted for fully static components).
+A page carries its own CSS. Page and layout styles, and the sheet of every light-DOM component the page uses, are inlined into its `<head>` in the order §10.7 gives (compiler.md §8.2). There is no site-wide bundled stylesheet and no hashed `_assets/` directory, and the document never links a component sheet: `dist/components/<tag>.css` is still written for every component that has styles, and is linked only from inside a shadow component's declarative shadow root (`spec.md` §16.6). A component with a non-static instance on the page, or one an island renders, is loaded with `<script type="module" src="/components/<tag>.js">` and hinted with `<link rel="modulepreload">` (§12.4). A component whose every instance is prerendered, and which no island renders, ships no script.
 
 ---
 
