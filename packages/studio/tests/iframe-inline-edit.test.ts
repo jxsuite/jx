@@ -953,43 +953,34 @@ describe("prop-bound inline editing", () => {
     stop();
   });
 
-  test("a prop delivered as a `props.*` ATTRIBUTE is refused", () => {
-    /* The JSON shorthand: `attributes: { "props.title": "…" }`. connectedCallback collects props.*
-       attributes into state, so the marker renders that text while $props is empty — and reading
-       $props alone calls it "unset, the definition default is showing", which is false on both
-       halves. Editing would write $props and leave the attribute standing; clearing the prop later
-       would resurrect the old text. This repo's own site carries 95 of these. */
+  /* A prop is editable wherever the instance delivers it (studio.md §8.2.6). These four routes used
+     to be refused, because a commit wrote `$props` and left the other value standing; the commit
+     now writes the route that holds the value (`mutateUpdateInstanceProp`), so the route decides
+     nothing here and only the VALUE is judged. */
+  test("a prop delivered as a `props.*` ATTRIBUTE opens a session", () => {
     const { channel, posts } = fakeChannel();
     const { container, h3, shadowDoc } = propBoundContainer(undefined, { "props.title": "Local" });
     const stop = boot(channel, container, { getShadowDoc: () => shadowDoc });
 
     clickInto(h3);
-    expect(posts.filter((p) => p.kind === "editStart")).toEqual([]);
+    expect(posts).toContainEqual({ kind: "editStart", path: ["children", 1], prop: "title" });
     stop();
   });
 
-  test("a prop colliding with a REFLECTED attribute is refused", () => {
-    /* `title`, `role`, `id`, `lang`, `dir`, `slot`, `hidden`: setAttribute writes the JS property
-       as a side effect, and the runtime's `key in this` merge picks it up into state. The edit
-       would be INVISIBLE — applyAttributes runs after the $props assignment and overwrites the
-       reflected property — and the document would round-trip to two values on one directive.
-       41 shipped starter components declare `title` or `role` as state. */
+  test("a prop delivered by a REFLECTED attribute opens a session", () => {
     const { channel, posts } = fakeChannel();
     const { container, h3, shadowDoc } = propBoundContainer(undefined, { title: "Local" });
     const stop = boot(channel, container, { getShadowDoc: () => shadowDoc });
 
     clickInto(h3);
-    expect(posts.filter((p) => p.kind === "editStart")).toEqual([]);
+    expect(posts).toContainEqual({ kind: "editStart", path: ["children", 1], prop: "title" });
     stop();
   });
 
-  test("a prop delivered as a TOP-LEVEL node key is refused", () => {
+  test("a prop delivered as a TOP-LEVEL node key opens a session", () => {
     /* `{ "tagName": "x-card", "heading": "Local" }` — the property-first interface written straight
-       onto the node. `applyProperties` sets every non-reserved key as a JS property, and the
-       bridge's `key in this` merge reads it back: the marker renders "Local" while $props is empty.
-       Reproduced against the real runtime, as is the harm — after an edit the document carries both
-       `heading` and `$props.heading`, $props wins, and clearing the prop resurrects the stale one.
-       Nothing about this route touches `attributes`, so the attribute guard could not see it. */
+       onto the node, and the shape a hand-written page uses most. Refusing it left the caption of
+       every such instance uneditable on the canvas. */
     const { channel, posts } = fakeChannel();
     const { container, h3, shadowDoc } = propBoundContainer(
       undefined,
@@ -1000,22 +991,35 @@ describe("prop-bound inline editing", () => {
     const stop = boot(channel, container, { getShadowDoc: () => shadowDoc });
 
     clickInto(h3);
-    expect(posts.filter((p) => p.kind === "editStart")).toEqual([]);
+    expect(h3.isContentEditable).toBe(true);
+    expect(posts).toContainEqual({ kind: "editStart", path: ["children", 1], prop: "heading" });
     stop();
   });
 
-  test("a top-level key is refused for a REFLECTED name too", () => {
-    // The same route with `title`, where the property assignment also writes the attribute — but
-    // The DOCUMENT carries no `attributes` entry, so only the top-level read finds it.
-    const { channel, posts } = fakeChannel();
-    const { container, h3, shadowDoc } = propBoundContainer(undefined, undefined, {
-      title: "Local",
-    });
-    const stop = boot(channel, container, { getShadowDoc: () => shadowDoc });
+  test("the value judged is the WINNING source's, not `$props`'", () => {
+    /* A top-level key is written after `$props`, so it is what the instance draws. A number or a
+       binding there is refused exactly as it is in `$props`, whatever string `$props` holds under
+       it; and a string there is editable whatever `$props` holds. */
+    for (const [top, editable] of [
+      [3, false],
+      [true, false],
+      ["${state.x}", false],
+      ["Local", true],
+    ] as const) {
+      const { channel, posts } = fakeChannel();
+      const { container, h3, shadowDoc } = propBoundContainer(
+        { heading: editable ? 3 : "Shadowed" },
+        undefined,
+        { heading: top },
+        "heading",
+      );
+      const stop = boot(channel, container, { getShadowDoc: () => shadowDoc });
 
-    clickInto(h3);
-    expect(posts.filter((p) => p.kind === "editStart")).toEqual([]);
-    stop();
+      clickInto(h3);
+      expect(posts.filter((p) => p.kind === "editStart")).toHaveLength(editable ? 1 : 0);
+      stop();
+      document.body.innerHTML = "";
+    }
   });
 
   test("a RESERVED top-level key does not block a prop of that name", () => {
@@ -1065,14 +1069,23 @@ describe("prop-bound inline editing", () => {
     stop();
   });
 
-  test("a prop delivered through a `data-jx-props` payload is refused", () => {
-    /* The bridge's FIRST source (compiler.md §4.4): the compiler stamps pre-rendered instances with
-       a JSON payload, and connectedCallback parses it into state before reading anything else.
-       Studio edits source documents rather than build output, so this is the rare one — it is
-       refused because the bridge reads it, not because a starter writes it. */
+  test("a prop delivered through a `data-jx-props` payload opens a session", () => {
+    // The bridge's first source (compiler.md §4.4). A string in it is text like any other.
     const { channel, posts } = fakeChannel();
     const { container, h3, shadowDoc } = propBoundContainer(undefined, {
       "data-jx-props": JSON.stringify({ title: "Local" }),
+    });
+    const stop = boot(channel, container, { getShadowDoc: () => shadowDoc });
+
+    clickInto(h3);
+    expect(posts).toContainEqual({ kind: "editStart", path: ["children", 1], prop: "title" });
+    stop();
+  });
+
+  test("a NUMBER in a `data-jx-props` payload is refused, as it is in `$props`", () => {
+    const { channel, posts } = fakeChannel();
+    const { container, h3, shadowDoc } = propBoundContainer(undefined, {
+      "data-jx-props": JSON.stringify({ title: 3 }),
     });
     const stop = boot(channel, container, { getShadowDoc: () => shadowDoc });
 
@@ -1095,11 +1108,11 @@ describe("prop-bound inline editing", () => {
     stop();
   });
 
-  test("a reflected attribute is matched case-insensitively and in its kebab form", () => {
-    /* `instanceSupplies` accepts both, so both are evidence: HTML lowercases attribute names, and
-       an ARIA-style reflection carries `aria-label` for the `ariaLabel` property. (happy-dom
-       implements no ARIA reflection, so the runtime half of the kebab case is a browser fact, not
-       one this suite can reproduce — the studio half is what is asserted here.) */
+  test("a reflected attribute is read case-insensitively and in its kebab form", () => {
+    /* `instanceSupplies` accepts both, so both are the prop's source: a NUMBER there is what the
+       instance draws, and is refused though `$props` holds nothing. (happy-dom implements no ARIA
+       reflection, so the runtime half of the kebab case is a browser fact, not one this suite can
+       reproduce — the studio half is what is asserted here.) */
     const restore = stubAriaLabel();
     for (const [attr, prop] of [
       ["TITLE", "title"],
@@ -1108,7 +1121,7 @@ describe("prop-bound inline editing", () => {
       const { channel, posts } = fakeChannel();
       const { container, h3, shadowDoc } = propBoundContainer(
         undefined,
-        { [attr]: "Local" },
+        { [attr]: 3 },
         undefined,
         prop,
       );

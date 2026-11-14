@@ -1028,6 +1028,48 @@ describe("applyInlinePropCommit", () => {
     expect(tab.doc.document).toBe(rootBefore);
   });
 
+  test("writes a TOP-LEVEL key back to the key, and adds no `$props`", () => {
+    /* The instance delivers the prop as `{ "tagName": "x-card", "caption": "…" }`. A `$props` write
+       would leave two sources for one rendered value (studio.md §8.2.6). */
+    tab = resetWorkspaceWithTab({
+      children: [{ tagName: "p" }, { caption: "Before", tagName: "x-card" }],
+      tagName: "div",
+    });
+    expect(applyInlinePropCommit(tab, ["children", 1], "caption", "After")).toBe(true);
+    expect(kids()[1]!["caption"]).toBe("After");
+    expect(kids()[1]!.$props).toBeUndefined();
+  });
+
+  test("an emptied top-level key keeps its empty string, as the sidebar field does", () => {
+    tab = resetWorkspaceWithTab({
+      children: [{ tagName: "p" }, { caption: "Before", tagName: "x-card" }],
+      tagName: "div",
+    });
+    applyInlinePropCommit(tab, ["children", 1], "caption", "");
+    expect(kids()[1]!["caption"]).toBe("");
+    expect(kids()[1]!.$props).toBeUndefined();
+  });
+
+  test("the unchanged-value no-op reads the source that wins, not `$props`", () => {
+    tab = resetWorkspaceWithTab({
+      children: [{ tagName: "p" }, { caption: "Before", tagName: "x-card" }],
+      tagName: "div",
+    });
+    const rootBefore = tab.doc.document;
+    expect(applyInlinePropCommit(tab, ["children", 1], "caption", "Before")).toBe(false);
+    expect(tab.doc.document).toBe(rootBefore);
+  });
+
+  test("writes a `props.*` attribute back to the attribute", () => {
+    tab = resetWorkspaceWithTab({
+      children: [{ tagName: "p" }, { attributes: { "props.title": "Before" }, tagName: "x-card" }],
+      tagName: "div",
+    });
+    applyInlinePropCommit(tab, ["children", 1], "title", "After");
+    expect(kids()[1]!.attributes?.["props.title"]).toBe("After");
+    expect(kids()[1]!.$props).toBeUndefined();
+  });
+
   test("no-ops on a null tab or a missing node", () => {
     applyInlinePropCommit(null, ["children", 1], "title", "ghost");
     applyInlinePropCommit(tab, ["children", 9], "title", "ghost");
