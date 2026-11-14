@@ -5270,6 +5270,13 @@ export function absorbAttribute(
 }
 
 /**
+ * `derivedStateKeys` per definition. Every instance of a tag asks as it connects, and the answer
+ * reads each function entry's body, so it is worked out once per definition object. A definition
+ * that is edited is a new object (Studio replaces the document it registers).
+ */
+const _derivedKeys = new WeakMap<JxElement, ReadonlySet<string>>();
+
+/**
  * The state keys a definition DERIVES: the entries its scope computes from other entries, which a
  * write from outside cannot set.
  *
@@ -5284,9 +5291,13 @@ export function absorbAttribute(
  * verdict.
  *
  * @param def The element definition
- * @returns {Set<string>}
+ * @returns {ReadonlySet<string>}
  */
-export function derivedStateKeys(def: JxElement): Set<string> {
+export function derivedStateKeys(def: JxElement): ReadonlySet<string> {
+  const known = _derivedKeys.get(def);
+  if (known) {
+    return known;
+  }
   const derived = new Set<string>();
   const roles = classifyFunctionEntries(def);
   for (const [key, entry] of Object.entries(def.state ?? {})) {
@@ -5299,6 +5310,7 @@ export function derivedStateKeys(def: JxElement): Set<string> {
       derived.add(key);
     }
   }
+  _derivedKeys.set(def, derived);
   return derived;
 }
 

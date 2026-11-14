@@ -1601,6 +1601,18 @@ const LEADING_PROPERTIES = ["hidden", "tabIndex", "title", "lang", "dir"] as con
 const NON_PROPERTY_KEYS: ReadonlySet<string> = new Set([...LEADING_PROPERTIES, "id", "className"]);
 
 /**
+ * Every key `buildAttrs` does not read as a property in key order, so a member costs one lookup:
+ * the reserved keys, the positioned ones, and the two content members nearly every element sets,
+ * which HTML reflects to no attribute.
+ */
+const POSITIONED_OR_RESERVED_KEYS: ReadonlySet<string> = new Set([
+  ...RESERVED_KEYS,
+  ...NON_PROPERTY_KEYS,
+  "textContent",
+  "innerHTML",
+]);
+
+/**
  * A property's value at build time, or `undefined` when the build has none: the pointer names
  * runtime-only state (asked before the read, as `renderMappedRows` does), or reading it threw,
  * which a computed's getter is free to do on build-time data.
@@ -1664,7 +1676,8 @@ export function buildAttrs(def: JxElement | JxMutableNode, scope: JxScope | null
   const tag = resolveStaticTagName(def.tagName, scope);
   // Attribute name to its serialized form, in the order written. Names are lowercase.
   const written = new Map<string, string>();
-  const live = new Set<string>();
+  // Allocated by the first live row: most elements have none.
+  let live: Set<string> | undefined;
 
   const id = resolveStaticValue(def.id, scope);
   if (id) {
@@ -1686,6 +1699,10 @@ export function buildAttrs(def: JxElement | JxMutableNode, scope: JxScope | null
   }
 
   const writeProperty = (key: string, value: JxDocumentValue | undefined) => {
+    // An absent member writes nothing and decides nothing, so it is not worth a table lookup.
+    if (value === undefined) {
+      return;
+    }
     const reflection = reflectedAttribute(tag, key);
     if (!reflection) {
       return;
@@ -1695,6 +1712,7 @@ export function buildAttrs(def: JxElement | JxMutableNode, scope: JxScope | null
        unchecked whatever `attributes.checked` says afterwards. A value the build cannot read
        decides nothing. */
     if (reflection.live && resolved !== undefined) {
+      live ??= new Set();
       live.add(reflection.attribute);
     }
     const text = propertyAttrText(reflection, resolved);
@@ -1708,19 +1726,21 @@ export function buildAttrs(def: JxElement | JxMutableNode, scope: JxScope | null
   for (const key of LEADING_PROPERTIES) {
     writeProperty(key, def[key]);
   }
-  for (const [key, value] of Object.entries(def)) {
+  /* Read by key, not as entries: this runs for every element a build writes, and an entry array per
+     member was a measurable share of a static page's compile. */
+  const members: Readonly<Record<string, JxDocumentValue | undefined>> = def;
+  for (const key of Object.keys(members)) {
     if (
-      RESERVED_KEYS.has(key) ||
-      NON_PROPERTY_KEYS.has(key) ||
+      POSITIONED_OR_RESERVED_KEYS.has(key) ||
       key.startsWith("$") ||
       key.startsWith("on") ||
       isContentProperty(tag, key)
     ) {
       continue;
     }
-    /* SAFETY: a definition's own member outside the reserved, `$` and `on` keys is a DOM property's
-       value, which a document writes as a literal, a `$ref` or a template (spec.md §8.1). */
-    writeProperty(key, value as JxDocumentValue | undefined);
+    /* A definition's own member outside the reserved, `$` and `on` keys is a DOM property's value,
+       which a document writes as a literal, a `$ref` or a template (spec.md §8.1). */
+    writeProperty(key, members[key]);
   }
 
   let rest = "";
@@ -1758,7 +1778,7 @@ export function buildAttrs(def: JxElement | JxMutableNode, scope: JxScope | null
       /* A name a property already wrote (`setAttribute` lowercases the name on an HTML element, so
          the match ignores ASCII case) is written once, as the runtime leaves it. */
       const name = k.toLowerCase();
-      if (live.has(name)) {
+      if (live?.has(name)) {
         continue;
       }
       if (written.has(name)) {
@@ -1773,7 +1793,10 @@ export function buildAttrs(def: JxElement | JxMutableNode, scope: JxScope | null
     }
   }
 
-  let out = [...written.values()].join("");
+  let out = "";
+  for (const serialized of written.values()) {
+    out += serialized;
+  }
 
   // The host declarations go last: in one `style` attribute the later declaration of a property
   // Wins, and the page walk gives the definition's resolved host style the same precedence over an
@@ -1821,6 +1844,12 @@ export function contentPropertyText(
   scope: JxScope | null,
 ): string | undefined {
   if (isExpandedInstance(source)) {
+    return undefined;
+  }
+  // The four keys `isContentProperty` can say yes to: most elements name none of them.
+  if (
+    !("innerText" in source || "value" in source || "defaultValue" in source || "text" in source)
+  ) {
     return undefined;
   }
   for (const [key, raw] of Object.entries(source)) {
@@ -2670,7 +2699,19 @@ export function formAssociationHelperSource(): string {
     `  let ownDisabled = state.disabled;`,
     `  let forced = false;`,
     `  const control = () => root().querySelector('input, textarea, select');`,
+    // `internals.labels` is a live list the document then keeps current on every mutation, so it
+    // Is read only for a host a label can be naming, as the runtime's binding does.
+    `  const mayBeLabelled = () => {`,
+    `    if (host.closest('label')) return true;`,
+    `    const id = host.id;`,
+    `    if (id === '') return false;`,
+    `    const tree = host.getRootNode();`,
+    `    const scope = tree instanceof DocumentFragment ? tree : host.ownerDocument;`,
+    `    return Array.from(scope.querySelectorAll('label[for]'))`,
+    `      .some((label) => label.getAttribute('for') === id);`,
+    `  };`,
     `  const nameControl = () => {`,
+    `    if (!mayBeLabelled()) return;`,
     `    const target = control();`,
     `    const labels = internals.labels;`,
     `    if (target && labels.length > 0 && 'ariaLabelledByElements' in target &&`,
