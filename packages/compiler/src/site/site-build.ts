@@ -48,7 +48,7 @@ import {
   siteBasePath,
   withBase,
 } from "@jxsuite/schema/asset-paths";
-import { rewriteHtmlBase } from "./base-path.ts";
+import { rebaseDocument, rewriteCssUrls, rewriteHtmlBase } from "./base-path.ts";
 import {
   CLIENT_EXTERNALS,
   bundleEntries,
@@ -743,7 +743,13 @@ export async function buildSite(
         await prepareComponent(doc, componentPath);
         const elementOptions: CompileElementOptions = {
           formats: formatRegistry,
-          prepareDocument: prepareComponent,
+          /* The module's own copy of the definition is re-rooted after its images are decided, so
+             what the module draws is what the page rewrite makes of the prerender. The copy every
+             page prerenders from stays as written: its markup goes through that rewrite. */
+          prepareDocument: async (moduleDoc, filePath) => {
+            await prepareComponent(moduleDoc, filePath);
+            rebaseDocument(moduleDoc, componentBase);
+          },
           resolveClass: (def, docDir, imports) =>
             withBase(componentBase, deliverClass(def, docDir, imports)),
           resolveElementPath: (refPath: string, currentDir: string | null) => {
@@ -811,7 +817,14 @@ export async function buildSite(
               componentCSS.set(doc.tagName, css);
             }
             collectAssetRefs(css, assetMounts, assetRefs);
-            writeFileSync(resolve(componentOutDir, `${doc.tagName}.css`), css, "utf8");
+            /* The file is fetched as written (a shadow component links it from its root), so its
+               `url()` references are re-rooted here; the copy a page inlines is re-rooted with
+               the page. */
+            writeFileSync(
+              resolve(componentOutDir, `${doc.tagName}.css`),
+              rewriteCssUrls(css, componentBase),
+              "utf8",
+            );
             fileCount += 1;
           }
         }
