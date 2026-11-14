@@ -10,8 +10,7 @@ claims:
   - site-architecture.md#9.2.2
   - site-architecture.md#9.2.3
   - site-architecture.md#9.2.5
-requires:
-  - compiler/image-container-sizes
+requires: []
 workspaces:
   - packages/compiler
 size: M
@@ -57,7 +56,7 @@ The markers (all eight were unmarked before the census, except §7.7, which carr
 
 > **Status: Partial.** The key, persistence and error-free pruning match (`packages/compiler/src/site/image-cache.ts`). The location does not: `getImageCacheDir` uses `<npm cache>/jxsuite-images/<project directory name>/manifest.json` whenever `npm config get cache` answers, and `.cache/images` only as a fallback, so the `.gitignore` advice below has no effect on a normal machine; and invalidation checks the variant files in that cache directory, not in `dist/`.
 
-Every quoted fact re-verified against the tree. Most of the drift is deliberate code the prose predates: `<picture>` exists because `srcset` carries no format (`resolveVariants`, `image-transform.ts` line 437), the cache sits in npm's cache so CI hosts that persist `~/.npm` keep variants (header of `image-cache.ts`), and the top-rung cap, the decodable `src` and container-derived `sizes` were written into `compiler.md` §7.2 and §7.2.1 on purpose (commit f1a1537b; `PIPELINE_VERSION`'s comment cites §7.2). The concurrency sentence both sections used to carry is no longer a defect or a marker clause: the compiler's native addon (`@jxsuite/compiler-binding`, `packages/compiler-binding/crates/jx_media`) encodes a source's variants in parallel on a thread pool sized to the machine, and the sentence now says so. §7.2.1's within-node width is still open, and `plan:compiler/image-container-sizes` fixes it; this plan requires it because it moves that section's text into §9.2.2.
+Every quoted fact re-verified against the tree. Most of the drift is deliberate code the prose predates: `<picture>` exists because `srcset` carries no format (`resolveVariants`, `image-transform.ts` line 437), the cache sits in npm's cache so CI hosts that persist `~/.npm` keep variants (header of `image-cache.ts`), and the top-rung cap, the decodable `src` and container-derived `sizes` were written into `compiler.md` §7.2 and §7.2.1 on purpose (commit f1a1537b; `PIPELINE_VERSION`'s comment cites §7.2). The concurrency sentence both sections used to carry is no longer a defect or a marker clause: the compiler's native addon (`@jxsuite/compiler-binding`, `packages/compiler-binding/crates/jx_media`) encodes a source's variants in parallel on a thread pool sized to the machine, and the sentence now says so. §7.2.1's within-node width has landed (each element contributes the narrower of its literal `width` and `max-width`, and no nested style block is read), and this plan moves that section's text into §9.2.2.
 
 **Corrections to the census reading.** Detailing found defects inside the claimed sections that a text rewrite cannot honestly describe, which moves this plan from `reconcile` to `implement`:
 

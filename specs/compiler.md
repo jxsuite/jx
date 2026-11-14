@@ -598,18 +598,16 @@ JPEG has no alpha channel, so where `jpeg` is listed and the source has transpar
 
 #### 7.2.1 `sizes`
 
-> **Status: Partial.** Within one node the derivation does not take the narrowest length: `containerWidthOf` in `packages/compiler/src/site/image-transform.ts` takes a literal `max-width` and ignores `width` whenever both are declared, so `{ "width": "320px", "maxWidth": "960px" }` derives `(max-width: 960px) 100vw, 960px`. The minimum is taken only across ancestors.
-
 `sizes` is a promise about layout that the browser keeps absolutely: it selects a candidate from the string before layout exists, and never revisits the choice. A single project-wide default therefore cannot be right for every image on a site — `(max-width: 768px) 100vw, 50vw` describes a half-width image, and applied to a hero that renders full-width inside a 960 px column it is too small on a wide screen and too large on a narrow one.
 
 Resolution order, first match wins:
 
 1. A `sizes` written on the tag.
-2. **Derived from the container** — the narrowest literal `max-width`/`width` in `px` or `rem` declared on the image or any ancestor, emitted as `(max-width: Npx) 100vw, Npx`. This is layout the compiler already holds, so it outranks a project-wide guess.
+2. **Derived from the container** — the narrowest literal `max-width`/`width` in `px` or `rem` declared on the image or any ancestor, emitted as `(max-width: Npx) 100vw, Npx`. This is layout the compiler already holds, so it outranks a project-wide guess. Both properties count on every element, the image included, so `{ "width": "320px", "maxWidth": "960px" }` derives `(max-width: 320px) 100vw, 320px`.
 3. `images.sizes`, when the project sets one.
 4. Nothing — the browser assumes `100vw`.
 
-Only literal lengths derive. A `clamp()`, a percentage or a custom property is a real constraint too, but not one the build can resolve, and a wrong `sizes` is worse than none.
+Only literal lengths derive. A `clamp()`, a percentage or a custom property is a real constraint too, but not one the build can resolve, and a wrong `sizes` is worse than none. Only an element's base `style` is read: a length inside a nested block (a media query, a named breakpoint, a pseudo-class, or an ancestor's descendant selector) is not, because which block applies depends on the viewport, so a container that widens at a breakpoint needs `sizes` written on the tag.
 
 ### 7.3 Eligibility
 

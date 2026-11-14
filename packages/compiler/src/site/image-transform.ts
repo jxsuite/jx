@@ -343,15 +343,6 @@ export async function transformImageNodes(
   return { imageRefs };
 }
 
-/**
- * @param {JxMutableNode | JxDocument} node
- * @param {ImageConfig} config
- * @param {string} projectRoot
- * @param {CacheManifest | null} cache
- * @param {ImageMetaCache} metaCache
- * @param {Map<string, ImageManifest>} imageRefs
- * @param {readonly AssetMount[]} mounts
- */
 async function walkAndTransform(
   node: JxMutableNode | JxDocument,
   config: ImageConfig,
@@ -394,7 +385,7 @@ async function walkAndTransform(
   }
 
   if (Array.isArray(node.children)) {
-    // Every descendant is bounded by the narrowest literal max-width above it.
+    // Every descendant is bounded by the narrowest literal max-width or width above it.
     const inner = containerWidthOf(node, containerWidth);
     for (const child of node.children) {
       // Text children carry no images, and a non-object child (an authored `null`) is skipped.
@@ -595,15 +586,6 @@ function fallbackVariant(variants: ImageVariant[], formats: readonly string[]): 
   return best && variantUrl(best.outputPath);
 }
 
-/**
- * @param {JxMutableNode | JxDocument} node
- * @param {ImageConfig} config
- * @param {string} projectRoot
- * @param {CacheManifest | null} cache
- * @param {ImageMetaCache} metaCache
- * @param {Map<string, ImageManifest>} imageRefs
- * @param {readonly AssetMount[]} mounts
- */
 const CSS_LENGTH = /^(\d+(?:\.\d+)?)(px|rem)$/;
 
 /** A CSS length in px, but only when it is a plain `px`/`rem` literal. `null` for anything else. */
@@ -620,7 +602,8 @@ function pxLength(value: JxStyle[string]): number | null {
 }
 
 /**
- * The narrowest px `max-width`/`width` an element at this point in the tree sits inside.
+ * The narrowest literal `max-width` or `width` this element declares in its base `style`, or the
+ * inherited bound when that is narrower. Nested blocks are not read (compiler.md §7.2.1).
  *
  * Only literal lengths count. A `clamp()`, a percentage or a custom property is a real constraint
  * too, but not one the build can resolve — and a wrong `sizes` is worse than none, because the
@@ -635,11 +618,13 @@ function containerWidthOf(
   if (!isNonNullObject(style)) {
     return inherited;
   }
-  const declared = pxLength(style.maxWidth) ?? pxLength(style.width);
-  if (declared === null) {
-    return inherited;
+  let narrowest = inherited;
+  for (const declared of [pxLength(style.maxWidth), pxLength(style.width)]) {
+    if (declared !== null && (narrowest === null || declared < narrowest)) {
+      narrowest = declared;
+    }
   }
-  return inherited === null ? declared : Math.min(inherited, declared);
+  return narrowest;
 }
 
 /**
