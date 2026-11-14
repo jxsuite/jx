@@ -1092,6 +1092,51 @@ describe("image-transform — sizes derived from the container", () => {
     expect(sourcesOf(doc)[0].attributes.sizes).toBe("(max-width: 300px) 100vw, 300px");
   });
 
+  test("a node declaring both width and max-width is bounded by the narrower", async () => {
+    for (const style of [
+      { maxWidth: "960px", width: "320px" },
+      { maxWidth: "20rem", width: "960px" },
+    ]) {
+      const doc: any = imgIn(style);
+      await transformImageNodes(doc, defaultConfig, TMP, cache());
+      expect(sourcesOf(doc.children[0])[0].attributes.sizes).toBe(
+        "(max-width: 320px) 100vw, 320px",
+      );
+    }
+  });
+
+  test("the image's own width and max-width both count", async () => {
+    const doc: any = {
+      attributes: { src: "/images/hero.png" },
+      style: { maxWidth: "40rem", width: "300px" },
+      tagName: "img",
+    };
+    await transformImageNodes(doc, defaultConfig, TMP, cache());
+    expect(sourcesOf(doc)[0].attributes.sizes).toBe("(max-width: 300px) 100vw, 300px");
+  });
+
+  test("an ancestor narrower than both of a node's lengths still wins", async () => {
+    const doc: any = {
+      children: [imgIn({ maxWidth: "960px", width: "320px" })],
+      style: { maxWidth: "240px" },
+      tagName: "div",
+    };
+    await transformImageNodes(doc, defaultConfig, TMP, cache());
+    const [wrapper] = doc.children;
+    expect(sourcesOf(wrapper.children[0])[0].attributes.sizes).toBe(
+      "(max-width: 240px) 100vw, 240px",
+    );
+  });
+
+  test("a length inside a nested block is not read", async () => {
+    const doc: any = imgIn({
+      "@media (min-width: 1200px)": { maxWidth: "1200px" },
+      maxWidth: "960px",
+    });
+    await transformImageNodes(doc, defaultConfig, TMP, cache());
+    expect(sourcesOf(doc.children[0])[0].attributes.sizes).toBe("(max-width: 960px) 100vw, 960px");
+  });
+
   test("no project default and no container leaves sizes off entirely", async () => {
     const doc: any = { attributes: { src: "/images/hero.png" }, tagName: "img" };
     const { sizes: _dropped, ...noSizes } = defaultConfig;

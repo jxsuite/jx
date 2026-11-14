@@ -118,7 +118,7 @@ So the build asks, in order:
 3. **`images.sizes`**, if you set one.
 4. **Nothing**, so the browser assumes `100vw`.
 
-Only literal lengths count. A `clamp()`, a percentage, or a `var()` is a real constraint too, but not one the build can resolve, and a wrong `sizes` is worse than none. Write `sizes` on the tag when your layout is one of those.
+Only literal lengths count. A `clamp()`, a percentage, or a `var()` is a real constraint too, but not one the build can resolve, and a wrong `sizes` is worse than none. Write `sizes` on the tag when your layout is one of those. Only the element's own `style` counts, not a length set inside a media query, a named breakpoint, a pseudo-class or an ancestor's selector block such as `& img`, so a container that widens at a breakpoint needs a `sizes` on the tag too.
 
 Images embedded in pre-rendered Markdown content go through the same transformation, so a `![hero](./images/hero.jpg)` in a blog post is optimized like any hand-placed `<img>`.
 
