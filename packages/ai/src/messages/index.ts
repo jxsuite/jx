@@ -16,6 +16,7 @@
  */
 
 export { isEmptyAssistant, toChatMessages, toLiveMessages, toWireMessages } from "./convert.ts";
+export { canonicalJson, digest } from "./digest.ts";
 export { fromOpenAITools, toOpenAIMessages, toOpenAITools } from "./openai.ts";
 export { SEAL_CUT_OFF, SEAL_RELOADED, isSealContent, repairToolPairs } from "./repair.ts";
 export type { RepairReport } from "./repair.ts";
