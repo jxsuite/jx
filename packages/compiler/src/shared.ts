@@ -4252,15 +4252,23 @@ export function buildComponentCSS(
    * produces different, correct CSS in each mode without the author restating it.
    */
   const scope = styleScopePrefix(tagName, shadow);
+  /* A custom element is `inline` by default and a Jx container behaves like a `<div>`, so a
+     definition whose BASE block declares no `display` is given `display: block` in its own rule,
+     ahead of its own declarations (spec.md §9.6). The interpreter writes the same default, so a
+     component lays out alike in Studio and in a built page. Only the base block is read: a
+     `display` inside `:hover` or a breakpoint is not the author supplying one. */
+  const own: JxStyle =
+    isNonNullObject(styleDef) && "display" in styleDef ? {} : { display: "block" };
 
-  if (isNonNullObject(styleDef)) {
+  if (!isNonNullObject(styleDef)) {
+    pushStyleRules(rules, own, scope, mediaQueries);
+  } else {
     /* The top level is walked here rather than handed straight to the builder, because ONE of its
        keys does not mean what `resolveNestedSelector` would make of it: `:host` and `:host(.foo)`
        are TRANSLATED per {@link resolveSelector} so a style object means the same thing in both
        modes. Everything below the top level is ordinary nesting, so each block goes to the builder
        whole — which is also what gives a component's nested selectors the recursion they never had
        (this used to emit exactly one level and drop anything under it). */
-    const own: JxStyle = {};
     const blocks: [string, JxStyle][] = [];
     for (const [prop, value] of Object.entries(styleDef)) {
       /* `isRef` first, and it is the whole point: an object carrying `$ref` is a reactive VALUE,
