@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, it } from "bun:test";
-import { runCliCalls, runEntry, setBuildSite } from "./_cli-harness.ts";
+import { NO_TIMINGS, runCliCalls, runEntry, setBuildSite } from "./_cli-harness.ts";
 
 describe("jx cli — build completed with errors", () => {
   it("exits 1 and lists every build error", async () => {
@@ -15,6 +15,7 @@ describe("jx cli — build completed with errors", () => {
         files: 0,
         routes: 2,
         serverEntries: [],
+        timings: NO_TIMINGS,
       }),
     );
     const result = await runEntry("cli", ["build", "/tmp/jx-cli-site"]);

@@ -23,8 +23,19 @@ type BuildOptions = NonNullable<Parameters<typeof buildSite>[1]>;
 /** What the compiler's `buildSite` resolves to, read off the real signature. */
 type BuildResult = Awaited<ReturnType<typeof buildSite>>;
 
+/** The timings of a build that measured nothing. */
+function noTimings(): BuildResult["timings"] {
+  return { bundles: 0, components: 0, content: 0, outputs: 0, routes: 0, setup: 0, total: 0 };
+}
+
 const buildCalls: { options: BuildOptions; root: string }[] = [];
-let buildResult: BuildResult = { errors: [], files: 0, routes: 0, serverEntries: [] };
+let buildResult: BuildResult = {
+  errors: [],
+  files: 0,
+  routes: 0,
+  serverEntries: [],
+  timings: noTimings(),
+};
 let buildFailure: string | null = null;
 
 void mock.module("@jxsuite/compiler/site", () => ({
@@ -108,7 +119,7 @@ beforeEach(() => {
   buildCalls.length = 0;
   previewCalls.length = 0;
   findRefsCalls.length = 0;
-  buildResult = { errors: [], files: 0, routes: 0, serverEntries: [] };
+  buildResult = { errors: [], files: 0, routes: 0, serverEntries: [], timings: noTimings() };
   buildFailure = null;
   previewResult = { origin: "http://127.0.0.1:41234", port: 41_234 };
   findRefsResult = NO_REFERENCES;
@@ -173,6 +184,7 @@ describe("POST /__studio/build — the reply", () => {
       files: 7,
       routes: 4,
       serverEntries: [],
+      timings: noTimings(),
     };
     const { req, url } = buildReq();
     const res = await callApi(req, url, SITE, null);
@@ -188,7 +200,7 @@ describe("POST /__studio/build — the reply", () => {
 
   test("omits the origin when there is nothing built to serve", async () => {
     previewResult = null;
-    buildResult = { errors: [], files: 2, routes: 1, serverEntries: [] };
+    buildResult = { errors: [], files: 2, routes: 1, serverEntries: [], timings: noTimings() };
     const { req, url } = buildReq();
     const res = await callApi(req, url, SITE, null);
     expect(res.status).toBe(200);

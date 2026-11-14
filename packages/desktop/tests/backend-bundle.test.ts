@@ -1,13 +1,16 @@
 import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import {
+  ADDON_DIR,
+  addonFiles,
   BACKEND_DATA,
   BACKEND_MODULES,
   BACKEND_NATIVES,
   bundleBackend,
   moduleClosure,
+  stageAddon,
   stageModuleClosure,
   WORKSPACE_MODULES,
 } from "../scripts/lib/backend-bundle";
@@ -46,9 +49,10 @@ describe("the backend bundle", () => {
       );
       expect({ missing, name }).toEqual({ missing: [], name });
     }
-    // The platform binaries of esbuild and sharp come with them (optional dependencies, this host's).
+    // The platform binary of esbuild comes with it (an optional dependency, this host's).
     expect([...closure].some((name) => name.startsWith("@esbuild/"))).toBe(true);
-    expect([...closure].some((name) => name.startsWith("@img/sharp-"))).toBe(true);
+    // Sharp is gone: images are encoded by the compiler's own addon, staged as one file.
+    expect([...closure].some((name) => name === "sharp" || name.startsWith("@img/"))).toBe(false);
   });
 
   test("a package that is not installed cannot be staged", () => {
@@ -118,6 +122,35 @@ describe("staging and failure", () => {
     } finally {
       rmSync(outdir, { force: true, recursive: true });
     }
+  });
+
+  test("the compiler addon is copied beside the bundle under the name it was built with", () => {
+    const from = mkdtempSync(join(tmpdir(), "jx-addon-from-"));
+    const outdir = mkdtempSync(join(tmpdir(), "jx-addon-to-"));
+    try {
+      writeFileSync(join(from, "jx-compiler.linux-x64-gnu.node"), "addon");
+      writeFileSync(join(from, "package.json"), "{}");
+      expect(stageAddon(outdir, from)).toEqual(["jx-compiler.linux-x64-gnu.node"]);
+      expect(addonFiles(outdir)).toEqual(["jx-compiler.linux-x64-gnu.node"]);
+      expect(existsSync(join(outdir, "package.json"))).toBe(false);
+    } finally {
+      rmSync(from, { force: true, recursive: true });
+      rmSync(outdir, { force: true, recursive: true });
+    }
+  });
+
+  test("staging refuses to go on without an addon, and says how to build one", () => {
+    const empty = mkdtempSync(join(tmpdir(), "jx-addon-none-"));
+    try {
+      expect(() => stageAddon(empty, empty)).toThrow("bun run build:addon");
+      expect(addonFiles(join(empty, "absent"))).toEqual([]);
+    } finally {
+      rmSync(empty, { force: true, recursive: true });
+    }
+  });
+
+  test("the real bundle carries this checkout's addon", () => {
+    expect(addonFiles(ADDON_DIR).length).toBeGreaterThan(0);
   });
 
   test("a failed build is an error carrying the bundler's messages", async () => {

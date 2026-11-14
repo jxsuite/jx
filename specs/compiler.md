@@ -2,7 +2,7 @@
 
 ## Static HTML Compiler, Custom Element Emitter, and Island Detector
 
-**Version:** 0.5.16-draft\
+**Version:** 0.6.0-draft\
 **Status:** Partial\
 **Updated:** 2026-11-13\
 **License:** MIT
@@ -493,7 +493,7 @@ A worker that has a server function or an extension mount registers one middlewa
 
 The compiler includes a build-time image optimization pipeline that generates responsive variants, converts formats, and injects performance attributes into `<img>` nodes. The pipeline is implemented across three modules:
 
-- `image-optimizer.js` — variant generation via Sharp
+- `image-optimizer.ts` — one request per source image to the compiler's native core (§14), which decodes, resizes and encodes every variant
 - `image-transform.js` — document tree mutation
 - `image-cache.js` — persistent cache for skipping redundant re-encoding
 
@@ -508,32 +508,32 @@ Image optimization is configured via `project.json` under the `images` key. All 
   "images": {
     "optimize": true,
     "widths": [320, 640, 960, 1280, 1920],
-    "formats": ["webp", "avif"],
-    "quality": { "webp": 80, "avif": 65, "jpeg": 80, "png": 80 },
+    "formats": ["avif", "jpeg"],
+    "quality": { "avif": 65, "jpeg": 80 },
     "sizes": "(max-width: 768px) 100vw, 50vw",
     "lazyLoad": true
   }
 }
 ```
 
-| Property        | Type       | Default                                     | Description                                                                              |
-| --------------- | ---------- | ------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| `optimize`      | `boolean`  | `true`                                      | Master switch for all image processing                                                   |
-| `widths`        | `number[]` | `[320, 640, 960, 1280, 1920]`               | Pixel widths for responsive `srcset` variants                                            |
-| `formats`       | `string[]` | `["webp", "avif"]`                          | Output formats (also supports `"jpeg"`, `"png"`)                                         |
-| `quality`       | `object`   | `{ webp: 80, avif: 65, jpeg: 80, png: 80 }` | Per-format compression quality (0–100)                                                   |
-| `sizes`         | `string`   | `"(max-width: 768px) 100vw, 50vw"`          | Fallback CSS `sizes`, used only when neither the tag nor its container says (§7.2.1)     |
-| `lazyLoad`      | `boolean`  | `true`                                      | Adds `loading="lazy"` and `decoding="async"` to `<img>` tags                             |
-| `service`       | `string`   | `"build"`                                   | `"build"` = Sharp at build time; `"cloudflare"` = `/cdn-cgi/image` transform URLs (§7.6) |
-| `remoteDomains` | `string[]` | `[]`                                        | Allowlisted https hostnames optimized via transform URLs (`service: "cloudflare"` only)  |
+| Property        | Type       | Default                            | Description                                                                                |
+| --------------- | ---------- | ---------------------------------- | ------------------------------------------------------------------------------------------ |
+| `optimize`      | `boolean`  | `true`                             | Master switch for all image processing                                                     |
+| `widths`        | `number[]` | `[320, 640, 960, 1280, 1920]`      | Pixel widths for responsive `srcset` variants                                              |
+| `formats`       | `string[]` | `["avif", "jpeg"]`                 | Output formats: `"avif"`, `"jpeg"`, `"png"`, `"webp"` (§7.2, "What each format is")        |
+| `quality`       | `object`   | `{ avif: 65, jpeg: 80 }`           | Lossy quality per format (1–100). `png` is never read; `webp` only by §7.6                 |
+| `sizes`         | `string`   | `"(max-width: 768px) 100vw, 50vw"` | Fallback CSS `sizes`, used only when neither the tag nor its container says (§7.2.1)       |
+| `lazyLoad`      | `boolean`  | `true`                             | Adds `loading="lazy"` and `decoding="async"` to `<img>` tags                               |
+| `service`       | `string`   | `"build"`                          | `"build"` = encoded at build time; `"cloudflare"` = `/cdn-cgi/image` transform URLs (§7.6) |
+| `remoteDomains` | `string[]` | `[]`                               | Allowlisted https hostnames optimized via transform URLs (`service: "cloudflare"` only)    |
 
 ### 7.2 Document Transformation (`transformImageNodes`)
 
-> **Status: Partial.** With two or more formats (the default `webp` and `avif`) and `picture` not `false`, `wrapInPicture` in `packages/compiler/src/site/image-transform.ts` rewrites the node into a `<picture>` with one `<source type>` per format, best compression first, carrying the `srcset` and `sizes`, while the `<img>` keeps `src`, dimensions and loading attributes; only a single-format config gets the bare `<img srcset>` described below (`site-architecture.md` §9.2.2 states the shipped form). Variants are written to the image cache's `_optimized/` directory (`processImage` in `image-optimizer.ts`) and copied to `dist/images/_optimized/` after the routes build, not written to `dist/` directly. And the concurrency sentence does not hold: `processImage` starts every encode as it builds the width × format list, and its `CONCURRENCY = 4` loop only awaits the already-running promises four at a time.
+> **Status: Partial.** With two or more formats (the default `avif` and `jpeg`) and `picture` not `false`, `wrapInPicture` in `packages/compiler/src/site/image-transform.ts` rewrites the node into a `<picture>` with one `<source type>` per format, best compression first, carrying the `srcset` and `sizes`, while the `<img>` keeps `src`, dimensions and loading attributes; only a single-format config gets the bare `<img srcset>` described below (`site-architecture.md` §9.2.2 states the shipped form). Variants are written to the image cache's `_optimized/` directory (`processImage` in `image-optimizer.ts`) and copied to `dist/images/_optimized/` after the routes build, not written to `dist/` directly.
 
 During page compilation, `transformImageNodes()` walks the document tree and mutates eligible `<img>` nodes. For each image:
 
-1. **Process** — `processImage()` reads the source via Sharp, filters `widths` to ≤ the original width, and generates one variant per width × format combination. Variants are written to `dist/images/_optimized/{stem}-{width}-{hash}.{format}`.
+1. **Process** — `processImage()` hands the source to the native core (§14), which filters `widths` to ≤ the original width and generates one variant per width × format combination. Variants are written to `dist/images/_optimized/{stem}-{width}-{hash}.{format}`, where `{hash}` is 8 hex characters covering the source's bytes and the pipeline version, so an unchanged source re-encoded by a changed pipeline gets new names (the directory is served as immutable, `site-architecture.md` §14.3).
 
    The source's own width is added only when it is **below** the largest configured width: a source smaller than every rung would otherwise produce no variants at all, and one falling between rungs would never be offered at its native resolution. A source larger than the top rung does not get one — the largest configured width is the ceiling the project chose. (Adding it unconditionally meant a 3840 px screenshot emitted a 3840 px variant in every format, encoded on every cold build and offered as a `3840w` candidate no real viewport would select.)
 
@@ -544,7 +544,20 @@ During page compilation, `transformImageNodes()` walks the document tree and mut
    - `width` and `height` — original image dimensions (prevents CLS)
    - `loading="lazy"` and `decoding="async"` — when `lazyLoad: true`, unless `loading="eager"` is already set
 
-Up to 4 variants are processed concurrently per image.
+A source's variants are encoded in parallel, bounded by the machine's parallelism. A variant whose file already exists is not encoded again, and when every variant exists the source is not decoded. A source that cannot be decoded, or an encoder that refuses a variant, rejects the whole image and fails the route that uses it.
+
+**What the pixels go through.** The source is decoded once. Its EXIF orientation is applied, so a photo stored sideways is encoded upright and the `width` and `height` written to the tag are the ones a viewer sees. An embedded ICC colour profile is converted to sRGB, because the variants carry no profile; a profile that cannot be used (not RGB, or malformed) is ignored, as a browser ignores one. Downscaling is Lanczos3 with colour premultiplied by alpha.
+
+**What each format is.**
+
+| Format | Written as                                                                                              |
+| ------ | ------------------------------------------------------------------------------------------------------- |
+| `avif` | Lossy, at `quality.avif`.                                                                               |
+| `jpeg` | Lossy and progressive, at `quality.jpeg`. A source with transparency is written as PNG instead (below). |
+| `png`  | Lossless.                                                                                               |
+| `webp` | **Lossless.** No lossy WebP encoder meets the native core's rule of linking no C library (§14).         |
+
+JPEG has no alpha channel, so where `jpeg` is listed and the source has transparency, PNG is written in its place and offered as `image/png`: the universally decodable fallback of a logo is not a white rectangle. PNG is not written twice when both are listed. Because WebP is lossless, its files are several times the size of AVIF or JPEG, and a build whose `formats` lists `webp` prints one warning saying so.
 
 #### 7.2.1 `sizes`
 
@@ -563,18 +576,19 @@ Only literal lengths derive. A `clamp()`, a percentage or a custom property is a
 
 ### 7.3 Eligibility
 
-> **Status: Partial.** There is no raster allowlist and no animation check: `shouldSkip` in `packages/compiler/src/site/image-transform.ts` skips template, external and empty sources and the `.svg` and `.gif` extensions (`SKIP_EXTENSIONS`), so every GIF is skipped, animated or not, and any other local file goes to Sharp whatever its extension.
+> **Status: Partial.** There is no raster allowlist and no animation check: `shouldSkip` in `packages/compiler/src/site/image-transform.ts` skips template, external and empty sources and the `.svg` and `.gif` extensions (`SKIP_EXTENSIONS`), so every GIF is skipped, animated or not, and any other local file but `.avif` goes to the encoder whatever its extension.
 
 **Processed:**
 
 - Static `src` paths (strings, not `${...}` template expressions)
 - Local paths (relative or `/`-prefixed) that exist on disk — resolved from an extension asset mount first ([extensions.md §8.5](./extensions.md)), then `public/` or the project root
-- Raster formats: `.jpg`, `.jpeg`, `.png`, `.webp`, `.avif`, `.tiff`
+- Raster formats the native core decodes: `.jpg`, `.jpeg`, `.png`, `.webp`, `.tiff`, `.bmp`
 
 **Skipped:**
 
 - External URLs (`http://`, `https://`, `//`, `data:`)
 - SVGs (`.svg`) and animated GIFs (`.gif`)
+- AVIF sources (`.avif`) under the build service: already the format every variant would be converted to, so served as written
 - Dynamic `src` containing `${...}` template expressions
 - Images with `data-no-optimize` attribute
 
@@ -611,9 +625,9 @@ Processed images are cached to `.cache/images/manifest.json` to avoid redundant 
 
 ### 7.6 Cloudflare Images Service
 
-When `images.service` is `"cloudflare"`, the Sharp variant pipeline is skipped entirely. Image optimization becomes pure markup — no code is generated or deployed:
+When `images.service` is `"cloudflare"`, the variant pipeline is skipped entirely. Image optimization becomes pure markup — no code is generated or deployed:
 
-- `transformImageNodes()` rewrites eligible `<img>` srcsets to Cloudflare [transform-via-URL](https://developers.cloudflare.com/images/transform-images/transform-via-url/) entries, one per configured width ≤ the original width: `/cdn-cgi/image/width=<w>,quality=<q>,fit=scale-down,format=auto/<src>?v=<contentHash8>` `format=auto` lets Cloudflare negotiate AVIF/WebP per browser; `quality` is the config's `quality.webp` value. Whitespace and commas in `<src>` are percent-encoded so the candidate cannot split, and nothing else is, because an authored `src` may already be encoded. The original `src` is preserved as fallback. Sharp is used only for a header-only dimension read (memoized per build).
+- `transformImageNodes()` rewrites eligible `<img>` srcsets to Cloudflare [transform-via-URL](https://developers.cloudflare.com/images/transform-images/transform-via-url/) entries, one per configured width ≤ the original width: `/cdn-cgi/image/width=<w>,quality=<q>,fit=scale-down,format=auto/<src>?v=<contentHash8>` `format=auto` lets Cloudflare negotiate AVIF/WebP per browser; `quality` is the config's `quality.webp` value. Whitespace and commas in `<src>` are percent-encoded so the candidate cannot split, and nothing else is, because an authored `src` may already be encoded. The original `src` is preserved as fallback. The native core is used only for a header-only dimension read (memoized per build); when it cannot read one, the `srcset` is still written and only `width` and `height` are left off.
 - Remote https sources from `images.remoteDomains` hostnames get the same treatment with the full URL as the transform source — every configured width is emitted (dimensions unknown; `fit=scale-down` prevents upscaling) and no `v` hash is appended.
 - These URLs are served by Cloudflare's zone-level Image Transformations feature, which must be enabled in the dashboard; they do not resolve on `*.pages.dev` / `*.workers.dev` preview hosts. The build prints a reminder.
 
@@ -627,7 +641,7 @@ In `site-build`, the pipeline integrates at step 6 (per-route compilation):
 2. For each page, `transformImageNodes()` is called with the cache (or memo), config, project root, and output directory
 3. Cache saved to disk after all routes are compiled (`"build"` mode only); stale entries are pruned first when every route compiled without errors
 
-> **Status: Implemented.** `image-optimizer.ts`, `image-transform.ts` and `image-cache.ts` in `packages/compiler/src/site/` provide the pipeline, driven from `site-build`. Requires Sharp as a project dependency.
+> **Status: Implemented.** `image-optimizer.ts`, `image-transform.ts` and `image-cache.ts` in `packages/compiler/src/site/` provide the pipeline, driven from `site-build`. Encoding is done by the compiler's native core (§14), which a project installs with the compiler and needs nothing else for.
 
 ---
 
@@ -753,7 +767,7 @@ Project-level emission order is: base `:root` (custom properties) and `body` (di
 
 ### `transformImageNodes(doc, cache, config, projectRoot, outDir)` — Walk document tree, optimize eligible `<img>` nodes, inject `srcset`/`sizes`/`width`/`height`/`loading`
 
-### `processImage(srcPath, config, outDir)` — Generate responsive variants for a single image via Sharp
+### `processImage(srcPath, config, outDir)` — Generate responsive variants for a single image through the native core
 
 > **Status: Implemented.** Shared utilities in `shared.js`; image pipeline in `image-optimizer.js`, `image-transform.js`, `image-cache.js`.
 
@@ -793,6 +807,32 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 | [Subresource Integrity](https://www.w3.org/TR/SRI/)                                       | **Divergent** | §12    | packages/compiler/src/site/client-runtime.ts, packages/compiler/tests/client-runtime.test.ts    | The gap this standard existed to close is closed by **removal** rather than by attestation: the runtime is served from the site, so there is no cross-origin subresource left to hash. SRI would apply again only if a project overrode the import map back to a URL, and the build cannot compute an integrity value for a file it never fetched.                                                                                                                                                      |
 | [Fetch Metadata Request Headers](https://www.w3.org/TR/fetch-metadata/)                   | **Divergent** | §6     | packages/compiler/src/targets/compile-server.ts, packages/compiler/tests/compile-server.test.ts | The generated worker reads `Sec-Fetch-Site` in front of every server function and extension mount. Two deviations from the Resource Isolation Policy: `same-site` is refused, because a sibling subdomain is not the site's own script, and a navigation passes whatever its method, because an identity provider's `form_post` answer is a cross-site POST navigation; the routes that read a body require a JSON `Content-Type` instead. An absent header is accepted, since only a browser sends it. |
 
+## 14. Native Core
+
+> **Status: Implemented.** The Cargo workspace in `packages/compiler-binding/` (`crates/jx_media`, `crates/jx_napi`), its loader `packages/compiler-binding/src/index.ts`, and the image pipeline of §7 as its first consumer. Tested by the crates' own suites and, through the real addon, by `packages/compiler-binding/tests/binding.test.ts`.
+
+Part of the compiler is written in Rust and loaded as a [Node-API](https://nodejs.org/api/n-api.html) addon, `@jxsuite/compiler-binding`. The rest of the compiler stays JavaScript and calls it: the addon does work that is pure computation over bytes, and everything that must run a project's own JavaScript (extension capabilities, `$prototype` resolution, build-time templates) stays where that JavaScript can run.
+
+**It links no C library.** Every codec is compiled into the addon, which therefore needs nothing but the platform's C runtime and has nothing to install beside it. This is a rule, not an accident: the library it replaced loaded a prebuilt `libvips` that needed a `libstdc++` some systems keep in no standard place, and image optimization failed there until each such system was patched. The rule has a cost, stated in §7.2: there is no lossy WebP.
+
+**One file per platform.** A triple names one build: `linux-x64-gnu`, `linux-x64-musl`, `linux-arm64-gnu`, `linux-arm64-musl`, `darwin-x64`, `darwin-arm64`, `win32-x64-msvc`, `win32-arm64-msvc`. The file is `jx-compiler.<triple>.node`, and npm carries each in a package of its own, `@jxsuite/compiler-binding-<triple>`, declaring the `os`, `cpu` and `libc` it runs on, so an install fetches only the host's.
+
+**Loading.** Nothing is loaded until the first call, so a build that optimizes no image never needs the addon. The loader then tries, for each triple the host can run:
+
+1. `jx-compiler.<triple>.node` in the package's own directory, where a checkout builds it (`bun run build:addon`), so a contributor runs the Rust they are editing.
+2. The same file beside the module that holds the loader, which is where an application that bundles the loader stages it (the desktop backend, `desktop.md` §7.1).
+3. The package `@jxsuite/compiler-binding-<triple>`.
+
+On Linux both C libraries are tried, the detected one first. When nothing loads, the error names every attempt and its failure, because a file that exists and cannot load is a different problem from a file that is missing.
+
+**Calls.** A call that does real work returns a promise and runs off the JavaScript thread. Inside it, work fans out across a thread pool whose size is the machine's parallelism, and that pool is the pipeline's one concurrency limit. A failure is a rejected promise whose message names the file and the reason.
+
+| Function                | Does                                                                                |
+| ----------------------- | ----------------------------------------------------------------------------------- |
+| `imageMetadata(source)` | Reads a source image's oriented dimensions and format from its header               |
+| `processImage(request)` | Writes every missing variant of one source image and describes the whole set (§7.2) |
+| `coreVersion()`         | The version of `@jxsuite/compiler-binding` the addon was built for                  |
+
 ## Appendix A — Production Dependency Stack
 
 Served from the site under `/assets/` (§12), not from a CDN. Sizes are the bundles this build actually emits — minified ESM — measured with `gzip -9`:
@@ -809,6 +849,7 @@ An earlier revision of this table claimed ~7 kB and ~3 kB (~10 kB total); those 
 
 ## Changelog
 
+- **0.6.0-draft** (2026-11-13) — §7: images are encoded by the compiler's own Rust core instead of sharp. The default formats become avif and jpeg, WebP is written losslessly with a build warning, a transparent source asked for as JPEG is written as PNG, EXIF orientation is applied, embedded colour profiles are converted to sRGB, an AVIF source is served as written, variants encode in parallel, and a variant's name covers the pipeline version. New §14 specifies the native core: one addon file per platform, how it is loaded, and that it links no C library.
 - **0.5.16-draft** (2026-11-13) — §8.1: the build merges into each component the project formulas it reads, for the prerender and the emitted module, so a formula only a component reads is not lost to the page strip pass.
 - **0.5.15-draft** (2026-11-13) — §8.1: an empty repeater expansion collapses when the build itself resolved the list's source, and is still kept for the client when the source is client state or a build-resolved entry a handler writes. The reference scan skips `$paths`, so a page of a paged list is static when nothing else on it is dynamic.
 - **0.5.14-draft** (2026-11-13) — §2.1, §3, §8.1: a pure named formula is a function, not state. It makes a node dynamic only while something left for the client reads it, and the site build drops one whose every call it resolved, so a page whose only state is a formula builds static. The reference scan also reads `state?.key` and a literal-keyed `state["key"]`, and a body that hands `state` on whole keeps every entry.
@@ -873,4 +914,4 @@ An earlier revision of this table claimed ~7 kB and ~3 kB (~10 kB total); those 
 
 ---
 
-_`@jxsuite/compiler` Specification v0.5.16-draft_
+_`@jxsuite/compiler` Specification v0.6.0-draft_

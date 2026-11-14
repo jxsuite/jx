@@ -1,5 +1,40 @@
 # Changelog
 
+## [9.0.1](https://github.com/jxsuite/jx/compare/compiler-v9.0.0...compiler-v9.0.1) (2026-11-14)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/compiler-binding bumped to 0.2.1
+
+## [9.0.0](https://github.com/jxsuite/jx/compare/compiler-v8.7.0...compiler-v9.0.0) (2026-11-13)
+
+
+### ⚠ BREAKING CHANGES
+
+* **compiler:** the default image formats are avif and jpeg instead of webp and avif, WebP output is lossless, sharp is no longer a dependency, and variant file names change. A project that lists webp should list avif and jpeg instead.
+
+### Features
+
+* **compiler:** images are encoded by the compiler's own Rust core ([fef06a5](https://github.com/jxsuite/jx/commit/fef06a523d0e671fc191a04e50df82a174126b6e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/compiler-binding bumped to 0.2.0
+    * @jxsuite/create bumped to 1.8.2
+    * @jxsuite/erase bumped to 0.3.1
+    * @jxsuite/runtime bumped to 7.0.1
+    * @jxsuite/schema bumped to 6.0.1
+    * @jxsuite/site bumped to 2.7.1
+  * devDependencies
+    * @jxsuite/connector bumped to 0.8.10
+    * @jxsuite/parser bumped to 5.0.1
+
 ## [8.7.0](https://github.com/jxsuite/jx/compare/compiler-v8.6.0...compiler-v8.7.0) (2026-11-12)
 
 

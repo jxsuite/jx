@@ -221,7 +221,12 @@ jobs:
 
       # The picture must be of the working tree's bundle. The runner asserts bundle freshness and
       # Will refuse a stale dist rather than photograph one.
+      # No compiler addon here: the pinned browser container has no Rust and no rights to install
+      # one, and no shot optimizes an image (Studio renders sources, and the thumbnails build with
+      # optimization off). A shot that ever needs one fails naming `bun run build:addon`.
       - run: bun run build
+        env:
+          JX_ADDON_BUILD: skip
 
       - name: Snapshot the committed images and lock
         shell: bash

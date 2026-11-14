@@ -1,5 +1,59 @@
 # Changelog
 
+## [9.2.0](https://github.com/jxsuite/jx/compare/desktop-v9.1.0...desktop-v9.2.0) (2026-11-14)
+
+
+### Features
+
+* **desktop:** submit the Mac App Store build to App Review from CI ([64a0cbb](https://github.com/jxsuite/jx/commit/64a0cbb48e70eae2d9e4b97a3425f4eba5c583e8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/compiler bumped to 9.0.1
+    * @jxsuite/server bumped to 9.0.2
+  * devDependencies
+    * @jxsuite/server bumped to 9.0.2
+
+## [9.1.0](https://github.com/jxsuite/jx/compare/desktop-v9.0.1...desktop-v9.1.0) (2026-11-13)
+
+
+### Features
+
+* **desktop:** the compiler's native addon is staged beside the backend bundle ([4a015de](https://github.com/jxsuite/jx/commit/4a015de69640524f52d34bbc07f5a9b43b201401))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/compiler bumped to 9.0.0
+    * @jxsuite/create bumped to 1.8.2
+    * @jxsuite/protocol bumped to 6.4.1
+    * @jxsuite/schema bumped to 6.0.1
+    * @jxsuite/server bumped to 9.0.1
+    * @jxsuite/starters bumped to 3.7.0
+    * @jxsuite/studio bumped to 11.0.2
+  * devDependencies
+    * @jxsuite/server bumped to 9.0.1
+    * @jxsuite/ui bumped to 0.12.1
+
+## [9.0.1](https://github.com/jxsuite/jx/compare/desktop-v9.0.0...desktop-v9.0.1) (2026-11-13)
+
+
+### Bug Fixes
+
+* **desktop:** add sharp's RPATH with patchelfUnstable so the Nix build loads it ([#656](https://github.com/jxsuite/jx/issues/656)) ([37ebf00](https://github.com/jxsuite/jx/commit/37ebf001968c33968c7664fbb56f4a49ca60e799))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/studio bumped to 11.0.1
+
 ## [9.0.0](https://github.com/jxsuite/jx/compare/desktop-v8.3.1...desktop-v9.0.0) (2026-11-12)
 
 

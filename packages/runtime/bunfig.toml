@@ -17,6 +17,7 @@ coveragePathIgnorePatterns = [
   # Parser moved under extensions/; it resolves at ../../extensions/parser now.
   "../../extensions/parser/**",
   "../compiler/**",
+  "../compiler-binding/**",
   "../create/**",
   "../desktop/**",
   "../markup/**",

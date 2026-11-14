@@ -9,15 +9,16 @@ We're crafting a comprehensive web-based application suite that aims to encompas
 - Every substantive spec edit is a release, user docs (`./docs`) track shipped behavior in the same change set, and plans live in `plans/` and are deleted when they land. "Specs & User-Documentation Policy" below has the commands and the gates; run `bun run docs:sync` and `bun run docs:check` before finishing.
 - Do not wrap Markdown source: write one paragraph per line, and make a line break that carries meaning an explicit `\` hard break. `bun run format:md` fixes a file. Much of the tree is still wrapped from before the rule and the sweep is pending, so match the rule in what you write rather than reflowing what you touch. The full rule, and why it is not enforced yet, is in `scripts/AGENTS.md`.
 - Use Chrome MCP to test new UI/UX changes prior to finishing the task.
-- These notes are harness-neutral. Every `CLAUDE.md` is a one-line `@AGENTS.md` import of the file beside it, so Claude Code loads these notes; edit the `AGENTS.md`, never the stub. Claude Code additionally runs the hooks in `.claude/hooks` (edit validation, a Bash guard, and at stop a docs-sync check plus the type-aware lint over the session's changed TypeScript, which catches files edited through Bash that the per-edit check never sees); in any other harness, run `bun run docs:sync` and `bun run lint:typecheck` and format what you touched with `oxfmt` before finishing. `.husky/pre-commit` runs the type-aware lint on staged TypeScript too, and the pre-push gate (`all-the-things`) runs it over the tree, so the rules CI's `checks` job enforces are enforced locally first.
+- These notes are harness-neutral. Every `CLAUDE.md` is a one-line `@AGENTS.md` import of the file beside it, so Claude Code loads these notes; edit the `AGENTS.md`, never the stub. Claude Code additionally runs the hooks in `.claude/hooks` (edit validation, a Bash guard, and at stop a docs-sync check plus the type-aware lint over the session's changed TypeScript, which catches files edited through Bash that the per-edit check never sees); in any other harness, run `bun run docs:sync` and `bun run lint:typecheck` and format what you touched with `oxfmt` before finishing. `.husky/pre-commit` runs the type-aware lint on staged TypeScript too, and Claude Code's Bash guard runs `bun run verify` before a `git push` (there is no husky pre-push hook), so the rules CI's `checks` job enforces are enforced locally first.
 
 ## Subsystem notes
 
-Three areas carry long, load-bearing rationale that lives beside the code it governs rather than here. Read the file before touching the area. Claude Code, and any harness that loads nested instruction files, also picks it up on its own when it reads a file in that directory; Codex started at the root does not.
+Four areas carry long, load-bearing rationale that lives beside the code it governs rather than here. Read the file before touching the area. Claude Code, and any harness that loads nested instruction files, also picks it up on its own when it reads a file in that directory; Codex started at the root does not.
 
 - **`.github/AGENTS.md`**: Dependency Autopilot (Dependabot, auto-merge, why `bun.nix` lags, where the Nix build runs) and Releases (release-please's two silent failure modes and the integrity check). Read it before editing `.github/**`, `release-please-config.json` or `.release-please-manifest.json`, or anything about versions, tags and npm publishing.
 - **`packages/desktop/AGENTS.md`**: how the Electron application is packaged (electron-builder, the staged backend and the smoke test that proves it), Microsoft Store publishing and Snap Store publishing. Read it before editing `packages/desktop/**`, `electron-builder.yml`, or the desktop release lanes (`bundle-desktop-*`, `store-publish`, `build-snap`, `snap-publish`).
-- **`scripts/AGENTS.md`**: the Markdown no-wrap rule in full, why `--no-wrap` still keeps it dormant, and the three steps that turn it on. Read it before touching `scripts/normalize-markdown.ts`, `scripts/lib/unwrap-prose.ts` or `bun run format:md`.
+- **`packages/compiler-binding/AGENTS.md`**: the Rust core. Read it first.
+- **`scripts/AGENTS.md`**: the Markdown no-wrap rule in full, how `test:affected` selects tests, and the Bun coverage-drop defect behind the manifest check. Read it before touching `scripts/normalize-markdown.ts`, `scripts/lib/unwrap-prose.ts`, `bun run format:md`, `scripts/test-affected.ts` or `scripts/check-coverage-manifest.ts`.
 
 ## Studio UI Rules
 
@@ -33,7 +34,7 @@ If running on NixOS:
 - A development server is already running on port 3000
 - The studio interface can be accessed via: http://localhost:3000/packages/studio/index.html
 - The jxsuite.com project can be accessed via: http://localhost:3000/packages/studio/index.html?project=~/Development/jx/sites/jxsuite.com/project.jxn
-- Tests and validations are run at the project root level via `bun run all-the-things`
+- Validations are run at the project root via `bun run verify` ("Which tests to run" below), not `bun run all-the-things`
 - Tests must be run with `--isolate`
 
 ## Testing & Coverage Policy
@@ -43,11 +44,7 @@ Every workspace must keep full unit-test coverage — `packages/*` core packages
 1.  **Per-file coverage thresholds** live in each workspace's own `bunfig.toml` — `packages/<pkg>/bunfig.toml` and `extensions/<ext>/bunfig.toml` (`coverageThreshold = { lines = X, functions = Y }`). Bun enforces these **per file**, not as an aggregate — no single source file may fall below the bar. Keys must be plural (`lines`/`functions`); singular keys are silently ignored by Bun.
 2.  **Manifest check** — `bun scripts/check-coverage-manifest.ts <workspace-dir>` (e.g. `packages/schema`, `extensions/auth`) fails if any `src/**/*.ts` file never appears in `coverage/lcov.info` (Bun only counts files imported during the run, so a brand-new untested file is otherwise invisible to thresholds). Type-only files are allowlisted inside the script.
 
-    An absence is evidence, not a verdict: Bun 1.4.0 has been observed leaving a file out of the report that the same run demonstrably loaded and executed. So a missing file is not failed on sight — the script **re-runs coverage over just the tests that name it** and decides from that. Nothing loads it → still a failure, which is the regression the gate is for; it is exercised → the run's counts are held to the workspace's own `coverageThreshold`, so a rescued file stays gated rather than waved through. Naming a module is not loading it, so a `mock.module()` of an otherwise untested file cannot rescue it. If a rescue warning appears for a file **you** just added, the file is fine and Bun is not.
-
-    **That defect has a known shape, and it is not about CI.** Bun 1.4.0 loses a source file's coverage record when **two or more dynamic `import()`s of it are in flight at once**. The module body still evaluates once and its exports work; only the record goes. `Promise.all([import(M), import(M)])` loses it and two sequential `await import(M)` do not, so the discriminator is overlap — not un-awaitedness, not scale, not the runner. `scripts/repro/bun-coverage-drop.sh` demonstrates it in four files with no jx code.
-
-    A dropped file is **absent**, not reported at 0%, so no `coverageThreshold` can fire on it and the aggregate is computed as though it were not there. The manifest check is what stands in front of that, which is why it adjudicates rather than trusting the report.
+    An absence is evidence, not a verdict: Bun 1.4.0 loses a file's coverage record when two or more dynamic `import()`s of it are in flight at once, so the script re-runs coverage over just the tests that name a missing file and decides from that. If a rescue warning appears for a file **you** just added, the file is fine and Bun is not. The defect's shape and its repro are in `scripts/AGENTS.md`.
 
     Practical rule when you write a test that invokes a command whose `run` lazily imports its implementation: **double the implementation with `mock.module()`**, as `commands-defaults.test.ts`, `context-menu.test.ts` and `settings-key-scope.test.ts` all do. It gives the test a witness — an un-awaited import settles after `run()` returns, so without a double there is nothing to assert against — and it keeps two real imports from ever overlapping.
 
@@ -59,6 +56,15 @@ Every workspace must keep full unit-test coverage — `packages/*` core packages
     - Push to `main` and `workflow_dispatch` are never gated; only pull requests are.
     - `scripts/**` has no coverage workspace, so its tests run via `bun test --isolate scripts` inside the `changes` job — the gate proves itself before it gates anything. Put new script tests where that finds them.
 
+### Which tests to run
+
+**Do not run the whole suite, or `bun run all-the-things`, as a routine step**: not before a commit, not before a push, not "to be safe". Most changes can fail a fraction of its ~1,240 test files.
+
+- **While working**, run the test files for what you are changing (`bun test --isolate ./tests/<file>.test.ts` in the workspace).
+- **Before finishing**, run `bun run verify`: lint, the type-aware lint, both typechecks and `bun run test:affected`, which runs the tests the diff can fail (`--list` prints the selection). Claude Code's Bash guard runs `verify` on `git push`, so do not also run it by hand just before pushing.
+- **Committing needs no test run**: `.husky/pre-commit` formats and lints staged files and runs no test.
+- **`test:affected` is a fast signal, not the gate.** It runs without coverage; CI runs each affected workspace whole, with coverage. How it selects, and why CI was not moved to it, is in `scripts/AGENTS.md`.
+
 Conventions:
 
 - New source files must ship with tests in the same PR (the manifest check fails CI otherwise).
@@ -66,7 +72,7 @@ Conventions:
 - Run tests only via `bun test --isolate` (plain `bun test` has known order-dependent failures and is unsupported).
 - **Every happy-dom workspace preloads `@jxsuite/test-support/preload`** (bunfig `preload`, a devDependency, and a `../test-support/**` coverage ignore; `packages/test-support/README.md`). It prints DOM nodes as one line in failure output, warns once when the local Bun differs from `.bun-version`, and **makes deep equality on a DOM node throw at once** (`toEqual`, `toStrictEqual`, `toMatchObject`, `toContainEqual`, `objectContaining`/`arrayContaining`; a node inside a class instance counts, such as an `Event`'s target or a `MutationRecord`), because Bun's diff printer hangs on a live kit element. `toHaveProperty(path, value)` is refused when the value at `path` or `value` holds a node, and `toHaveBeenCalledWith`/`toBeCalledWith` when an expected argument or ANY recorded call does (the last/nth-call forms search only that call): assert a recorded node with `expect(fn.mock.calls[0][0]).toBe(el)`. `toBe`, `toContain` and `toHaveReturnedWith` print through the compact hook and are not guarded. Compare nodes with `toBe`, lists of nodes with `expect(identities(list)).toEqual(identities([a, b]))`.
 - Studio tests: use the shared harness `packages/studio/tests/harness.ts` (lit rendering, state/tab resets, in-memory `StudioPlatform` mock, event helpers, happy-dom rect stubs). The first import of a DOM test file must be `./harness` or `./with-dom.js` — lit-html captures `document` at import time.
-- `mock.module()` before importing the module under test; `await import()` afterwards for modules with import-time side effects. sharp must always be mocked (it is unloadable on NixOS), and so must `electron`: a test hands the shell a fake from `packages/desktop/tests/_fake-electron.ts` and never loads the real module.
+- `mock.module()` before importing the module under test; `await import()` afterwards for modules with import-time side effects. `electron` must always be mocked: a test hands the shell a fake from `packages/desktop/tests/_fake-electron.ts` and never loads the real module.
 - Check per-file coverage with `bun test --isolate --coverage` from the workspace directory (`packages/<pkg>` or `extensions/<ext>`); the table prints to stderr.
 
 ## Starter Roots and the Shadowed Core

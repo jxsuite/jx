@@ -1,0 +1,6 @@
+# One exact Rust, for the same reason `.bun-version` names one exact Bun: the dev shell's nixpkgs
+# `rustc` and every CI job must compile the addon with the same compiler. Bump it together with a
+# nixpkgs bump that moves `pkgs.rustc`.
+[toolchain]
+channel = "1.99.0"
+components = ["clippy", "rustfmt", "llvm-tools-preview"]

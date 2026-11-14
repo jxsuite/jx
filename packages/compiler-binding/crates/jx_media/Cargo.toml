@@ -1,0 +1,39 @@
+[package]
+name = "jx_media"
+description = "Jx media pipeline: responsive raster variants, encoded in process."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+fast_image_resize = "6.1"
+image = { version = "0.25", default-features = false, features = [
+  "png",
+  "jpeg",
+  "webp",
+  "tiff",
+  "bmp",
+] }
+image-webp = "0.2"
+jpeg-encoder = "0.7"
+moxcms = "0.9"
+ravif = { version = "0.13", default-features = false, features = ["threading"] }
+rayon = "1"
+thiserror = "2"
+
+# The AVIF encoder's hand-written SIMD kernels, everywhere but Windows on arm64: there they are
+# GNU-syntax assembly, which the MSVC toolchain that target links with cannot assemble (the build
+# fails collecting objects it never produced). That one platform encodes with the portable Rust
+# paths, which are slower and write the same pixels.
+[target.'cfg(not(all(target_os = "windows", target_arch = "aarch64")))'.dependencies]
+ravif = { version = "0.13", default-features = false, features = ["asm"] }
+
+[dev-dependencies]
+jpeg-encoder = "0.7"
+tempfile = "3"

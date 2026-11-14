@@ -22,8 +22,9 @@
  * directory the installPhase copies.
  */
 import { describe, expect, test } from "bun:test";
-import { readdirSync, readFileSync, readlinkSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, readlinkSync, statSync } from "node:fs";
 import { dirname, relative, resolve } from "node:path";
+import { addonFileName } from "../../compiler-binding/src/triple.ts";
 
 const REPO = resolve(import.meta.dir, "../../..");
 
@@ -127,31 +128,31 @@ describe("the runtime install is the desktop app's production graph", () => {
 });
 
 /**
- * The sharp addon and its libvips get the compiler runtime on their RPATH so they load on NixOS,
- * and which `patchelf` does that decides whether they load at all.
+ * The compiler's Rust core is built by the package itself and staged beside the backend bundle.
  *
- * Nixpkgs' `patchelf` is 0.15.2 in some revisions and 0.19.2 in others. 0.15.2's `--add-rpath`
- * corrupts `libvips-cpp.so` and the sharp addon: the pristine tarball loads on Electron 43 through
- * 45, the same files after it segfault in libvips' static initializers, and 0.18.0 or 0.19.2 leave
- * a working file. The Nix install check catches it, but only in a full `nix build` that takes
- * minutes, so this holds the line where a stray bare `patchelf` would be written.
+ * It replaced the prebuilt sharp, whose binaries needed `libstdc++` on their RPATH and were
+ * corrupted by nixpkgs' older `patchelf` when it was added. An addon compiled in this closure links
+ * this closure's libc and nothing else, so there is nothing to patch, and the install check loads
+ * it under the packaged Electron.
  */
-describe("sharp's rpath is added with a patchelf that does not corrupt it", () => {
+describe("the compiler addon is built from source and loaded by the install check", () => {
   const nix = readFileSync(resolve(REPO, "packages/desktop/package.nix"), "utf8");
 
-  test("package.nix takes patchelfUnstable and adds the rpath through it", () => {
-    expect(nix).toMatch(/^\s*patchelfUnstable,$/m);
-    expect(nix).toContain("${patchelfUnstable}/bin/patchelf --add-rpath");
+  test("package.nix builds jx_napi from the Cargo workspace's own lockfile", () => {
+    expect(nix).toMatch(/^\s*rustPlatform,$/m);
+    expect(nix).toContain("cargoLock.lockFile = ../compiler-binding/Cargo.lock;");
+    expect(nix).toContain('"jx_napi"');
+    expect(existsSync(resolve(REPO, "packages/compiler-binding/Cargo.lock"))).toBe(true);
   });
 
-  test("no add-rpath or set-rpath goes through the stdenv's own patchelf", () => {
-    // A command position is the start of a line or after `;`/`&&`/`|`, which is where a bare
-    // `patchelf` would run; the comment explaining the rule names the flag and is not one.
-    const bare = nix
-      .split("\n")
-      .filter((line) => !line.trim().startsWith("#"))
-      .filter((line) => /(^|[;&|]\s*|\s)patchelf\s+--(add|set)-rpath/.test(line))
-      .filter((line) => !line.includes("${patchelfUnstable}/bin/patchelf"));
-    expect(bare).toEqual([]);
+  test("the addon is staged where a checkout builds it, under the name the loader asks for", () => {
+    expect(nix).toContain("packages/compiler-binding/${addonName}");
+    expect(nix).toContain('addonName = "jx-compiler.linux-${hostCpu}-gnu.node";');
+    expect(addonFileName("linux-x64-gnu")).toBe("jx-compiler.linux-x64-gnu.node");
+  });
+
+  test("the install check loads it on Electron's Node, and nothing is patched", () => {
+    expect(nix).toContain("addon.coreVersion()");
+    expect(nix).not.toContain("patchelf");
   });
 });

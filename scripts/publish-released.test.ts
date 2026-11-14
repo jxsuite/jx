@@ -8,7 +8,8 @@
 
 import { describe, expect, test } from "bun:test";
 
-import { readFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import type { WorkflowStep } from "./lib/workflow-syntax.ts";
@@ -16,6 +17,9 @@ import {
   backfillCommand,
   issueSection,
   npmErrorLine,
+  ADDON_PACKAGES_DIR,
+  addonPackageDirs,
+  loaderHolds,
   publishAll,
   summaryTable,
 } from "./publish-released.ts";
@@ -100,6 +104,77 @@ describe("publishAll", () => {
     expect(lines[0]).toBe("::group::packages/catalog -> @jxsuite/catalog@0.1.2");
     expect(lines.at(-2)).toStartWith("FAILED: npm error 404 Not Found - PUT");
     expect(lines.at(-1)).toBe("::endgroup::");
+  });
+});
+
+describe("the packages that load the addon", () => {
+  // Run 43544518046: npm refused all eight platform packages and the compiler went out anyway.
+  const linux: ReleasedPackage = {
+    dir: `${ADDON_PACKAGES_DIR}/linux-x64-gnu`,
+    name: "@jxsuite/compiler-binding-linux-x64-gnu",
+    version: "0.2.1",
+  };
+  const mac: ReleasedPackage = {
+    dir: `${ADDON_PACKAGES_DIR}/darwin-arm64`,
+    name: "@jxsuite/compiler-binding-darwin-arm64",
+    version: "0.2.1",
+  };
+  const run = [mac, linux, pkg("compiler-binding", "0.2.1"), pkg("compiler", "9.0.1"), ORDER[1]!];
+  const holds = loaderHolds([mac.dir, linux.dir]);
+  const refused = { ok: false, output: "npm error code EUSAGE" };
+
+  test("are not attempted when a platform package was refused, and say which", () => {
+    const npm = registry([], { [linux.name]: refused });
+    const outcomes = publishAll(run, npm, undefined, holds);
+    expect(npm.tried).toEqual([mac.name, linux.name, "@jxsuite/site"]);
+    expect(outcomes.map((o) => o.status)).toEqual([
+      "published",
+      "FAILED",
+      "FAILED",
+      "FAILED",
+      "published",
+    ]);
+    expect(outcomes[3]?.error).toBe(`held back: not on npm: ${linux.name}`);
+    // The backfill names them with the package they wait for.
+    expect(issueSection(outcomes, { runUrl: "u", sha: "abc" })).toContain(
+      `["${linux.dir}","packages/compiler-binding","packages/compiler"]`,
+    );
+  });
+
+  test("are published when every platform package is on npm, by this run or an earlier one", () => {
+    const npm = registry([`${linux.name}@0.2.1`], {});
+    expect(publishAll(run, npm, undefined, holds).map((o) => o.status)).toEqual([
+      "published",
+      "already published",
+      "published",
+      "published",
+      "published",
+    ]);
+  });
+
+  test("already on npm are reported so, whatever happened to a platform package", () => {
+    const npm = registry(["@jxsuite/compiler@9.0.1"], { [linux.name]: refused });
+    expect(publishAll(run, npm, undefined, holds)[3]?.status).toBe("already published");
+  });
+});
+
+describe("addonPackageDirs", () => {
+  test("lists each prepared platform package, sorted, and nothing without a manifest", () => {
+    const root = mkdtempSync(join(tmpdir(), "jx-publish-addon-"));
+    try {
+      expect(addonPackageDirs(root)).toEqual([]);
+      for (const triple of ["linux-x64-gnu", "darwin-arm64"]) {
+        mkdirSync(join(root, ADDON_PACKAGES_DIR, triple), { recursive: true });
+        writeFileSync(join(root, ADDON_PACKAGES_DIR, triple, "package.json"), "{}");
+      }
+      mkdirSync(join(root, ADDON_PACKAGES_DIR, "leftover"));
+      expect(addonPackageDirs(root)).toEqual([
+        `${ADDON_PACKAGES_DIR}/darwin-arm64`,
+        `${ADDON_PACKAGES_DIR}/linux-x64-gnu`,
+      ]);
+    } finally {
+      rmSync(root, { force: true, recursive: true });
+    }
   });
 });
 

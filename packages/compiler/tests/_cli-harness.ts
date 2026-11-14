@@ -27,8 +27,19 @@ export class ExitSentinelError extends Error {
   }
 }
 
+/** The timings of a build that did nothing, for a double of `buildSite` that measures nothing. */
+export const NO_TIMINGS = {
+  bundles: 0,
+  components: 0,
+  content: 0,
+  outputs: 0,
+  routes: 0,
+  setup: 0,
+  total: 0,
+};
+
 let buildSiteImpl: (root: string, opts: BuildSiteOptions) => ReturnType<typeof buildSite> = () =>
-  Promise.resolve({ errors: [], files: 0, routes: 0, serverEntries: [] });
+  Promise.resolve({ errors: [], files: 0, routes: 0, serverEntries: [], timings: NO_TIMINGS });
 
 export const buildSiteCalls: { root: string; opts: BuildSiteOptions }[] = [];
 

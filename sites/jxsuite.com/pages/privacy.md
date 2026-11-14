@@ -29,7 +29,7 @@ $elements:
 # Privacy Policy
 
 **Effective date:** 2 October 2026\
-**Last updated:** 2 October 2026
+**Last updated:** 6 November 2026
 
 This policy explains what personal data Avunu LLC handles when you use Jx Suite, why we handle it, how long we keep it, and what you can require of us.
 
@@ -54,6 +54,7 @@ If you are in the European Economic Area or the United Kingdom, see section 14 f
 | Jx Studio desktop app, the jx CLI, and the @jxsuite/* packages | You, on your own device or server | Nothing. The software contains no telemetry and no analytics. It has no account and phones no home.                                                                    |
 | Jx Publishing Platform — studio.jxsuite.com                    | Us                                | Your GitHub identity, your project working files while you edit them, the operational records in section 6, and, if you subscribe, the billing records in section 6.9. |
 | A website you built with Jx and its visitors                   | You                               | Nothing. See section 9.                                                                                                                                                |
+| A pull request you opened on jxsuite/jx, once it is merged     | GitHub, then us                   | The contribution record in section 6.9, whether or not you use the Publishing Platform.                                                                                |
 
 ## 3. Things we do not do
 
@@ -185,17 +186,17 @@ What we do keep is a metadata record of the request: the timestamp, your user id
 
 ### 6.8 Operational records
 
-| Record                 | Contents                                                                                                                                         | Purpose                                                                | Retention                       |
-| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------- | ------------------------------- |
-| Audit log              | Timestamp, user id, action (for example auth.login, cf.disconnect), affected resource, and a short metadata note — never file or message content | Security, abuse investigation, answering "what happened to my project" | 12 months                       |
-| AI rate-limit counters | Your user id and a per-day request count                                                                                                         | Enforcing per-minute and per-day request limits                        | 48 hours, then automatic expiry |
-| GitHub webhook events  | Repository push and deletion notifications from GitHub                                                                                           | Keeping working trees current; purging data for deleted repositories   | Processed and discarded         |
+| Record                 | Contents                                                                                                                                         | Purpose                                                                                                | Retention                       |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------ | ------------------------------- |
+| Audit log              | Timestamp, user id, action (for example auth.login, cf.disconnect), affected resource, and a short metadata note — never file or message content | Security, abuse investigation, answering "what happened to my project"                                 | 12 months                       |
+| AI rate-limit counters | Your user id and a per-day request count                                                                                                         | Enforcing per-minute and per-day request limits                                                        | 48 hours, then automatic expiry |
+| GitHub webhook events  | Repository push and deletion notifications from GitHub, and pull request notifications from jxsuite/jx                                           | Keeping working trees current; purging data for deleted repositories; contributor credit (section 6.9) | Processed and discarded         |
 
 The service also writes **request logs** for diagnosing faults: the time, method and URL of each request, its response status, connection details that can include the IP address, and any error message. They hold no request or response bodies, so no project content and no AI conversation. Cloudflare keeps them for us for a few days, under the retention limits of its Workers logging. Separately, Cloudflare retains its own edge logs for network operation and security under its own terms.
 
 ### 6.9 Billing and payments
 
-If you start a Jx Studio Cloud subscription or free trial, payment is handled by **Stripe, Inc.** Stripe's checkout and billing pages collect your email address, your card or other payment details, and your billing address where tax law needs it, and Stripe holds them under its own privacy policy. **Your card details never reach our systems.** We send Stripe your GitHub login and our user id for your account, so that a subscription can be matched to it.
+If you start a Jx Studio Cloud subscription or free trial, payment is handled by **Stripe, Inc.** Stripe's checkout and billing pages collect your email address, your card or other payment details, and your billing address where tax law needs it, and Stripe holds them under its own privacy policy. **Your card details never reach our systems.** We send Stripe your GitHub login and our user id for your account, so that a subscription can be matched to it, and, with a contributor credit, the pull request it is for.
 
 We keep, in our own database:
 
@@ -205,10 +206,13 @@ We keep, in our own database:
 | Subscription status | For each subscription: its status, price, trial and billing-period dates, whether a payment method is on file, and when we last synced it | Deciding what your account includes; showing it in the studio |
 | Trial record        | Your GitHub user id and the date your free trial began                                                                                    | Offering the free trial once per GitHub account               |
 | Billing notices     | The id and type of each notification Stripe sends us about a subscription, with no personal data                                          | Processing each notice exactly once                           |
+| Contribution record | Your GitHub user id, the number of your merged pull request and when it merged, whether a credit was given, and whether we have told you  | Giving you the free period or credit it earned, once          |
 
 Stripe sends receipts, trial reminders, payment-failure notices and any notice of a price change on our behalf, to the address you gave at checkout. We do not keep that address ourselves, and nothing about your subscription is ever used for marketing.
 
-**Legal basis:** performance of our contract with you (Article 6(1)(b)); keeping the accounting records tax law requires, compliance with a legal obligation (Article 6(1)(c)); and preventing repeated free trials, our legitimate interest in a fair trial offer (Article 6(1)(f)).
+**Contributor credit.** When a pull request is merged into the public [jxsuite/jx](https://github.com/jxsuite/jx) repository, GitHub tells us who opened it, and we keep the contribution record above so that its author can receive the free period or credit in section 6.8 of the [Terms of Service](/terms). **That record can exist before you have ever used the Publishing Platform.** The details of the merge in it are already public on GitHub. While you use the Publishing Platform we also ask GitHub, using your own sign-in, for your recently merged pull requests in that repository, in case a notification went missing.
+
+**Legal basis:** performance of our contract with you (Article 6(1)(b)); keeping the accounting records tax law requires, compliance with a legal obligation (Article 6(1)(c)); and preventing repeated free trials and honouring contributor credit, our legitimate interests in a fair trial offer and in thanking contributors (Article 6(1)(f)).
 
 **Legal basis:** our legitimate interest in operating a secure and abuse-resistant service (Article 6(1)(f)), and in the case of records we must keep, compliance with a legal obligation (Article 6(1)(c)).
 
@@ -264,6 +268,7 @@ Where we transfer personal data out of the EEA, the United Kingdom, or Switzerla
 | Audit log                                          | 12 months                                                                           |
 | Billing customer and subscription records          | While you have a subscription, then for as long as tax and accounting law requires  |
 | Free-trial record                                  | For as long as we offer a free trial, so it is offered once per GitHub account      |
+| Contribution record                                | For as long as we offer contributor credit, so a pull request earns it only once    |
 
 Deleting a repository on GitHub causes us to purge its cached project record and its working-tree sessions.
 

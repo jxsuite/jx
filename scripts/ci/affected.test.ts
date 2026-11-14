@@ -49,7 +49,12 @@ describe("the whole matrix", () => {
      * would put that package's own suite downstream of itself.
      */
     expect(flags).not.toContain("test-support");
-    expect(flags.length).toBe(workspaces.length - 1);
+    /*
+     * And but `compiler-binding`, the loader for the compiler's native addon: it reads no document
+     * and imports no `@jxsuite` package, so a schema change cannot reach it.
+     */
+    expect(flags).not.toContain("compiler-binding");
+    expect(flags.length).toBe(workspaces.length - 2);
   });
 
   test("a change to the shared test preload retests every suite that loads it", () => {
@@ -162,7 +167,8 @@ describe("the nix build", () => {
     // The whole value of moving it: skipped is green, failed is not. `ci` is the one name branch
     // Protection points at, and a nix job it does not depend on could not block anything.
     const workflow = await Bun.file(".github/workflows/test.yml").text();
-    const list = /^ {2}ci:\n(?:.*\n)*? {4}needs: \[([^\]]*)\]/m.exec(workflow)?.[1] ?? "";
+    const list = /^ {2}ci:\n(?:.*\n)*? {4}needs:\s*\[([^\]]*)\]/m.exec(workflow)?.[1] ?? "";
+    // The list is long enough that the formatter breaks it over lines, hence `\s*` and the trim.
     expect(list.split(",").map((name) => name.trim())).toContain("nix");
   });
 
@@ -209,6 +215,16 @@ describe("the nix build", () => {
     // For bundle-analysis, so there is no second gate to keep in step.
     const workflow = await Bun.file(".github/workflows/test.yml").text();
     expect(workflow).toContain("if: contains(fromJSON(needs.changes.outputs.bundles), 'studio')");
+  });
+
+  test("the eight-platform addon build runs for a diff that can change the addon, and no other", async () => {
+    const { buildsAddon } = await import("./affected.ts");
+    expect(buildsAddon(["packages/compiler-binding/crates/jx_media/Cargo.toml"])).toBe(true);
+    expect(buildsAddon([".github/workflows/addon.yml"])).toBe(true);
+    expect(buildsAddon([".github/actions/setup-rust/action.yml"])).toBe(true);
+    expect(buildsAddon(["bun.lock", "packages/compiler/src/site/image-optimizer.ts"])).toBe(false);
+    const workflow = await Bun.file(".github/workflows/test.yml").text();
+    expect(workflow).toContain("if: needs.changes.outputs.addon == 'true'");
   });
 
   test("every output the changes job forwards is one this script actually writes", async () => {

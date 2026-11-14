@@ -2,7 +2,7 @@
 
 **What a Jx project's page at a route consists of:** routing, layout, `<head>`, context and site style, as pure functions with their IO injected.
 
-Every one of these rules has to be answered identically by four things that cannot share code any other way: the compiler's static build, the Studio canvas, a Bun dev/desktop server, and a Cloudflare Worker serving a live preview. None of them can import `@jxsuite/compiler`, whose dependency graph carries `sharp` and `esbuild`, so neither a browser bundle nor a Worker can load it. And a route is exactly the kind of rule where a silent disagreement is a page that 404s in one surface and renders in another.
+Every one of these rules has to be answered identically by four things that cannot share code any other way: the compiler's static build, the Studio canvas, a Bun dev/desktop server, and a Cloudflare Worker serving a live preview. None of them can import `@jxsuite/compiler`, whose dependency graph carries a native addon and `esbuild`, so neither a browser bundle nor a Worker can load it. And a route is exactly the kind of rule where a silent disagreement is a page that 404s in one surface and renders in another.
 
 So the rules live here, and this package has **no platform imports at all**: no `node:`, no DOM, no filesystem. Where a rule genuinely needs to read something, the reader is a parameter (`LayoutLoader`, `DocumentParser`) and is simply absent where there are no directories.
 

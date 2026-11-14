@@ -133,12 +133,13 @@ cd jx
 bun install
 
 bun run dev            # dev server with the examples project
-bun test --isolate     # test suite
-bun run all-the-things # build, test, lint, typecheck
+bun run test:affected  # the tests your diff can fail
+bun run verify         # lint, typecheck, and test:affected
+bun run all-the-things # build, every test suite, lint, typecheck
 bun run desktop        # launch the desktop app
 ```
 
-Behavior is specified in [`specs/`](specs) and documented in [`docs/`](docs); both travel with the code in the same change set. See [Working in the monorepo](https://jxsuite.com/docs/extending/contributing/monorepo).
+Behavior is specified in [`specs/`](specs) and documented in [`docs/`](docs); both travel with the code in the same change set. See [Working in the monorepo](https://jxsuite.com/docs/extending/contributing/monorepo) and [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Support
 

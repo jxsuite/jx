@@ -2,7 +2,7 @@
 
 ## File-Based Routing, Content Collections, Layouts, and Static Site Generation
 
-**Version:** 0.8.14-draft\
+**Version:** 0.9.0-draft\
 **Status:** Partial\
 **Updated:** 2026-11-13\
 **License:** MIT
@@ -1256,7 +1256,7 @@ Media files live in two locations:
 
 ### 9.2 Image Optimization
 
-The compiler includes a build-time image optimization pipeline powered by [Sharp](https://sharp.pixelplumbing.com/). When enabled, it generates responsive image variants, converts formats, and adds performance attributes automatically.
+The compiler includes a build-time image optimization pipeline, encoded by its own native core (`compiler.md` §14) with nothing else to install. When enabled, it generates responsive image variants, converts formats, and adds performance attributes automatically.
 
 #### 9.2.1 Configuration
 
@@ -1267,8 +1267,8 @@ Image optimization is configured in `project.json` under the `images` key. All p
   "images": {
     "optimize": true,
     "widths": [320, 640, 960, 1280, 1920],
-    "formats": ["webp", "avif"],
-    "quality": { "webp": 80, "avif": 65, "jpeg": 80, "png": 80 },
+    "formats": ["avif", "jpeg"],
+    "quality": { "avif": 65, "jpeg": 80 },
     "sizes": "(max-width: 768px) 100vw, 50vw",
     "lazyLoad": true,
     "picture": true,
@@ -1277,43 +1277,45 @@ Image optimization is configured in `project.json` under the `images` key. All p
 }
 ```
 
-| Property        | Type       | Default                                     | Description                                                                                                         |
-| --------------- | ---------- | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| `optimize`      | `boolean`  | `true`                                      | Master switch — set to `false` to disable all image processing                                                      |
-| `widths`        | `number[]` | `[320, 640, 960, 1280, 1920]`               | Pixel widths for responsive `srcset` variants                                                                       |
-| `formats`       | `string[]` | `["webp", "avif"]`                          | Output formats (also supports `"jpeg"`, `"png"`) — `"build"` service only                                           |
-| `quality`       | `object`   | `{ webp: 80, avif: 65, jpeg: 80, png: 80 }` | Per-format compression quality (0–100); the `"cloudflare"` service uses the `webp` value as its single quality      |
-| `sizes`         | `string`   | `"(max-width: 768px) 100vw, 50vw"`          | Default CSS `sizes` attribute for responsive hints                                                                  |
-| `lazyLoad`      | `boolean`  | `true`                                      | Adds `loading="lazy"` and `decoding="async"` to `<img>` tags (§9.2.7) — independent of `optimize`                   |
-| `picture`       | `boolean`  | `true`                                      | Wrap a multi-format image in a `<picture>`, one `<source>` per format (§9.2.2)                                      |
-| `service`       | `string`   | `"build"`                                   | `"build"` = Sharp at build time; `"cloudflare"` = `/cdn-cgi/image` transform URLs served by Cloudflare (see §9.2.6) |
-| `remoteDomains` | `string[]` | `[]`                                        | Hostnames whose remote (https) images get transform srcsets — `"cloudflare"` service only (see §9.2.6)              |
+| Property        | Type       | Default                            | Description                                                                                                        |
+| --------------- | ---------- | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `optimize`      | `boolean`  | `true`                             | Master switch — set to `false` to disable all image processing                                                     |
+| `widths`        | `number[]` | `[320, 640, 960, 1280, 1920]`      | Pixel widths for responsive `srcset` variants                                                                      |
+| `formats`       | `string[]` | `["avif", "jpeg"]`                 | Output formats: `"avif"` and `"jpeg"` are lossy, `"png"` and `"webp"` lossless (§9.2.2) — `"build"` service only   |
+| `quality`       | `object`   | `{ avif: 65, jpeg: 80 }`           | Lossy quality per format (1–100); the `"cloudflare"` service uses the `webp` value (default 80) as its one quality |
+| `sizes`         | `string`   | `"(max-width: 768px) 100vw, 50vw"` | Default CSS `sizes` attribute for responsive hints                                                                 |
+| `lazyLoad`      | `boolean`  | `true`                             | Adds `loading="lazy"` and `decoding="async"` to `<img>` tags (§9.2.7) — independent of `optimize`                  |
+| `picture`       | `boolean`  | `true`                             | Wrap a multi-format image in a `<picture>`, one `<source>` per format (§9.2.2)                                     |
+| `service`       | `string`   | `"build"`                          | `"build"` = encoded at build time; `"cloudflare"` = `/cdn-cgi/image` transform URLs served by Cloudflare (§9.2.6)  |
+| `remoteDomains` | `string[]` | `[]`                               | Hostnames whose remote (https) images get transform srcsets — `"cloudflare"` service only (see §9.2.6)             |
+
+**One build can leave images alone without the project saying so.** `jx build --no-optimize-images`, `JX_IMAGES_OPTIMIZE` set to `false`, `0`, `no` or `off` in the build's environment, and `buildSite`'s `optimizeImages: false` each build as if `optimize` were `false`: no variant is encoded, the native core is never loaded, and every `<img>` keeps its source, while `lazyLoad` and the focal point apply as they do in any project with `optimize: false`. It is for a build nobody measures, a preview deployment above all, where encoding is most of the build's time. The switch only turns off: any other value of the variable, and its absence, leave the project's own `optimize` in charge, so it cannot turn on what a project turned off. The build says so in one line when it applies.
 
 #### 9.2.2 Build-Time Behavior
 
-> **Status: Partial.** The pipeline ships (`processImage` in `packages/compiler/src/site/image-optimizer.ts`, `transformImgNode` in `packages/compiler/src/site/image-transform.ts`), and the one-format and `<picture>` shapes match. Six statements do not: the native width is added only below the top configured rung, the `<img>` `src` becomes the largest jpeg or png variant when one is emitted, a container-derived `sizes` outranks the config, `width` and `height` are injected only when `optimize` is on, variants are encoded into the image cache and copied to `dist/images/_optimized/` afterwards, and nothing limits concurrency to 4, since every variant's Sharp encode starts as its task is created and the later batches of 4 only await work already running. `compiler.md` §7.2 states the shipped behaviour.
+> **Status: Partial.** The pipeline ships (`processImage` in `packages/compiler/src/site/image-optimizer.ts`, `transformImgNode` in `packages/compiler/src/site/image-transform.ts`), and the one-format and `<picture>` shapes match. Five statements do not: the native width is added only below the top configured rung, the `<img>` `src` becomes the largest jpeg or png variant when one is emitted, a container-derived `sizes` outranks the config, `width` and `height` are injected only when `optimize` is on, and variants are encoded into the image cache and copied to `dist/images/_optimized/` afterwards. `compiler.md` §7.2 states the shipped behaviour.
 
 When `optimize: true`, the compiler processes every `<img>` node during page compilation:
 
 1. **Width filtering** — Only generates variants at widths ≤ the source image's natural width. The original width is always included as a breakpoint.
-2. **Format conversion** — Each width × format combination produces an optimized variant via Sharp.
-3. **Output path** — Variants are written to `dist/images/_optimized/{stem}-{width}-{hash}.{format}` (e.g., `hero-640-a1b2c3d4.webp`).
+2. **Format conversion** — Each width × format combination produces an optimized variant. AVIF and JPEG are lossy; PNG and WebP are written losslessly, so listing `webp` produces much larger files and the build warns once. A source with transparency is written as PNG wherever `jpeg` is listed, because JPEG has no alpha channel. EXIF orientation is applied and an embedded colour profile is converted to sRGB (`compiler.md` §7.2).
+3. **Output path** — Variants are written to `dist/images/_optimized/{stem}-{width}-{hash}.{format}` (e.g., `hero-640-a1b2c3d4.avif`).
 4. **Markup** — one of two shapes, decided by how many formats produced variants:
-   - **One format** — the `<img>` gains `srcset` (e.g. `hero-320-a1b2.webp 320w, hero-640-a1b2.webp 640w, …`) and `sizes` from config, unless the node already specifies one.
+   - **One format** — the `<img>` gains `srcset` (e.g. `hero-320-a1b2.avif 320w, hero-640-a1b2.avif 640w, …`) and `sizes` from config, unless the node already specifies one.
    - **Two or more** — the `<img>` is wrapped in a `<picture>` carrying one `<source type="image/…">` per format, best compression first, and the `<img>` keeps the original `src` with **no** `srcset`. This is not cosmetic: `srcset` alone carries no format information, so a browser that cannot decode AVIF still selects an AVIF candidate from a mixed list and fails to render it. `<source type>` is the only markup that lets it decline. Set `picture: false` to keep the bare `<img>` and accept that.
 5. **Dimensions** — `width` and `height` are the original image's intrinsic dimensions (prevents layout shift). Skipped when the author already sets either attribute, and for remote sources or images whose dimensions cannot be read. They are injected even when no variant applies, since layout shift is not conditional on optimization.
 
-Loading attributes are decided separately — see §9.2.7. Up to 4 variants are processed concurrently per image.
+Loading attributes are decided separately — see §9.2.7. A source's variants are encoded in parallel, bounded by the machine's parallelism.
 
 #### 9.2.3 Which Images Are Processed
 
-> **Status: Partial.** The static, local, template-free and `data-no-optimize` rules ship (`shouldSkip` and `transformImgNode` in `packages/compiler/src/site/image-transform.ts`). The format rules do not: there is no raster allowlist, so any local file other than `.svg` or `.gif` goes to Sharp, and every `.gif` is skipped, not only animated ones (`SKIP_EXTENSIONS` in the same file).
+> **Status: Partial.** The static, local, template-free and `data-no-optimize` rules ship (`shouldSkip` and `transformImgNode` in `packages/compiler/src/site/image-transform.ts`). The format rules do not: there is no raster allowlist, so any local file other than `.svg`, `.gif` or `.avif` goes to the encoder, and every `.gif` is skipped, not only animated ones (`SKIP_EXTENSIONS` in the same file).
 
 The optimizer processes `<img>` nodes with:
 
 - Static `src` paths (strings, not `${...}` template expressions)
 - Local paths (relative or `/`-prefixed) that exist on disk
-- Raster formats: `.jpg`, `.jpeg`, `.png`, `.webp`, `.avif`, `.tiff`
+- Raster formats: `.jpg`, `.jpeg`, `.png`, `.webp`, `.tiff`, `.bmp` (an `.avif` source is served as written under the build service)
 
 **Skipped automatically:**
 
@@ -1360,9 +1362,9 @@ The `.cache/` directory should be added to `.gitignore` but can optionally be co
 
 #### 9.2.6 Cloudflare Images Service
 
-Setting `"service": "cloudflare"` replaces the build-time Sharp pipeline with Cloudflare [transform-via-URL](https://developers.cloudflare.com/images/transform-images/transform-via-url/) markup — no code is deployed and no bindings are required, so it works with any adapter as long as the site is served through a Cloudflare zone:
+Setting `"service": "cloudflare"` replaces the build-time pipeline with Cloudflare [transform-via-URL](https://developers.cloudflare.com/images/transform-images/transform-via-url/) markup — no code is deployed and no bindings are required, so it works with any adapter as long as the site is served through a Cloudflare zone:
 
-- **No variants are generated at build time** — Sharp is only used to read original image dimensions (for `width`/`height` attributes), and `.cache/images/` / `dist/images/_optimized/` are not used.
+- **No variants are generated at build time** — the native core is only used to read original image dimensions (for `width`/`height` attributes), and `.cache/images/` / `dist/images/_optimized/` are not used.
 - **srcset rewriting** — eligible `<img>` nodes (same skip rules as §9.2.3) get a `srcset` of transform URLs, one per configured width ≤ the original width: `/cdn-cgi/image/width=640,quality=80,fit=scale-down,format=auto/images/hero.png?v=<hash8> 640w, ...` `format=auto` makes Cloudflare negotiate AVIF/WebP per browser; the single `quality` comes from `quality.webp`. The `v` param is an 8-char content hash for cache busting. The original `src` is left untouched as a fallback.
 - **Remote sources** — https URLs whose hostname is in `images.remoteDomains` get the same treatment with the full URL as the transform source (every configured width is emitted since original dimensions are unknown; `fit=scale-down` prevents upscaling). The zone must allow resizing from the remote origin (Images → Transformations → Sources).
 - **Zone requirement** — Image Transformations must be enabled for the zone (Cloudflare dashboard → Images → Transformations). The build prints a reminder. These URLs do **not** resolve on `*.pages.dev` / `*.workers.dev` preview hosts — only on the production custom domain; previews fall back to the untouched `src` originals.
@@ -1761,6 +1763,7 @@ jx dev                   # Build, then serve with live reload (rebuilds before e
 # Production build
 jx build                 # Full static site build
 jx build --include-held  # The same, keeping held entries (§7.6)
+jx build --no-optimize-images  # The same, publishing images as they are (§9.2.1)
 
 # Preview production build
 jx preview               # Serve an already-built dist/ (default port 4173)
@@ -2419,6 +2422,7 @@ This spec builds on existing Jx primitives wherever possible:
 
 ## Changelog
 
+- **0.9.0-draft** (2026-11-13) — §9.2: the image defaults become avif and jpeg with lossless PNG and WebP, the encoder is the compiler's native core rather than sharp, AVIF sources are served as written, and the §9.2.2 marker no longer lists the four-encode limit as unmet.
 - **0.8.14-draft** (2026-11-13) — §7.3: Markdown files open in the Edit view rather than a content mode; §7.6: held entries are kept by jx dev and Studio's canvas.
 - **0.8.13-draft** (2026-11-13) — §10.4, §10.6: a project's pure named formulas reach components; the live page shell and the Studio canvas hand them to the runtime.
 - **0.8.12-draft** (2026-11-13) — CSP frame-ancestors follows security.frameOptions (DENY is 'none', false omits it) and inline speculation rules are hashed (§14.3.1).

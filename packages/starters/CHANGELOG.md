@@ -1,5 +1,28 @@
 # Changelog
 
+## [3.7.0](https://github.com/jxsuite/jx/compare/starters-v3.6.0...starters-v3.7.0) (2026-11-13)
+
+
+### Features
+
+* **starters:** every starter asks for AVIF and JPEG images ([adfcdae](https://github.com/jxsuite/jx/commit/adfcdae32c6b80825fb3fc2f8066de43dd1691ee))
+
+
+### Bug Fixes
+
+* **schema:** the images config describes the formats the build writes ([2c4773e](https://github.com/jxsuite/jx/commit/2c4773e838862a67adc9f954807970d843adcacf))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/protocol bumped to 6.4.1
+  * devDependencies
+    * @jxsuite/parser bumped to 5.0.1
+    * @jxsuite/runtime bumped to 7.0.1
+    * @jxsuite/schema bumped to 6.0.1
+
 ## [3.6.0](https://github.com/jxsuite/jx/compare/starters-v3.5.0...starters-v3.6.0) (2026-11-12)
 
 

@@ -1,6 +1,6 @@
 /** Site-build.test.js — Tests for the Phase 1 site build pipeline */
 
-import { afterAll, afterEach, beforeAll, describe, expect, it, mock } from "bun:test";
+import { afterAll, afterEach, beforeAll, describe, expect, it, spyOn } from "bun:test";
 import {
   copyFileSync,
   existsSync,
@@ -21,6 +21,7 @@ import { buildSite } from "../src/site/site-build";
 import { isJsonObject, isNodeObject } from "@jxsuite/schema/guards";
 import type { JsonObject, JsonValue, JxElement } from "@jxsuite/schema/types";
 import { hashOf } from "../src/site/csp.ts";
+import { fakeSource, installFakeBinding } from "./_fake-binding.ts";
 import { _testResetNpmCacheBase, _testSetNpmCacheBase } from "../src/site/image-cache.ts";
 
 const TMP = resolve(import.meta.dir, "__test-site__");
@@ -1052,18 +1053,11 @@ describe("buildSite — cloudflare-pages adapter", () => {
 describe("buildSite — cloudflare images service", () => {
   const CF_IMG_TMP = resolve(import.meta.dir, "__test-site-cf-images__");
 
-  // Sharp is unloadable on some dev hosts (NixOS), so it is mocked file-wide (mock.module
-  // Registers once per module id — the last call in source order wins for every test in this
-  // File). The resize chain is included, not just metadata, because the image-cache-logging
-  // Block below needs a real (mocked) variant write to touch a cache entry.
-  void mock.module("sharp", () => ({
-    default: () => ({
-      metadata: async () => ({ format: "png", height: 720, width: 1280 }),
-      resize: () => ({
-        toFormat: () => ({ toFile: async () => {} }),
-      }),
-    }),
-  }));
+  /* The native addon is replaced file-wide by a double (mock.module registers once per module
+     id, so this holds for every test in the file). The double writes a file for each variant it
+     names, which the image-cache-logging block below needs to touch a cache entry. */
+  installFakeBinding();
+  Object.assign(fakeSource, { format: "png", height: 720, width: 1280 });
 
   async function setupProject(adapter: string) {
     rmSync(CF_IMG_TMP, { force: true, recursive: true });
@@ -1101,7 +1095,7 @@ describe("buildSite — cloudflare images service", () => {
     rmSync(CF_IMG_TMP, { force: true, recursive: true });
   });
 
-  it("rewrites img srcset to /cdn-cgi/image transform URLs without Sharp variants", async () => {
+  it("rewrites img srcset to /cdn-cgi/image transform URLs without encoded variants", async () => {
     await setupProject("cloudflare-pages");
     await buildSite(CF_IMG_TMP, { verbose: false });
 
@@ -1115,7 +1109,7 @@ describe("buildSite — cloudflare images service", () => {
     expect(existsSync(resolve(CF_IMG_TMP, "dist/_worker.js"))).toBe(false);
     expect(existsSync(resolve(CF_IMG_TMP, "dist/functions"))).toBe(false);
 
-    // Sharp variant pipeline skipped entirely
+    // The variant pipeline is skipped entirely
     expect(existsSync(resolve(CF_IMG_TMP, "dist/images/_optimized"))).toBe(false);
     expect(existsSync(resolve(CF_IMG_TMP, ".cache/images/_optimized"))).toBe(false);
   });
@@ -2743,7 +2737,7 @@ describe("buildSite — dynamic routes with content types", () => {
 describe("buildSite — image optimization cache logging", () => {
   const IMG_TMP = resolve(import.meta.dir, "__test-site-img-log__");
 
-  // A real image reference is optimized through Sharp (mocked file-wide above) so the cache
+  // A real image reference is optimized through the addon (a double, file-wide above) so the cache
   // Entry is genuinely touched during the build. A stale, never-touched entry pre-populated
   // Into the manifest does not do this: prune (called before the "Optimized N image(s)" log
   // Line) evicts anything not touched this build.
@@ -2782,6 +2776,16 @@ describe("buildSite — image optimization cache logging", () => {
     _testResetNpmCacheBase();
   });
 
+  it("leaves every image as it is when the build is told not to optimize", async () => {
+    const result = await buildSite(IMG_TMP, { optimizeImages: false });
+    expect(result.errors).toHaveLength(0);
+    const html = readFileSync(resolve(IMG_TMP, "dist/index.html"), "utf8");
+    expect(html).toContain('src="/images/hero.png"');
+    expect(html).not.toContain("srcset");
+    expect(existsSync(resolve(IMG_TMP, "dist/images/_optimized"))).toBe(false);
+    expect(existsSync(resolve(IMG_TMP, ".cache/images"))).toBe(false);
+  });
+
   it("logs and saves image cache when optimize is enabled", async () => {
     const result = await buildSite(IMG_TMP, { verbose: true });
     expect(result.errors).toHaveLength(0);
@@ -2793,6 +2797,50 @@ describe("buildSite — image optimization cache logging", () => {
       throw new TypeError("the image cache manifest has no entries object");
     }
     expect(Object.keys(manifest.entries).length).toBeGreaterThan(0);
+  });
+
+  it("accounts for the whole build in six phases", async () => {
+    const { timings } = await buildSite(IMG_TMP);
+    const { total, ...phases } = timings;
+    expect(Object.keys(phases).toSorted()).toEqual([
+      "bundles",
+      "components",
+      "content",
+      "outputs",
+      "routes",
+      "setup",
+    ]);
+    const spent = Object.values(phases);
+    expect(spent.every((ms) => ms >= 0)).toBe(true);
+    // The phases are consecutive laps of one clock, so nothing falls between them.
+    const sum = spent.reduce((whole, ms) => whole + ms, 0);
+    expect(total).toBeGreaterThan(0);
+    expect(Math.abs(total - sum)).toBeLessThan(1);
+  });
+
+  it("warns that WebP is written losslessly, and only when a project lists it", async () => {
+    const warn = spyOn(console, "warn").mockImplementation(() => {});
+    const lossless = () => warn.mock.calls.filter(([line]) => String(line).includes("losslessly"));
+    try {
+      await buildSite(IMG_TMP);
+      expect(lossless()).toHaveLength(0);
+
+      writeFileSync(
+        resolve(IMG_TMP, "project.json"),
+        JSON.stringify({
+          build: { outDir: "./dist" },
+          images: { formats: ["webp", "avif"], optimize: true },
+          name: "Img Test",
+        }),
+        "utf8",
+      );
+      const result = await buildSite(IMG_TMP);
+      expect(result.errors).toHaveLength(0);
+      expect(lossless()).toHaveLength(1);
+      expect(String(lossless()[0]?.[0])).toContain('["avif", "jpeg"] is the default');
+    } finally {
+      warn.mockRestore();
+    }
   });
 });
 

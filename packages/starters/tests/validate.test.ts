@@ -4,7 +4,7 @@
  * against the starter's bundled document schema (the same schema editors and the studio consume),
  * the committed entry documents must be self-contained (no relative $refs), and every content .md
  * must carry YAML frontmatter. (Full image-optimizing compilation is covered by CI screenshots — it
- * requires Sharp, which is unavailable on some dev machines.)
+ * requires the compiler's native addon, which a checkout builds with `bun run build:addon`.)
  */
 import { parseNativeDocument } from "@jxsuite/schema/jxn";
 import { parseProjectSource } from "@jxsuite/schema/project-file";

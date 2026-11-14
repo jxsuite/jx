@@ -48,11 +48,11 @@ const DEFAULTS = {
     layout: null,
   },
   images: {
-    formats: ["webp", "avif"],
+    formats: ["avif", "jpeg"],
     lazyLoad: true,
     optimize: true,
     picture: true,
-    quality: { avif: 65, jpeg: 80, png: 80, webp: 80 },
+    quality: { avif: 65, jpeg: 80 },
     service: "build",
     sizes: "(max-width: 768px) 100vw, 50vw",
     widths: [320, 640, 960, 1280, 1920],
@@ -147,4 +147,13 @@ export function loadProjectConfig(projectRoot: string) {
     configPath,
     projectRoot: resolve(projectRoot),
   };
+}
+
+/**
+ * Whether `JX_IMAGES_OPTIMIZE` turns image optimization off for this build. Only a plain "no" does:
+ * unset, empty or anything else leaves the project's own `images.optimize` in charge, so the
+ * variable can switch a build off and can never switch one on that the project switched off.
+ */
+export function imagesOptimizeOff(value: string | undefined): boolean {
+  return ["0", "false", "no", "off"].includes((value ?? "").trim().toLowerCase());
 }

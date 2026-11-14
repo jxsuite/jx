@@ -45,6 +45,11 @@ jobs:
       - name: Install dependencies
         run: bun install
 
+      # `bun run build` compiles the compiler's Rust core first (`build:addon`), and staging copies
+      # the addon beside the backend bundle.
+      - name: Set up Rust
+        uses: ./.github/actions/setup-rust
+
       - name: Build workspace packages
         run: bun run build
 

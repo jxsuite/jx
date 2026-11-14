@@ -12,6 +12,9 @@
  * on `^5.0.0` and `^2.0.5`, so installing any of them failed to resolve. The run was red, but a
  * Microsoft Store failure in the same run drew the eye.
  *
+ * One exception: the packages that load the compiler's addon wait for its platform packages
+ * (`loaderHolds`).
+ *
  * Attempting the rest does not risk publishing a dependent before its dependency: a dependent whose
  * dependency failed is published against a range npm cannot satisfy YET, which is the same state
  * the stopped loop left (the dependents released before the failure were already out), and the
@@ -31,9 +34,10 @@
  *   PATHS_RELEASED='["packages/runtime"]' bun scripts/publish-released.ts --issue-body issue.md
  */
 
-import { readdirSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
+import { LOADER_PACKAGES } from "./addon-packages.ts";
 import { isJsonRecord, isText } from "./lib/json-guards.ts";
 
 export interface ReleasedPackage {
@@ -86,18 +90,32 @@ export function npmErrorLine(output: string): string {
   );
 }
 
-/** Attempt every package in order; never stop early. */
+/**
+ * Attempt every package in order; never stop early.
+ *
+ * @param packages What to publish, dependencies first.
+ * @param registry Where to publish.
+ * @param log A line of progress.
+ * @param holds For a package directory, the directories that must be on npm before it is attempted
+ *   (`loaderHolds`). Every other package is attempted whatever happened before it.
+ */
 export function publishAll(
   packages: readonly ReleasedPackage[],
   registry: Registry,
   log: (line: string) => void = () => {},
+  holds: ReadonlyMap<string, readonly string[]> = new Map(),
 ): PublishOutcome[] {
   const outcomes: PublishOutcome[] = [];
   for (const pkg of packages) {
     log(`::group::${pkg.dir} -> ${pkg.name}@${pkg.version}`);
+    const needed = holds.get(pkg.dir) ?? [];
+    const missing = outcomes.filter((o) => o.status === "FAILED" && needed.includes(o.dir));
     let outcome: PublishOutcome;
     if (registry.isPublished(pkg.name, pkg.version)) {
       outcome = { ...pkg, status: "already published" };
+    } else if (missing.length > 0) {
+      const names = missing.map((o) => o.name).join(", ");
+      outcome = { ...pkg, error: `held back: not on npm: ${names}`, status: "FAILED" };
     } else {
       const attempt = registry.publish(pkg);
       log(attempt.output.trimEnd());
@@ -167,7 +185,7 @@ export function issueSection(
     "",
     ...failed.map((o) => `- \`${o.name}@${o.version}\` (\`${o.dir}\`): \`${cell(o.error ?? "")}\``),
     "",
-    "Fix the cause first (an `E404` on `PUT` for a new package means npm has no trusted publisher for it yet: add one naming `jxsuite/jx` and the workflow `release-please.yml`), then publish them from the release commit:",
+    "Fix the cause first (an `E404` on `PUT` for a new package means npm has no trusted publisher for it yet: add one naming `jxsuite/jx` and the workflow `release-please.yml`; a package marked `held back` only waits for the ones it names), then publish them from the release commit:",
     "",
     "```sh",
     backfillCommand(
@@ -179,6 +197,46 @@ export function issueSection(
     "It is idempotent: a version already on npm is skipped.",
     "",
   ].join("\n");
+}
+
+/** Where `scripts/addon-packages.ts` writes the per-platform packages of the compiler's addon. */
+export const ADDON_PACKAGES_DIR = "packages/compiler-binding/npm";
+
+/**
+ * The prepared platform packages, to publish BEFORE every workspace package.
+ *
+ * They are not workspaces, so `publish-order.ts` never names them; they exist on disk only in a
+ * publish run that built the addon, and `@jxsuite/compiler-binding` and `@jxsuite/compiler` have by
+ * then been given `optionalDependencies` on each. Publishing them first is the same topological
+ * rule every other package follows: a version npm is told to depend on must already be there. A
+ * directory without a manifest is not a package and is left out.
+ *
+ * @param root The repository root.
+ */
+export function addonPackageDirs(root: string): string[] {
+  const base = join(root, ADDON_PACKAGES_DIR);
+  if (!existsSync(base)) {
+    return [];
+  }
+  return readdirSync(base)
+    .toSorted()
+    .filter((name) => existsSync(join(base, name, "package.json")))
+    .map((name) => join(ADDON_PACKAGES_DIR, name));
+}
+
+/**
+ * What the packages that load the addon wait for: every platform package.
+ *
+ * This is the one place a failure stops a later publish. A dependent of a missing ordinary
+ * dependency fails to install, loudly, until the backfill completes it. A platform package is an
+ * OPTIONAL dependency: a loader published without it installs everywhere and then fails the first
+ * build that has an image in it. `@jxsuite/compiler@9.0.1` went out exactly so (run 43544518046),
+ * as npm's `latest`, with none of its eight platform packages on npm.
+ *
+ * @param addonDirs The platform package directories of this run (`addonPackageDirs`).
+ */
+export function loaderHolds(addonDirs: readonly string[]): Map<string, readonly string[]> {
+  return new Map(LOADER_PACKAGES.map((loader) => [loader, addonDirs]));
 }
 
 /** Read `name` and `version` from a workspace manifest. */
@@ -234,14 +292,15 @@ if (import.meta.main) {
   if (order.exitCode !== 0) {
     process.exit(1);
   }
-  const dirs = decode(order.stdout).split("\n").filter(Boolean);
+  const addonDirs = addonPackageDirs(process.cwd());
+  const dirs = [...addonDirs, ...decode(order.stdout).split("\n").filter(Boolean)];
   if (dirs.length === 0) {
     console.log("No npm packages released this run; nothing to publish.");
     process.exit(0);
   }
 
   const packages = await Promise.all(dirs.map((dir) => readPackage(dir)));
-  const outcomes = publishAll(packages, npm, (line) => console.log(line));
+  const outcomes = publishAll(packages, npm, (line) => console.log(line), loaderHolds(addonDirs));
 
   const summary = summaryTable(outcomes);
   console.log(`\n${summary}`);

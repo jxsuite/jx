@@ -1,5 +1,17 @@
 # Changelog
 
+## [5.0.1](https://github.com/jxsuite/jx/compare/parser-v5.0.0...parser-v5.0.1) (2026-11-13)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/markup bumped to 1.0.10
+    * @jxsuite/schema bumped to 6.0.1
+  * devDependencies
+    * @jxsuite/runtime bumped to 7.0.1
+
 ## [5.0.0](https://github.com/jxsuite/jx/compare/parser-v4.3.4...parser-v5.0.0) (2026-11-12)
 
 

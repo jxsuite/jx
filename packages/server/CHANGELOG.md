@@ -1,5 +1,39 @@
 # Changelog
 
+## [9.0.2](https://github.com/jxsuite/jx/compare/server-v9.0.1...server-v9.0.2) (2026-11-14)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/compiler bumped to 9.0.1
+    * @jxsuite/import bumped to 0.44.4
+
+## [9.0.1](https://github.com/jxsuite/jx/compare/server-v9.0.0...server-v9.0.1) (2026-11-13)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/ai bumped to 0.43.6
+    * @jxsuite/catalog bumped to 0.1.14
+    * @jxsuite/collab bumped to 0.12.1
+    * @jxsuite/compiler bumped to 9.0.0
+    * @jxsuite/create bumped to 1.8.2
+    * @jxsuite/erase bumped to 0.3.1
+    * @jxsuite/import bumped to 0.44.3
+    * @jxsuite/protocol bumped to 6.4.1
+    * @jxsuite/runtime bumped to 7.0.1
+    * @jxsuite/schema bumped to 6.0.1
+    * @jxsuite/site bumped to 2.7.1
+    * @jxsuite/starters bumped to 3.7.0
+  * devDependencies
+    * @jxsuite/auth bumped to 0.8.10
+    * @jxsuite/connector bumped to 0.8.10
+    * @jxsuite/parser bumped to 5.0.1
+
 ## [9.0.0](https://github.com/jxsuite/jx/compare/server-v8.7.0...server-v9.0.0) (2026-11-12)
 
 

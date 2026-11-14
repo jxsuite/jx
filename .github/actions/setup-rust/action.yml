@@ -1,0 +1,55 @@
+name: Set up Rust
+description: Install the pinned Rust (the repository's rust-toolchain.toml), the assembler the AVIF encoder needs, and a build cache.
+
+# For any job that compiles the compiler's Rust core (packages/compiler-binding/crates,
+# specs/compiler.md §14): `bun run
+# build:addon`, and therefore `bun run build`, which runs it first.
+#
+# THE pin is `packages/compiler-binding/rust-toolchain.toml`. Hosted runners ship rustup, and rustup
+# reads that file on the first `cargo` it runs, so `rustup show` below is the whole install. It is
+# the same release the Nix dev shell's nixpkgs ships, for the reason `.bun-version` equals its
+# `pkgs.bun`: one compiler, everywhere.
+
+inputs:
+  targets:
+    description: Extra Rust targets to add (space separated), for a job that cross-compiles.
+    required: false
+    default: ""
+  cache-key:
+    description: >-
+      Set apart this job's build cache from another's. The cache is otherwise keyed on the job's id
+      and the runner's operating system family, which two jobs on different Ubuntu releases can
+      share: a build script compiled on 24.04 then fails to start on 22.04, asking for a glibc
+      that release does not have.
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    # rav1e (the AVIF encoder) assembles its x86-64 SIMD kernels with nasm, and its build fails
+    # without one. arm64 kernels go through the platform assembler every runner already has.
+    - if: runner.os == 'Linux'
+      shell: bash
+      run: |
+        # A container job runs as root and has no sudo; a hosted runner has sudo and is not root.
+        elevate=""; command -v sudo >/dev/null && elevate="sudo"
+        command -v nasm >/dev/null || { $elevate apt-get update -qq && $elevate apt-get install -y -qq nasm; }
+    - if: runner.os == 'macOS'
+      shell: bash
+      run: command -v nasm >/dev/null || brew install nasm
+    - if: runner.os == 'Windows'
+      shell: bash
+      run: command -v nasm >/dev/null || { choco install nasm -y --no-progress && echo "C:\\Program Files\\NASM" >> "$GITHUB_PATH"; }
+    # rustup finds rust-toolchain.toml by walking up from the working directory, and the file sits
+    # beside the Cargo workspace it pins, inside the npm package.
+    - shell: bash
+      working-directory: packages/compiler-binding
+      run: |
+        rustup show active-toolchain || rustup toolchain install
+        for target in ${{ inputs.targets }}; do rustup target add "$target"; done
+        cargo --version
+    - uses: Swatinem/rust-cache@v2
+      with:
+        workspaces: packages/compiler-binding
+        key: ${{ inputs.cache-key }}

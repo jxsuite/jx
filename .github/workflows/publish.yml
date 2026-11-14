@@ -30,7 +30,23 @@ on:
         default: ""
 
 jobs:
+  # The compiler's Rust core, one build per platform (addon.yml, which pull requests run too).
+  # The publish job turns the set of artifacts into npm packages (scripts/addon-packages.ts).
+  #
+  # Only when a release carries the loader: `packages/compiler` matches both
+  # `packages/compiler` (which inlines it into dist/cli.js) and `packages/compiler-binding`.
+  addon:
+    if: contains(inputs.paths_released, 'packages/compiler')
+    uses: ./.github/workflows/addon.yml
+    with:
+      sha: ${{ inputs.sha }}
+
   publish:
+    needs: addon
+    # `skipped` is the ordinary case (a release without the compiler). A FAILED addon leg stops the
+    # whole publish, because a compiler published without the platform packages it names installs
+    # everywhere and encodes images nowhere; re-run the failed leg, then this job.
+    if: ${{ !cancelled() && needs.addon.result != 'failure' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -46,6 +62,8 @@ jobs:
           registry-url: "https://registry.npmjs.org"
       - run: npm install -g npm@latest
       - run: bun install
+      # `bun run build` compiles the compiler's Rust core first (`build:addon`).
+      - uses: ./.github/actions/setup-rust
       - run: bun run build
       # The publish TOOLING comes from the caller's ref (github.sha is the dispatched branch head,
       # or the release commit on a normal run), while the packages above come from `inputs.sha`.
@@ -68,6 +86,18 @@ jobs:
       # never attempted site@2.0.5 or runtime@5.0.0 behind it. It writes a per-package table to the
       # job summary and exits 1 at the end when anything failed. Idempotent: a version already on
       # npm is skipped.
+      - if: needs.addon.result == 'success'
+        uses: actions/download-artifact@v8
+        with:
+          pattern: addon-*
+          merge-multiple: true
+          path: addon-artifacts
+      # Writes packages/compiler-binding/npm/<triple>/ and lists each as an optionalDependency of
+      # the two packages that run the loader. publish-released.ts publishes those directories
+      # first. Never committed: the versions it names do not exist until this step's run ends.
+      - name: Package the compiler addon for every platform
+        if: needs.addon.result == 'success'
+        run: bun .release-tools/scripts/addon-packages.ts addon-artifacts
       - name: Publish released packages (topological, every package attempted)
         env:
           PATHS_RELEASED: ${{ inputs.paths_released }}

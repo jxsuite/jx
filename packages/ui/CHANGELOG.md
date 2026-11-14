@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.12.1](https://github.com/jxsuite/jx/compare/ui-v0.12.0...ui-v0.12.1) (2026-11-13)
+
+
+### Bug Fixes
+
+* **schema:** the images config describes the formats the build writes ([2c4773e](https://github.com/jxsuite/jx/commit/2c4773e838862a67adc9f954807970d843adcacf))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/runtime bumped to 7.0.1
+    * @jxsuite/schema bumped to 6.0.1
+
 ## [0.12.0](https://github.com/jxsuite/jx/compare/ui-v0.11.0...ui-v0.12.0) (2026-11-12)
 
 

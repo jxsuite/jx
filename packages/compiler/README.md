@@ -64,12 +64,12 @@ const result = await buildSite("./my-site", { verbose: true, clean: true });
 
 ## Dependencies
 
-| Package                | Purpose                |
-| ---------------------- | ---------------------- |
-| `@jxsuite/parser`      | Markdown transpilation |
-| `@jxsuite/runtime`     | Shared utilities       |
-| `sharp`                | Image optimization     |
-| `unified` / `remark-*` | Markdown processing    |
+| Package                     | Purpose                                       |
+| --------------------------- | --------------------------------------------- |
+| `@jxsuite/parser`           | Markdown transpilation                        |
+| `@jxsuite/runtime`          | Shared utilities                              |
+| `@jxsuite/compiler-binding` | Image optimization (the compiler's Rust core) |
+| `unified` / `remark-*`      | Markdown processing                           |
 
 ## License
 

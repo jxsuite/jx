@@ -3,11 +3,19 @@ title: "Working in the monorepo"
 description: "Repo layout, running Studio from source, tests, and the conventions the Jx monorepo enforces in CI."
 code:
   - scripts/ci/affected.ts
+  - scripts/test-affected.ts
+  - scripts/lib/test-selection.ts
+  - scripts/lib/test-graph.ts
   - scripts/check-release-parse.ts
   - scripts/publish-released.ts
+  - scripts/addon-packages.ts
+  - scripts/bench-build.ts
+  - scripts/conformance/run.ts
+  - packages/compiler-binding/scripts/build.ts
   - scripts/check-release-integrity.ts
   - scripts/docs/check-plans.ts
   - scripts/ci/approve-held-runs.ts
+  - scripts/ci/no-credit-label.ts
   - scripts/check-schema-freshness.ts
   - packages/test-support/src/preload.ts
   - packages/test-support/src/dom-equality.ts
@@ -34,9 +42,29 @@ The Jx monorepo ([github.com/jxsuite/jx](https://github.com/jxsuite/jx)) is a Bu
 - `bun install`: set up the workspace.
 - `bun run dev`: start the dev server and open Studio in a browser. A browser window has no **Open Project**; add `?project=` and a project folder's absolute path to the address instead, as in `http://localhost:3000/packages/studio/index.html?project=~/Sites/my-site`.
 - `bun test --isolate` (per package): the supported test mode; plain `bun test` has known order-dependent failures.
+- `bun run test:affected`: run only the tests your diff can fail ([Running the tests a change can fail](#running-the-tests-a-change-can-fail)).
+- `bun run verify`: lint, the type-aware lint, both typechecks and `test:affected`. This is the check to run before pushing. `bun run all-the-things` builds every bundle and runs every suite, and is rarely what you need.
 - `bun run typecheck`, `bun run lint`, `bun run format`: tsgo, oxlint (all categories at error), oxfmt.
 - `bun run typecheck:jxn`: `tsc` over the scripts and function bodies of the repository's `.jxn` documents, through `@jxsuite/content-mapper` ([Type checking](/docs/framework/concepts/type-checking)). It has a `tsconfig.jxn.json` of its own because it needs `--runExternalCode`.
 - `bun run lint` also runs the [ai-deslop](https://github.com/maharshi365/deslop) rules, which reject unchecked type assertions, `unknown` parameters and returns, runtime `typeof` branching outside type guards, and duplicate constants and types. `bun run lint:typecheck` is the type-aware pass (deprecated APIs, unnecessary conditions, floating promises, unsafe `any` flow). Both run at error in CI, and neither is turned off for tests or scripts; `.oxlintrc.json` explains each choice.
+
+## The Rust core
+
+Part of the compiler is written in Rust and loaded as a native addon. Today that is the image encoder. It lives in `packages/compiler-binding`, which holds both the Cargo workspace (`crates/`) and the small package that finds and loads the built file.
+
+- `bun run build:addon` compiles it and puts `jx-compiler.<platform>.node` in that package. `bun run build` runs it first.
+- You need Rust and `nasm` for that. The Nix dev shell provides both. Elsewhere, install Rust with rustup, which reads the pinned version from `packages/compiler-binding/rust-toolchain.toml`, and install `nasm` from your package manager.
+- A build that optimizes an image fails without the addon, and the error names the command above. A site with no images never loads it.
+- Test suites do not need it. Every suite except that package's own and the desktop app's replaces the addon with a double, so `bun run verify` works on a machine with no Rust unless your change reaches one of those two.
+- A pull request that changes `packages/compiler-binding` builds the addon for all eight platforms a release ships, and loads it on the six that a CI runner can execute. You do not need to cross-compile locally.
+- After changing a crate, run `cargo fmt --all --check`, `cargo clippy --workspace --all-targets --locked -- -D warnings` and `cargo test --workspace --locked` from `packages/compiler-binding`. CI runs the same three.
+
+Two tools measure a change to the compiler, and both work on every project in the repository (the starters, the sites and `examples`):
+
+- `bun run conformance` builds each project, opens its pages in Chromium and records what the browser ends up with: the DOM with each element's geometry and computed style, the accessibility tree, console and network errors, the effect of clicking controls, and a screenshot. `capture` writes a recording, `compare` reports the differences between two, and `self` records the same tree twice to prove the tool repeats itself. Use it when a change replaces part of the compiler, to show the pages still behave the same. `scripts/conformance/README.md` has the details.
+- `bun run bench:build` times a cold and a warm build of each project, split into the phases of the build. Run it before and after on the same machine; the numbers mean nothing across machines.
+
+Every dependency of a crate must be Rust itself, with no C library linked in. That is what lets the addon load on any system without installing anything beside it.
 
 ## The VS Code extension
 
@@ -65,6 +93,34 @@ import { identities } from "@jxsuite/test-support/inspect-dom";
 expect(identities(seen)).toEqual(identities([first, second]));
 ```
 
+## Running the tests a change can fail
+
+The repository holds about 1,240 test files, and most changes can fail only a fraction of them. `bun run test:affected` works out which:
+
+```bash
+bun run test:affected                # your branch and working tree against origin/main
+bun run test:affected --list         # print the selection and run nothing
+bun run test:affected --base HEAD~1  # compare against a different commit
+bun run test:affected --staged       # only what is staged
+bun run test:affected -- --bail      # pass arguments through to bun test
+```
+
+It decides in two steps. First it asks the same script CI uses which workspaces each changed file reaches ([What CI runs, and when](#what-ci-runs-and-when)). Then, inside each of those workspaces, it follows the import statements from every test file and keeps the tests that reach a changed file. A test that reads the filesystem, starts a process or computes an `import()` specifier is always kept, because it can depend on a file it never imports.
+
+Some changes run a workspace's whole suite, because imports cannot say who reads the file:
+
+- a file no module imports, such as a fixture, a data file or a deleted file;
+- a workspace's `package.json`, `bunfig.toml` or `tsconfig`;
+- a file that reaches the workspace through an edge declared in `scripts/ci/affected.ts`.
+
+A file that holds only types selects nothing. No test can load it, and `bun run typecheck` is what checks it.
+
+:::doc-note
+`test:affected` is a fast answer, not the final one. It runs without coverage, so it cannot tell you a file fell below its workspace's threshold, and a test can still depend on code that source loads by a computed path. CI runs every affected workspace whole, with coverage. Run `bun test --isolate --coverage` in the workspace when coverage is the question.
+:::
+
+How much it saves depends on the change. A file deep in a package that few tests import selects a handful of test files. A file in Studio's core selects most of Studio's suite, because most Studio tests mount the application through one shared harness and really do load it.
+
 ## What CI runs, and when
 
 A pull request runs the checks its diff can actually fail. The test matrix is **derived** from the workspace dependency graph, with no hand-written list behind it, so adding a package cannot leave it untested.
@@ -92,6 +148,8 @@ Pushes to `main`, the nightly cron, and manual dispatch are never gated: they al
 :::doc-note
 `ci` is the aggregate job. It passes when every other job either succeeded or was skipped, and fails if any failed or was cancelled. A job your diff never reached leaves the run green.
 :::
+
+**The `no-credit` label.** A merged pull request earns its author contributor credit ([`CONTRIBUTING.md`](https://github.com/jxsuite/jx/blob/main/CONTRIBUTING.md)), unless it carries this label. `.github/workflows/no-credit-label.yml` applies it when the matrix above would run no tests for the diff, by asking the same `decide()` the matrix uses. It takes back a label it applied once the pull request reaches the tests, and it never removes one a maintainer applied. The label has to be there before the merge.
 
 ## Generated files are fixed for you, not failed at you
 
@@ -137,6 +195,8 @@ Versions are release-please's job. Every publishable workspace is a component in
 A new package enters the manifest at `0.0.0`, which release-please reads as "no release yet", and names its first version with `initial-version` in its config entry (`0.1.0` for a pre-1.0 package; release-please's default is `1.0.0`). The integrity gate (`bun run release:integrity`) skips a `0.0.0` entry for the same reason: it claims nothing until the first release pull request lands. Seeding the manifest with a version that was never released is the other way round, and it is how `packages/catalog` came to claim a `0.1.0` no release ever shipped.
 
 A new package also needs a **trusted publisher on npm** before its first release, naming the `jxsuite/jx` repository and the workflow `release-please.yml`. Publishing authenticates through OIDC with no token, and npm refuses a package it has no trusted publisher for with `E404 Not Found` on the `PUT`. The publish job attempts every released package even when one fails, lists each outcome in its job summary, and files the unpublished ones on the `release-incomplete` issue with the command that publishes them:
+
+There is one exception to attempting everything. The addon ships as one package per platform, and the compiler lists them as optional dependencies, so a compiler published without them would install and then fail the first build that has an image. When npm refuses any platform package, `@jxsuite/compiler-binding` and `@jxsuite/compiler` are held back and reported with the rest. Each platform package is a package of its own, so each needs its own trusted publisher.
 
 ```sh
 gh workflow run release-please.yml -f backfill_paths='["packages/runtime"]' -f backfill_sha=runtime-v5.0.0

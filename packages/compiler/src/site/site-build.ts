@@ -199,6 +199,23 @@ const ADAPTER_REMEDY =
   'set build.adapter to "cloudflare-workers", "cloudflare-pages", "node", or "bun".';
 
 /**
+ * The phases a build's time is divided into, in the order they run. Each is the wall-clock time
+ * between two points in `buildSite`, so together they account for all of `total`:
+ *
+ * - `setup`: reading the project file, the extension registry, document scripts and server mounts.
+ * - `content`: discovering pages, loading extension project sections (collections), asset mounts and
+ *   expanding dynamic routes. This is extension code, not the compiler's own.
+ * - `components`: compiling the site's components to modules and style sheets.
+ * - `routes`: compiling every route, including optimizing the images each one uses.
+ * - `bundles`: the image cache, the server worker, client bundles and extension-emitted assets.
+ * - `outputs`: redirects, sitemap, copied assets, the manifest, the service worker and headers.
+ */
+export type BuildPhase = "setup" | "content" | "components" | "routes" | "bundles" | "outputs";
+
+/** Milliseconds per phase, and for the whole build. Measured, never estimated. */
+export type BuildTimings = Record<BuildPhase | "total", number>;
+
+/**
  * Build an entire Jx site from a project directory.
  *
  * @param {string} projectRoot - Absolute path to the project root (contains project.json)
@@ -207,7 +224,10 @@ const ADAPTER_REMEDY =
  * @param {boolean} [options.verbose] - Log progress
  * @param {boolean} [options.includeHeld] - Keep entries a content type's `hold` rules match, for a
  *   preview. Left off, a build leaves them out (site-architecture.md §7.6).
- * @returns {Promise<{ routes: number; files: number; errors: string[] }>}
+ * @param {boolean} [options.optimizeImages] - `false` builds as if the project said
+ *   `images.optimize: false`, whatever it says: no variant is encoded and every `<img>` keeps its
+ *   source. For a build nobody measures, such as a preview deploy (site-architecture.md §9.2.1).
+ * @returns {Promise<{ routes: number; files: number; errors: string[]; timings: BuildTimings }>}
  */
 export async function buildSite(
   projectRoot: string,
@@ -215,15 +235,37 @@ export async function buildSite(
     clean?: boolean;
     verbose?: boolean;
     includeHeld?: boolean;
+    optimizeImages?: boolean;
   } = {},
 ) {
-  const { clean = true, includeHeld = false, verbose = false } = options;
+  const { clean = true, includeHeld = false, optimizeImages = true, verbose = false } = options;
   const errors: string[] = [];
   const log = verbose ? console.log.bind(console) : () => {};
+  const timings: BuildTimings = {
+    bundles: 0,
+    components: 0,
+    content: 0,
+    outputs: 0,
+    routes: 0,
+    setup: 0,
+    total: 0,
+  };
+  const started = performance.now();
+  let lap = started;
+  /** Close the phase that just ran: everything since the last one closed is its time. */
+  const closePhase = (name: BuildPhase) => {
+    const now = performance.now();
+    timings[name] = now - lap;
+    lap = now;
+  };
 
   // ── 1. Load project configuration ──────────────────────────────────────────
   log("Loading project.json...");
   const { config: projectConfig } = loadProjectConfig(projectRoot);
+  if (!optimizeImages && projectConfig.images.optimize) {
+    projectConfig.images = { ...projectConfig.images, optimize: false };
+    console.log("Image optimization is off for this build: images are published as they are.");
+  }
 
   // The legacy imports-based content model is gone (specs/extensions.md v2) — fail loudly with
   // The migration path instead of silently ignoring the section.
@@ -452,6 +494,8 @@ export async function buildSite(
     );
   }
 
+  closePhase("setup");
+
   // ── 2. Clean output directory ───────────────────────────────────────────
   if (clean && existsSync(outDir)) {
     rmSync(outDir, { force: true, recursive: true });
@@ -523,6 +567,8 @@ export async function buildSite(
   log(`  ${routes.length} route(s) after expansion`);
 
   let fileCount = 0;
+
+  closePhase("content");
 
   // ── 5. Compile site components ──────────────────────────────────────────
   const compiledComponentTags: string[] = [];
@@ -688,11 +734,20 @@ export async function buildSite(
     }
   }
 
+  closePhase("components");
+
   // ── 6. Compile each route ───────────────────────────────────────────────
 
   const cfImages = projectConfig.images.optimize && projectConfig.images.service === "cloudflare";
   const imageCache = projectConfig.images.optimize && !cfImages ? loadCache(projectRoot) : null;
   const imageMetaCache: ImageMetaCache | null = cfImages ? new Map() : null;
+  if (imageCache && projectConfig.images.formats?.includes("webp")) {
+    console.warn(
+      `images.formats lists "webp", which this compiler writes losslessly: its files are several ` +
+        `times the size of AVIF or JPEG. Keep it only for pixel-exact output; ["avif", "jpeg"] ` +
+        `is the default.`,
+    );
+  }
   if (cfImages) {
     console.log(
       `images.service is "cloudflare" — srcsets use /cdn-cgi/image transform URLs. ` +
@@ -997,6 +1052,8 @@ export async function buildSite(
     }
   }
 
+  closePhase("routes");
+
   // ── 6b. Save image cache and copy variants to dist ──────────────────────
   if (imageCache && projectConfig.images.optimize) {
     // Prune only on fully successful builds — a route that failed to compile never
@@ -1270,6 +1327,8 @@ export async function buildSite(
     }
   }
 
+  closePhase("bundles");
+
   // ── 7. Generate redirects ───────────────────────────────────────────────
   if (projectConfig.redirects && Object.keys(projectConfig.redirects).length > 0) {
     log("Generating redirects...");
@@ -1440,7 +1499,9 @@ export async function buildSite(
     log(`  ${errors.length} error(s)`);
   }
 
-  return { errors, files: fileCount, routes: routes.length, serverEntries };
+  closePhase("outputs");
+  timings.total = performance.now() - started;
+  return { errors, files: fileCount, routes: routes.length, serverEntries, timings };
 }
 
 /** The route `compilePage` renders: a URL and the page document that produces it. */
