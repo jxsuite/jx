@@ -7,7 +7,9 @@
  */
 
 import { isFunction } from "@jxsuite/schema/guards";
+import type { JsonObject } from "../core-types.ts";
 import { createToolRegistry, toolError } from "../tools.ts";
+import type { ArgumentCheck, Validator } from "./validator.ts";
 import type {
   ToolAnnotations,
   ToolArguments,
@@ -99,6 +101,12 @@ export interface CatalogView {
    * not listed, and a call to it still runs.
    */
   readonly advertise?: (entry: CatalogEntry) => boolean;
+  /**
+   * Checks a call's arguments against its member's whole schema (specs/ai.md §3.10), after the
+   * registry's own check of required keys and primitive types has passed. A call it refuses is not
+   * run. Without one, the registry's own check is all a call meets.
+   */
+  readonly validator?: Validator;
 }
 
 /** A catalog with the plain registry that validates and runs its members. */
@@ -118,9 +126,31 @@ interface CatalogRun {
  */
 export function catalogRegistry(
   catalog: Catalog | (() => Catalog),
-  { advertise, gate }: CatalogView = {},
+  { advertise, gate, validator }: CatalogView = {},
 ): ToolRegistry {
   const runners = new WeakMap<Catalog, ToolRegistry>();
+  /* A member's schema may be built with live getters (an `enum` that follows the host's state), so
+     its check is keyed by what the schema says now rather than by the object that says it. */
+  const checks = new Map<string, ArgumentCheck>();
+
+  /**
+   * What the member's schema says is wrong with `args`, or null. Only a strict member is checked,
+   * as only a strict member's arguments are checked at all, and only with a host's validator.
+   */
+  function schemaError(entry: CatalogEntry, args: ToolArguments): string | null {
+    if (!validator || !entry.strict) {
+      return null;
+    }
+    const text = JSON.stringify(entry.parameters);
+    let check = checks.get(text);
+    if (!check) {
+      /* SAFETY: the text is JSON.stringify of a JSON Schema object, so it parses to an object. */
+      check = validator.getValidator(JSON.parse(text) as JsonObject);
+      checks.set(text, check);
+    }
+    const verdict = check(args);
+    return verdict.valid ? null : verdict.errorMessage;
+  }
 
   /** The catalog now, and the registry that validates and runs its members. */
   function current(): CatalogRun {
@@ -152,13 +182,27 @@ export function catalogRegistry(
       return runner.listForLLM().filter((_tool, at) => names.has(members.entries[at]!.name));
     },
     getDefinition: (name) => current().members.get(name),
-    validate: (name, args) => current().runner.validate(name, args),
+    validate(name, args) {
+      const { members, runner } = current();
+      const checked = runner.validate(name, args);
+      const entry = members.get(name);
+      const error = checked.valid && entry ? schemaError(entry, args) : null;
+      return error === null ? checked : { errors: [error], valid: false };
+    },
     async execute(name: string, args: ToolArguments, ctx?: ToolContext) {
       const { members, runner } = current();
       const entry = members.get(name);
       const requires = entry ? (gate?.(entry, args) ?? null) : null;
       if (requires !== null) {
         return toolError(`Tool "${name}" is not available right now — it requires ${requires}.`);
+      }
+      /* The registry's own check first, so a call it has always refused is refused in the words it
+         always was; the schema is asked only about what that check let through. */
+      if (entry && runner.validate(name, args).valid) {
+        const error = schemaError(entry, args);
+        if (error !== null) {
+          return toolError(`Validation failed: ${error}`);
+        }
       }
       return runner.execute(name, args, ctx);
     },

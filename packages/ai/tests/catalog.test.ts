@@ -4,6 +4,7 @@
  */
 import { describe, expect, test } from "bun:test";
 import {
+  cachedValidator,
   catalogRegistry,
   CatalogError,
   createCatalog,
@@ -11,7 +12,7 @@ import {
   TOOL_NAME_PATTERN,
   toMcpTool,
 } from "../src/catalog/index.ts";
-import type { CatalogEntry } from "../src/catalog/index.ts";
+import type { CatalogEntry, Validator } from "../src/catalog/index.ts";
 import { JX_TOOL_FACTS, toolFacts } from "../src/jx-tools/index.ts";
 import { createToolDefinition } from "../src/tools.ts";
 import type { ToolAnnotations, ToolDefinition } from "../src/tools.ts";
@@ -140,6 +141,147 @@ describe("catalogRegistry", () => {
 
   test("a catalog is not registered into", () => {
     expect(() => catalogRegistry(createCatalog()).register(tool("a"))).toThrow(TypeError);
+  });
+});
+
+describe("a catalog checks arguments against the member's whole schema", () => {
+  /** A validator that refuses any argument whose value is the string "refused", and counts. */
+  function recordingValidator() {
+    const compiled: object[] = [];
+    const validator: Validator = {
+      getValidator(schema) {
+        compiled.push(schema);
+        return (input) =>
+          Object.values(input).includes("refused")
+            ? {
+                errorMessage: 'Argument at "/colour" must be one of the allowed values',
+                valid: false,
+              }
+            : { data: input, valid: true };
+      },
+    };
+    return { compiled, validator };
+  }
+
+  const coloured = (extra: Partial<ToolDefinition> = {}) =>
+    tool("paint", {
+      parameters: {
+        properties: { colour: { enum: ["red", "blue"], type: "string" } },
+        required: ["colour"],
+        type: "object",
+      },
+      ...extra,
+    });
+
+  test("a call the schema refuses is not run, and is answered in the registry's words", async () => {
+    const { validator } = recordingValidator();
+    let ran = 0;
+    const registry = catalogRegistry(
+      createCatalog([
+        coloured({
+          execute: () => {
+            ran += 1;
+            return { success: true };
+          },
+        }),
+      ]),
+      { validator },
+    );
+    expect(await registry.execute("paint", { colour: "refused" })).toEqual({
+      error: 'Validation failed: Argument at "/colour" must be one of the allowed values',
+      success: false,
+    });
+    expect(ran).toBe(0);
+    expect(registry.validate("paint", { colour: "refused" })).toEqual({
+      errors: ['Argument at "/colour" must be one of the allowed values'],
+      valid: false,
+    });
+    expect(await registry.execute("paint", { colour: "red" })).toEqual({ success: true });
+    expect(ran).toBe(1);
+    expect(registry.validate("paint", { colour: "red" })).toEqual({ valid: true });
+  });
+
+  test("the registry's own refusal comes first, in the words it always had", async () => {
+    const { compiled, validator } = recordingValidator();
+    const registry = catalogRegistry(createCatalog([coloured()]), { validator });
+    expect(await registry.execute("paint", {})).toEqual({
+      error: 'Validation failed: Missing required argument: "colour"',
+      success: false,
+    });
+    expect(registry.validate("paint", {})).toEqual({
+      errors: ['Missing required argument: "colour"'],
+      valid: false,
+    });
+    // The schema was never asked about a call the registry had already refused.
+    expect(compiled).toEqual([]);
+  });
+
+  test("a member that is not strict is not checked, and neither is one a gate refuses", async () => {
+    const { compiled, validator } = recordingValidator();
+    const { parameters } = coloured();
+    const catalog = createCatalog([coloured({ strict: false }), tool("gated", { parameters })]);
+    const registry = catalogRegistry(catalog, {
+      gate: (entry) => (entry.name === "gated" ? "a reason" : null),
+      validator,
+    });
+    expect(await registry.execute("paint", { colour: "refused" })).toMatchObject({ success: true });
+    expect(await registry.execute("gated", { colour: "refused" })).toMatchObject({
+      success: false,
+    });
+    expect(compiled).toEqual([]);
+    // A tool that is not a member has nothing to check either.
+    expect(registry.validate("ghost", {})).toMatchObject({ valid: false });
+  });
+
+  test("a schema is compiled once for what it says, and again when what it says changes", async () => {
+    const { compiled, validator } = recordingValidator();
+    const allowed = ["red"];
+    // A schema built with a live getter, as a host whose choices follow its own state builds one.
+    const live = {
+      properties: {
+        colour: {
+          get enum() {
+            return allowed;
+          },
+          type: "string" as const,
+        },
+      },
+      required: ["colour"],
+      type: "object" as const,
+    };
+    const registry = catalogRegistry(createCatalog([tool("paint", { parameters: live })]), {
+      validator,
+    });
+    await registry.execute("paint", { colour: "red" });
+    await registry.execute("paint", { colour: "red" });
+    expect(compiled).toHaveLength(1);
+    allowed.push("blue");
+    await registry.execute("paint", { colour: "blue" });
+    expect(compiled).toHaveLength(2);
+    expect(compiled[1]).toMatchObject({ properties: { colour: { enum: ["red", "blue"] } } });
+  });
+
+  test("without a validator, the registry's own check is all a call meets", async () => {
+    const registry = catalogRegistry(createCatalog([coloured()]));
+    expect(await registry.execute("paint", { colour: "refused" })).toMatchObject({ success: true });
+  });
+});
+
+describe("cachedValidator", () => {
+  test("compiles a schema once by identity, and each schema object separately", () => {
+    let compiles = 0;
+    const validator = cachedValidator(() => {
+      compiles += 1;
+      return (input) => ({ data: input, valid: true });
+    });
+    const schema = { type: "object" as const };
+    const first = validator.getValidator(schema);
+    expect(validator.getValidator(schema)).toBe(first);
+    expect(compiles).toBe(1);
+    // An equal schema that is another object is another schema.
+    expect(validator.getValidator({ type: "object" })).not.toBe(first);
+    expect(compiles).toBe(2);
+    expect(first({ a: 1 })).toEqual({ data: { a: 1 }, valid: true });
   });
 });
 

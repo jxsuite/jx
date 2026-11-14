@@ -151,8 +151,12 @@ describe("the size of @jxsuite/ai in the page", () => {
    * migration every read runs, the saved window, the store contract and its write queue
    * (specs/ai.md §3.13). Most of it is a move out of Studio's own store, plus the block check a
    * stored conversation is read with.
+   *
+   * Raised again to 64,512 (61,503 bytes) when the four file tools moved here from Studio's own
+   * project tools, to run over any host (specs/ai.md §3.14), with the catalog's argument check
+   * (§3.10): a move, plus the seam a host's validator is asked through.
    */
-  const CEILING = 58_368;
+  const CEILING = 64_512;
 
   /** The `@jxsuite/ai` subpaths Studio imports or re-exports for their values, not only types. */
   function runtimeSubpaths(): string[] {
