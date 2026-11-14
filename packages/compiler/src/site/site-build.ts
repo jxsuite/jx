@@ -3064,10 +3064,10 @@ function injectHead(
   result = result.replace(/<html\s[^>]*>/i, (match: string) => {
     let tag = /lang=/.test(match)
       ? match.replace(/lang="[^"]*"/, literalReplacement(`lang="${root.lang}"`))
-      : match.replace("<html", literalReplacement(`<html lang="${root.lang}"`));
+      : match.replace("<html", `<html lang="${root.lang}"`);
     if (root.dir !== undefined) {
       tag = /\sdir=/.test(tag)
-        ? tag.replace(/\sdir="[^"]*"/, literalReplacement(` dir="${root.dir}"`))
+        ? tag.replace(/\sdir="[^"]*"/, ` dir="${root.dir}"`)
         : tag.replace("<html", literalReplacement(`<html dir="${root.dir}"`));
     }
     return tag;
