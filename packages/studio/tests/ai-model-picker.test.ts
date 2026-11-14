@@ -283,6 +283,18 @@ describe("ai-model-picker — failure", () => {
     expect(globalThis.localStorage.getItem("jx.ai.model")).toBeNull();
   });
 
+  test("a listing the upstream could not serve is named in the hint, without Retry", async () => {
+    fetchImpl = async () =>
+      Response.json({ models: [{ id: "gpt-4o" }], upstreamError: 404 }, { status: 200 });
+    const c = await mountPicker();
+    await flush();
+    await c.repaint();
+    expect(selectHost(c.container).getAttribute("title")).toBe("Couldn't load models: HTTP 404");
+    expect(c.container.querySelector('[part="retry"]')).toBeNull();
+    expect(c.picker.error()).toBe("");
+    expect(values(c.container)).toContain("gpt-4o");
+  });
+
   test("a failed fetch is not retried on every render", async () => {
     let calls = 0;
     fetchImpl = async () => {
@@ -374,11 +386,15 @@ describe("ai-model-picker — the second host's seams", () => {
 
   test("a credential change makes the catalogue unavailable rather than stale", async () => {
     /* The list is read from cachedModels(credentials) on every render, never held here. Holding it
-       is what once let the picker offer one provider's models while another was configured. */
+       is what once let the picker offer one provider's models while another was configured. The
+       same holds for a listing's failure, which is kept with the catalogue. */
+    fetchImpl = async () =>
+      Response.json({ models: [{ id: "gpt-4o" }, { id: "o3" }], upstreamError: 404 });
     const c = await mountPicker();
     await flush();
     await c.repaint();
     expect(values(c.container)).toContain("o3");
+    expect(selectHost(c.container).getAttribute("title")).toContain("HTTP 404");
 
     fetchImpl = async () => Response.json({ models: [{ id: "llama-3" }] }, { status: 200 });
     saveAiProvider({ apiKey: "sk-other", baseUrl: "https://elsewhere.example/v1", model: "" });
@@ -388,6 +404,7 @@ describe("ai-model-picker — the second host's seams", () => {
     await flush();
     await c.repaint();
     expect(values(c.container)).toContain("llama-3");
+    expect(selectHost(c.container).getAttribute("title")).toBe("Model");
   });
 
   test("a document taken out of its host is remounted, not lost", async () => {
