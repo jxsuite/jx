@@ -4115,32 +4115,48 @@ export function renderedComponentTags(
 }
 
 /**
- * The tags whose module a site ships (compiler.md §8.1): every definition that is not fully static,
- * and, to a fixpoint, every registered tag such a definition renders. One answer per tag for the
- * whole site, because there is one module per tag: a static component used on its own on one page
- * and inside a live one on another ships its module on both.
+ * The tags whose module a page loads (compiler.md §8.1): every definition that is not fully static,
+ * and, to a fixpoint, every registered tag that such a definition renders when the page can draw
+ * that definition. The answer is the page's: a static component used on its own on one page and
+ * inside a live one on another is static on the first and live on the second. Without `page` every
+ * live definition counts as drawn, which is the answer for a site as a whole.
  *
  * @param {ReadonlyMap<string, JxElement>} registry - Tag name → definition
+ * @param {JxElement} [page] - The composed page document, before its instances are expanded
  * @returns {Set<string>}
  * @docs framework/build
  */
-export function computeLiveTags(registry: ReadonlyMap<string, JxElement>): Set<string> {
+export function computeLiveTags(
+  registry: ReadonlyMap<string, JxElement>,
+  page?: JxElement,
+): Set<string> {
+  const closure = (seeds: Iterable<string>): Set<string> => {
+    const reached = new Set(seeds);
+    const queue = [...reached];
+    for (let tag = queue.pop(); tag !== undefined; tag = queue.pop()) {
+      /* SAFETY: every tag on the queue was read from `registry` or passed `registry.has`. */
+      for (const rendered of renderedComponentTags(registry.get(tag) as JxElement, registry)) {
+        if (!reached.has(rendered)) {
+          reached.add(rendered);
+          queue.push(rendered);
+        }
+      }
+    }
+    return reached;
+  };
+  const drawn = page ? closure(renderedComponentTags(page, registry)) : undefined;
   const live = new Set<string>();
-  const queue: string[] = [];
+  const seeds: string[] = [];
   for (const [tag, def] of registry) {
     if (!isComponentFullyStatic(def)) {
       live.add(tag);
-      queue.push(tag);
-    }
-  }
-  for (let tag = queue.pop(); tag !== undefined; tag = queue.pop()) {
-    /* SAFETY: every tag on the queue was read from `registry` or passed `registry.has`. */
-    for (const rendered of renderedComponentTags(registry.get(tag) as JxElement, registry)) {
-      if (!live.has(rendered)) {
-        live.add(rendered);
-        queue.push(rendered);
+      if (!drawn || drawn.has(tag)) {
+        seeds.push(tag);
       }
     }
+  }
+  for (const tag of closure(seeds)) {
+    live.add(tag);
   }
   return live;
 }
