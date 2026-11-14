@@ -135,14 +135,16 @@ The emitted module is named after the component's `tagName` — matching the loa
 }
 ```
 
-**Output** (`user-card.js`):
+**Output** (`user-card.js`, formatted and abridged: the comments stand for code §4.1, §4.4 and §11 specify, and constants, helpers and class fields that code adds outside the callbacks are left out):
 
 ```js
 import { reactive, computed, effect, stop } from "@vue/reactivity";
-import { render, html } from "lit-html";
+import { render, html, nothing } from "lit-html";
+// __jxEnumAttrs and __jxAttrText: the boolean-attribute rule (§11)
 
 class UserCard extends HTMLElement {
   #effects = [];
+  #rendered = false;
 
   constructor() {
     super();
@@ -150,29 +152,34 @@ class UserCard extends HTMLElement {
       username: "Guest",
       status: "online",
     });
-    this.state.displayStatus = computed(() =>
-      this.state.status === "online" ? "Available" : "Away",
-    );
+
     this.state.setAway = (state) => {
       state.status = "away";
     };
+
+    this.state.displayStatus = computed(() =>
+      this.state.status === "online" ? "Available" : "Away",
+    );
   }
 
   template() {
     const s = this.state;
     return html`
       <h3>${s.username}</h3>
-      <button @click="${() => s.setAway(s)}">Set Away</button>
+      <button @click="${(e) => s.setAway(s, e)}">Set Away</button>
     `;
   }
 
   connectedCallback() {
-    for (const key of Object.keys(this.state)) {
-      if (key in this && this[key] !== undefined) {
-        this.state[key] = this[key];
-      }
+    // Props: data-jx-props, then props.* attributes, then properties (§4.4)
+    const _first = !this.#rendered;
+    this.#rendered = true;
+    if (this.hasAttribute("data-jx-prerendered")) {
+      this.removeAttribute("data-jx-prerendered");
     }
+    if (_first) this.replaceChildren();
     this.#effects.push(effect(() => render(this.template(), this)));
+    // onMount, on a microtask after rendering (§4.1)
   }
 
   disconnectedCallback() {
@@ -180,26 +187,32 @@ class UserCard extends HTMLElement {
       stop(_e);
     }
     this.#effects.length = 0;
+    // onUnmount (§4.1)
   }
 }
 
 customElements.define("user-card", UserCard);
 ```
 
+The static `style` is not in the module: it goes to the component's stylesheet, which every page using the component inlines (§8.2). `setAway` declares no parameters and is still called with the event (§4.3). A function entry is assigned before a computed one, whatever order `state` declares them in, and the prerendered children are cleared on the first connection only.
+
 ### 4.3 lit-html Binding Syntax
 
-> **Status: Partial.** Two rows do not match what `packages/compiler/src/targets/compile-element.ts` emits: a template-valued `hidden` is bound as the property `.hidden=${…}`, and the element target emits no `?attr` binding at all (a bound entry under `attributes` goes through the inlined boolean-attribute helper, §11); and an event reference is bound as `@click=${(e) => s.fn(s, e)}`, passing the event. The ref lowering described below ships as written.
-
-| Jx                                         | lit-html                    | What it does               |
-| ------------------------------------------ | --------------------------- | -------------------------- |
-| `"textContent": "${state.name}"`           | `${s.name}`                 | Reactive text              |
-| `"onclick": { "$ref": "#/state/fn" }`      | `@click="${() => s.fn(s)}"` | Event listener             |
-| `"$props": { "items": { "$ref": "..." } }` | `.items="${s.items}"`       | JS property (by reference) |
-| `"hidden": "${state.loading}"`             | `?hidden="${s.loading}"`    | Boolean attribute          |
-| `"className": "${state.cls}"`              | `class="${s.cls}"`          | Attribute binding          |
-| `"style": { "color": "${state.c}" }`       | `style="color: ${s.c}"`     | Inline style               |
+| Jx                                                   | lit-html                                                              | What it does                                                              |
+| ---------------------------------------------------- | --------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| `"textContent": "${state.name}"`                     | `${s.name}`                                                           | Reactive text                                                             |
+| `"onclick": { "$ref": "#/state/fn" }`                | `@click="${(e) => s.fn(s, e)}"`                                       | Event listener, called with `(state, event)` (spec.md §5.3 4d)            |
+| `"$props": { "items": { "$ref": "..." } }`           | `.items="${s.items}"`                                                 | JS property (by reference)                                                |
+| `"hidden": "${state.loading}"`                       | `.hidden="${s.loading}"`                                              | DOM property (spec.md §8.1), which the element reflects                   |
+| `"className": "${state.cls}"`                        | `class="${s.cls}"`                                                    | Attribute binding                                                         |
+| `"style": { "color": "${state.c}" }`                 | `style="color: ${s.c}"`                                               | Inline style                                                              |
+| `"attributes": { "aria-expanded": "${state.open}" }` | `aria-expanded="${__jxAttrText('aria-expanded', s.open) ?? nothing}"` | Attribute; a boolean takes spec.md §8.3's spelling, and `null` removes it |
 
 The `.property` syntax is the key enabler for the property-first interface.
+
+**No `?name=` binding is emitted; a boolean is decided in one of three places.** A top-level key is a DOM property (spec.md §8.1), so `.hidden=` hands the value to the element's own setter, which adds or removes the reflected attribute exactly as the runtime's property write does. A whole `${…}` or a `$ref` under `attributes` goes through `__jxAttrText`, the boolean-attribute rule every generated module carries (`attrHelperSource()`, §11): it spells a boolean by the family spec.md §8.3 assigns the name and returns `null` for absence, which `?? nothing` turns into removal. A literal boolean under `attributes` is decided at build time by the same rule, so `"open": true` emits a bare `open`, `"aria-hidden": false` emits `aria-hidden="false"`, and `"hidden": false` emits nothing. A template with text around its expression (`"page ${state.n}"`) is a string by construction and binds without the helper. lit's `?name=` would apply the presence family to every name and write an empty `aria-expanded` for `true`, which spec.md §8.3 reads as unset.
+
+**A handler receives the event.** Every `on*` call site passes `(state, event)`, and a string body is built with `state` first and its other declared names after it (spec.md §5.3 4d), so a `$ref` handler is called as `s.fn(s, e)`; inside a map body the call is preceded by `s.$map = $map;` (§4.7). An inline Function body or an `$expression` on `on*` is compiled into the arrow's body rather than called.
 
 **Every row above lowers a `$ref` through the one tokenizer** (`@jxsuite/runtime/pointer`, spec.md §7.1), which decides each segment independently: a segment that is an ECMAScript identifier becomes `.name`, and any other segment becomes `["…"]`. So `#/state/user/name` is `s.user.name` while `#/state/items/0` is `s.items["0"]`. The same rule governs an emitted object-literal key, which is bare where it is an identifier and quoted where it is not.
 
@@ -297,7 +310,7 @@ ${{
 
 **A shared subtree is hoisted, not repeated.** A branching construct — `$switch`, or a `tagName` chosen at creation (spec.md §8.6) — writes one template per branch, so a subtree the authored document names once was emitted once per branch into the bundle. Any subtree that would repeat is lifted into a `const _cN = html`…`` declared inside `template()`, above the `return`, and the branches reference it. The declaration is inside the method, not at module scope, so it is rebuilt per render and reads the same state alias the template does. A map body gets its own declarations inside its callback, because they close over that callback's `item`/`index`. Branches that emit distinct subtrees are left inline, and a chosen `tagName` whose candidates disagree about being preformatted is not hoisted, since `white-space` decides how the subtree itself is indented.
 
-> **Status: Implemented.** `compile-element.js` produces complete lit-html custom element modules.
+> **Status: Implemented.** `compile-element.ts` produces complete lit-html custom element modules.
 
 ---
 
@@ -809,13 +822,13 @@ The site build bundles Function-def `$src` modules for the browser (`packages/co
 
 External standards this specification binds itself to. Vocabulary and cell grammar: [`standards.md`](./standards.md). `lit-html` and `@vue/reactivity` are libraries rather than standards; Appendix A records them as dependencies.
 
-| Standard                                                                                  | Class         | Binds  | Evidence                                                                                        | Note                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| ----------------------------------------------------------------------------------------- | ------------- | ------ | ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [ECMA-262](https://ecma-international.org/publications-and-standards/standards/ecma-262/) | **Adopted**   | §4, §5 | packages/compiler/src/targets/compile-element.ts, packages/compiler/tests/no-eval.test.ts       | Emitted modules are plain ECMAScript modules containing no `new Function` and no `eval`, which is what lets compiled output run under a policy without `'unsafe-eval'` — asserted by a committed test.                                                                                                                                                                                                                                                                                                  |
-| [WHATWG HTML](https://html.spec.whatwg.org/)                                              | **Subset**    | §3, §4 | packages/compiler/src/targets/compile-element.ts                                                | Custom elements are defined and rendered into the **light** DOM; `<slot>` is emulated by splicing saved children, and no shadow root is ever attached. Declarative Shadow DOM, `::part` and `ElementInternals` are therefore unavailable to a Jx component.                                                                                                                                                                                                                                             |
-| [CSP Level 3](https://www.w3.org/TR/CSP3/)                                                | **Subset**    | §3     | packages/compiler/tests/no-eval.test.ts, packages/compiler/src/site/csp.ts                      | What the tiers owe the policy: no `eval`, no `new Function`, and no `onclick=` attribute — handlers are bound as listeners — plus two inline blocks that are byte-identical across a build, so one hash each names them site-wide. The policy itself is assembled and emitted by the site build (`site-architecture.md` §14.3.1).                                                                                                                                                                       |
-| [Subresource Integrity](https://www.w3.org/TR/SRI/)                                       | **Divergent** | §12    | packages/compiler/src/site/client-runtime.ts, packages/compiler/tests/client-runtime.test.ts    | The gap this standard existed to close is closed by **removal** rather than by attestation: the runtime is served from the site, so there is no cross-origin subresource left to hash. SRI would apply again only if a project overrode the import map back to a URL, and the build cannot compute an integrity value for a file it never fetched.                                                                                                                                                      |
-| [Fetch Metadata Request Headers](https://www.w3.org/TR/fetch-metadata/)                   | **Divergent** | §6     | packages/compiler/src/targets/compile-server.ts, packages/compiler/tests/compile-server.test.ts | The generated worker reads `Sec-Fetch-Site` in front of every server function and extension mount. Two deviations from the Resource Isolation Policy: `same-site` is refused, because a sibling subdomain is not the site's own script, and a navigation passes whatever its method, because an identity provider's `form_post` answer is a cross-site POST navigation; the routes that read a body require a JSON `Content-Type` instead. An absent header is accepted, since only a browser sends it. |
+| Standard                                                                                  | Class         | Binds  | Evidence                                                                                                                      | Note                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| ----------------------------------------------------------------------------------------- | ------------- | ------ | ----------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [ECMA-262](https://ecma-international.org/publications-and-standards/standards/ecma-262/) | **Adopted**   | §4, §5 | packages/compiler/src/targets/compile-element.ts, packages/compiler/tests/no-eval.test.ts                                     | Emitted modules are plain ECMAScript modules containing no `new Function` and no `eval`, which is what lets compiled output run under a policy without `'unsafe-eval'` — asserted by a committed test.                                                                                                                                                                                                                                                                                                      |
+| [WHATWG HTML](https://html.spec.whatwg.org/)                                              | **Subset**    | §3, §4 | packages/compiler/src/targets/compile-element.ts, packages/compiler/src/shadow.ts, packages/compiler/tests/shadow-dom.test.ts | Custom elements are defined and rendered into the **light** DOM by default, where `<slot>` is emulated by splicing saved children. A component may opt into a shadow root with `$shadow` (spec.md §16.6): the prerender emits a declarative `<template shadowrootmode>` and the element module adopts it, an `open` root through `element.shadowRoot` and a `closed` one through `ElementInternals`. Not offered: `ElementInternals` for form association, and `::part` addressed from outside a component. |
+| [CSP Level 3](https://www.w3.org/TR/CSP3/)                                                | **Subset**    | §3     | packages/compiler/tests/no-eval.test.ts, packages/compiler/src/site/csp.ts                                                    | What the tiers owe the policy: no `eval`, no `new Function`, and no `onclick=` attribute — handlers are bound as listeners — plus two inline blocks that are byte-identical across a build, so one hash each names them site-wide. The policy itself is assembled and emitted by the site build (`site-architecture.md` §14.3.1).                                                                                                                                                                           |
+| [Subresource Integrity](https://www.w3.org/TR/SRI/)                                       | **Divergent** | §12    | packages/compiler/src/site/client-runtime.ts, packages/compiler/tests/client-runtime.test.ts                                  | The gap this standard existed to close is closed by **removal** rather than by attestation: the runtime is served from the site, so there is no cross-origin subresource left to hash. SRI would apply again only if a project overrode the import map back to a URL, and the build cannot compute an integrity value for a file it never fetched.                                                                                                                                                          |
+| [Fetch Metadata Request Headers](https://www.w3.org/TR/fetch-metadata/)                   | **Divergent** | §6     | packages/compiler/src/targets/compile-server.ts, packages/compiler/tests/compile-server.test.ts                               | The generated worker reads `Sec-Fetch-Site` in front of every server function and extension mount. Two deviations from the Resource Isolation Policy: `same-site` is refused, because a sibling subdomain is not the site's own script, and a navigation passes whatever its method, because an identity provider's `form_post` answer is a cross-site POST navigation; the routes that read a body require a JSON `Content-Type` instead. An absent header is accepted, since only a browser sends it.     |
 
 ## 14. Native Core
 
