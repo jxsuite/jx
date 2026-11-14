@@ -42,7 +42,7 @@ import { adjacentBlock, blocksInOrder, offsetOf } from "./iframe-position";
 import { chipSourcesBetween } from "./iframe-chips";
 import { isTagActiveInSelection, toggleInlineFormat } from "../editor/inline-format";
 import { applyLink, linkStateForSelection } from "../editor/inline-link";
-import { deliveredOutsideProps } from "../utils/prop-source";
+import { propSource } from "../utils/prop-source";
 import { insertChip } from "./iframe-tags";
 import { rectOfRange } from "../utils/geometry";
 import { getNodeAtPath } from "../state";
@@ -359,23 +359,20 @@ export function startIframeInlineEdit(
   };
 
   /**
-   * Whether the instance's prop (read from the pre-edit-display shadow doc) is plain-text editable
-   * AND `$props` is the place it lives — a value the instance delivers by another route belongs to
-   * that route, and `deliveredOutsideProps` refuses it. Template-valued (`"${...}"`) and
-   * `$ref`-valued props render display sugar, not the value — committing typed text would silently
-   * destroy the binding, so they're blocked. An absent getShadowDoc is permissive (tests, same
-   * contract as getMode).
+   * Whether the instance's prop (read from the pre-edit-display shadow doc) is plain-text editable.
+   * The value judged is the one the instance DRAWS: the winning source of the routes a prop arrives
+   * by (`propSource`), which is `$props`, a top-level key, a `props.*` or reflected attribute, or a
+   * `data-jx-props` payload. The commit goes back to that same source (`mutateUpdateInstanceProp`),
+   * so the route is no reason to refuse. Template-valued (`"${...}"`) and `$ref`-valued props
+   * render display sugar, not the value — committing typed text would silently destroy the binding,
+   * so they're blocked. An absent getShadowDoc is permissive (tests, same contract as getMode).
    */
   const propEditableAt = (hostPath: JxPath, prop: string): boolean => {
     const shadowDoc = opts?.getShadowDoc?.();
     if (!shadowDoc) {
       return true;
     }
-    const node = getNodeAtPath(shadowDoc, hostPath);
-    if (deliveredOutsideProps(node, prop)) {
-      return false;
-    }
-    const raw = node?.$props?.[prop];
+    const raw = propSource(getNodeAtPath(shadowDoc, hostPath), prop)?.value;
     if (raw == null) {
       return true; // Unset — editing ADDS the prop, overriding the definition default.
     }

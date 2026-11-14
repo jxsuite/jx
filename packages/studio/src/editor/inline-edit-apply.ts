@@ -23,7 +23,7 @@ import { isTabActive } from "../workspace/workspace";
 import {
   mutateInsertNode,
   mutateRemoveNode,
-  mutateUpdateProp,
+  mutateUpdateInstanceProp,
   mutateUpdateProperty,
   transactDoc,
 } from "../tabs/transact";
@@ -36,6 +36,7 @@ import {
   refBindingKey,
   slotBindingKeys,
 } from "../utils/edit-display";
+import { propSource } from "../utils/prop-source";
 import { componentInstance, mutateImportComponent } from "./insert-component";
 
 import {
@@ -518,12 +519,14 @@ export function applyInlineCommit(
 }
 
 /**
- * Commit a prop-bound inline edit: persist `value` into `$props[prop]` of the component instance at
- * `path`. The unchanged-value no-op is LOAD-BEARING, not cosmetic: Escape-cancel and
- * patch-disturbed sessions post unchanged values, and without the equality check a commit→patch→
- * disturb→re-commit cycle loops (and pollutes undo history). An empty value deletes the prop
- * (mutateUpdateProp), reverting the instance to the definition default — same as clearing the
- * sidebar field.
+ * Commit a prop-bound inline edit: persist `value` where the component instance at `path` delivers
+ * `prop` (`mutateUpdateInstanceProp`: `$props`, or the top-level key, attribute or payload that
+ * holds it, studio.md §8.2.6), so the edit never adds a second source for one rendered value. The
+ * unchanged-value no-op is LOAD-BEARING, not cosmetic: Escape-cancel and patch-disturbed sessions
+ * post unchanged values, and without the equality check a commit→patch→ disturb→re-commit cycle
+ * loops (and pollutes undo history). An empty value on `$props` deletes the prop, reverting the
+ * instance to the definition default; on any other route it is kept where it is — both as the
+ * sidebar field does.
  *
  * @returns Whether it transacted. The caller needs to know: an in-place commit's patch is
  *   echo-suppressed so the caret survives, and the release that follows is expected to re-render
@@ -543,12 +546,12 @@ export function applyInlinePropCommit(
   if (!node) {
     return false;
   }
-  const current = node.$props?.[prop];
+  const current = propSource(node, prop)?.value;
   if (`${current ?? ""}` === value) {
     return false;
   }
   transactDoc(tab, (t) => {
-    mutateUpdateProp(t, path, prop, value);
+    mutateUpdateInstanceProp(t, path, prop, value);
   });
   return true;
 }
