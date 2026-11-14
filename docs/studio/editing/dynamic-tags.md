@@ -23,10 +23,10 @@ A **dynamic tag** is a place where your page shows data instead of words you typ
 ## See what is bound
 
 - **In text**, put the caret in a block. Each tag in it turns into a tinted token with its name, such as **Post date**, ahead of its value.
-- **On any element**, select it. The block action bar shows one **Bound pill** for every property the element draws from data: **Text: Title**, **Image: Featured image**, **Link: Permalink**. This is how you find a binding that draws no text, such as an image's source or a link's address. The bar shows up to four pills.
+- **On any element**, select it. The block action bar shows one **Bound pill** for every property the element draws from data: **Text: Title**, **Image: Featured image**, **Link: Permalink**. This is how you find a binding that draws no text, such as an image's source or a link's address. The bar names the first four. When an element binds more, a fifth pill such as **+3 more** opens the rest as a list, and each row opens its tag.
 - **Without selecting anything**, point at an element. Bound elements get a dotted outline, and the hover box names what they read.
 
-A name comes from your content type where it gives the field a title, so a field titled "Post date" is called that everywhere. Otherwise Studio makes one from the field's own name.
+A name comes from your content type where it gives the field a title, so a field titled "Post date" is called that everywhere. Otherwise Studio makes one from the field's own name. A value kept under a general key such as `src`, `url` or `value` is named for what holds it, so a featured image's `src` is called **Featured image**.
 
 ## Open a tag
 
@@ -42,9 +42,11 @@ Press :kbd[Esc] or click elsewhere to close it, whichever control has focus. Foc
 
 The popover has one field for each thing you can decide.
 
-**Source** is the value the tag reads. Inside a [repeating list](/docs/studio/design/repeaters) it offers the current item's fields first, then your page's own data. Pick another field and every row on the canvas changes at once, because you are editing the template they share.
+**Source** is the value the tag reads. Inside a [repeating list](/docs/studio/design/repeaters) it offers the current item's fields first, then your page's own data. Pick another field and every row on the canvas changes at once, because you are editing the template they share. Where the page's values are known, each option shows what it holds today beside its name.
 
-**Format** lists the ways the value can be written, and each one is drawn with your actual value. A date shows as "October 29, 2026", "Oct 29, 2026" and "10/29/26", so you choose by looking. Only formats that can read the value are offered: a title is never offered a number format. **As stored** removes the format. When a format has settings of its own, such as a time style beside the date style, they appear as fields under the list.
+A tag can try several values in turn, such as an SEO title, then the post title, then the post's name. The popover lists them in order: **Source** for the first and **Then** for each one after it. Change any of them where it stands. To add or remove one, edit the expression under **Advanced**.
+
+**Format** lists the ways the value can be written, and each one is drawn with your actual value. A date shows as "October 29, 2026", "Oct 29, 2026" and "10/29/26", so you choose by looking. Only formats that can read the value are offered: a title is never offered a number format, and a field your content type declares as a URL is not offered text formats such as Capitalize. When a tag tries several values, the format applies to the first. **As stored** removes the format. When a format has settings of its own, such as a time style beside the date style, they appear as fields under the list.
 
 **Show** decides whether the tag gives the value itself, or a yes or no answer about it: **Whether it is set** or **Whether it is empty**. Use the second two for properties that are on or off, such as hiding an element when a field is blank.
 
@@ -62,7 +64,7 @@ Formats are ordinary formulas. The first time you pick one, Studio adds that for
 
 **Advanced** holds the expression itself, for anything the fields do not cover. Edit it and click **Apply**, or press :kbd[⌘Enter] / :kbd[Ctrl+Enter].
 
-Some bindings are more than a value, a format and a fallback: a condition, a calculation, a small function. Studio calls these **Custom expressions**. They show their live value like any other tag, and their popover opens straight to the expression, because there are no fields that could describe them. Studio never rewrites one. If you type something simpler into Advanced, the fields come back. Apply refuses text that would change the words around the tag, such as an unclosed brace or quote, and says so.
+Some bindings are more than a value, a format and a fallback: a condition, a calculation, a small function. Studio calls these **Custom expressions**. They show their live value like any other tag, and their popover opens straight to the expression, because there are no fields that could describe them. Studio never rewrites one. If you type something simpler into Advanced, the fields come back. Several values tried in turn, and a value in parentheses with a fallback of its own, such as `(item.image ?? '') || '/x.jpg'`, are simple enough to keep their fields. Apply refuses text that would change the words around the tag, such as an unclosed brace or quote, and says so.
 
 ## Insert a tag
 

@@ -22,7 +22,7 @@
  * @docs studio/editing/dynamic-tags
  */
 
-import { parseDynamicTag, printDynamicTag } from "@jxsuite/schema/dynamic-tag";
+import { dynamicTagPipes, parseDynamicTag, printDynamicTag } from "@jxsuite/schema/dynamic-tag";
 import { inheritableFormulas } from "@jxsuite/runtime/expression";
 import { isJsonObject, isRef, isString, templateExpressions } from "@jxsuite/schema/guards";
 import { flushCanvasEdits, getEditBarAnchorRect, requestTemplateEval } from "../canvas/iframe-host";
@@ -40,8 +40,10 @@ import {
   replaceExpression,
   rewrittenValue,
   slotValue,
+  sourceOptionGroups,
   sourcePath,
-  sourceValue,
+  sourcePaths,
+  sourceValues,
   sameSlot,
   boundTagsOf,
   tagAt,
@@ -52,7 +54,7 @@ import {
   withSource,
   fallbackText,
 } from "../editor/dynamic-tags";
-import { tagTitlesAt } from "../editor/repeater-scope";
+import { sourceFormatAt, tagTitlesAt } from "../editor/repeater-scope";
 import { sourceGroups } from "../editor/tag-sources";
 import { effect } from "../reactivity";
 import { getNodeAtPath, projectState } from "../state";
@@ -215,12 +217,25 @@ function valuesKey(tab: Tab, address: TagAddress, bound: BoundTag): string {
   ]);
 }
 
-/** The presets a tag's value can take, once the frame has said what the value is. */
-function offeredPresets(tab: Tab, values: TagValues | null): FormatPreset[] {
+/**
+ * The presets a tag's value can take, once the frame has said what the value is. What the field's
+ * schema says the value is narrows them further: a URL is text, and no formula for text is offered
+ * for one.
+ */
+function offeredPresets(
+  tab: Tab,
+  address: TagAddress,
+  tag: DynamicTag,
+  values: TagValues | null,
+): FormatPreset[] {
   if (values === null) {
     return [];
   }
-  const formulas = formulasOf(tab).filter((formula) => formatAccepts(formula, values.type));
+  const [source] = sourcePaths(tag);
+  const format = source
+    ? sourceFormatAt(tab.doc.document, address.path, projectState?.projectConfig ?? null, source)
+    : null;
+  const formulas = formulasOf(tab).filter((formula) => formatAccepts(formula, values.type, format));
   return formatPresets(formulas).filter((preset) => {
     const sample = values.samples.get(preset.id);
     return sample !== undefined && sample.error === undefined && !UNREADABLE.test(sample.text);
@@ -296,7 +311,7 @@ function projectTag(tab: Tab, address: TagAddress, bound: BoundTag): DynamicTagV
     /* SAFETY: the scope snapshot is the frame's resolved state as JSON, which a scope record is. */
     tab.session.canvas.scope as ScopeRecord | null,
   );
-  const presets = offeredPresets(tab, values);
+  const presets = offeredPresets(tab, address, tag, values);
   const selected = presetOfTag(tag, formatPresets(formulasOf(tab)));
   const formats = [formatRow("", "As stored", values?.plain ?? "", selected)];
   for (const preset of presets) {
@@ -325,8 +340,13 @@ function projectTag(tab: Tab, address: TagAddress, bound: BoundTag): DynamicTagV
     params: parameterFields(tag, formulasOf(tab)),
     show: String(tag.negations),
     showOptions: SHOW_OPTIONS,
-    source: sourceValue(tag),
-    sourceGroups: groups,
+    sourceGroups: sourceOptionGroups(groups),
+    sources: sourceValues(tag).map((value, index) => ({
+      key: String(index),
+      label: index === 0 ? "Source" : "Then",
+      name: index === 0 ? "Source" : `Then: source ${index + 1}`,
+      value,
+    })),
     structured: true,
   };
 }
@@ -420,27 +440,20 @@ function ensureSurface(): DynamicTagSurface {
       editTag((tag, tab) => withParameter(tag, formulasOf(tab), key, value)),
     setShow: (value) =>
       editTag((tag) => withNegations(tag, value === "1" ? 1 : value === "2" ? 2 : 0)),
-    setSource: (value) =>
+    setSource: (key, value) =>
       editTag((tag) => {
+        const index = Number(key);
         const { origin } = _opened ?? { origin: null };
-        // The field the tag began on, picked back, is the tag as it was written.
+        // The field a source began on, picked back, is that source as it was written.
+        const began = origin === null ? undefined : sourcePaths(origin)[index];
         const path =
-          origin !== null && value === sourceValue(origin)
-            ? pathOf(origin)
-            : sourcePath(value, pathOf(tag));
-        return path === null ? tag : withSource(tag, path);
+          origin !== null && began !== undefined && value === sourceValues(origin)[index]
+            ? began
+            : sourcePath(value, sourcePaths(tag)[index] ?? null);
+        return path === null ? tag : withSource(tag, path, index);
       }),
   });
   return _surface;
-}
-
-/** The path at the heart of a tag's pipe. */
-function pathOf(tag: DynamicTag): Extract<DynamicTag["pipe"], { type: "path" }> {
-  let { pipe } = tag;
-  while (pipe.type === "call") {
-    pipe = pipe.input;
-  }
-  return pipe;
 }
 
 /** Store `value` in the property `slot` names on the node at `path`. */
@@ -469,8 +482,10 @@ function writeSlot(tab: Tab, address: TagAddress, value: JxDocumentValue | undef
 function missingFormulas(tab: Tab, expr: string): NonNullable<FormatFormula["ensure"]>[] {
   const tag = parseDynamicTag(expr);
   const names = new Set<string>();
-  for (let pipe = tag?.pipe; pipe?.type === "call"; pipe = pipe.input) {
-    names.add(pipe.name);
+  for (const source of tag === null ? [] : dynamicTagPipes(tag)) {
+    for (let pipe = source; pipe.type === "call"; pipe = pipe.input) {
+      names.add(pipe.name);
+    }
   }
   return formulasOf(tab).flatMap((formula) =>
     formula.ensure && names.has(formula.name) ? [formula.ensure] : [],

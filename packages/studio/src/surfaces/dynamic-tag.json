@@ -1,7 +1,7 @@
 {
   "$schema": "https://jxsuite.com/schema/v1",
   "$id": "StudioDynamicTag",
-  "$description": "The tag popover (studio.md §6.9): the editing surface of ONE dynamic tag, a `${…}` of a template or a `{ \"$ref\" }`, as fields instead of as code. Top to bottom it is the table of that section: Source (what is read), Format (how it is written, as presets each drawn with the value the canvas is drawing), the format's own parameters, Fallback, a Now line, and Advanced holding the expression itself. Nothing here reads the document, parses an expression or decides what an edit writes: `panels/dynamic-tag.ts` projects the tag into this scope, and every control hands back the value it was given a name for. A tag outside the recognised grammar has no fields to show, so `structured` is false, the fields are not drawn and Advanced is open, named Custom expression. The panel is the kit's `jx-popover`, an auto popover: light dismiss, Escape and returning focus are the platform's, and the flow learns of a close from the panel's own `toggle`. It is placed by measured coordinates (`x`, `y`), because what it opens from is a chip in another realm or a pill in another surface.",
+  "$description": "The tag popover (studio.md §6.9): the editing surface of ONE dynamic tag, a `${…}` of a template or a `{ \"$ref\" }`, as fields instead of as code. Top to bottom it is the table of that section: Source (what is read, as an ordered list when the tag reads several values in turn), Format (how it is written, as presets each drawn with the value the canvas is drawing), the format's own parameters, Fallback, a Now line, and Advanced holding the expression itself. Nothing here reads the document, parses an expression or decides what an edit writes: `panels/dynamic-tag.ts` projects the tag into this scope, and every control hands back the value it was given a name for. A tag outside the recognised grammar has no fields to show, so `structured` is false, the fields are not drawn and Advanced is open, named Custom expression. The panel is the kit's `jx-popover`, an auto popover: light dismiss, Escape and returning focus are the platform's, and the flow learns of a close from the panel's own `toggle`. It is placed by measured coordinates (`x`, `y`), because what it opens from is a chip in another realm or a pill in another surface.",
   "tagName": "div",
   "attributes": {
     "part": "root",
@@ -52,6 +52,12 @@
       "display": "flex",
       "flexDirection": "column",
       "gap": "var(--jx-space-1)"
+    },
+    "& [part=\"sources\"]": {
+      "$description": "The values the tag reads, in the order it reads them. A tag that reads one is one row named Source; a chain is that row and one named Then for each value read when those before it gave nothing, set closer together than the fields are so they read as one list.",
+      "display": "flex",
+      "flexDirection": "column",
+      "gap": "var(--jx-space-2)"
     },
     "& [part=\"params\"]:empty": {
       "display": "none"
@@ -196,43 +202,69 @@
                   },
                   "children": [
                     {
-                      "tagName": "jx-field",
+                      "tagName": "div",
                       "attributes": {
-                        "part": "source-row"
-                      },
-                      "$props": {
-                        "span": true,
-                        "label": "Source"
+                        "part": "sources",
+                        "role": "none"
                       },
                       "children": [
                         {
-                          "tagName": "jx-select",
-                          "attributes": {
-                            "part": "source"
+                          "$prototype": "Array",
+                          "items": {
+                            "$ref": "#/state/sources"
                           },
-                          "$props": {
-                            "size": "sm",
-                            "label": "Source",
-                            "groups": {
-                              "$ref": "#/state/sourceGroups"
+                          "key": {
+                            "$ref": "$map/item/key"
+                          },
+                          "map": {
+                            "tagName": "jx-field",
+                            "attributes": {
+                              "part": "source-row",
+                              "data-index": "${$map.item.key}"
                             },
-                            "value": {
-                              "$ref": "#/state/source"
-                            }
-                          },
-                          "onchange": {
-                            "$prototype": "Function",
-                            "body": [
+                            "$props": {
+                              "span": true,
+                              "label": {
+                                "$ref": "$map/item/label"
+                              }
+                            },
+                            "children": [
                               {
-                                "operator": "call",
-                                "target": {
-                                  "$ref": "#/state/setSource"
+                                "tagName": "jx-select",
+                                "attributes": {
+                                  "part": "source"
                                 },
-                                "value": [
-                                  {
-                                    "$ref": "event#/target/value"
+                                "$props": {
+                                  "size": "sm",
+                                  "label": {
+                                    "$ref": "$map/item/name"
+                                  },
+                                  "groups": {
+                                    "$ref": "#/state/sourceGroups"
+                                  },
+                                  "value": {
+                                    "$ref": "$map/item/value"
                                   }
-                                ]
+                                },
+                                "onchange": {
+                                  "$prototype": "Function",
+                                  "body": [
+                                    {
+                                      "operator": "call",
+                                      "target": {
+                                        "$ref": "#/state/setSource"
+                                      },
+                                      "value": [
+                                        {
+                                          "$ref": "$map/item/key"
+                                        },
+                                        {
+                                          "$ref": "event#/target/value"
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                }
                               }
                             ]
                           }

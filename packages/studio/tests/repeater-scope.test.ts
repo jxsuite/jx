@@ -7,6 +7,7 @@
  * tokens a template spells them with, after the two row words every repeater offers.
  */
 import { describe, expect, test } from "bun:test";
+import { parseDynamicTag, dynamicTagPath } from "@jxsuite/schema/dynamic-tag";
 import { isMappedArray } from "@jxsuite/schema/guards";
 import {
   childrenTemplate,
@@ -14,6 +15,7 @@ import {
   findEnclosingRepeater,
   mapRefLabel,
   repeaterItemFields,
+  sourceFormatAt,
   tagTitlesAt,
   tagTitlesOf,
 } from "../src/editor/repeater-scope";
@@ -750,5 +752,69 @@ describe("mapRefLabel", () => {
   test("any other pointer is not this function's to name", () => {
     expect(mapRefLabel("#/state/title")).toBeNull();
     expect(mapRefLabel("$map/other")).toBeNull();
+  });
+});
+
+describe("sourceFormatAt", () => {
+  const config: ProjectConfig = {
+    content: {
+      team: {
+        schema: {
+          properties: {
+            joined: { format: "date", type: "string" },
+            photo: { properties: { src: { format: "uri-reference", type: "string" } } },
+            role: { type: "string" },
+          },
+        },
+      },
+    },
+  };
+  const inside: JxPath = ["children", 0, "map"];
+  const doc: JxMutableNode = {
+    children: [repeater({ $ref: "#/state/team" })],
+    // A schema-typed entry, one entry of the content type, a literal, and the collection.
+    state: {
+      link: { properties: { url: { format: "uri", type: "string" } }, type: "object" },
+      member: { $prototype: "ContentEntry", contentType: "team", id: "ada" },
+      plain: "text",
+      team: { contentType: "team" },
+    },
+    tagName: "div",
+  };
+
+  /** The format of what `expr` reads, for a tag standing at `at`. */
+  function formatOf(expr: string, at: JxPath | null = inside): string | null {
+    const tag = parseDynamicTag(expr);
+    if (tag === null) {
+      throw new TypeError(`not a structured tag: ${expr}`);
+    }
+    return sourceFormatAt(doc, at, config, dynamicTagPath(tag));
+  }
+
+  test("a row field's format is its schema's, under either spelling of the row", () => {
+    expect(formatOf("item.data.photo.src")).toBe("uri-reference");
+    expect(formatOf("$map.item.data.photo?.src ?? ''")).toBe("uri-reference");
+    expect(formatOf("$map['item'].data.joined")).toBe("date");
+    expect(formatOf("item.data.role")).toBeNull();
+    expect(formatOf("item.data.missing.src")).toBeNull();
+  });
+
+  test("a state path's format is read off the entry it starts from", () => {
+    expect(formatOf("state.link.url")).toBe("uri");
+    expect(formatOf("state.member.data.photo.src")).toBe("uri-reference");
+    // Outside any repeater a state path is still read, and a row field has no item to be read off.
+    expect(formatOf("state.link.url", ["children", 3])).toBe("uri");
+    expect(formatOf("state.link.url", null)).toBe("uri");
+    expect(formatOf("item.data.photo.src", ["children", 3])).toBeNull();
+    expect(formatOf("item.data.photo.src", null)).toBeNull();
+  });
+
+  test("a path no schema describes has none", () => {
+    expect(formatOf("state")).toBeNull();
+    expect(formatOf("state.plain")).toBeNull();
+    expect(formatOf("state.nothing.url")).toBeNull();
+    expect(formatOf("index")).toBeNull();
+    expect(formatOf("$map.index")).toBeNull();
+    expect(formatOf("$page.url")).toBeNull();
   });
 });

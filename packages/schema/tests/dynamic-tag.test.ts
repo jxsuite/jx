@@ -8,7 +8,11 @@ import {
   dynamicTagLabel,
   dynamicTagLiteral,
   dynamicTagPath,
+  dynamicTagPipes,
+  dynamicTagStepName,
+  isGenericStepName,
   humanizeIdentifier,
+  mapDynamicTagPipes,
   parseDynamicTag,
   printDynamicTag,
   templateSegments,
@@ -19,6 +23,7 @@ import type {
   DynamicTag,
   DynamicTagLiteral,
   DynamicTagPipe,
+  DynamicTagSource,
   DynamicTagStep,
 } from "../src/dynamic-tag.ts";
 import type { JsonValue } from "../types.ts";
@@ -109,11 +114,21 @@ function generator(seed: number) {
       type: "path",
     };
   };
-  const tag = (): DynamicTag => {
-    const base = { negations: pick([0, 0, 0, 1, 2] as const), pipe: pipe(2) };
-    return next() < 0.5
-      ? { ...base, fallback: { operator: pick(["??", "||"] as const), value: literal() } }
-      : base;
+  const source = (depth: number): DynamicTagSource =>
+    depth > 0 && next() < 0.15 ? { tag: tag(depth - 1), type: "group" } : pipe(2);
+  const tag = (depth = 2): DynamicTag => {
+    // One operator per tag, as JavaScript requires; a parenthesised tag picks its own.
+    const operator = pick(["??", "||"] as const);
+    const base = { negations: pick([0, 0, 0, 1, 2] as const), pipe: source(depth) };
+    const alternatives = Array.from(
+      { length: next() < 0.3 ? 1 + Math.floor(next() * 2) : 0 },
+      () => ({ operator, source: source(depth) }),
+    );
+    return {
+      ...base,
+      ...(alternatives.length > 0 && { alternatives }),
+      ...(next() < 0.5 && { fallback: { operator, value: literal() } }),
+    };
   };
   return { next, tag };
 }
@@ -128,10 +143,18 @@ function respaced(tag: DynamicTag, next: () => number): string {
     const args = value.args.map((arg) => `${gap()},${gap()}${arg.raw}`).join("");
     return `state.${value.name}(${gap()}${pipe(value.input)}${args}${gap()})`;
   };
-  const fallback = tag.fallback
-    ? `${gap()}${tag.fallback.operator}${gap()}${tag.fallback.value.raw}`
-    : "";
-  return `${gap()}${"!".repeat(tag.negations)}${pipe(tag.pipe)}${fallback}${gap()}`;
+  const source = (value: DynamicTagSource): string =>
+    value.type === "group" ? `(${whole(value.tag)})` : pipe(value);
+  const whole = (value: DynamicTag): string => {
+    const alternatives = (value.alternatives ?? [])
+      .map((alternative) => `${gap()}${alternative.operator}${gap()}${source(alternative.source)}`)
+      .join("");
+    const fallback = value.fallback
+      ? `${gap()}${value.fallback.operator}${gap()}${value.fallback.value.raw}`
+      : "";
+    return `${gap()}${"!".repeat(value.negations)}${source(value.pipe)}${alternatives}${fallback}${gap()}`;
+  };
+  return whole(tag);
 }
 
 const SCOPE = ["state", "item", "index", "$map", "$page", "$site"];
@@ -222,6 +245,73 @@ describe("the shapes it reads", () => {
     });
   });
 
+  test("a chain of sources before a fallback", () => {
+    const text =
+      "state.entry.data.seo?.title || state.entry.data.title || state.entry.data.name || ''";
+    const tag = parsed(text);
+    expect(printDynamicTag(tag)).toBe(text);
+    expect(tag.alternatives?.map((alternative) => alternative.operator)).toEqual(["||", "||"]);
+    expect(dynamicTagPipes(tag).map((pipe) => printDynamicTag({ negations: 0, pipe }))).toEqual([
+      "state.entry.data.seo?.title",
+      "state.entry.data.title",
+      "state.entry.data.name",
+    ]);
+    expect(tag.fallback).toEqual({ operator: "||", value: { raw: "''", value: "" } });
+    // A chain with no literal at its end is one too.
+    expect(parsed("item.a ?? item.b").fallback).toBeUndefined();
+  });
+
+  test("a parenthesised tag where a pipe may stand", () => {
+    const text = "(state.entry.data.image?.src ?? '') || '/x.jpg'";
+    const tag = parsed(text);
+    expect(printDynamicTag(tag)).toBe(text);
+    expect(tag.pipe).toEqual({ tag: parsed("state.entry.data.image?.src ?? ''"), type: "group" });
+    expect(tag.fallback?.value.value).toBe("/x.jpg");
+    expect(dynamicTagPath(tag).steps.length).toBe(4);
+    expect(dynamicTagKind(parsed("(state.f(item.a) ?? '') || 'x'"))).toBe("format");
+    // Parentheses nest, hold `!`, and stand after an operator as well as before one.
+    for (const nested of [
+      "!(item.a || item.b)",
+      "((item.a))",
+      "item.a || (item.b ?? item.c) || 'x'",
+      "(!!item.a) ?? false",
+    ]) {
+      expect(printDynamicTag(parsed(nested))).toBe(nested);
+    }
+    expect(dynamicTagPipes(parsed("item.a || (item.b ?? item.c) || 'x'")).length).toBe(3);
+  });
+
+  test("a chain and a parenthesised tag mean what JavaScript means by them", () => {
+    const scope = { a: null, b: "", c: "third" };
+    const run = (expr: string): JsonValue => {
+      // What the model prints is what is evaluated, so the reading is the printer's too.
+      const printed = printDynamicTag(parsed(expr));
+      /* SAFETY: `new Function` returns a function of the one named parameter, and each expression
+         here yields a member of `scope` or a literal, which is JSON. */
+      const evaluate = new Function("state", `return (${printed});`) as (
+        state: typeof scope,
+      ) => JsonValue;
+      return evaluate(scope);
+    };
+    expect(run("state.a || state.b || state.c || 'none'")).toBe("third");
+    expect(run("state.a ?? state.b ?? state.c")).toBe("");
+    expect(run("(state.a ?? '') || '/x.jpg'")).toBe("/x.jpg");
+    expect(run("!(state.a || state.b)")).toBe(true);
+  });
+
+  test("each pipe is replaced in place, and the rest of the tag is kept", () => {
+    const tag = parsed("!(item.a ?? '') || state.f(item.b, 1) || 'x'");
+    const seen: number[] = [];
+    const next = mapDynamicTagPipes(tag, (pipe, index) => {
+      seen.push(index);
+      return index === 1 ? { root: "item", steps: [], type: "path" } : pipe;
+    });
+    expect(seen).toEqual([0, 1]);
+    expect(printDynamicTag(next)).toBe("!(item.a ?? '') || item || 'x'");
+    const same = mapDynamicTagPipes(parsed("item.a"), (pipe) => pipe);
+    expect(printDynamicTag(same)).toBe("item.a");
+  });
+
   test("a state key that is not called is a path", () => {
     expect(dynamicTagKind(parsed("state.formatDate"))).toBe("field");
     expect(dynamicTagKind(parsed("!state.entry.draft"))).toBe("field");
@@ -240,10 +330,24 @@ describe("everything else is custom", () => {
     "(state.rows.length) > 0",
     "state.a === 1",
     "-state.count",
-    // Parentheses, two fallbacks, a path as a fallback.
-    "(state.a ?? '') || ''",
-    "state.a || state.b || ''",
-    "state.a ?? state.b",
+    // Mixed operators, a literal that is not last, unbalanced parentheses, a parenthesised argument.
+    "state.a ?? state.b || ''",
+    "state.a || state.b ?? ''",
+    "(state.a ?? '') ?? state.b || 1",
+    "state.a ?? '' ?? state.b",
+    "state.a || '' || ''",
+    "(state.a ?? ''",
+    "state.a ?? '')",
+    "()",
+    "( )",
+    "(state.a) (state.b)",
+    "(state.a).b",
+    "(state.a)[0]",
+    "state.fn((state.a))",
+    "state.fn((state.a ?? ''))",
+    "state.fn(state.a ?? '')",
+    "(state.a + 1) || ''",
+    "state.a && state.b",
     "state.a ?? ",
     "state.a ??",
     "state.a ? ? ''",
@@ -384,6 +488,17 @@ describe("labels", () => {
     ["$site.name", "Name"],
     ["$page", "Page"],
     ["$site", "Site"],
+    // A generic last key gives way to the step before it, and stands when there is none.
+    ["item.data.featuredImage.src", "Featured image"],
+    ["state.entry.data.image?.url ?? ''", "Image"],
+    ["state.rows[0].value", "Rows"],
+    ["state.field.value.src", "Field"],
+    ["state.url", "Url"],
+    ["$map.item.data.src", "Src"],
+    ["item.value", "Value"],
+    // A tag that reads several values is named for the first.
+    ["state.entry.data.seo?.title || state.entry.data.title || ''", "Title"],
+    ["(item.data.cover ?? '') || '/x.jpg'", "Cover"],
   ];
 
   for (const [expr, label] of labels) {
@@ -391,6 +506,20 @@ describe("labels", () => {
       expect(dynamicTagLabel(parsed(expr))).toBe(label);
     });
   }
+
+  test("a step names itself unless it is an index or a container word", () => {
+    const names = dynamicTagPath(parsed("state.entry.data['post-tag'][0].src")).steps.map((step) =>
+      dynamicTagStepName(step),
+    );
+    expect(names).toEqual(["entry", null, "post-tag", null, "src"]);
+    expect(names.map((name) => name !== null && isGenericStepName(name))).toEqual([
+      false,
+      false,
+      false,
+      false,
+      true,
+    ]);
+  });
 
   test("a name becomes words", () => {
     expect(humanizeIdentifier("featuredImage")).toBe("Featured image");
@@ -503,7 +632,7 @@ describe("a real site's bindings", () => {
       }
     }
     console.log(`dynamic-tag corpus: ${tags} of ${bindings} bindings are structured tags`);
-    // Measured at 105 of 240 (the rest are lambdas, ternaries and `||` chains, custom by design).
+    // Measured at 311 of 469 (the rest are lambdas, ternaries and method calls, custom by design).
     expect(bindings).toBeGreaterThanOrEqual(200);
     expect(tags).toBeGreaterThanOrEqual(100);
   });
