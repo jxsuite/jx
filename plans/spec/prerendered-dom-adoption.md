@@ -3,8 +3,7 @@ status: drafted
 disposition: implement
 claims:
   - spec.md#16.10
-requires:
-  - spec/compiled-keyed-lists
+requires: []
 workspaces:
   - packages/runtime
   - packages/compiler
@@ -43,7 +42,7 @@ The section was added by the change that made a live component prerender its ini
 
 - **Decided:** replacement stays the fallback. A host whose prerender does not match what the element would render (a hand-edited page, a minifier that stripped the markers, a prop that changed between build and upgrade) is cleared and rendered as today. Because a wrong adoption shows stale content with live bindings attached to the wrong nodes, which is worse than a repaint.
 - **Decided:** markers are written only by the change that reads them. The prerender does not carry `data-jx-key`, `data-jx-case` or text markers until a renderer claims them, so no page pays for bookkeeping nothing uses.
-- **Decided:** the row key is the rule `plan:spec/compiled-keyed-lists` exports (`mappedRowKeys` in `@jxsuite/runtime`, its emitted copy `__jxRowKeys`). The build computes a row's key with the export and the element with the copy, so a key the two sides compute differently cannot claim the wrong row. This is why that plan is required: without one key rule in both tiers there is nothing safe to claim by.
+- **Decided:** the row key is the landed key rule (`mappedRowKeys` in `@jxsuite/runtime`, its emitted copy `__jxRowKeys` from `listHelperSource` in `packages/compiler/src/shared.ts`). The build computes a row's key with the export and the element with the copy, so a key the two sides compute differently cannot claim the wrong row. The prerender now applies `filter` and `sort` by the element's own rule (`buildListRows`), so the rows to claim are the rows of the first render, in its order.
 - **Decided:** a static instance is out of scope. It has no module, and nothing to attach.
 - **Open:** which renderer the compiled element adopts with. Three options:
   1. **A Jx bind table beside lit's `template()`.** The module keeps its lit template for the create path and gains a table of bindings (marker id to effect) that a shared walker attaches to existing nodes, as the page tier's `hydrate(root)` does today. No new dependency. Cost: two renderers per module, and a parity rule of its own (the table and the template must name the same bindings), which the hydration test already has the shape to enforce.

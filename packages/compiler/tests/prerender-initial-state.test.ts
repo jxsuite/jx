@@ -207,7 +207,7 @@ describe("buildSite — repeater rows inside a component", () => {
       },
       tagName: "rows-sibling",
     });
-    writeJSON(TMP, "components/rows-shaped.json", {
+    writeJSON(TMP, "components/rows-arranged.json", {
       children: [
         {
           children: {
@@ -228,12 +228,19 @@ describe("buildSite — repeater rows inside a component", () => {
           tagName: "ol",
         },
       ],
+      // Named formulas: the form every tier calls the same way (spec.md §10.3).
       state: {
-        keep: { $prototype: "Function", body: "return state > 1" },
-        order: { $prototype: "Function", body: "return a - b", parameters: ["a", "b"] },
+        keep: {
+          $expression: { operator: ">", target: { $ref: "$args/item" }, value: 1 },
+          parameters: ["item"],
+        },
+        order: {
+          $expression: { operator: "-", target: { $ref: "$args/a" }, value: { $ref: "$args/b" } },
+          parameters: ["a", "b"],
+        },
         rows: [3, 1, 2],
       },
-      tagName: "rows-shaped",
+      tagName: "rows-arranged",
     });
     writeJSON(TMP, "components/rows-late.json", {
       children: [
@@ -269,12 +276,12 @@ describe("buildSite — repeater rows inside a component", () => {
       tagName: "pre-box",
     });
     writeJSON(TMP, "pages/index.json", {
-      $elements: ["rows-sibling", "rows-shaped", "rows-late", "pre-box", "row-chip"].map(
+      $elements: ["rows-sibling", "rows-arranged", "rows-late", "pre-box", "row-chip"].map(
         (name) => ({ $ref: `../components/${name}.json` }),
       ),
       children: [
         { tagName: "rows-sibling" },
-        { tagName: "rows-shaped" },
+        { tagName: "rows-arranged" },
         { tagName: "rows-late" },
         { tagName: "pre-box" },
       ],
@@ -311,9 +318,10 @@ describe("buildSite — repeater rows inside a component", () => {
     expect(scripts.indexOf("row-chip")).toBeLessThan(scripts.indexOf("rows-sibling"));
   });
 
-  it("renders no rows for a repeater that filters or sorts", () => {
+  it("renders the rows a filter keeps and the order a sort gives", () => {
     expect(bodyOf(TMP)).toContain(
-      "<rows-shaped data-jx-prerendered><ul></ul><ol></ol></rows-shaped>",
+      "<rows-arranged data-jx-prerendered><ul><li>3</li><li>2</li></ul>" +
+        "<ol><li>1</li><li>2</li><li>3</li></ol></rows-arranged>",
     );
   });
 

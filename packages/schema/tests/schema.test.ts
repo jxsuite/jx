@@ -252,7 +252,7 @@ describe("generateSchema", () => {
     const schema = await generateSchema();
     expect<string>(schema.$defs.InternalRef.pattern).toBe(String.raw`^#/\$defs/`);
     expect(schema.$defs.StateRef.pattern).toBe("^#/state/");
-    expect<string>(schema.$defs.MapRef.pattern).toBe(String.raw`^\$map/(item|index)(/.*)?$`);
+    expect<string>(schema.$defs.MapRef.pattern).toBe(String.raw`^(#/)?\$map/(item|index)(/.*)?$`);
   });
 
   test("ExpressionEntry is defined in schema $defs", async () => {

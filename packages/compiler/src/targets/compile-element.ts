@@ -20,6 +20,16 @@ import {
   attrHelperSource,
   booleanAttrValue,
   definitionHasSlot,
+  KEYED_LIST_HELPER,
+  KEYED_LIST_IMPORTS,
+  keyedListDirectiveSource,
+  keyPath,
+  LIST_LITERAL_HELPER,
+  LIST_ITEMS_HELPER,
+  listHelperSource,
+  mappedArrayFeatures,
+  pageImportMap,
+  refuseTemplateItems,
   LIT_PART_GUARD,
   NATIVE_SETTER_HELPER,
   OBSERVED_ATTR_HELPER,
@@ -79,7 +89,13 @@ import { isNativeDocumentPath, parseNativeDocument } from "@jxsuite/schema/jxn";
 import { resolveShadowMode } from "../shadow.ts";
 import type { ShadowMode } from "../shadow.ts";
 import type { FormatRegistry } from "@jxsuite/schema/format-registry";
-import { escapeToken, objectKey, refAccessor, refSegments } from "@jxsuite/runtime/pointer";
+import {
+  canonicalMapRef,
+  escapeToken,
+  objectKey,
+  refAccessor,
+  refSegments,
+} from "@jxsuite/runtime/pointer";
 import type {
   JsonPrimitive,
   JxDocument,
@@ -303,6 +319,8 @@ export interface CompileElementPageOptions extends CompileElementOptions {
   title?: string;
   reactivitySrc?: string;
   litHtmlSrc?: string;
+  /** The build's whole import map, written in place of the two sources above (compiler.md §12). */
+  runtimeImports?: Record<string, string>;
 }
 
 /**
@@ -341,14 +359,7 @@ export async function compileElementPage(
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>${escapeHtml(title)}</title>
-  <script type="importmap">
-  {
-    "imports": {
-      "@vue/reactivity": "${reactivitySrc}",
-      "lit-html": "${litHtmlSrc}"
-    }
-  }
-  </script>
+  ${pageImportMap({ litHtmlSrc, reactivitySrc, runtimeImports: opts.runtimeImports })}
 </head>
 <body>
   <${root.tagName}></${root.tagName}>
@@ -457,14 +468,26 @@ export function emitElementModule(
     isServerFnDef(def) ? [[key, def]] : [],
   );
 
+  /* What the document's lists need (compiler.md §4.7), decided before anything is emitted. A
+     module with no filtered, sorted or keyed list carries none of it. */
+  const lists = mappedArrayFeatures(doc);
   lines.push(
-    `import { reactive, computed, effect, stop } from '@vue/reactivity';`,
+    lists.keyed
+      ? `import { reactive, computed, effect, stop, shallowRef } from '@vue/reactivity';`
+      : `import { reactive, computed, effect, stop } from '@vue/reactivity';`,
     /* `nothing` is what REMOVES an attribute in a lit template, and it is the only way to express a
        false presence attribute: writing `open="false"` produces an OPEN <details>. See
        `attrHelperSource`. */
     `import { render, html, nothing } from 'lit-html';`,
+    ...(lists.keyed ? KEYED_LIST_IMPORTS : []),
     attrHelperSource(),
   );
+  if (lists.arranged || lists.keyed) {
+    lines.push(listHelperSource());
+  }
+  if (lists.keyed) {
+    lines.push(keyedListDirectiveSource());
+  }
 
   /* The property bridge's key sets, taken from the DEFINITION (spec.md §13.2, §16.2). Not from
      `this.state`: a pure type definition (`{ "type": "string" }`) holds no value, so it is not in
@@ -519,6 +542,11 @@ export function emitElementModule(
     // Held a handle to.
     "  #effects = [];",
     "  #rendered = false;",
+    /* The part lit's `render()` returns, kept by a module with a keyed list so the element can
+       tell lit when its host leaves and returns: standalone `render()` never disconnects an
+       `AsyncDirective` on its own, and the list's effect would keep a removed element subscribed
+       to an array its parent owns. */
+    ...(lists.keyed ? ["  #part = null;"] : []),
     ...(shadow === null ? [] : ["  #root = null;"]),
     /* A component with client classes draws in `#jxRender()`, once they have resolved: the
        instances by state key, the one resolution an instance ever starts, the connection a pending
@@ -752,6 +780,7 @@ export function emitElementModule(
      */
     "    const _first = !this.#rendered;",
     "    this.#rendered = true;",
+    ...(lists.keyed ? ["    this.#part?.setConnected(true);"] : []),
     ...(tracksGiven ? ["    const _given = new Set();"] : []),
     /*
      * Observed attributes already on the element, read first so that `$props` and a property a
@@ -953,7 +982,9 @@ export function emitElementModule(
        * module a site ships.
        */
       "    if (_first) this.replaceChildren();",
-      "    this.#effects.push(effect(() => render(this.template(), this)));",
+      lists.keyed
+        ? "    this.#effects.push(effect(() => { this.#part = render(this.template(), this); }));"
+        : "    this.#effects.push(effect(() => render(this.template(), this)));",
     );
   } else {
     /*
@@ -976,7 +1007,9 @@ export function emitElementModule(
       "        if (!(_n.nodeType === 1 && _n.tagName === 'LINK')) _n.remove();",
       "      }",
       "    }",
-      "    this.#effects.push(effect(() => render(this.template(), _root)));",
+      lists.keyed
+        ? "    this.#effects.push(effect(() => { this.#part = render(this.template(), _root); }));"
+        : "    this.#effects.push(effect(() => render(this.template(), _root)));",
     );
   }
   if (hasSlot) {
@@ -996,6 +1029,7 @@ export function emitElementModule(
     "",
     // DisconnectedCallback
     "  disconnectedCallback() {",
+    ...(lists.keyed ? ["    this.#part?.setConnected(false);"] : []),
     "    for (const _e of this.#effects) { stop(_e); }",
     "    this.#effects.length = 0;",
     "    if (typeof this.state.onUnmount === 'function') { this.state.onUnmount(this.state); }",
@@ -1436,9 +1470,18 @@ function emitMappedArray(arrayDef: JxMappedArray, indent: string) {
   /* A literal `items` is written into the module as JSON, as the client target writes it. A
      pointer that reads nothing is an empty list, as in the interpreter, not a `TypeError` thrown
      inside the render effect after the prerender has been cleared. */
-  const itemsExpr = isRef(arrayDef.items)
-    ? `(${refToExpr(arrayDef.items.$ref)} ?? [])`
-    : JSON.stringify(Array.isArray(arrayDef.items) ? arrayDef.items : []);
+  refuseTemplateItems(arrayDef);
+  const keyed = isRef(arrayDef.key);
+  const literal = JSON.stringify(Array.isArray(arrayDef.items) ? arrayDef.items : []);
+  let itemsExpr = keyed ? `${LIST_LITERAL_HELPER}(${JSON.stringify(literal)})` : literal;
+  if (isRef(arrayDef.items)) {
+    itemsExpr = `(${refToExpr(arrayDef.items.$ref)} ?? [])`;
+  }
+  /* `filter` and `sort` are each a `$ref` to a callable (spec.md §10.3); anything else is ignored,
+     as the interpreter ignores it. */
+  const filterExpr = isRef(arrayDef.filter) ? refToExpr(arrayDef.filter.$ref) : "undefined";
+  const sortExpr = isRef(arrayDef.sort) ? refToExpr(arrayDef.sort.$ref) : "undefined";
+  const arranged = isRef(arrayDef.filter) || isRef(arrayDef.sort);
   const mapDef = arrayDef.map;
 
   if (!mapDef) {
@@ -1572,7 +1615,27 @@ function emitMappedArray(arrayDef: JxMappedArray, indent: string) {
     ? `(item, index) => { ${prelude}return ${body}; }`
     : `(item, index) => ${body}`;
 
-  return `${indent}\${${itemsExpr}.map(${callback})}`;
+  /* Three lowerings (spec.md §10.3, §10.4, compiler.md §4.7). A keyed list goes through the
+     directive, which shapes it, keys it and hands lit's `repeat()` a snapshot. An unkeyed list has
+     no identity but its position, which is what lit's own array rendering reconciles by, so it is a
+     plain `.map()`, over `__jxListItems(…)` when it filters or sorts and over `items` as written when
+     it declares neither, which is every list compiled before either existed. */
+  if (isRef(arrayDef.key)) {
+    const pointer = arrayDef.key.$ref;
+    const args = [
+      itemsExpr,
+      filterExpr,
+      sortExpr,
+      JSON.stringify(keyPath(pointer)),
+      JSON.stringify(pointer),
+      callback,
+    ];
+    return `${indent}\${${KEYED_LIST_HELPER}(${args.join(", ")})}`;
+  }
+  const listExpr = arranged
+    ? `${LIST_ITEMS_HELPER}(${itemsExpr}, ${filterExpr}, ${sortExpr})`
+    : itemsExpr;
+  return `${indent}\${${listExpr}.map(${callback})}`;
 }
 
 /**
@@ -1623,7 +1686,8 @@ function isBoundRef(value: JxDocumentValue | undefined): value is JxRef {
  * @param {string} ref
  * @returns {string}
  */
-function refToExpr(ref: string) {
+function refToExpr(written: string) {
+  const ref = canonicalMapRef(written);
   if (ref.startsWith("#/state/")) {
     return refAccessor("s", ref.slice("#/state/".length));
   }
@@ -1663,7 +1727,8 @@ function mapVarAccessor(path: string) {
  * @param {string} ref
  * @returns {string}
  */
-function mapRefToExpr(ref: string) {
+function mapRefToExpr(written: string) {
+  const ref = canonicalMapRef(written);
   if (ref.startsWith("$map/")) {
     return mapVarAccessor(ref.slice("$map/".length));
   }

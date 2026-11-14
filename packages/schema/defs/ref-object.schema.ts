@@ -35,8 +35,8 @@ export const parentRefSchema = {
 
 export const mapRefSchema = {
   description: "Reference to the current Array map iteration context.",
-  examples: ["$map/item", "$map/index", "$map/item/text", "$map/item/done"],
-  pattern: String.raw`^\$map/(item|index)(/.*)?$`,
+  examples: ["$map/item", "$map/index", "$map/item/text", "$map/item/done", "#/$map/item/text"],
+  pattern: String.raw`^(#/)?\$map/(item|index)(/.*)?$`,
   type: "string",
 } as const;
 

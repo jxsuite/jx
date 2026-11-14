@@ -69,6 +69,45 @@ const COMPONENTS = {
     state: { inc, n: 5 },
     tagName: "click-box",
   },
+  /* A list that filters, sorts and keys (spec.md §10.3, §10.4): the prerender applies the two
+     rules the module applies, so the rows and their order are the same on both sides. */
+  "list-arranged": {
+    children: [
+      {
+        children: [
+          { tagName: "li", textContent: "head" },
+          {
+            $prototype: "Array",
+            filter: { $ref: "#/state/isOn" },
+            items: { $ref: "#/state/rows" },
+            key: { $ref: "$map/item/id" },
+            map: { tagName: "li", textContent: "${$map.index}:${$map.item.id}" },
+            sort: { $ref: "#/state/byN" },
+          },
+        ],
+        tagName: "ul",
+      },
+      { onclick: { $ref: "#/state/inc" }, tagName: "button", textContent: "+" },
+    ],
+    state: {
+      byN: {
+        $expression: { operator: "-", target: { $ref: "$args/a/n" }, value: { $ref: "$args/b/n" } },
+        parameters: ["a", "b"],
+      },
+      inc,
+      isOn: {
+        $expression: { operator: "===", target: { $ref: "$args/item/on" }, value: true },
+        parameters: ["item"],
+      },
+      n: 0,
+      rows: [
+        { id: "a", n: 3, on: true },
+        { id: "b", n: 1, on: false },
+        { id: "c", n: 2, on: true },
+      ],
+    },
+    tagName: "list-arranged",
+  },
   "list-literal": { children: [list(["alpha", "beta"])], tagName: "list-literal" },
   "list-map": {
     children: [list({ $ref: "#/state/items" })],
@@ -176,6 +215,7 @@ const HOSTS = [
   "alone",
   "props",
   "empty",
+  "arranged",
 ] as const;
 
 let win: Window;
@@ -208,6 +248,7 @@ beforeAll(async () => {
       { $props: { label: "ALONE" }, id: "alone", tagName: "static-chip" },
       { id: "props", tagName: "prop-box" },
       { id: "empty", tagName: "empty-box" },
+      { id: "arranged", tagName: "list-arranged" },
     ],
     tagName: "main",
   });
@@ -303,6 +344,12 @@ describe("a prerendered instance upgrades to the markup it was built with", () =
   test("a property set to the empty string is an empty attribute on both sides", () => {
     expect(before.get("empty")).toContain('<p dir="" lang="" title="">p 1</p>');
     expect(host("empty").querySelector("p")?.getAttribute("title")).toBe("");
+  });
+
+  test("a filtered, sorted and keyed list prerenders the rows its module renders", () => {
+    expect(before.get("arranged")).toBe(
+      "<ul><li>head</li><li>0:c</li><li>1:a</li></ul><button>+</button>",
+    );
   });
 
   test("an element written with no prerender renders the same markup from nothing", () => {

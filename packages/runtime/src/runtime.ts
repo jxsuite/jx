@@ -42,7 +42,7 @@ import {
   inheritableFormulas,
   isMutating,
 } from "./expression.ts";
-import { readPath } from "./pointer.ts";
+import { canonicalMapRef, readPath } from "./pointer.ts";
 import type {
   JxContext,
   JxEventHandler,
@@ -886,7 +886,7 @@ export function setCanvasAssetResolver(fn: CanvasAssetResolver | null) {
 /** Attribute/property names whose value is an asset reference, on any element. */
 const ASSET_KEYS = new Set(["src", "poster", "data"]);
 
-/** Names whose value is a `srcset`-shaped candidate list rather than one reference. */
+/** Names whose value is a `srcset`-arranged candidate list rather than one reference. */
 const SRCSET_KEYS = new Set(["srcset", "imagesrcset"]);
 
 /**
@@ -3719,26 +3719,18 @@ function renderMappedArrayInto(
   };
 
   const update = (): void => {
-    let items: JxScopeValue = isRefValue(itemsSrc) ? resolveRef(itemsSrc.$ref, state) : itemsSrc;
-    if (Array.isArray(items) && isRefValue(filterRef)) {
-      const fn = resolveRef(filterRef.$ref, state);
-      if (isFunction(fn)) {
-        /* SAFETY: the guard proved a function, and a function accepts any call: `Array#filter`
-           passes each item (with its index and the list) and reads only the result's truthiness. */
-        items = items.filter(fn as (item: MappedRow["map"]["item"]) => boolean);
-      }
+    // `items` is a `$ref` or a literal array (spec.md §10.1); a build refuses anything else.
+    if (isTemplateString(itemsSrc)) {
+      warnOnce(
+        `items must be a $ref or a literal array, not the template string ${JSON.stringify(itemsSrc)} — no rows are rendered`,
+      );
     }
-    if (Array.isArray(items) && isRefValue(sortRef)) {
-      const fn = resolveRef(sortRef.$ref, state);
-      if (isFunction(fn)) {
-        /* SAFETY: the guard proved a function, and a function accepts any call: `toSorted` passes
-           two items and orders by the sign of the number the comparator returns. */
-        const compare = fn as (a: MappedRow["map"]["item"], b: MappedRow["map"]["item"]) => number;
-        const unsorted: readonly JxScopeValue[] = items;
-        items = [...unsorted].toSorted(compare);
-      }
-    }
-    let list: readonly JxScopeValue[] = Array.isArray(items) && mapDef ? items : [];
+    const items = mappedListItems(
+      isRefValue(itemsSrc) ? resolveRef(itemsSrc.$ref, state) : itemsSrc,
+      isRefValue(filterRef) ? resolveRef(filterRef.$ref, state) : undefined,
+      isRefValue(sortRef) ? resolveRef(sortRef.$ref, state) : undefined,
+    );
+    let list: readonly JxScopeValue[] = mapDef ? items : [];
     const count = list.length;
 
     /* The authoring hooks (`JxRenderOptions`), both absent unless a host names them. A list with
@@ -3757,19 +3749,8 @@ function renderMappedArrayInto(
     // Keys are read HERE, tracked, so a key that changes reconciles the list.
     const keys =
       placeholder === undefined
-        ? list.map((item, index) => mappedRowKey(keyPointer, item, index, warnOnce))
+        ? mappedRowKeys(keyPointer, list, warnOnce)
         : list.map(() => EMPTY_ROW_KEY);
-    const seen = new Set<MappedRow["key"]>();
-    for (let i = 0; i < keys.length; i++) {
-      if (seen.has(keys[i])) {
-        warnOnce(
-          `duplicate key ${String(keys[i])} — every occurrence after the first is rebuilt on each change`,
-        );
-        keys[i] = { duplicate: i };
-      } else {
-        seen.add(keys[i]);
-      }
-    }
 
     pauseTracking();
     try {
@@ -3875,31 +3856,103 @@ export function replaceListRow(
 }
 
 /**
+ * The rows a mapped array renders, from what its three sources resolved to (spec.md §10.3): `items`
+ * filtered, then sorted, never mutated. A value that is not an array is no rows; a `filter` or
+ * `sort` that is not a function is ignored. With neither, the source array itself is returned, so a
+ * caller that iterates it inside an effect tracks it.
+ *
+ * The one shape rule. The interpreter and the build call it; the compiled targets inline a copy
+ * (`__jxListItems`, from `listHelperSource` in `@jxsuite/compiler`) that a drift test holds to
+ * this.
+ *
+ * @param items What `items` resolved to
+ * @param filter What `filter` resolved to: called as `Array.prototype.filter` calls a predicate
+ * @param sort What `sort` resolved to: called as `Array.prototype.toSorted` calls a comparator
+ * @docs framework/concepts/lists
+ */
+export function mappedListItems(
+  items: JxScopeValue,
+  filter?: JxScopeValue,
+  sort?: JxScopeValue,
+): readonly JxScopeValue[] {
+  if (!Array.isArray(items)) {
+    return [];
+  }
+  let list: readonly JxScopeValue[] = items;
+  if (isFunction(filter)) {
+    /* SAFETY: the guard proved a function, and a function accepts any call: `Array#filter` passes
+       each item (with its index and the list) and reads only the result's truthiness. */
+    list = list.filter(filter as (item: JxScopeValue) => boolean);
+  }
+  if (isFunction(sort)) {
+    /* SAFETY: the guard proved a function, and a function accepts any call: `toSorted` passes two
+       items and orders by the sign of the number the comparator returns. */
+    list = [...list].toSorted(sort as (a: JxScopeValue, b: JxScopeValue) => number);
+  }
+  return list;
+}
+
+/**
+ * The key of every row of a list, in order (spec.md §10.4): what the `key` pointer names for each
+ * item, the index where there is no pointer or it names nothing, and a fresh object for every
+ * occurrence of a key after its first, so a duplicate is rebuilt and never mistaken for its twin.
+ *
+ * The one key rule. The interpreter calls it; the compiled targets inline a copy (`__jxRowKeys`,
+ * from `listHelperSource` in `@jxsuite/compiler`) that a drift test holds to this.
+ *
+ * @param pointer The `key` pointer as written, in either spelling, or null for an unkeyed list
+ * @param list The rows' items, already filtered and sorted
+ * @param warnOnce Receives each diagnostic; the caller decides how often to print one
+ * @docs framework/concepts/lists
+ */
+export function mappedRowKeys(
+  pointer: string | null,
+  list: readonly JxScopeValue[],
+  warnOnce: (message: string) => void,
+): JxScopeValue[] {
+  const keys = list.map((item, index) => mappedRowKey(pointer, item, index, warnOnce));
+  const seen = new Set<JxScopeValue>();
+  for (let i = 0; i < keys.length; i++) {
+    if (seen.has(keys[i])) {
+      warnOnce(
+        `duplicate key ${String(keys[i])} — every occurrence after the first is rebuilt on each change`,
+      );
+      keys[i] = { duplicate: i };
+    } else {
+      seen.add(keys[i]);
+    }
+  }
+  return keys;
+}
+
+/**
  * The identity a `key` pointer names for one item: the item itself for `$map/item`, a value read
  * off it for `$map/item/<path>`. Anything else is not a key — an index names a position, not a row
  * — and a key that evaluates to nothing cannot tell rows apart, so both fall back to the index.
+ * Both spellings of the pointer are read (`canonicalMapRef`); a message quotes it as written.
  */
 function mappedRowKey(
-  pointer: string | null,
+  written: string | null,
   item: MappedRow["map"]["item"],
   index: number,
   warnOnce: (message: string) => void,
 ): MappedRow["key"] {
-  if (pointer === null) {
+  if (written === null) {
     return index;
   }
+  const pointer = canonicalMapRef(written);
   if (pointer === "$map/item") {
     return item;
   }
   if (pointer.startsWith("$map/item/")) {
     const key = readPath(item, pointer.slice("$map/item/".length));
     if (key === undefined || key === null) {
-      warnOnce(`key "${pointer}" is empty for some items — those rows fall back to their index`);
+      warnOnce(`key "${written}" is empty for some items — those rows fall back to their index`);
       return index;
     }
     return key;
   }
-  warnOnce(`key "${pointer}" is not a $map/item pointer — rows fall back to their index`);
+  warnOnce(`key "${written}" is not a $map/item pointer — rows fall back to their index`);
   return index;
 }
 
@@ -4981,11 +5034,12 @@ export function resolveRef(refPath: string, state: JxScope) {
   if (!isString(refPath)) {
     return refPath;
   }
-  if (refPath.startsWith("$map/") || refPath.startsWith("#/$map/")) {
-    /* Both spellings. `#/` is the documented JSON Pointer prefix everywhere else in the schema,
-       so a `#/$map/item/x` fell through to `readPath`, returned null, and a `$map` over it
-       rendered ZERO rows with no warning. */
-    const parts = (refPath.startsWith("#/") ? refPath.slice(2) : refPath).split("/");
+  /* Both spellings of a `$map` pointer (`canonicalMapRef`). `#/` is the documented JSON Pointer
+     prefix everywhere else in the schema, so a `#/$map/item/x` fell through to `readPath`,
+     returned null, and a `$map` over it rendered ZERO rows with no warning. */
+  const mapRef = canonicalMapRef(refPath);
+  if (mapRef.startsWith("$map/")) {
+    const parts = mapRef.split("/");
     const [, key] = parts; // "item" or "index"
     /* SAFETY: `$map` holds only the row record `renderMappedArrayInto` binds (see `rowContext`), an
        ordinary object read here by whichever member the ref names. */

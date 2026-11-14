@@ -205,9 +205,48 @@ describe("renderMappedRows", () => {
     expect(evaluateStaticTemplate("${item}", { $map: ["not", "a", "frame"] })).toBeNull();
   });
 
+  test("applies filter, then sort, as the element's first render does", () => {
+    const scope = buildInitialScope({
+      byText: {
+        $expression: { operator: "-", target: { $ref: "$args/a/n" }, value: { $ref: "$args/b/n" } },
+        parameters: ["a", "b"],
+      },
+      keep: {
+        $expression: { operator: ">", target: { $ref: "$args/item/n" }, value: 1 },
+        parameters: ["item"],
+      },
+      rows: [{ n: 3 }, { n: 1 }, { n: 2 }],
+    });
+    const map = { tagName: "li", textContent: "${$map.index}:${$map.item.n}" };
+    const items = { $ref: "#/state/rows" };
+    expect(renderMappedRows(rows({ filter: { $ref: "#/state/keep" }, items, map }), scope)).toBe(
+      "<li>0:3</li>\n<li>1:2</li>",
+    );
+    expect(renderMappedRows(rows({ items, map, sort: { $ref: "#/state/byText" } }), scope)).toBe(
+      "<li>0:1</li>\n<li>1:2</li>\n<li>2:3</li>",
+    );
+    expect(
+      renderMappedRows(
+        rows({ filter: { $ref: "#/state/keep" }, items, map, sort: { $ref: "#/state/byText" } }),
+        scope,
+      ),
+    ).toBe("<li>0:2</li>\n<li>1:3</li>");
+    // A source that does not resolve to a function is ignored, as the interpreter ignores it.
+    expect(renderMappedRows(rows({ filter: { $ref: "#/state/rows" } }), scope)).toBe(
+      "<li>a</li>\n<li>b</li>",
+    );
+  });
+
+  test("refuses a template string as items", () => {
+    expect(() => renderMappedRows(rows({ items: "${state.rows}" }), {})).toThrow(
+      "A repeater's items must be a $ref or a literal array",
+    );
+  });
+
   test.each([
-    ["a filter", { filter: { $ref: "#/state/keep" } }],
-    ["a sort", { sort: { $ref: "#/state/order" } }],
+    ["a filter with no build-time value", { filter: { $ref: "#/state/remote" } }],
+    ["a sort with no build-time value", { sort: { $ref: "#/state/remote" } }],
+    ["a filter that throws on build-time data", { filter: { $ref: "#/state/deep" } }],
     ["items that are not an array", { items: { $ref: "#/state/label" } }],
     ["items that read nothing", { items: { $ref: "#/state/missing" } }],
     ["items with no build-time value", { items: { $ref: "#/state/feed" } }],
@@ -215,10 +254,15 @@ describe("renderMappedRows", () => {
   ])("renders no rows for %s", (_label, extra) => {
     const scope = buildInitialScope({
       boom: { $prototype: "Function", body: "return state.missing.deep.value;" },
+      deep: {
+        $prototype: "Function",
+        body: "return item.missing.deep.value;",
+        parameters: ["item"],
+      },
       feed: { $prototype: "Request", url: "/api/feed" },
-      keep: { $prototype: "Function", body: "return true" },
       label: "text",
-      order: { $prototype: "Function", body: "return 0" },
+      // A bodyless `$src` function is a placeholder at build time: it must not filter to nothing.
+      remote: { $prototype: "Function", $src: "./lib.js", parameters: ["item"] },
     });
     expect(renderMappedRows(rows(extra), scope)).toBe("");
   });
@@ -325,5 +369,15 @@ describe("compileElement — a repeater's items", () => {
 
   test("anything else is an empty list", async () => {
     expect(await moduleOf("nope")).toContain("${[].map(");
+  });
+
+  test("a template string is refused", async () => {
+    let message = "";
+    try {
+      await moduleOf("${state.rows}");
+    } catch (error) {
+      message = String(error);
+    }
+    expect(message).toContain("not the template string");
   });
 });

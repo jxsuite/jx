@@ -24,7 +24,7 @@ import type {
   JxStateDefinition,
 } from "@jxsuite/schema/types";
 import type { JxScope, JxScopeValue } from "./types.ts";
-import { readPath, refAccessor, refSegments } from "./pointer.ts";
+import { canonicalMapRef, readPath, refAccessor, refSegments } from "./pointer.ts";
 
 /** The published names of the schema's expression types, kept for existing importers. */
 export type {
@@ -591,11 +591,12 @@ function resolveOperands(
  * segment (`$map/item`, `$args/x`) has no owner.
  */
 function calleeOwner(
-  ref: string,
+  written: string,
   state: JxScope,
   event: Event | null,
   iterCtx?: IterCtx,
 ): JxScopeValue {
+  const ref = canonicalMapRef(written);
   const parentRef = (prefix: string): JxScopeValue => {
     const rest = ref.slice(prefix.length);
     if (!rest.includes("/")) {
@@ -618,7 +619,8 @@ function calleeOwner(
 }
 
 /** Resolve a $ref string within expression context. */
-function resolveExprRef(ref: string, state: JxScope, event: Event | null, iterCtx?: IterCtx) {
+function resolveExprRef(written: string, state: JxScope, event: Event | null, iterCtx?: IterCtx) {
+  const ref = canonicalMapRef(written);
   if (ref === "$reduce/acc") {
     return iterCtx?.acc;
   }
@@ -677,11 +679,12 @@ interface WritableLocation {
 
 /** Resolve a $ref to a writable location — returns { obj, key } for assignment. */
 function resolveWritableRef(
-  ref: string,
+  written: string,
   state: JxScope,
   _event: Event | null,
   iterCtx?: IterCtx,
 ): WritableLocation {
+  const ref = canonicalMapRef(written);
   if (ref.startsWith("$map/")) {
     const parts = ref.split("/");
     const [, key] = parts;
@@ -1141,7 +1144,8 @@ export function formulaFnName(key: string) {
  * @param {CompileOpts} opts
  * @returns {string}
  */
-function compileRef(ref: string, opts: CompileOpts) {
+function compileRef(written: string, opts: CompileOpts) {
+  const ref = canonicalMapRef(written);
   const s = opts.statePrefix ?? "state";
   const e = opts.eventParam ?? "event";
 

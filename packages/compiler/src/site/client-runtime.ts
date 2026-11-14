@@ -117,6 +117,8 @@ export function resolveClientRuntime(resolveDir: string = PACKAGE_DIR): ClientRu
       assetPaths.push(mod.assetPath);
     } else {
       imports[mod.specifier] = mod.fallback;
+      // The CDN serves the package's subpaths under the same URL, so the prefix key follows it.
+      imports[`${mod.specifier}/`] = `${mod.fallback}/`;
       warnings.push(
         `Could not resolve "${mod.specifier}" — the import map falls back to ${mod.fallback}. ` +
           "Interactive pages will load it from a third party, and a `default-src 'self'` policy " +
@@ -218,13 +220,8 @@ export function importMapAssetsInHtml(html: string): string[] {
   return found;
 }
 
-/** Render the `<script type="importmap">` block for a resolved runtime. */
-export function renderImportMap(imports: Record<string, string>): string {
-  const entries = Object.entries(imports)
-    .map(([name, url]) => `      ${JSON.stringify(name)}: ${JSON.stringify(url)}`)
-    .join(",\n");
-  return `<script type="importmap">\n  {\n    "imports": {\n${entries}\n    }\n  }\n  </script>`;
-}
+// The renderer lives in `shared.ts`, beside the page-template tiers that also write a map.
+export { renderImportMap } from "../shared.ts";
 
 /**
  * True when a bare specifier resolves from `resolveDir` under either backend.
@@ -251,10 +248,10 @@ const MAX_SUBPATH_PASSES = 10;
  *
  * The subpath set cannot be known before the build: it is a property of whichever third-party
  * components a page happens to register. So it is discovered _from the output_ — every emitted
- * `.js` asset is scanned for an import of `<runtime package>/<subpath>`, each is bundled to the
- * directory its prefix key names, and the scan repeats over what that produced. Bundling can
- * introduce new subpaths (a directive importing another directive), so the pass runs to closure
- * rather than once.
+ * `.js` file (bundles, compiled component modules, page modules) is scanned for an import of
+ * `<runtime package>/<subpath>`, each is bundled to the directory its prefix key names, and the
+ * scan repeats over what that produced. Bundling can introduce new subpaths (a directive importing
+ * another directive), so the pass runs to closure rather than once.
  *
  * **The subpath itself must be bundled, and only the core kept external.** A package-name external
  * covers the package's subpaths too, so listing `lit-html` in `external` externalises the entry —
@@ -287,7 +284,6 @@ export async function writeRuntimeSubpaths(
   const mirrors = new Map<string, string>();
   /** Runtime package specifier → the core file the bundler resolves it to. */
   const cores = new Map<string, string | undefined>();
-  const assetsDir = resolve(outDir, "assets");
   let written = 0;
 
   const coreOf = async (mod: RuntimeModule): Promise<string | undefined> => {
@@ -311,10 +307,13 @@ export async function writeRuntimeSubpaths(
     let discovered = 0;
     let files: string[] = [];
     try {
-      files = readdirSync(assetsDir, { recursive: true })
+      /* Every module the build emitted, not only the bundles under `assets/`: a compiled component
+         (`components/<tag>.js`) and a page's own module import lit subpaths too, the keyed-list
+         directive's `repeat` among them (compiler.md §4.7). */
+      files = readdirSync(outDir, { recursive: true })
         .map(String)
         .filter((entry) => entry.endsWith(".js"))
-        .map((entry) => join(assetsDir, entry));
+        .map((entry) => join(outDir, entry));
     } catch {
       return finish(outDir, mirrors, errors, written);
     }

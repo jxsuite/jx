@@ -28,7 +28,7 @@ describe("a style value may be a ref", () => {
   });
 
   test("every ref spelling the schema knows", async () => {
-    for (const ref of ["#/state/face", "$map/item/face", "$map/index"]) {
+    for (const ref of ["#/state/face", "$map/item/face", "$map/index", "#/$map/item/face"]) {
       const result = await validateDocument(doc({ color: { $ref: ref } }));
       expect(result.valid, ref).toBe(true);
     }

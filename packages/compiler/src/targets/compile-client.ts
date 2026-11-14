@@ -48,6 +48,16 @@ import {
   isRefObject,
   isSchemaOnly,
   isTemplateString,
+  KEYED_LIST_HELPER,
+  KEYED_LIST_IMPORTS,
+  keyedListDirectiveSource,
+  keyPath,
+  LIST_LITERAL_HELPER,
+  LIST_ITEMS_HELPER,
+  listHelperSource,
+  mappedArrayFeatures,
+  pageImportMap,
+  refuseTemplateItems,
   LIT_PART_GUARD,
   PREFORMATTED_TAGS,
   pureSchemeOf,
@@ -77,8 +87,9 @@ import {
   isTagExpression,
   tagNameCandidates,
 } from "@jxsuite/schema/guards";
-import type { ClientClasses, CompileContext, SrcImports } from "../shared.ts";
+import type { ClientClasses, CompileContext, MappedArrayFeatures, SrcImports } from "../shared.ts";
 import {
+  canonicalMapRef,
   escapeToken,
   objectKey,
   refAccessor,
@@ -159,6 +170,8 @@ export function compileClient(
     title?: string;
     reactivitySrc?: string;
     litHtmlSrc?: string;
+    /** The build's whole import map, written in place of the two sources above (compiler.md §12). */
+    runtimeImports?: Record<string, string> | undefined;
     modulePath?: string;
     projectStyle?: JxStyle | null;
     prePaintScheme?: boolean;
@@ -367,13 +380,15 @@ export function compileClient(
     reactivitySrc,
     opts.rewriteSrc,
     clientClasses,
+    mappedArrayFeatures(raw),
   );
 
-  // Build importmap entries — always include lit-html since compiled custom elements need it
-  const importmapEntries = [
-    `      "@vue/reactivity": "${reactivitySrc}"`,
-    `      "lit-html": "${litHtmlSrc}"`,
-  ];
+  // The page's import map: lit-html always, since compiled custom elements need it.
+  const importMap = pageImportMap({
+    litHtmlSrc,
+    reactivitySrc,
+    runtimeImports: opts.runtimeImports,
+  });
 
   // Forced-scheme contract (spec §9.5): restore the persisted scheme before any styles apply
   const prePaint =
@@ -388,13 +403,7 @@ export function compileClient(
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>${escapeHtml(title)}</title>
-  ${prePaint}<script type="importmap">
-  {
-    "imports": {
-${importmapEntries.join(",\n")}
-    }
-  }
-  </script>
+  ${prePaint}${importMap}
   ${styleBlock}
   <script type="module" src="./${modulePath}"></script>
 </head>
@@ -684,17 +693,8 @@ function buildClientNode(
     counter.l += 1;
     const arrayDef = source.children;
 
-    // Resolve items source expression
-    const itemsExpr = isRefObject(arrayDef.items)
-      ? stateRead(arrayDef.items.$ref)
-      : JSON.stringify(arrayDef.items);
-
-    // Compile the map template to a lit-html template string
-    const litTemplate = emitLitMapTemplate(arrayDef.map);
-    bindings.set(
-      listKey,
-      `() => (${itemsExpr} ?? []).map((item, index) => html\`${litTemplate}\`)`,
-    );
+    // The list, arranged and keyed as the document asks, over the map template (`emitClientList`).
+    bindings.set(listKey, `() => ${emitClientList(arrayDef)}`);
 
     bindAttrs.push(`:render="${listKey}"`);
     needsBind = true;
@@ -822,6 +822,11 @@ function emitLitMapTemplate(def: JxMutableNode | null | undefined, preformatted 
         attrs += ` ${k}="${mapRefsToLit(v)}"`;
         continue;
       }
+      // A bound attribute reads its pointer, the loop variable included, as the element target does.
+      if (isRefObject(v)) {
+        attrs += ` ${k}="\${${mapRefToClientExpr(v.$ref)}}"`;
+        continue;
+      }
       /* A boolean is the attribute's PRESENCE or its text depending on the family its NAME puts it
          in — `booleanAttrValue` owns that judgement, and the static emitter in `shared.ts` and the
          runtime's `applyAttributes` both defer to it, so a prerendered page cannot change meaning
@@ -947,8 +952,10 @@ function emitLitMapTemplate(def: JxMutableNode | null | undefined, preformatted 
     if (isTemplateString(tc)) {
       inner = `${mapRefsToLit(tc)}${guard}`;
     } else if (isRefObject(def.textContent)) {
-      const path = refToBindingKey(def.textContent.$ref);
-      inner = `\${state.${path}}${guard}`;
+      /* Read as the expression the pointer names, the loop variable included. The binding key
+         (`refToBindingKey`) is a name, and read as one it made `$map/item` the member
+         `state.$map_item`, so a row bound to its own item rendered empty. */
+      inner = `\${${mapRefToClientExpr(def.textContent.$ref)}}${guard}`;
     } else {
       inner = escapeHtml(tc);
     }
@@ -995,17 +1002,68 @@ function emitChildLit(c: JxMutableNode | JsonPrimitive, preformatted = false): s
 }
 
 /**
- * Emit a lit-html `${(items ?? []).map(...)}` hole for a mapped array, expanding its template
- * inline among sibling nodes (wrapper-less).
+ * Emit a lit-html hole for a mapped array, expanding its template inline among sibling nodes
+ * (wrapper-less).
  *
  * @param {RepeaterSlot} arrayDef
  * @returns {string}
  */
 function emitArrayHole(arrayDef: RepeaterSlot): string {
-  const { items } = arrayDef;
-  const itemsExpr = isRefObject(items) ? stateRead(items.$ref) : JSON.stringify(items ?? []);
-  const tpl = emitLitMapTemplate(arrayDef.map);
-  return `\${(${itemsExpr} ?? []).map((item, index) => html\`${tpl}\`)}`;
+  return `\${${emitClientList(arrayDef)}}`;
+}
+
+/**
+ * The read of a list source (`items`, `filter` or `sort`): the loop variable for a `$map` pointer,
+ * which is how a nested list reads its items off the row, and the null-tolerant state read for
+ * anything else, since a `Request` or a server entry holds nothing until it answers.
+ *
+ * @param {string} ref
+ * @returns {string}
+ */
+function listSourceRead(ref: string): string {
+  return canonicalMapRef(ref).startsWith("$map/") ? mapRefToClientExpr(ref) : stateRead(ref);
+}
+
+/**
+ * The expression a mapped array renders as, the one list emitter of this target: the whole-children
+ * binding and a hole among siblings both call it (spec.md §10.3, §10.4, compiler.md §4.7).
+ *
+ * A keyed list goes through `__jxKeyed`, which shapes it, keys it and hands lit's `repeat()` a
+ * snapshot. An unkeyed list is a `.map()`, over `__jxListItems(…)` when it filters or sorts and
+ * over `items` as written when it declares neither, so a list compiled before either existed keeps
+ * its bytes.
+ *
+ * @param {RepeaterSlot} arrayDef
+ * @returns {string}
+ */
+function emitClientList(arrayDef: RepeaterSlot): string {
+  refuseTemplateItems(arrayDef);
+  const { items, filter, sort, key } = arrayDef;
+  const keyed = isRefObject(key);
+  const literal = JSON.stringify(items ?? []);
+  let itemsExpr = keyed ? `${LIST_LITERAL_HELPER}(${JSON.stringify(literal)})` : literal;
+  if (isRefObject(items)) {
+    itemsExpr = listSourceRead(items.$ref);
+  }
+  const filterExpr = isRefObject(filter) ? listSourceRead(filter.$ref) : "undefined";
+  const sortExpr = isRefObject(sort) ? listSourceRead(sort.$ref) : "undefined";
+  const row = `(item, index) => html\`${emitLitMapTemplate(arrayDef.map)}\``;
+  if (keyed) {
+    const pointer = key.$ref;
+    const args = [
+      `(${itemsExpr} ?? [])`,
+      filterExpr,
+      sortExpr,
+      JSON.stringify(keyPath(pointer)),
+      JSON.stringify(pointer),
+      row,
+    ];
+    return `${KEYED_LIST_HELPER}(${args.join(", ")})`;
+  }
+  if (isRefObject(filter) || isRefObject(sort)) {
+    return `${LIST_ITEMS_HELPER}(${itemsExpr}, ${filterExpr}, ${sortExpr}).map(${row})`;
+  }
+  return `(${itemsExpr} ?? []).map(${row})`;
 }
 
 /**
@@ -1055,6 +1113,7 @@ function emitClientModule(
   _reactivitySrc: string,
   rewriteSrc: ((specifier: string) => string) | undefined,
   clientClasses: ClientClasses,
+  lists: MappedArrayFeatures,
 ) {
   const lines: string[] = [];
   const { needsLit, textParts } = counter;
@@ -1067,11 +1126,18 @@ function emitClientModule(
   if (needsComputed) {
     reactivityImports.push("computed");
   }
+  // The keyed-list directive owns an effect it stops, and a snapshot the page's render reads.
+  if (lists.keyed) {
+    reactivityImports.push("stop", "shallowRef");
+  }
   lines.push(`import { ${reactivityImports.join(", ")} } from '@vue/reactivity';`);
 
   // Lit-html imports (only when arrays are present)
   if (needsLit) {
     lines.push("import { html, render } from 'lit-html';");
+  }
+  if (lists.keyed) {
+    lines.push(...KEYED_LIST_IMPORTS);
   }
 
   // $src imports — bundleable specifiers (npm:…, ./relative) are rewritten to their /assets/
@@ -1082,6 +1148,14 @@ function emitClientModule(
   /* The boolean-attribute rule, inlined because this module loads with `@vue/reactivity` and
      nothing else — see `attrHelperSource`. The hydration script below is its only caller. */
   lines.push(...src.imports, ...clientClasses.imports, ...src.loaders, "", attrHelperSource());
+  /* The list rules (compiler.md §4.7), carried only by a module whose document filters, sorts or
+     keys a list. */
+  if (lists.arranged || lists.keyed) {
+    lines.push(listHelperSource());
+  }
+  if (lists.keyed) {
+    lines.push(keyedListDirectiveSource());
+  }
   if (serverCalls.length > 0) {
     lines.push("", serverCallHelperSource());
   }
@@ -1314,7 +1388,8 @@ function isNonDeclarationValue(
  * @param {string} ref
  * @returns {string}
  */
-function mapRefToClientExpr(ref: string) {
+function mapRefToClientExpr(written: string) {
+  const ref = canonicalMapRef(written);
   if (ref.startsWith("$map/")) {
     // The loop variable is an emitted identifier, so its first segment is the base, not a member.
     const [head, ...rest] = refSegments(ref.slice("$map/".length));
