@@ -21,15 +21,16 @@
  * it find" — and a caller that waits for the second to learn the first spends the whole crawl with
  * nothing to show.
  *
- * LLM key flow (matches ai-api.ts): X-Api-Key / Authorization: Bearer header, falling back to the
- * OPENAI_API_KEY env var; base URL from X-Api-Base-URL / OPENAI_BASE_URL. When AI component naming
- * is requested but no key resolves, the import proceeds without the AI pass and emits a warning
- * line instead of failing.
+ * The component-naming pass reaches the provider under the AI proxy's own policy
+ * (`resolveAiConfig`, specs/ai.md §4): the same headers, the same key provenance, the same base-URL
+ * guard. When naming is requested but that policy refuses the endpoint or resolves no key, the
+ * import proceeds without the AI pass and says why in a progress line instead of failing.
  *
  * @license MIT
  */
 
 import { readFile } from "node:fs/promises";
+import { resolveAiConfig } from "./ai-api.ts";
 import { problem } from "./problem.ts";
 import type { BreakpointPolicy, BreakpointRounding } from "@jxsuite/import/breakpoint-plan";
 import type { ImportProgressEvent } from "@jxsuite/import/pipeline";
@@ -90,12 +91,6 @@ type ImportStreamLine =
   | { type: "done"; root: string; config: ProjectConfig; result: ImportDoneSummary }
   | { type: "error"; error: string };
 
-/** The AI pass's credentials, resolved from the request headers or the environment. */
-interface AiConfig {
-  apiKey: string | null;
-  baseUrl: string | undefined;
-}
-
 /** Seconds between keep-alive lines while a phase is silent (browser launch is the longest gap). */
 const HEARTBEAT_INTERVAL_MS = 15_000;
 
@@ -155,26 +150,6 @@ function readBreakpointPolicy(
   return undefined;
 }
 
-function getAiConfig(req: Request): AiConfig {
-  const authHeader = req.headers.get("Authorization") || "";
-  const apiKeyHeader = req.headers.get("X-Api-Key") || "";
-  const baseUrlHeader = req.headers.get("X-Api-Base-URL") || "";
-
-  let apiKey: string | null = null;
-  if (authHeader.startsWith("Bearer ")) {
-    apiKey = authHeader.slice(7).trim();
-  }
-  if (apiKeyHeader) {
-    apiKey = apiKeyHeader.trim();
-  }
-  if (!apiKey && process.env.OPENAI_API_KEY) {
-    apiKey = process.env.OPENAI_API_KEY;
-  }
-
-  const baseUrl = baseUrlHeader || process.env.OPENAI_BASE_URL || undefined;
-  return { apiKey, baseUrl };
-}
-
 /** Handle POST /__studio/import-site — run the import pipeline, streaming NDJSON progress. */
 async function handleImportSite(req: Request, opts: ImportApiOptions): Promise<Response> {
   let body: ImportRequestBody;
@@ -231,7 +206,7 @@ async function handleImportSite(req: Request, opts: ImportApiOptions): Promise<R
   const maxPages = clamp(body.maxPages ?? 20, 1, IMPORT_MAX_PAGES);
   const maxNodesPerPage = clamp(body.maxNodesPerPage ?? 5000, 100, 50_000);
   const breakpoints = readBreakpointPolicy(body.breakpoints);
-  const { apiKey, baseUrl } = getAiConfig(req);
+  const { apiKey, baseUrl, reject } = resolveAiConfig(req);
   const toRoot = opts.toRoot ?? ((p: string) => p);
 
   const encoder = new TextEncoder();
@@ -259,7 +234,13 @@ async function handleImportSite(req: Request, opts: ImportApiOptions): Promise<R
           | false
           | { apiKey: string; baseUrl?: string | undefined; model?: string | undefined } = false;
         if (body.aiComponents) {
-          if (apiKey) {
+          if (reject) {
+            writeLine({
+              type: "progress",
+              phase: "ai",
+              message: `⚠ AI component naming skipped: ${reject.message} Continuing with heuristic names.`,
+            });
+          } else if (apiKey) {
             ai = { apiKey, baseUrl, model: body.aiModel };
           } else {
             writeLine({

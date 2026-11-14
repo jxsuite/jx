@@ -7,7 +7,7 @@
  * @module @jxsuite/server/tests
  */
 
-import { beforeEach, describe, it, expect } from "bun:test";
+import { afterAll, beforeEach, describe, it, expect } from "bun:test";
 import type { JsonObject } from "@jxsuite/schema/types";
 import { handleAiApi } from "../src/ai-api.js";
 
@@ -992,18 +992,156 @@ describe("AI proxy key-provenance + SSRF hardening", () => {
     });
   });
 
-  it.each([
-    ["an unparseable base URL", "not a url at all"],
-    ["the GCP metadata hostname", "http://metadata.google.internal/v1"],
-    ["an IPv6 link-local host", "http://[fe80::1]/v1"],
-  ])("blocks %s (403)", async (_label, baseUrl) => {
-    const req = mockReq("/__studio/ai/chat", {
-      method: "POST",
-      body: { messages: [{ role: "user", content: "hi" }] },
-      headers: { "X-Api-Base-URL": baseUrl, "X-Api-Key": "sk-user" },
+  /** Both proxy routes, each as the request that reaches its upstream when the guard allows it. */
+  const ROUTES = [
+    ["ai/chat", { body: { messages: [{ content: "hi", role: "user" }] }, method: "POST" }],
+    ["ai/models", { method: "GET" }],
+  ] as const;
+
+  /** Ask one route with the given headers, counting what the upstream fake saw. */
+  const ask = async (
+    route: (typeof ROUTES)[number],
+    headers: Record<string, string>,
+  ): Promise<{ res: Response; seen: string[] }> => {
+    const [path, init] = route;
+    const seen: string[] = [];
+    let res: Response | null = null;
+    await withUpstream(
+      (input) => {
+        seen.push(String(input));
+        return Promise.resolve(Response.json({ data: [] }));
+      },
+      async () => {
+        res = await handleAiApi(
+          mockReq(`/__studio/${path}`, { ...init, headers }),
+          new URL(`http://localhost/__studio/${path}`),
+        );
+      },
+    );
+    return { res: res!, seen };
+  };
+
+  const REFUSED = [
+    "not a url at all",
+    "http://metadata.google.internal/v1",
+    "http://metadata.google.internal./v1",
+    "http://[fe80::1]/v1",
+    "http://[fe90::1]/v1",
+    "http://[febf:ffff::1]/v1",
+    "http://169.254.0.1/v1",
+    "http://2852039166/v1",
+    "http://0xa9fea9fe/v1",
+    "http://[::ffff:169.254.169.254]/v1",
+    "http://[::ffff:a9fe:a9fe]/v1",
+    "http://[::169.254.169.254]/v1",
+    "http://[64:ff9b::169.254.169.254]/v1",
+    "http://[fd00:ec2::254]/v1",
+    "http://100.100.100.200/v1",
+    "http://[::ffff:100.100.100.200]/v1",
+    "http://[64:ff9b::100.100.100.200]/v1",
+    "file:///etc/hosts?",
+    "ftp://llm.example/v1",
+    "data:,x",
+  ];
+
+  describe.each(ROUTES)("on %s", (...route) => {
+    it.each(REFUSED)("blocks %s (403) without contacting it", async (baseUrl) => {
+      const { res, seen } = await ask(route, { "X-Api-Base-URL": baseUrl, "X-Api-Key": "sk-user" });
+      expect(res.status).toBe(403);
+      expect(res.headers.get("Content-Type")).toContain("application/problem+json");
+      expect(seen).toEqual([]);
     });
-    const res = await handleAiApi(req, new URL("http://localhost/__studio/ai/chat"));
-    expect(res!.status).toBe(403);
+
+    it("judges the environment base URL too", async () => {
+      process.env.OPENAI_BASE_URL = "http://[fe90::1]/v1";
+      try {
+        const { res, seen } = await ask(route, {});
+        expect(res.status).toBe(403);
+        expect(seen).toEqual([]);
+      } finally {
+        delete process.env.OPENAI_BASE_URL;
+      }
+    });
+  });
+
+  it.each([
+    "http://169.253.255.255/v1",
+    "http://169.255.0.1/v1",
+    "http://[fe7f:ffff::1]/v1",
+    "http://[fec0::1]/v1",
+    "http://[fd00::1]/v1",
+    "http://[::1]:11434/v1",
+    "http://[::ffff:127.0.0.1]:11434/v1",
+    "http://127.0.0.2:1234/v1",
+    "http://192.168.1.10:1234/v1",
+    "http://100.100.100.201/v1",
+    "http://[64:ff9b::127.0.0.1]/v1",
+    "http://metadata.google.internal.example/v1",
+  ])("forwards %s", async (baseUrl) => {
+    const { res, seen } = await ask(ROUTES[1], {
+      "X-Api-Base-URL": baseUrl,
+      "X-Api-Key": "sk-user",
+    });
+    expect(res.status).toBe(200);
+    expect(seen).toEqual([`${baseUrl}/models`]);
+  });
+
+  it("names the scheme rule", async () => {
+    const { res } = await ask(ROUTES[1], {
+      "X-Api-Base-URL": "file:///etc/hosts?",
+      "X-Api-Key": "sk-user",
+    });
+    const body = await res.json();
+    expect(body.detail).toBe("Base URL must be an http or https URL.");
+  });
+});
+
+describe("upstream redirects", () => {
+  let landed = 0;
+  const provider = Bun.serve({
+    fetch(request) {
+      if (new URL(request.url).pathname === "/landed") {
+        landed += 1;
+        return Response.json({ data: [] });
+      }
+      return new Response(null, { headers: { Location: "/landed" }, status: 307 });
+    },
+    hostname: "127.0.0.1",
+    port: 0,
+  });
+  const headers = {
+    "X-Api-Base-URL": `http://127.0.0.1:${provider.port}/v1`,
+    "X-Api-Key": "sk-user",
+  };
+
+  afterAll(() => provider.stop(true));
+
+  it("models reports a redirect as the upstream status without following it", async () => {
+    landed = 0;
+    const res = await handleAiApi(
+      mockReq("/__studio/ai/models", { headers }),
+      new URL("http://localhost/__studio/ai/models"),
+    );
+    const body = await res!.json();
+    expect(body.upstreamError).toBe(307);
+    expect(landed).toBe(0);
+  });
+
+  it("chat reports a redirect as an error frame without following it", async () => {
+    landed = 0;
+    const res = await handleAiApi(
+      mockReq("/__studio/ai/chat", {
+        body: { messages: [{ content: "hi", role: "user" }], model: "gpt-4o", systemPrompt: "" },
+        headers,
+        method: "POST",
+      }),
+      new URL("http://localhost/__studio/ai/chat"),
+    );
+    const events = await readSSEEvents(res!);
+    const errors = events.filter((event) => event.type === "error");
+    expect(errors).toHaveLength(1);
+    expect(errors[0]!.code).toBe("307");
+    expect(landed).toBe(0);
   });
 });
 

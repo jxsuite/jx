@@ -22,6 +22,11 @@
  * 2. Fallback: OPENAI_BASE_URL env var
  * 3. Default: https://api.openai.com/v1
  *
+ * Whichever it is, it is judged before anything is contacted (specs/ai.md §4): it must be an http
+ * or https URL, and its host must not be a link-local address or a cloud metadata endpoint, in any
+ * spelling. An upstream's redirect is not followed, so the host that was judged is the only one
+ * contacted.
+ *
  * Provider family (specs/ai.md §2.6): a request carrying `X-Api-Provider: anthropic` is served by
  * the Anthropic Messages API instead, with the same two flows read from ANTHROPIC_API_KEY,
  * ANTHROPIC_BASE_URL and `https://api.anthropic.com`. An env key is still attached only to its own
@@ -29,7 +34,8 @@
  * endpoint. Any other value is refused: a key must never be sent to a provider it was not meant
  * for. The models route lists both families in `providers`.
  *
- * A base URL resolving to a cloud metadata / link-local host is refused (SSRF defense).
+ * `resolveAiConfig` is that whole policy for one request, and every server route that forwards a
+ * provider key upstream calls it: both routes here, and the site import's component-naming pass.
  *
  * Prompt-cache affinity: a request carrying a valid X-Jx-Ai-Session header (the client's
  * conversation id) is forwarded with `sessionAffinity` set to a hash of it, scoped to this server
@@ -41,7 +47,9 @@
  * upstream's own listing.
  *
  * @license MIT
+ * @docs extending/embedding/backend-protocol
  */
+import { BlockList, isIP } from "node:net";
 import {
   AI_SESSION_HEADER,
   affinityKey,
@@ -93,32 +101,90 @@ interface ModelEntry {
 }
 
 /**
- * SSRF defense: refuse to proxy to a cloud metadata endpoint or a link-local host. Loopback and
- * private-LAN hosts are intentionally allowed — self-hosted / local LLMs run there. An unparseable
- * base URL is blocked. `169.254.169.254` (the AWS/GCP/Azure metadata IP) lives in the link-local
- * `169.254.0.0/16` range, which is the primary thing this stops.
+ * The IPv4 ranges a base URL may not address: the link-local range, where the cloud metadata
+ * services listen (`169.254.169.254`), and the one metadata address outside it, Alibaba Cloud's.
+ * Each as `[address, prefix length]`.
  */
-function isBlockedHost(rawUrl: string): boolean {
-  let host: string;
-  try {
-    host = new URL(rawUrl).hostname.toLowerCase();
-  } catch {
-    return true;
+const REFUSED_IPV4: readonly (readonly [string, number])[] = [
+  ["169.254.0.0", 16],
+  ["100.100.100.200", 32],
+];
+
+/** The IPv6 ranges: link-local, and EC2's IPv6 metadata address, which sits in unique-local space. */
+const REFUSED_IPV6: readonly (readonly [string, number])[] = [
+  ["fe80::", 10],
+  ["fd00:ec2::254", 128],
+];
+
+/**
+ * The IPv6 prefixes under which an address carries an IPv4 address in its low 32 bits, and is
+ * judged as that address: NAT64's well-known prefix and the deprecated IPv4-compatible form. The
+ * IPv4-mapped form (`::ffff:0:0/96`) is the third, and `BlockList` applies every IPv4 rule to it
+ * already.
+ */
+const IPV4_EMBEDDING_PREFIXES = ["::", "64:ff9b::"] as const;
+
+/** Every refused address, in whichever family and spelling it arrives. */
+const REFUSED_ADDRESSES = new BlockList();
+for (const [address, prefix] of REFUSED_IPV4) {
+  REFUSED_ADDRESSES.addSubnet(address, prefix, "ipv4");
+  for (const embedding of IPV4_EMBEDDING_PREFIXES) {
+    REFUSED_ADDRESSES.addSubnet(`${embedding}${address}`, 96 + prefix, "ipv6");
   }
-  const h = host.startsWith("[") ? host.slice(1, -1) : host;
-  if (h === "metadata.google.internal") {
-    return true;
-  }
-  if (h.startsWith("169.254.")) {
-    return true; // IPv4 link-local, incl. the cloud metadata IP
-  }
-  if (h.startsWith("fe80:")) {
-    return true; // IPv6 link-local
-  }
-  return false;
+}
+for (const [address, prefix] of REFUSED_IPV6) {
+  REFUSED_ADDRESSES.addSubnet(address, prefix, "ipv6");
 }
 
-interface AiConfig {
+/** Host names refused outright. A name is never resolved, so this is by name alone. */
+const REFUSED_NAMES: ReadonlySet<string> = new Set(["metadata.google.internal"]);
+
+/** What a base URL that is not an http(s) URL, or not a URL at all, is refused with. */
+const NOT_HTTP = "Base URL must be an http or https URL.";
+
+/** What a base URL whose host is refused is answered with. */
+const HOST_NOT_PERMITTED = "Base URL host is not permitted.";
+
+/**
+ * Why a provider base URL may not be contacted, or null when it may (specs/ai.md §4).
+ *
+ * - A URL that does not parse, or whose scheme is not `http:` or `https:`, is refused: the provider
+ *   is an HTTP endpoint, and this runtime's `fetch` would read a `file:` URL from disk.
+ * - A host that is an address in a refused range is refused, in every spelling the URL parser accepts
+ *   (a decimal or hexadecimal IPv4, an IPv4-mapped, NAT64 or IPv4-compatible IPv6).
+ * - A host that is a refused name is refused, with or without a trailing dot.
+ *
+ * Loopback and private-LAN hosts are deliberately allowed: self-hosted and local models run there.
+ * **A name is not resolved**, so a DNS name that resolves into a refused range is not caught: a
+ * check made before the request is undone by an answer that changes before the connection opens,
+ * and `fetch` cannot be pinned to the address that was checked.
+ *
+ * @param {string} rawUrl - The base URL a request would be forwarded to
+ * @returns {string | null} The sentence the refusal carries, or null
+ */
+export function baseUrlRefusal(rawUrl: string): string | null {
+  let url: URL;
+  try {
+    url = new URL(rawUrl);
+  } catch {
+    return NOT_HTTP;
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    return NOT_HTTP;
+  }
+  // The parser lower-cases the host and writes an IPv6 address in brackets.
+  const host = url.hostname.startsWith("[") ? url.hostname.slice(1, -1) : url.hostname;
+  const family = isIP(host);
+  if (family === 0) {
+    return REFUSED_NAMES.has(host.endsWith(".") ? host.slice(0, -1) : host)
+      ? HOST_NOT_PERMITTED
+      : null;
+  }
+  return REFUSED_ADDRESSES.check(host, family === 6 ? "ipv6" : "ipv4") ? HOST_NOT_PERMITTED : null;
+}
+
+/** What this server decided for one request: where it goes and with whose key, or why it does not. */
+export interface AiConfig {
   family: AiProviderFamily;
   apiKey: string | null;
   baseUrl: string;
@@ -158,7 +224,16 @@ function familyOf(req: Request): AiProviderFamily | null {
   return named === "anthropic" ? "anthropic" : null;
 }
 
-function getConfig(req: Request): AiConfig {
+/**
+ * This server's whole provider policy for one request (specs/ai.md §4): the family it names, the
+ * base URL it resolves to and whether that URL may be contacted, and the key it may carry there. A
+ * `reject` means the request goes nowhere. Every route that forwards a provider key upstream calls
+ * this and honours `reject`.
+ *
+ * @param {Request} req
+ * @returns {AiConfig}
+ */
+export function resolveAiConfig(req: Request): AiConfig {
   const authHeader = req.headers.get("Authorization") || "";
   const apiKeyHeader = req.headers.get("X-Api-Key") || "";
   const baseUrlHeader = req.headers.get("X-Api-Base-URL") || "";
@@ -195,13 +270,14 @@ function getConfig(req: Request): AiConfig {
   const baseUrl =
     baseUrlHeader || process.env[environment.baseUrlVariable] || environment.defaultBaseUrl;
 
-  if (isBlockedHost(baseUrl)) {
+  const refused = baseUrlRefusal(baseUrl);
+  if (refused !== null) {
     return {
       apiKey: null,
       baseUrl,
       family,
       missingKey: true,
-      reject: { status: 403, message: "Base URL host is not permitted." },
+      reject: { status: 403, message: refused },
     };
   }
 
@@ -249,7 +325,7 @@ function refuse(status: number, message: string): GatewayRefusal {
  * session header adds the hashed affinity key; an invalid one is ignored rather than refused.
  */
 async function resolveUpstream(req: Request): Promise<Upstream | GatewayRefusal> {
-  const { apiKey, baseUrl, family, reject } = getConfig(req);
+  const { apiKey, baseUrl, family, reject } = resolveAiConfig(req);
   if (reject) {
     return refuse(reject.status, reject.message);
   }
@@ -275,7 +351,19 @@ async function resolveUpstream(req: Request): Promise<Upstream | GatewayRefusal>
 
 // ─── /__studio/ai/chat — SSE streaming proxy ───────────────────────────────
 
+/**
+ * The fetch every upstream request is made with: the global one, read at call time, following no
+ * redirect. A redirect is the one way a host that was judged can send the proxy to one that was
+ * not, so the upstream's `3xx` is reported as the status it is (specs/ai.md §4).
+ */
+const upstreamFetch: typeof fetch = Object.assign(
+  (input: Parameters<typeof fetch>[0], init?: RequestInit) =>
+    fetch(input, { ...init, redirect: "manual" }),
+  { preconnect: fetch.preconnect },
+);
+
 const chatHandler = createChatHandler<{ readonly signal: AbortSignal }>({
+  fetch: upstreamFetch,
   resolveUpstream: (request) => resolveUpstream(request),
 });
 
@@ -295,7 +383,7 @@ export async function handleChat(req: Request): Promise<Response> {
  * key is available.
  */
 export async function handleModels(req: Request): Promise<Response> {
-  const { apiKey, baseUrl, family, missingKey, reject } = getConfig(req);
+  const { apiKey, baseUrl, family, missingKey, reject } = resolveAiConfig(req);
   if (reject) {
     return problemResponse(refuse(reject.status, reject.message));
   }
@@ -322,7 +410,7 @@ export async function handleModels(req: Request): Promise<Response> {
   // Key is available — proxy to the upstream /models endpoint.
   try {
     const upstreamUrl = `${baseUrl}/models`;
-    const upstreamResp = await fetch(upstreamUrl, {
+    const upstreamResp = await upstreamFetch(upstreamUrl, {
       headers: { Authorization: `Bearer ${apiKey}` },
     });
 
@@ -393,7 +481,7 @@ async function anthropicModels(apiKey: string | null, baseUrl: string): Promise<
   if (!apiKey) {
     return modelsResponse({ ...declared, configured: false, models: ANTHROPIC_DEFAULTS });
   }
-  const listing = await listAnthropicModels({ apiKey, baseUrl });
+  const listing = await listAnthropicModels({ apiKey, baseUrl }, upstreamFetch);
   if (listing.ok) {
     return modelsResponse({ ...declared, configured: true, models: listing.models });
   }
