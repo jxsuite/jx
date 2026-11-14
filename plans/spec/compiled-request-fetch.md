@@ -65,7 +65,7 @@ So in practice the interpreter aborts on a re-run only. The Decisions section ta
   - It stays Partial and stays `plan:spec/web-api-prototype-parity`'s to flip.
   - Its marker no longer names the compiled `Request`, and the `Request` cell reads `**Implemented**`.
   - The section gains one paragraph stating what `debounce` and the abort mean. Both tiers satisfy it.
-- **compiler.md §4.1:** it says that the element's fetch debounces, and that a disconnect aborts a fetch in flight. Its Partial marker, which belongs to `plan:_shared/compiled-element-lifecycle`, is untouched.
+- **compiler.md §4.1:** it says that the element's fetch debounces, and that a disconnect aborts a fetch in flight. The section is unmarked again: the lifecycle work that owned its Partial marker has landed.
 - **In a built site:**
   - Both compiled targets delay every fetch by `debounce`.
   - Both abort the fetch a change replaces and never write an `AbortError` to the entry.

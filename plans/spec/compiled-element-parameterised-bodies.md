@@ -36,7 +36,7 @@ size: S
 - `plan:spec/named-formula-recursion` (§19.4c) may add a compiled call-depth bound; after this plan both compiled callables build `_args` through one helper.
 - the shared classifier in `@jxsuite/schema/function-role` (landed) classifies every structured body as `callable` and leaves its lowering to each tier, naming this plan as the owner of the element target's.
 - `plan:spec/expression-build-checks` (§19.5) owns the build error for an `event#/` read outside a handler; whether a callable counts as outside is its Open (recommended: yes).
-- For `plan:_shared/compiled-element-lifecycle`: the interpreter calls `onMount(state, this)`, so a structured-body `onMount` receives the host as its `event`, and a `{ "stopPropagation": true }` statement in it calls a method an element does not have. That is a §16.4 hook question, not this item.
+- For the lifecycle hooks (`spec.md` §16.4): both tiers call `onMount(state, host)`, so a structured-body `onMount` receives the host as its `event`, and a `{ "stopPropagation": true }` statement in it calls a method an element does not have. That is a §16.4 hook question, not this item.
 
 ## Outcome
 

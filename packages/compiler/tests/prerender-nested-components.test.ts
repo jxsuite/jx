@@ -18,6 +18,7 @@ import {
   createSlotFill,
   inlineStyleDeclarations,
   liftPropsAttributes,
+  observedAttributeProps,
   preRenderComponentHtml,
   renderStaticNode,
   resolveHostStyle,
@@ -403,6 +404,116 @@ describe("preRenderComponentHtml — two levels, a live child, a shadow child", 
       defaults: { shadow: "closed" },
     });
     expect(html).toContain('<template shadowrootmode="closed">');
+  });
+});
+
+// ── Observed attributes (spec.md §16.5) ───────────────────────────────────────
+
+describe("preRenderComponentHtml — a nested instance's observed attributes", () => {
+  const userCard: JxElement = {
+    children: [
+      {
+        tagName: "p",
+        textContent:
+          "${state.username}:${JSON.stringify(state.count)}:${state.active}:${state.shout}",
+      },
+    ],
+    observedAttributes: ["username", "count", "active", "shout", "user-name"],
+    state: {
+      active: false,
+      count: { default: 1, type: "number" },
+      shout: "${state.username}!",
+      userName: "",
+      username: "Guest",
+    },
+    tagName: "user-card",
+  };
+
+  const holder = (instance: Omit<JxElement, "tagName">, state = {}): JxElement => ({
+    children: [{ ...instance, tagName: "user-card" }],
+    state,
+    tagName: "card-holder",
+  });
+
+  const render = (instance: Omit<JxElement, "tagName">, state = {}) =>
+    preRenderComponentHtml(holder(instance, state), null, null, registry(userCard));
+
+  test("a nested instance's observed attribute prerenders coerced", () => {
+    const html = render({ attributes: { active: true, count: "3", username: "Ada" } });
+    expect(html).toContain("<p>Ada:3:true:Ada!</p>");
+    // The attribute stays on the element, where the module reads it; a true boolean is bare.
+    expect(html).toContain('<user-card active count="3" username="Ada" data-jx-prerendered>');
+  });
+
+  test("an attribute bound to the parent's scope resolves there before it is coerced", () => {
+    const html = render(
+      { attributes: { count: "${state.n}", username: { $ref: "#/state/who" } } },
+      { n: 7, who: "Grace" },
+    );
+    expect(html).toContain("<p>Grace:7:false:Grace!</p>");
+  });
+
+  test("$props beats an observed attribute", () => {
+    const html = render({ $props: { username: "Props" }, attributes: { username: "Attr" } });
+    expect(html).toContain("<p>Props:1:false:Props!</p>");
+  });
+
+  test("an observed attribute stays out of data-jx-props", () => {
+    const attributeOnly = render({ attributes: { username: "Ada" } });
+    expect(attributeOnly).not.toContain("data-jx-props");
+    const both = render({ $props: { count: 2 }, attributes: { username: "Ada" } });
+    expect(both).toContain('data-jx-props="{&quot;count&quot;:2}"');
+    expect(both).toContain("<p>Ada:2:false:Ada!</p>");
+  });
+
+  test("an instance distinguished only by an observed attribute is not refused as a self-render", () => {
+    const nest: JxElement = {
+      children: [
+        { tagName: "b", textContent: "${state.level}" },
+        {
+          $switch: "${state.level === 'outer'}",
+          cases: { true: { attributes: { level: "inner" }, tagName: "level-nest" } },
+        },
+      ],
+      observedAttributes: ["level"],
+      state: { level: "outer" },
+      tagName: "level-nest",
+    };
+    const html = preRenderComponentHtml(nest, null, null, {
+      ...registry(nest),
+      path: [{ key: "{}", tag: "level-nest" }],
+    });
+    expect(html).toContain("<b>outer</b>");
+    expect(html).toContain("<b>inner</b>");
+  });
+
+  describe("observedAttributeProps", () => {
+    test("is null for a definition that observes nothing, and for an instance that writes none", () => {
+      expect(observedAttributeProps(innerChip, { label: "x" }, null)).toBeNull();
+      expect(observedAttributeProps(userCard, { title: "x" }, null)).toBeNull();
+      // The second argument is what an instance with no `attributes` hands over.
+      expect(observedAttributeProps(userCard, {}, null)).toBeNull();
+    });
+
+    test("coerces by the value the entry holds, under the camel-cased key", () => {
+      expect(
+        observedAttributeProps(
+          userCard,
+          { active: "", count: 4, "user-name": "Ada Lovelace", username: "Ada" },
+          null,
+        ),
+      ).toEqual({ active: true, count: 4, userName: "Ada Lovelace", username: "Ada" });
+    });
+
+    test("a false presence attribute, an unresolved value and a computed entry supply nothing", () => {
+      expect(
+        observedAttributeProps(
+          userCard,
+          { active: false, shout: "text", username: "${state.missing.name}" },
+          {},
+        ),
+      ).toBeNull();
+    });
   });
 });
 

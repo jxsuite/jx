@@ -5,6 +5,8 @@ import {
   DEFAULT_LIT_HTML_SRC,
   DEFAULT_REACTIVITY_SRC,
   buildComponentCSS,
+  observedAttrHelperSource,
+  observedDefaultsSource,
   propSupplyHelperSource,
   takeDroppedReactiveStyles,
 } from "../src/shared";
@@ -2072,6 +2074,102 @@ describe("compileElement — the property bridge (spec.md §13.2, §16.2)", () =
     const plain = await moduleOf({ name: "a" });
     expect(plain).not.toContain("__jxInherited");
     expect(plain).not.toContain("_given");
+  });
+});
+
+// ─── Lifecycle hooks and observed attributes ────────────────────────────────
+
+describe("compileElement — lifecycle and observed attributes (spec.md §16.4, §16.5)", () => {
+  const OBSERVING: JxDocument = {
+    children: [],
+    observedAttributes: ["username", "count", "user-name", "meta", "shout"],
+    state: {
+      count: { default: 1, type: "number" },
+      meta: { kind: "none" },
+      other: "unobserved",
+      pure: { type: "string" },
+      shout: "${state.username}!",
+      userName: "",
+      username: "Guest",
+    },
+    tagName: "test-observing",
+  };
+
+  async function moduleOf(doc: JxDocument): Promise<string> {
+    const result = await compileElement(doc);
+    return result.files[0]!.content;
+  }
+
+  test("onMount receives the host, as its argument and its receiver, on the first connection", async () => {
+    const content = await moduleOf({
+      children: [],
+      state: { onMount: { $prototype: "Function", body: "host.dataset.m = '1'" } },
+      tagName: "test-mount-host",
+    });
+    expect(content).toContain("if (_first && typeof this.state.onMount === 'function') {");
+    expect(content).toContain(
+      "queueMicrotask(() => this.state.onMount.call(this, this.state, this));",
+    );
+  });
+
+  test("adoptedCallback is emitted only when onAdopted is declared", async () => {
+    const adopted = await moduleOf({
+      children: [],
+      state: { onAdopted: { $prototype: "Function", body: "state.n = 1" } },
+      tagName: "test-adopted",
+    });
+    expect(adopted).toContain("adoptedCallback() {");
+    expect(adopted).toContain("this.state.onAdopted(this.state);");
+    expect(
+      await moduleOf({ children: [], state: { n: 0 }, tagName: "test-not-adopted" }),
+    ).not.toContain("adoptedCallback");
+  });
+
+  test("a document without observedAttributes compiles to no observed machinery", async () => {
+    for (const doc of [
+      { children: [], state: { n: 0 }, tagName: "test-unobserved" },
+      { children: [], observedAttributes: [], state: { n: 0 }, tagName: "test-observes-none" },
+    ] satisfies JxDocument[]) {
+      const content = await moduleOf(doc);
+      expect(content).not.toContain("__jxAbsorbAttr");
+      expect(content).not.toContain("observedAttributes");
+      expect(content).not.toContain("attributeChangedCallback");
+      expect(content).not.toContain("__jxObserved");
+    }
+  });
+
+  test("the static getter lists the declared names", async () => {
+    const content = await moduleOf(OBSERVING);
+    expect(content).toContain(
+      'const __jxObserved = ["username","count","user-name","meta","shout"];',
+    );
+    expect(content).toContain("static get observedAttributes() { return __jxObserved; }");
+    expect(content.split(observedAttrHelperSource())).toHaveLength(2);
+  });
+
+  test("the first connection reads the attributes present, before any prop source", async () => {
+    const content = await moduleOf(OBSERVING);
+    const read = content.indexOf(
+      "if (this.hasAttribute(_a)) __jxAbsorbAttr(this.state, _a, this.getAttribute(_a), _d);",
+    );
+    expect(read).toBeGreaterThan(content.indexOf("const _first = !this.#rendered;"));
+    expect(read).toBeLessThan(content.indexOf("this.getAttribute('data-jx-props')"));
+    expect(content).toContain(
+      "attributeChangedCallback(name, oldVal, newVal) {\n    if (oldVal === newVal) return;\n" +
+        "    __jxAbsorbAttr(this.state, name, newVal, __jxObservedDefaults());",
+    );
+  });
+
+  test("the module carries the observed keys' defaults as observedDefaultsSource writes them", async () => {
+    // `observed-attr-agreement.test.ts` evaluates that source against the runtime's answer.
+    const content = await moduleOf(OBSERVING);
+    expect(content).toContain(
+      `const __jxObservedDefaults = () => ${observedDefaultsSource(OBSERVING)};`,
+    );
+    expect(observedDefaultsSource(OBSERVING)).toBe(
+      'new Map([["count", 1], ["meta", {"kind":"none"}], ["shout", undefined], ' +
+        '["userName", ""], ["username", "Guest"]])',
+    );
   });
 });
 

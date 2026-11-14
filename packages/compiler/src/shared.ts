@@ -21,9 +21,11 @@ import {
   SLOT_MARK,
   SLOT_RECORD_KEY,
   SLOT_WHITESPACE,
+  absorbAttribute,
   booleanAttrValue,
   buildStyleRules,
   commentedRuleText,
+  declaredDefaults,
   enumeratedAttrNames,
   isNestedSelectorKey,
   camelToKebab,
@@ -1694,6 +1696,83 @@ export function propSupplyHelperSource(): string {
   ].join("\n");
 }
 
+/** The name of the observed-attribute helper an element module that observes any calls. */
+export const OBSERVED_ATTR_HELPER = "__jxAbsorbAttr";
+
+/**
+ * The observed-attribute rule (spec.md §16.5) as source for a generated element module:
+ * `absorbAttribute` from `@jxsuite/runtime`, restated line for line and inlined for the reason
+ * {@link attrHelperSource} gives. The key is the attribute's name camel-cased; a computed entry
+ * (present in the defaults with `undefined`) is never written; a boolean is presence, with the text
+ * `false` counting as absent; a removal restores the declared default, or falls back by the type of
+ * the value held; a number parses and anything else is the string.
+ *
+ * The rule is logic, so its guard is behavioural: `observed-attr-agreement.test.ts` runs this
+ * source and the runtime's export over one matrix of held type, attribute value and default. The
+ * defaults a module passes are not re-derived either: they are `declaredDefaults`' output for the
+ * observed keys, serialized ({@link observedDefaultsSource}).
+ *
+ * @returns {string} One `function` declaration, ready to push into a module's line list.
+ */
+export function observedAttrHelperSource(): string {
+  return [
+    `function ${OBSERVED_ATTR_HELPER}(state, name, value, defaults) {`,
+    "  const key = name.replace(/-([a-z])/g, (_, c) => c.toUpperCase());",
+    "  if (defaults && defaults.has(key) && defaults.get(key) === undefined) return;",
+    "  const current = state[key];",
+    "  if (typeof current === 'boolean') {",
+    "    state[key] = value !== null && value !== 'false';",
+    "    return;",
+    "  }",
+    "  if (value === null) {",
+    "    const declared = defaults ? defaults.get(key) : undefined;",
+    "    state[key] = declared === undefined ? (typeof current === 'number' ? 0 : '') : declared;",
+    "    return;",
+    "  }",
+    "  state[key] = typeof current === 'number' ? Number(value) : value;",
+    "}",
+  ].join("\n");
+}
+
+/** The state key an observed attribute writes: its name, camel-cased (spec.md §16.5). */
+function observedStateKey(name: string): string {
+  return name.replaceAll(/-([a-z])/g, (_: string, c: string) => c.toUpperCase());
+}
+
+/**
+ * The names a definition observes: its `observedAttributes`, when that is an array, less anything
+ * in it that is not a string.
+ *
+ * @param {JxElement | JxDocument} def
+ * @returns {string[]}
+ */
+export function observedAttributeNames(def: JxElement | JxDocument): string[] {
+  const { observedAttributes: observed } = def;
+  return Array.isArray(observed) ? observed.filter((name) => isString(name)) : [];
+}
+
+/**
+ * The declared defaults of a definition's observed keys as the source of a `new Map([...])`
+ * expression: the runtime's `declaredDefaults(def)`, kept to the observed keys and serialized. A
+ * `Map`, because an object literal would give a `__proto__` key meaning. A computed entry is
+ * written as `undefined`, which JSON cannot spell and which is how the rule knows never to write
+ * it. The module evaluates the expression per use, so an object default is a fresh copy for each
+ * removal rather than one object every instance then mutates.
+ *
+ * @param {JxElement | JxDocument} def
+ * @returns {string}
+ */
+export function observedDefaultsSource(def: JxElement | JxDocument): string {
+  const defaults = declaredDefaults(def);
+  const keys = new Set(observedAttributeNames(def).map((name) => observedStateKey(name)));
+  const pairs = [...defaults].flatMap(([key, value]) =>
+    keys.has(key)
+      ? [`[${JSON.stringify(key)}, ${value === undefined ? "undefined" : JSON.stringify(value)}]`]
+      : [],
+  );
+  return `new Map([${pairs.join(", ")}])`;
+}
+
 /** The name of the call helper a module holding a `timing: "server"` entry declares once. */
 export const SERVER_CALL_HELPER = "__jxServerCall";
 
@@ -2493,6 +2572,57 @@ export function buildInstanceScope(
 }
 
 /**
+ * The props an instance's observed attributes amount to at build time (spec.md §16.5), or null when
+ * it writes none: what the element's own first-connection read would put into state, so the
+ * prerender shows it on the first paint.
+ *
+ * Each observed attribute the instance writes with a statically resolvable value is turned into the
+ * attribute text `buildAttrs` would emit for it (a boolean through `booleanAttrValue`, where null
+ * means the attribute is absent), then coerced by the runtime's own `absorbAttribute` against the
+ * definition's build-time scope and its declared defaults, so a computed entry is skipped here as
+ * it is in the browser. The caller lays the result UNDER the instance's `$props`, which is the
+ * order the element applies, and never writes it into `data-jx-props`: the module reads the
+ * attribute itself, and a prop there would outrank a later attribute change on the first
+ * connection.
+ *
+ * @param {JxElement} def - The component definition
+ * @param {JxElement["attributes"]} attributes - The instance's attributes, `props.*` already lifted
+ * @param {JxScope | null} scope - The scope the instance's attribute values resolve against
+ * @returns {Record<string, JsonValue> | null}
+ */
+export function observedAttributeProps(
+  def: JxElement,
+  attributes: JxElement["attributes"],
+  scope: JxScope | null,
+): Record<string, JsonValue> | null {
+  const names = observedAttributeNames(def).filter((name) => Object.hasOwn(attributes ?? {}, name));
+  if (!attributes || names.length === 0) {
+    return null;
+  }
+  const defaults = declaredDefaults(def);
+  const scratch = buildInstanceScope(def, null);
+  let out: Record<string, JsonValue> | null = null;
+  for (const name of names) {
+    const value = resolveStaticValue(attributes[name], scope);
+    let text: string | null = null;
+    if (isBoolean(value)) {
+      text = booleanAttrValue(name, value);
+    } else if (isString(value) || isNumber(value)) {
+      text = String(value);
+    }
+    const key = observedStateKey(name);
+    if (text === null || (defaults.has(key) && defaults.get(key) === undefined)) {
+      continue;
+    }
+    absorbAttribute(scratch, name, text, defaults);
+    out ??= {};
+    /* SAFETY: `absorbAttribute` has just written this key with a boolean, a number or the string. */
+    out[key] = scratch[key] as JsonValue;
+  }
+  return out;
+}
+
+/**
  * Resolved host declarations by (camelCase) property: each is what its template read from the
  * instance's scope.
  */
@@ -2679,7 +2809,8 @@ export function renderStaticNode(
  *
  * - Props: `props.*` attributes lifted, then `$props`; a template value resolves against the PARENT's
  *   scope, which is what `resolveDocTemplates` does for a page-level instance before the page walk
- *   reaches it.
+ *   reaches it. Beneath them, the instance's observed attributes, coerced (spec.md §16.5), which
+ *   feed the scope and the path but never `data-jx-props`.
  * - Slot content: the instance's own children, rendered in the parent's scope and with the parent's
  *   fill, so a `<slot>` written among them passes the grandparent's group of that name through, and
  *   placed in the definition's slots by name (`createSlotFill`, spec.md §8.5). A live instance
@@ -2724,9 +2855,14 @@ function renderComponentInstance(
     props[key] = (resolveStaticValue(value, scope) as JsonValue | null) ?? value;
   }
   const hasProps = Object.keys(props).length > 0;
+  /* What the instance's scope is built from: its observed attributes, coerced, with its props over
+     them (spec.md §16.5). It is the instance's identity on the path too (spec.md §16.9), so two
+     nested instances of one tag told apart only by an observed attribute are two instances. */
+  const scopeProps = { ...observedAttributeProps(def, attributes, scope), ...props };
+  const hasScopeProps = Object.keys(scopeProps).length > 0;
 
   const path = context.path ?? [];
-  const frame: PrerenderFrame = { key: JSON.stringify(props), tag };
+  const frame: PrerenderFrame = { key: JSON.stringify(scopeProps), tag };
   const chain = [...path.map((f) => f.tag), tag].join(" → ");
   if (path.some((f) => f.tag === frame.tag && f.key === frame.key)) {
     throw new Error(
@@ -2748,7 +2884,7 @@ function renderComponentInstance(
 
   const shadow = resolveShadowMode(def, context.defaults);
   const isStatic = isComponentFullyStatic(def);
-  const instanceScope = buildInstanceScope(def, hasProps ? props : null);
+  const instanceScope = buildInstanceScope(def, hasScopeProps ? scopeProps : null);
   let innerHTML: string;
   let slotId: number | null = null;
   if (shadow) {
@@ -2813,12 +2949,20 @@ export function preRenderComponentHtml(
  * Check if a component definition is fully static (no runtime behavior needed).
  *
  * Returns true when: no event handlers, no $prototype entries (Functions, Request, Storage), no
- * $ref values. Conservative — returns false when uncertain.
+ * $ref values, and no observed attributes. Conservative — returns false when uncertain.
+ *
+ * A definition that declares `observedAttributes` is never static (spec.md §16.5): declaring the
+ * list is declaring a runtime interface, since every later change and removal of one must apply and
+ * only the element's module can hear it. Asked of the root alone, the only place the list is
+ * declared.
  *
  * @param {JxElement} doc - Component JSON definition
  * @returns {boolean}
  */
 export function isComponentFullyStatic(doc: JxElement) {
+  if (observedAttributeNames(doc).length > 0) {
+    return false;
+  }
   return _isStaticNode(doc);
 }
 
