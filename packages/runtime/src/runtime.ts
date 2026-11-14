@@ -2698,6 +2698,7 @@ function bindProperty(
    * strict mode an ES module always runs under. It is the most common Jx element property, so the
    * attribute form is the only one that works on both.
    */
+  let written = false;
   const write = (resolved: JxScopeValue): void => {
     // Widened to Element: a namespaced node is typed HTMLElement here but is not one at runtime.
     const node: Element = el;
@@ -2708,8 +2709,15 @@ function bindProperty(
     /* An equal write is skipped. A binding re-runs whenever anything it read changes, not only
        when its own result does, and re-setting `value` on a focused control is not free: it can
        move the caret and collapse the selection. A control that already holds the value has
-       nothing to learn from being told again. */
-    if (target[key] === resolved) {
+       nothing to learn from being told again.
+
+       The first write of an empty string is the exception. A reflected property reads `""` while
+       its attribute is absent, so the comparison cannot tell "already empty" from "never set", and
+       skipping it left `title: ""` with no attribute where built HTML and a compiled module both
+       write `title=""` (spec.md §8.1). */
+    const first = !written;
+    written = true;
+    if (target[key] === resolved && !(first && resolved === "")) {
       return;
     }
     target[key] = resolved;
