@@ -28,6 +28,7 @@ import {
   templateExpressions,
 } from "@jxsuite/schema/guards";
 import { getPlatform } from "../platform";
+import { REMOTE_TIMEOUT_MS } from "./iframe-protocol";
 import type {
   JsonObject,
   JsonValue,
@@ -39,8 +40,33 @@ import type {
 /** What the backend answered for one entry, or `null` when it could not resolve it. */
 type Resolved = JsonValue | null;
 
-/** Resolved entries by their request body, so a re-render does not ask the backend again. */
-let _cache = new Map<string, Promise<Resolved>>();
+/** One entry asked of the backend. */
+interface Lookup {
+  answer: Promise<Resolved>;
+  /** Whether the backend has answered, with a value or a refusal. */
+  settled: boolean;
+  /** Whether a render gave up waiting for it once, so no later render waits for it again. */
+  late: boolean;
+}
+
+/** What a wait answers with when the time runs out first. */
+const TIMED_OUT = Symbol("timed out");
+
+/** Lookups by their request body, so a re-render does not ask the backend again. */
+let _cache = new Map<string, Lookup>();
+
+/** `answer`, or {@link TIMED_OUT} when it has not come within `ms`. */
+function within(answer: Promise<Resolved>, ms: number): Promise<Resolved | typeof TIMED_OUT> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      resolve(TIMED_OUT);
+    }, ms);
+    void answer.then((value) => {
+      clearTimeout(timer);
+      resolve(value);
+    });
+  });
+}
 
 /** Forget every resolved entry; the next render asks the backend again. */
 export function invalidateRepeaterSources(): void {
@@ -189,12 +215,18 @@ function unresolved(key: string, error: Error | string): Resolved {
  * is nothing to resolve. A rebuild, never a write: the render document shares its `state` with the
  * tab's source document. An entry the backend cannot resolve is left as written, and the runtime's
  * own resolution remains the fallback.
+ *
+ * **The render is held for a bounded time.** A backend that never answers would otherwise hold the
+ * first render for good, with nothing drawn to say why. An entry not resolved within `timeoutMs`
+ * (the 30 seconds a frame gives a lookup of its own) is left as written and said in the console,
+ * and no later render waits for that lookup again: it is used from the render after it answers.
  */
 export async function bakeRepeaterSources(
   renderDoc: JxMutableNode,
   keys: readonly string[],
   docBase?: string,
   classes: ClassPaths = {},
+  timeoutMs: number = REMOTE_TIMEOUT_MS,
 ): Promise<JxMutableNode> {
   const platform = getPlatform();
   const { resolveClass } = platform;
@@ -214,18 +246,35 @@ export async function bakeRepeaterSources(
         body.$base = docBase;
       }
       const id = JSON.stringify(body);
-      let pending = _cache.get(id);
-      if (!pending) {
-        pending = resolveClass.call(platform, body).then(
-          (value): Resolved => value ?? null,
-          (error: Error | string) => {
-            _cache.delete(id);
-            return unresolved(key, error);
-          },
-        );
-        _cache.set(id, pending);
+      let lookup = _cache.get(id);
+      if (!lookup) {
+        const asked: Lookup = {
+          answer: resolveClass.call(platform, body).then(
+            (value): Resolved => value ?? null,
+            (error: Error | string) => {
+              _cache.delete(id);
+              return unresolved(key, error);
+            },
+          ),
+          late: false,
+          settled: false,
+        };
+        void asked.answer.then(() => {
+          asked.settled = true;
+        });
+        lookup = asked;
+        _cache.set(id, lookup);
       }
-      const value = await pending;
+      // Given up on once and still out: this render does not wait for it either.
+      if (lookup.late && !lookup.settled) {
+        return;
+      }
+      const value = await within(lookup.answer, timeoutMs);
+      if (value === TIMED_OUT) {
+        lookup.late = true;
+        unresolved(key, `no answer from the backend in ${Math.round(timeoutMs / 1000)} seconds`);
+        return;
+      }
       if (value !== null) {
         /* SAFETY: the backend answers with the class's resolved JSON value (no `$prototype`), which
            the runtime reads as a naked-value state entry, so it is a JxStateDefinition. */

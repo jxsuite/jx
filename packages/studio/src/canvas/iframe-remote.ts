@@ -30,14 +30,22 @@
  * @docs studio/logic/data
  */
 
-import { isJsonObject, isRef, isString } from "@jxsuite/schema/guards";
+import { isJsonObject, isRef, isString, isTemplateString } from "@jxsuite/schema/guards";
 import type { RemoteLookup, RemoteLookupAnswer } from "@jxsuite/runtime";
 import type { JxScope } from "@jxsuite/runtime/types";
 import type { JsonObject, JsonValue, JxDocumentValue } from "@jxsuite/schema/types";
 import { BOUND_FIELD_ATTR, TAG_ATTR, TAG_REF_ATTR } from "../utils/edit-display";
 import { TEMPLATE_ROW_ATTR } from "./iframe-rows";
 import { ECHO_PATH_ATTR, STAMPED_SELECTOR } from "./path-mapping";
-import { FAILED_NOTE, NOT_RUN_NOTE, PENDING_NOTE, THROWN_NOTE } from "./iframe-protocol";
+import {
+  FAILED_NOTE,
+  ITEMS_TEMPLATE_ERROR,
+  ITEMS_TEMPLATE_NOTE,
+  NOT_RUN_NOTE,
+  PENDING_NOTE,
+  REMOTE_TIMEOUT_MS,
+  THROWN_NOTE,
+} from "./iframe-protocol";
 import type {
   BindingState,
   BindingStatus,
@@ -45,9 +53,6 @@ import type {
   RemoteResult,
   RemoteWire,
 } from "./iframe-protocol";
-
-/** How long a lookup may go unanswered before the canvas reads it as failed. */
-export const REMOTE_TIMEOUT_MS = 30_000;
 
 /** How many distinct lookups one document may start between two Refreshes. */
 export const REMOTE_LIMIT = 32;
@@ -573,7 +578,8 @@ export interface StatusContext {
  * ({@link THROWN_NOTE}): nothing was fetched, so "could not load" would send the author to the
  * network for a mistake in the expression. A block is when a property of its own reads one. A
  * template row is when the list it stands in for does: the row is there because the data is not,
- * and it says which of the three reasons that is instead of "No items".
+ * and it says which of the three reasons that is instead of "No items". A repeater whose `items` is
+ * a template string has no list at all (spec.md §10.1), and its row says that, as a failure.
  *
  * A chip in a template row is not asked why it is empty. The row has no item (studio.md §4.5), so
  * every binding that reads one throws by design, and the row's own label already says so.
@@ -637,6 +643,15 @@ export function stampStatuses(container: Element, ctx: StatusContext): BindingSt
     // A row's root is stamped `[…, "map"]`: the repeater is the node above it.
     const repeater = path && path.at(-1) === "map" ? ctx.nodeAt(path.slice(0, -1)) : undefined;
     const items = isJsonObject(repeater) ? repeater.items : undefined;
+    // A template is not a list, and the page will draw no row for it: the row says so, as a failure.
+    if (isTemplateString(items)) {
+      const refused: EntryStatus = { error: ITEMS_TEMPLATE_ERROR, status: "failed" };
+      mark(row, refused, ITEMS_TEMPLATE_NOTE);
+      if (path) {
+        out.push({ path: path.slice(0, -1), source: items, ...refused });
+      }
+      continue;
+    }
     const status = any && isRef(items) ? statusOfText(items.$ref, ctx.unresolved) : null;
     mark(row, status);
     if (status && path) {

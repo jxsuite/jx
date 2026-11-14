@@ -740,6 +740,28 @@ describe("stampStatuses", () => {
     ]);
   });
 
+  test("a template row whose items is a template string says it is no list, as a failure", () => {
+    const { bindings, container } = drawn(
+      '<li data-jx-template-row data-jx-path="[0,&quot;map&quot;]"></li>',
+      {
+        nodeAt: () => ({ $prototype: "Array", items: "${state.posts.slice(0, 3)}", map: {} }),
+        // Nothing is unresolved: the refusal is the repeater's own, not the data's.
+        unresolved: {},
+      },
+    );
+    const row = container.querySelector("li");
+    expect(row?.dataset.jxStatus).toBe("failed");
+    expect(row?.dataset.jxStatusNote).toBe("Items is a template, not a list");
+    expect(bindings[0]?.error).toContain("Compute the list in a state entry");
+    expect(bindings).toMatchObject([
+      {
+        path: [0],
+        source: "${state.posts.slice(0, 3)}",
+        status: "failed",
+      },
+    ]);
+  });
+
   test("a template row is judged by the list it stands in for, not by what its template reads", () => {
     const { bindings, container } = drawn(
       '<li data-jx-template-row data-jx-path="[0,&quot;map&quot;]"></li>',
