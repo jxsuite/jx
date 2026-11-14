@@ -6,10 +6,11 @@ spec:
   - spec.md#10.2 # iteration context, including state.$map from a handler
   - spec.md#10.4 # keys
   - spec.md#10.5 # empty lists at build time
-  - compiler.md#8.1 # an empty expansion collapses only when the build resolved the list
+  - compiler.md#8.1 # an empty expansion collapses only when the build resolved the list; a component's repeater prerenders its rows
 code:
   - packages/compiler/src/targets/compile-element.ts
   - packages/compiler/src/site/site-build.ts
+  - packages/compiler/src/shared.ts
 ---
 
 # Lists and iteration
@@ -194,6 +195,8 @@ So a page that lists "related posts" from a collection ships no JavaScript for t
 ## How it works
 
 The runtime places an invisible anchor where the Array object sits, then renders the mapped items inline ahead of it. The whole render runs inside a reactive effect: when `items` (or a filter or sort dependency) changes, the previous generation of item nodes and their bindings is disposed and the list re-renders in place. Each item's template renders in a child scope carrying `$map`, and the surrounding document's `state` remains fully visible inside the template.
+
+On a built site, a list inside a component is in the page's HTML before any script runs. The build renders one row for each item the list starts with, in the component's own scope, so a navigation menu kept as a data table reaches crawlers as links. The component's module then draws the same rows when it loads and keeps them current. Two cases render no rows at build time and fill in when the module runs: a list whose `items` exists only in the browser (a `Request`, say), and a list that declares `filter` or `sort`. A component whose only list is over a literal array, with no `filter`, `sort` or `key`, never changes, so it ships no JavaScript for the list at all.
 
 ## Rules
 

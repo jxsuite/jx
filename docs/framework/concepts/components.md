@@ -5,6 +5,7 @@ spec:
   - spec.md#16.6
   - spec.md#16.9
   - spec.md#16.4
+  - spec.md#16.10 # an upgrade replaces the prerendered nodes
 code:
   - packages/compiler/src/shadow.ts
   - packages/compiler/src/targets/compile-element.ts
@@ -181,6 +182,14 @@ This cuts both ways. Your page CSS **can** reach into a component and restyle it
   "children": [{ "tagName": "slot" }]
 }
 ```
+
+### What a built page shows before the script runs
+
+On a built site every instance of a component is already in the page's HTML: its text, the rows of its lists, the case its `$switch` starts on, and the starting value of any state a handler changes. A crawler, and a reader whose JavaScript has not loaded yet, sees the component as it first appears.
+
+When the component's module loads, the element draws itself again and takes over. The two renders are the same markup, and the swap happens in one step, so nothing moves on screen. The elements themselves are new, though, so anything a visitor did to the first ones in that short window does not carry over: focus, text typed into a field, the scroll position of an inner panel, a `<details>` opened or closed, a playing video. Children you placed inside the component are the exception. They are moved into the new render, not rebuilt.
+
+A component with nothing that can change (no handler, no function or request in its `state`, no `$switch`, and no list over anything but a literal array) is plain HTML and loads no module at all.
 
 ### Lifecycle hooks
 

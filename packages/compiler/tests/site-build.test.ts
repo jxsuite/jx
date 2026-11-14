@@ -1329,8 +1329,12 @@ describe("buildSite — component CSS generation", () => {
     expect(html).toContain("my-button {");
     expect(html).toContain("display: inline-block");
     expect(html).not.toContain('rel="stylesheet"');
-    // Component JS is bundled as app.js or per-component module
-    expect(html).toContain('src="./app.js"');
+    // The component is live (it has a handler), so its module is injected. The page itself has
+    // Nothing dynamic: an unresolved text child inside the component renders nothing, and used to
+    // Leak its `${label}` source into the page, which made the page a client page for no reason.
+    expect(html).toContain('src="/components/my-button.js"');
+    expect(html).not.toContain('src="./app.js"');
+    expect(html).not.toContain("${");
   });
 
   /*
@@ -3727,9 +3731,11 @@ describe("buildSite — template text children", () => {
     expect(existsSync(out("app.js"))).toBe(false);
   });
 
-  it("keeps a runtime-only text child bound", () => {
+  it("keeps a text child over handler-written state bound, holding its initial value", () => {
+    // The page module binds what it prerenders, so the first paint is the entry's initial value
+    // (compiler.md §9.1) and not an empty text node.
     expect(readFileSync(out("live/index.html"), "utf8")).toContain(
-      "<!--jx-text:_t0--><!--/jx-text-->",
+      "<!--jx-text:_t0-->Hello World<!--/jx-text-->",
     );
     expect(readFileSync(out("live/app.js"), "utf8")).toContain("`Hello ${state.name}`");
   });

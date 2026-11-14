@@ -1157,7 +1157,7 @@ Template strings inside the map read the same context as `${$map.item…}` and `
 
 ### 10.3 Filtering and Sorting
 
-> **Status: Partial.** The interpreter filters and sorts (`renderMappedArrayInto` in `packages/runtime/src/runtime.ts`). No compiled path reads either key: `emitMappedArray` in `packages/compiler/src/targets/compile-element.ts`, both mapped-array emitters in `compile-client.ts` and the site build's build-time `expandMappedArrayStatic` (`packages/compiler/src/site/site-build.ts`) map `items` as given, so a built list shows every item in source order.
+> **Status: Partial.** The interpreter filters and sorts (`renderMappedArrayInto` in `packages/runtime/src/runtime.ts`). No compiled path reads either key: `emitMappedArray` in `packages/compiler/src/targets/compile-element.ts`, both mapped-array emitters in `compile-client.ts` and the site build's build-time `expandMappedArrayStatic` (`packages/compiler/src/site/site-build.ts`) map `items` as given, so a built list shows every item in source order. A component's prerender (`renderMappedRows` in `packages/compiler/src/shared.ts`) renders no rows for a list that declares either, so the rows a filter would drop are not in the page's HTML.
 
 ```json
 {
@@ -1665,7 +1665,7 @@ The interpreter is told the project's `state` once per realm (`setProjectFormula
 
 ### 15.2 Within-Component Scope
 
-> **Status: Partial.** The interpreter renders the children written inside a component instance in the scope of the document that wrote them, before the instance distributes them. Built output does not for an instance written on a page or a layout: `expandComponents` (`packages/compiler/src/site/site-build.ts`) serialises those children with an empty scope before the page compiles, so a binding among them renders empty and is never hydrated, and a bound `$props` on an instance among them is lost the same way.
+> **Status: Partial.** The interpreter renders the children written inside a component instance in the scope of the document that wrote them, before the instance distributes them. Built output does not for an instance written on a page or a layout: `expandComponents` (`packages/compiler/src/site/site-build.ts`) serialises those children before the page compiles, so a binding among them is not hydrated: one the build can resolve shows its value, the initial value of an entry a handler writes included, and never changes, and one it cannot resolve renders empty. A bound `$props` on an instance among them is lost the same way.
 
 All `state` entries are available to all descendant elements within that component without explicit passing.
 
@@ -1820,7 +1820,7 @@ Slot distribution is the difference that cannot be papered over, and the reason 
 
 **The element adopts that root rather than replacing it.** Calling `attachShadow` over an existing declarative root throws, and even where it did not, replacing it would discard the markup the feature exists to ship. An `open` root is found on the element; a `closed` one is not — by definition — and `ElementInternals` is the standard's only way back to it, which is why the two modes emit different lookups rather than one call with a mode string.
 
-What the client render then does is **replace**, not hydrate: lit renders its own tree, so the declarative markup is cleared first, exactly as the light path clears `innerHTML`. The stylesheet link is the one child kept, because it styles that root and the document's head cannot reach in. Jx does not use lit-ssr's `hydrate`, so a declarative shadow root is a first paint rather than a hydration target — the same contract the light path has always had.
+What the client render then does is **replace**, not hydrate: lit renders its own tree, so the declarative markup is cleared first, exactly as the light path clears `innerHTML`. The stylesheet link is the one child kept, because it styles that root and the document's head cannot reach in. Jx does not use lit-ssr's `hydrate`, so a declarative shadow root is a first paint rather than a hydration target — the same contract the light path has always had. Both paths clear and render in one synchronous pass, before the next paint (§16.10).
 
 **A style object means the same thing in both modes.** `:host` and `:host(.sel)` are translated rather than passed through: inside a root they stand alone, and outside they become the tag name and `<tag>.sel`, which is what "the host, matching this" means when there is no root. Moving a component between modes therefore does not silently break its styles.
 
@@ -1864,6 +1864,16 @@ The **compiler** enforces both rules along the expansion path of every route it 
 One boundary separates the two sides. The interpreter asks rule 1 only within a single **expansion**: the synchronous pass in which a definition's `children` render, instances connect and their definitions render in turn. A subtree an effect renders later — a `$switch` case that flips after the first paint, a `$map` row that arrives with new data — connects under the chain of the definition that drew the switch or the list, so rule 2 counts every frame above it, but the frames above the re-run are not searched for a repeat. The compiler searches its whole path because a build is one deterministic expansion; the interpreter cannot tell an `onMount` that flips a node into the same tag every time from a click that opens one more level of a node that starts closed, and the second is a page asking for one more, not a definition rendering itself. So the shape that repeats only across re-runs is ended by the cap rather than by the cycle check: thirty-three hosts and the nesting diagnostic, not a page that never settles.
 
 > **Status: Implemented.** The compiler's check in `renderComponentInstance`; the interpreter's in the element's `connectedCallback`, carried from an enclosing render to the instances it creates across the asynchronous scope build. Verified in `packages/runtime/tests/self-instantiation.test.ts`.
+
+### 16.10 Adopting a Prerendered Instance
+
+> **Status: Pending.** A prerendered instance is replaced when its element upgrades, in every tier; nothing adopts the nodes the build wrote. The compiled element clears its children and renders its own tree (`emitElementModule` in `packages/compiler/src/targets/compile-element.ts`), and the interpreter treats every existing child as slot content and clears the host (`packages/runtime/src/runtime.ts`).
+
+A built page carries each live component instance as markup: the definition rendered with that instance's props, its repeaters' initial rows and the initial value of state a handler writes ([compiler.md](./compiler.md) §8.1). When the element's module loads, the element **replaces** that markup: it clears its children, or its shadow root, and renders its own tree, in one synchronous pass, so the browser does not paint between the two. The build keeps the two renders the same markup, which makes the prerender a first paint that does not move.
+
+It is not the same nodes. Whatever was done to a prerendered node before the upgrade is lost with it: focus, a value typed into a field, an inner scroll offset, a `<details>` the visitor toggled, media playback, a running transition, and an observer another script attached. A light-DOM instance recovers the children it was given from its brackets, not from the host's children (§8.5), so those nodes do survive.
+
+**Adoption** is the element keeping the nodes the build wrote and attaching its bindings to them, so nothing is lost at upgrade. It needs what replacement does not: a marker before each bound text node, because an empty prerendered value has no node to claim; a stable key on each repeater row, by the same rule in the build and in the browser (§10.4), and an anchor after the run of rows; the rendered case's key on a `$switch` container, so the first run keeps the case it finds and only a different key clears it; and a renderer that can attach to existing nodes. Replacement stays the fallback for any instance whose markup does not match what the element would render.
 
 ---
 

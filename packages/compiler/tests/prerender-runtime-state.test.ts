@@ -230,17 +230,24 @@ describe("emitRequestFetch", () => {
   });
 });
 
-// ── Mutable state is not bakeable (issues #124, #125) ────────────────────────
+// ── Mutable state is not bakeable where the template is replaced (issues #124, #125) ─────────
 
 /**
  * The widest tier of the #112 family. A `$prototype: "Function"` whose body returns is stored in
  * the build scope as its already-evaluated _result_, and a plain `{ "type": "string" }` entry holds
  * an ordinary build-time value — so nothing distinguished either from a constant. Baking a template
  * over one replaces it in the emitted output, and the element is dead for the life of the page.
+ *
+ * That is true of the one pass that REPLACES a template (the site build's page-document scope), so
+ * that scope holds (`holdMutable`). Every case here is that scope; the block after it is the same
+ * documents in a scope whose binding survives the prerender, where the initial value is baked
+ * (compiler.md §8.1).
  */
-describe("buildInitialScope — entries a handler writes to", () => {
+describe("buildInitialScope — entries a handler writes to, in a holding scope", () => {
+  const holding = (defs: Record<string, JxStateDefinition>) =>
+    buildInitialScope(defs, null, { holdMutable: true });
   const withHandler = (body: string, extra: Record<string, JxStateDefinition> = {}) =>
-    scopeOf({
+    holding({
       count: { default: 0, type: "number" },
       list: { default: [], type: "array" },
       saved: { default: "", type: "string" },
@@ -273,7 +280,7 @@ describe("buildInitialScope — entries a handler writes to", () => {
 
   test("still bakes an entry nothing ever writes to", () => {
     // Narrow on purpose: prerendered content has to survive for SEO.
-    const scope = scopeOf({
+    const scope = holding({
       tagline: { default: "Static marketing copy", type: "string" },
       touch: { $prototype: "Function", body: "state.other = 1;", parameters: ["state"] },
     });
@@ -290,7 +297,7 @@ describe("buildInitialScope — entries a handler writes to", () => {
   });
 
   test("refuses an entry a mutating $expression targets", () => {
-    const scope = scopeOf({
+    const scope = holding({
       hits: { default: 0, type: "number" },
       bump: { $expression: { operator: "+=", target: { $ref: "#/state/hits" }, value: 1 } },
     });
@@ -309,12 +316,12 @@ describe("buildInitialScope — entries a handler writes to", () => {
       { ...base, label, writer },
       { ...base, writer, label },
     ]) {
-      expect(evaluateStaticTemplate("${state.label}", scopeOf(defs))).toBeNull();
+      expect(evaluateStaticTemplate("${state.label}", holding(defs))).toBeNull();
     }
   });
 
   test("still bakes a computed over constants only", () => {
-    const scope = scopeOf({
+    const scope = holding({
       price: 10,
       total: { $prototype: "Function", body: "return state.price * 2;" },
     });
@@ -326,11 +333,89 @@ describe("buildInitialScope — entries a handler writes to", () => {
     // Reading a key to classify it can run a computed's getter, which is free to throw before the
     // Data it needs exists. A throw says nothing about whether the entry is runtime-only, so it
     // Must not take the build down with it.
-    const scope = scopeOf({
+    const scope = holding({
       boom: { $prototype: "Function", body: "return state.missing.deep.value;" },
       label: { $prototype: "Function", body: "return state.boom + '!';" },
     });
 
     expect(() => evaluateStaticTemplate("${state.label}", scope)).not.toThrow();
+  });
+});
+
+// ── …and bakes its initial value where the binding survives ─────────────────────────────────
+
+describe("buildInitialScope — entries a handler writes to, in a scope that does not hold", () => {
+  const withHandler = (body: string) =>
+    scopeOf({
+      count: { default: 3, type: "number" },
+      list: { default: ["a"], type: "array" },
+      saved: { default: "draft", type: "string" },
+      touch: { $prototype: "Function", body, parameters: ["state"] },
+    });
+
+  test("bakes the initial value of a plain entry a handler assigns to", () => {
+    expect(evaluateStaticTemplate("${state.saved}", withHandler("state.saved = 'saved';"))).toBe(
+      "draft",
+    );
+  });
+
+  test.each([
+    ["compound assignment", "state.count += 1;"],
+    ["increment", "state.count++;"],
+    ["decrement", "state.count--;"],
+  ])("bakes the initial value of an entry written by %s", (_label, body) => {
+    expect(evaluateStaticTemplate("${state.count}", withHandler(body))).toBe(3);
+  });
+
+  test("bakes the initial length of an array a handler mutates in place", () => {
+    expect(evaluateStaticTemplate("${state.list.length}", withHandler("state.list.push(1);"))).toBe(
+      1,
+    );
+  });
+
+  test("bakes the initial value of an entry a mutating $expression targets", () => {
+    const scope = scopeOf({
+      hits: { default: 4, type: "number" },
+      bump: { $expression: { operator: "+=", target: { $ref: "#/state/hits" }, value: 1 } },
+    });
+
+    expect(evaluateStaticTemplate("${state.hits}", scope)).toBe(4);
+  });
+
+  test("bakes a computed over a written entry, in either declaration order", () => {
+    const label = { $prototype: "Function", body: "return state.saved + '!';" };
+    const writer = { $prototype: "Function", body: "state.saved = 'x';", parameters: ["state"] };
+    const base = { saved: { default: "draft", type: "string" } };
+
+    for (const defs of [
+      { ...base, label, writer },
+      { ...base, writer, label },
+    ]) {
+      expect(evaluateStaticTemplate("${state.label}", scopeOf(defs))).toBe("draft!");
+    }
+  });
+
+  test("still refuses an entry with no build-time value at all", () => {
+    const scope = scopeOf({
+      feed: { $prototype: "Request", url: "/api/feed" },
+      touch: { $prototype: "Function", body: "state.feed = null;", parameters: ["state"] },
+    });
+
+    expect(evaluateStaticTemplate("${state.feed}", scope)).toBeNull();
+  });
+
+  test("a nested scope inherits the marks of a holding parent", () => {
+    const parent = buildInitialScope(
+      {
+        n: 1,
+        inc: { $prototype: "Function", body: "state.n++", parameters: ["state"] },
+      },
+      null,
+      { holdMutable: true },
+    );
+    const child = buildInitialScope({ label: "x" }, parent);
+
+    expect(evaluateStaticTemplate("${state.n}", child)).toBeNull();
+    expect(evaluateStaticTemplate("${state.label}", child)).toBe("x");
   });
 });
