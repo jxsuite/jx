@@ -12,6 +12,7 @@ import {
   AI_TOOL_TIERS,
   SYSTEM_PROMPT_STATIC_PREFIX,
   buildSystemPrompt,
+  splitSystemPrompt,
 } from "../src/services/ai-system-prompt";
 import type { ComponentEntry } from "../src/files/components";
 import type { JxMutableNode, ProjectConfig } from "@jxsuite/schema/types";
@@ -577,5 +578,29 @@ describe("ai-system-prompt — a stable prefix for the prompt cache", () => {
     ].map((marker) => prompt.indexOf(marker));
     expect(order.every((at) => at >= SYSTEM_PROMPT_STATIC_PREFIX.length)).toBe(true);
     expect(order).toEqual(order.toSorted((a, b) => a - b));
+  });
+});
+
+describe("splitSystemPrompt", () => {
+  /* The parts a provider's cache can use (specs/ai.md §2.5, §2.6): the prefix every request
+     shares, marked as the end of what stays the same, and what follows it. */
+  test("is the static prefix, marked for the cache, and the rest; joined, it is the prompt", () => {
+    const prompt = buildSystemPrompt({ hasProject: false });
+    const parts = splitSystemPrompt(prompt);
+    expect(parts).toHaveLength(2);
+    expect(parts[0]).toEqual({ cache: true, text: SYSTEM_PROMPT_STATIC_PREFIX });
+    expect(parts[1]!.cache).toBeUndefined();
+    expect(parts.map((part) => part.text).join("")).toBe(prompt);
+  });
+
+  test("a prompt that is the prefix alone is one marked part", () => {
+    expect(splitSystemPrompt(SYSTEM_PROMPT_STATIC_PREFIX)).toEqual([
+      { cache: true, text: SYSTEM_PROMPT_STATIC_PREFIX },
+    ]);
+  });
+
+  test("a prompt that is not one this module built is one part, unmarked", () => {
+    expect(splitSystemPrompt("You are a test.")).toEqual([{ text: "You are a test." }]);
+    expect(splitSystemPrompt("")).toEqual([{ text: "" }]);
   });
 });

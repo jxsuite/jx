@@ -120,6 +120,8 @@ export interface StreamUsageEvent {
   cachedInputTokens?: number;
   /** The part of `outputTokens` spent on chain-of-thought, when the provider says. */
   reasoningTokens?: number;
+  /** The part of `inputTokens` written to a prompt cache by this request, when the provider says. */
+  cacheWriteInputTokens?: number;
 }
 
 export interface StreamDoneEvent {
@@ -597,7 +599,7 @@ export function createOpenAIStreamingClient({
   return { streamChat };
 }
 
-// ─── Anthropic implementation (stub for v1) ──────────────────────────────────
+// ─── Anthropic implementation ────────────────────────────────────────────────
 
 /**
  * The credentials a provider endpoint is opened with: its base URL and the API key it takes, two
@@ -608,26 +610,37 @@ export interface AiCredentials {
   apiKey: string;
 }
 
-/** The Anthropic client's options: the provider credentials and nothing more, for now. */
+/** The Anthropic client's options: the provider credentials and nothing more. */
 export type { AiCredentials as AnthropicStreamingClientOptions };
 
+/** What {@link createAnthropicStreamingClient} answers every round with. */
+const ANTHROPIC_DIRECT_MESSAGE =
+  "This client does not reach Anthropic directly. Use createAnthropicProvider from " +
+  "@jxsuite/ai/providers, or send through a backend whose chat route serves the anthropic family.";
+
 /**
- * Creates an Anthropic-compatible streaming client. Stub for v1 — throws on use. Full
- * implementation in v2 handles Anthropic's content_block delta model.
+ * A signpost, kept so the export every earlier release had still resolves. It reaches no provider:
+ * every round answers one `error` frame saying where the direct path is.
  *
- * @param {AiCredentials} _opts
+ * Claude is reached directly through `createAnthropicProvider` in `@jxsuite/ai/providers`
+ * (specs/ai.md §2.6), and from a page through a backend's chat route. The adapter is not built here
+ * because this module is in every page that talks to a backend, and the Messages API projection is
+ * not something a page that never calls it should carry.
+ *
+ * @param {AiCredentials} _opts - Unused
  * @returns {StreamingClient}
  */
 export function createAnthropicStreamingClient(_opts: AiCredentials): StreamingClient {
   /**
-   * @yields {StreamEvent} Normalized stream events.
+   * @yields {StreamEvent} One error frame.
    * @returns {AsyncGenerator<StreamEvent>}
    */
   async function* streamChat(): AsyncGenerator<StreamEvent> {
     yield {
       type: "error",
-      message: "Anthropic provider is not yet implemented (planned for v2). Use OpenAI.",
+      message: ANTHROPIC_DIRECT_MESSAGE,
       code: "NOT_IMPLEMENTED",
+      problem: problemDetails("capabilityUnavailable", ANTHROPIC_DIRECT_MESSAGE),
     };
   }
 
