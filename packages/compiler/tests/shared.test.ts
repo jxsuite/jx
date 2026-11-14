@@ -32,6 +32,7 @@ import {
   isSchemaOnly,
   isTemplateString,
   preRenderComponentHtml,
+  propertyAttrText,
   renderStaticNode,
   resolveRefValue,
   resolveStaticValue,
@@ -885,6 +886,243 @@ describe("buildAttrs", () => {
       ' contentEditable="false"',
     );
   });
+
+  // ─── DOM properties as the attributes HTML reflects them to (spec.md §8.1) ───
+
+  test("a reflected property is written as its attribute", () => {
+    expect(buildAttrs({ href: "/x", tagName: "a" }, null)).toBe(' href="/x"');
+    expect(buildAttrs({ alt: "A <b>", src: "/a.png", tagName: "img" }, null)).toBe(
+      ' alt="A &lt;b&gt;" src="/a.png"',
+    );
+    expect(buildAttrs({ name: "q", tagName: "input", type: "search" }, null)).toBe(
+      ' name="q" type="search"',
+    );
+  });
+
+  test("a reflected property is renamed to its content attribute", () => {
+    expect(buildAttrs({ htmlFor: "f", tagName: "label" }, null)).toBe(' for="f"');
+    expect(buildAttrs({ colSpan: 2, tagName: "td" }, null)).toBe(' colspan="2"');
+    expect(buildAttrs({ ariaLabel: "Close", tagName: "div" }, null)).toBe(' aria-label="Close"');
+    expect(buildAttrs({ readOnly: true, tagName: "input" }, null)).toBe(" readonly");
+  });
+
+  test("a boolean property is written by presence", () => {
+    expect(buildAttrs({ disabled: true, tagName: "button" }, null)).toBe(" disabled");
+    expect(buildAttrs({ disabled: false, tagName: "button" }, null)).toBe("");
+    // ToBoolean, as the setter applies it: a non-empty string is true.
+    expect(buildAttrs({ disabled: "false", tagName: "button" }, null)).toBe(" disabled");
+    expect(buildAttrs({ disabled: 0, tagName: "button" }, null)).toBe("");
+  });
+
+  test("an enumerated or keyword boolean writes its word", () => {
+    expect(buildAttrs({ draggable: false, tagName: "div" }, null)).toBe(' draggable="false"');
+    expect(buildAttrs({ spellcheck: true, tagName: "div" }, null)).toBe(' spellcheck="true"');
+    expect(buildAttrs({ tagName: "div", translate: false }, null)).toBe(' translate="no"');
+    expect(buildAttrs({ tagName: "div", translate: true }, null)).toBe(' translate="yes"');
+    expect(buildAttrs({ autocorrect: false, tagName: "input" }, null)).toBe(' autocorrect="off"');
+  });
+
+  test("hidden keeps until-found", () => {
+    expect(buildAttrs({ hidden: "until-found" }, null)).toBe(' hidden="until-found"');
+    expect(buildAttrs({ hidden: "UNTIL-FOUND" }, null)).toBe(' hidden="until-found"');
+    expect(buildAttrs({ hidden: "yes" }, null)).toBe(" hidden");
+    expect(buildAttrs({ hidden: false }, null)).toBe("");
+    expect(buildAttrs({ hidden: "" }, null)).toBe("");
+  });
+
+  test("an empty string is written", () => {
+    expect(buildAttrs({ alt: "", tagName: "img" }, null)).toBe(' alt=""');
+    expect(buildAttrs({ tagName: "option", value: "" }, null)).toBe(' value=""');
+    // The one change to what the seven always wrote: the setter writes the empty attribute.
+    expect(buildAttrs({ title: "" }, null)).toBe(' title=""');
+    expect(buildAttrs({ attributes: { "data-x": "" } }, null)).toBe(' data-x=""');
+    // `id` and `className` are skipped when empty, as they always were.
+    expect(buildAttrs({ className: "", id: "" }, null)).toBe("");
+  });
+
+  test("null, undefined and objects write nothing", () => {
+    expect(buildAttrs({ href: null, tagName: "a" }, null)).toBe("");
+    expect(buildAttrs({ href: undefined, tagName: "a" }, null)).toBe("");
+    expect(buildAttrs({ href: { a: 1 }, tagName: "a" }, null)).toBe("");
+    expect(buildAttrs({ tabIndex: null }, null)).toBe("");
+  });
+
+  test("a property the element lacks is not written", () => {
+    expect(buildAttrs({ href: "/x", tagName: "div" }, null)).toBe("");
+    expect(buildAttrs({ disabled: true, tagName: "my-card", title: "t" }, null)).toBe(' title="t"');
+    // No tag is a div.
+    expect(buildAttrs({ href: "/x" }, null)).toBe("");
+  });
+
+  test("a property with no attribute is not written", () => {
+    expect(buildAttrs({ indeterminate: true, tagName: "input" }, null)).toBe("");
+    expect(buildAttrs({ scrollTop: 10, tagName: "div" }, null)).toBe("");
+  });
+
+  test("a content property is not an attribute", () => {
+    expect(buildAttrs({ tagName: "textarea", value: "hi" }, null)).toBe("");
+    expect(buildAttrs({ innerText: "hi", tagName: "p" }, null)).toBe("");
+  });
+
+  test("the seven keep their order and new properties follow in key order", () => {
+    expect(
+      buildAttrs(
+        { alt: "a", className: "c", id: "i", src: "/s.png", tagName: "img", title: "t" },
+        null,
+      ),
+    ).toBe(' id="i" class="c" title="t" alt="a" src="/s.png"');
+    expect(
+      buildAttrs(
+        {
+          attributes: { "data-x": "1" },
+          dir: "rtl",
+          hidden: true,
+          lang: "en",
+          role: "note",
+          style: { color: "${state.c}" },
+          tabIndex: 0,
+          title: "t",
+        },
+        buildInitialScope({ c: "red" }),
+      ),
+    ).toBe(
+      ' hidden tabindex="0" title="t" lang="en" dir="rtl" role="note" style="color: red" data-x="1"',
+    );
+  });
+
+  test("an attributes entry replaces the property's attribute", () => {
+    expect(buildAttrs({ attributes: { href: "/b" }, href: "/a", tagName: "a" }, null)).toBe(
+      ' href="/b"',
+    );
+    // In the property's place, not at the end.
+    expect(
+      buildAttrs(
+        { attributes: { href: "/b", rel: "x" }, href: "/a", tagName: "a", target: "_blank" },
+        null,
+      ),
+    ).toBe(' href="/b" target="_blank" rel="x"');
+    // An entry that resolves to nothing removes the attribute, as the runtime's later write does.
+    const scope = buildInitialScope({ none: null, record: { a: 1 } });
+    expect(
+      buildAttrs(
+        { attributes: { href: { $ref: "#/state/none" } }, href: "/a", tagName: "a" },
+        scope,
+      ),
+    ).toBe("");
+    expect(
+      buildAttrs({ attributes: { READONLY: false }, readOnly: true, tagName: "input" }, null),
+    ).toBe("");
+    expect(
+      buildAttrs({ attributes: { readonly: true }, readOnly: false, tagName: "input" }, null),
+    ).toBe(" readonly");
+    // An entry that is not text, a boolean or nothing writes nothing and removes nothing.
+    expect(
+      buildAttrs(
+        { attributes: { href: { $ref: "#/state/record" } }, href: "/a", tagName: "a" },
+        scope,
+      ),
+    ).toBe(' href="/a"');
+  });
+
+  test("a control's live state is the property's", () => {
+    expect(
+      buildAttrs({ attributes: { value: "attr" }, tagName: "input", value: "prop" }, null),
+    ).toBe(' value="prop"');
+    expect(
+      buildAttrs({ attributes: { checked: true }, checked: false, tagName: "input" }, null),
+    ).toBe("");
+    expect(
+      buildAttrs({ attributes: { checked: false }, checked: true, tagName: "input" }, null),
+    ).toBe(" checked");
+    // A value the build cannot read decides nothing, so the attribute is written.
+    expect(
+      buildAttrs(
+        { attributes: { checked: true }, checked: { $ref: "#/state/later" }, tagName: "input" },
+        buildInitialScope({ later: { $prototype: "Request", url: "/api" } }),
+      ),
+    ).toBe(" checked");
+    // An option's value is not live state: the attribute wins.
+    expect(
+      buildAttrs({ attributes: { value: "attr" }, tagName: "option", value: "prop" }, null),
+    ).toBe(' value="attr"');
+  });
+
+  // The author's classes and the compiler's style handle are one `class` attribute (spec.md §9.2),
+  // And an `id` is never the handle, so it follows the rule every other property does.
+  test("className and attributes.class are one class attribute", () => {
+    expect(buildAttrs({ attributes: { class: "from-attr" }, className: "from-prop" }, null)).toBe(
+      ' class="from-attr"',
+    );
+    expect(buildAttrs({ attributes: { class: "only" } }, null)).toBe(' class="only"');
+  });
+
+  test("an attributes.id replaces the id property", () => {
+    expect(buildAttrs({ attributes: { id: "b" }, className: "c", id: "a" }, null)).toBe(
+      ' id="b" class="c"',
+    );
+    expect(
+      buildAttrs(
+        { attributes: { id: { $ref: "#/state/none" } }, id: "a" },
+        buildInitialScope({ none: null }),
+      ),
+    ).toBe("");
+  });
+
+  test("handlers, $-keys and reserved keys are never attributes", () => {
+    expect(
+      buildAttrs(
+        {
+          $props: { title: "x" },
+          default: true,
+          onclick: { $ref: "#/state/go" },
+          state: {},
+          tagName: "track",
+        },
+        null,
+      ),
+    ).toBe("");
+  });
+
+  test("a resolved template property is written", () => {
+    const scope = buildInitialScope({ on: true, slug: "a b" });
+    expect(buildAttrs({ href: "/p/${state.slug}", tagName: "a" }, scope)).toBe(' href="/p/a b"');
+    expect(buildAttrs({ disabled: "${state.on}", tagName: "button" }, scope)).toBe(" disabled");
+    expect(buildAttrs({ href: { $ref: "#/state/slug" }, tagName: "a" }, scope)).toBe(' href="a b"');
+  });
+
+  test("a property the build cannot read writes nothing", () => {
+    const scope = buildInitialScope({
+      boom: { $prototype: "Function", body: "return state.missing.x" },
+      later: { $prototype: "Request", url: "/api" },
+    });
+    expect(buildAttrs({ href: { $ref: "#/state/later" }, tagName: "a" }, scope)).toBe("");
+    expect(buildAttrs({ href: { $ref: "#/state/boom" }, tagName: "a" }, scope)).toBe("");
+    // With no scope there is nothing a pointer could name.
+    expect(buildAttrs({ href: { $ref: "#/state/slug" }, tagName: "a" }, null)).toBe("");
+  });
+});
+
+// ─── propertyAttrText ──────────────────────────────────────────────────────
+
+describe("propertyAttrText", () => {
+  test("a text row writes the value's string form", () => {
+    const row = { attribute: "value", kind: "text" } as const;
+    expect(propertyAttrText(row, "a")).toBe("a");
+    expect(propertyAttrText(row, 3)).toBe("3");
+    expect(propertyAttrText(row, true)).toBe("true");
+    expect(propertyAttrText(row, "")).toBe("");
+    expect(propertyAttrText(row, null)).toBeNull();
+    expect(propertyAttrText(row, [])).toBeNull();
+  });
+
+  test("a boolean row writes presence, a word or a keyword", () => {
+    expect(propertyAttrText({ attribute: "disabled", kind: "boolean" }, 1)).toBe("");
+    expect(propertyAttrText({ attribute: "disabled", kind: "boolean" }, "")).toBeNull();
+    expect(propertyAttrText({ attribute: "draggable", kind: "boolean" }, false)).toBe("false");
+    const translate = { attribute: "translate", keywords: ["yes", "no"], kind: "boolean" } as const;
+    expect(propertyAttrText(translate, true)).toBe("yes");
+    expect(propertyAttrText(translate, false)).toBe("no");
+  });
 });
 
 // ─── buildInner ────────────────────────────────────────────────────────────
@@ -917,6 +1155,66 @@ describe("buildInner", () => {
     const base = { media: {}, scope: null, scopeDefs: {} };
     expect(buildInner(def, null, base, compiler)).toBe("<p>\n  <span>");
     expect(buildInner(def, null, { ...base, preformatted: true }, compiler)).toBe("<p><span>");
+  });
+
+  test("innerText is the element's text, its line breaks br", () => {
+    const context = { media: {}, scope: null, scopeDefs: {} };
+    expect(buildInner({ innerText: "a <b>\nc\r\nd", tagName: "p" }, null, context, () => "")).toBe(
+      "a &lt;b&gt;<br>c<br>d",
+    );
+    expect(buildInner({ innerText: null, tagName: "p" }, null, context, () => "x")).toBe("");
+  });
+
+  test("a textarea's value is its text", () => {
+    const context = { media: {}, scope: buildInitialScope({ v: "hi\nthere" }), scopeDefs: {} };
+    expect(buildInner({ tagName: "textarea", value: "a\nb" }, null, context, () => "")).toBe(
+      "a\nb",
+    );
+    expect(buildInner({ tagName: "textarea", value: "${state.v}" }, null, context, () => "")).toBe(
+      "hi\nthere",
+    );
+    expect(buildInner({ defaultValue: 3, tagName: "output" }, null, context, () => "")).toBe("3");
+    // An input's value is an attribute, so its children are still its content.
+    expect(
+      buildInner({ children: ["x"], tagName: "div", value: "v" }, null, context, () => "kid"),
+    ).toBe("kid");
+  });
+
+  test("an option's text is its text", () => {
+    const context = { media: {}, scope: null, scopeDefs: {} };
+    expect(buildInner({ tagName: "option", text: "One & two" }, null, context, () => "")).toBe(
+      "One &amp; two",
+    );
+  });
+
+  test("textContent and innerHTML come before a content property, and the first one wins", () => {
+    const context = { media: {}, scope: null, scopeDefs: {} };
+    expect(
+      buildInner({ innerText: "b", tagName: "p", textContent: "a" }, null, context, () => ""),
+    ).toBe("a");
+    expect(
+      buildInner({ innerHTML: "<i>a</i>", innerText: "b", tagName: "p" }, null, context, () => ""),
+    ).toBe("<i>a</i>");
+    expect(
+      buildInner(
+        { text: "first", innerText: "second", tagName: "option" },
+        null,
+        context,
+        () => "",
+      ),
+    ).toBe("first");
+  });
+
+  test("an expanded instance has no content property", () => {
+    const context = { media: {}, scope: null, scopeDefs: {} };
+    expect(
+      buildInner(
+        { $static: true, innerHTML: "", innerText: "x", tagName: "my-card" },
+        null,
+        context,
+        () => "",
+      ),
+    ).toBe("");
   });
 
   test("returns empty for no content", () => {

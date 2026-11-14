@@ -620,6 +620,35 @@ describe("renderStaticNode — a registered tag", () => {
   test("stays the generic element path without a registry", () => {
     expect(renderStaticNode({ tagName: "inner-chip" }, null)).toBe("<inner-chip></inner-chip>");
   });
+
+  // Spec.md §8.1: a property is written as the attribute HTML reflects it to, per element.
+  test("a nested definition's element keeps its href", () => {
+    const linkCard: JxElement = {
+      children: [
+        { href: "${state.to}", tagName: "a", textContent: "${state.label}" },
+        { tagName: "textarea", value: "${state.label}" },
+      ],
+      state: { label: "Go", to: "/quote" },
+      tagName: "link-card",
+    };
+    const node: JxElement = { $props: { to: "/pricing" }, tagName: "link-card" };
+    expect(renderStaticNode(node, null, null, registry(linkCard))).toBe(
+      '<link-card data-jx-static><a href="/pricing">Go</a>\n<textarea>Go</textarea></link-card>',
+    );
+  });
+
+  test("an instance host writes only global properties", () => {
+    const node: JxElement = {
+      disabled: true,
+      href: "/x",
+      role: "note",
+      tagName: "inner-chip",
+      title: "t",
+    };
+    expect(renderStaticNode(node, null, null, registry(innerChip))).toBe(
+      '<inner-chip title="t" role="note" data-jx-static><span>[chip]</span></inner-chip>',
+    );
+  });
 });
 
 // ── The shared pieces ─────────────────────────────────────────────────────────

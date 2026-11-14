@@ -223,11 +223,13 @@ describe("RESERVED_KEYS", () => {
     "body",
     "parameters",
     "arguments",
-    "name",
   ];
   for (const k of required) {
     test(`contains "${k}"`, () => expect(RESERVED_KEYS.has(k)).toBe(true));
   }
+
+  // Reserved only inside a function definition (spec.md §17); on an element it is the property.
+  test('does NOT contain "name"', () => expect(RESERVED_KEYS.has("name")).toBe(false));
 
   const removed = ["$handlers", "$handler", "$compute", "$deps", "signal"];
   for (const k of removed) {
@@ -1475,6 +1477,11 @@ describe("renderNode", () => {
   test("sets plain string property", () => {
     const el = renderNode({ tagName: "p", textContent: "Hello" }, reactive({}));
     expect(el.textContent).toBe("Hello");
+  });
+
+  test("an element's name is written", () => {
+    const el = renderNode({ name: "q", tagName: "input" }, reactive({}));
+    expect(el.getAttribute("name")).toBe("q");
   });
 
   test("sets plain boolean property", () => {

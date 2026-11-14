@@ -1024,20 +1024,22 @@ describe("prop-bound inline editing", () => {
 
   test("a RESERVED top-level key does not block a prop of that name", () => {
     /* The mirror of the rule above, and the reason it is name-matched against RESERVED_KEYS rather
-       than "any top-level key". `applyProperties` skips reserved keys, so `name` at the top level
-       is NOT a prop delivery — verified against the runtime, where the marker still renders the
-       definition's default. Refusing here would make an ordinary `name` prop uneditable. */
+       than "any top-level key". `applyProperties` skips reserved keys, so `description` at the top
+       level is NOT a prop delivery: the marker still renders the definition's default. Refusing
+       here would make an ordinary `description` prop uneditable. `description` stays reserved;
+       `name` is an element property (spec.md §8.1), so a top-level `name` is a second source, as a
+       top-level `title` is. */
     const { channel, posts } = fakeChannel();
     const { container, h3, shadowDoc } = propBoundContainer(
-      { name: "Local" },
+      { description: "Local" },
       undefined,
-      { name: "Local" },
-      "name",
+      { description: "Local" },
+      "description",
     );
     const stop = boot(channel, container, { getShadowDoc: () => shadowDoc });
 
     clickInto(h3);
-    expect(posts).toContainEqual({ kind: "editStart", path: ["children", 1], prop: "name" });
+    expect(posts).toContainEqual({ kind: "editStart", path: ["children", 1], prop: "description" });
     stop();
   });
 
