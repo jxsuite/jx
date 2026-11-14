@@ -1654,6 +1654,46 @@ export function attrHelperSource(): string {
   );
 }
 
+/** The name of the prop-supply helper an element module with a property bridge calls. */
+export const PROP_SUPPLY_HELPER = "__jxSupplies";
+
+/** The name of the helper that finds the platform's own setter for a bridged key. */
+export const NATIVE_SETTER_HELPER = "__jxNativeSetter";
+
+/**
+ * The property bridge's two rules as source for a generated element module (compiler.md §4.4),
+ * inlined for the reason {@link attrHelperSource} gives.
+ *
+ * `__jxSupplies` restates `instanceSupplies` from `@jxsuite/runtime` line for line, the rule
+ * spec.md §13.2 states: an instance carries a prop when it has an own property of that name, an
+ * attribute of that name, or the kebab attribute a camelCase reflection writes. The rule is logic
+ * rather than data, so its guard is behavioural: `compile-element-render.test.ts` runs this source
+ * and the runtime's export over one input matrix.
+ *
+ * `__jxNativeSetter` is the walk the interpreter's accessor makes for a key the platform already
+ * owns (spec.md §16.2): the first descriptor of that name on the prototype chain, whose setter the
+ * forwarding accessor calls before it writes state, so `title` and `hidden` still reflect.
+ *
+ * @returns {string} Two `function` declarations, ready to push into a module's line list.
+ */
+export function propSupplyHelperSource(): string {
+  return [
+    `function ${PROP_SUPPLY_HELPER}(el, k) {`,
+    "  if (Object.hasOwn(el, k)) return true;",
+    "  if (el.hasAttribute(k)) return true;",
+    "  const kebab = k.replace(/[A-Z]/g, (c) => '-' + c.toLowerCase());",
+    "  return kebab !== k && el.hasAttribute(kebab);",
+    "}",
+    `function ${NATIVE_SETTER_HELPER}(el, k) {`,
+    "  for (let p = Object.getPrototypeOf(el); p; p = Object.getPrototypeOf(p)) {",
+    "    const d = Object.getOwnPropertyDescriptor(p, k);",
+    "    if (d) return d.set;",
+    "  }",
+    "  return undefined;",
+    "}",
+  ].join("\n");
+}
+
 /** The name of the call helper a module holding a `timing: "server"` entry declares once. */
 export const SERVER_CALL_HELPER = "__jxServerCall";
 

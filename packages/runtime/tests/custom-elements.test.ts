@@ -4,6 +4,7 @@ import { reactive } from "@vue/reactivity";
 
 import {
   defineElement,
+  instanceSupplies,
   Jx,
   renderNode as _renderNode,
   buildScope,
@@ -733,6 +734,26 @@ describe("a reflected property name does not clobber the declared default", () =
   test("a props.* attribute still wins", async () => {
     const r = await render({ attributes: { "props.title": "FROM PROPS-ATTR" } });
     expect(r.title).toBe("FROM PROPS-ATTR");
+  });
+
+  test("instanceSupplies is exported and reads an own property, the attribute, then the kebab ARIA attribute", () => {
+    const own = document.createElement("div");
+    Object.defineProperty(own, "count", { configurable: true, value: undefined, writable: true });
+    expect(instanceSupplies(own, "count")).toBe(true);
+
+    const attribute = document.createElement("div");
+    attribute.title = "";
+    expect(Object.hasOwn(attribute, "title")).toBe(false);
+    expect(instanceSupplies(attribute, "title")).toBe(true);
+
+    const aria = document.createElement("div");
+    aria.setAttribute("aria-label", "close");
+    expect(instanceSupplies(aria, "ariaLabel")).toBe(true);
+
+    // A reflected name nobody set, and a plain one nobody set.
+    const bare = document.createElement("div");
+    expect(instanceSupplies(bare, "title")).toBe(false);
+    expect(instanceSupplies(bare, "count")).toBe(false);
   });
 });
 

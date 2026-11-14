@@ -14,7 +14,7 @@ size: M
 
 An enabling plan. It claims nothing: `plan:spec/one-way-prop-forwarding` owns spec.md §13.3, whose new text ("a bound prop is re-delivered in every tier") is true only once this lands. It is split from that plan because the two have different dispositions. This half is code in `packages/compiler`, and that one is the spec rewrite.
 
-The census read §13.3's compiled gap as the child's alone ("A compiled parent binds `.prop=`, but the compiled element defines no property accessors…"), which `plan:_shared/compiled-prop-bridge` builds. The parent half holds only inside a component definition (`compile-element.ts`) and in a client `$map` row (`emitLitMapTemplate` in `packages/compiler/src/targets/compile-client.ts`). An instance written on a page or a layout, the common case, gets no live binding and not even its initial value.
+The census read §13.3's compiled gap as the child's alone ("A compiled parent binds `.prop=`, but the compiled element defines no property accessors…"), which the landed property bridge (`compiler.md` §4.4) has built. The parent half holds only inside a component definition (`compile-element.ts`) and in a client `$map` row (`emitLitMapTemplate` in `packages/compiler/src/targets/compile-client.ts`). An instance written on a page or a layout, the common case, gets no live binding and not even its initial value.
 
 **Evidence.** A scratch site was built with `buildSite` on 2026-09-27. Its page has `state: { n: 1, k: 5, rows: [{ v: 7 }], inc: handler "state.n++" }`, a button bound to `inc`, a `my-count` instance with `$props: { count: { $ref: "#/state/n" }, tpl: "${state.n}" }`, and a `$map` of `my-count` over `rows`.
 
@@ -44,7 +44,7 @@ The interpreter needs nothing: `renderCustomElementWithProps` in `packages/runti
 
 **Related, no edge**
 
-- `plan:_shared/compiled-prop-bridge` gives a compiled child the accessors that turn a later property write into a re-render; this plan gives a page-level instance the writes. Neither needs the other to land: the bridge's browser check binds its child inside a component for exactly that reason, and this plan's tests read `el.count` rather than the child's text. `plan:spec/one-way-prop-forwarding` requires both.
+- The landed property bridge (`compiler.md` §4.4) gives a compiled child the accessors that turn a later property write into a re-render; this plan gives a page-level instance the writes. Neither needed the other to land: the bridge's browser check binds its child inside a component for exactly that reason, and this plan's tests read `el.count` rather than the child's text. `plan:spec/one-way-prop-forwarding` requires both.
 - `plan:_shared/compiled-element-lifecycle` builds its `data-jx-props` merge from `node.$props`; once this plan lands the payload comes from `settled`.
 - `plan:_shared/compiled-element-lifecycle` also edits `expandComponents` (an observed-attribute merge) and `isComponentFullyStatic`. The landed slot distribution threads a slot-id counter through `expandComponents`. the landed style-handle assignment (`spec.md` §9.2) touches its `resolvedStyle` merge. Whichever lands second merges.
 - the shared classifier in `@jxsuite/schema/function-role` (landed) changes how `compile-client.ts` classifies `$src` entries, and spec.md §5.3 4d how it builds a handler's parameter list (`handlerParamNames`). This plan delivers only body-declared handler entries (below), built with that list.
@@ -116,7 +116,7 @@ No claim closes here. Once it lands:
 - `mapRefToClientExpr` lowers `#/state/`, `$map/`, `parent#/`, `window#/`, `document#/` and bare paths.
 - A `$ref` prop naming a handler entry is a `(state, event)` function in every target. Each key is assigned to `state` once, by `plan:spec/computed-function-classification`'s rule when that plan covers the entry and by this plan's block otherwise.
 
-`plan:spec/one-way-prop-forwarding` relies on the post-connection writes: with `plan:_shared/compiled-prop-bridge`'s accessors they re-render the child, and its tests extend `client-page-props.test.ts` below.
+`plan:spec/one-way-prop-forwarding` relies on the post-connection writes: with the property bridge's accessors (`compiler.md` §4.4) they re-render the child, and its tests extend `client-page-props.test.ts` below.
 
 ## Tests
 
@@ -187,4 +187,4 @@ Run `bun test --isolate --coverage` from `packages/compiler`. No new source file
 - `cd packages/compiler && bun test --isolate --coverage` passes at its thresholds. `bun scripts/check-coverage-manifest.ts packages/compiler` passes.
 - `bun run plans:check`, `bun run docs:spec-release`, `bun run docs:check`, `bun run docs:links` and `bun run docs:prose` pass.
 - Building the Context's scratch site, `grep -c '&quot;\$ref&quot;' dist/index.html` is `0`. The page-level `<my-count>` carries `data-jx-prerendered` and a `:prop.` directive, and `/components/my-count.js` is loaded.
-- Observable, in a browser, on that build: `document.querySelector("my-count").count` reads the page's `n`, and reads the new value after the button is clicked. (The child's rendered text follows once `plan:_shared/compiled-prop-bridge` has landed.)
+- Observable, in a browser, on that build: `document.querySelector("my-count").count` reads the page's `n`, and reads the new value after the button is clicked. (The child's rendered text follows too, through the property bridge's accessors, `compiler.md` §4.4.)

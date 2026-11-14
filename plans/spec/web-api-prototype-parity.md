@@ -65,7 +65,7 @@ This plan closes the rest: the element target's storage and cookie lowering, and
 
 **Related, no edge.** These plans edit the same functions:
 
-- `plan:_shared/compiled-prop-bridge`, `plan:_shared/compiled-element-lifecycle` and `plan:compiler/client-external-class-hydration` edit the element's `connectedCallback`. This plan leaves it untouched (see Decisions).
+- `plan:_shared/compiled-element-lifecycle` and `plan:compiler/client-external-class-hydration` edit the element's `connectedCallback`, as the landed property bridge (`compiler.md` §4.4) did. This plan leaves it untouched (see Decisions).
 - `plan:compiler/client-external-class-hydration` defines `isExternalClassDef` as "not in `BUILT_IN_PROTOTYPES`", and `plan:spec/reconcile-built-in-prototypes` recommends that a built-in name always means the built-in, in every tier. This plan's dispatcher lowers by name, which is the compiled half of both, so the three agree without an edge. If review signs the reconcile Open the other way, the plan that work needs adds a decline at the top of `lowerBuiltInPrototype`.
 - `plan:spec/request-url-params` edits `emitRequestFetch`, which this plan does not touch.
 - `plan:spec/timing-values-in-built-sites` owns what `timing` means on a built-in (§11.3).
@@ -94,7 +94,7 @@ This plan closes the rest: the element target's storage and cookie lowering, and
 - **Decided:** the element target binds every lowered entry in its constructor, once per instance. The entry starts as `null` in the state literal, and its effect is not added to `#effects`, so `disconnectedCallback` does not stop it. Four reasons:
   - The interpreted element builds its scope once and never stops these effects.
   - The constructor runs before any prop is absorbed, so a supplied prop overwrites and is persisted, as in the interpreter.
-  - A read at every connection would overwrite a write made while the element was detached, which becomes possible once `plan:_shared/compiled-prop-bridge`'s accessors exist.
+  - A read at every connection would overwrite a write made while the element was detached, which the property bridge's accessors (`compiler.md` §4.4) make possible.
   - It leaves `connectedCallback`, which three other plans restructure, untouched.
 - **Open:** in a component, does a prop supplied for a storage or cookie entry override the stored value (and get stored), or does the stored value win? Recommendation: the prop wins in both tiers, and §11.2 says so.
   - That is what the interpreter does today, and Studio's canvas and preview run the interpreter, so a built site must match what the author saw.

@@ -4,7 +4,6 @@ disposition: reconcile
 claims:
   - spec.md#13.3
 requires:
-  - _shared/compiled-prop-bridge
   - spec/one-way-prop-forwarding-page-bindings
 workspaces:
   - packages/runtime
@@ -49,8 +48,8 @@ The body (line 1547) promises the opposite: "the child receives the same reactiv
 
 **Related**
 
-- `plan:_shared/compiled-prop-bridge` (required) rewrites this section's marker to a narrower Partial when it lands. This plan replaces that marker. Its integration contract says this plan "may state that a `$ref` prop re-delivers the parent's value in both tiers". That holds only once the enabling plan has landed too (correction 1).
-- `plan:_shared/compiled-prop-bridge` and `plan:spec/elements-registration-example` also edit `props-and-scope.md`: a new "Setting props from script" section and the "Component instances" section. The hunks here are "Static and bound props", "Signal forwarding", "Resolution order", "How it works" and "Rules", so whichever lands second rebases adjacent hunks at most.
+- The landed property bridge (`compiler.md` §4.4, `spec.md` §16.2) rewrote this section's marker to a narrower Partial. This plan replaces that marker. With the bridge, a `$ref` prop re-delivers the parent's value in both tiers wherever a compiled parent binds it, a name the platform owns included (the accessor calls the platform's setter and then writes state, as the interpreter's does, so there is no reflected-name exception to state). For a page-level instance that holds only once the enabling plan has landed too (correction 1).
+- The landed property bridge added a "Setting props from script" section to `props-and-scope.md`, and `plan:spec/elements-registration-example` edits its "Component instances" section. The hunks here are "Static and bound props", "Signal forwarding", "Resolution order", "How it works" and "Rules", so whichever lands second rebases adjacent hunks at most.
 
 ## Outcome
 
@@ -61,7 +60,7 @@ The body (line 1547) promises the opposite: "the child receives the same reactiv
 ## Decisions
 
 - **Decided:** reconcile to one-way flow. The audit record's spec-wide decisions name this reconcile, and §2.4 ("explicit over implicit") and §15.3 ("signals do not cross component boundaries implicitly") already imply it. No tier has a write-back channel, and adding one would make every primitive prop a two-writer value with no rule for which write wins.
-- **Decided:** `requires` both `plan:_shared/compiled-prop-bridge` and `plan:spec/one-way-prop-forwarding-page-bindings`, because the new text says a bound prop is re-delivered in every tier:
+- **Decided:** `requires` `plan:spec/one-way-prop-forwarding-page-bindings` (the property bridge it also needed, `compiler.md` §4.4, has landed), because the new text says a bound prop is re-delivered in every tier:
   - without the bridge a compiled child ignores every write after connection.
   - without the enabling plan an instance on a built page receives an unresolved `$ref`.
 - **Decided:** state the object and array case as a consequence of passing a reference, including the detachment: a child that assigns a new object keeps it until the parent assigns one. That is what both tiers do, and a spec that names only mutation would read as a promise that reassignment is shared too.
@@ -129,13 +128,13 @@ The gates, all in the `checks` job: `bun run docs:status` (§13.3's first marker
 
 2. Replace the body sentence (line 1547) with three paragraphs:
 
-   "Props flow one way, parent to child. When a `$props` value is a `$ref` or a template (§6), the child receives the value it resolves to, and receives it again whenever that value changes. The parent writes it onto the child as a property, and the child's accessor (§16.2) carries it into the child's scope. A prop named after a property every element already has (`title`, `role`, `hidden`) is the exception §16.2 states: after connection a change reaches the child only when the child observes it (§16.5)."
+   "Props flow one way, parent to child. When a `$props` value is a `$ref` or a template (§6), the child receives the value it resolves to, and receives it again whenever that value changes. The parent writes it onto the child as a property, and the child's accessor (§16.2) carries it into the child's scope. A prop named after a property every element already has (`title`, `role`, `hidden`) arrives the same way, and the platform's own setter runs first, so the attribute reflects as well (§16.2)."
 
    "Nothing flows back. A child that writes a prop changes its own value and leaves the parent's state untouched, and the parent's next change replaces what the child wrote. An object or array prop is shared by reference, not forwarded. Both scopes hold the same reactive object, so a mutation of its contents (`state.items.push(x)`, `state.filter.q = "a"`) triggers effects in both, while assigning a new object to the prop in the child replaces only the child's value."
 
    "A child changes its parent's state by dispatching an event (§20.2) that reaches its host: one dispatched at the host, or one dispatched inside the child with `bubbles: true` (and `composed: true` to leave a shadow root, §16.6). The parent handles it with an `on*` handler written on the instance, which runs in the parent's scope. The dispatching function declares the event in its `emits` (§16.8) for editors and the manifest. A function passed through `$props` (§13.2's `onAction`) is a value like any other: an `on*` binding in the child calls it with the child's scope as `state`, so it cannot write the parent's."
 
-   Adjust the third paragraph's last sentence if the Open resolves the other way. Adjust the first paragraph's reflected-name sentence if the bridge's Open on reflected names does. The third paragraph does not name a root-level handler (§16.1) as the way to dispatch at the host: the compiled element binds none until `plan:spec/compiled-host-handlers` lands, and §20.2 already says where a dispatch starts in each tier (a compiled `state` handler dispatches from the instance), so the sentence holds without that edge.
+   Adjust the third paragraph's last sentence if the Open resolves the other way. The first paragraph's reflected-name sentence states what the property bridge shipped (`compiler.md` §4.4): the interpreter had come to forward such a name through the platform's setter, so the bridge's Open on reflected names was settled that way in both tiers. The third paragraph does not name a root-level handler (§16.1) as the way to dispatch at the host: the compiled element binds none until `plan:spec/compiled-host-handlers` lands, and §20.2 already says where a dispatch starts in each tier (a compiled `state` handler dispatches from the instance), so the sentence holds without that edge.
 
 **Fragment:** `bun run spec:change spec.md minor -m "Signal forwarding is one way in every tier: a bound prop is re-delivered from parent to child, a child's write stays in the child except through a shared object, and a child reaches its parent by dispatching an event"`
 

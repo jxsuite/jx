@@ -18,7 +18,7 @@ import { join, resolve } from "node:path";
 import { isBoolean, isNonNullObject } from "@jxsuite/schema/guards";
 import type { JsonObject, JsonValue, JxDocument } from "@jxsuite/schema/types";
 import { Window } from "happy-dom";
-import type { Element } from "happy-dom";
+import type { Element, HTMLElement } from "happy-dom";
 import { compileElement } from "../src/targets/compile-element";
 import { buildSite } from "../src/site/site-build";
 
@@ -250,6 +250,228 @@ describe("compiled element — $props delivery", () => {
 
     expect(el.hasAttribute("props.nope")).toBe(true);
     expect(el.textContent.trim()).toBe("DEFAULT");
+  });
+});
+
+// ── The property bridge (spec.md §13.2, §16.2) ───────────────────────────────
+
+/** A compiled element's reactive state, as its `state` property exposes it. */
+interface StatefulElement extends Element {
+  state: Record<string, JsonValue>;
+}
+
+function hasState(element: Element): element is StatefulElement {
+  return "state" in element && isNonNullObject(element.state);
+}
+
+/** An `ls-bridge` instance, read through the accessors the bridge installs. */
+interface BridgedElement extends Element {
+  count: JsonValue;
+  title: JsonValue;
+}
+
+function isBridged(element: Element): element is BridgedElement {
+  return Object.hasOwn(element, "count") && Object.hasOwn(element, "title");
+}
+
+function bridged(element: Element): BridgedElement {
+  if (!isBridged(element)) {
+    throw new Error(`Expected <${element.localName}> to carry the bridge's accessors`);
+  }
+  return element;
+}
+
+function stateOf(element: Element): Record<string, JsonValue> {
+  if (!hasState(element)) {
+    throw new Error(`Expected <${element.localName}> to be a compiled element with state`);
+  }
+  return element.state;
+}
+
+describe("compiled element — the property bridge", () => {
+  const CHILD: JxDocument = {
+    children: [
+      { className: "count", tagName: "p", textContent: "${state.count}" },
+      { className: "title", tagName: "p", textContent: "${state.title}" },
+      { className: "label", tagName: "p", textContent: "${state.label}" },
+    ],
+    state: { "#secret": "s", count: 0, label: { type: "string" }, title: "DEFAULT TITLE" },
+    tagName: "ls-bridge",
+  };
+
+  const text = (el: Element, name: string) => el.querySelector(`p.${name}`)?.textContent;
+
+  function connect(setup?: (el: HTMLElement) => void): HTMLElement {
+    const el = win.document.createElement("ls-bridge");
+    setup?.(el);
+    win.document.body.append(el);
+    return el;
+  }
+
+  beforeAll(async () => {
+    const child = await compileElement(CHILD);
+    writeFileSync(resolve(TMP, "bridge.js"), child.files[0]!.content, "utf8");
+    await import(resolve(TMP, "bridge.js"));
+
+    const parent = await compileElement({
+      children: [
+        {
+          $props: { count: { $ref: "#/state/n" }, title: { $ref: "#/state/heading" } },
+          id: "bound",
+          tagName: "ls-bridge",
+        },
+        {
+          $prototype: "Array",
+          items: { $ref: "#/state/rows" },
+          map: { $props: { count: "${$map.item.n}" }, className: "row", tagName: "ls-bridge" },
+        },
+      ],
+      state: { heading: "H1", n: 1, rows: [{ n: 1 }, { n: 2 }] },
+      tagName: "ls-bridge-host",
+    });
+    writeFileSync(resolve(TMP, "bridge-host.js"), parent.files[0]!.content, "utf8");
+    await import(resolve(TMP, "bridge-host.js"));
+  });
+
+  beforeEach(() => {
+    win.document.body.innerHTML = "";
+  });
+
+  test("a property written after connection re-renders", () => {
+    const el = connect();
+    expect(text(el, "count")).toBe("0");
+    Object.assign(el, { count: 3 });
+
+    expect(text(el, "count")).toBe("3");
+    expect(bridged(el).count).toBe(3);
+  });
+
+  test("a pure type definition accepts a prop from a property, data-jx-props and props.*", () => {
+    const byProperty = connect((el) => {
+      Object.assign(el, { label: "P" });
+    });
+    const byPayload = connect((el) => {
+      el.dataset.jxProps = JSON.stringify({ label: "D" });
+    });
+    const byAttribute = connect((el) => {
+      el.setAttribute("props.label", "A");
+    });
+
+    expect(text(byProperty, "label")).toBe("P");
+    expect(text(byPayload, "label")).toBe("D");
+    expect(text(byAttribute, "label")).toBe("A");
+    // And it is part of the property interface afterwards, though state held nothing for it.
+    Object.assign(byAttribute, { label: "LATER" });
+    expect(text(byAttribute, "label")).toBe("LATER");
+  });
+
+  test("a reflected name set before connection renders", () => {
+    // `title` goes through the platform's accessor and creates no own property.
+    const el = connect((instance) => {
+      Object.assign(instance, { title: "T" });
+    });
+    expect(Object.hasOwn(el, "title")).toBe(true);
+    expect(text(el, "title")).toBe("T");
+  });
+
+  test("a reflected name nobody set keeps the declared default", () => {
+    expect(text(connect(), "title")).toBe("DEFAULT TITLE");
+  });
+
+  test("an empty reflected value is honoured", () => {
+    const el = connect((instance) => {
+      Object.assign(instance, { title: "" });
+    });
+    expect(text(el, "title")).toBe("");
+  });
+
+  test("a reflected name written after connection reaches state and still reflects", () => {
+    const el = connect();
+    Object.assign(el, { title: "LATER" });
+
+    expect(text(el, "title")).toBe("LATER");
+    expect(el.getAttribute("title")).toBe("LATER");
+    expect(bridged(el).title).toBe("LATER");
+  });
+
+  test("a private key gets no accessor and takes no prop", () => {
+    const el = connect((instance) => {
+      Object.assign(instance, { "#secret": "early" });
+      instance.dataset.jxProps = JSON.stringify({ "#secret": "payload" });
+      instance.setAttribute("props.#secret", "attribute");
+    });
+    expect(Object.getOwnPropertyDescriptor(el, "#secret")?.get).toBeUndefined();
+    Object.assign(el, { "#secret": "late" });
+
+    expect(stateOf(el)["#secret"]).toBe("s");
+  });
+
+  test("a compiled parent's bindings reach the child, at connection and after", () => {
+    const parent = win.document.createElement("ls-bridge-host");
+    win.document.body.append(parent);
+    const child = rendered(parent.querySelector("#bound"), "#bound");
+
+    // The title is the reflected-name case: `.title=` creates no own property.
+    expect(text(child, "count")).toBe("1");
+    expect(text(child, "title")).toBe("H1");
+
+    stateOf(parent).n = 2;
+    stateOf(parent).heading = "H2";
+    expect(text(child, "count")).toBe("2");
+    expect(text(child, "title")).toBe("H2");
+    expect(child.getAttribute("title")).toBe("H2");
+  });
+
+  test("a reused $map row re-renders with its new item's props", () => {
+    const parent = win.document.createElement("ls-bridge-host");
+    win.document.body.append(parent);
+    const counts = () => [...parent.querySelectorAll(".row")].map((row) => text(row, "count"));
+    expect(counts()).toEqual(["1", "2"]);
+
+    stateOf(parent).rows = [{ n: 2 }, { n: 1 }];
+    expect(counts()).toEqual(["2", "1"]);
+  });
+
+  test("re-insertion neither re-merges nor loses the accessors", () => {
+    const el = connect();
+    el.remove();
+    Object.assign(el, { count: 9 });
+    win.document.body.append(el);
+    expect(text(el, "count")).toBe("9");
+
+    Object.assign(el, { count: 10 });
+    expect(text(el, "count")).toBe("10");
+  });
+
+  test("a property set before the definition loads is absorbed, then forwards", async () => {
+    const el = win.document.createElement("ls-bridge-late");
+    Object.assign(el, { count: 7 });
+    win.document.body.append(el);
+
+    const late = await compileElement({ ...CHILD, tagName: "ls-bridge-late" });
+    writeFileSync(resolve(TMP, "bridge-late.js"), late.files[0]!.content, "utf8");
+    await import(resolve(TMP, "bridge-late.js"));
+
+    expect(text(el, "count")).toBe("7");
+    Object.assign(el, { count: 8 });
+    expect(text(el, "count")).toBe("8");
+  });
+
+  test("a key naming a member of the element class is a prop by attribute only", async () => {
+    const result = await compileElement({
+      children: [{ tagName: "p", textContent: "${state.template}" }],
+      state: { template: "t" },
+      tagName: "ls-bridge-member",
+    });
+    writeFileSync(resolve(TMP, "bridge-member.js"), result.files[0]!.content, "utf8");
+    await import(resolve(TMP, "bridge-member.js"));
+
+    const el = win.document.createElement("ls-bridge-member");
+    el.setAttribute("props.template", "from attribute");
+    win.document.body.append(el);
+    expect(el.textContent.trim()).toBe("from attribute");
+    // The member the element renders with is still the class's own.
+    expect(Object.hasOwn(el, "template")).toBe(false);
   });
 });
 
