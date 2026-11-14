@@ -3,7 +3,6 @@ status: active
 disposition: implement
 claims:
   - ai.md
-  - ai.md#3.10
 size: L
 workspaces:
   - packages/ai

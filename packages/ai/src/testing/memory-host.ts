@@ -11,6 +11,7 @@
 import { applyDocOpsWithInverse } from "@jxsuite/schema/doc-ops";
 import type { JxMutableNode } from "@jxsuite/schema/types";
 import type { TurnCheckpoint } from "../harness/types.ts";
+import type { ProjectEntry, ProjectHost } from "../jx-tools/project.ts";
 import type { DocumentHost, DocumentRef, WriteReporter } from "../jx-tools/types.ts";
 
 /** What {@link createMemoryHarnessHost} hands back. */
@@ -23,16 +24,69 @@ export interface MemoryHarnessHost {
   readonly document: () => JxMutableNode;
   /** Checkpoints by turn id, for a test that stores one and resumes it. */
   readonly checkpoints: Map<string, TurnCheckpoint>;
+  /** The host the file tools are built over (`projectToolEntries(host.project)`). */
+  readonly project: ProjectHost;
+  /** The project's files by project-relative path, as they stand now. */
+  readonly files: Map<string, string>;
 }
 
 /**
  * A host holding one document in memory. It cannot undo, so an edit its producer refuses is not
  * applied, and one it accepts is applied to the live document at once.
  *
+ * Its project is a flat map of files: a directory is whatever paths share its prefix, a search
+ * matches a file's name, and a write is allowed unless `beforeWrite` (which a test may set on the
+ * returned `project`) says otherwise.
+ *
  * @param {JxMutableNode} initial - The document to start from; it is copied, never written
+ * @param {Readonly<Record<string, string>>} [files] - The project's files, by relative path
  * @returns {MemoryHarnessHost}
  */
-export function createMemoryHarnessHost(initial: JxMutableNode): MemoryHarnessHost {
+export function createMemoryHarnessHost(
+  initial: JxMutableNode,
+  files: Readonly<Record<string, string>> = {},
+): MemoryHarnessHost {
+  const held = new Map(Object.entries(files));
+  const project: ProjectHost = {
+    list(dir) {
+      const prefix = dir === "." ? "" : `${dir}/`;
+      const entries = new Map<string, ProjectEntry>();
+      for (const [path, text] of held) {
+        if (!path.startsWith(prefix)) {
+          continue;
+        }
+        const [name = "", ...deeper] = path.slice(prefix.length).split("/");
+        const entry: ProjectEntry =
+          deeper.length > 0
+            ? { name, path: `${prefix}${name}`, type: "directory" }
+            : { name, path, size: text.length, type: "file" };
+        entries.set(name, entry);
+      }
+      return entries.size === 0 && prefix !== ""
+        ? Promise.reject(new Error(`No such directory: ${dir}`))
+        : Promise.resolve([...entries.values()]);
+    },
+    read(path) {
+      const text = held.get(path);
+      return text === undefined
+        ? Promise.reject(new Error("No such file."))
+        : Promise.resolve(text);
+    },
+    search(query, extensions) {
+      const matches = [...held.keys()].filter((path) => {
+        const name = path.split("/").at(-1) ?? "";
+        return (
+          name.includes(query) &&
+          (!extensions || extensions.some((extension) => name.endsWith(extension)))
+        );
+      });
+      return Promise.resolve(matches.map((path) => ({ path })));
+    },
+    write(path, text) {
+      held.set(path, text);
+      return Promise.resolve();
+    },
+  };
   const live = structuredClone(initial);
   const ref: DocumentRef = { id: "memory", path: null };
   const documents: DocumentHost = {
@@ -52,5 +106,12 @@ export function createMemoryHarnessHost(initial: JxMutableNode): MemoryHarnessHo
     after: (_ref, _before, summary) => Promise.resolve({ success: true, summary }),
     before: () => Promise.resolve(null),
   };
-  return { checkpoints: new Map(), document: () => structuredClone(live), documents, reporter };
+  return {
+    checkpoints: new Map(),
+    document: () => structuredClone(live),
+    documents,
+    files: held,
+    project,
+    reporter,
+  };
 }

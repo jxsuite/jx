@@ -6,66 +6,28 @@
  * - Bootstrap (no project open): `create_project` scaffolds through the platform's shared
  *   `createProject` pipeline (`@jxsuite/create` server-side) and adopts the result into this
  *   window; `list_starters` enumerates starter templates.
- * - Cross-file (project open): `list_files` / `read_file` / `write_file` / `search_files` operate
- *   through the platform adapter without touching the tab strip, so the agent can develop across
- *   many files. `write_file` pre-validates Jx documents (no undo exists for disk writes, so
- *   validation blocks instead of optimistically applying) and reconciles with open tabs.
+ * - Cross-file (project open): `list_files` / `read_file` / `write_file` / `search_files` are the
+ *   portable file tools of `@jxsuite/ai/jx-tools` (specs/ai.md §3.14), run over this window's
+ *   project (`harness/studio-project.ts`), so the agent can develop across many files without
+ *   touching the tab strip. Studio's host pre-validates Jx documents (no undo exists for disk
+ *   writes, so validation blocks instead of optimistically applying) and reconciles with open
+ *   tabs.
  *
  * @license MIT
  */
 
-import { JX_TOOL_FACTS } from "@jxsuite/ai/jx-tools";
+import { JX_TOOL_FACTS, projectToolEntries } from "@jxsuite/ai/jx-tools";
 import { createToolDefinition } from "@jxsuite/ai/tools";
-import { isJsonObject, isNumber } from "@jxsuite/schema/guards";
-import { classifyJxn, isJxnPath, isNativeDocumentPath, parseJxn } from "@jxsuite/schema/jxn";
 import type { CreateProjectDestination, StudioPlatform } from "../types";
 import type { ToolRegistry } from "@jxsuite/ai/tools";
-import type { JsonValue, JxMutableNode, ProjectConfig } from "@jxsuite/schema/types";
+import type { JsonValue, ProjectConfig } from "@jxsuite/schema/types";
 import { getPlatform } from "../platform";
 import { workspace } from "../workspace/workspace";
-import { projectState } from "../store";
 import { adoptCreatedProject } from "./project-adoption";
-import { translateValidationError } from "./ai-tools";
 import { validateDoc, validateProjectConfig } from "./jx-validate";
-import { flagHardcodedTokens, formatTokenHints } from "./token-lint";
 import type { CandidateDocument, RenderProbe } from "./ai-write-report";
-import { invalidPathResult, normalizeRelPath } from "./project-path";
-import { isProjectConfigPath, parseProjectSource } from "@jxsuite/schema/project-file";
-import { projectConfigPath } from "../tabs/tab";
+import { studioProjectHost } from "./harness/studio-project";
 import type { Tab } from "../tabs/tab";
-
-/** Directories the file tools never descend into or report. */
-const EXCLUDED_DIRS = new Set(["node_modules", "dist", ".git", ".jx-cache"]);
-
-/** Caps keeping tool results inside chat-context and localStorage budgets. */
-const LIST_CAP = 200;
-const SEARCH_CAP = 100;
-const READ_CAP_BYTES = 48 * 1024;
-const WRITE_CAP_BYTES = 256 * 1024;
-
-const NOT_UNDOABLE = "(saved to disk; not undoable with Cmd+Z)";
-
-/**
- * Whether a project-relative path conventionally holds a Jx document. Kept in step with
- * monaco-setup.ts's DOCUMENT_FILE_MATCH so the assistant's gate and the editor's diagnostics cover
- * the same files — `elements/` used to be missing here and validated only by the
- * {@link looksLikeJxDoc} sniff.
- */
-function isJxDocPath(path: string): boolean {
-  return /^(pages|layouts|components|elements)\//.test(path) && isNativeDocumentPath(path);
-}
-
-/** Structural sniff for Jx-document-shaped JSON values. */
-function looksLikeJxDoc(value: JsonValue): boolean {
-  return isJsonObject(value) && ("tagName" in value || "$id" in value || "$elements" in value);
-}
-
-/** One row of `list_files`'s answer. `size` is omitted when the platform reports none. */
-interface ListedEntry {
-  path: string;
-  type: string;
-  size?: number;
-}
 
 export interface ProjectToolsCtx {
   validate?: (doc: CandidateDocument) => Promise<string[]>;
@@ -127,375 +89,22 @@ export function registerProjectTools(
     onProjectConfigWritten,
   }: ProjectToolsCtx,
 ) {
-  // ── list_files ─────────────────────────────────────────────────────────
-
-  registry.register(
-    createToolDefinition({
-      name: "list_files",
-      title: "List files",
-      annotations: JX_TOOL_FACTS.list_files.annotations,
-      description:
-        "List the project's files recursively (paths relative to the project root, with type and " +
-        "size). Use this to discover pages, layouts, components, content, data, and styles before " +
-        "reading or writing files. Build folders (node_modules, dist, .git) are excluded.",
-      parameters: {
-        type: "object",
-        properties: {
-          dir: {
-            type: "string",
-            description:
-              'Directory to list, relative to the project root. Omit for the root (".").',
-          },
-        },
-        required: [],
-      },
-      async execute(args) {
-        /* SAFETY: a strict tool runs only after the registry's `validate()` passed, which refuses
-           a `dir` that is present but not a string. */
-        const { dir } = args as { dir?: string };
-        const start = dir === undefined || dir === "" ? "." : normalizeRelPath(dir);
-        if (start === null) {
-          return invalidPathResult(dir);
-        }
-        const platform = getPlatform();
-        const entries: ListedEntry[] = [];
-        const queue = [start];
-        let truncated = false;
-        while (queue.length > 0 && !truncated) {
-          const current = queue.shift()!;
-          let children;
-          try {
-            children = await platform.listDirectory(current);
-          } catch {
-            continue;
-          }
-          for (const e of children) {
-            const name = e.name || e.path.split("/").pop() || "";
-            if (EXCLUDED_DIRS.has(name) || name.startsWith(".")) {
-              continue;
-            }
-            const path = e.path || (current === "." ? name : `${current}/${name}`);
-            if (entries.length >= LIST_CAP) {
-              truncated = true;
-              break;
-            }
-            const entry: ListedEntry = { path, type: e.type };
-            if (isNumber(e.size)) {
-              entry.size = e.size;
-            }
-            entries.push(entry);
-            if (e.type === "directory") {
-              queue.push(path);
-            }
-          }
-        }
-        return {
-          success: true,
-          data: { entries, truncated },
-          summary: `Listed ${entries.length} entries under "${start}"${truncated ? ` (truncated at ${LIST_CAP})` : ""}.`,
-        };
-      },
-    }),
-  );
-
-  // ── read_file ──────────────────────────────────────────────────────────
-
-  registry.register(
-    createToolDefinition({
-      name: "read_file",
-      title: "Read a file",
-      annotations: JX_TOOL_FACTS.read_file.annotations,
-      description:
-        "Read a project file's content by its project-relative path. Works for any text file " +
-        "(Jx documents, markdown, CSS, data). Large files are truncated.",
-      parameters: {
-        type: "object",
-        properties: {
-          path: {
-            type: "string",
-            description: 'Project-relative file path, e.g. "pages/about.json".',
-          },
-        },
-        required: ["path"],
-      },
-      async execute(args) {
-        /* SAFETY: a strict tool runs only after the registry's `validate()` passed, so the
-           required `path` is present and a string. */
-        const { path } = args as { path: string };
-        const relPath = normalizeRelPath(path);
-        if (relPath === null) {
-          return invalidPathResult(path);
-        }
-        try {
-          const content = await getPlatform().readFile(relPath);
-          if (content.length > READ_CAP_BYTES) {
-            return {
-              success: true,
-              data: {
-                content: `${content.slice(0, READ_CAP_BYTES)}\n… [truncated: file is ${content.length} bytes, showing first ${READ_CAP_BYTES}]`,
-                truncated: true,
-              },
-            };
-          }
-          return { success: true, data: { content, truncated: false } };
-        } catch (error) {
-          return {
-            success: false,
-            error: `Failed to read "${relPath}": ${error instanceof Error ? error.message : String(error)}`,
-          };
-        }
-      },
-    }),
-  );
-
-  // ── write_file ─────────────────────────────────────────────────────────
-
-  registry.register(
-    createToolDefinition({
-      name: "write_file",
-      title: "Write a file",
-      annotations: JX_TOOL_FACTS.write_file.annotations,
-      description:
-        "Write a project file (create or overwrite) at a project-relative path. Jx documents " +
-        "(.json under pages/, layouts/, components/) are schema-validated and render-checked " +
-        "before writing — fix reported errors and retry. Refused while the target file is open " +
-        "with unsaved changes. Disk writes are not undoable.",
-      parameters: {
-        type: "object",
-        properties: {
-          path: {
-            type: "string",
-            description: 'Project-relative file path, e.g. "components/footer.json".',
-          },
-          content: {
-            type: "string",
-            description: "The complete new file content (full file, not a diff).",
-          },
-        },
-        required: ["path", "content"],
-      },
-      async execute(args, ctx) {
-        /* SAFETY: a strict tool runs only after the registry's `validate()` passed, so the required
-           `path` and `content` are both present and strings. */
-        const { path, content } = args as { path: string; content: string };
-        const relPath = normalizeRelPath(path);
-        if (relPath === null) {
-          return invalidPathResult(path);
-        }
-        if (content.length > WRITE_CAP_BYTES) {
-          return {
-            success: false,
-            error: `Content is ${content.length} bytes — the write cap is ${WRITE_CAP_BYTES}. Split the content across smaller files.`,
-          };
-        }
-
-        // Reconcile with an open tab BEFORE writing: a dirty tab would silently diverge from disk.
-        const openTab = findOpenTab(relPath);
-        if (openTab?.doc.dirty) {
-          return {
-            success: false,
-            error:
-              `"${relPath}" is open in the editor with unsaved changes. Use open_document plus the ` +
-              `document tools to edit it, or ask the user to save or discard their changes first.`,
-          };
-        }
-
-        // Pre-validate Jx documents — disk writes have no undo to lean on.
-        let parsed: JsonValue | undefined;
-        const isConfig = isProjectConfigPath(relPath);
-        if (isConfig && relPath !== projectConfigPath()) {
-          // Writing the other name would leave the folder holding both, which no host reads.
-          return {
-            success: false,
-            error:
-              `This project's file is ${projectConfigPath()}. Write the configuration there; ` +
-              `a second project file beside it would stop the project from loading.`,
-          };
-        }
-        if (isJxnPath(relPath) && !isConfig && classifyJxn(content) === "project") {
-          return {
-            success: false,
-            error:
-              `"${relPath}" starts with a project node, which only the project file at the ` +
-              `root may: write it there as project.jxn, or start this one with an element.`,
-          };
-        }
-        const isJxn = isJxnPath(relPath) && !isConfig;
-        const isJson = relPath.endsWith(".json") && !isConfig;
-        if (isJxn) {
-          try {
-            const document = parseJxn(content);
-            parsed = isJsonObject(document) ? document : null;
-          } catch (error) {
-            return {
-              success: false,
-              error: `Content is not valid Jx Notation: ${error instanceof Error ? error.message : String(error)}`,
-            };
-          }
-        } else if (isJson) {
-          try {
-            // SAFETY: `JSON.parse` without a reviver yields nothing but JSON values.
-            parsed = JSON.parse(content) as JsonValue;
-          } catch (error) {
-            return {
-              success: false,
-              error: `Content is not valid JSON: ${error instanceof Error ? error.message : String(error)}`,
-            };
-          }
-        }
-        let tokenHints = "";
-        // The parse above sets `parsed` exactly when one of those holds: it never yields `undefined`.
-        if (parsed !== undefined && (isJxDocPath(relPath) || looksLikeJxDoc(parsed))) {
-          const errors = await validate(parsed);
-          if (errors.length > 0) {
-            const formatted = errors.map((e) => `- ${translateValidationError(e)}`).join("\n");
-            return {
-              success: false,
-              error: `Document has schema errors — nothing was written. Fix these and retry:\n${formatted}`,
-            };
-          }
-          if (renderCheck) {
-            const renderResult = await renderCheck(parsed, { documentPath: relPath });
-            if (!renderResult.ok) {
-              return {
-                success: false,
-                error: `Document is schema-valid but fails to render — nothing was written. Fix and retry:\n- ${renderResult.error}`,
-              };
-            }
-          }
-          const projectStyle = getProjectStyle?.();
-          if (projectStyle) {
-            tokenHints = formatTokenHints(
-              /* SAFETY: `flagHardcodedTokens` re-checks every member it reads — object-ness, each
-                 `style` value as a string, `children` as an array — so a JSON value that is not
-                 quite a node is read defensively; its parameter type names the intended input. */
-              flagHardcodedTokens(parsed as JxMutableNode, projectStyle),
-            );
-          }
-        }
-
-        /* Parsed as `unknown` because that is what it is until the schema says otherwise — this is
-           model-authored text, and the gate below is the whole reason we do not trust its shape. */
-        let projectConfig: ProjectConfig | undefined;
-        if (isProjectConfigPath(relPath)) {
-          let parsedConfig: ProjectConfig;
-          try {
-            parsedConfig = parseProjectSource(content, relPath);
-          } catch (error) {
-            return {
-              success: false,
-              error: `${relPath} must read as a project file: ${error instanceof Error ? error.message : String(error)}`,
-            };
-          }
-          /* The per-project entry document closes the composition over every enabled extension
-             (extensions.md §5.2), so this is what catches a typo'd section key or a misshapen
-             extension section. Without it the model shipped config its own tool call called clean
-             and Monaco flagged the moment a human opened the file.
-
-             Errors the file ALREADY had are subtracted, the same way `services/ai-tools.ts`
-             subtracts them from a document edit: a project whose config was written by something
-             else — an importer, a hand edit, an extension that was removed — would otherwise refuse
-             every write the model attempted, blaming it for a violation it did not introduce and
-             cannot reach from the edit it was asked to make. */
-          const before = new Set(await validateProject(projectState?.projectConfig ?? {}));
-          const found = await validateProject(parsedConfig);
-          const configErrors = found.filter((error) => !before.has(error));
-          if (configErrors.length > 0) {
-            const formatted = configErrors
-              .map((e) => `- ${translateValidationError(e)}`)
-              .join("\n");
-            return {
-              success: false,
-              error: `${relPath} has schema errors — nothing was written. Fix these and retry:\n${formatted}`,
-            };
-          }
-          // Announced only now, because the schema gate is what earns it: the per-project entry
-          // Schema found no violation this text did not already have on disk.
-          projectConfig = parsedConfig;
-        }
-
-        try {
-          await getPlatform().writeFile(relPath, content);
-          /* Disk, not transaction: there is no undo behind this and there never was. Recorded as
-             `disk: true` so the panel can say so to the person holding ⌘Z — the caveat used to be
-             appended to the model-facing summary only (`ai.md` §3.2). */
-          ctx.ledger.record({ disk: true, ok: true, path: relPath, tool: "write_file" });
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
-          ctx.ledger.record({
-            disk: true,
-            error: message,
-            ok: false,
-            path: relPath,
-            tool: "write_file",
-          });
-          return {
-            success: false,
-            error: `Failed to write "${relPath}": ${message}`,
-          };
-        }
-
-        /* `project.json`'s open tab IS the configuration document, so adopting the write refreshes
-           it — re-reading the file here would parse a SECOND configuration object and hand it to
-           that tab, which is the split the adoption just closed. Every other path is a plain file
-           and its tab has to be told from disk. */
-        if (projectConfig) {
-          await onProjectConfigWritten?.(projectConfig, content);
-        } else if (openTab) {
-          await reloadTab(relPath);
-        }
-
-        const refreshed = openTab ? " and refreshed its open editor tab" : "";
-        const summary = `Wrote "${relPath}"${refreshed} ${NOT_UNDOABLE}.`;
-        return { success: true, summary: tokenHints ? `${summary}\n\n${tokenHints}` : summary };
-      },
-    }),
-  );
-
-  // ── search_files ───────────────────────────────────────────────────────
-
-  registry.register(
-    createToolDefinition({
-      name: "search_files",
-      title: "Search files",
-      annotations: JX_TOOL_FACTS.search_files.annotations,
-      description:
-        "Search project files by file NAME (not content). Returns matching paths. Use list_files " +
-        "for a directory overview and read_file to inspect contents.",
-      parameters: {
-        type: "object",
-        properties: {
-          query: { type: "string", description: 'Substring of the file name, e.g. "hero".' },
-          extensions: {
-            type: "array",
-            description: 'Optional extension filter, e.g. [".json", ".md"].',
-            items: { type: "string" },
-          },
-        },
-        required: ["query"],
-      },
-      async execute(args) {
-        /* SAFETY: a strict tool runs only after the registry's `validate()` passed: `query` is a
-           present string and `extensions`, when present, an array. Its items are not checked here;
-           the platform's search receives them as given. */
-        const { query, extensions } = args as { query: string; extensions?: string[] };
-        try {
-          const results = await getPlatform().searchFiles(query, extensions);
-          const paths = results.map((r) => r.path).slice(0, SEARCH_CAP);
-          return {
-            success: true,
-            data: { paths, truncated: results.length > SEARCH_CAP },
-            summary: `Found ${paths.length} file(s) matching "${query}".`,
-          };
-        } catch (error) {
-          return {
-            success: false,
-            error: `Search failed: ${error instanceof Error ? error.message : String(error)}`,
-          };
-        }
-      },
-    }),
-  );
+  /* The four file tools are `@jxsuite/ai/jx-tools`'s, over this window's platform: what the model
+     is told about them, their caps and their containment check are the same wherever the assistant
+     runs (specs/ai.md §3.14). What Studio adds is in the host: what must hold before a file is
+     overwritten, and what an open editor is told afterwards. */
+  const host = studioProjectHost({
+    findOpenTab,
+    getProjectStyle,
+    onProjectConfigWritten,
+    reloadTab,
+    renderCheck,
+    validate,
+    validateProject,
+  });
+  for (const entry of projectToolEntries(host)) {
+    registry.register(entry);
+  }
 
   // ── create_project ─────────────────────────────────────────────────────
 

@@ -10,10 +10,12 @@
  */
 
 import { catalogRegistry, createCatalog } from "@jxsuite/ai/catalog";
+import type { Validator } from "@jxsuite/ai/catalog";
 import type { ToolRegistry } from "@jxsuite/ai/tools";
 import type { CommandToolRegistry } from "../ai-command-tools";
 import { AI_TOOL_TIERS, toolActive } from "../ai-system-prompt";
 import type { AiToolState, AiToolTier } from "../ai-system-prompt";
+import { createArgumentValidator } from "./argument-validator";
 
 /**
  * What each tier requires, as the sentence a refused call ends with. The model reads it, so it is
@@ -44,15 +46,19 @@ export const TIER_REQUIREMENTS: Readonly<Record<AiToolTier, string>> = {
  * @param {ToolRegistry} hand - The hand-registered tools
  * @param {CommandToolRegistry} commands - The command records' projections
  * @param {() => AiToolState} state - The studio facts a tier is decided by, read live
+ * @param {Validator} [validator] - Checks a call's arguments against its tool's whole schema
+ *   (specs/ai.md §3.10). Studio's ajv-backed one when absent
  * @returns {ToolRegistry}
  */
 export function assistantToolRegistry(
   hand: ToolRegistry,
   commands: CommandToolRegistry,
   state: () => AiToolState,
+  validator: Validator = createArgumentValidator(),
 ): ToolRegistry {
   const tiers = new Map(AI_TOOL_TIERS.map((tool) => [tool.name, tool]));
   return catalogRegistry(() => createCatalog(hand.list(), commands.members()), {
+    validator,
     advertise: (entry) =>
       hand.getDefinition(entry.name) !== undefined || commands.advertises(entry.name),
     gate(entry) {

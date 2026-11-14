@@ -11,6 +11,7 @@ spec:
   - ai.md#2.7 # wire version 2 and provider adapters
   - ai.md#3.12 # a suspended turn resumes from a checkpoint
   - ai.md#3.13 # a persisted conversation
+  - ai.md#3.14 # project tools over a ProjectHost
 code:
   - packages/ai/src/tools.ts
   - packages/ai/src/core-types.ts
@@ -39,6 +40,8 @@ code:
   - packages/ai/src/catalog/index.ts
   - packages/ai/src/catalog/catalog.ts
   - packages/ai/src/catalog/mcp.ts
+  - packages/ai/src/catalog/validator.ts
+  - packages/ai/src/jx-tools/project.ts
   - packages/studio/src/services/tool-executor.ts
   - packages/studio/src/services/harness/studio-documents.ts
   - packages/studio/src/services/harness/assistant-tools.ts
@@ -292,6 +295,27 @@ The Jx assistant's own tools take their hints from `JX_TOOL_FACTS` in `@jxsuite/
 
 To serve a catalog over the Model Context Protocol, `toMcpTool(entry, { undoable })` gives a member in the shape MCP lists tools in, and `toCallToolResult(result)` gives a result in the shape MCP returns one.
 
+### Checking arguments against the whole schema
+
+A registry checks that required arguments are present and that each has the right primitive type. A tool's schema usually says more: an `enum`, a `pattern`, the shape of a nested object. To have those checked too, give the catalog a JSON Schema validator as the view's `validator`:
+
+```ts
+import Ajv2020 from "ajv/dist/2020";
+import { cachedValidator, catalogRegistry } from "@jxsuite/ai/catalog";
+
+const ajv = new Ajv2020({ coerceTypes: true, strict: false });
+const validator = cachedValidator((schema) => {
+  const check = ajv.compile(schema);
+  return (input) =>
+    check(structuredClone(input))
+      ? { valid: true, data: input }
+      : { valid: false, errorMessage: ajv.errorsText(check.errors) };
+});
+const registry = catalogRegistry(catalog, { validator });
+```
+
+The catalog asks it about a call only after the registry's own check has passed, and answers a call it refuses with `Validation failed:` and your sentence, without running the tool. The validator is yours to supply because `@jxsuite/ai` runs in a Worker, where a schema validator is too much to carry. Its shape is the one the Model Context Protocol SDK asks a host for, so one validator serves both. If you coerce types, as the example does, validate a copy, so the tool still receives what the model sent.
+
 ## Document tools on your own host
 
 The tools that edit a page's element tree (`read_document`, `set_property`, `add_child`, `set_style`, `set_text`, `add_state`, `update_state` and `move_node`) come from `@jxsuite/ai/jx-tools`, so a host outside Studio offers the model the same tools Studio does. Each one plans its edit as a list of document ops and writes nothing itself; your host applies the ops, which is how the same tool edits a Studio tab, a file on disk or a shared document.
@@ -330,3 +354,23 @@ A call the tool refuses (a path that names no element, an index that is not a wh
 :::doc-note
 Set `undoable` to `"none"` when your host cannot take an edit back, such as one writing straight to a file. Its writes are then recorded as disk writes, which the transcript reports as not undoable, and your `edit` should validate before it applies the ops, answering `{ applied: false, reason: "invalid", message }` for an edit it will not commit.
 :::
+
+## Project file tools on your own host
+
+`projectToolEntries(host)` from `@jxsuite/ai/jx-tools` builds `list_files`, `read_file`, `write_file` and `search_files`, the tools Studio's assistant reads and writes a project's files with. What the model is told about them, the size caps on their answers, and the check that keeps every path inside the project come with them. You supply a `ProjectHost`, which says where the files are:
+
+```ts
+import { projectToolEntries } from "@jxsuite/ai/jx-tools";
+
+const host = {
+  list: (dir) => readDirectory(dir), // [{ name, path, type, size? }]
+  read: (path) => readText(path),
+  write: (path, text) => writeText(path, text),
+  search: (query, extensions) => findByName(query, extensions), // [{ path }]
+};
+const tools = projectToolEntries(host);
+```
+
+Every path the host is given is project-relative and has already been checked: an absolute path, a `..` segment, a drive letter or a home directory is refused before your host is asked anything. Enforce containment in the host as well. Reject with an `Error` whose message the model can act on when something cannot be read or written.
+
+A disk has no undo, so decide before a file is replaced whether it may be. Add `beforeWrite(path, text)` to the host: answer `{ ok: false, error }` to refuse with a sentence the model reads, or `{ ok: true }` to allow. An allowed write may carry `hints` (advice appended to the tool's answer) and an `afterWrite` function that runs once the file is on disk. Studio's host uses it to validate a Jx document before writing and to reload an open editor afterwards.

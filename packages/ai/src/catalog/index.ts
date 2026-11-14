@@ -14,4 +14,6 @@
 export { catalogRegistry, CatalogError, createCatalog, TOOL_NAME_PATTERN } from "./catalog.ts";
 export type { Catalog, CatalogEntry, CatalogView, Gate } from "./catalog.ts";
 export { toCallToolResult, toMcpTool } from "./mcp.ts";
+export { cachedValidator } from "./validator.ts";
+export type { ArgumentCheck, Validator, ValidatorVerdict } from "./validator.ts";
 export type { McpCallToolResult, McpToolJson } from "./mcp.ts";
