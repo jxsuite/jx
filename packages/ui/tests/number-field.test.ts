@@ -210,11 +210,12 @@ describe("jx-number-field", () => {
 
     form.reset();
     await tick();
-    /* The element is not form-associated (specs/ui.md §3.2), so it never hears the reset. Mirroring
-       `value` into the content attribute makes the control's default track its current value, which
-       makes a reset do nothing; NOT mirroring it would move the control back to "3" and leave this
-       state at "9" — the element and its own control disagreeing, silently. The no-op is the
-       deliberate half of that trade, and it changes the day the element is form-associated. */
+    /* Mirroring `value` into the content attribute makes the control's default track its current
+       value, which makes the control's OWN reset do nothing; NOT mirroring it would move the
+       control back to "3" while this state stayed at "9". The element is form-associated
+       (specs/ui.md §3.2) and `formResetCallback` is what returns it to its first value
+       (`form-association.test.ts`); the test DOM has no `ElementInternals` and never calls it, so
+       what is pinned here is the engine without one. */
     expect(input.value).toBe("9");
     expect(el.value).toBe("9");
   });

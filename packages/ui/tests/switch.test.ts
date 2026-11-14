@@ -167,15 +167,15 @@ describe("jx-switch", () => {
     expect(input(el).checked).toBe(false);
   });
 
-  test("a form reset moves this switch nowhere, and that is the price of the mirror", async () => {
+  test("the native reset moves this switch nowhere, and that is the price of the mirror", async () => {
     /* The `checked` CONTENT attribute is `defaultChecked`, so mirroring live state onto it — which
-       the document does, alongside the property binding — makes `form.reset()` a no-op here. The
-       trade is deliberate and is recorded in the document's own `checked` description: until the
-       element is form-associated (specs/ui.md §3.2) it never HEARS the reset, so a working reset
-       would move the inner control to the authored default and leave the element's `checked` state
-       behind it. A control that silently disagrees with its own element is worse than a reset that
-       does nothing. Pinned so the next reader finds the decision instead of rediscovering the
-       symptom. */
+       the document does, alongside the property binding — makes the control's OWN reset a no-op
+       here. The trade is deliberate and is recorded in the document's own `checked` description:
+       the form resets the control before the element hears of it, so a control that moved to the
+       authored default would disagree with its own element. The element is form-associated
+       (specs/ui.md §3.2) and `formResetCallback` is what returns it to its first state
+       (`form-association.test.ts`); the test DOM has no `ElementInternals` and never calls it, so
+       what is pinned here is the engine without one. */
     const form = document.createElement("form");
     document.body.append(form);
     // SAFETY: registerUi() in beforeAll defined jx-switch, whose document declares `checked`.

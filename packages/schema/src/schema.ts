@@ -494,6 +494,20 @@ export async function generateSchema() {
         type: "object",
       },
       children: { $ref: "#/$defs/ChildrenValue" },
+      formAssociated: {
+        description:
+          "Makes the custom element a form-associated one (the Web Components formAssociated " +
+          "static): it attaches ElementInternals, a form's reset and a disabled fieldset reach " +
+          "its `value`, `checked` and `disabled` state, `required` with an empty value is " +
+          "reported as a missing value, and a label naming it reaches its control.",
+        type: "boolean",
+      },
+      formValue: {
+        description:
+          "The value a form-associated custom element submits under its `name`, through " +
+          "ElementInternals.setFormValue: a `$ref`, a `${}` template or a literal. Omit it when " +
+          "a named native control inside the element already submits the value.",
+      },
       imports: {
         additionalProperties: { type: "string" },
         description:

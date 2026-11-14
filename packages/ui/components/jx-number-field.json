@@ -2,6 +2,7 @@
   "$schema": "https://jxsuite.com/schema/v1",
   "$id": "JxNumberField",
   "tagName": "jx-number-field",
+  "formAssociated": true,
   "$elements": [
     {
       "$ref": "./jx-icon.json"
@@ -31,7 +32,7 @@
       "type": "string",
       "default": "",
       "attribute": "value",
-      "description": "The field's text, as a string rather than a number. An empty value means empty: a numeric entry would read a removed attribute as 0, so clearing a numeric key would write 0 into the document instead of deleting it. It is bound twice, as the control's value property AND as its value content attribute: the property is what tracks state once the reader has typed (typing sets the control's dirty value flag, after which the attribute no longer moves the live value), and the attribute keeps the control's DEFAULT value equal to its current one. The price of that mirror is that form.reset() is a no-op here, and it is deliberate: the element is not form-associated (specs/ui.md §3.2), so it never hears the reset, and an unmirrored default would move the control while leaving this state where it was — the element and its control disagreeing silently, which is worse than a reset that does nothing."
+      "description": "The field's text, as a string rather than a number. An empty value means empty: a numeric entry would read a removed attribute as 0, so clearing a numeric key would write 0 into the document instead of deleting it. It is bound twice, as the control's value property AND as its value content attribute: the property is what tracks state once the reader has typed (typing sets the control's dirty value flag, after which the attribute no longer moves the live value), and the attribute keeps the control's DEFAULT value equal to its current one. The mirror makes the native reset a no-op on the control, and it is deliberate: the form resets the control before the element hears of it, and an unmirrored default would move the control while this state stayed where it was. The element is form-associated (specs/ui.md §3.2), so form.reset() then returns the field to the value it first connected with; on an engine without ElementInternals the reset does nothing, as it always did."
     },
     "min": {
       "type": "string",

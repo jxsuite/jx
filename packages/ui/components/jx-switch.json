@@ -2,6 +2,7 @@
   "$schema": "https://jxsuite.com/schema/v1",
   "$id": "JxSwitch",
   "tagName": "jx-switch",
+  "formAssociated": true,
   "observedAttributes": [
     "checked",
     "disabled",
@@ -24,7 +25,7 @@
       "type": "boolean",
       "default": false,
       "attribute": "checked",
-      "description": "Whether the setting is on. Bound to the control BOTH ways, and the two halves do different jobs. The PROPERTY is what keeps tracking: once the reader flips the box the checkedness dirty flag is set and the content attribute stops controlling the live state, so an attribute binding alone would look right until the first click and then silently stop. The ATTRIBUTE is written as well so the control's defaultChecked can never disagree with the element's state — the same shape jx-textfield ships for value. The cost is that defaultChecked is also the form-reset default, so until the element is form-associated (specs/ui.md §3.2) form.reset() moves this switch nowhere. That is the deliberate half of the trade: with no form association the element never hears the reset, so a working reset would move the CONTROL to the authored default and leave the element's checked state behind it, and a control that silently disagrees with its own element is worse than a reset that does nothing."
+      "description": "Whether the setting is on. Bound to the control BOTH ways, and the two halves do different jobs. The PROPERTY is what keeps tracking: once the reader flips the box the checkedness dirty flag is set and the content attribute stops controlling the live state, so an attribute binding alone would look right until the first click and then silently stop. The ATTRIBUTE is written as well so the control's defaultChecked can never disagree with the element's state — the same shape jx-textfield ships for value. The cost is that defaultChecked is also the form-reset default, so the native reset moves this control nowhere. That is the deliberate half of the trade: the form resets the control before the element hears of it, and a control moved to the authored default would disagree with its own element. The element is form-associated (specs/ui.md §3.2), so form.reset() then returns the switch to the state it first connected with; on an engine without ElementInternals the reset does nothing, as it always did."
     },
     "disabled": {
       "type": "boolean",
