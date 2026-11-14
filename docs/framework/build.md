@@ -12,9 +12,11 @@ spec:
   - compiler.md#4.4 # property bridge: the data-jx-props payload
   - site-architecture.md#10.3 # which components a build compiles
   - spec.md#16.8 # the Custom Elements Manifest a build writes
+  - compiler.md#4.9 # element packs
 code:
   - packages/compiler/src/site/site-build.ts
   - packages/schema/src/cem-manifest.ts
+  - packages/compiler/src/targets/compile-pack.ts
   - packages/compiler/src/site/component-set.ts
   - packages/compiler/src/site/client-runtime.ts
   - packages/compiler/src/site/bundler.ts
@@ -233,6 +235,29 @@ Module paths are relative to the project root, such as `dist/components/user-car
   "files": ["dist"]
 }
 ```
+
+## Compiling a component library
+
+A site build compiles the components a site uses. To ship a set of components on their own, as a package other projects import, compile them as a pack. `compileElementPack` takes a directory of component documents and returns the files to publish:
+
+```js
+import { compileElementPack, writeElementPack } from "@jxsuite/compiler";
+
+const pack = await compileElementPack({ components: "components/", packDir: "dist" });
+await writeElementPack(pack, "dist");
+```
+
+The pack holds:
+
+- `<tag>.js` for each component. A component that lists another in `$elements` imports it, so importing one element registers the ones it renders.
+- `<tag>.css` for each component that has styles.
+- `index.js`, which imports every module. Import it to register the whole set.
+- `elements.css`, the styles of every light-DOM component in one file for a page to link.
+- `custom-elements.json`, the [manifest](#the-custom-elements-manifest) for the set, with paths under `packDir`.
+
+The modules import `lit-html` and `@vue/reactivity` by name, like every compiled component, so the page or the bundler that loads them has to resolve both.
+
+A function entry's `$src` is imported as written. Pass `rewriteSrc` to point a specifier somewhere else, for example at a behaviour module that ships beside the pack. `pack.warnings` lists the manifest's warnings.
 
 ## Related
 

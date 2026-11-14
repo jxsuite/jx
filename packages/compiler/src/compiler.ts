@@ -38,6 +38,8 @@ import type { FormatRegistry } from "@jxsuite/schema/format-registry";
 export { isDynamic } from "./shared.ts";
 export { compileSiteServer } from "./targets/compile-server.ts";
 export { compileElement, compileElementPage } from "./targets/compile-element.ts";
+export { compileElementPack, writeElementPack } from "./targets/compile-pack.ts";
+export type { ElementPack, ElementPackOptions } from "./targets/compile-pack.ts";
 export { compileClient } from "./targets/compile-client.ts";
 
 // ─── Entry ────────────────────────────────────────────────────────────────────
