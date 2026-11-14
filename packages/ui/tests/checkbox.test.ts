@@ -130,11 +130,12 @@ describe("jx-checkbox", () => {
 
     form.reset();
     /* The native box snaps back to its authored default; the kit's does not. That is the trade-off
-       the `checked` mirror buys, and it is deliberate: the element is not form-associated yet
-       (specs/ui.md 3.2), so it never hears the reset. WITHOUT the mirror the control would snap
-       back here and `el.checked` would stay true — the element and its own control disagreeing,
-       silently, with no event to reconcile them. A reset that does nothing is a missing feature; a
-       reset that desyncs them is a lie. Delete the mirror and this assertion is what changes. */
+       the `checked` mirror buys, and it is deliberate: the form resets the control before the
+       element hears of it. WITHOUT the mirror the control would snap back here and `el.checked`
+       would stay true — the element and its own control disagreeing. The element is
+       form-associated (specs/ui.md 3.2) and `formResetCallback` is what returns it to its first
+       state (`form-association.test.ts`); the test DOM has no `ElementInternals` and never calls
+       it, so this is the engine without one. Delete the mirror and this assertion changes. */
     expect(native.checked).toBe(false);
     expect(input.checked).toBe(true);
     expect(el.checked).toBe(true);

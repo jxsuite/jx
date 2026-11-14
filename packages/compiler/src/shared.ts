@@ -2651,6 +2651,89 @@ export function emitExternalClassResolution(
   return lines.join("\n");
 }
 
+/** The helper a form-associated component module binds its `ElementInternals` with. */
+export const FORM_ASSOCIATION_HELPER = "__jxAssociateForm";
+
+/**
+ * The form-association rule (spec.md §16.11) as source for a generated module: `associateForm` from
+ * `@jxsuite/runtime`, inlined for the reason `attrHelperSource` gives. The module calls it once per
+ * instance and `start()` on each connection, with an `effect` that stops when the element is
+ * removed. `form-association-agreement.test.ts` runs this source and the runtime's function over
+ * one scenario table, which is what keeps the two from drifting.
+ *
+ * @returns {string} One `function` declaration, for a module's preamble.
+ */
+export function formAssociationHelperSource(): string {
+  return [
+    `function ${FORM_ASSOCIATION_HELPER}(host, internals, state, keys, root, formValue, watch) {`,
+    `  const initial = { checked: state.checked, value: state.value };`,
+    `  let ownDisabled = state.disabled;`,
+    `  let forced = false;`,
+    `  const control = () => root().querySelector('input, textarea, select');`,
+    `  const nameControl = () => {`,
+    `    const target = control();`,
+    `    const labels = internals.labels;`,
+    `    if (target && labels.length > 0 && 'ariaLabelledByElements' in target &&`,
+    `        !target.hasAttribute('aria-label') && !target.getAttribute('aria-labelledby')) {`,
+    `      target.ariaLabelledByElements = Array.from(labels).filter((l) => l instanceof Element);`,
+    `    }`,
+    `  };`,
+    `  host.addEventListener('click', (event) => {`,
+    `    const target = control();`,
+    `    if (event.target !== host || !target || target.disabled) return;`,
+    `    target.focus();`,
+    `    if (target.type === 'checkbox' || target.type === 'radio') target.click();`,
+    `  });`,
+    `  host.addEventListener('focusin', nameControl);`,
+    `  const valueMissingMessage = () => {`,
+    `    const probe = host.ownerDocument.createElement('input');`,
+    `    probe.required = true;`,
+    `    if (keys.checked) probe.type = 'checkbox';`,
+    `    return probe.validationMessage || 'Please fill out this field.';`,
+    `  };`,
+    `  return {`,
+    `    disabled(flag) {`,
+    `      if (!keys.disabled) return;`,
+    `      if (flag) {`,
+    `        if (!forced) { ownDisabled = host.hasAttribute('disabled') ? false : state.disabled; forced = true; }`,
+    `        state.disabled = true;`,
+    `      } else if (forced) {`,
+    `        forced = false;`,
+    `        state.disabled = ownDisabled;`,
+    `      }`,
+    `    },`,
+    `    reset() {`,
+    `      if (keys.value) state.value = initial.value;`,
+    `      if (keys.checked) state.checked = initial.checked;`,
+    `    },`,
+    `    start() {`,
+    `      if (formValue) {`,
+    `        watch(() => {`,
+    `          const value = formValue();`,
+    `          if (value === null || value === undefined) internals.setFormValue(null);`,
+    `          else if (value instanceof File || value instanceof FormData) internals.setFormValue(value);`,
+    `          else internals.setFormValue(String(value));`,
+    `        });`,
+    `      }`,
+    `      if (keys.required) {`,
+    `        watch(() => {`,
+    `          const empty = keys.checked`,
+    `            ? !state.checked`,
+    `            : state.value === null || state.value === undefined || state.value === '';`,
+    `          if (state.required && empty) {`,
+    `            internals.setValidity({ valueMissing: true }, valueMissingMessage(), control() ?? undefined);`,
+    `          } else {`,
+    `            internals.setValidity({});`,
+    `          }`,
+    `        });`,
+    `      }`,
+    `      nameControl();`,
+    `    },`,
+    `  };`,
+    `}`,
+  ].join("\n");
+}
+
 /** The capture helper a light-DOM component module calls before its first render. */
 export const SLOT_CAPTURE_HELPER = "__jxCaptureSlotted";
 

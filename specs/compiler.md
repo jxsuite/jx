@@ -381,6 +381,61 @@ It returns files and writes none, each with a path relative to the pack's direct
 
 `pack.warnings` carries the manifest generator's warnings and `pack.tags` the registration order. A pack compiles `.json` and `.jxn` documents. A file with no hyphenated `tagName`, two files declaring one `tagName`, and a `$elements` reference to a file outside the pack are errors. A caller that needs more than the modules as emitted, a bundler pass over a library's TypeScript behaviour modules for one, runs it over the files before writing them.
 
+### 4.10 Form Association
+
+A definition that declares `formAssociated: true` (spec.md §16.11) compiles to a form-associated class. Everything below is emitted only for such a definition, so every other module is unchanged:
+
+```js
+// __jxAssociateForm: the form-association rule, inlined from @jxsuite/runtime (§11)
+
+class StarRating extends HTMLElement {
+  #internals; // undefined: not asked yet; null: a platform with no ElementInternals
+  #form = null;
+
+  static formAssociated = true;
+
+  #attach() {
+    if (this.#internals === undefined) {
+      this.#internals = typeof this.attachInternals === "function" ? this.attachInternals() : null;
+    }
+    return this.#internals;
+  }
+
+  connectedCallback() {
+    // …props, bridge, render…
+    if (_first) {
+      const _i = this.#attach();
+      if (_i) {
+        this.#form = __jxAssociateForm(
+          this,
+          _i,
+          this.state,
+          { checked: false, disabled: true, required: true, value: true },
+          () => this.#renderRoot(),
+          () => {
+            const s = this.state;
+            return s.value;
+          },
+          (fn) => {
+            this.#effects.push(effect(fn));
+          },
+        );
+      }
+    }
+    if (this.#form) this.#form.start();
+  }
+
+  formResetCallback() {
+    if (this.#form) this.#form.reset();
+  }
+  formDisabledCallback(disabled) {
+    if (this.#form) this.#form.disabled(disabled);
+  }
+}
+```
+
+The binding is made once per instance, after its first render, so the element's control is in its tree. Its reactive half (`start()`: the submitted value, validity, the label's name) is registered in the element's effect list and so stops in `disconnectedCallback` and starts again on every connection (§4.4). The key literal is `formStateKeys` of the definition, the verdict the interpreter reads; the root function answers the element in light DOM and its shadow root otherwise; and the sixth argument is the declared `formValue` compiled as a host attribute's value is (`null` when the definition declares none, and a template wrapped so that it submits nothing while its expression throws). `#attach()` is the one `attachInternals()` call an element may make: a closed shadow root's adoption reads `this.#attach()?.shadowRoot` in a form-associated module instead of calling `attachInternals()` itself. `formResetCallback` and `formDisabledCallback` join the class members a state key cannot be bridged under (§4.4).
+
 > **Status: Implemented.** `compile-element.ts` produces complete lit-html custom element modules, and `compile-pack.ts` a pack of them.
 
 ---
@@ -815,6 +870,10 @@ An element module with a property bridge (§4.4) carries two functions, for the 
 
 An element module whose definition declares `observedAttributes` (§4.1) carries `__jxAbsorbAttr`, for the reason `attrHelperSource()` gives: it restates `absorbAttribute` from `@jxsuite/runtime`, the rule of spec.md §16.5, and a test runs both over one matrix of held type, attribute value and default. The defaults the module passes it are not re-derived: `observedDefaultsSource(def)` serializes the runtime's `declaredDefaults(def)` for the observed keys as a `Map` built per use, and the same test evaluates that source against the runtime's answer.
 
+### `formAssociationHelperSource()` — the form-association rule, inlined for a generated module
+
+An element module whose definition declares `formAssociated` (§4.10) carries `__jxAssociateForm`, for the reason `attrHelperSource()` gives: it restates `associateForm` from `@jxsuite/runtime`, the rule of spec.md §16.11, and `form-association-agreement.test.ts` runs both over one table of scenarios against recording internals. The key set the module passes it is `formStateKeys(def)` from the runtime, serialized as a literal.
+
 ### `observedAttributeProps(def, attributes, scope)` — an instance's observed attributes as build-time props
 
 What the prerender lays beneath an instance's `$props` (§8.1): each observed attribute the instance writes with a statically resolvable value, as the text `buildAttrs` would emit for it, coerced by the runtime's own `absorbAttribute`. Null when the instance writes none.
@@ -856,13 +915,13 @@ The site build bundles Function-def `$src` modules for the browser (`packages/co
 
 External standards this specification binds itself to. Vocabulary and cell grammar: [`standards.md`](./standards.md). `lit-html` and `@vue/reactivity` are libraries rather than standards; Appendix A records them as dependencies.
 
-| Standard                                                                                  | Class         | Binds  | Evidence                                                                                                                      | Note                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| ----------------------------------------------------------------------------------------- | ------------- | ------ | ----------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [ECMA-262](https://ecma-international.org/publications-and-standards/standards/ecma-262/) | **Adopted**   | §4, §5 | packages/compiler/src/targets/compile-element.ts, packages/compiler/tests/no-eval.test.ts                                     | Emitted modules are plain ECMAScript modules containing no `new Function` and no `eval`, which is what lets compiled output run under a policy without `'unsafe-eval'` — asserted by a committed test.                                                                                                                                                                                                                                                                                                                                                         |
-| [WHATWG HTML](https://html.spec.whatwg.org/)                                              | **Subset**    | §3, §4 | packages/compiler/src/targets/compile-element.ts, packages/compiler/src/shadow.ts, packages/compiler/tests/shadow-dom.test.ts | Custom elements are defined and rendered into the **light** DOM by default, where `<slot>` is emulated by splicing saved children. A component may opt into a shadow root with `$shadow` (a project into all of them with `defaults.shadow`; spec.md §16.6): the prerender emits a declarative `<template shadowrootmode>` and the element module adopts it, an `open` root through `element.shadowRoot` and a `closed` one through `ElementInternals`. Not offered: `ElementInternals` for form association, and `::part` addressed from outside a component. |
-| [CSP Level 3](https://www.w3.org/TR/CSP3/)                                                | **Subset**    | §3     | packages/compiler/tests/no-eval.test.ts, packages/compiler/src/site/csp.ts                                                    | What the tiers owe the policy: no `eval`, no `new Function`, and no `onclick=` attribute — handlers are bound as listeners — plus two inline blocks that are byte-identical across a build, so one hash each names them site-wide. The policy itself is assembled and emitted by the site build (`site-architecture.md` §14.3.1).                                                                                                                                                                                                                              |
-| [Subresource Integrity](https://www.w3.org/TR/SRI/)                                       | **Divergent** | §12    | packages/compiler/src/site/client-runtime.ts, packages/compiler/tests/client-runtime.test.ts                                  | The gap this standard existed to close is closed by **removal** rather than by attestation: the runtime is served from the site, so there is no cross-origin subresource left to hash. SRI would apply again only if a project overrode the import map back to a URL, and the build cannot compute an integrity value for a file it never fetched.                                                                                                                                                                                                             |
-| [Fetch Metadata Request Headers](https://www.w3.org/TR/fetch-metadata/)                   | **Divergent** | §6     | packages/compiler/src/targets/compile-server.ts, packages/compiler/tests/compile-server.test.ts                               | The generated worker reads `Sec-Fetch-Site` in front of every server function and extension mount. Two deviations from the Resource Isolation Policy: `same-site` is refused, because a sibling subdomain is not the site's own script, and a navigation passes whatever its method, because an identity provider's `form_post` answer is a cross-site POST navigation; the routes that read a body require a JSON `Content-Type` instead. An absent header is accepted, since only a browser sends it.                                                        |
+| Standard                                                                                  | Class         | Binds  | Evidence                                                                                                                                                                                  | Note                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| ----------------------------------------------------------------------------------------- | ------------- | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [ECMA-262](https://ecma-international.org/publications-and-standards/standards/ecma-262/) | **Adopted**   | §4, §5 | packages/compiler/src/targets/compile-element.ts, packages/compiler/tests/no-eval.test.ts                                                                                                 | Emitted modules are plain ECMAScript modules containing no `new Function` and no `eval`, which is what lets compiled output run under a policy without `'unsafe-eval'` — asserted by a committed test.                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| [WHATWG HTML](https://html.spec.whatwg.org/)                                              | **Subset**    | §3, §4 | packages/compiler/src/targets/compile-element.ts, packages/compiler/src/shadow.ts, packages/compiler/tests/shadow-dom.test.ts, packages/compiler/tests/form-association-agreement.test.ts | Custom elements are defined and rendered into the **light** DOM by default, where `<slot>` is emulated by splicing saved children. A component may opt into a shadow root with `$shadow` (a project into all of them with `defaults.shadow`; spec.md §16.6): the prerender emits a declarative `<template shadowrootmode>` and the element module adopts it, an `open` root through `element.shadowRoot` and a `closed` one through `ElementInternals`. A definition that declares `formAssociated` compiles to a form-associated class bound to `ElementInternals` (§4.10). Not offered: `formStateRestoreCallback`, and `::part` addressed from outside a component. |
+| [CSP Level 3](https://www.w3.org/TR/CSP3/)                                                | **Subset**    | §3     | packages/compiler/tests/no-eval.test.ts, packages/compiler/src/site/csp.ts                                                                                                                | What the tiers owe the policy: no `eval`, no `new Function`, and no `onclick=` attribute — handlers are bound as listeners — plus two inline blocks that are byte-identical across a build, so one hash each names them site-wide. The policy itself is assembled and emitted by the site build (`site-architecture.md` §14.3.1).                                                                                                                                                                                                                                                                                                                                      |
+| [Subresource Integrity](https://www.w3.org/TR/SRI/)                                       | **Divergent** | §12    | packages/compiler/src/site/client-runtime.ts, packages/compiler/tests/client-runtime.test.ts                                                                                              | The gap this standard existed to close is closed by **removal** rather than by attestation: the runtime is served from the site, so there is no cross-origin subresource left to hash. SRI would apply again only if a project overrode the import map back to a URL, and the build cannot compute an integrity value for a file it never fetched.                                                                                                                                                                                                                                                                                                                     |
+| [Fetch Metadata Request Headers](https://www.w3.org/TR/fetch-metadata/)                   | **Divergent** | §6     | packages/compiler/src/targets/compile-server.ts, packages/compiler/tests/compile-server.test.ts                                                                                           | The generated worker reads `Sec-Fetch-Site` in front of every server function and extension mount. Two deviations from the Resource Isolation Policy: `same-site` is refused, because a sibling subdomain is not the site's own script, and a navigation passes whatever its method, because an identity provider's `form_post` answer is a cross-site POST navigation; the routes that read a body require a JSON `Content-Type` instead. An absent header is accepted, since only a browser sends it.                                                                                                                                                                |
 
 ## 14. Native Core
 

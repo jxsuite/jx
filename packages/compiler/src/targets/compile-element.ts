@@ -12,7 +12,7 @@ import {
   declaresParameters,
   handlerParamNames,
 } from "@jxsuite/schema/function-role";
-import { RESERVED_KEYS, camelToKebab, derivedStateKeys } from "@jxsuite/runtime";
+import { RESERVED_KEYS, camelToKebab, derivedStateKeys, formStateKeys } from "@jxsuite/runtime";
 import {
   ATTR_HELPER,
   DEFAULT_LIT_HTML_SRC,
@@ -46,6 +46,8 @@ import {
   observedDefaultsSource,
   SLOT_CAPTURE_HELPER,
   SLOT_DISTRIBUTE_HELPER,
+  FORM_ASSOCIATION_HELPER,
+  formAssociationHelperSource,
   slotHelperSource,
   assignStyleHandles,
   authorClassValue,
@@ -139,6 +141,8 @@ const ELEMENT_MEMBERS: ReadonlySet<string> = new Set([
   "disconnectedCallback",
   "adoptedCallback",
   "attributeChangedCallback",
+  "formResetCallback",
+  "formDisabledCallback",
 ]);
 
 /** Options accepted by compileElement. */
@@ -559,6 +563,13 @@ export function emitElementModule(
     lines.push(slotHelperSource());
   }
 
+  /* Form association (spec.md §16.11). Everything it adds is emitted only for a definition that
+     declares `formAssociated: true`, so every other module is the one it was. */
+  const formAssociated = doc.formAssociated === true;
+  if (formAssociated) {
+    lines.push(formAssociationHelperSource());
+  }
+
   // `$lazy` entries load on their first call instead of with the page (spec.md §5.3 4d).
   lines.push(
     ...srcImports.loaders,
@@ -576,6 +587,10 @@ export function emitElementModule(
        to an array its parent owns. */
     ...(lists.keyed ? ["  #part = null;"] : []),
     ...(shadow === null ? [] : ["  #root = null;"]),
+    /* The one `attachInternals()` an element may make, shared by a closed root's adoption and the
+       form binding, and the binding itself. `undefined` is "not asked yet"; `null`, a platform
+       with no `ElementInternals`, where the element is simply not associated. */
+    ...(formAssociated ? ["  #internals;", "  #form = null;"] : []),
     /* A component with client classes draws in `#jxRender()`, once they have resolved: the
        instances by state key, the one resolution an instance ever starts, the connection a pending
        draw belongs to, and whether a draw has happened yet. */
@@ -590,6 +605,19 @@ export function emitElementModule(
     "",
     ...(observed.length > 0
       ? ["  static get observedAttributes() { return __jxObserved; }", ""]
+      : []),
+    ...(formAssociated
+      ? [
+          "  static formAssociated = true;",
+          "",
+          "  #attach() {",
+          "    if (this.#internals === undefined) {",
+          "      this.#internals = typeof this.attachInternals === 'function' ? this.attachInternals() : null;",
+          "    }",
+          "    return this.#internals;",
+          "  }",
+          "",
+        ]
       : []),
     // Constructor: build reactive state
     "  constructor() {",
@@ -813,7 +841,9 @@ export function emitElementModule(
           "  #renderRoot() {",
           "    if (this.#root) return this.#root;",
           shadow === "closed"
-            ? "    const _a = this.attachInternals().shadowRoot;"
+            ? formAssociated
+              ? "    const _a = this.#attach()?.shadowRoot ?? null;"
+              : "    const _a = this.attachInternals().shadowRoot;"
             : "    const _a = this.shadowRoot;",
           `    this.#root = _a ?? this.attachShadow({ mode: '${shadow}' });`,
           /* A root the parser made carries the link its prerender wrote. One attached here, for
@@ -1094,6 +1124,21 @@ export function emitElementModule(
     // Once, after the first render: a slot a later render draws stays literal (spec.md §8.5).
     lines.push(`    if (_first) ${SLOT_DISTRIBUTE_HELPER}(this, _slotted);`);
   }
+  if (formAssociated) {
+    /* Bound once, after the first render, so the element's control is in its tree; the reactive
+       half starts again on every connection, with effects `disconnectedCallback` stops. */
+    lines.push(
+      "    if (_first) {",
+      "      const _i = this.#attach();",
+      "      if (_i) {",
+      `        this.#form = ${FORM_ASSOCIATION_HELPER}(this, _i, this.state, ${JSON.stringify(formStateKeys(doc))}, ` +
+        `() => ${shadow === null ? "this" : "this.#renderRoot()"}, ${formValueSource(doc.formValue)}, ` +
+        "(fn) => { this.#effects.push(effect(fn)); });",
+      "      }",
+      "    }",
+      "    if (this.#form) this.#form.start();",
+    );
+  }
   lines.push(
     /* Lifecycle: onMount (spec.md §16.4), by the interpreter's contract. On a microtask after the
        render; with the scope and the HOST, and the host as its receiver, so a sidecar reaches the
@@ -1119,6 +1164,14 @@ export function emitElementModule(
       "  adoptedCallback() {",
       "    if (typeof this.state.onAdopted === 'function') { this.state.onAdopted(this.state); }",
       "  }",
+    );
+  }
+  if (formAssociated) {
+    lines.push(
+      "",
+      "  formResetCallback() { if (this.#form) this.#form.reset(); }",
+      "",
+      "  formDisabledCallback(disabled) { if (this.#form) this.#form.disabled(disabled); }",
     );
   }
   if (observed.length > 0) {
@@ -1967,6 +2020,29 @@ function hostAttributeLines(doc: JxDocument): string[] {
     }
   }
   return lines;
+}
+
+/**
+ * A definition's declared `formValue` (spec.md §16.11) as the source of the function the form
+ * binding reads it through, or `null` when it declares none: a `$ref`, a `${…}` template, which
+ * submits nothing while its expression throws, or a literal.
+ *
+ * @param {JxDocument["formValue"]} value
+ * @returns {string}
+ */
+function formValueSource(value: JxDocument["formValue"]): string {
+  if (value === undefined) {
+    return "null";
+  }
+  if (isRef(value)) {
+    return `() => { const s = this.state; return ${refToExpr(value.$ref)}; }`;
+  }
+  if (isString(value) && value.includes("${")) {
+    const template = toLitExpr(value);
+    const expr = isWholeTemplate(value) ? template.slice(2, -1) : `\`${template}\``;
+    return `() => { const s = this.state, state = s; try { return ${expr}; } catch { return null; } }`;
+  }
+  return `() => ${JSON.stringify(value)}`;
 }
 
 /**

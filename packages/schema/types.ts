@@ -368,6 +368,10 @@ export interface JxElement {
   $id?: string;
   $src?: string;
   observedAttributes?: string[];
+  /** A form-associated custom element (spec.md §16.11). */
+  formAssociated?: boolean;
+  /** What a form-associated element submits: a `$ref`, a template or a literal (spec.md §16.11). */
+  formValue?: JsonValue;
   state?: Record<string, JxStateDefinition>;
   [key: string]: JxDocumentValue | undefined;
 }
@@ -867,6 +871,10 @@ export interface JxMutableNode {
   $defs?: Record<string, JsonValue>;
   imports?: Record<string, string>;
   observedAttributes?: string[];
+  /** A form-associated custom element (spec.md §16.11). */
+  formAssociated?: boolean;
+  /** What a form-associated element submits: a `$ref`, a template or a literal (spec.md §16.11). */
+  formValue?: JsonValue;
   [key: string]: JxDocumentValue | undefined;
 }
 

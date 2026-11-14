@@ -2,6 +2,7 @@
   "$schema": "https://jxsuite.com/schema/v1",
   "$id": "JxTextfield",
   "tagName": "jx-textfield",
+  "formAssociated": true,
   "observedAttributes": [
     "value",
     "placeholder",
@@ -34,7 +35,7 @@
       "type": "string",
       "default": "",
       "attribute": "value",
-      "description": "The field's text. Written by the reader as they type, and by the host; a write equal to what is there never moves the caret. It is written to the control's value CONTENT attribute as well as its property, which makes the control's default value whatever the field currently says. That is deliberate: the element is not form-associated (specs/ui.md §3.2), so it never hears form.reset(), and a control whose default was the authored one would snap back while the element still said something else — an element and its own control disagreeing in silence. The cost is named rather than hidden: reset() is a no-op on this field until form association lands."
+      "description": "The field's text. Written by the reader as they type, and by the host; a write equal to what is there never moves the caret. It is written to the control's value CONTENT attribute as well as its property, which makes the control's default value whatever the field currently says. That is deliberate: the form resets the native control to its default before the element hears of it, and a control whose default was the authored one would snap back while the element still said something else. The element is form-associated (specs/ui.md §3.2), so form.reset() then returns the field to the value it first connected with; on an engine without ElementInternals reset() is a no-op on this field, as it always was."
     },
     "placeholder": {
       "type": "string",

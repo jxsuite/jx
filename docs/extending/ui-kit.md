@@ -228,7 +228,7 @@ Put the visible text inside the element instead of in `label` when it carries ma
 `required` and `value` forward to the native checkbox on both, so a form validates and submits them as it would a plain one. A checkbox also takes `invalid`, which reaches the control as `aria-invalid` and outlines the box in red; a required box left unticked draws the same outline once the reader has interacted with it. A switch has no `invalid`, because the switch role does not support it.
 
 :::doc-note
-Resetting a form these controls sit in leaves them where the reader left them, rather than snapping back. They are not form-associated yet, so a reset never reaches them; the control's default is kept in step with its live value so the two can never say different things. Putting a value back is a write from the host.
+These controls are form-associated, so resetting the form they sit in returns each to the value it first connected with, a disabled `<fieldset>` disables them, and a `<label for>` that names one reaches its control. The inner control's default is kept in step with its live value so the two can never say different things, which is why a browser without `ElementInternals` leaves them where the reader left them on a reset.
 :::
 
 ## Number fields

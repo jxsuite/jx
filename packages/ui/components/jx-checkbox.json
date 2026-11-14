@@ -2,6 +2,7 @@
   "$schema": "https://jxsuite.com/schema/v1",
   "$id": "JxCheckbox",
   "tagName": "jx-checkbox",
+  "formAssociated": true,
   "observedAttributes": [
     "checked",
     "indeterminate",
@@ -20,7 +21,7 @@
       "type": "boolean",
       "default": false,
       "attribute": "checked",
-      "description": "Whether the box is ticked. Bound to the control BOTH ways, and each binding answers a different question. The PROPERTY is the live state: once the reader clicks, the checkedness dirty flag is set and the content attribute stops controlling the box, so a property binding is the only one that keeps tracking a host write after the first click. The content ATTRIBUTE is the control's DEFAULT checkedness, and it is mirrored because this element is not form-associated (specs/ui.md 3.2): it never hears form.reset(), so without the mirror a reset would move the CONTROL to the authored default and leave the element's state where it was, and the two would disagree silently. With it, a reset is a visible no-op, which is a missing feature rather than a lie."
+      "description": "Whether the box is ticked. Bound to the control BOTH ways, and each binding answers a different question. The PROPERTY is the live state: once the reader clicks, the checkedness dirty flag is set and the content attribute stops controlling the box, so a property binding is the only one that keeps tracking a host write after the first click. The content ATTRIBUTE is the control's DEFAULT checkedness, and it is mirrored because the form resets the control before the element hears of it: without the mirror a reset would move the CONTROL to the authored default while the element's state stayed where it was. The element is form-associated (specs/ui.md 3.2), so form.reset() then returns the box to the state it first connected with; on an engine without ElementInternals a reset is a visible no-op, as it always was."
     },
     "indeterminate": {
       "type": "boolean",
