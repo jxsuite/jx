@@ -15,6 +15,14 @@ inputs:
     description: Extra Rust targets to add (space separated), for a job that cross-compiles.
     required: false
     default: ""
+  cache-key:
+    description: >-
+      Set apart this job's build cache from another's. The cache is otherwise keyed on the job's id
+      and the runner's operating system family, which two jobs on different Ubuntu releases can
+      share: a build script compiled on 24.04 then fails to start on 22.04, asking for a glibc
+      that release does not have.
+    required: false
+    default: ""
 
 runs:
   using: composite
@@ -44,3 +52,4 @@ runs:
     - uses: Swatinem/rust-cache@v2
       with:
         workspaces: packages/compiler-binding
+        key: ${{ inputs.cache-key }}
