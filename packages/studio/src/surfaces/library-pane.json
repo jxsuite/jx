@@ -176,7 +176,7 @@
       "color": "var(--fg-dim)"
     },
     "& [part=\"table\"]": {
-      "$description": "A windowed list wearing the kit's table (ui.md §5.4): `jx-table`, `jx-tr`, `jx-th` and `jx-td` give it the roles, the name and the whole-set counts a reader hears, and this surface gives the four boxes its own layout, because a window needs every row to be exactly the height the arithmetic says and the columns keep floors a CSS table cannot hold. The rows are the window; `rowcount` and each row's `rowindex` say where the slice sits in the whole list.",
+      "$description": "A windowed list that writes the table roles itself rather than through the kit's table elements (ui.md §5.4): at a window of rows by a collection's columns, one custom element per cell cost the Content home a quarter more main-thread time in the Studio trace. The roles, the name and the whole-set counts (`aria-rowcount`, `aria-rowindex`) are the same ones `jx-table` writes.",
       "display": "flex",
       "flexDirection": "column",
       "minWidth": "min-content",
@@ -227,18 +227,14 @@
       "display": "flex",
       "alignItems": "center",
       "justifyContent": "center",
-      "cursor": "default",
-      "padding": "0",
-      "borderBlockEnd": "0"
+      "cursor": "default"
     },
     "& [part=\"cover-cell\"]": {
       "flex": "0 0 56px",
       "display": "flex",
       "alignItems": "center",
       "color": "var(--fg-dim)",
-      "fontSize": "var(--jx-text-sm)",
-      "padding": "0",
-      "borderBlockEnd": "0"
+      "fontSize": "var(--jx-text-sm)"
     },
     "& [part=\"cover\"], & [part=\"cover-empty\"]": {
       "display": "block",
@@ -249,10 +245,7 @@
       "background": "var(--bg-input)"
     },
     "& [part=\"cell\"]": {
-      "$description": "Every column keeps a floor: with a collection's six field columns beside the file facts, a cell that may shrink to nothing is a column of ellipses. When the floors outgrow the pane, the table scrolls sideways instead. Each cell's text is kept out of its intrinsic width (`contain: inline-size`), so the table's `min-content` is the sum of those floors rather than of every full title. The padding and the hairline a `jx-td` draws are withdrawn: the gap is the row's, and so is the rule under it, because a flex cell is only as tall as its text and a hairline per cell would step up and down along the row.",
-      "display": "block",
-      "padding": "0",
-      "borderBlockEnd": "0",
+      "$description": "Every column keeps a floor: with a collection's six field columns beside the file facts, a cell that may shrink to nothing is a column of ellipses. When the floors outgrow the pane, the table scrolls sideways instead. Each cell's text is kept out of its intrinsic width (`contain: inline-size`), so the table's `min-content` is the sum of those floors rather than of every full title.",
       "flex": "1",
       "minWidth": "80px",
       "contain": "inline-size",
@@ -1308,16 +1301,21 @@
               ]
             },
             "table": {
-              "tagName": "jx-table",
+              "tagName": "div",
               "attributes": {
                 "part": "table",
+                "role": "table",
+                "aria-label": "${state.title}",
+                "aria-rowcount": "${state.rowCount}",
                 "data-rows": "${state.rowSize}"
               },
               "children": [
                 {
-                  "tagName": "jx-tr",
+                  "tagName": "div",
                   "attributes": {
-                    "part": "table-head"
+                    "part": "table-head",
+                    "role": "row",
+                    "aria-rowindex": "1"
                   },
                   "children": [
                     {
@@ -1334,9 +1332,10 @@
                       },
                       "cases": {
                         "shown": {
-                          "tagName": "jx-th",
+                          "tagName": "div",
                           "attributes": {
-                            "part": "select-cell"
+                            "part": "select-cell",
+                            "role": "columnheader"
                           },
                           "children": [
                             {
@@ -1390,9 +1389,10 @@
                       },
                       "cases": {
                         "shown": {
-                          "tagName": "jx-th",
+                          "tagName": "div",
                           "attributes": {
-                            "part": "cover-cell"
+                            "part": "cover-cell",
+                            "role": "columnheader"
                           },
                           "textContent": "Cover"
                         }
@@ -1407,18 +1407,16 @@
                         "$ref": "$map/item/field"
                       },
                       "map": {
-                        "tagName": "jx-th",
+                        "tagName": "div",
                         "attributes": {
                           "part": "cell",
+                          "role": "columnheader",
                           "data-field": "${$map.item.field}"
                         },
                         "textContent": "${$map.item.title}"
                       }
                     }
-                  ],
-                  "$props": {
-                    "rowindex": 1
-                  }
+                  ]
                 },
                 {
                   "tagName": "div",
@@ -1437,9 +1435,11 @@
                     "$ref": "$map/item/path"
                   },
                   "map": {
-                    "tagName": "jx-tr",
+                    "tagName": "div",
                     "attributes": {
                       "part": "table-row",
+                      "role": "row",
+                      "aria-rowindex": "${$map.item.rowIndex}",
                       "data-path": "${$map.item.path}",
                       "tabindex": "0"
                     },
@@ -1546,9 +1546,10 @@
                         },
                         "cases": {
                           "shown": {
-                            "tagName": "jx-td",
+                            "tagName": "div",
                             "attributes": {
-                              "part": "select-cell"
+                              "part": "select-cell",
+                              "role": "cell"
                             },
                             "onclick": {
                               "$prototype": "Function",
@@ -1618,9 +1619,10 @@
                         },
                         "cases": {
                           "shown": {
-                            "tagName": "jx-td",
+                            "tagName": "div",
                             "attributes": {
-                              "part": "cover-cell"
+                              "part": "cover-cell",
+                              "role": "cell"
                             },
                             "children": [
                               {
@@ -1668,9 +1670,10 @@
                           "$ref": "$map/item/field"
                         },
                         "map": {
-                          "tagName": "jx-td",
+                          "tagName": "div",
                           "attributes": {
                             "part": "cell",
+                            "role": "cell",
                             "data-field": "${$map.item.field}"
                           },
                           "children": [
@@ -1691,12 +1694,7 @@
                           ]
                         }
                       }
-                    ],
-                    "$props": {
-                      "rowindex": {
-                        "$ref": "$map/item/rowIndex"
-                      }
-                    }
+                    ]
                   }
                 },
                 {
@@ -1798,13 +1796,7 @@
                     }
                   }
                 }
-              ],
-              "$props": {
-                "label": "${state.title}",
-                "rowcount": {
-                  "$ref": "#/state/rowCount"
-                }
-              }
+              ]
             },
             "calendar": {
               "tagName": "div",
