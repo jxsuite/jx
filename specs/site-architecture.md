@@ -2,9 +2,9 @@
 
 ## File-Based Routing, Content Collections, Layouts, and Static Site Generation
 
-**Version:** 0.9.0-draft\
+**Version:** 0.9.4-draft\
 **Status:** Partial\
-**Updated:** 2026-11-13\
+**Updated:** 2026-11-14\
 **License:** MIT
 
 ---
@@ -2434,6 +2434,10 @@ This spec builds on existing Jx primitives wherever possible:
 
 ## Changelog
 
+- **0.9.4-draft** (2026-11-14) — §10.7, §14.1 and §14.2 describe the build output that ships: a page inlines the CSS of every light-DOM component it uses after its own styles, a shadow component links its sheet from inside its declarative shadow root and stands outside the page cascade, and _redirects is written whenever redirects has a rule, under every adapter and with none.
+- **0.9.3-draft** (2026-11-14) — §14.4 names the underscore-prefixed output GitHub Pages would drop that a page needs, the optimized-image directory, instead of an island directory the build never writes; §12.1 no longer lists islands among the sidecar-collection sites.
+- **0.9.2-draft** (2026-11-14) — Image optimization is specified once, in §9.2: variants go through a per-project image cache and only those a build uses reach dist, a variant's name covers its format and quality, only listed raster formats are processed, and Markdown images follow the same src, sizes and srcset rules as nodes.
+- **0.9.1-draft** (2026-11-14) — §9.2.1, §12.2: one build can leave images alone without the project saying so (jx build --no-optimize-images, JX_IMAGES_OPTIMIZE, buildSite's optimizeImages).
 - **0.9.0-draft** (2026-11-13) — §9.2: the image defaults become avif and jpeg with lossless PNG and WebP, the encoder is the compiler's native core rather than sharp, AVIF sources are served as written, and the §9.2.2 marker no longer lists the four-encode limit as unmet.
 - **0.8.14-draft** (2026-11-13) — §7.3: Markdown files open in the Edit view rather than a content mode; §7.6: held entries are kept by jx dev and Studio's canvas.
 - **0.8.13-draft** (2026-11-13) — §10.4, §10.6: a project's pure named formulas reach components; the live page shell and the Studio canvas hand them to the runtime.

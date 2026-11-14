@@ -2,7 +2,7 @@
 
 ## Static HTML Compiler, Custom Element Emitter, and Island Detector
 
-**Version:** 0.6.1\
+**Version:** 0.7.12\
 **Status:** Implemented\
 **Updated:** 2026-11-14\
 **License:** MIT
@@ -829,6 +829,19 @@ An earlier revision of this table claimed ~7 kB and ~3 kB (~10 kB total); those 
 
 ## Changelog
 
+- **0.7.12** (2026-11-14) — Cloudflare worker bundles keep bare Node builtins (tls, os, ...) external as node: imports, so packages that import them unprefixed (postgres 4) bundle.
+- **0.7.11** (2026-11-14) — §7 names the code behind each part of the image pipeline and cites site-architecture.md §9.2 for its behaviour; the native core's request takes one name hash per format, and the build copies only the variants it used.
+- **0.7.10** (2026-11-14) — §2, §5.2, §5.3 and §5.6 describe the class document that ships: route 0 is taken on a root whose $prototype is "Class" whatever the file is called, the §5.2 example validates against the class schema and runs once compiled, §5.3 states what route 0 emits for each $defs category, and every module route 0 writes loads, a parameterless setter taking v, a source not named .class.json compiling to .js beside it, and an extends $ref importing its base.
+- **0.7.9** (2026-11-14) — §10: the Pending Features ledger is retired and marked Removed. Compiler timing is specified by spec.md §11.3, a page hydrates through its own module and prerendered component instances rather than JSON islands, and no dependency manifest is written (§12); §12 no longer names island emission as a sidecar-collection site.
+- **0.7.8** (2026-11-14) — The compiled element accepts a prop for every declared state key, takes a reflected-name prop by the runtime's supply rule, and forwards later property writes into state through accessors.
+- **0.7.7** (2026-11-14) — §2.2: a template string written as a text child is baked by the site build when it reads only build-time values, makes its page dynamic otherwise (§2.1 now counts it), and is bound by the client target between two comment markers with no wrapper element, or refused where HTML reads an element's content as text; §2.2 is Implemented.
+- **0.7.6** (2026-11-14) — §11 lists the helpers shared.ts exports under the parameters they take; buildRoute leaves the list, and the image pipeline's entry points are specified with the pipeline in §7.
+- **0.7.5** (2026-11-14) — A compiled element passes the host to onMount on its first connection, runs onAdopted from adoptedCallback, and observes its declared attributes through an inlined copy of the runtime's rule; the site build reads an instance's observed attributes beneath its props, counts them in the expansion path, and never treats a definition that declares them as fully static.
+- **0.7.4** (2026-11-14) — The element binding table shows the emitted forms: an event handler receives the event, a top-level key such as hidden binds as a DOM property, and a bound attribute goes through the inlined boolean-attribute rule rather than a lit boolean binding; the worked example and the WHATWG HTML note match compiled output.
+- **0.7.3** (2026-11-14) — §8.2: CSS extraction writes each rule's description as a comment above it and takes its style handle from spec.md §9.2.
+- **0.7.2** (2026-11-14) — A derived sizes takes the narrower of each element's literal width and max-width as well as the narrowest across its ancestors, and reads no nested style block.
+- **0.7.1** (2026-11-14) — §8.2's status marker records that the compiler gives every styled element a generated class of its own, with no id preference.
+- **0.7.0** (2026-11-14) — A site build constructs every external class a page or component names: at build time, with or without an $implementation, reading value after resolve, and in the browser from a bundled, code-split class module the compiled page or element awaits before its first render; an entry the build cannot locate, load, resolve, lower or deliver now fails the build.
 - **0.6.1** (2026-11-14) — Every section is Implemented: the spec graduates out of draft.
 - **0.6.0-draft** (2026-11-13) — §7: images are encoded by the compiler's own Rust core instead of sharp. The default formats become avif and jpeg, WebP is written losslessly with a build warning, a transparent source asked for as JPEG is written as PNG, EXIF orientation is applied, embedded colour profiles are converted to sRGB, an AVIF source is served as written, variants encode in parallel, and a variant's name covers the pipeline version. New §14 specifies the native core: one addon file per platform, how it is loaded, and that it links no C library.
 - **0.5.16-draft** (2026-11-13) — §8.1: the build merges into each component the project formulas it reads, for the prerender and the emitted module, so a formula only a component reads is not lost to the page strip pass.
@@ -895,4 +908,4 @@ An earlier revision of this table claimed ~7 kB and ~3 kB (~10 kB total); those 
 
 ---
 
-_`@jxsuite/compiler` Specification v0.6.1_
+_`@jxsuite/compiler` Specification v0.7.12_
