@@ -79,7 +79,9 @@ export function platformManifest(triple: string, version: string, naming: Naming
     files: [file],
     main: file,
     ...platformFields(triple),
-    publishConfig: { provenance: true },
+    // Public by name: a scoped package is private until told otherwise, and npm refuses to write
+    // Provenance for the first version of one (`EUSAGE`, run 43544518046).
+    publishConfig: { access: "public", provenance: true },
   };
 }
 
