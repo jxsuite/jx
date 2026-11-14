@@ -9,7 +9,7 @@
  * @module @jxsuite/ai/testing
  */
 
-import type { StreamEvent } from "../streaming-client.ts";
+import type { StreamEvent, WireEvent } from "../streaming-client.ts";
 import { fakeUpstream } from "./fake-upstream.ts";
 import type { UpstreamFetch } from "./fake-upstream.ts";
 
@@ -33,7 +33,10 @@ export interface ConformanceCase {
 
 /** What a host tells the kit about the gateway under test. */
 export interface ConformanceOptions {
-  /** The wire versions the gateway declares. `[1]` when absent. */
+  /**
+   * The wire versions the gateway declares. `[1]` when absent; with 2 in the list, the version 2
+   * cases run too.
+   */
   readonly wire?: readonly number[];
   /** Headers every request carries, such as the credentials the host's policy requires. */
   readonly headers?: Readonly<Record<string, string>>;
@@ -269,6 +272,19 @@ export function gatewayConformanceCases(options: ConformanceOptions = {}): Confo
       },
     },
     {
+      id: "a wire version the gateway does not accept is refused, listing the ones it does",
+      async run(gateway) {
+        const upstream = fakeUpstream([]);
+        gateway.installUpstream(upstream);
+        const response = await gateway.chat(
+          chatRequest(JSON.stringify({ messages: [], wire: 99 })),
+        );
+        await expectProblem(response, 400);
+        expect(upstream.calls.length === 0, "no upstream call", upstream.calls.length);
+      },
+    },
+    ...(wire.includes(2) ? v2Cases(chatRequest) : []),
+    {
       id: "the models route answers 200 and advertises its wire versions",
       async run(gateway) {
         gateway.installUpstream(
@@ -287,6 +303,62 @@ export function gatewayConformanceCases(options: ConformanceOptions = {}): Confo
           `wire to list ${JSON.stringify(wire)}`,
           advertised,
         );
+      },
+    },
+  ];
+}
+
+/**
+ * The cases only a gateway that accepts wire version 2 is held to (specs/ai.md §2.7).
+ *
+ * @param {(body: string) => Request} chatRequest - Builds a chat request with the host's headers
+ * @returns {ConformanceCase[]}
+ */
+function v2Cases(chatRequest: (body: string) => Request): ConformanceCase[] {
+  const v2Body = JSON.stringify({
+    messages: [{ blocks: [{ text: "hello", type: "text" }], role: "user" }],
+    system: [{ text: "You are helpful." }],
+    tools: [],
+    wire: 2,
+  });
+  return [
+    {
+      id: "a version 2 request is answered on version 2, opening with stream_start",
+      async run(gateway) {
+        gateway.installUpstream(
+          fakeUpstream([
+            {
+              sse: sse([
+                { choices: [{ delta: { content: "Hi" }, finish_reason: "stop" }] },
+                "[DONE]",
+              ]),
+              status: 200,
+            },
+          ]),
+        );
+        const response = await gateway.chat(chatRequest(v2Body));
+        const served = response.headers.get("X-Jx-AI-Wire");
+        expect(served === "2", "the X-Jx-AI-Wire response header to say 2", served ?? "absent");
+        /* SAFETY: a version 2 stream's first frame is `stream_start`, which is not one of the
+           version 1 frames `framesOf` is typed for; only its `type` and `wire` are read. */
+        const frames = (await framesOf(response)) as WireEvent[];
+        const [first] = frames;
+        expect(
+          first?.type === "stream_start" && String(first.wire) === "2",
+          "a first frame of stream_start on wire 2",
+          first,
+        );
+        expect(frames.at(-1)?.type === "done", "a final done frame", frames.at(-1));
+      },
+    },
+    {
+      id: "a body that names wire 2 and is not a version 2 request is refused as a problem document",
+      async run(gateway) {
+        const upstream = fakeUpstream([]);
+        gateway.installUpstream(upstream);
+        const response = await gateway.chat(chatRequest(JSON.stringify({ wire: 2 })));
+        await expectProblem(response, 400);
+        expect(upstream.calls.length === 0, "no upstream call", upstream.calls.length);
       },
     },
   ];

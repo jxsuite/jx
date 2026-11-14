@@ -155,7 +155,8 @@
       "model": "claude-opus-5-5",
       "apiKey": "sk-ant",
       "provider": "anthropic",
-      "sessionId": "session#1"
+      "sessionId": "session#1",
+      "wire": 1
     },
     "platformCalls": ["aiChatUrl()", "aiChatUrl()"],
     "projectRoot": null,

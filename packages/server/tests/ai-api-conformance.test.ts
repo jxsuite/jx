@@ -30,7 +30,8 @@ const gateway: ConformanceGateway = {
 
 describe("the AI proxy passes the gateway conformance kit", () => {
   // A caller's own key: with none, the chat route refuses before it reaches any case's subject.
-  for (const conformance of gatewayConformanceCases({ headers: { "X-Api-Key": "sk-test" } })) {
+  const options = { headers: { "X-Api-Key": "sk-test" }, wire: [1, 2] };
+  for (const conformance of gatewayConformanceCases(options)) {
     it(conformance.id, async () => {
       await conformance.run(gateway);
     });

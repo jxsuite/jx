@@ -23,7 +23,12 @@ import type { InteractionStore } from "./harness/interaction-store";
 import type { createChatState } from "@jxsuite/ai/chat-state";
 import { DEFAULT_TURN_POLICY, assistantActorId, runTurn } from "@jxsuite/ai/harness";
 import type { TurnInput, TurnPolicy, TurnRun } from "@jxsuite/ai/harness";
-import { toChatMessages, toOpenAIMessages, toOpenAITools } from "@jxsuite/ai/messages";
+import {
+  toChatMessages,
+  toOpenAIMessages,
+  toOpenAITools,
+  toWireMessages,
+} from "@jxsuite/ai/messages";
 import type { StreamingClient } from "@jxsuite/ai/streaming-client";
 import { createSessionFacts } from "@jxsuite/ai/tools";
 import type { SessionFacts, ToolRegistry } from "@jxsuite/ai/tools";
@@ -109,17 +114,33 @@ export async function runAgentLoop({
       model: (request) => {
         /* A long turn must not outgrow the window between two sends: the trim only runs at a send. */
         shedToolResults(chatState, systemPrompt);
+        /* SAFETY: the one production caller, `document-assistant.ts`, always passes its turn
+           controller's signal; only tests that drive the loop directly omit it, and their stream
+           doubles record the absent signal rather than reading it — which the agent-trace
+           goldens (`signal: "none"`) pin. */
+        const turnSignal = signal as AbortSignal;
+        /* A client built for wire version 2 takes the conversation in no provider's words
+           (specs/ai.md §2.7): the same transcript, projected by the backend instead of here. */
+        if (streamingClient.streamTurn) {
+          const conversation = toWireMessages(toChatMessages(chatState.messages));
+          return streamingClient.streamTurn(
+            {
+              messages: request.closing
+                ? [...conversation, ...toWireMessages([request.closing])]
+                : conversation,
+              system: [{ text: systemPrompt }],
+              tools: [...request.tools],
+            },
+            turnSignal,
+          );
+        }
         const messages = chatState.toMessagesArray();
         return streamingClient.streamChat(
           /* A closing round's note is on no transcript, so it joins here, for this request only. */
           request.closing ? [...messages, ...toOpenAIMessages([request.closing])] : messages,
           toOpenAITools(request.tools),
           systemPrompt,
-          /* SAFETY: the one production caller, `document-assistant.ts`, always passes its turn
-             controller's signal; only tests that drive the loop directly omit it, and their stream
-             doubles record the absent signal rather than reading it — which the agent-trace
-             goldens (`signal: "none"`) pin. */
-          signal as AbortSignal,
+          turnSignal,
         );
       },
       modelInfo: { family: "openai-compat", model: chatState.model },

@@ -42,7 +42,8 @@
     "activeSession": "session#1",
     "clientOptions": {
       "model": "gpt-4o",
-      "sessionId": "session#1"
+      "sessionId": "session#1",
+      "wire": 1
     },
     "platformCalls": [],
     "projectRoot": null,

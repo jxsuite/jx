@@ -7,7 +7,7 @@
 import type { AiChatLimits, AiModelsResponse } from "@jxsuite/protocol/types";
 
 /** The chat-route wire versions this gateway accepts. */
-export const WIRE_VERSIONS: readonly number[] = [1];
+export const WIRE_VERSIONS: readonly number[] = [1, 2];
 
 /** What a host declares about its chat route beside the catalogue. */
 export interface ModelsResponseOptions {

@@ -404,6 +404,39 @@ describe("the model, once per round", () => {
     expect(joinSystem([])).toBe("");
   });
 
+  test("fromStreamingClient prefers streamTurn, and hands it the conversation as it is", async () => {
+    const turns: Parameters<NonNullable<StreamingClient["streamTurn"]>>[0][] = [];
+    let chats = 0;
+    const client: StreamingClient = {
+      async *streamChat() {
+        chats += 1;
+        yield { type: "done", stopReason: "stop" };
+      },
+      async *streamTurn(request) {
+        turns.push(request);
+        // The frames version 2 adds are passed over; the eight the engine reads still drive it.
+        yield { family: "openai-compat", model: "m", type: "stream_start", wire: 2 };
+        yield* turns.length === 1 ? callRound(["a", "probe"]) : textRound("Done.");
+      },
+    };
+    const { outcome } = await run({
+      model: fromStreamingClient(client),
+      tools: registry({ probe: {} }),
+      system: [{ text: "Sys" }, { text: "tem" }],
+    });
+    expect(outcome.kind).toBe("complete");
+    expect(chats).toBe(0);
+    expect(turns).toHaveLength(2);
+    expect(turns[0]!.system).toEqual([{ text: "Sys" }, { text: "tem" }]);
+    expect(turns[0]!.messages).toEqual([{ role: "user", blocks: USER.blocks }]);
+    expect(turns[1]!.messages.map((message) => message.role)).toEqual([
+      "user",
+      "assistant",
+      "tool",
+    ]);
+    expect(turns[0]!.tools.map((tool) => tool.name)).toEqual(["probe"]);
+  });
+
   test("usage carries the frame as streamed and the prompt's estimate; the outcome sums it", async () => {
     const usage = (inputTokens: number): StreamEvent => ({
       type: "usage",

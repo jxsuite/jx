@@ -23,6 +23,9 @@ import {
 } from "./gateway/normalize.ts";
 import { problemTypeForStatus } from "./gateway/problem.ts";
 import type { OpenAICompatQuirks } from "./gateway/types.ts";
+import { toOpenAIMessages, toOpenAITools } from "./messages/openai.ts";
+import type { ProviderFamily, SystemBlock, ToolSpec, WireMessage } from "./messages/types.ts";
+import { chatCompletionsBody } from "./providers/body.ts";
 
 /* Re-exported so `./streaming-client`, the subpath a backend already imports, carries the cache
    hints too: a Worker backend hashing the session header needs nothing else from this package. */
@@ -56,6 +59,8 @@ export type StreamEvent =
 export interface StreamDeltaEvent {
   type: "delta";
   content: string;
+  /** Which of the reply's blocks this text belongs to, when the provider numbers them. */
+  block?: number;
 }
 
 /**
@@ -71,12 +76,16 @@ export interface StreamDeltaEvent {
 export interface StreamReasoningEvent {
   type: "reasoning";
   content: string;
+  /** Which of the reply's blocks this thinking belongs to, when the provider numbers them. */
+  block?: number;
 }
 
 export interface StreamToolCallStartEvent {
   type: "tool_call_start";
   id: string;
   name: string;
+  /** Which of the reply's blocks this call is, when the provider numbers them. */
+  block?: number;
 }
 
 export interface StreamToolCallDeltaEvent {
@@ -88,6 +97,8 @@ export interface StreamToolCallDeltaEvent {
 export interface StreamToolCallEndEvent {
   type: "tool_call_end";
   id: string;
+  /** An opaque signature the provider attached to the call, replayed unchanged with it. */
+  signature?: string;
 }
 
 /**
@@ -140,6 +151,91 @@ export interface StreamErrorEvent {
   problem?: ProblemDetails;
 }
 
+// ─── Wire version 2 (specs/ai.md §2.7) ──────────────────────────────────────
+
+/**
+ * The first frame of a version 2 stream: which wire the backend is answering on, and what it is
+ * forwarding to. Sent only to a version 2 request.
+ */
+export interface StreamStartEvent {
+  type: "stream_start";
+  wire: 2;
+  family: ProviderFamily;
+  model: string;
+  /** The provider's id for the request, when it gave one. */
+  requestId?: string;
+  /** How many thinking blocks the provider dropped from the request rather than read. */
+  droppedThinking?: number;
+}
+
+/** The signature a provider attached to a thinking block, owed back with the block unchanged. */
+export interface StreamReasoningSignatureEvent {
+  type: "reasoning_signature";
+  block: number;
+  signature: string;
+}
+
+/** A thinking block the provider sent only as an opaque payload. */
+export interface StreamReasoningRedactedEvent {
+  type: "reasoning_redacted";
+  block: number;
+  data: string;
+}
+
+/** Every frame of a version 2 stream: the eight version 1 frames, and the three it adds. */
+export type WireEvent =
+  | StreamEvent
+  | StreamStartEvent
+  | StreamReasoningSignatureEvent
+  | StreamReasoningRedactedEvent;
+
+/** The version 1 chat body. Frozen: a backend accepts it forever. */
+export interface ChatRequestV1 {
+  messages: object[];
+  tools: object[];
+  systemPrompt: string;
+  model?: string;
+}
+
+/**
+ * The version 2 chat body: the conversation in no provider's words (specs/ai.md §2.3), so a backend
+ * can project it onto whichever family it forwards to.
+ */
+export interface ChatRequestV2 {
+  wire: 2;
+  model?: string;
+  /** The system prompt's parts, joined in order with nothing between. */
+  system: SystemBlock[];
+  /** Every tool call beside its reply already: a backend never repairs a conversation. */
+  messages: WireMessage[];
+  /** The tools on offer, in the order the client lists them. */
+  tools: ToolSpec[];
+  maxTokens?: number;
+  temperature?: number;
+  toolChoice?: "auto" | "none" | "required" | { name: string };
+  reasoning?: { effort?: "low" | "medium" | "high" };
+  /** For a backend's own audit and rate limiting. Never forwarded to a provider. */
+  metadata?: { sessionId?: string; turnId?: string; round?: number };
+}
+
+/**
+ * The request and response header naming the chat wire version in use (specs/ai.md §2.7). A client
+ * sends it beside a version 2 body, and a backend answers with the version it served.
+ */
+export const WIRE_HEADER = "X-Jx-AI-Wire";
+
+/**
+ * The wire a client speaks to a backend: version 2 only when the backend's models probe advertised
+ * it, and version 1 otherwise, which every backend accepts.
+ *
+ * @param {{ wire?: readonly number[] } | null} probe - The models route's answer, or null when
+ *   there is none
+ * @returns {1 | 2}
+ */
+export function negotiateWire(probe: { readonly wire?: readonly number[] } | null): 1 | 2 {
+  return probe?.wire?.includes(2) === true ? 2 : 1;
+}
+
 /**
  * A streaming LLM client. Implementations handle provider-specific SSE formats and emit normalized
  * StreamEvents.
@@ -151,20 +247,14 @@ export interface StreamingClient {
     systemPrompt: string,
     signal: AbortSignal,
   ) => AsyncGenerator<StreamEvent>;
-}
-
-/** OpenAI chat-completions request body, built incrementally below. */
-interface OpenAIChatRequestBody {
-  model: string;
-  messages: object[];
-  stream: boolean;
-  stream_options: { include_usage: boolean };
-  temperature?: number;
-  tools?: object[];
-  tool_choice?: string;
-  parallel_tool_calls?: boolean;
-  /** OpenAI's prompt-cache routing key, sent only to OpenAI itself (see `cache-hints.ts`). */
-  prompt_cache_key?: string;
+  /**
+   * One round on wire version 2: the neutral conversation in, version 2 frames out. Present only on
+   * a client built for that wire, and a caller that finds it prefers it.
+   */
+  streamTurn?: (
+    request: Omit<ChatRequestV2, "wire" | "model">,
+    signal: AbortSignal,
+  ) => AsyncGenerator<WireEvent>;
 }
 
 /** A tool-call fragment inside an OpenAI streaming `delta`. */
@@ -387,6 +477,14 @@ export const STREAM_EVENT_TYPES = {
   ERROR: "error",
 } as const;
 
+/** Every frame type of a version 2 stream: the version 1 types and the three it adds. */
+export const WIRE_EVENT_TYPES = {
+  ...STREAM_EVENT_TYPES,
+  STREAM_START: "stream_start",
+  REASONING_SIGNATURE: "reasoning_signature",
+  REASONING_REDACTED: "reasoning_redacted",
+} as const;
+
 // ─── StreamingClient interface (documented typedef) ─────────────────────────
 
 /**
@@ -462,25 +560,17 @@ export function createOpenAIStreamingClient({
     signal: AbortSignal,
   ): AsyncGenerator<StreamEvent> {
     const url = `${baseUrl}/chat/completions`;
-    const body: OpenAIChatRequestBody = {
+    /* Built by the one module every OpenAI-compatible caller in this package shares, so this client
+       and the provider adapter cannot send different bodies (`providers/body.ts`). A custom
+       temperature is forwarded only when given: reasoning models (GPT-5.x, o-series) reject one. */
+    const body = chatCompletionsBody({
+      hints: hints.body,
+      messages,
       model,
-      messages: [{ role: "system", content: systemPrompt }, ...messages],
-      stream: true,
-      stream_options: { include_usage: true },
-    };
-
-    // Forwarded only when provided — reasoning models (GPT-5.x, o-series) reject a custom
-    // Temperature, so callers that target those models simply leave it undefined.
-    if (temperature !== undefined) {
-      body.temperature = temperature;
-    }
-
-    if (tools.length > 0) {
-      body.tools = tools;
-      body.tool_choice = "auto";
-      body.parallel_tool_calls = true;
-    }
-    Object.assign(body, hints.body);
+      systemPrompt,
+      temperature,
+      tools,
+    });
 
     let response;
     try {
@@ -563,6 +653,9 @@ export function createAnthropicStreamingClient(_opts: AiCredentials): StreamingC
  * @param {string} [opts.baseUrl] - Optional provider base URL, sent as `X-Api-Base-URL`
  * @param {AiProviderFamily} [opts.provider] - The family the key belongs to, sent as
  *   `X-Api-Provider` when it is not the OpenAI-compatible default (see {@link AI_PROVIDER_HEADER})
+ * @param {1 | 2} [opts.wire] - The wire version the backend's probe advertised (`negotiateWire`).
+ *   With 2 the client also offers `streamTurn`, which sends the neutral conversation and falls back
+ *   to version 1, once and for the client's life, if the backend refuses it.
  * @param {string} [opts.sessionId] - The conversation's id, sent as the `X-Jx-Ai-Session` header so
  *   the backend can derive a prompt-cache affinity key from it. The raw id goes to the backend
  *   only; a provider sees a hash of it, scoped to that backend (`affinityKey`).
@@ -575,6 +668,11 @@ export interface ProxyStreamingClientOptions {
   baseUrl?: string | undefined;
   provider?: AiProviderFamily | undefined;
   sessionId?: string | undefined;
+  /**
+   * The wire version to speak: `negotiateWire` of the backend's models probe. Version 2 adds
+   * `streamTurn` to the client; version 1, the default, is the client every backend accepts.
+   */
+  wire?: 1 | 2 | undefined;
 }
 
 /**
@@ -606,24 +704,20 @@ export function createProxyStreamingClient({
   baseUrl,
   provider,
   sessionId,
+  wire = 1,
 }: ProxyStreamingClientOptions): StreamingClient {
   /** The URL, once the first stream has asked for it. */
   let resolvedUrl: Promise<string> | null = null;
+  /* Set once a backend has refused version 2: every later round of this client speaks version 1
+     without asking again (specs/ai.md §2.7). */
+  let downgraded = false;
 
   /**
-   * @param {object[]} messages
-   * @param {object[]} tools
-   * @param {string} systemPrompt
-   * @param {AbortSignal} signal
-   * @yields {StreamEvent} Normalized stream events.
-   * @returns {AsyncGenerator<StreamEvent>}
+   * The headers every request of this client carries.
+   *
+   * @returns {ProxyRequestHeaders}
    */
-  async function* streamChat(
-    messages: object[],
-    tools: object[],
-    systemPrompt: string,
-    signal: AbortSignal,
-  ): AsyncGenerator<StreamEvent> {
+  function requestHeaders(): ProxyRequestHeaders {
     const headers: ProxyRequestHeaders = { "Content-Type": "application/json" };
     // Client-supplied key (e.g. from Studio settings) — the proxy also falls back to OPENAI_API_KEY.
     if (apiKey) {
@@ -644,7 +738,22 @@ export function createProxyStreamingClient({
     if (sessionId) {
       headers[AI_SESSION_HEADER] = sessionId;
     }
+    return headers;
+  }
 
+  /**
+   * One request to the chat route and the frames it answers with, relayed as sent.
+   *
+   * @param {string} payload - The serialized chat body
+   * @param {ProxyRequestHeaders} headers - The request's headers
+   * @param {AbortSignal} signal - The turn's signal
+   * @yields {WireEvent} The route's frames, in wire order
+   */
+  async function* exchange(
+    payload: string,
+    headers: ProxyRequestHeaders,
+    signal: AbortSignal,
+  ): AsyncGenerator<WireEvent> {
     resolvedUrl ??= Promise.resolve(isUrlLookup(chatUrl) ? chatUrl() : chatUrl);
     let url: string;
     try {
@@ -665,12 +774,7 @@ export function createProxyStreamingClient({
 
     let response;
     try {
-      response = await fetch(url, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({ messages, tools, systemPrompt, model }),
-        signal,
-      });
+      response = await fetch(url, { method: "POST", headers, body: payload, signal });
     } catch (error) {
       yield fetchFailureFrame(error);
       return;
@@ -725,13 +829,13 @@ export function createProxyStreamingClient({
           }
 
           const dataStr = trimmed.slice(6);
-          let event: StreamEvent;
+          let event: WireEvent;
           try {
-            /* SAFETY: the proxy is the chat route, whose every `data:` line is one StreamEvent
+            /* SAFETY: the proxy is the chat route, whose every `data:` line is one frame
                (`encodeSse` frames exactly that). The event is relayed as sent and only `type` is
                read; a line of JSON `null` is relayed, then throws at that read into the catch
                below. */
-            event = JSON.parse(dataStr) as StreamEvent;
+            event = JSON.parse(dataStr) as WireEvent;
           } catch {
             continue; // Skip unparseable chunks
           }
@@ -749,5 +853,89 @@ export function createProxyStreamingClient({
     }
   }
 
-  return { streamChat };
+  /**
+   * One round on wire version 1.
+   *
+   * @param {object[]} messages
+   * @param {object[]} tools
+   * @param {string} systemPrompt
+   * @param {AbortSignal} signal
+   * @yields {StreamEvent} Normalized stream events.
+   * @returns {AsyncGenerator<StreamEvent>}
+   */
+  async function* streamChat(
+    messages: object[],
+    tools: object[],
+    systemPrompt: string,
+    signal: AbortSignal,
+  ): AsyncGenerator<StreamEvent> {
+    const payload = JSON.stringify({ messages, tools, systemPrompt, model });
+    for await (const event of exchange(payload, requestHeaders(), signal)) {
+      // A version 1 request is answered with version 1 frames only; anything else is not relayed.
+      if (isV1Event(event)) {
+        yield event;
+      }
+    }
+  }
+
+  if (wire !== 2) {
+    return { streamChat };
+  }
+
+  /**
+   * One round on wire version 2, falling back to version 1 once, for good, when the backend answers
+   * that it does not accept version 2: the probe said it did, so this is a backend that changed
+   * underneath the client (a rollback, a second instance), and the turn must not fail for it.
+   *
+   * @param {Omit<ChatRequestV2, "wire" | "model">} request
+   * @param {AbortSignal} signal
+   * @yields {WireEvent} The route's frames, in wire order
+   * @returns {AsyncGenerator<WireEvent>}
+   */
+  async function* streamTurn(
+    request: Omit<ChatRequestV2, "wire" | "model">,
+    signal: AbortSignal,
+  ): AsyncGenerator<WireEvent> {
+    if (!downgraded) {
+      const body: ChatRequestV2 = { wire: 2, model, ...request };
+      const headers = requestHeaders();
+      headers[WIRE_HEADER] = "2";
+      let refused = false;
+      for await (const event of exchange(JSON.stringify(body), headers, signal)) {
+        if (event.type === "error" && event.problem?.type === WIRE_UNSUPPORTED_TYPE) {
+          refused = true;
+          break;
+        }
+        yield event;
+      }
+      if (!refused) {
+        return;
+      }
+      downgraded = true;
+    }
+    yield* streamChat(
+      toOpenAIMessages(request.messages),
+      toOpenAITools(request.tools),
+      request.system.map((block) => block.text).join(""),
+      signal,
+    );
+  }
+
+  return { streamChat, streamTurn };
+}
+
+/** The problem type a backend answers a wire version it does not accept with. */
+const WIRE_UNSUPPORTED_TYPE = problemDetails("wireUnsupported").type;
+
+/** The frame types a version 1 stream carries. */
+const V1_EVENT_TYPES: ReadonlySet<string> = new Set(Object.values(STREAM_EVENT_TYPES));
+
+/**
+ * True when a frame is one of the eight a version 1 stream carries.
+ *
+ * @param {WireEvent} event - A frame, as the backend sent it
+ * @returns {boolean}
+ */
+function isV1Event(event: WireEvent): event is StreamEvent {
+  return V1_EVENT_TYPES.has(event.type);
 }

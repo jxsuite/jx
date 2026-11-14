@@ -126,7 +126,8 @@
       "model": "gpt-4o",
       "apiKey": "sk-secret",
       "baseUrl": "http://localhost:11434/v1",
-      "sessionId": "session#1"
+      "sessionId": "session#1",
+      "wire": 1
     },
     "platformCalls": ["aiChatUrl()"],
     "projectRoot": null,

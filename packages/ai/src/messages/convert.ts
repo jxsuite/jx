@@ -173,14 +173,15 @@ function joined(blocks: readonly Block[], type: "text" | "reasoning"): string {
  * turn opens with, which is the answer the request carrying it would generate. A message's blocks
  * decide when it has them; a v1 message is read by its fields, as {@link toChatMessages} reads them.
  *
- * @param {ChatMessage | LiveMessage} message
+ * @param {WireMessage | LiveMessage} message - A stored or wire message, or a v1 one
  * @returns {boolean}
  */
-export function isEmptyAssistant(message: ChatMessage | LiveMessage): boolean {
+export function isEmptyAssistant(message: WireMessage | LiveMessage): boolean {
   if (message.role !== "assistant") {
     return false;
   }
-  // SAFETY: a ChatMessage always carries `blocks`, so a message without them is a LiveMessage.
+  /* SAFETY: a ChatMessage and a WireMessage always carry `blocks`, so a message without them is a
+     LiveMessage. */
   const blocks = message.blocks ?? blocksFromFields(message as LiveMessage);
   return !blocks.some(
     (block) => block.type === "tool_call" || (block.type === "text" && block.text !== ""),

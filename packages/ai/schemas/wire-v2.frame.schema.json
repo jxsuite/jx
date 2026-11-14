@@ -1,0 +1,210 @@
+{
+  "$id": "https://jxsuite.com/schemas/ai/wire-v2.frame.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "One frame of a version 2 chat stream, sent as a Server-Sent Events data line. The first eight are the version 1 frames, which a version 1 stream carries too; a reader ignores a member or a type it does not know.",
+  "oneOf": [
+    {
+      "properties": {
+        "family": {
+          "enum": ["openai-compat", "anthropic"]
+        },
+        "model": {
+          "type": "string"
+        },
+        "wire": {
+          "const": 2
+        },
+        "droppedThinking": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "requestId": {
+          "type": "string"
+        },
+        "type": {
+          "const": "stream_start"
+        }
+      },
+      "required": ["type", "family", "model", "wire"],
+      "type": "object"
+    },
+    {
+      "properties": {
+        "content": {
+          "type": "string"
+        },
+        "block": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "type": {
+          "const": "delta"
+        }
+      },
+      "required": ["type", "content"],
+      "type": "object"
+    },
+    {
+      "properties": {
+        "content": {
+          "type": "string"
+        },
+        "block": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "type": {
+          "const": "reasoning"
+        }
+      },
+      "required": ["type", "content"],
+      "type": "object"
+    },
+    {
+      "properties": {
+        "block": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "signature": {
+          "type": "string"
+        },
+        "type": {
+          "const": "reasoning_signature"
+        }
+      },
+      "required": ["type", "block", "signature"],
+      "type": "object"
+    },
+    {
+      "properties": {
+        "block": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "data": {
+          "type": "string"
+        },
+        "type": {
+          "const": "reasoning_redacted"
+        }
+      },
+      "required": ["type", "block", "data"],
+      "type": "object"
+    },
+    {
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "block": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "type": {
+          "const": "tool_call_start"
+        }
+      },
+      "required": ["type", "id", "name"],
+      "type": "object"
+    },
+    {
+      "properties": {
+        "args": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "type": {
+          "const": "tool_call_delta"
+        }
+      },
+      "required": ["type", "args", "id"],
+      "type": "object"
+    },
+    {
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "signature": {
+          "type": "string"
+        },
+        "type": {
+          "const": "tool_call_end"
+        }
+      },
+      "required": ["type", "id"],
+      "type": "object"
+    },
+    {
+      "properties": {
+        "inputTokens": {
+          "type": "number"
+        },
+        "outputTokens": {
+          "type": "number"
+        },
+        "cacheWriteInputTokens": {
+          "type": "number"
+        },
+        "cachedInputTokens": {
+          "type": "number"
+        },
+        "reasoningTokens": {
+          "type": "number"
+        },
+        "type": {
+          "const": "usage"
+        }
+      },
+      "required": ["type", "inputTokens", "outputTokens"],
+      "type": "object"
+    },
+    {
+      "properties": {
+        "stopReason": {
+          "type": "string"
+        },
+        "truncated": {
+          "const": true
+        },
+        "type": {
+          "const": "done"
+        }
+      },
+      "required": ["type", "stopReason"],
+      "type": "object"
+    },
+    {
+      "properties": {
+        "message": {
+          "type": "string"
+        },
+        "code": {
+          "type": "string"
+        },
+        "problem": {
+          "description": "An RFC 9457 problem document naming the kind of failure.",
+          "properties": {
+            "type": {
+              "type": "string"
+            }
+          },
+          "required": ["type"],
+          "type": "object"
+        },
+        "type": {
+          "const": "error"
+        }
+      },
+      "required": ["type", "message"],
+      "type": "object"
+    }
+  ],
+  "title": "Jx chat stream frame, wire version 2"
+}

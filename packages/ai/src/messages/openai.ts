@@ -18,14 +18,21 @@ import type {
   OpenAIToolCall,
   ReasoningBlock,
   ToolSpec,
+  WireMessage,
 } from "./types.ts";
+
+/**
+ * What the projection reads of a message: its role and blocks, and the family a stored message
+ * records. A {@link ChatMessage} and a {@link WireMessage} are both one.
+ */
+export type ProjectedMessage = WireMessage & Pick<ChatMessage, "meta">;
 
 /**
  * Whether a reasoning block is replayed to an OpenAI-compatible provider: it came from one (its own
  * provenance, else its message's family, else the v1 default), and it is not redacted. A block
  * another family signed is that family's to read, and a redacted payload is nobody's text.
  */
-function replays(block: ReasoningBlock, message: ChatMessage): boolean {
+function replays(block: ReasoningBlock, message: ProjectedMessage): boolean {
   const family = block.provenance?.family ?? message.meta?.family ?? "openai-compat";
   return family === "openai-compat" && block.redacted === undefined;
 }
@@ -50,9 +57,11 @@ function replays(block: ReasoningBlock, message: ChatMessage): boolean {
  * Assistant `content` is `null` when the turn made calls and wrote nothing; a `tool` message is one
  * entry per result; any other role is `{ role, content }`, its text byte for byte.
  *
- * @param {readonly ChatMessage[]} messages @returns {OpenAIMessage[]}
+ * @param {readonly ProjectedMessage[]} messages - Stored messages, or the wire's (which carry no
+ *   id, timestamp or meta, and none is read but a stored message's family)
+ * @returns {OpenAIMessage[]}
  */
-export function toOpenAIMessages(messages: readonly ChatMessage[]): OpenAIMessage[] {
+export function toOpenAIMessages(messages: readonly ProjectedMessage[]): OpenAIMessage[] {
   const out: OpenAIMessage[] = [];
   for (const message of messages) {
     if (message.role === "assistant") {
