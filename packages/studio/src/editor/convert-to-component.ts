@@ -33,7 +33,7 @@ import { jsonClone } from "../utils/studio-utils";
 import { JXN_FORMAT_NAME, NATIVE_EXT, formatSerialize } from "../format/format-host";
 import { notify } from "../services/notify";
 import { showPromptDialog } from "../ui/layers";
-import { validateComponentSlots } from "../services/cem-export";
+import { validateComponentSlots } from "../services/component-slots";
 import { customElementNameProblem, deriveTagName } from "../create/element-name";
 
 import type { JxMutableNode, JxPath } from "@jxsuite/schema/types";

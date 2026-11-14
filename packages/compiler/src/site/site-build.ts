@@ -3,7 +3,8 @@
  *
  * Coordinates the full site build pipeline: 1. Load project.json 2. Discover pages/ routes 3.
  * Expand dynamic routes ($paths) 4. For each route: resolve layout, merge $head, inject context,
- * compile 5. Emit compiled files to dist/ 6. Generate redirects
+ * compile 5. Emit compiled files to dist/, with the Custom Elements Manifest of the components it
+ * compiled (spec.md §16.8) 6. Generate redirects
  *
  * This is the Phase 1 implementation of site-architecture spec §12.
  *
@@ -36,6 +37,8 @@ import {
   isString,
   isTemplateString,
 } from "@jxsuite/schema/guards";
+import { cemManifest, cemManifestText } from "@jxsuite/schema/cem-manifest";
+import type { CemDefinition } from "@jxsuite/schema/cem-manifest";
 import { errorMessage } from "@jxsuite/schema/parse";
 import {
   isNpmSpecifier,
@@ -127,6 +130,7 @@ import {
   resolveHostStyle,
   refuseTemplateItems,
   buildListRows,
+  tagNameToClassName,
 } from "../shared.ts";
 import type { ComponentPrerenderContext, StaticChild } from "../shared.ts";
 import { SLOT_ATTR } from "@jxsuite/runtime";
@@ -820,6 +824,33 @@ export async function buildSite(
     log(
       `  Compiled ${compiledComponentTags.length} component(s): ${compiledComponentTags.join(", ")}`,
     );
+  }
+
+  // ── 5a. Custom Elements Manifest (spec.md §16.8) ────────────────────────
+  /*
+   * One manifest for every definition this build compiled, written beside the modules it
+   * describes. Module paths are relative to the project root, which is the package root a
+   * manifest's paths are read against, so a project that publishes its `dist/` names this file in
+   * its own `package.json` and nothing else has to be rewritten. A build that compiled no
+   * component writes none.
+   */
+  if (componentDefs.size > 0) {
+    const definitions = [...componentDefs].map(([tag, doc]): CemDefinition => ({
+      className: tagNameToClassName(tag),
+      doc,
+      modulePath: relative(projectRoot, resolve(outDir, "components", `${tag}.js`))
+        .split(sep)
+        .join("/"),
+      shadow: resolveShadowMode(doc, projectConfig.defaults) !== null,
+      tagName: tag,
+    }));
+    const { manifest, warnings } = cemManifest(definitions);
+    for (const warning of warnings) {
+      console.warn(warning);
+    }
+    writeFileSync(resolve(outDir, "custom-elements.json"), cemManifestText(manifest), "utf8");
+    fileCount += 1;
+    log(`  Wrote custom-elements.json (${definitions.length} element(s))`);
   }
 
   /*

@@ -1761,6 +1761,7 @@ Emit dist/
     ├── components/
     │   ├── site-header.js
     │   └── site-header.css
+    ├── custom-elements.json            (Custom Elements Manifest of the compiled components, spec.md §16.8)
     ├── content/
     │   └── blog/images/hero.jpg        (referenced collection media)
     ├── images/
@@ -2115,6 +2116,7 @@ dist/
 │   ├── site-header.css
 │   ├── cta-button.js
 │   └── cta-button.css
+├── custom-elements.json         # Custom Elements Manifest of the compiled components (spec.md §16.8)
 ├── images/
 │   └── _optimized/              # Responsive image variants (content-hashed)
 │       ├── hero-320-a1b2c3d4.webp

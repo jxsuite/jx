@@ -714,3 +714,18 @@ export function displayTagName(tagName: TagNameSlot): string {
 export function isPrivateStateKey(key: string): boolean {
   return key.startsWith("#");
 }
+
+/**
+ * The state key an observed attribute writes (spec.md §16.5): its name in camel case, each hyphen
+ * followed by a lowercase letter dropped and the letter uppercased, so `user-name` writes
+ * `userName`. One rule, because it has to hold identically wherever it is applied: the
+ * interpreter's `absorbAttribute`, the compiler's observed defaults, and the `fieldName` a Custom
+ * Elements Manifest links an attribute to its field by (spec.md §16.8). The compiled module's
+ * inlined copy restates it, held by `observed-attr-agreement.test.ts`.
+ *
+ * @param {string} name - An attribute name
+ * @returns {string}
+ */
+export function attributeStateKey(name: string): string {
+  return name.replaceAll(/-([a-z])/g, (_: string, c: string) => c.toUpperCase());
+}

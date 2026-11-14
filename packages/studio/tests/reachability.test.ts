@@ -289,13 +289,6 @@ const KNOWN_UNREACHABLE = {
   "services/bundle-base.ts": { resetBundleBase: TEST_RESET },
   "services/settings/kernel.ts": { resetSettings: TEST_RESET },
   "services/trusted-types.ts": { resetStudioPolicy: TEST_RESET },
-  "services/cem-export.ts": {
-    exportCemManifest:
-      "downloads a CEM 2.1.0 manifest for the open document, and still takes the DELETED flat " +
-      "state shape (`{ document }` plus three injected helpers) rather than a `Tab`. No menu " +
-      "offers it. Port it onto a command or delete the module — it is the last caller-shaped " +
-      "remnant of the old state model",
-  },
   "services/clock.ts": {
     isClockPinned:
       '"Read by `probe.state()`" — and it is not. `services/automation.ts` builds `state()` from ' +

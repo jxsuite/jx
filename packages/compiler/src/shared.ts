@@ -48,6 +48,7 @@ import { runStatements } from "@jxsuite/runtime/statements";
 import { BUILT_IN_PROTOTYPES } from "@jxsuite/schema/defs";
 import { buildSiteStyleCSS } from "@jxsuite/site/site-style";
 import {
+  attributeStateKey,
   childrenContainArray,
   hasStructuredBody,
   isExpressionDef,
@@ -2379,7 +2380,7 @@ export function observedAttrHelperSource(): string {
 
 /** The state key an observed attribute writes: its name, camel-cased (spec.md §16.5). */
 function observedStateKey(name: string): string {
-  return name.replaceAll(/-([a-z])/g, (_: string, c: string) => c.toUpperCase());
+  return attributeStateKey(name);
 }
 
 /**

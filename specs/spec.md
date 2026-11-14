@@ -522,7 +522,7 @@ State entries prefixed with `#` are private. They are never exposed to the studi
 }
 ```
 
-> **Status: Implemented.** All three clauses hold. The studio excludes `#` entries from the editable prop list (`componentPropEntries`) and from CEM extraction (`cem-export`), and both tiers now refuse a `$props` write against one: the interpreter at each of its four absorption paths (`runtime.ts`) and the compiled element target in the `connectedCallback` it emits. The predicate is `isPrivateStateKey` in `@jxsuite/schema/guards`, in one place because the rule has to hold identically in code that is compiled and code that is interpreted.
+> **Status: Implemented.** All three clauses hold. The studio excludes `#` entries from the editable prop list (`componentPropEntries`), the build's Custom Elements Manifest leaves them out (`cemManifest` in `packages/schema/src/cem-manifest.ts`, §16.8), and both tiers now refuse a `$props` write against one: the interpreter at each of its four absorption paths (`runtime.ts`) and the compiled element target in the `connectedCallback` it emits. The predicate is `isPrivateStateKey` in `@jxsuite/schema/guards`, in one place because the rule has to hold identically in code that is compiled and code that is interpreted.
 >
 > Two details are part of the contract rather than of the implementation. A private entry gets **no property accessor** on the custom element — the property-first interface _is_ the props mechanism, so defining one would leave `el["#cache"] = x` writing through every other guard. And a refused write is **ignored and named**, not thrown: a `$props` block mentioning a private key is an authoring mistake, not a broken document, and failing the render would turn a typo into a blank page. The warning fires once per key.
 
@@ -1794,6 +1794,8 @@ A document mounted by a host through `mount()` ([embedding.md](./embedding.md) �
 }
 ```
 
+An observed attribute writes the state entry whose key is its name in camel case: each hyphen followed by a lowercase letter is dropped and the letter uppercased, so `user-name` writes `userName` (`attributeStateKey` in `@jxsuite/schema/guards`).
+
 Type coercion: `string` → no conversion, `number` → `Number()`, `boolean` → presence check. Coercion follows the type of the value the entry holds, so an entry declared by `type` alone, which holds nothing until an attribute sets it, takes the text as a string.
 
 An observed attribute already on the element when it connects is read into state before `$props` are merged, so `<user-card username="Ada">` renders with `Ada` and a property a parent set before connection still wins (§16.2). The same coercion applies at connection and on every later change.
@@ -1862,7 +1864,22 @@ Custom elements may carry annotations compatible with the Custom Elements Manife
 - `emits` on functions — CEM `Event` objects
 - `attribute` and `reflects` on typed `state` entries
 
-> **Status: Partial.** The schema fields ship, and Studio edits `parameters`, `emits` and a typed entry's `attribute` and `reflects` (`packages/studio/src/panels/signals-panel.ts`), but nothing in `packages/studio/src` reads or writes the root `observedAttributes` array (studio.md §6.5). A per-document CEM 2.1.0 generator exists (`exportCemManifest` in `packages/studio/src/services/cem-export.ts`), but nothing calls it, no build emits a project `custom-elements.json`, and the generator maps only typed state entries carrying `attribute` into CEM `attributes`, not `observedAttributes`.
+**A build exports them as one manifest.** A site build writes a Custom Elements Manifest, schema version 2.1.0, to `<outDir>/custom-elements.json`, describing every definition it compiles; a build that compiles none writes none. Each compiled module (`<outDir>/components/<tag>.js`) is one `javascript-module` whose `path` is relative to the project root, which is the package root a manifest's module paths are read against. It holds one declaration, with `kind: "class"`, `customElement: true`, the definition's `tagName` and the class name the module defines, and one `custom-element-definition` export. The build does not edit `package.json`; a project that publishes its components names the file in its own `customElements` field.
+
+| In the definition                                                                    | In the manifest                                                                                                                                                           |
+| ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| The root `description` (else `$description`)                                         | The declaration's `description`                                                                                                                                           |
+| Each name in `observedAttributes`                                                    | An entry of `attributes`, linked by `fieldName` to the entry its camel-cased name writes (§16.5), with that field's `type`, `default`, `description` and `deprecated`     |
+| A public Shape 1 or Shape 2 `state` entry (§5.7)                                     | A `field` member: `type`, `default` as JSON text, `description`, `deprecated`, and `attribute` (with `reflects`, when declared) only when an observed attribute writes it |
+| A public, callable Function entry other than the §16.4 hooks                         | A `method` member: `parameters` (without `state`), the return `type`, `description`                                                                                       |
+| The root's `emits`, and the `emits` of every public Function entry                   | An entry of `events`, first name winning, typed `Event` when the annotation names no type                                                                                 |
+| Each `<slot>` in `children`                                                          | An entry of `slots`                                                                                                                                                       |
+| Each `--*` key of the root `style`                                                   | An entry of `cssProperties`                                                                                                                                               |
+| Each `part` name in `children`, for a definition rendered into a shadow root (§16.6) | An entry of `cssParts`                                                                                                                                                    |
+
+Private entries (§5.6) never appear. Computed entries, data sources and references are not members, since a consumer cannot set them, and neither is a Shape 5 `$expression` entry, handler or formula (§5.7). An entry's `attribute` that no observed attribute writes into it is left out and reported as a build warning, because the element never reads it (§16.5). No tier writes state back to an attribute, so `reflects` is the author's statement that the component's own code does. A type is written as text: a string as it stands, a `{ "text" }` object's text, a JSON Schema object's `type` or the last segment of its `$ref`, and for a field with none of those the JSON type of its default. The file is deterministic: modules are sorted by tag name and members keep the order of the definition's `state`.
+
+> **Status: Implemented.** `cemManifest` in `packages/schema/src/cem-manifest.ts` is the one generator, and `buildSite` (`packages/compiler/src/site/site-build.ts`) writes its result. The manifest states the interface §16.2 and §16.5 specify; where the compiled element module does not yet provide it, those sections' markers say so. Studio's editors for these annotations are studio.md §6.5's.
 
 ### 16.9 Instantiation Limits
 
