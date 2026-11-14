@@ -15,8 +15,15 @@
       "args": "{\"path\""
     },
     {
-      "type": "error",
-      "message": "Stream error: connection reset by peer"
+      "message": "Stream error: connection reset by peer",
+      "problem": {
+        "status": 502,
+        "title": "An upstream service failed",
+        "type": "https://jxsuite.com/problems/upstream-failure",
+        "detail": "Stream error: connection reset by peer",
+        "error": "Stream error: connection reset by peer"
+      },
+      "type": "error"
     }
   ]
 }

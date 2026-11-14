@@ -46,6 +46,7 @@ const WORKER_SAFE_ENTRIES = {
   "./jx-tools": "./src/jx-tools/index.ts",
   "./messages": "./src/messages/index.ts",
   "./streaming-client": "./src/streaming-client.ts",
+  "./testing": "./src/testing/index.ts",
   "./tools": "./src/tools.ts",
 } satisfies Readonly<Record<string, string>>;
 
@@ -77,21 +78,22 @@ const NOT_WORKER_SAFE = {
 /**
  * The module graph each Worker-safe entry bundles today, repository-relative and sorted. This is
  * the non-vacuity pin: a build that resolved nothing cannot match it, and a new module entering a
- * Worker graph is a diff someone reads. Note what is NOT here: streaming-client's only import
- * outside this package is `import type { ProblemDetails } from "@jxsuite/protocol"`, which is
- * erased, so @jxsuite/protocol contributes no module at runtime. `./messages` imports nothing
- * outside itself at runtime; its `types.ts` is type-only and erased like the rest. `./harness`
- * reaches `./tools`, two `./messages` modules and `message-id.ts` (the id counter it shares with
- * chat-state): the graph that proves the harness depends on the tools, not the reverse.
- * `cache-hints.ts` is in both graphs on purpose: it is the prompt-cache hint table both upstream
- * callers share, and it needs nothing but `crypto.subtle` and `URL`. The gateway is the one entry
- * that imports protocol at runtime, and only its two problem modules (for `problemDetails` and
- * `PROBLEM_MEDIA_TYPE`), never the root barrel, which would bring the route table too. Its
- * type-only imports (`gateway/types.ts`, and the frame types it borrows from streaming-client) are
- * erased the same way. `./jx-tools` is the one entry that reaches @jxsuite/schema, and only its two
- * leaves, `doc-ops` and the `guards` it imports, never the root that builds the schema. When a
- * change adds a module on purpose, confirm it passes FORBIDDEN ("reaches no forbidden module"
- * checks) and add it here.
+ * Worker graph is a diff someone reads. streaming-client reaches the gateway's normalizer and the
+ * two protocol problem modules it builds error frames with, since the OpenAI client runs that
+ * normalizer rather than a copy of it (specs/ai.md §2.4); its type import of the protocol root is
+ * erased. `./testing` reaches nothing but itself: the frame types it borrows are erased too.
+ * `./messages` imports nothing outside itself at runtime; its `types.ts` is type-only and erased
+ * like the rest. `./harness` reaches `./tools`, two `./messages` modules and `message-id.ts` (the
+ * id counter it shares with chat-state): the graph that proves the harness depends on the tools,
+ * not the reverse. `cache-hints.ts` is in both graphs on purpose: it is the prompt-cache hint table
+ * both upstream callers share, and it needs nothing but `crypto.subtle` and `URL`. The gateway is
+ * the one entry that imports protocol at runtime, and only its two problem modules (for
+ * `problemDetails` and `PROBLEM_MEDIA_TYPE`), never the root barrel, which would bring the route
+ * table too. Its type-only imports (`gateway/types.ts`, and the frame types it borrows from
+ * streaming-client) are erased the same way. `./jx-tools` is the one entry that reaches
+ * @jxsuite/schema, and only its two leaves, `doc-ops` and the `guards` it imports, never the root
+ * that builds the schema. When a change adds a module on purpose, confirm it passes FORBIDDEN
+ * ("reaches no forbidden module" checks) and add it here.
  */
 const FROZEN_GRAPHS = new Map<string, readonly string[]>([
   [
@@ -156,7 +158,26 @@ const FROZEN_GRAPHS = new Map<string, readonly string[]>([
       "packages/ai/src/messages/repair.ts",
     ],
   ],
-  ["./streaming-client", ["packages/ai/src/cache-hints.ts", "packages/ai/src/streaming-client.ts"]],
+  [
+    "./streaming-client",
+    [
+      "packages/ai/src/cache-hints.ts",
+      "packages/ai/src/gateway/normalize.ts",
+      "packages/ai/src/gateway/problem.ts",
+      "packages/ai/src/gateway/upstream-error.ts",
+      "packages/ai/src/streaming-client.ts",
+      "packages/protocol/src/problem.ts",
+      "packages/protocol/src/problems.ts",
+    ],
+  ],
+  [
+    "./testing",
+    [
+      "packages/ai/src/testing/conformance.ts",
+      "packages/ai/src/testing/fake-upstream.ts",
+      "packages/ai/src/testing/index.ts",
+    ],
+  ],
   ["./tools", ["packages/ai/src/tools.ts"]],
 ]);
 
@@ -738,8 +759,13 @@ describe("canary builds trip the gate", () => {
     expect(graph.modules).toEqual([
       "packages/ai/src/__worker_gate_canary__.ts",
       "packages/ai/src/cache-hints.ts",
+      "packages/ai/src/gateway/normalize.ts",
+      "packages/ai/src/gateway/problem.ts",
+      "packages/ai/src/gateway/upstream-error.ts",
       "packages/ai/src/streaming-client.ts",
       "packages/ai/src/tools.ts",
+      "packages/protocol/src/problem.ts",
+      "packages/protocol/src/problems.ts",
     ]);
   });
 });

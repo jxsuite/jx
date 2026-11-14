@@ -89,8 +89,8 @@ describe("problemTypeForStatus", () => {
     [503, "upstreamFailure"],
     [504, "upstreamFailure"],
     // Unlisted: which side of 500 it falls on decides whose mistake it was.
+    [429, "rateLimited"],
     [418, "invalidRequest"],
-    [429, "invalidRequest"],
     [500, "internalError"],
     [507, "internalError"],
   ])("%d is %s", (status, name) => {
@@ -98,7 +98,7 @@ describe("problemTypeForStatus", () => {
   });
 
   it("maps every listed status to a type answered with that same status", () => {
-    for (const status of [400, 401, 403, 404, 405, 409, 413, 500, 501, 502]) {
+    for (const status of [400, 401, 403, 404, 405, 409, 413, 429, 500, 501, 502]) {
       expect(PROBLEM_TYPES[problemTypeForStatus(status)].status).toBe(status);
     }
   });

@@ -6,7 +6,8 @@
     },
     {
       "type": "done",
-      "stopReason": "stop"
+      "stopReason": "stop",
+      "truncated": true
     }
   ]
 }

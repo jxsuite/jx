@@ -7,6 +7,8 @@ import { clearSeededSettings, installMockPlatform, seedSettings } from "./harnes
 import { afterEach, beforeEach, describe, expect, setSystemTime, test } from "bun:test";
 import {
   backendProviders,
+  backendWire,
+  chatRouteLimits,
   ensureProxyProbe,
   fetchAvailableModels,
   getProxyDefaultModel,
@@ -179,6 +181,35 @@ describe("fetchAvailableModels", () => {
     fetchImpl = async () => Response.json({ models: [] });
     await fetchAvailableModels({ force: true });
     expect(backendProviders()).toEqual(["openai-compat"]);
+  });
+
+  /* A backend that predates either member speaks version 1 and declares no ceiling. The answer is
+     the backend's JSON, so what cannot be a version or a ceiling is not read as one. */
+  test("reads the wire versions and the limits the probe advertises", async () => {
+    expect(backendWire()).toEqual([1]);
+    expect(chatRouteLimits()).toEqual({});
+    fetchImpl = async () =>
+      Response.json({
+        limits: { maxBodyBytes: 1_000_000, maxMessages: 200 },
+        models: [],
+        wire: [1, 2, "3", 2.5],
+      });
+    await fetchAvailableModels({ force: true });
+    expect(backendWire()).toEqual([1, 2]);
+    expect(chatRouteLimits()).toEqual({ maxBodyBytes: 1_000_000, maxMessages: 200 });
+
+    fetchImpl = async () =>
+      Response.json({ limits: { maxBodyBytes: "big", maxMessages: 0 }, models: [], wire: "2" });
+    await fetchAvailableModels({ force: true });
+    expect(backendWire()).toEqual([1]);
+    expect(chatRouteLimits()).toEqual({});
+
+    fetchImpl = async () => Response.json({ limits: { maxMessages: 50 }, models: [], wire: [] });
+    await fetchAvailableModels({ force: true });
+    expect(backendWire()).toEqual([1]);
+    expect(chatRouteLimits()).toEqual({ maxMessages: 50 });
+    resetModelCache();
+    expect(chatRouteLimits()).toEqual({});
   });
 
   test("changing the stored credentials drops the cache", async () => {

@@ -85,6 +85,7 @@ const STATUS_TYPES: ReadonlyMap<number, ProblemTypeName> = new Map<number, Probl
   [405, "methodNotAllowed"],
   [409, "conflict"],
   [413, "payloadTooLarge"],
+  [429, "rateLimited"],
   [501, "capabilityUnavailable"],
   [502, "upstreamFailure"],
   [503, "upstreamFailure"],

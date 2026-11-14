@@ -11,9 +11,30 @@
  */
 
 import { problemDetails } from "@jxsuite/protocol/problems";
-import type { OpenAIStreamChunk, StreamEvent, StreamUsageEvent } from "../streaming-client.ts";
+import type { JsonObject, JsonValue } from "../core-types.ts";
+import type {
+  OpenAIStreamChunk,
+  OpenAIUsage,
+  StreamEvent,
+  StreamUsageEvent,
+} from "../streaming-client.ts";
 import { problemTypeForStatus } from "./problem.ts";
+import type { OpenAICompatQuirks } from "./types.ts";
 import { extractUpstreamErrorMessage } from "./upstream-error.ts";
+
+/** What a caller may tell the normalizer about the upstream it is reading. */
+export interface NormalizeOptions {
+  /** How this upstream departs from the chat-completions wire. */
+  readonly quirks?: OpenAICompatQuirks;
+  /**
+   * The `code` an upstream's non-2xx status is reported under, when the host knows a better one
+   * than the status itself (a brokered credential that lapsed, say). Undefined keeps the status.
+   */
+  readonly errorCode?: (status: number) => string | undefined;
+}
+
+/** The usage path every OpenAI-compatible provider that reports a cache hit uses, absent a quirk. */
+const DEFAULT_CACHED_TOKENS_PATHS: readonly string[] = ["prompt_tokens_details.cached_tokens"];
 
 /**
  * Normalize an upstream usage object into a `usage` frame, or null when it carries no count. The
@@ -22,7 +43,10 @@ import { extractUpstreamErrorMessage } from "./upstream-error.ts";
  * @param {OpenAIStreamChunk["usage"]} usage - The chunk's `usage` member
  * @returns {StreamUsageEvent | null}
  */
-function usageFrame(usage: OpenAIStreamChunk["usage"]): StreamUsageEvent | null {
+function usageFrame(
+  usage: OpenAIStreamChunk["usage"],
+  cachedTokensPaths: readonly string[],
+): StreamUsageEvent | null {
   if (!usage || !isCount(usage.prompt_tokens)) {
     return null;
   }
@@ -31,8 +55,8 @@ function usageFrame(usage: OpenAIStreamChunk["usage"]): StreamUsageEvent | null 
     inputTokens: usage.prompt_tokens,
     outputTokens: usage.completion_tokens ?? 0,
   };
-  const cached = usage.prompt_tokens_details?.cached_tokens;
-  if (isCount(cached)) {
+  const cached = cachedCount(usage, cachedTokensPaths);
+  if (cached !== undefined) {
     frame.cachedInputTokens = cached;
   }
   const reasoning = usage.completion_tokens_details?.reasoning_tokens;
@@ -40,6 +64,49 @@ function usageFrame(usage: OpenAIStreamChunk["usage"]): StreamUsageEvent | null 
     frame.reasoningTokens = reasoning;
   }
   return frame;
+}
+
+/**
+ * The cached-input count a usage object carries: the number at the first of `paths` that holds one,
+ * or undefined when none does.
+ *
+ * @param {OpenAIUsage} usage - The usage object, as the provider sent it
+ * @param {readonly string[]} paths - Dotted member paths, tried in order
+ * @returns {number | undefined}
+ */
+function cachedCount(usage: OpenAIUsage, paths: readonly string[]): number | undefined {
+  for (const path of paths) {
+    /* SAFETY: the usage object is parsed JSON, so it is a JSON object whatever members a provider
+       put in it; the walk below checks each step before it reads the next. */
+    let value: JsonValue | undefined = usage as JsonObject;
+    for (const key of path.split(".")) {
+      value = isJsonObject(value) ? value[key] : undefined;
+    }
+    if (isJsonNumber(value)) {
+      return value;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * True when a parsed member is a number.
+ *
+ * @param {JsonValue | undefined} value - A member of the usage object
+ * @returns {boolean}
+ */
+function isJsonNumber(value: JsonValue | undefined): value is number {
+  return typeof value === "number";
+}
+
+/**
+ * True when a parsed member is a JSON object whose members may be read by name.
+ *
+ * @param {JsonValue | undefined} value - A member of the usage object
+ * @returns {boolean}
+ */
+function isJsonObject(value: JsonValue | undefined): value is JsonObject {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 /**
@@ -109,9 +176,14 @@ export function streamFailureFrame(cause: unknown): StreamEvent {
  * refused request with it, so a client reads one shape whichever provider refused.
  *
  * @param {Response} response - The upstream's non-2xx response
+ * @param {(status: number) => string | undefined} [errorCode] - The host's own code for a status,
+ *   when it has one; the status itself otherwise
  * @returns {Promise<StreamEvent>}
  */
-export async function upstreamErrorFrame(response: Response): Promise<StreamEvent> {
+export async function upstreamErrorFrame(
+  response: Response,
+  errorCode?: (status: number) => string | undefined,
+): Promise<StreamEvent> {
   let errorBody = "";
   try {
     errorBody = await response.text();
@@ -120,7 +192,7 @@ export async function upstreamErrorFrame(response: Response): Promise<StreamEven
   }
   const cleanMessage = extractUpstreamErrorMessage(errorBody, response.statusText);
   return {
-    code: String(response.status),
+    code: errorCode?.(response.status) ?? String(response.status),
     message: cleanMessage,
     // The upstream's own status is preserved in `code`; the problem names the KIND.
     problem: problemDetails(problemTypeForStatus(response.status), cleanMessage),
@@ -175,16 +247,29 @@ function failureFrame(prefix: "Network error" | "Stream error", cause: unknown):
  *   of its own after the finish, so the stream ends at `[DONE]` or when the body closes. The last
  *   frames are the open calls' ends, the `usage` count when there is one, then `done`.
  * - An aborted read is `done: cancelled`; any other failed read is an `error` frame.
+ * - A body that closes having sent neither `[DONE]` nor a finish reason was cut off: its `done`
+ *   carries `truncated: true`, with `stopReason` still `"stop"` for a reader that predates the
+ *   member.
+ * - A call's fragments are joined by `index`, or by position in the chunk when the provider sends no
+ *   index, and an id repeated on a later fragment continues the call rather than restarting it.
  * - A consumer that stops reading early cancels the upstream body.
  *
  * @param {Response} response - The upstream's response to the chat-completions request
+ * @param {NormalizeOptions} [options] - The upstream's quirks, and the host's code for a status
  * @yields {StreamEvent} The route's frames, in wire order
  */
-export async function* normalizeOpenAIStream(response: Response): AsyncGenerator<StreamEvent> {
+export async function* normalizeOpenAIStream(
+  response: Response,
+  options: NormalizeOptions = {},
+): AsyncGenerator<StreamEvent> {
   if (!response.ok) {
-    yield await upstreamErrorFrame(response);
+    yield await upstreamErrorFrame(response, options.errorCode);
     return;
   }
+  const quirks = options.quirks ?? {};
+  const cachedTokensPaths = quirks.cachedTokensPaths ?? DEFAULT_CACHED_TOKENS_PATHS;
+  const restartOnRepeatedId = quirks.newCallOn === "id";
+  const keyByIndexOnly = quirks.callKey === "index";
 
   const reader = response.body?.getReader();
   if (!reader) {
@@ -195,9 +280,15 @@ export async function* normalizeOpenAIStream(response: Response): AsyncGenerator
   const decoder = new TextDecoder();
   let buffer = "";
 
-  const pendingToolCalls = new Map<number, { id: string; name: string; args: string }>();
+  const pendingToolCalls = new Map<
+    number | undefined,
+    { id: string; name: string; args: string }
+  >();
   let stopReason: string | null = null;
   let usage: StreamUsageEvent | null = null;
+  /* Whether the upstream said it was finished: `[DONE]`, or a finish reason this stream reports. A
+     body that closes having said neither was cut off, and the last frame says so. */
+  let terminated = false;
 
   /**
    * Close every open call.
@@ -222,7 +313,10 @@ export async function* normalizeOpenAIStream(response: Response): AsyncGenerator
     if (usage) {
       yield usage;
     }
-    yield { type: "done", stopReason: stopReason ?? "stop" };
+    // Cut off: `stopReason` stays "stop", so a reader that predates `truncated` ends the round as it did.
+    yield terminated
+      ? { type: "done", stopReason: stopReason ?? "stop" }
+      : { type: "done", stopReason: "stop", truncated: true };
   }
 
   /* Whether the loop ended on its own terms. A consumer that stops reading ends a generator through
@@ -244,6 +338,7 @@ export async function* normalizeOpenAIStream(response: Response): AsyncGenerator
 
         const dataStr = trimmed.slice(6);
         if (dataStr === "[DONE]") {
+          terminated = true;
           yield* finish();
           settled = true;
           return;
@@ -261,7 +356,7 @@ export async function* normalizeOpenAIStream(response: Response): AsyncGenerator
         }
 
         // Usually a final chunk with no choices, but a provider may put it beside the finish.
-        usage = usageFrame(parsed.usage) ?? usage;
+        usage = usageFrame(parsed.usage, cachedTokensPaths) ?? usage;
 
         const choice = parsed.choices?.[0];
         if (!choice) {
@@ -279,35 +374,44 @@ export async function* normalizeOpenAIStream(response: Response): AsyncGenerator
            dropped: DeepSeek's thinking mode requires every prior turn's reasoning back on any
            request carrying `tools`, so a proxy that swallows these frames makes the NEXT round a
            400 the client cannot repair. */
-        const reasoning = delta?.reasoning_content ?? delta?.reasoning;
+        const reasoning = quirks.reasoningField
+          ? delta?.[quirks.reasoningField]
+          : (delta?.reasoning_content ?? delta?.reasoning);
         if (isText(reasoning) && reasoning) {
           yield { type: "reasoning", content: reasoning };
         }
 
         // Tool calls
         if (delta?.tool_calls) {
+          let position = 0;
           for (const tc of delta.tool_calls) {
-            if (tc.id) {
+            /* A provider that sends no `index` (some local servers) means the call's place in this
+               chunk's array; keyed on the missing index alone, every such call would share one key
+               and each would overwrite the last. */
+            const key = keyByIndexOnly || isCount(tc.index) ? tc.index : position;
+            position += 1;
+            const existing = pendingToolCalls.get(key);
+            /* An id is a NEW call only when it differs from the one open at this key: several
+               providers repeat the id on every fragment, and restarting on each one cut the
+               arguments into as many calls. */
+            if (tc.id && (restartOnRepeatedId || existing?.id !== tc.id)) {
               // First appearance
               const entry = {
                 id: tc.id,
                 name: tc.function?.name || "",
                 args: tc.function?.arguments || "",
               };
-              pendingToolCalls.set(tc.index, entry);
+              pendingToolCalls.set(key, entry);
 
               yield { type: "tool_call_start", id: tc.id, name: entry.name };
 
               if (entry.args) {
                 yield { type: "tool_call_delta", id: tc.id, args: entry.args };
               }
-            } else if (tc.function?.arguments) {
+            } else if (existing && tc.function?.arguments) {
               // Subsequent fragment
-              const existing = pendingToolCalls.get(tc.index);
-              if (existing) {
-                existing.args += tc.function.arguments;
-                yield { type: "tool_call_delta", id: existing.id, args: tc.function.arguments };
-              }
+              existing.args += tc.function.arguments;
+              yield { type: "tool_call_delta", id: existing.id, args: tc.function.arguments };
             }
           }
         }
@@ -317,6 +421,7 @@ export async function* normalizeOpenAIStream(response: Response): AsyncGenerator
         if (finished) {
           yield* closePendingToolCalls();
           stopReason = finished;
+          terminated = true;
         }
       }
     }

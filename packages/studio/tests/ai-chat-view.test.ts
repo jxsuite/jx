@@ -151,6 +151,25 @@ describe("helpers", () => {
     expect(formatErrorAdvice("500 internal server error")).toContain("server error");
     expect(formatErrorAdvice("something exotic")).toBe("");
   });
+
+  /* The code is what the failure IS, so it decides before the sentence is read (specs/ai.md §2):
+     a provider's wording is the least stable thing about it. */
+  test("formatErrorAdvice keys on the error's code before its sentence", () => {
+    expect(formatErrorAdvice("Incorrect key provided", "401")).toContain("API key");
+    expect(formatErrorAdvice("Forbidden", "403")).toContain("API key");
+    expect(formatErrorAdvice("Slow down", "429")).toContain("rate limit");
+    expect(formatErrorAdvice("Bad gateway", "502")).toContain("server error");
+    expect(formatErrorAdvice("Reconnect Cloudflare.", "cf_reconnect_required")).toContain(
+      "Reconnect",
+    );
+    expect(formatErrorAdvice("prompt is too long", "context_overflow")).toContain("new chat");
+    // The code wins over a sentence that would have matched something else.
+    expect(formatErrorAdvice("rate limit while fetching", "401")).toContain("API key");
+    // An unknown code, or none, falls back to the sentence.
+    expect(formatErrorAdvice("429 rate limit exceeded", "E_ODD")).toContain("rate limit");
+    expect(formatErrorAdvice("429 rate limit exceeded", null)).toContain("rate limit");
+    expect(formatErrorAdvice("something exotic", "E_ODD")).toBe("");
+  });
 });
 
 describe("the context budget", () => {

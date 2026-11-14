@@ -586,9 +586,49 @@ describe("createChatHandler: the stream", () => {
       {
         code: "429",
         message: "rate limited",
-        problem: problemDetails("invalidRequest", "rate limited"),
+        problem: problemDetails("rateLimited", "rate limited"),
         type: "error",
       },
+    ]);
+  });
+
+  it("an upstream refusal carries the host's own code when the host has one for the status", async () => {
+    const { impl } = fakeFetch(() =>
+      Promise.resolve(Response.json({ error: "grant lapsed" }, { status: 401 })),
+    );
+    const seen: [number, Upstream][] = [];
+    const handler = createChatHandler<Context>({
+      fetch: impl,
+      resolveUpstream: () => UPSTREAM,
+      upstreamErrorCode: (status, upstream) => {
+        seen.push([status, upstream]);
+        return "cf_reconnect_required";
+      },
+    });
+    const frames = await framesOf(await handler(chatRequest({ messages: [] }), context()));
+    expect(frames).toEqual([
+      {
+        code: "cf_reconnect_required",
+        message: "grant lapsed",
+        problem: problemDetails("unauthorized", "grant lapsed"),
+        type: "error",
+      },
+    ]);
+    expect(seen).toEqual([[401, UPSTREAM]]);
+  });
+
+  it("reads the upstream's stream with the quirks the host resolved for it", async () => {
+    const body =
+      'data: {"choices":[{"delta":{"reasoning":"kept","reasoning_content":"dropped"}}]}\n\ndata: [DONE]\n\n';
+    const { impl } = fakeFetch(() => Promise.resolve(new Response(body, { status: 200 })));
+    const handler = createChatHandler<Context>({
+      fetch: impl,
+      resolveUpstream: () => ({ ...UPSTREAM, quirks: { reasoningField: "reasoning" } }),
+    });
+    const response = await handler(chatRequest({ messages: [] }), context());
+    expect(await framesOf(response)).toEqual([
+      { content: "kept", type: "reasoning" },
+      { stopReason: "stop", type: "done" },
     ]);
   });
 
@@ -667,6 +707,7 @@ describe("@jxsuite/ai/gateway", () => {
       "ANTHROPIC_BASE_URL",
       "ANTHROPIC_MAX_TOKENS",
       "DEFAULT_UPSTREAM_BASE_URL",
+      "WIRE_VERSIONS",
       "affinityKey",
       "createChatHandler",
       "encodeSse",

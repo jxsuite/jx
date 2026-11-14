@@ -64,6 +64,12 @@ export interface ChatStore {
   streamingContent: string;
   pendingToolCalls: LiveToolCall[];
   error: string | null;
+  /**
+   * The machine code the error arrived with, when it arrived with one: an upstream status (`"401"`)
+   * or a backend's own code (`cf_reconnect_required`). Null beside a null `error`, and for an error
+   * that carried none. Advice keys on it before it reads the sentence.
+   */
+  errorCode: string | null;
   model: string;
   tokenCount: number;
   contextWarning: boolean;
@@ -101,7 +107,7 @@ function isCount(value: unknown): value is number {
  *   appendToolResult: (id: string, result: ToolResult) => void;
  *   pushToolResultMessage: (toolCallId: string, content: string) => void;
  *   finishStream: (stopReason: string) => void;
- *   setError: (message: string) => void;
+ *   setError: (message: string, code?: string) => void;
  *   cancelStream: () => void;
  *   clearChat: () => void;
  *   retryLast: () => void;
@@ -122,6 +128,7 @@ export function createChatState(opts: { model?: string } = {}) {
     streamingContent: "",
     pendingToolCalls: [],
     error: null,
+    errorCode: null,
     model,
     tokenCount: 0,
     contextWarning: false,
@@ -161,6 +168,8 @@ export function createChatState(opts: { model?: string } = {}) {
     }
 
     store.error = null;
+
+    store.errorCode = null;
     store.streamingContent = "";
     store.pendingToolCalls = [];
 
@@ -321,10 +330,12 @@ export function createChatState(opts: { model?: string } = {}) {
    * Set the chat state to error with a message.
    *
    * @param {string} message
+   * @param {string} [code] - The machine code the failure carried, when it carried one
    */
-  function setError(message: string) {
+  function setError(message: string, code?: string) {
     store.status = "error";
     store.error = message;
+    store.errorCode = code ?? null;
     store.streamingContent = "";
     store.pendingToolCalls = [];
     // Remove the partial streaming message — it may contain incomplete tool_calls
@@ -353,6 +364,7 @@ export function createChatState(opts: { model?: string } = {}) {
     store.pendingToolCalls = [];
     _streamingMessage = null;
     store.error = null;
+    store.errorCode = null;
   }
 
   /** Clear the entire chat history. */
@@ -362,6 +374,7 @@ export function createChatState(opts: { model?: string } = {}) {
     store.streamingContent = "";
     store.pendingToolCalls = [];
     store.error = null;
+    store.errorCode = null;
     store.contextWarning = false;
     store.usage = null;
     _streamingMessage = null;
@@ -379,6 +392,7 @@ export function createChatState(opts: { model?: string } = {}) {
     }
     store.status = "idle";
     store.error = null;
+    store.errorCode = null;
   }
 
   /**

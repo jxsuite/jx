@@ -56,6 +56,22 @@ export const PROBLEM_TYPES = {
   methodNotAllowed: problem("method-not-allowed", 405, "That method is not allowed on this route"),
   conflict: problem("conflict", 409, "The request conflicts with the current state", ["conflicts"]),
   payloadTooLarge: problem("payload-too-large", 413, "The request body is too large"),
+  /*
+   * The three the assistant's chat route adds (ai.md §2). Each names a failure a client does
+   * something specific about: shorten the conversation, wait, or speak an older wire.
+   */
+  contextOverflow: problem(
+    "context-overflow",
+    400,
+    "The conversation is longer than the model's context window",
+  ),
+  rateLimited: problem("rate-limited", 429, "Too many requests", ["retryAfter", "scope"]),
+  wireUnsupported: problem(
+    "wire-unsupported",
+    400,
+    "This backend does not accept that wire version",
+    ["supported"],
+  ),
 
   // ─── Access ───────────────────────────────────────────────────────────────
   /*
