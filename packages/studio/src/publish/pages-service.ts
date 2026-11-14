@@ -93,7 +93,27 @@ interface PagesProjectWire {
   name: string;
   subdomain?: string;
   domains?: string[];
+  deployment_configs?: { preview?: { env_vars?: Record<string, PagesEnvVarWire | null> | null } };
 }
+
+/** One environment variable of a Pages environment; a secret's value is not returned. */
+interface PagesEnvVarWire {
+  type?: string;
+  value?: string;
+}
+
+/**
+ * The variable `jx build` reads to leave images as they are (site-architecture.md §9.2.1). A
+ * preview deployment is a branch somebody is looking over, and encoding every image for it is most
+ * of the build's time. Production never carries it. A project that wants its previews optimized
+ * sets it to `true` on the Pages project, which a later connect leaves alone.
+ */
+export const PREVIEW_IMAGES_VAR = "JX_IMAGES_OPTIMIZE";
+
+/** The Pages settings that make a preview deployment skip image optimization. */
+const PREVIEW_BUILD_CONFIG = {
+  preview: { env_vars: { [PREVIEW_IMAGES_VAR]: { type: "plain_text", value: "false" } } },
+};
 
 /** The Pages project, or null when it does not exist yet. */
 export async function getPagesProject(
@@ -126,6 +146,7 @@ export async function createPagesProject(opts: ConnectOptions): Promise<PagesPro
       name: opts.projectName,
       production_branch: opts.productionBranch,
       build_config: buildConfig,
+      deployment_configs: PREVIEW_BUILD_CONFIG,
       source: {
         type: "github",
         config: {
@@ -136,6 +157,23 @@ export async function createPagesProject(opts: ConnectOptions): Promise<PagesPro
         },
       },
     },
+  });
+}
+
+/**
+ * Give an existing Pages project the preview default a new one is created with. A project that
+ * already says anything for the variable, either way, is left as its owner set it.
+ */
+export async function ensurePreviewBuildConfig(
+  accountId: string,
+  project: PagesProjectWire,
+): Promise<void> {
+  if (project.deployment_configs?.preview?.env_vars?.[PREVIEW_IMAGES_VAR] !== undefined) {
+    return;
+  }
+  await cfApi<PagesProjectWire>(`/accounts/${accountId}/pages/projects/${project.name}`, {
+    method: "PATCH",
+    body: { deployment_configs: PREVIEW_BUILD_CONFIG },
   });
 }
 
@@ -229,14 +267,19 @@ export async function writeDeployConfig(
 }
 
 /**
- * The whole connect flow: reuse the Pages project when it already exists, create it otherwise, then
- * persist `build.deploy` (+ wrangler.jsonc sync).
+ * The whole connect flow: reuse the Pages project when it already exists (giving it the preview
+ * default it may predate), create it otherwise, then persist `build.deploy` (+ wrangler.jsonc
+ * sync).
  */
 export async function connectDeploy(
   config: ProjectConfig,
   opts: ConnectOptions,
 ): Promise<DeployConfig> {
   const existing = await getPagesProject(opts.accountId, opts.projectName);
+  if (existing) {
+    // A convenience on a project that already builds: a refusal must not fail the connect.
+    await ensurePreviewBuildConfig(opts.accountId, existing).catch(() => {});
+  }
   const project = existing ?? (await createPagesProject(opts));
   const deploy: DeployConfig = {
     provider: "cloudflare-pages",

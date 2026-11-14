@@ -2,8 +2,8 @@
 /**
  * Jx — Unified CLI for the Jx platform
  *
- * Commands: jx build [project-root] [--verbose] [--no-clean] [--include-held] jx schema
- * [project-root] jx validate [project-root]
+ * Commands: jx build [project-root] [--verbose] [--no-clean] [--include-held]
+ * [--no-optimize-images] jx schema [project-root] jx validate [project-root]
  *
  * @module jx-cli
  */
@@ -37,6 +37,8 @@ Options:
   --verbose      Print detailed build progress
   --no-clean     Don't clean outDir before building
   --include-held Keep entries a content type's hold rules match, for a preview
+  --no-optimize-images  Publish images as they are, whatever images.optimize says (also
+                 JX_IMAGES_OPTIMIZE=false in the environment)
   --port <n>     dev/preview: port to listen on (default 3000 / 4173)
   --dry-run      db push: print the statements without executing them
   --connection   db push: restrict to one connection name
@@ -139,7 +141,15 @@ Options:
 
     try {
       const { buildSite } = await import("./site/site-build.ts");
-      const result = await buildSite(projectRoot, { clean, includeHeld, verbose });
+      const { imagesOptimizeOff } = await import("./site/site-loader.ts");
+      const optimizeImages =
+        !flags.has("--no-optimize-images") && !imagesOptimizeOff(process.env.JX_IMAGES_OPTIMIZE);
+      const result = await buildSite(projectRoot, {
+        clean,
+        includeHeld,
+        optimizeImages,
+        verbose,
+      });
 
       if (result.errors.length > 0) {
         console.error(`\nBuild completed with ${result.errors.length} error(s):`);
