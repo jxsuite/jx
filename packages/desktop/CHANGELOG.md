@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.3.1](https://github.com/jxsuite/jx/compare/desktop-v9.3.0...desktop-v9.3.1) (2026-11-14)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/compiler bumped to 9.1.1
+    * @jxsuite/create bumped to 1.8.4
+    * @jxsuite/protocol bumped to 6.5.0
+    * @jxsuite/server bumped to 9.1.0
+    * @jxsuite/starters bumped to 3.7.2
+    * @jxsuite/studio bumped to 11.2.0
+  * devDependencies
+    * @jxsuite/server bumped to 9.1.0
+
 ## [9.3.0](https://github.com/jxsuite/jx/compare/desktop-v9.2.0...desktop-v9.3.0) (2026-11-14)
 
 

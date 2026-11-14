@@ -1,5 +1,17 @@
 # Changelog
 
+## [6.5.0](https://github.com/jxsuite/jx/compare/protocol-v6.4.2...protocol-v6.5.0) (2026-11-14)
+
+
+### Features
+
+* **ai:** one stream normalizer for the gateway and the direct client ([474be7a](https://github.com/jxsuite/jx/commit/474be7ae0a1419004e1a6d0c02c7d5d888a97eb6))
+
+
+### Bug Fixes
+
+* **studio:** show a failed model listing wherever the catalogue is offered ([74f10f2](https://github.com/jxsuite/jx/commit/74f10f2d4ef86d99d3eada8692abaf52770b2630))
+
 ## [6.4.2](https://github.com/jxsuite/jx/compare/protocol-v6.4.1...protocol-v6.4.2) (2026-11-14)
 
 
