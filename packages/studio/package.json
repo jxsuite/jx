@@ -71,7 +71,7 @@
     "@jxsuite/schema": "workspace:^",
     "@jxsuite/site": "workspace:^",
     "@jxsuite/ui": "workspace:^",
-    "@vue/reactivity": "3.5.44",
+    "@vue/reactivity": "3.5.45",
     "ajv": "^8.20.0",
     "ajv-formats": "^3.0.1",
     "lit-html": "^3.3.3",
@@ -83,9 +83,9 @@
     "@happy-dom/global-registrator": "^21.0.4",
     "@jxsuite/test-support": "workspace:^",
     "@types/mdast": "^4.0.4",
-    "@webref/css": "^8.7.8",
+    "@webref/css": "^8.7.9",
     "@webref/elements": "^2.9.2",
-    "@webref/idl": "^3.86.0"
+    "@webref/idl": "^3.87.0"
   },
   "//vue-reactivity": "Exact pin required — must match @jxsuite/runtime to avoid cross-boundary proxy bugs"
 }
