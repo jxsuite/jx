@@ -24,6 +24,7 @@
     "./icons": "./src/icons.ts",
     "./documents": "./src/documents.ts",
     "./loaders": "./src/loaders.ts",
+    "./document-loaders": "./src/document-loaders.ts",
     "./compiled": "./dist/index.js",
     "./compiled/*": "./dist/*",
     "./custom-elements.json": "./dist/custom-elements.json",
