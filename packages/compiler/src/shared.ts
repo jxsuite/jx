@@ -23,6 +23,7 @@ import {
   SLOT_WHITESPACE,
   booleanAttrValue,
   buildStyleRules,
+  commentedRuleText,
   enumeratedAttrNames,
   isNestedSelectorKey,
   camelToKebab,
@@ -1535,7 +1536,8 @@ export function colorSchemePrePaintScript(): string {
 }
 
 /**
- * Push the rules one style object becomes, scoped to `selector`.
+ * Push the rules one style object becomes, scoped to `selector`: each rule's text, and above it the
+ * comment a static build writes for a block that carries a `$description` (spec.md §9.2).
  *
  * The single door from the compiler to `buildStyleRules`, which is now the ONE definition of what a
  * Jx style object means as CSS — shared with the DOM runtime and the site-style builder. Three
@@ -1567,7 +1569,7 @@ function pushStyleRules(
     resolveValue: (property, value) => recordDroppedReactive(property, value, selector),
     scope: selector,
   })) {
-    rules.push(rule.text);
+    rules.push(commentedRuleText(rule));
   }
 }
 
@@ -1871,6 +1873,8 @@ export function compileStyles(
     mediaQueries,
     (value) => value,
     recordDroppedReactive,
+    undefined,
+    { comments: true },
   );
   if (projectSheet !== "") {
     rules.push(projectSheet);

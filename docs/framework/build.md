@@ -150,6 +150,8 @@ They used to load from `https://esm.sh`. Self-hosting removes a third party from
 
 Style never ships as JavaScript. During compilation, every static `style` definition (the project-level `style` from the project file, the layout's, the page's, and each node's) is extracted into a single `<style>` block in the page `<head>`, with `$media` breakpoint names expanded to real media queries. Styles found in component slot content are collected into the same block. See [Styling](/docs/framework/concepts/styling) for the authoring model.
 
+A rule whose style block carries a `$description` keeps it as a comment on the line above the rule, wherever the build writes that rule.
+
 **Component CSS is inlined into that block too**, after the page's own rules so the cascade is unchanged, and no `<link rel="stylesheet">` is emitted for it. A stylesheet link per component is a render-blocking request per component. jxsuite.com's home page had eleven of them, 22 kB in total, for sheets averaging 2 kB each: the whole of its critical request chain, spent on round trips rather than bytes.
 
 The sidecars are still written to `dist/components/<tag>.css` for anything that references them directly, and a component in [shadow mode](/docs/framework/concepts/elements) is unaffected: its sheet is linked from inside the declarative shadow root, where it belongs.

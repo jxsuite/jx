@@ -7,6 +7,7 @@ code:
   - packages/runtime/src/runtime.ts
   - packages/runtime/src/css.ts
   - packages/compiler/src/shared.ts
+  - packages/site/src/site-style.ts
 ---
 
 # Styling
@@ -53,7 +54,7 @@ A key may be a selector list, and so may the scope it sits in. Each nested block
 
 The `&` can stand anywhere in a key, not only at its start. `".dark &"` styles the element when it sits inside a `.dark` ancestor, and `":root &:hover"` styles it on hover; a key with an `&` in it never compounds the way `.child` does.
 
-Every declaration becomes a CSS rule, the base ones and the nested ones alike. The build scopes them with a **generated class**, `.<tagName>-<n>`, which it also puts on the element:
+Every declaration becomes a CSS rule, the base ones and the nested ones alike. The build scopes them with a **generated class** that it adds to the element beside any classes of your own: `jx-<n>` on a page, and inside a component a class named for it, `<tagName>-<n>`. Your own classes and `id` are never the scope. A class is shared with every other element carrying it, and an `id` would give the rules more weight than they have in Studio's canvas, so the published page could disagree with the canvas. Inside a `sty-card` component:
 
 ```html
 <div class="sty-card-0">…</div>
@@ -138,6 +139,15 @@ Any style block can carry a `$description`: why the rule is there, in your own w
 
 It is prose, never a declaration, so it changes nothing about what the rule does. A build that writes a stylesheet puts it in a comment above the rule; everywhere else it is ignored. Every key starting with `$` works this way, and no CSS property starts with `$`, so nothing you write as styling can be mistaken for a note.
 
+In a page's stylesheet it reads:
+
+```css
+/* The panel fills its column so a short list still shows the border under it. */
+.jx-0 {
+  height: 100%;
+}
+```
+
 `@keyframes` is not one of them. It is the third shape, and its own section.
 
 ### Animations with `@keyframes`
@@ -157,6 +167,8 @@ A `@keyframes` key holds **keyframe selectors**: `from`, `to`, a percentage, or 
 ```
 
 That emits the animation declaration on the element and `@keyframes toast-in { from { … } to { … } }` into the document, exactly as you would write it in a stylesheet.
+
+A `$description` on the `@keyframes` block is written above it the same way. One inside a single stop is ignored, because a stop is not a rule.
 
 Three things follow from an animation name being global to the document:
 

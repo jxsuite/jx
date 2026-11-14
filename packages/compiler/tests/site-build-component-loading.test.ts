@@ -23,6 +23,51 @@ function writeJSON(root: string, path: string, obj: JsonValue) {
   writeFileSync(full, JSON.stringify(obj, null, 2), "utf8");
 }
 
+// ── A described rule keeps its comment wherever the build writes it (spec.md §9.2) ──
+
+describe("buildSite — a style block's $description ships as a comment", () => {
+  const TMP = resolve(import.meta.dir, "__test-comp-description__");
+
+  beforeAll(async () => {
+    rmSync(TMP, { force: true, recursive: true });
+    writeJSON(TMP, "project.json", {
+      build: { outDir: "./dist" },
+      name: "Described",
+      style: { $description: "Page defaults.", margin: "0" },
+    });
+    writeJSON(TMP, "pages/index.json", {
+      children: [
+        { style: { $description: "why */ now", color: "red" }, tagName: "p", textContent: "Hi" },
+        { tagName: "dsc-card" },
+      ],
+      title: "Home",
+    });
+    writeJSON(TMP, "components/dsc-card.json", {
+      children: [{ tagName: "span", textContent: "card" }],
+      style: { $description: "A card is a block.", display: "block" },
+      tagName: "dsc-card",
+    });
+    await buildSite(TMP, { verbose: false });
+  });
+
+  afterAll(() => {
+    rmSync(TMP, { force: true, recursive: true });
+  });
+
+  it("a component rule's description ships in the inlined sheet and the sidecar", () => {
+    const html = readFileSync(resolve(TMP, "dist/index.html"), "utf8");
+    const rule = "/* A card is a block. */\ndsc-card { display: block }";
+    expect(html).toContain(rule);
+    expect(readFileSync(resolve(TMP, "dist/components/dsc-card.css"), "utf8")).toContain(rule);
+  });
+
+  it("a page element's and the project block's descriptions ship in the page sheet", () => {
+    const html = readFileSync(resolve(TMP, "dist/index.html"), "utf8");
+    expect(html).toContain("/* why * / now */\n.jx-0 { color: red }");
+    expect(html).toContain("/* Page defaults. */\nbody { margin: 0 }");
+  });
+});
+
 // ── Emitted filename follows the tagName, not the source basename (issue #111) ──
 
 describe("buildSite — component modules are named after their tagName", () => {
