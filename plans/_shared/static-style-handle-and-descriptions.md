@@ -4,8 +4,7 @@ disposition: implement
 claims:
   - spec.md#9.2
   - compiler.md#8.2
-requires:
-  - spec/style-handle-assignment
+requires: []
 workspaces:
   - packages/compiler
   - packages/runtime
@@ -17,7 +16,7 @@ size: S
 
 ## Context
 
-Two items in two specs, one owner. `spec.md` §9.2 has two open parts: the `$description` comments and the compiler's style handle. `compiler.md` §8.2 restates the handle half as its own contract. The handle itself is built by `plan:spec/style-handle-assignment`, an enabling plan this one requires (as does `plan:spec/static-style-rules-only`), so the handle is decided once. That plan lands first and alone, and narrows both markers to say that the handle text below them (§9.2's line 918, §8.2's line 656) no longer holds. What stays here is the `$description` comments, the spec text for the handle that plan ships, and both marker flips.
+Two items in two specs, one owner. `spec.md` §9.2 has two open parts: the `$description` comments and the compiler's style handle. `compiler.md` §8.2 restates the handle half as its own contract. The handle itself is built by the landed style-handle assignment (`spec.md` §9.2), an enabling plan this one requires (as does `plan:spec/static-style-rules-only`), so the handle is decided once. That plan lands first and alone, and narrows both markers to say that the handle text below them (§9.2's line 918, §8.2's line 656) no longer holds. What stays here is the `$description` comments, the spec text for the handle that plan ships, and both marker flips.
 
 `specs/spec.md` §9.2, line 903:
 
@@ -48,7 +47,7 @@ Two items in two specs, one owner. `spec.md` §9.2 has two open parts: the `$des
 
 ## Decisions
 
-- **Decided:** the handle text states what `plan:spec/style-handle-assignment` ships, because the handle is that plan's decision and this one only writes it down. The text under Specs & docs is drafted for that plan's two recommendations: every styled element gets a generated class, whether or not it has an `id`, and the class keeps the spellings that ship (`jx-<n>`, `jxs-<n>`, `<tagName>-<n>`). Each edit names its variant if that plan keeps a literal `id` as a page element's handle. If it ships a `data-jx`-style attribute instead, the same edits take that spelling and §16.6's Style scope row changes with them.
+- **Decided:** the handle text states what the landed style-handle assignment (`spec.md` §9.2) ships, because the handle is that plan's decision and this one only writes it down. The text under Specs & docs is drafted for that plan's two recommendations: every styled element gets a generated class, whether or not it has an `id`, and the class keeps the spellings that ship (`jx-<n>`, `jxs-<n>`, `<tagName>-<n>`). Each edit names its variant if that plan keeps a literal `id` as a page element's handle. If it ships a `data-jx`-style attribute instead, the same edits take that spelling and §16.6's Style scope row changes with them.
 - **Open:** whether a production build keeps the comments. Recommendation: yes, always, with no flag. §9.2 states it unconditionally, the pipeline has no CSS minifier (whitespace already ships), and the bytes are prose an author chose to write. The cost is that a described component rule repeats on every page that inlines the component's sheet. A size switch would be the build's first CSS optimisation and belongs in a spec change of its own.
 - **Decided:** one formatter, `commentedRuleText(rule)`, exported from `packages/runtime/src/css.ts` beside `cssRuleText`, because the compiler and the site builder both need it and both already depend on the runtime's CSS module, and `CssRule.description`'s own doc comment already promises the static rendering.
 - **Decided:** the comment is `/* <description> */` on the line above the rule, with every `*/` in the prose written `* /`. CSS comments have no escape, so breaking the sequence is the only way to keep the comment from ending early. The text is otherwise verbatim, newlines included. `</style` needs nothing new, because `escapeStyleText` already runs over the whole inlined block.
@@ -57,7 +56,7 @@ Two items in two specs, one owner. `spec.md` §9.2 has two open parts: the `$des
 - **Decided:** a `@keyframes` block's own `$description` is carried on its rule, and a stop's is ignored because a stop is not a rule. Without this, the third body shape §9.2 names would stay uncommented after the emitters change.
 - **Decided:** a top-level `$description` in the project block (and in each conditional block the site builder splits) describes the first rule the split writes: `:root` when the block has a custom property or `colorScheme`, otherwise `body`. Today it always goes to `body`, and it is lost when `body` has no declarations.
 - **Decided:** `compiler.md` §8.2 points at `spec.md` §9.2 for the handle instead of restating it, per the compiler audit's rule for restated contracts. The two restatements drifted from each other and from the code.
-- **Decided:** this plan lands after `plan:spec/style-handle-assignment`, not with it, as that plan decides: two plans that always land together would be one (plans/README.md), and `plan:spec/static-style-rules-only` needs only the handle. In between, the narrowed markers name line 918 and line 656 as stale, and `docs/framework/concepts/styling.md` says nothing the handle makes false. This plan replaces both markers in whatever wording the prerequisite left.
+- **Decided:** this plan lands after the landed style-handle assignment (`spec.md` §9.2), not with it, as that plan decides: two plans that always land together would be one (plans/README.md), and `plan:spec/static-style-rules-only` needs only the handle. In between, the narrowed markers name line 918 and line 656 as stale, and `docs/framework/concepts/styling.md` says nothing the handle makes false. This plan replaces both markers in whatever wording the prerequisite left.
 
 ## Implementation
 
@@ -101,7 +100,7 @@ Coverage: the per-file bars are runtime lines 0.963 / functions 0.98, compiler 0
 
 **`spec.md` §9.2**, in place:
 
-- Replace the line-903 Partial marker, in the wording `plan:spec/style-handle-assignment` left, with: "> **Status: Implemented.** Flattening, selector-list distribution, recursion, the declaration-body at-rules and their array form, and `@keyframes` ship in `buildStyleRules` (`packages/runtime/src/css.ts`). A static build writes each rule's `$description` through `commentedRuleText`: the compiler's `pushStyleRules`, and `buildSiteStyleCSS` in `packages/site/src/site-style.ts` for the project block. The compiler assigns the handle in `collectStyles` (`packages/compiler/src/shared.ts`)." Use whichever function name `plan:spec/style-handle-assignment`'s integration contract gives, if it moved. Keep the closing `Implemented` marker.
+- Replace the line-903 Partial marker, in the wording the landed style-handle assignment (`spec.md` §9.2) left, with: "> **Status: Implemented.** Flattening, selector-list distribution, recursion, the declaration-body at-rules and their array form, and `@keyframes` ship in `buildStyleRules` (`packages/runtime/src/css.ts`). A static build writes each rule's `$description` through `commentedRuleText`: the compiler's `pushStyleRules`, and `buildSiteStyleCSS` in `packages/site/src/site-style.ts` for the project block. The compiler assigns the handle in `collectStyles` (`packages/compiler/src/shared.ts`)." Use whichever function name the landed style-handle assignment (`spec.md` §9.2)'s integration contract gives, if it moved. Keep the closing `Implemented` marker.
 - Line 918: replace "keyed on a handle the emitter chooses: the compiler prefers the element's own `#id`, then a **generated class** `.<tagName>-<n>` assigned in the compiled HTML; the runtime uses `data-jx` (§9.6)." with: "keyed on a **handle** that selects the element and nothing else (for a repeater's item template, the rows it renders). The compiler gives every element with a `style` object a **generated class**, named for the sheet that holds its rules: `.jx-<n>` in a page's, `.jxs-<n>` in the block a page collects from a component instance's slotted content, and `.<tagName>-<n>` in a component definition's (§16.6). It writes the class into the element's one `class` attribute after the author's own classes, which are `attributes.class` when the element writes one and `className` otherwise. An author's class is never the handle, because a class is shared by design and every element carrying it would take the rules. Nor is an `id`: a rule keyed on one is more specific than the runtime's (§9.6), so a built page would resolve a competing rule differently from its preview. The runtime uses `data-jx` (§9.6)." The rest of the paragraph is unchanged. Variant, if the prerequisite keeps the id: "The compiler uses a page element's own `#id` when that `id` is a literal CSS identifier, and otherwise gives the element a **generated class** …", and the `id` sentence is dropped.
 - Lines 920, 922 and 972: the example scope `#box` becomes `.jx-0` (`.jx-0.child`, `.jx-0 .a:hover, .jx-0 .b:hover`, `.jx-0 from`). Under the variant they stay.
 - Line 966: replace "A static build renders it as a comment above the rule; every other consumer ignores it." with: "A static build renders it as a comment on the line above the rule, in every stylesheet it writes, with any `*/` in the prose written `* /` so the comment cannot end early; every other consumer ignores it. A `@keyframes` block documents itself the same way, and a `$description` inside one of its stops is ignored, because a stop is not a rule."
@@ -112,7 +111,7 @@ Fragment: `bun run spec:change spec.md minor -m "§9.2 and §16.6: a static buil
 
 **`compiler.md` §8.2**, in place:
 
-- Delete the line-650 Partial marker, in the wording `plan:spec/style-handle-assignment` left, and the blank line after it. In the closing marker (line 664), correct `compile-static.js` to `compile-static.ts`.
+- Delete the line-650 Partial marker, in the wording the landed style-handle assignment (`spec.md` §9.2) left, and the blank line after it. In the closing marker (line 664), correct `compile-static.js` to `compile-static.ts`.
 - Line 656: replace "The compiler keeps what is its own: the `#id` / `.jx-N` handle preference, the `:host` translation of §16.6, and the `</style` escaping below." with: "The compiler keeps what is its own: the element's handle, which `spec.md` §9.2 specifies; the comment it writes above each rule whose block carries a `$description` (`spec.md` §9.2); the `:host` translation of `spec.md` §16.6; and the `</style` escaping below." If `plan:spec/shadow-dom-parity` landed first, the `:host` item is already gone from the list, replaced by that plan's sentence naming `resolveHostKey`; keep that sentence and leave the item out.
 
 Fragment: `bun run spec:change compiler.md minor -m "§8.2: CSS extraction writes each rule's description as a comment above it and takes its style handle from spec.md §9.2."`

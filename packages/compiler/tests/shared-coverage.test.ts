@@ -101,12 +101,12 @@ describe("compileStyles — element-level nested selectors", () => {
       tagName: "div",
     };
     const result = compileStyles(doc);
-    expect(result).toContain("#box.child {");
+    expect(result).toContain(".jx-0.child {");
     expect(result).toContain("@media (min-width: 700px)");
-    expect(result).toContain("#box.child:hover");
-    expect(result).toContain("#box.child.deep");
-    expect(result).toContain("#box.child > span");
-    expect(result).toContain("#box.child.grand");
+    expect(result).toContain(".jx-0.child:hover");
+    expect(result).toContain(".jx-0.child.deep");
+    expect(result).toContain(".jx-0.child > span");
+    expect(result).toContain(".jx-0.child.grand");
   });
 });
 
@@ -122,7 +122,7 @@ describe("compileStyles — the nesting the compiler used to drop", () => {
       style: { "@(min-width: 700px)": { ".child": { ":hover": { color: "blue" } } } },
       tagName: "div",
     });
-    expect(result).toContain("@media (min-width: 700px) { #box.child:hover { color: blue } }");
+    expect(result).toContain("@media (min-width: 700px) { .jx-0.child:hover { color: blue } }");
   });
 
   test("at-rules compose to any depth, in either order", () => {
@@ -135,7 +135,7 @@ describe("compileStyles — the nesting the compiler used to drop", () => {
       tagName: "div",
     });
     expect(result).toContain(
-      "@supports (display: grid) { @media (min-width: 1px) { #box:hover { display: grid } } }",
+      "@supports (display: grid) { @media (min-width: 1px) { .jx-0:hover { display: grid } } }",
     );
   });
 
@@ -166,7 +166,8 @@ describe("collectStyles — $switch case styles", () => {
       tagName: "div",
     };
     const result = compileStyles(doc);
-    expect(result).toContain("#case-a");
+    expect(result).toContain(".jx-0 { color: red }");
+    expect(result).not.toContain("#case-a");
     expect(result).toContain("color: red");
   });
 });

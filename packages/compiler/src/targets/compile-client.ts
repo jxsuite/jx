@@ -51,6 +51,9 @@ import {
   collectFunctionImports,
   emitSrcImports,
   templateValueSource,
+  authorClassValue,
+  styleHandleOf,
+  writesMergedClass,
 } from "../shared.ts";
 import {
   hasStructuredBody,
@@ -538,6 +541,22 @@ function buildClientNode(
   // Dynamic attributes
   if (isNonNullObject(def.attributes)) {
     for (const [attr, val] of Object.entries(def.attributes)) {
+      const handle = attr === "class" ? styleHandleOf(def) : undefined;
+      if (handle !== undefined && (isRefObject(val) || isTemplateString(val))) {
+        /* A bound `class` attribute would replace the whole attribute and take the style handle
+           with it, so its binding joins the bound value and the handle. A key of its own: a ref's
+           shared key is also read by every other element binding the same ref. */
+        const key = `_t${counter.t}`;
+        counter.t += 1;
+        const source = isRefObject(val) ? stateRead(val.$ref) : `\`${val}\``;
+        bindAttrs.push(`:attr.class="${key}"`);
+        bindings.set(
+          key,
+          `() => [${source}, ${JSON.stringify(handle)}].filter((c) => c != null && c !== "").join(" ")`,
+        );
+        needsBind = true;
+        continue;
+      }
       if (isRefObject(val)) {
         const key = refToBindingKey(val.$ref);
         bindAttrs.push(`:attr.${attr}="${key}"`);
@@ -734,8 +753,21 @@ function emitLitMapTemplate(def: JxMutableNode | null | undefined, preformatted 
   if (def.id) {
     attrs += ` id="${def.id}"`;
   }
-  if (def.className) {
-    attrs += ` class="${mapRefsToLit(def.className)}"`;
+  /* One `class` attribute: the author's classes, then the style handle the page sheet selects
+     (spec.md §9.2). The author's are `attributes.class` when the element writes one. */
+  const mergesClass = writesMergedClass(def);
+  if (mergesClass) {
+    const author = authorClassValue(def);
+    let authorText = "";
+    if (isRefObject(author)) {
+      authorText = `\${${mapRefToClientExpr(author.$ref)} ?? ""}`;
+    } else if (isString(author)) {
+      authorText = mapRefsToLit(author);
+    } else if (isNumber(author)) {
+      authorText = String(author);
+    }
+    const classText = [authorText, styleHandleOf(def) ?? ""].filter((t) => t !== "").join(" ");
+    attrs += ` class="${classText}"`;
   }
 
   // $props → lit property bindings. The element target emits these; the client target emitted
@@ -755,6 +787,10 @@ function emitLitMapTemplate(def: JxMutableNode | null | undefined, preformatted 
   // Attributes object
   if (isNonNullObject(def.attributes)) {
     for (const [k, v] of Object.entries(def.attributes)) {
+      // Written once above, merged with the style handle.
+      if (mergesClass && k === "class") {
+        continue;
+      }
       if (isTemplateString(v)) {
         attrs += ` ${k}="${mapRefsToLit(v)}"`;
         continue;
@@ -776,7 +812,10 @@ function emitLitMapTemplate(def: JxMutableNode | null | undefined, preformatted 
     }
   }
 
-  // Style → inline CSS
+  /* Style → inline CSS, for templated declarations only. A literal declaration is a rule on the
+     element's handle in the page sheet (`collectStyles` walks row templates, `$switch` cases and
+     mixed children), and an inline copy would outweigh that rule's own `:hover` and `@media`
+     blocks, so none is written. */
   if (isNonNullObject(def.style)) {
     const parts: string[] = [];
     for (const [k, v] of Object.entries(def.style)) {
@@ -792,11 +831,8 @@ function emitLitMapTemplate(def: JxMutableNode | null | undefined, preformatted 
       if (isNonDeclarationValue(v)) {
         continue;
       }
-      const cssProp = camelToKebab(k);
       if (isTemplateString(String(v))) {
-        parts.push(`${cssProp}: ${mapRefsToLit(String(v))}`);
-      } else {
-        parts.push(`${cssProp}: ${v}`);
+        parts.push(`${camelToKebab(k)}: ${mapRefsToLit(String(v))}`);
       }
     }
     if (parts.length > 0) {

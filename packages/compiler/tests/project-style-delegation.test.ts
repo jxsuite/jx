@@ -53,7 +53,7 @@ describe("compileStyles — the project block is the site builder's", () => {
       {},
       { margin: "0" },
     );
-    expect(sheetOf(built)).toBe("body { margin: 0 }\n#hero { color: red }");
+    expect(sheetOf(built)).toBe("body { margin: 0 }\n.jx-0 { color: red }");
   });
 
   test("a document with no project block and no styles still emits nothing", () => {
