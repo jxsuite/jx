@@ -1,5 +1,20 @@
 # Changelog
 
+## [2.8.0](https://github.com/jxsuite/jx/compare/site-v2.7.1...site-v2.8.0) (2026-11-14)
+
+
+### Features
+
+* **compiler:** a static build comments each style rule with its $description ([5c69560](https://github.com/jxsuite/jx/commit/5c6956071660bb9b8a9af24d4d1c88289865f974))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/runtime bumped to 7.1.0
+    * @jxsuite/schema bumped to 6.0.2
+
 ## [2.7.1](https://github.com/jxsuite/jx/compare/site-v2.7.0...site-v2.7.1) (2026-11-13)
 
 

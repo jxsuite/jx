@@ -1,5 +1,41 @@
 # Changelog
 
+## [9.1.0](https://github.com/jxsuite/jx/compare/compiler-v9.0.1...compiler-v9.1.0) (2026-11-14)
+
+
+### Features
+
+* **compiler:** a compiled element runs every lifecycle hook and observes its declared attributes ([a845e4d](https://github.com/jxsuite/jx/commit/a845e4dae7aa5ccb049dcc6f66a37176f6b60bc3))
+* **compiler:** a compiled element takes every prop its instance supplies, at connection and after ([429d3c1](https://github.com/jxsuite/jx/commit/429d3c1d84c5d417ff518709efb4b786f69bbe11))
+* **compiler:** a site build runs every external class a page or component names ([9414fe6](https://github.com/jxsuite/jx/commit/9414fe623297678d1c25d88d7335c48b76620b65))
+* **compiler:** a static build comments each style rule with its $description ([5c69560](https://github.com/jxsuite/jx/commit/5c6956071660bb9b8a9af24d4d1c88289865f974))
+* **compiler:** a template text child is baked at build time or bound on a dynamic page ([fee0b22](https://github.com/jxsuite/jx/commit/fee0b22486bff506b574bcf6f1b295ea81921e77))
+* **compiler:** one build can leave images alone, and a Pages preview does ([a01797d](https://github.com/jxsuite/jx/commit/a01797d3ac64be915d0237b6402bbb97a852b21f))
+* **compiler:** the image pipeline is stated once, and its cache, formats and Markdown images match ([d9781ff](https://github.com/jxsuite/jx/commit/d9781ffffd91b972283e368e4aa0c19c69293546))
+
+
+### Bug Fixes
+
+* **compiler:** a derived sizes takes the narrower of an element's literal width and max-width ([610eed0](https://github.com/jxsuite/jx/commit/610eed0ecadfd8004e931a658cc1b1711c081633))
+* **compiler:** every class module route 0 writes loads, and compiler.md §5 matches it ([156bf94](https://github.com/jxsuite/jx/commit/156bf947e5554c7d529052ae2f72ae2c423e4346))
+* **compiler:** every styled element gets a generated class of its own as its style handle ([a879c4e](https://github.com/jxsuite/jx/commit/a879c4e604a2bd23517620cb06c476a70f140584))
+* keep CI green on the dependency bumps ([68a6870](https://github.com/jxsuite/jx/commit/68a687052711e1331d16dd0b46cd52d862d3bc87))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/compiler-binding bumped to 0.3.0
+    * @jxsuite/create bumped to 1.8.3
+    * @jxsuite/erase bumped to 0.3.2
+    * @jxsuite/runtime bumped to 7.1.0
+    * @jxsuite/schema bumped to 6.0.2
+    * @jxsuite/site bumped to 2.8.0
+  * devDependencies
+    * @jxsuite/connector bumped to 0.8.11
+    * @jxsuite/parser bumped to 5.0.2
+
 ## [9.0.1](https://github.com/jxsuite/jx/compare/compiler-v9.0.0...compiler-v9.0.1) (2026-11-14)
 
 

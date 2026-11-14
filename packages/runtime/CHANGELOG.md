@@ -1,5 +1,23 @@
 # Changelog
 
+## [7.1.0](https://github.com/jxsuite/jx/compare/runtime-v7.0.1...runtime-v7.1.0) (2026-11-14)
+
+
+### Features
+
+* **compiler:** a compiled element runs every lifecycle hook and observes its declared attributes ([a845e4d](https://github.com/jxsuite/jx/commit/a845e4dae7aa5ccb049dcc6f66a37176f6b60bc3))
+* **compiler:** a compiled element takes every prop its instance supplies, at connection and after ([429d3c1](https://github.com/jxsuite/jx/commit/429d3c1d84c5d417ff518709efb4b786f69bbe11))
+* **compiler:** a static build comments each style rule with its $description ([5c69560](https://github.com/jxsuite/jx/commit/5c6956071660bb9b8a9af24d4d1c88289865f974))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/schema bumped to 6.0.2
+  * devDependencies
+    * @jxsuite/erase bumped to 0.3.2
+
 ## [7.0.1](https://github.com/jxsuite/jx/compare/runtime-v7.0.0...runtime-v7.0.1) (2026-11-13)
 
 

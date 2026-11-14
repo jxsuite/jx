@@ -1,6 +1,6 @@
 {
   "name": "@jxsuite/compiler-binding",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "The Jx compiler's Rust core as a Node-API addon: in-process image encoding, with no native library to install",
   "license": "MIT",
   "repository": {

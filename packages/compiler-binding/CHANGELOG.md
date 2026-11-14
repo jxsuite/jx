@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.3.0](https://github.com/jxsuite/jx/compare/compiler-binding-v0.2.1...compiler-binding-v0.3.0) (2026-11-14)
+
+
+### Features
+
+* **compiler:** the image pipeline is stated once, and its cache, formats and Markdown images match ([d9781ff](https://github.com/jxsuite/jx/commit/d9781ffffd91b972283e368e4aa0c19c69293546))
+
+
+### Bug Fixes
+
+* **compiler-binding:** the musl and Windows arm64 addons build, and a pull request proves all eight ([3aa091e](https://github.com/jxsuite/jx/commit/3aa091eeecff51640ba353f07ff080271931a457))
+
 ## [0.2.1](https://github.com/jxsuite/jx/compare/compiler-binding-v0.2.0...compiler-binding-v0.2.1) (2026-11-14)
 
 
