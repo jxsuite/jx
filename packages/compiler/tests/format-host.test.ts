@@ -8,6 +8,8 @@ import {
   buildInstalledExtensionRegistry,
   buildProjectExtensionRegistry,
   createNodeFormatIO,
+  implementationCandidates,
+  implementationFile,
   importImplementation,
   missingExtensionsNotice,
   probeExtension,
@@ -81,6 +83,46 @@ describe("importImplementation", () => {
   test("throws the last error when no candidate resolves", async () => {
     // oxlint-disable-next-line typescript/await-thenable -- bun:test async matcher returns a Promise; type-aware engine misresolves its return type
     await expect(importImplementation("/no/such/src/missing.js")).rejects.toThrow();
+  });
+});
+
+describe("implementationFile", () => {
+  test("names the candidates in the order an import tries them", () => {
+    expect(implementationCandidates("/pkg/src/mod.ts")).toEqual([
+      "/pkg/src/mod.ts",
+      "/pkg/dist/mod.ts",
+      "/pkg/dist/mod.js",
+    ]);
+    expect(implementationCandidates("/pkg/lib/mod.js")).toEqual([
+      "/pkg/lib/mod.js",
+      "/pkg/lib/mod.ts",
+    ]);
+  });
+
+  test("takes the first candidate that exists: literal, its .ts sibling, then dist", () => {
+    const dir = mkdtempSync(join(tmpdir(), "jx-import-impl-"));
+    try {
+      mkdirSync(join(dir, "src"));
+      mkdirSync(join(dir, "dist"));
+      const literal = join(dir, "src", "mod.js");
+      writeFileSync(join(dir, "dist", "mod.js"), "export const built = 1;\n");
+      // Only the built module exists: a published package, which ships no `src/`.
+      expect(implementationFile(literal)).toBe(join(dir, "dist", "mod.js"));
+      // The source beside the literal path wins over a built copy that may be stale.
+      writeFileSync(join(dir, "src", "mod.ts"), "export const source = 1;\n");
+      expect(implementationFile(literal)).toBe(join(dir, "src", "mod.ts"));
+      writeFileSync(literal, "export const literal = 1;\n");
+      expect(implementationFile(literal)).toBe(literal);
+    } finally {
+      rmSync(dir, { force: true, recursive: true });
+    }
+  });
+
+  test("throws naming the path when none exists", () => {
+    expect(() => implementationFile("/no/such/src/missing.js")).toThrow(
+      "no module at /no/such/src/missing.js (tried /no/such/src/missing.js, " +
+        "/no/such/src/missing.ts, /no/such/dist/missing.js)",
+    );
   });
 });
 

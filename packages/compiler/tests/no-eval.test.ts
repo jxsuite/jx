@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { classEntrySource } from "../src/site/external-class";
 import { compileClient } from "../src/targets/compile-client";
 import type { JxDocument } from "@jxsuite/schema/types";
 
@@ -41,5 +42,38 @@ describe("compiled output contains no eval (spec §21.1)", () => {
     expect(js).not.toMatch(/\beval\s*\(/);
     // Sanity: the template text really did make it into the module (verbatim splice, not eval).
     expect(js).toContain("state.count");
+  });
+
+  test("a page hydrating a self-contained class emits no new Function or eval", () => {
+    const doc: JxDocument = {
+      children: [{ tagName: "p", textContent: "${state.g}" }],
+      state: { g: { $prototype: "Greeter", $src: "./Greeter.class.json", timing: "client" } },
+      tagName: "main",
+    };
+    const page = compileClient(doc, { resolveClass: () => "/assets/class-Greeter.js" });
+    // The class the page loads: generated from its schema, as the site build ships it.
+    const classModule = classEntrySource({
+      classDef: {
+        $defs: {
+          fields: { name: { default: "world", identifier: "name", role: "field" } },
+          methods: {
+            value: {
+              getter: { body: "return 'Hello ' + this.name;" },
+              identifier: "value",
+              role: "accessor",
+            },
+          },
+        },
+        $prototype: "Class",
+        title: "Greeter",
+      },
+      classJsonPath: "/site/Greeter.class.json",
+      exportName: "Greeter",
+    });
+    expect(classModule).toContain("class Greeter {");
+    for (const js of [page.files[0]!.content, classModule]) {
+      expect(js).not.toContain("new Function");
+      expect(js).not.toMatch(/\beval\s*\(/);
+    }
   });
 });

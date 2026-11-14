@@ -7,11 +7,13 @@ spec:
   - spec.md#12.3
   - spec.md#12.4
   - compiler.md#5
+  - compiler.md#5.4
 code:
   - extensions/parser/src/Markdown.class.json
   - packages/schema/src/extension-registry.ts
   - packages/schema/defs/class-def.schema.ts
   - packages/compiler/src/targets/compile-class.ts
+  - packages/compiler/src/site/external-class.ts
 ---
 
 # Custom classes
@@ -84,7 +86,7 @@ Methods declare their output shape with a JSON Schema in `returnType` (often a `
 
 `$implementation` is resolved relative to the `.class.json` file and names the module exporting the class; the export is named by the descriptor's `title`. The parser ships TypeScript in `src/` and points `$implementation` at the built neighbor (`./markdown.js`).
 
-When `$implementation` is **absent**, the class is self-contained: the compiler generates an ES class from the schema itself. Constructor (with `super()` support), private `#fields`, getters/setters, async methods, and the `extends` clause all come from the descriptor. This is how small classes ship with no JavaScript at all; structured `body` statements are covered in [Functions](/docs/framework/concepts/functions).
+When `$implementation` is **absent**, the class is self-contained: the compiler generates an ES class from the schema itself. Constructor (with `super()` support), private `#fields`, getters/setters, async methods, and the `extends` clause all come from the descriptor. A site build runs the generated class during the build for `timing: "compiler"`, so a small class needs no JavaScript file of its own, and ships it as a small generated module for `timing: "client"`. A self-contained class whose `extends` points at another `.class.json` is the exception: a site build stops and asks for an `$implementation`. Structured `body` statements are covered in [Functions](/docs/framework/concepts/functions).
 
 ## Admission blocks
 

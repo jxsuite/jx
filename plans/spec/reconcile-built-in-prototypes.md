@@ -44,7 +44,7 @@ The census missed two things, and both change what the rewrite can say.
    - The interpreter's `buildScope` pass 0 maps an `imports` entry for every non-`Function` name, built-ins included, and `resolvePrototype` dispatches on `$src` before its switch. So `imports: { Set: … }`, or a `$src` on a `Request`, makes the entry an external class.
    - Both compiled targets lower `Request`, and the client target `LocalStorage`, `SessionStorage` and `Cookie`, by name whatever `$src` or `imports` say (`compile-client.ts`, `compile-element.ts`).
    - `resolvePrototypes` resolves an import named `Request` at build time when `timing` is unset, but skips one named `LocalStorage`.
-   - `plan:compiler/client-external-class-hydration` defines `isExternalClassDef` as "not in `BUILT_IN_PROTOTYPES`", so the compiled tier is about to make "a built-in name is the built-in" its rule.
+   - `isExternalClassDef` (`packages/compiler/src/shared.ts`, compiler.md §3) is "not in `BUILT_IN_PROTOTYPES`", so the compiled tier has made "a built-in name is the built-in" its rule.
 
    No tracked document maps a built-in name in `imports` or gives one a `$src` (checked over every tracked `*.json` and `*.md`).
 
@@ -72,7 +72,7 @@ The census missed two things, and both change what the rewrite can say.
 - **Decided:** the content classes are described as `@jxsuite/parser` extension classes (`reconcile`), and the example uses `Markdown` with `$src` next to a bare `MarkdownCollection`. The audit's spec-wide decisions keep the extension architecture (extensions.md §6), and naming the descriptor is the form every starter already uses.
 - **Open:** does a built-in name always mean the built-in, so that `imports`, an extension class and `$src` never replace one? Recommendation: yes, enforced by one predicate in the three places that look a name up:
   - Context item 1 shows no reading of today's two rows that the code meets.
-  - The compiled targets and `plan:compiler/client-external-class-hydration`'s `isExternalClassDef` already treat the name as the built-in.
+  - The compiled targets and `isExternalClassDef` (compiler.md §3) already treat the name as the built-in.
   - A project-level `imports` entry named `Map` silently re-typing every page's `Map` is the failure a reserved name prevents.
   - No tracked document relies on shadowing.
   - The interpreter warns on an ignored `imports` entry or `$src`. The build skips silently, as it already does for `LocalStorage`.
@@ -105,7 +105,7 @@ One pull request, after `plan:spec/request-url-params`, `plan:extensions/local-i
 - A built-in name is the built-in in every tier. The interpreter maps no `imports` entry to one and ignores its `$src`, with a warning. `resolvePrototypes` never resolves or lowers one. The compiled targets lower what §11.2 says.
 - spec.md §12.1 is the list of built-in names. §12.5 is the resolution order for every other name: `$src`, page `imports`, project `imports`, then the enabled extension's class in the site build.
 - Consequences for other plans:
-  - `plan:compiler/client-external-class-hydration` may define `isExternalClassDef` through `isBuiltInPrototype` and cite §12.1.
+  - `isExternalClassDef` (compiler.md §3) may be defined through `isBuiltInPrototype` and cite §12.1.
   - `plan:spec/timing-values-in-built-sites` adds a build-time `Request` branch ahead of the built-in skip in `resolvePrototypes`.
   - A later plan that adds or removes a Web API prototype changes `BUILT_IN_PROTOTYPES` (now in `guards.ts`), `resolvePrototype`'s case and §12.1's row together. The runtime test "every built-in prototype but Function and Array resolves without the unknown-prototype warning" catches the first two disagreeing.
 

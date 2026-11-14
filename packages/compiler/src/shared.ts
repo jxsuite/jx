@@ -42,6 +42,7 @@ import {
   isPureNamedFormula,
 } from "@jxsuite/runtime/expression";
 import { runStatements } from "@jxsuite/runtime/statements";
+import { BUILT_IN_PROTOTYPES } from "@jxsuite/schema/defs";
 import { buildSiteStyleCSS } from "@jxsuite/site/site-style";
 import {
   childrenContainArray,
@@ -1080,6 +1081,10 @@ export function buildInitialScope(
       // A client-timing fetch has no build-time value at all — not even a placeholder.
       runtimeOnly.add(key);
     }
+    if (isClientExternalClass(def)) {
+      // Its value is whatever the class resolves to in the browser (compiler.md §3).
+      runtimeOnly.add(key);
+    }
   }
 
   // A state entry that reads a runtime-only key cannot resolve until hydration either, so it is
@@ -1804,6 +1809,180 @@ export function serverCallHelperSource(): string {
     "  return body;",
     "}",
   ].join("\n");
+}
+
+// ─── External classes (compiler.md §3) ────────────────────────────────────────
+
+/**
+ * The keys the prototype system owns on a state entry, stripped before the rest is handed to an
+ * external class as its config (spec.md §12.3). One list for the build-time resolver and both
+ * compile targets, so a class is constructed with the same config at either timing.
+ */
+export const EXTERNAL_CONFIG_RESERVED: ReadonlySet<string> = new Set([
+  "$prototype",
+  "$src",
+  "$export",
+  "timing",
+  "default",
+  "description",
+]);
+
+/** An external class's config as its state entry wrote it: any keys, document values. */
+export type ExternalClassEntryConfig = Record<string, JxDocumentValue>;
+
+/**
+ * The config an external class is constructed with: the entry's own keys minus the reserved ones,
+ * values as written.
+ *
+ * @param {JxPrototypeDef} def
+ * @returns {ExternalClassEntryConfig}
+ */
+export function externalClassConfig(def: JxPrototypeDef) {
+  const config: ExternalClassEntryConfig = {};
+  for (const [key, value] of Object.entries(def)) {
+    if (!EXTERNAL_CONFIG_RESERVED.has(key) && value !== undefined) {
+      config[key] = value;
+    }
+  }
+  return config;
+}
+
+const BUILT_IN_PROTOTYPE_NAMES: ReadonlySet<string> = new Set(BUILT_IN_PROTOTYPES);
+
+/**
+ * Whether a state entry names an external class: a `$prototype` that is not one of the built-ins
+ * (spec.md §12), which always mean the built-in.
+ */
+export function isExternalClassDef(def: unknown): def is JxPrototypeDef {
+  return isPrototypeDef(def) && !BUILT_IN_PROTOTYPE_NAMES.has(def.$prototype);
+}
+
+/**
+ * Whether a state entry is an external class the compiled page or element constructs in the
+ * browser. Only an explicit `timing: "client"` is: an entry with no `timing` is resolved during the
+ * build. This is the one predicate that decides what hydrates.
+ */
+export function isClientExternalClass(def: unknown): def is JxPrototypeDef {
+  return isExternalClassDef(def) && def.timing === "client";
+}
+
+/** The name of the helper a module holding a `timing: "client"` external class declares once. */
+export const EXTERNAL_CLASS_HELPER = "__jxInstantiate";
+
+/**
+ * The external class contract (spec.md §12.3) as source for a generated module's preamble, inlined
+ * for the reason {@link attrHelperSource} gives: construct the class with its config, then take
+ * `resolve()` when the instance has one, else `value` when it has that, else the instance. It
+ * answers with the value and the instance, which the caller keeps for `subscribe`.
+ *
+ * The order is `instantiateAndResolve`'s (`site/external-class.ts`), the build-time half of the
+ * same rule, and `external-class-hydration.test.ts` runs this source and that export over one
+ * matrix of class shapes.
+ *
+ * @returns {string} One `async function` declaration.
+ */
+export function externalClassHelperSource(): string {
+  return [
+    `async function ${EXTERNAL_CLASS_HELPER}(C, name, config) {`,
+    "  if (typeof C !== 'function') throw new TypeError('Jx: \"' + name + '\" is not a class');",
+    "  const i = new C(config);",
+    "  const v = typeof i.resolve === 'function' ? await i.resolve() : 'value' in i ? i.value : i;",
+    "  return [v, i];",
+    "}",
+  ].join("\n");
+}
+
+/** One `timing: "client"` external class of a document, as a compile target emits it. */
+export interface ClientClassEntry {
+  /** The state key the class's value is written to. */
+  key: string;
+  /** The module-level name its class is imported under. */
+  binding: string;
+  /** The class's name as the entry wrote it, for diagnostics. */
+  name: string;
+  /** What the class is constructed with ({@link externalClassConfig}). */
+  config: ExternalClassEntryConfig;
+}
+
+/** A document's client classes, and the import each distinct class module needs. */
+export interface ClientClasses {
+  entries: ClientClassEntry[];
+  imports: string[];
+}
+
+/**
+ * Collect a document's `timing: "client"` external classes and the imports their modules need, one
+ * default import per distinct module URL.
+ *
+ * `resolveClass` answers the URL a class's module is served at, and only a site build has one: it
+ * is what bundles the module (compiler.md §12). Without it a client class cannot be delivered, so
+ * the compile fails and names the entry.
+ *
+ * @param {Record<string, JxStateDefinition>} defs
+ * @param {((def: JxPrototypeDef) => string) | undefined} resolveClass
+ * @returns {ClientClasses}
+ */
+export function collectClientClasses(
+  defs: Record<string, JxStateDefinition>,
+  resolveClass?: (def: JxPrototypeDef) => string,
+): ClientClasses {
+  const entries: ClientClassEntry[] = [];
+  const bindings = new Map<string, string>();
+  for (const [key, def] of Object.entries(defs)) {
+    if (!isClientExternalClass(def)) {
+      continue;
+    }
+    if (resolveClass === undefined) {
+      throw new Error(
+        `"${key}": external class "${def.$prototype}" with timing "client" compiles only in a site build`,
+      );
+    }
+    const url = resolveClass(def);
+    let binding = bindings.get(url);
+    if (binding === undefined) {
+      binding = `_JxClass${bindings.size}`;
+      bindings.set(url, binding);
+    }
+    entries.push({ binding, config: externalClassConfig(def), key, name: def.$prototype });
+  }
+  return {
+    entries,
+    imports: [...bindings].map(([url, binding]) => `import ${binding} from '${url}';`),
+  };
+}
+
+/**
+ * The expression that constructs and resolves every client class of a document: a `Promise.all`
+ * that settles once each entry has its value in state, or has failed.
+ *
+ * Each entry writes its value to state, records its instance under its state key in `instances` (a
+ * `Map`, where a teardown finds what it subscribed to), and follows `subscribe` when the class
+ * offers one. A class that fails to construct or resolve is logged and its entry stays `null`, so
+ * one failing class does not keep the rest of the page from hydrating.
+ *
+ * @param {ClientClassEntry[]} entries
+ * @param {{ statePrefix: string; instances: string; indent: string }} opts
+ * @returns {string}
+ */
+export function emitExternalClassResolution(
+  entries: readonly ClientClassEntry[],
+  opts: { statePrefix: string; instances: string; indent: string },
+): string {
+  const { indent, instances, statePrefix } = opts;
+  const lines = ["Promise.all(["];
+  for (const { binding, config, key, name } of entries) {
+    const target = refAccessor(statePrefix, escapeToken(key));
+    const label = JSON.stringify(key);
+    lines.push(
+      `${indent}  ${EXTERNAL_CLASS_HELPER}(${binding}, ${JSON.stringify(name)}, ${JSON.stringify(config)}).then(([v, i]) => {`,
+      `${indent}    ${target} = v;`,
+      `${indent}    ${instances}.set(${label}, i);`,
+      `${indent}    if (typeof i.subscribe === 'function') i.subscribe((n) => { ${target} = n; });`,
+      `${indent}  }).catch((e) => { console.error(${JSON.stringify(`Jx: external class "${key}" failed`)}, e); }),`,
+    );
+  }
+  lines.push(`${indent}])`);
+  return lines.join("\n");
 }
 
 /** The capture helper a light-DOM component module calls before its first render. */

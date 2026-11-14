@@ -3,9 +3,15 @@
  * runtime that is not Bun bundles with it, and Bun does too under `JX_BUNDLER=esbuild`.
  */
 import { createRequire } from "node:module";
-import { join } from "node:path";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import type { BuildOptions } from "esbuild";
-import type { BackendBuild, BundlePlugin, BundleTargetName } from "./bundler-backend.ts";
+import type {
+  BackendBuild,
+  BackendSplitBuild,
+  BundlePlugin,
+  BundleTargetName,
+} from "./bundler-backend.ts";
 
 /** Which bundler this backend runs. */
 export function backendName(): "bun" | "esbuild" {
@@ -78,4 +84,38 @@ export async function build(request: BackendBuild): Promise<string> {
   }
   const result = await esbuild.build({ ...options, write: false });
   return result.outputFiles[0]!.text;
+}
+
+/**
+ * Bundle several entries with code splitting into `outdir`, and return the files written. Throws
+ * with esbuild's diagnostics on failure.
+ */
+export async function buildSplit(request: BackendSplitBuild): Promise<string[]> {
+  const esbuild = await import("esbuild");
+  const options: BuildOptions = {
+    bundle: true,
+    chunkNames: "chunk-[hash]",
+    entryNames: "[name]",
+    entryPoints: request.entries,
+    external: request.external,
+    format: "esm",
+    logLevel: "silent",
+    minify: request.minify,
+    outdir: request.outdir,
+    platform: esbuildPlatform(request.target),
+    plugins: request.plugins,
+    splitting: true,
+  };
+  if (request.conditions) {
+    options.conditions = request.conditions;
+  }
+  if (request.define) {
+    options.define = request.define;
+  }
+  const result = await esbuild.build({ ...options, write: false });
+  return result.outputFiles.map((file) => {
+    mkdirSync(dirname(file.path), { recursive: true });
+    writeFileSync(file.path, file.contents);
+    return file.path;
+  });
 }
