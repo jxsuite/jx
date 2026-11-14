@@ -50,7 +50,7 @@ void mock.module("../src/services/ai-models", () => ({
   // Module someone else imports is a SyntaxError at link time, not a missing stub at call time.
   proxyStateCode: () => {},
   proxyActionOffer: () => null,
-  proxyModelsErrorMessage: () => "",
+  proxyListingFailure: () => null,
 }));
 
 installMockPlatform();

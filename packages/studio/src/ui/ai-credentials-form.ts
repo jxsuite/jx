@@ -25,12 +25,9 @@
  */
 
 import type { AiProviderFamily } from "@jxsuite/ai/streaming-client";
-import { isString } from "@jxsuite/schema/guards";
-import {
-  backendProviders,
-  fetchAvailableModels,
-  proxyModelsErrorMessage,
-} from "../services/ai-models";
+import { isNumber, isString } from "@jxsuite/schema/guards";
+import { backendProviders, fetchAvailableModels, proxyListingFailure } from "../services/ai-models";
+import type { AiConnection, ListingFailure } from "../services/ai-models";
 import {
   aiProviderDiffers,
   getAiProvider,
@@ -85,6 +82,21 @@ const PLACEHOLDERS: Readonly<
  * @param {string} value - What the picker reported
  * @returns {AiProviderFamily}
  */
+/**
+ * What to do about a listing that failed with this status. A refused key and a redirecting endpoint
+ * are not missing listings, so neither is answered with advice to type a model id: that cannot fix
+ * a key or an address, and the chat request would meet the same refusal.
+ */
+function listingAdvice(status: ListingFailure["status"]): string {
+  if (status === 401 || status === 403) {
+    return "check the key and endpoint.";
+  }
+  if (isNumber(status) && status >= 300 && status <= 399) {
+    return "the endpoint redirects; enter the address it redirects to.";
+  }
+  return "type the model ID directly instead.";
+}
+
 function familyOf(value: string): AiProviderFamily {
   return value === "anthropic" ? "anthropic" : "openai-compat";
 }
@@ -276,24 +288,24 @@ export function createAiCredentialsForm(opts: AiCredentialsFormOptions): AiCrede
     modelsError = "";
     opts.requestRender();
     try {
-      availableModels = await fetchAvailableModels({
-        credentials: {
-          apiKey: keyDraft || getOpenAiKey(),
-          baseUrl: baseUrlDraft || getBaseUrl(),
-          provider: providerDraft,
-        },
-        force: true,
-      });
+      const credentials: AiConnection = {
+        apiKey: keyDraft || getOpenAiKey(),
+        baseUrl: baseUrlDraft || getBaseUrl(),
+        provider: providerDraft,
+      };
+      availableModels = await fetchAvailableModels({ credentials, force: true });
       /*
        * A 200 from the proxy does not mean the UPSTREAM listing worked — handleModels answers with
        * defaults and `configured: true` even when the provider's /models route failed, so the list
        * fetch never throws for that case. Cloudflare Workers AI's OpenAI-compatible surface has no
        * /models route at all, so this is the only way that failure ever reaches the form; without
        * it, the field silently filled with OpenAI's default ids instead of the user's own models.
+       * The failure is `upstreamError`; its message is only the wording, and a listing that failed
+       * without one is still shown, by its status (ai.md §2).
        */
-      const upstreamMessage = proxyModelsErrorMessage();
-      if (upstreamMessage) {
-        modelsError = `${upstreamMessage} — type the model ID directly instead.`;
+      const failed = proxyListingFailure(credentials);
+      if (failed) {
+        modelsError = `${failed.reason} — ${listingAdvice(failed.status)}`;
       }
     } catch (error: unknown) {
       modelsError = (error instanceof Error && error.message) || "Failed to fetch models";

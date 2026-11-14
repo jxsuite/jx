@@ -341,6 +341,61 @@ describe("ai-credentials-form", () => {
     expect(part(c.container, "models-error")!.textContent).toContain("type the model ID directly");
   });
 
+  test.each([
+    ["no reason", {}],
+    ["an empty reason", { upstreamMessage: "" }],
+  ])("fetchModels says the listing failed when the upstream gave %s", async (_label, message) => {
+    fetchImpl = async () =>
+      Response.json(
+        { models: [{ id: "gpt-4o" }], upstreamError: 404, ...message },
+        { status: 200 },
+      );
+    const c = await makeForm();
+    press(c.container, "fetch");
+    await flush(4);
+    expect(part(c.container, "models-error")!.textContent).toContain("HTTP 404");
+    expect(part(c.container, "models-error")!.textContent).toContain("type the model ID directly");
+  });
+
+  test("a refused key is worded as a key problem, not a missing listing", async () => {
+    fetchImpl = async () =>
+      Response.json(
+        { models: [], upstreamError: 401, upstreamMessage: "Incorrect API key provided" },
+        { status: 200 },
+      );
+    const c = await makeForm();
+    press(c.container, "fetch");
+    await flush(4);
+    const shown = part(c.container, "models-error")!.textContent;
+    expect(shown).toContain("Incorrect API key provided");
+    expect(shown).toContain("check the key");
+    expect(shown).not.toContain("type the model ID directly");
+  });
+
+  test("a redirect is worded as an address to change", async () => {
+    fetchImpl = async () => Response.json({ models: [], upstreamError: 307 }, { status: 200 });
+    const c = await makeForm();
+    press(c.container, "fetch");
+    await flush(4);
+    const shown = part(c.container, "models-error")!.textContent;
+    expect(shown).toContain("HTTP 307");
+    expect(shown).toContain("enter the address it redirects to");
+    expect(shown).not.toContain("type the model ID directly");
+  });
+
+  test("the failure shown is the one listed under the drafts", async () => {
+    seedSettings({ "jx.ai.openaiKey": "sk-old" });
+    fetchImpl = async (_url, init) => {
+      const drafted = new Headers(init?.headers).get("X-Api-Key") === "sk-new";
+      return Response.json({ models: [], ...(drafted ? { upstreamError: 404 } : null) });
+    };
+    const c = await makeForm();
+    type(c.container, "key", "sk-new");
+    press(c.container, "fetch");
+    await flush(4);
+    expect(part(c.container, "models-error")!.textContent).toContain("HTTP 404");
+  });
+
   /**
    * The reason is often an upstream body passed through whole, and a JSON body is one unbroken
    * word. A flex item's automatic minimum is its min-content width, so the error set the `models`

@@ -88,7 +88,23 @@ let proxyConfigured = false;
 let proxyManaged = false;
 let proxyDefaultModel = "";
 let proxyCode: AiModelsResponse["code"];
-let proxyModelsError = "";
+
+/**
+ * A listing the upstream could not serve: the backend answered, with defaults, and said so in
+ * `upstreamError`. `reason` is what to show and is never empty; `status` is the code it was read
+ * from, which decides the advice beside it (a refused key is not a missing route).
+ */
+export interface ListingFailure {
+  reason: string;
+  status: number | string;
+}
+
+/**
+ * What the listing under {@link cacheKey} failed with, or null when it did not fail. Kept with the
+ * catalogue for the reason the catalogue is keyed: the form lists under drafts and the probe under
+ * stored credentials, into the same slot.
+ */
+let cacheFailure: ListingFailure | null = null;
 /** What an `action_required` probe offered; null for every other answer. */
 let proxyAction: ProxyActionOffer | null = null;
 /** The families the last probe said the chat route reaches; the default alone until one says more. */
@@ -144,7 +160,7 @@ export function resetModelCache() {
   proxyManaged = false;
   proxyDefaultModel = "";
   proxyCode = undefined;
-  proxyModelsError = "";
+  cacheFailure = null;
   proxyAction = null;
   proxyProviders = ["openai-compat"];
   proxyWire = [1];
@@ -301,13 +317,39 @@ export function proxyStateCode(): AiModelsResponse["code"] {
 }
 
 /**
- * The upstream's own error message from the last fetch, when it reported one (e.g. Cloudflare's "No
- * route for that URI" for a base URL that doesn't serve `/models`). Empty when the last fetch had
- * no upstream error to report — a stale message from an earlier failure must not survive a fetch
- * that succeeded.
+ * Why a listing answered with `upstreamError` failed, in words (ai.md §2). `upstreamError` is the
+ * witness and `upstreamMessage` only its wording: the message is optional, and a backend's fallback
+ * for a bodiless failure can be empty, so the status itself is the floor.
  */
-export function proxyModelsErrorMessage(): string {
-  return proxyModelsError;
+function listingFailure(data: Partial<AiModelsResponse>): ListingFailure | null {
+  const status = data.upstreamError;
+  // The body is unchecked JSON: an absent member is no failure, and neither is a null in its place.
+  if (!isNumber(status) && !isString(status)) {
+    return null;
+  }
+  const message = isString(data.upstreamMessage) ? data.upstreamMessage.trim() : "";
+  if (message) {
+    return { reason: message, status };
+  }
+  if (isNumber(status)) {
+    return { reason: `HTTP ${status}`, status };
+  }
+  if (status === "network") {
+    return { reason: "Provider unreachable", status };
+  }
+  return { reason: status || "Model listing failed", status };
+}
+
+/**
+ * What the listing under these credentials failed with, when the upstream could not serve it (e.g.
+ * Cloudflare's "No route for that URI" for a base URL that has no `/models`). Its `reason` is never
+ * empty. Null means the listing under those credentials succeeded or never ran, so a failure listed
+ * under other credentials, or before a listing that worked, is never reported.
+ */
+export function proxyListingFailure(
+  credentials: AiConnection = aiConnection(),
+): ListingFailure | null {
+  return cacheKey === fingerprint(credentials) ? cacheFailure : null;
 }
 
 /**
@@ -502,7 +544,6 @@ export async function fetchAvailableModels(
   proxyManaged = data.managed === true;
   proxyDefaultModel = data.defaultModel ?? "";
   proxyCode = data.code;
-  proxyModelsError = data.upstreamError !== undefined ? (data.upstreamMessage ?? "") : "";
   proxyAction = null;
   proxyProviders = providersOf(data.providers);
   proxyWire = wireOf(data.wire);
@@ -530,5 +571,6 @@ export async function fetchAvailableModels(
     return model;
   });
   cacheKey = key;
+  cacheFailure = listingFailure(data);
   return cache;
 }

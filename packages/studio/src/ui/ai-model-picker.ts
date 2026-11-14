@@ -32,6 +32,7 @@ import {
   fetchAvailableModels,
   modelToolSupport,
   preferredModel,
+  proxyListingFailure,
 } from "../services/ai-models";
 import { setModel } from "../services/ai-settings";
 import { createModelPickerSurface } from "../surfaces/ai-model-picker";
@@ -99,7 +100,7 @@ export interface ModelPicker {
   render: () => HTMLElement;
   /** Whether a fetch is in flight — for a host that wants to disable a submit button. */
   isLoading: () => boolean;
-  /** The last fetch's failure, or `""`. */
+  /** The last request's failure, or `""`. A listing the upstream could not serve is not one. */
   error: () => string;
   /**
    * Whether the selected model is known NOT to support tools — for a host that wants to say so.
@@ -188,9 +189,12 @@ export function createModelPicker(opts: ModelPickerOptions): ModelPicker {
 
   /** What the picker says right now — the whole of what the surface is told. */
   function view(): ModelPickerView {
+    /* A listing the upstream could not serve is named here, with no Retry: asking again cannot
+       add a route the provider does not have, and the default catalogue is still offered. */
+    const unlisted = failure || (proxyListingFailure(aiConnection())?.reason ?? "");
     return {
       failure,
-      hint: failure ? `Couldn't load models: ${failure}` : "Model",
+      hint: unlisted ? `Couldn't load models: ${unlisted}` : "Model",
       options: rows(),
       size: opts.size ?? "sm",
       value: getModel(),
