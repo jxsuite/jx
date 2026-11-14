@@ -37,8 +37,6 @@ The three corrections match the defects `plan:spec/report-dropped-reactive-style
 
 **The handle.** `plan:spec/style-handle-assignment` (an enabling plan both this plan and `plan:_shared/static-style-handle-and-descriptions` require) gives every styled element, a repeater's item template included, a class that selects it alone, read back with `styleHandleOf(node)` (the class without its dot, or `undefined`). This plan needs that: a rule reading a variable only the declaring element sets would leave every other element sharing an author's class with an unset property, and the stub's scratch case (two page-level instances sharing `className: "icon"` both render the second `mask-image`) is a handle defect. That plan declines a per-render handle because this plan carries per-instance values through the indirection (see Decisions).
 
-**Found while detailing, not this plan's.** An island in `compileStaticPage` is emitted as a bare `<jx-island-N>`, which carries none of its root's `id`, `className` or handle, so the page rule for that root matches nothing. That is a lost element, not an inline declaration; the island's module otherwise follows the element target's rules below.
-
 **Related.** §9.2 and §9.6; §9.3 (`plan:spec/report-dropped-reactive-styles`); `compiler.md` §4.3 (the binding table's style row, `plan:compiler/element-binding-table`) and §8.1 (component expansion); `plan:spec/shadow-dom-parity`, which also rewrites `buildComponentCSS` and `pushStyleRules`.
 
 ## Outcome

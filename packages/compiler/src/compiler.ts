@@ -125,13 +125,12 @@ export async function compile(sourcePath: string | JxDocument, opts: CompileOpti
 
   // Route 1: Fully static → plain HTML/CSS
   if (!isDynamic(raw)) {
-    return compileStaticPage(raw, {
-      litHtmlSrc,
-      projectStyle,
-      reactivitySrc,
-      ...pageTargetOverrides(opts),
-      title,
-    });
+    // The static target emits no module, so it takes no runtime source and no `$src` rewriter.
+    const staticOptions: Parameters<typeof compileStaticPage>[1] = { projectStyle, title };
+    if (opts.prePaintScheme === false) {
+      staticOptions.prePaintScheme = false;
+    }
+    return compileStaticPage(raw, staticOptions);
   }
 
   // Route 2: Custom element tagName (contains hyphen) → lit-html web component

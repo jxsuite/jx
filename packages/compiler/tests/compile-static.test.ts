@@ -16,8 +16,6 @@ function malformedNode(json: JsonObject): JxElement {
 
 describe("compileStaticPage", () => {
   const baseOpts = {
-    litHtmlSrc: "https://esm.sh/lit-html",
-    reactivitySrc: "https://esm.sh/@vue/reactivity",
     title: "Test Page",
   };
 
@@ -157,7 +155,7 @@ describe("compileStaticPage", () => {
     expect(html).toContain("@media (min-width: 768px)");
   });
 
-  test("converts dynamic nodes to islands", () => {
+  test("emits no module, import map or script for a node the client would bind", () => {
     const doc = {
       children: [
         {
@@ -169,25 +167,11 @@ describe("compileStaticPage", () => {
       ],
     };
     const { html, files } = compileStaticPage(doc, baseOpts);
-    expect(html).toContain("jx-island-");
-    expect(files.length).toBeGreaterThan(0);
-    expect(files[0]!.path).toContain("_islands/");
-  });
-
-  test("includes importmap and module scripts for islands", () => {
-    const doc = {
-      children: [
-        {
-          onclick: { $ref: "#/state/fn" },
-          tagName: "button",
-          textContent: "Click",
-        },
-      ],
-    };
-    const { html } = compileStaticPage(doc, baseOpts);
-    expect(html).toContain("importmap");
-    expect(html).toContain("@vue/reactivity");
-    expect(html).toContain('type="module"');
+    expect(files).toEqual([]);
+    expect(html).not.toContain("<script");
+    expect(html).not.toContain("importmap");
+    expect(html).not.toContain("jx-island");
+    expect(html).not.toContain("_islands/");
   });
 
   test("returns no files for fully static page", () => {
@@ -207,16 +191,6 @@ describe("compileStaticPage", () => {
     };
     const { html } = compileStaticPage(doc, baseOpts);
     expect(html).toContain("<b>Bold</b>");
-  });
-
-  test("state with template triggers island compilation", () => {
-    const doc = {
-      children: [{ tagName: "p", textContent: "${state.name}" }],
-      state: { name: "World" },
-    };
-    const { html, files } = compileStaticPage(doc, baseOpts);
-    expect(html).toContain("jx-island-");
-    expect(files.length).toBeGreaterThan(0);
   });
 
   test("handles string children", () => {
