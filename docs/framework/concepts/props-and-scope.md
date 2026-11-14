@@ -79,6 +79,8 @@ A component's props are also its JavaScript properties. Setting `card.count = 5`
 
 A prop is accepted for every entry the component's `state` declares, including one declared with only a `type`. Private `#`-prefixed entries are not props and have no property.
 
+An entry the component computes, such as a `"${state.first} ${state.last}"` template, is readable as a property and cannot be set: it has a getter and no setter, like any read-only property in the browser, so `el.fullName = "x"` throws a `TypeError` in a module. Set the entries it is computed from instead.
+
 A prop may share its name with a built-in element property such as `title`, `lang` or `hidden`. Setting it still updates the component, including a value that arrives after the element is on the page, and the matching HTML attribute is set as well.
 
 ## Signal forwarding
