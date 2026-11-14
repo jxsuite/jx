@@ -86,6 +86,9 @@ jobs:
       - uses: ./.github/actions/setup-rust
         with:
           targets: ${{ matrix.target }}
+          # The runner's release is in the key: this job's id is `build`, like the desktop lanes'
+          # that compile on a newer Ubuntu, and their cached build scripts do not run on 22.04.
+          cache-key: ${{ matrix.os }}-${{ matrix.triple }}
       # A musl `cdylib` must link the C library dynamically (Rust's musl targets default to
       # static, which cannot produce a loadable addon), and it is linked by zig, which carries a
       # musl of its own. Ubuntu's `musl-gcc` cannot do it: Rust asks every dynamic link for
