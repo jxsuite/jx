@@ -7,6 +7,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -22,7 +23,11 @@ import { isJsonObject, isNodeObject } from "@jxsuite/schema/guards";
 import type { JsonObject, JsonValue, JxElement } from "@jxsuite/schema/types";
 import { hashOf } from "../src/site/csp.ts";
 import { fakeSource, installFakeBinding } from "./_fake-binding.ts";
-import { _testResetNpmCacheBase, _testSetNpmCacheBase } from "../src/site/image-cache.ts";
+import {
+  _testResetNpmCacheBase,
+  _testSetNpmCacheBase,
+  getImageCacheDir,
+} from "../src/site/image-cache.ts";
 
 const TMP = resolve(import.meta.dir, "__test-site__");
 
@@ -1182,11 +1187,29 @@ describe("buildSite — optimized images cache-to-dist", () => {
     writeFileSync(
       resolve(OPT_TMP, "pages/index.json"),
       JSON.stringify({
-        children: [{ children: ["Hi"], tagName: "p" }],
+        children: [{ attributes: { alt: "Hero", src: "/images/hero.png" }, tagName: "img" }],
         title: "Home",
       }),
       "utf8",
     );
+    mkdirSync(resolve(OPT_TMP, "public/images"), { recursive: true });
+    writeFileSync(resolve(OPT_TMP, "public/images/hero.png"), "fake-png-data", "utf8");
+  }
+
+  /**
+   * Build once with an orphan planted in the cache's `_optimized/`, and answer what reached
+   * `dist/images/_optimized/`: only the variants the build used may.
+   */
+  async function buildWithOrphan(orphan: string): Promise<string[]> {
+    const cacheOptDir = resolve(getImageCacheDir(OPT_TMP), "_optimized");
+    mkdirSync(cacheOptDir, { recursive: true });
+    writeFileSync(resolve(cacheOptDir, orphan), "left by another build", "utf8");
+
+    const result = await buildSite(OPT_TMP, { clean: true });
+    expect(result.errors).toEqual([]);
+    // The orphan is still in the cache: nothing names it, so nothing prunes or copies it.
+    expect(existsSync(resolve(cacheOptDir, orphan))).toBe(true);
+    return readdirSync(resolve(OPT_TMP, "dist/images/_optimized")).toSorted();
   }
 
   afterAll(() => {
@@ -1194,21 +1217,22 @@ describe("buildSite — optimized images cache-to-dist", () => {
     rmSync(NPM_CACHE, { force: true, recursive: true });
   });
 
-  it("copies cached variants from the global npm cache dir to dist", async () => {
+  it("copies the variants the build used from the npm cache dir to dist", async () => {
     setupProject();
-    // Point the cache base at a controlled directory (no dependency on npm being installed). The
-    // Source resolves the cache dir as <base>/jxsuite-images/<project-basename>, so pre-populate
-    // That exact path as a prior build would have.
-    const { basename } = await import("node:path");
+    // Point the cache base at a controlled directory (no dependency on npm being installed).
     rmSync(NPM_CACHE, { force: true, recursive: true });
     _testSetNpmCacheBase(NPM_CACHE);
-    const npmOptDir = resolve(NPM_CACHE, "jxsuite-images", basename(OPT_TMP), "_optimized");
-    mkdirSync(npmOptDir, { recursive: true });
-    writeFileSync(resolve(npmOptDir, "npm-cached.webp"), "fake-webp", "utf8");
 
     try {
-      await buildSite(OPT_TMP, { clean: true });
-      expect(existsSync(resolve(OPT_TMP, "dist/images/_optimized/npm-cached.webp"))).toBe(true);
+      expect(getImageCacheDir(OPT_TMP).startsWith(resolve(NPM_CACHE, "jxsuite-images"))).toBe(true);
+      const copied = await buildWithOrphan("npm-cached.webp");
+      // The file's fake source is 1280 px wide: four rungs in each of the two default formats.
+      expect(copied).toHaveLength(8);
+      expect(copied.every((name) => /^hero-\d+-[0-9a-f]{8}\.(?:avif|jpeg)$/.test(name))).toBe(true);
+      const html = readFileSync(resolve(OPT_TMP, "dist/index.html"), "utf8");
+      for (const name of copied) {
+        expect(html).toContain(`/images/_optimized/${name}`);
+      }
     } finally {
       rmSync(NPM_CACHE, { force: true, recursive: true });
       _testResetNpmCacheBase();
@@ -1221,19 +1245,30 @@ describe("buildSite — optimized images cache-to-dist", () => {
     // E.g. npm not in PATH or no network on a restricted CI image.
     _testSetNpmCacheBase(null);
 
-    // Pre-populate the project-local cache as a prior build would have
-    mkdirSync(resolve(OPT_TMP, ".cache/images/_optimized"), {
-      recursive: true,
-    });
+    try {
+      expect(getImageCacheDir(OPT_TMP)).toBe(resolve(OPT_TMP, ".cache/images"));
+      const copied = await buildWithOrphan("local-cached.webp");
+      expect(copied).toHaveLength(8);
+      expect(copied).not.toContain("local-cached.webp");
+    } finally {
+      _testResetNpmCacheBase();
+    }
+  });
+
+  it("a build that optimizes no image writes no _optimized directory", async () => {
+    setupProject();
     writeFileSync(
-      resolve(OPT_TMP, ".cache/images/_optimized/local-cached.webp"),
-      "fake-webp",
+      resolve(OPT_TMP, "pages/index.json"),
+      JSON.stringify({ children: [{ children: ["Hi"], tagName: "p" }], title: "Home" }),
       "utf8",
     );
+    _testSetNpmCacheBase(null);
+    mkdirSync(resolve(OPT_TMP, ".cache/images/_optimized"), { recursive: true });
+    writeFileSync(resolve(OPT_TMP, ".cache/images/_optimized/stray.webp"), "stray", "utf8");
 
     try {
       await buildSite(OPT_TMP, { clean: true });
-      expect(existsSync(resolve(OPT_TMP, "dist/images/_optimized/local-cached.webp"))).toBe(true);
+      expect(existsSync(resolve(OPT_TMP, "dist/images/_optimized"))).toBe(false);
     } finally {
       _testResetNpmCacheBase();
     }

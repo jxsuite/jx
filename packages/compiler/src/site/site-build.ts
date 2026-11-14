@@ -12,6 +12,7 @@
  */
 
 import {
+  copyFileSync,
   cpSync,
   existsSync,
   mkdirSync,
@@ -160,7 +161,7 @@ import {
   writeClientRuntime,
   writeRuntimeSubpaths,
 } from "./client-runtime.ts";
-import { getImageCacheDir, loadCache, saveCache } from "./image-cache.ts";
+import { loadCache, saveCache, usedVariantPaths } from "./image-cache.ts";
 import type { ImageConfig } from "./image-optimizer.ts";
 import type { ImageMetaCache } from "./image-transform.ts";
 import type {
@@ -1059,11 +1060,15 @@ export async function buildSite(
     // Prune only on fully successful builds — a route that failed to compile never
     // Touched its images, and pruning would evict their still-valid entries.
     saveCache(projectRoot, imageCache, { prune: errors.length === 0 });
-    const cacheOptimizedDir = resolve(getImageCacheDir(projectRoot), "_optimized");
-    if (existsSync(cacheOptimizedDir)) {
+    /* Only the variants of entries this build resolved, never the directory: whatever else the
+       cache holds (another build's leftovers, a stray file) is not part of this site. */
+    const used = usedVariantPaths(imageCache).filter((path) => existsSync(path));
+    if (used.length > 0) {
       const distOptimizedDir = resolve(outDir, "images/_optimized");
       mkdirSync(distOptimizedDir, { recursive: true });
-      cpSync(cacheOptimizedDir, distOptimizedDir, { recursive: true });
+      for (const path of used) {
+        copyFileSync(path, resolve(distOptimizedDir, basename(path)));
+      }
     }
     const totalImages = Object.keys(imageCache.entries).length;
     if (totalImages > 0) {

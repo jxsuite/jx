@@ -528,58 +528,24 @@ A worker that has a server function or an extension mount registers one middlewa
 
 ## 7. Image Optimization
 
-The compiler includes a build-time image optimization pipeline that generates responsive variants, converts formats, and injects performance attributes into `<img>` nodes. The pipeline is implemented across three modules:
+The compiler includes a build-time image optimization pipeline that generates responsive variants, converts formats, and injects performance attributes into `<img>` nodes. The pipeline is implemented across four modules in `packages/compiler/src/site/`:
 
 - `image-optimizer.ts` — one request per source image to the compiler's native core (§14), which decodes, resizes and encodes every variant
-- `image-transform.js` — document tree mutation
-- `image-cache.js` — persistent cache for skipping redundant re-encoding
+- `image-transform.ts` — document tree mutation
+- `image-cache.ts` — persistent cache for skipping redundant re-encoding
+- `img-loading.ts` — the loading attributes
+
+The pipeline's behaviour is specified once, in `site-architecture.md` §9.2; each subsection below names the code that implements the matching part.
 
 ### 7.1 Configuration
 
-> **Status: Partial.** The table omits `picture` (default `true`: `DEFAULTS.images` in `packages/compiler/src/site/site-loader.ts`, `packages/schema/defs/image-config.schema.ts`). And `optimize` is not a master switch: `site-build` calls `transformImageNodes` whatever it says, and the loading pass applies `lazyLoad` on its own, yielding to `fetchpriority="high"` (`imgLoadingAttrs` in `packages/compiler/src/site/img-loading.ts`), as `site-architecture.md` §9.2.1 and §9.2.7 state.
-
-Image optimization is configured via `project.json` under the `images` key. All properties have defaults and are optional:
-
-```json
-{
-  "images": {
-    "optimize": true,
-    "widths": [320, 640, 960, 1280, 1920],
-    "formats": ["avif", "jpeg"],
-    "quality": { "avif": 65, "jpeg": 80 },
-    "sizes": "(max-width: 768px) 100vw, 50vw",
-    "lazyLoad": true
-  }
-}
-```
-
-| Property        | Type       | Default                            | Description                                                                                |
-| --------------- | ---------- | ---------------------------------- | ------------------------------------------------------------------------------------------ |
-| `optimize`      | `boolean`  | `true`                             | Master switch for all image processing                                                     |
-| `widths`        | `number[]` | `[320, 640, 960, 1280, 1920]`      | Pixel widths for responsive `srcset` variants                                              |
-| `formats`       | `string[]` | `["avif", "jpeg"]`                 | Output formats: `"avif"`, `"jpeg"`, `"png"`, `"webp"` (§7.2, "What each format is")        |
-| `quality`       | `object`   | `{ avif: 65, jpeg: 80 }`           | Lossy quality per format (1–100). `png` is never read; `webp` only by §7.6                 |
-| `sizes`         | `string`   | `"(max-width: 768px) 100vw, 50vw"` | Fallback CSS `sizes`, used only when neither the tag nor its container says (§7.2.1)       |
-| `lazyLoad`      | `boolean`  | `true`                             | Adds `loading="lazy"` and `decoding="async"` to `<img>` tags                               |
-| `service`       | `string`   | `"build"`                          | `"build"` = encoded at build time; `"cloudflare"` = `/cdn-cgi/image` transform URLs (§7.6) |
-| `remoteDomains` | `string[]` | `[]`                               | Allowlisted https hostnames optimized via transform URLs (`service: "cloudflare"` only)    |
+Image optimization is configured in `project.json` under the `images` key, as `site-architecture.md` §9.2.1 specifies. `DEFAULTS.images` (`site-loader.ts`) holds the defaults, `ImageConfig` (`image-optimizer.ts`) is what the pipeline reads, and `imageConfigSchema` (`@jxsuite/schema`) validates it.
 
 ### 7.2 Document Transformation (`transformImageNodes`)
 
-> **Status: Partial.** With two or more formats (the default `avif` and `jpeg`) and `picture` not `false`, `wrapInPicture` in `packages/compiler/src/site/image-transform.ts` rewrites the node into a `<picture>` with one `<source type>` per format, best compression first, carrying the `srcset` and `sizes`, while the `<img>` keeps `src`, dimensions and loading attributes; only a single-format config gets the bare `<img srcset>` described below (`site-architecture.md` §9.2.2 states the shipped form). Variants are written to the image cache's `_optimized/` directory (`processImage` in `image-optimizer.ts`) and copied to `dist/images/_optimized/` after the routes build, not written to `dist/` directly.
+`transformImageNodes(doc, config, projectRoot, cache, metaCache?, mounts?)` implements `site-architecture.md` §9.2.2 for one page and returns `{ imageRefs }`, the manifests of the images it resolved. It hands `<img>` nodes to `transformImgNode` and pre-rendered `innerHTML` to `transformInnerHtmlImages`; both resolve every image through `resolveVariants`, so the two halves apply one set of rules, and a rule added to one is added to the other. `wrapInPicture` and `renderPictureTag` write the `<picture>`, for a node and for an `innerHTML` tag respectively.
 
-During page compilation, `transformImageNodes()` walks the document tree and mutates eligible `<img>` nodes. For each image:
-
-1. **Process** — `processImage()` hands the source to the native core (§14), which filters `widths` to ≤ the original width and generates one variant per width × format combination. Variants are written to `dist/images/_optimized/{stem}-{width}-{hash}.{format}`, where `{hash}` is 8 hex characters covering the source's bytes and the pipeline version, so an unchanged source re-encoded by a changed pipeline gets new names (the directory is served as immutable, `site-architecture.md` §14.3).
-
-   The source's own width is added only when it is **below** the largest configured width: a source smaller than every rung would otherwise produce no variants at all, and one falling between rungs would never be offered at its native resolution. A source larger than the top rung does not get one — the largest configured width is the ceiling the project chose. (Adding it unconditionally meant a 3840 px screenshot emitted a 3840 px variant in every format, encoded on every cold build and offered as a `3840w` candidate no real viewport would select.)
-
-2. **Inject attributes** — The `<img>` node is mutated in-place:
-   - `srcset` — responsive variant list with widths (e.g., `hero-320-a1b2.avif 320w, hero-640-a1b2.avif 640w`). Each candidate URL is the variant's path with every segment percent-encoded (`variantUrl`), because a variant is named after its source file and a `srcset` splits candidates on whitespace: `Designer, White.jpg` written raw became the candidate `…/Designer,` with a descriptor of `White-640-a1b2.avif`. The same encoding applies to a variant used as `src`
-   - `sizes` — see §7.2.1
-   - `src` — the largest emitted variant in a universally decodable format (`jpeg`/`png`) when the project emits one; otherwise the original file. `src` is reached only by a client that understood neither `srcset` nor any `<source type>`, so it has to stay decodable — but the original is the **unresized** source, and a resized variant of the same format is strictly better. A project emitting only `webp`/`avif` keeps the original: a smaller image nobody can decode is not an improvement.
-   - `width` and `height` — original image dimensions (prevents CLS)
-   - `loading="lazy"` and `decoding="async"` — when `lazyLoad: true`, unless `loading="eager"` is already set
+`processImage(srcPath, cacheImgDir, config)` encodes one image's variants into the image cache's `_optimized/` directory (§7.5) and returns its `ImageManifest`. It hands the native core (§14) one request per source: the width ladder, the formats, and one name hash per format (`variantHash`, a digest of the source's bytes, the pipeline version, the format and its quality), from which the core names each variant `{stem}-{width}-{hash}.{format}`. A PNG written in place of a JPEG takes the hash the JPEG was given.
 
 A source's variants are encoded in parallel, bounded by the machine's parallelism. A variant whose file already exists is not encoded again, and when every variant exists the source is not decoded. A source that cannot be decoded, or an encoder that refuses a variant, rejects the whole image and fails the route that uses it.
 
@@ -598,69 +564,23 @@ JPEG has no alpha channel, so where `jpeg` is listed and the source has transpar
 
 #### 7.2.1 `sizes`
 
-`sizes` is a promise about layout that the browser keeps absolutely: it selects a candidate from the string before layout exists, and never revisits the choice. A single project-wide default therefore cannot be right for every image on a site — `(max-width: 768px) 100vw, 50vw` describes a half-width image, and applied to a hero that renders full-width inside a 960 px column it is too small on a wide screen and too large on a narrow one.
-
-Resolution order, first match wins:
-
-1. A `sizes` written on the tag.
-2. **Derived from the container** — the narrowest literal `max-width`/`width` in `px` or `rem` declared on the image or any ancestor, emitted as `(max-width: Npx) 100vw, Npx`. This is layout the compiler already holds, so it outranks a project-wide guess. Both properties count on every element, the image included, so `{ "width": "320px", "maxWidth": "960px" }` derives `(max-width: 320px) 100vw, 320px`.
-3. `images.sizes`, when the project sets one.
-4. Nothing — the browser assumes `100vw`.
-
-Only literal lengths derive. A `clamp()`, a percentage or a custom property is a real constraint too, but not one the build can resolve, and a wrong `sizes` is worse than none. Only an element's base `style` is read: a length inside a nested block (a media query, a named breakpoint, a pseudo-class, or an ancestor's descendant selector) is not, because which block applies depends on the viewport, so a container that widens at a breakpoint needs `sizes` written on the tag.
+`containerWidthOf` and `sizesForContainer` (`image-transform.ts`) implement the resolution order of `site-architecture.md` §9.2.2 step 4. `containerWidthOf` lowers the bound inherited from an element's ancestors by that element's literal base `maxWidth` and `width`, and is called for every node on the way down, for an image's own style, and for the node holding an `innerHTML` image.
 
 ### 7.3 Eligibility
 
-> **Status: Partial.** There is no raster allowlist and no animation check: `shouldSkip` in `packages/compiler/src/site/image-transform.ts` skips template, external and empty sources and the `.svg` and `.gif` extensions (`SKIP_EXTENSIONS`), so every GIF is skipped, animated or not, and any other local file but `.avif` goes to the encoder whatever its extension.
-
-**Processed:**
-
-- Static `src` paths (strings, not `${...}` template expressions)
-- Local paths (relative or `/`-prefixed) that exist on disk — resolved from an extension asset mount first ([extensions.md §8.5](./extensions.md)), then `public/` or the project root
-- Raster formats the native core decodes: `.jpg`, `.jpeg`, `.png`, `.webp`, `.tiff`, `.bmp`
-
-**Skipped:**
-
-- External URLs (`http://`, `https://`, `//`, `data:`)
-- SVGs (`.svg`) and animated GIFs (`.gif`)
-- AVIF sources (`.avif`) under the build service: already the format every variant would be converted to, so served as written
-- Dynamic `src` containing `${...}` template expressions
-- Images with `data-no-optimize` attribute
+`shouldSkip` and `isAllowedRemote` (`image-transform.ts`) implement `site-architecture.md` §9.2.3: the first holds the allowlist of local raster extensions, the second the Cloudflare service's rule for remote sources. `resolveImagePath` resolves a local source through an extension asset mount first ([extensions.md §8.5](./extensions.md)), then as `site-architecture.md` §9.3 says.
 
 ### 7.4 Per-Image Overrides
 
-Individual `<img>` nodes can override global settings via attributes:
+`transformImgNode` and `transformInnerHtmlImages` read the per-image overrides of `site-architecture.md` §9.2.4 (`sizes`, `srcset`, `loading`, `fetchpriority`, `data-no-optimize`), the first from a node's `attributes` and the second from a tag's attribute string, where a name is matched whole (`data-src` is not `src`).
 
-```json
-{
-  "tagName": "img",
-  "attributes": {
-    "src": "/images/hero.jpg",
-    "sizes": "(max-width: 640px) 80vw, 40vw",
-    "loading": "eager",
-    "data-no-optimize": true
-  }
-}
-```
+### 7.5 Caching (`image-cache.ts`)
 
-- `sizes` — overrides the global config value for this image
-- `loading="eager"` — prevents `loading="lazy"` injection (for above-the-fold images)
-- `data-no-optimize` — skips optimization entirely
-
-### 7.5 Caching (`image-cache.js`)
-
-> **Status: Partial.** The cache is not at `.cache/images/` by default: `getImageCacheDir` in `packages/compiler/src/site/image-cache.ts` prefers the npm cache (`npm_config_cache` in the environment, else `npm config get cache` given 3 seconds, then `jxsuite-images/<project basename>/`) and falls back to `.cache/images` in the project only when npm is unavailable or does not answer in time, and invalidation looks for the variant files in that directory's `_optimized/`, not in `dist/`. The config hash also folds in `PIPELINE_VERSION` (`image-optimizer.ts`); the key format, persistence and pruning ship as described.
-
-Processed images are cached to `.cache/images/manifest.json` to avoid redundant re-encoding across builds.
-
-- **Cache key:** `{contentHash}:{configHash}:{stem}` — MD5 of source file contents + MD5 of optimization config (`widths`, `formats`, `quality`) + the source's file name without its extension. The name is in the key because it is in the output: variants are named `{stem}-{width}-{hash}.{format}`, so a key of content alone handed a renamed file its old entry and its old variant names, and renaming a file to fix its URLs changed nothing until the cache was deleted by hand. The old name's entry goes untouched by the build that renames it, so pruning removes it
-- **Invalidation:** Source file changes, config changes, renames, or missing variant files in `dist/`
-- **Persistence:** Cache survives `dist/` cleanup — only variant files are regenerated
-- **Pruning:** After an error-free build, entries whose key was never resolved during the build are removed at save time and their variant files deleted (a file shared with a surviving entry is kept), so a persisted cache — and the `dist/` copy made from it — stays bounded to images in use
+`getImageCacheDir`, `loadCache`, `saveCache` with its pruning, and `usedVariantPaths` implement `site-architecture.md` §9.2.5. The key is `cacheKey`: `contentHash`, then `configHash` over `widths`, `formats`, `quality` and `PIPELINE_VERSION` (`image-optimizer.ts`), then the source's file name without its extension. `PIPELINE_VERSION` is bumped whenever the pipeline decides or encodes variants differently for the same settings, which changes both the key and, through `variantHash`, every variant's filename (§7.2). `getCached` marks a key as resolved by the build; whether an entry's variant files are still on disk is checked by `resolveManifest` (`image-transform.ts`).
 
 ### 7.6 Cloudflare Images Service
 
-When `images.service` is `"cloudflare"`, the variant pipeline is skipped entirely. Image optimization becomes pure markup — no code is generated or deployed:
+`resolveCfMeta` and `buildCloudflareSrcset` (`image-transform.ts`) implement `site-architecture.md` §9.2.6. When `images.service` is `"cloudflare"`, the variant pipeline is skipped entirely. Image optimization becomes pure markup — no code is generated or deployed:
 
 - `transformImageNodes()` rewrites eligible `<img>` srcsets to Cloudflare [transform-via-URL](https://developers.cloudflare.com/images/transform-images/transform-via-url/) entries, one per configured width ≤ the original width: `/cdn-cgi/image/width=<w>,quality=<q>,fit=scale-down,format=auto/<src>?v=<contentHash8>` `format=auto` lets Cloudflare negotiate AVIF/WebP per browser; `quality` is the config's `quality.webp` value. Whitespace and commas in `<src>` are percent-encoded so the candidate cannot split, and nothing else is, because an authored `src` may already be encoded. The original `src` is preserved as fallback. The native core is used only for a header-only dimension read (memoized per build); when it cannot read one, the `srcset` is still written and only `width` and `height` are left off.
 - Remote https sources from `images.remoteDomains` hostnames get the same treatment with the full URL as the transform source — every configured width is emitted (dimensions unknown; `fit=scale-down` prevents upscaling) and no `v` hash is appended.
@@ -668,13 +588,11 @@ When `images.service` is `"cloudflare"`, the variant pipeline is skipped entirel
 
 ### 7.7 Build Integration
 
-> **Status: Partial.** Step 2's argument list is stale: `transformImageNodes` (`packages/compiler/src/site/image-transform.ts`) receives the config, the project root, the cache (or `null`), the dimension memo and the extension asset mounts, not an output directory; variants reach `dist/` through the copy after the routes build (§7.2).
-
 In `site-build`, the pipeline integrates at step 6 (per-route compilation):
 
 1. Cache loaded if `projectConfig.images.optimize === true` and `images.service` is `"build"`; in `"cloudflare"` mode a per-build dimension memo is used instead
-2. For each page, `transformImageNodes()` is called with the cache (or memo), config, project root, and output directory
-3. Cache saved to disk after all routes are compiled (`"build"` mode only); stale entries are pruned first when every route compiled without errors
+2. For each page, `transformImageNodes()` is called with the page document, the `images` config, the project root, the variant cache (`null` unless the build service is on), the dimension memo (Cloudflare service) and the extension asset mounts. It runs whatever `optimize` says, because the loading attributes and the focal point do not depend on it
+3. Cache saved to disk after all routes are compiled (`"build"` mode only); stale entries are pruned first when every route compiled without errors, then the variants of every entry this build resolved are copied into `dist/images/_optimized/`
 
 > **Status: Implemented.** `image-optimizer.ts`, `image-transform.ts` and `image-cache.ts` in `packages/compiler/src/site/` provide the pipeline, driven from `site-build`. Encoding is done by the compiler's native core (§14), which a project installs with the compiler and needs nothing else for.
 

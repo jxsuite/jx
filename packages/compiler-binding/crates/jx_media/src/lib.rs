@@ -2,7 +2,7 @@
 //!
 //! One source image becomes a ladder of widths, each encoded to every configured format. The
 //! crate owns decoding, EXIF orientation, colour conversion to sRGB, resizing and encoding; the
-//! caller owns naming (a stem and a content hash) and where the files go.
+//! caller owns naming (a stem and one hash per format) and where the files go.
 //!
 //! Every codec here is Rust. That is a constraint, not an accident: a native addon that links no
 //! C library has nothing to `dlopen`, which is the failure the previous sharp-based pipeline had on
@@ -12,6 +12,7 @@ mod decode;
 mod encode;
 mod resize;
 
+use std::collections::HashMap;
 use std::fmt;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
@@ -42,6 +43,9 @@ pub enum Error {
     /// A format name the pipeline does not encode.
     #[error("unsupported output format \"{0}\" (supported: avif, jpeg, png, webp)")]
     UnsupportedFormat(String),
+    /// A format was asked for and the request names no hash for its files.
+    #[error("no file-name hash was given for format \"{0}\"")]
+    MissingHash(Format),
     /// An encoder refused the pixels.
     #[error("cannot encode {format} at {width}px: {message}")]
     Encode {
@@ -127,8 +131,10 @@ pub struct Request {
     pub out_dir: PathBuf,
     /// The file-name stem every variant starts with.
     pub stem: String,
-    /// A content hash, part of every variant's name.
-    pub hash: String,
+    /// The hash in each variant's name, by the format that was asked for. One per format, because
+    /// it covers what the caller encoded with (the format and its quality) as well as the source,
+    /// so a changed setting is a changed name and never an existing file kept by mistake.
+    pub hashes: HashMap<Format, String>,
     /// The configured width ladder.
     pub widths: Vec<u32>,
     /// The formats to encode, in configuration order.
@@ -185,45 +191,62 @@ pub fn variant_file_name(stem: &str, width: u32, hash: &str, format: Format) -> 
     format!("{stem}-{width}-{hash}.{format}")
 }
 
+/// A format to write, and the requested format whose hash names its files.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Output {
+    written: Format,
+    asked: Format,
+}
+
 /// The formats a source is actually written in.
 ///
 /// JPEG has no alpha channel. Where JPEG was asked for and the source has transparency, PNG is
 /// written in its place, so the universally decodable fallback of a logo or a screenshot with
-/// rounded corners is not a white rectangle. PNG is not written twice when both were asked for.
-fn effective_formats(requested: &[Format], opaque: bool) -> Vec<Format> {
-    let mut formats = Vec::with_capacity(requested.len());
-    for &format in requested {
-        let written = if format == Format::Jpeg && !opaque {
+/// rounded corners is not a white rectangle. That PNG takes the hash JPEG was given. PNG is not
+/// written twice when both were asked for, and then it keeps the hash PNG was given.
+fn effective_formats(requested: &[Format], opaque: bool) -> Vec<Output> {
+    let mut outputs: Vec<Output> = Vec::with_capacity(requested.len());
+    for &asked in requested {
+        let written = if asked == Format::Jpeg && !opaque {
             Format::Png
         } else {
-            format
+            asked
         };
-        if !formats.contains(&written) {
-            formats.push(written);
+        match outputs.iter_mut().find(|output| output.written == written) {
+            Some(existing) => {
+                if asked == written {
+                    existing.asked = asked;
+                }
+            }
+            None => outputs.push(Output { written, asked }),
         }
     }
-    formats
+    outputs
 }
 
-fn plan(request: &Request, widths: &[u32], formats: &[Format]) -> Vec<Variant> {
-    let mut variants = Vec::with_capacity(widths.len() * formats.len());
+fn plan(request: &Request, widths: &[u32], outputs: &[Output]) -> Result<Vec<Variant>> {
+    let mut variants = Vec::with_capacity(widths.len() * outputs.len());
     for &width in widths {
-        for &format in formats {
-            let file_name = variant_file_name(&request.stem, width, &request.hash, format);
+        for output in outputs {
+            let hash = request
+                .hashes
+                .get(&output.asked)
+                .ok_or(Error::MissingHash(output.asked))?;
             variants.push(Variant {
                 width,
-                format,
-                file_name,
+                format: output.written,
+                file_name: variant_file_name(&request.stem, width, hash, output.written),
             });
         }
     }
-    variants
+    Ok(variants)
 }
 
 /// Produce every variant of one source image.
 ///
-/// A variant whose file already exists is not encoded again: its name carries the source's content
-/// hash, so an existing file is the same bytes this call would write. When every variant exists the
+/// A variant whose file already exists is not encoded again: its name carries a hash of the source
+/// and of the settings it was encoded with, so an existing file is the same bytes this call would
+/// write. When every variant exists the
 /// source is not even decoded. Files are written under a temporary name and renamed, so a build
 /// killed mid-encode never leaves a truncated variant for the next one to reuse.
 ///
@@ -232,14 +255,14 @@ fn plan(request: &Request, widths: &[u32], formats: &[Format]) -> Vec<Variant> {
 ///
 /// # Errors
 ///
-/// Returns an [`Error`] when the source cannot be read or decoded, when the output directory cannot
-/// be written, or when an encoder refuses a variant.
+/// Returns an [`Error`] when the source cannot be read or decoded, when a requested format has no
+/// hash, when the output directory cannot be written, or when an encoder refuses a variant.
 pub fn process(request: &Request) -> Result<Manifest> {
     let original = probe(&request.source)?;
     let widths = ladder(original.width, &request.widths);
     let exists = |variant: &Variant| request.out_dir.join(&variant.file_name).exists();
 
-    let requested = plan(request, &widths, &effective_formats(&request.formats, true));
+    let requested = plan(request, &widths, &effective_formats(&request.formats, true))?;
     if requested.iter().all(exists) {
         return Ok(Manifest {
             original,
@@ -249,7 +272,7 @@ pub fn process(request: &Request) -> Result<Manifest> {
 
     let pixels = decode::decode(&request.source)?;
     let formats = effective_formats(&request.formats, pixels.is_opaque());
-    let variants = plan(request, &widths, &formats);
+    let variants = plan(request, &widths, &formats)?;
     std::fs::create_dir_all(&request.out_dir).map_err(|source| Error::Io {
         path: request.out_dir.clone(),
         source,
