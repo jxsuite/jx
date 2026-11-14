@@ -89,6 +89,21 @@ describe("isTemplateString", () => {
 });
 
 describe("isDynamic", () => {
+  test("returns true for a template string text child", () => {
+    expect(isDynamic("Hi ${state.x}")).toBe(true);
+    expect(
+      isDynamic({
+        children: [{ children: ["Hello ${state.name}"], tagName: "p" }],
+        tagName: "div",
+      }),
+    ).toBe(true);
+  });
+
+  test("a plain text child and a whole-children template stay static", () => {
+    expect(isDynamic({ children: ["plain"] })).toBe(false);
+    expect(isDynamic({ children: "${state.items}", tagName: "ul" })).toBe(false);
+  });
+
   test("returns false for null/non-object", () => {
     // Held as members of a JSON object so each reads back as a JsonValue rather than its literal.
     const decoded: JsonObject = { nullNode: null, numberNode: 42 };
