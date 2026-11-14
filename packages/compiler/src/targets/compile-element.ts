@@ -25,7 +25,11 @@ import {
   SLOT_CAPTURE_HELPER,
   SLOT_DISTRIBUTE_HELPER,
   slotHelperSource,
-  collectStyles,
+  assignStyleHandles,
+  authorClassValue,
+  styleChildren,
+  styleHandleOf,
+  writesMergedClass,
   compileExpression,
   compileOperandSource,
   compileStatements,
@@ -68,6 +72,7 @@ import type {
   JsonPrimitive,
   JxDocument,
   JxDocumentValue,
+  JxElement,
   JxExpressionDef,
   JxExpressionNode,
   JxFunctionDef,
@@ -562,13 +567,12 @@ export function emitElementModule(
 
   lines.push("  }", ""); // End constructor
 
-  // Collect CSS rules from children tree (assigns .jx-N classes to defs)
-  const cssRules: string[] = [];
-  if (Array.isArray(doc.children)) {
-    const counter = { n: 0 };
-    for (const child of doc.children) {
-      collectStyles(child, cssRules, doc.$media ?? {}, "", counter, doc.tagName);
-    }
+  /* Give the template's styled nodes the handles the component's sheet selects (spec.md §9.2).
+     The sheet itself is `buildComponentCSS`'s; this walk makes the same traversal over this parse,
+     so the two number the same nodes alike, and it builds no rule. */
+  const handleCounter = { n: 0 };
+  for (const child of styleChildren(doc)) {
+    assignStyleHandles(child, handleCounter, doc.tagName ?? "jx");
   }
 
   // Subtrees a branching construct would otherwise repeat are lifted into `const _cN = html`…``
@@ -1000,8 +1004,14 @@ ${no}
 
   const parts: string[] = [];
 
+  const classAttr = litClassAttr(def, toLitExpr, refToExpr);
+
   if (def.attributes) {
     for (const [key, val] of Object.entries(def.attributes)) {
+      // Written once below, merged with the style handle.
+      if (key === "class" && classAttr !== null) {
+        continue;
+      }
       /* Every branch here answers the same question the runtime's `applyAttributes` answers, and
          must answer it the same way or a prerendered page changes meaning as it hydrates (spec.md
          §8.3). A LITERAL boolean is decided now; a BOUND one cannot be, because its resolved type
@@ -1034,8 +1044,8 @@ ${no}
   if (def.id) {
     parts.push(`id="${toLitExpr(String(def.id))}"`);
   }
-  if (def.className) {
-    parts.push(`class="${toLitExpr(String(def.className))}"`);
+  if (classAttr !== null) {
+    parts.push(classAttr);
   }
 
   for (const [key, val] of Object.entries(def)) {
@@ -1219,8 +1229,13 @@ function emitMappedArray(arrayDef: JxMappedArray, indent: string) {
 
   // The map root gets the same attribute treatment as any other element (emitLitNode above);
   // `${item…}`/`${index…}` templates resolve against the map callback's own parameters.
+  const classAttr = litClassAttr(mapDef, toLitExpr, mapRefToExpr);
   if (mapDef.attributes) {
     for (const [key, val] of Object.entries(mapDef.attributes)) {
+      // Written once below, merged with the style handle.
+      if (key === "class" && classAttr !== null) {
+        continue;
+      }
       if (isRef(val)) {
         parts.push(`${key}="\${${mapRefToExpr(val.$ref)}}"`);
       } else if (isString(val) && val.includes("${")) {
@@ -1234,8 +1249,8 @@ function emitMappedArray(arrayDef: JxMappedArray, indent: string) {
   if (mapDef.id) {
     parts.push(`id="${toLitExpr(String(mapDef.id))}"`);
   }
-  if (mapDef.className) {
-    parts.push(`class="${toLitExpr(String(mapDef.className))}"`);
+  if (classAttr !== null) {
+    parts.push(classAttr);
   }
 
   // IDL properties (`value`, `checked`, `selected`, …) go straight on the element, exactly as they
@@ -1337,6 +1352,37 @@ function emitMappedArray(arrayDef: JxMappedArray, indent: string) {
     : `(item, index) => ${body}`;
 
   return `${indent}\${${itemsExpr}.map(${callback})}`;
+}
+
+/**
+ * An element's one `class` attribute for a lit template: the author's classes, then the style
+ * handle (spec.md §9.2). `null` for an element with neither a handle nor a `className`, whose
+ * `attributes.class` is then emitted by the attributes loop as it always was.
+ *
+ * @param {JxMutableNode | JxElement} def
+ * @param {(template: string) => string} templ - Rewrites a string's `${…}` for the template
+ * @param {(ref: string) => string} ref - Lowers a `$ref` to the expression that reads it
+ * @returns {string | null}
+ */
+function litClassAttr(
+  def: JxMutableNode | JxElement,
+  templ: (template: string) => string,
+  ref: (pointer: string) => string,
+): string | null {
+  if (!writesMergedClass(def)) {
+    return null;
+  }
+  const author = authorClassValue(def);
+  let authorText = "";
+  if (isRef(author)) {
+    authorText = `\${${ref(author.$ref)} ?? ""}`;
+  } else if (isString(author)) {
+    authorText = templ(author);
+  } else if (isNumber(author)) {
+    authorText = String(author);
+  }
+  const handle = styleHandleOf(def) ?? "";
+  return `class="${[authorText, handle].filter((token) => token !== "").join(" ")}"`;
 }
 
 /**

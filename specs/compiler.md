@@ -643,7 +643,7 @@ Until 0.4.4 the definition walk had no registry. A nested instance went through 
 
 ### 8.2 CSS Extraction
 
-> **Status: Partial.** Extraction, the shared `buildStyleRules` nesting and the component-sheet inlining ship (see the marker closing this section). The handle preference does not: `collectStyles` in `packages/compiler/src/shared.ts` prefers `#id`, but assigns a generated `.jx-N` class only when an element has neither `id` nor `className`, and otherwise keys its rules on the author's first class, so an element's rules also style every other element carrying that class; this is the drift `spec.md` §9.2 marks.
+> **Status: Partial.** Extraction, the shared `buildStyleRules` nesting and the component-sheet inlining ship (see the marker closing this section). The handle sentence below no longer holds: `collectStyles` in `packages/compiler/src/shared.ts` has no `#id` preference, and gives every element with a `style` object a generated class of its own, as `spec.md` §9.2's marker records.
 
 All static `style` definitions are extracted into a single `<style>` block in `<head>`.
 

@@ -526,10 +526,13 @@ describe("compileClient — mapped arrays", () => {
       state: { items: [] },
       tagName: "div",
     };
-    const { files } = compileClient(doc, { title: "Test" });
+    const { html, files } = compileClient(doc, { title: "Test" });
     const js = files[0]!.content;
-    expect(js).toContain("color: red");
-    expect(js).toContain("font-weight: bold");
+    // A row's literal declarations are a rule on the template's handle, not an inline copy.
+    expect(html).toContain(".jx-0 { color: red; font-weight: bold }");
+    expect(js).toContain('class="jx-0"');
+    expect(js).not.toContain("color: red");
+    expect(js).not.toContain("font-weight: bold");
   });
 });
 
@@ -828,11 +831,13 @@ describe("compileClient — mapped array advanced features", () => {
       state: { items: [] },
       tagName: "div",
     };
-    const { files } = compileClient(doc, { title: "Test" });
+    const { html, files } = compileClient(doc, { title: "Test" });
     const js = files[0]!.content;
     expect(js).toContain("color:");
     expect(js).toContain("item.color");
-    expect(js).toContain("font-size: 14px");
+    // The literal declaration beside it is a rule in the page sheet.
+    expect(js).not.toContain("font-size: 14px");
+    expect(html).toContain(".jx-0 { font-size: 14px }");
   });
 
   test("event handler with $ref in map template", () => {
@@ -1725,5 +1730,87 @@ describe("compileClient — template text children (compiler.md §2.2)", () => {
     );
     expect(html).not.toContain("jx-text");
     expect(files[0]!.content).not.toContain("createTreeWalker");
+  });
+});
+
+describe("compileClient — style handles (spec.md §9.2)", () => {
+  const list = (map: JsonObject): JxDocument => ({
+    children: [
+      {
+        children: { $prototype: "Array", items: { $ref: "#/state/items" }, map },
+        tagName: "ul",
+      },
+    ],
+    state: { cls: "hot", items: [] },
+    tagName: "div",
+  });
+
+  test("a row's literal declarations are rules, not inline", () => {
+    const { html, files } = compileClient(
+      list({
+        style: { ":hover": { color: "blue" }, color: "red", width: "${$map.item.w}" },
+        tagName: "li",
+      }),
+      {},
+    );
+    expect(html).toContain(".jx-0 { color: red }");
+    expect(html).toContain(".jx-0:hover { color: blue }");
+    const js = files[0]!.content;
+    expect(js).toContain('<li class="jx-0" style="width: ${item.w}">');
+    expect(js).not.toContain("color: red");
+  });
+
+  test("a $ref className in a row template binds", () => {
+    const { files } = compileClient(
+      list({ className: { $ref: "$map/item/cls" }, style: { color: "red" }, tagName: "li" }),
+      {},
+    );
+    expect(files[0]!.content).toContain('class="${item.cls ?? ""} jx-0"');
+  });
+
+  test("a row writes one class attribute: attributes.class, then the handle", () => {
+    const { files } = compileClient(
+      list({
+        attributes: { class: "b", title: "t" },
+        className: "a",
+        style: { color: "red" },
+        tagName: "li",
+      }),
+      {},
+    );
+    const js = files[0]!.content;
+    expect(js).toContain('<li class="b jx-0" title="t">');
+    expect(js.match(/class="/gu)).toHaveLength(1);
+  });
+
+  test("a numeric class and an unstyled row keep their own class", () => {
+    const numbered = compileClient(
+      list({ attributes: { class: 7 }, className: "a", tagName: "li" }),
+      {},
+    );
+    expect(numbered.files[0]!.content).toContain('<li class="7">');
+    const plain = compileClient(list({ attributes: { class: "b" }, tagName: "li" }), {});
+    expect(plain.files[0]!.content).toContain('<li class="b">');
+  });
+
+  test("a bound attributes.class keeps the handle", () => {
+    const { html, files } = compileClient(
+      {
+        children: [
+          { attributes: { class: { $ref: "#/state/cls" } }, style: { color: "red" }, tagName: "p" },
+          { attributes: { class: "is-${state.cls}" }, style: { color: "blue" }, tagName: "p" },
+          // No handle: the binding is the shared ref binding, as it always was.
+          { attributes: { class: { $ref: "#/state/cls" } }, tagName: "p" },
+        ],
+        state: { cls: "hot" },
+        tagName: "div",
+      },
+      {},
+    );
+    const js = files[0]!.content;
+    expect(html).toContain('<p class="hot jx-0" data-bind :attr.class="_t0">');
+    expect(js).toContain('_t0: () => [state.cls, "jx-0"].filter(');
+    expect(js).toContain('_t1: () => [`is-${state.cls}`, "jx-1"].filter(');
+    expect(html).toContain(':attr.class="cls"');
   });
 });

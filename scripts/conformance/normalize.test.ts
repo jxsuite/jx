@@ -40,6 +40,11 @@ describe("normalize", () => {
     );
     expect(normalize('p class="jx-3" id="x"')).toBe('p id="x"');
     expect(normalize('p class="jx-large"')).toBe('p class="jx-large"');
+    // The other two sheets' handles: slotted content, and a component definition's own elements.
+    expect(normalize('span class="note jxs-0"')).toBe('span class="note"');
+    expect(normalize('span class="cat-go shp-category-tile-5"')).toBe('span class="cat-go"');
+    // A one-word name with a number is nobody's handle: a component's tag holds a hyphen.
+    expect(normalize('div class="col-2 h1"')).toBe('div class="col-2 h1"');
   });
 
   test("an island's ordinal is dropped from its tag", () => {

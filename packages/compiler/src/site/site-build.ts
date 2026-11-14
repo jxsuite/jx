@@ -2593,7 +2593,7 @@ interface SlotCssCollector {
 /**
  * Walk the document tree and expand registered custom elements in-place. Applies $props via
  * preRenderComponentHtml, marks static/prerendered. Slot children get their static styles collected
- * into `slotCss` (assigning jxs-N classes) before being serialized to HTML.
+ * into `slotCss` (each styled one given its `jxs-<n>` handle) before being serialized to HTML.
  *
  * @param {JxElement | string | (JxElement | string)[]} node - A nested array (authored JSON can
  *   carry one among children) is walked member by member

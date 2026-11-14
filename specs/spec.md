@@ -934,7 +934,7 @@ An author's own `attributes: { "style": "…" }` is untouched by any of this; it
 
 ### 9.2 Nested CSS Selectors
 
-> **Status: Partial.** Flattening, selector-list distribution, recursion, the declaration-body at-rules and their array form, and `@keyframes` ship in `buildStyleRules` (`packages/runtime/src/css.ts`). Two parts do not: no static build renders a block's `$description` as a comment (the compiler's `pushStyleRules` and `packages/site/src/site-style.ts` emit the rule text only), and the compiler's handle is the author's FIRST class whenever `className` is set (`collectStyles` in `packages/compiler/src/shared.ts`), so an element's rules also style every other element carrying that class; the generated class is `jx-<n>` on pages rather than `.<tagName>-<n>`.
+> **Status: Partial.** Flattening, selector-list distribution, recursion, the declaration-body at-rules and their array form, and `@keyframes` ship in `buildStyleRules` (`packages/runtime/src/css.ts`). Two parts do not: no static build renders a block's `$description` as a comment (the compiler's `pushStyleRules` and `packages/site/src/site-style.ts` emit the rule text only), and the handle paragraph below no longer describes the compiler's: `collectStyles` (`packages/compiler/src/shared.ts`) gives every element with a `style` object a generated class of its own, never an author's `#id` or class, named for the sheet that holds its rules (`jx-<n>` on a page) rather than always `.<tagName>-<n>`.
 
 CSS nesting is supported via special keys. Keys beginning with `:`, `.`, `&`, or `[` are treated as nested selectors:
 
