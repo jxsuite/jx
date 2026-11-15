@@ -2,9 +2,9 @@
 
 ## File-Based Routing, Content Collections, Layouts, and Static Site Generation
 
-**Version:** 0.9.4-draft\
+**Version:** 0.9.10-draft\
 **Status:** Partial\
-**Updated:** 2026-11-14\
+**Updated:** 2026-11-15\
 **License:** MIT
 
 ---
@@ -2440,6 +2440,12 @@ This spec builds on existing Jx primitives wherever possible:
 
 ## Changelog
 
+- **0.9.10-draft** (2026-11-15) — content asset references: an entry may name its collection's asset by published address, which is remapped when the file is on disk (parser.md §9.2).
+- **0.9.9-draft** (2026-11-15) — 8.7: every page import map carries the prefix keys, and the subpath scan covers compiled component and page modules.
+- **0.9.8-draft** (2026-11-15) — §12.4 a page also uses a component when a live component the page loads renders it.
+- **0.9.7-draft** (2026-11-15) — 9.2.7 a component's images are decided on its definition, so its module renders the loading attributes and candidate lists its prerender carries.
+- **0.9.6-draft** (2026-11-15) — A component module's markup URLs and its stylesheet file's url() references are re-rooted on the deployment base path (14.7).
+- **0.9.5-draft** (2026-11-15) — 12.1, 14.2: the build output lists the Custom Elements Manifest a site build writes.
 - **0.9.4-draft** (2026-11-14) — §10.7, §14.1 and §14.2 describe the build output that ships: a page inlines the CSS of every light-DOM component it uses after its own styles, a shadow component links its sheet from inside its declarative shadow root and stands outside the page cascade, and _redirects is written whenever redirects has a rule, under every adapter and with none.
 - **0.9.3-draft** (2026-11-14) — §14.4 names the underscore-prefixed output GitHub Pages would drop that a page needs, the optimized-image directory, instead of an island directory the build never writes; §12.1 no longer lists islands among the sidecar-collection sites.
 - **0.9.2-draft** (2026-11-14) — Image optimization is specified once, in §9.2: variants go through a per-project image cache and only those a build uses reach dist, a variant's name covers its format and quality, only listed raster formats are processed, and Markdown images follow the same src, sizes and srcset rules as nodes.

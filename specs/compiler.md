@@ -2,9 +2,9 @@
 
 ## Static HTML Compiler, Custom Element Emitter, and Island Detector
 
-**Version:** 0.7.12\
+**Version:** 0.8.6\
 **Status:** Implemented\
-**Updated:** 2026-11-14\
+**Updated:** 2026-11-15\
 **License:** MIT
 
 ---
@@ -965,6 +965,16 @@ An earlier revision of this table claimed ~7 kB and ~3 kB (~10 kB total); those 
 
 ## Changelog
 
+- **0.8.6** (2026-11-15) — A form-associated definition compiles to a form-associated class that inlines the runtime's form-association rule (4.10).
+- **0.8.5** (2026-11-15) — The site build passes the project shadow default and each component's stylesheet URL to its module, a shadow component's stylesheet carries the light components it renders, and the CSS extraction section names the shared host translation.
+- **0.8.4** (2026-11-15) — 4.3, 8.1: the element target attaches a definition's root-level handlers to the host from the constructor, lowered as a child's binding is, writes its root attributes in connectedCallback, and the prerender writes them on every expanded instance; a template that hands the scope itself to a helper compiles.
+- **0.8.3** (2026-11-15) — A component stylesheet carries the display: block default for a definition whose base block declares no display, as the interpreter does.
+- **0.8.2** (2026-11-15) — A compiled shadow element links its stylesheet into a root it attaches when compiled with stylesheetHref, and an element pack passes each definition's sibling sheet.
+- **0.8.1** (2026-11-15) — 4.9: compileElementPack compiles a directory of component documents into a distributable pack: a module and a stylesheet per definition, an entry that registers them all, one page stylesheet and a Custom Elements Manifest.
+- **0.8.0** (2026-11-15) — §8.1 a live component prerenders its initial state: a repeater's rows, the initial value of state a handler writes (held only on the page-document scope) and the selected $switch case; a $switch, a chosen tag and a non-literal repeater make a definition live, a component a live one renders is live with it, and an expanded instance's markup is never read as a template. §4.4 states that the prerender is replaced in one synchronous pass, §4.7 writes literal items as JSON, §9.1 prerenders a bound value a handler writes.
+- **0.7.15** (2026-11-15) — The property bridge installs a derived key read-only and never merges it from a property (4.4).
+- **0.7.14** (2026-11-15) — 4.7, 8.1, 11, 12: mapped-array compilation applies filter and sort through an inlined helper and lowers a keyed list to lit repeat behind a coalescing directive; the build leaves a list over runtime-only state for the client, holds state an inline handler writes, and every page import map carries the prefix keys.
+- **0.7.13** (2026-11-15) — Which components ship JavaScript is decided per page: a static component a live one renders stays static on a page that uses it alone.
 - **0.7.12** (2026-11-14) — Cloudflare worker bundles keep bare Node builtins (tls, os, ...) external as node: imports, so packages that import them unprefixed (postgres 4) bundle.
 - **0.7.11** (2026-11-14) — §7 names the code behind each part of the image pipeline and cites site-architecture.md §9.2 for its behaviour; the native core's request takes one name hash per format, and the build copies only the variants it used.
 - **0.7.10** (2026-11-14) — §2, §5.2, §5.3 and §5.6 describe the class document that ships: route 0 is taken on a root whose $prototype is "Class" whatever the file is called, the §5.2 example validates against the class schema and runs once compiled, §5.3 states what route 0 emits for each $defs category, and every module route 0 writes loads, a parameterless setter taking v, a source not named .class.json compiling to .js beside it, and an extends $ref importing its base.
@@ -1044,4 +1054,4 @@ An earlier revision of this table claimed ~7 kB and ~3 kB (~10 kB total); those 
 
 ---
 
-_`@jxsuite/compiler` Specification v0.7.12_
+_`@jxsuite/compiler` Specification v0.8.6_

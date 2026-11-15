@@ -2,9 +2,9 @@
 
 ## JSON Schema 2020-12 Meta-Schema Generator
 
-**Version:** 0.4.13-draft\
+**Version:** 0.4.14-draft\
 **Status:** Partial\
-**Updated:** 2026-11-13\
+**Updated:** 2026-11-15\
 **License:** MIT
 
 ---
@@ -242,6 +242,7 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.4.14-draft** (2026-11-15) — §2 the dynamic-tag model reads one or more sources under one operator, and a whole tag in parentheses as a source.
 - **0.4.13-draft** (2026-11-13) — §2 exports dynamic-tag: a template expression read as a structured tag, or null outside the subset.
 - **0.4.12-draft** (2026-10-27) — §2 inverseOf refuses a non-integer index and a set-key on a non-node; the structural-path helpers move into doc-ops.
 - **0.4.11-draft** (2026-09-29) — Census against the code: §3.2, §3.4 and §3.5 re-marked Partial from Implemented because the project key list, padded language tags, the compiler's redirect table, exponent-form integers and the readers that bypass the parse boundary (Studio, jx validate) lag the text, and §3.1 and §4 marked Partial where the component schema and its generator diverge from it.
@@ -275,4 +276,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_`@jxsuite/schema` Specification v0.4.13-draft_
+_`@jxsuite/schema` Specification v0.4.14-draft_

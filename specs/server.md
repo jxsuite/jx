@@ -2,9 +2,9 @@
 
 ## Development Server with Live Reload, Proxy Resolution, and Studio API
 
-**Version:** 0.4.3-draft\
+**Version:** 0.4.6-draft\
 **Status:** Partial\
-**Updated:** 2026-11-13\
+**Updated:** 2026-11-15\
 **License:** MIT
 
 ---
@@ -381,6 +381,9 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.4.6-draft** (2026-11-15) — §4.1: the AI proxy's base-URL guard is specified in ai.md §4, and the site import's component-naming pass now runs the proxy's policy, its key provenance and that guard.
+- **0.4.5-draft** (2026-11-15) — §4.1 the AI proxy advertises wire versions, reports an upstream 429 as rate-limited, ends a cut-off upstream body truncated, and is held to the gateway conformance kit.
+- **0.4.4-draft** (2026-11-15) — §4.1 the AI proxy accepts chat wire version 2 beside version 1 and names the wire it served in X-Jx-AI-Wire.
 - **0.4.3-draft** (2026-11-13) — §3.4 the live preview origin runs one component or one layout on its own at /**jx_live**/harness/<project path>, composed as a page is, with a component's test props read from a bounded, plain-data props query parameter and unset props named on the page. A retarget is taken as a reload only when path and query both match the tab's address, so changed or cleared test props reach a tab already on that component. Test props are applied only to an address carrying a key the origin mints per instance and adds itself, in a retarget's event or by redirecting the first request for the address its opener asked for; any other address with props renders the declared defaults and says so. The reload stream and the harness refuse a request whose Host is not loopback, so a rebound name cannot read the key.
 - **0.4.2-draft** (2026-11-13) — §5: formatting is one module the endpoint and `jx format` share; a body is indented with two spaces, a template literal's lines are left where they are, and a parse error names its line.
 - **0.4.1-draft** (2026-11-13) — §3.3 and §2: the proxy and jx dev run a document's own server script, bundled from the document and imported once per text; §3.4: Live Preview sends a reader no server module.
@@ -448,4 +451,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_`@jxsuite/server` Specification v0.4.3-draft_
+_`@jxsuite/server` Specification v0.4.6-draft_

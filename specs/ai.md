@@ -2,9 +2,9 @@
 
 ## AI Assistant for Jx Studio
 
-**Version:** 0.1.44\
+**Version:** 0.1.55\
 **Status:** Implemented\
-**Updated:** 2026-11-14\
+**Updated:** 2026-11-15\
 **License:** MIT
 
 ---
@@ -475,6 +475,17 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.1.55** (2026-11-15) — §2 a failed model listing is always shown, with the upstream's reason when it gives one and its status when it does not, and a refused key is worded as an authentication failure.
+- **0.1.54** (2026-11-15) — §3.12 a suspended turn resumes from a checkpoint: the suspend strategy and suspendOn end a turn suspended with a JSON checkpoint, a resume finishes the round it stopped in without running any call twice, and a resume under changed tools, policy or system prompt is refused.
+- **0.1.53** (2026-11-15) — §2 every error frame carries a problem and a code, a body that ends with no terminal marker finishes truncated, tool-call fragments join by slot, and the models probe advertises wire and limits; §2.4 the direct client runs the gateway's normalizer and a conformance kit ships as @jxsuite/ai/testing.
+- **0.1.52** (2026-11-15) — §2.7 wire version 2: the neutral conversation as the chat body, sent only to a backend whose probe advertises it, with stream_start, the X-Jx-AI-Wire header, wire-unsupported and a one-shot downgrade; provider adapters as @jxsuite/ai/providers and the published wire schemas.
+- **0.1.51** (2026-11-15) — §3.13 a persisted conversation: one asynchronous SessionStore contract, a saved window that starts at a person's message, every read migrated to the current shape, a save that reports quota, unavailable or not-in-index, and writes kept in order by one queue.
+- **0.1.50** (2026-11-15) — §3.14 project tools over a ProjectHost: the four file tools are portable entries over a host that says where the files are and what must hold before a write; §3.10 a catalog checks a strict member's arguments against its whole schema with the JSON Schema 2020-12 validator the host supplies, after the registry's own check.
+- **0.1.49** (2026-11-15) — §3.11 Studio confirms what undo cannot take back: a disk write that replaces a file and an extension being enabled are put to the author in the call's chip, with allow, allow for this chat and decline; an approval policy may answer asynchronously.
+- **0.1.48** (2026-11-15) — §2.6 native Anthropic Messages: on wire version 2 the gateway projects the neutral conversation, replays signed thinking in the trailing run whose bindings still hold and retries once with none, with cache breakpoints, context-overflow and a provider adapter; §2.2 the signed half of the history rule; §3.8 the reasoning_block event.
+- **0.1.47** (2026-11-15) — §4: the dev and desktop server judges the provider base URL before any request that carries the key, AI proxy and import naming alike: non-HTTP schemes, all of 169.254.0.0/16 and fe80::/10 and the two metadata addresses outside them in every spelling, including inside an IPv4-mapped, NAT64 or IPv4-compatible IPv6 address, and the metadata.google.internal name are refused, and the proxy follows no upstream redirect; §2 points at §4, and §5's IANA notes describe the guard.
+- **0.1.46** (2026-11-15) — §3: the overview says what the tools cover, that @jxsuite/ai/tools is the generic layer with no concrete tool, that Studio registers the hand tools and applies their edits through its transaction path, and that the list is the two sources §3.6 names.
+- **0.1.45** (2026-11-15) — §3.8 a conversation that has outgrown its model is compacted between turns: keep-tail for an OpenAI-compatible provider and a summary the model writes for Claude, with a fallback to the tail; §2.2 the transcript says what was replaced.
 - **0.1.44** (2026-11-14) — Every section is Implemented: the spec graduates out of draft.
 - **0.1.43-draft** (2026-11-13) — A template over live data is checked by the editing canvas, which runs each such entry once, rather than by Preview.
 - **0.1.42-draft** (2026-11-06) — §3.2 and §3.8: a turn that stops working gets a closing round to reply, the work budget is 30 rounds with a guard against identical rounds, neighbouring read-only calls may run at once, and Studio sheds old tool results to stay inside the window.
@@ -523,4 +534,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_Jx `@jxsuite/ai` Specification v0.1.44_
+_Jx `@jxsuite/ai` Specification v0.1.55_

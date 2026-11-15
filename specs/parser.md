@@ -2,9 +2,9 @@
 
 ## Content Formats and the Reference Format-Extension Classes
 
-**Version:** 0.3.5-draft\
+**Version:** 0.3.6-draft\
 **Status:** Partial\
-**Updated:** 2026-11-06\
+**Updated:** 2026-11-15\
 **License:** MIT
 
 ---
@@ -363,6 +363,7 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.3.6-draft** (2026-11-15) — §9.2 a reference written as the asset's published address, the project url followed by this collection's mount path, is remapped like a relative one when the file is on disk, and left as authored without a warning when it is not.
 - **0.3.5-draft** (2026-11-06) — §9: projectData leaves out entries a type's hold rules match unless its host passes includeHeld.
 - **0.3.4-draft** (2026-11-06) — The Markdown serializer keeps a computed-children template as a directive attribute instead of dropping it on save.
 - **0.3.3-draft** (2026-10-21) — Roundtrip serialization writes an element as markdown only when markdown can say all of it: attributes markdown cannot spell, block-level images and tables GFM cannot read back stay directives, and frontmatter is written unfolded with YAML 1.1 quoting.
@@ -391,4 +392,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_`@jxsuite/parser` Specification v0.3.5-draft_
+_`@jxsuite/parser` Specification v0.3.6-draft_

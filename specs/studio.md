@@ -2,9 +2,9 @@
 
 ## Visual Builder for Jx Documents
 
-**Version:** 0.17.3-draft\
+**Version:** 0.17.9-draft\
 **Status:** Partial\
-**Updated:** 2026-11-14\
+**Updated:** 2026-11-15\
 **License:** MIT
 
 ---
@@ -2660,6 +2660,12 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.17.9-draft** (2026-11-15) — Every canvas mode renders a component in the light DOM, whatever its shadow setting.
+- **0.17.8-draft** (2026-11-15) — §4.5: a $switch case that is another document is fetched relative to the document it is written in; the canvas frame resolved it against its own address.
+- **0.17.7-draft** (2026-11-15) — §4.6 (new): one of Studio's own surfaces draws on the canvas with its surface specimen, a typed fixture scope beside the surface, with variants set by canvas.setSpecimenVariant and listed in §6.2's resolving-with popover; seven surfaces have one and the rest are the section's open item.
+- **0.17.6-draft** (2026-11-15) — §6.9 a dynamic tag reads a chain of sources and a parenthesised tag, the popover lists a chain's sources in order, a URL field is offered no text formula, a generic key is named for its holder and a fifth Bound pill lists the rest; §4.5 a class resolve holds a render 30 seconds at most, a template items says it is no list, and the accepted limits of canvas data and repeaters are recorded.
+- **0.17.5-draft** (2026-11-15) — 6.5: the CSS custom property and CSS part cells of the annotations editor cite the build's manifest export instead of an uncalled Studio generator.
+- **0.17.4-draft** (2026-11-15) — 8.2.6: prop-bound text is editable on the canvas wherever the instance delivers the prop (a top-level key, the props.* shorthand, a reflected attribute, a data-jx-props payload), and the commit writes that source through the writer Component Settings uses instead of refusing the edit; only the drawn value is judged (a string with no binding), the no-op comparison reads the winning source, and an emptied value is kept as an empty string on a route other than $props.
 - **0.17.3-draft** (2026-11-14) — §22.8: connecting a Cloudflare Pages project sets JX_IMAGES_OPTIMIZE=false on its preview environment, so branch previews skip image optimization.
 - **0.17.2-draft** (2026-11-13) — §9.5: the build's responsive copies are named as avif and jpeg, the new defaults.
 - **0.17.1-draft** (2026-11-13) — §4.5: a literal innerHTML of text and bare formatting elements is content a caret may enter, read as the children it spells, and every content write removes the key; any other literal innerHTML or innerText closes its element and a write over it is refused. §4.4: a press or a hover on a formatting mark addresses the block whose text it is part of.
@@ -2932,4 +2938,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_`@jxsuite/studio` Specification v0.17.3-draft_
+_`@jxsuite/studio` Specification v0.17.9-draft_

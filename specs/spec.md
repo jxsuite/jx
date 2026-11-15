@@ -2,9 +2,9 @@
 
 ## Declarative Document Object Model — JSON Edition
 
-**Version:** 0.9.43-draft\
+**Version:** 0.9.54-draft\
 **Status:** Partial\
-**Updated:** 2026-11-14\
+**Updated:** 2026-11-15\
 **License:** MIT
 
 ---
@@ -3173,6 +3173,17 @@ This rewrites the mutating handlers of Appendix A's idiom using `$expression`, l
 
 ## Changelog
 
+- **0.9.54-draft** (2026-11-15) — §16.10 Adopting a Prerendered Instance, Pending: an upgrade replaces the prerendered nodes in one synchronous pass, and what adoption needs is stated. The §15.2 and §10.3 markers say what a component's prerender now writes.
+- **0.9.53-draft** (2026-11-15) — 8.1 the interpreter writes a property's first empty string, so an empty title, lang or dir is an empty attribute in every tier.
+- **0.9.52-draft** (2026-11-15) — 10.1, 10.3, 10.4: compiled targets, the build-time list expansion and a component's prerender apply filter then sort by one stated calling convention, a compiled keyed list reconciles through lit repeat with the interpreter's key rule and microtask coalescing, a $map pointer spelled with a leading #/ resolves in every tier and validates in every position, and a template string as items is refused.
+- **0.9.51-draft** (2026-11-15) — 16.1: a compiled custom element binds its definition's root-level event handlers on the host, once per instance, and writes its root attributes there, as the interpreter does; a built page carries those attributes in the prerendered host.
+- **0.9.50-draft** (2026-11-15) — 16.8: a compiled element pack writes the same manifest beside its modules.
+- **0.9.49-draft** (2026-11-15) — A compiled element that attaches its own shadow root links its stylesheet into it (16.6).
+- **0.9.48-draft** (2026-11-15) — The interpreter renders a component into a shadow root when its own shadow setting or the project default asks; a key compounding onto a shadow host folds into the :host() pseudo-class; one runtime function translates host keys for both tiers; a color-scheme block inside a root follows the OS preference; a shadow component's stylesheet carries the light components it renders; 16.6 is implemented.
+- **0.9.47-draft** (2026-11-15) — A derived state key's accessor on the element has a getter and no setter in both tiers (16.2).
+- **0.9.46-draft** (2026-11-15) — 16.8: a site build writes one Custom Elements Manifest describing every compiled custom element, mapped from its observed attributes, public state, functions, events, slots, custom properties and shadow parts; 16.5 states that an observed attribute writes the entry its camel-cased name spells.
+- **0.9.45-draft** (2026-11-15) — A definition may declare formAssociated, and formValue: the element binds its value, checked, disabled and required state to ElementInternals in both tiers (16.11).
+- **0.9.44-draft** (2026-11-15) — Built HTML writes each element property HTML reflects as its content attribute and a textarea value as its text, and name is an element property outside a function definition.
 - **0.9.43-draft** (2026-11-14) — §9.2 and §16.6: a static build writes each style block's description as a comment above its rule, keyframes blocks included, and the compiler's style handle is a generated class beside the author's own, never an author's class or id.
 - **0.9.42-draft** (2026-11-14) — Compiled elements run every lifecycle hook; onMount runs once per instance in both tiers and a mounted document's onMount takes the scope alone; a pure type definition has no declared default and an observed attribute never writes a computed entry; a built site honours observed attributes in the prerender and ships the module of a definition that declares any.
 - **0.9.41-draft** (2026-11-14) — §9.2's status marker records that the compiler gives every styled element a generated class of its own, never an author's id or class.
@@ -3327,4 +3338,4 @@ This rewrites the mutating handlers of Appendix A's idiom using `$expression`, l
 
 ---
 
-_Jx Specification v0.9.43-draft — subject to revision_
+_Jx Specification v0.9.54-draft — subject to revision_

@@ -2,9 +2,9 @@
 
 ## Interface Elements Authored as Jx Documents
 
-**Version:** 0.1.70-draft\
+**Version:** 0.1.76-draft\
 **Status:** Partial\
-**Updated:** 2026-11-13\
+**Updated:** 2026-11-15\
 **License:** MIT\
 **Applies to:** `packages/ui/`, `packages/studio/src/surfaces/`
 
@@ -481,6 +481,12 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.1.76-draft** (2026-11-15) — 9: the published kit carries an optional compiled distribution in dist/, built by compileElementPack, beside the interpreted registration that stays the default.
+- **0.1.75-draft** (2026-11-15) — 5.4 jx-table, jx-tr, jx-th and jx-td ship in the CSS table shape with table, row, header and cell roles, a row-header scope and row counts for a windowed table; Studio's Packages and Library tables are drawn with them and the Languages grid stays a native table on a measurement; 5.1 records that jx-menu-group is not built ahead of a consumer (3.5, 5, 10, 11).
+- **0.1.74-draft** (2026-11-15) — The seven value-carrying controls are form-associated: a reset, a disabled fieldset, a missing-value validity and a label reach them (3.2).
+- **0.1.73-draft** (2026-11-15) — 5.5 a jx-action-group or jx-tabs inside a jx-toolbar is one item: each declares the property-only tabindex and forwards it to the child holding its caret, and a held composite's arrows walk its children without wrapping or choosing and pass to the row at its ends, which is the APG rule for a radio group in a toolbar (5.4, 5.6, 7).
+- **0.1.72-draft** (2026-11-15) — §10: for a surface specimen's render the canvas frame defines the kit from the bundle through KIT_DOCUMENT_LOADERS, one chunk per document on first use, the stated exception to drawing a project's elements from its own files.
+- **0.1.71-draft** (2026-11-15) — 5.4 Studio's Library table writes the table roles and whole-set counts on its own boxes instead of using jx-table, on a measurement; a windowed list that redraws its rows does the same.
 - **0.1.70-draft** (2026-11-13) — §10: bound props render live on the editing canvas, a repeater row's included, in Edit and Design alike.
 - **0.1.69-draft** (2026-11-13) — Form controls forward required/readonly/value/name/describedby and draw :user-invalid; jx-checkbox and jx-number-field take invalid; a jx-field label focuses its control; jx-select rows are label-only where the browser draws the list; jx-textfield and Studio ignore Enter and Escape during an input-method composition; shadow tokens follow the scheme in force and hosts declare a color-scheme meta (§4.2, §5.1, §5.3, §10).
 - **0.1.68-draft** (2026-11-13) — jx-combobox ignores keys pressed during an input-method composition, the highlighted jx-option keeps a system highlight under forced colours, and jx-dialog contains its scroll (§4.4, §5.2, §5.3).
@@ -555,4 +561,4 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ---
 
-_Jx UI Kit Specification v0.1.70-draft_
+_Jx UI Kit Specification v0.1.76-draft_
