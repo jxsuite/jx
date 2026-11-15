@@ -5,19 +5,19 @@
 
 ### Features
 
-* **compiler:** the image pipeline is stated once, and its cache, formats and Markdown images match ([d9781ff](https://github.com/jxsuite/jx/commit/d9781ffffd91b972283e368e4aa0c19c69293546))
+* **compiler:** the image pipeline is stated once, and its cache, formats and Markdown images match ([9e1d1e8](https://github.com/jxsuite/jx/commit/9e1d1e8acc9f6f90091fcfdab8013d97f64f8665))
 
 
 ### Bug Fixes
 
-* **compiler-binding:** the musl and Windows arm64 addons build, and a pull request proves all eight ([3aa091e](https://github.com/jxsuite/jx/commit/3aa091eeecff51640ba353f07ff080271931a457))
+* **compiler-binding:** the musl and Windows arm64 addons build, and a pull request proves all eight ([b6c36ae](https://github.com/jxsuite/jx/commit/b6c36ae6544accc3044449a05ce3ee4b1d954109))
 
 ## [0.2.1](https://github.com/jxsuite/jx/compare/compiler-binding-v0.2.0...compiler-binding-v0.2.1) (2026-11-14)
 
 
 ### Bug Fixes
 
-* **compiler-binding:** the musl and Windows arm64 addons build, and a pull request proves all eight ([3aa091e](https://github.com/jxsuite/jx/commit/3aa091eeecff51640ba353f07ff080271931a457))
+* **compiler-binding:** the musl and Windows arm64 addons build, and a pull request proves all eight ([b6c36ae](https://github.com/jxsuite/jx/commit/b6c36ae6544accc3044449a05ce3ee4b1d954109))
 
 ## [0.2.0](https://github.com/jxsuite/jx/compare/compiler-binding-v0.1.0...compiler-binding-v0.2.0) (2026-11-13)
 
@@ -28,9 +28,9 @@
 
 ### Features
 
-* **compiler:** images are encoded by the compiler's own Rust core ([fef06a5](https://github.com/jxsuite/jx/commit/fef06a523d0e671fc191a04e50df82a174126b6e))
+* **compiler:** images are encoded by the compiler's own Rust core ([8e929a7](https://github.com/jxsuite/jx/commit/8e929a7520b95fc661e55f64c5b6f7ce3fd333e4))
 
 
 ### Bug Fixes
 
-* **compiler-binding:** the loader finds a checkout's addon from the compiler's CLI bundle ([d72cd03](https://github.com/jxsuite/jx/commit/d72cd0388598a966dd60fe9e5b751f3ada849c94))
+* **compiler-binding:** the loader finds a checkout's addon from the compiler's CLI bundle ([c0dcf74](https://github.com/jxsuite/jx/commit/c0dcf744f58697ac962bcef73cb836ef046190ea))

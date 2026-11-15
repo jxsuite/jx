@@ -27,7 +27,7 @@ This plan claims nothing. It enables `plan:schema/generator-inventory`, which ow
 
 > `ExternalClassDef` declares none of Request `urlParams`, FormData `fields` or Blob `parts` and `type`, and a computed `state` entry is admitted by `StateEntry`'s plain string branch, not a pattern match.
 
-§3.1's Built-in Prototypes list (lines 80 and 86) promises `FormData` "default fields" and `Blob` "parts, type", and the runtime reads exactly those. Request `urlParams` is not part of this plan: `plan:spec/request-url-params` owns it (the runtime, `emitRequestFetch` and the schema declaration together), because nothing reads it yet. Re-verified against `84735a9f` on 2026-09-27.
+§3.1's Built-in Prototypes list (lines 80 and 86) promises `FormData` "default fields" and `Blob` "parts, type", and the runtime reads exactly those. Request `urlParams` is not part of this plan: `plan:spec/request-url-params` owns it (the runtime, `emitRequestFetch` and the schema declaration together), because nothing reads it yet. Re-verified against `d4cecc34` on 2026-09-27.
 
 **What exists**
 

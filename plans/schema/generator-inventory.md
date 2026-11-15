@@ -22,7 +22,7 @@ size: S
 
 > **Status: Partial.** `computeWebData` (`packages/schema/src/schema.ts`) extracts the non-obsolete tag names, the CSSOM camelCase names and the `EventHandler` names, but no per-element property set, so step 2 is half done. `runSchemaCli` composes and writes seven artifacts, not the three steps 5 and 6 name: `extension-manifest.schema.json` and `schemas/project.core.schema.json`, `project.fields.schema.json` and `document.paths.schema.json` as well.
 
-Both sections were unmarked before the census. One plan owns both because one decision (is a DOM property set derived from `@webref/idl`?) is written in three places: §3.1 ("All standard HTML DOM properties derived from `@webref/idl`"), §4 step 2 ("their valid properties") and §7's WHATWG HTML note ("the `tagName` enumeration, the DOM property set"). The rest of each section is the same inventory pass over the same generator. Re-verified against `84735a9f` on 2026-09-27.
+Both sections were unmarked before the census. One plan owns both because one decision (is a DOM property set derived from `@webref/idl`?) is written in three places: §3.1 ("All standard HTML DOM properties derived from `@webref/idl`"), §4 step 2 ("their valid properties") and §7's WHATWG HTML note ("the `tagName` enumeration, the DOM property set"). The rest of each section is the same inventory pass over the same generator. Re-verified against `d4cecc34` on 2026-09-27.
 
 **What ships** (all in `packages/schema/`)
 

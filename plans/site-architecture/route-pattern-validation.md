@@ -18,7 +18,7 @@ size: S
 
 > **Status: Partial.** File-based routing ships (`discoverPages` in `packages/compiler/src/site/pages-discovery.ts`, `fileToRoute` and `matchRoute` in `packages/site/src/routes.ts`). The standards note's SHOULD is unmet: no build step constructs a `URLPattern` from a route pattern, and `routes.ts` matches by its own segment comparison.
 
-The standards note under it says every pattern in the spec conforms to WHATWG URLPattern and that "Compilers SHOULD validate patterns using `new URLPattern({ pathname: pattern })` at build time." The section was unmarked before the census. Re-verified against `84735a9f` on 2026-09-27 with `bun -e` probes.
+The standards note under it says every pattern in the spec conforms to WHATWG URLPattern and that "Compilers SHOULD validate patterns using `new URLPattern({ pathname: pattern })` at build time." The section was unmarked before the census. Re-verified against `d4cecc34` on 2026-09-27 with `bun -e` probes.
 
 **What exists**
 

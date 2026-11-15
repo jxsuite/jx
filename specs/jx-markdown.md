@@ -452,11 +452,11 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 - **0.1.10-draft** (2026-08-31) — popover-open, open and modal are recognized pseudo-classes; backdrop is a pseudo-element taking two colons.
 - **0.1.9-draft** (2026-08-27) — 12.8: roundtrip serialization is lossless where expressible, not total.
 - **0.1.8-draft** (2026-08-15) — Number the sections so they are addressable, and add §13 Standards Alignment.
-- **0.1.7-draft** (2026-07-22) — Proper spec versioning (`fb0f3ec7`).
-- **0.1.6-draft** (2026-07-22) — Machine-readable spec status vocabulary + generated status page (`79daba23`).
-- **0.1.5-draft** (2026-07-17) — Build-time syntax highlighting for markdown code fences (`b2e7a561`).
-- **0.1.4-draft** (2026-06-15) — Arrays as pseudo-element (`0b8b3070`).
-- **0.1.3-draft** (2026-06-10) — Consolidate markdown and csv handling to the parser package (`8b1ba6da`).
-- **0.1.2-draft** (2026-05-25) — Element annotations (title/description) (`c9137e50`).
-- **0.1.1-draft** (2026-05-20) — Run formatter (`8ba47930`).
-- **0.1.0-draft** (2026-05-11) — Jx markdown (`7b102340`).
+- **0.1.7-draft** (2026-07-22) — Proper spec versioning (`05c12d47`).
+- **0.1.6-draft** (2026-07-22) — Machine-readable spec status vocabulary + generated status page (`dd415a70`).
+- **0.1.5-draft** (2026-07-17) — Build-time syntax highlighting for markdown code fences (`b9298f5b`).
+- **0.1.4-draft** (2026-06-15) — Arrays as pseudo-element (`32aad304`).
+- **0.1.3-draft** (2026-06-10) — Consolidate markdown and csv handling to the parser package (`66ea8c35`).
+- **0.1.2-draft** (2026-05-25) — Element annotations (title/description) (`a189b13e`).
+- **0.1.1-draft** (2026-05-20) — Run formatter (`bfb5b932`).
+- **0.1.0-draft** (2026-05-11) — Jx markdown (`9412a905`).

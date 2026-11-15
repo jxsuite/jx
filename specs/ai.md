@@ -518,8 +518,8 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 - **0.1.4-draft** (2026-08-12) — The assistant's six capabilities are command records, gated on ai.configured and ai.streaming.
 - **0.1.3-draft** (2026-08-04) — §3.2 the turn is accountable (per-write disk marking, Restore to here, chip outcomes, partial success) and §3.3 the batch follows the document, not the tab.
 - **0.1.2-draft** (2026-07-25) — Schema gate (§3.1): tool-level validation against the active project's entry documents, before-write for disk writes and after-apply on canvas, project.json included.
-- **0.1.1-draft** (2026-07-22) — Proper spec versioning (`fb0f3ec7`).
-- **0.1.0-draft** (2026-07-22) — Reconcile spec with shipped behavior; document the eval surface (`c8d1d580`).
+- **0.1.1-draft** (2026-07-22) — Proper spec versioning (`05c12d47`).
+- **0.1.0-draft** (2026-07-22) — Reconcile spec with shipped behavior; document the eval surface (`7a581de7`).
 
 ---
 

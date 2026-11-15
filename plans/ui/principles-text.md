@@ -20,7 +20,7 @@ size: S
 
 > **Status: Partial.** What holds: principle 1 up to its last clause, … principle 4 on the kit's side, … while Studio's side of it is studio-ui-guidelines.md §12's own open items; … What is short is text the code contradicts in three places. Principle 1's last clause, "a surface carries no markup of its own beyond the kit's", does not hold, and no gate looks at it: … Principle 2's cascade: only the THEME sheet is layered, while an element's own rules are emitted unlayered as `[data-jx="…"]` at (0,1,0) by `packages/runtime/src/runtime.ts` and adopted after every linked sheet, so a host rule wins by being heavier or adopted later and never by layer (…). And principle 2's id references: the kit writes no `anchor-name` anywhere, because every panel is placed against its implicit anchor (§6).
 
-Disposition `reconcile`. In all three places the code already does what the rest of the spec describes. Re-verified against `ffe45081` on 2026-09-27.
+Disposition `reconcile`. In all three places the code already does what the rest of the spec describes. Re-verified against `bd39f3c8` on 2026-09-27.
 
 **Principle 1** (line 25): "a surface carries no markup of its own beyond the kit's".
 

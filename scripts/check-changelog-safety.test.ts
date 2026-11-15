@@ -93,22 +93,22 @@ describe("parseLog", () => {
 
 describe("findUnsafeCommits and report", () => {
   const commits = [
-    { sha: "14f920de7d5a", message: "feat(compiler): responsive images — <picture> per format\n" },
-    { sha: "c4a614dae5e1", message: "fix: defects surfaced by fact-checking the READMEs\n" },
+    { sha: "c55b27ad51f0", message: "feat(compiler): responsive images — <picture> per format\n" },
+    { sha: "1d3a12505135", message: "fix: defects surfaced by fact-checking the READMEs\n" },
   ];
 
   test("returns only the offenders, with their subject", () => {
     const unsafe = findUnsafeCommits(commits);
-    expect(unsafe.map((c) => c.sha)).toEqual(["14f920de7d5a"]);
+    expect(unsafe.map((c) => c.sha)).toEqual(["c55b27ad51f0"]);
     expect(unsafe[0]!.subject).toBe("feat(compiler): responsive images — <picture> per format");
   });
 
   test("the report names the sha, the subject and the tag", () => {
     const text = report(findUnsafeCommits(commits));
-    expect(text).toContain("14f920de");
+    expect(text).toContain("c55b27ad");
     expect(text).toContain("responsive images");
     expect(text).toContain("<picture>");
-    expect(text).not.toContain("c4a614da");
+    expect(text).not.toContain("1d3a1250");
   });
 
   test("nothing to report when every commit is clean", () => {

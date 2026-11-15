@@ -94,10 +94,10 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 - **0.1.5-draft** (2026-09-29) — Census against the code: §2, §4 and §5 gained Partial markers for to-one includes onto integer-id tables, includes on the node path, table-to-content includes, foreign-key constraints, the content-to-table warning, reference value and write-time existence checks, and the Studio pickers' content-only, to-one scope.
 - **0.1.4-draft** (2026-08-15) — Add §6 Standards Alignment: JSON Schema 2020-12 for cardinality, and the JSON Pointer shape the reference form borrows.
-- **0.1.3-draft** (2026-07-22) — Proper spec versioning (`fb0f3ec7`).
-- **0.1.2-draft** (2026-07-22) — Machine-readable spec status vocabulary + generated status page (`79daba23`).
-- **0.1.1-draft** (2026-07-08) — Shipped schema fragments + per-project schema emitters (`9e4a8936`).
-- **0.1.0-draft** (2026-07-08) — Extensions v2 framework + docs (`3fb8795f`).
+- **0.1.3-draft** (2026-07-22) — Proper spec versioning (`05c12d47`).
+- **0.1.2-draft** (2026-07-22) — Machine-readable spec status vocabulary + generated status page (`dd415a70`).
+- **0.1.1-draft** (2026-07-08) — Shipped schema fragments + per-project schema emitters (`2d9d790d`).
+- **0.1.0-draft** (2026-07-08) — Extensions v2 framework + docs (`9662bbf0`).
 
 ---
 

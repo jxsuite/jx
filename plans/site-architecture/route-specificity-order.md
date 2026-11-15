@@ -18,7 +18,7 @@ size: S
 
 > **Status: Partial.** Rules 1, 2 and 4 ship (`compareRoutes` in `packages/site/src/routes.ts`, the `_` exclusion in `packages/compiler/src/site/pages-discovery.ts`). Rule 3 holds only against a catch-all: two dynamic routes with no catch-all are ordered alphabetically, so `/:category/:id` sorts ahead of `/blog/:slug` and `matchRoute` answers `/blog/x` with it.
 
-The section was unmarked before the census. Re-verified against `84735a9f` on 2026-09-27 with a `bun -e` probe.
+The section was unmarked before the census. Re-verified against `d4cecc34` on 2026-09-27 with a `bun -e` probe.
 
 **What exists**
 

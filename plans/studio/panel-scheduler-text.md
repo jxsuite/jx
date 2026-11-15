@@ -17,7 +17,7 @@ size: S
 
 ## Context
 
-Two sections describe one deleted module, `packages/studio/src/panels/panel-scheduler.ts` (removed in d257789a with the last lit docks), so one plan holds both: each rewrite is a statement about the same removal, and they must agree.
+Two sections describe one deleted module, `packages/studio/src/panels/panel-scheduler.ts` (removed in 7f36eac8 with the last lit docks), so one plan holds both: each rewrite is a statement about the same removal, and they must agree.
 
 `specs/studio.md` §13.5, line 1426 (unmarked before the census):
 

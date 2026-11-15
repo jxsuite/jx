@@ -81,7 +81,7 @@ const WORKER_FILES = new Map([
  * the tree at. The only invariant is the bundle's own location.
  *
  * **But `import.meta.url` is not that location, and this function used to think it was.** It is
- * THIS MODULE's url, and since the code-split (78d85ba2) this module is emitted into
+ * THIS MODULE's url, and since the code-split (369e7028) this module is emitted into
  * `dist/chunks/monaco-setup-<hash>.js` — so the expression resolved to `chunks/workers/<name>`, a
  * directory that has never existed in any distribution. Only the two entries have a contractual
  * emitted path (studio.md §11.1), which is exactly what `services/bundle-base` records.

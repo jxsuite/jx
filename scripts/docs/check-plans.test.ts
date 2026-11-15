@@ -643,7 +643,7 @@ describe("citations", () => {
     }
     // Naming a deleted document as history cites nothing.
     expectNoViolation(
-      { mentions: [mention("// UX-REDESIGN-PLAN.md was deleted in 7670f37e")] },
+      { mentions: [mention("// UX-REDESIGN-PLAN.md was deleted in c6f0e35f")] },
       "citation-outside-plans",
     );
     expectNoViolation({ mentions: [mention(`// ${sign}5 of the spec`)] }, "citation-outside-plans");

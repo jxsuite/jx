@@ -375,17 +375,17 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 - **0.2.6-draft** (2026-08-15) — Add §9.3 date coercion: schema-declared date fields normalize to RFC 3339, ambiguous values are refused rather than guessed.
 - **0.2.5-draft** (2026-08-15) — Add §10 Standards Alignment; §3 marked Partial — heading slugs and word counts are correct only for Latin script.
 - **0.2.4-draft** (2026-07-23) — Document the Content project-section class: asset mounts and content-relative reference rewriting (§9).
-- **0.2.3-draft** (2026-07-22) — Proper spec versioning (`fb0f3ec7`).
-- **0.2.2-draft** (2026-07-22) — Machine-readable spec status vocabulary + generated status page (`79daba23`).
-- **0.2.1-draft** (2026-07-17) — Sidecar bundling, extension emit capability, heading anchors (`07e28bc3`).
-- **0.2.0-draft** (2026-06-10) — Consolidate markdown and csv handling to the parser package (`8b1ba6da`).
-- **0.1.6-draft** (2026-05-20) — Run formatter (`8ba47930`).
-- **0.1.5-draft** (2026-05-08) — Pass markdown attributes as properties (`407b70fc`).
-- **0.1.4-draft** (2026-04-23) — Rebrand to jxsuite (`2897a4e8`).
-- **0.1.3-draft** (2026-04-22) — Consolidate project config schema and rename as such (`e3523dbf`).
-- **0.1.2-draft** (2026-04-16) — Landing site + working exports + release-it + linting (`a8409b5f`).
-- **0.1.1-draft** (2026-04-15) — Rebrand to Jx / Jx Platform (`abc63f2d`).
-- **0.1.0-draft** (2026-04-10) — Consolidate specs (`80ca313f`).
+- **0.2.3-draft** (2026-07-22) — Proper spec versioning (`05c12d47`).
+- **0.2.2-draft** (2026-07-22) — Machine-readable spec status vocabulary + generated status page (`dd415a70`).
+- **0.2.1-draft** (2026-07-17) — Sidecar bundling, extension emit capability, heading anchors (`a3603333`).
+- **0.2.0-draft** (2026-06-10) — Consolidate markdown and csv handling to the parser package (`66ea8c35`).
+- **0.1.6-draft** (2026-05-20) — Run formatter (`bfb5b932`).
+- **0.1.5-draft** (2026-05-08) — Pass markdown attributes as properties (`13a060cb`).
+- **0.1.4-draft** (2026-04-23) — Rebrand to jxsuite (`39a3fffe`).
+- **0.1.3-draft** (2026-04-22) — Consolidate project config schema and rename as such (`de9d0638`).
+- **0.1.2-draft** (2026-04-16) — Landing site + working exports + release-it + linting (`b3861f9e`).
+- **0.1.1-draft** (2026-04-15) — Rebrand to Jx / Jx Platform (`55a35cfd`).
+- **0.1.0-draft** (2026-04-10) — Consolidate specs (`72fe8c92`).
 
 ---
 

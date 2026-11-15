@@ -5,7 +5,7 @@
  * two ENTRIES are guaranteed to be emitted at `dist/<name>.js` (studio.md §11.1 — four consumers
  * address those paths literally, so they are never hashed). Every other module is subject to
  * `splitting: true` and may be hoisted into a content-hashed chunk under `dist/chunks/` — and
- * `services/monaco-setup` was, by the code-split in 78d85ba2. Its `new URL("workers/…",
+ * `services/monaco-setup` was, by the code-split in 369e7028. Its `new URL("workers/…",
  * import.meta.url)` therefore resolved against `dist/chunks/`, while all three distribution paths
  * stage the workers beside the ENTRY. Verified in the built output: the string `workers/` appears
  * in `dist/chunks/monaco-setup-<hash>.js` and in neither `dist/studio.js` nor

@@ -86,7 +86,7 @@
 
 ### Features
 
-* **studio:** Project Settings is a workspace, not a dialog ([#528](https://github.com/jxsuite/jx/issues/528)) ([9d40b21](https://github.com/jxsuite/jx/commit/9d40b21b6e7624eb7df2fdbf547caea256d667b9))
+* **studio:** Project Settings is a workspace, not a dialog ([#528](https://github.com/jxsuite/jx/issues/528)) ([e8ca05d](https://github.com/jxsuite/jx/commit/e8ca05d55619c56d3779a975d135c835872af196))
 
 ## [0.4.4](https://github.com/jxsuite/jx/compare/feed-v0.4.3...feed-v0.4.4) (2026-10-29)
 
@@ -120,7 +120,7 @@
 
 ### Bug Fixes
 
-* **compiler:** load extension implementations under Node, so jx build runs without bun ([#432](https://github.com/jxsuite/jx/issues/432)) ([ca21789](https://github.com/jxsuite/jx/commit/ca21789b432ea4ee556f89838f2837a8ef4d02f3))
+* **compiler:** load extension implementations under Node, so jx build runs without bun ([#432](https://github.com/jxsuite/jx/issues/432)) ([c223ad9](https://github.com/jxsuite/jx/commit/c223ad95f9b54ce0b0da3cc79d494c0fe6d9fdb0))
 
 ## [0.4.0](https://github.com/jxsuite/jx/compare/feed-v0.3.7...feed-v0.4.0) (2026-10-06)
 
@@ -131,7 +131,7 @@
 
 ### Features
 
-* **parser:** support an Obsidian vault as a content collection ([#426](https://github.com/jxsuite/jx/issues/426)) ([6e720c6](https://github.com/jxsuite/jx/commit/6e720c6ec9b3540721c4453d0c02b11414f9efce))
+* **parser:** support an Obsidian vault as a content collection ([#426](https://github.com/jxsuite/jx/issues/426)) ([6e2ca4a](https://github.com/jxsuite/jx/commit/6e2ca4a08d6c0277e09a80e5524a81c4a6c9ee74))
 
 
 ### Dependencies
@@ -212,13 +212,13 @@
 
 ### Features
 
-* **feed:** drop the inert contentMode "none" and correct the feeds page ([52b6d7a](https://github.com/jxsuite/jx/commit/52b6d7a56155e9d78b4ef8155f76b0b6e7c80d04))
+* **feed:** drop the inert contentMode "none" and correct the feeds page ([e26afa5](https://github.com/jxsuite/jx/commit/e26afa56b0c8ced3d537aa8624c8e4429653b49e))
 
 
 ### Bug Fixes
 
-* defects surfaced by fact-checking the new package READMEs ([c4a614d](https://github.com/jxsuite/jx/commit/c4a614dae5e199d49384f998a0b937354f9de882))
-* **feed:** name the project fragment $id to the shared ext/&lt;name&gt;/&lt;kind&gt;/v&lt;n&gt; shape ([1c16257](https://github.com/jxsuite/jx/commit/1c16257e669e81dbc264ebe8b5432dcb8a4e526a))
+* defects surfaced by fact-checking the new package READMEs ([1d3a125](https://github.com/jxsuite/jx/commit/1d3a125051350ee10de2906f6dede52509c8bbe3))
+* **feed:** name the project fragment $id to the shared ext/&lt;name&gt;/&lt;kind&gt;/v&lt;n&gt; shape ([2a03646](https://github.com/jxsuite/jx/commit/2a03646f96756eb5e27d62435791ebdb1f6f7f09))
 
 
 ### Dependencies
@@ -232,14 +232,14 @@
 
 ### Features
 
-* **feed:** Atom and JSON Feed from content collections ([6269bce](https://github.com/jxsuite/jx/commit/6269bced4f79ca5bdf71ce97d4a404bfdd8523cc))
-* **i18n:** a collection is localized end to end, and a starter proves it ([2230a01](https://github.com/jxsuite/jx/commit/2230a011b28743988725d061b7086cc02038cfb8))
-* **i18n:** multilingual sites, end to end — framework, Studio, extensions and a starter ([692e50f](https://github.com/jxsuite/jx/commit/692e50f9d7132daf71a63c950fd740b103766cb0))
+* **feed:** Atom and JSON Feed from content collections ([345c10c](https://github.com/jxsuite/jx/commit/345c10cb9cf83cef2012e92642dde20b0ee60d10))
+* **i18n:** a collection is localized end to end, and a starter proves it ([22661a6](https://github.com/jxsuite/jx/commit/22661a6845f211362280bba71b3cee0bb5d7f809))
+* **i18n:** multilingual sites, end to end — framework, Studio, extensions and a starter ([1a4cbbc](https://github.com/jxsuite/jx/commit/1a4cbbc45be89a4a998e2fdf9b244e2979e538ba))
 
 
 ### Bug Fixes
 
-* **parser:** localized content never reached its own locale's asset mount ([179311b](https://github.com/jxsuite/jx/commit/179311b3f56d001eea37c092d73956c20056c55d))
+* **parser:** localized content never reached its own locale's asset mount ([ff15172](https://github.com/jxsuite/jx/commit/ff1517233e4d5b685009e4f47b8bded295c9a186))
 
 
 ### Dependencies

@@ -22,7 +22,7 @@ size: S
 
 Before the census the section led with `Implemented`. Both gaps have one cause, `loadContentType` running its post-load pass on one of its three branches, and both close by making that pass common. Disposition `implement`: §4 already relies on "handled once for every format by the content loader", and §9.3's own "Why UTC" paragraph is the mis-sort the JSON branch still ships.
 
-**What exists** (verified at b900b326 with a `bun` probe through `loadContentSection`)
+**What exists** (verified at 31ae328e with a `bun` probe through `loadContentSection`)
 
 - `loadContentType` in `extensions/parser/src/content-loader.ts` (~494) has three branches. Remote (~531): a `remote: true` class's `load(source)`, then `validateEntries`. Native JSON (~562): `discoverJSONFiles`, `loadJSONEntries(filePath)` per file, `rewriteEntryAssets`, then `validateEntries`. Format class (~578): `discover` (or the resolved source), `load(filePath)` per file, `rewriteEntryAssets`, then `coerceEntryDates` (warnings to `console.warn`) and `validateEntries` (~614–623). The comment there already names the loader as "the one point in the pipeline that holds both the entries and the schema".
 - Probe: a JSON array entry with `published: "2025-03-04T01:00:00+02:00"` under a `date-time` schema comes back exactly as authored with no `_meta` and no warning; the same value in a local CSV row is normalized to `2025-03-03T23:00:00Z` with `_meta.rawDates`, and still no `_meta.mtime`.

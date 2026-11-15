@@ -66,8 +66,8 @@
 
 ### Features
 
-* erase TypeScript from function bodies as each document is read ([#576](https://github.com/jxsuite/jx/issues/576)) ([d7b013c](https://github.com/jxsuite/jx/commit/d7b013c334a5b06d0f31648375443092a43e4af8))
-* provision every new project with project.jxn ([#578](https://github.com/jxsuite/jx/issues/578)) ([77c8093](https://github.com/jxsuite/jx/commit/77c8093f81e468679bd8c4cf0b1c3451e261a8c2))
+* erase TypeScript from function bodies as each document is read ([#576](https://github.com/jxsuite/jx/issues/576)) ([f9ccf78](https://github.com/jxsuite/jx/commit/f9ccf78cd9a7a0057c4aedf600a8e20635b3c237))
+* provision every new project with project.jxn ([#578](https://github.com/jxsuite/jx/issues/578)) ([690ba96](https://github.com/jxsuite/jx/commit/690ba96a990136bafe34730223c1b478d3a52c6c))
 
 
 ### Dependencies
@@ -85,7 +85,7 @@
 
 ### Features
 
-* **schema:** read and write a project file in Jx Notation ([#560](https://github.com/jxsuite/jx/issues/560)) ([1a98bf2](https://github.com/jxsuite/jx/commit/1a98bf29cc60e6f958ac6d7de22159057d0bbfcb))
+* **schema:** read and write a project file in Jx Notation ([#560](https://github.com/jxsuite/jx/issues/560)) ([66d6cc5](https://github.com/jxsuite/jx/commit/66d6cc5b2837bc4a4529905aa90d3dea58f4e846))
 
 
 ### Dependencies
@@ -164,12 +164,12 @@
 
 ### Features
 
-* **compiler:** the bundler backend follows the runtime, esbuild on Node and Bun.build on Bun ([0489b92](https://github.com/jxsuite/jx/commit/0489b928b47355a9bc3a1209e07b49a67f2080cb))
-* **desktop:** the backend runs on Electron's Node in a utility process, and the app no longer ships Bun ([0489b92](https://github.com/jxsuite/jx/commit/0489b928b47355a9bc3a1209e07b49a67f2080cb))
-* **schema:** a runtime-neutral which ([0489b92](https://github.com/jxsuite/jx/commit/0489b928b47355a9bc3a1209e07b49a67f2080cb))
-* **server:** package operations run on npm's Arborist and write package-lock.json, and a lockfile-only package service serves the cloud ([0489b92](https://github.com/jxsuite/jx/commit/0489b928b47355a9bc3a1209e07b49a67f2080cb))
-* **server:** serve, file responses and globbing run on Node as well as Bun ([0489b92](https://github.com/jxsuite/jx/commit/0489b928b47355a9bc3a1209e07b49a67f2080cb))
-* **studio:** the cloud editor adds, removes and updates packages through the package service ([0489b92](https://github.com/jxsuite/jx/commit/0489b928b47355a9bc3a1209e07b49a67f2080cb))
+* **compiler:** the bundler backend follows the runtime, esbuild on Node and Bun.build on Bun ([92c85db](https://github.com/jxsuite/jx/commit/92c85db1d3617ba9915de38aa7eb5888ddc6fa6d))
+* **desktop:** the backend runs on Electron's Node in a utility process, and the app no longer ships Bun ([92c85db](https://github.com/jxsuite/jx/commit/92c85db1d3617ba9915de38aa7eb5888ddc6fa6d))
+* **schema:** a runtime-neutral which ([92c85db](https://github.com/jxsuite/jx/commit/92c85db1d3617ba9915de38aa7eb5888ddc6fa6d))
+* **server:** package operations run on npm's Arborist and write package-lock.json, and a lockfile-only package service serves the cloud ([92c85db](https://github.com/jxsuite/jx/commit/92c85db1d3617ba9915de38aa7eb5888ddc6fa6d))
+* **server:** serve, file responses and globbing run on Node as well as Bun ([92c85db](https://github.com/jxsuite/jx/commit/92c85db1d3617ba9915de38aa7eb5888ddc6fa6d))
+* **studio:** the cloud editor adds, removes and updates packages through the package service ([92c85db](https://github.com/jxsuite/jx/commit/92c85db1d3617ba9915de38aa7eb5888ddc6fa6d))
 
 
 ### Dependencies
@@ -200,7 +200,7 @@
 
 ### Features
 
-* **desktop:** Mac App Store channel (mas target, sandbox entitlements, TestFlight lane) ([#475](https://github.com/jxsuite/jx/issues/475)) ([19f1264](https://github.com/jxsuite/jx/commit/19f1264b83601c97c471c15020950c980d6989bd))
+* **desktop:** Mac App Store channel (mas target, sandbox entitlements, TestFlight lane) ([#475](https://github.com/jxsuite/jx/issues/475)) ([2aab641](https://github.com/jxsuite/jx/commit/2aab641f73e817c72c2689e87c3c481ed2b266a9))
 
 
 ### Dependencies
@@ -326,8 +326,8 @@
 
 ### Bug Fixes
 
-* **import:** stop pinning imported layouts to their capture viewport ([71132d7](https://github.com/jxsuite/jx/commit/71132d723e2c308a677c89e96eb887f25d341b31))
-* **import:** stop pinning imported layouts to their capture viewport ([158e989](https://github.com/jxsuite/jx/commit/158e989c27d78c24f5eada237b802526cf8020ae))
+* **import:** stop pinning imported layouts to their capture viewport ([642c528](https://github.com/jxsuite/jx/commit/642c528276bf8b71e7ead89dc0c9dcb4ef311317))
+* **import:** stop pinning imported layouts to their capture viewport ([4938498](https://github.com/jxsuite/jx/commit/4938498b5d2d7f7d1537bef0ac6bb7cc5a151543))
 
 
 ### Dependencies
@@ -344,7 +344,7 @@
 
 ### Bug Fixes
 
-* **studio:** a lapsed Cloudflare grant no longer ends the connect flow before it starts ([83102d2](https://github.com/jxsuite/jx/commit/83102d2eaf64752895efe8118afacc605eaa2aff))
+* **studio:** a lapsed Cloudflare grant no longer ends the connect flow before it starts ([3b0da9b](https://github.com/jxsuite/jx/commit/3b0da9bac30cf5b56cb86a871496df42a0a153aa))
 
 
 ### Dependencies
@@ -361,22 +361,22 @@
 
 ### Features
 
-* **import:** limit the breakpoints an import keeps, and strip the classes it cannot use ([9ac5b60](https://github.com/jxsuite/jx/commit/9ac5b600a0b6834bb031daa64e1283ab51346cff))
-* **import:** make jx-import --verify able to fail ([71382d5](https://github.com/jxsuite/jx/commit/71382d54e604aad01beba52d08ec99d826b13bee)), closes [#232](https://github.com/jxsuite/jx/issues/232)
-* **import:** the site-import workflow, end to end ([eab1109](https://github.com/jxsuite/jx/commit/eab1109e0fc21a5f311d2f1c8f90626c1d51c55d))
-* Open in Browser previews the working tree through the runtime ([b02e0e5](https://github.com/jxsuite/jx/commit/b02e0e543016879c963810f770b568995023e6ed))
-* **server,studio:** the import stream says what the run found, and can check its own fidelity ([2e4c0e3](https://github.com/jxsuite/jx/commit/2e4c0e3dd1b63aead94bb70379c7ad8738420fd8))
-* **studio:** the site import is an agent turn — model, brief, live status, and a pause to ask ([775abee](https://github.com/jxsuite/jx/commit/775abeeb20a4f1a727072ea60191c32bea5d0d9f))
+* **import:** limit the breakpoints an import keeps, and strip the classes it cannot use ([1332da8](https://github.com/jxsuite/jx/commit/1332da854e6db822b56219cfa7ab3a8ffbb1b43b))
+* **import:** make jx-import --verify able to fail ([b7f7634](https://github.com/jxsuite/jx/commit/b7f7634fa26cedb5b8ac28c9a2daf4feb3783ae2)), closes [#232](https://github.com/jxsuite/jx/issues/232)
+* **import:** the site-import workflow, end to end ([f701f33](https://github.com/jxsuite/jx/commit/f701f33bc035a8e5ce331530ff9886d25236da64))
+* Open in Browser previews the working tree through the runtime ([c30c245](https://github.com/jxsuite/jx/commit/c30c2453a0ce426b0111518617b6ed88d9b367e1))
+* **server,studio:** the import stream says what the run found, and can check its own fidelity ([367f374](https://github.com/jxsuite/jx/commit/367f3740a42d90e0f769ad21097c555e25d88b4d))
+* **studio:** the site import is an agent turn — model, brief, live status, and a pause to ask ([3afd38c](https://github.com/jxsuite/jx/commit/3afd38c254e368f95eccbe01ca6f1168fe279aac))
 
 
 ### Bug Fixes
 
-* **desktop,import:** the two gates the live preview left red, and the coverage it owed ([72657b7](https://github.com/jxsuite/jx/commit/72657b7c636d63aecb831378e5f16e134b062adb))
-* **import:** emit a project that actually builds into a working site ([6b808d6](https://github.com/jxsuite/jx/commit/6b808d6811de8ab6ec245ff1028ca681b8ee05c2))
-* **import:** emit a project.json the schema accepts ([352c67f](https://github.com/jxsuite/jx/commit/352c67fb76dda22d5f32d8d33b1baf37d96c5327)), closes [#228](https://github.com/jxsuite/jx/issues/228)
-* **import:** parse srcset without shredding a url that carries commas ([eeb8a7d](https://github.com/jxsuite/jx/commit/eeb8a7d5853175b656290b2b1b21dc434b692abb)), closes [#231](https://github.com/jxsuite/jx/issues/231)
-* **import:** reference an asset by the path the built site serves ([34856ec](https://github.com/jxsuite/jx/commit/34856ec28d3b89eee93b8eb9816010f23c86ded4)), closes [#229](https://github.com/jxsuite/jx/issues/229)
-* **import:** rewrite a font-face url to the font that was downloaded ([cc27b5f](https://github.com/jxsuite/jx/commit/cc27b5f5ce1d71679e40e77f1228558976b63988)), closes [#230](https://github.com/jxsuite/jx/issues/230)
+* **desktop,import:** the two gates the live preview left red, and the coverage it owed ([c9d56d2](https://github.com/jxsuite/jx/commit/c9d56d2495f1da84997768e6144718be7380de07))
+* **import:** emit a project that actually builds into a working site ([e378ecf](https://github.com/jxsuite/jx/commit/e378ecf455e47e5bc53ae2dc61c4363c9590bfa0))
+* **import:** emit a project.json the schema accepts ([8b290a2](https://github.com/jxsuite/jx/commit/8b290a2addcf8c069258fad007cc23e3c1a85e53)), closes [#228](https://github.com/jxsuite/jx/issues/228)
+* **import:** parse srcset without shredding a url that carries commas ([ffe28d0](https://github.com/jxsuite/jx/commit/ffe28d09d534d6ff1fb5f321ce0cfd09e436855b)), closes [#231](https://github.com/jxsuite/jx/issues/231)
+* **import:** reference an asset by the path the built site serves ([d760a20](https://github.com/jxsuite/jx/commit/d760a20e801abf42cfe320e588aa23b6d8f306b8)), closes [#229](https://github.com/jxsuite/jx/issues/229)
+* **import:** rewrite a font-face url to the font that was downloaded ([32a7fa1](https://github.com/jxsuite/jx/commit/32a7fa10de779889a0c81cc3f2381fb16587b85f)), closes [#230](https://github.com/jxsuite/jx/issues/230)
 
 
 ### Dependencies
@@ -477,8 +477,8 @@
 
 ### Features
 
-* **schema,runtime,compiler,studio:** a tag can be chosen at element creation ([e31a20f](https://github.com/jxsuite/jx/commit/e31a20fb52b7e718be67ed59338d149abf3562c1))
-* **studio:** the Named Shell — P0–P8, the full UX redesign ([b576cbb](https://github.com/jxsuite/jx/commit/b576cbb24c7e0d8d36075f6d682e9b3b6b971166))
+* **schema,runtime,compiler,studio:** a tag can be chosen at element creation ([f557ed3](https://github.com/jxsuite/jx/commit/f557ed3c7dd6baac42b0e73b85c12863eef917ae))
+* **studio:** the Named Shell — P0–P8, the full UX redesign ([c8c3452](https://github.com/jxsuite/jx/commit/c8c345213307f2383ed5c4251ca6b388c8489504))
 
 
 ### Dependencies
@@ -519,7 +519,7 @@
 
 ### Features
 
-* enforce truthful marketing claims and add the missing LICENSE ([b7e0b09](https://github.com/jxsuite/jx/commit/b7e0b095566121d79ca50894b69a476984fb93ee))
+* enforce truthful marketing claims and add the missing LICENSE ([6e235b5](https://github.com/jxsuite/jx/commit/6e235b562d8b494afa3e8509b6bb98e4c2e3d9c6))
 
 
 ### Dependencies
@@ -548,7 +548,7 @@
 
 ### Features
 
-* **studio:** spreadsheet grid editor — CSV grid tabs with batch save ([6736c02](https://github.com/jxsuite/jx/commit/6736c027d57fb438fb7aa0a9f333a41cc477e0a4))
+* **studio:** spreadsheet grid editor — CSV grid tabs with batch save ([b0bd0dc](https://github.com/jxsuite/jx/commit/b0bd0dccb72a9541c77b877154783f376cd540fa))
 
 
 ### Dependencies
@@ -564,7 +564,7 @@
 
 ### Features
 
-- **markup:** shared markup-conversion core package; sever studio/import from parser ([a075e74](https://github.com/jxsuite/jx/commit/a075e74a6c45e91b1d1c7c1a6007e2e344fbb341))
+- **markup:** shared markup-conversion core package; sever studio/import from parser ([41141a1](https://github.com/jxsuite/jx/commit/41141a15ba51aa6f58ba1dee78731f15893eaff8))
 
 ### Dependencies
 
@@ -590,7 +590,7 @@
 
 ### Features
 
-- site import package, ui + starter templates & wizard ([9c44e4a](https://github.com/jxsuite/jx/commit/9c44e4abe7e9d75c1129c179a419f5a390f86da9))
+- site import package, ui + starter templates & wizard ([700e432](https://github.com/jxsuite/jx/commit/700e432faeb6c30ef2b1859b0a12fa00457ff508))
 
 ### Dependencies
 

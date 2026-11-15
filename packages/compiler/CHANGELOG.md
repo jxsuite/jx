@@ -5,21 +5,21 @@
 
 ### Features
 
-* **compiler:** a compiled element runs every lifecycle hook and observes its declared attributes ([a845e4d](https://github.com/jxsuite/jx/commit/a845e4dae7aa5ccb049dcc6f66a37176f6b60bc3))
-* **compiler:** a compiled element takes every prop its instance supplies, at connection and after ([429d3c1](https://github.com/jxsuite/jx/commit/429d3c1d84c5d417ff518709efb4b786f69bbe11))
-* **compiler:** a site build runs every external class a page or component names ([9414fe6](https://github.com/jxsuite/jx/commit/9414fe623297678d1c25d88d7335c48b76620b65))
-* **compiler:** a static build comments each style rule with its $description ([5c69560](https://github.com/jxsuite/jx/commit/5c6956071660bb9b8a9af24d4d1c88289865f974))
-* **compiler:** a template text child is baked at build time or bound on a dynamic page ([fee0b22](https://github.com/jxsuite/jx/commit/fee0b22486bff506b574bcf6f1b295ea81921e77))
-* **compiler:** one build can leave images alone, and a Pages preview does ([a01797d](https://github.com/jxsuite/jx/commit/a01797d3ac64be915d0237b6402bbb97a852b21f))
-* **compiler:** the image pipeline is stated once, and its cache, formats and Markdown images match ([d9781ff](https://github.com/jxsuite/jx/commit/d9781ffffd91b972283e368e4aa0c19c69293546))
+* **compiler:** a compiled element runs every lifecycle hook and observes its declared attributes ([867b61c](https://github.com/jxsuite/jx/commit/867b61cd703d443d781840100980baef77b3dec0))
+* **compiler:** a compiled element takes every prop its instance supplies, at connection and after ([e0a66d7](https://github.com/jxsuite/jx/commit/e0a66d75b1bc9afcd4fabb619bc73c952daf4e94))
+* **compiler:** a site build runs every external class a page or component names ([6971a9f](https://github.com/jxsuite/jx/commit/6971a9f4a18d859d56d8edac7cd0b3942f6996d9))
+* **compiler:** a static build comments each style rule with its $description ([82d9381](https://github.com/jxsuite/jx/commit/82d93815e8faaf3e0704af978268d2ae6849a990))
+* **compiler:** a template text child is baked at build time or bound on a dynamic page ([ca9de1d](https://github.com/jxsuite/jx/commit/ca9de1d298e64262cd81053bab045ae6691385f9))
+* **compiler:** one build can leave images alone, and a Pages preview does ([544adbe](https://github.com/jxsuite/jx/commit/544adbe8f56eb3d7af34a4bfe2e0188cc5f46297))
+* **compiler:** the image pipeline is stated once, and its cache, formats and Markdown images match ([9e1d1e8](https://github.com/jxsuite/jx/commit/9e1d1e8acc9f6f90091fcfdab8013d97f64f8665))
 
 
 ### Bug Fixes
 
-* **compiler:** a derived sizes takes the narrower of an element's literal width and max-width ([610eed0](https://github.com/jxsuite/jx/commit/610eed0ecadfd8004e931a658cc1b1711c081633))
-* **compiler:** every class module route 0 writes loads, and compiler.md §5 matches it ([156bf94](https://github.com/jxsuite/jx/commit/156bf947e5554c7d529052ae2f72ae2c423e4346))
-* **compiler:** every styled element gets a generated class of its own as its style handle ([a879c4e](https://github.com/jxsuite/jx/commit/a879c4e604a2bd23517620cb06c476a70f140584))
-* keep CI green on the dependency bumps ([68a6870](https://github.com/jxsuite/jx/commit/68a687052711e1331d16dd0b46cd52d862d3bc87))
+* **compiler:** a derived sizes takes the narrower of an element's literal width and max-width ([a5a5f70](https://github.com/jxsuite/jx/commit/a5a5f70e84657f137173ba0c42a721e3dfb1b25c))
+* **compiler:** every class module route 0 writes loads, and compiler.md §5 matches it ([7a4456b](https://github.com/jxsuite/jx/commit/7a4456bc427e4760b1c56cfffba335f4d3a8ac61))
+* **compiler:** every styled element gets a generated class of its own as its style handle ([3c19450](https://github.com/jxsuite/jx/commit/3c19450096f9d884580fd536a0ee5ed23c3b9aec))
+* keep CI green on the dependency bumps ([97000ad](https://github.com/jxsuite/jx/commit/97000adb60a24f7ff073df267a4c8d76900bbf04))
 
 
 ### Dependencies
@@ -54,7 +54,7 @@
 
 ### Features
 
-* **compiler:** images are encoded by the compiler's own Rust core ([fef06a5](https://github.com/jxsuite/jx/commit/fef06a523d0e671fc191a04e50df82a174126b6e))
+* **compiler:** images are encoded by the compiler's own Rust core ([8e929a7](https://github.com/jxsuite/jx/commit/8e929a7520b95fc661e55f64c5b6f7ce3fd333e4))
 
 
 ### Dependencies
@@ -76,22 +76,22 @@
 
 ### Features
 
-* a project's pure formulas are callable in its components ([#642](https://github.com/jxsuite/jx/issues/642)) ([918e404](https://github.com/jxsuite/jx/commit/918e404832f9fc796f9a8e781afcc101693b9a1d))
-* **compiler:** a build compiles every component a document declares, wherever it lives ([#616](https://github.com/jxsuite/jx/issues/616)) ([099aca6](https://github.com/jxsuite/jx/commit/099aca6387e887d00181446e4dde672bd934aefe))
-* **erase,runtime,server,site:** a document's script runs in every interpreting host ([#627](https://github.com/jxsuite/jx/issues/627)) ([cdd349a](https://github.com/jxsuite/jx/commit/cdd349a304f36da6c9abd6a73b55d2449f096248))
-* live-canvas foundations (tag model, formulas, runtime splice, static empty lists) ([#640](https://github.com/jxsuite/jx/issues/640)) ([2106c38](https://github.com/jxsuite/jx/commit/2106c380eb2661a7eda1a0f6d6f5b6aa8686b8a7))
-* **schema,collab,compiler,studio:** a document's script in .jxn, Studio and shared sessions ([#628](https://github.com/jxsuite/jx/issues/628)) ([ddb7734](https://github.com/jxsuite/jx/commit/ddb7734555e3b26d26ef339fab651b5e2768d75f))
-* **schema,compiler,runtime:** a document carries its own client and server modules in $script ([#625](https://github.com/jxsuite/jx/issues/625)) ([bb35a4f](https://github.com/jxsuite/jx/commit/bb35a4f7e68dc77e06c4b68437fba459480fcd04))
-* **schema,runtime,compiler:** $lazy loads on first call in every tier ([#617](https://github.com/jxsuite/jx/issues/617)) ([371b6d4](https://github.com/jxsuite/jx/commit/371b6d4c8a0b155820077485eabe76b05f9d0d3e))
-* **server,compiler:** jx format formats the code a .jxn file holds, as Studio does ([#637](https://github.com/jxsuite/jx/issues/637)) ([bc73203](https://github.com/jxsuite/jx/commit/bc732037fa7dad968e62dce7e04c07ecb6c703f2))
-* **site:** site state stops making every built page dynamic, and never replaces $site's own names ([#619](https://github.com/jxsuite/jx/issues/619)) ([fd6d56c](https://github.com/jxsuite/jx/commit/fd6d56c37a80a1b186cf0b525388368eb144e9d1))
+* a project's pure formulas are callable in its components ([#642](https://github.com/jxsuite/jx/issues/642)) ([d1981bf](https://github.com/jxsuite/jx/commit/d1981bf4b7e44fe69c95c7b21aaeb02818b42d70))
+* **compiler:** a build compiles every component a document declares, wherever it lives ([#616](https://github.com/jxsuite/jx/issues/616)) ([ae26149](https://github.com/jxsuite/jx/commit/ae26149538631b0bfef7dd6ef83659759d90c65e))
+* **erase,runtime,server,site:** a document's script runs in every interpreting host ([#627](https://github.com/jxsuite/jx/issues/627)) ([97f3bf0](https://github.com/jxsuite/jx/commit/97f3bf03a34e4e0a7b25b71900ba3d73d58e820d))
+* live-canvas foundations (tag model, formulas, runtime splice, static empty lists) ([#640](https://github.com/jxsuite/jx/issues/640)) ([8c83419](https://github.com/jxsuite/jx/commit/8c83419930fb278eec9980f9dd031cee9fcbccdd))
+* **schema,collab,compiler,studio:** a document's script in .jxn, Studio and shared sessions ([#628](https://github.com/jxsuite/jx/issues/628)) ([02b607d](https://github.com/jxsuite/jx/commit/02b607d7d721311aacd8bf0a9d8dea2db70f1bf8))
+* **schema,compiler,runtime:** a document carries its own client and server modules in $script ([#625](https://github.com/jxsuite/jx/issues/625)) ([bca939b](https://github.com/jxsuite/jx/commit/bca939bf63cd75a661842d75c3118b788789028b))
+* **schema,runtime,compiler:** $lazy loads on first call in every tier ([#617](https://github.com/jxsuite/jx/issues/617)) ([3392082](https://github.com/jxsuite/jx/commit/33920822a65b8f186306af4f05eb8f3452932da0))
+* **server,compiler:** jx format formats the code a .jxn file holds, as Studio does ([#637](https://github.com/jxsuite/jx/issues/637)) ([46c388b](https://github.com/jxsuite/jx/commit/46c388bcb2726bade8fe5627a8f8b86c03f32f94))
+* **site:** site state stops making every built page dynamic, and never replaces $site's own names ([#619](https://github.com/jxsuite/jx/issues/619)) ([3cdcae4](https://github.com/jxsuite/jx/commit/3cdcae4cba94cd639defaa157b1299a9f6a287b7))
 
 
 ### Bug Fixes
 
-* **compiler:** a compiled element moved in the DOM keeps what it drew ([#620](https://github.com/jxsuite/jx/issues/620)) ([3483139](https://github.com/jxsuite/jx/commit/3483139636bca0f229e9e30c626c07b0ee9f97af))
-* **security:** generic 500s, sign-out cache clearing, consistent framing, hashed speculation rules ([#624](https://github.com/jxsuite/jx/issues/624)) ([5e8c2e5](https://github.com/jxsuite/jx/commit/5e8c2e54b4b1ad837b7435e72942c2b7dbc61d49))
-* **server:** the site worker refuses cross-site calls and its answers stay out of caches ([#621](https://github.com/jxsuite/jx/issues/621)) ([7a9d405](https://github.com/jxsuite/jx/commit/7a9d405a24ff2955027f1b6ae835dd7373dbc728))
+* **compiler:** a compiled element moved in the DOM keeps what it drew ([#620](https://github.com/jxsuite/jx/issues/620)) ([532065f](https://github.com/jxsuite/jx/commit/532065f36ca0f629eb0add3e4bb089a3d1719b30))
+* **security:** generic 500s, sign-out cache clearing, consistent framing, hashed speculation rules ([#624](https://github.com/jxsuite/jx/issues/624)) ([0048a69](https://github.com/jxsuite/jx/commit/0048a69ffd81b2e1adae1f0d6c88288c80623b5c))
+* **server:** the site worker refuses cross-site calls and its answers stay out of caches ([#621](https://github.com/jxsuite/jx/issues/621)) ([0a6ba0d](https://github.com/jxsuite/jx/commit/0a6ba0dd614c3f0d26b43ba37547d785398ec3c6))
 
 
 ### Dependencies
@@ -112,11 +112,11 @@
 
 ### Features
 
-* classify Function entries through one shared classifier ([#595](https://github.com/jxsuite/jx/issues/595)) ([0cc68d7](https://github.com/jxsuite/jx/commit/0cc68d7f3cafbd8d23ca55c0a275f0ce64abbb78))
-* new documents and the starters are Jx Notation ([#596](https://github.com/jxsuite/jx/issues/596)) ([f5bd517](https://github.com/jxsuite/jx/commit/f5bd517b28573f66d5b6e43fec3c1230c84eab0c))
-* **schema,runtime,compiler:** one parameter list and call convention ([#607](https://github.com/jxsuite/jx/issues/607)) ([f013d6a](https://github.com/jxsuite/jx/commit/f013d6ae42e63ba6c108b7dcfd0524b5d7653c52))
-* **schema,runtime,compiler:** refuse a Function declaring both body and $src ([#604](https://github.com/jxsuite/jx/issues/604)) ([7d298b1](https://github.com/jxsuite/jx/commit/7d298b1746de17d4e94fff5a58c90318cc360133))
-* **studio,compiler:** a picture's focal point lives in the picture ([#591](https://github.com/jxsuite/jx/issues/591)) ([9103d7f](https://github.com/jxsuite/jx/commit/9103d7fd4feab76644101fd303303dee1eaa792e))
+* classify Function entries through one shared classifier ([#595](https://github.com/jxsuite/jx/issues/595)) ([122f997](https://github.com/jxsuite/jx/commit/122f997face23fd0a2af532e714d1168ebbdb56c))
+* new documents and the starters are Jx Notation ([#596](https://github.com/jxsuite/jx/issues/596)) ([eb2d2b5](https://github.com/jxsuite/jx/commit/eb2d2b5910939cc06b4ec07fb4a8d3fa943de2ca))
+* **schema,runtime,compiler:** one parameter list and call convention ([#607](https://github.com/jxsuite/jx/issues/607)) ([96c427a](https://github.com/jxsuite/jx/commit/96c427a7694afda77d4f426fda65ff220a30ba96))
+* **schema,runtime,compiler:** refuse a Function declaring both body and $src ([#604](https://github.com/jxsuite/jx/issues/604)) ([750c463](https://github.com/jxsuite/jx/commit/750c4638f009264d1a71aef556dcb3ef050ea785))
+* **studio,compiler:** a picture's focal point lives in the picture ([#591](https://github.com/jxsuite/jx/issues/591)) ([d87ce76](https://github.com/jxsuite/jx/commit/d87ce76d12805d0d5b217629a37f4639a16def49))
 
 
 ### Dependencies
@@ -137,8 +137,8 @@
 
 ### Features
 
-* erase TypeScript from function bodies as each document is read ([#576](https://github.com/jxsuite/jx/issues/576)) ([d7b013c](https://github.com/jxsuite/jx/commit/d7b013c334a5b06d0f31648375443092a43e4af8))
-* provision every new project with project.jxn ([#578](https://github.com/jxsuite/jx/issues/578)) ([77c8093](https://github.com/jxsuite/jx/commit/77c8093f81e468679bd8c4cf0b1c3451e261a8c2))
+* erase TypeScript from function bodies as each document is read ([#576](https://github.com/jxsuite/jx/issues/576)) ([f9ccf78](https://github.com/jxsuite/jx/commit/f9ccf78cd9a7a0057c4aedf600a8e20635b3c237))
+* provision every new project with project.jxn ([#578](https://github.com/jxsuite/jx/issues/578)) ([690ba96](https://github.com/jxsuite/jx/commit/690ba96a990136bafe34730223c1b478d3a52c6c))
 
 
 ### Dependencies
@@ -159,13 +159,13 @@
 
 ### Features
 
-* jx convert moves the project file, and Studio opens one that does not read ([#565](https://github.com/jxsuite/jx/issues/565)) ([a05163d](https://github.com/jxsuite/jx/commit/a05163d2a0ab561175bafc9ffd13058e8a8ad43e))
-* **schema:** read and write a project file in Jx Notation ([#560](https://github.com/jxsuite/jx/issues/560)) ([1a98bf2](https://github.com/jxsuite/jx/commit/1a98bf29cc60e6f958ac6d7de22159057d0bbfcb))
+* jx convert moves the project file, and Studio opens one that does not read ([#565](https://github.com/jxsuite/jx/issues/565)) ([aba29d2](https://github.com/jxsuite/jx/commit/aba29d2fa918ec88b680bd3f01c782c4811c9bcd))
+* **schema:** read and write a project file in Jx Notation ([#560](https://github.com/jxsuite/jx/issues/560)) ([66d6cc5](https://github.com/jxsuite/jx/commit/66d6cc5b2837bc4a4529905aa90d3dea58f4e846))
 
 
 ### Bug Fixes
 
-* **compiler:** encode image variant URLs, and key the image cache on the file name ([#566](https://github.com/jxsuite/jx/issues/566)) ([96a2ea6](https://github.com/jxsuite/jx/commit/96a2ea6a2e567b171c08f8b84a3be987828141a1))
+* **compiler:** encode image variant URLs, and key the image cache on the file name ([#566](https://github.com/jxsuite/jx/issues/566)) ([17fbe13](https://github.com/jxsuite/jx/commit/17fbe13b40a0bf09ae05274a519fd49315d871ea))
 
 
 ### Dependencies
@@ -185,7 +185,7 @@
 
 ### Features
 
-* every host reads Jx Notation ([#554](https://github.com/jxsuite/jx/issues/554)) ([230382e](https://github.com/jxsuite/jx/commit/230382e4072184ab042a328e25e9f68f1d94de83))
+* every host reads Jx Notation ([#554](https://github.com/jxsuite/jx/issues/554)) ([1305161](https://github.com/jxsuite/jx/commit/13051615b376e077d86875153a9aeacc127c5f76))
 
 
 ### Dependencies
@@ -205,7 +205,7 @@
 
 ### Features
 
-* **content:** let a project say what holds an entry back ([#548](https://github.com/jxsuite/jx/issues/548)) ([f71a439](https://github.com/jxsuite/jx/commit/f71a43929ca7d2aa5834d6552ea485db4b2dcdac))
+* **content:** let a project say what holds an entry back ([#548](https://github.com/jxsuite/jx/issues/548)) ([00044a9](https://github.com/jxsuite/jx/commit/00044a9263b36fdb6cba36757e91c767b51cf3af))
 
 
 ### Dependencies
@@ -225,7 +225,7 @@
 
 ### Features
 
-* **site:** page a list into numbered routes, and query collections by path and by reference ([#535](https://github.com/jxsuite/jx/issues/535)) ([bd3eb1e](https://github.com/jxsuite/jx/commit/bd3eb1ef8f49ce8c8a4d9bfc4e89cb4f54ea1ef1))
+* **site:** page a list into numbered routes, and query collections by path and by reference ([#535](https://github.com/jxsuite/jx/issues/535)) ([7b838fc](https://github.com/jxsuite/jx/commit/7b838fcc43b1f5e25f6dc348c3ae5fc418ff75f0))
 
 
 ### Dependencies
@@ -267,18 +267,18 @@
 
 ### Features
 
-* **compiler:** the bundler backend follows the runtime, esbuild on Node and Bun.build on Bun ([0489b92](https://github.com/jxsuite/jx/commit/0489b928b47355a9bc3a1209e07b49a67f2080cb))
-* **desktop:** the backend runs on Electron's Node in a utility process, and the app no longer ships Bun ([0489b92](https://github.com/jxsuite/jx/commit/0489b928b47355a9bc3a1209e07b49a67f2080cb))
-* **schema:** a runtime-neutral which ([0489b92](https://github.com/jxsuite/jx/commit/0489b928b47355a9bc3a1209e07b49a67f2080cb))
-* **server:** package operations run on npm's Arborist and write package-lock.json, and a lockfile-only package service serves the cloud ([0489b92](https://github.com/jxsuite/jx/commit/0489b928b47355a9bc3a1209e07b49a67f2080cb))
-* **server:** serve, file responses and globbing run on Node as well as Bun ([0489b92](https://github.com/jxsuite/jx/commit/0489b928b47355a9bc3a1209e07b49a67f2080cb))
-* **studio:** the cloud editor adds, removes and updates packages through the package service ([0489b92](https://github.com/jxsuite/jx/commit/0489b928b47355a9bc3a1209e07b49a67f2080cb))
+* **compiler:** the bundler backend follows the runtime, esbuild on Node and Bun.build on Bun ([92c85db](https://github.com/jxsuite/jx/commit/92c85db1d3617ba9915de38aa7eb5888ddc6fa6d))
+* **desktop:** the backend runs on Electron's Node in a utility process, and the app no longer ships Bun ([92c85db](https://github.com/jxsuite/jx/commit/92c85db1d3617ba9915de38aa7eb5888ddc6fa6d))
+* **schema:** a runtime-neutral which ([92c85db](https://github.com/jxsuite/jx/commit/92c85db1d3617ba9915de38aa7eb5888ddc6fa6d))
+* **server:** package operations run on npm's Arborist and write package-lock.json, and a lockfile-only package service serves the cloud ([92c85db](https://github.com/jxsuite/jx/commit/92c85db1d3617ba9915de38aa7eb5888ddc6fa6d))
+* **server:** serve, file responses and globbing run on Node as well as Bun ([92c85db](https://github.com/jxsuite/jx/commit/92c85db1d3617ba9915de38aa7eb5888ddc6fa6d))
+* **studio:** the cloud editor adds, removes and updates packages through the package service ([92c85db](https://github.com/jxsuite/jx/commit/92c85db1d3617ba9915de38aa7eb5888ddc6fa6d))
 
 
 ### Bug Fixes
 
-* extensions resolve from the project only, first-party ones included ([#510](https://github.com/jxsuite/jx/issues/510)) ([71c0b68](https://github.com/jxsuite/jx/commit/71c0b681327396f1fbd1d77ea96bfd55f7ccfd83))
-* the release PR's smoke test installs this checkout, and npm can no longer hang a build ([#515](https://github.com/jxsuite/jx/issues/515)) ([3959eb0](https://github.com/jxsuite/jx/commit/3959eb05cac9e09f87a834e517cba72095bee074))
+* extensions resolve from the project only, first-party ones included ([#510](https://github.com/jxsuite/jx/issues/510)) ([ac70362](https://github.com/jxsuite/jx/commit/ac703627bd5c9d6874cf511049be3425904c9527))
+* the release PR's smoke test installs this checkout, and npm can no longer hang a build ([#515](https://github.com/jxsuite/jx/issues/515)) ([66208f7](https://github.com/jxsuite/jx/commit/66208f7e27eab9535537d1de63a8bb8e897a04d8))
 
 
 ### Dependencies
@@ -302,12 +302,12 @@
 
 ### Features
 
-* **compiler:** built pages call their server entries; page-level entries are served ([#498](https://github.com/jxsuite/jx/issues/498)) ([d47cd16](https://github.com/jxsuite/jx/commit/d47cd1629f23724191eac18b6895617d62580a78))
+* **compiler:** built pages call their server entries; page-level entries are served ([#498](https://github.com/jxsuite/jx/issues/498)) ([c755088](https://github.com/jxsuite/jx/commit/c75508844232af963a346901ad782249419de3f0))
 
 
 ### Bug Fixes
 
-* **runtime:** an & after a context in a nested style key is the scope ([#497](https://github.com/jxsuite/jx/issues/497)) ([6e7861d](https://github.com/jxsuite/jx/commit/6e7861d37ef8d65e2e34c9e18695ca1b3188b212))
+* **runtime:** an & after a context in a nested style key is the scope ([#497](https://github.com/jxsuite/jx/issues/497)) ([c1e6119](https://github.com/jxsuite/jx/commit/c1e6119bf27bdc70b5df0177145773f196ad07e2))
 
 
 ### Dependencies
@@ -327,7 +327,7 @@
 
 ### Features
 
-* **desktop:** Mac App Store channel (mas target, sandbox entitlements, TestFlight lane) ([#475](https://github.com/jxsuite/jx/issues/475)) ([19f1264](https://github.com/jxsuite/jx/commit/19f1264b83601c97c471c15020950c980d6989bd))
+* **desktop:** Mac App Store channel (mas target, sandbox entitlements, TestFlight lane) ([#475](https://github.com/jxsuite/jx/issues/475)) ([2aab641](https://github.com/jxsuite/jx/commit/2aab641f73e817c72c2689e87c3c481ed2b266a9))
 
 
 ### Dependencies
@@ -376,8 +376,8 @@
 
 ### Bug Fixes
 
-* cold-open component timeouts, shell-preview 403s, and typed single-expression state templates ([#460](https://github.com/jxsuite/jx/issues/460)) ([882a537](https://github.com/jxsuite/jx/commit/882a53770e0acd6b007319d3dcc258cc5255345b))
-* **studio,runtime,compiler:** render real sites on the canvas, fast outline, named slots ([#464](https://github.com/jxsuite/jx/issues/464)) ([d0ba17e](https://github.com/jxsuite/jx/commit/d0ba17e841520645749df384d3bb3f8e2cffa338))
+* cold-open component timeouts, shell-preview 403s, and typed single-expression state templates ([#460](https://github.com/jxsuite/jx/issues/460)) ([28a0047](https://github.com/jxsuite/jx/commit/28a0047282453277dd2f410edb9b63c38b4a50f8))
+* **studio,runtime,compiler:** render real sites on the canvas, fast outline, named slots ([#464](https://github.com/jxsuite/jx/issues/464)) ([6757dff](https://github.com/jxsuite/jx/commit/6757dfff34f6b85f696813ec37a1a46df690f114))
 
 
 ### Dependencies
@@ -397,7 +397,7 @@
 
 ### Bug Fixes
 
-* **compiler:** re-root the $src import URLs of component and page modules on the base path ([#454](https://github.com/jxsuite/jx/issues/454)) ([7248bcd](https://github.com/jxsuite/jx/commit/7248bcd7b5e787dfdc814cf66ae0e8cbf97837bb))
+* **compiler:** re-root the $src import URLs of component and page modules on the base path ([#454](https://github.com/jxsuite/jx/issues/454)) ([9ec4815](https://github.com/jxsuite/jx/commit/9ec481525d63e283982d138b08d11cbb530557a9))
 
 ## [5.1.2](https://github.com/jxsuite/jx/compare/compiler-v5.1.1...compiler-v5.1.2) (2026-10-11)
 
@@ -417,20 +417,20 @@
 
 ### Bug Fixes
 
-* **compiler:** write no Markdown twin for the not-found page ([#438](https://github.com/jxsuite/jx/issues/438)) ([b93fc4e](https://github.com/jxsuite/jx/commit/b93fc4ead3eae911bf9ec35562a1637abb425ab5))
+* **compiler:** write no Markdown twin for the not-found page ([#438](https://github.com/jxsuite/jx/issues/438)) ([26a4657](https://github.com/jxsuite/jx/commit/26a4657c06a859cbafd4ee038343eb1a98fd8a28))
 
 ## [5.1.0](https://github.com/jxsuite/jx/compare/compiler-v5.0.0...compiler-v5.1.0) (2026-10-07)
 
 
 ### Features
 
-* **compiler:** advertise each page's Markdown twin with a link rel=alternate ([#435](https://github.com/jxsuite/jx/issues/435)) ([844ba5a](https://github.com/jxsuite/jx/commit/844ba5a353227ee77dab3f31061aa8d34d02f453))
+* **compiler:** advertise each page's Markdown twin with a link rel=alternate ([#435](https://github.com/jxsuite/jx/issues/435)) ([0f4b89b](https://github.com/jxsuite/jx/commit/0f4b89be8819bd9b00dc7ea51a4e29c3224492de))
 
 
 ### Bug Fixes
 
-* **compiler:** canonical and sitemap URLs follow trailingSlash; write the 404 page to 404.html ([#433](https://github.com/jxsuite/jx/issues/433)) ([6347a35](https://github.com/jxsuite/jx/commit/6347a35617a6e572e31d91bc2bafd65d17765d88))
-* **compiler:** load extension implementations under Node, so jx build runs without bun ([#432](https://github.com/jxsuite/jx/issues/432)) ([ca21789](https://github.com/jxsuite/jx/commit/ca21789b432ea4ee556f89838f2837a8ef4d02f3))
+* **compiler:** canonical and sitemap URLs follow trailingSlash; write the 404 page to 404.html ([#433](https://github.com/jxsuite/jx/issues/433)) ([f467fa2](https://github.com/jxsuite/jx/commit/f467fa293b88ad9a78e701f7eaa12cbe7e37d5e0))
+* **compiler:** load extension implementations under Node, so jx build runs without bun ([#432](https://github.com/jxsuite/jx/issues/432)) ([c223ad9](https://github.com/jxsuite/jx/commit/c223ad95f9b54ce0b0da3cc79d494c0fe6d9fdb0))
 
 ## [5.0.0](https://github.com/jxsuite/jx/compare/compiler-v4.0.3...compiler-v5.0.0) (2026-10-06)
 
@@ -441,7 +441,7 @@
 
 ### Features
 
-* **parser:** support an Obsidian vault as a content collection ([#426](https://github.com/jxsuite/jx/issues/426)) ([6e720c6](https://github.com/jxsuite/jx/commit/6e720c6ec9b3540721c4453d0c02b11414f9efce))
+* **parser:** support an Obsidian vault as a content collection ([#426](https://github.com/jxsuite/jx/issues/426)) ([6e2ca4a](https://github.com/jxsuite/jx/commit/6e2ca4a08d6c0277e09a80e5524a81c4a6c9ee74))
 
 
 ### Dependencies
@@ -461,8 +461,8 @@
 
 ### Bug Fixes
 
-* **compiler:** declare the import map in head ahead of the modulepreload hints ([bf9017e](https://github.com/jxsuite/jx/commit/bf9017e782fef092f5f1dc2cfc7e3726fc79ee7f))
-* **compiler:** declare the import map in head ahead of the modulepreload hints ([e467359](https://github.com/jxsuite/jx/commit/e4673594a39fd32fe21fd8b406c6c8761872652e))
+* **compiler:** declare the import map in head ahead of the modulepreload hints ([0433318](https://github.com/jxsuite/jx/commit/0433318a328c557d74972f58973c87b95ccf7cb6))
+* **compiler:** declare the import map in head ahead of the modulepreload hints ([88ca901](https://github.com/jxsuite/jx/commit/88ca9018bfbc311186227a29e62a93751c928e1f))
 
 ## [4.0.2](https://github.com/jxsuite/jx/compare/compiler-v4.0.1...compiler-v4.0.2) (2026-09-29)
 
@@ -484,12 +484,12 @@
 
 ### Bug Fixes
 
-* **compiler,site:** compileStyles delegates the project block to buildSiteStyleCSS ([0e2856c](https://github.com/jxsuite/jx/commit/0e2856c10e5623d1a4416007ca2043781f119899))
-* **compiler,site:** compileStyles delegates the project block to buildSiteStyleCSS ([e456b80](https://github.com/jxsuite/jx/commit/e456b80b2e0ef5fc9af900077ae7ad8ab42a7746)), closes [#329](https://github.com/jxsuite/jx/issues/329)
-* **compiler:** a shared component dependency is inlined and loaded once per page ([6f6d39e](https://github.com/jxsuite/jx/commit/6f6d39e12a7e70cd911d58f51f297d957d1a3f37))
-* **compiler:** a shared component dependency is inlined and loaded once per page ([d1f7dc9](https://github.com/jxsuite/jx/commit/d1f7dc9e15e0c57942bc5047fcdf2f628032d172)), closes [#330](https://github.com/jxsuite/jx/issues/330)
-* **runtime:** a definition that instantiates its own tag is refused instead of hanging ([2988975](https://github.com/jxsuite/jx/commit/2988975365bb7986d718657ab525819c9a513648))
-* **runtime:** a definition that instantiates its own tag is refused instead of hanging ([3a30921](https://github.com/jxsuite/jx/commit/3a30921644a048e93ddc5e572b85ec38399f4abb)), closes [#320](https://github.com/jxsuite/jx/issues/320)
+* **compiler,site:** compileStyles delegates the project block to buildSiteStyleCSS ([0911986](https://github.com/jxsuite/jx/commit/0911986e7db670541d46fb06077fc4972e043489))
+* **compiler,site:** compileStyles delegates the project block to buildSiteStyleCSS ([0fd80c1](https://github.com/jxsuite/jx/commit/0fd80c1d69059aeb76a7c9b7dc2de1eb0f0a974f)), closes [#329](https://github.com/jxsuite/jx/issues/329)
+* **compiler:** a shared component dependency is inlined and loaded once per page ([36237bd](https://github.com/jxsuite/jx/commit/36237bdaacd36ab5db24bbe0f37d5860eff5ae6b))
+* **compiler:** a shared component dependency is inlined and loaded once per page ([d0437ec](https://github.com/jxsuite/jx/commit/d0437ec4c35c2a7f4258f3ffc4a0f6bd00ec8f94)), closes [#330](https://github.com/jxsuite/jx/issues/330)
+* **runtime:** a definition that instantiates its own tag is refused instead of hanging ([a48a040](https://github.com/jxsuite/jx/commit/a48a040ca73a5fa74bc7655191ec87c519ccfb5f))
+* **runtime:** a definition that instantiates its own tag is refused instead of hanging ([722a091](https://github.com/jxsuite/jx/commit/722a0914144c1d287182ec3954155dc22983ba2a)), closes [#320](https://github.com/jxsuite/jx/issues/320)
 
 
 ### Dependencies
@@ -511,23 +511,23 @@
 
 ### Features
 
-* popovers become a first-class thing the canvas can open, and a rule it can check ([bf757f1](https://github.com/jxsuite/jx/commit/bf757f1c9a9d94e15cbaac3be5405588c082cee3))
-* **runtime,compiler,site,studio:** authored styles become adopted CSS rules ([1542477](https://github.com/jxsuite/jx/commit/15424770e40f979eaaad78682004cf8d87f8180f))
-* **runtime,studio:** dialogs, invoker commands and inert on the canvas ([7ee7f24](https://github.com/jxsuite/jx/commit/7ee7f2498112c48e29d602b4a756c00bbd91b61e))
-* **schema,runtime,compiler,site:** a style value may read state ([0e48c12](https://github.com/jxsuite/jx/commit/0e48c12c7536580e36ed7a10c7d2371c28ab0d28))
-* **schema,studio,compiler:** accessibility rules, judged alike by Studio, jx validate and the tests ([ad744dc](https://github.com/jxsuite/jx/commit/ad744dc84c017004a828b3da26977cf40f467d75))
-* **studio,server,protocol:** one toggle installs an extension and enables it ([abe69bb](https://github.com/jxsuite/jx/commit/abe69bb60242ef97a49766040466d480ec3b93c9))
-* **studio,server,protocol:** one toggle installs an extension and enables it ([f6d6b2c](https://github.com/jxsuite/jx/commit/f6d6b2cc88810401a57ca941c1bdef182137df6e))
-* Studio's chrome is Jx documents over a native kit; Spectrum is removed ([a31f63e](https://github.com/jxsuite/jx/commit/a31f63e1b010e96434ee76b753f6c75a5d7ae2a5))
-* **ui,compiler,schema:** jx-popover, jx-tooltip and jx-spinner ([10f6703](https://github.com/jxsuite/jx/commit/10f67031ca0e4ff2c6189bcfee64093ba308d906))
+* popovers become a first-class thing the canvas can open, and a rule it can check ([63e5916](https://github.com/jxsuite/jx/commit/63e5916c7aa1b41771bed4029960192582b52c0f))
+* **runtime,compiler,site,studio:** authored styles become adopted CSS rules ([d3a4fe1](https://github.com/jxsuite/jx/commit/d3a4fe19cbd50322a08a4230d8c62f811d0d256f))
+* **runtime,studio:** dialogs, invoker commands and inert on the canvas ([4a1455e](https://github.com/jxsuite/jx/commit/4a1455ee6d0b86228c840529998d9fbed62e4442))
+* **schema,runtime,compiler,site:** a style value may read state ([01e74c7](https://github.com/jxsuite/jx/commit/01e74c7f2d43cdcc9a3107b4ab30de4f769922d1))
+* **schema,studio,compiler:** accessibility rules, judged alike by Studio, jx validate and the tests ([c14d121](https://github.com/jxsuite/jx/commit/c14d121e128bf64c041c401b8b0514f6133e133c))
+* **studio,server,protocol:** one toggle installs an extension and enables it ([1fe5f67](https://github.com/jxsuite/jx/commit/1fe5f6731c00c9421e8dcd8d1ca100d2b06f740e))
+* **studio,server,protocol:** one toggle installs an extension and enables it ([17b2627](https://github.com/jxsuite/jx/commit/17b26270db18e23f2f66f7bb15e67db64b2eac22))
+* Studio's chrome is Jx documents over a native kit; Spectrum is removed ([035778f](https://github.com/jxsuite/jx/commit/035778fa8bed3d45875643f9e811a066d2a933bc))
+* **ui,compiler,schema:** jx-popover, jx-tooltip and jx-spinner ([21bc6ba](https://github.com/jxsuite/jx/commit/21bc6ba29f3304ddc3c56ee54de36d5b95fa69f1))
 
 
 ### Bug Fixes
 
-* **compiler:** a component nested inside another component's definition prerenders ([9d12229](https://github.com/jxsuite/jx/commit/9d122293f7a48148810d664ee6ea42d53229b377))
-* **compiler:** a component nested inside another component's definition prerenders ([5f753d4](https://github.com/jxsuite/jx/commit/5f753d41dd3f2a46a87c50a016306fca1162b8e9)), closes [#286](https://github.com/jxsuite/jx/issues/286)
-* **compiler:** a selector list in a component's own style loses every member but the first ([628e1ab](https://github.com/jxsuite/jx/commit/628e1ab8875b05c3ab5f40890add118bc7d4007d))
-* **compiler:** every boolean-attribute writer defers to booleanAttrValue ([596d2d6](https://github.com/jxsuite/jx/commit/596d2d6b8fc29283d312a95aacf02f0c09e3c5ad))
+* **compiler:** a component nested inside another component's definition prerenders ([0ccf6d3](https://github.com/jxsuite/jx/commit/0ccf6d303fb43cc96e50aac6ffb6b78bfb8fe554))
+* **compiler:** a component nested inside another component's definition prerenders ([f42a1b2](https://github.com/jxsuite/jx/commit/f42a1b2b826e8cab4083d6ca71e4fe3f11a1c234)), closes [#286](https://github.com/jxsuite/jx/issues/286)
+* **compiler:** a selector list in a component's own style loses every member but the first ([dedb2d6](https://github.com/jxsuite/jx/commit/dedb2d68bd7eddf1f1cb94d005c900c1c47eb932))
+* **compiler:** every boolean-attribute writer defers to booleanAttrValue ([95a6c6a](https://github.com/jxsuite/jx/commit/95a6c6ae2a87fd14a44ccb075f23346987ba5cef))
 
 
 ### Dependencies
@@ -547,8 +547,8 @@
 
 ### Features
 
-* **compiler,server:** a site deployed under a subpath resolves its URLs against url's path ([c4b7f27](https://github.com/jxsuite/jx/commit/c4b7f27c82a19bfa1f62eff8a75597c13a3f90be))
-* **compiler,server:** a site deployed under a subpath resolves its URLs against url's path ([988abd8](https://github.com/jxsuite/jx/commit/988abd8d3614f0ba3ce6cd8b1c1db589fef0a511)), closes [#235](https://github.com/jxsuite/jx/issues/235)
+* **compiler,server:** a site deployed under a subpath resolves its URLs against url's path ([c97617a](https://github.com/jxsuite/jx/commit/c97617a27563a776f038e82c3b0bafb5696996da))
+* **compiler,server:** a site deployed under a subpath resolves its URLs against url's path ([e65e1cf](https://github.com/jxsuite/jx/commit/e65e1cf3feed747822e46fc460ff3d978e1e3131)), closes [#235](https://github.com/jxsuite/jx/issues/235)
 
 
 ### Dependencies
@@ -572,29 +572,29 @@
 
 ### Features
 
-* **import:** the site-import workflow, end to end ([eab1109](https://github.com/jxsuite/jx/commit/eab1109e0fc21a5f311d2f1c8f90626c1d51c55d))
-* Open in Browser previews the working tree through the runtime ([b02e0e5](https://github.com/jxsuite/jx/commit/b02e0e543016879c963810f770b568995023e6ed))
-* **site,compiler:** the docs sidebar folds into accordions that open to the current page ([f817617](https://github.com/jxsuite/jx/commit/f817617991847d1dafeb9f1c98e8384ea749fdc5))
-* **site,compiler:** the docs sidebar folds into accordions that open to the current page ([a9cc338](https://github.com/jxsuite/jx/commit/a9cc338c2e43dc075b1c83279ca4073f2ccd246f))
-* **site,compiler:** the docs sidebar folds into accordions that open to the current page ([a127fa3](https://github.com/jxsuite/jx/commit/a127fa3ce2fd0e29ae4536e7890ebae7f2facfea))
+* **import:** the site-import workflow, end to end ([f701f33](https://github.com/jxsuite/jx/commit/f701f33bc035a8e5ce331530ff9886d25236da64))
+* Open in Browser previews the working tree through the runtime ([c30c245](https://github.com/jxsuite/jx/commit/c30c2453a0ce426b0111518617b6ed88d9b367e1))
+* **site,compiler:** the docs sidebar folds into accordions that open to the current page ([3bb554c](https://github.com/jxsuite/jx/commit/3bb554c006591ba0a77396c3600e558301f63432))
+* **site,compiler:** the docs sidebar folds into accordions that open to the current page ([92c342d](https://github.com/jxsuite/jx/commit/92c342d0bca15994bd3b170dd298d134c32c5239))
+* **site,compiler:** the docs sidebar folds into accordions that open to the current page ([3934d00](https://github.com/jxsuite/jx/commit/3934d002307ddc61d0f930b95aa2dc4d569148d9))
 
 
 ### Bug Fixes
 
-* **compiler:** write the runtime bundles every emitted import map names ([994b3da](https://github.com/jxsuite/jx/commit/994b3daa5a64fb8a227131e635f0abed3193d47b)), closes [#227](https://github.com/jxsuite/jx/issues/227)
-* **runtime,compiler:** one boolean-attribute rule, and it knows the two families ([c9de06b](https://github.com/jxsuite/jx/commit/c9de06b0743592f126bc086b8e16abc4fb14e039))
-* **runtime,compiler:** one boolean-attribute rule, and it knows the two families ([3738342](https://github.com/jxsuite/jx/commit/373834245b52aded356d6cb2c4ddebdf47e05073))
+* **compiler:** write the runtime bundles every emitted import map names ([af43b6f](https://github.com/jxsuite/jx/commit/af43b6fde25fe3f9f69c0e82f1a2b46f09044161)), closes [#227](https://github.com/jxsuite/jx/issues/227)
+* **runtime,compiler:** one boolean-attribute rule, and it knows the two families ([6ef3a24](https://github.com/jxsuite/jx/commit/6ef3a243bc2ca18ed08aefbc95a3f50f49c5d824))
+* **runtime,compiler:** one boolean-attribute rule, and it knows the two families ([0853bd6](https://github.com/jxsuite/jx/commit/0853bd6b09a730e425067cd45d4d57a7b9709394))
 
 
 ### Performance Improvements
 
-* **compiler:** minify bundles, inline component CSS, preload the runtime ([f19136e](https://github.com/jxsuite/jx/commit/f19136e35efb629c397923eccf959559af4d28b6))
-* **compiler:** minify bundles, inline component CSS, preload the runtime ([f1a1537](https://github.com/jxsuite/jx/commit/f1a1537b1b7966892fa14cda9d1e3cfcb956cad4))
+* **compiler:** minify bundles, inline component CSS, preload the runtime ([502238b](https://github.com/jxsuite/jx/commit/502238baa06c81b02fcc2853017c54de6a23526c))
+* **compiler:** minify bundles, inline component CSS, preload the runtime ([78dcc89](https://github.com/jxsuite/jx/commit/78dcc89496ad90f6fa0f9369f1c6e6b9d2538641))
 
 
 ### Code Refactoring
 
-* **schema,site:** site composition gets its own package ([f9d270d](https://github.com/jxsuite/jx/commit/f9d270daf261eef9ac9566192787b7a4bba25135))
+* **schema,site:** site composition gets its own package ([d4a3d6e](https://github.com/jxsuite/jx/commit/d4a3d6ec50b747305e278060f05b20743daf4a2c))
 
 
 ### Dependencies
@@ -614,12 +614,12 @@
 
 ### Bug Fixes
 
-* **compiler,runtime,studio:** a bare media type in an at-key emits without parentheses ([47c2e47](https://github.com/jxsuite/jx/commit/47c2e47c8d4f615c83e53b4f7aaf6dd2172824fa))
-* **compiler,runtime:** a component whose content is root textContent renders it ([03fc577](https://github.com/jxsuite/jx/commit/03fc577a18dc8f39d65665b131e1f67e27ebd628))
-* **compiler:** a non-static component instance keeps its props through hydration ([f89ce2d](https://github.com/jxsuite/jx/commit/f89ce2d3d8051cc880cdd9c47f408e65bf0e0c06))
-* **compiler:** a template with more than one interpolation resolves instead of emptying ([472cd4c](https://github.com/jxsuite/jx/commit/472cd4c025bf46d7c8d9fda62caf0ea3abe82038))
-* **compiler:** the client runtime resolves under Node, so builds stop reaching for a CDN ([aea1d64](https://github.com/jxsuite/jx/commit/aea1d643498e5f2d0c63aa5989ea150cb5c639c9))
-* six output-correctness defects, two of them live on jxsuite.com ([88d4479](https://github.com/jxsuite/jx/commit/88d447966dc002b454dc95fa52aa2634c029cb4c))
+* **compiler,runtime,studio:** a bare media type in an at-key emits without parentheses ([79b6fd6](https://github.com/jxsuite/jx/commit/79b6fd69bfbdec9de399790c51cbc874614f6c57))
+* **compiler,runtime:** a component whose content is root textContent renders it ([fef0ef1](https://github.com/jxsuite/jx/commit/fef0ef15211af9ceccd47f176ae18b608457cc3f))
+* **compiler:** a non-static component instance keeps its props through hydration ([c36b32f](https://github.com/jxsuite/jx/commit/c36b32faa41b41663c5b4afecd3e9e0131185dc9))
+* **compiler:** a template with more than one interpolation resolves instead of emptying ([c3af8ed](https://github.com/jxsuite/jx/commit/c3af8edf8a5b31633e60891bcf0331c326c5a4db))
+* **compiler:** the client runtime resolves under Node, so builds stop reaching for a CDN ([3b8a914](https://github.com/jxsuite/jx/commit/3b8a914d8d7dc745edab8e01efe055989462fa56))
+* six output-correctness defects, two of them live on jxsuite.com ([67663a9](https://github.com/jxsuite/jx/commit/67663a97b062313b3dc419e99fef556ed70539e5))
 
 
 ### Dependencies
@@ -726,54 +726,54 @@
 
 ### Features
 
-* **compiler:** an optional service worker, and the tombstone that removes it ([688e4fd](https://github.com/jxsuite/jx/commit/688e4fd5771d8b797c83e8a6ac5c64bcffc165a5))
-* **compiler:** check link relations against the IANA registry ([23c53a6](https://github.com/jxsuite/jx/commit/23c53a6422a58a8c54509cb29d769ca8e7f68e8e))
-* **compiler:** compile $switch on a dynamic page ([#127](https://github.com/jxsuite/jx/issues/127)) ([d6c941b](https://github.com/jxsuite/jx/commit/d6c941b75357bac6d0a1bd25d8b0122a77c0469b))
-* **compiler:** date a generated route by its entry, not by the template ([9bc9668](https://github.com/jxsuite/jx/commit/9bc96680634e56c150b4eeaede128f7abbf8885e))
-* **compiler:** emit a Content-Security-Policy derived from the built pages ([139402b](https://github.com/jxsuite/jx/commit/139402bba057b3e74c65fb82dc70fc28d36370d6))
-* **compiler:** emit dist/_headers and .nojekyll ([48ff636](https://github.com/jxsuite/jx/commit/48ff63657da9057caa89236d3310f5f925525699))
-* **compiler:** generate manifest.webmanifest and .well-known/security.txt ([8e6dfca](https://github.com/jxsuite/jx/commit/8e6dfca829c4504047566b847e19b1326e452701))
-* **compiler:** locale routing — the i18n config finally has a reader ([b806b4c](https://github.com/jxsuite/jx/commit/b806b4cc8cc4c41f0bb31bf90bc01c8d29a6e0bf))
-* **compiler:** negotiate a locale, expand {locale} sources, and check prefix-always ([72f061c](https://github.com/jxsuite/jx/commit/72f061c9fe9cec6afc0a2c9dfa169e4245db4f24))
-* **compiler:** opt into a shadow root with $shadow ([4a8f2e5](https://github.com/jxsuite/jx/commit/4a8f2e596a2648c55230f907783dd55092746bbb))
-* **compiler:** responsive images — &lt;picture&gt; per format, one owner for loading ([14f920d](https://github.com/jxsuite/jx/commit/14f920de7d5a87ff6c8a71a6ab6c6c1a7820f7d7))
-* **compiler:** serve the client runtime from the site, not from esm.sh ([b2ab1b1](https://github.com/jxsuite/jx/commit/b2ab1b136192ad55af1cd99cbad2899614ef4c6f))
-* **compiler:** translated pages advertise each other ([106a924](https://github.com/jxsuite/jx/commit/106a924c3dd8023a1f0331f3aae4bdf1c07724ce))
-* **feed:** Atom and JSON Feed from content collections ([6269bce](https://github.com/jxsuite/jx/commit/6269bced4f79ca5bdf71ce97d4a404bfdd8523cc))
-* **i18n:** a collection is localized end to end, and a starter proves it ([2230a01](https://github.com/jxsuite/jx/commit/2230a011b28743988725d061b7086cc02038cfb8))
-* **i18n:** a localized slug is a translation, when the page says which one ([5d44fb7](https://github.com/jxsuite/jx/commit/5d44fb7062079a573456118ff8a3c7b44b987bf2))
-* **i18n:** a page can render its own language switcher, and formats in its own language ([354e481](https://github.com/jxsuite/jx/commit/354e481b2bb45fc6be72d9af537d560c2f971d80))
-* **i18n:** multilingual sites, end to end — framework, Studio, extensions and a starter ([692e50f](https://github.com/jxsuite/jx/commit/692e50f9d7132daf71a63c950fd740b103766cb0))
-* **runtime:** enforce private state against $props (spec.md §5.6) ([c8fffc5](https://github.com/jxsuite/jx/commit/c8fffc5a00a0b022717c81bc303b5331ca9b7488))
-* **schema,runtime,compiler,studio:** a tag can be chosen at element creation ([e31a20f](https://github.com/jxsuite/jx/commit/e31a20fb52b7e718be67ed59338d149abf3562c1))
-* **schema:** parse media types, and enforce I-JSON at the document boundary ([3e7db19](https://github.com/jxsuite/jx/commit/3e7db19e59825c200be4a337565875df4b58b5f9))
-* **schema:** serve markdown and YAML under the media types their RFCs register ([c336b6f](https://github.com/jxsuite/jx/commit/c336b6fc4e4935954cc897a3dc8d0579ad6ca27c))
-* **studio:** the Named Shell — P0–P8, the full UX redesign ([b576cbb](https://github.com/jxsuite/jx/commit/b576cbb24c7e0d8d36075f6d682e9b3b6b971166))
+* **compiler:** an optional service worker, and the tombstone that removes it ([e7a1bae](https://github.com/jxsuite/jx/commit/e7a1baeb9daac3f271a7e3e926e1a37fc58f646a))
+* **compiler:** check link relations against the IANA registry ([ffdca1c](https://github.com/jxsuite/jx/commit/ffdca1ca5df0129140272b759c0727e689158d56))
+* **compiler:** compile $switch on a dynamic page ([#127](https://github.com/jxsuite/jx/issues/127)) ([98304e0](https://github.com/jxsuite/jx/commit/98304e0685878b172ba1e7b77252c4a606578e22))
+* **compiler:** date a generated route by its entry, not by the template ([a3afe54](https://github.com/jxsuite/jx/commit/a3afe54d59a7cf487947e0fca31c9f6b97db8c92))
+* **compiler:** emit a Content-Security-Policy derived from the built pages ([ce4f8dd](https://github.com/jxsuite/jx/commit/ce4f8dd41cd622aec2affe5663476480bd835f4c))
+* **compiler:** emit dist/_headers and .nojekyll ([0b2abf6](https://github.com/jxsuite/jx/commit/0b2abf6bd45787b993e93fd8071128e74e81f2c4))
+* **compiler:** generate manifest.webmanifest and .well-known/security.txt ([c77685e](https://github.com/jxsuite/jx/commit/c77685eba7af7774b2df18d296ecf330fd2b3dd4))
+* **compiler:** locale routing — the i18n config finally has a reader ([c5151e0](https://github.com/jxsuite/jx/commit/c5151e0265d5befff04503a511b7cecc15b11f4d))
+* **compiler:** negotiate a locale, expand {locale} sources, and check prefix-always ([8477348](https://github.com/jxsuite/jx/commit/84773489bcef6cbb4c820351ca9d379c8e97fe77))
+* **compiler:** opt into a shadow root with $shadow ([ca5188b](https://github.com/jxsuite/jx/commit/ca5188ba741844c6001c2b500b343cde9f24ddd0))
+* **compiler:** responsive images — &lt;picture&gt; per format, one owner for loading ([c55b27a](https://github.com/jxsuite/jx/commit/c55b27ad51f0eaa64a989125b50f9f542538f24a))
+* **compiler:** serve the client runtime from the site, not from esm.sh ([b57f3bf](https://github.com/jxsuite/jx/commit/b57f3bf750fe1fec5c64a2b0f856968e8e861e2f))
+* **compiler:** translated pages advertise each other ([57dde13](https://github.com/jxsuite/jx/commit/57dde1343fe301a633fc5577f3249ff161603240))
+* **feed:** Atom and JSON Feed from content collections ([345c10c](https://github.com/jxsuite/jx/commit/345c10cb9cf83cef2012e92642dde20b0ee60d10))
+* **i18n:** a collection is localized end to end, and a starter proves it ([22661a6](https://github.com/jxsuite/jx/commit/22661a6845f211362280bba71b3cee0bb5d7f809))
+* **i18n:** a localized slug is a translation, when the page says which one ([4512d64](https://github.com/jxsuite/jx/commit/4512d64399ad6c54a2a840a52e7f0a62706763c5))
+* **i18n:** a page can render its own language switcher, and formats in its own language ([035970d](https://github.com/jxsuite/jx/commit/035970d6cf99cdec9bce11b2c9dddae5e09a2cef))
+* **i18n:** multilingual sites, end to end — framework, Studio, extensions and a starter ([1a4cbbc](https://github.com/jxsuite/jx/commit/1a4cbbc45be89a4a998e2fdf9b244e2979e538ba))
+* **runtime:** enforce private state against $props (spec.md §5.6) ([5e9b029](https://github.com/jxsuite/jx/commit/5e9b0299ad116be4ff61af4e1d3569ad0a6323e9))
+* **schema,runtime,compiler,studio:** a tag can be chosen at element creation ([f557ed3](https://github.com/jxsuite/jx/commit/f557ed3c7dd6baac42b0e73b85c12863eef917ae))
+* **schema:** parse media types, and enforce I-JSON at the document boundary ([068811e](https://github.com/jxsuite/jx/commit/068811e83278b0b55d82dd2e88ff838bfabfd05e))
+* **schema:** serve markdown and YAML under the media types their RFCs register ([8e8c1f9](https://github.com/jxsuite/jx/commit/8e8c1f9f418a6e516f7e64745fd5c87a64c8b642))
+* **studio:** the Named Shell — P0–P8, the full UX redesign ([c8c3452](https://github.com/jxsuite/jx/commit/c8c345213307f2383ed5c4251ca6b388c8489504))
 
 
 ### Bug Fixes
 
-* **compiler,starters:** a project's own node_modules stops answering for the Jx schema ([42e07fb](https://github.com/jxsuite/jx/commit/42e07fb2cb9f7827bc0622dbb314c2be50625f3f))
-* **compiler:** a runtime subpath asset that imports itself (site-architecture.md §8.7) ([d962487](https://github.com/jxsuite/jx/commit/d96248798e815d31ade36d869bf8f927be96e54c))
-* **compiler:** emit IDL properties, and hoist shared branch subtrees ([#121](https://github.com/jxsuite/jx/issues/121), [#126](https://github.com/jxsuite/jx/issues/126)) ([67973be](https://github.com/jxsuite/jx/commit/67973be2af8b98e93b8d9c7ec18ccbc91f075a43))
-* **compiler:** emit project style on the custom-element route ([#123](https://github.com/jxsuite/jx/issues/123)) ([eb8ebcb](https://github.com/jxsuite/jx/commit/eb8ebcb9d3499debb81931ba5011754d58d3e0e3))
-* **compiler:** head identity, JSON-LD objects, and per-page lang ([61484bc](https://github.com/jxsuite/jx/commit/61484bcc4981eb51062c5fffc5c0574842140dd3))
-* **compiler:** keep array state a runtime reader still needs ([#122](https://github.com/jxsuite/jx/issues/122)) ([8c5c1bb](https://github.com/jxsuite/jx/commit/8c5c1bb1e5ffb75553fe84d3acda800d470213c5))
-* **compiler:** keep prerender from baking over mutable state ([#124](https://github.com/jxsuite/jx/issues/124), [#125](https://github.com/jxsuite/jx/issues/125)) ([b7d51cc](https://github.com/jxsuite/jx/commit/b7d51cc0f4a7f31758a6535766c3ca3a2d3dff20))
-* **compiler:** make npm web components work in a built site ([9aa2e19](https://github.com/jxsuite/jx/commit/9aa2e198c1629b6d77ed5a63acd84947c329fdd7))
-* **compiler:** package files in $head and $elements land in /assets/, not /node_modules/ ([038cc40](https://github.com/jxsuite/jx/commit/038cc40157174d92985ec2b40a84f604d17bc289))
-* **compiler:** resolve the open issue sweep ([#121](https://github.com/jxsuite/jx/issues/121)–[#127](https://github.com/jxsuite/jx/issues/127)) ([2c0e044](https://github.com/jxsuite/jx/commit/2c0e04400a5ab99539ed5eb502512a837bc6b761))
-* **compiler:** sitemap lastmod is a full RFC 3339 timestamp ([f0c7a22](https://github.com/jxsuite/jx/commit/f0c7a22447466fa83dc911b3727a390e036f8ab2))
-* **desktop:** the Nix bundle deleted the extension packages it depends on ([cf3df55](https://github.com/jxsuite/jx/commit/cf3df5583ee50c1f18acd3d767c386e5ba63bd21))
-* **parser:** localized content never reached its own locale's asset mount ([179311b](https://github.com/jxsuite/jx/commit/179311b3f56d001eea37c092d73956c20056c55d))
-* **runtime:** one $ref tokenizer, so every lowered ref parses ([d57bed4](https://github.com/jxsuite/jx/commit/d57bed4495c0887b512a07d5e1b9f6e66c4462f3))
-* **schema:** redirects admits the shape the compiler and Studio write ([f6080ef](https://github.com/jxsuite/jx/commit/f6080eff7f8d82d715c5bdf5f7444ff4ea8d18f7))
-* **studio,compiler:** the disagree-with-itself families, and a computed the compiler never compiled ([784a58e](https://github.com/jxsuite/jx/commit/784a58e8f99cdd676e65d5b1261f7ea8883124b3))
+* **compiler,starters:** a project's own node_modules stops answering for the Jx schema ([7e28247](https://github.com/jxsuite/jx/commit/7e282471d989bb2622eaa7c4ee3c1cceef4c1917))
+* **compiler:** a runtime subpath asset that imports itself (site-architecture.md §8.7) ([4fd3f03](https://github.com/jxsuite/jx/commit/4fd3f03424f2693feffdcac84ab9c362d05f52c4))
+* **compiler:** emit IDL properties, and hoist shared branch subtrees ([#121](https://github.com/jxsuite/jx/issues/121), [#126](https://github.com/jxsuite/jx/issues/126)) ([356d762](https://github.com/jxsuite/jx/commit/356d7624a42959404935e83eac0bf9c3d7ea69a8))
+* **compiler:** emit project style on the custom-element route ([#123](https://github.com/jxsuite/jx/issues/123)) ([6705c20](https://github.com/jxsuite/jx/commit/6705c20beaa7ff2cfdcd773dfea289ea3ead55b2))
+* **compiler:** head identity, JSON-LD objects, and per-page lang ([61834af](https://github.com/jxsuite/jx/commit/61834af225e10df5eb008ea024230b6c1245ec87))
+* **compiler:** keep array state a runtime reader still needs ([#122](https://github.com/jxsuite/jx/issues/122)) ([c122b58](https://github.com/jxsuite/jx/commit/c122b587bc9009462b758c8cb4c52ba2d126abf3))
+* **compiler:** keep prerender from baking over mutable state ([#124](https://github.com/jxsuite/jx/issues/124), [#125](https://github.com/jxsuite/jx/issues/125)) ([54a9931](https://github.com/jxsuite/jx/commit/54a9931e90a79f38a094bff21a15bc3c9c39c587))
+* **compiler:** make npm web components work in a built site ([8209fe4](https://github.com/jxsuite/jx/commit/8209fe409a2cf184e05b2eb64caa3a6760c2f6de))
+* **compiler:** package files in $head and $elements land in /assets/, not /node_modules/ ([ae4f2bd](https://github.com/jxsuite/jx/commit/ae4f2bd503e07863af51acac60d49b07520d9437))
+* **compiler:** resolve the open issue sweep ([#121](https://github.com/jxsuite/jx/issues/121)–[#127](https://github.com/jxsuite/jx/issues/127)) ([fd220b8](https://github.com/jxsuite/jx/commit/fd220b8db68c132039b59f229d2a53194791395d))
+* **compiler:** sitemap lastmod is a full RFC 3339 timestamp ([c726108](https://github.com/jxsuite/jx/commit/c726108e3f3eb3d2d25d532abb59376efe9e2a97))
+* **desktop:** the Nix bundle deleted the extension packages it depends on ([b3fc5bb](https://github.com/jxsuite/jx/commit/b3fc5bbe1a22fdd506a81f3b0339c619f29ec760))
+* **parser:** localized content never reached its own locale's asset mount ([ff15172](https://github.com/jxsuite/jx/commit/ff1517233e4d5b685009e4f47b8bded295c9a186))
+* **runtime:** one $ref tokenizer, so every lowered ref parses ([23cdfdd](https://github.com/jxsuite/jx/commit/23cdfdd67cd788764a9256475be7f76e71dc08e0))
+* **schema:** redirects admits the shape the compiler and Studio write ([e695ecd](https://github.com/jxsuite/jx/commit/e695ecd2930f519f64cd87bdb2d073d809bee9f6))
+* **studio,compiler:** the disagree-with-itself families, and a computed the compiler never compiled ([675a69e](https://github.com/jxsuite/jx/commit/675a69e65b5c79a294f90a40e633477f21dd3e2a))
 
 
 ### Reverts
 
-* **studio:** stop reporting Trusted Types violations nobody can act on ([1ae1911](https://github.com/jxsuite/jx/commit/1ae19111b71b6d13f3659b925dfd12996910eb00))
+* **studio:** stop reporting Trusted Types violations nobody can act on ([6bab956](https://github.com/jxsuite/jx/commit/6bab956c0142b9bd1935a4d6da70f96fc01e8ccd))
 
 
 ### Dependencies
@@ -792,18 +792,18 @@
 
 ### Features
 
-* better search results ([e62c11c](https://github.com/jxsuite/jx/commit/e62c11c902d8d048038a7d280e6dd3e70392e7a7))
-* **schema:** make per-project schema composition host-agnostic ([4dddfa8](https://github.com/jxsuite/jx/commit/4dddfa8742bb43ddd8264d60b370d49aaa87bab1))
-* **schema:** make per-project schema composition host-agnostic ([df337d8](https://github.com/jxsuite/jx/commit/df337d8b3f0c0da35cad16e76d52635f9f06d7c1))
+* better search results ([df8bb65](https://github.com/jxsuite/jx/commit/df8bb65572a88356690bc85825b6e73e63c243de))
+* **schema:** make per-project schema composition host-agnostic ([70e4580](https://github.com/jxsuite/jx/commit/70e4580f6f49d254cfd431585ae577ee9f111a67))
+* **schema:** make per-project schema composition host-agnostic ([32d5cbd](https://github.com/jxsuite/jx/commit/32d5cbd05c7c6a303ae454d3c11057aa1e74a123))
 
 
 ### Bug Fixes
 
-* **compiler:** close eight element-target and prerender conformance gaps ([456666b](https://github.com/jxsuite/jx/commit/456666bb5e962b75502c33573954b61e5d8bb0b0))
-* **compiler:** close five adjacent element-target defects found while fixing [#106](https://github.com/jxsuite/jx/issues/106)-113 ([def35f6](https://github.com/jxsuite/jx/commit/def35f6e41f57524d637ba6331714e0fee6f9043))
-* **compiler:** proper handling of white-space: pre ([4489f44](https://github.com/jxsuite/jx/commit/4489f44f18cd4ee5fbd0f80027645d7b9920f5bb))
-* **schema:** make committed entry documents resolve in editors ([3281908](https://github.com/jxsuite/jx/commit/328190812bb9716de5618da9365b4e4e43cfe7f0))
-* **schema:** validate $paths against the source union instead of any object ([b801a9b](https://github.com/jxsuite/jx/commit/b801a9b503d2b116044b9e1d9b2f9ede9d99d5b7))
+* **compiler:** close eight element-target and prerender conformance gaps ([a0fb927](https://github.com/jxsuite/jx/commit/a0fb9271886b81f7b074149403cc5cc962edca0d))
+* **compiler:** close five adjacent element-target defects found while fixing [#106](https://github.com/jxsuite/jx/issues/106)-113 ([1fd607a](https://github.com/jxsuite/jx/commit/1fd607a8bcfc86fc6e26a060b966db64591f44ca))
+* **compiler:** proper handling of white-space: pre ([3d2db4e](https://github.com/jxsuite/jx/commit/3d2db4e6e477c9c42c32e25050d28978bf9effff))
+* **schema:** make committed entry documents resolve in editors ([e957436](https://github.com/jxsuite/jx/commit/e957436666362e83c07f69e487c4228cfcc06b76))
+* **schema:** validate $paths against the source union instead of any object ([ede98ad](https://github.com/jxsuite/jx/commit/ede98ad5db79d5a37a1bd62e4ba42d82e81fc1af))
 
 
 ### Dependencies
@@ -822,7 +822,7 @@
 
 ### Features
 
-* support external/relative asset files ([368c909](https://github.com/jxsuite/jx/commit/368c9092214a2d589d20f7d2ddad03e698b76940))
+* support external/relative asset files ([7cbe138](https://github.com/jxsuite/jx/commit/7cbe138a1f2ecaa77599ca7112162b526e7bd5bc))
 
 
 ### Dependencies
@@ -841,13 +841,13 @@
 
 ### Features
 
-* **compiler:** bundled entry documents and whole-project jx validate ([46a5d6b](https://github.com/jxsuite/jx/commit/46a5d6b8dedb093612edebf240ed516882917b55))
-* enforce truthful marketing claims and add the missing LICENSE ([b7e0b09](https://github.com/jxsuite/jx/commit/b7e0b095566121d79ca50894b69a476984fb93ee))
+* **compiler:** bundled entry documents and whole-project jx validate ([a213bab](https://github.com/jxsuite/jx/commit/a213babf7fc492cf8f8fd81b7f2035f5a2a9ae89))
+* enforce truthful marketing claims and add the missing LICENSE ([6e235b5](https://github.com/jxsuite/jx/commit/6e235b562d8b494afa3e8509b6bb98e4c2e3d9c6))
 
 
 ### Bug Fixes
 
-* harden dev server and unify runtime/compiler evaluation ([47a1d4c](https://github.com/jxsuite/jx/commit/47a1d4c90f29c6389049f389c97389857f24f855))
+* harden dev server and unify runtime/compiler evaluation ([775c393](https://github.com/jxsuite/jx/commit/775c393b5010a304c2a5bf6759b2dfc5ca3bcc80))
 
 
 ### Dependencies
@@ -866,16 +866,16 @@
 
 ### Features
 
-* color scheme support ([0f380c6](https://github.com/jxsuite/jx/commit/0f380c61a16c7bf0061628d0c7ccac5e3e045f4a))
-* **compiler:** bundle the site worker self-contained per adapter ([4096ba1](https://github.com/jxsuite/jx/commit/4096ba1280d68e1e7915b1d24cab65784bf3f22a))
-* **compiler:** sidecar bundling, extension emit capability, heading anchors ([07e28bc](https://github.com/jxsuite/jx/commit/07e28bc37f3d96ffdc2d42a7f3fa4d5ceb9eb3de))
-* search package ([9262c68](https://github.com/jxsuite/jx/commit/9262c68e5797ed1c4c2b9103e0f73e676a30ef39))
-* **styling:** forced color-scheme contract — dual emission, color-scheme triplet, pre-paint script ([e629684](https://github.com/jxsuite/jx/commit/e629684da928ff18f710857601741c9c7db7585d))
+* color scheme support ([6334a09](https://github.com/jxsuite/jx/commit/6334a09694aa742e11082b386bcf93305df60477))
+* **compiler:** bundle the site worker self-contained per adapter ([da0e3d3](https://github.com/jxsuite/jx/commit/da0e3d3b03d07e041de7ee30b55158b34ea2315a))
+* **compiler:** sidecar bundling, extension emit capability, heading anchors ([a360333](https://github.com/jxsuite/jx/commit/a3603333937364ba7753b72ec6bf77138cbe7e42))
+* search package ([e8966f3](https://github.com/jxsuite/jx/commit/e8966f35ba0e1b6dd0da23526ef1a00631ad80d6))
+* **styling:** forced color-scheme contract — dual emission, color-scheme triplet, pre-paint script ([3f7a046](https://github.com/jxsuite/jx/commit/3f7a04690d34cd803e9fd00dd87ae7e1a2d9389e))
 
 
 ### Bug Fixes
 
-* **ci:** green the Test workflow — type-aware lint, coverage gates, docs drift ([78b3c17](https://github.com/jxsuite/jx/commit/78b3c170a656296b8b76655a289a25471376d6ca))
+* **ci:** green the Test workflow — type-aware lint, coverage gates, docs drift ([5d72f0f](https://github.com/jxsuite/jx/commit/5d72f0f9f49734142b80df155ba5c74987d25a97))
 
 
 ### Dependencies
@@ -894,16 +894,16 @@
 
 ### Features
 
-* **compiler,server,create:** jx dev and jx preview — the scaffolded scripts now work ([c0ff0d9](https://github.com/jxsuite/jx/commit/c0ff0d9d36715886b3f819b8d7ceebd682593583))
-* **docs,parser:** /docs platform — nested ids, nav sidebar, traceability, generated references ([6ecdcb5](https://github.com/jxsuite/jx/commit/6ecdcb505b7e61761369a12b76c51e27652df8e1))
-* image pruning for persistent site build cache + github ci cache ([b45096e](https://github.com/jxsuite/jx/commit/b45096ede609ecb5d640143af4b777fcb7f661b8))
-* **runtime,compiler:** named formulas — call operator, $args scheme, blessed globals ([24d516b](https://github.com/jxsuite/jx/commit/24d516bd3310fdd2630507b38d25a0a87d080e46))
-* **studio:** spreadsheet grid editor — CSV grid tabs with batch save ([6736c02](https://github.com/jxsuite/jx/commit/6736c027d57fb438fb7aa0a9f333a41cc477e0a4))
+* **compiler,server,create:** jx dev and jx preview — the scaffolded scripts now work ([94c9c15](https://github.com/jxsuite/jx/commit/94c9c156a4ad5d65c2282502212fbd3c22e6130a))
+* **docs,parser:** /docs platform — nested ids, nav sidebar, traceability, generated references ([9282436](https://github.com/jxsuite/jx/commit/9282436f0e91ef7b8c11039f6a11aabf5147dafa))
+* image pruning for persistent site build cache + github ci cache ([5c995a8](https://github.com/jxsuite/jx/commit/5c995a8a7204ea632940ff0b3c3db65239133c00))
+* **runtime,compiler:** named formulas — call operator, $args scheme, blessed globals ([ae4ad2d](https://github.com/jxsuite/jx/commit/ae4ad2ddfab8601bd101a46830fff6e10f4a999c))
+* **studio:** spreadsheet grid editor — CSV grid tabs with batch save ([b0bd0dc](https://github.com/jxsuite/jx/commit/b0bd0dccb72a9541c77b877154783f376cd540fa))
 
 
 ### Bug Fixes
 
-* **studio,compiler,parser,protocol,auth:** keep the promises the docs audit surfaced ([03ac07f](https://github.com/jxsuite/jx/commit/03ac07ff3a53c125587050a277b3dfa7b0ce86b6))
+* **studio,compiler,parser,protocol,auth:** keep the promises the docs audit surfaced ([86740a9](https://github.com/jxsuite/jx/commit/86740a9364079016dd411682bc67ac75bc39e89a))
 
 
 ### Dependencies
@@ -925,11 +925,11 @@
 
 ### Features
 
-- **auth:** Better Auth extension — sessions, permissions, auth-gated data ([bf47228](https://github.com/jxsuite/jx/commit/bf472285581afbfe7b650b5d52578078359655fa))
-- **connector:** dynamic data tables extension — Kysely core, /_jx/data mount, db push ([3085ab4](https://github.com/jxsuite/jx/commit/3085ab4d29c2c0c9f0b3a3007aadbd17da1994d4))
-- hosts switch to the extension model; migrate all projects to content sections ([c40b45c](https://github.com/jxsuite/jx/commit/c40b45c2c1ac2052cba4467d9353de22f4c0f060))
-- **markup:** shared markup-conversion core package; sever studio/import from parser ([a075e74](https://github.com/jxsuite/jx/commit/a075e74a6c45e91b1d1c7c1a6007e2e344fbb341))
-- **studio:** descriptor-contributed settings + fetched project schemas ([60f1465](https://github.com/jxsuite/jx/commit/60f1465cdc18c07c7d172372f4df2d67dee1ca88))
+- **auth:** Better Auth extension — sessions, permissions, auth-gated data ([32c871e](https://github.com/jxsuite/jx/commit/32c871e9fe48fdeed62e030354cc05adbf6efd19))
+- **connector:** dynamic data tables extension — Kysely core, /_jx/data mount, db push ([65e0d35](https://github.com/jxsuite/jx/commit/65e0d35bf99924b2cd7aa548d02e29e8441ba6ed))
+- hosts switch to the extension model; migrate all projects to content sections ([b2c0e27](https://github.com/jxsuite/jx/commit/b2c0e27c08e649af334fdf67ccf6abbb73c480dc))
+- **markup:** shared markup-conversion core package; sever studio/import from parser ([41141a1](https://github.com/jxsuite/jx/commit/41141a15ba51aa6f58ba1dee78731f15893eaff8))
+- **studio:** descriptor-contributed settings + fetched project schemas ([b85afaf](https://github.com/jxsuite/jx/commit/b85afaf9f6d340e1d916ad399fc758df36ced2e1))
 
 ### Dependencies
 
@@ -946,7 +946,7 @@
 
 ### Features
 
-- **schema:** build.deploy tracking block; fix stale adapter enum ([2c14856](https://github.com/jxsuite/jx/commit/2c148561f4f9329cb3e23d5d5fa3dc330fe121c5))
+- **schema:** build.deploy tracking block; fix stale adapter enum ([c531f46](https://github.com/jxsuite/jx/commit/c531f462658da2e4805ec686f3c7ca27c7334970))
 
 ### Dependencies
 
@@ -960,7 +960,7 @@
 
 ### Bug Fixes
 
-- **compiler:** proper handling of default content ([9970382](https://github.com/jxsuite/jx/commit/997038254e8247b963d22631117fb3639cdc1f6d))
+- **compiler:** proper handling of default content ([39fe2ed](https://github.com/jxsuite/jx/commit/39fe2ed34ce82aafd6459d7452be4b0b8650bc0f))
 
 ### Dependencies
 

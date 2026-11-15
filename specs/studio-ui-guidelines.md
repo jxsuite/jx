@@ -1075,10 +1075,10 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 - **0.2.0** (2026-07-26) — Canvas caret replaces the inline-edit session (§8.3); click selects and places the caret (§8.1); canvas drags start only from the bar handle (§8.2); single-shape action bar (§8.6).
 - **0.1.8** (2026-07-26) — Modal surfaces own the keyboard: showDialog focus handoff, Escape dismissal, and the isModalOpen() shortcut gate (§8.7).
 - **0.1.7** (2026-07-26) — Dialogs and overlay layers (§8.7): the ui/layers.ts contract, showPromptDialog as the replacement for window.prompt(), and a ban on native browser dialogs.
-- **0.1.6** (2026-07-22) — Proper spec versioning (`fb0f3ec7`).
-- **0.1.5** (2026-07-22) — Machine-readable spec status vocabulary + generated status page (`79daba23`).
-- **0.1.4** (2026-07-17) — Color-scheme canvas preview — Auto/Light/Dark tab-bar control (`ccdc1d3e`).
-- **0.1.3** (2026-06-01) — Convert to typescript (`e352e265`).
-- **0.1.2** (2026-04-22) — External web component support (`a9d0fbe4`).
-- **0.1.1** (2026-04-22) — Init new site (`f33d319b`).
-- **0.1.0** (2026-04-18) — Ui guidelines (`91f2b29e`).
+- **0.1.6** (2026-07-22) — Proper spec versioning (`05c12d47`).
+- **0.1.5** (2026-07-22) — Machine-readable spec status vocabulary + generated status page (`dd415a70`).
+- **0.1.4** (2026-07-17) — Color-scheme canvas preview — Auto/Light/Dark tab-bar control (`d6376318`).
+- **0.1.3** (2026-06-01) — Convert to typescript (`b8b7bff1`).
+- **0.1.2** (2026-04-22) — External web component support (`f34c6889`).
+- **0.1.1** (2026-04-22) — Init new site (`f1e9c2f4`).
+- **0.1.0** (2026-04-18) — Ui guidelines (`4a1a0fb2`).

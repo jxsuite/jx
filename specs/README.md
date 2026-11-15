@@ -24,8 +24,8 @@ These specs are the source of truth for Jx behavior. User documentation ([`docs/
 
 ## Changelog
 
-- **0.1.8** (2026-07-22) — Proper spec versioning (`fb0f3ec7`).
-- **0.1.7** (2026-07-22) — Fix failing tests (`56e073f8`).
+- **0.1.8** (2026-07-22) — Proper spec versioning (`05c12d47`).
+- **0.1.7** (2026-07-22) — Fix failing tests (`4427c14d`).
 
 ---
 

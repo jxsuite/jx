@@ -19,7 +19,7 @@ workspaces:
 
 > **Status: Partial.** The table and build-time highlighting ship (`JX_TAG_MAP` and `mdastNodeToJx` in `extensions/parser/src/transpile.ts`, `extensions/parser/src/highlight.ts`), but a reference-style link or image (`[text][label]`, `![alt][label]` with a `[label]: url` definition) is dropped together with its text, and a GFM footnote with its definition. Two constructs the table does not list are mapped rather than dropped: raw HTML goes through `htmlToJx` and a hard line break becomes `br`. §13's CommonMark note says §10 names the unmapped constructs and that each is dropped; §10 names none of them.
 
-The marker holds at 84735a9f (no file under `extensions/parser` or `packages/markup` changed since the census commit b900b326). Measured by running `transpileJxMarkdown`, `processMarkdown` and `serializeJxMarkdown` on small inputs, and by parsing all 301 `.md` files under `docs/`, `sites/`, `packages/starters/` and `examples/` with the same remark stack. No test suite was run.
+The marker holds at d4cecc34 (no file under `extensions/parser` or `packages/markup` changed since the census commit 31ae328e). Measured by running `transpileJxMarkdown`, `processMarkdown` and `serializeJxMarkdown` on small inputs, and by parsing all 301 `.md` files under `docs/`, `sites/`, `packages/starters/` and `examples/` with the same remark stack. No test suite was run.
 
 **What the marker says, verified**
 

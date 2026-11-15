@@ -173,7 +173,7 @@ Also fixed, and each was a real source of churn: the animation freeze is install
 
 The measurements below were taken while the pictures were still committed, which is why they count rewrites and commits. They are what the number was sized against, and the four defects they found are fixed whichever way the bytes are stored.
 
-The number is sized against measurement, and it was re-sized once the measurement became honest. The first sample (21 rewrites across 24 `chore(screenshots)` commits) was taken while the lane still passed `--force`, so `writeIfChanged` never ran and the sample recorded Chromium's encoder rather than this threshold. `--force` left the lane in `7ce93986`; the ten days after it are 51 commits and 181 rewrites, every delta recomputed from the committed blobs.
+The number is sized against measurement, and it was re-sized once the measurement became honest. The first sample (21 rewrites across 24 `chore(screenshots)` commits) was taken while the lane still passed `--force`, so `writeIfChanged` never ran and the sample recorded Chromium's encoder rather than this threshold. `--force` left the lane in `17fcb073`; the ten days after it are 51 commits and 181 rewrites, every delta recomputed from the committed blobs.
 
 | Δ              | rewrites | the shots that dominate it                    |
 | -------------- | -------- | --------------------------------------------- |

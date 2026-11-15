@@ -22,7 +22,7 @@ const WORKFLOWS = join(import.meta.dir, "../../.github/workflows");
 const WORKFLOW_SOURCE = await Bun.file(join(WORKFLOWS, "screenshots.yml")).text();
 const SCHEMAS_SOURCE = await Bun.file(join(WORKFLOWS, "schemas.yml")).text();
 const RELEASE_SPECS_SOURCE = await Bun.file(join(WORKFLOWS, "release-specs.yml")).text();
-const SHA = "3e6b589a845c9472be30333ed1db46599215802a";
+const SHA = "8bb6cf5cef5798062061927dc0c59a0185f37938";
 
 const run = (id: number, name: string, over: Partial<WorkflowRun> = {}): WorkflowRun => ({
   id,
@@ -259,7 +259,7 @@ describe("crankFor and renderNote", () => {
     ];
     const note = renderNote(outcome({ refused }), REPO, SHA);
     expect(note).toContain("> [!WARNING]");
-    expect(note).toContain("holding 2 run(s) on `3e6b589`");
+    expect(note).toContain("holding 2 run(s) on `8bb6cf5`");
     expect(note).toContain(
       "`gh api -X POST repos/jxsuite/jx/actions/runs/1/approve` (HTTP 403: Resource not accessible by integration)",
     );
@@ -273,7 +273,7 @@ describe("crankFor and renderNote", () => {
 
   test("a budget that found no run at all points at the listing, since there is no id to name", () => {
     const note = renderNote(outcome({ timedOut: true }), REPO, SHA);
-    expect(note).toContain("No workflow run was queued for `3e6b589`");
+    expect(note).toContain("No workflow run was queued for `8bb6cf5`");
     expect(note).toContain(`repos/${REPO}/actions/runs?head_sha=${SHA}`);
     expect(note).toContain('select(.conclusion == "action_required")');
   });
@@ -322,7 +322,7 @@ describe("the CLI", () => {
       );
       // Still-held is the held runs never approved, counted from the final listing — not
       // `held - approved`, which read "-7 still held" once approved runs re-listed as queued.
-      expect(stdout).toContain("1 run(s) on 3e6b589: 0 approved, 1 refused, 1 still held");
+      expect(stdout).toContain("1 run(s) on 8bb6cf5: 0 approved, 1 refused, 1 still held");
       expect(await Bun.file(noteFile).text()).toContain("actions/runs/7/approve");
     } finally {
       await server.stop(true);

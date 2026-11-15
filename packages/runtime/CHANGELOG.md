@@ -5,9 +5,9 @@
 
 ### Features
 
-* **compiler:** a compiled element runs every lifecycle hook and observes its declared attributes ([a845e4d](https://github.com/jxsuite/jx/commit/a845e4dae7aa5ccb049dcc6f66a37176f6b60bc3))
-* **compiler:** a compiled element takes every prop its instance supplies, at connection and after ([429d3c1](https://github.com/jxsuite/jx/commit/429d3c1d84c5d417ff518709efb4b786f69bbe11))
-* **compiler:** a static build comments each style rule with its $description ([5c69560](https://github.com/jxsuite/jx/commit/5c6956071660bb9b8a9af24d4d1c88289865f974))
+* **compiler:** a compiled element runs every lifecycle hook and observes its declared attributes ([867b61c](https://github.com/jxsuite/jx/commit/867b61cd703d443d781840100980baef77b3dec0))
+* **compiler:** a compiled element takes every prop its instance supplies, at connection and after ([e0a66d7](https://github.com/jxsuite/jx/commit/e0a66d75b1bc9afcd4fabb619bc73c952daf4e94))
+* **compiler:** a static build comments each style rule with its $description ([82d9381](https://github.com/jxsuite/jx/commit/82d93815e8faaf3e0704af978268d2ae6849a990))
 
 
 ### Dependencies
@@ -38,16 +38,16 @@
 
 ### Features
 
-* a project's pure formulas are callable in its components ([#642](https://github.com/jxsuite/jx/issues/642)) ([918e404](https://github.com/jxsuite/jx/commit/918e404832f9fc796f9a8e781afcc101693b9a1d))
-* **erase,runtime,server,site:** a document's script runs in every interpreting host ([#627](https://github.com/jxsuite/jx/issues/627)) ([cdd349a](https://github.com/jxsuite/jx/commit/cdd349a304f36da6c9abd6a73b55d2449f096248))
-* live-canvas foundations (tag model, formulas, runtime splice, static empty lists) ([#640](https://github.com/jxsuite/jx/issues/640)) ([2106c38](https://github.com/jxsuite/jx/commit/2106c380eb2661a7eda1a0f6d6f5b6aa8686b8a7))
-* **runtime,studio:** a prop edit writes the prop into the live instance ([#645](https://github.com/jxsuite/jx/issues/645)) ([d1c6e61](https://github.com/jxsuite/jx/commit/d1c6e61301aea36c2532724f1b3a645f7bfbc235))
-* **schema,compiler,runtime:** a document carries its own client and server modules in $script ([#625](https://github.com/jxsuite/jx/issues/625)) ([bb35a4f](https://github.com/jxsuite/jx/commit/bb35a4f7e68dc77e06c4b68437fba459480fcd04))
-* **schema,runtime,compiler:** $lazy loads on first call in every tier ([#617](https://github.com/jxsuite/jx/issues/617)) ([371b6d4](https://github.com/jxsuite/jx/commit/371b6d4c8a0b155820077485eabe76b05f9d0d3e))
-* **schema,runtime,studio:** quote-aware template scan, and a commit keeps its binding ([#638](https://github.com/jxsuite/jx/issues/638)) ([0152646](https://github.com/jxsuite/jx/commit/0152646f57b280ac2086ca1fee6b6cdaf00cc6d8))
-* **studio:** a repeater draws every row on the editing canvas, and any row is editable ([#648](https://github.com/jxsuite/jx/issues/648)) ([0040472](https://github.com/jxsuite/jx/commit/004047270a768fe9471899c95ba3bbe61f91490d))
-* **studio:** Preview is removed; Edit draws live data and Open in Browser runs the page ([#652](https://github.com/jxsuite/jx/issues/652)) ([9e1beb1](https://github.com/jxsuite/jx/commit/9e1beb146c9e95f7fbc6137fc2e209b262daffc6))
-* **studio:** the canvas fetches remote data once, marks what did not resolve, takes a state value ([#649](https://github.com/jxsuite/jx/issues/649)) ([b7a6d63](https://github.com/jxsuite/jx/commit/b7a6d639ab5c813008bc5679ece463c76741b214))
+* a project's pure formulas are callable in its components ([#642](https://github.com/jxsuite/jx/issues/642)) ([d1981bf](https://github.com/jxsuite/jx/commit/d1981bf4b7e44fe69c95c7b21aaeb02818b42d70))
+* **erase,runtime,server,site:** a document's script runs in every interpreting host ([#627](https://github.com/jxsuite/jx/issues/627)) ([97f3bf0](https://github.com/jxsuite/jx/commit/97f3bf03a34e4e0a7b25b71900ba3d73d58e820d))
+* live-canvas foundations (tag model, formulas, runtime splice, static empty lists) ([#640](https://github.com/jxsuite/jx/issues/640)) ([8c83419](https://github.com/jxsuite/jx/commit/8c83419930fb278eec9980f9dd031cee9fcbccdd))
+* **runtime,studio:** a prop edit writes the prop into the live instance ([#645](https://github.com/jxsuite/jx/issues/645)) ([e037910](https://github.com/jxsuite/jx/commit/e0379102f9d67ef80815568d48bffa79732a9cbb))
+* **schema,compiler,runtime:** a document carries its own client and server modules in $script ([#625](https://github.com/jxsuite/jx/issues/625)) ([bca939b](https://github.com/jxsuite/jx/commit/bca939bf63cd75a661842d75c3118b788789028b))
+* **schema,runtime,compiler:** $lazy loads on first call in every tier ([#617](https://github.com/jxsuite/jx/issues/617)) ([3392082](https://github.com/jxsuite/jx/commit/33920822a65b8f186306af4f05eb8f3452932da0))
+* **schema,runtime,studio:** quote-aware template scan, and a commit keeps its binding ([#638](https://github.com/jxsuite/jx/issues/638)) ([5a1f8d8](https://github.com/jxsuite/jx/commit/5a1f8d878d3e6f824a254421174bdf656eba3b7a))
+* **studio:** a repeater draws every row on the editing canvas, and any row is editable ([#648](https://github.com/jxsuite/jx/issues/648)) ([8a97e95](https://github.com/jxsuite/jx/commit/8a97e956921410f4b0477afa577202058b034546))
+* **studio:** Preview is removed; Edit draws live data and Open in Browser runs the page ([#652](https://github.com/jxsuite/jx/issues/652)) ([d0d9316](https://github.com/jxsuite/jx/commit/d0d9316aa6c7c3652122bf0c8fef1967b4bc2258))
+* **studio:** the canvas fetches remote data once, marks what did not resolve, takes a state value ([#649](https://github.com/jxsuite/jx/issues/649)) ([ff1a103](https://github.com/jxsuite/jx/commit/ff1a10311206a2a8de803a64a78e4b4311327a67))
 
 
 ### Dependencies
@@ -63,10 +63,10 @@
 
 ### Features
 
-* classify Function entries through one shared classifier ([#595](https://github.com/jxsuite/jx/issues/595)) ([0cc68d7](https://github.com/jxsuite/jx/commit/0cc68d7f3cafbd8d23ca55c0a275f0ce64abbb78))
-* run TypeScript function bodies in the canvas and Live Preview ([#592](https://github.com/jxsuite/jx/issues/592)) ([04f3d27](https://github.com/jxsuite/jx/commit/04f3d27863f3f8da2e86dc28a5705915692bf7e6))
-* **schema,runtime,compiler:** one parameter list and call convention ([#607](https://github.com/jxsuite/jx/issues/607)) ([f013d6a](https://github.com/jxsuite/jx/commit/f013d6ae42e63ba6c108b7dcfd0524b5d7653c52))
-* **schema,runtime,compiler:** refuse a Function declaring both body and $src ([#604](https://github.com/jxsuite/jx/issues/604)) ([7d298b1](https://github.com/jxsuite/jx/commit/7d298b1746de17d4e94fff5a58c90318cc360133))
+* classify Function entries through one shared classifier ([#595](https://github.com/jxsuite/jx/issues/595)) ([122f997](https://github.com/jxsuite/jx/commit/122f997face23fd0a2af532e714d1168ebbdb56c))
+* run TypeScript function bodies in the canvas and Live Preview ([#592](https://github.com/jxsuite/jx/issues/592)) ([dc09e27](https://github.com/jxsuite/jx/commit/dc09e27d53e7824fa56551784d0b4346350d254b))
+* **schema,runtime,compiler:** one parameter list and call convention ([#607](https://github.com/jxsuite/jx/issues/607)) ([96c427a](https://github.com/jxsuite/jx/commit/96c427a7694afda77d4f426fda65ff220a30ba96))
+* **schema,runtime,compiler:** refuse a Function declaring both body and $src ([#604](https://github.com/jxsuite/jx/issues/604)) ([750c463](https://github.com/jxsuite/jx/commit/750c4638f009264d1a71aef556dcb3ef050ea785))
 
 
 ### Dependencies
@@ -100,12 +100,12 @@
 
 ### Features
 
-* every host reads Jx Notation ([#554](https://github.com/jxsuite/jx/issues/554)) ([230382e](https://github.com/jxsuite/jx/commit/230382e4072184ab042a328e25e9f68f1d94de83))
+* every host reads Jx Notation ([#554](https://github.com/jxsuite/jx/issues/554)) ([1305161](https://github.com/jxsuite/jx/commit/13051615b376e077d86875153a9aeacc127c5f76))
 
 
 ### Bug Fixes
 
-* **runtime:** let a write from a child scope reach the state it names ([#556](https://github.com/jxsuite/jx/issues/556)) ([9345bd2](https://github.com/jxsuite/jx/commit/9345bd28d2c323d881e285cfd353f9386fa1cd22))
+* **runtime:** let a write from a child scope reach the state it names ([#556](https://github.com/jxsuite/jx/issues/556)) ([e32df97](https://github.com/jxsuite/jx/commit/e32df970084e8a7f604a8fbf7934f8f234d2433a))
 
 
 ### Dependencies
@@ -119,8 +119,8 @@
 
 ### Features
 
-* **runtime,studio:** hold template warnings for data in flight, and render-check pages as built ([#544](https://github.com/jxsuite/jx/issues/544)) ([5d97c6c](https://github.com/jxsuite/jx/commit/5d97c6c163d0ab2b40b17ad50a2c5620beb4c9a3))
-* **studio:** offer a repeater item's fields in the From data picker ([#539](https://github.com/jxsuite/jx/issues/539)) ([e9ee027](https://github.com/jxsuite/jx/commit/e9ee027322ef01fd2d42c39e7864af1e70556410))
+* **runtime,studio:** hold template warnings for data in flight, and render-check pages as built ([#544](https://github.com/jxsuite/jx/issues/544)) ([6a47d72](https://github.com/jxsuite/jx/commit/6a47d72fde7e10100c8b4e01f51e82b0ee8d9b7f))
+* **studio:** offer a repeater item's fields in the From data picker ([#539](https://github.com/jxsuite/jx/issues/539)) ([2063bfc](https://github.com/jxsuite/jx/commit/2063bfcd42861fa965ff248faf61b005c29683d2))
 
 
 ### Dependencies
@@ -156,12 +156,12 @@
 
 ### Features
 
-* **compiler:** built pages call their server entries; page-level entries are served ([#498](https://github.com/jxsuite/jx/issues/498)) ([d47cd16](https://github.com/jxsuite/jx/commit/d47cd1629f23724191eac18b6895617d62580a78))
+* **compiler:** built pages call their server entries; page-level entries are served ([#498](https://github.com/jxsuite/jx/issues/498)) ([c755088](https://github.com/jxsuite/jx/commit/c75508844232af963a346901ad782249419de3f0))
 
 
 ### Bug Fixes
 
-* **runtime:** an & after a context in a nested style key is the scope ([#497](https://github.com/jxsuite/jx/issues/497)) ([6e7861d](https://github.com/jxsuite/jx/commit/6e7861d37ef8d65e2e34c9e18695ca1b3188b212))
+* **runtime:** an & after a context in a nested style key is the scope ([#497](https://github.com/jxsuite/jx/issues/497)) ([c1e6119](https://github.com/jxsuite/jx/commit/c1e6119bf27bdc70b5df0177145773f196ad07e2))
 
 
 ### Dependencies
@@ -175,26 +175,26 @@
 
 ### Features
 
-* **desktop:** Mac App Store channel (mas target, sandbox entitlements, TestFlight lane) ([#475](https://github.com/jxsuite/jx/issues/475)) ([19f1264](https://github.com/jxsuite/jx/commit/19f1264b83601c97c471c15020950c980d6989bd))
+* **desktop:** Mac App Store channel (mas target, sandbox entitlements, TestFlight lane) ([#475](https://github.com/jxsuite/jx/issues/475)) ([2aab641](https://github.com/jxsuite/jx/commit/2aab641f73e817c72c2689e87c3c481ed2b266a9))
 
 ## [5.1.0](https://github.com/jxsuite/jx/compare/runtime-v5.0.0...runtime-v5.1.0) (2026-10-21)
 
 
 ### Features
 
-* **connector:** settings contributions name their group, intro sentence and item noun ([9d290e3](https://github.com/jxsuite/jx/commit/9d290e386c4ac38629e6d4ec15e87931e4ec2f5b))
-* **runtime:** npm specifiers resolve through a host resolver installed with setNpmModuleResolver ([9d290e3](https://github.com/jxsuite/jx/commit/9d290e386c4ac38629e6d4ec15e87931e4ec2f5b))
-* **runtime:** templates read $site and $page without a state prefix, and an instance whose render throws is reported as not rendered ([9d290e3](https://github.com/jxsuite/jx/commit/9d290e386c4ac38629e6d4ec15e87931e4ec2f5b))
-* **studio:** a Site panel, one Add new dialog, and a Page, Element and Assistant inspector replace the Library and the Document Header card ([9d290e3](https://github.com/jxsuite/jx/commit/9d290e386c4ac38629e6d4ec15e87931e4ec2f5b))
-* **studio:** five top-bar workspaces, Design, Content, Media, Styles and Publish, replace the named layouts ([9d290e3](https://github.com/jxsuite/jx/commit/9d290e386c4ac38629e6d4ec15e87931e4ec2f5b))
-* **studio:** Media, Styles and Publish workspaces, Project settings as a dialog, and a Styles panel that lists variables first ([9d290e3](https://github.com/jxsuite/jx/commit/9d290e386c4ac38629e6d4ec15e87931e4ec2f5b))
-* **studio:** the Content workspace writes collection entries on the canvas inside their template, with fields in the Inspector ([9d290e3](https://github.com/jxsuite/jx/commit/9d290e386c4ac38629e6d4ec15e87931e4ec2f5b))
+* **connector:** settings contributions name their group, intro sentence and item noun ([9839cbb](https://github.com/jxsuite/jx/commit/9839cbbd9c17118685db02e8eeb69df8744a9fe0))
+* **runtime:** npm specifiers resolve through a host resolver installed with setNpmModuleResolver ([9839cbb](https://github.com/jxsuite/jx/commit/9839cbbd9c17118685db02e8eeb69df8744a9fe0))
+* **runtime:** templates read $site and $page without a state prefix, and an instance whose render throws is reported as not rendered ([9839cbb](https://github.com/jxsuite/jx/commit/9839cbbd9c17118685db02e8eeb69df8744a9fe0))
+* **studio:** a Site panel, one Add new dialog, and a Page, Element and Assistant inspector replace the Library and the Document Header card ([9839cbb](https://github.com/jxsuite/jx/commit/9839cbbd9c17118685db02e8eeb69df8744a9fe0))
+* **studio:** five top-bar workspaces, Design, Content, Media, Styles and Publish, replace the named layouts ([9839cbb](https://github.com/jxsuite/jx/commit/9839cbbd9c17118685db02e8eeb69df8744a9fe0))
+* **studio:** Media, Styles and Publish workspaces, Project settings as a dialog, and a Styles panel that lists variables first ([9839cbb](https://github.com/jxsuite/jx/commit/9839cbbd9c17118685db02e8eeb69df8744a9fe0))
+* **studio:** the Content workspace writes collection entries on the canvas inside their template, with fields in the Inspector ([9839cbb](https://github.com/jxsuite/jx/commit/9839cbbd9c17118685db02e8eeb69df8744a9fe0))
 
 
 ### Bug Fixes
 
-* **runtime:** a disposed subtree leaves the document before its effects stop, so releasing styles no longer writes to live nodes ([9d290e3](https://github.com/jxsuite/jx/commit/9d290e386c4ac38629e6d4ec15e87931e4ec2f5b))
-* **site:** a page's own description property becomes its description meta, ahead of the page head ([9d290e3](https://github.com/jxsuite/jx/commit/9d290e386c4ac38629e6d4ec15e87931e4ec2f5b))
+* **runtime:** a disposed subtree leaves the document before its effects stop, so releasing styles no longer writes to live nodes ([9839cbb](https://github.com/jxsuite/jx/commit/9839cbbd9c17118685db02e8eeb69df8744a9fe0))
+* **site:** a page's own description property becomes its description meta, ahead of the page head ([9839cbb](https://github.com/jxsuite/jx/commit/9839cbbd9c17118685db02e8eeb69df8744a9fe0))
 
 ## [5.0.0](https://github.com/jxsuite/jx/compare/runtime-v4.1.0...runtime-v5.0.0) (2026-10-17)
 
@@ -206,8 +206,8 @@
 
 ### Bug Fixes
 
-* cold-open component timeouts, shell-preview 403s, and typed single-expression state templates ([#460](https://github.com/jxsuite/jx/issues/460)) ([882a537](https://github.com/jxsuite/jx/commit/882a53770e0acd6b007319d3dcc258cc5255345b))
-* **studio,runtime,compiler:** render real sites on the canvas, fast outline, named slots ([#464](https://github.com/jxsuite/jx/issues/464)) ([d0ba17e](https://github.com/jxsuite/jx/commit/d0ba17e841520645749df384d3bb3f8e2cffa338))
+* cold-open component timeouts, shell-preview 403s, and typed single-expression state templates ([#460](https://github.com/jxsuite/jx/issues/460)) ([28a0047](https://github.com/jxsuite/jx/commit/28a0047282453277dd2f410edb9b63c38b4a50f8))
+* **studio,runtime,compiler:** render real sites on the canvas, fast outline, named slots ([#464](https://github.com/jxsuite/jx/issues/464)) ([6757dff](https://github.com/jxsuite/jx/commit/6757dfff34f6b85f696813ec37a1a46df690f114))
 
 
 ### Dependencies
@@ -221,7 +221,7 @@
 
 ### Features
 
-* **runtime:** call a server-timed entry only through the host's proxy ([#445](https://github.com/jxsuite/jx/issues/445)) ([505e7fb](https://github.com/jxsuite/jx/commit/505e7fbbb08b0c22684aab0ee422023f08be5077))
+* **runtime:** call a server-timed entry only through the host's proxy ([#445](https://github.com/jxsuite/jx/issues/445)) ([2305f8e](https://github.com/jxsuite/jx/commit/2305f8e32e88974fe7f8842641d08a62284b6759))
 
 ## [4.0.3](https://github.com/jxsuite/jx/compare/runtime-v4.0.2...runtime-v4.0.3) (2026-10-06)
 
@@ -246,8 +246,8 @@
 
 ### Bug Fixes
 
-* **runtime:** a definition that instantiates its own tag is refused instead of hanging ([2988975](https://github.com/jxsuite/jx/commit/2988975365bb7986d718657ab525819c9a513648))
-* **runtime:** a definition that instantiates its own tag is refused instead of hanging ([3a30921](https://github.com/jxsuite/jx/commit/3a30921644a048e93ddc5e572b85ec38399f4abb)), closes [#320](https://github.com/jxsuite/jx/issues/320)
+* **runtime:** a definition that instantiates its own tag is refused instead of hanging ([a48a040](https://github.com/jxsuite/jx/commit/a48a040ca73a5fa74bc7655191ec87c519ccfb5f))
+* **runtime:** a definition that instantiates its own tag is refused instead of hanging ([722a091](https://github.com/jxsuite/jx/commit/722a0914144c1d287182ec3954155dc22983ba2a)), closes [#320](https://github.com/jxsuite/jx/issues/320)
 
 ## [4.0.0](https://github.com/jxsuite/jx/compare/runtime-v3.1.0...runtime-v4.0.0) (2026-09-14)
 
@@ -258,32 +258,32 @@
 
 ### Features
 
-* popovers become a first-class thing the canvas can open, and a rule it can check ([bf757f1](https://github.com/jxsuite/jx/commit/bf757f1c9a9d94e15cbaac3be5405588c082cee3))
-* **runtime,compiler,site,studio:** authored styles become adopted CSS rules ([1542477](https://github.com/jxsuite/jx/commit/15424770e40f979eaaad78682004cf8d87f8180f))
-* **runtime,schema,ui:** the seam schema-contained styling needs ([6efce33](https://github.com/jxsuite/jx/commit/6efce3320960037c5be88922b03466bbc5d10c00))
-* **runtime,schema:** a declaration at-rule may be written more than once ([07aa856](https://github.com/jxsuite/jx/commit/07aa856cf149eb6098a890e4896670a08ebf5c0c))
-* **runtime,site:** [@keyframes](https://github.com/keyframes) is a third at-rule body shape ([6bd5245](https://github.com/jxsuite/jx/commit/6bd52455575c6a4db3eb87a1bedd4aeb2ad1f743))
-* **runtime,studio:** a style block may document itself, and forced-colors.css is generated from one ([8f714b8](https://github.com/jxsuite/jx/commit/8f714b89200d3d5f37e263501e61b06fc7d7f114))
-* **runtime,studio:** dialogs, invoker commands and inert on the canvas ([7ee7f24](https://github.com/jxsuite/jx/commit/7ee7f2498112c48e29d602b4a756c00bbd91b61e))
-* **runtime,ui,studio:** the canvas loads kit behaviours lazily, and a kit save reaches every frame ([e91b660](https://github.com/jxsuite/jx/commit/e91b66089adb3eb18ce3d227900b5d0ff133196a))
-* **runtime:** declaration-body at-rules, and the canvas hooks a popover needs ([a701ee1](https://github.com/jxsuite/jx/commit/a701ee1f2434e1153cddfa1b536c97ba8c849eda))
-* **runtime:** mount() with dispose, per-mount context, host scope and call contract ([e673eb3](https://github.com/jxsuite/jx/commit/e673eb3e360b71c4f940492c55b69b4f775f98d1))
-* **runtime:** redefineElement, and a definition read through the registry at connection ([e86a588](https://github.com/jxsuite/jx/commit/e86a5884512e869180b7dce66281351d7913e11e))
-* **schema,runtime,compiler,site:** a style value may read state ([0e48c12](https://github.com/jxsuite/jx/commit/0e48c12c7536580e36ed7a10c7d2371c28ab0d28))
-* **schema,runtime:** keyed $map with per-row scopes, and a $switch that owns its case ([99e7a6c](https://github.com/jxsuite/jx/commit/99e7a6cfd33087d1e2e18192de8e3c0bb9b5837d))
-* **studio,ui,runtime:** the Command Bar as a Jx document, closing the C2 surfaces ([da1fc54](https://github.com/jxsuite/jx/commit/da1fc54640b55bbd50873abae03d0b70c62a0413))
-* **studio,ui:** the settings menu on the menu surface, with a submenu level and live rows ([ab4b755](https://github.com/jxsuite/jx/commit/ab4b755a1640248d15151e3130632799783ce086))
-* Studio's chrome is Jx documents over a native kit; Spectrum is removed ([a31f63e](https://github.com/jxsuite/jx/commit/a31f63e1b010e96434ee76b753f6c75a5d7ae2a5))
-* **ui,compiler,schema:** jx-popover, jx-tooltip and jx-spinner ([10f6703](https://github.com/jxsuite/jx/commit/10f67031ca0e4ff2c6189bcfee64093ba308d906))
-* **ui,studio:** jx-menu and jx-menu-item, and the element context menu as the first Jx surface ([173cf17](https://github.com/jxsuite/jx/commit/173cf175d455565a36d837097a40bbe2aa40fe4c))
-* **ui:** the @jxsuite/ui workspace, with the theme, jx-icon over Phosphor, and specs/ui.md ([d297bc9](https://github.com/jxsuite/jx/commit/d297bc97c537e8eda726465470f683c3dbf53c37))
+* popovers become a first-class thing the canvas can open, and a rule it can check ([63e5916](https://github.com/jxsuite/jx/commit/63e5916c7aa1b41771bed4029960192582b52c0f))
+* **runtime,compiler,site,studio:** authored styles become adopted CSS rules ([d3a4fe1](https://github.com/jxsuite/jx/commit/d3a4fe19cbd50322a08a4230d8c62f811d0d256f))
+* **runtime,schema,ui:** the seam schema-contained styling needs ([164f5a2](https://github.com/jxsuite/jx/commit/164f5a242cbbc4442e9af5a7d18dd6a041318b94))
+* **runtime,schema:** a declaration at-rule may be written more than once ([9c37c39](https://github.com/jxsuite/jx/commit/9c37c3900b340ff70f6001588a2cbc0228fbc201))
+* **runtime,site:** [@keyframes](https://github.com/keyframes) is a third at-rule body shape ([be15a9f](https://github.com/jxsuite/jx/commit/be15a9fb0dd0dfb2baf5ce2d6c29e362cda640f2))
+* **runtime,studio:** a style block may document itself, and forced-colors.css is generated from one ([269f4c0](https://github.com/jxsuite/jx/commit/269f4c01b3f60209743a81eb60992fdd85b860ca))
+* **runtime,studio:** dialogs, invoker commands and inert on the canvas ([4a1455e](https://github.com/jxsuite/jx/commit/4a1455ee6d0b86228c840529998d9fbed62e4442))
+* **runtime,ui,studio:** the canvas loads kit behaviours lazily, and a kit save reaches every frame ([08df54c](https://github.com/jxsuite/jx/commit/08df54c2c3e6229d3ccfeaf0433a7ed3fc65e07e))
+* **runtime:** declaration-body at-rules, and the canvas hooks a popover needs ([bf35a22](https://github.com/jxsuite/jx/commit/bf35a2235d7e0995463e7a9d46f715914b8054b2))
+* **runtime:** mount() with dispose, per-mount context, host scope and call contract ([d6ce7c9](https://github.com/jxsuite/jx/commit/d6ce7c9f2c846877744dc9527637f8151efe8ec3))
+* **runtime:** redefineElement, and a definition read through the registry at connection ([c45033d](https://github.com/jxsuite/jx/commit/c45033d935b43cb3e0d041ab2fdc020804fee998))
+* **schema,runtime,compiler,site:** a style value may read state ([01e74c7](https://github.com/jxsuite/jx/commit/01e74c7f2d43cdcc9a3107b4ab30de4f769922d1))
+* **schema,runtime:** keyed $map with per-row scopes, and a $switch that owns its case ([4917ec8](https://github.com/jxsuite/jx/commit/4917ec82f829f2cb39e64268440af9665822a801))
+* **studio,ui,runtime:** the Command Bar as a Jx document, closing the C2 surfaces ([f3f4fe2](https://github.com/jxsuite/jx/commit/f3f4fe2d39904bde5e5877946dc95ef6942d77a1))
+* **studio,ui:** the settings menu on the menu surface, with a submenu level and live rows ([f9933d1](https://github.com/jxsuite/jx/commit/f9933d1fc3dc42381d6baa3dcba643b20f22326f))
+* Studio's chrome is Jx documents over a native kit; Spectrum is removed ([035778f](https://github.com/jxsuite/jx/commit/035778fa8bed3d45875643f9e811a066d2a933bc))
+* **ui,compiler,schema:** jx-popover, jx-tooltip and jx-spinner ([21bc6ba](https://github.com/jxsuite/jx/commit/21bc6ba29f3304ddc3c56ee54de36d5b95fa69f1))
+* **ui,studio:** jx-menu and jx-menu-item, and the element context menu as the first Jx surface ([07bb458](https://github.com/jxsuite/jx/commit/07bb458d7b02b1fc4683f876123a51a241c01414))
+* **ui:** the @jxsuite/ui workspace, with the theme, jx-icon over Phosphor, and specs/ui.md ([d26e2b2](https://github.com/jxsuite/jx/commit/d26e2b2a54054bf03a3bc21cccc8f7447f0a91b5))
 
 
 ### Bug Fixes
 
-* **runtime:** removing an observed attribute restores the declared default ([06c71c8](https://github.com/jxsuite/jx/commit/06c71c82950e9063f683e13361980e47d9cf78b6))
-* **schema,runtime,studio:** the overlay tools could not see a custom element ([af93456](https://github.com/jxsuite/jx/commit/af934567e242aca87d7890dff534fc69ad07e855))
-* **studio,ui,runtime,schema:** thirteen findings from the branch review ([8c21b6c](https://github.com/jxsuite/jx/commit/8c21b6cde4a90e21bc655abe10a6f3f1955e638c))
+* **runtime:** removing an observed attribute restores the declared default ([3900b63](https://github.com/jxsuite/jx/commit/3900b63540257da7f2e17ddd275875f2d7965a90))
+* **schema,runtime,studio:** the overlay tools could not see a custom element ([bc57e9f](https://github.com/jxsuite/jx/commit/bc57e9f89f2030fcd0b5b5bdeffda2178683908f))
+* **studio,ui,runtime,schema:** thirteen findings from the branch review ([9f80e82](https://github.com/jxsuite/jx/commit/9f80e82d245c7e2124a21828d97518dcac49f02a))
 
 
 ### Dependencies
@@ -297,8 +297,8 @@
 
 ### Features
 
-* **runtime:** @jxsuite/runtime/css, so composing a stylesheet costs no renderer ([d27683a](https://github.com/jxsuite/jx/commit/d27683ad3a985e319d09c0a1bfef6fbbd9cfa167))
-* **runtime:** @jxsuite/runtime/css, so composing a stylesheet costs no renderer ([61bb842](https://github.com/jxsuite/jx/commit/61bb8426cdaeec85634e4ad4244d73ff3bf3c52a))
+* **runtime:** @jxsuite/runtime/css, so composing a stylesheet costs no renderer ([2a245eb](https://github.com/jxsuite/jx/commit/2a245ebcdc7dc85d94c40ec433d7525d089641c1))
+* **runtime:** @jxsuite/runtime/css, so composing a stylesheet costs no renderer ([f1426c4](https://github.com/jxsuite/jx/commit/f1426c4d4cbbb1200d6f8565e06cf3e95adab2cf))
 
 
 ### Dependencies
@@ -316,20 +316,20 @@
 
 ### Features
 
-* Open in Browser previews the working tree through the runtime ([b02e0e5](https://github.com/jxsuite/jx/commit/b02e0e543016879c963810f770b568995023e6ed))
-* **server:** the working tree, browsable at real routes, on its own origin ([eaaafe3](https://github.com/jxsuite/jx/commit/eaaafe319b12a251b7da1e6b2375a1aa0d56bea2))
-* **site,compiler:** the docs sidebar folds into accordions that open to the current page ([a9cc338](https://github.com/jxsuite/jx/commit/a9cc338c2e43dc075b1c83279ca4073f2ccd246f))
+* Open in Browser previews the working tree through the runtime ([c30c245](https://github.com/jxsuite/jx/commit/c30c2453a0ce426b0111518617b6ed88d9b367e1))
+* **server:** the working tree, browsable at real routes, on its own origin ([d862f2f](https://github.com/jxsuite/jx/commit/d862f2f71fd0579b6435fa6f48d69f029ac6c5dc))
+* **site,compiler:** the docs sidebar folds into accordions that open to the current page ([92c342d](https://github.com/jxsuite/jx/commit/92c342d0bca15994bd3b170dd298d134c32c5239))
 
 
 ### Bug Fixes
 
-* **runtime,compiler:** one boolean-attribute rule, and it knows the two families ([c9de06b](https://github.com/jxsuite/jx/commit/c9de06b0743592f126bc086b8e16abc4fb14e039))
-* **runtime,compiler:** one boolean-attribute rule, and it knows the two families ([3738342](https://github.com/jxsuite/jx/commit/373834245b52aded356d6cb2c4ddebdf47e05073))
+* **runtime,compiler:** one boolean-attribute rule, and it knows the two families ([6ef3a24](https://github.com/jxsuite/jx/commit/6ef3a243bc2ca18ed08aefbc95a3f50f49c5d824))
+* **runtime,compiler:** one boolean-attribute rule, and it knows the two families ([0853bd6](https://github.com/jxsuite/jx/commit/0853bd6b09a730e425067cd45d4d57a7b9709394))
 
 
 ### Code Refactoring
 
-* **schema,site:** site composition gets its own package ([f9d270d](https://github.com/jxsuite/jx/commit/f9d270daf261eef9ac9566192787b7a4bba25135))
+* **schema,site:** site composition gets its own package ([d4a3d6e](https://github.com/jxsuite/jx/commit/d4a3d6ec50b747305e278060f05b20743daf4a2c))
 
 
 ### Dependencies
@@ -343,20 +343,20 @@
 
 ### Features
 
-* **runtime:** a canvas asset resolver, default-off ([43ffbd8](https://github.com/jxsuite/jx/commit/43ffbd812843598561ae68fce7c779251bba2762))
-* **schema,runtime,studio:** the shared path math and a default-off canvas asset resolver ([5100bc7](https://github.com/jxsuite/jx/commit/5100bc7e23e428c87a6e721251ddc763786ac448))
-* **studio:** declare assetSpace, and resolve media in the canvas realm ([196d259](https://github.com/jxsuite/jx/commit/196d2596b337e6298d2f0c15e984a5f29f7abe92))
-* **studio:** declare assetSpace, and resolve media in the canvas realm ([92b087f](https://github.com/jxsuite/jx/commit/92b087f2e504896f7f9800df18ff1310c40e8c4c))
+* **runtime:** a canvas asset resolver, default-off ([3ddc650](https://github.com/jxsuite/jx/commit/3ddc65019f3e6e8191fb70cf38d8d48151da4e60))
+* **schema,runtime,studio:** the shared path math and a default-off canvas asset resolver ([4aad802](https://github.com/jxsuite/jx/commit/4aad80220632ac4ef415172c00ecbbd1a5e95642))
+* **studio:** declare assetSpace, and resolve media in the canvas realm ([9be7db9](https://github.com/jxsuite/jx/commit/9be7db9151e520caf2f65826968956f25304710b))
+* **studio:** declare assetSpace, and resolve media in the canvas realm ([2344271](https://github.com/jxsuite/jx/commit/2344271d5f96728af1a2b3c00bd1e326e0ba1582))
 
 
 ### Bug Fixes
 
-* **compiler,runtime,studio:** a bare media type in an at-key emits without parentheses ([47c2e47](https://github.com/jxsuite/jx/commit/47c2e47c8d4f615c83e53b4f7aaf6dd2172824fa))
-* **compiler,runtime:** a component whose content is root textContent renders it ([03fc577](https://github.com/jxsuite/jx/commit/03fc577a18dc8f39d65665b131e1f67e27ebd628))
-* **compiler:** a non-static component instance keeps its props through hydration ([f89ce2d](https://github.com/jxsuite/jx/commit/f89ce2d3d8051cc880cdd9c47f408e65bf0e0c06))
-* **runtime:** svg elements render, because nodes are created in the right namespace ([4b2ebb0](https://github.com/jxsuite/jx/commit/4b2ebb06f41391390ca1c8fb9f0e490b283c9baf))
-* six output-correctness defects, two of them live on jxsuite.com ([88d4479](https://github.com/jxsuite/jx/commit/88d447966dc002b454dc95fa52aa2634c029cb4c))
-* **studio:** a translated entry has a mount, and one predicate decides a media field ([eb55d84](https://github.com/jxsuite/jx/commit/eb55d84bb9ae8714144d35d4971a253ec3ff333c))
+* **compiler,runtime,studio:** a bare media type in an at-key emits without parentheses ([79b6fd6](https://github.com/jxsuite/jx/commit/79b6fd69bfbdec9de399790c51cbc874614f6c57))
+* **compiler,runtime:** a component whose content is root textContent renders it ([fef0ef1](https://github.com/jxsuite/jx/commit/fef0ef15211af9ceccd47f176ae18b608457cc3f))
+* **compiler:** a non-static component instance keeps its props through hydration ([c36b32f](https://github.com/jxsuite/jx/commit/c36b32faa41b41663c5b4afecd3e9e0131185dc9))
+* **runtime:** svg elements render, because nodes are created in the right namespace ([91636a1](https://github.com/jxsuite/jx/commit/91636a1c9465a074ab9a5683bd2c0083919e2e76))
+* six output-correctness defects, two of them live on jxsuite.com ([67663a9](https://github.com/jxsuite/jx/commit/67663a97b062313b3dc419e99fef556ed70539e5))
+* **studio:** a translated entry has a mount, and one predicate decides a media field ([582a03e](https://github.com/jxsuite/jx/commit/582a03e52580437a0e3144d10717f5f1b09ab481))
 
 
 ### Dependencies
@@ -379,14 +379,14 @@
 
 ### Bug Fixes
 
-* **runtime:** a reflected property name no longer clobbers a declared default ([#188](https://github.com/jxsuite/jx/issues/188)) ([9e40d99](https://github.com/jxsuite/jx/commit/9e40d999719ac276e2927e5af5a7c313facae2c2))
+* **runtime:** a reflected property name no longer clobbers a declared default ([#188](https://github.com/jxsuite/jx/issues/188)) ([1cb85a4](https://github.com/jxsuite/jx/commit/1cb85a43dfe8389307588f77e7ea27bee9b3bfe2))
 
 ## [2.0.3](https://github.com/jxsuite/jx/compare/runtime-v2.0.2...runtime-v2.0.3) (2026-08-23)
 
 
 ### Bug Fixes
 
-* **canvas:** project files load on a host that does not serve them at its root ([#176](https://github.com/jxsuite/jx/issues/176)) ([eba67a9](https://github.com/jxsuite/jx/commit/eba67a9206eec389090a9fd4e0b77b29891ed32a))
+* **canvas:** project files load on a host that does not serve them at its root ([#176](https://github.com/jxsuite/jx/issues/176)) ([d6545da](https://github.com/jxsuite/jx/commit/d6545dae6fc801731519210e698a40d37d76023f))
 
 ## [2.0.2](https://github.com/jxsuite/jx/compare/runtime-v2.0.1...runtime-v2.0.2) (2026-08-21)
 
@@ -415,21 +415,21 @@
 
 ### Features
 
-* **auth:** a loopback redirect with PKCE, and cookies a browser will keep ([053f67c](https://github.com/jxsuite/jx/commit/053f67cf94216020dd2a39982cea30b3802ba3aa))
-* **i18n:** a page can render its own language switcher, and formats in its own language ([354e481](https://github.com/jxsuite/jx/commit/354e481b2bb45fc6be72d9af537d560c2f971d80))
-* **i18n:** format for a language, and count what a reader sees ([fa8affd](https://github.com/jxsuite/jx/commit/fa8affdc2b1936d1ef9365379c490aa49608c552))
-* **i18n:** multilingual sites, end to end — framework, Studio, extensions and a starter ([692e50f](https://github.com/jxsuite/jx/commit/692e50f9d7132daf71a63c950fd740b103766cb0))
-* **runtime:** enforce private state against $props (spec.md §5.6) ([c8fffc5](https://github.com/jxsuite/jx/commit/c8fffc5a00a0b022717c81bc303b5331ca9b7488))
-* **schema,runtime,compiler,studio:** a tag can be chosen at element creation ([e31a20f](https://github.com/jxsuite/jx/commit/e31a20fb52b7e718be67ed59338d149abf3562c1))
-* **studio:** a Trusted Types policy that refuses, and two CSP profiles stated as permanent ([0efad17](https://github.com/jxsuite/jx/commit/0efad1772618bf8cc363591f0f89e6b2e154877b))
-* **studio:** the Named Shell — P0–P8, the full UX redesign ([b576cbb](https://github.com/jxsuite/jx/commit/b576cbb24c7e0d8d36075f6d682e9b3b6b971166))
+* **auth:** a loopback redirect with PKCE, and cookies a browser will keep ([43767ae](https://github.com/jxsuite/jx/commit/43767aeec6be115a810b43a14784f7e7038147ac))
+* **i18n:** a page can render its own language switcher, and formats in its own language ([035970d](https://github.com/jxsuite/jx/commit/035970d6cf99cdec9bce11b2c9dddae5e09a2cef))
+* **i18n:** format for a language, and count what a reader sees ([c2215e1](https://github.com/jxsuite/jx/commit/c2215e1b30934885f94c8d30b3d0812861226fc5))
+* **i18n:** multilingual sites, end to end — framework, Studio, extensions and a starter ([1a4cbbc](https://github.com/jxsuite/jx/commit/1a4cbbc45be89a4a998e2fdf9b244e2979e538ba))
+* **runtime:** enforce private state against $props (spec.md §5.6) ([5e9b029](https://github.com/jxsuite/jx/commit/5e9b0299ad116be4ff61af4e1d3569ad0a6323e9))
+* **schema,runtime,compiler,studio:** a tag can be chosen at element creation ([f557ed3](https://github.com/jxsuite/jx/commit/f557ed3c7dd6baac42b0e73b85c12863eef917ae))
+* **studio:** a Trusted Types policy that refuses, and two CSP profiles stated as permanent ([b2d449b](https://github.com/jxsuite/jx/commit/b2d449beb0c6b83b27bb90b099e1368c1fc2c44a))
+* **studio:** the Named Shell — P0–P8, the full UX redesign ([c8c3452](https://github.com/jxsuite/jx/commit/c8c345213307f2383ed5c4251ca6b388c8489504))
 
 
 ### Bug Fixes
 
-* **compiler:** head identity, JSON-LD objects, and per-page lang ([61484bc](https://github.com/jxsuite/jx/commit/61484bcc4981eb51062c5fffc5c0574842140dd3))
-* **parser:** localized content never reached its own locale's asset mount ([179311b](https://github.com/jxsuite/jx/commit/179311b3f56d001eea37c092d73956c20056c55d))
-* **runtime:** one $ref tokenizer, so every lowered ref parses ([d57bed4](https://github.com/jxsuite/jx/commit/d57bed4495c0887b512a07d5e1b9f6e66c4462f3))
+* **compiler:** head identity, JSON-LD objects, and per-page lang ([61834af](https://github.com/jxsuite/jx/commit/61834af225e10df5eb008ea024230b6c1245ec87))
+* **parser:** localized content never reached its own locale's asset mount ([ff15172](https://github.com/jxsuite/jx/commit/ff1517233e4d5b685009e4f47b8bded295c9a186))
+* **runtime:** one $ref tokenizer, so every lowered ref parses ([23cdfdd](https://github.com/jxsuite/jx/commit/23cdfdd67cd788764a9256475be7f76e71dc08e0))
 
 
 ### Dependencies
@@ -443,7 +443,7 @@
 
 ### Performance Improvements
 
-* **studio,runtime:** stop refetching on every canvas render, narrow the splice escalation ([bad5b08](https://github.com/jxsuite/jx/commit/bad5b084884ffae3cff7e4d7a0dba1d43508314a))
+* **studio,runtime:** stop refetching on every canvas render, narrow the splice escalation ([e1bc3c1](https://github.com/jxsuite/jx/commit/e1bc3c141fac22d269823558db379e1d09dbacc4))
 
 
 ### Dependencies
@@ -457,8 +457,8 @@
 
 ### Bug Fixes
 
-* **runtime:** trigger-independent proper component mapping ([28ab97b](https://github.com/jxsuite/jx/commit/28ab97b7795db7aa26dfd3abcf33198d0144b3f1))
-* **runtime:** trigger-independent proper component mapping ([88157e3](https://github.com/jxsuite/jx/commit/88157e3cd100c0e497da934ef1cd7161e0946039))
+* **runtime:** trigger-independent proper component mapping ([9731fa4](https://github.com/jxsuite/jx/commit/9731fa4b21c6a698b836036c48604dce1844a683))
+* **runtime:** trigger-independent proper component mapping ([c6afb16](https://github.com/jxsuite/jx/commit/c6afb164feb9e7410c043a9af9c31724524b22c0))
 
 
 ### Dependencies
@@ -472,12 +472,12 @@
 
 ### Features
 
-* enforce truthful marketing claims and add the missing LICENSE ([b7e0b09](https://github.com/jxsuite/jx/commit/b7e0b095566121d79ca50894b69a476984fb93ee))
+* enforce truthful marketing claims and add the missing LICENSE ([6e235b5](https://github.com/jxsuite/jx/commit/6e235b562d8b494afa3e8509b6bb98e4c2e3d9c6))
 
 
 ### Bug Fixes
 
-* harden dev server and unify runtime/compiler evaluation ([47a1d4c](https://github.com/jxsuite/jx/commit/47a1d4c90f29c6389049f389c97389857f24f855))
+* harden dev server and unify runtime/compiler evaluation ([775c393](https://github.com/jxsuite/jx/commit/775c393b5010a304c2a5bf6759b2dfc5ca3bcc80))
 
 
 ### Dependencies
@@ -491,8 +491,8 @@
 
 ### Features
 
-* color scheme support ([0f380c6](https://github.com/jxsuite/jx/commit/0f380c61a16c7bf0061628d0c7ccac5e3e045f4a))
-* **styling:** forced color-scheme contract — dual emission, color-scheme triplet, pre-paint script ([e629684](https://github.com/jxsuite/jx/commit/e629684da928ff18f710857601741c9c7db7585d))
+* color scheme support ([6334a09](https://github.com/jxsuite/jx/commit/6334a09694aa742e11082b386bcf93305df60477))
+* **styling:** forced color-scheme contract — dual emission, color-scheme triplet, pre-paint script ([3f7a046](https://github.com/jxsuite/jx/commit/3f7a04690d34cd803e9fd00dd87ae7e1a2d9389e))
 
 
 ### Dependencies
@@ -506,13 +506,13 @@
 
 ### Features
 
-* **runtime,compiler:** named formulas — call operator, $args scheme, blessed globals ([24d516b](https://github.com/jxsuite/jx/commit/24d516bd3310fdd2630507b38d25a0a87d080e46))
-* **runtime,schema,formulas:** pure method operators and the composite formula catalog (spec §19.4d) ([58be3b1](https://github.com/jxsuite/jx/commit/58be3b1aac98ae50b7b1be543fa765c5c83adc46))
-* **runtime,schema,studio:** blessed Intl helpers and object-literal expression operands ([e77a1f2](https://github.com/jxsuite/jx/commit/e77a1f233d28221a9e7b7209c234914d7988ef4d))
-* **schema,runtime,studio:** structured function bodies and the statement editor (spec §20) ([1bc949a](https://github.com/jxsuite/jx/commit/1bc949ad6961513152066aee33d7a95f5a975fb2))
-* **schema,runtime:** conditional operators and editor evaluation trace (spec §19.4b, §19.9) ([7992624](https://github.com/jxsuite/jx/commit/79926245807f27773e55da61374c05aa5f33dbd4))
-* **studio:** inline editing of component property bound text ([898dbcb](https://github.com/jxsuite/jx/commit/898dbcbff5a9db6e1f4369515bec1f52baa2fa70))
-* **studio:** spreadsheet grid editor — CSV grid tabs with batch save ([6736c02](https://github.com/jxsuite/jx/commit/6736c027d57fb438fb7aa0a9f333a41cc477e0a4))
+* **runtime,compiler:** named formulas — call operator, $args scheme, blessed globals ([ae4ad2d](https://github.com/jxsuite/jx/commit/ae4ad2ddfab8601bd101a46830fff6e10f4a999c))
+* **runtime,schema,formulas:** pure method operators and the composite formula catalog (spec §19.4d) ([39303e6](https://github.com/jxsuite/jx/commit/39303e6004cdeecce27dd77ee6e3c3faf34e4bc3))
+* **runtime,schema,studio:** blessed Intl helpers and object-literal expression operands ([cb1c018](https://github.com/jxsuite/jx/commit/cb1c018585869c7a456c22dad602afe724fb4f11))
+* **schema,runtime,studio:** structured function bodies and the statement editor (spec §20) ([e418fbb](https://github.com/jxsuite/jx/commit/e418fbb10cd858f7800f3d3fc42a99f2db24296f))
+* **schema,runtime:** conditional operators and editor evaluation trace (spec §19.4b, §19.9) ([6cae3e8](https://github.com/jxsuite/jx/commit/6cae3e8abc312f4c44304b76e1c783594e3ff9ab))
+* **studio:** inline editing of component property bound text ([91b8c87](https://github.com/jxsuite/jx/commit/91b8c873f89bbc4143287f3a70c2d29fbd1d29a2))
+* **studio:** spreadsheet grid editor — CSV grid tabs with batch save ([b0bd0dc](https://github.com/jxsuite/jx/commit/b0bd0dccb72a9541c77b877154783f376cd540fa))
 
 
 ### Dependencies
@@ -529,7 +529,7 @@
 
 ### Features
 
-- move @jxsuite/parser to the extensions/ tree ([07cd6e0](https://github.com/jxsuite/jx/commit/07cd6e0ad1ef24fe60013de996e5cf0592ff1131))
+- move @jxsuite/parser to the extensions/ tree ([4157381](https://github.com/jxsuite/jx/commit/4157381e83719359c2980e1f9cded4a5c907c463))
 
 ### Dependencies
 
@@ -549,5 +549,5 @@
 
 ### Bug Fixes
 
-- **runtime:** proper handling of default content ([73ddb02](https://github.com/jxsuite/jx/commit/73ddb02eed74c69587739eb8f257736e30001158))
-- **studio:** proper handling of relative component references ([eb20e2f](https://github.com/jxsuite/jx/commit/eb20e2f5ad5b8c27888f3b52d2ca76a24c5afb19))
+- **runtime:** proper handling of default content ([5daae0f](https://github.com/jxsuite/jx/commit/5daae0fba53911eb25dae558bedd50602adba189))
+- **studio:** proper handling of relative component references ([6d99771](https://github.com/jxsuite/jx/commit/6d99771eed1e2a87518cbf90e3700305056f3666))

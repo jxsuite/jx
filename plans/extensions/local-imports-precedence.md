@@ -22,7 +22,7 @@ size: S
 
 The contract is line 80: "On a name collision, a project-local `imports` entry wins over a manifest class". `spec.md` §12.5 adds the rest of the order: explicit `$src`, then page `imports`, then project `imports`, then (in the build) the manifest class.
 
-Verified at 84735a9f. The census undercounted the defect by one input:
+Verified at d4cecc34. The census undercounted the defect by one input:
 
 - `resolvePrototypes` (`packages/compiler/src/site/prototype-resolver.ts`, lines 103 to 135) enters its lowering branch for `def.timing && def.timing !== "compiler"`. It calls `projectContext.registry?.byName(def.$prototype)` and, when the entry declares `lower`, replaces the def. It reads neither `imports` nor the def's own `$src`. So `{ "$prototype": "TableQuery", "$src": "./local/tq.class.json", "timing": "client" }` is also lowered to the connector's `/_jx/data` fetch.
 - The later branch (line 139) is already right: `imports[def.$prototype] ?? registryClassPath(...)`, entered only when `!def.$src`.

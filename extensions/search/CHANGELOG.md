@@ -32,7 +32,7 @@
 
 ### Features
 
-* **schema,runtime,compiler:** one parameter list and call convention ([#607](https://github.com/jxsuite/jx/issues/607)) ([f013d6a](https://github.com/jxsuite/jx/commit/f013d6ae42e63ba6c108b7dcfd0524b5d7653c52))
+* **schema,runtime,compiler:** one parameter list and call convention ([#607](https://github.com/jxsuite/jx/issues/607)) ([96c427a](https://github.com/jxsuite/jx/commit/96c427a7694afda77d4f426fda65ff220a30ba96))
 
 
 ### Dependencies
@@ -91,7 +91,7 @@
 
 ### Features
 
-* **search:** a scope filter searches one part of a site from one index ([#518](https://github.com/jxsuite/jx/issues/518)) ([d32b9b9](https://github.com/jxsuite/jx/commit/d32b9b92c61e569790ed782f9c3a1e10f599ed0a))
+* **search:** a scope filter searches one part of a site from one index ([#518](https://github.com/jxsuite/jx/issues/518)) ([ab86b6f](https://github.com/jxsuite/jx/commit/ab86b6f1d74df5a0fcdda9eba3bc290face19493))
 
 ## [0.4.3](https://github.com/jxsuite/jx/compare/search-v0.4.2...search-v0.4.3) (2026-10-29)
 
@@ -129,7 +129,7 @@
 
 ### Features
 
-* **parser:** support an Obsidian vault as a content collection ([#426](https://github.com/jxsuite/jx/issues/426)) ([6e720c6](https://github.com/jxsuite/jx/commit/6e720c6ec9b3540721c4453d0c02b11414f9efce))
+* **parser:** support an Obsidian vault as a content collection ([#426](https://github.com/jxsuite/jx/issues/426)) ([6e2ca4a](https://github.com/jxsuite/jx/commit/6e2ca4a08d6c0277e09a80e5524a81c4a6c9ee74))
 
 
 ### Dependencies
@@ -152,10 +152,10 @@
 
 ### Features
 
-* **search,docs:** a page can say search: false, and the three spec-derived reference pages do ([4ca8e37](https://github.com/jxsuite/jx/commit/4ca8e37a5ea60d7cb22ab394cbd3ec5145ef4f16))
-* **search,docs:** a page can say search: false, and the three spec-derived reference pages do ([8747f4c](https://github.com/jxsuite/jx/commit/8747f4c2ca4eb55646384a9379b196075a1afcb6)), closes [#305](https://github.com/jxsuite/jx/issues/305)
-* Studio's chrome is Jx documents over a native kit; Spectrum is removed ([a31f63e](https://github.com/jxsuite/jx/commit/a31f63e1b010e96434ee76b753f6c75a5d7ae2a5))
-* **studio:** Adobe Spectrum is removed ([e24e0e8](https://github.com/jxsuite/jx/commit/e24e0e8b8cc8ce7ad3244af3ec47d69b10859cdd))
+* **search,docs:** a page can say search: false, and the three spec-derived reference pages do ([ae836cf](https://github.com/jxsuite/jx/commit/ae836cf73d704af954547d096cc0a9df8b3c1463))
+* **search,docs:** a page can say search: false, and the three spec-derived reference pages do ([950bd4b](https://github.com/jxsuite/jx/commit/950bd4b9ec0c841fcf9c41509ce65b17aea113a2)), closes [#305](https://github.com/jxsuite/jx/issues/305)
+* Studio's chrome is Jx documents over a native kit; Spectrum is removed ([035778f](https://github.com/jxsuite/jx/commit/035778fa8bed3d45875643f9e811a066d2a933bc))
+* **studio:** Adobe Spectrum is removed ([5474e07](https://github.com/jxsuite/jx/commit/5474e0788a637089aead2c94f43b12fce0237fb1))
 
 
 ### Dependencies
@@ -178,8 +178,8 @@
 
 ### Performance Improvements
 
-* **compiler:** minify bundles, inline component CSS, preload the runtime ([f19136e](https://github.com/jxsuite/jx/commit/f19136e35efb629c397923eccf959559af4d28b6))
-* **compiler:** minify bundles, inline component CSS, preload the runtime ([f1a1537](https://github.com/jxsuite/jx/commit/f1a1537b1b7966892fa14cda9d1e3cfcb956cad4))
+* **compiler:** minify bundles, inline component CSS, preload the runtime ([502238b](https://github.com/jxsuite/jx/commit/502238baa06c81b02fcc2853017c54de6a23526c))
+* **compiler:** minify bundles, inline component CSS, preload the runtime ([78dcc89](https://github.com/jxsuite/jx/commit/78dcc89496ad90f6fa0f9369f1c6e6b9d2538641))
 
 
 ### Dependencies
@@ -220,7 +220,7 @@
 
 ### Bug Fixes
 
-* defects surfaced by fact-checking the new package READMEs ([c4a614d](https://github.com/jxsuite/jx/commit/c4a614dae5e199d49384f998a0b937354f9de882))
+* defects surfaced by fact-checking the new package READMEs ([1d3a125](https://github.com/jxsuite/jx/commit/1d3a125051350ee10de2906f6dede52509c8bbe3))
 
 
 ### Dependencies
@@ -234,19 +234,19 @@
 
 ### Features
 
-* better search results ([e62c11c](https://github.com/jxsuite/jx/commit/e62c11c902d8d048038a7d280e6dd3e70392e7a7))
-* enforce truthful marketing claims and add the missing LICENSE ([b7e0b09](https://github.com/jxsuite/jx/commit/b7e0b095566121d79ca50894b69a476984fb93ee))
-* **i18n:** a collection is localized end to end, and a starter proves it ([2230a01](https://github.com/jxsuite/jx/commit/2230a011b28743988725d061b7086cc02038cfb8))
-* **i18n:** multilingual sites, end to end — framework, Studio, extensions and a starter ([692e50f](https://github.com/jxsuite/jx/commit/692e50f9d7132daf71a63c950fd740b103766cb0))
-* **schema,runtime,compiler,studio:** a tag can be chosen at element creation ([e31a20f](https://github.com/jxsuite/jx/commit/e31a20fb52b7e718be67ed59338d149abf3562c1))
-* search package ([9262c68](https://github.com/jxsuite/jx/commit/9262c68e5797ed1c4c2b9103e0f73e676a30ef39))
-* **search:** @jxsuite/search extension — build-time index + headless client ([2925002](https://github.com/jxsuite/jx/commit/29250023ef8ce1f90516ade099fe9e2a922ec3e4))
-* **studio:** the Named Shell — P0–P8, the full UX redesign ([b576cbb](https://github.com/jxsuite/jx/commit/b576cbb24c7e0d8d36075f6d682e9b3b6b971166))
+* better search results ([df8bb65](https://github.com/jxsuite/jx/commit/df8bb65572a88356690bc85825b6e73e63c243de))
+* enforce truthful marketing claims and add the missing LICENSE ([6e235b5](https://github.com/jxsuite/jx/commit/6e235b562d8b494afa3e8509b6bb98e4c2e3d9c6))
+* **i18n:** a collection is localized end to end, and a starter proves it ([22661a6](https://github.com/jxsuite/jx/commit/22661a6845f211362280bba71b3cee0bb5d7f809))
+* **i18n:** multilingual sites, end to end — framework, Studio, extensions and a starter ([1a4cbbc](https://github.com/jxsuite/jx/commit/1a4cbbc45be89a4a998e2fdf9b244e2979e538ba))
+* **schema,runtime,compiler,studio:** a tag can be chosen at element creation ([f557ed3](https://github.com/jxsuite/jx/commit/f557ed3c7dd6baac42b0e73b85c12863eef917ae))
+* search package ([e8966f3](https://github.com/jxsuite/jx/commit/e8966f35ba0e1b6dd0da23526ef1a00631ad80d6))
+* **search:** @jxsuite/search extension — build-time index + headless client ([7876508](https://github.com/jxsuite/jx/commit/78765082023590a59e443ed5b617601df0ec29ce))
+* **studio:** the Named Shell — P0–P8, the full UX redesign ([c8c3452](https://github.com/jxsuite/jx/commit/c8c345213307f2383ed5c4251ca6b388c8489504))
 
 
 ### Bug Fixes
 
-* **ci:** green the Test workflow — type-aware lint, coverage gates, docs drift ([78b3c17](https://github.com/jxsuite/jx/commit/78b3c170a656296b8b76655a289a25471376d6ca))
+* **ci:** green the Test workflow — type-aware lint, coverage gates, docs drift ([5d72f0f](https://github.com/jxsuite/jx/commit/5d72f0f9f49734142b80df155ba5c74987d25a97))
 
 
 ### Dependencies

@@ -23,7 +23,7 @@
 
 ### Features
 
-* Open in Browser runs a component or a layout on its own ([#644](https://github.com/jxsuite/jx/issues/644)) ([ea340c5](https://github.com/jxsuite/jx/commit/ea340c5d83e8e847cb9aa7f1c990e94e84fdf9df))
+* Open in Browser runs a component or a layout on its own ([#644](https://github.com/jxsuite/jx/issues/644)) ([dd6e18d](https://github.com/jxsuite/jx/commit/dd6e18df227e1c78cd0f8e296051b201fd808854))
 
 
 ### Dependencies
@@ -37,7 +37,7 @@
 
 ### Features
 
-* edit function bodies as TypeScript and store them as written ([#593](https://github.com/jxsuite/jx/issues/593)) ([b53a192](https://github.com/jxsuite/jx/commit/b53a1924d5f3d241eccccb51f4df347b3c076c27))
+* edit function bodies as TypeScript and store them as written ([#593](https://github.com/jxsuite/jx/issues/593)) ([c95636f](https://github.com/jxsuite/jx/commit/c95636fa1d7792e5bafb0cde3d242c188b456688))
 
 
 ### Dependencies
@@ -78,7 +78,7 @@
 
 ### Bug Fixes
 
-* **desktop,server:** keep git paths and commits inside a nested project ([#540](https://github.com/jxsuite/jx/issues/540)) ([79b017a](https://github.com/jxsuite/jx/commit/79b017af1abf5a26d97544fb688f5bd85ee60507))
+* **desktop,server:** keep git paths and commits inside a nested project ([#540](https://github.com/jxsuite/jx/issues/540)) ([5a11efc](https://github.com/jxsuite/jx/commit/5a11efcf7772dc71a82a3c2974418a170dc9876e))
 
 
 ### Dependencies
@@ -101,14 +101,14 @@
 
 ### Features
 
-* **ai:** support anthropic messages api ([#526](https://github.com/jxsuite/jx/issues/526)) ([0c38ef7](https://github.com/jxsuite/jx/commit/0c38ef79d6bc52c36f1fc5d85722ea16cc6986c0))
+* **ai:** support anthropic messages api ([#526](https://github.com/jxsuite/jx/issues/526)) ([d6eefc3](https://github.com/jxsuite/jx/commit/d6eefc364a7e2097f08336c54298f5d8d85fb3d6))
 
 ## [6.1.0](https://github.com/jxsuite/jx/compare/protocol-v6.0.0...protocol-v6.1.0) (2026-10-31)
 
 
 ### Features
 
-* **studio:** publish to a new branch when a hosted branch moved under your edits ([#522](https://github.com/jxsuite/jx/issues/522)) ([1f8d1d6](https://github.com/jxsuite/jx/commit/1f8d1d63a3be6c389fdad160ca8f4d7b3491c436))
+* **studio:** publish to a new branch when a hosted branch moved under your edits ([#522](https://github.com/jxsuite/jx/issues/522)) ([8941481](https://github.com/jxsuite/jx/commit/894148177a3199db7a1dbd20c225a09a2250ea3f))
 
 ## [6.0.0](https://github.com/jxsuite/jx/compare/protocol-v5.0.0...protocol-v6.0.0) (2026-10-29)
 
@@ -119,17 +119,17 @@
 
 ### Features
 
-* **compiler:** the bundler backend follows the runtime, esbuild on Node and Bun.build on Bun ([0489b92](https://github.com/jxsuite/jx/commit/0489b928b47355a9bc3a1209e07b49a67f2080cb))
-* **desktop:** the backend runs on Electron's Node in a utility process, and the app no longer ships Bun ([0489b92](https://github.com/jxsuite/jx/commit/0489b928b47355a9bc3a1209e07b49a67f2080cb))
-* **schema:** a runtime-neutral which ([0489b92](https://github.com/jxsuite/jx/commit/0489b928b47355a9bc3a1209e07b49a67f2080cb))
-* **server:** package operations run on npm's Arborist and write package-lock.json, and a lockfile-only package service serves the cloud ([0489b92](https://github.com/jxsuite/jx/commit/0489b928b47355a9bc3a1209e07b49a67f2080cb))
-* **server:** serve, file responses and globbing run on Node as well as Bun ([0489b92](https://github.com/jxsuite/jx/commit/0489b928b47355a9bc3a1209e07b49a67f2080cb))
-* **studio:** the cloud editor adds, removes and updates packages through the package service ([0489b92](https://github.com/jxsuite/jx/commit/0489b928b47355a9bc3a1209e07b49a67f2080cb))
+* **compiler:** the bundler backend follows the runtime, esbuild on Node and Bun.build on Bun ([92c85db](https://github.com/jxsuite/jx/commit/92c85db1d3617ba9915de38aa7eb5888ddc6fa6d))
+* **desktop:** the backend runs on Electron's Node in a utility process, and the app no longer ships Bun ([92c85db](https://github.com/jxsuite/jx/commit/92c85db1d3617ba9915de38aa7eb5888ddc6fa6d))
+* **schema:** a runtime-neutral which ([92c85db](https://github.com/jxsuite/jx/commit/92c85db1d3617ba9915de38aa7eb5888ddc6fa6d))
+* **server:** package operations run on npm's Arborist and write package-lock.json, and a lockfile-only package service serves the cloud ([92c85db](https://github.com/jxsuite/jx/commit/92c85db1d3617ba9915de38aa7eb5888ddc6fa6d))
+* **server:** serve, file responses and globbing run on Node as well as Bun ([92c85db](https://github.com/jxsuite/jx/commit/92c85db1d3617ba9915de38aa7eb5888ddc6fa6d))
+* **studio:** the cloud editor adds, removes and updates packages through the package service ([92c85db](https://github.com/jxsuite/jx/commit/92c85db1d3617ba9915de38aa7eb5888ddc6fa6d))
 
 
 ### Bug Fixes
 
-* extensions resolve from the project only, first-party ones included ([#510](https://github.com/jxsuite/jx/issues/510)) ([71c0b68](https://github.com/jxsuite/jx/commit/71c0b681327396f1fbd1d77ea96bfd55f7ccfd83))
+* extensions resolve from the project only, first-party ones included ([#510](https://github.com/jxsuite/jx/issues/510)) ([ac70362](https://github.com/jxsuite/jx/commit/ac703627bd5c9d6874cf511049be3425904c9527))
 
 
 ### Dependencies
@@ -147,7 +147,7 @@
 
 ### Code Refactoring
 
-* **studio:** drop the dev server's Open Project ([#501](https://github.com/jxsuite/jx/issues/501)) ([bad1e62](https://github.com/jxsuite/jx/commit/bad1e627effa91d972542b0e4d321ec7e8bbc033))
+* **studio:** drop the dev server's Open Project ([#501](https://github.com/jxsuite/jx/issues/501)) ([604b254](https://github.com/jxsuite/jx/commit/604b2540a667bf2ed5adbdadddf532b1e8dfaa9b))
 
 
 ### Dependencies
@@ -165,7 +165,7 @@
 
 ### Features
 
-* **desktop:** replace Electrobun with Electron, packaged with electron-builder ([#465](https://github.com/jxsuite/jx/issues/465)) ([be1534f](https://github.com/jxsuite/jx/commit/be1534f616d7176b4a2098cd4d232808cf5c7482))
+* **desktop:** replace Electrobun with Electron, packaged with electron-builder ([#465](https://github.com/jxsuite/jx/issues/465)) ([1cd8130](https://github.com/jxsuite/jx/commit/1cd813071e3487cb6640f7f0aa92ec9295b53a9c))
 
 ## [3.0.0](https://github.com/jxsuite/jx/compare/protocol-v2.6.1...protocol-v3.0.0) (2026-10-17)
 
@@ -176,7 +176,7 @@
 
 ### Bug Fixes
 
-* **studio,runtime,compiler:** render real sites on the canvas, fast outline, named slots ([#464](https://github.com/jxsuite/jx/issues/464)) ([d0ba17e](https://github.com/jxsuite/jx/commit/d0ba17e841520645749df384d3bb3f8e2cffa338))
+* **studio,runtime,compiler:** render real sites on the canvas, fast outline, named slots ([#464](https://github.com/jxsuite/jx/issues/464)) ([6757dff](https://github.com/jxsuite/jx/commit/6757dfff34f6b85f696813ec37a1a46df690f114))
 
 
 ### Dependencies
@@ -199,36 +199,36 @@
 
 ### Features
 
-* backend-directed access: action-required refusals, offered actions, platform account rows ([87862db](https://github.com/jxsuite/jx/commit/87862dbc16d5b9c99f664030d5d907cf34d897fe))
-* offer a hosted platform's plan when it refuses with subscription-required ([9e3bc2f](https://github.com/jxsuite/jx/commit/9e3bc2fda60125292f9a1bc572bfb86fdd9d017c))
-* replace the hosted-plan client with backend-directed access ([42d164c](https://github.com/jxsuite/jx/commit/42d164c2a9b9196d3d888af433c47f19131dd225))
-* **studio:** address repo-space media by content version, so unchanged images repaint from cache ([32e07b8](https://github.com/jxsuite/jx/commit/32e07b8d6ec27c8cfe56ca45f8c97b485aa39f3f))
-* **studio:** jittered reconnect, wake on network or focus, and resync what a dropped socket missed ([21ba318](https://github.com/jxsuite/jx/commit/21ba31841464ecb488654811dd1906095059419d))
+* backend-directed access: action-required refusals, offered actions, platform account rows ([8b8f2df](https://github.com/jxsuite/jx/commit/8b8f2dfcde78178921188e3f68da8010a831bb03))
+* offer a hosted platform's plan when it refuses with subscription-required ([f4c860d](https://github.com/jxsuite/jx/commit/f4c860dccf31f502afb1db64f83e92869cb2b675))
+* replace the hosted-plan client with backend-directed access ([8add52b](https://github.com/jxsuite/jx/commit/8add52b18e4a5d728a0f3db220503939804f1727))
+* **studio:** address repo-space media by content version, so unchanged images repaint from cache ([74c7fd5](https://github.com/jxsuite/jx/commit/74c7fd53c9abcde63963717571a460a74506e24c))
+* **studio:** jittered reconnect, wake on network or focus, and resync what a dropped socket missed ([88eb919](https://github.com/jxsuite/jx/commit/88eb919810d7ab7fc1c8f479769e0f1fa6e2fe0c))
 
 ## [2.5.0](https://github.com/jxsuite/jx/compare/protocol-v2.4.0...protocol-v2.5.0) (2026-10-01)
 
 
 ### Features
 
-* **studio:** coalesce the cloud adapter's file reads into one batch request ([22f421d](https://github.com/jxsuite/jx/commit/22f421dfc7ca7e066aa77d0a08342ce35ea1c637))
-* **studio:** coalesce the cloud adapter's file reads into one batch request ([9645ac9](https://github.com/jxsuite/jx/commit/9645ac9b808c03e95fe48f82321b6ee90188fad8))
+* **studio:** coalesce the cloud adapter's file reads into one batch request ([a38389a](https://github.com/jxsuite/jx/commit/a38389aaec445c005c943ee212dc73bc12b8447d))
+* **studio:** coalesce the cloud adapter's file reads into one batch request ([e0fa49e](https://github.com/jxsuite/jx/commit/e0fa49eef4effc10f7178918ba322f5ed8f9ead9))
 
 ## [2.4.0](https://github.com/jxsuite/jx/compare/protocol-v2.3.1...protocol-v2.4.0) (2026-09-29)
 
 
 ### Features
 
-* **studio:** the PAL can answer a project file's raw bytes ([47a1ee8](https://github.com/jxsuite/jx/commit/47a1ee86457c00ffb19130c0856c22deac33b968))
-* **studio:** the PAL can answer a project file's raw bytes ([58e6267](https://github.com/jxsuite/jx/commit/58e6267c45bc436910ad6af321f450920e2b53d1))
+* **studio:** the PAL can answer a project file's raw bytes ([ac3ad07](https://github.com/jxsuite/jx/commit/ac3ad07f6d75936363c7318b7e265ae7974981cd))
+* **studio:** the PAL can answer a project file's raw bytes ([378b704](https://github.com/jxsuite/jx/commit/378b7047b35ec1eccf50b0cea324c7682782d15e))
 
 
 ### Bug Fixes
 
-* **desktop,studio:** 5.x desktop windows booted without their backend; fail loud and report Browse errors ([b128b9a](https://github.com/jxsuite/jx/commit/b128b9a8b0ab7d57865113bd73213d544fe7dcd9))
-* **desktop:** the launcher's handlers mock needs the member the launcher imports ([f09b251](https://github.com/jxsuite/jx/commit/f09b251157de1ff296f6f5404cc2a8002eca4ac0))
-* Jx harness phase 0 — gate the desktop AI proxy, fix stop and usage handling in the agent loop ([8d364ea](https://github.com/jxsuite/jx/commit/8d364eac66bea8302f0dcac03f8f72587e49d8c6))
-* **studio,desktop:** Browse reports why it could not choose a folder ([a80221f](https://github.com/jxsuite/jx/commit/a80221f6bd76b2db1d280405325404dfbaaee017))
-* **studio:** offer the account picker when Cloudflare names no account ([43f0563](https://github.com/jxsuite/jx/commit/43f056326deb05c1ec222848eab415b559b32f6f))
+* **desktop,studio:** 5.x desktop windows booted without their backend; fail loud and report Browse errors ([3f50ec9](https://github.com/jxsuite/jx/commit/3f50ec92d68ee010aedeb35955c1ff673362fac1))
+* **desktop:** the launcher's handlers mock needs the member the launcher imports ([c2279e1](https://github.com/jxsuite/jx/commit/c2279e19befbaea7aad80f57c3c2706949e8b1b7))
+* Jx harness phase 0 — gate the desktop AI proxy, fix stop and usage handling in the agent loop ([6269c5e](https://github.com/jxsuite/jx/commit/6269c5e5708fe4cdb1691c72d52bce7ac5542ddb))
+* **studio,desktop:** Browse reports why it could not choose a folder ([2e1a1cc](https://github.com/jxsuite/jx/commit/2e1a1cc7aa2e03b125afeeef29ea7ae6609cd310))
+* **studio:** offer the account picker when Cloudflare names no account ([1337bc9](https://github.com/jxsuite/jx/commit/1337bc94b07d90c3ce481d1462cee4db197766f7))
 
 
 ### Dependencies
@@ -242,16 +242,16 @@
 
 ### Bug Fixes
 
-* **ai:** parse Cloudflare's array-shaped error envelope for BYOK providers ([f703244](https://github.com/jxsuite/jx/commit/f7032448034eb17f752574d3a3916b34c332d324))
-* **ai:** parse Cloudflare's array-shaped error envelope for BYOK providers ([65add04](https://github.com/jxsuite/jx/commit/65add043b8a73b956f726a2d1852205bb0f75c57))
+* **ai:** parse Cloudflare's array-shaped error envelope for BYOK providers ([e8158b6](https://github.com/jxsuite/jx/commit/e8158b680ec5dbbb016de784010768ca360cdd8a))
+* **ai:** parse Cloudflare's array-shaped error envelope for BYOK providers ([172f061](https://github.com/jxsuite/jx/commit/172f06194f500312b4b8792839aa999ec9bc67b0))
 
 ## [2.3.0](https://github.com/jxsuite/jx/compare/protocol-v2.2.0...protocol-v2.3.0) (2026-09-14)
 
 
 ### Features
 
-* **studio,server,protocol:** one toggle installs an extension and enables it ([abe69bb](https://github.com/jxsuite/jx/commit/abe69bb60242ef97a49766040466d480ec3b93c9))
-* **studio,server,protocol:** one toggle installs an extension and enables it ([f6d6b2c](https://github.com/jxsuite/jx/commit/f6d6b2cc88810401a57ca941c1bdef182137df6e))
+* **studio,server,protocol:** one toggle installs an extension and enables it ([1fe5f67](https://github.com/jxsuite/jx/commit/1fe5f6731c00c9421e8dcd8d1ca100d2b06f740e))
+* **studio,server,protocol:** one toggle installs an extension and enables it ([17b2627](https://github.com/jxsuite/jx/commit/17b26270db18e23f2f66f7bb15e67db64b2eac22))
 
 
 ### Dependencies
@@ -265,13 +265,13 @@
 
 ### Features
 
-* **studio:** a hosted backend can import a site into a repository ([2bcbeee](https://github.com/jxsuite/jx/commit/2bcbeee9fdaa5aa5d6b8a879bc3d8f510d451752))
+* **studio:** a hosted backend can import a site into a repository ([7ee546f](https://github.com/jxsuite/jx/commit/7ee546f46bbcab7227c51ae740b722394f8af8fe))
 
 
 ### Bug Fixes
 
-* **studio:** a lapsed Cloudflare grant no longer ends the connect flow before it starts ([83102d2](https://github.com/jxsuite/jx/commit/83102d2eaf64752895efe8118afacc605eaa2aff))
-* **studio:** a lapsed Cloudflare grant no longer ends the connect flow before it starts ([4887415](https://github.com/jxsuite/jx/commit/4887415119c8640e269fc3a5cd878367d946706d))
+* **studio:** a lapsed Cloudflare grant no longer ends the connect flow before it starts ([3b0da9b](https://github.com/jxsuite/jx/commit/3b0da9bac30cf5b56cb86a871496df42a0a153aa))
+* **studio:** a lapsed Cloudflare grant no longer ends the connect flow before it starts ([49fed18](https://github.com/jxsuite/jx/commit/49fed181a088cc91b4454a9fb8eaf1ef5f101e42))
 
 
 ### Dependencies
@@ -285,25 +285,25 @@
 
 ### Features
 
-* **import:** limit the breakpoints an import keeps, and strip the classes it cannot use ([9ac5b60](https://github.com/jxsuite/jx/commit/9ac5b600a0b6834bb031daa64e1283ab51346cff))
-* **import:** make jx-import --verify able to fail ([71382d5](https://github.com/jxsuite/jx/commit/71382d54e604aad01beba52d08ec99d826b13bee)), closes [#232](https://github.com/jxsuite/jx/issues/232)
-* **import:** the site-import workflow, end to end ([eab1109](https://github.com/jxsuite/jx/commit/eab1109e0fc21a5f311d2f1c8f90626c1d51c55d))
-* Open in Browser previews the working tree through the runtime ([b02e0e5](https://github.com/jxsuite/jx/commit/b02e0e543016879c963810f770b568995023e6ed))
-* **server,studio:** the import stream says what the run found, and can check its own fidelity ([2e4c0e3](https://github.com/jxsuite/jx/commit/2e4c0e3dd1b63aead94bb70379c7ad8738420fd8))
-* **studio:** a backend may satisfy Open in Browser by rendering, not only by building ([47ce1e6](https://github.com/jxsuite/jx/commit/47ce1e61715857aebce741fe85410a41828bb50c))
-* **studio:** Open in Browser previews the canvas, and Build Site keeps the compiler ([9c45d21](https://github.com/jxsuite/jx/commit/9c45d219f2c55740ded4299fc4a75c3852878787))
-* **studio:** set the import's fidelity minimum in the New Project dialog ([d338bdb](https://github.com/jxsuite/jx/commit/d338bdbc616f80426058a7c0eeeb49af7919dd69))
-* **studio:** the site import is an agent turn — model, brief, live status, and a pause to ask ([775abee](https://github.com/jxsuite/jx/commit/775abeeb20a4f1a727072ea60191c32bea5d0d9f))
+* **import:** limit the breakpoints an import keeps, and strip the classes it cannot use ([1332da8](https://github.com/jxsuite/jx/commit/1332da854e6db822b56219cfa7ab3a8ffbb1b43b))
+* **import:** make jx-import --verify able to fail ([b7f7634](https://github.com/jxsuite/jx/commit/b7f7634fa26cedb5b8ac28c9a2daf4feb3783ae2)), closes [#232](https://github.com/jxsuite/jx/issues/232)
+* **import:** the site-import workflow, end to end ([f701f33](https://github.com/jxsuite/jx/commit/f701f33bc035a8e5ce331530ff9886d25236da64))
+* Open in Browser previews the working tree through the runtime ([c30c245](https://github.com/jxsuite/jx/commit/c30c2453a0ce426b0111518617b6ed88d9b367e1))
+* **server,studio:** the import stream says what the run found, and can check its own fidelity ([367f374](https://github.com/jxsuite/jx/commit/367f3740a42d90e0f769ad21097c555e25d88b4d))
+* **studio:** a backend may satisfy Open in Browser by rendering, not only by building ([8b599cf](https://github.com/jxsuite/jx/commit/8b599cf56792b70f82efb8e47050abf638cbc05e))
+* **studio:** Open in Browser previews the canvas, and Build Site keeps the compiler ([b834eef](https://github.com/jxsuite/jx/commit/b834eefd1107663832695e99335919ccec42e9a4))
+* **studio:** set the import's fidelity minimum in the New Project dialog ([ce1c05d](https://github.com/jxsuite/jx/commit/ce1c05d09336f8eb8e767988a119b517e625f6fa))
+* **studio:** the site import is an agent turn — model, brief, live status, and a pause to ask ([3afd38c](https://github.com/jxsuite/jx/commit/3afd38c254e368f95eccbe01ca6f1168fe279aac))
 
 
 ### Bug Fixes
 
-* **screenshots:** stop the screenshot lane churning, and fix the three defects underneath it ([1eb0e45](https://github.com/jxsuite/jx/commit/1eb0e45c0a3a1ca14859f0cf0dc322a4619eff51))
-* **server,desktop:** answer a directory listing in stable path order ([8e7f314](https://github.com/jxsuite/jx/commit/8e7f3147bc9c4f91093066a5568459dfe0dcb4a7))
-* **server,studio:** findReferences answers about every reference, and the rename keeps its promise ([84e558f](https://github.com/jxsuite/jx/commit/84e558f67abe9524e2895f0e9045fb6ad14a0981))
-* **studio:** the Packages table shows each dependency's own npm latest ([a90e170](https://github.com/jxsuite/jx/commit/a90e170392398c93926d94e092d7ec9ebe9b83e6))
-* **studio:** the Packages table shows each dependency's own npm latest ([b019a26](https://github.com/jxsuite/jx/commit/b019a26848d06a92c9136f27a27edb2bea6e10dd))
-* **studio:** the Packages table shows each dependency's own npm latest ([4fa433f](https://github.com/jxsuite/jx/commit/4fa433fba641973f2bfbeed99e16c4de96482b4a))
+* **screenshots:** stop the screenshot lane churning, and fix the three defects underneath it ([b0d5f57](https://github.com/jxsuite/jx/commit/b0d5f570db2d8aa839469ad846eced8cf3051067))
+* **server,desktop:** answer a directory listing in stable path order ([32f1362](https://github.com/jxsuite/jx/commit/32f13628fcde9704167cada10f8be54f2f238f9d))
+* **server,studio:** findReferences answers about every reference, and the rename keeps its promise ([ce3266f](https://github.com/jxsuite/jx/commit/ce3266f3966363ef602201a864047d3a7314c22f))
+* **studio:** the Packages table shows each dependency's own npm latest ([fe75f46](https://github.com/jxsuite/jx/commit/fe75f46c08b31ffc8fee3bce51edbe98e10ec772))
+* **studio:** the Packages table shows each dependency's own npm latest ([e6610a8](https://github.com/jxsuite/jx/commit/e6610a859613c40ff6f4cb2c20652dc267cb234f))
+* **studio:** the Packages table shows each dependency's own npm latest ([30d997b](https://github.com/jxsuite/jx/commit/30d997b3d25cad7b00ab8c2fdc4413d728b7e124))
 
 
 ### Dependencies
@@ -321,13 +321,13 @@
 
 ### Features
 
-* **protocol:** type what an upload answers, and what a backend will accept ([8192345](https://github.com/jxsuite/jx/commit/819234555b3b37b5ce21d71005fc4f2cb05aae62))
-* **studio:** declare assetSpace, and resolve media in the canvas realm ([196d259](https://github.com/jxsuite/jx/commit/196d2596b337e6298d2f0c15e984a5f29f7abe92))
+* **protocol:** type what an upload answers, and what a backend will accept ([d7d64e9](https://github.com/jxsuite/jx/commit/d7d64e9784dfcfabda28e44826ed6509660add6f))
+* **studio:** declare assetSpace, and resolve media in the canvas realm ([9be7db9](https://github.com/jxsuite/jx/commit/9be7db9151e520caf2f65826968956f25304710b))
 
 
 ### Bug Fixes
 
-* **studio,desktop:** settings are patches, and a blank field never deletes ([76846af](https://github.com/jxsuite/jx/commit/76846afc28d81ff16e284fbe0b12d1f47cb604bc))
+* **studio,desktop:** settings are patches, and a blank field never deletes ([7e73fa9](https://github.com/jxsuite/jx/commit/7e73fa9c6d45e53a30f82b08148f9a7547fd22bc))
 
 
 ### Dependencies
@@ -350,7 +350,7 @@
 
 ### Features
 
-* **studio:** Cloudflare is the lead AI recommendation, and can be reconnected ([#174](https://github.com/jxsuite/jx/issues/174)) ([aa13308](https://github.com/jxsuite/jx/commit/aa1330859b995e2c0b4a658cc04cf4525cb3ff79))
+* **studio:** Cloudflare is the lead AI recommendation, and can be reconnected ([#174](https://github.com/jxsuite/jx/issues/174)) ([01015f4](https://github.com/jxsuite/jx/commit/01015f496f8e13d9b06076de701cd1feccaaf2be))
 
 ## [1.1.2](https://github.com/jxsuite/jx/compare/protocol-v1.1.1...protocol-v1.1.2) (2026-08-21)
 
@@ -375,15 +375,15 @@
 
 ### Features
 
-* **collab:** negotiate the wire envelope on the handshake — jx.collab.v1 ([5db8ae8](https://github.com/jxsuite/jx/commit/5db8ae8b781a1b5aeffbdd8f27cdf4c08ebb4540))
-* **protocol:** one failure shape — RFC 9457 problem details ([2ab94b1](https://github.com/jxsuite/jx/commit/2ab94b189e1c1265f90713e36b8cb8030f9afd40))
-* **studio,server,desktop:** P4 wave A — the app can say what happened ([98a4a3a](https://github.com/jxsuite/jx/commit/98a4a3a1f895981ebc0b06483ef31953d8ebf7ef))
-* **studio:** the Named Shell — P0–P8, the full UX redesign ([b576cbb](https://github.com/jxsuite/jx/commit/b576cbb24c7e0d8d36075f6d682e9b3b6b971166))
+* **collab:** negotiate the wire envelope on the handshake — jx.collab.v1 ([25c3cf3](https://github.com/jxsuite/jx/commit/25c3cf31feeb4087797e7d9f182cb4f7345c4fcb))
+* **protocol:** one failure shape — RFC 9457 problem details ([e2598da](https://github.com/jxsuite/jx/commit/e2598dab57d672d3c0f805d1d5789ad955c9df2f))
+* **studio,server,desktop:** P4 wave A — the app can say what happened ([c319576](https://github.com/jxsuite/jx/commit/c3195762c0dd76472355dd3ae0eb9ba6fc12c0d3))
+* **studio:** the Named Shell — P0–P8, the full UX redesign ([c8c3452](https://github.com/jxsuite/jx/commit/c8c345213307f2383ed5c4251ca6b388c8489504))
 
 
 ### Bug Fixes
 
-* **server:** give the previewed site its own origin, so Open in Browser is the real site ([90eb4b4](https://github.com/jxsuite/jx/commit/90eb4b4b3eba897a1028fa5a4029ef0dcae61f88))
+* **server:** give the previewed site its own origin, so Open in Browser is the real site ([fcbaa0b](https://github.com/jxsuite/jx/commit/fcbaa0bc7679727cc20caf50e86ac10cf6aca911))
 
 
 ### Dependencies
@@ -401,7 +401,7 @@
 
 ### Features
 
-* **studio:** require a user-chosen destination for new projects ([e08966c](https://github.com/jxsuite/jx/commit/e08966cc2d7a7ba34d4b12f3a6186396539b07da))
+* **studio:** require a user-chosen destination for new projects ([0046d68](https://github.com/jxsuite/jx/commit/0046d68c4268489fadef9c9f37f414889fd88f4f))
 
 
 ### Dependencies
@@ -424,7 +424,7 @@
 
 ### Features
 
-* enforce truthful marketing claims and add the missing LICENSE ([b7e0b09](https://github.com/jxsuite/jx/commit/b7e0b095566121d79ca50894b69a476984fb93ee))
+* enforce truthful marketing claims and add the missing LICENSE ([6e235b5](https://github.com/jxsuite/jx/commit/6e235b562d8b494afa3e8509b6bb98e4c2e3d9c6))
 
 
 ### Dependencies
@@ -447,12 +447,12 @@
 
 ### Features
 
-* **studio:** spreadsheet grid editor — CSV grid tabs with batch save ([6736c02](https://github.com/jxsuite/jx/commit/6736c027d57fb438fb7aa0a9f333a41cc477e0a4))
+* **studio:** spreadsheet grid editor — CSV grid tabs with batch save ([b0bd0dc](https://github.com/jxsuite/jx/commit/b0bd0dccb72a9541c77b877154783f376cd540fa))
 
 
 ### Bug Fixes
 
-* **studio,compiler,parser,protocol,auth:** keep the promises the docs audit surfaced ([03ac07f](https://github.com/jxsuite/jx/commit/03ac07ff3a53c125587050a277b3dfa7b0ce86b6))
+* **studio,compiler,parser,protocol,auth:** keep the promises the docs audit surfaced ([86740a9](https://github.com/jxsuite/jx/commit/86740a9364079016dd411682bc67ac75bc39e89a))
 
 
 ### Dependencies
@@ -465,10 +465,10 @@
 
 ### Features
 
-- **auth:** Better Auth extension — sessions, permissions, auth-gated data ([bf47228](https://github.com/jxsuite/jx/commit/bf472285581afbfe7b650b5d52578078359655fa))
-- **markup:** shared markup-conversion core package; sever studio/import from parser ([a075e74](https://github.com/jxsuite/jx/commit/a075e74a6c45e91b1d1c7c1a6007e2e344fbb341))
-- **studio:** data console — connections, schema push, secrets, data grid ([ea92f95](https://github.com/jxsuite/jx/commit/ea92f955cdfce5774a0ae72f01038e00c8d310ae))
-- **studio:** descriptor-contributed settings + fetched project schemas ([60f1465](https://github.com/jxsuite/jx/commit/60f1465cdc18c07c7d172372f4df2d67dee1ca88))
+- **auth:** Better Auth extension — sessions, permissions, auth-gated data ([32c871e](https://github.com/jxsuite/jx/commit/32c871e9fe48fdeed62e030354cc05adbf6efd19))
+- **markup:** shared markup-conversion core package; sever studio/import from parser ([41141a1](https://github.com/jxsuite/jx/commit/41141a15ba51aa6f58ba1dee78731f15893eaff8))
+- **studio:** data console — connections, schema push, secrets, data grid ([de02861](https://github.com/jxsuite/jx/commit/de02861a03c94460f0d332ac909438decbd4fd9d))
+- **studio:** descriptor-contributed settings + fetched project schemas ([b85afaf](https://github.com/jxsuite/jx/commit/b85afaf9f6d340e1d916ad399fc758df36ced2e1))
 
 ### Dependencies
 
@@ -480,19 +480,19 @@
 
 ### Bug Fixes
 
-- **protocol:** clarify npm coordinates and dependency in README ([92abaa0](https://github.com/jxsuite/jx/commit/92abaa048a042126639c3393f27feadd4858a607))
+- **protocol:** clarify npm coordinates and dependency in README ([f7c75b9](https://github.com/jxsuite/jx/commit/f7c75b9c11c17fa61de8cd9f7603b15e72e7fa95))
 
 ## [0.3.0](https://github.com/jxsuite/jx/compare/protocol-v0.2.0...protocol-v0.3.0) (2026-07-08)
 
 ### Features
 
-- **collab:** the wire — ws client/room core, devserver endpoint, adapter members ([d9f4b42](https://github.com/jxsuite/jx/commit/d9f4b425ac1d31cd3d7f9b2892e05321de08a09d))
+- **collab:** the wire — ws client/room core, devserver endpoint, adapter members ([dc53b5d](https://github.com/jxsuite/jx/commit/dc53b5dcf24069ca6bc30051e330c8ccdcda0fe6))
 
 ## [0.2.0](https://github.com/jxsuite/jx/compare/protocol-v0.1.0...protocol-v0.2.0) (2026-07-07)
 
 ### Features
 
-- **protocol:** @jxsuite/protocol — the Studio Backend Protocol package ([e859f36](https://github.com/jxsuite/jx/commit/e859f36eecead91de37ff6ec9ea51e7d3ca0691c))
+- **protocol:** @jxsuite/protocol — the Studio Backend Protocol package ([1c836b2](https://github.com/jxsuite/jx/commit/1c836b257aeffc9aad142b66c3d806daddf44f6f))
 
 ### Dependencies
 

@@ -49,7 +49,7 @@ The stale body is line 782 ("writes nested CSS rules (`& tag`) to the document's
 
 So the same `<th>` can get two rules. `table` is the only catalogue entry nested three deep (`data/stylebook-meta.json`), so it is the only one affected. `requestStylebookSelection` and `panToStylebookTag` (`canvas/iframe-host.ts`) look up `tagToCardPath`, which is keyed by root tag only. As a result, a compound selection such as `ul li` neither highlights nor pans. Both are §7.3's selection mechanics and are handed on under the Integration contract.
 
-**Riders in the same section.** §7.2 (line 764) says "Root document styles (`$style`)", but the document key is `style`, and no `$style` key exists in `packages/schema` or `packages/runtime`. `docs/studio/design/stylebook.md` (its `spec:` is `studio.md#7.4`) ends with two `code:` entries (`packages/studio/src/surfaces/panel-stylebook-layers.ts`, `packages/studio/src/surfaces/stylebook-chrome.ts`) that 1ef67907 appended after the "Next" list instead of into the frontmatter. They render as a nested list of file paths, and `docs:sync` never associates those two files with the page.
+**Riders in the same section.** §7.2 (line 764) says "Root document styles (`$style`)", but the document key is `style`, and no `$style` key exists in `packages/schema` or `packages/runtime`. `docs/studio/design/stylebook.md` (its `spec:` is `studio.md#7.4`) ends with two `code:` entries (`packages/studio/src/surfaces/panel-stylebook-layers.ts`, `packages/studio/src/surfaces/stylebook-chrome.ts`) that 61421118 appended after the "Next" list instead of into the frontmatter. They render as a nested list of file paths, and `docs:sync` never associates those two files with the page.
 
 ## Outcome
 

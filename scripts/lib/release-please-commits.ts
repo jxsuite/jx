@@ -8,7 +8,7 @@
  * throws, release-please logs `commit could not be parsed` at DEBUG level and drops the commit, for
  * every component at once: no changelog line, no version bump, no release, green run.
  *
- * PR #466 (`9d290e38`) was squash-merged with GitHub's default squash body, which concatenates
+ * PR #466 (`9839cbbd`) was squash-merged with GitHub's default squash body, which concatenates
  * every branch commit message. One of those embedded bodies had a line that opens with ``
  * `toBe(strip())` printed both… ``. The parser reads a line-initial `word(` as the start of a
  * `type(scope)` token, finds a second `(` before the `)`, and throws `unexpected token '(' at
@@ -194,7 +194,7 @@ function subjectAndBody(message: string) {
 /**
  * The commit message GitHub's "Squash and merge" button proposes, by default, for a pull request.
  *
- * Read off real squash commits on this repository (`git show -s 9d290e38`, 56 non-merge commits;
+ * Read off real squash commits on this repository (`git show -s 9839cbbd`, 56 non-merge commits;
  * `chore(deps): bump nixpkgs (#471)`, one commit):
  *
  * - **Title.** `COMMIT_OR_PR_TITLE` uses the commit's subject when the branch has exactly one commit
