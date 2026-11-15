@@ -57,6 +57,27 @@ describe("SCENARIOS", () => {
     expect(new Set(names).size).toBe(names.length);
   });
 
+  test("every project file a scenario names exists in the project it runs against", async () => {
+    /* `document.open` throws on a path that names no file, and a scenario that throws fails the
+       gate on both sides of every comparison. `site-panel` opened `pages/features.json` for as
+       long as the site's redesign had already rewritten that page as Markdown, and nothing said
+       so until the gate went red on a pull request that had touched neither. The paths live in
+       function bodies, so they are read from the source: each is relative to the project root. */
+    const source = await Bun.file(join(import.meta.dir, "trace-studio.ts")).text();
+    const project = resolve(import.meta.dir, "../../sites/jxsuite.com");
+    const named = [...source.matchAll(/\b(?:path|select): "([^"]+\.[a-z0-9]+)"/g)].map(
+      (m) => m[1]!,
+    );
+    expect(named.length).toBeGreaterThan(3);
+    const missing: string[] = [];
+    for (const path of new Set(named)) {
+      if (!(await Bun.file(resolve(project, path)).exists())) {
+        missing.push(path);
+      }
+    }
+    expect(missing).toEqual([]);
+  });
+
   test("traces every workspace path the redesign introduced", () => {
     const names = new Set(SCENARIOS.map((s) => s.name));
     for (const name of [
