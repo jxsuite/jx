@@ -23,6 +23,7 @@ import {
   assetUrlFor,
   CONTENT_SECTION_KEY,
   LOCALE_PLACEHOLDER,
+  resolveAssetUrl,
   SAFE_CONTENT_TYPE_NAME,
 } from "@jxsuite/schema/asset-paths";
 import { localeUrlPrefix, resolveI18n } from "@jxsuite/schema/locale";
@@ -374,6 +375,37 @@ export function contentAssetMounts(
 type RefProblem = "missing" | "refused";
 
 /**
+ * The site path a published-address reference names, or null when it is not one of this
+ * collection's own.
+ *
+ * A collection whose assets are not in the repository beside it (build outputs, or files kept out
+ * of git) has no relative path that works for a reader of the source: on a code host or in an
+ * editor the picture is simply absent. Its entries can name the asset where the site publishes it
+ * instead, `https://example.com/content/docs/images/hero.png`, which every reader can load. That
+ * address is this collection's own mount written in full, so when the file is on disk the reference
+ * is the same reference as the relative one and is remapped the same way: the build optimizes and
+ * copies it, and the dev server serves the local file rather than the last deploy's.
+ *
+ * Only when all of it holds: the project states a `url`, the value is that URL followed by a path,
+ * the path falls under THIS collection's mount and where the mount serves, and the file exists.
+ * Anything else is an ordinary absolute URL and is left exactly as written, silently: an asset that
+ * is not on disk is the normal state of a checkout without the build's outputs, and the published
+ * address is then the right thing to load.
+ */
+function ownSiteRef(value: string, mount: AssetMount, siteUrl: string | undefined): string | null {
+  if (!siteUrl) {
+    return null;
+  }
+  const origin = siteUrl.replace(/\/+$/, "");
+  if (!origin || !value.startsWith(`${origin}/`) || value.includes("${")) {
+    return null;
+  }
+  const path = value.slice(origin.length);
+  const target = resolveAssetUrl([mount], path);
+  return target && existsSync(target) ? path : null;
+}
+
+/**
  * Rewrite one content-relative reference to its mounted URL, or null to leave the value untouched.
  * A value is rewritten only when it is relative, resolves against the entry's own directory to a
  * file that exists, and lands inside the mount and where the mount serves — so nothing an existing
@@ -386,9 +418,10 @@ function rewriteRef(
   entryDir: string,
   mount: AssetMount,
   onProblem: (value: string, problem: RefProblem) => void,
+  siteUrl?: string,
 ): string | null {
   if (isNonRelativeRef(value)) {
-    return null;
+    return ownSiteRef(value, mount, siteUrl);
   }
   const bare = value.split("#")[0]!.split("?")[0]!;
   let target: string;
@@ -412,16 +445,23 @@ function rewriteRef(
   return `${url}${suffix}`;
 }
 
+/** The project's own `url`, when its config states one as text. */
+function siteUrlOf(projectConfig: ProjectConfig | undefined): string | undefined {
+  const url = projectConfig?.url;
+  return isString(url) ? url : undefined;
+}
+
 /** Rewrite media references on one node and its children, in place. */
 function rewriteNodeAssets(
   node: JxElement | string | ContentNodes | undefined,
   entryDir: string,
   mount: AssetMount,
   onProblem: (value: string, problem: RefProblem) => void,
+  siteUrl?: string,
 ) {
   if (Array.isArray(node)) {
     for (const child of node) {
-      rewriteNodeAssets(child, entryDir, mount, onProblem);
+      rewriteNodeAssets(child, entryDir, mount, onProblem, siteUrl);
     }
     return;
   }
@@ -434,7 +474,7 @@ function rewriteNodeAssets(
     for (const holder of [node, attributes]) {
       const value = holder?.[key];
       if (holder && isString(value)) {
-        const rewritten = rewriteRef(value, entryDir, mount, onProblem);
+        const rewritten = rewriteRef(value, entryDir, mount, onProblem, siteUrl);
         if (rewritten) {
           holder[key] = rewritten;
         }
@@ -444,7 +484,7 @@ function rewriteNodeAssets(
   const { children } = node;
   if (Array.isArray(children)) {
     for (const child of children) {
-      rewriteNodeAssets(child, entryDir, mount, onProblem);
+      rewriteNodeAssets(child, entryDir, mount, onProblem, siteUrl);
     }
   }
 }
@@ -458,11 +498,15 @@ function rewriteNodeAssets(
  * schema is what distinguishes a media path from an ordinary string. The raw `body` is never
  * touched: it is the round-trip source Studio writes back to disk.
  *
+ * A reference written as the asset's published address under the project's own `url` is remapped
+ * too, when it names a file of this collection that is on disk ({@link ownSiteRef}).
+ *
  * @param {ContentLoaderEntry[]} entries - Entries loaded from one source file (mutated in place)
  * @param {string} filePath - Absolute path of that source file
  * @param {AssetMount} mount - The content type's asset mount
  * @param {string} typeName - Content type name, for warnings
  * @param {ContentTypeSchema} [schema] - Content type schema, for `uri-reference` fields
+ * @param {string} [siteUrl] - The project's `url`, for references written as a published address
  */
 export function rewriteEntryAssets(
   entries: ContentLoaderEntry[],
@@ -470,6 +514,7 @@ export function rewriteEntryAssets(
   mount: AssetMount,
   typeName: string,
   schema?: ContentTypeSchema,
+  siteUrl?: string,
 ) {
   const entryDir = dirname(filePath);
   /* A field's schema is project.json data, so one that is not an object (a `null` left by an edit)
@@ -483,15 +528,15 @@ export function rewriteEntryAssets(
 
   for (const entry of entries) {
     const onProblem = assetProblemReporter(typeName, entry);
-    rewriteBodyAssets(entry, filePath, mount, typeName);
+    rewriteBodyAssets(entry, filePath, mount, typeName, siteUrl);
 
     for (const field of uriFields) {
       const value = entry.data[field];
       if (isString(value)) {
-        entry.data[field] = rewriteRef(value, entryDir, mount, onProblem) ?? value;
+        entry.data[field] = rewriteRef(value, entryDir, mount, onProblem, siteUrl) ?? value;
       } else if (Array.isArray(value)) {
         entry.data[field] = value.map((item) =>
-          isString(item) ? (rewriteRef(item, entryDir, mount, onProblem) ?? item) : item,
+          isString(item) ? (rewriteRef(item, entryDir, mount, onProblem, siteUrl) ?? item) : item,
         );
       }
     }
@@ -520,11 +565,12 @@ function rewriteBodyAssets(
   filePath: string,
   mount: AssetMount,
   typeName: string,
+  siteUrl?: string,
 ) {
   const entryDir = dirname(filePath);
   const onProblem = assetProblemReporter(typeName, entry);
   for (const child of entry.$children ?? []) {
-    rewriteNodeAssets(child, entryDir, mount, onProblem);
+    rewriteNodeAssets(child, entryDir, mount, onProblem, siteUrl);
   }
 }
 
@@ -933,7 +979,14 @@ function finishEntries(files: LoadedFile[], ctx: FinishContext): ContentLoaderEn
       }
     }
     if (ctx.mount) {
-      rewriteEntryAssets(file.entries, file.filePath, ctx.mount, name, ctx.schema);
+      rewriteEntryAssets(
+        file.entries,
+        file.filePath,
+        ctx.mount,
+        name,
+        ctx.schema,
+        siteUrlOf(ctx.projectConfig),
+      );
     }
   }
   const entries = kept.flatMap((file) => file.entries);
@@ -1041,7 +1094,7 @@ function deferBodies(kept: LoadedFile[], ctx: FinishContext, links?: LinkIndex):
       }
       Object.assign(entry, completed);
       if (ctx.mount) {
-        rewriteBodyAssets(entry, file.filePath, ctx.mount, ctx.name);
+        rewriteBodyAssets(entry, file.filePath, ctx.mount, ctx.name, siteUrlOf(ctx.projectConfig));
       }
       if (links && file.rel !== null) {
         const broken: BrokenLink[] = [];

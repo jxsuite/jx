@@ -1263,3 +1263,84 @@ describe("localized content types", () => {
     expect(warnings.some((warning) => warning.includes("declares no i18n locales"))).toBe(true);
   });
 });
+
+describe("asset references written as the published address", () => {
+  const OWN = resolve(TMP, "content/own");
+
+  beforeAll(() => {
+    mkdirSync(resolve(OWN, "images"), { recursive: true });
+    writeFileSync(resolve(OWN, "images/hero.png"), "png-bytes");
+    mkdirSync(resolve(TMP, "content/other/images"), { recursive: true });
+    writeFileSync(resolve(TMP, "content/other/images/hero.png"), "png-bytes");
+    writeFileSync(
+      resolve(OWN, "post.md"),
+      [
+        "---",
+        "title: Own",
+        "cover: https://example.com/content/own/images/hero.png",
+        "---",
+        "",
+        "![on disk](https://example.com/content/own/images/hero.png)",
+        "",
+        "![versioned](https://example.com/content/own/images/hero.png?v=2)",
+        "",
+        "![not captured](https://example.com/content/own/images/absent.png)",
+        "",
+        "![another collection](https://example.com/content/other/images/hero.png)",
+        "",
+        "![another site](https://elsewhere.example/content/own/images/hero.png)",
+        "",
+        "![a longer host](https://example.com.evil.example/content/own/images/hero.png)",
+        "",
+      ].join("\n"),
+    );
+  });
+
+  const ownSection: ContentSection = {
+    other: { format: "Markdown", source: "./content/other/" },
+    own: {
+      format: "Markdown",
+      schema: {
+        properties: { cover: { format: "uri-reference", type: "string" } },
+        type: "object",
+      },
+      source: "./content/own/",
+    },
+  };
+
+  async function loadOwn(projectConfig: ProjectConfig): Promise<ContentLoaderEntry> {
+    const registry = await buildFixtureRegistry();
+    const data = await Content.projectData(ownSection, { projectConfig, registry, root: TMP });
+    return entriesOf(data, "own").find((e) => e.id === "post")!;
+  }
+
+  it("remaps the collection's own asset, on disk, to its site path", async () => {
+    const warnings = captureWarnings();
+    // The trailing slash is how a project commonly writes its url.
+    const post = await loadOwn({ url: "https://example.com/" });
+    expect(imageSrcs(post)).toEqual([
+      "/content/own/images/hero.png",
+      "/content/own/images/hero.png?v=2",
+      // Not on disk: a checkout without the build's outputs loads the published picture.
+      "https://example.com/content/own/images/absent.png",
+      // Only THIS collection's mount is the collection's own.
+      "https://example.com/content/other/images/hero.png",
+      "https://elsewhere.example/content/own/images/hero.png",
+      "https://example.com.evil.example/content/own/images/hero.png",
+    ]);
+    expect(post.data.cover).toBe("/content/own/images/hero.png");
+    // An absolute URL that is left alone is an ordinary URL, not a missing asset.
+    expect(warnings.filter((w) => w.includes("missing asset"))).toEqual([]);
+  });
+
+  it("leaves every one of them as written when the project states no url", async () => {
+    const post = await loadOwn({});
+    expect(imageSrcs(post)[0]).toBe("https://example.com/content/own/images/hero.png");
+    expect(post.data.cover).toBe("https://example.com/content/own/images/hero.png");
+  });
+
+  it("leaves the raw body alone, so the entry still round-trips as authored", async () => {
+    const post = await loadOwn({ url: "https://example.com" });
+    expect(post.body).toContain("](https://example.com/content/own/images/hero.png)");
+  });
+});
