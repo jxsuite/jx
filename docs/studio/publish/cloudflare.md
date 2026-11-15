@@ -11,7 +11,7 @@ code:
 
 The Publish panel connects your project to Cloudflare Pages, so that every change you publish builds and goes live automatically. Cloudflare Pages is a free host that serves your prebuilt pages from a CDN, and if your project has a database or sign-ins, it also runs the small worker Jx emits for their `/_jx/*` routes. Open it from **Publish › Hosting**: the host section's **Set Up Publishing** button, which is also the **Set Up Publishing** command in [Quick Access](/docs/studio/interface/quick-access).
 
-![The Publish modal showing the connected state with the latest deployment status](../../images/publish-panel.png)
+![The Publish modal showing the connected state with the latest deployment status](https://jxsuite.com/content/docs/images/publish-panel.png)
 
 Before you start, the project needs to live on GitHub. If it doesn't yet, **[GitHub](/docs/studio/publish/github)** walks you through publishing it from Studio.
 

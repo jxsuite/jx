@@ -245,7 +245,7 @@ Three rules keep the baseline honest:
 
 **`check-image-lock.ts` is one script with two jobs.** `bun run docs:images:check`, in the ungated `checks` job, needs no picture: it holds every shot's `status` block to the contract and every image a shot produces to a docs page that reads it. `bun scripts/check-image-lock.ts --capture` is what the lane and the site build run on a capture: it must be the whole manifest, every PNG must be one the lock records, and every shot definition must be current for the tree. A capture on your own checkout is held to none of that. `docs:images:check` prints what is out of date as a warning, because the remedy for a stale build output is to delete it.
 
-**The README's hero is addressed on the site.** `README.md` cannot point at a file that is not committed, so it names `https://jxsuite.com/content/docs/images/hero.png`, and `scripts/docs/publish-readme-images.ts` copies each image the README names into the built site at that path. The picture a reader of the README sees is therefore the last release's.
+**The sources address their pictures on the site.** Neither `README.md` nor a page under `docs/` can point at a file that is not committed, so each names `https://jxsuite.com/content/docs/images/<name>.png`, and `docs:check` refuses a relative path. The site build does not fetch that address: the content loader remaps it to the local capture and the compiler optimizes it (parser.md §9.2). `scripts/docs/publish-doc-images.ts` then copies each image those sources name into the built site at the address itself, which is what a reader on github.com loads. The picture such a reader sees is therefore the last release's, and a shot that has not shipped yet has none.
 
 ## Authoring notes
 

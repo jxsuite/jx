@@ -82,7 +82,7 @@ A value set to **Mixed text** in the Inspector is drawn as the canvas draws it: 
 
 To see which parts of a page are bound, open the **Context** popover on the pane's context bar (the sliders button) and set **Bound data** to **Names**. Every tag on the canvas is drawn as its name instead of its value. Set it back to **Values** when you are done. This changes nothing in your document.
 
-![A repeating list of blog posts on the canvas with each tag drawn as its name: Title, Description and Date](../../images/binding-names.png)
+![A repeating list of blog posts on the canvas with each tag drawn as its name: Title, Description and Date](https://jxsuite.com/content/docs/images/binding-names.png)
 
 ## Step through a repeating list
 

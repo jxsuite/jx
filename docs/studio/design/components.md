@@ -28,7 +28,7 @@ The natural way to make a component is to design it in place first, then promote
 2. Right-click it (on the canvas or in [Outline](/docs/studio/design/layers)) and choose **Convert to Component**.
 3. Give it a tag name (lowercase, with a hyphen, like `pricing-card`) and click **Convert**. Studio suggests one from the element, checks the name as you type against the rule the browser itself applies to custom element names, and won't let you collide with an existing component.
 
-![The Convert to Component dialog with a tag name filled in](../../images/convert-to-component.png)
+![The Convert to Component dialog with a tag name filled in](https://jxsuite.com/content/docs/images/convert-to-component.png)
 
 Studio saves the component as its own file in the project's `components/` folder, swaps your selection for an instance of it, and adds it to the [Insert palette](/docs/studio/design/elements) and the **Components** section of the [Site panel](/docs/studio/interface#the-site-panel). Drop more instances anywhere from there. If the component's slots need attention, Studio files it on **[Problems](/docs/studio/interface/problems-and-progress)** naming the component file, so it stays listed until you fix it.
 

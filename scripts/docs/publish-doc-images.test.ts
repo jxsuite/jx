@@ -10,13 +10,13 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
-import { manifestImageNames } from "../check-image-lock";
-import { publishReadmeImages, readmeImages } from "./publish-readme-images.ts";
+import { capturedImageNames, manifestImageNames, readShots } from "../check-image-lock";
+import { imageSources, publishDocImages, publishedImages } from "./publish-doc-images.ts";
 
 const ROOT = resolve(import.meta.dir, "../..");
 const README = readFileSync(join(ROOT, "README.md"), "utf8");
 
-describe("readmeImages", () => {
+describe("publishedImages", () => {
   test("reads each published image address once, and nothing else", () => {
     const source = [
       '<img src="https://jxsuite.com/content/docs/images/hero.png" alt="x">',
@@ -25,14 +25,14 @@ describe("readmeImages", () => {
       "![elsewhere](https://example.com/content/docs/images/nope.png)",
       "![relative](docs/images/nope.png)",
     ].join("\n");
-    expect(readmeImages(source)).toEqual(["git-panel.png", "hero.png"]);
+    expect(publishedImages(source)).toEqual(["git-panel.png", "hero.png"]);
   });
 
   test("the README names no picture in the repository, and only ones a shot produces", () => {
     // A repository-relative path would render as a broken image: docs/images is not committed.
     expect(README).not.toMatch(/src="docs\/images\//);
     expect(README).not.toMatch(/\]\(docs\/images\//);
-    const names = readmeImages(README);
+    const names = publishedImages(README);
     expect(names.length).toBeGreaterThan(0);
     const manifest = JSON.parse(
       readFileSync(join(ROOT, "scripts/screenshots/manifest.json"), "utf8"),
@@ -47,7 +47,31 @@ describe("readmeImages", () => {
   });
 });
 
-describe("publishReadmeImages", () => {
+describe("imageSources", () => {
+  test("the README and every docs page are read, and between them they name the whole capture", () => {
+    const sources = imageSources();
+    expect(sources[0]).toBe(join(ROOT, "README.md"));
+    expect(sources.length).toBeGreaterThan(100);
+    // Every docs page names its pictures by published address, so what this publishes is what a
+    // Reader of the source can load: each image some page reads, which is each image a shot makes.
+    const named = new Set(
+      publishedImages(sources.map((file) => readFileSync(file, "utf8")).join("\n")),
+    );
+    const manifest = JSON.parse(
+      readFileSync(join(ROOT, "scripts/screenshots/manifest.json"), "utf8"),
+    );
+    const produced: string[] = [];
+    for (const shot of readShots(manifest)) {
+      for (const name of capturedImageNames(shot.raw)) {
+        produced.push(`${name}.png`);
+      }
+    }
+    produced.sort();
+    expect([...named].toSorted()).toEqual(produced);
+  });
+});
+
+describe("publishDocImages", () => {
   test("copies what is captured to the path the README names, and reports what is not", () => {
     const root = mkdtempSync(join(tmpdir(), "jx-readme-images-"));
     const images = join(root, "images");
@@ -57,7 +81,7 @@ describe("publishReadmeImages", () => {
     const source =
       "https://jxsuite.com/content/docs/images/hero.png " +
       "https://jxsuite.com/content/docs/images/absent.png";
-    const result = publishReadmeImages(source, images, dist);
+    const result = publishDocImages(source, images, dist);
     expect(result).toEqual({ missing: ["absent.png"], published: ["hero.png"] });
     expect(readFileSync(join(dist, "content/docs/images/hero.png"), "utf8")).toBe("png-bytes");
     expect(existsSync(join(dist, "content/docs/images/absent.png"))).toBe(false);

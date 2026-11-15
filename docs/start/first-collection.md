@@ -7,7 +7,7 @@ description: "Give a Jx site a blog in Studio: define a posts content type, crea
 
 In this tutorial you give your site a blog the structured way: a `posts` content type with a field schema, three entries created from it, a round of bulk editing in Grid mode, and a Blog page that lists every post from live data. Add a fourth post next month and the page updates itself.
 
-![The Blog page on the canvas, listing three post cards with titles, dates, and descriptions](../images/blog-finished.png)
+![The Blog page on the canvas, listing three post cards with titles, dates, and descriptions](https://jxsuite.com/content/docs/images/blog-finished.png)
 
 **About 20 minutes.** Before you start:
 
@@ -22,7 +22,7 @@ A content type is your CMS schema: where a collection's entries live, and what f
 2. Click **New content type** at the bottom of the type list.
 3. Type `Posts` and click **Create**.
 
-![The Content Types section with the new posts type selected and its empty field schema](../images/blog-content-type.png)
+![The Content Types section with the new posts type selected and its empty field schema](https://jxsuite.com/content/docs/images/blog-content-type.png)
 
 You should see the new type selected, named `posts`, with a matching source folder (`content/posts/`) and an empty field schema ready to fill.
 
@@ -38,7 +38,7 @@ Add three fields. For each one, click **Add Field**, type the name, pick its typ
 2. `date`, type **string**, format **date**, so entries get a proper date field.
 3. `description`, type **string**.
 
-![The posts type with title, date, and description rows in its field schema](../images/blog-schema-fields.png)
+![The posts type with title, date, and description rows in its field schema](https://jxsuite.com/content/docs/images/blog-schema-fields.png)
 
 You should now see three field rows in the schema. These become the form every post fills in. Leave **Source** and **Format** as they are, and close Settings. Everything else the builder can do, from nested fields to references between types, is in **[Content types](/docs/studio/projects/content-types)**.
 
@@ -48,7 +48,7 @@ You should now see three field rows in the schema. These become the form every p
 2. Choose **Entry** in the list on the left. It appears now that your project has a content type, and **Posts** is already picked as its collection.
 3. Type `Hello World` and click **Create entry**.
 
-![The Content workspace showing a collection as cards with live previews, with the Collections panel on the left](../images/mode-manage.png)
+![The Content workspace showing a collection as cards with live previews, with the Collections panel on the left](https://jxsuite.com/content/docs/images/mode-manage.png)
 
 Studio creates `content/posts/hello-world.md` with every schema field pre-filled (the title with the name you typed, the rest with a sensible blank) and opens it in the [Content workspace](/docs/studio/projects/browse), where **Posts** is now listed in the Collections panel on the left.
 
@@ -62,7 +62,7 @@ The post opens on the canvas, inside your site's template: the banner above it s
 
 Then click into the page below and write a paragraph or two of body text.
 
-![Jx Studio editing markdown content inline with a WYSIWYG editor](../images/mode-edit.png)
+![Jx Studio editing markdown content inline with a WYSIWYG editor](https://jxsuite.com/content/docs/images/mode-edit.png)
 
 You should see the fields filled in and your words on the page. See **[Write an entry](/docs/studio/projects/browse#write-an-entry)** for the rest of the Entry tab.
 
@@ -79,7 +79,7 @@ Editing entries one file at a time doesn't scale, so Studio can open the whole c
 1. Click **Posts** in the Collections panel, then click **Edit in grid** in the toolbar above the list. (The same action is on the right-click menu of the `content/posts` folder in the Files panel, as **Edit Collection in Grid**.)
 2. The grid opens in the Content workspace, beside your posts. A view you save there is listed under **Posts** in the Collections panel next time.
 
-![The posts collection open in Grid mode, one row per entry with title, date, and description columns](../images/blog-grid.png)
+![The posts collection open in Grid mode, one row per entry with title, date, and description columns](https://jxsuite.com/content/docs/images/blog-grid.png)
 
 You should see one row per post and one column per schema field, with the **Path** column pinned at the left, and your two blank rows plain to see.
 
@@ -110,7 +110,7 @@ Design a single card, which the repeater will copy per post:
 2. With the article selected, click the **Heading 3** card, then the **Paragraph** card twice. Each new element lands inside the selection.
 3. Select each of the three in turn and give it placeholder text via **Text Content** in the Inspector's **Content** view: `Post title`, `A line about the post.`, and `2026-01-01`.
 
-![The design canvas with one article card holding a heading and two placeholder paragraphs](../images/blog-card.png)
+![The design canvas with one article card holding a heading and two placeholder paragraphs](https://jxsuite.com/content/docs/images/blog-card.png)
 
 You should see one plausible-looking post card on the canvas. Style it as much or as little as you like; **[Design mode](/docs/studio/design)** covers the tools.
 
@@ -123,7 +123,7 @@ The page needs the posts as data it can render:
 3. Rename the new entry to `posts` (type the name and press :kbd[Enter]).
 4. Set **contentType** to `posts`, and add a **sort** rule on the `date` field with order `desc`, so the newest post lists first.
 
-![The Data panel editing a ContentCollection entry with contentType posts and a date sort rule](../images/blog-collection-state.png)
+![The Data panel editing a ContentCollection entry with contentType posts and a date sort rule](https://jxsuite.com/content/docs/images/blog-collection-state.png)
 
 Open the **Data** panel and you should see `posts` worth `Array(3)`, which is your three entries, live. Filters, limits, and the other sources are covered in **[Data sources](/docs/studio/logic/data-sources)**.
 
@@ -133,7 +133,7 @@ Open the **Data** panel and you should see `posts` worth `Array(3)`, which is yo
 2. In the dialog, set **Items source** to `posts`.
 3. Click **Create Repeater**.
 
-![The Repeat dialog with posts chosen as the items source](../images/blog-repeat-dialog.png)
+![The Repeat dialog with posts chosen as the items source](https://jxsuite.com/content/docs/images/blog-repeat-dialog.png)
 
 Your card is now the repeater's _template_, marked **↻** in Outline. On the design canvas it still renders once, which is the template view. Everything about repeaters lives in **[Repeaters](/docs/studio/design/repeaters)**.
 
@@ -145,7 +145,7 @@ Inside the template, each post's data is in scope:
 2. Click **Insert data** on the floating toolbar and pick `item.data.title`. A live placeholder lands in the text.
 3. Do the same for the two paragraphs: `item.data.description` and `item.data.date`.
 
-![The Insert data list open over the card's heading, offering item.data fields](../images/blog-insert-data.png)
+![The Insert data list open over the card's heading, offering item.data fields](https://jxsuite.com/content/docs/images/blog-insert-data.png)
 
 Each text now holds a placeholder that fills itself from the current post. (A collection entry's schema fields live under `item.data`; `item` and `index` are there too.)
 
@@ -153,11 +153,11 @@ Each text now holds a placeholder that fills itself from the current post. (A co
 
 The canvas already draws the list: the card you designed is repeated once per post. Switch the **View** control to **Edit** to read the page as one column.
 
-![The page in Edit, the single card drawn as three post cards with real titles, dates, and descriptions](../images/blog-preview.png)
+![The page in Edit, the single card drawn as three post cards with real titles, dates, and descriptions](https://jxsuite.com/content/docs/images/blog-preview.png)
 
 You should see three cards, newest first, each filled in from its own post. Click into any of them to edit the card they share. Switch the **View** control back to **Design**, then save your open documents with :kbd[⌘S] / :kbd[Ctrl+S]. When you're ready, publish the lot from the **Publish** workspace's **Review changes** (:kbd[⌘5]). See **[Source control](/docs/studio/publish/source-control)**.
 
-![The publish card in Review changes: the destination, the summary and the publish button](../images/git-commit.png)
+![The publish card in Review changes: the destination, the summary and the publish button](https://jxsuite.com/content/docs/images/git-commit.png)
 
 ## Give each post its own page
 

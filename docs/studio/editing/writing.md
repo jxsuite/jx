@@ -24,7 +24,7 @@ code:
 
 In Edit mode you write on the real page: click any text (a heading, a paragraph, a list item, a table cell) and the cursor lands exactly where you clicked, ready to type. There is no separate preview to keep in sync; the page you're editing is the page.
 
-![A paragraph mid-edit on the canvas with the formatting toolbar above it](../../images/inline-editing.png)
+![A paragraph mid-edit on the canvas with the formatting toolbar above it](https://jxsuite.com/content/docs/images/inline-editing.png)
 
 ## Moving around
 

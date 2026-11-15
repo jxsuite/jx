@@ -23,7 +23,7 @@ code:
 
 Shipping a Jx site is part of the Studio flow, with no terminal and no separate deploy tool. It happens in the **Publish** workspace, the last tab in the Command Bar (:kbd[⌘5]), which counts your unpublished changes. Remember the primary boundary: **Studio publishes your code; it doesn't build the site.** Studio's job ends when your files reach your repository and your provider has been told about it; the build itself happens on your host.
 
-![Jx Studio's Publish workspace: the destination, the summary and the publish button beside the changes](../images/git-commit.png)
+![Jx Studio's Publish workspace: the destination, the summary and the publish button beside the changes](https://jxsuite.com/content/docs/images/git-commit.png)
 
 ## How it goes live
 

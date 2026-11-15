@@ -10,7 +10,7 @@ code:
 
 Design is the visual canvas, the view for shaping structure and style. Switch to it with **Design** in the **View** control on the pane's context bar, and Studio renders the open page or component with the real runtime, exactly as it will render in production, while you edit it directly.
 
-![Jx Studio design canvas showing one component across four responsive breakpoints with a style inspector](../images/mode-design.png)
+![Jx Studio design canvas showing one component across four responsive breakpoints with a style inspector](https://jxsuite.com/content/docs/images/mode-design.png)
 
 ## A canvas per breakpoint
 

@@ -23,7 +23,7 @@ code:
 
 Studio has a built-in AI assistant: a chat panel that answers questions about your project and changes it for you. It creates pages and components, edits the page on the canvas while you watch, and tells you what it finds in your files. It runs against an AI provider **you** connect; Studio ships no account, no hosted AI, and sends nothing anywhere until you do.
 
-![The assistant open beside a page on the canvas, mid-conversation](../images/ai-sidebar.png)
+![The assistant open beside a page on the canvas, mid-conversation](https://jxsuite.com/content/docs/images/ai-sidebar.png)
 
 The assistant is the **last tab of the Inspector**, after Page and Element. Show it with :kbd[⌘⇧5] (macOS) / :kbd[Ctrl+Shift+5] (Windows/Linux), or by clicking the tab. Because it shares the Inspector's width, showing it costs the canvas nothing. It's available in every state: before you open a project, with a project open, and with a page on the canvas. What the assistant can do grows with each of those. The tab's body is built the first time the tab is shown; anything aimed at it before that (a pending prompt from the New Project hand-off, an automated seed) is queued with the panel and appears the moment the tab is first picked.
 

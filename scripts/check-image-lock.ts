@@ -505,8 +505,8 @@ export function quarantinedShots(manifest: JsonValue): ManifestShot[] {
 // ─── Docs image references ────────────────────────────────────────────────────
 
 /**
- * Markdown image targets. Any page-relative path, so a ref pointing somewhere other than
- * `docs/images/` is caught by `check-doc-refs.ts` rather than skipped silently.
+ * Markdown image targets. Any target at all, so a ref pointing somewhere other than `docs/images/`
+ * is caught by `check-doc-refs.ts` rather than skipped silently.
  */
 const IMAGE_RE = /!\[[^\]]*]\(<?([^\s)>]+\.(?:png|webp|jpg|jpeg))>?\s*(?:"[^"]*")?\)/g;
 
@@ -529,7 +529,27 @@ export interface DocImageRef {
   name: string;
 }
 
-/** Scan `docs/**` for refs that land in `docs/images/`. Others are `check-doc-refs.ts`'s business. */
+/**
+ * Where the site publishes `docs/images/`: the project's `url` followed by the docs collection's
+ * asset mount. It is how a docs page and the README name a screenshot, because the pictures are
+ * build outputs and have no path in the repository (docs/README.md, "Images"). The content loader
+ * remaps the address to the local file when a capture is on disk (parser.md §9.2).
+ */
+export const PUBLISHED_IMAGES_URL = "https://jxsuite.com/content/docs/images/";
+
+/** `hero.png` for a target written as a screenshot's published address, else null. */
+export function publishedImageFile(target: string): string | null {
+  if (!target.startsWith(PUBLISHED_IMAGES_URL)) {
+    return null;
+  }
+  const file = target.slice(PUBLISHED_IMAGES_URL.length);
+  return /^[\w-]+\.png$/.test(file) ? file : null;
+}
+
+/**
+ * Scan `docs/**` for refs that name an image of `docs/images/`, by published address or by a
+ * relative path that lands there. Others are `check-doc-refs.ts`'s business.
+ */
 export function collectDocImageRefs(
   docsDir: string = DEFAULT_DOCS_DIR,
   imagesDir: string = DEFAULT_IMAGES_DIR,
@@ -540,10 +560,11 @@ export function collectDocImageRefs(
   for (const rel of [...new Bun.Glob("**/*.md").scanSync({ cwd: root })].toSorted()) {
     const file = join(root, rel);
     for (const target of imageTargets(readFileSync(file, "utf8"))) {
-      if (target.startsWith("/") || /^[a-z][\w+.-]*:/i.test(target)) {
+      const published = publishedImageFile(target);
+      if (!published && (target.startsWith("/") || /^[a-z][\w+.-]*:/i.test(target))) {
         continue;
       }
-      const resolved = resolve(dirname(file), target);
+      const resolved = published ? join(images, published) : resolve(dirname(file), target);
       if (dirname(resolved) !== images) {
         continue;
       }

@@ -22,7 +22,7 @@ Each source's editor shows just the fields that source needs.
 
 **Fetch from a URL** loads data over HTTP, most typically a JSON API.
 
-![The Data panel editing a Request source's URL, method, and timing](../../images/data-source-request.png)
+![The Data panel editing a Request source's URL, method, and timing](https://jxsuite.com/content/docs/images/data-source-request.png)
 
 - **URL**: where to fetch from.
 - **Method**: `GET`, `POST`, `PUT`, `DELETE`, or `PATCH`.

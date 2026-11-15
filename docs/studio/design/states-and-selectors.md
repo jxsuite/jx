@@ -13,7 +13,7 @@ code:
 
 Buttons darken on hover, inputs glow on focus, disabled controls fade. Those are the same element in a different _state_, and each state can carry its own styles. In Studio you style states from the **selector** segment of the [Style tab](/docs/studio/design/style-inspector)'s Target Line, the last word of the sentence before the scope chip.
 
-![The Style tab's Target Line with its selector menu open, listing built-in states and existing selectors](../../images/selector-menu.png)
+![The Style tab's Target Line with its selector menu open, listing built-in states and existing selectors](https://jxsuite.com/content/docs/images/selector-menu.png)
 
 ## Style a state
 

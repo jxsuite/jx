@@ -31,7 +31,7 @@ code:
 
 Project Styles catalogs your elements: every heading, paragraph, button, list, table, and form control, plus your components, rendered as specimen cards with their current default styles. Instead of styling one `h2` on one page, you style what _every_ `h2` looks like, in one place. Project Styles is the **Styles** workspace: click **Styles** in the Command Bar (:kbd[⌘4]), or run **Go to Styles** from :kbd[⌘K], whether or not the project file is already open. It shows your project file in three views: **Variables**, your site's CSS custom properties (see **[Design tokens](/docs/studio/design/tokens)**), where the workspace opens the first time; **Elements**, the catalog this page describes; and **Code**, the file as text. After the first visit it opens on whichever of Variables and Elements you were last in. The **Styles** panel on the left takes you to each one, and the **Editor** control on the pane's context bar switches between them too. See **[Modes and views](/docs/studio/interface/modes)**.
 
-![Jx Studio Project Styles showing element defaults across breakpoints](../../images/stylebook.png)
+![Jx Studio Project Styles showing element defaults across breakpoints](https://jxsuite.com/content/docs/images/stylebook.png)
 
 Your project file opens here, because that's the natural home for site-wide defaults. **[Project settings](/docs/studio/projects/settings)** edits other parts of the same file, and the three views are three readings of it, sharing one undo history and one unsaved-changes flag. A component or another JSON document also offers **Elements** in its own **Editor** control, which styles that file's element defaults instead.
 

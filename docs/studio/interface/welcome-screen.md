@@ -12,7 +12,7 @@ code:
 
 When Jx Studio starts with no project open, the canvas area shows the Start pane: a **Start** list of ways to get a project in front of you, followed by your recent projects and, on platforms that keep a catalog, the rest of your projects. Everything on it is one or two clicks from a working canvas.
 
-![The Jx Studio Start pane with Start actions, Recent projects, and the Projects list](../../images/welcome-screen.png)
+![The Jx Studio Start pane with Start actions, Recent projects, and the Projects list](https://jxsuite.com/content/docs/images/welcome-screen.png)
 
 ## Start a new project
 
@@ -21,7 +21,7 @@ When Jx Studio starts with no project open, the canvas area shows the Start pane
 3. Click **Next**, name the project, and choose the **Location** to create it in.
 4. Click **Create Project**. Studio writes the files where you pointed it, initializes a git repository, and opens the project.
 
-![The New Project dialog with the starter gallery and the Start from scratch card](../../images/new-project-modal.png)
+![The New Project dialog with the starter gallery and the Start from scratch card](https://jxsuite.com/content/docs/images/new-project-modal.png)
 
 The full walkthrough is in **[Create a project](/docs/studio/projects/create)**. There is no separate "start from an example" button: the starter gallery _is_ the first step of New Project.
 
