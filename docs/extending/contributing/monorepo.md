@@ -153,16 +153,15 @@ Pushes to `main`, the nightly cron, and manual dispatch are never gated: they al
 
 ## Generated files are fixed for you, not failed at you
 
-Two things in this repository are build outputs that happen to be committed: the screenshots under `docs/images/`, and every `*schema.json` (the core schemas under `packages/schema/`, plus the `project.schema.json` / `document.schema.json` pair in each project root). They are committed because editors, `jx validate` and published npm packages read them off disk. Nobody writes them by hand.
+Every `*schema.json` in this repository is a build output that happens to be committed (the core schemas under `packages/schema/`, plus the `project.schema.json` / `document.schema.json` pair in each project root). They are committed because editors, `jx validate` and published npm packages read them off disk. Nobody writes them by hand.
 
-Both have a CI lane that **regenerates and pushes the result to your branch** rather than turning red and waiting for you:
-
-- **Screenshots**: `.github/workflows/screenshots.yml` re-captures and comments with before/after thumbnails and the docs pages each changed image appears on.
-- **Schemas**: `.github/workflows/schemas.yml` runs the generators and comments with the JSON Pointers that moved, naming `+ /$defs/ClassMethodDef/properties/role/enum/mount` instead of leaving 500 KB of diff to read.
+They have a CI lane that **regenerates and pushes the result to your branch** rather than turning red and waiting for you: `.github/workflows/schemas.yml` runs the generators and comments with the JSON Pointers that moved, naming `+ /$defs/ClassMethodDef/properties/role/enum/mount` instead of leaving 500 KB of diff to read.
 
 :::doc-note
-A lane's commit is authored by `github-actions[bot]`, and the repository holds every workflow run on a bot-authored commit until it is approved, `ci` included. The screenshots, schemas and spec-release lanes approve the runs their own push queues (`scripts/ci/approve-held-runs.ts`), so the pull request keeps reporting. If it reads BLOCKED with nothing red after a re-capture, look at the lane's comment: when the approval was refused, the comment names the held runs and the one-line `gh api` command that releases each of them.
+A lane's commit is authored by `github-actions[bot]`, and the repository holds every workflow run on a bot-authored commit until it is approved, `ci` included. The schemas and spec-release lanes approve the runs their own push queues (`scripts/ci/approve-held-runs.ts`), so the pull request keeps reporting. If it reads BLOCKED with nothing red after a regeneration, look at the lane's comment: when the approval was refused, the comment names the held runs and the one-line `gh api` command that releases each of them.
 :::
+
+The screenshots under `docs/images/` are build outputs too, and they are **not** committed. Nothing reads a picture off disk except the site build, so `.github/workflows/screenshots.yml` captures them where they are needed: on a pull request it reports which images changed and the docs pages each appears on, and for a release it captures the tree being published. See [Screenshots](/docs/extending/contributing/docs#screenshots).
 
 Locally the same two commands do the same work:
 
@@ -172,10 +171,10 @@ bun run schema:sync     # regenerate the stale ones
 ```
 
 :::doc-warning
-Never hand-edit a committed schema or a committed screenshot. The next run of either generator overwrites it, and CI will notice. If a pointer in the comment is not a change you meant to make, the fix belongs in the generator or in the source it reads.
+Never hand-edit a committed schema. The next run of the generator overwrites it, and CI will notice. If a pointer in the comment is not a change you meant to make, the fix belongs in the generator or in the source it reads.
 :::
 
-Three things make a schema go stale, and only one of them is forgetting to run the generator. The commonest is a **dependency bump**: the core schema injects web-standards data read at generation time from `@webref/css`, `@webref/elements` and `@webref/idl`, so bumping one rewrites the committed core by construction. That is why this lane, unlike the screenshot one, runs on Dependabot's branches too. The third is a **merge race**: two branches can each be green alone and stale together when one moves the core and the other regenerates a project root before it lands. Git merges that without a conflict and no per-branch check can see it, so the lane also watches `main` and opens a pull request when it finds drift there.
+Three things make a schema go stale, and only one of them is forgetting to run the generator. The commonest is a **dependency bump**: the core schema injects web-standards data read at generation time from `@webref/css`, `@webref/elements` and `@webref/idl`, so bumping one rewrites the committed core by construction. That is why this lane runs on Dependabot's branches too. The third is a **merge race**: two branches can each be green alone and stale together when one moves the core and the other regenerates a project root before it lands. Git merges that without a conflict and no per-branch check can see it, so the lane also watches `main` and opens a pull request when it finds drift there.
 
 `bun run schema:verify` still blocks in CI. The lane cannot push to a fork, and a required check is what keeps a stale schema off `main` when it cannot.
 

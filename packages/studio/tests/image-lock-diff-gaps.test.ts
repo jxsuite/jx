@@ -33,7 +33,11 @@ import {
 import type { CaptureLock, LockImage } from "../../../scripts/check-image-lock";
 import { RUNTIME } from "./shared-fixtures";
 
-const REPO_ROOT = join(import.meta.dir, "..", "..", "..");
+/**
+ * Two real Chromium captures, kept as fixtures: `docs/images` is a build output and is not in a
+ * checkout.
+ */
+const CAPTURES = join(import.meta.dir, "fixtures", "captures");
 
 function scratch(prefix: string): string {
   return mkdtempSync(join(tmpdir(), `jx-${prefix}-`));
@@ -156,10 +160,8 @@ describe("checkImageLock runtime reporting", () => {
 // ─── describeChange over two decodable PNGs of different sizes ────────────────
 
 describe("describeChange", () => {
-  const tabStrip = new Uint8Array(readFileSync(join(REPO_ROOT, "docs/images/tab-strip.png")));
-  const fieldMode = new Uint8Array(
-    readFileSync(join(REPO_ROOT, "docs/images/field-mode-button.png")),
-  );
+  const tabStrip = new Uint8Array(readFileSync(join(CAPTURES, "tab-strip.png")));
+  const fieldMode = new Uint8Array(readFileSync(join(CAPTURES, "field-mode-button.png")));
 
   test("reports pixels when the two captures are comparable", () => {
     expect(
@@ -240,7 +242,7 @@ describe("the CLI reports what does not fail the run", () => {
     const images = join(docs, "images");
     mkdirSync(images, { recursive: true });
     writeFileSync(join(docs, "page.md"), "![](<./images/hero.png>)\n");
-    const png = new Uint8Array(readFileSync(join(REPO_ROOT, "docs/images/tab-strip.png")));
+    const png = new Uint8Array(readFileSync(join(CAPTURES, "tab-strip.png")));
     writeFileSync(join(images, "hero.png"), png);
     const manifest = {
       defaults: { theme: "dark" },
@@ -278,8 +280,9 @@ describe("the CLI reports what does not fail the run", () => {
     ]);
     expect(code).toBe(0);
     expect(logs).toContain("  quarantined: parked — xpath (since abc123)");
-    expect(warns[0]).toBe("image lock: 1 warning(s):");
-    expect(warns[1]).toContain('shot "never-shot" has never been captured');
+    expect(warns[0]).toContain("the capture on this checkout is out of date in 1 way(s)");
+    expect(warns[0]).toContain("That is not a failure here");
+    expect(warns[1]).toContain('shot "never-shot" is not captured');
     expect(warns[1]!.startsWith("  ")).toBe(true);
     expect(errors).toEqual([]);
   });

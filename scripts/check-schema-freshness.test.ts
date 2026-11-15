@@ -318,7 +318,7 @@ describe("the backfill lane", () => {
   });
 
   test("does NOT exclude Dependabot", () => {
-    // The opposite of screenshots.yml, deliberately. A `@webref/*` bump rewrites the core schema
+    // The opposite of screenshots.yml, which skips a Dependabot branch, deliberately. A `@webref/*` bump rewrites the core schema
     // By construction and there is no human on that branch to run the generator — so excluding
     // Dependabot would remove this lane's single most valuable case.
     const guards = [job.steps.map((s) => s.if ?? "").join(" "), JSON.stringify(workflow.jobs)];

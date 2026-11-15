@@ -1,4 +1,4 @@
-# The schema backfill lane — the sibling of screenshots.yml, for artifacts nobody hand-writes.
+# The schema backfill lane, for artifacts nobody hand-writes and that have to be committed anyway.
 #
 # Every committed schema in this repository is a build output: `bun run generate:schema` writes the
 # seven core artifacts under `packages/schema/`, and `bun run schema:generate-all` composes those
@@ -20,8 +20,9 @@
 #     see, and one nothing on a pull request can fix.
 #   * PLAIN FORGETFULNESS. `bun run schema:sync` is one command, and it is one command people miss.
 #
-# So this lane regenerates and pushes, exactly as screenshots.yml does for pictures. Four things
-# are deliberately UNLIKE that lane, each for a reason:
+# So this lane regenerates and pushes. (screenshots.yml did the same for pictures until they
+# stopped being committed at all; a schema cannot follow them, because editors, `jx validate` and
+# the published packages read it off disk.) Four things about it are deliberate:
 #
 #   1. NO `paths:` FILTER. The whole job — checkout, install, both generators — is under 30 seconds,
 #      and the generators themselves are under two. A filter would cost more to maintain than to
@@ -31,8 +32,8 @@
 #      rewrote the schema, and there is no human on that branch to notice.
 #   3. NO `github.actor` REFUSAL, because termination is a FIXED POINT rather than a guard. The
 #      generators are deterministic — same tree in, same bytes out — so the run this lane's own push
-#      triggers regenerates to identical bytes and pushes nothing. screenshots.yml needs the refusal
-#      because Chromium does not re-encode a PNG byte-for-byte; `JSON.stringify` does.
+#      triggers regenerates to identical bytes and pushes nothing. A lane whose output does not
+#      repeat byte-for-byte (a PNG out of Chromium does not) would need the refusal instead.
 #   4. A CHANGED SCHEMA IS NOT NEUTRAL. A picture that moved is an aesthetic judgement CI cannot
 #      make; a schema that moved is a CONTRACT change, and the pointers that moved say exactly what
 #      it now admits or refuses. The comment reports it as meaning — `+18
@@ -75,8 +76,7 @@ on:
 # `pull-requests: write` posts the one comment and creates that pull request; `checks: write`
 # publishes the NEUTRAL conclusion a fixup deserves and that a job conclusion cannot express.
 #
-# `actions: write` is for ONE endpoint, `POST /actions/runs/{id}/approve`, for the same reason
-# screenshots.yml carries it: the pushed commit's head is the bot's, the repository's Actions
+# `actions: write` is for ONE endpoint, `POST /actions/runs/{id}/approve`: the pushed commit's head is the bot's, the repository's Actions
 # policy holds every run on a bot-authored head in `action_required`, and `ci` then never reports
 # on the head branch protection requires it on (issue #307; PR #313's head 56e441a3 was this
 # lane's, with all seven runs held). The step after the push approves those held runs.
@@ -90,8 +90,9 @@ permissions:
 # head has `github.actor == 'github-actions[bot]'`, and with `cancel-in-progress` it must not land
 # in the group of the human-actor run that is approving it, seconds before that run posts its
 # comment. This lane has no actor refusal (item 3 above), so the approved run regenerates from the
-# pushed head, finds the fixed point, and pushes nothing. See screenshots.yml's `concurrency:` for
-# why the suffix is bot-versus-human and not the actor's identity.
+# pushed head, finds the fixed point, and pushes nothing. The suffix is bot-versus-human and not the
+# actor's identity, because that would split two humans' pushes on one pull request into groups
+# that no longer cancel each other and race the push step.
 concurrency:
   group: schemas-${{ github.event.pull_request.number || github.event.inputs.pr || github.ref }}-${{ github.actor == 'github-actions[bot]' && 'bot' || 'human' }}
   cancel-in-progress: true
@@ -230,7 +231,7 @@ jobs:
       # ── Un-hold what the push queued ───────────────────────────────────────
       # The push raised `pull_request: synchronize` and GitHub queued every workflow on the new
       # head, then held all of them, because the head is the bot's (issue #307). This approves them
-      # — `Test` included, so `ci` reports — through the same script screenshots.yml runs; its
+      # — `Test` included, so `ci` reports — through scripts/ci/approve-held-runs.ts; its
       # header carries the safety argument for approving every held run, this lane's own included.
       # It cannot fail the job: a refusal is printed as the one-line human crank per run and written
       # to NOTE_FILE, which the comment step appends.

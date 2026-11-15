@@ -23,9 +23,8 @@
 #
 # TERMINATION is a fixed point, not a guard. The job pushes only when regenerating changes the
 # file; the run its own push triggers (if any) regenerates to the same bytes and pushes nothing.
-# That is why there is no `github.actor != 'github-actions[bot]'` refusal here as there is in
-# screenshots.yml — the release pull request is *authored* by a bot, so that condition would skip
-# every single release.
+# That is why there is no `github.actor != 'github-actions[bot]'` refusal here — the release pull
+# request is *authored* by a bot, so that condition would skip every single release.
 name: Release bun.nix
 
 on:

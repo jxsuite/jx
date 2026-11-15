@@ -12,8 +12,8 @@
 //   - `code:` entries must be repo paths that exist
 //   - Body image refs must be page-relative paths into docs/images/ (so the page
 //     Renders in any markdown editor), be produced by the screenshots manifest,
-//     Exist on disk, be NAMED BY scripts/screenshots/capture.lock.json, and never
-//     Belong to a quarantined shot (scripts/screenshots/README.md)
+//     And never belong to a quarantined shot (scripts/screenshots/README.md). The
+//     Picture itself is a build output: no check here asks for the file.
 //   - `generated: true` pages must carry the generator banner
 //   - Nav bijection: every docs page appears exactly once in docs/nav.json and
 //     Every nav path has a page
@@ -25,10 +25,8 @@ import { existsSync, readFileSync } from "node:fs";
 import { basename, dirname, extname, join, relative, resolve } from "node:path";
 
 import {
-  DEFAULT_LOCK,
   collectDocImageRefs,
   imageTargets,
-  lockedImagePaths,
   quarantineRefFindings,
   readLock,
   readShots,
@@ -116,13 +114,13 @@ const manifest: JsonValue = JSON.parse(readFileSync(MANIFEST_PATH, "utf8"));
 const shots = readShots(manifest);
 
 /**
- * The capture lock, or null before the first capture.
+ * The capture lock, when this checkout holds a capture; null on every checkout that does not.
  *
- * Null is reported ONCE rather than 65 times: a missing lock is one fact about the repo, not a
- * defect in every page that references a picture.
+ * `docs/images/` is a build output, so null is the ordinary case and no assertion here needs the
+ * bytes. The lock is read only so a quarantined shot's image is recognised by the name it was
+ * actually captured under as well as the names its definition declares.
  */
 const lock = readLock();
-const lockedImages = lockedImagePaths(lock);
 
 /** Every image basename the screenshots pipeline can produce. */
 function manifestImageNames(): Set<string> {
@@ -236,19 +234,9 @@ for (const file of docFiles) {
     if (!screenshotNames.has(name)) {
       fail(file, `screenshot "${name}" is not produced by scripts/screenshots/manifest.json`);
     }
-    if (!existsSync(resolved)) {
-      fail(file, `screenshot file missing on disk: docs/images/${basename(resolved)}`);
-    }
-    // A page may only reference an image the capture lock names. `existsSync` says a file is
-    // There; the lock says the pipeline PRODUCED it — which is the difference between a
-    // Screenshot and a picture somebody dropped in the directory (scripts/screenshots/README.md).
-    if (lock && !lockedImages.has(relative(ROOT, resolved).replaceAll("\\", "/"))) {
-      fail(
-        file,
-        `screenshot "${name}" is not named by ${DEFAULT_LOCK} — docs may only reference an ` +
-          `image the capture lock records; run "bun run screenshots"`,
-      );
-    }
+    // Not `existsSync`: the picture is a build output and is not in a checkout. That the manifest
+    // Can PRODUCE the name is the whole of what a page may be held to here; that the capture
+    // Actually holds it is `check-image-lock.ts --capture`, in the lane that publishes.
   }
 
   if (fm.generated === true && !source.includes(GENERATED_BANNER)) {
@@ -330,19 +318,10 @@ if (warnings.length > 0) {
   }
 }
 
-// ─── The capture lock ────────────────────────────────────────────────────────
-// Two page-context assertions live here rather than in `docs:images:check`, because
+// ─── Quarantine ──────────────────────────────────────────────────────────────
+// A page-context assertion, so it lives here rather than in `docs:images:check`:
 // "docs/studio/publish.md illustrates itself with a quarantined shot" is only actionable if it
-// Names the page. The byte-level half — every PNG in docs/images/ is one the pipeline produced,
-// And every shot definition is current — is `bun run docs:images:check`.
-
-if (!lock) {
-  fail(
-    join(ROOT, DEFAULT_LOCK),
-    "does not exist: docs images cannot be verified against a capture. " +
-      'Run "bun run screenshots", or let the screenshots CI lane capture and push it.',
-  );
-}
+// Names the page.
 
 // A quarantined shot is a shot we admit is wrong. It must not be silently illustrating a page.
 for (const finding of quarantineRefFindings(manifest, collectDocImageRefs(), lock)) {

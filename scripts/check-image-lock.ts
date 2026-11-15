@@ -1,35 +1,40 @@
 /**
  * Check-image-lock.ts — the capture lock, and `docs:images:check` (scripts/screenshots/README.md).
  *
- * `scripts/docs/check-doc-refs.ts` asserts that a referenced image resolves into `docs/images/`,
- * that its basename is a name the manifest COULD produce, and `existsSync`. Nothing compares bytes,
- * and no CI job anywhere runs `bun run screenshots` — which is how two shots stayed red on main for
- * weeks under green CI, and why "screenshots come only from scripts/screenshots (never hand-taken)"
- * has been prose in AGENTS.md and an honour system.
+ * `docs/images/` is a BUILD OUTPUT. No picture is committed: `bun run screenshots` writes the PNGs
+ * and, beside them, `scripts/screenshots/capture.lock.json`, which records per image the bytes that
+ * were produced and the shot definition they were produced from. Both are gitignored, and the site
+ * build captures them at the tree it publishes (`.github/workflows/screenshots.yml`). They were
+ * committed once, and every re-capture stored a whole new PNG, which is how `docs/images` came to
+ * be 741 MiB of an 868 MiB pack in four months.
  *
- * This file mechanises it. `scripts/screenshots/capture.lock.json` is committed beside the
- * still-committed PNGs and records, per image, the bytes that were produced and the shot definition
- * they were produced from. Three assertions follow, all blocking:
+ * So this file answers two different questions, for two different callers:
  *
- * 1. **Exists + manifest-producible** — today's behaviour, now checked against the LOCK, so it holds
- *    on any checkout rather than on whatever happens to be in one working tree.
- * 2. **Never hand-taken** — a PNG in `docs/images/` whose `sha256` has no lock entry FAILS. An editor,
- *    a resize, a `curl` into the directory: all three are now a red X with a name on them.
+ * **`bun run docs:images:check` — every checkout, no bytes required.** What the manifest alone can
+ * say: each shot's `status` block is well formed, and every image a shot produces is read by some
+ * docs page (a picture nobody reads is minutes of browser for nothing). When a capture happens to
+ * be on disk, its findings are printed as WARNINGS: a stale local capture is a fact worth saying
+ * and never a reason to fail somebody's gate, because the remedy is to delete a directory.
+ *
+ * **`bun scripts/check-image-lock.ts --capture` — the capture lane, straight after the camera.**
+ * All of it blocking, because what it judges is about to be published:
+ *
+ * 1. **Complete** — every shot the manifest declares (quarantined ones aside) has been captured.
+ * 2. **Produced, not placed** — a PNG in `docs/images/` whose `sha256` has no lock entry FAILS, and so
+ *    does a locked image that is not on disk.
  * 3. **Current** — each shot's definition hash is recomputed from the working tree and compared with
- *    what the capture recorded. A shot whose declared inputs changed without a re-capture fails.
- *    This is the wholly new guarantee, and the one the honour system could never give.
+ *    what the capture recorded. A restored capture whose shot has since been edited fails here
+ *    rather than illustrating a page with a picture of something else.
  *
  * Division of labour with `docs:check`, deliberately:
  *
  * - **`docs:check`** owns the assertions that need PAGE context to be actionable — "docs/x.md
- *   references an image no lock names", "docs/x.md references a quarantined shot". It imports
- *   {@link readLock}, {@link lockedImagePaths} and {@link quarantineRefFindings} from here; it does
- *   not hash a byte.
- * - **`docs:images:check`** (this file's CLI) owns the assertions that need BYTES — it is the only
- *   check that reads 25 MB of PNGs — plus definition currency, lock integrity and the quarantine
- *   report. Its failure has a different owner and a different fix ("re-run the lane", not "fix your
- *   frontmatter"), so it is a separate script rather than more code inside `check-doc-refs.ts`,
- *   which is 328 lines of top-level statements that cannot be imported without running.
+ *   references an image no shot produces", "docs/x.md references a quarantined shot". It imports
+ *   {@link readShots}, {@link collectDocImageRefs} and {@link quarantineRefFindings} from here.
+ * - **`docs:images:check`** (this file's CLI) owns the manifest-wide assertions above. Its failure
+ *   has a different owner and a different fix, so it is a separate script rather than more code
+ *   inside `check-doc-refs.ts`, which is top-level statements that cannot be imported without
+ *   running.
  *
  * Both are chained into `docs:verify`, which is what CI runs.
  *
@@ -40,13 +45,14 @@
  *
  * Usage:
  *
- *     bun scripts/check-image-lock.ts                      # the gate
- *     bun scripts/check-image-lock.ts --report out.md \    # the lane's PR comment
+ *     bun scripts/check-image-lock.ts                      # the gate, on any checkout
+ *     bun scripts/check-image-lock.ts --capture            # the lane: verify what was just captured
+ *     bun scripts/check-image-lock.ts --report out.md \    # the lane's before/after report
  *       --before-lock old.json --before-images /tmp/before/docs/images \
- *       --repo owner/name --before-sha <sha> --after-sha <sha>
+ *       --baseline "main at 1a2b3c4" --changed-dir /tmp/changed
  */
 
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { basename, dirname, extname, isAbsolute, join, relative, resolve } from "node:path";
 import { isJsonObject, isJsonPrimitive, isNumber, isString } from "@jxsuite/schema/guards";
 import type { JsonObject, JsonPrimitive, JsonValue } from "@jxsuite/schema/types";
@@ -598,6 +604,105 @@ export function quarantineRefFindings(
   return findings;
 }
 
+// ─── What the manifest alone can say ──────────────────────────────────────────
+
+/**
+ * Image basenames the runner writes for a shot: its `capture[].image`, and each `then[]`'s.
+ *
+ * Narrower than {@link shotImageNames}, on purpose. That one also tolerates the retired contract
+ * shapes because `docs:check` name-matches against it; this one answers "which files will exist
+ * after a capture", and a name no `capture` declares is a file the runner never writes.
+ */
+export function capturedImageNames(shot: JsonObject): Set<string> {
+  const names = new Set<string>();
+  for (const segment of [shot, ...records(shot.then)]) {
+    for (const capture of records(segment.capture)) {
+      if (isString(capture.image)) {
+        names.add(capture.image);
+      }
+    }
+  }
+  return names;
+}
+
+function unreadImageMessage(
+  path: string,
+  shotName: string,
+  shot: ManifestShot | undefined,
+): string {
+  const declares = shot?.docs?.length
+    ? shot.docs.map((d) => `"${d}"`).join(", ")
+    : "no page at all";
+  return (
+    `${path} is captured by shot "${shotName}" and read by no docs page. The shot declares ` +
+    `${declares} — illustrate it, or delete the shot. Deleting a shot is a first-class fix.`
+  );
+}
+
+/**
+ * Images a shot produces that no docs page reads, from the manifest alone.
+ *
+ * A shot runs on every capture, and a capture costs minutes of browser, so a picture nobody will
+ * ever see is pure cost — and the only way to notice used to be to go looking. Three shots were in
+ * that state, one of them 865 KB. Returns nothing when no page scan happened (`refs` empty), since
+ * every image would look orphaned.
+ */
+export function unreadImageFindings(manifest: JsonValue, refs: readonly DocImageRef[]): string[] {
+  if (refs.length === 0) {
+    return [];
+  }
+  const referenced = new Set(refs.map((ref) => ref.name));
+  const findings: string[] = [];
+  for (const shot of readShots(manifest)) {
+    // A quarantined shot's image MUST be unreferenced — `docs:check` fails if a page still
+    // Illustrates itself with one.
+    if (shot.status?.state === "quarantined") {
+      continue;
+    }
+    for (const name of [...capturedImageNames(shot.raw)].toSorted()) {
+      if (!referenced.has(name)) {
+        findings.push(unreadImageMessage(`${DEFAULT_IMAGES_DIR}/${name}.png`, shot.name, shot));
+      }
+    }
+  }
+  return findings;
+}
+
+/** What {@link shotStatusFindings} found: what blocks, and what is only worth saying. */
+export interface StatusFindings {
+  violations: string[];
+  notes: string[];
+}
+
+/** Every shot's `status` block is the one state the contract declares, with its two notes. */
+export function shotStatusFindings(shots: readonly ManifestShot[]): StatusFindings {
+  const violations: string[] = [];
+  const notes: string[] = [];
+  for (const shot of shots) {
+    const { status } = shot;
+    if (!status) {
+      continue;
+    }
+    if (status.state !== "quarantined") {
+      violations.push(
+        `manifest shot "${shot.name}" declares status.state ` +
+          `${JSON.stringify(status.state)}; the contract declares "quarantined".`,
+      );
+      continue;
+    }
+    if (!status.reason || !status.since) {
+      violations.push(
+        `manifest shot "${shot.name}" is quarantined without a ` +
+          `${status.reason ? "since" : "reason"} — quarantine is a note to the next person, not a ` +
+          `mute button.`,
+      );
+    }
+    const since = status.since ? ` (since ${status.since})` : "";
+    notes.push(`quarantined: ${shot.name} — ${status.reason ?? "no reason given"}${since}`);
+  }
+  return { notes, violations };
+}
+
 // ─── The check ────────────────────────────────────────────────────────────────
 
 export interface ImageOnDisk {
@@ -643,7 +748,10 @@ function describeRuntime(runtime: CaptureRuntime | undefined): string {
   return `chromium ${runtime.chromium} · ${runtime.fontset} · ${runtime.os}`;
 }
 
-/** The header's three assertions, plus lock integrity, as one pure pass over preloaded facts. */
+/**
+ * A capture judged against the manifest: produced-not-placed, present, current, lock integrity. One
+ * pure pass over preloaded facts. Whether its findings block is the caller's decision.
+ */
 export function checkImageLock(input: LockCheckInput): LockCheckResult {
   const { disk, lock, manifest } = input;
   const refs = input.refs ?? [];
@@ -658,8 +766,8 @@ export function checkImageLock(input: LockCheckInput): LockCheckResult {
     if (disk.length > 0 || shots.length > 0) {
       violations.push(
         `${DEFAULT_LOCK} does not exist, and ${DEFAULT_IMAGES_DIR} holds ${disk.length} image(s). ` +
-          `The lock is written only by "bun run screenshots" (scripts/screenshots/README.md, "The gate") — capture, or let the ` +
-          `screenshots lane capture and push it for you.`,
+          `The lock is written only by "bun run screenshots" (scripts/screenshots/README.md, "The gate"), beside the ` +
+          `images it records: capture, or delete the directory.`,
       );
     }
     return { images: disk.length, notes, shots: shots.length, violations, warnings };
@@ -700,8 +808,8 @@ export function checkImageLock(input: LockCheckInput): LockCheckResult {
     const entry = entries[path]!;
     if (!onDisk.has(path)) {
       violations.push(
-        `${DEFAULT_LOCK} names ${path}, which is not on disk — restore the image, or drop the ` +
-          `entry and re-capture.`,
+        `${DEFAULT_LOCK} names ${path}, which is not on disk — re-capture with ` +
+          `"bun run screenshots".`,
       );
     }
     /* The integrity checks read the entry as possibly incomplete: readLock() vouches for the map,
@@ -754,13 +862,13 @@ export function checkImageLock(input: LockCheckInput): LockCheckResult {
     violations.push(
       `shot "${shot}" changed since ${paths.join(", ")} ${paths.length === 1 ? "was" : "were"} ` +
         `captured (definition ${shortHash(locked)}… → ${shortHash(hashes.get(shot)!)}…) — ` +
-        `re-capture; the screenshots lane does this and pushes it to your branch.`,
+        `re-capture with "bun run screenshots".`,
     );
   }
 
-  // Shots nothing has ever photographed. A warning: authoring a shot and capturing it are two
-  // Commits, and the lane closes the gap. It is only a VIOLATION once a page depends on it, which
-  // `docs:check` reports with the page's name.
+  // Shots this capture does not hold. A warning HERE, because a partial run (`--only hero`) is a
+  // Legitimate way to use the runner on a desk; the lane's `--capture` mode promotes every one of
+  // These to a violation, since a capture about to be published has to be the whole manifest.
   const referenced = new Set(refs.map((ref) => ref.name));
   const capturedShots = new Set(Object.values(entries).map((entry) => entry.shot));
   for (const shot of shots) {
@@ -769,16 +877,12 @@ export function checkImageLock(input: LockCheckInput): LockCheckResult {
     }
     const used = [...shot.images].some((name) => referenced.has(name));
     const tail = used ? " and a docs page already references it" : "";
-    warnings.push(
-      `shot "${shot.name}" has never been captured (no entry in ${DEFAULT_LOCK})${tail}`,
-    );
+    warnings.push(`shot "${shot.name}" is not captured (no entry in ${DEFAULT_LOCK})${tail}`);
   }
 
-  // The other direction, which nothing asked until now: a picture NO page reads. `docs:check` owns
-  // "a page references an image the lock does not name"; this owns "the lock names an image no page
-  // References". Without it a shot runs on every invocation of a lane whose whole cost is minutes of
-  // Browser and a commit on someone's branch, to produce bytes nobody will ever see — and the only
-  // Way to notice was to go looking. Three shots were in that state, one of them 865 KB.
+  // The other direction: a picture NO page reads. Asked of the LOCK here, so it covers what was
+  // Actually produced; {@link unreadImageFindings} asks the same of the manifest, for a checkout
+  // That holds no capture. One message, so a caller running both can fold them together.
   //
   // Only when a page scan actually happened: the lane's `--report` mode passes no refs, and every
   // Image would look orphaned.
@@ -794,39 +898,13 @@ export function checkImageLock(input: LockCheckInput): LockCheckResult {
         // Illustrates itself with one. Requiring a reference here would be the opposite rule.
         continue;
       }
-      const declares = shot?.docs?.length
-        ? shot.docs.map((d) => `"${d}"`).join(", ")
-        : "no page at all";
-      violations.push(
-        `${path} is captured by shot "${entry.shot}" and read by no docs page. The shot declares ` +
-          `${declares} — illustrate it, or delete the shot, its image and its lock entry. ` +
-          `Deleting a shot is a first-class fix.`,
-      );
+      violations.push(unreadImageMessage(path, entry.shot, shot));
     }
   }
 
-  for (const shot of shots) {
-    const { status } = shot;
-    if (!status) {
-      continue;
-    }
-    if (status.state !== "quarantined") {
-      violations.push(
-        `manifest shot "${shot.name}" declares status.state ` +
-          `${JSON.stringify(status.state)}; the contract declares "quarantined".`,
-      );
-      continue;
-    }
-    if (!status.reason || !status.since) {
-      violations.push(
-        `manifest shot "${shot.name}" is quarantined without a ` +
-          `${status.reason ? "since" : "reason"} — quarantine is a note to the next person, not a ` +
-          `mute button.`,
-      );
-    }
-    const since = status.since ? ` (since ${status.since})` : "";
-    notes.push(`quarantined: ${shot.name} — ${status.reason ?? "no reason given"}${since}`);
-  }
+  const statuses = shotStatusFindings(shots);
+  violations.push(...statuses.violations);
+  notes.push(...statuses.notes);
 
   if (runtimeTally.size > 1) {
     const spread = [...runtimeTally]
@@ -841,11 +919,8 @@ export function checkImageLock(input: LockCheckInput): LockCheckResult {
 
 // ─── The lane's report ────────────────────────────────────────────────────────
 
-/** Identifies the lane's single PR comment, so it is updated rather than duplicated. */
-export const REPORT_MARKER = "<!-- jx-screenshots-report -->";
-
 export interface ReportInput {
-  /** The lock as committed before the capture. */
+  /** The baseline capture's lock, or null when the lane had no earlier capture to compare with. */
   before: CaptureLock | null;
   /** The lock the capture just wrote. */
   after: CaptureLock;
@@ -853,10 +928,10 @@ export interface ReportInput {
   /** Repo-relative image path → PNG bytes, for the pixel diff. Omit to fall back to byte sizes. */
   beforeBytes?: ReadonlyMap<string, Uint8Array> | undefined;
   afterBytes?: ReadonlyMap<string, Uint8Array> | undefined;
-  /** `owner/name`, plus the two shas, to address before/after thumbnails on github.com. */
-  repo?: string | undefined;
-  beforeSha?: string | undefined;
-  afterSha?: string | undefined;
+  /** What the baseline is, in words a reviewer can check: `main at 1a2b3c4 (the merge base)`. */
+  baseline?: string | undefined;
+  /** The artifact that carries the before and after PNGs of every changed image. */
+  artifact?: string | undefined;
 }
 
 export interface ReportRow {
@@ -934,51 +1009,87 @@ export function reportRows(input: ReportInput): ReportRow[] {
   return rows;
 }
 
-function thumbnail(repo: string | undefined, sha: string | undefined, path: string): string {
-  if (!repo || !sha) {
-    return "—";
-  }
-  return `<img width="220" src="https://github.com/${repo}/blob/${sha}/${path}?raw=true">`;
-}
-
 /**
- * The lane's PR comment.
+ * The lane's report, written to the job summary.
  *
  * A table, not a verdict. "12.4% of pixels changed on a shot that illustrates
  * `docs/studio/design/components.md`" is a thing a human can judge in five seconds; a red X on the
  * same information is a thing a human learns to click past, which is how the pictures went stale
  * under green CI in the first place.
+ *
+ * It names no thumbnail URL. The pictures are not in the repository, so there is no address to give
+ * one; the changed images travel as a workflow artifact instead, before and after side by side.
  */
 export function buildReport(input: ReportInput): string {
-  const rows = reportRows(input);
-  const lines = [REPORT_MARKER, "", "### Screenshots"];
-  if (rows.length === 0) {
+  const lines = ["### Screenshots"];
+  const captured = Object.keys(input.after.images).length;
+  if (!input.before) {
     lines.push(
       "",
-      "No image changed — every capture matches `scripts/screenshots/capture.lock.json`.",
+      `Captured ${captured} image(s). No earlier capture was available to compare them with, so ` +
+        "nothing is reported as changed.",
       "",
     );
     return lines.join("\n");
   }
+  const rows = reportRows(input);
+  const against = input.baseline ? ` the baseline (${input.baseline})` : " the baseline";
+  if (rows.length === 0) {
+    lines.push("", `No image changed: all ${captured} match${against}.`, "");
+    return lines.join("\n");
+  }
+  const artifact = input.artifact
+    ? ` The before and after of each one are in this run's \`${input.artifact}\` artifact.`
+    : "";
   lines.push(
     "",
-    `**${rows.length} image(s) changed.** Re-captured and pushed to this branch with the updated ` +
-      "lock. This is **not** a failure — CI cannot judge whether a picture is right, only whether " +
-      "the shot ran. Read the pages in the last column before merging.",
+    `**${rows.length} image(s) differ from${against}.** This is **not** a failure: CI cannot ` +
+      "judge whether a picture is right, only whether the shot ran. Read the pages in the last " +
+      `column before merging.${artifact}`,
     "",
-    "| shot | image | change | before | after | docs pages |",
-    "| --- | --- | --- | --- | --- | --- |",
+    "| shot | image | change | docs pages |",
+    "| --- | --- | --- | --- |",
   );
   for (const row of rows) {
-    const before = row.state === "added" ? "—" : thumbnail(input.repo, input.beforeSha, row.path);
-    const after = row.state === "removed" ? "—" : thumbnail(input.repo, input.afterSha, row.path);
     const pages = row.pages.length > 0 ? row.pages.join("<br>") : "_none_";
-    lines.push(
-      `| \`${row.shot}\` | \`${basename(row.path)}\` | ${row.change} | ${before} | ${after} | ${pages} |`,
-    );
+    lines.push(`| \`${row.shot}\` | \`${basename(row.path)}\` | ${row.change} | ${pages} |`);
   }
   lines.push("");
   return lines.join("\n");
+}
+
+/**
+ * Lay the changed images out as `<dir>/before/<name>.png` and `<dir>/after/<name>.png`.
+ *
+ * What a reviewer downloads. Only the rows of the report, so the artifact is the handful of
+ * pictures that moved rather than the whole capture.
+ */
+export function writeChangedImages(
+  rows: readonly ReportRow[],
+  dir: string,
+  beforeDir: string | undefined,
+  afterDir: string,
+): number {
+  let written = 0;
+  for (const [side, from] of [
+    ["before", beforeDir],
+    ["after", afterDir],
+  ] as const) {
+    if (!from) {
+      continue;
+    }
+    for (const row of rows) {
+      const source = join(fromRoot(from), basename(row.path));
+      if (!existsSync(source)) {
+        continue;
+      }
+      const target = join(fromRoot(dir), side, basename(row.path));
+      mkdirSync(dirname(target), { recursive: true });
+      copyFileSync(source, target);
+      written += 1;
+    }
+  }
+  return written;
 }
 
 // ─── CLI ──────────────────────────────────────────────────────────────────────
@@ -1020,35 +1131,50 @@ function readBytesDir(dir: string | undefined, paths: readonly string[]): Map<st
 }
 
 const USAGE =
-  "Usage: bun scripts/check-image-lock.ts [--manifest <m.json>] [--lock <lock.json>] " +
+  "Usage: bun scripts/check-image-lock.ts [--capture] [--manifest <m.json>] [--lock <lock.json>] " +
   "[--images <dir>] [--docs <dir>]\n" +
   "       bun scripts/check-image-lock.ts --report <out.md> [--before-lock <lock.json>] " +
-  "[--before-images <dir>] [--repo <owner/name>] [--before-sha <sha>] [--after-sha <sha>]";
+  "[--before-images <dir>] [--baseline <text>] [--artifact <name>] [--changed-dir <dir>]";
 
 const FLAGS = new Set([
-  "--after-sha",
+  "--artifact",
+  "--baseline",
   "--before-images",
   "--before-lock",
-  "--before-sha",
+  "--changed-dir",
   "--docs",
   "--images",
   "--lock",
   "--manifest",
-  "--repo",
   "--report",
 ]);
 
+/** Flags that take no value. Recorded as `"true"`, so the parsed shape stays one string map. */
+const SWITCHES = new Set(["--capture"]);
+
 export function parseArgs(argv: readonly string[]): Record<string, string> | null {
   const options: Record<string, string> = {};
-  for (let i = 0; i < argv.length; i += 2) {
+  for (let i = 0; i < argv.length; i += 1) {
     const flag = argv[i]!;
+    if (SWITCHES.has(flag)) {
+      options[flag.slice(2)] = "true";
+      continue;
+    }
     const value = argv[i + 1];
     if (!FLAGS.has(flag) || value === undefined) {
       return null;
     }
     options[flag.slice(2)] = value;
+    i += 1;
   }
   return options;
+}
+
+function printViolations(violations: readonly string[]): void {
+  console.error(`image lock: ${violations.length} violation(s):\n`);
+  for (const violation of violations) {
+    console.error(`  ✗ ${violation}`);
+  }
 }
 
 export async function main(argv: readonly string[]): Promise<number> {
@@ -1074,50 +1200,105 @@ export async function main(argv: readonly string[]): Promise<number> {
   const refs = collectDocImageRefs(docsDir, imagesDir);
 
   if (options.report !== undefined) {
+    // A baseline lock that was never restored is "no baseline", not an error: the lane's first run
+    // On a repository, or its first after the cache was evicted, has nothing to compare with.
     const before = options["before-lock"] === undefined ? null : readLock(options["before-lock"]);
     const after = lock ?? emptyLock(manifestPath);
     const paths = [
       ...new Set([...Object.keys(before?.images ?? {}), ...Object.keys(after.images)]),
     ];
-    const markdown = buildReport({
+    const input: ReportInput = {
       after,
       afterBytes: readBytesDir(imagesDir, paths),
-      afterSha: options["after-sha"],
+      artifact: options.artifact,
+      baseline: options.baseline,
       before,
       beforeBytes: readBytesDir(options["before-images"], paths),
-      beforeSha: options["before-sha"],
       refs,
-      repo: options.repo,
-    });
+    };
+    const markdown = buildReport(input);
     await Bun.write(fromRoot(options.report), markdown);
     console.log(markdown);
+    if (options["changed-dir"] !== undefined && before) {
+      const rows = reportRows(input);
+      const written = writeChangedImages(
+        rows,
+        options["changed-dir"],
+        options["before-images"],
+        imagesDir,
+      );
+      console.error(`image lock: ${rows.length} changed image(s), ${written} file(s) laid out`);
+    }
     return 0;
   }
 
-  const result = checkImageLock({ disk: readImagesOnDisk(imagesDir), lock, manifest, refs });
-  for (const note of result.notes) {
+  const disk = readImagesOnDisk(imagesDir);
+
+  // ── The lane: a capture that is about to be published or reported on ──────────────────────────
+  if (options.capture !== undefined) {
+    const result = checkImageLock({ disk, lock, manifest, refs });
+    for (const note of result.notes) {
+      console.log(`  ${note}`);
+    }
+    // A shot the capture does not hold is a warning on a desk and a hole in a published site.
+    const violations = [...result.violations, ...result.warnings];
+    if (violations.length > 0) {
+      printViolations(violations);
+      console.error(
+        "\nThis capture is not what the manifest describes, so it must not be published. Docs " +
+          "images and the capture lock are written only by `bun run screenshots` " +
+          "(scripts/screenshots/README.md).",
+      );
+      return 1;
+    }
+    console.log(
+      `image lock: ${result.images} image(s) over ${result.shots} shot(s) match ${lockPath}, ` +
+        `every shot is captured, and every shot definition is current.`,
+    );
+    return 0;
+  }
+
+  // ── The gate: any checkout, with or without a capture on disk ─────────────────────────────────
+  const shots = readShots(manifest);
+  const statuses = shotStatusFindings(shots);
+  const violations = [...statuses.violations, ...unreadImageFindings(manifest, refs)];
+  for (const note of statuses.notes) {
     console.log(`  ${note}`);
   }
-  if (result.warnings.length > 0) {
-    console.warn(`image lock: ${result.warnings.length} warning(s):`);
-    for (const warning of result.warnings) {
-      console.warn(`  ${warning}`);
+
+  let local = "no capture on this checkout (docs/images is a build output)";
+  if (lock || disk.length > 0) {
+    const result = checkImageLock({ disk, lock, manifest, refs });
+    const blocking = new Set(violations);
+    const stale = [...result.violations, ...result.warnings].filter((v) => !blocking.has(v));
+    for (const note of result.notes) {
+      if (!statuses.notes.includes(note)) {
+        console.log(`  ${note}`);
+      }
     }
+    if (stale.length > 0) {
+      console.warn(
+        `image lock: the capture on this checkout is out of date in ${stale.length} way(s). ` +
+          `That is not a failure here: re-capture with "bun run screenshots", or delete ` +
+          `${imagesDir}.`,
+      );
+      for (const finding of stale) {
+        console.warn(`  ${finding}`);
+      }
+    }
+    local =
+      stale.length > 0
+        ? `the local capture of ${result.images} image(s) is out of date`
+        : `the local capture of ${result.images} image(s) is complete and current`;
   }
-  if (result.violations.length > 0) {
-    console.error(`image lock: ${result.violations.length} violation(s):\n`);
-    for (const violation of result.violations) {
-      console.error(`  ✗ ${violation}`);
-    }
-    console.error(
-      "\nDocs images and the capture lock are written only by `bun run screenshots`, and the " +
-        "screenshots CI lane re-captures and pushes both for you (scripts/screenshots/README.md).",
-    );
+
+  if (violations.length > 0) {
+    printViolations(violations);
     return 1;
   }
   console.log(
-    `image lock: ${result.images} image(s) over ${result.shots} shot(s) match ${lockPath}, ` +
-      `and every shot definition is current.`,
+    `image lock: ${shots.length} shot(s) are well formed and every image they produce is read ` +
+      `by a docs page; ${local}.`,
   );
   return 0;
 }

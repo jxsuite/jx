@@ -2,10 +2,10 @@
  * Decides which shots a pull request can actually change, and emits that decision as GitHub Actions
  * job outputs. Consumed by the `capture` job in .github/workflows/screenshots.yml.
  *
- * The lane costs a container boot plus ~3 minutes of browser for all 61 shots, and it pushes its
- * result onto your branch. So the cost of running it too eagerly is not just minutes — it is bytes
- * in a diff nobody opened the PR to review. The `paths:` filter decides WHETHER the lane runs; this
- * decides HOW MUCH of it runs once it has.
+ * The lane costs a container boot plus ~3 minutes of browser for all 61 shots. The `paths:` filter
+ * decides WHETHER the lane runs; this decides HOW MUCH of it runs once it has. A narrowed run
+ * captures over the restored baseline, so the shots it does not take keep the baseline's pictures
+ * ({@link withStale} is what keeps that sound).
  *
  * The mapping is derived, not declared: a shot names the project it opens (`open.project`), so a
  * change confined to project roots can only move the pictures of shots that open them. Anything
@@ -31,6 +31,10 @@
 
 import { resolve } from "node:path";
 
+import type { JsonValue } from "@jxsuite/schema/types";
+
+import { readLock, shotDefinitionHashes } from "../check-image-lock.ts";
+import type { CaptureLock } from "../check-image-lock.ts";
 import { validateManifest } from "./lib/types.ts";
 import type { Manifest, Shot } from "./lib/types.ts";
 
@@ -187,6 +191,63 @@ export function decide(changed: string[], manifest: Manifest): ShotDecision {
   };
 }
 
+/**
+ * Widen a narrowed decision by the shots the baseline does not hold at their current definition.
+ *
+ * The lane captures OVER a restored baseline, and a narrowed run leaves every untaken shot with the
+ * baseline's picture. That is only sound while the baseline's picture is OF the shot as this tree
+ * defines it. A baseline is `main`'s most recent capture, which may be newer than the branch: a
+ * shot `main` has since re-authored arrives with a definition this tree does not have, and a shot
+ * `main` has since deleted is one this tree still declares and the baseline never took. The diff
+ * cannot see either, because both are differences from the baseline rather than from the merge
+ * base.
+ *
+ * `stale` is those shots ({@link staleShots}). An `all` decision already takes them.
+ */
+export function withStale(
+  decision: ShotDecision,
+  stale: readonly string[],
+  manifest: Manifest,
+): ShotDecision {
+  if (decision.mode === "all" || stale.length === 0) {
+    return decision;
+  }
+  const all = manifest.shots.filter((s) => !quarantined(s)).map((s) => s.name);
+  const wanted = new Set([...decision.shots, ...stale]);
+  const shots = all.filter((name) => wanted.has(name));
+  const added = shots.filter((name) => !decision.shots.includes(name));
+  if (added.length === 0) {
+    return decision;
+  }
+  return {
+    mode: "subset",
+    reason:
+      `${decision.reason}; plus ${added.length} the baseline does not hold at this tree's ` +
+      `definition (${added.map((name) => `\`${name}\``).join(", ")})`,
+    shots,
+    skipped: all.filter((name) => !wanted.has(name)),
+  };
+}
+
+/**
+ * Shots with no baseline image at their current definition: never captured, or captured from a
+ * definition that has since moved. Empty when there is no baseline, which the workflow handles
+ * itself by not narrowing at all.
+ */
+export function staleShots(manifestJson: JsonValue, lock: CaptureLock | null): string[] {
+  if (!lock) {
+    return [];
+  }
+  const current = new Set<string>();
+  const hashes = shotDefinitionHashes(manifestJson);
+  for (const entry of Object.values(lock.images)) {
+    if (hashes.get(entry.shot) === entry.definition) {
+      current.add(entry.shot);
+    }
+  }
+  return [...hashes.keys()].filter((name) => !current.has(name));
+}
+
 /** Fails loudly if a declared edge names a shot the manifest no longer has. */
 export function assertAnchors(manifest: Manifest): void {
   const names = new Set(manifest.shots.map((s) => s.name));
@@ -236,7 +297,8 @@ async function changedFiles(): Promise<string[]> {
 
 async function main(): Promise<void> {
   const manifestPath = resolve(import.meta.dir, "manifest.json");
-  const manifest = validateManifest(await Bun.file(manifestPath).json());
+  const manifestJson: JsonValue = await Bun.file(manifestPath).json();
+  const manifest = validateManifest(manifestJson);
   assertAnchors(manifest);
 
   const event = process.env.GITHUB_EVENT_NAME ?? "";
@@ -246,7 +308,11 @@ async function main(): Promise<void> {
   const decision: ShotDecision =
     event && event !== "pull_request"
       ? { mode: "all", reason: `${event} is never narrowed`, shots: [], skipped: [] }
-      : decide(await changedFiles(), manifest);
+      : withStale(
+          decide(await changedFiles(), manifest),
+          staleShots(manifestJson, readLock()),
+          manifest,
+        );
 
   const outputs = {
     mode: decision.mode,

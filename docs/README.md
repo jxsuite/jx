@@ -67,7 +67,7 @@ Releasing a spec therefore changes these pages at the next build: `bun run spec:
 
 ## Images
 
-`docs/images/` is written only by `bun run screenshots`, which commits the PNGs alongside `scripts/screenshots/capture.lock.json` — the record of the bytes and the shot definition each image came from. **You cannot add an image by hand:** a PNG whose `sha256` has no lock entry fails `docs:images:check`, and a page referencing an image the lock does not name fails `docs:check`, even with the file sitting right there on disk.
+`docs/images/` is a build output and is not committed. `bun run screenshots` writes the PNGs there, alongside `scripts/screenshots/capture.lock.json` (the record of the bytes and the shot definition each image came from), and both are gitignored: a fresh checkout has no pictures, CI captures them, and the site build captures its own from the tree it publishes. **You cannot add an image by hand:** a page may only reference a name the screenshot manifest produces, and `docs:check` fails on any other. To see the pictures while you write, run `bun run screenshots` once.
 
 Reference images page-relative into `docs/images/` — `![alt](../images/x.png)`, one `../` per level below `docs/`. Root-absolute and URL forms both fail the check. The relative form is what keeps `/docs` readable in a plain Markdown editor; the site republishes the directory at `/content/docs/images/` through the collection's asset mount. Alt text is mandatory and describes the state shown.
 
@@ -77,16 +77,16 @@ The shot grammar — and the rule that a step names a command id and a capture a
 
 These commands guard this directory, but none of them live in it: each is a script in [`scripts/`](../scripts/README.md) — mostly under `scripts/docs/`, with `docs:images:check` and `docs:markdown` at the top level. [scripts/README.md](../scripts/README.md) is where their placement in CI, their shared readers, and the conventions for changing one are written down.
 
-| Command                   | Enforces                                                                                                   |
-| ------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| bun run docs:check        | Frontmatter, `spec:` anchors, `code:` paths, image refs, the nav bijection, and the reverse `@docs` tags   |
-| bun run docs:images:check | The bytes: every PNG is one the lock names, and each shot's definition hash still matches the working tree |
-| bun run docs:generate     | Writes the generated pages (gitignored build outputs) so the gates and the site build can read them        |
-| bun run docs:verify       | The CI chain — `docs:check` (which generates first) and `docs:images:check`                                |
-| bun run docs:links        | Every internal link: the slug against `nav.json`, and every `#anchor` against the target's headings        |
-| bun run docs:prose        | No em dash, curly quote, decorative emoji or stock AI vocabulary; the em-dash debt only falls              |
-| bun run docs:markdown     | Visual-editor escapes — an escaped heading number, an escaped inner underscore — every tracked `*.md`      |
-| bun run docs:sync         | Advisory only: maps a diff to the pages and spec sections declared for the files it touched                |
+| Command                   | Enforces                                                                                                 |
+| ------------------------- | -------------------------------------------------------------------------------------------------------- |
+| bun run docs:check        | Frontmatter, `spec:` anchors, `code:` paths, image refs, the nav bijection, and the reverse `@docs` tags |
+| bun run docs:images:check | The manifest: every shot's status is well formed and every image a shot produces is read by a docs page  |
+| bun run docs:generate     | Writes the generated pages (gitignored build outputs) so the gates and the site build can read them      |
+| bun run docs:verify       | The CI chain — `docs:check` (which generates first) and `docs:images:check`                              |
+| bun run docs:links        | Every internal link: the slug against `nav.json`, and every `#anchor` against the target's headings      |
+| bun run docs:prose        | No em dash, curly quote, decorative emoji or stock AI vocabulary; the em-dash debt only falls            |
+| bun run docs:markdown     | Visual-editor escapes — an escaped heading number, an escaped inner underscore — every tracked `*.md`    |
+| bun run docs:sync         | Advisory only: maps a diff to the pages and spec sections declared for the files it touched              |
 
 `docs:check`, `docs:links` and `docs:sync` write the generated pages before they read the page set, so a fresh checkout needs nothing run by hand (`postinstall` writes them too). `docs:markdown` is repo-wide, so a spec or a package README can turn it red; `bun run format:md` fixes it.
 

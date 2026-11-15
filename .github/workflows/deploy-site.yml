@@ -83,7 +83,24 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # The pictures. `docs/images/` is a build output (scripts/screenshots/README.md): no screenshot is
+  # committed, so a publish captures them from the tree it is about to publish, in the pinned
+  # browser container, and `build` picks them up as an artifact. That is a few minutes per release,
+  # and it is what makes the site's pictures the pictures of the Studio that shipped.
+  #
+  # Only a publish pays for it. A build-only run restores the most recent capture `main` saved
+  # instead (the step below), which is close enough for a build that publishes nothing.
+  capture:
+    if: inputs.ref
+    uses: ./.github/workflows/screenshots.yml
+    with:
+      ref: ${{ inputs.ref }}
+
   build:
+    needs: capture
+    # `capture` is SKIPPED on every build-only run, and a skipped need skips its dependants unless
+    # they say otherwise. A capture that FAILED still stops the publish here.
+    if: ${{ !cancelled() && (needs.capture.result == 'success' || needs.capture.result == 'skipped') }}
     runs-on: ubuntu-latest
     steps:
       # An empty `ref` is exactly what actions/checkout does by default (the triggering ref), so
@@ -115,7 +132,37 @@ jobs:
           restore-keys: |
             jxsuite-images-
 
+      # ── The pictures ───────────────────────────────────────────────────────
+      # Publishing: exactly what `capture` just took of this tree.
+      - if: inputs.ref
+        uses: actions/download-artifact@v8
+        with:
+          name: docs-images
+          path: .
+
+      # Build-only: the most recent capture `main` saved, best effort. The key never exists, so
+      # this always falls through to the prefix. The path list is screenshots.yml's CAPTURE_PATHS
+      # verbatim: `actions/cache` hashes it into the cache's version, so a different list is a
+      # different cache and restores nothing. With nothing restored (a first run, or the cache
+      # aged out) the build still passes: the compiler leaves an image it cannot find alone, and
+      # the pages come out with broken pictures that nobody is going to be served.
+      - if: ${{ !inputs.ref }}
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            docs/images
+            scripts/screenshots/capture.lock.json
+          key: screenshots-v1-restore-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            screenshots-v1-
+
       - run: bun install
+
+      # A publish builds only from a capture that is whole, produced by the runner, and current
+      # for this tree. `capture` checked that before uploading; this checks what ARRIVED, because
+      # an artifact is bytes that crossed a job boundary and the lock is what says they are intact.
+      - if: inputs.ref
+        run: bun scripts/check-image-lock.ts --capture
 
       # Gate the deploy on marketing-copy truthfulness before anything is built or published.
       - run: bun run docs:claims

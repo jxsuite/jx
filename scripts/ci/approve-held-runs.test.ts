@@ -1,9 +1,8 @@
 /**
  * Covers `scripts/ci/approve-held-runs.ts` against a scripted GitHub, and pins the way the two
- * pushing lanes, `screenshots.yml`, `schemas.yml` and `release-specs.yml`, wire it: the permission
- * it needs, the step that calls it, the concurrency suffix that keeps the approved bot run out of
- * its approver's group, and the actor refusal that makes approving the screenshots lane's own run a
- * skipped job rather than another push.
+ * pushing lanes, `schemas.yml` and `release-specs.yml`, wire it: the permission it needs, the step
+ * that calls it, and the concurrency suffix that keeps the approved bot run out of its approver's
+ * group. `screenshots.yml` was the third; it is held to the opposite now, that it cannot push.
  *
  * `fetch`, `sleep` and `now` are injected, so nothing here waits or talks to GitHub. What is tested
  * is the discriminator (held means `completed` + `action_required`), the settling rule, the
@@ -266,13 +265,10 @@ describe("crankFor and renderNote", () => {
     );
     expect(note).toContain("`gh api -X POST repos/jxsuite/jx/actions/runs/2/approve` (ECONNRESET)");
     expect(note).toContain("[Test](https://github.com/jxsuite/jx/actions/runs/1)");
-    /*
-     * Both mechanisms, because they differ: schemas.yml has no actor refusal and is safe by fixed
-     * point instead (its header, item 3). Naming only one would misinform the author of the next
-     * pushing lane about what it has to bring.
-     */
-    expect(note).toContain("`screenshots.yml` declines its own head on `github.actor`");
+    // The safety argument names every lane that pushes, so the author of the next one knows what
+    // It has to bring.
     expect(note).toContain("`schemas.yml` and `release-specs.yml` regenerate deterministically");
+    expect(note).toContain("no other lane pushes at all");
   });
 
   test("a budget that found no run at all points at the listing, since there is no id to name", () => {
@@ -424,14 +420,16 @@ function itWiresTheApproval(
   }
 }
 
-describe("screenshots.yml wires it", () => {
+describe("screenshots.yml no longer needs it", () => {
   const workflow = parseWorkflow(WORKFLOW_SOURCE);
-  itWiresTheApproval("screenshots.yml", workflow, "capture", "Comment");
 
-  test("keeps the actor refusal that makes approving the lane's own run a skipped job", () => {
-    expect(workflow.jobs.capture!.if).toContain(
-      "!(github.event_name == 'pull_request' && github.actor == 'github-actions[bot]')",
-    );
+  test("holds a read-only token, so there is no push for anything to be held behind", () => {
+    // The pictures are build outputs (scripts/screenshots/README.md). A lane that cannot write
+    // Cannot move a pull request's head, which is the only thing the approval ever answered. It is
+    // Also what lets deploy-site.yml, which grants `contents: read`, call this workflow at all.
+    expect(workflow.permissions).toEqual({ contents: "read" });
+    expect(WORKFLOW_SOURCE).not.toContain("approve-held-runs");
+    expect(WORKFLOW_SOURCE).not.toContain("git push");
   });
 });
 
