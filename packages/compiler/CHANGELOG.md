@@ -1,5 +1,63 @@
 # Changelog
 
+## [11.0.0](https://github.com/jxsuite/jx/compare/compiler-v10.0.0...compiler-v11.0.0) (2026-11-15)
+
+
+### ⚠ BREAKING CHANGES
+
+* **runtime,compiler:** el.derivedKey = value throws a TypeError in strict code (and Reflect.set answers false) where it was silently ignored. A compiled parent's property binding to a key its child derives throws when the bound value changes; such a prop was never applied.
+* **runtime:** the interpreter (live preview, mount()) renders a component with $shadow, or under defaults.shadow, into a shadow root where it rendered light. In a built shadow component a key such as ":hover" or ".wide" is emitted as :host(:hover) and now applies, a color-scheme block follows the OS preference only, and a bare element key at the top level of a component style is a descendant rule where it was dropped.
+* **compiler:** a built component with no display in its base style block is now display: block, as in Studio. Write "display": "revert-layer" (or the value wanted) in the base block to opt out.
+* **compiler:** a built page now carries a component definition's root attributes on each instance's host, over an attribute of the same name the page wrote, and a compiled element writes them when it connects and binds its definition's root-level event handlers.
+* **compiler:** a built list now applies its `filter` and `sort`, where it showed every item in source order. A page list whose items, filter or sort reads state a handler writes is no longer prerendered: the page's module renders it. A template string as a repeater's `items` fails the build. A dynamic page's import map gains the `lit-html/` and `@vue/reactivity/` prefix keys.
+* **compiler:** a compiled component module now renders its images with the project's loading attributes and optimized candidates, and the interpreter writes title="", lang="" or dir="" for a property set to the empty string where it wrote no attribute.
+* **compiler:** built HTML now carries attributes the static emitter used to drop (href, src, alt, value, placeholder, type, checked, disabled, name, selected and every other reflected property), a title, lang or dir set to the empty string is written as an empty attribute, and an attributes entry now replaces a property that writes the same attribute (id included) where both were written before. A client page's repeater row binds contentEditable as a property instead of writing the contenteditable attribute. name is no longer in RESERVED_KEYS: on an element it is the DOM property, in every tier.
+* **compiler:** built output changes for every site with live components. Their prerender now holds list rows, initial values and the selected $switch case; a component containing a $switch or a chosen tag ships its module where it was stamped static; a static component that a live one renders ships its module on every page that uses it; and a dynamic page prerenders the initial value of a binding a handler writes. buildInitialScope no longer marks handler-written entries runtime-only unless asked to with holdMutable.
+
+### Features
+
+* **compiler:** a compiled element binds its root handlers and writes its root attributes ([741476b](https://github.com/jxsuite/jx/commit/741476b88ed25f9477eabc6a15d0ffe16f7984b1))
+* **compiler:** a site build writes a Custom Elements Manifest for the components it compiles ([44ec625](https://github.com/jxsuite/jx/commit/44ec625061819e4a500d4337d2544b4a1fa34410)), closes [#304](https://github.com/jxsuite/jx/issues/304)
+* **compiler:** built lists filter, sort and keep keyed rows as the interpreter does ([8f98e21](https://github.com/jxsuite/jx/commit/8f98e2135e36272b91d14156736c923e846a35ff))
+* **compiler:** compileElementPack compiles a component library into a distributable pack ([a5ed13d](https://github.com/jxsuite/jx/commit/a5ed13d4afa091c83b859da99ee7e79d8f6463ce)), closes [#304](https://github.com/jxsuite/jx/issues/304)
+* **runtime,compiler,ui:** a custom element can be form-associated, and the kit's controls are ([dccb628](https://github.com/jxsuite/jx/commit/dccb62832d9c88c36f9ce88d564caf29f6c46f50)), closes [#303](https://github.com/jxsuite/jx/issues/303)
+* **runtime,compiler:** a derived state key is a read-only property of its element ([0c21f4b](https://github.com/jxsuite/jx/commit/0c21f4bbe43021085dd86c6f9a78bc55c28cf1a0))
+* **runtime:** $shadow means the same thing in the interpreter, the module and the prerender ([267dec9](https://github.com/jxsuite/jx/commit/267dec908784e3055c6d8bb64319bdea771892ad))
+* **ui:** the published kit carries an optional compiled distribution ([d65af9f](https://github.com/jxsuite/jx/commit/d65af9f15ef6f630295114d3b33aabf0b3fe6514)), closes [#304](https://github.com/jxsuite/jx/issues/304)
+
+
+### Bug Fixes
+
+* **compiler:** a compiled component stylesheet carries the display: block default ([ca40b9e](https://github.com/jxsuite/jx/commit/ca40b9ef6ae16abd9db79fc6e98ce2586df32da8))
+* **compiler:** a component module draws its URLs under the deployment base path ([7414e48](https://github.com/jxsuite/jx/commit/7414e486cbd034848cb8d659ebfcf7594df0eb63)), closes [#303](https://github.com/jxsuite/jx/issues/303)
+* **compiler:** a component's images and empty-string properties prerender as its module draws them ([2094579](https://github.com/jxsuite/jx/commit/209457955411e5bc45dc16cc0ee3011b26d3cd4e))
+* **compiler:** a dollar sign in a head entry or an image attribute reaches the page as written ([946224d](https://github.com/jxsuite/jx/commit/946224d013ad597da8ae7411bae585ce32189a93))
+* **compiler:** a live component prerenders its initial state ([24e7968](https://github.com/jxsuite/jx/commit/24e796863b76d0297d6a8e70b142d6f2a1236552)), closes [#285](https://github.com/jxsuite/jx/issues/285)
+* **compiler:** a shadow element links its own stylesheet into a root it attaches ([9cee908](https://github.com/jxsuite/jx/commit/9cee9080bdb901e165a684660d46a5875aee9503)), closes [#303](https://github.com/jxsuite/jx/issues/303)
+* **compiler:** a static component a live one renders stays static on a page that uses it alone ([1d88c98](https://github.com/jxsuite/jx/commit/1d88c987c5114c9a637ff20de84fc567ce74731b)), closes [#285](https://github.com/jxsuite/jx/issues/285)
+* **compiler:** built HTML carries every element property as the attribute it reflects to ([83869d1](https://github.com/jxsuite/jx/commit/83869d15cb18db2ec87b00ea18d2ea2a86269d8e))
+* **compiler:** escape spliced HTML with one helper instead of a replacer per call site ([910c829](https://github.com/jxsuite/jx/commit/910c8292cec14d9d1c8cd988558aea4aff2e958c))
+* **compiler:** leave the two unreachable html-tag branches as they were ([8fb9ab3](https://github.com/jxsuite/jx/commit/8fb9ab3b938756b96f8177b9fde58f974599c509))
+
+
+### Performance Improvements
+
+* **runtime,compiler:** an element connects and a static page compiles at the trunk's cost ([c77a310](https://github.com/jxsuite/jx/commit/c77a310ac79fdb4eb38d8eb56ce980a3f8c3bbe3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/create bumped to 1.8.5
+    * @jxsuite/erase bumped to 0.3.4
+    * @jxsuite/runtime bumped to 9.0.0
+    * @jxsuite/schema bumped to 8.0.0
+    * @jxsuite/site bumped to 4.0.0
+  * devDependencies
+    * @jxsuite/connector bumped to 0.8.13
+    * @jxsuite/parser bumped to 5.2.0
+
 ## [10.0.0](https://github.com/jxsuite/jx/compare/compiler-v9.1.0...compiler-v10.0.0) (2026-11-15)
 
 
