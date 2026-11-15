@@ -23,7 +23,7 @@ code:
 
 Source control is Studio's built-in git client: it records your work as commits and keeps your copy of the project in sync with its repository. It lives in the **Publish** workspace (:kbd[⌘5]), whose tab in the Command Bar counts the files that have changed: **Review changes** is the change list, the comparison of the change you pick, and the publish card, and **Branches** is the branch list. The count and the change list are about the project, so they stand whether or not a document is open.
 
-![The Publish workspace's Review changes: sync status, the changed files with their checkboxes, and the publish card](../../images/git-panel.png)
+![The Publish workspace's Review changes: sync status, the changed files with their checkboxes, and the publish card](https://jxsuite.com/content/docs/images/git-panel.png)
 
 If the project isn't tracked by git yet, Review changes explains what a repository buys you and offers **Initialize Repository** to start tracking it. Once it is, **Create GitHub repository** puts it on GitHub; see **[GitHub](/docs/studio/publish/github)**. Projects created from the [New Project wizard](/docs/studio/projects/create) are already tracked, so you'll only meet this on a folder that came from somewhere else.
 
@@ -75,7 +75,7 @@ The button is disabled, with the reason beside it, until there is something to p
 
 If the commit fails, the summary goes back into the box, so you can fix the problem and publish again without retyping it. A summary you started typing while the commit was running is left alone. A push that fails after the commit landed does not offer the same summary again.
 
-![The publish card: the destination, the summary that becomes the commit message, and the publish button](../../images/git-commit.png)
+![The publish card: the destination, the summary that becomes the commit message, and the publish button](https://jxsuite.com/content/docs/images/git-commit.png)
 
 ## Stay in sync
 

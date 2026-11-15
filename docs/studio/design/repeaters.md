@@ -22,7 +22,7 @@ A repeater renders one element once per item of a list: design a single card, bi
 4. Optionally pick a **Filter** or **Sort** function, if the document defines any.
 5. Click **Create Repeater**.
 
-![The Repeat dialog with an items source picker and optional filter and sort selectors](../../images/repeat-dialog.png)
+![The Repeat dialog with an items source picker and optional filter and sort selectors](https://jxsuite.com/content/docs/images/repeat-dialog.png)
 
 Your element is now the template of a repeater, marked **↻** in Outline. The repeated items render directly where the element stood. No wrapper is added around them.
 

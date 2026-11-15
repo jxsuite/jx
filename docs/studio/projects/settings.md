@@ -50,7 +50,7 @@ Open it from the **Settings** menu at the right of the Command Bar: **Open Proje
 
 Project settings has no tab in the Command Bar's row of workspaces, because you visit it rather than work in it: while it is open none of the five tabs is selected, and clicking any of them leaves.
 
-![Project settings open on the Overview section, with the grouped section list on the left](../../images/settings-document.png)
+![Project settings open on the Overview section, with the grouped section list on the left](https://jxsuite.com/content/docs/images/settings-document.png)
 
 ## Finding your way around
 

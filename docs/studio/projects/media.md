@@ -45,7 +45,7 @@ Your site's media (images, video, audio, PDFs, and fonts) lives in your project 
 
 The Media workspace shows every media file in the project in three columns: filters on the left, a grid of tiles in the middle, and the selected file's details on the right. It lists everything under `public/` and every collection's `images/` folder, so a picture you uploaded to a blog post is here too.
 
-![The Media workspace, with a file being dragged onto it to upload](../../images/media-upload.png)
+![The Media workspace, with a file being dragged onto it to upload](https://jxsuite.com/content/docs/images/media-upload.png)
 
 - **Filters**: **All media**, **Images**, **Video**, **Audio**, **Documents** and **Fonts**, each with its count; **Missing alt text**, the pictures that could carry alt text and have none (see [Alt text and tags](#alt-text-and-tags)); and **Unused**, the files no page, component or entry refers to. Unused has no number until you choose it: Studio then asks the reference search about every file, one at a time, and the count appears when the last answer is in. The search reads the project once and answers every file from what it read, so even a library of hundreds of images is counted in seconds. Choosing another filter stops the count, and the answers already in are kept for the next time you choose Unused. A file whose search failed is never counted as unused. Saving, renaming or deleting a document asks again, so a picture you have just placed on a page leaves Unused.
 - **Tags**: below the filters, one entry per tag your files carry, with how many carry it. Choose one to list those files.
@@ -126,7 +126,7 @@ Studio asks for an image or file in several places: an image's **Content** view,
 
 The browse button opens a compact list: a search box over the project's media, matched on name or path, with a thumbnail for every image. It lists the first 50 files, and **Show N more** at the foot of the list lists the next 50, so every file the Media workspace has can be reached from here. A field that holds a picture lists only images. It opens above whatever surface it was called from, so it works the same in a panel and in a window like Search appearance.
 
-![The media picker popover open over an image field, showing the search field and thumbnail list](../../images/media-picker.png)
+![The media picker popover open over an image field, showing the search field and thumbnail list](https://jxsuite.com/content/docs/images/media-picker.png)
 
 Its last row, **Browse all media…** (**Browse all images…** for a picture field), opens the Media workspace's own library in a dialog: the same filters, search and grid. Double-click a file, or select it and click **Use**, to fill the field in. **Cancel** leaves the field as it was. You can upload into the dialog too, and the new file is selected ready to use. It lands where the field's own **Upload** would put it (see [Where your files go](#where-your-files-go)), so a picture chosen for a blog post stays with that post.
 
@@ -183,7 +183,7 @@ This is the fastest way to check what an [imported site](/docs/studio/projects/c
 
 An image you can edit offers a second editor next to **Media** in the pane's **Editor** control: **Image**. Choose it there, or choose **Edit image** in the Media workspace, or run **Edit Image…** from the command palette (:kbd[⌘K], then `>`).
 
-![The Image editor: a photo with crop handles around it, and the orientation, size, quality and tone controls beside it](../../images/image-editor.png)
+![The Image editor: a photo with crop handles around it, and the orientation, size, quality and tone controls beside it](https://jxsuite.com/content/docs/images/image-editor.png)
 
 :::doc-warning
 Saving overwrites the file and keeps no backup. There is no undo after a save, so source control is how you get the original back. The editor says this beside the **Save** button, with the file's path.

@@ -31,7 +31,7 @@ code:
 
 The Content workspace is where you browse and write what your site says: its pages, and the entries of every [content collection](/docs/studio/projects/content-types). Click **Content** in the Command Bar, or press :kbd[⌘2]. It opens on the collection you last looked at, or on **Pages** the first time.
 
-![The Content workspace showing the Pages collection as cards with live previews, with the Collections panel on the left](../../images/mode-manage.png)
+![The Content workspace showing the Pages collection as cards with live previews, with the Collections panel on the left](https://jxsuite.com/content/docs/images/mode-manage.png)
 
 ## The Collections panel
 

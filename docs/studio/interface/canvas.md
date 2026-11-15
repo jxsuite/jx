@@ -34,7 +34,7 @@ code:
 
 The canvas is the center of the workspace, where your page renders live. It is the real thing, not a mock-up, and you work on it directly: click to put the cursor in the text and select the block, drag the block bar's handle to rearrange. How it behaves depends on the current [mode](/docs/studio/interface/modes); this page covers the interactions shared by the visual modes.
 
-![Jx Studio design canvas showing one component across four responsive breakpoints with a style inspector](../../images/mode-design.png)
+![Jx Studio design canvas showing one component across four responsive breakpoints with a style inspector](https://jxsuite.com/content/docs/images/mode-design.png)
 
 ## Resizing the page
 
@@ -88,7 +88,7 @@ A popover that lives inside a component stays closed while you are on a page tha
 
 A small floating toolbar appears above the selected element. It stays on the element's top edge while you type, rather than following the caret from line to line, so it never covers the text you are writing:
 
-![The block action bar floating above a selected paragraph, showing the parent, tag, move, duplicate and formatting controls](../../images/block-action-bar.png)
+![The block action bar floating above a selected paragraph, showing the parent, tag, move, duplicate and formatting controls](https://jxsuite.com/content/docs/images/block-action-bar.png)
 
 - A **back arrow** selects the parent element.
 - The **name badge** shows what's selected: the element's type or its name. When the element can become something else (a paragraph into a heading, for example), clicking the badge lists the conversions. On a component instance or a repeater, where there is nothing to convert to, the badge is grayed rather than gone.

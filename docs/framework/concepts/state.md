@@ -19,7 +19,7 @@ spec:
 }
 ```
 
-![Jx Studio Data panel listing a component's state and functions](../../images/state-panel.png)
+![Jx Studio Data panel listing a component's state and functions](https://jxsuite.com/content/docs/images/state-panel.png)
 
 ## Shape 1: naked values
 

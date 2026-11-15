@@ -23,7 +23,7 @@ code:
 
 A design token is a named value: **Primary Blue** instead of `#3b82f6`, **Body Serif** instead of a font list. Define it once for the site and reference it everywhere; change it once and everywhere updates. Tokens are what keep a growing site on one palette instead of thirty slightly different blues.
 
-![The Variables view in the Styles workspace, listing the site's CSS custom properties by group](../../images/css-variables.png)
+![The Variables view in the Styles workspace, listing the site's CSS custom properties by group](https://jxsuite.com/content/docs/images/css-variables.png)
 
 ## Define tokens
 

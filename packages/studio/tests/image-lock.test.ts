@@ -24,6 +24,7 @@ import { deflateSync } from "node:zlib";
 import {
   DEFAULT_LOCK,
   LOCK_VERSION,
+  PUBLISHED_IMAGES_URL,
   buildReport,
   captureOrigin,
   capturedImageNames,
@@ -44,6 +45,7 @@ import {
   main,
   manifestImageNames,
   parseArgs,
+  publishedImageFile,
   quarantineRefFindings,
   quarantinedShots,
   readImagesOnDisk,
@@ -418,6 +420,30 @@ describe("docs image references", () => {
     expect(refs).toHaveLength(1);
     expect(refs[0]!.name).toBe("git-panel");
     expect(refs[0]!.page.endsWith("docs/studio/publish.md")).toBe(true);
+  });
+
+  test("a ref written as the screenshot's published address is a ref to that image", () => {
+    // How a docs page names a picture now that none is in the repository: the same image,
+    // Wherever the page sits, so the reference needs no directory to resolve against.
+    expect(publishedImageFile(`${PUBLISHED_IMAGES_URL}git-panel.png`)).toBe("git-panel.png");
+    expect(publishedImageFile(`${PUBLISHED_IMAGES_URL}nested/git-panel.png`)).toBeNull();
+    expect(publishedImageFile(`${PUBLISHED_IMAGES_URL}git-panel.jpg`)).toBeNull();
+    expect(publishedImageFile("https://example.com/content/docs/images/git-panel.png")).toBeNull();
+    expect(publishedImageFile("../images/git-panel.png")).toBeNull();
+
+    const root = scratch("published");
+    const docs = join(root, "docs");
+    const images = join(docs, "images");
+    mkdirSync(join(docs, "studio", "deep"), { recursive: true });
+    writeFileSync(
+      join(docs, "studio", "deep", "publish.md"),
+      [`![](${PUBLISHED_IMAGES_URL}git-panel.png)`, "![](https://example.com/nope.png)"].join(
+        "\n\n",
+      ),
+    );
+    const refs = collectDocImageRefs(docs, images);
+    expect(refs.map((ref) => ref.name)).toEqual(["git-panel"]);
+    expect(refs[0]!.image.endsWith("docs/images/git-panel.png")).toBe(true);
   });
 });
 

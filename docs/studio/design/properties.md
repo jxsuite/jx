@@ -15,7 +15,7 @@ The Inspector has three tabs (**Page · Element · Assistant**), and Content is 
 
 Each tab renders under a header naming the tab and what it is pointed at: the selected element, or the document when nothing is selected. With no file open the tab offers **Open a page…**; with a file open and nothing selected it asks you to click anything on the canvas. **Style** and **Logic** ask for the same thing in the same words, so the whole Inspector reads as one requirement rather than three. The tab you were last on comes back with the file, because the choice is remembered per document.
 
-![The Content tab for a selected link showing the Element and Link sections](../../images/properties-panel.png)
+![The Content tab for a selected link showing the Element and Link sections](https://jxsuite.com/content/docs/images/properties-panel.png)
 
 ## The Element section
 

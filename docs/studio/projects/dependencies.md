@@ -16,7 +16,7 @@ code:
 
 Packages is where you decide which building blocks a document, or the whole site, can use: components from your own project, and components from npm packages (the web's public library of ready-made building blocks). Open it by running **Show Packages** from :kbd[⌘K]. Packages is a developer panel: it has a button in the **Document** group of the Navigator rail only when **Show developer panels** is on in **[Preferences › Appearance](/docs/studio/interface/preferences#appearance)**.
 
-![The Packages panel showing a package section with per-component checkboxes](../../images/imports-panel.png)
+![The Packages panel showing a package section with per-component checkboxes](https://jxsuite.com/content/docs/images/imports-panel.png)
 
 ## Opening a project that has never been installed
 

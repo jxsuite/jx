@@ -25,7 +25,7 @@ code:
 
 The New Project wizard is two steps: first you choose what to start from, then you name the project and say where it goes. Open it from the [Start pane](/docs/studio/interface/welcome-screen) with **New Project…**, or from the dropdown beside **Open Project** in the toolbar.
 
-![The New Project dialog with the starter gallery and the Start from scratch card](../../images/new-project-modal.png)
+![The New Project dialog with the starter gallery and the Start from scratch card](https://jxsuite.com/content/docs/images/new-project-modal.png)
 
 ## Step 1: choose a starting point
 

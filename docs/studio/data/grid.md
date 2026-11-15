@@ -17,7 +17,7 @@ code:
 
 The data grid is **[Grid mode](/docs/studio/editing/grid)** pointed at a database table. The spreadsheet surface is the same one: typed cells, range selection, fill down, find & replace, one batched **Save**. What changes is where the rows come from, a live database instead of files in your project. Use it to check what visitors have submitted, fix a bad value, seed test rows, or clean out old data.
 
-![A database table open as a grid tab with the toolbar and pager visible](../../images/data-grid.png)
+![A database table open as a grid tab with the toolbar and pager visible](https://jxsuite.com/content/docs/images/data-grid.png)
 
 ## Open a table
 

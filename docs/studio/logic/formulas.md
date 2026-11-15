@@ -30,7 +30,7 @@ The picker lists them all at once, so **any source is one action away**. Which o
 
 Studio remembers what you had at each source for the rest of your session, so switching away and back restores your value rather than resetting it. And because a keystroke can only ever move a value between **Fixed value** and **Mixed text**, typing a `${` doesn't swap the widget out from under your cursor mid-word. Prefer the plainest source that does the job. **From data…** is easier to read, and to revisit, than a formula that only fetches one value.
 
-![A Content tab value row with its value source chip beside the label](../../images/field-mode-button.png)
+![A Content tab value row with its value source chip beside the label](https://jxsuite.com/content/docs/images/field-mode-button.png)
 
 Formulas also appear as their own state entries (_+ Add… > Expression_ in the Data panel) and as event handlers (the **Formula** source in the **[Logic view](/docs/studio/logic/events)**).
 

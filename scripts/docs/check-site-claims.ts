@@ -331,7 +331,7 @@ function checkStarterCount(): void {
 // Site pages reference the screenshots through the docs content type's asset mount
 // (/content/docs/images/…), which is where the build republishes docs/images/. The README names
 // The same path on the published site, because the pictures are build outputs and no longer have
-// An address in the repository (`scripts/docs/publish-readme-images.ts` is what puts them there).
+// An address in the repository (`scripts/docs/publish-doc-images.ts` is what puts them there).
 const SCREENSHOT_RE = /\/content\/docs\/images\/([A-Za-z0-9_-]+)\.(?:png|webp|jpg|jpeg)/g;
 
 function checkScreenshots(): void {

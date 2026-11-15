@@ -47,7 +47,7 @@ code:
 
 The Jx Studio window is one workspace with a fixed set of regions: the **Command Bar** across the top, the **Navigator** (a labeled rail and the panel it opens) on the left, the **pane grid** in the middle with the canvas in it, the **Inspector** on the right, the **Bottom dock** under the panes, and the **status bar** along the bottom, with the **jump bar** in the middle of it naming where you are. This page walks through each one. For a quicker orientation, start with **[A tour of Jx Studio](/docs/start/studio-tour)**.
 
-![The Jx Studio workspace with the canvas in the center, panels on both sides, and the Command Bar across the top](../images/hero.png)
+![The Jx Studio workspace with the canvas in the center, panels on both sides, and the Command Bar across the top](https://jxsuite.com/content/docs/images/hero.png)
 
 Studio's own labels, buttons and headings can't be selected, so dragging across the window never highlights the interface. Text you may need to copy still can be: a dialog's message, the sign-in code GitHub gives you, anything in a text field or the code editor, your conversation with the assistant, the logs in Problems and Activity, the version and commit on the About window, the error details if Studio ever refuses to start, and your page on the canvas.
 

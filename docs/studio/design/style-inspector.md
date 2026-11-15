@@ -22,7 +22,7 @@ The Style inspector is the **Style** view of the Inspector, a full set of visual
 
 With no file open the view offers **Open a page…**; with a file open and nothing selected it asks you to click anything on the canvas to style it, in the same words the **Content** and **Logic** views use. Beside the **Variables** view of the Styles workspace there is no element to style, so the view says that variables are edited in the view itself and points you to the **Elements** view for element defaults (see **[Design tokens](/docs/studio/design/tokens)**).
 
-![Jx Studio style inspector with spacing, typography, and color controls for a selected element](../../images/design-inspector.png)
+![Jx Studio style inspector with spacing, typography, and color controls for a selected element](https://jxsuite.com/content/docs/images/design-inspector.png)
 
 ## The Target Line
 

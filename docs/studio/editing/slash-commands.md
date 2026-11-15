@@ -12,7 +12,7 @@ code:
 
 The slash menu inserts blocks without leaving the keyboard: while editing text, type `/` and a menu of everything you can insert opens under your cursor. It's the fastest way to build a page up from a blank paragraph.
 
-![The slash menu open under the caret, its filter field above a list of block types](../../images/slash-menu.png)
+![The slash menu open under the caret, its filter field above a list of block types](https://jxsuite.com/content/docs/images/slash-menu.png)
 
 ## Insert a block
 

@@ -31,7 +31,7 @@ code:
 
 Every document you open in Jx Studio belongs to a **pane**. A pane is one editor over one document: the strip of open documents along the top and the context bar saying which editor and view you're in describe the pane you're working in, and the document itself fills the rest. The [jump bar](/docs/studio/interface#the-jump-bar) at the foot of the window names where you are in the pane you're focused on. You can have one pane or two.
 
-![A pane's strip of open documents, one of them showing the unsaved-changes dot](../../images/tab-strip.png)
+![A pane's strip of open documents, one of them showing the unsaved-changes dot](https://jxsuite.com/content/docs/images/tab-strip.png)
 
 ## Opening and switching
 

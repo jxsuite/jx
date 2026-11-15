@@ -18,7 +18,7 @@ code:
 
 A data table is like a content type for live data: a name, a set of fields, and the connection its rows are stored in. You define tables here; **Push Schema** then creates them in the actual database. Pick **Open Project Settings › Data Tables** from the **Settings** menu in the Command Bar. You can also open **[Project settings](/docs/studio/projects/settings)** any other way (:kbd[⌘K] then **Open Project Settings**, or the **⬢ menu**) and choose _Data Tables_: tables on the left, the selected table's editor on the right.
 
-![The Data Tables editor pane showing the connection picker and field schema builder](../../images/data-table-editor.png)
+![The Data Tables editor pane showing the connection picker and field schema builder](https://jxsuite.com/content/docs/images/data-table-editor.png)
 
 ## Create a table
 

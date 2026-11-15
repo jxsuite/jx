@@ -29,7 +29,7 @@ Those names come from one list in Studio, which is why the pane's context bar an
 
 Edit is for writing. The canvas becomes the page itself: click any text and type, press `/` for blocks, and fill in the page's metadata on the Inspector's **Page** tab beside it. Nothing is docked above the page, so it opens at its first line. It reads like the finished page because it is the finished page. The context bar's **Size** control works here too: pick a [breakpoint](/docs/studio/design/breakpoints) and the column narrows to it, so you can write against the width your readers will have. Or drag the handle on either side of the column, and the width becomes anything you like with the breakpoint following it. Full guide: **[Edit mode](/docs/studio/editing)**.
 
-![Jx Studio editing markdown content inline with a WYSIWYG editor](../../images/mode-edit.png)
+![Jx Studio editing markdown content inline with a WYSIWYG editor](https://jxsuite.com/content/docs/images/mode-edit.png)
 
 :::doc-note
 **Bound values show their real data in Edit and Design.** A style, a class, an attribute, an image, markup or a component setting that is bound to state renders with the value the page will have, and so does bound text. A binding is drawn as its value, not as an expression. Each binding in a piece of text is a **tag**: at rest it reads as plain text, and while your caret is in the block it becomes a named token (**Title**, **Author**, or **Custom expression** for code Studio cannot name), tinted, with its name ahead of its value. A tag is one unit: the arrow keys step over it, and :kbd[Backspace], :kbd[Delete] or a cut take it whole. Click a tag in the block you are working in to open it and choose its source, format and fallback (**[Dynamic tags](/docs/studio/editing/dynamic-tags)**). You type in the text around a tag, and what is saved is the binding, never the value it happened to show. A tag with no value yet shows its name, dimmed. A [repeater](/docs/studio/design/repeaters#rows-on-the-canvas) draws a row for every item of its list, so text, attributes, images and styles that read the current item show each row's own values, and you can click into any row to edit the template they share. An element drawing a list of child nodes, such as [an item's body](/docs/studio/design/repeaters#show-an-items-body), draws the nodes themselves; they belong to the data, so you can select the element but not type into them. A block with anything bound shows a dotted outline while you hover it or your caret is in it, with the names of what it draws above it (an image shows the outline alone). Click a tag and the caret goes to the nearer edge of it, so you can type before or after a heading that is one tag and nothing else.
@@ -39,7 +39,7 @@ Edit is for writing. The canvas becomes the page itself: click any text and type
 
 Design is for structure and style. The canvas shows a live panel per breakpoint, phone and tablet and desktop side by side, and the **Style** view of the Inspector becomes a full visual inspector for the selected element. A page's title, layout and frontmatter are on the Inspector's **Page** tab, in Design as in Edit. Full guide: **[Design mode](/docs/studio/design)**.
 
-![Jx Studio design canvas showing one component across four responsive breakpoints with a style inspector](../../images/mode-design.png)
+![Jx Studio design canvas showing one component across four responsive breakpoints with a style inspector](https://jxsuite.com/content/docs/images/mode-design.png)
 
 ## Grid
 
@@ -81,7 +81,7 @@ The full guide is **[Source control](/docs/studio/publish/source-control#read-a-
 
 Project Styles is the Styles workspace's two style editors over your project file. **Elements** is the catalog of your project's element defaults: every heading, button, and link rendered with its base style, so you set the look of each element type once for the whole site. Selecting an element switches the Inspector to the **Style** view automatically. **Variables** lists your site's CSS custom properties by group, each editable in place. See **[Project Styles](/docs/studio/design/stylebook)** and **[Design tokens](/docs/studio/design/tokens)**.
 
-![Jx Studio Project Styles showing element defaults across breakpoints](../../images/stylebook.png)
+![Jx Studio Project Styles showing element defaults across breakpoints](https://jxsuite.com/content/docs/images/stylebook.png)
 
 ## Project Settings
 

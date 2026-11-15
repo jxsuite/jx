@@ -19,7 +19,7 @@ Click **Next**, give the project a name, and choose the **Location** to create i
 
 Everything else about the site lives in its configuration, which you can change as often as you like: its description and production URL in [project settings](/docs/studio/projects/settings), and the **deployment adapter** that packages it for your host, set under **How it is built** in **Publish › Hosting**. **Static** suits a site that's purely pages and content. If it will have a database, sign-ins, or server functions, pick one of the others, because those hosts can run the small worker Jx builds for them.
 
-![The New Project dialog with the starter gallery and the Start from scratch card](../images/new-project-modal.png)
+![The New Project dialog with the starter gallery and the Start from scratch card](https://jxsuite.com/content/docs/images/new-project-modal.png)
 
 Already have a Jx project? Use **Open Project** to point Studio at a folder on disk, or **Clone** to pull one from git. (Developers who'd rather scaffold from a terminal can use `bun create @jxsuite` instead, described in [CLI commands](/docs/framework/build/cli), then open the result in Studio.)
 
@@ -27,11 +27,11 @@ Already have a Jx project? Use **Open Project** to point Studio at a folder on d
 
 Studio gives you a surface for each part of the job. The **Site** panel on the left lists your pages by address, with the templates, components and media they are made of: click a page to open it, or drag a component or an image straight onto the canvas. Its **+** opens **Add new** (also :kbd[⌘N]), the one dialog that makes a page, a template, a component, a collection or an upload: type a name and Studio works out the file. Every image, video and document lives in the **[Media](/docs/studio/projects/media)** workspace (:kbd[⌘3]), where you upload, replace and delete them; an upload lands in `public/media/`. Your pages and the entries of every collection are browsed in the **[Content](/docs/studio/projects/browse)** workspace (:kbd[⌘2]), as a table or as cards with live previews, and an entry is written there too, on the canvas inside its template.
 
-![The Content workspace showing the Pages collection as cards with live previews, with the Collections panel on the left](../images/mode-manage.png)
+![The Content workspace showing the Pages collection as cards with live previews, with the Collections panel on the left](https://jxsuite.com/content/docs/images/mode-manage.png)
 
 Open a content page and switch to **[Edit mode](/docs/studio/editing)** to write inline: click any text and type, use slash commands for blocks, fill in frontmatter in the Inspector's **Page** tab. Open a component and switch to **[Design](/docs/studio/design)** for the visual canvas: a live preview at every breakpoint, and a full CSS inspector for spacing, type, color, and hover states.
 
-![Jx Studio design canvas showing one component across four responsive breakpoints with a style inspector](../images/mode-design.png)
+![Jx Studio design canvas showing one component across four responsive breakpoints with a style inspector](https://jxsuite.com/content/docs/images/mode-design.png)
 
 ## 4. Add an interaction
 
@@ -41,7 +41,7 @@ Websites do things. In Studio, interactivity comes from three surfaces working t
 - The Inspector's **Logic** view (on its **Element** tab) binds a handler to a click, input, or submit with the structured expression editor.
 - The **Code** editor is where you drop into Monaco when a handler needs JavaScript.
 
-![Jx Studio editing a component state function in the Monaco code editor](../images/mode-script.png)
+![Jx Studio editing a component state function in the Monaco code editor](https://jxsuite.com/content/docs/images/mode-script.png)
 
 Add a `count` to state, a button, and an `onclick` that increments it, and you've built a reactive component. See **[Logic](/docs/studio/logic)** for the full toolkit.
 
@@ -49,7 +49,7 @@ Add a `count` to state, a button, and an `onclick` that increments it, and you'v
 
 When you're happy, switch to the **Publish** workspace (:kbd[⌘5], or the last tab in the Command Bar). **Review changes** lists what you changed: check the files to include, write a summary, and click the button under it, which commits and pushes. If the project has no remote yet, **Create GitHub repository** makes one and pushes to it for you.
 
-![The publish card in Review changes: the destination, the summary and the publish button](../images/git-commit.png)
+![The publish card in Review changes: the destination, the summary and the publish button](https://jxsuite.com/content/docs/images/git-commit.png)
 
 There is one boundary to know about: **Studio publishes code; it doesn't build or deploy the site.** It commits and pushes, and it records the deploy adapter set in the project file. Your host takes it from there, building the site (`bunx jx build`) on every push and serving the `dist/` output from a CDN. With one of the server-capable adapters, the build emits a small worker beside those files as well, and that worker is the piece that runs a database, sign-ins, or server functions. See **[Publish](/docs/studio/publish)** for the full flow.
 

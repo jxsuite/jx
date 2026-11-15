@@ -15,7 +15,7 @@ A connection names a database your project talks to. Most sites need exactly one
 
 Connections are a section of [Project settings](/docs/studio/projects/settings), listed under **Integrations**. Pick **Open Project Settings › Connections** from the **Settings** menu in the Command Bar. You can also press :kbd[⌘K] and type `>Open Project Settings` (or use the **⬢ menu** in the Command Bar) and choose **Connections** from the section list: your connections are listed on the left, and selecting one opens its form on the right. Like every other section, a change here is written to the project file as you make it.
 
-![The Connections section with a connection selected and its provider form open](../../images/connections-section.png)
+![The Connections section with a connection selected and its provider form open](https://jxsuite.com/content/docs/images/connections-section.png)
 
 ## Add a connection
 

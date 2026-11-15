@@ -12,7 +12,7 @@ code:
 
 The formula workspace gives one formula a tab of its own in the **[Bottom dock](/docs/studio/interface#bottom-dock)**. The compact editors in the panels are fine for a two-step formula; when one grows branches, the workspace lays the whole tree out with live values at every step. Because it sits under the pane rather than over it, the page whose value you are computing keeps rendering while you work.
 
-![The formula workspace in the Bottom dock, with the chip strip, selected-step editor, and data rail](../../images/formula-workspace.png)
+![The formula workspace in the Bottom dock, with the chip strip, selected-step editor, and data rail](https://jxsuite.com/content/docs/images/formula-workspace.png)
 
 ## Open it
 

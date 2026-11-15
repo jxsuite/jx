@@ -14,7 +14,7 @@ The document assistant is what the **[AI assistant](/docs/studio/ai/chat)** beco
 
 The assistant is the last tab of the Inspector, after Page and Element: show it with :kbd[⌘⇧5] (macOS) or :kbd[Ctrl+Shift+5] (Windows/Linux), or by clicking **Assistant**. Provider setup lives in **[Preferences › Assistant](/docs/studio/interface/preferences)**, not in the panel itself. A provider key belongs to Studio rather than to one panel, and the panel that is missing one is the wrong place to go looking for it.
 
-![The Inspector with an assistant reply carrying edit chips beside the open page on the canvas](../../images/ai-document-assistant.png)
+![The Inspector with an assistant reply carrying edit chips beside the open page on the canvas](https://jxsuite.com/content/docs/images/ai-document-assistant.png)
 
 The assistant uses the model you picked in **[Preferences](/docs/studio/interface/preferences)**. If you have not picked one, it uses whatever your provider says it prefers.
 

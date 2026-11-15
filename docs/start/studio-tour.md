@@ -17,7 +17,7 @@ code:
 
 Everything in Jx Studio happens in one window. This page is your map: what each region is called, what it does, and where to read more. If you've used another visual builder the shape will feel familiar: a live canvas in the middle, docks on either side, a bar across the top. The names below are the ones the app itself uses.
 
-![The Jx Studio workspace with the canvas in the center, panels on both sides, and the Command Bar across the top](../images/hero.png)
+![The Jx Studio workspace with the canvas in the center, panels on both sides, and the Command Bar across the top](https://jxsuite.com/content/docs/images/hero.png)
 
 ## The Command Bar
 

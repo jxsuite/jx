@@ -29,7 +29,7 @@ Content types are your site's CMS schema. Each one describes a collection (blog 
 
 The builder is a section of [Project settings](/docs/studio/projects/settings), listed under **Integrations** because the parser extension contributes it. Pick **Open Project Settings › Content Types** from the **Settings** menu in the Command Bar. You can also press :kbd[⌘K] and type `>Open Project Settings`, or use the **⬢ menu** in the Command Bar, then choose **Content Types** from the section list: the section opens with one sentence on what a content type is, your types are listed on the left, and selecting one opens its editor on the right. Like every other section, what you change here is written to the project file as you make it.
 
-![The Content Types section with a type selected and its field schema open in the builder](../../images/content-type-builder.png)
+![The Content Types section with a type selected and its field schema open in the builder](https://jxsuite.com/content/docs/images/content-type-builder.png)
 
 ## Create a content type
 

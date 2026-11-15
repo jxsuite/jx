@@ -10,8 +10,8 @@
 //   - `spec:` entries (`spec.md#19.4` or `site-architecture.md`) must name a real
 //     Spec file and a real numbered heading in it
 //   - `code:` entries must be repo paths that exist
-//   - Body image refs must be page-relative paths into docs/images/ (so the page
-//     Renders in any markdown editor), be produced by the screenshots manifest,
+//   - Body image refs must be a screenshot's published address (so the page shows
+//     Its pictures wherever it is read), be produced by the screenshots manifest,
 //     And never belong to a quarantined shot (scripts/screenshots/README.md). The
 //     Picture itself is a build output: no check here asks for the file.
 //   - `generated: true` pages must carry the generator banner
@@ -22,11 +22,13 @@
 //     A real docs page
 
 import { existsSync, readFileSync } from "node:fs";
-import { basename, dirname, extname, join, relative, resolve } from "node:path";
+import { basename, extname, join, relative, resolve } from "node:path";
 
 import {
+  PUBLISHED_IMAGES_URL,
   collectDocImageRefs,
   imageTargets,
+  publishedImageFile,
   quarantineRefFindings,
   readLock,
   readShots,
@@ -40,7 +42,6 @@ import { navPaths, navProblems, readNav } from "./nav";
 const ROOT = resolve(import.meta.dir, "../..");
 const DOCS_DIR = join(ROOT, "docs");
 const SPECS_DIR = join(ROOT, "specs");
-const SCREENSHOTS_DIR = join(ROOT, "docs/images");
 const MANIFEST_PATH = join(ROOT, "scripts/screenshots/manifest.json");
 const NAV_PATH = join(DOCS_DIR, "nav.json");
 
@@ -218,18 +219,20 @@ for (const file of docFiles) {
   }
 
   for (const target of imageTargets(source)) {
-    // Images are addressed relative to the page so /docs reads correctly in a markdown editor;
-    // The compiler republishes them under /content/docs/ when the site builds.
-    if (target.startsWith("/") || /^[a-z][\w+.-]*:/i.test(target)) {
-      fail(file, `image ref must be page-relative into docs/images/: ${target}`);
+    // Images are addressed where the site publishes them. The pictures are build outputs, so a
+    // Page-relative path names a file no reader of the source has: on github.com, or in an editor
+    // Without a local capture, the page would show nothing. The published address shows the last
+    // Release's picture everywhere, and the content loader remaps it to the local file when a
+    // Capture is on disk, so the site build still optimizes it (parser.md §9.2).
+    const published = publishedImageFile(target);
+    if (!published) {
+      fail(
+        file,
+        `image ref must be a screenshot's published address, ${PUBLISHED_IMAGES_URL}<name>.png: ${target}`,
+      );
       continue;
     }
-    const resolved = resolve(dirname(file), target);
-    if (dirname(resolved) !== SCREENSHOTS_DIR) {
-      fail(file, `image ref must resolve into docs/images/: ${target}`);
-      continue;
-    }
-    const name = basename(resolved, extname(resolved));
+    const name = basename(published, extname(published));
     referencedScreenshots.add(name);
     if (!screenshotNames.has(name)) {
       fail(file, `screenshot "${name}" is not produced by scripts/screenshots/manifest.json`);

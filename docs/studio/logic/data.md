@@ -21,7 +21,7 @@ Data is where you declare everything the open page or component knows: the value
 
 Both halves are one list. A row tells you how an entry is **defined**; expand it and you get its editor with the value it is worth **right now** underneath.
 
-![Jx Studio Data panel listing a component's state and functions](../../images/state-panel.png)
+![Jx Studio Data panel listing a component's state and functions](https://jxsuite.com/content/docs/images/state-panel.png)
 
 ## Open it
 
@@ -152,7 +152,7 @@ A component file renders on the canvas with its options at their defaults. To se
 
 Test values are a preview aid. They live with your editing session, not in the component file.
 
-![The Data panel with state entries expanded into live data trees](../../images/data-explorer.png)
+![The Data panel with state entries expanded into live data trees](https://jxsuite.com/content/docs/images/data-explorer.png)
 
 ## Debug with it
 

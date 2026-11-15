@@ -16,7 +16,7 @@ code:
 
 Insert is the palette of things you can add to the page: the standard HTML building blocks on one tab and your own components on the other, laid out as cards.
 
-![The Insert palette on its Elements tab, with the Text section open](../../images/elements-panel.png)
+![The Insert palette on its Elements tab, with the Text section open](https://jxsuite.com/content/docs/images/elements-panel.png)
 
 ## Open it
 

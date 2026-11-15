@@ -23,7 +23,7 @@ All of it lives in one place: the **Page** tab of the Inspector. The canvas show
 
 The Page panel is the Inspector's first tab. Click it, press :kbd[⌘⇧1] (:kbd[Ctrl+Shift+1] on Windows/Linux), or select nothing on the canvas: the Inspector switches to Page on its own when the selection goes away, and back to the element you select next. The tab is named for what the open file is (**Page**, **Template**, **Component**, **Entry**, or **Document**), and its sections, top to bottom, depend on the file you have open:
 
-![The Inspector's Page tab for a page, showing its Page, Template, Search & sharing and Advanced sections](../../images/document-panel.png)
+![The Inspector's Page tab for a page, showing its Page, Template, Search & sharing and Advanced sections](https://jxsuite.com/content/docs/images/document-panel.png)
 
 A component has no page settings of its own, because its title, search and social details come from the page it is placed on. Its **Component** tab says so, and **Edit tag and props** selects the component's root, where Element › Content edits its tag name and the defaults of the props it takes.
 
@@ -83,7 +83,7 @@ The escape hatch for everything else that can live in a page's head: analytics, 
 
 The first thing it shows is not a form but two pictures of the finished page: a **Search result** preview (breadcrumb, title, description) and a **Social card** preview with its image, domain, headline and summary. Below them is the resolved-field list, then the warnings, and only then the controls that change any of it.
 
-![Search appearance, open over a post: the search-result and social-card previews, the resolved fields, the warnings, and the fields that change them](../../images/seo-modal.png)
+![Search appearance, open over a post: the search-result and social-card previews, the resolved fields, the warnings, and the fields that change them](https://jxsuite.com/content/docs/images/seo-modal.png)
 
 Every field commits as you type, and the previews above redraw with it. That is the reason it is a window rather than a panel: the previews want the width, and a search result rendered a third of a column wide is not a preview of anything.
 

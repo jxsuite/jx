@@ -12,7 +12,7 @@ code:
 
 Edit is for writing. Open a content page and the canvas becomes the page itself. Click any text and type, right where it renders. It feels like working in a doc editor; it saves as clean Markdown.
 
-![Jx Studio editing markdown content inline with a WYSIWYG editor](../images/mode-edit.png)
+![Jx Studio editing markdown content inline with a WYSIWYG editor](https://jxsuite.com/content/docs/images/mode-edit.png)
 
 Markdown pages open in Edit automatically. For anything else, pick **Edit** in the **View** control on the context bar; see **[Modes and views](/docs/studio/interface/modes)**.
 

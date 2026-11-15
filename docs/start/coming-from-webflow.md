@@ -47,7 +47,7 @@ Collapse a style section and its heading carries the same states as a tally: hov
 
 Instead of one canvas you flip between breakpoints, Design mode renders a live panel for **every** breakpoint side by side, each running your real responsive rules. A tablet-only change shows up in the tablet panel while the others hold still, so you stop toggling back and forth to check you didn't break desktop. See **[Design mode](/docs/studio/design)** and **[Breakpoints](/docs/studio/design/breakpoints)**.
 
-![Jx Studio's Design mode rendering one component across four responsive breakpoints with the style inspector open](../images/mode-design.png)
+![Jx Studio's Design mode rendering one component across four responsive breakpoints with the style inspector open](https://jxsuite.com/content/docs/images/mode-design.png)
 
 ## Selecting more than one thing
 
