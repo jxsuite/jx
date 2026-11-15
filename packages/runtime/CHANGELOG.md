@@ -1,5 +1,44 @@
 # Changelog
 
+## [8.0.0](https://github.com/jxsuite/jx/compare/runtime-v7.1.0...runtime-v8.0.0) (2026-11-15)
+
+
+### ⚠ BREAKING CHANGES
+
+* **runtime,compiler:** el.derivedKey = value throws a TypeError in strict code (and Reflect.set answers false) where it was silently ignored. A compiled parent's property binding to a key its child derives throws when the bound value changes; such a prop was never applied.
+* **runtime:** the interpreter (live preview, mount()) renders a component with $shadow, or under defaults.shadow, into a shadow root where it rendered light. In a built shadow component a key such as ":hover" or ".wide" is emitted as :host(:hover) and now applies, a color-scheme block follows the OS preference only, and a bare element key at the top level of a component style is a descendant rule where it was dropped.
+* **compiler:** a built list now applies its `filter` and `sort`, where it showed every item in source order. A page list whose items, filter or sort reads state a handler writes is no longer prerendered: the page's module renders it. A template string as a repeater's `items` fails the build. A dynamic page's import map gains the `lit-html/` and `@vue/reactivity/` prefix keys.
+* **compiler:** a compiled component module now renders its images with the project's loading attributes and optimized candidates, and the interpreter writes title="", lang="" or dir="" for a property set to the empty string where it wrote no attribute.
+* **compiler:** built HTML now carries attributes the static emitter used to drop (href, src, alt, value, placeholder, type, checked, disabled, name, selected and every other reflected property), a title, lang or dir set to the empty string is written as an empty attribute, and an attributes entry now replaces a property that writes the same attribute (id included) where both were written before. A client page's repeater row binds contentEditable as a property instead of writing the contenteditable attribute. name is no longer in RESERVED_KEYS: on an element it is the DOM property, in every tier.
+
+### Features
+
+* **compiler:** a site build writes a Custom Elements Manifest for the components it compiles ([44ec625](https://github.com/jxsuite/jx/commit/44ec625061819e4a500d4337d2544b4a1fa34410)), closes [#304](https://github.com/jxsuite/jx/issues/304)
+* **compiler:** built lists filter, sort and keep keyed rows as the interpreter does ([8f98e21](https://github.com/jxsuite/jx/commit/8f98e2135e36272b91d14156736c923e846a35ff))
+* **runtime,compiler,ui:** a custom element can be form-associated, and the kit's controls are ([dccb628](https://github.com/jxsuite/jx/commit/dccb62832d9c88c36f9ce88d564caf29f6c46f50)), closes [#303](https://github.com/jxsuite/jx/issues/303)
+* **runtime,compiler:** a derived state key is a read-only property of its element ([0c21f4b](https://github.com/jxsuite/jx/commit/0c21f4bbe43021085dd86c6f9a78bc55c28cf1a0))
+* **runtime:** $shadow means the same thing in the interpreter, the module and the prerender ([267dec9](https://github.com/jxsuite/jx/commit/267dec908784e3055c6d8bb64319bdea771892ad))
+
+
+### Bug Fixes
+
+* **compiler:** a component's images and empty-string properties prerender as its module draws them ([2094579](https://github.com/jxsuite/jx/commit/209457955411e5bc45dc16cc0ee3011b26d3cd4e))
+* **compiler:** built HTML carries every element property as the attribute it reflects to ([83869d1](https://github.com/jxsuite/jx/commit/83869d15cb18db2ec87b00ea18d2ea2a86269d8e))
+
+
+### Performance Improvements
+
+* **runtime,compiler:** an element connects and a static page compiles at the trunk's cost ([c77a310](https://github.com/jxsuite/jx/commit/c77a310ac79fdb4eb38d8eb56ce980a3f8c3bbe3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/schema bumped to 7.0.0
+  * devDependencies
+    * @jxsuite/erase bumped to 0.3.3
+
 ## [7.1.0](https://github.com/jxsuite/jx/compare/runtime-v7.0.1...runtime-v7.1.0) (2026-11-14)
 
 

@@ -1,6 +1,6 @@
 {
   "name": "@jxsuite/catalog",
-  "version": "0.1.15",
+  "version": "0.1.16",
   "description": "The catalogue of first-party Jx extensions a project can turn on",
   "license": "MIT",
   "repository": {

@@ -1,5 +1,40 @@
 # Changelog
 
+## [9.1.0](https://github.com/jxsuite/jx/compare/server-v9.0.3...server-v9.1.0) (2026-11-15)
+
+
+### Features
+
+* **ai:** chat wire version 2 and the OpenAI-compatible provider adapter ([9491a55](https://github.com/jxsuite/jx/commit/9491a55977559d42889d336fd33795b9c650912a))
+* **ai:** one stream normalizer for the gateway and the direct client ([99a9637](https://github.com/jxsuite/jx/commit/99a963743aeb7259bf7af00ac2f4411851d2c21d))
+
+
+### Bug Fixes
+
+* **server:** judge the provider base URL by range, and follow no redirect ([8c4964e](https://github.com/jxsuite/jx/commit/8c4964e0b333d2d45e72d5ad537d540cd57f1887))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/ai bumped to 0.44.0
+    * @jxsuite/catalog bumped to 0.1.16
+    * @jxsuite/collab bumped to 0.12.3
+    * @jxsuite/compiler bumped to 10.0.0
+    * @jxsuite/create bumped to 1.8.4
+    * @jxsuite/erase bumped to 0.3.3
+    * @jxsuite/import bumped to 0.44.6
+    * @jxsuite/protocol bumped to 6.5.0
+    * @jxsuite/runtime bumped to 8.0.0
+    * @jxsuite/schema bumped to 7.0.0
+    * @jxsuite/site bumped to 3.0.0
+    * @jxsuite/starters bumped to 4.0.0
+  * devDependencies
+    * @jxsuite/auth bumped to 0.8.12
+    * @jxsuite/connector bumped to 0.8.12
+    * @jxsuite/parser bumped to 5.1.0
+
 ## [9.0.3](https://github.com/jxsuite/jx/compare/server-v9.0.2...server-v9.0.3) (2026-11-14)
 
 

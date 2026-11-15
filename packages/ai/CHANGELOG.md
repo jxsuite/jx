@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.44.0](https://github.com/jxsuite/jx/compare/ai-v0.43.7...ai-v0.44.0) (2026-11-15)
+
+
+### Features
+
+* **ai:** a conversation too long for Claude is summarized, not cut ([36175f8](https://github.com/jxsuite/jx/commit/36175f8937566a7585a5e688d9b47acfaf2ec559))
+* **ai:** a persisted conversation behind one session store contract ([231c085](https://github.com/jxsuite/jx/commit/231c085deaf8631ded3b148db4ea9a279912216c))
+* **ai:** a suspended turn resumes from a checkpoint ([b8f774e](https://github.com/jxsuite/jx/commit/b8f774ec0a22988d64943dd09dfc159da6d0268e))
+* **ai:** chat wire version 2 and the OpenAI-compatible provider adapter ([9491a55](https://github.com/jxsuite/jx/commit/9491a55977559d42889d336fd33795b9c650912a))
+* **ai:** native Anthropic Messages with signed thinking replayed where it binds ([9e64acf](https://github.com/jxsuite/jx/commit/9e64acf22c03952e3a31295aa0276fc89a801b53))
+* **ai:** one stream normalizer for the gateway and the direct client ([99a9637](https://github.com/jxsuite/jx/commit/99a963743aeb7259bf7af00ac2f4411851d2c21d))
+* **ai:** portable file tools over a ProjectHost, and schema-checked arguments ([80f1b33](https://github.com/jxsuite/jx/commit/80f1b336f97ebb761009eddf9e3d2b83ee95c3ef))
+* **studio:** the assistant asks before a call undo cannot take back ([6edb36a](https://github.com/jxsuite/jx/commit/6edb36aa7c88a45d35c4dcd41777f43a6b4a60aa))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/protocol bumped to 6.5.0
+    * @jxsuite/schema bumped to 7.0.0
+
 ## [0.43.7](https://github.com/jxsuite/jx/compare/ai-v0.43.6...ai-v0.43.7) (2026-11-14)
 
 
