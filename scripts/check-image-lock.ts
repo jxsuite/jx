@@ -1262,20 +1262,15 @@ export async function main(argv: readonly string[]): Promise<number> {
   const shots = readShots(manifest);
   const statuses = shotStatusFindings(shots);
   const violations = [...statuses.violations, ...unreadImageFindings(manifest, refs)];
-  for (const note of statuses.notes) {
-    console.log(`  ${note}`);
-  }
+  // A capture's notes include the status notes, so whichever pass ran is the one that speaks.
+  let { notes } = statuses;
 
   let local = "no capture on this checkout (docs/images is a build output)";
   if (lock || disk.length > 0) {
     const result = checkImageLock({ disk, lock, manifest, refs });
     const blocking = new Set(violations);
     const stale = [...result.violations, ...result.warnings].filter((v) => !blocking.has(v));
-    for (const note of result.notes) {
-      if (!statuses.notes.includes(note)) {
-        console.log(`  ${note}`);
-      }
-    }
+    ({ notes } = result);
     if (stale.length > 0) {
       console.warn(
         `image lock: the capture on this checkout is out of date in ${stale.length} way(s). ` +
@@ -1292,6 +1287,9 @@ export async function main(argv: readonly string[]): Promise<number> {
         : `the local capture of ${result.images} image(s) is complete and current`;
   }
 
+  for (const note of notes) {
+    console.log(`  ${note}`);
+  }
   if (violations.length > 0) {
     printViolations(violations);
     return 1;

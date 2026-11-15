@@ -286,4 +286,24 @@ describe("the CLI reports what does not fail the run", () => {
     expect(warns[1]!.startsWith("  ")).toBe(true);
     expect(errors).toEqual([]);
   });
+
+  test("the lane prints the same note, and fails on the shot the capture does not hold", async () => {
+    const f = fixture();
+    const code = await main([
+      "--manifest",
+      f.manifestPath,
+      "--lock",
+      f.lockPath,
+      "--images",
+      f.images,
+      "--docs",
+      f.docs,
+      "--capture",
+    ]);
+    expect(code).toBe(1);
+    expect(logs).toContain("  quarantined: parked — xpath (since abc123)");
+    const printed = errors.join("\n");
+    expect(printed).toContain('shot "never-shot" is not captured');
+    expect(printed).toContain("so it must not be published");
+  });
 });
