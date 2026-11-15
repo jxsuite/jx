@@ -1,8 +1,8 @@
 # Jx Studio UI/UX Interface Guidelines
 
-**Version:** 0.9.0-draft\
+**Version:** 0.9.1-draft\
 **Status:** Partial\
-**Updated:** 2026-11-13\
+**Updated:** 2026-11-15\
 **Applies to:** `packages/studio/`
 
 ---
@@ -987,6 +987,7 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 
 ## Changelog
 
+- **0.9.1-draft** (2026-11-15) — §9.3 and §9.4: a surface ships a specimen beside it, typed against its adapter's scope, importing nothing of the shell; the canvas recognises a surface by the project's url and its path, not by the save lane's suffix.
 - **0.9.0-draft** (2026-11-13) — §1 and §2.1: CANVAS_MODES loses preview, so the canvas modes are design, edit, stylebook and git-diff.
 - **0.8.36-draft** (2026-11-13) — The floating action bar draws a fact about the selection (a Bound pill, the row stepper, the case picker) only where it is true, after every verb (§8.6).
 - **0.8.35-draft** (2026-11-11) — §3.1 The status bar's far-right field is the focused pane's zoom; §12.1 new statusbar/zoom placement admitting the document level, so the status bar is four single-level placements.
