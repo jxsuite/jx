@@ -1,5 +1,35 @@
 # Changelog
 
+## [0.14.0](https://github.com/jxsuite/jx/compare/ui-v0.13.0...ui-v0.14.0) (2026-11-15)
+
+
+### ⚠ BREAKING CHANGES
+
+* **compiler:** a built list now applies its `filter` and `sort`, where it showed every item in source order. A page list whose items, filter or sort reads state a handler writes is no longer prerendered: the page's module renders it. A template string as a repeater's `items` fails the build. A dynamic page's import map gains the `lit-html/` and `@vue/reactivity/` prefix keys.
+
+### Features
+
+* **compiler:** built lists filter, sort and keep keyed rows as the interpreter does ([8f98e21](https://github.com/jxsuite/jx/commit/8f98e2135e36272b91d14156736c923e846a35ff))
+* **runtime,compiler,ui:** a custom element can be form-associated, and the kit's controls are ([dccb628](https://github.com/jxsuite/jx/commit/dccb62832d9c88c36f9ce88d564caf29f6c46f50)), closes [#303](https://github.com/jxsuite/jx/issues/303)
+* **schema,studio:** a dynamic tag reads a chain of sources, and its popover lists them in order ([9bd7d5e](https://github.com/jxsuite/jx/commit/9bd7d5e64f29b1b9ca753379639b816fa86dc340)), closes [#653](https://github.com/jxsuite/jx/issues/653)
+* **ui,studio:** jx-table ships, and Studio's Packages and Library tables are drawn with it ([31b1313](https://github.com/jxsuite/jx/commit/31b1313f6a2f4945bc3c329a40d124dba86897e4)), closes [#301](https://github.com/jxsuite/jx/issues/301)
+* **ui:** a jx-action-group or jx-tabs inside a jx-toolbar is one tab stop ([14f22ec](https://github.com/jxsuite/jx/commit/14f22eccdf78645327e564ae9db0b3884812e600)), closes [#302](https://github.com/jxsuite/jx/issues/302)
+* **ui:** the kit's element documents can be loaded one at a time ([71a14b5](https://github.com/jxsuite/jx/commit/71a14b5209f0a28ab33a43dec0b693a2171542e4)), closes [#300](https://github.com/jxsuite/jx/issues/300)
+* **ui:** the published kit carries an optional compiled distribution ([d65af9f](https://github.com/jxsuite/jx/commit/d65af9f15ef6f630295114d3b33aabf0b3fe6514)), closes [#304](https://github.com/jxsuite/jx/issues/304)
+
+
+### Bug Fixes
+
+* **ui:** the kit's build finds its package on Windows ([6b9db81](https://github.com/jxsuite/jx/commit/6b9db81c9e249db7d923666d2e0c2bf18d40b03c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/runtime bumped to 9.0.0
+    * @jxsuite/schema bumped to 8.0.0
+
 ## [0.13.0](https://github.com/jxsuite/jx/compare/ui-v0.12.2...ui-v0.13.0) (2026-11-15)
 
 
