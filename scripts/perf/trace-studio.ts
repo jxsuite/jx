@@ -1334,7 +1334,10 @@ export const SCENARIOS: Scenario[] = [
       for (let i = 0; i < 3; i++) {
         await runCommand(cdp, "view.setActivity", { tab: "site" });
         await runCommand(cdp, "document.open", { path: "pages/index.md" });
-        await runCommand(cdp, "document.open", { path: "pages/features.json" });
+        /* A second page of the same site. It was `pages/features.json` until the site's redesign
+           rewrote that page as Markdown, and `document.open` throws on a path that names no file,
+           so the scenario failed on both sides of every comparison from then on. */
+        await runCommand(cdp, "document.open", { path: "pages/features.md" });
         await runCommand(cdp, "view.setActivity", { tab: "files" });
       }
     },
