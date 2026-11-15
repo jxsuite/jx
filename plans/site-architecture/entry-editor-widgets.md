@@ -22,7 +22,7 @@ size: L
 
 > **Status: Partial.** A content entry belonging to a collection with a schema opens the **entry editor**, a schema-driven form over the same widget mapping the inspector uses (`packages/studio/src/content/entry-editor.ts` over `mountSchemaForm` in `packages/studio/src/ui/schema-form.ts`). Five rows of the table below do not ship there: `format: "date"` and `format: "uri-reference"` are plain text fields, a `boolean` is a checkbox rather than a toggle, and an `array` of `string` and an `object` are raw JSON text.
 
-At b900b326 the marker read `Implemented`. The section's two later markers (JSON Data Entry Editing, CSV Editing) are accurate and stay. Re-verified on 2026-09-27; the census evidence holds, with the additions below.
+At 31ae328e the marker read `Implemented`. The section's two later markers (JSON Data Entry Editing, CSV Editing) are accurate and stay. Re-verified on 2026-09-27; the census evidence holds, with the additions below.
 
 **What exists**
 

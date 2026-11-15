@@ -1,6 +1,6 @@
 # desktop.md audit
 
-Audited against b900b326 on 2026-09-26; §7, §9.7 and the plans that cite them were re-read after the Electron application replaced ElectroBun (specs/desktop.md §7 and §9.7 were rewritten then).
+Audited against 31ae328e on 2026-09-26; §7, §9.7 and the plans that cite them were re-read after the Electron application replaced ElectroBun (specs/desktop.md §7 and §9.7 were rewritten then).
 
 ## Verified
 

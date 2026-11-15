@@ -147,7 +147,7 @@ export { CONTRACT_VERSION, DEFAULT_MANIFEST } from "./screenshots/lib/contract.t
  *
  *   **18 → 19 when a quarantined shot came back, and it is the one direction this file says a number
  *   may not move**, so here is the justification the rule asks for. A quarantined shot's steps are
- *   not counted (they are read past, below), so `block-action-bar-shot` being broken since 6604ede8
+ *   not counted (they are read past, below), so `block-action-bar-shot` being broken since ff4269a6
  *   is what took this to 18 — the count fell because a shot STOPPED WORKING. What broke it was then
  *   fixed (`probe.revealPath` was inert on the Edit surface: it panned `view.panY`, which only
  *   reaches the screen through a panzoom transform Edit does not render), and lifting the quarantine

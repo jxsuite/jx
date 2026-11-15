@@ -222,10 +222,10 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 - **0.1.9-draft** (2026-08-15) — Name where the emitted import map now points (§1).
 - **0.1.8-draft** (2026-08-15) — Number the sections so they are addressable, and add §7 Standards Alignment.
 - **0.1.7-draft** (2026-08-02) — Imports panel section renamed to Imported Modules in the UI.
-- **0.1.6-draft** (2026-07-22) — Proper spec versioning (`fb0f3ec7`).
-- **0.1.5-draft** (2026-07-22) — Machine-readable spec status vocabulary + generated status page (`79daba23`).
-- **0.1.4-draft** (2026-06-10) — Consolidate markdown and csv handling to the parser package (`8b1ba6da`).
-- **0.1.3-draft** (2026-06-01) — Remove old glob-based content type references (`6bcbfdaf`).
-- **0.1.2-draft** (2026-05-19) — Reflect new content type transition (`6eb3d2b6`).
-- **0.1.1-draft** (2026-04-22) — Consolidate project config schema and rename as such (`e3523dbf`).
-- **0.1.0-draft** (2026-04-22) — External web component support (`a9d0fbe4`).
+- **0.1.6-draft** (2026-07-22) — Proper spec versioning (`05c12d47`).
+- **0.1.5-draft** (2026-07-22) — Machine-readable spec status vocabulary + generated status page (`dd415a70`).
+- **0.1.4-draft** (2026-06-10) — Consolidate markdown and csv handling to the parser package (`66ea8c35`).
+- **0.1.3-draft** (2026-06-01) — Remove old glob-based content type references (`8c3d373f`).
+- **0.1.2-draft** (2026-05-19) — Reflect new content type transition (`120a4a15`).
+- **0.1.1-draft** (2026-04-22) — Consolidate project config schema and rename as such (`de9d0638`).
+- **0.1.0-draft** (2026-04-22) — External web component support (`f34c6889`).

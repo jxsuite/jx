@@ -23,7 +23,7 @@
 
 ### Features
 
-* **schema,collab,compiler,studio:** a document's script in .jxn, Studio and shared sessions ([#628](https://github.com/jxsuite/jx/issues/628)) ([ddb7734](https://github.com/jxsuite/jx/commit/ddb7734555e3b26d26ef339fab651b5e2768d75f))
+* **schema,collab,compiler,studio:** a document's script in .jxn, Studio and shared sessions ([#628](https://github.com/jxsuite/jx/issues/628)) ([02b607d](https://github.com/jxsuite/jx/commit/02b607d7d721311aacd8bf0a9d8dea2db70f1bf8))
 
 
 ### Dependencies
@@ -127,19 +127,19 @@
 
 ### Features
 
-* backend-directed access: action-required refusals, offered actions, platform account rows ([87862db](https://github.com/jxsuite/jx/commit/87862dbc16d5b9c99f664030d5d907cf34d897fe))
-* offer a hosted platform's plan when it refuses with subscription-required ([9e3bc2f](https://github.com/jxsuite/jx/commit/9e3bc2fda60125292f9a1bc572bfb86fdd9d017c))
-* replace the hosted-plan client with backend-directed access ([42d164c](https://github.com/jxsuite/jx/commit/42d164c2a9b9196d3d888af433c47f19131dd225))
-* **studio:** jittered reconnect, wake on network or focus, and resync what a dropped socket missed ([21ba318](https://github.com/jxsuite/jx/commit/21ba31841464ecb488654811dd1906095059419d))
-* **studio:** jittered reconnect, wake on network or focus, and resync what a dropped socket missed ([6081d0a](https://github.com/jxsuite/jx/commit/6081d0ab13dba0502bd3d1cd50325b6d6f52b7c0))
+* backend-directed access: action-required refusals, offered actions, platform account rows ([8b8f2df](https://github.com/jxsuite/jx/commit/8b8f2dfcde78178921188e3f68da8010a831bb03))
+* offer a hosted platform's plan when it refuses with subscription-required ([f4c860d](https://github.com/jxsuite/jx/commit/f4c860dccf31f502afb1db64f83e92869cb2b675))
+* replace the hosted-plan client with backend-directed access ([8add52b](https://github.com/jxsuite/jx/commit/8add52b18e4a5d728a0f3db220503939804f1727))
+* **studio:** jittered reconnect, wake on network or focus, and resync what a dropped socket missed ([88eb919](https://github.com/jxsuite/jx/commit/88eb919810d7ab7fc1c8f479769e0f1fa6e2fe0c))
+* **studio:** jittered reconnect, wake on network or focus, and resync what a dropped socket missed ([de3512b](https://github.com/jxsuite/jx/commit/de3512bea3ec36871b24dd63d64885d90c9d5b07))
 
 ## [0.10.0](https://github.com/jxsuite/jx/compare/collab-v0.9.0...collab-v0.10.0) (2026-09-29)
 
 
 ### Features
 
-* **schema:** document ops and the JSON serializer as portable @jxsuite/schema subpaths (harness J1.1) ([4467d3a](https://github.com/jxsuite/jx/commit/4467d3a6a78982fd025d81b58b3eb015c8d9f49d))
-* **schema:** the document-op vocabulary and its inverse, as @jxsuite/schema/doc-ops ([69cf43f](https://github.com/jxsuite/jx/commit/69cf43fe16f373a912bc8ec94f08eae89d22c5db))
+* **schema:** document ops and the JSON serializer as portable @jxsuite/schema subpaths (harness J1.1) ([5d88928](https://github.com/jxsuite/jx/commit/5d88928460938bb626e5314b6cbd29e1d9311913))
+* **schema:** the document-op vocabulary and its inverse, as @jxsuite/schema/doc-ops ([5a686cf](https://github.com/jxsuite/jx/commit/5a686cfce193596284bd5eebf3dc37e3056adb6f))
 
 
 ### Dependencies
@@ -153,8 +153,8 @@
 
 ### Features
 
-* **studio:** highlight what changed in a diff, and open every changed file ([a54fa6d](https://github.com/jxsuite/jx/commit/a54fa6dc15fbe4ad7e8617d4e788c1670292ea2b))
-* **studio:** highlight what changed in a diff, and open every changed file ([248c9de](https://github.com/jxsuite/jx/commit/248c9de8b5109898f0f4b442d7c805abdf9cdd70))
+* **studio:** highlight what changed in a diff, and open every changed file ([c87b2f3](https://github.com/jxsuite/jx/commit/c87b2f38bf97ec4f339cd9ac136885dd07d8ac7b))
+* **studio:** highlight what changed in a diff, and open every changed file ([34a5dc8](https://github.com/jxsuite/jx/commit/34a5dc868f4863f929966bceca3562991222ea18))
 
 
 ### Dependencies
@@ -213,8 +213,8 @@
 
 ### Features
 
-* **studio:** own the Monaco↔Y.Text binding, and move to monaco-editor 0.56 ([fd68efb](https://github.com/jxsuite/jx/commit/fd68efb485b0a257763011bde11262f9f114cba6))
-* **studio:** own the Monaco↔Y.Text binding, and move to monaco-editor 0.56 ([4e6c9dd](https://github.com/jxsuite/jx/commit/4e6c9ddb90a0c9e26ddf2c2427ff9a468886e5e5))
+* **studio:** own the Monaco↔Y.Text binding, and move to monaco-editor 0.56 ([e8e8a93](https://github.com/jxsuite/jx/commit/e8e8a93b6c27173fefcc73e63b244c1e96b5a49a))
+* **studio:** own the Monaco↔Y.Text binding, and move to monaco-editor 0.56 ([b61866d](https://github.com/jxsuite/jx/commit/b61866ddc7b601605a6717ea4f68e11f47bcdabb))
 
 
 ### Dependencies
@@ -228,9 +228,9 @@
 
 ### Features
 
-* **collab:** negotiate the wire envelope on the handshake — jx.collab.v1 ([5db8ae8](https://github.com/jxsuite/jx/commit/5db8ae8b781a1b5aeffbdd8f27cdf4c08ebb4540))
-* **studio:** P5 — the inspector states what it edits and where the edit lands ([13604ab](https://github.com/jxsuite/jx/commit/13604ab8914ef3fa2800b97b6144e7c449459858))
-* **studio:** the Named Shell — P0–P8, the full UX redesign ([b576cbb](https://github.com/jxsuite/jx/commit/b576cbb24c7e0d8d36075f6d682e9b3b6b971166))
+* **collab:** negotiate the wire envelope on the handshake — jx.collab.v1 ([25c3cf3](https://github.com/jxsuite/jx/commit/25c3cf31feeb4087797e7d9f182cb4f7345c4fcb))
+* **studio:** P5 — the inspector states what it edits and where the edit lands ([9ab7b5a](https://github.com/jxsuite/jx/commit/9ab7b5a8553eaa29fbd4507bed64aa619a9b2d86))
+* **studio:** the Named Shell — P0–P8, the full UX redesign ([c8c3452](https://github.com/jxsuite/jx/commit/c8c345213307f2383ed5c4251ca6b388c8489504))
 
 
 ### Dependencies
@@ -244,12 +244,12 @@
 
 ### Features
 
-* **collab:** merge prose per character and styles per property ([8ecdd7f](https://github.com/jxsuite/jx/commit/8ecdd7fd681f2036b9eecdb84a3536ddc8f19d26))
+* **collab:** merge prose per character and styles per property ([3238ae0](https://github.com/jxsuite/jx/commit/3238ae0509141eb6b6970874fcdc862618cfad29))
 
 
 ### Bug Fixes
 
-* **desktop,studio,server,collab:** typecheck the desktop package, and hold the coverage gates ([4a348b1](https://github.com/jxsuite/jx/commit/4a348b131be242ac14fe8097bb5cb431a9c64155))
+* **desktop,studio,server,collab:** typecheck the desktop package, and hold the coverage gates ([f1e40e5](https://github.com/jxsuite/jx/commit/f1e40e5c813d4f7ec508859faddb4faef76e2c03))
 
 
 ### Dependencies
@@ -272,7 +272,7 @@
 
 ### Features
 
-* enforce truthful marketing claims and add the missing LICENSE ([b7e0b09](https://github.com/jxsuite/jx/commit/b7e0b095566121d79ca50894b69a476984fb93ee))
+* enforce truthful marketing claims and add the missing LICENSE ([6e235b5](https://github.com/jxsuite/jx/commit/6e235b562d8b494afa3e8509b6bb98e4c2e3d9c6))
 
 
 ### Dependencies
@@ -295,7 +295,7 @@
 
 ### Features
 
-* **studio:** spreadsheet grid editor — CSV grid tabs with batch save ([6736c02](https://github.com/jxsuite/jx/commit/6736c027d57fb438fb7aa0a9f333a41cc477e0a4))
+* **studio:** spreadsheet grid editor — CSV grid tabs with batch save ([b0bd0dc](https://github.com/jxsuite/jx/commit/b0bd0dccb72a9541c77b877154783f376cd540fa))
 
 
 ### Dependencies
@@ -308,7 +308,7 @@
 
 ### Features
 
-- **markup:** shared markup-conversion core package; sever studio/import from parser ([a075e74](https://github.com/jxsuite/jx/commit/a075e74a6c45e91b1d1c7c1a6007e2e344fbb341))
+- **markup:** shared markup-conversion core package; sever studio/import from parser ([41141a1](https://github.com/jxsuite/jx/commit/41141a15ba51aa6f58ba1dee78731f15893eaff8))
 
 ### Dependencies
 
@@ -320,14 +320,14 @@
 
 ### Bug Fixes
 
-- **collab:** add npm/versioning note to README ([427f092](https://github.com/jxsuite/jx/commit/427f09238db59453cffed54604ee22ba2c8a4533))
+- **collab:** add npm/versioning note to README ([0c764de](https://github.com/jxsuite/jx/commit/0c764dee122d025ab76ef27fbf2140542cd1f9c6))
 
 ## [0.2.0](https://github.com/jxsuite/jx/compare/collab-v0.1.0...collab-v0.2.0) (2026-07-08)
 
 ### Features
 
-- **collab:** @jxsuite/collab — Y.Doc schema, op bridge, differ, wire envelope ([0166c38](https://github.com/jxsuite/jx/commit/0166c38f05b87bb96595a30ee1cbc31781e8cc82))
-- **collab:** the wire — ws client/room core, devserver endpoint, adapter members ([d9f4b42](https://github.com/jxsuite/jx/commit/d9f4b425ac1d31cd3d7f9b2892e05321de08a09d))
-- **studio:** adopt y-monaco for source co-editing ([63c2557](https://github.com/jxsuite/jx/commit/63c2557a1adab984b09bbc3e8f164b88b8dd0c68))
-- **studio:** CollabSession — realtime co-editing behind platform.collab ([6e56521](https://github.com/jxsuite/jx/commit/6e56521e06e871057762d19936d9832bdfbe9c67))
-- **studio:** source-mode co-editing under the canonical lock ([478d148](https://github.com/jxsuite/jx/commit/478d148105a8e7545197b83626876d85e5218019))
+- **collab:** @jxsuite/collab — Y.Doc schema, op bridge, differ, wire envelope ([9389419](https://github.com/jxsuite/jx/commit/93894198d039dbb7656b611ab02842e415940fcb))
+- **collab:** the wire — ws client/room core, devserver endpoint, adapter members ([dc53b5d](https://github.com/jxsuite/jx/commit/dc53b5dcf24069ca6bc30051e330c8ccdcda0fe6))
+- **studio:** adopt y-monaco for source co-editing ([e54bd21](https://github.com/jxsuite/jx/commit/e54bd21a845541e3a318526be488ebd0e63e9e9b))
+- **studio:** CollabSession — realtime co-editing behind platform.collab ([c07b788](https://github.com/jxsuite/jx/commit/c07b78845dcc017cdfebf13481d0c7cabf6a5a71))
+- **studio:** source-mode co-editing under the canonical lock ([ff4ff55](https://github.com/jxsuite/jx/commit/ff4ff5505c033bfc55e3ff8a7841896eca918252))

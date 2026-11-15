@@ -36,7 +36,7 @@ Two sections carry the same `Request` example with the same unread field, so one
 
 > **Status: Partial.** `$prototype` dispatch ships (`resolvePrototype` in `packages/runtime/src/runtime.ts`). The example's `urlParams` field is read by nothing: the runtime's `Request` case reads only `url`, `method`, `headers`, `body`, `debounce` and `manual`, `ExternalClassDef` does not declare it, and the compiled `emitRequestFetch` (`packages/compiler/src/shared.ts`) ignores it, so a `Request` re-fetches reactively only through a `${…}` template in `url`.
 
-Re-verified against `84735a9f` on 2026-09-27.
+Re-verified against `d4cecc34` on 2026-09-27.
 
 **What exists**
 

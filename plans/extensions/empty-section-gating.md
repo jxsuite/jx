@@ -26,7 +26,7 @@ size: S
 
 > **Status: Partial.** Contribution, placement below the project's `$head` and warning on failure ship (`collectExtensionHead`, `packages/compiler/src/site/site-build.ts`). Gating does not match `emit` and `assets`: `collectExtensionHead` skips only an absent or `null` section, so an empty object still contributes where those two skip it.
 
-§8.4's gating bullet (line 361) says `emit` runs only for a non-empty section, "the same gating as section loading and server mounts"; §8.5 (line 387) and §8.6 (line 414) say their gating matches it. Verified at 1127bfbe, the census undercounted: **six** sites decide whether a section owner acts, with **five** different tests.
+§8.4's gating bullet (line 361) says `emit` runs only for a non-empty section, "the same gating as section loading and server mounts"; §8.5 (line 387) and §8.6 (line 414) say their gating matches it. Verified at 941558fd, the census undercounted: **six** sites decide whether a section owner acts, with **five** different tests.
 
 | Site                                                                                  | Test today                                   | Empty `{}`  | `null`        |
 | ------------------------------------------------------------------------------------- | -------------------------------------------- | ----------- | ------------- |

@@ -1,6 +1,6 @@
 # jx-markdown.md audit
 
-Audited against b900b326 on 2026-09-26.
+Audited against 31ae328e on 2026-09-26.
 
 ## Verified
 
@@ -24,7 +24,7 @@ Audited against b900b326 on 2026-09-26.
   - §9: reference-style links and images are dropped with their text, and GFM footnotes with their definitions; raw HTML and hard breaks are mapped but not tabulated.
   - §12.8: roundtrip mode's output does not re-parse to the document it was given for several ordinary shapes, the path Studio's save and reopen takes (packages/studio/src/files/serialize-document.ts). The API, both modes and the render-time `tagName` refusal hold (extensions/parser/src/serialize.ts, packages/compiler/src/site/site-build.ts, extensions/parser/tests/serialize-tagname-expression.test.ts).
 - The serializer writes `popover-open`, `open`, `modal` and `backdrop` style keys with their colons (`collapsePropsToAttrMap` in extensions/parser/src/serialize.ts keeps its own pseudo-class set). That form re-parses, and §7.3 describes what the transpiler reads, not what the serializer writes, so it is recorded on §12.8's marker, whose "collapsed dot-path attributes" are the §12.7 form it misses, rather than on §7.3.
-- Every divergence above was measured by running `transpileJxMarkdown`, `serializeJxMarkdown` and `buildStyleRules` on small inputs at b900b326; no test suite was run.
+- Every divergence above was measured by running `transpileJxMarkdown`, `serializeJxMarkdown` and `buildStyleRules` on small inputs at 31ae328e; no test suite was run.
 - No roadmap, status ledger or stale status cell.
 
 ## Spec-wide decisions

@@ -9,7 +9,7 @@
  * the actor of those runs is `github-actions[bot]`, and the repository's Actions policy holds every
  * run on a bot-authored head in `action_required`. `ci` therefore never reports on the head that
  * branch protection requires it on, and the PR reads BLOCKED with nothing red anywhere. Seen twice
- * on #298; measured on the head `3e6b589a`: seven runs, all `actor=github-actions[bot]`, none of
+ * on #298; measured on the head `8bb6cf5c`: seven runs, all `actor=github-actions[bot]`, none of
  * them started until a human pressed _Approve and run_ on each. There are 457 runs in that state in
  * this repository's history.
  *

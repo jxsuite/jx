@@ -37,7 +37,7 @@
       // such a file types as `error`. That is not a latent bug the rule is
       // catching — there is no annotation or rewrite that fixes it, because
       // the file has no program. The root `server.js` proved it: adding
-      // `exampleRoutes()` in 7fb3669a turned three ordinary lines into three
+      // `exampleRoutes()` in c47c4277 turned three ordinary lines into three
       // errors and reddened main. It now lives at `scripts/dev.ts`, under the
       // scripts glob below, and needs no entry of its own.
       //

@@ -1,6 +1,6 @@
 # studio.md audit
 
-Audited against b900b326 on 2026-09-26.
+Audited against 31ae328e on 2026-09-26.
 
 ## Verified
 
@@ -47,7 +47,7 @@ Paths are under `packages/studio/` unless they name another workspace.
 - §8.2.8 given a Partial marker. It was unmarked while its own prose said per-block landmarks and a keyboard-reachable action bar "are not yet implemented"; `handleBlockBarEntryKey` exists but listens on the shell document only.
 - §9.3's marker changed from Implemented to Partial, its two opening sentences unchanged, with what ships and the Surfaces table's stale Manage-view row appended. One marker, not two.
 - §13 marker kept Partial and narrowed from "the surfaces are being ported" to the residue: the Files tree's row verbs (`fileMenuRows`) and toolbar verbs (`FILE_ACTIONS`) in src/files/files.ts, the Library's per-file menu (`showLibraryContextMenu` in src/browse/library-pane.ts), the Source Control panel's `ACTIONS` in src/panels/git-panel.ts (since deleted; the residue is now `actionsFor` in src/publish/publish-workspace.ts), and `media.browse`. The git verbs are `studio-ui-guidelines.md` §12.5's open item, owned there; §13 cannot close before they are handled. The hand-registered assistant tools are not residue, because §13.5's closed writer table sanctions them.
-- §15 marker re-grounded. Its Partial rested on Editor-behaviour and Updates/About panes that the body has never specified (the first draft, 6604ede8, named them only in the status line). They are now a Future remainder, and the Partial rests on the Keyboard row, which says read-only while rebinding ships.
+- §15 marker re-grounded. Its Partial rested on Editor-behaviour and Updates/About panes that the body has never specified (the first draft, ff4269a6, named them only in the status line). They are now a Future remainder, and the Partial rests on the Keyboard row, which says read-only while rebinding ships.
 - §20 marker Partial → Implemented. Its own text ships, and it only pointed at §20.2's gap: the locale reader (packages/schema/src/locale.ts), the five verbs (`i18n.addLocale`, `i18n.createTranslation`, `i18n.openTranslation`, `i18n.showParity` in src/i18n/i18n-commands.ts, `i18n.switchLocale` in src/canvas/canvas-utils.ts), the Languages panel (src/panels/i18n-panel.ts) and the Locales section (src/settings/locales-section.ts), with packages/schema/tests/locale.test.ts, tests/i18n-panel.test.ts and tests/locales-section.test.ts.
 - §20.2 marker moved from the section's foot to directly under its heading and given its evidence paths.
 - One forward, to `spec.md` §16.8: its marker says "Studio's CEM editors ship", which holds for Parameters and Emits but not for `observedAttributes` (§6.5's Pending cell; nothing in packages/studio/src names it). Every other spec a retired row names already marks its own gap.

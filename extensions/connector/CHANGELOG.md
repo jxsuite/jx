@@ -23,8 +23,8 @@
 
 ### Bug Fixes
 
-* **security:** generic 500s, sign-out cache clearing, consistent framing, hashed speculation rules ([#624](https://github.com/jxsuite/jx/issues/624)) ([5e8c2e5](https://github.com/jxsuite/jx/commit/5e8c2e54b4b1ad837b7435e72942c2b7dbc61d49))
-* **server:** the site worker refuses cross-site calls and its answers stay out of caches ([#621](https://github.com/jxsuite/jx/issues/621)) ([7a9d405](https://github.com/jxsuite/jx/commit/7a9d405a24ff2955027f1b6ae835dd7373dbc728))
+* **security:** generic 500s, sign-out cache clearing, consistent framing, hashed speculation rules ([#624](https://github.com/jxsuite/jx/issues/624)) ([0048a69](https://github.com/jxsuite/jx/commit/0048a69ffd81b2e1adae1f0d6c88288c80623b5c))
+* **server:** the site worker refuses cross-site calls and its answers stay out of caches ([#621](https://github.com/jxsuite/jx/issues/621)) ([0a6ba0d](https://github.com/jxsuite/jx/commit/0a6ba0dd614c3f0d26b43ba37547d785398ec3c6))
 
 
 ### Dependencies
@@ -110,26 +110,26 @@
 
 ### Features
 
-* **desktop:** Mac App Store channel (mas target, sandbox entitlements, TestFlight lane) ([#475](https://github.com/jxsuite/jx/issues/475)) ([19f1264](https://github.com/jxsuite/jx/commit/19f1264b83601c97c471c15020950c980d6989bd))
+* **desktop:** Mac App Store channel (mas target, sandbox entitlements, TestFlight lane) ([#475](https://github.com/jxsuite/jx/issues/475)) ([2aab641](https://github.com/jxsuite/jx/commit/2aab641f73e817c72c2689e87c3c481ed2b266a9))
 
 ## [0.7.0](https://github.com/jxsuite/jx/compare/connector-v0.6.3...connector-v0.7.0) (2026-10-21)
 
 
 ### Features
 
-* **connector:** settings contributions name their group, intro sentence and item noun ([9d290e3](https://github.com/jxsuite/jx/commit/9d290e386c4ac38629e6d4ec15e87931e4ec2f5b))
-* **runtime:** npm specifiers resolve through a host resolver installed with setNpmModuleResolver ([9d290e3](https://github.com/jxsuite/jx/commit/9d290e386c4ac38629e6d4ec15e87931e4ec2f5b))
-* **runtime:** templates read $site and $page without a state prefix, and an instance whose render throws is reported as not rendered ([9d290e3](https://github.com/jxsuite/jx/commit/9d290e386c4ac38629e6d4ec15e87931e4ec2f5b))
-* **studio:** a Site panel, one Add new dialog, and a Page, Element and Assistant inspector replace the Library and the Document Header card ([9d290e3](https://github.com/jxsuite/jx/commit/9d290e386c4ac38629e6d4ec15e87931e4ec2f5b))
-* **studio:** five top-bar workspaces, Design, Content, Media, Styles and Publish, replace the named layouts ([9d290e3](https://github.com/jxsuite/jx/commit/9d290e386c4ac38629e6d4ec15e87931e4ec2f5b))
-* **studio:** Media, Styles and Publish workspaces, Project settings as a dialog, and a Styles panel that lists variables first ([9d290e3](https://github.com/jxsuite/jx/commit/9d290e386c4ac38629e6d4ec15e87931e4ec2f5b))
-* **studio:** the Content workspace writes collection entries on the canvas inside their template, with fields in the Inspector ([9d290e3](https://github.com/jxsuite/jx/commit/9d290e386c4ac38629e6d4ec15e87931e4ec2f5b))
+* **connector:** settings contributions name their group, intro sentence and item noun ([9839cbb](https://github.com/jxsuite/jx/commit/9839cbbd9c17118685db02e8eeb69df8744a9fe0))
+* **runtime:** npm specifiers resolve through a host resolver installed with setNpmModuleResolver ([9839cbb](https://github.com/jxsuite/jx/commit/9839cbbd9c17118685db02e8eeb69df8744a9fe0))
+* **runtime:** templates read $site and $page without a state prefix, and an instance whose render throws is reported as not rendered ([9839cbb](https://github.com/jxsuite/jx/commit/9839cbbd9c17118685db02e8eeb69df8744a9fe0))
+* **studio:** a Site panel, one Add new dialog, and a Page, Element and Assistant inspector replace the Library and the Document Header card ([9839cbb](https://github.com/jxsuite/jx/commit/9839cbbd9c17118685db02e8eeb69df8744a9fe0))
+* **studio:** five top-bar workspaces, Design, Content, Media, Styles and Publish, replace the named layouts ([9839cbb](https://github.com/jxsuite/jx/commit/9839cbbd9c17118685db02e8eeb69df8744a9fe0))
+* **studio:** Media, Styles and Publish workspaces, Project settings as a dialog, and a Styles panel that lists variables first ([9839cbb](https://github.com/jxsuite/jx/commit/9839cbbd9c17118685db02e8eeb69df8744a9fe0))
+* **studio:** the Content workspace writes collection entries on the canvas inside their template, with fields in the Inspector ([9839cbb](https://github.com/jxsuite/jx/commit/9839cbbd9c17118685db02e8eeb69df8744a9fe0))
 
 
 ### Bug Fixes
 
-* **runtime:** a disposed subtree leaves the document before its effects stop, so releasing styles no longer writes to live nodes ([9d290e3](https://github.com/jxsuite/jx/commit/9d290e386c4ac38629e6d4ec15e87931e4ec2f5b))
-* **site:** a page's own description property becomes its description meta, ahead of the page head ([9d290e3](https://github.com/jxsuite/jx/commit/9d290e386c4ac38629e6d4ec15e87931e4ec2f5b))
+* **runtime:** a disposed subtree leaves the document before its effects stop, so releasing styles no longer writes to live nodes ([9839cbb](https://github.com/jxsuite/jx/commit/9839cbbd9c17118685db02e8eeb69df8744a9fe0))
+* **site:** a page's own description property becomes its description meta, ahead of the page head ([9839cbb](https://github.com/jxsuite/jx/commit/9839cbbd9c17118685db02e8eeb69df8744a9fe0))
 
 ## [0.6.3](https://github.com/jxsuite/jx/compare/connector-v0.6.2...connector-v0.6.3) (2026-10-17)
 
@@ -154,7 +154,7 @@
 
 ### Bug Fixes
 
-* **connector:** avoid await-thenable lint failure in d1-http streaming test ([ad03370](https://github.com/jxsuite/jx/commit/ad033708775e2c1e47554032e12eb144670c2cc7))
+* **connector:** avoid await-thenable lint failure in d1-http streaming test ([16ff2ac](https://github.com/jxsuite/jx/commit/16ff2acfe41d4a575d5472e1103e311d93de1f0b))
 
 
 ### Dependencies
@@ -168,8 +168,8 @@
 
 ### Features
 
-* Studio's chrome is Jx documents over a native kit; Spectrum is removed ([a31f63e](https://github.com/jxsuite/jx/commit/a31f63e1b010e96434ee76b753f6c75a5d7ae2a5))
-* **studio:** Adobe Spectrum is removed ([e24e0e8](https://github.com/jxsuite/jx/commit/e24e0e8b8cc8ce7ad3244af3ec47d69b10859cdd))
+* Studio's chrome is Jx documents over a native kit; Spectrum is removed ([035778f](https://github.com/jxsuite/jx/commit/035778fa8bed3d45875643f9e811a066d2a933bc))
+* **studio:** Adobe Spectrum is removed ([5474e07](https://github.com/jxsuite/jx/commit/5474e0788a637089aead2c94f43b12fce0237fb1))
 
 
 ### Dependencies
@@ -219,8 +219,8 @@
 
 ### Bug Fixes
 
-* **connector:** release the SQLite file when the driver says it has ([76fc273](https://github.com/jxsuite/jx/commit/76fc273087b3699e50d584d5e863ebcf84927423))
-* the last two Windows-only test failures ([1dad5bc](https://github.com/jxsuite/jx/commit/1dad5bcb65a6e8058881d75222b9c21a8b732c9a))
+* **connector:** release the SQLite file when the driver says it has ([9d6d1aa](https://github.com/jxsuite/jx/commit/9d6d1aaaad026be3329643856052958524e58c63))
+* the last two Windows-only test failures ([eb9c587](https://github.com/jxsuite/jx/commit/eb9c587a64bc3f42095392a746bd6d4edcdf030d))
 
 ## [0.5.2](https://github.com/jxsuite/jx/compare/connector-v0.5.1...connector-v0.5.2) (2026-08-21)
 
@@ -245,7 +245,7 @@
 
 ### Features
 
-* **studio:** the Named Shell — P0–P8, the full UX redesign ([b576cbb](https://github.com/jxsuite/jx/commit/b576cbb24c7e0d8d36075f6d682e9b3b6b971166))
+* **studio:** the Named Shell — P0–P8, the full UX redesign ([c8c3452](https://github.com/jxsuite/jx/commit/c8c345213307f2383ed5c4251ca6b388c8489504))
 
 
 ### Dependencies
@@ -277,7 +277,7 @@
 
 ### Features
 
-* enforce truthful marketing claims and add the missing LICENSE ([b7e0b09](https://github.com/jxsuite/jx/commit/b7e0b095566121d79ca50894b69a476984fb93ee))
+* enforce truthful marketing claims and add the missing LICENSE ([6e235b5](https://github.com/jxsuite/jx/commit/6e235b562d8b494afa3e8509b6bb98e4c2e3d9c6))
 
 
 ### Dependencies
@@ -300,7 +300,7 @@
 
 ### Features
 
-* **studio:** spreadsheet grid editor — CSV grid tabs with batch save ([6736c02](https://github.com/jxsuite/jx/commit/6736c027d57fb438fb7aa0a9f333a41cc477e0a4))
+* **studio:** spreadsheet grid editor — CSV grid tabs with batch save ([b0bd0dc](https://github.com/jxsuite/jx/commit/b0bd0dccb72a9541c77b877154783f376cd540fa))
 
 
 ### Dependencies
@@ -313,8 +313,8 @@
 
 ### Features
 
-- **connector:** dynamic data tables extension — Kysely core, /_jx/data mount, db push ([3085ab4](https://github.com/jxsuite/jx/commit/3085ab4d29c2c0c9f0b3a3007aadbd17da1994d4))
-- **studio:** data console — connections, schema push, secrets, data grid ([ea92f95](https://github.com/jxsuite/jx/commit/ea92f955cdfce5774a0ae72f01038e00c8d310ae))
+- **connector:** dynamic data tables extension — Kysely core, /_jx/data mount, db push ([65e0d35](https://github.com/jxsuite/jx/commit/65e0d35bf99924b2cd7aa548d02e29e8441ba6ed))
+- **studio:** data console — connections, schema push, secrets, data grid ([de02861](https://github.com/jxsuite/jx/commit/de02861a03c94460f0d332ac909438decbd4fd9d))
 
 ### Dependencies
 

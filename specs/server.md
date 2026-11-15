@@ -436,15 +436,15 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 - **0.2.1** (2026-07-25) — Activation admits an existing project of the account's own (project.json under the home directory); a refused activation must surface as an error rather than fall back to the server root.
 - **0.2.0** (2026-07-25) — POST /__studio/create-project requires an explicit absolute destination parent — the server no longer falls back to its own root. Adds assertCreatableParent (root, allowedRoots, or home; absolute only), remembers created roots for a following activate, and returns an absolute root for projects outside the server root.
 - **0.1.9** (2026-07-23) — Serve extension asset mounts ahead of the project root in the static-file chain (§3).
-- **0.1.8** (2026-07-22) — Proper spec versioning (`fb0f3ec7`).
-- **0.1.7** (2026-07-22) — Fix failing tests (`56e073f8`).
-- **0.1.6** (2026-07-22) — Harden dev server and unify runtime/compiler evaluation (`47a1d4c9`).
-- **0.1.5** (2026-07-17) — Align spec.md, site-architecture, desktop, server, extensions with reality (`c61ba567`).
-- **0.1.4** (2026-06-10) — Consolidate markdown and csv handling to the parser package (`8b1ba6da`).
-- **0.1.3** (2026-04-23) — Rebrand to jxsuite (`2897a4e8`).
-- **0.1.2** (2026-04-16) — Landing site + working exports + release-it + linting (`a8409b5f`).
-- **0.1.1** (2026-04-15) — Rebrand to Jx / Jx Platform (`abc63f2d`).
-- **0.1.0** (2026-04-10) — Consolidate specs (`80ca313f`).
+- **0.1.8** (2026-07-22) — Proper spec versioning (`05c12d47`).
+- **0.1.7** (2026-07-22) — Fix failing tests (`4427c14d`).
+- **0.1.6** (2026-07-22) — Harden dev server and unify runtime/compiler evaluation (`775c393b`).
+- **0.1.5** (2026-07-17) — Align spec.md, site-architecture, desktop, server, extensions with reality (`22b8777f`).
+- **0.1.4** (2026-06-10) — Consolidate markdown and csv handling to the parser package (`66ea8c35`).
+- **0.1.3** (2026-04-23) — Rebrand to jxsuite (`39a3fffe`).
+- **0.1.2** (2026-04-16) — Landing site + working exports + release-it + linting (`b3861f9e`).
+- **0.1.1** (2026-04-15) — Rebrand to Jx / Jx Platform (`55a35cfd`).
+- **0.1.0** (2026-04-10) — Consolidate specs (`72fe8c92`).
 
 ---
 

@@ -58,7 +58,7 @@ import type {
  * measured the wrong thing. That sample was 21 rewrites across 24 `chore(screenshots)` commits, and
  * it was taken while the lane still passed `--force`: `writeIfChanged` never ran, so it recorded
  * Chromium's encoder rather than anything this constant decides. `--force` left the lane in
- * 7ce93986. The ten days after it are the first honest sample — 51 commits, 181 rewrites, every
+ * 17fcb073. The ten days after it are the first honest sample — 51 commits, 181 rewrites, every
  * delta recomputed from the committed blobs with `changedPixelRatio` at `CHANNEL_TOLERANCE`:
  *
  * | Δ              | rewrites | the shots that dominate it                |

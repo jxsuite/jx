@@ -26,7 +26,7 @@ size: M
 
 > **Status: Partial.** The three resolutions below hold, but the rule is not applied to the rest of the corpus: CommonMark (`parser.md` §10, `jx-markdown.md` §13), GFM (`parser.md` §10), Gitignore (`studio.md` §19), and JSON Feed 1.1 and Sitemaps 0.9 (`site-architecture.md` §16) are de-facto or community formats cited as rows, while `spec.md` §18 and `imports.md` §7 keep the Custom Elements Manifest in prose for having no standards body.
 
-One plan owns both because they are one decision: §2.1 says which bodies may be cited, §2.2 what falls outside them. The text lists eight bodies and excludes "a library, a framework convention, or a de-facto vendor format"; it never names the class the corpus actually cites. Disposition `reconcile`: `Other` has been in the `Org` union since the registry's first commit (879e01ad), and this spec's 0.1.4 release graduated JSON Feed 1.1 off the §11 backlog into a bound row under `Other`, so admitting that class is settled practice the text never caught up with.
+One plan owns both because they are one decision: §2.1 says which bodies may be cited, §2.2 what falls outside them. The text lists eight bodies and excludes "a library, a framework convention, or a de-facto vendor format"; it never names the class the corpus actually cites. Disposition `reconcile`: `Other` has been in the `Org` union since the registry's first commit (ca0e565a), and this spec's 0.1.4 release graduated JSON Feed 1.1 off the §11 backlog into a bound row under `Other`, so admitting that class is settled practice the text never caught up with.
 
 **What exists** (verified 2026-09-27)
 

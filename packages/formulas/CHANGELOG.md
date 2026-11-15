@@ -27,7 +27,7 @@
 
 ### Features
 
-* live-canvas foundations (tag model, formulas, runtime splice, static empty lists) ([#640](https://github.com/jxsuite/jx/issues/640)) ([2106c38](https://github.com/jxsuite/jx/commit/2106c380eb2661a7eda1a0f6d6f5b6aa8686b8a7))
+* live-canvas foundations (tag model, formulas, runtime splice, static empty lists) ([#640](https://github.com/jxsuite/jx/issues/640)) ([8c83419](https://github.com/jxsuite/jx/commit/8c83419930fb278eec9980f9dd031cee9fcbccdd))
 
 
 ### Dependencies
@@ -131,7 +131,7 @@
 
 ### Features
 
-* **desktop:** Mac App Store channel (mas target, sandbox entitlements, TestFlight lane) ([#475](https://github.com/jxsuite/jx/issues/475)) ([19f1264](https://github.com/jxsuite/jx/commit/19f1264b83601c97c471c15020950c980d6989bd))
+* **desktop:** Mac App Store channel (mas target, sandbox entitlements, TestFlight lane) ([#475](https://github.com/jxsuite/jx/issues/475)) ([2aab641](https://github.com/jxsuite/jx/commit/2aab641f73e817c72c2689e87c3c481ed2b266a9))
 
 
 ### Dependencies
@@ -145,19 +145,19 @@
 
 ### Features
 
-* **connector:** settings contributions name their group, intro sentence and item noun ([9d290e3](https://github.com/jxsuite/jx/commit/9d290e386c4ac38629e6d4ec15e87931e4ec2f5b))
-* **runtime:** npm specifiers resolve through a host resolver installed with setNpmModuleResolver ([9d290e3](https://github.com/jxsuite/jx/commit/9d290e386c4ac38629e6d4ec15e87931e4ec2f5b))
-* **runtime:** templates read $site and $page without a state prefix, and an instance whose render throws is reported as not rendered ([9d290e3](https://github.com/jxsuite/jx/commit/9d290e386c4ac38629e6d4ec15e87931e4ec2f5b))
-* **studio:** a Site panel, one Add new dialog, and a Page, Element and Assistant inspector replace the Library and the Document Header card ([9d290e3](https://github.com/jxsuite/jx/commit/9d290e386c4ac38629e6d4ec15e87931e4ec2f5b))
-* **studio:** five top-bar workspaces, Design, Content, Media, Styles and Publish, replace the named layouts ([9d290e3](https://github.com/jxsuite/jx/commit/9d290e386c4ac38629e6d4ec15e87931e4ec2f5b))
-* **studio:** Media, Styles and Publish workspaces, Project settings as a dialog, and a Styles panel that lists variables first ([9d290e3](https://github.com/jxsuite/jx/commit/9d290e386c4ac38629e6d4ec15e87931e4ec2f5b))
-* **studio:** the Content workspace writes collection entries on the canvas inside their template, with fields in the Inspector ([9d290e3](https://github.com/jxsuite/jx/commit/9d290e386c4ac38629e6d4ec15e87931e4ec2f5b))
+* **connector:** settings contributions name their group, intro sentence and item noun ([9839cbb](https://github.com/jxsuite/jx/commit/9839cbbd9c17118685db02e8eeb69df8744a9fe0))
+* **runtime:** npm specifiers resolve through a host resolver installed with setNpmModuleResolver ([9839cbb](https://github.com/jxsuite/jx/commit/9839cbbd9c17118685db02e8eeb69df8744a9fe0))
+* **runtime:** templates read $site and $page without a state prefix, and an instance whose render throws is reported as not rendered ([9839cbb](https://github.com/jxsuite/jx/commit/9839cbbd9c17118685db02e8eeb69df8744a9fe0))
+* **studio:** a Site panel, one Add new dialog, and a Page, Element and Assistant inspector replace the Library and the Document Header card ([9839cbb](https://github.com/jxsuite/jx/commit/9839cbbd9c17118685db02e8eeb69df8744a9fe0))
+* **studio:** five top-bar workspaces, Design, Content, Media, Styles and Publish, replace the named layouts ([9839cbb](https://github.com/jxsuite/jx/commit/9839cbbd9c17118685db02e8eeb69df8744a9fe0))
+* **studio:** Media, Styles and Publish workspaces, Project settings as a dialog, and a Styles panel that lists variables first ([9839cbb](https://github.com/jxsuite/jx/commit/9839cbbd9c17118685db02e8eeb69df8744a9fe0))
+* **studio:** the Content workspace writes collection entries on the canvas inside their template, with fields in the Inspector ([9839cbb](https://github.com/jxsuite/jx/commit/9839cbbd9c17118685db02e8eeb69df8744a9fe0))
 
 
 ### Bug Fixes
 
-* **runtime:** a disposed subtree leaves the document before its effects stop, so releasing styles no longer writes to live nodes ([9d290e3](https://github.com/jxsuite/jx/commit/9d290e386c4ac38629e6d4ec15e87931e4ec2f5b))
-* **site:** a page's own description property becomes its description meta, ahead of the page head ([9d290e3](https://github.com/jxsuite/jx/commit/9d290e386c4ac38629e6d4ec15e87931e4ec2f5b))
+* **runtime:** a disposed subtree leaves the document before its effects stop, so releasing styles no longer writes to live nodes ([9839cbb](https://github.com/jxsuite/jx/commit/9839cbbd9c17118685db02e8eeb69df8744a9fe0))
+* **site:** a page's own description property becomes its description meta, ahead of the page head ([9839cbb](https://github.com/jxsuite/jx/commit/9839cbbd9c17118685db02e8eeb69df8744a9fe0))
 
 
 ### Dependencies
@@ -277,7 +277,7 @@
 
 ### Bug Fixes
 
-* **tests:** make the Windows suites runnable ([1c23891](https://github.com/jxsuite/jx/commit/1c23891ec56dce22e1e900ae151a49cb1ecdbe25))
+* **tests:** make the Windows suites runnable ([b18435d](https://github.com/jxsuite/jx/commit/b18435dcf1162be38a01c5c48c4ae310be88c4d2))
 
 ## [0.0.11](https://github.com/jxsuite/jx/compare/formulas-v0.0.10...formulas-v0.0.11) (2026-08-24)
 
@@ -357,7 +357,7 @@
 
 ### Features
 
-* enforce truthful marketing claims and add the missing LICENSE ([b7e0b09](https://github.com/jxsuite/jx/commit/b7e0b095566121d79ca50894b69a476984fb93ee))
+* enforce truthful marketing claims and add the missing LICENSE ([6e235b5](https://github.com/jxsuite/jx/commit/6e235b562d8b494afa3e8509b6bb98e4c2e3d9c6))
 
 
 ### Dependencies
@@ -384,8 +384,8 @@
 
 ### Features
 
-* **formulas:** packaging, docs, and studio copy-in consumption ([f5df14f](https://github.com/jxsuite/jx/commit/f5df14f125b2fca2224cce68aa4674b3c7d9071a))
-* **runtime,schema,formulas:** pure method operators and the composite formula catalog (spec §19.4d) ([58be3b1](https://github.com/jxsuite/jx/commit/58be3b1aac98ae50b7b1be543fa765c5c83adc46))
+* **formulas:** packaging, docs, and studio copy-in consumption ([0db9c34](https://github.com/jxsuite/jx/commit/0db9c343bd256655ea29f1b56bb0a00ffd039d44))
+* **runtime,schema,formulas:** pure method operators and the composite formula catalog (spec §19.4d) ([39303e6](https://github.com/jxsuite/jx/commit/39303e6004cdeecce27dd77ee6e3c3faf34e4bc3))
 
 
 ### Dependencies

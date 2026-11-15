@@ -2903,32 +2903,32 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 - **0.1.28-draft** (2026-07-25) — The Cloud platform target composes per-project schemas server-side (§3.4).
 - **0.1.27-draft** (2026-07-25) — Source-mode schema validation contract: per-project entry documents, offline $schema-id registration, worker self-location (§4.2.1); fetchProjectSchemas in the PAL table (§3.4).
 - **0.1.26-draft** (2026-07-25) — PAL table records the destination members: createDestination, createProject's user-chosen destination, and pickDirectory.
-- **0.1.25-draft** (2026-07-22) — Proper spec versioning (`fb0f3ec7`).
-- **0.1.24-draft** (2026-07-22) — Machine-readable spec status vocabulary + generated status page (`79daba23`).
-- **0.1.23-draft** (2026-07-17) — Scheme-variant editing — token overrides, scheme-layer routing, live feedback (`49f0c525`).
-- **0.1.22-draft** (2026-07-17) — Color-scheme canvas preview — Auto/Light/Dark tab-bar control (`ccdc1d3e`).
-- **0.1.21-draft** (2026-07-17) — Consolidated field mode switcher (`0a135ed1`).
-- **0.1.20-draft** (2026-06-10) — Consolidate markdown and csv handling to the parser package (`8b1ba6da`).
-- **0.1.19-draft** (2026-05-25) — Allow nested global styles (`1159d585`).
-- **0.1.18-draft** (2026-05-20) — "format" on fields for image fields (`02f87d29`).
-- **0.1.17-draft** (2026-05-20) — Run formatter (`8ba47930`).
-- **0.1.16-draft** (2026-05-15) — Git sidebar (`79663844`).
-- **0.1.15-draft** (2026-04-23) — Include global styling (`d8d25640`).
-- **0.1.14-draft** (2026-04-23) — Site build (`ffe60ddc`).
-- **0.1.13-draft** (2026-04-23) — Compiler cli + published site (`4607ebbc`).
-- **0.1.12-draft** (2026-04-22) — Consolidate project config schema and rename as such (`e3523dbf`).
-- **0.1.11-draft** (2026-04-22) — External web component support (`a9d0fbe4`).
-- **0.1.10-draft** (2026-04-22) — Init new site (`f33d319b`).
-- **0.1.9-draft** (2026-04-20) — Text nodes support (`4d45eeb7`).
-- **0.1.8-draft** (2026-04-20) — Better project-level scoping (`0cba233c`).
-- **0.1.7-draft** (2026-04-18) — Dedicated combo/picker component for style preview (`d8d07921`).
-- **0.1.6-draft** (2026-04-18) — Fix the test path handling on windows (`26ea0d70`).
-- **0.1.5-draft** (2026-04-17) — Update studio specs (`d0e5475a`).
-- **0.1.4-draft** (2026-04-17) — Reorganize code tree (`d5ee04c4`).
-- **0.1.3-draft** (2026-04-16) — Landing site + working exports + release-it + linting (`a8409b5f`).
-- **0.1.2-draft** (2026-04-15) — Rebrand to Jx / Jx Platform (`abc63f2d`).
-- **0.1.1-draft** (2026-04-10) — Finalize vision for site architecture (`da594993`).
-- **0.1.0-draft** (2026-04-10) — Consolidate specs (`80ca313f`).
+- **0.1.25-draft** (2026-07-22) — Proper spec versioning (`05c12d47`).
+- **0.1.24-draft** (2026-07-22) — Machine-readable spec status vocabulary + generated status page (`dd415a70`).
+- **0.1.23-draft** (2026-07-17) — Scheme-variant editing — token overrides, scheme-layer routing, live feedback (`6aad3cfe`).
+- **0.1.22-draft** (2026-07-17) — Color-scheme canvas preview — Auto/Light/Dark tab-bar control (`d6376318`).
+- **0.1.21-draft** (2026-07-17) — Consolidated field mode switcher (`c309cb2f`).
+- **0.1.20-draft** (2026-06-10) — Consolidate markdown and csv handling to the parser package (`66ea8c35`).
+- **0.1.19-draft** (2026-05-25) — Allow nested global styles (`090c8666`).
+- **0.1.18-draft** (2026-05-20) — "format" on fields for image fields (`79f88431`).
+- **0.1.17-draft** (2026-05-20) — Run formatter (`bfb5b932`).
+- **0.1.16-draft** (2026-05-15) — Git sidebar (`2a1131a5`).
+- **0.1.15-draft** (2026-04-23) — Include global styling (`4737d3de`).
+- **0.1.14-draft** (2026-04-23) — Site build (`85306923`).
+- **0.1.13-draft** (2026-04-23) — Compiler cli + published site (`5dcda4b8`).
+- **0.1.12-draft** (2026-04-22) — Consolidate project config schema and rename as such (`de9d0638`).
+- **0.1.11-draft** (2026-04-22) — External web component support (`f34c6889`).
+- **0.1.10-draft** (2026-04-22) — Init new site (`f1e9c2f4`).
+- **0.1.9-draft** (2026-04-20) — Text nodes support (`06914719`).
+- **0.1.8-draft** (2026-04-20) — Better project-level scoping (`4e5bf2c2`).
+- **0.1.7-draft** (2026-04-18) — Dedicated combo/picker component for style preview (`9db51037`).
+- **0.1.6-draft** (2026-04-18) — Fix the test path handling on windows (`00f5687c`).
+- **0.1.5-draft** (2026-04-17) — Update studio specs (`21aff6ce`).
+- **0.1.4-draft** (2026-04-17) — Reorganize code tree (`158c3c03`).
+- **0.1.3-draft** (2026-04-16) — Landing site + working exports + release-it + linting (`b3861f9e`).
+- **0.1.2-draft** (2026-04-15) — Rebrand to Jx / Jx Platform (`55a35cfd`).
+- **0.1.1-draft** (2026-04-10) — Finalize vision for site architecture (`73c1bb34`).
+- **0.1.0-draft** (2026-04-10) — Consolidate specs (`72fe8c92`).
 
 ---
 

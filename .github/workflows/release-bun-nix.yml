@@ -7,7 +7,7 @@
 # on the Dependabot branch — does not work on this repository: a push made with `GITHUB_TOKEN`
 # raises no `pull_request: synchronize` event, so the new head gets NO check runs at all. That is
 # measured, not assumed: PR #131 carries a `chore(screenshots)` commit pushed by
-# `github-actions[bot]`, and `repos/jxsuite/jx/commits/8991f653…/status` still reports
+# `github-actions[bot]`, and `repos/jxsuite/jx/commits/7fadf970…/status` still reports
 # `state=pending` with zero checks. Under a required `ci` check that pull request could never have
 # merged. Making it work needs a credential that is not `GITHUB_TOKEN`.
 #

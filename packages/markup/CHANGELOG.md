@@ -108,7 +108,7 @@
 
 ### Features
 
-* **desktop:** replace Electrobun with Electron, packaged with electron-builder ([#465](https://github.com/jxsuite/jx/issues/465)) ([be1534f](https://github.com/jxsuite/jx/commit/be1534f616d7176b4a2098cd4d232808cf5c7482))
+* **desktop:** replace Electrobun with Electron, packaged with electron-builder ([#465](https://github.com/jxsuite/jx/issues/465)) ([1cd8130](https://github.com/jxsuite/jx/commit/1cd813071e3487cb6640f7f0aa92ec9295b53a9c))
 
 ## [0.4.13](https://github.com/jxsuite/jx/compare/markup-v0.4.12...markup-v0.4.13) (2026-10-17)
 
@@ -232,7 +232,7 @@
 
 ### Features
 
-* enforce truthful marketing claims and add the missing LICENSE ([b7e0b09](https://github.com/jxsuite/jx/commit/b7e0b095566121d79ca50894b69a476984fb93ee))
+* enforce truthful marketing claims and add the missing LICENSE ([6e235b5](https://github.com/jxsuite/jx/commit/6e235b562d8b494afa3e8509b6bb98e4c2e3d9c6))
 
 
 ### Dependencies
@@ -255,7 +255,7 @@
 
 ### Features
 
-* **studio:** spreadsheet grid editor — CSV grid tabs with batch save ([6736c02](https://github.com/jxsuite/jx/commit/6736c027d57fb438fb7aa0a9f333a41cc477e0a4))
+* **studio:** spreadsheet grid editor — CSV grid tabs with batch save ([b0bd0dc](https://github.com/jxsuite/jx/commit/b0bd0dccb72a9541c77b877154783f376cd540fa))
 
 
 ### Dependencies
@@ -268,8 +268,8 @@
 
 ### Features
 
-- **auth:** Better Auth extension — sessions, permissions, auth-gated data ([bf47228](https://github.com/jxsuite/jx/commit/bf472285581afbfe7b650b5d52578078359655fa))
-- **markup:** shared markup-conversion core package; sever studio/import from parser ([a075e74](https://github.com/jxsuite/jx/commit/a075e74a6c45e91b1d1c7c1a6007e2e344fbb341))
+- **auth:** Better Auth extension — sessions, permissions, auth-gated data ([32c871e](https://github.com/jxsuite/jx/commit/32c871e9fe48fdeed62e030354cc05adbf6efd19))
+- **markup:** shared markup-conversion core package; sever studio/import from parser ([41141a1](https://github.com/jxsuite/jx/commit/41141a15ba51aa6f58ba1dee78731f15893eaff8))
 
 ### Dependencies
 

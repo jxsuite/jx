@@ -4,7 +4,7 @@
  * The keyboard half is a port: a 403-line hand-authored `keydown` switch became a ~30-line
  * dispatcher over the command registry. The deliverable that makes that safe is
  * {@link file://./shortcuts.test.ts "the old dispatch, chord by chord"} below — every chord the
- * pre-port file handled (transcribed from `editor/shortcuts.ts` at commit e0c80e76: twelve modifier
+ * pre-port file handled (transcribed from `editor/shortcuts.ts` at commit 9872ba5c: twelve modifier
  * chords, seven bare keys, three blanket guards, two canvas-mode refusal sets) asserted against the
  * new path, plus an explicit, named list of the places the two deliberately disagree.
  *
@@ -788,7 +788,7 @@ test("window resize outside edit mode leaves the canvas untouched", () => {
 // The old dispatch, chord by chord
 // ═════════════════════════════════════════════════════════════════════════════
 //
-// Transcribed from `editor/shortcuts.ts` at e0c80e76 — the last commit before the port. Each case
+// Transcribed from `editor/shortcuts.ts` at 9872ba5c — the last commit before the port. Each case
 // Names the branch it came from. Everything here must behave identically after the rewrite; the
 // Deliberate exceptions live in their own block at the bottom of this file and nowhere else.
 

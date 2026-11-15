@@ -822,15 +822,15 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 - **0.3.0-draft** (2026-07-25) — Committed entry documents are single-resource: every $ref a root pointer (§5.2, §5.4).
 - **0.2.9-draft** (2026-07-24) — §2 package layout: correct the auth package description, note that /_jx/auth serves the Better Auth routes while table permission rules are enforced at /_jx/data, and add the missing search extension to the tree.
 - **0.2.8-draft** (2026-07-23) — Add the assets capability (§8.5): section owners publish source directories at site URLs.
-- **0.2.7-draft** (2026-07-22) — Proper spec versioning (`fb0f3ec7`).
-- **0.2.6-draft** (2026-07-22) — Machine-readable spec status vocabulary + generated status page (`79daba23`).
-- **0.2.5-draft** (2026-07-22) — Align specs and docs with the bundled-schema validation contract (`ae861ff6`).
-- **0.2.4-draft** (2026-07-17) — Sidecar bundling, extension emit capability, heading anchors (`07e28bc3`).
-- **0.2.3-draft** (2026-07-17) — Align spec.md, site-architecture, desktop, server, extensions with reality (`c61ba567`).
-- **0.2.2-draft** (2026-07-11) — Better Auth extension — sessions, permissions, auth-gated data (`bf472285`).
-- **0.2.1-draft** (2026-07-08) — Shipped schema fragments + per-project schema emitters (`9e4a8936`).
-- **0.2.0-draft** (2026-07-08) — Extensions v2 framework + docs (`3fb8795f`).
-- **0.1.0-draft** (2026-06-10) — Consolidate markdown and csv handling to the parser package (`8b1ba6da`).
+- **0.2.7-draft** (2026-07-22) — Proper spec versioning (`05c12d47`).
+- **0.2.6-draft** (2026-07-22) — Machine-readable spec status vocabulary + generated status page (`dd415a70`).
+- **0.2.5-draft** (2026-07-22) — Align specs and docs with the bundled-schema validation contract (`53ead006`).
+- **0.2.4-draft** (2026-07-17) — Sidecar bundling, extension emit capability, heading anchors (`a3603333`).
+- **0.2.3-draft** (2026-07-17) — Align spec.md, site-architecture, desktop, server, extensions with reality (`22b8777f`).
+- **0.2.2-draft** (2026-07-11) — Better Auth extension — sessions, permissions, auth-gated data (`32c871e9`).
+- **0.2.1-draft** (2026-07-08) — Shipped schema fragments + per-project schema emitters (`2d9d790d`).
+- **0.2.0-draft** (2026-07-08) — Extensions v2 framework + docs (`9662bbf0`).
+- **0.1.0-draft** (2026-06-10) — Consolidate markdown and csv handling to the parser package (`66ea8c35`).
 
 ---
 

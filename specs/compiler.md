@@ -1019,28 +1019,28 @@ An earlier revision of this table claimed ~7 kB and ~3 kB (~10 kB total); those 
 - **0.1.24-draft** (2026-07-30) — Element modules: $export aliasing, Request auto-fetch on connect with effect teardown, $map bound in map callbacks, tagName-based output naming; prerender leaves runtime-only reads unresolved (§4.1, §4.7, §8.1).
 - **0.1.23-draft** (2026-07-24) — §1 Overview: condition the generated Hono worker on build.adapter (per-page _server.js without one) and scope the static-build failure to active data/auth mounts; §6.3 document compileSiteServer's mounts/connectors parameters and extension mount emission.
 - **0.1.22-draft** (2026-07-23) — Image src resolution consults extension asset mounts before public/ (§7.3).
-- **0.1.21-draft** (2026-07-22) — Proper spec versioning (`fb0f3ec7`).
-- **0.1.20-draft** (2026-07-22) — Machine-readable spec status vocabulary + generated status page (`79daba23`).
-- **0.1.19-draft** (2026-07-17) — Forced color-scheme contract — dual emission, color-scheme triplet, pre-paint script (`e629684d`).
-- **0.1.18-draft** (2026-07-17) — Bundle the site worker self-contained per adapter (`4096ba12`).
-- **0.1.17-draft** (2026-07-17) — Sidecar bundling, extension emit capability, heading anchors (`07e28bc3`).
-- **0.1.16-draft** (2026-07-17) — Image pruning for persistent site build cache + github ci cache (`b45096ed`).
-- **0.1.15-draft** (2026-06-10) — Update site architecture to reflect new changes (`c0bdba08`).
-- **0.1.14-draft** (2026-06-10) — Consolidate markdown and csv handling to the parser package (`8b1ba6da`).
-- **0.1.13-draft** (2026-06-03) — Use `.cache` isntead of `.jx-cache` to support cloudflare build cache (`1103d2d6`).
-- **0.1.12-draft** (2026-06-01) — Stronger typing (`fcbb5b5d`).
-- **0.1.11-draft** (2026-06-01) — Convert to typescript (`e352e265`).
-- **0.1.10-draft** (2026-05-20) — Run formatter (`8ba47930`).
-- **0.1.9-draft** (2026-05-18) — Always emit worker.js for cloudflare (`3dd37c2d`).
-- **0.1.8-draft** (2026-05-15) — Image optimization specs (`7d2ee67f`).
-- **0.1.7-draft** (2026-05-15) — Provider-sepcific Site-Wide Bundling (`51cb5cf6`).
-- **0.1.6-draft** (2026-04-23) — Rebrand to jxsuite (`2897a4e8`).
-- **0.1.5-draft** (2026-04-22) — Consolidate project config schema and rename as such (`e3523dbf`).
-- **0.1.4-draft** (2026-04-20) — Text nodes support (`4d45eeb7`).
-- **0.1.3-draft** (2026-04-16) — Landing site + working exports + release-it + linting (`a8409b5f`).
-- **0.1.2-draft** (2026-04-15) — Rebrand to Jx / Jx Platform (`abc63f2d`).
-- **0.1.1-draft** (2026-04-10) — Finalize vision for site architecture (`da594993`).
-- **0.1.0-draft** (2026-04-10) — Consolidate specs (`80ca313f`).
+- **0.1.21-draft** (2026-07-22) — Proper spec versioning (`05c12d47`).
+- **0.1.20-draft** (2026-07-22) — Machine-readable spec status vocabulary + generated status page (`dd415a70`).
+- **0.1.19-draft** (2026-07-17) — Forced color-scheme contract — dual emission, color-scheme triplet, pre-paint script (`3f7a0469`).
+- **0.1.18-draft** (2026-07-17) — Bundle the site worker self-contained per adapter (`da0e3d3b`).
+- **0.1.17-draft** (2026-07-17) — Sidecar bundling, extension emit capability, heading anchors (`a3603333`).
+- **0.1.16-draft** (2026-07-17) — Image pruning for persistent site build cache + github ci cache (`5c995a8a`).
+- **0.1.15-draft** (2026-06-10) — Update site architecture to reflect new changes (`93e9b23a`).
+- **0.1.14-draft** (2026-06-10) — Consolidate markdown and csv handling to the parser package (`66ea8c35`).
+- **0.1.13-draft** (2026-06-03) — Use `.cache` isntead of `.jx-cache` to support cloudflare build cache (`1dd47fcf`).
+- **0.1.12-draft** (2026-06-01) — Stronger typing (`c56dfa06`).
+- **0.1.11-draft** (2026-06-01) — Convert to typescript (`b8b7bff1`).
+- **0.1.10-draft** (2026-05-20) — Run formatter (`bfb5b932`).
+- **0.1.9-draft** (2026-05-18) — Always emit worker.js for cloudflare (`5a69fd32`).
+- **0.1.8-draft** (2026-05-15) — Image optimization specs (`a87bba27`).
+- **0.1.7-draft** (2026-05-15) — Provider-sepcific Site-Wide Bundling (`aa27e139`).
+- **0.1.6-draft** (2026-04-23) — Rebrand to jxsuite (`39a3fffe`).
+- **0.1.5-draft** (2026-04-22) — Consolidate project config schema and rename as such (`de9d0638`).
+- **0.1.4-draft** (2026-04-20) — Text nodes support (`06914719`).
+- **0.1.3-draft** (2026-04-16) — Landing site + working exports + release-it + linting (`b3861f9e`).
+- **0.1.2-draft** (2026-04-15) — Rebrand to Jx / Jx Platform (`55a35cfd`).
+- **0.1.1-draft** (2026-04-10) — Finalize vision for site architecture (`73c1bb34`).
+- **0.1.0-draft** (2026-04-10) — Consolidate specs (`72fe8c92`).
 
 ---
 

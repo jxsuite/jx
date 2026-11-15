@@ -75,7 +75,7 @@
 
 ### Features
 
-* **ai:** give a turn room to work, and a closing round to reply ([#545](https://github.com/jxsuite/jx/issues/545)) ([a839c1c](https://github.com/jxsuite/jx/commit/a839c1ccbf8494db1a84255df7452b026eb81d70))
+* **ai:** give a turn room to work, and a closing round to reply ([#545](https://github.com/jxsuite/jx/issues/545)) ([59b1c95](https://github.com/jxsuite/jx/commit/59b1c95ed2d7999c2b46d6b70aa78ff47387b826))
 
 
 ### Dependencies
@@ -100,7 +100,7 @@
 
 ### Features
 
-* **ai:** support anthropic messages api ([#526](https://github.com/jxsuite/jx/issues/526)) ([0c38ef7](https://github.com/jxsuite/jx/commit/0c38ef79d6bc52c36f1fc5d85722ea16cc6986c0))
+* **ai:** support anthropic messages api ([#526](https://github.com/jxsuite/jx/issues/526)) ([d6eefc3](https://github.com/jxsuite/jx/commit/d6eefc364a7e2097f08336c54298f5d8d85fb3d6))
 
 
 ### Dependencies
@@ -133,10 +133,10 @@
 
 ### Features
 
-* **ai:** interactions and approvals run before the tool body ([#502](https://github.com/jxsuite/jx/issues/502)) ([74e5ae7](https://github.com/jxsuite/jx/commit/74e5ae761606d3b0c06b02e978744943a05fb339))
-* **ai:** the assistant's tools are one catalog in @jxsuite/ai/catalog ([#499](https://github.com/jxsuite/jx/issues/499)) ([365216b](https://github.com/jxsuite/jx/commit/365216bdd7c9d4acaee583792e0cc915a765f165))
-* **ai:** the tree tools are portable producers in @jxsuite/ai/jx-tools ([#493](https://github.com/jxsuite/jx/issues/493)) ([5d15022](https://github.com/jxsuite/jx/commit/5d150224721e61a399b50261daa05b47576126f0))
-* **studio:** per-actor batch lanes replace the global undo batch ([#489](https://github.com/jxsuite/jx/issues/489)) ([e4fd565](https://github.com/jxsuite/jx/commit/e4fd565f75da38cd6fb4ec276f6b36cce26a94b1))
+* **ai:** interactions and approvals run before the tool body ([#502](https://github.com/jxsuite/jx/issues/502)) ([0b14ea4](https://github.com/jxsuite/jx/commit/0b14ea4ea8df16a1c34b7437328d69866b0abd8d))
+* **ai:** the assistant's tools are one catalog in @jxsuite/ai/catalog ([#499](https://github.com/jxsuite/jx/issues/499)) ([a63f9bb](https://github.com/jxsuite/jx/commit/a63f9bb8228e7ba28e0737106a5fb4c61d58f092))
+* **ai:** the tree tools are portable producers in @jxsuite/ai/jx-tools ([#493](https://github.com/jxsuite/jx/issues/493)) ([40e7c27](https://github.com/jxsuite/jx/commit/40e7c27a1abedab5a22f20ade9d1e1e03297e984))
+* **studio:** per-actor batch lanes replace the global undo batch ([#489](https://github.com/jxsuite/jx/issues/489)) ([32b1f25](https://github.com/jxsuite/jx/commit/32b1f2589e5981171c85db1319d477f6304060d2))
 
 
 ### Dependencies
@@ -151,7 +151,7 @@
 
 ### Features
 
-* **desktop:** Mac App Store channel (mas target, sandbox entitlements, TestFlight lane) ([#475](https://github.com/jxsuite/jx/issues/475)) ([19f1264](https://github.com/jxsuite/jx/commit/19f1264b83601c97c471c15020950c980d6989bd))
+* **desktop:** Mac App Store channel (mas target, sandbox entitlements, TestFlight lane) ([#475](https://github.com/jxsuite/jx/issues/475)) ([2aab641](https://github.com/jxsuite/jx/commit/2aab641f73e817c72c2689e87c3c481ed2b266a9))
 
 ## [0.39.5](https://github.com/jxsuite/jx/compare/ai-v0.39.4...ai-v0.39.5) (2026-10-21)
 
@@ -185,8 +185,8 @@
 
 ### Bug Fixes
 
-* **ai:** repair tool-call pairs per request, in @jxsuite/ai/messages ([d0c8020](https://github.com/jxsuite/jx/commit/d0c80200868d23fc1b13ca0c9492320e1dd6b522))
-* **ai:** repair tool-call pairs per request, in @jxsuite/ai/messages ([4c04653](https://github.com/jxsuite/jx/commit/4c04653a3fb793488e9db10dc368934bb79cf8e4))
+* **ai:** repair tool-call pairs per request, in @jxsuite/ai/messages ([ac8a809](https://github.com/jxsuite/jx/commit/ac8a80973a8d146bef596a8a2015808177505a14))
+* **ai:** repair tool-call pairs per request, in @jxsuite/ai/messages ([518d4a8](https://github.com/jxsuite/jx/commit/518d4a8b09930d487af0e390e2b2704b9f76cdec))
 
 ## [0.39.1](https://github.com/jxsuite/jx/compare/ai-v0.39.0...ai-v0.39.1) (2026-10-03)
 
@@ -202,8 +202,8 @@
 
 ### Features
 
-* **ai:** prompt-cache hints, keyed per chat session ([b226e7e](https://github.com/jxsuite/jx/commit/b226e7e6fc28e6bd172fe1745dc1fac854c06c8d))
-* **ai:** prompt-cache hints, keyed per chat session ([767bcc2](https://github.com/jxsuite/jx/commit/767bcc29193bb956fd9210b84977c3e92d936acc))
+* **ai:** prompt-cache hints, keyed per chat session ([50e119c](https://github.com/jxsuite/jx/commit/50e119c841fe7929c9e15da7923e987e47cbbcf4))
+* **ai:** prompt-cache hints, keyed per chat session ([9f2ac83](https://github.com/jxsuite/jx/commit/9f2ac83a265b48caceb78b2f3d4a6555c728c374))
 
 
 ### Dependencies
@@ -217,24 +217,24 @@
 
 ### Features
 
-* **ai:** the gateway, one implementation of the chat and models routes ([cbf5728](https://github.com/jxsuite/jx/commit/cbf5728d2f81e8f36a42a1e94cac6a6b0944e3a8))
-* **ai:** the gateway, one implementation of the chat and models routes ([404923f](https://github.com/jxsuite/jx/commit/404923f303ee6869469b5310560f37c6bcfe1f20))
+* **ai:** the gateway, one implementation of the chat and models routes ([f2b3d41](https://github.com/jxsuite/jx/commit/f2b3d415ec7d2862c06a23f75311fe187c3ecfbe))
+* **ai:** the gateway, one implementation of the chat and models routes ([542853e](https://github.com/jxsuite/jx/commit/542853e9478d5c67e5530e20ad551fc766d4edfb))
 
 
 ### Bug Fixes
 
-* **ai:** run streamed tool calls on any finish but not after Stop, and forward usage ([1513100](https://github.com/jxsuite/jx/commit/1513100f789ab88ea25dfcf69f44ba76dcdb2e75))
-* Jx harness phase 0 — gate the desktop AI proxy, fix stop and usage handling in the agent loop ([8d364ea](https://github.com/jxsuite/jx/commit/8d364eac66bea8302f0dcac03f8f72587e49d8c6))
-* **studio:** a live chip shows how its call ended; a stopped or failed turn leaves an honest record ([f064bc5](https://github.com/jxsuite/jx/commit/f064bc5e07d70d0429d62ba69ec3826ccf228e20))
-* **studio:** a live chip shows how its call ended; a stopped or failed turn leaves an honest record ([6a70470](https://github.com/jxsuite/jx/commit/6a704701bf1fefa4666e3fe1c1b23d4c9115ac5d))
-* **studio:** a reopened chat shows how each tool call ended and keeps an open question ([0488ee1](https://github.com/jxsuite/jx/commit/0488ee10a5c4d689ea3850424dcdabe2311b2a19))
-* **studio:** a reopened chat shows how each tool call ended and keeps an open question ([879b7fe](https://github.com/jxsuite/jx/commit/879b7fe793e457380399a064040c427b64859200))
-* **studio:** a turn reports what it applied, and a turn that drew nothing says so ([2d063c5](https://github.com/jxsuite/jx/commit/2d063c5a2fa7226715aa061412c46a033951c970))
-* **studio:** a turn reports what it applied, and a turn that drew nothing says so ([60a84f4](https://github.com/jxsuite/jx/commit/60a84f4f5e5ccfdf63b2a550ed11a147e6d9d40f))
-* **studio:** one turn per window, and Stop stays on offer for all of it ([81c7824](https://github.com/jxsuite/jx/commit/81c78242a58d247d5b1ecf697122160ee7600e6a))
-* **studio:** one turn per window, and Stop stays on offer for all of it ([076b9c7](https://github.com/jxsuite/jx/commit/076b9c7de6411be8af206aa48b321d4d2fec8a00))
-* **studio:** Stop is armed before the send path's first wait ([d9a8059](https://github.com/jxsuite/jx/commit/d9a805929d4efc91a8ab6918dc3784fcf367a9c4))
-* **studio:** Stop is armed before the send path's first wait ([297f75e](https://github.com/jxsuite/jx/commit/297f75ecb2ec7bed6622a7e298a160a24863bdc0))
+* **ai:** run streamed tool calls on any finish but not after Stop, and forward usage ([2dfb312](https://github.com/jxsuite/jx/commit/2dfb312a7190c978c11447b4aad063096da24467))
+* Jx harness phase 0 — gate the desktop AI proxy, fix stop and usage handling in the agent loop ([6269c5e](https://github.com/jxsuite/jx/commit/6269c5e5708fe4cdb1691c72d52bce7ac5542ddb))
+* **studio:** a live chip shows how its call ended; a stopped or failed turn leaves an honest record ([f9fba4f](https://github.com/jxsuite/jx/commit/f9fba4f991d09a7b28026baa68c7c20a16394655))
+* **studio:** a live chip shows how its call ended; a stopped or failed turn leaves an honest record ([c73b161](https://github.com/jxsuite/jx/commit/c73b1616f09e0031df5bddf67aa00f1e6c435ddc))
+* **studio:** a reopened chat shows how each tool call ended and keeps an open question ([4ba9e30](https://github.com/jxsuite/jx/commit/4ba9e30967849112892d4af3744f8231d3b54a95))
+* **studio:** a reopened chat shows how each tool call ended and keeps an open question ([5936082](https://github.com/jxsuite/jx/commit/5936082f9519f486814e78a1d96ce4e2eb6bbdc1))
+* **studio:** a turn reports what it applied, and a turn that drew nothing says so ([311d58b](https://github.com/jxsuite/jx/commit/311d58b7547e3bc3a45243733e7c76879aaf5134))
+* **studio:** a turn reports what it applied, and a turn that drew nothing says so ([f6bda72](https://github.com/jxsuite/jx/commit/f6bda72f9af177fe74913dce644127c28e834ad9))
+* **studio:** one turn per window, and Stop stays on offer for all of it ([e426bd3](https://github.com/jxsuite/jx/commit/e426bd3a72ab81a9eaa5a24e5434a02e37f4e930))
+* **studio:** one turn per window, and Stop stays on offer for all of it ([104f296](https://github.com/jxsuite/jx/commit/104f2963547d03dde1fe8ca676a148b8dae9df4c))
+* **studio:** Stop is armed before the send path's first wait ([b0144cc](https://github.com/jxsuite/jx/commit/b0144cc20011a5c5bc777671adfbd90505c9c205))
+* **studio:** Stop is armed before the send path's first wait ([be3d363](https://github.com/jxsuite/jx/commit/be3d36325c065218b2e155b7141c67543c842b12))
 
 
 ### Dependencies
@@ -248,8 +248,8 @@
 
 ### Bug Fixes
 
-* **ai:** parse Cloudflare's array-shaped error envelope for BYOK providers ([f703244](https://github.com/jxsuite/jx/commit/f7032448034eb17f752574d3a3916b34c332d324))
-* **ai:** parse Cloudflare's array-shaped error envelope for BYOK providers ([65add04](https://github.com/jxsuite/jx/commit/65add043b8a73b956f726a2d1852205bb0f75c57))
+* **ai:** parse Cloudflare's array-shaped error envelope for BYOK providers ([e8158b6](https://github.com/jxsuite/jx/commit/e8158b680ec5dbbb016de784010768ca360cdd8a))
+* **ai:** parse Cloudflare's array-shaped error envelope for BYOK providers ([172f061](https://github.com/jxsuite/jx/commit/172f06194f500312b4b8792839aa999ec9bc67b0))
 
 
 ### Dependencies
@@ -263,8 +263,8 @@
 
 ### Bug Fixes
 
-* **ai:** stop sending an empty assistant turn, and replay a model's reasoning ([9b0d735](https://github.com/jxsuite/jx/commit/9b0d7353897444825087cace1b4489bc6965e9fb))
-* **ai:** stop sending an empty assistant turn, and replay a model's reasoning ([d0b7fe1](https://github.com/jxsuite/jx/commit/d0b7fe19e0b40660f4ecb69e585df2682b05a129))
+* **ai:** stop sending an empty assistant turn, and replay a model's reasoning ([1aaa1d3](https://github.com/jxsuite/jx/commit/1aaa1d371862ed0f2d26fe9588ab3dd0d0fea838))
+* **ai:** stop sending an empty assistant turn, and replay a model's reasoning ([01cc65d](https://github.com/jxsuite/jx/commit/01cc65d2cfe7b7e0f34cd1fcf0ec96a32f53677a))
 
 
 ### Dependencies
@@ -278,12 +278,12 @@
 
 ### Features
 
-* **studio,ai:** the assistant uses the backend's per-model capabilities ([4f7a9dd](https://github.com/jxsuite/jx/commit/4f7a9ddab4ca039a0dea83741dd39bc8345b87ea))
+* **studio,ai:** the assistant uses the backend's per-model capabilities ([24c7fcd](https://github.com/jxsuite/jx/commit/24c7fcd34eaf765d3905a0faa7676a8de0b9b0a9))
 
 
 ### Bug Fixes
 
-* **studio:** a lapsed Cloudflare grant no longer ends the connect flow before it starts ([83102d2](https://github.com/jxsuite/jx/commit/83102d2eaf64752895efe8118afacc605eaa2aff))
+* **studio:** a lapsed Cloudflare grant no longer ends the connect flow before it starts ([3b0da9b](https://github.com/jxsuite/jx/commit/3b0da9bac30cf5b56cb86a871496df42a0a153aa))
 
 
 ### Dependencies
@@ -342,12 +342,12 @@
 
 ### Features
 
-* **ai:** export the StreamEvent union, its members, and the factory option types ([9e0f4b3](https://github.com/jxsuite/jx/commit/9e0f4b3f41f3d63887b468263ff5d33640090024))
+* **ai:** export the StreamEvent union, its members, and the factory option types ([9e163d3](https://github.com/jxsuite/jx/commit/9e163d3dd717133cd6b596c55b65f24250909e35))
 
 
 ### Bug Fixes
 
-* defects surfaced by fact-checking the new package READMEs ([c4a614d](https://github.com/jxsuite/jx/commit/c4a614dae5e199d49384f998a0b937354f9de882))
+* defects surfaced by fact-checking the new package READMEs ([1d3a125](https://github.com/jxsuite/jx/commit/1d3a125051350ee10de2906f6dede52509c8bbe3))
 
 
 ### Dependencies
@@ -361,8 +361,8 @@
 
 ### Features
 
-* **protocol:** one failure shape — RFC 9457 problem details ([2ab94b1](https://github.com/jxsuite/jx/commit/2ab94b189e1c1265f90713e36b8cb8030f9afd40))
-* **studio:** the Named Shell — P0–P8, the full UX redesign ([b576cbb](https://github.com/jxsuite/jx/commit/b576cbb24c7e0d8d36075f6d682e9b3b6b971166))
+* **protocol:** one failure shape — RFC 9457 problem details ([e2598da](https://github.com/jxsuite/jx/commit/e2598dab57d672d3c0f805d1d5789ad955c9df2f))
+* **studio:** the Named Shell — P0–P8, the full UX redesign ([c8c3452](https://github.com/jxsuite/jx/commit/c8c345213307f2383ed5c4251ca6b388c8489504))
 
 
 ### Dependencies
@@ -376,4 +376,4 @@
 
 ### Features
 
-* enforce truthful marketing claims and add the missing LICENSE ([b7e0b09](https://github.com/jxsuite/jx/commit/b7e0b095566121d79ca50894b69a476984fb93ee))
+* enforce truthful marketing claims and add the missing LICENSE ([6e235b5](https://github.com/jxsuite/jx/commit/6e235b562d8b494afa3e8509b6bb98e4c2e3d9c6))

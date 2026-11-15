@@ -142,8 +142,8 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 - **0.2.2-draft** (2026-08-05) — §4 project.json is excluded from replication, and why.
 - **0.2.1-draft** (2026-08-04) — §4 the four session states, with failed distinguished from detached; freeze and read-only made visible; undo scoping stated in the UI.
 - **0.2.0-draft** (2026-07-28) — Store prose as Y.Text and style/attributes/$props as nested Y.Maps so concurrent edits merge per character and per property; the op bridge diffs whole-value ops onto that structure.
-- **0.1.1-draft** (2026-07-22) — Proper spec versioning (`fb0f3ec7`).
-- **0.1.0-draft** (2026-07-22) — Reconcile spec with shipped behavior; document the eval surface (`c8d1d580`).
+- **0.1.1-draft** (2026-07-22) — Proper spec versioning (`05c12d47`).
+- **0.1.0-draft** (2026-07-22) — Reconcile spec with shipped behavior; document the eval surface (`7a581de7`).
 
 ---
 

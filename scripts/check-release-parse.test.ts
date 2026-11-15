@@ -197,7 +197,7 @@ describe("composeSquashMessage (GitHub's default squash format)", () => {
       title: TITLE,
       titleSetting: "COMMIT_OR_PR_TITLE",
     });
-    // The real one is the commit 9d290e38; release-please logged the same error against it.
+    // The real one is the commit 9839cbbd; release-please logged the same error against it.
     expect(message.split("\n")[0]).toBe(`${TITLE} (#466)`);
     const failures = findParseFailures("squash", message);
     expect(failures).toHaveLength(1);

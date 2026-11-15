@@ -25,7 +25,7 @@
 
 ### Bug Fixes
 
-* **security:** generic 500s, sign-out cache clearing, consistent framing, hashed speculation rules ([#624](https://github.com/jxsuite/jx/issues/624)) ([5e8c2e5](https://github.com/jxsuite/jx/commit/5e8c2e54b4b1ad837b7435e72942c2b7dbc61d49))
+* **security:** generic 500s, sign-out cache clearing, consistent framing, hashed speculation rules ([#624](https://github.com/jxsuite/jx/issues/624)) ([0048a69](https://github.com/jxsuite/jx/commit/0048a69ffd81b2e1adae1f0d6c88288c80623b5c))
 
 
 ### Dependencies
@@ -120,7 +120,7 @@
 
 ### Features
 
-* **desktop:** Mac App Store channel (mas target, sandbox entitlements, TestFlight lane) ([#475](https://github.com/jxsuite/jx/issues/475)) ([19f1264](https://github.com/jxsuite/jx/commit/19f1264b83601c97c471c15020950c980d6989bd))
+* **desktop:** Mac App Store channel (mas target, sandbox entitlements, TestFlight lane) ([#475](https://github.com/jxsuite/jx/issues/475)) ([2aab641](https://github.com/jxsuite/jx/commit/2aab641f73e817c72c2689e87c3c481ed2b266a9))
 
 
 ### Dependencies
@@ -134,19 +134,19 @@
 
 ### Features
 
-* **connector:** settings contributions name their group, intro sentence and item noun ([9d290e3](https://github.com/jxsuite/jx/commit/9d290e386c4ac38629e6d4ec15e87931e4ec2f5b))
-* **runtime:** npm specifiers resolve through a host resolver installed with setNpmModuleResolver ([9d290e3](https://github.com/jxsuite/jx/commit/9d290e386c4ac38629e6d4ec15e87931e4ec2f5b))
-* **runtime:** templates read $site and $page without a state prefix, and an instance whose render throws is reported as not rendered ([9d290e3](https://github.com/jxsuite/jx/commit/9d290e386c4ac38629e6d4ec15e87931e4ec2f5b))
-* **studio:** a Site panel, one Add new dialog, and a Page, Element and Assistant inspector replace the Library and the Document Header card ([9d290e3](https://github.com/jxsuite/jx/commit/9d290e386c4ac38629e6d4ec15e87931e4ec2f5b))
-* **studio:** five top-bar workspaces, Design, Content, Media, Styles and Publish, replace the named layouts ([9d290e3](https://github.com/jxsuite/jx/commit/9d290e386c4ac38629e6d4ec15e87931e4ec2f5b))
-* **studio:** Media, Styles and Publish workspaces, Project settings as a dialog, and a Styles panel that lists variables first ([9d290e3](https://github.com/jxsuite/jx/commit/9d290e386c4ac38629e6d4ec15e87931e4ec2f5b))
-* **studio:** the Content workspace writes collection entries on the canvas inside their template, with fields in the Inspector ([9d290e3](https://github.com/jxsuite/jx/commit/9d290e386c4ac38629e6d4ec15e87931e4ec2f5b))
+* **connector:** settings contributions name their group, intro sentence and item noun ([9839cbb](https://github.com/jxsuite/jx/commit/9839cbbd9c17118685db02e8eeb69df8744a9fe0))
+* **runtime:** npm specifiers resolve through a host resolver installed with setNpmModuleResolver ([9839cbb](https://github.com/jxsuite/jx/commit/9839cbbd9c17118685db02e8eeb69df8744a9fe0))
+* **runtime:** templates read $site and $page without a state prefix, and an instance whose render throws is reported as not rendered ([9839cbb](https://github.com/jxsuite/jx/commit/9839cbbd9c17118685db02e8eeb69df8744a9fe0))
+* **studio:** a Site panel, one Add new dialog, and a Page, Element and Assistant inspector replace the Library and the Document Header card ([9839cbb](https://github.com/jxsuite/jx/commit/9839cbbd9c17118685db02e8eeb69df8744a9fe0))
+* **studio:** five top-bar workspaces, Design, Content, Media, Styles and Publish, replace the named layouts ([9839cbb](https://github.com/jxsuite/jx/commit/9839cbbd9c17118685db02e8eeb69df8744a9fe0))
+* **studio:** Media, Styles and Publish workspaces, Project settings as a dialog, and a Styles panel that lists variables first ([9839cbb](https://github.com/jxsuite/jx/commit/9839cbbd9c17118685db02e8eeb69df8744a9fe0))
+* **studio:** the Content workspace writes collection entries on the canvas inside their template, with fields in the Inspector ([9839cbb](https://github.com/jxsuite/jx/commit/9839cbbd9c17118685db02e8eeb69df8744a9fe0))
 
 
 ### Bug Fixes
 
-* **runtime:** a disposed subtree leaves the document before its effects stop, so releasing styles no longer writes to live nodes ([9d290e3](https://github.com/jxsuite/jx/commit/9d290e386c4ac38629e6d4ec15e87931e4ec2f5b))
-* **site:** a page's own description property becomes its description meta, ahead of the page head ([9d290e3](https://github.com/jxsuite/jx/commit/9d290e386c4ac38629e6d4ec15e87931e4ec2f5b))
+* **runtime:** a disposed subtree leaves the document before its effects stop, so releasing styles no longer writes to live nodes ([9839cbb](https://github.com/jxsuite/jx/commit/9839cbbd9c17118685db02e8eeb69df8744a9fe0))
+* **site:** a page's own description property becomes its description meta, ahead of the page head ([9839cbb](https://github.com/jxsuite/jx/commit/9839cbbd9c17118685db02e8eeb69df8744a9fe0))
 
 
 ### Dependencies
@@ -190,8 +190,8 @@
 
 ### Features
 
-* Studio's chrome is Jx documents over a native kit; Spectrum is removed ([a31f63e](https://github.com/jxsuite/jx/commit/a31f63e1b010e96434ee76b753f6c75a5d7ae2a5))
-* **studio:** Adobe Spectrum is removed ([e24e0e8](https://github.com/jxsuite/jx/commit/e24e0e8b8cc8ce7ad3244af3ec47d69b10859cdd))
+* Studio's chrome is Jx documents over a native kit; Spectrum is removed ([035778f](https://github.com/jxsuite/jx/commit/035778fa8bed3d45875643f9e811a066d2a933bc))
+* **studio:** Adobe Spectrum is removed ([5474e07](https://github.com/jxsuite/jx/commit/5474e0788a637089aead2c94f43b12fce0237fb1))
 
 
 ### Dependencies
@@ -275,8 +275,8 @@
 
 ### Features
 
-* **auth:** a loopback redirect with PKCE, and cookies a browser will keep ([053f67c](https://github.com/jxsuite/jx/commit/053f67cf94216020dd2a39982cea30b3802ba3aa))
-* **studio:** the Named Shell — P0–P8, the full UX redesign ([b576cbb](https://github.com/jxsuite/jx/commit/b576cbb24c7e0d8d36075f6d682e9b3b6b971166))
+* **auth:** a loopback redirect with PKCE, and cookies a browser will keep ([43767ae](https://github.com/jxsuite/jx/commit/43767aeec6be115a810b43a14784f7e7038147ac))
+* **studio:** the Named Shell — P0–P8, the full UX redesign ([c8c3452](https://github.com/jxsuite/jx/commit/c8c345213307f2383ed5c4251ca6b388c8489504))
 
 
 ### Dependencies
@@ -311,7 +311,7 @@
 
 ### Features
 
-* enforce truthful marketing claims and add the missing LICENSE ([b7e0b09](https://github.com/jxsuite/jx/commit/b7e0b095566121d79ca50894b69a476984fb93ee))
+* enforce truthful marketing claims and add the missing LICENSE ([6e235b5](https://github.com/jxsuite/jx/commit/6e235b562d8b494afa3e8509b6bb98e4c2e3d9c6))
 
 
 ### Dependencies
@@ -336,12 +336,12 @@
 
 ### Features
 
-* **studio:** spreadsheet grid editor — CSV grid tabs with batch save ([6736c02](https://github.com/jxsuite/jx/commit/6736c027d57fb438fb7aa0a9f333a41cc477e0a4))
+* **studio:** spreadsheet grid editor — CSV grid tabs with batch save ([b0bd0dc](https://github.com/jxsuite/jx/commit/b0bd0dccb72a9541c77b877154783f376cd540fa))
 
 
 ### Bug Fixes
 
-* **studio,compiler,parser,protocol,auth:** keep the promises the docs audit surfaced ([03ac07f](https://github.com/jxsuite/jx/commit/03ac07ff3a53c125587050a277b3dfa7b0ce86b6))
+* **studio,compiler,parser,protocol,auth:** keep the promises the docs audit surfaced ([86740a9](https://github.com/jxsuite/jx/commit/86740a9364079016dd411682bc67ac75bc39e89a))
 
 
 ### Dependencies
@@ -355,7 +355,7 @@
 
 ### Features
 
-- **auth:** Better Auth extension — sessions, permissions, auth-gated data ([bf47228](https://github.com/jxsuite/jx/commit/bf472285581afbfe7b650b5d52578078359655fa))
+- **auth:** Better Auth extension — sessions, permissions, auth-gated data ([32c871e](https://github.com/jxsuite/jx/commit/32c871e9fe48fdeed62e030354cc05adbf6efd19))
 
 ### Dependencies
 

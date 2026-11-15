@@ -5,7 +5,7 @@
 
 ### Features
 
-* **desktop:** submit the Mac App Store build to App Review from CI ([64a0cbb](https://github.com/jxsuite/jx/commit/64a0cbb48e70eae2d9e4b97a3425f4eba5c583e8))
+* **desktop:** submit the Mac App Store build to App Review from CI ([4239514](https://github.com/jxsuite/jx/commit/42395147cdcf382769576bb65cb3d680c39730b4))
 
 
 ### Dependencies
@@ -28,7 +28,7 @@
 
 ### Features
 
-* **desktop:** submit the Mac App Store build to App Review from CI ([64a0cbb](https://github.com/jxsuite/jx/commit/64a0cbb48e70eae2d9e4b97a3425f4eba5c583e8))
+* **desktop:** submit the Mac App Store build to App Review from CI ([4239514](https://github.com/jxsuite/jx/commit/42395147cdcf382769576bb65cb3d680c39730b4))
 
 
 ### Dependencies
@@ -45,7 +45,7 @@
 
 ### Features
 
-* **desktop:** the compiler's native addon is staged beside the backend bundle ([4a015de](https://github.com/jxsuite/jx/commit/4a015de69640524f52d34bbc07f5a9b43b201401))
+* **desktop:** the compiler's native addon is staged beside the backend bundle ([d895662](https://github.com/jxsuite/jx/commit/d89566238364be7d69357068eddd5d4602a218ee))
 
 
 ### Dependencies
@@ -68,7 +68,7 @@
 
 ### Bug Fixes
 
-* **desktop:** add sharp's RPATH with patchelfUnstable so the Nix build loads it ([#656](https://github.com/jxsuite/jx/issues/656)) ([37ebf00](https://github.com/jxsuite/jx/commit/37ebf001968c33968c7664fbb56f4a49ca60e799))
+* **desktop:** add sharp's RPATH with patchelfUnstable so the Nix build loads it ([#656](https://github.com/jxsuite/jx/issues/656)) ([8992d82](https://github.com/jxsuite/jx/commit/8992d82d88a31fb0e13b1fe6f170455d91080a4d))
 
 
 ### Dependencies
@@ -86,8 +86,8 @@
 
 ### Features
 
-* **erase,runtime,server,site:** a document's script runs in every interpreting host ([#627](https://github.com/jxsuite/jx/issues/627)) ([cdd349a](https://github.com/jxsuite/jx/commit/cdd349a304f36da6c9abd6a73b55d2449f096248))
-* **studio:** Preview is removed; Edit draws live data and Open in Browser runs the page ([#652](https://github.com/jxsuite/jx/issues/652)) ([9e1beb1](https://github.com/jxsuite/jx/commit/9e1beb146c9e95f7fbc6137fc2e209b262daffc6))
+* **erase,runtime,server,site:** a document's script runs in every interpreting host ([#627](https://github.com/jxsuite/jx/issues/627)) ([97f3bf0](https://github.com/jxsuite/jx/commit/97f3bf03a34e4e0a7b25b71900ba3d73d58e820d))
+* **studio:** Preview is removed; Edit draws live data and Open in Browser runs the page ([#652](https://github.com/jxsuite/jx/issues/652)) ([d0d9316](https://github.com/jxsuite/jx/commit/d0d9316aa6c7c3652122bf0c8fef1967b4bc2258))
 
 
 ### Dependencies
@@ -128,8 +128,8 @@
 
 ### Features
 
-* erase TypeScript from function bodies as each document is read ([#576](https://github.com/jxsuite/jx/issues/576)) ([d7b013c](https://github.com/jxsuite/jx/commit/d7b013c334a5b06d0f31648375443092a43e4af8))
-* provision every new project with project.jxn ([#578](https://github.com/jxsuite/jx/issues/578)) ([77c8093](https://github.com/jxsuite/jx/commit/77c8093f81e468679bd8c4cf0b1c3451e261a8c2))
+* erase TypeScript from function bodies as each document is read ([#576](https://github.com/jxsuite/jx/issues/576)) ([f9ccf78](https://github.com/jxsuite/jx/commit/f9ccf78cd9a7a0057c4aedf600a8e20635b3c237))
+* provision every new project with project.jxn ([#578](https://github.com/jxsuite/jx/issues/578)) ([690ba96](https://github.com/jxsuite/jx/commit/690ba96a990136bafe34730223c1b478d3a52c6c))
 
 
 ### Dependencies
@@ -152,8 +152,8 @@
 
 ### Features
 
-* **desktop:** declare .jxn on every channel that can register a file type ([#570](https://github.com/jxsuite/jx/issues/570)) ([e155b45](https://github.com/jxsuite/jx/commit/e155b454be89c73e1b9cda9a7acaa758f571b3f5))
-* **schema:** read and write a project file in Jx Notation ([#560](https://github.com/jxsuite/jx/issues/560)) ([1a98bf2](https://github.com/jxsuite/jx/commit/1a98bf29cc60e6f958ac6d7de22159057d0bbfcb))
+* **desktop:** declare .jxn on every channel that can register a file type ([#570](https://github.com/jxsuite/jx/issues/570)) ([2b19f27](https://github.com/jxsuite/jx/commit/2b19f278c90857d4684c407a102a756f54468665))
+* **schema:** read and write a project file in Jx Notation ([#560](https://github.com/jxsuite/jx/issues/560)) ([66d6cc5](https://github.com/jxsuite/jx/commit/66d6cc5b2837bc4a4529905aa90d3dea58f4e846))
 
 
 ### Dependencies
@@ -176,8 +176,8 @@
 
 ### Features
 
-* **desktop:** open what the OS hands over, after asking to run a folder's code ([#549](https://github.com/jxsuite/jx/issues/549)) ([5e4878d](https://github.com/jxsuite/jx/commit/5e4878db6b293c5aee3f47a30b72ccb5285b8205))
-* every host reads Jx Notation ([#554](https://github.com/jxsuite/jx/issues/554)) ([230382e](https://github.com/jxsuite/jx/commit/230382e4072184ab042a328e25e9f68f1d94de83))
+* **desktop:** open what the OS hands over, after asking to run a folder's code ([#549](https://github.com/jxsuite/jx/issues/549)) ([7aa3f08](https://github.com/jxsuite/jx/commit/7aa3f08a14b663886949d9dea2ff9227832bcae6))
+* every host reads Jx Notation ([#554](https://github.com/jxsuite/jx/issues/554)) ([1305161](https://github.com/jxsuite/jx/commit/13051615b376e077d86875153a9aeacc127c5f76))
 
 
 ### Dependencies
@@ -200,8 +200,8 @@
 
 ### Bug Fixes
 
-* **desktop,server:** keep git paths and commits inside a nested project ([#540](https://github.com/jxsuite/jx/issues/540)) ([79b017a](https://github.com/jxsuite/jx/commit/79b017af1abf5a26d97544fb688f5bd85ee60507))
-* **desktop:** stop taking over .json on install ([#547](https://github.com/jxsuite/jx/issues/547)) ([f3e82cf](https://github.com/jxsuite/jx/commit/f3e82cf4b6085e81c93061506bf69b5293448a35))
+* **desktop,server:** keep git paths and commits inside a nested project ([#540](https://github.com/jxsuite/jx/issues/540)) ([5a11efc](https://github.com/jxsuite/jx/commit/5a11efcf7772dc71a82a3c2974418a170dc9876e))
+* **desktop:** stop taking over .json on install ([#547](https://github.com/jxsuite/jx/issues/547)) ([5addb19](https://github.com/jxsuite/jx/commit/5addb19cefb6acd9308b3ca7b482521d84baba2a))
 
 
 ### Dependencies
@@ -291,22 +291,22 @@
 
 ### Features
 
-* **compiler:** the bundler backend follows the runtime, esbuild on Node and Bun.build on Bun ([0489b92](https://github.com/jxsuite/jx/commit/0489b928b47355a9bc3a1209e07b49a67f2080cb))
-* **desktop:** the backend runs on Electron's Node in a utility process, and the app no longer ships Bun ([0489b92](https://github.com/jxsuite/jx/commit/0489b928b47355a9bc3a1209e07b49a67f2080cb))
-* **schema:** a runtime-neutral which ([0489b92](https://github.com/jxsuite/jx/commit/0489b928b47355a9bc3a1209e07b49a67f2080cb))
-* **server:** package operations run on npm's Arborist and write package-lock.json, and a lockfile-only package service serves the cloud ([0489b92](https://github.com/jxsuite/jx/commit/0489b928b47355a9bc3a1209e07b49a67f2080cb))
-* **server:** serve, file responses and globbing run on Node as well as Bun ([0489b92](https://github.com/jxsuite/jx/commit/0489b928b47355a9bc3a1209e07b49a67f2080cb))
-* **studio:** the cloud editor adds, removes and updates packages through the package service ([0489b92](https://github.com/jxsuite/jx/commit/0489b928b47355a9bc3a1209e07b49a67f2080cb))
+* **compiler:** the bundler backend follows the runtime, esbuild on Node and Bun.build on Bun ([92c85db](https://github.com/jxsuite/jx/commit/92c85db1d3617ba9915de38aa7eb5888ddc6fa6d))
+* **desktop:** the backend runs on Electron's Node in a utility process, and the app no longer ships Bun ([92c85db](https://github.com/jxsuite/jx/commit/92c85db1d3617ba9915de38aa7eb5888ddc6fa6d))
+* **schema:** a runtime-neutral which ([92c85db](https://github.com/jxsuite/jx/commit/92c85db1d3617ba9915de38aa7eb5888ddc6fa6d))
+* **server:** package operations run on npm's Arborist and write package-lock.json, and a lockfile-only package service serves the cloud ([92c85db](https://github.com/jxsuite/jx/commit/92c85db1d3617ba9915de38aa7eb5888ddc6fa6d))
+* **server:** serve, file responses and globbing run on Node as well as Bun ([92c85db](https://github.com/jxsuite/jx/commit/92c85db1d3617ba9915de38aa7eb5888ddc6fa6d))
+* **studio:** the cloud editor adds, removes and updates packages through the package service ([92c85db](https://github.com/jxsuite/jx/commit/92c85db1d3617ba9915de38aa7eb5888ddc6fa6d))
 
 
 ### Bug Fixes
 
-* desktop backend paths, right-click menus, and the Media tile menu ([#513](https://github.com/jxsuite/jx/issues/513)) ([74d9a1a](https://github.com/jxsuite/jx/commit/74d9a1acbe175872651048069e0d69db574fb8b1))
-* **desktop:** keep the Nix build's Electron bundle flat so jx-studio starts ([#508](https://github.com/jxsuite/jx/issues/508)) ([1bc6d1d](https://github.com/jxsuite/jx/commit/1bc6d1da8a4f05e61d5677c2c7cd25004e760523))
-* **desktop:** promise the Linux x64 AppImage under the name electron-builder gives it ([#512](https://github.com/jxsuite/jx/issues/512)) ([333da9b](https://github.com/jxsuite/jx/commit/333da9ba687d40ea26a9e035b9dedf2c109957d3))
-* **desktop:** ship the backend's node_modules, and smoke-test the packaged app honestly ([#506](https://github.com/jxsuite/jx/issues/506)) ([9f4a8a7](https://github.com/jxsuite/jx/commit/9f4a8a79e9f4df7cd64dcf11cd4daf60102b42bf))
-* extensions resolve from the project only, first-party ones included ([#510](https://github.com/jxsuite/jx/issues/510)) ([71c0b68](https://github.com/jxsuite/jx/commit/71c0b681327396f1fbd1d77ea96bfd55f7ccfd83))
-* the release PR's smoke test installs this checkout, and npm can no longer hang a build ([#515](https://github.com/jxsuite/jx/issues/515)) ([3959eb0](https://github.com/jxsuite/jx/commit/3959eb05cac9e09f87a834e517cba72095bee074))
+* desktop backend paths, right-click menus, and the Media tile menu ([#513](https://github.com/jxsuite/jx/issues/513)) ([80dac1b](https://github.com/jxsuite/jx/commit/80dac1b38b2aaecf954ca0033bc170629022973d))
+* **desktop:** keep the Nix build's Electron bundle flat so jx-studio starts ([#508](https://github.com/jxsuite/jx/issues/508)) ([91094c1](https://github.com/jxsuite/jx/commit/91094c1c453b8ab1670b90a34afa88001cc8a5be))
+* **desktop:** promise the Linux x64 AppImage under the name electron-builder gives it ([#512](https://github.com/jxsuite/jx/issues/512)) ([5b6b47d](https://github.com/jxsuite/jx/commit/5b6b47dd3bb3ba4d4d855f31e8c6a790fe7fac4e))
+* **desktop:** ship the backend's node_modules, and smoke-test the packaged app honestly ([#506](https://github.com/jxsuite/jx/issues/506)) ([9118317](https://github.com/jxsuite/jx/commit/91183172999983fb8d5e663432dc15da6ca5394d))
+* extensions resolve from the project only, first-party ones included ([#510](https://github.com/jxsuite/jx/issues/510)) ([ac70362](https://github.com/jxsuite/jx/commit/ac703627bd5c9d6874cf511049be3425904c9527))
+* the release PR's smoke test installs this checkout, and npm can no longer hang a build ([#515](https://github.com/jxsuite/jx/issues/515)) ([66208f7](https://github.com/jxsuite/jx/commit/66208f7e27eab9535537d1de63a8bb8e897a04d8))
 
 
 ### Dependencies
@@ -333,7 +333,7 @@
 
 ### Features
 
-* **compiler:** built pages call their server entries; page-level entries are served ([#498](https://github.com/jxsuite/jx/issues/498)) ([d47cd16](https://github.com/jxsuite/jx/commit/d47cd1629f23724191eac18b6895617d62580a78))
+* **compiler:** built pages call their server entries; page-level entries are served ([#498](https://github.com/jxsuite/jx/issues/498)) ([c755088](https://github.com/jxsuite/jx/commit/c75508844232af963a346901ad782249419de3f0))
 
 
 ### Dependencies
@@ -361,12 +361,12 @@
 
 ### Features
 
-* **desktop:** Mac App Store channel (mas target, sandbox entitlements, TestFlight lane) ([#475](https://github.com/jxsuite/jx/issues/475)) ([19f1264](https://github.com/jxsuite/jx/commit/19f1264b83601c97c471c15020950c980d6989bd))
+* **desktop:** Mac App Store channel (mas target, sandbox entitlements, TestFlight lane) ([#475](https://github.com/jxsuite/jx/issues/475)) ([2aab641](https://github.com/jxsuite/jx/commit/2aab641f73e817c72c2689e87c3c481ed2b266a9))
 
 
 ### Bug Fixes
 
-* **desktop:** sandboxed Mac App Store build opens the folders the user picks ([#481](https://github.com/jxsuite/jx/issues/481)) ([054a71d](https://github.com/jxsuite/jx/commit/054a71d35e5a39bc9cc42e319ceaa76b588bcaaa))
+* **desktop:** sandboxed Mac App Store build opens the folders the user picks ([#481](https://github.com/jxsuite/jx/issues/481)) ([8a52af8](https://github.com/jxsuite/jx/commit/8a52af8369010e30ec8bcaeb8a8503ad401d2e41))
 
 
 ### Dependencies
@@ -413,7 +413,7 @@
 
 ### Features
 
-* **desktop:** replace Electrobun with Electron, packaged with electron-builder ([#465](https://github.com/jxsuite/jx/issues/465)) ([be1534f](https://github.com/jxsuite/jx/commit/be1534f616d7176b4a2098cd4d232808cf5c7482))
+* **desktop:** replace Electrobun with Electron, packaged with electron-builder ([#465](https://github.com/jxsuite/jx/issues/465)) ([1cd8130](https://github.com/jxsuite/jx/commit/1cd813071e3487cb6640f7f0aa92ec9295b53a9c))
 
 
 ### Dependencies
@@ -459,7 +459,7 @@
 
 ### Bug Fixes
 
-* **desktop:** externalize the Astro compiler the oxfmt bump made a static import ([#458](https://github.com/jxsuite/jx/issues/458)) ([3b13ce6](https://github.com/jxsuite/jx/commit/3b13ce6f6ad49d117c5a35ba52597c764d3e1f31))
+* **desktop:** externalize the Astro compiler the oxfmt bump made a static import ([#458](https://github.com/jxsuite/jx/issues/458)) ([5f891ed](https://github.com/jxsuite/jx/commit/5f891ed1e776caf9f19cc18d7ec4b3ac1f0d8470))
 
 
 ### Dependencies
@@ -566,14 +566,14 @@
 
 ### Features
 
-* **studio:** jittered reconnect, wake on network or focus, and resync what a dropped socket missed ([21ba318](https://github.com/jxsuite/jx/commit/21ba31841464ecb488654811dd1906095059419d))
-* **studio:** jittered reconnect, wake on network or focus, and resync what a dropped socket missed ([6081d0a](https://github.com/jxsuite/jx/commit/6081d0ab13dba0502bd3d1cd50325b6d6f52b7c0))
+* **studio:** jittered reconnect, wake on network or focus, and resync what a dropped socket missed ([88eb919](https://github.com/jxsuite/jx/commit/88eb919810d7ab7fc1c8f479769e0f1fa6e2fe0c))
+* **studio:** jittered reconnect, wake on network or focus, and resync what a dropped socket missed ([de3512b](https://github.com/jxsuite/jx/commit/de3512bea3ec36871b24dd63d64885d90c9d5b07))
 
 
 ### Bug Fixes
 
-* **ci:** publish to the Microsoft Store the official way, and unblock the snap review ([0d54199](https://github.com/jxsuite/jx/commit/0d54199c4e5fd31e18da724ae28e23f07c9df6a0))
-* **ci:** publish to the Microsoft Store the official way, and unblock the snap review ([27a93d6](https://github.com/jxsuite/jx/commit/27a93d6e710a19538ccc913a528d828c329cb998))
+* **ci:** publish to the Microsoft Store the official way, and unblock the snap review ([9db85c4](https://github.com/jxsuite/jx/commit/9db85c4221abb5123cf8f924e568e4257d8e7ded))
+* **ci:** publish to the Microsoft Store the official way, and unblock the snap review ([e2b27e6](https://github.com/jxsuite/jx/commit/e2b27e638766d3a6241518c5fde90004b943cab4))
 
 
 ### Dependencies
@@ -591,14 +591,14 @@
 
 ### Features
 
-* **desktop:** publish Jx Studio to the Snap Store, and ship a 66% smaller Nix package ([7ee2b37](https://github.com/jxsuite/jx/commit/7ee2b375d967aa021bc5cef782b00538b2b52d0d))
-* **desktop:** publish Jx Studio to the Snap Store, and ship a 66% smaller Nix package ([fb3a11c](https://github.com/jxsuite/jx/commit/fb3a11cab29e22ab298cdc659b595625fb7cd947))
+* **desktop:** publish Jx Studio to the Snap Store, and ship a 66% smaller Nix package ([e607f31](https://github.com/jxsuite/jx/commit/e607f31b58da211f85e30c1f93a578859bb605e0))
+* **desktop:** publish Jx Studio to the Snap Store, and ship a 66% smaller Nix package ([6b2c8ad](https://github.com/jxsuite/jx/commit/6b2c8ade4fd030117c8682fb433e3fdcd0872b8b))
 
 
 ### Bug Fixes
 
-* **desktop:** the Store MSIX launched nothing - patched launcher called an undefined __require ([b1f99a4](https://github.com/jxsuite/jx/commit/b1f99a4d2665d249c4285ff40126daf0a1e70170))
-* **desktop:** the Store MSIX launched nothing - patched launcher called an undefined __require ([02beabe](https://github.com/jxsuite/jx/commit/02beabe61b0a4d8c4c390606cc01a1ec140fb616))
+* **desktop:** the Store MSIX launched nothing - patched launcher called an undefined __require ([cff91b4](https://github.com/jxsuite/jx/commit/cff91b4276fc8f75c14062b3185e47e510195773))
+* **desktop:** the Store MSIX launched nothing - patched launcher called an undefined __require ([6c0e78b](https://github.com/jxsuite/jx/commit/6c0e78b2cbf04faaa91f7407d11cfae260bcc423))
 
 
 ### Dependencies
@@ -616,24 +616,24 @@
 
 ### Features
 
-* **ai:** the gateway, one implementation of the chat and models routes ([cbf5728](https://github.com/jxsuite/jx/commit/cbf5728d2f81e8f36a42a1e94cac6a6b0944e3a8))
-* **ai:** the gateway, one implementation of the chat and models routes ([404923f](https://github.com/jxsuite/jx/commit/404923f303ee6869469b5310560f37c6bcfe1f20))
-* **studio:** the PAL can answer a project file's raw bytes ([47a1ee8](https://github.com/jxsuite/jx/commit/47a1ee86457c00ffb19130c0856c22deac33b968))
-* **studio:** the PAL can answer a project file's raw bytes ([58e6267](https://github.com/jxsuite/jx/commit/58e6267c45bc436910ad6af321f450920e2b53d1))
+* **ai:** the gateway, one implementation of the chat and models routes ([f2b3d41](https://github.com/jxsuite/jx/commit/f2b3d415ec7d2862c06a23f75311fe187c3ecfbe))
+* **ai:** the gateway, one implementation of the chat and models routes ([542853e](https://github.com/jxsuite/jx/commit/542853e9478d5c67e5530e20ad551fc766d4edfb))
+* **studio:** the PAL can answer a project file's raw bytes ([ac3ad07](https://github.com/jxsuite/jx/commit/ac3ad07f6d75936363c7318b7e265ae7974981cd))
+* **studio:** the PAL can answer a project file's raw bytes ([378b704](https://github.com/jxsuite/jx/commit/378b7047b35ec1eccf50b0cea324c7682782d15e))
 
 
 ### Bug Fixes
 
-* **desktop,studio:** 5.x desktop windows booted without their backend; fail loud and report Browse errors ([b128b9a](https://github.com/jxsuite/jx/commit/b128b9a8b0ab7d57865113bd73213d544fe7dcd9))
-* **desktop:** build init.js from the vendored Electrobun SDK in every release lane ([44b04c7](https://github.com/jxsuite/jx/commit/44b04c7c964e51f4ab3eabb53ddbf7e586d3823d))
-* **desktop:** gate the shared AI proxy with the per-process service token ([9cef376](https://github.com/jxsuite/jx/commit/9cef3766536b6ad0d2be04dc852212b7f976c2c5))
-* **desktop:** stop loading a second copy of Lit in the same window ([78a47a9](https://github.com/jxsuite/jx/commit/78a47a9f7406c6a201ffbf45ae187aeac28d8bd8))
-* **desktop:** stop loading a second copy of Lit in the same window ([9610919](https://github.com/jxsuite/jx/commit/961091994adc63f0f8608cdda480ac6b80e69cbb))
-* **desktop:** the launcher's handlers mock needs the member the launcher imports ([f09b251](https://github.com/jxsuite/jx/commit/f09b251157de1ff296f6f5404cc2a8002eca4ac0))
-* Jx harness phase 0 — gate the desktop AI proxy, fix stop and usage handling in the agent loop ([8d364ea](https://github.com/jxsuite/jx/commit/8d364eac66bea8302f0dcac03f8f72587e49d8c6))
-* normalize Bun.Glob paths to forward slashes on Windows ([e404aef](https://github.com/jxsuite/jx/commit/e404aef4fcad4312970202631c49577ea3f65e54))
-* **studio,desktop:** Browse reports why it could not choose a folder ([a80221f](https://github.com/jxsuite/jx/commit/a80221f6bd76b2db1d280405325404dfbaaee017))
-* **studio,desktop:** refuse the dev-server fallback when a launcher failed to start ([f4e17aa](https://github.com/jxsuite/jx/commit/f4e17aac63bb1bd439e1fdef200585f12a07ecef))
+* **desktop,studio:** 5.x desktop windows booted without their backend; fail loud and report Browse errors ([3f50ec9](https://github.com/jxsuite/jx/commit/3f50ec92d68ee010aedeb35955c1ff673362fac1))
+* **desktop:** build init.js from the vendored Electrobun SDK in every release lane ([6fc779b](https://github.com/jxsuite/jx/commit/6fc779be16ac93e64b59f6191eec95f26cabd094))
+* **desktop:** gate the shared AI proxy with the per-process service token ([e565e9e](https://github.com/jxsuite/jx/commit/e565e9ea2c7fddb68442aa21b29a4d4884ef1338))
+* **desktop:** stop loading a second copy of Lit in the same window ([85e9d72](https://github.com/jxsuite/jx/commit/85e9d7242889893ace30171970435e8a9296a5d6))
+* **desktop:** stop loading a second copy of Lit in the same window ([3891648](https://github.com/jxsuite/jx/commit/3891648a30130f159c8db73a0955e96c2b1d9c43))
+* **desktop:** the launcher's handlers mock needs the member the launcher imports ([c2279e1](https://github.com/jxsuite/jx/commit/c2279e19befbaea7aad80f57c3c2706949e8b1b7))
+* Jx harness phase 0 — gate the desktop AI proxy, fix stop and usage handling in the agent loop ([6269c5e](https://github.com/jxsuite/jx/commit/6269c5e5708fe4cdb1691c72d52bce7ac5542ddb))
+* normalize Bun.Glob paths to forward slashes on Windows ([d89903a](https://github.com/jxsuite/jx/commit/d89903ac9ab807d48373d8b5dc2489dbf560cd41))
+* **studio,desktop:** Browse reports why it could not choose a folder ([2e1a1cc](https://github.com/jxsuite/jx/commit/2e1a1cc7aa2e03b125afeeef29ea7ae6609cd310))
+* **studio,desktop:** refuse the dev-server fallback when a launcher failed to start ([521803b](https://github.com/jxsuite/jx/commit/521803b2863cc6fdaa3612e54a4fa5572aa1e8b3))
 
 
 ### Dependencies
@@ -682,8 +682,8 @@
 
 ### Bug Fixes
 
-* **desktop:** the first changed file's path no longer loses its first character ([ff03c52](https://github.com/jxsuite/jx/commit/ff03c52c20393788c093c01320fcb010e0425283))
-* **desktop:** the first changed file's path no longer loses its first character ([8278dc8](https://github.com/jxsuite/jx/commit/8278dc81d8ba8d1d903078c8d6b2a062216f5d7f))
+* **desktop:** the first changed file's path no longer loses its first character ([b364aa9](https://github.com/jxsuite/jx/commit/b364aa9910f8af236a3f4c5e5b61af125fd04c94))
+* **desktop:** the first changed file's path no longer loses its first character ([3e64b06](https://github.com/jxsuite/jx/commit/3e64b0689c44555606df9c9e9f0ddf8d4b2c5da2))
 
 
 ### Dependencies
@@ -705,17 +705,17 @@
 
 ### Features
 
-* **studio,server,protocol:** one toggle installs an extension and enables it ([abe69bb](https://github.com/jxsuite/jx/commit/abe69bb60242ef97a49766040466d480ec3b93c9))
-* **studio,server,protocol:** one toggle installs an extension and enables it ([f6d6b2c](https://github.com/jxsuite/jx/commit/f6d6b2cc88810401a57ca941c1bdef182137df6e))
-* Studio's chrome is Jx documents over a native kit; Spectrum is removed ([a31f63e](https://github.com/jxsuite/jx/commit/a31f63e1b010e96434ee76b753f6c75a5d7ae2a5))
-* **studio:** Adobe Spectrum is removed ([e24e0e8](https://github.com/jxsuite/jx/commit/e24e0e8b8cc8ce7ad3244af3ec47d69b10859cdd))
-* **studio:** highlight what changed in a diff, and open every changed file ([a54fa6d](https://github.com/jxsuite/jx/commit/a54fa6dc15fbe4ad7e8617d4e788c1670292ea2b))
+* **studio,server,protocol:** one toggle installs an extension and enables it ([1fe5f67](https://github.com/jxsuite/jx/commit/1fe5f6731c00c9421e8dcd8d1ca100d2b06f740e))
+* **studio,server,protocol:** one toggle installs an extension and enables it ([17b2627](https://github.com/jxsuite/jx/commit/17b26270db18e23f2f66f7bb15e67db64b2eac22))
+* Studio's chrome is Jx documents over a native kit; Spectrum is removed ([035778f](https://github.com/jxsuite/jx/commit/035778fa8bed3d45875643f9e811a066d2a933bc))
+* **studio:** Adobe Spectrum is removed ([5474e07](https://github.com/jxsuite/jx/commit/5474e0788a637089aead2c94f43b12fce0237fb1))
+* **studio:** highlight what changed in a diff, and open every changed file ([c87b2f3](https://github.com/jxsuite/jx/commit/c87b2f38bf97ec4f339cd9ac136885dd07d8ac7b))
 
 
 ### Bug Fixes
 
-* **desktop,server:** the coverage gates the new catalogue member missed ([18eccd9](https://github.com/jxsuite/jx/commit/18eccd9af978bb7ed3a627939c14cb7e72e2f759))
-* **studio,server:** the diff view drew line numbers and no text ([76d8d97](https://github.com/jxsuite/jx/commit/76d8d97f600622d2e381f3e1b2e37e88b0c40663))
+* **desktop,server:** the coverage gates the new catalogue member missed ([ba985d5](https://github.com/jxsuite/jx/commit/ba985d540d49d1147cbcd1147bf5ba301e49c4af))
+* **studio,server:** the diff view drew line numbers and no text ([4618933](https://github.com/jxsuite/jx/commit/46189330c881097ad1fe4db2ee24dda9f2aea744))
 
 
 ### Dependencies
@@ -740,8 +740,8 @@
 
 ### Bug Fixes
 
-* **desktop:** exclude vendor from the Nix source so the published path is the one consumers ask for ([81d60bc](https://github.com/jxsuite/jx/commit/81d60bca5ea8e67b99a1e789a7c1881f9b2e018a))
-* **desktop:** exclude vendor from the Nix source so the published path is the one consumers ask for ([65debec](https://github.com/jxsuite/jx/commit/65debec14fef2a13f775a36fe5f5529d8504c923)), closes [#250](https://github.com/jxsuite/jx/issues/250)
+* **desktop:** exclude vendor from the Nix source so the published path is the one consumers ask for ([22ea684](https://github.com/jxsuite/jx/commit/22ea6847cae45900ccbc93757bb5546bd8e8d8df))
+* **desktop:** exclude vendor from the Nix source so the published path is the one consumers ask for ([7e95f2c](https://github.com/jxsuite/jx/commit/7e95f2c5b39e96e2f418feddff3dcf612591d0e7)), closes [#250](https://github.com/jxsuite/jx/issues/250)
 
 
 ### Dependencies
@@ -769,27 +769,27 @@
 
 ### Features
 
-* **desktop:** both launchers can preview the working tree live ([5a7b816](https://github.com/jxsuite/jx/commit/5a7b8161252770d2f694bdd8c94e144c91f692cf))
-* **import:** the site-import workflow, end to end ([eab1109](https://github.com/jxsuite/jx/commit/eab1109e0fc21a5f311d2f1c8f90626c1d51c55d))
-* Open in Browser previews the working tree through the runtime ([b02e0e5](https://github.com/jxsuite/jx/commit/b02e0e543016879c963810f770b568995023e6ed))
-* **studio:** watch an import in the project, in a feed that outlives the run ([509a1fd](https://github.com/jxsuite/jx/commit/509a1fdb313b26971bfffbd97a600f67999509e7))
+* **desktop:** both launchers can preview the working tree live ([a3349a3](https://github.com/jxsuite/jx/commit/a3349a3be4be33a99aa69b3dcd5ed291478f3b90))
+* **import:** the site-import workflow, end to end ([f701f33](https://github.com/jxsuite/jx/commit/f701f33bc035a8e5ce331530ff9886d25236da64))
+* Open in Browser previews the working tree through the runtime ([c30c245](https://github.com/jxsuite/jx/commit/c30c2453a0ce426b0111518617b6ed88d9b367e1))
+* **studio:** watch an import in the project, in a feed that outlives the run ([5fe22e2](https://github.com/jxsuite/jx/commit/5fe22e29a4eb32e9c3c87f5fbc503f4183ee0060))
 
 
 ### Bug Fixes
 
-* **desktop,import:** the two gates the live preview left red, and the coverage it owed ([72657b7](https://github.com/jxsuite/jx/commit/72657b7c636d63aecb831378e5f16e134b062adb))
-* **screenshots:** stop the screenshot lane churning, and fix the three defects underneath it ([1eb0e45](https://github.com/jxsuite/jx/commit/1eb0e45c0a3a1ca14859f0cf0dc322a4619eff51))
-* **server,desktop:** answer a directory listing in stable path order ([8e7f314](https://github.com/jxsuite/jx/commit/8e7f3147bc9c4f91093066a5568459dfe0dcb4a7))
-* **server,studio:** findReferences answers about every reference, and the rename keeps its promise ([84e558f](https://github.com/jxsuite/jx/commit/84e558f67abe9524e2895f0e9045fb6ad14a0981))
-* **server:** resolve rooted refs through every lane, and index refs by shape ([29d3271](https://github.com/jxsuite/jx/commit/29d32716fb3c35e2e37235d4091739d950c2693a)), closes [#239](https://github.com/jxsuite/jx/issues/239)
-* **studio:** the Packages table shows each dependency's own npm latest ([a90e170](https://github.com/jxsuite/jx/commit/a90e170392398c93926d94e092d7ec9ebe9b83e6))
-* **studio:** the Packages table shows each dependency's own npm latest ([b019a26](https://github.com/jxsuite/jx/commit/b019a26848d06a92c9136f27a27edb2bea6e10dd))
-* **studio:** the Packages table shows each dependency's own npm latest ([4fa433f](https://github.com/jxsuite/jx/commit/4fa433fba641973f2bfbeed99e16c4de96482b4a))
+* **desktop,import:** the two gates the live preview left red, and the coverage it owed ([c9d56d2](https://github.com/jxsuite/jx/commit/c9d56d2495f1da84997768e6144718be7380de07))
+* **screenshots:** stop the screenshot lane churning, and fix the three defects underneath it ([b0d5f57](https://github.com/jxsuite/jx/commit/b0d5f570db2d8aa839469ad846eced8cf3051067))
+* **server,desktop:** answer a directory listing in stable path order ([32f1362](https://github.com/jxsuite/jx/commit/32f13628fcde9704167cada10f8be54f2f238f9d))
+* **server,studio:** findReferences answers about every reference, and the rename keeps its promise ([ce3266f](https://github.com/jxsuite/jx/commit/ce3266f3966363ef602201a864047d3a7314c22f))
+* **server:** resolve rooted refs through every lane, and index refs by shape ([a0f0437](https://github.com/jxsuite/jx/commit/a0f04370929254e6d9d1219d518b4bef67884b78)), closes [#239](https://github.com/jxsuite/jx/issues/239)
+* **studio:** the Packages table shows each dependency's own npm latest ([fe75f46](https://github.com/jxsuite/jx/commit/fe75f46c08b31ffc8fee3bce51edbe98e10ec772))
+* **studio:** the Packages table shows each dependency's own npm latest ([e6610a8](https://github.com/jxsuite/jx/commit/e6610a859613c40ff6f4cb2c20652dc267cb234f))
+* **studio:** the Packages table shows each dependency's own npm latest ([30d997b](https://github.com/jxsuite/jx/commit/30d997b3d25cad7b00ab8c2fdc4413d728b7e124))
 
 
 ### Code Refactoring
 
-* **schema,site:** site composition gets its own package ([f9d270d](https://github.com/jxsuite/jx/commit/f9d270daf261eef9ac9566192787b7a4bba25135))
+* **schema,site:** site composition gets its own package ([d4a3d6e](https://github.com/jxsuite/jx/commit/d4a3d6ec50b747305e278060f05b20743daf4a2c))
 
 
 ### Dependencies
@@ -817,15 +817,15 @@
 
 ### Features
 
-* **protocol:** type what an upload answers, and what a backend will accept ([8192345](https://github.com/jxsuite/jx/commit/819234555b3b37b5ce21d71005fc4f2cb05aae62))
-* **studio:** declare assetSpace, and resolve media in the canvas realm ([196d259](https://github.com/jxsuite/jx/commit/196d2596b337e6298d2f0c15e984a5f29f7abe92))
-* **studio:** declare assetSpace, and resolve media in the canvas realm ([92b087f](https://github.com/jxsuite/jx/commit/92b087f2e504896f7f9800df18ff1310c40e8c4c))
+* **protocol:** type what an upload answers, and what a backend will accept ([d7d64e9](https://github.com/jxsuite/jx/commit/d7d64e9784dfcfabda28e44826ed6509660add6f))
+* **studio:** declare assetSpace, and resolve media in the canvas realm ([9be7db9](https://github.com/jxsuite/jx/commit/9be7db9151e520caf2f65826968956f25304710b))
+* **studio:** declare assetSpace, and resolve media in the canvas realm ([2344271](https://github.com/jxsuite/jx/commit/2344271d5f96728af1a2b3c00bd1e326e0ba1582))
 
 
 ### Bug Fixes
 
-* **desktop:** type the settings patch the window-manager test mocks ([f268344](https://github.com/jxsuite/jx/commit/f268344b15b0b57dd04b0115bd86b7a7f6abb50d))
-* **studio,desktop:** settings are patches, and a blank field never deletes ([76846af](https://github.com/jxsuite/jx/commit/76846afc28d81ff16e284fbe0b12d1f47cb604bc))
+* **desktop:** type the settings patch the window-manager test mocks ([bf33db5](https://github.com/jxsuite/jx/commit/bf33db562ebdd31e44bf0d8802e9e9cd61be3e6b))
+* **studio,desktop:** settings are patches, and a blank field never deletes ([7e73fa9](https://github.com/jxsuite/jx/commit/7e73fa9c6d45e53a30f82b08148f9a7547fd22bc))
 
 
 ### Dependencies
@@ -872,12 +872,12 @@
 
 ### Features
 
-* **desktop:** move to Electrobun 2.0.1 stable and the npm-managed toolchain ([2c8a202](https://github.com/jxsuite/jx/commit/2c8a2022dddc1f80854dc16bce09c18ee7e5a734))
+* **desktop:** move to Electrobun 2.0.1 stable and the npm-managed toolchain ([3b3b7b2](https://github.com/jxsuite/jx/commit/3b3b7b2c76dd962aae0f260fce55a5d7be819050))
 
 
 ### Bug Fixes
 
-* **tests:** make the Windows suites runnable ([1c23891](https://github.com/jxsuite/jx/commit/1c23891ec56dce22e1e900ae151a49cb1ecdbe25))
+* **tests:** make the Windows suites runnable ([b18435d](https://github.com/jxsuite/jx/commit/b18435dcf1162be38a01c5c48c4ae310be88c4d2))
 
 
 ### Dependencies
@@ -929,20 +929,20 @@
 
 ### Bug Fixes
 
-* **desktop:** the electrobun config is one the CLI can actually load ([#170](https://github.com/jxsuite/jx/issues/170)) ([f04baa8](https://github.com/jxsuite/jx/commit/f04baa87d245c1b1879c8213318372b86e1d04dd))
+* **desktop:** the electrobun config is one the CLI can actually load ([#170](https://github.com/jxsuite/jx/issues/170)) ([1249f46](https://github.com/jxsuite/jx/commit/1249f4632abdc29189d1f2d731319fa252c0befb))
 
 ## [2.3.0](https://github.com/jxsuite/jx/compare/desktop-v2.2.2...desktop-v2.3.0) (2026-08-23)
 
 
 ### Features
 
-* **studio:** the package states its own layout, and hosts itself ([17ed4bc](https://github.com/jxsuite/jx/commit/17ed4bcfce451a21adb5729054a4934f2ef032f4))
+* **studio:** the package states its own layout, and hosts itself ([b94f87b](https://github.com/jxsuite/jx/commit/b94f87b5daa1788090be957302ea224504a743cd))
 
 
 ### Bug Fixes
 
-* **desktop:** a bare jx-studio watched the whole home directory ([b9d78d7](https://github.com/jxsuite/jx/commit/b9d78d74484c54ec6b983ab81bb19364d3a4a779))
-* **desktop:** a bare jx-studio watched the whole home directory ([f60059b](https://github.com/jxsuite/jx/commit/f60059b86ba92341fe62f8280c24ae250fc891bc))
+* **desktop:** a bare jx-studio watched the whole home directory ([b014dfc](https://github.com/jxsuite/jx/commit/b014dfc485bad4c24c4ba9a4bb3f54f9e4195106))
+* **desktop:** a bare jx-studio watched the whole home directory ([56d0885](https://github.com/jxsuite/jx/commit/56d0885e2d62a6f54a9477c52b614ad98e41bdeb))
 
 
 ### Dependencies
@@ -993,14 +993,14 @@
 
 ### Features
 
-* **desktop:** bring the chromium launcher to PAL parity with electrobun ([9a94240](https://github.com/jxsuite/jx/commit/9a9424048403e48faf333e3ce788502ede4d2ce9))
-* **desktop:** bring the chromium launcher to PAL parity with electrobun ([9846e1d](https://github.com/jxsuite/jx/commit/9846e1dcf8d94bb68082fa79f40d38c139689a91))
+* **desktop:** bring the chromium launcher to PAL parity with electrobun ([595d413](https://github.com/jxsuite/jx/commit/595d41325c4d81322dc5fe927161e07af51d35a2))
+* **desktop:** bring the chromium launcher to PAL parity with electrobun ([9f13748](https://github.com/jxsuite/jx/commit/9f137482449ba887279aeb838b2c4c275c37a494))
 
 
 ### Bug Fixes
 
-* **desktop:** give the chromium window an identity the taskbar can resolve ([e816dfa](https://github.com/jxsuite/jx/commit/e816dfabb9de69b0a56d03cfa3f254e6841111f8))
-* **desktop:** type two test mocks to the contracts they stand in for ([bc82556](https://github.com/jxsuite/jx/commit/bc82556185720f76c3fa45383db066cbd2f56001))
+* **desktop:** give the chromium window an identity the taskbar can resolve ([012f5c4](https://github.com/jxsuite/jx/commit/012f5c4b27f3f18afbfacba21709531934c35a0d))
+* **desktop:** type two test mocks to the contracts they stand in for ([d04c271](https://github.com/jxsuite/jx/commit/d04c271cb7c700cc92f47a8fe22e97d641a5ab89))
 
 
 ### Dependencies
@@ -1024,22 +1024,22 @@
 
 ### Features
 
-* **auth:** a loopback redirect with PKCE, and cookies a browser will keep ([053f67c](https://github.com/jxsuite/jx/commit/053f67cf94216020dd2a39982cea30b3802ba3aa))
-* **server:** read Fetch Metadata, and close the three ungated project-server routes ([18bd5da](https://github.com/jxsuite/jx/commit/18bd5dab144d76c5c97b08fb43c28fb3e5ad127b))
-* **studio,desktop:** P0 wave A — enforcement rails and three dead RPCs ([e078d46](https://github.com/jxsuite/jx/commit/e078d4668cb8ee453852ffe0acd5f1cd561de291))
-* **studio,server,desktop:** P4 wave A — the app can say what happened ([98a4a3a](https://github.com/jxsuite/jx/commit/98a4a3a1f895981ebc0b06483ef31953d8ebf7ef))
-* **studio:** say it out loud — one live region, and the affordances high contrast deletes ([d414bcd](https://github.com/jxsuite/jx/commit/d414bcdda6d01749eda43e1900edf0d2eb6656c7))
-* **studio:** the Named Shell — P0–P8, the full UX redesign ([b576cbb](https://github.com/jxsuite/jx/commit/b576cbb24c7e0d8d36075f6d682e9b3b6b971166))
+* **auth:** a loopback redirect with PKCE, and cookies a browser will keep ([43767ae](https://github.com/jxsuite/jx/commit/43767aeec6be115a810b43a14784f7e7038147ac))
+* **server:** read Fetch Metadata, and close the three ungated project-server routes ([0e69837](https://github.com/jxsuite/jx/commit/0e698374ba5f251548d293f8553b12d308e07463))
+* **studio,desktop:** P0 wave A — enforcement rails and three dead RPCs ([da8071d](https://github.com/jxsuite/jx/commit/da8071d93d783fa80a48e73fe6e6093c10461f2c))
+* **studio,server,desktop:** P4 wave A — the app can say what happened ([c319576](https://github.com/jxsuite/jx/commit/c3195762c0dd76472355dd3ae0eb9ba6fc12c0d3))
+* **studio:** say it out loud — one live region, and the affordances high contrast deletes ([e5fffdf](https://github.com/jxsuite/jx/commit/e5fffdff8f7107e7d98aaa51a81e7b1f93cf9ca1))
+* **studio:** the Named Shell — P0–P8, the full UX redesign ([c8c3452](https://github.com/jxsuite/jx/commit/c8c345213307f2383ed5c4251ca6b388c8489504))
 
 
 ### Bug Fixes
 
-* **desktop:** the Nix bundle deleted the extension packages it depends on ([cf3df55](https://github.com/jxsuite/jx/commit/cf3df5583ee50c1f18acd3d767c386e5ba63bd21))
-* **parser:** localized content never reached its own locale's asset mount ([179311b](https://github.com/jxsuite/jx/commit/179311b3f56d001eea37c092d73956c20056c55d))
-* **server:** give the previewed site its own origin, so Open in Browser is the real site ([90eb4b4](https://github.com/jxsuite/jx/commit/90eb4b4b3eba897a1028fa5a4029ef0dcae61f88))
-* **studio:** Open Project's "New Window" opened in this window ([e233bf1](https://github.com/jxsuite/jx/commit/e233bf13214fce1ec018a4bd91ec7d235edb1056))
-* **studio:** Open Project's "New Window" opened in this window ([2879f4e](https://github.com/jxsuite/jx/commit/2879f4e2034fc89ce39451660313c3418469e96d))
-* **types:** repair the two typecheck errors the workspace tsconfigs see ([373dfe1](https://github.com/jxsuite/jx/commit/373dfe13fba28ec44cd42edd8c862f6124805986))
+* **desktop:** the Nix bundle deleted the extension packages it depends on ([b3fc5bb](https://github.com/jxsuite/jx/commit/b3fc5bbe1a22fdd506a81f3b0339c619f29ec760))
+* **parser:** localized content never reached its own locale's asset mount ([ff15172](https://github.com/jxsuite/jx/commit/ff1517233e4d5b685009e4f47b8bded295c9a186))
+* **server:** give the previewed site its own origin, so Open in Browser is the real site ([fcbaa0b](https://github.com/jxsuite/jx/commit/fcbaa0bc7679727cc20caf50e86ac10cf6aca911))
+* **studio:** Open Project's "New Window" opened in this window ([6427bbf](https://github.com/jxsuite/jx/commit/6427bbfe9122d3e6688d09b7c3854bdba6b3f1f3))
+* **studio:** Open Project's "New Window" opened in this window ([9ac528f](https://github.com/jxsuite/jx/commit/9ac528f80b1d6937fd3dfa426dc344ddf9979d79))
+* **types:** repair the two typecheck errors the workspace tsconfigs see ([908f661](https://github.com/jxsuite/jx/commit/908f6614ea8cfffe06ed82b6dfe7f1ae979f79ab))
 
 
 ### Dependencies
@@ -1076,21 +1076,21 @@
 
 ### Features
 
-* **studio:** require a user-chosen destination for new projects ([e08966c](https://github.com/jxsuite/jx/commit/e08966cc2d7a7ba34d4b12f3a6186396539b07da))
-* **studio:** upload and drop media from every editing surface ([ed5999b](https://github.com/jxsuite/jx/commit/ed5999b8522bcae408ac19c60d4758c40c7ff688))
+* **studio:** require a user-chosen destination for new projects ([0046d68](https://github.com/jxsuite/jx/commit/0046d68c4268489fadef9c9f37f414889fd88f4f))
+* **studio:** upload and drop media from every editing surface ([3a58962](https://github.com/jxsuite/jx/commit/3a58962bf5225b31ec2476cba7c91f9d6a6231eb))
 
 
 ### Bug Fixes
 
-* **desktop,studio,server,collab:** typecheck the desktop package, and hold the coverage gates ([4a348b1](https://github.com/jxsuite/jx/commit/4a348b131be242ac14fe8097bb5cb431a9c64155))
-* **schema:** make committed entry documents resolve in editors ([3281908](https://github.com/jxsuite/jx/commit/328190812bb9716de5618da9365b4e4e43cfe7f0))
-* **studio,server,desktop:** dev server bypassed the build; Monaco still loaded at startup ([288fb73](https://github.com/jxsuite/jx/commit/288fb73a0aae78318f17a4d1a24a73e0a523104e))
-* **studio:** resolve project schemas offline and ship Monaco's workers everywhere ([bf04699](https://github.com/jxsuite/jx/commit/bf04699944b48e0523dc22890ebcbbbea25f0310))
+* **desktop,studio,server,collab:** typecheck the desktop package, and hold the coverage gates ([f1e40e5](https://github.com/jxsuite/jx/commit/f1e40e5c813d4f7ec508859faddb4faef76e2c03))
+* **schema:** make committed entry documents resolve in editors ([e957436](https://github.com/jxsuite/jx/commit/e957436666362e83c07f69e487c4228cfcc06b76))
+* **studio,server,desktop:** dev server bypassed the build; Monaco still loaded at startup ([0b98da6](https://github.com/jxsuite/jx/commit/0b98da64aa34e49d2c18276359f50c119706f9c1))
+* **studio:** resolve project schemas offline and ship Monaco's workers everywhere ([367cefa](https://github.com/jxsuite/jx/commit/367cefa437f79ebd36623341833209d684f81ae4))
 
 
 ### Performance Improvements
 
-* **studio:** code-split the bundle and load Monaco on demand ([78d85ba](https://github.com/jxsuite/jx/commit/78d85ba20569ff63ad279371923218f1ab7cc7b5))
+* **studio:** code-split the bundle and load Monaco on demand ([369e702](https://github.com/jxsuite/jx/commit/369e70287a5a32cbe3f6ef922ee0f647d48d755e))
 
 
 ### Dependencies
@@ -1114,7 +1114,7 @@
 
 ### Bug Fixes
 
-* **desktop:** stage create/starters static data into the Electrobun bundle ([8b8d56a](https://github.com/jxsuite/jx/commit/8b8d56ae1de4c52200861d5b6cc474d634bc5d84))
+* **desktop:** stage create/starters static data into the Electrobun bundle ([75c38ab](https://github.com/jxsuite/jx/commit/75c38abf607bb639832362aadf3a646aa522618f))
 
 
 ### Dependencies
@@ -1138,12 +1138,12 @@
 
 ### Features
 
-* enforce truthful marketing claims and add the missing LICENSE ([b7e0b09](https://github.com/jxsuite/jx/commit/b7e0b095566121d79ca50894b69a476984fb93ee))
+* enforce truthful marketing claims and add the missing LICENSE ([6e235b5](https://github.com/jxsuite/jx/commit/6e235b562d8b494afa3e8509b6bb98e4c2e3d9c6))
 
 
 ### Bug Fixes
 
-* **starters,examples:** repair documents the schema correctly rejected ([6913028](https://github.com/jxsuite/jx/commit/691302839526b4f1408ab98ca1b418b39784b01b))
+* **starters,examples:** repair documents the schema correctly rejected ([7917b2b](https://github.com/jxsuite/jx/commit/7917b2b231e5f4ed6d3818d19c5f8fb477fe02c1))
 
 
 ### Dependencies
@@ -1176,7 +1176,7 @@
 
 ### Bug Fixes
 
-* enable notarization in electrobun configuration ([cbd613d](https://github.com/jxsuite/jx/commit/cbd613dc350abbd282bb9e8c87ec7b1430d1091e))
+* enable notarization in electrobun configuration ([edae3a7](https://github.com/jxsuite/jx/commit/edae3a7eb12446a8c766abdc24a755e40cfeed71))
 
 
 ### Dependencies
@@ -1200,7 +1200,7 @@
 
 ### Features
 
-* **studio:** spreadsheet grid editor — CSV grid tabs with batch save ([6736c02](https://github.com/jxsuite/jx/commit/6736c027d57fb438fb7aa0a9f333a41cc477e0a4))
+* **studio:** spreadsheet grid editor — CSV grid tabs with batch save ([b0bd0dc](https://github.com/jxsuite/jx/commit/b0bd0dccb72a9541c77b877154783f376cd540fa))
 
 
 ### Dependencies
@@ -1227,9 +1227,9 @@
 
 ### Features
 
-- hosts switch to the extension model; migrate all projects to content sections ([c40b45c](https://github.com/jxsuite/jx/commit/c40b45c2c1ac2052cba4467d9353de22f4c0f060))
-- **studio:** data console — connections, schema push, secrets, data grid ([ea92f95](https://github.com/jxsuite/jx/commit/ea92f955cdfce5774a0ae72f01038e00c8d310ae))
-- **studio:** descriptor-contributed settings + fetched project schemas ([60f1465](https://github.com/jxsuite/jx/commit/60f1465cdc18c07c7d172372f4df2d67dee1ca88))
+- hosts switch to the extension model; migrate all projects to content sections ([b2c0e27](https://github.com/jxsuite/jx/commit/b2c0e27c08e649af334fdf67ccf6abbb73c480dc))
+- **studio:** data console — connections, schema push, secrets, data grid ([de02861](https://github.com/jxsuite/jx/commit/de02861a03c94460f0d332ac909438decbd4fd9d))
+- **studio:** descriptor-contributed settings + fetched project schemas ([b85afaf](https://github.com/jxsuite/jx/commit/b85afaf9f6d340e1d916ad399fc758df36ced2e1))
 
 ### Dependencies
 
@@ -1289,14 +1289,14 @@
 
 ### Features
 
-- **desktop:** persistent cross-platform user settings ([352cf36](https://github.com/jxsuite/jx/commit/352cf3636d7d1a132d847db1b15703c6be9fa30a))
-- **desktop:** wire up the "new project" feature ([5f9fec3](https://github.com/jxsuite/jx/commit/5f9fec325269ebada329f383825f096db657610f))
-- site import package, ui + starter templates & wizard ([9c44e4a](https://github.com/jxsuite/jx/commit/9c44e4abe7e9d75c1129c179a419f5a390f86da9))
-- **starters:** init starter sites ([1f883b5](https://github.com/jxsuite/jx/commit/1f883b526ea91ae935de76932283302d0720f104))
+- **desktop:** persistent cross-platform user settings ([348f704](https://github.com/jxsuite/jx/commit/348f704452570c898cc26f865088b88b5bb75649))
+- **desktop:** wire up the "new project" feature ([742e72d](https://github.com/jxsuite/jx/commit/742e72d4d9154cc14978718d458917042e3994c4))
+- site import package, ui + starter templates & wizard ([700e432](https://github.com/jxsuite/jx/commit/700e432faeb6c30ef2b1859b0a12fa00457ff508))
+- **starters:** init starter sites ([be19be6](https://github.com/jxsuite/jx/commit/be19be613e365ad26e804f99ecce95032d2419fc))
 
 ### Bug Fixes
 
-- **desktop:** correct class on chromium runtime ([129a991](https://github.com/jxsuite/jx/commit/129a991babc316ae3b719a13f99f12cd028b14a8))
+- **desktop:** correct class on chromium runtime ([cf4b406](https://github.com/jxsuite/jx/commit/cf4b406edb0235d515b03a676763412344b91039))
 
 ### Dependencies
 

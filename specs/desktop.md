@@ -1252,19 +1252,19 @@ External standards this specification binds itself to. Vocabulary and cell gramm
 - **0.3.0-draft** (2026-07-25) — New Project requires a user-chosen destination: StudioPlatform gains the required createDestination declaration, createProject takes a required destination (path parent or repo owner/name/visibility), and §4.5 defines the create flow. No backend picks a location.
 - **0.2.7-draft** (2026-07-24) — Cloud platform registers inside studio.js via a window.__jxCloud signal (single yjs for collab).
 - **0.2.6-draft** (2026-07-24) — Document packaged static-data staging into app/bun (create templates, starters) and postBuild bundle verification.
-- **0.2.5-draft** (2026-07-22) — Proper spec versioning (`fb0f3ec7`).
-- **0.2.4-draft** (2026-07-22) — Machine-readable spec status vocabulary + generated status page (`79daba23`).
-- **0.2.3-draft** (2026-07-17) — Align spec.md, site-architecture, desktop, server, extensions with reality (`c61ba567`).
-- **0.2.2-draft** (2026-07-13) — Run formatter (`9e776783`).
-- **0.2.1-draft** (2026-05-20) — Run formatter (`8ba47930`).
-- **0.2.0-draft** (2026-05-17) — Remove auto-detection script and update documentation for NixOS desktop runtime (`6b746644`).
-- **0.1.6-draft** (2026-05-16) — Update desktop spec (`9453ea1f`).
-- **0.1.5-draft** (2026-04-23) — Oxfmt (`af32c08c`).
-- **0.1.4-draft** (2026-04-23) — Rebrand to jxsuite (`2897a4e8`).
-- **0.1.3-draft** (2026-04-22) — Consolidate project config schema and rename as such (`e3523dbf`).
-- **0.1.2-draft** (2026-04-16) — Landing site + working exports + release-it + linting (`a8409b5f`).
-- **0.1.1-draft** (2026-04-15) — Rebrand to Jx / Jx Platform (`abc63f2d`).
-- **0.1.0-draft** (2026-04-15) — Implement platform abstraction (`962ba588`).
+- **0.2.5-draft** (2026-07-22) — Proper spec versioning (`05c12d47`).
+- **0.2.4-draft** (2026-07-22) — Machine-readable spec status vocabulary + generated status page (`dd415a70`).
+- **0.2.3-draft** (2026-07-17) — Align spec.md, site-architecture, desktop, server, extensions with reality (`22b8777f`).
+- **0.2.2-draft** (2026-07-13) — Run formatter (`3cc957c0`).
+- **0.2.1-draft** (2026-05-20) — Run formatter (`bfb5b932`).
+- **0.2.0-draft** (2026-05-17) — Remove auto-detection script and update documentation for NixOS desktop runtime (`e9983802`).
+- **0.1.6-draft** (2026-05-16) — Update desktop spec (`51dba223`).
+- **0.1.5-draft** (2026-04-23) — Oxfmt (`4497af55`).
+- **0.1.4-draft** (2026-04-23) — Rebrand to jxsuite (`39a3fffe`).
+- **0.1.3-draft** (2026-04-22) — Consolidate project config schema and rename as such (`de9d0638`).
+- **0.1.2-draft** (2026-04-16) — Landing site + working exports + release-it + linting (`b3861f9e`).
+- **0.1.1-draft** (2026-04-15) — Rebrand to Jx / Jx Platform (`55a35cfd`).
+- **0.1.0-draft** (2026-04-15) — Implement platform abstraction (`ccaeabf9`).
 
 ---
 

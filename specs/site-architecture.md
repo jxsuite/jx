@@ -2531,38 +2531,38 @@ This spec builds on existing Jx primitives wherever possible:
 - **0.1.37-draft** (2026-07-24) — Document the application tier and correct the static-only framing: §1 vision, §1.1 principles 1/3/5, §1.2 coverage, §14.1/§14.2 adapter output (worker generation is gated on build.adapter alone), and new §15 Application Tier covering server functions, auth, and data mounts.
 - **0.1.36-draft** (2026-07-23) — Note the mounted-asset copy step in the build pipeline (§12.1).
 - **0.1.35-draft** (2026-07-23) — Content entries address media relative to themselves; collections publish their directory at /content/<type> (§9.3).
-- **0.1.34-draft** (2026-07-22) — Proper spec versioning (`fb0f3ec7`).
-- **0.1.33-draft** (2026-07-22) — Machine-readable spec status vocabulary + generated status page (`79daba23`).
-- **0.1.32-draft** (2026-07-17) — Forced color-scheme contract — dual emission, color-scheme triplet, pre-paint script (`e629684d`).
-- **0.1.31-draft** (2026-07-17) — Bundle the site worker self-contained per adapter (`4096ba12`).
-- **0.1.30-draft** (2026-07-17) — Sidecar bundling, extension emit capability, heading anchors (`07e28bc3`).
-- **0.1.29-draft** (2026-07-17) — Image pruning for persistent site build cache + github ci cache (`b45096ed`).
-- **0.1.28-draft** (2026-07-17) — Align spec.md, site-architecture, desktop, server, extensions with reality (`c61ba567`).
-- **0.1.27-draft** (2026-06-25) — Sitemap generation (`948c7a67`).
-- **0.1.26-draft** (2026-06-10) — Update site architecture to reflect new changes (`c0bdba08`).
-- **0.1.25-draft** (2026-06-10) — Use cloudflare cgi for image optimization (`96228874`).
-- **0.1.24-draft** (2026-06-10) — Consolidate markdown and csv handling to the parser package (`8b1ba6da`).
-- **0.1.23-draft** (2026-06-03) — Use `.cache` isntead of `.jx-cache` to support cloudflare build cache (`1103d2d6`).
-- **0.1.22-draft** (2026-06-01) — Remove old glob-based content type references (`6bcbfdaf`).
-- **0.1.21-draft** (2026-05-28) — Separate directory + format for content type defs (`c43186ac`).
-- **0.1.20-draft** (2026-05-25) — Element annotations (title/description) (`c9137e50`).
-- **0.1.19-draft** (2026-05-25) — Allow nested global styles (`1159d585`).
-- **0.1.18-draft** (2026-05-20) — Run formatter (`8ba47930`).
-- **0.1.17-draft** (2026-05-19) — Reflect new content type transition (`6eb3d2b6`).
-- **0.1.16-draft** (2026-05-18) — Always emit worker.js for cloudflare (`3dd37c2d`).
-- **0.1.15-draft** (2026-05-18) — Remove unused 'rendered' property from JSON and CSV entries (`7478a87c`).
-- **0.1.14-draft** (2026-05-15) — Image optimization specs (`7d2ee67f`).
-- **0.1.13-draft** (2026-05-15) — Provider-sepcific Site-Wide Bundling (`51cb5cf6`).
-- **0.1.12-draft** (2026-05-04) — Longhand/shorthand property input sync (`05c7da35`).
-- **0.1.11-draft** (2026-04-29) — Update site architecture progress (`3305a8f0`).
-- **0.1.10-draft** (2026-04-29) — Project browser (`11c1fe7c`).
-- **0.1.9-draft** (2026-04-23) — Site build (`ffe60ddc`).
-- **0.1.8-draft** (2026-04-23) — Compiler cli + published site (`4607ebbc`).
-- **0.1.7-draft** (2026-04-22) — Consolidate project config schema and rename as such (`e3523dbf`).
-- **0.1.6-draft** (2026-04-20) — Better project-level scoping (`0cba233c`).
-- **0.1.5-draft** (2026-04-16) — Landing site + working exports + release-it + linting (`a8409b5f`).
-- **0.1.4-draft** (2026-04-15) — Rebrand to Jx / Jx Platform (`abc63f2d`).
-- **0.1.3-draft** (2026-04-15) — Importmap support (`c1b329d4`).
-- **0.1.2-draft** (2026-04-10) — WinterTC server-side conventions (`60eba6dd`).
-- **0.1.1-draft** (2026-04-10) — Site architecture update (`86d1c515`).
-- **0.1.0-draft** (2026-04-10) — Enhanced font picker (`9d388a32`).
+- **0.1.34-draft** (2026-07-22) — Proper spec versioning (`05c12d47`).
+- **0.1.33-draft** (2026-07-22) — Machine-readable spec status vocabulary + generated status page (`dd415a70`).
+- **0.1.32-draft** (2026-07-17) — Forced color-scheme contract — dual emission, color-scheme triplet, pre-paint script (`3f7a0469`).
+- **0.1.31-draft** (2026-07-17) — Bundle the site worker self-contained per adapter (`da0e3d3b`).
+- **0.1.30-draft** (2026-07-17) — Sidecar bundling, extension emit capability, heading anchors (`a3603333`).
+- **0.1.29-draft** (2026-07-17) — Image pruning for persistent site build cache + github ci cache (`5c995a8a`).
+- **0.1.28-draft** (2026-07-17) — Align spec.md, site-architecture, desktop, server, extensions with reality (`22b8777f`).
+- **0.1.27-draft** (2026-06-25) — Sitemap generation (`b1783686`).
+- **0.1.26-draft** (2026-06-10) — Update site architecture to reflect new changes (`93e9b23a`).
+- **0.1.25-draft** (2026-06-10) — Use cloudflare cgi for image optimization (`e9fabe63`).
+- **0.1.24-draft** (2026-06-10) — Consolidate markdown and csv handling to the parser package (`66ea8c35`).
+- **0.1.23-draft** (2026-06-03) — Use `.cache` isntead of `.jx-cache` to support cloudflare build cache (`1dd47fcf`).
+- **0.1.22-draft** (2026-06-01) — Remove old glob-based content type references (`8c3d373f`).
+- **0.1.21-draft** (2026-05-28) — Separate directory + format for content type defs (`bf2e28bf`).
+- **0.1.20-draft** (2026-05-25) — Element annotations (title/description) (`a189b13e`).
+- **0.1.19-draft** (2026-05-25) — Allow nested global styles (`090c8666`).
+- **0.1.18-draft** (2026-05-20) — Run formatter (`bfb5b932`).
+- **0.1.17-draft** (2026-05-19) — Reflect new content type transition (`120a4a15`).
+- **0.1.16-draft** (2026-05-18) — Always emit worker.js for cloudflare (`5a69fd32`).
+- **0.1.15-draft** (2026-05-18) — Remove unused 'rendered' property from JSON and CSV entries (`9b2684c5`).
+- **0.1.14-draft** (2026-05-15) — Image optimization specs (`a87bba27`).
+- **0.1.13-draft** (2026-05-15) — Provider-sepcific Site-Wide Bundling (`aa27e139`).
+- **0.1.12-draft** (2026-05-04) — Longhand/shorthand property input sync (`5177dc3b`).
+- **0.1.11-draft** (2026-04-29) — Update site architecture progress (`3ddcec61`).
+- **0.1.10-draft** (2026-04-29) — Project browser (`91488879`).
+- **0.1.9-draft** (2026-04-23) — Site build (`85306923`).
+- **0.1.8-draft** (2026-04-23) — Compiler cli + published site (`5dcda4b8`).
+- **0.1.7-draft** (2026-04-22) — Consolidate project config schema and rename as such (`de9d0638`).
+- **0.1.6-draft** (2026-04-20) — Better project-level scoping (`4e5bf2c2`).
+- **0.1.5-draft** (2026-04-16) — Landing site + working exports + release-it + linting (`b3861f9e`).
+- **0.1.4-draft** (2026-04-15) — Rebrand to Jx / Jx Platform (`55a35cfd`).
+- **0.1.3-draft** (2026-04-15) — Importmap support (`31de74d7`).
+- **0.1.2-draft** (2026-04-10) — WinterTC server-side conventions (`c596f3fc`).
+- **0.1.1-draft** (2026-04-10) — Site architecture update (`523923ff`).
+- **0.1.0-draft** (2026-04-10) — Enhanced font picker (`d09a0067`).

@@ -15,7 +15,7 @@
 
 ### Bug Fixes
 
-* **schema:** the images config describes the formats the build writes ([2c4773e](https://github.com/jxsuite/jx/commit/2c4773e838862a67adc9f954807970d843adcacf))
+* **schema:** the images config describes the formats the build writes ([77316ac](https://github.com/jxsuite/jx/commit/77316ac17900ded360c72c6e2bf416ca5f516666))
 
 
 ### Dependencies
@@ -30,13 +30,13 @@
 
 ### Features
 
-* **schema,compiler,runtime:** a document carries its own client and server modules in $script ([#625](https://github.com/jxsuite/jx/issues/625)) ([bb35a4f](https://github.com/jxsuite/jx/commit/bb35a4f7e68dc77e06c4b68437fba459480fcd04))
+* **schema,compiler,runtime:** a document carries its own client and server modules in $script ([#625](https://github.com/jxsuite/jx/issues/625)) ([bca939b](https://github.com/jxsuite/jx/commit/bca939bf63cd75a661842d75c3118b788789028b))
 
 
 ### Bug Fixes
 
-* **ui:** composition guard on combobox, forced-colours option highlight, dialog scroll containment ([#622](https://github.com/jxsuite/jx/issues/622)) ([eeaa18e](https://github.com/jxsuite/jx/commit/eeaa18eedb127ee31ed07345003660f6dfe2e099))
-* **ui:** forward form attributes, draw invalid state and guard composition keys ([#626](https://github.com/jxsuite/jx/issues/626)) ([6c513dc](https://github.com/jxsuite/jx/commit/6c513dcd80731fe364e60e07ac10f4f66c80e29c))
+* **ui:** composition guard on combobox, forced-colours option highlight, dialog scroll containment ([#622](https://github.com/jxsuite/jx/issues/622)) ([3a4da4b](https://github.com/jxsuite/jx/commit/3a4da4bf392e1d8e6e6b067c9655e9123fe6f77f))
+* **ui:** forward form attributes, draw invalid state and guard composition keys ([#626](https://github.com/jxsuite/jx/issues/626)) ([0649c13](https://github.com/jxsuite/jx/commit/0649c1310e329df5c9f34b5f0c8415fb816d3658))
 
 
 ### Dependencies
@@ -51,18 +51,18 @@
 
 ### Features
 
-* classify Function entries through one shared classifier ([#595](https://github.com/jxsuite/jx/issues/595)) ([0cc68d7](https://github.com/jxsuite/jx/commit/0cc68d7f3cafbd8d23ca55c0a275f0ce64abbb78))
-* edit function bodies as TypeScript and store them as written ([#593](https://github.com/jxsuite/jx/issues/593)) ([b53a192](https://github.com/jxsuite/jx/commit/b53a1924d5f3d241eccccb51f4df347b3c076c27))
-* **schema,runtime,compiler:** refuse a Function declaring both body and $src ([#604](https://github.com/jxsuite/jx/issues/604)) ([7d298b1](https://github.com/jxsuite/jx/commit/7d298b1746de17d4e94fff5a58c90318cc360133))
-* **ui:** a jx-field in a narrow container stacks its label above the control ([#600](https://github.com/jxsuite/jx/issues/600)) ([7c2c765](https://github.com/jxsuite/jx/commit/7c2c765e09061a45bbe674baa5ee0361827e521d))
-* **ui:** section headings are one recipe, and the accordion draws it ([#601](https://github.com/jxsuite/jx/issues/601)) ([c975835](https://github.com/jxsuite/jx/commit/c97583561086c76c0ff17314a3a668253545b1eb))
+* classify Function entries through one shared classifier ([#595](https://github.com/jxsuite/jx/issues/595)) ([122f997](https://github.com/jxsuite/jx/commit/122f997face23fd0a2af532e714d1168ebbdb56c))
+* edit function bodies as TypeScript and store them as written ([#593](https://github.com/jxsuite/jx/issues/593)) ([c95636f](https://github.com/jxsuite/jx/commit/c95636fa1d7792e5bafb0cde3d242c188b456688))
+* **schema,runtime,compiler:** refuse a Function declaring both body and $src ([#604](https://github.com/jxsuite/jx/issues/604)) ([750c463](https://github.com/jxsuite/jx/commit/750c4638f009264d1a71aef556dcb3ef050ea785))
+* **ui:** a jx-field in a narrow container stacks its label above the control ([#600](https://github.com/jxsuite/jx/issues/600)) ([18cf26e](https://github.com/jxsuite/jx/commit/18cf26e6a2819e9240fe9029d73b552171768f9e))
+* **ui:** section headings are one recipe, and the accordion draws it ([#601](https://github.com/jxsuite/jx/issues/601)) ([fc12fa6](https://github.com/jxsuite/jx/commit/fc12fa686eea1c2fcae5cac274120114bb1a3992))
 
 
 ### Bug Fixes
 
-* **studio:** zoom in the status bar, collapsed outline, reliable twisty, diff Code view back ([#605](https://github.com/jxsuite/jx/issues/605)) ([74fa66e](https://github.com/jxsuite/jx/commit/74fa66e27bcfbb618ee8af4b5565bb8755ec0697))
-* **ui:** 11px is the type floor, in the kit and in Studio's chrome ([#599](https://github.com/jxsuite/jx/issues/599)) ([b592d75](https://github.com/jxsuite/jx/commit/b592d751ef314b6b2b304122b328b86cee1ff1b1))
-* **ui:** muted text meets 4.5:1 on every surface, in both schemes ([#598](https://github.com/jxsuite/jx/issues/598)) ([9e73430](https://github.com/jxsuite/jx/commit/9e73430663727b9924f635fc3093706c6cf6089d))
+* **studio:** zoom in the status bar, collapsed outline, reliable twisty, diff Code view back ([#605](https://github.com/jxsuite/jx/issues/605)) ([e4cc01d](https://github.com/jxsuite/jx/commit/e4cc01d17353b1e3749c5257fb09383ca6a505dd))
+* **ui:** 11px is the type floor, in the kit and in Studio's chrome ([#599](https://github.com/jxsuite/jx/issues/599)) ([ad305fe](https://github.com/jxsuite/jx/commit/ad305fe0da3e0b3b68b03ba9c3c7dda2afcae9e9))
+* **ui:** muted text meets 4.5:1 on every surface, in both schemes ([#598](https://github.com/jxsuite/jx/issues/598)) ([83190e3](https://github.com/jxsuite/jx/commit/83190e30880ed5e0cc8ded9f64fcc95856b20120))
 
 
 ### Dependencies
@@ -117,7 +117,7 @@
 
 ### Features
 
-* **site:** page a list into numbered routes, and query collections by path and by reference ([#535](https://github.com/jxsuite/jx/issues/535)) ([bd3eb1e](https://github.com/jxsuite/jx/commit/bd3eb1ef8f49ce8c8a4d9bfc4e89cb4f54ea1ef1))
+* **site:** page a list into numbered routes, and query collections by path and by reference ([#535](https://github.com/jxsuite/jx/issues/535)) ([7b838fc](https://github.com/jxsuite/jx/commit/7b838fcc43b1f5e25f6dc348c3ae5fc418ff75f0))
 
 
 ### Dependencies
@@ -132,7 +132,7 @@
 
 ### Features
 
-* **studio:** edit an image where it is opened ([#531](https://github.com/jxsuite/jx/issues/531)) ([c45b229](https://github.com/jxsuite/jx/commit/c45b229357ef3163dcb49c7861c08ec82ce35d79))
+* **studio:** edit an image where it is opened ([#531](https://github.com/jxsuite/jx/issues/531)) ([0e2b90e](https://github.com/jxsuite/jx/commit/0e2b90e9a2deb20a542fc33803adbe31a20673ec))
 
 ## [0.8.2](https://github.com/jxsuite/jx/compare/ui-v0.8.1...ui-v0.8.2) (2026-10-29)
 
@@ -159,7 +159,7 @@
 
 ### Features
 
-* **desktop:** Mac App Store channel (mas target, sandbox entitlements, TestFlight lane) ([#475](https://github.com/jxsuite/jx/issues/475)) ([19f1264](https://github.com/jxsuite/jx/commit/19f1264b83601c97c471c15020950c980d6989bd))
+* **desktop:** Mac App Store channel (mas target, sandbox entitlements, TestFlight lane) ([#475](https://github.com/jxsuite/jx/issues/475)) ([2aab641](https://github.com/jxsuite/jx/commit/2aab641f73e817c72c2689e87c3c481ed2b266a9))
 
 
 ### Dependencies
@@ -186,7 +186,7 @@
 
 ### Features
 
-* **desktop:** replace Electrobun with Electron, packaged with electron-builder ([#465](https://github.com/jxsuite/jx/issues/465)) ([be1534f](https://github.com/jxsuite/jx/commit/be1534f616d7176b4a2098cd4d232808cf5c7482))
+* **desktop:** replace Electrobun with Electron, packaged with electron-builder ([#465](https://github.com/jxsuite/jx/issues/465)) ([1cd8130](https://github.com/jxsuite/jx/commit/1cd813071e3487cb6640f7f0aa92ec9295b53a9c))
 
 ## [0.6.0](https://github.com/jxsuite/jx/compare/ui-v0.5.1...ui-v0.6.0) (2026-10-17)
 
@@ -197,7 +197,7 @@
 
 ### Bug Fixes
 
-* **studio,runtime,compiler:** render real sites on the canvas, fast outline, named slots ([#464](https://github.com/jxsuite/jx/issues/464)) ([d0ba17e](https://github.com/jxsuite/jx/commit/d0ba17e841520645749df384d3bb3f8e2cffa338))
+* **studio,runtime,compiler:** render real sites on the canvas, fast outline, named slots ([#464](https://github.com/jxsuite/jx/issues/464)) ([6757dff](https://github.com/jxsuite/jx/commit/6757dfff34f6b85f696813ec37a1a46df690f114))
 
 
 ### Dependencies
@@ -212,7 +212,7 @@
 
 ### Bug Fixes
 
-* **studio:** cursor-anchored zoom, dirty-gated Save, Library rail button, and four more fixes ([#444](https://github.com/jxsuite/jx/issues/444)) ([a97eaab](https://github.com/jxsuite/jx/commit/a97eaab2852a8e375dc01701bf6243a43a56b7c1))
+* **studio:** cursor-anchored zoom, dirty-gated Save, Library rail button, and four more fixes ([#444](https://github.com/jxsuite/jx/issues/444)) ([72670f0](https://github.com/jxsuite/jx/commit/72670f0ea73eccde8259775a3a802318ce0ed2fc))
 
 
 ### Dependencies
@@ -226,7 +226,7 @@
 
 ### Features
 
-* **studio:** open a cloud project from a repository subfolder ([#429](https://github.com/jxsuite/jx/issues/429)) ([da2b867](https://github.com/jxsuite/jx/commit/da2b8675aeed8d183d77c063db2b03789de73b8f))
+* **studio:** open a cloud project from a repository subfolder ([#429](https://github.com/jxsuite/jx/issues/429)) ([bf467a7](https://github.com/jxsuite/jx/commit/bf467a7f4b987dc03fb6bb7db145dfa48c130280))
 
 ## [0.4.1](https://github.com/jxsuite/jx/compare/ui-v0.4.0...ui-v0.4.1) (2026-10-06)
 
@@ -243,17 +243,17 @@
 
 ### Features
 
-* **studio:** batch modulepreload links, cache scroller/track resolution ([d756ae3](https://github.com/jxsuite/jx/commit/d756ae3a53987316215082161222ea5444390d50))
+* **studio:** batch modulepreload links, cache scroller/track resolution ([7d181d2](https://github.com/jxsuite/jx/commit/7d181d20b1599d1978f00b5380b0c90802ceae55))
 
 
 ### Bug Fixes
 
-* **studio:** resolve three canvas/chrome stacking-order defects ([7032b9e](https://github.com/jxsuite/jx/commit/7032b9e8f17b2792d33fca0f3cd5caa9de239d8f))
-* **studio:** resolve three canvas/chrome stacking-order defects ([0e0f4fc](https://github.com/jxsuite/jx/commit/0e0f4fcb05765fb068f1edbea59e32a2760c2c4a))
-* **studio:** Source Control, Document Header, button groups, and eight more chrome fixes ([30cc7ee](https://github.com/jxsuite/jx/commit/30cc7ee2a89a691e47e851b34adaf8a9ad9a2d0d))
-* **ui:** a compact action group draws one segmented line, and outset hit areas cannot clip ([bee3bc2](https://github.com/jxsuite/jx/commit/bee3bc28af6b78b795c673963e15f39d1e860057))
-* **ui:** pin the empty error region's size instead of inferring it ([543822f](https://github.com/jxsuite/jx/commit/543822f927fc60237cdf8ca8614b94ef79a753cf))
-* **ui:** segmented compact action groups, inert empty error region, contained hit areas ([306b097](https://github.com/jxsuite/jx/commit/306b097cbb481716b89d925b8c9b7d6d2b749e13))
+* **studio:** resolve three canvas/chrome stacking-order defects ([72b0b53](https://github.com/jxsuite/jx/commit/72b0b532a35f9faf6b7e75b9320af284e84105fa))
+* **studio:** resolve three canvas/chrome stacking-order defects ([040fb5b](https://github.com/jxsuite/jx/commit/040fb5b40886b8f9c3ad937b1f9b178f7aee7acb))
+* **studio:** Source Control, Document Header, button groups, and eight more chrome fixes ([b99443f](https://github.com/jxsuite/jx/commit/b99443fa3fbb930a5681d5ce030836b722a70475))
+* **ui:** a compact action group draws one segmented line, and outset hit areas cannot clip ([5842a3f](https://github.com/jxsuite/jx/commit/5842a3f64d9f32a99905176f1ffd9e15391c8024))
+* **ui:** pin the empty error region's size instead of inferring it ([ed788c1](https://github.com/jxsuite/jx/commit/ed788c1c5e1bdb7d1b5f3aa89f04f9d55d782417))
+* **ui:** segmented compact action groups, inert empty error region, contained hit areas ([bad8f17](https://github.com/jxsuite/jx/commit/bad8f17760cc937240154aee106682193d102fa8))
 
 
 ### Dependencies
@@ -268,17 +268,17 @@
 
 ### Features
 
-* **studio:** batch modulepreload links, cache scroller/track resolution ([441c7cc](https://github.com/jxsuite/jx/commit/441c7cc658ca48f2e43a2f2789ae8c28167c9364))
+* **studio:** batch modulepreload links, cache scroller/track resolution ([d6bdfae](https://github.com/jxsuite/jx/commit/d6bdfaef7e714952d6153796f7be0ee3f3bd05f2))
 
 ## [0.2.0](https://github.com/jxsuite/jx/compare/ui-v0.1.0...ui-v0.2.0) (2026-09-14)
 
 
 ### Features
 
-* **ui,studio:** jx-switch's hint is a tooltip while enabled, and the commandbar passes hint ([fa176d3](https://github.com/jxsuite/jx/commit/fa176d317ee5b1f2f4892a3e6027090bf60d6fe1))
-* **ui,studio:** jx-switch's hint is a tooltip while enabled, and the commandbar passes hint ([#332](https://github.com/jxsuite/jx/issues/332)) ([f3826ee](https://github.com/jxsuite/jx/commit/f3826ee79fa43066f9d5b41c9621d7dbdc1eeea2))
-* **ui:** size=sm controls accept the pointer over the 24px floor without growing ([6089692](https://github.com/jxsuite/jx/commit/6089692901d4d89ca046a060d51e33a82fd98d1b))
-* **ui:** size=sm controls accept the pointer over the 24px floor without growing ([#324](https://github.com/jxsuite/jx/issues/324)) ([24c93a0](https://github.com/jxsuite/jx/commit/24c93a0dd3d589c0b9f63ab74ef6e4ded5d60092))
+* **ui,studio:** jx-switch's hint is a tooltip while enabled, and the commandbar passes hint ([9ba4213](https://github.com/jxsuite/jx/commit/9ba4213e385a638e47a81725c36ad2288d32b831))
+* **ui,studio:** jx-switch's hint is a tooltip while enabled, and the commandbar passes hint ([#332](https://github.com/jxsuite/jx/issues/332)) ([b2c9c6b](https://github.com/jxsuite/jx/commit/b2c9c6b582804626ffa30527db184fa5518cc035))
+* **ui:** size=sm controls accept the pointer over the 24px floor without growing ([b59b39e](https://github.com/jxsuite/jx/commit/b59b39e4a1083f4bd694ad64d086703e24163444))
+* **ui:** size=sm controls accept the pointer over the 24px floor without growing ([#324](https://github.com/jxsuite/jx/issues/324)) ([4c475dd](https://github.com/jxsuite/jx/commit/4c475dded66562b63c518d97ba99e1bf77859d2f))
 
 
 ### Dependencies
@@ -292,52 +292,52 @@
 
 ### Features
 
-* **runtime,schema,ui:** the seam schema-contained styling needs ([6efce33](https://github.com/jxsuite/jx/commit/6efce3320960037c5be88922b03466bbc5d10c00))
-* **runtime,ui,studio:** the canvas loads kit behaviours lazily, and a kit save reaches every frame ([e91b660](https://github.com/jxsuite/jx/commit/e91b66089adb3eb18ce3d227900b5d0ff133196a))
-* **schema,studio,compiler:** accessibility rules, judged alike by Studio, jx validate and the tests ([ad744dc](https://github.com/jxsuite/jx/commit/ad744dc84c017004a828b3da26977cf40f467d75))
-* **studio,ui,runtime:** the Command Bar as a Jx document, closing the C2 surfaces ([da1fc54](https://github.com/jxsuite/jx/commit/da1fc54640b55bbd50873abae03d0b70c62a0413))
-* **studio,ui:** the Navigator rail as a Jx surface, on stacked action buttons ([fa5697e](https://github.com/jxsuite/jx/commit/fa5697e848bf301e210224db4d092a9bd218ab2a))
-* **studio,ui:** the settings menu on the menu surface, with a submenu level and live rows ([ab4b755](https://github.com/jxsuite/jx/commit/ab4b755a1640248d15151e3130632799783ce086))
-* **studio,ui:** the three dock edges are jx-split, so a keyboard can size a dock ([302d756](https://github.com/jxsuite/jx/commit/302d7562e96a37be7da8dd60516ee8be30771354))
-* Studio's chrome is Jx documents over a native kit; Spectrum is removed ([a31f63e](https://github.com/jxsuite/jx/commit/a31f63e1b010e96434ee76b753f6c75a5d7ae2a5))
-* **studio:** Adobe Spectrum is removed ([e24e0e8](https://github.com/jxsuite/jx/commit/e24e0e8b8cc8ce7ad3244af3ec47d69b10859cdd))
-* **studio:** Studio edits its own chrome — a saved surface or kit component re-mounts the shell ([46cc18b](https://github.com/jxsuite/jx/commit/46cc18b7f60bf28d6698f52d877ab250a01e1314))
-* **studio:** the confirm, save-or-discard and prompt dialogs as a Jx document over jx-dialog ([66d2ca4](https://github.com/jxsuite/jx/commit/66d2ca44e43628ad0776e901a473334fed0a9968))
-* **studio:** the UI kit at boot, the surface façade, and the chrome's tokens aliased to the kit ([dd1e94e](https://github.com/jxsuite/jx/commit/dd1e94e558422d295092f01b343bb5b5c1dd9a6d))
-* **ui,compiler,schema:** jx-popover, jx-tooltip and jx-spinner ([10f6703](https://github.com/jxsuite/jx/commit/10f67031ca0e4ff2c6189bcfee64093ba308d906))
-* **ui,studio:** a button's hint is a jx-tooltip while it can act and a title while it cannot ([c050634](https://github.com/jxsuite/jx/commit/c050634080be7fdd7b6d99324179f1d1882c42e3)), closes [#299](https://github.com/jxsuite/jx/issues/299)
-* **ui,studio:** jx-menu and jx-menu-item, and the element context menu as the first Jx surface ([173cf17](https://github.com/jxsuite/jx/commit/173cf175d455565a36d837097a40bbe2aa40fe4c))
-* **ui,studio:** jx-menu hangs from its button by anchor positioning, submenus beside their rows ([2364faa](https://github.com/jxsuite/jx/commit/2364faabf57b0d2e1eb59d6d2f4d7e6590b420f3))
-* **ui,studio:** jx-tab takes slotted content, and the pane tab strip is a document ([60fe21f](https://github.com/jxsuite/jx/commit/60fe21f6e468d6ace5589159bdc5435fb0a739e0))
-* **ui,studio:** jx-toolbar and jx-split, and a workaround for a limitation that never existed ([d04f6e4](https://github.com/jxsuite/jx/commit/d04f6e461697d0b8f42d1c40596b74aa71b7b337))
-* **ui,studio:** jx-tree and jx-combobox, and the five surfaces that hand-rolled them ([9bca549](https://github.com/jxsuite/jx/commit/9bca5493ed58fc62a83ce31f46d6be7bc7904702))
-* **ui,studio:** the Edit column, the colour well and the credentials form finish on the kit ([66e693f](https://github.com/jxsuite/jx/commit/66e693f6af7215c9e0be5502abf58a036fd26570))
-* **ui,studio:** the kit has a colour family, and Studio's last Spectrum surface is a document ([c7427a6](https://github.com/jxsuite/jx/commit/c7427a6593a957fae05583a4f5c2b342053e0202))
-* **ui,studio:** the Style tab's keyword rows are jx-combobox, and ui.md's principles have evidence ([2445df2](https://github.com/jxsuite/jx/commit/2445df2c8693b6ca1a794cef59af50100fee3fd7))
-* **ui:** compact density draws 24px controls, and a button's hint is a jx-tooltip while it can act ([cb0b843](https://github.com/jxsuite/jx/commit/cb0b8435983e73594d54fc1f3aceddf1b624c5d7))
-* **ui:** compact density draws 24px controls, the WCAG 2.2 SC 2.5.8 floor at every density ([f3cb68f](https://github.com/jxsuite/jx/commit/f3cb68fa0aa7865dd5d6d927991e0e990525db50)), closes [#309](https://github.com/jxsuite/jx/issues/309)
-* **ui:** jx-button and jx-action-button ([28902c6](https://github.com/jxsuite/jx/commit/28902c62a436639d3922c897594e08b9ce638c64))
-* **ui:** jx-checkbox, jx-switch and jx-number-field, and the field-row recipes ([dc40913](https://github.com/jxsuite/jx/commit/dc40913935c7ed2c4c85f24030beddee723864a1))
-* **ui:** jx-dialog and jx-textfield ([940435a](https://github.com/jxsuite/jx/commit/940435a1caacde8869068b1310aa2b54f1b2b362))
-* **ui:** jx-popover is placed by CSS anchor positioning against the platform's implicit anchor ([8f1a0b5](https://github.com/jxsuite/jx/commit/8f1a0b56049c9319d04c8bb5cabdec5ad0a72ae9))
-* **ui:** jx-select is a native select, and the four rules a document must not write ([79e632c](https://github.com/jxsuite/jx/commit/79e632ccf6109138a2113a0b0013a6b4b970b8a8))
-* **ui:** jx-tabs, jx-accordion-item and jx-action-group ([a87ce78](https://github.com/jxsuite/jx/commit/a87ce78bbfc8f58f5e2545aebe7444880bf69b42))
-* **ui:** jx-tooltip hangs from its control by anchor positioning, the arrow following the flip ([fed3c7c](https://github.com/jxsuite/jx/commit/fed3c7c6f1aa3589dc726043a34d7529f170b57f))
-* **ui:** the @jxsuite/ui workspace, with the theme, jx-icon over Phosphor, and specs/ui.md ([d297bc9](https://github.com/jxsuite/jx/commit/d297bc97c537e8eda726465470f683c3dbf53c37))
-* **ui:** the kit ships no CSS class ([56668e4](https://github.com/jxsuite/jx/commit/56668e4de87ddd23b1715c9c542d7845ad6adb8b))
+* **runtime,schema,ui:** the seam schema-contained styling needs ([164f5a2](https://github.com/jxsuite/jx/commit/164f5a242cbbc4442e9af5a7d18dd6a041318b94))
+* **runtime,ui,studio:** the canvas loads kit behaviours lazily, and a kit save reaches every frame ([08df54c](https://github.com/jxsuite/jx/commit/08df54c2c3e6229d3ccfeaf0433a7ed3fc65e07e))
+* **schema,studio,compiler:** accessibility rules, judged alike by Studio, jx validate and the tests ([c14d121](https://github.com/jxsuite/jx/commit/c14d121e128bf64c041c401b8b0514f6133e133c))
+* **studio,ui,runtime:** the Command Bar as a Jx document, closing the C2 surfaces ([f3f4fe2](https://github.com/jxsuite/jx/commit/f3f4fe2d39904bde5e5877946dc95ef6942d77a1))
+* **studio,ui:** the Navigator rail as a Jx surface, on stacked action buttons ([3219ac7](https://github.com/jxsuite/jx/commit/3219ac72878b081b98e3d87ac308adc65e8dcd81))
+* **studio,ui:** the settings menu on the menu surface, with a submenu level and live rows ([f9933d1](https://github.com/jxsuite/jx/commit/f9933d1fc3dc42381d6baa3dcba643b20f22326f))
+* **studio,ui:** the three dock edges are jx-split, so a keyboard can size a dock ([181a641](https://github.com/jxsuite/jx/commit/181a641430515a6d28136a62838e38db931d6af0))
+* Studio's chrome is Jx documents over a native kit; Spectrum is removed ([035778f](https://github.com/jxsuite/jx/commit/035778fa8bed3d45875643f9e811a066d2a933bc))
+* **studio:** Adobe Spectrum is removed ([5474e07](https://github.com/jxsuite/jx/commit/5474e0788a637089aead2c94f43b12fce0237fb1))
+* **studio:** Studio edits its own chrome — a saved surface or kit component re-mounts the shell ([e16676d](https://github.com/jxsuite/jx/commit/e16676d7d254a5f2c0a725ce18da36eaefd0ee13))
+* **studio:** the confirm, save-or-discard and prompt dialogs as a Jx document over jx-dialog ([277a225](https://github.com/jxsuite/jx/commit/277a225b47ceea1698878590eaa904571543a7ad))
+* **studio:** the UI kit at boot, the surface façade, and the chrome's tokens aliased to the kit ([1fda8c4](https://github.com/jxsuite/jx/commit/1fda8c4f256aa6d9195002822784d9ea79784bf9))
+* **ui,compiler,schema:** jx-popover, jx-tooltip and jx-spinner ([21bc6ba](https://github.com/jxsuite/jx/commit/21bc6ba29f3304ddc3c56ee54de36d5b95fa69f1))
+* **ui,studio:** a button's hint is a jx-tooltip while it can act and a title while it cannot ([8315a23](https://github.com/jxsuite/jx/commit/8315a23d5ec5065496c58ecc72833b086c6df2d4)), closes [#299](https://github.com/jxsuite/jx/issues/299)
+* **ui,studio:** jx-menu and jx-menu-item, and the element context menu as the first Jx surface ([07bb458](https://github.com/jxsuite/jx/commit/07bb458d7b02b1fc4683f876123a51a241c01414))
+* **ui,studio:** jx-menu hangs from its button by anchor positioning, submenus beside their rows ([4407877](https://github.com/jxsuite/jx/commit/440787789c3e96a9ea223d3606fe54da1e4e16fe))
+* **ui,studio:** jx-tab takes slotted content, and the pane tab strip is a document ([5c10bff](https://github.com/jxsuite/jx/commit/5c10bff2ad8c8d061b0e27a2b48955598a933b2c))
+* **ui,studio:** jx-toolbar and jx-split, and a workaround for a limitation that never existed ([2d738b1](https://github.com/jxsuite/jx/commit/2d738b12e4142c25c4d98e2c56e9836b6e5c1de9))
+* **ui,studio:** jx-tree and jx-combobox, and the five surfaces that hand-rolled them ([b3363cf](https://github.com/jxsuite/jx/commit/b3363cfe2c9ffb5fe83058d62f83c5b55a95e55f))
+* **ui,studio:** the Edit column, the colour well and the credentials form finish on the kit ([d6565a7](https://github.com/jxsuite/jx/commit/d6565a7bed4b494d6eba52e676fcc74b0014e05c))
+* **ui,studio:** the kit has a colour family, and Studio's last Spectrum surface is a document ([30cb78a](https://github.com/jxsuite/jx/commit/30cb78a017b61b02d92eb116ec87d69c26271e6c))
+* **ui,studio:** the Style tab's keyword rows are jx-combobox, and ui.md's principles have evidence ([bbf30c8](https://github.com/jxsuite/jx/commit/bbf30c8ab712b44dd3239ec4f0ebbd1499b1e573))
+* **ui:** compact density draws 24px controls, and a button's hint is a jx-tooltip while it can act ([3930b0b](https://github.com/jxsuite/jx/commit/3930b0b244264f2eca551753550804d19bfb4f1e))
+* **ui:** compact density draws 24px controls, the WCAG 2.2 SC 2.5.8 floor at every density ([9b9f99f](https://github.com/jxsuite/jx/commit/9b9f99f6d800c6ad38a4d0850030d2ea109f4b47)), closes [#309](https://github.com/jxsuite/jx/issues/309)
+* **ui:** jx-button and jx-action-button ([93a18cc](https://github.com/jxsuite/jx/commit/93a18cc31d47a16b0e4dad8abecf3bc588c49d42))
+* **ui:** jx-checkbox, jx-switch and jx-number-field, and the field-row recipes ([c9ae3f0](https://github.com/jxsuite/jx/commit/c9ae3f0b22c1e0d7e8c61999d0a2e7296eb6e2c4))
+* **ui:** jx-dialog and jx-textfield ([c94fdb5](https://github.com/jxsuite/jx/commit/c94fdb50065362ef686cc210a6dc7cab1a9e0bdb))
+* **ui:** jx-popover is placed by CSS anchor positioning against the platform's implicit anchor ([9fbcc75](https://github.com/jxsuite/jx/commit/9fbcc75a1f66150cacf470ae015e9ecb6b604d35))
+* **ui:** jx-select is a native select, and the four rules a document must not write ([4a1b6af](https://github.com/jxsuite/jx/commit/4a1b6af073a5a36f35c3e4f9c888b00f88b01004))
+* **ui:** jx-tabs, jx-accordion-item and jx-action-group ([b72014c](https://github.com/jxsuite/jx/commit/b72014c5d59e70b1b7c4fcc7874a3f9cd1602cd7))
+* **ui:** jx-tooltip hangs from its control by anchor positioning, the arrow following the flip ([e81f318](https://github.com/jxsuite/jx/commit/e81f318e11e98e9b1b6e02bb86a934a743540644))
+* **ui:** the @jxsuite/ui workspace, with the theme, jx-icon over Phosphor, and specs/ui.md ([d26e2b2](https://github.com/jxsuite/jx/commit/d26e2b2a54054bf03a3bc21cccc8f7447f0a91b5))
+* **ui:** the kit ships no CSS class ([155146b](https://github.com/jxsuite/jx/commit/155146b3444ae900b2ee3f1730d6fb08a0c7e7fe))
 
 
 ### Bug Fixes
 
-* **schema,runtime,studio:** the overlay tools could not see a custom element ([af93456](https://github.com/jxsuite/jx/commit/af934567e242aca87d7890dff534fc69ad07e855))
-* **studio,ui,runtime,schema:** thirteen findings from the branch review ([8c21b6c](https://github.com/jxsuite/jx/commit/8c21b6cde4a90e21bc655abe10a6f3f1955e638c))
-* **studio,ui:** three ways an overlay betrayed the reader ([2dfc15e](https://github.com/jxsuite/jx/commit/2dfc15ed9a62cfef64d1620869e5f630d05c413e))
-* stylized font and color selectors ([26bd94b](https://github.com/jxsuite/jx/commit/26bd94b119a8553041a596cb98329ed3d6fdc58a))
-* **ui,site:** the theme is one reading of one block ([9d732a7](https://github.com/jxsuite/jx/commit/9d732a709fe84931d9c4affd0cdc1de81127d6f7))
-* **ui,studio,schema:** the five defects a browser found that no unit test could ([024f725](https://github.com/jxsuite/jx/commit/024f725d331236777791b1011ae8045bd33ca065))
-* **ui:** a hidden menu-row chevron stays hidden, and the kit checks the rule ([8918ef8](https://github.com/jxsuite/jx/commit/8918ef8389df1559ab05c0e68bd2149d94038e6d))
-* **ui:** an anchored tooltip's arrow follows a flip the platform makes while the tip is up ([df6e14a](https://github.com/jxsuite/jx/commit/df6e14ab4896acd4aa33b0a4490a3157e62c4e64))
-* **ui:** an anchored tooltip's arrow follows a flip the platform makes while the tip is up ([6a14644](https://github.com/jxsuite/jx/commit/6a14644a6a91c0af7e50c7b3306625de045fdfb3)), closes [#310](https://github.com/jxsuite/jx/issues/310)
+* **schema,runtime,studio:** the overlay tools could not see a custom element ([bc57e9f](https://github.com/jxsuite/jx/commit/bc57e9f89f2030fcd0b5b5bdeffda2178683908f))
+* **studio,ui,runtime,schema:** thirteen findings from the branch review ([9f80e82](https://github.com/jxsuite/jx/commit/9f80e82d245c7e2124a21828d97518dcac49f02a))
+* **studio,ui:** three ways an overlay betrayed the reader ([68888ec](https://github.com/jxsuite/jx/commit/68888ec1eca0872ed784b77aca7cffb081d130bf))
+* stylized font and color selectors ([376798d](https://github.com/jxsuite/jx/commit/376798df96e47524054967afd0263e5be31314a7))
+* **ui,site:** the theme is one reading of one block ([6e606dd](https://github.com/jxsuite/jx/commit/6e606dd4d58c56a6ab181258ac3df088887f2c82))
+* **ui,studio,schema:** the five defects a browser found that no unit test could ([06e8d00](https://github.com/jxsuite/jx/commit/06e8d0045b3ad6bec99d777f11f9f0fc5570c512))
+* **ui:** a hidden menu-row chevron stays hidden, and the kit checks the rule ([ccdb5bf](https://github.com/jxsuite/jx/commit/ccdb5bfa36498d487075dc6ccab20f9397e0cc1a))
+* **ui:** an anchored tooltip's arrow follows a flip the platform makes while the tip is up ([484a603](https://github.com/jxsuite/jx/commit/484a603a1fc0a417381dd467656947fb08bcac69))
+* **ui:** an anchored tooltip's arrow follows a flip the platform makes while the tip is up ([91fbe02](https://github.com/jxsuite/jx/commit/91fbe0285aaec81ca5a87529521d12a9e2b408db)), closes [#310](https://github.com/jxsuite/jx/issues/310)
 
 
 ### Dependencies
