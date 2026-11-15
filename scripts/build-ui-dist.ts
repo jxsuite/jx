@@ -23,7 +23,7 @@
  * @docs extending/ui-kit
  */
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { join, resolve } from "node:path";
 
 import { compileElementPack, writeElementPack } from "@jxsuite/compiler/pack";
 import { isJsonObject, isString } from "@jxsuite/schema/guards";
@@ -31,7 +31,10 @@ import type { JsonValue } from "@jxsuite/schema/types";
 
 import { themeCSS } from "../packages/ui/src/theme.ts";
 
-const PACKAGE_ROOT = resolve(dirname(new URL(import.meta.url).pathname), "../packages/ui");
+/* `import.meta.dir`, not the pathname of `import.meta.url`: on Windows that pathname is
+   `/D:/a/jx/...`, and `resolve` reads its leading slash as the current drive's root, which gave
+   `D:\\D:\\a\\jx\\...` and failed the desktop build's first read under it. */
+const PACKAGE_ROOT = resolve(import.meta.dir, "../packages/ui");
 
 /** The scheme the kit's documents spell a behaviour module's `$src` in. */
 const KIT_SCHEME = "jx-ui:/";
