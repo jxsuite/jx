@@ -1,5 +1,63 @@
 # Changelog
 
+## [12.0.0](https://github.com/jxsuite/jx/compare/studio-v11.1.0...studio-v12.0.0) (2026-11-15)
+
+
+### ⚠ BREAKING CHANGES
+
+* **runtime:** the interpreter (live preview, mount()) renders a component with $shadow, or under defaults.shadow, into a shadow root where it rendered light. In a built shadow component a key such as ":hover" or ".wide" is emitted as :host(:hover) and now applies, a color-scheme block follows the OS preference only, and a bare element key at the top level of a component style is a descendant rule where it was dropped.
+* **compiler:** a built list now applies its `filter` and `sort`, where it showed every item in source order. A page list whose items, filter or sort reads state a handler writes is no longer prerendered: the page's module renders it. A template string as a repeater's `items` fails the build. A dynamic page's import map gains the `lit-html/` and `@vue/reactivity/` prefix keys.
+* **compiler:** built HTML now carries attributes the static emitter used to drop (href, src, alt, value, placeholder, type, checked, disabled, name, selected and every other reflected property), a title, lang or dir set to the empty string is written as an empty attribute, and an attributes entry now replaces a property that writes the same attribute (id included) where both were written before. A client page's repeater row binds contentEditable as a property instead of writing the contenteditable attribute. name is no longer in RESERVED_KEYS: on an element it is the DOM property, in every tier.
+
+### Features
+
+* **ai:** a conversation too long for Claude is summarized, not cut ([36175f8](https://github.com/jxsuite/jx/commit/36175f8937566a7585a5e688d9b47acfaf2ec559))
+* **ai:** a persisted conversation behind one session store contract ([231c085](https://github.com/jxsuite/jx/commit/231c085deaf8631ded3b148db4ea9a279912216c))
+* **ai:** a suspended turn resumes from a checkpoint ([b8f774e](https://github.com/jxsuite/jx/commit/b8f774ec0a22988d64943dd09dfc159da6d0268e))
+* **ai:** chat wire version 2 and the OpenAI-compatible provider adapter ([9491a55](https://github.com/jxsuite/jx/commit/9491a55977559d42889d336fd33795b9c650912a))
+* **ai:** native Anthropic Messages with signed thinking replayed where it binds ([9e64acf](https://github.com/jxsuite/jx/commit/9e64acf22c03952e3a31295aa0276fc89a801b53))
+* **ai:** one stream normalizer for the gateway and the direct client ([99a9637](https://github.com/jxsuite/jx/commit/99a963743aeb7259bf7af00ac2f4411851d2c21d))
+* **ai:** portable file tools over a ProjectHost, and schema-checked arguments ([80f1b33](https://github.com/jxsuite/jx/commit/80f1b336f97ebb761009eddf9e3d2b83ee95c3ef))
+* **compiler:** a site build writes a Custom Elements Manifest for the components it compiles ([44ec625](https://github.com/jxsuite/jx/commit/44ec625061819e4a500d4337d2544b4a1fa34410)), closes [#304](https://github.com/jxsuite/jx/issues/304)
+* **compiler:** built lists filter, sort and keep keyed rows as the interpreter does ([8f98e21](https://github.com/jxsuite/jx/commit/8f98e2135e36272b91d14156736c923e846a35ff))
+* **runtime,compiler,ui:** a custom element can be form-associated, and the kit's controls are ([dccb628](https://github.com/jxsuite/jx/commit/dccb62832d9c88c36f9ce88d564caf29f6c46f50)), closes [#303](https://github.com/jxsuite/jx/issues/303)
+* **runtime:** $shadow means the same thing in the interpreter, the module and the prerender ([267dec9](https://github.com/jxsuite/jx/commit/267dec908784e3055c6d8bb64319bdea771892ad))
+* **schema,studio:** a dynamic tag reads a chain of sources, and its popover lists them in order ([9bd7d5e](https://github.com/jxsuite/jx/commit/9bd7d5e64f29b1b9ca753379639b816fa86dc340)), closes [#653](https://github.com/jxsuite/jx/issues/653)
+* **studio:** a Studio surface opens on the canvas as a realistic instance, drawn with its specimen ([31369f3](https://github.com/jxsuite/jx/commit/31369f3941cd8645df5dc0becb2e61e9117fceef)), closes [#300](https://github.com/jxsuite/jx/issues/300)
+* **studio:** the assistant asks before a call undo cannot take back ([6edb36a](https://github.com/jxsuite/jx/commit/6edb36aa7c88a45d35c4dcd41777f43a6b4a60aa))
+* **ui,studio:** jx-table ships, and Studio's Packages and Library tables are drawn with it ([31b1313](https://github.com/jxsuite/jx/commit/31b1313f6a2f4945bc3c329a40d124dba86897e4)), closes [#301](https://github.com/jxsuite/jx/issues/301)
+
+
+### Bug Fixes
+
+* **compiler:** built HTML carries every element property as the attribute it reflects to ([83869d1](https://github.com/jxsuite/jx/commit/83869d15cb18db2ec87b00ea18d2ea2a86269d8e))
+* **studio:** a $switch case that is another document is fetched from the document's folder ([b130d36](https://github.com/jxsuite/jx/commit/b130d36cb94ed0c91e42fc97ae65006973c19acf)), closes [#300](https://github.com/jxsuite/jx/issues/300)
+* **studio:** a class the backend never resolves holds a canvas render 30 seconds, not for good ([e26831f](https://github.com/jxsuite/jx/commit/e26831f32c804a8f713103015ea15590b6632767)), closes [#653](https://github.com/jxsuite/jx/issues/653)
+* **studio:** prop-bound text is editable on the canvas wherever the instance delivers the prop ([8ef773f](https://github.com/jxsuite/jx/commit/8ef773f6841e7c24d8624d84e55bc9b6cf1b20ab))
+* **studio:** show a failed model listing wherever the catalogue is offered ([1269cb8](https://github.com/jxsuite/jx/commit/1269cb8596ef842835d57f135ccfa4d53013e709))
+
+
+### Performance Improvements
+
+* **studio:** the Library table writes its table roles on its own boxes again ([4b87c8e](https://github.com/jxsuite/jx/commit/4b87c8e78002217aa38e1a8e4afe5bf002fd2d3d)), closes [#301](https://github.com/jxsuite/jx/issues/301)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/ai bumped to 0.44.0
+    * @jxsuite/collab bumped to 0.12.3
+    * @jxsuite/create bumped to 1.8.4
+    * @jxsuite/erase bumped to 0.3.3
+    * @jxsuite/formulas bumped to 0.0.36
+    * @jxsuite/markup bumped to 1.0.12
+    * @jxsuite/protocol bumped to 6.5.0
+    * @jxsuite/runtime bumped to 8.0.0
+    * @jxsuite/schema bumped to 7.0.0
+    * @jxsuite/site bumped to 3.0.0
+    * @jxsuite/ui bumped to 0.13.0
+
 ## [11.1.0](https://github.com/jxsuite/jx/compare/studio-v11.0.2...studio-v11.1.0) (2026-11-14)
 
 

@@ -1,5 +1,28 @@
 # Changelog
 
+## [4.0.0](https://github.com/jxsuite/jx/compare/starters-v3.7.1...starters-v4.0.0) (2026-11-15)
+
+
+### ⚠ BREAKING CHANGES
+
+* **compiler:** a built list now applies its `filter` and `sort`, where it showed every item in source order. A page list whose items, filter or sort reads state a handler writes is no longer prerendered: the page's module renders it. A template string as a repeater's `items` fails the build. A dynamic page's import map gains the `lit-html/` and `@vue/reactivity/` prefix keys.
+
+### Features
+
+* **compiler:** built lists filter, sort and keep keyed rows as the interpreter does ([8f98e21](https://github.com/jxsuite/jx/commit/8f98e2135e36272b91d14156736c923e846a35ff))
+* **runtime,compiler,ui:** a custom element can be form-associated, and the kit's controls are ([dccb628](https://github.com/jxsuite/jx/commit/dccb62832d9c88c36f9ce88d564caf29f6c46f50)), closes [#303](https://github.com/jxsuite/jx/issues/303)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/protocol bumped to 6.5.0
+  * devDependencies
+    * @jxsuite/parser bumped to 5.1.0
+    * @jxsuite/runtime bumped to 8.0.0
+    * @jxsuite/schema bumped to 7.0.0
+
 ## [3.7.1](https://github.com/jxsuite/jx/compare/starters-v3.7.0...starters-v3.7.1) (2026-11-14)
 
 

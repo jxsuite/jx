@@ -1,5 +1,24 @@
 # Changelog
 
+## [3.0.0](https://github.com/jxsuite/jx/compare/site-v2.8.0...site-v3.0.0) (2026-11-15)
+
+
+### ⚠ BREAKING CHANGES
+
+* **runtime:** the interpreter (live preview, mount()) renders a component with $shadow, or under defaults.shadow, into a shadow root where it rendered light. In a built shadow component a key such as ":hover" or ".wide" is emitted as :host(:hover) and now applies, a color-scheme block follows the OS preference only, and a bare element key at the top level of a component style is a descendant rule where it was dropped.
+
+### Features
+
+* **runtime:** $shadow means the same thing in the interpreter, the module and the prerender ([267dec9](https://github.com/jxsuite/jx/commit/267dec908784e3055c6d8bb64319bdea771892ad))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/runtime bumped to 8.0.0
+    * @jxsuite/schema bumped to 7.0.0
+
 ## [2.8.0](https://github.com/jxsuite/jx/compare/site-v2.7.1...site-v2.8.0) (2026-11-14)
 
 

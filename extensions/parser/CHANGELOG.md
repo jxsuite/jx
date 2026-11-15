@@ -1,5 +1,22 @@
 # Changelog
 
+## [5.1.0](https://github.com/jxsuite/jx/compare/parser-v5.0.2...parser-v5.1.0) (2026-11-15)
+
+
+### Features
+
+* **parser:** an entry can name its collection's asset by published address ([485b946](https://github.com/jxsuite/jx/commit/485b946e5be737891f311676249cba2e94803194))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @jxsuite/markup bumped to 1.0.12
+    * @jxsuite/schema bumped to 7.0.0
+  * devDependencies
+    * @jxsuite/runtime bumped to 8.0.0
+
 ## [5.0.2](https://github.com/jxsuite/jx/compare/parser-v5.0.1...parser-v5.0.2) (2026-11-14)
 
 
