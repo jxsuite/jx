@@ -23,7 +23,7 @@
  * Usage: `bun --cwd packages/studio scripts/check-surface-purity.ts` (CI's `checks` job).
  */
 import { readFileSync } from "node:fs";
-import { dirname, relative, resolve } from "node:path";
+import { relative, resolve } from "node:path";
 
 import { KIT_TAGS } from "@jxsuite/ui";
 import type { CliReport } from "../../../scripts/lib/cli-report.ts";
@@ -174,7 +174,7 @@ export function report(findings: Finding[], root: string): CliReport {
  * @param {string} [root] Default is the package root this script sits in
  * @returns {number} 0 when the package is pure, 1 when it is not
  */
-export function runCli(root = resolve(dirname(new URL(import.meta.url).pathname), "..")): number {
+export function runCli(root = resolve(import.meta.dir, "..")): number {
   const { failed, lines } = report(surfacePurityFindings(collectSources(root)), root);
   console.log(lines.join("\n"));
   return failed ? 1 : 0;

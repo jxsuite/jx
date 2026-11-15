@@ -14,7 +14,7 @@ import { dirname, join, resolve } from "node:path";
 import { buildManifest } from "../src/icons-build.ts";
 import type { IconList } from "../src/icons-build.ts";
 
-const here = dirname(new URL(import.meta.url).pathname);
+const here = import.meta.dir;
 const listPath = resolve(here, "../icons/list.json");
 const manifestPath = resolve(here, "../icons/manifest.json");
 const phosphorRoot = dirname(Bun.resolveSync("@phosphor-icons/core/package.json", here));
